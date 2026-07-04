@@ -1,0 +1,23 @@
+# Local gallery data and generated media
+data/
+
+# Local environment and dependencies
+.env
+.env.*
+node_modules/
+
+# Machine-specific helper scripts and scratch probes
+*.bat
+!start.bat
+check*.txt
+check*.json
+*_done.txt
+c
+
+# Codex planning artifacts
+docs/superpowers/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log

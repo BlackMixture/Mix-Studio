@@ -1,0 +1,2454 @@
+#!/usr/bin/env node
+/*
+ * KreaStudio - minimalist ComfyUI + Krea 2 image generation app
+ * Zero-dependency Node server (Node >= 20 recommended, >= 22 for live progress).
+ * Serves a mobile-first web app; ComfyUI does the heavy lifting.
+ */
+'use strict';
+
+const http = require('http');
+const fs = require('fs');
+const fsp = fs.promises;
+const path = require('path');
+const os = require('os');
+const crypto = require('crypto');
+const {
+  DEFAULT_PRIVATE_PASSWORD,
+  galleryPassword,
+  galleryView,
+  setFolderLocked,
+  canMoveToFolder,
+  parseCookies,
+} = require('./lib/private-gallery');
+
+const ROOT = __dirname;
+const PUBLIC = path.join(ROOT, 'public');
+const DATA = path.join(ROOT, 'data');
+const IMAGES = path.join(DATA, 'images');
+const VIDEOS = path.join(DATA, 'videos');
+const PORT = Number(process.env.PORT || 3300);
+
+fs.mkdirSync(IMAGES, { recursive: true });
+fs.mkdirSync(VIDEOS, { recursive: true });
+
+/* ------------------------------------------------------------------ */
+/* Settings                                                            */
+/* ------------------------------------------------------------------ */
+
+const SETTINGS_FILE = path.join(DATA, 'settings.json');
+const DEFAULT_SYSTEM_PROMPT = `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.
+
+Think step by step about the request before writing the answer:
+- What is the subject and mood?
+- What visual styles, mediums, and lighting options would fit? Consider two or three alternatives and pick the one that best serves the caption.
+- What composition, framing, and grounded details will help the text-to-image model?
+
+Then output a single expanded prompt paragraph.
+
+Follow these rules strictly:
+1. **Faithfulness First:** Preserve all original subjects, actions, colors, and spatial relationships. Do not add new objects, props, characters, or animals unless the user clearly implies them.
+2. **Practical T2I Structure:** Write a prompt that a text-to-image model can parse cleanly. Group subjects with their own attributes and actions. Use grounded phrasing for poses, interactions, and spatial layout.
+3. **Style Planning Stays Internal:** Use your internal reasoning to choose style, medium, framing, and lighting. Do not emit planning tags or wrappers in the visible answer body.
+4. **Text Rendering:** If the user requests visible text, quotes, labels, or typography, specify the exact text clearly and wrap requested words in quotes.
+5. **Avoid Over-Specification:** Do not invent highly specific clothing, colors, materials, or scene details unless the input supports them.
+6. **Structure:** Write one cohesive paragraph after the thinking block. No bullets, JSON, or markdown.
+7. **Respect Existing Detail:** If the user's prompt is already detailed, lightly polish and finalize rather than heavily expanding - preserve their phrasing and direction.
+8. **Respect the Human Form:** Treat depictions of people with dignity. Assume clothing covers genitals and intimate anatomy.
+9. **Preserve User Medium:** When the user explicitly requests a medium (e.g. "photo of", "photograph of", "illustration of", "painting of", "sketch of", "3D render of"), honor it. Do not pivot to a different medium to avoid difficulty - match the user's stated intent.
+
+User's Input:`;
+
+const DEFAULT_SETTINGS = {
+  comfyUrl: 'http://127.0.0.1:8188',
+  unet: 'krea2_turbo_fp8_scaled.safetensors',
+  clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
+  clipType: 'krea2',
+  vae: 'qwen_image_vae.safetensors',
+  seedvr2Dit: 'seedvr2_ema_3b_fp16.safetensors',
+  seedvr2Vae: 'ema_vae_fp16.safetensors',
+  seedvr2Attention: 'sdpa',
+  kleinUnet: 'flux-2-klein-4b.safetensors',
+  kleinClip: 'qwen_3_4b.safetensors',
+  kleinVae: 'flux2-vae.safetensors',
+  qwenEditUnet: 'qwen_image_edit_2511_bf16.safetensors',
+  qwenEditClip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
+  qwenEditLora: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+  ltxCkpt: 'ltx-2.3-22b-dev-fp8.safetensors',
+  ltxDistilledLora: 'ltx-2.3-22b-distilled-lora-384.safetensors',
+  ltxTextEncoder: 'gemma_3_12B_it_fp4_mixed.safetensors',
+  ltxGemmaLora: 'gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors',
+  ltxUpscaler: 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors',
+  wanHighUnet: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',
+  wanLowUnet: 'wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors',
+  wanClip: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors',
+  wanVae: 'wan_2.1_vae.safetensors',
+  wanHighLora: 'wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors',
+  wanLowLora: 'wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors',
+  erosCkpt: '10Eros_v1.2_fp8mixed_learned.safetensors',
+  erosTextEncoder: 'gemma-3-12b-it-ablit-norms-biproj-fp8mixed.safetensors',
+  erosDmdLora: 'LTX2.3_DMD_reshaped_r256.safetensors',
+  erosSigmasFirst: '',
+  erosSigmasUpscale: '',
+  scailUnet: 'wan2.1_14B_SCAIL_2_fp8_scaled.safetensors',
+  scailLora: 'Wan2.1\\Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors',
+  scailClipVision: 'clip_vision_h.safetensors',
+  scailSam: 'sam3.1_multiplex_fp16.safetensors',
+  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  galleryPassword: DEFAULT_PRIVATE_PASSWORD,
+};
+
+function loadJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+}
+function saveJsonSync(file, obj) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+let settings = Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {}));
+settings.galleryPassword = galleryPassword(settings);
+
+/* ------------------------------------------------------------------ */
+/* Gallery DB                                                          */
+/* ------------------------------------------------------------------ */
+
+const DB_FILE = path.join(DATA, 'db.json');
+let db = loadJson(DB_FILE, { folders: [], items: [] });
+let dbSaveTimer = null;
+function saveDb() {
+  clearTimeout(dbSaveTimer);
+  dbSaveTimer = setTimeout(() => saveJsonSync(DB_FILE, db), 150);
+}
+function uid() { return crypto.randomBytes(8).toString('hex'); }
+
+const PRIVATE_COOKIE = 'ks_private';
+const privateUnlockToken = crypto.randomBytes(18).toString('hex');
+
+function isPrivateUnlocked(req) {
+  return parseCookies(req.headers.cookie || '')[PRIVATE_COOKIE] === privateUnlockToken;
+}
+
+function privateCookie(value, maxAge) {
+  const encoded = encodeURIComponent(value || '');
+  return `${PRIVATE_COOKIE}=${encoded}; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+/** Video track dimensions from an MP4 buffer (tkhd box). Needed to build
+ *  even-dimension composites — libx264 refuses odd widths/heights. */
+function mp4Dims(buf) {
+  for (let i = 4; i < buf.length - 100; i++) {
+    if (buf[i] === 0x74 && buf[i + 1] === 0x6b && buf[i + 2] === 0x68 && buf[i + 3] === 0x64) { // 'tkhd'
+      const size = buf.readUInt32BE(i - 4);
+      const ver = buf[i + 4];
+      if (!((ver === 0 && size === 92) || (ver === 1 && size === 104))) continue;
+      const wOff = (i - 4) + (ver === 1 ? 96 : 84);
+      if (wOff + 8 > buf.length) continue;
+      const w = buf.readUInt32BE(wOff) >>> 16;
+      const h = buf.readUInt32BE(wOff + 4) >>> 16;
+      if (w > 0 && h > 0 && w < 16384 && h < 16384) return { w, h }; // audio tracks report 0x0
+    }
+  }
+  return null;
+}
+
+/** Actual pixel dimensions from a PNG buffer (IHDR). Edit pipelines snap
+ *  output to their own resolution buckets, so recorded request dims can lie. */
+function pngDims(buf) {
+  if (!buf || buf.length < 24) return null;
+  if (buf.readUInt32BE(0) !== 0x89504e47) return null;
+  const w = buf.readUInt32BE(16);
+  const h = buf.readUInt32BE(20);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+// Migrate legacy single-video items to the videos[] array
+{
+  let migrated = false;
+  if (!Array.isArray(db.folders)) db.folders = [];
+  if (!Array.isArray(db.items)) db.items = [];
+  for (const f of db.folders) f.locked = !!f.locked;
+  for (const it of db.items) {
+    if (it.video) {
+      it.videos = (Array.isArray(it.videos) ? it.videos : []).concat([
+        { id: uid(), file: it.video, createdAt: it.createdAt || Date.now(), info: it.videoInfo || {} },
+      ]);
+      delete it.video;
+      delete it.videoInfo;
+      migrated = true;
+    }
+    if (!Array.isArray(it.videos)) it.videos = [];
+  }
+  if (migrated) saveJsonSync(DB_FILE, db);
+}
+if (!Array.isArray(db.history)) db.history = [];
+if (!Array.isArray(db.loraPresets)) db.loraPresets = [];
+
+// One-time repair: recorded dims can differ from the actual file (edit
+// pipelines snap to resolution buckets). Reads 24 bytes per image.
+(async () => {
+  let fixed = 0;
+  for (const it of db.items) {
+    if (!it.file) continue;
+    try {
+      const fh = await fsp.open(path.join(IMAGES, it.file), 'r');
+      const b = Buffer.alloc(24);
+      await fh.read(b, 0, 24, 0);
+      await fh.close();
+      const d = pngDims(b);
+      if (d && (d.w !== it.width || d.h !== it.height)) {
+        it.width = d.w;
+        it.height = d.h;
+        fixed++;
+      }
+    } catch { /* file missing; leave as-is */ }
+  }
+  if (fixed) {
+    saveDb();
+    console.log(`[dims] corrected stored dimensions on ${fixed} item(s)`);
+  }
+})();
+
+function pushHistory(entry) {
+  db.history.unshift(Object.assign({ ts: Date.now() }, entry));
+  if (db.history.length > 50) db.history.length = 50;
+  saveDb();
+}
+
+/* ------------------------------------------------------------------ */
+/* SSE                                                                 */
+/* ------------------------------------------------------------------ */
+
+const sseClients = new Set();
+function broadcast(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) { try { res.write(payload); } catch { /* noop */ } }
+}
+
+/* ------------------------------------------------------------------ */
+/* ComfyUI bridge                                                      */
+/* ------------------------------------------------------------------ */
+
+const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
+const jobs = new Map(); // promptId -> job
+
+async function comfyFetch(p, opts) {
+  const url = settings.comfyUrl.replace(/\/$/, '') + p;
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`ComfyUI ${p} -> ${res.status} ${text.slice(0, 400)}`);
+  }
+  return res;
+}
+
+let objectInfoCache = null;
+let objectInfoAt = 0;
+async function getObjectInfo(force) {
+  if (!force && objectInfoCache && Date.now() - objectInfoAt < 5 * 60 * 1000) return objectInfoCache;
+  const res = await comfyFetch('/object_info');
+  objectInfoCache = await res.json();
+  objectInfoAt = Date.now();
+  return objectInfoCache;
+}
+
+function isWidgetSpec(spec) {
+  if (!Array.isArray(spec)) return false;
+  const t = spec[0];
+  if (Array.isArray(t)) return true; // combo
+  if (typeof t === 'string' && t.startsWith('COMFY_') && t.includes('COMBO')) return true; // V3 DynamicCombo
+  return ['INT', 'FLOAT', 'STRING', 'BOOLEAN', 'COMBO'].includes(t);
+}
+
+/**
+ * Build a node's inputs by zipping ordered widget values against the node
+ * class definition from /object_info. Used for nodes whose exact input
+ * names vary between custom-node versions.
+ */
+async function nodeFromOrdered(classType, ordered, links = {}, overrides = {}) {
+  const info = await getObjectInfo();
+  const def = info[classType];
+  if (!def) throw new Error(`ComfyUI is missing node class "${classType}" (install/enable the custom node).`);
+  const entries = [
+    ...Object.entries(def.input?.required || {}),
+    ...Object.entries(def.input?.optional || {}),
+  ];
+  const inputs = {};
+  let i = 0;
+  for (const [name, spec] of entries) {
+    if (links[name] !== undefined) { inputs[name] = links[name]; continue; }
+    if (!isWidgetSpec(spec)) continue; // unlinked connection input -> omit
+    if (Object.prototype.hasOwnProperty.call(overrides, name)) { inputs[name] = overrides[name]; i++; continue; }
+    if (i < ordered.length) { inputs[name] = ordered[i++]; }
+    else if (spec[1] && spec[1].default !== undefined) { inputs[name] = spec[1].default; }
+  }
+  for (const [k, v] of Object.entries(overrides)) if (!(k in inputs)) inputs[k] = v;
+  return { class_type: classType, inputs };
+}
+
+/** Drop input keys the installed node class doesn't know about (core-node drift). */
+async function filterInputs(graph) {
+  const info = await getObjectInfo();
+  for (const node of Object.values(graph)) {
+    const def = info[node.class_type];
+    if (!def) continue;
+    const known = new Set([
+      ...Object.keys(def.input?.required || {}),
+      ...Object.keys(def.input?.optional || {}),
+      ...Object.keys(def.input?.hidden || {}),
+    ]);
+    for (const key of Object.keys(node.inputs)) {
+      if (!known.has(key) && !key.includes('.')) delete node.inputs[key];
+    }
+  }
+  return graph;
+}
+
+async function uploadToComfy(buffer, filename) {
+  const boundary = '----kreastudio' + crypto.randomBytes(8).toString('hex');
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${filename}"\r\n` +
+    `Content-Type: application/octet-stream\r\n\r\n`
+  );
+  const mid = Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat([head, buffer, mid]);
+  const res = await comfyFetch('/upload/image', {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+    body,
+  });
+  const json = await res.json();
+  return (json.subfolder ? json.subfolder + '/' : '') + json.name;
+}
+
+async function queuePrompt(graph) {
+  const res = await comfyFetch('/prompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: graph, client_id: CLIENT_ID }),
+  });
+  const json = await res.json();
+  if (json.node_errors && Object.keys(json.node_errors).length) {
+    throw new Error('ComfyUI validation: ' + JSON.stringify(json.node_errors).slice(0, 500));
+  }
+  return json.prompt_id;
+}
+
+/* --------------------------- WebSocket ---------------------------- */
+
+let ws = null;
+let wsTimer = null;
+let lastPreviewAt = 0;
+
+function ensureWs() {
+  if (typeof WebSocket === 'undefined') return; // Node < 22 -> polling fallback
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+  const url = settings.comfyUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws?clientId=' + CLIENT_ID;
+  try { ws = new WebSocket(url); } catch { return scheduleWsRetry(); }
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = (ev) => {
+    if (typeof ev.data === 'string') {
+      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+      handleWsMessage(msg);
+    } else {
+      handleWsBinary(Buffer.from(ev.data));
+    }
+  };
+  ws.onclose = scheduleWsRetry;
+  ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
+}
+function scheduleWsRetry() {
+  clearTimeout(wsTimer);
+  if (jobs.size) wsTimer = setTimeout(ensureWs, 2000);
+}
+
+function handleWsMessage(msg) {
+  const d = msg.data || {};
+  const pid = d.prompt_id;
+  if (msg.type === 'progress' && pid && jobs.has(pid)) {
+    broadcast('progress', { jobId: pid, value: d.value, max: d.max, itemId: jobs.get(pid).itemId || null });
+  } else if (msg.type === 'executing' && pid && jobs.has(pid)) {
+    if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
+    else broadcast('status', { jobId: pid, text: nodeLabel(pid, d.node), itemId: jobs.get(pid).itemId || null });
+  } else if (msg.type === 'execution_error' && pid && jobs.has(pid)) {
+    failJob(pid, (d.exception_message || 'execution error') + (d.node_type ? ` (${d.node_type})` : ''));
+  } else if (msg.type === 'execution_interrupted' && pid && jobs.has(pid)) {
+    failJob(pid, 'Interrupted');
+  }
+}
+
+function nodeLabel(pid, nodeId) {
+  const job = jobs.get(pid);
+  const cls = job && job.graph && job.graph[nodeId] ? job.graph[nodeId].class_type : '';
+  const map = {
+    UNETLoader: 'Loading Krea 2...', CLIPLoader: 'Loading text encoder...', VAELoader: 'Loading VAE...',
+    LoraLoader: 'Applying LoRAs...', TextGenerate: 'Enhancing prompt...', CLIPTextEncode: 'Encoding prompt...',
+    TextEncodeQwenImageEditPlus: 'Encoding prompt + images...', KSampler: 'Sampling...', VAEDecode: 'Decoding...',
+    SaveImage: 'Saving...', SeedVR2LoadDiTModel: 'Loading SeedVR2...', SeedVR2LoadVAEModel: 'Loading SeedVR2 VAE...',
+    SeedVR2VideoUpscaler: 'Upscaling...', ImageScaleBy: 'Pre-resizing...', LoadImage: 'Loading image...',
+    CheckpointLoaderSimple: 'Loading LTX 2.3...', LTXAVTextEncoderLoader: 'Loading Gemma...',
+    TextGenerateLTX2Prompt: 'Enhancing motion prompt...', SamplerCustomAdvanced: 'Generating video...',
+    LTXVLatentUpsampler: 'Upsampling video...', VAEDecodeTiled: 'Decoding frames...',
+    RTXVideoSuperResolution: 'RTX 4K pass...', CreateVideo: 'Encoding video...', SaveVideo: 'Saving video...',
+  };
+  return map[cls] || 'Working...';
+}
+
+function handleWsBinary(buf) {
+  // [4B event][4B format][image bytes] - event 1 = preview image
+  if (buf.length < 9) return;
+  const event = buf.readUInt32BE(0);
+  if (event !== 1) return;
+  const now = Date.now();
+  if (now - lastPreviewAt < 450) return;
+  lastPreviewAt = now;
+  const format = buf.readUInt32BE(4);
+  const mime = format === 2 ? 'image/png' : 'image/jpeg';
+  const b64 = buf.subarray(8).toString('base64');
+  broadcast('preview', { dataUrl: `data:${mime};base64,${b64}` });
+}
+
+/* --------------------------- Job lifecycle ------------------------ */
+
+function failJob(pid, message) {
+  const job = jobs.get(pid);
+  jobs.delete(pid);
+  if (job && job.kind === 'enhance') { job.reject(new Error(message)); return; }
+  pushHistory({ kind: 'error', itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
+  broadcast('jobError', { jobId: pid, kind: job ? job.kind : 'gen', itemId: job ? job.itemId : null, message });
+}
+
+function findOutputFiles(outputs, extRe) {
+  const files = [];
+  for (const out of Object.values(outputs)) {
+    for (const arr of Object.values(out)) {
+      if (!Array.isArray(arr)) continue;
+      for (const entry of arr) {
+        if (entry && typeof entry === 'object' && typeof entry.filename === 'string'
+          && entry.type === 'output' && extRe.test(entry.filename)) {
+          files.push(entry);
+        }
+      }
+    }
+  }
+  return files;
+}
+
+async function downloadOutput(entry) {
+  return Buffer.from(await (await comfyFetch(
+    `/view?filename=${encodeURIComponent(entry.filename)}&subfolder=${encodeURIComponent(entry.subfolder || '')}&type=output`
+  )).arrayBuffer());
+}
+
+async function completeJob(pid) {
+  const job = jobs.get(pid);
+  if (!job) return;
+  jobs.delete(pid);
+  const res = await comfyFetch(`/history/${pid}`);
+  const hist = (await res.json())[pid];
+  if (!hist) return failJob(pid, 'No history entry from ComfyUI');
+  const outputs = hist.outputs || {};
+
+  // text output (PreviewAny)
+  let textOut = null;
+  for (const out of Object.values(outputs)) {
+    if (out && Array.isArray(out.text) && out.text.length) textOut = String(out.text[0]);
+  }
+
+  if (job.kind === 'enhance') {
+    if (textOut === null) { job.reject(new Error('Prompt enhance produced no text')); return; }
+    job.resolve(textOut);
+    return;
+  }
+
+  if (job.kind === 'video') {
+    const vids = findOutputFiles(outputs, /\.(mp4|webm|mov|mkv)$/i);
+    if (!vids.length) return failJob(pid, 'ComfyUI produced no video file');
+    const buf = await downloadOutput(vids[vids.length - 1]);
+    let item;
+    if (job.itemId) {
+      item = db.items.find((it) => it.id === job.itemId);
+      if (!item) return;
+    } else {
+      // standalone video (Video tab): create a gallery item with a poster frame
+      const id = uid();
+      const posterName = `${id}.png`;
+      const posters = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
+      const pbuf = posters.length ? await downloadOutput(posters[0]) : BLANK_PNG;
+      await fsp.writeFile(path.join(IMAGES, posterName), pbuf);
+      item = {
+        id,
+        file: posterName,
+        mode: 'video',
+        prompt: job.videoInfo.motionPrompt,
+        refinedPrompt: null,
+        enhance: !!job.videoInfo.enhance,
+        width: job.videoInfo.width,
+        height: job.videoInfo.height,
+        seed: job.videoInfo.seed,
+        steps: null, cfg: null, denoise: null,
+        loras: [], refImages: [],
+        folder: null,
+        createdAt: Date.now(),
+        upscaled: null,
+        videos: [],
+      };
+      db.items.unshift(item);
+    }
+    const fname = `${item.id}_${Date.now()}.mp4`;
+    await fsp.writeFile(path.join(VIDEOS, fname), buf);
+    const entry = {
+      id: uid(),
+      file: fname,
+      createdAt: Date.now(),
+      info: Object.assign({}, job.videoInfo, {
+        refinedMotionPrompt: textOut || (job.videoInfo && job.videoInfo.refinedMotionPrompt) || null,
+      }),
+    };
+    item.videos = (Array.isArray(item.videos) ? item.videos : []).concat([entry]);
+    saveDb();
+    pushHistory({
+      kind: 'video', itemId: item.id, videoId: entry.id,
+      label: `${job.videoInfo.composite ? 'Side-by-side' : 'Video'} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
+    });
+    broadcast('videoDone', { jobId: pid, item });
+    return;
+  }
+
+  const files = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
+  if (!files.length) return failJob(pid, 'ComfyUI produced no output images');
+
+  if (job.kind === 'upscale') {
+    const buf = await downloadOutput(files[0]);
+    const item = db.items.find((it) => it.id === job.itemId);
+    if (!item) return;
+    const fname = `${item.id}_up.png`;
+    await fsp.writeFile(path.join(IMAGES, fname), buf);
+    item.upscaled = fname;
+    item.upscaleInfo = job.upscaleInfo;
+    saveDb();
+    pushHistory({ kind: 'upscale', itemId: item.id, label: `Upscaled: ${(item.prompt || '').slice(0, 60)}` });
+    broadcast('upscaleDone', { jobId: pid, item });
+    return;
+  }
+
+  const created = [];
+  for (const img of files) {
+    const buf = await downloadOutput(img);
+    const id = uid();
+    const fname = `${id}.png`;
+    await fsp.writeFile(path.join(IMAGES, fname), buf);
+    // Edits: keep a copy of the source image for hold-to-compare
+    let sourceFile = null;
+    if (job.params.mode === 'edit' && job.refImageNames && job.refImageNames[0]) {
+      try {
+        const parts = String(job.refImageNames[0]).split('/');
+        const fn = parts.pop();
+        const sub = parts.join('/');
+        const sbuf = Buffer.from(await (await comfyFetch(
+          `/view?filename=${encodeURIComponent(fn)}&subfolder=${encodeURIComponent(sub)}&type=input`
+        )).arrayBuffer());
+        sourceFile = `${id}_src.png`;
+        await fsp.writeFile(path.join(IMAGES, sourceFile), sbuf);
+      } catch { /* source copy is best-effort */ }
+    }
+    const item = {
+      id,
+      file: fname,
+      mode: job.params.mode,
+      editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein') : undefined,
+      sourceFile,
+      sourceItemId: job.params.sourceItemId || null,
+      prompt: job.params.prompt,
+      refinedPrompt: job.refinedPrompt || textOut,
+      enhance: !!job.params.enhance,
+      width: (pngDims(buf) || {}).w || job.params.width,
+      height: (pngDims(buf) || {}).h || job.params.height,
+      seed: job.params.seed,
+      steps: job.params.steps,
+      cfg: job.params.cfg,
+      denoise: job.params.denoise,
+      loras: (job.params.loras || []).filter((l) => l.on && l.name),
+      refImages: job.refImageNames || [],
+      folder: job.params.folder || null,
+      createdAt: Date.now(),
+      upscaled: null,
+      video: null,
+    };
+    db.items.unshift(item);
+    created.push(item);
+  }
+  saveDb();
+  for (const it of created) {
+    pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', itemId: it.id, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
+  }
+  broadcast('jobDone', { jobId: pid, items: created });
+}
+
+/* Polling fallback: no native WebSocket (Node < 22) OR the WS connection is down. */
+setInterval(async () => {
+  if (!jobs.size) return;
+  if (typeof WebSocket !== 'undefined' && ws && ws.readyState === 1) return;
+  for (const pid of [...jobs.keys()]) {
+    try {
+      const hist = (await (await comfyFetch(`/history/${pid}`)).json())[pid];
+      if (hist && hist.status && hist.status.completed) await completeJob(pid);
+      else if (hist && hist.status && hist.status.status_str === 'error') failJob(pid, 'Execution error (see ComfyUI console)');
+    } catch { /* comfy offline; retry */ }
+  }
+}, 2500);
+
+/* ------------------------------------------------------------------ */
+/* Prompt enhance (two-pass): run TextGenerate alone, sanitize the     */
+/* output in Node, then feed the clean text to the image job.          */
+/* ------------------------------------------------------------------ */
+
+const ENHANCE_TAIL = '\n\nReturn your answer in exactly this format: <final_prompt>the expanded prompt paragraph</final_prompt> - with no text after the closing tag.';
+
+function cleanEnhancedText(raw, fallback) {
+  if (!raw) return fallback;
+  let t = String(raw).trim();
+  // 1) remove explicit thinking blocks
+  t = t.replace(/<think>[\s\S]*?<\/think>/gi, ' ').replace(/<\/?think>/gi, ' ').trim();
+  // 2) sentinel extraction (tolerate a missing closing tag)
+  const m = t.match(/<final_prompt>\s*([\s\S]*?)\s*(?:<\/final_prompt>|$)/i);
+  if (m && m[1].trim().length >= 10) {
+    t = m[1].trim();
+  } else {
+    // 3) heuristic: planning usually precedes the answer - keep the last
+    //    substantial paragraph if there are several
+    const paras = t.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+    if (paras.length > 1) {
+      const last = paras[paras.length - 1];
+      if (last.length >= 40) t = last;
+    }
+  }
+  // 4) strip label prefixes, wrapping quotes, markdown bold
+  t = t.replace(/^(?:final|expanded|enhanced|refined)?\s*prompt\s*[:\-]\s*/i, '');
+  t = t.replace(/\*\*/g, '').replace(/^["'`]+/, '').replace(/["'`]+$/, '').trim();
+  return t.length >= 10 ? t : fallback;
+}
+
+function textGenInputs(seed, maxLength) {
+  return {
+    max_length: maxLength,
+    sampling_mode: 'on',
+    'sampling_mode.temperature': 0.7,
+    'sampling_mode.top_k': 64,
+    'sampling_mode.top_p': 0.95,
+    'sampling_mode.min_p': 0.05,
+    'sampling_mode.repetition_penalty': 1.05,
+    'sampling_mode.seed': seed % 2147483647,
+    'sampling_mode.presence_penalty': 0,
+    thinking: false,
+    use_default_template: true,
+  };
+}
+
+const MOTION_INSTRUCTION = `Look at the provided image. Write a motion prompt for an image-to-video model: one short paragraph (under 70 words) describing how this exact scene should come alive - subject movement, secondary motion, camera movement (only if it helps the shot), and ambient sound. Use present-progressive verbs. Do not re-describe static appearance; focus on plausible motion that fits the scene.`;
+
+/** Vision pass: Qwen3-VL looks at the image and suggests a motion prompt. */
+function suggestMotionPrompt(comfyImageName, seed) {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      const graph = {};
+      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.img = { class_type: 'LoadImage', inputs: { image: comfyImageName } };
+      graph.gen = {
+        class_type: 'TextGenerate',
+        inputs: Object.assign(
+          { clip: ['clip', 0], image: ['img', 0], prompt: MOTION_INSTRUCTION + ENHANCE_TAIL },
+          textGenInputs(seed, 256)
+        ),
+      };
+      graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
+      await filterInputs(graph);
+      const pid = await queuePrompt(graph);
+      const timer = setTimeout(() => {
+        jobs.delete(pid);
+        reject(new Error('Motion prompt timed out (3 min)'));
+      }, 180000);
+      jobs.set(pid, {
+        kind: 'enhance',
+        graph,
+        resolve: (t) => { clearTimeout(timer); resolve(t); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      ensureWs();
+    })().catch(reject);
+  });
+}
+
+function enhancePrompt(p) {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      const graph = {};
+      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.concat = {
+        class_type: 'StringConcatenate',
+        inputs: { string_a: settings.systemPrompt, string_b: p.prompt + ENHANCE_TAIL, delimiter: ' ' },
+      };
+      graph.refine = {
+        class_type: 'TextGenerate',
+        inputs: Object.assign({ clip: ['clip', 0], prompt: ['concat', 0] }, textGenInputs(p.seed, 512)),
+      };
+      graph.show = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
+      await filterInputs(graph);
+      const pid = await queuePrompt(graph);
+      const timer = setTimeout(() => {
+        jobs.delete(pid);
+        reject(new Error('Prompt enhance timed out (3 min)'));
+      }, 180000);
+      jobs.set(pid, {
+        kind: 'enhance',
+        graph,
+        resolve: (t) => { clearTimeout(timer); resolve(t); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      ensureWs();
+      broadcast('status', { jobId: 'pre', text: 'Enhancing prompt...' });
+    })().catch(reject);
+  });
+}
+
+/** Wan 2.2 enhance: Qwen3-VL sees the image + user's idea, writes the video prompt. */
+function wanEnhance(comfyImageName, userPrompt, seed) {
+  const instruction = `Look at the provided image. Rewrite the user's motion idea into one vivid video-generation prompt paragraph (under 90 words) for an image-to-video model: describe subject actions, secondary motion, camera behavior and atmosphere, staying faithful to what is actually in the image and to the user's intent. Use present-progressive verbs.\n\nUser's motion idea: ${userPrompt}`;
+  return new Promise((resolve, reject) => {
+    (async () => {
+      const graph = {};
+      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.img = { class_type: 'LoadImage', inputs: { image: comfyImageName } };
+      graph.gen = {
+        class_type: 'TextGenerate',
+        inputs: Object.assign(
+          { clip: ['clip', 0], image: ['img', 0], prompt: instruction + ENHANCE_TAIL },
+          textGenInputs(seed, 300)
+        ),
+      };
+      graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
+      await filterInputs(graph);
+      const pid = await queuePrompt(graph);
+      const timer = setTimeout(() => { jobs.delete(pid); reject(new Error('Wan prompt enhance timed out')); }, 180000);
+      jobs.set(pid, {
+        kind: 'enhance', graph,
+        resolve: (t) => { clearTimeout(timer); resolve(t); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      ensureWs();
+      broadcast('status', { jobId: 'pre', text: 'Enhancing motion prompt...' });
+    })().catch(reject);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Graph builders                                                      */
+/* ------------------------------------------------------------------ */
+
+function buildLoraChain(graph, loras) {
+  let model = ['unet', 0];
+  let clip = ['clip', 0];
+  let n = 0;
+  for (const l of loras || []) {
+    if (!l || !l.on || !l.name) continue;
+    n += 1;
+    const key = 'lora' + n;
+    graph[key] = {
+      class_type: 'LoraLoader',
+      inputs: {
+        model, clip,
+        lora_name: l.name,
+        strength_model: Number(l.strength) || 0,
+        strength_clip: Number(l.strength) || 0,
+      },
+    };
+    model = [key, 0];
+    clip = [key, 1];
+  }
+  return { model, clip };
+}
+
+function baseLoaders(graph) {
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.unet, weight_dtype: 'default' } };
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+  graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
+}
+
+async function buildT2I(p) {
+  const graph = {};
+  baseLoaders(graph);
+  const { model, clip } = buildLoraChain(graph, p.loras);
+
+  const textSource = p.enhancedText || p.prompt;
+  graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip, text: textSource } };
+  graph.neg = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos', 0] } };
+  graph.latent = {
+    class_type: 'EmptySD3LatentImage',
+    inputs: { width: p.width, height: p.height, batch_size: p.batch || 1 },
+  };
+  graph.sampler = {
+    class_type: 'KSampler',
+    inputs: {
+      model, positive: ['pos', 0], negative: ['neg', 0], latent_image: ['latent', 0],
+      seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'euler', scheduler: 'beta', denoise: 1,
+    },
+  };
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
+  graph.save = { class_type: 'SaveImage', inputs: { images: ['decode', 0], filename_prefix: 'KreaStudio/gen' } };
+  return filterInputs(graph);
+}
+
+/* Edit (Qwen): the real Qwen-Image-Edit 2511 pipeline (official template):
+ * dedicated edit UNET + Lightning 4-step LoRA, source image encoded as the
+ * starting latent, FluxKontext scaling + multi-reference conditioning. */
+async function buildEditQwen(p, refNames) {
+  const graph = {};
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.qwenEditUnet, weight_dtype: 'default' } };
+  graph.lightning = {
+    class_type: 'LoraLoaderModelOnly',
+    inputs: { model: ['unet', 0], lora_name: settings.qwenEditLora, strength_model: 1 },
+  };
+  const qModel = chainModelLoras(graph, ['lightning', 0], p.loras, 'qlora');
+  graph.ms = { class_type: 'ModelSamplingAuraFlow', inputs: { model: qModel, shift: 3.1 } };
+  graph.cfgnorm = { class_type: 'CFGNorm', inputs: { model: ['ms', 0], strength: 1 } };
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.qwenEditClip, type: 'qwen_image', device: 'default' } };
+  graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
+
+  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.prompt };
+  const negInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: '' };
+  refNames.slice(0, 3).forEach((name, idx) => {
+    const i = idx + 1;
+    graph['img' + i] = { class_type: 'LoadImage', inputs: { image: name } };
+    let src = ['img' + i, 0];
+    if (i === 1) {
+      graph.scale1 = { class_type: 'FluxKontextImageScale', inputs: { image: src } };
+      src = ['scale1', 0];
+    }
+    encodeInputs['image' + i] = src;
+    negInputs['image' + i] = src;
+  });
+
+  graph.pos = { class_type: 'TextEncodeQwenImageEditPlus', inputs: encodeInputs };
+  graph.neg = { class_type: 'TextEncodeQwenImageEditPlus', inputs: negInputs };
+  graph.posm = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: { conditioning: ['pos', 0], reference_latents_method: 'index_timestep_zero' } };
+  graph.negm = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: { conditioning: ['neg', 0], reference_latents_method: 'index_timestep_zero' } };
+  graph.latent = { class_type: 'VAEEncode', inputs: { pixels: ['scale1', 0], vae: ['vae', 0] } };
+  graph.sampler = {
+    class_type: 'KSampler',
+    inputs: {
+      model: ['cfgnorm', 0], positive: ['posm', 0], negative: ['negm', 0], latent_image: ['latent', 0],
+      seed: p.seed, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+    },
+  };
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
+
+  let out = ['decode', 0];
+  if (p.composite !== false) {
+    const info = await getObjectInfo();
+    if (info.KleinEditComposite) {
+      graph.composite = await nodeFromOrdered(
+        'KleinEditComposite',
+        [],
+        { generated_image: ['decode', 0], original_image: ['scale1', 0] }
+      );
+      out = ['composite', 0];
+    }
+  }
+  graph.save = { class_type: 'SaveImage', inputs: { images: out, filename_prefix: 'KreaStudio/edit' } };
+  return filterInputs(graph);
+}
+
+/* Edit (Klein): Flux 2 Klein 4B image editing (ReferenceLatent conditioning,
+ * Flux2Scheduler 4 steps, cfg 1 — from the flux2_klein_editV2 workflow). */
+async function buildEdit(p, refNames) {
+  const graph = {};
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.kleinUnet, weight_dtype: 'default' } };
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.kleinClip, type: 'flux2', device: 'default' } };
+  graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.kleinVae } };
+
+  const kModel = chainModelLoras(graph, ['unet', 0], p.loras, 'klora');
+  graph.pos_text = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: p.prompt } };
+  graph.neg0 = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos_text', 0] } };
+  let pos = ['pos_text', 0];
+  let neg = ['neg0', 0];
+  refNames.slice(0, 3).forEach((name, idx) => {
+    const i = idx + 1;
+    graph['img' + i] = { class_type: 'LoadImage', inputs: { image: name } };
+    graph['scale' + i] = {
+      class_type: 'ImageScaleToTotalPixels',
+      inputs: { image: ['img' + i, 0], upscale_method: 'nearest-exact', megapixels: 1, resolution_steps: 1 },
+    };
+    graph['enc' + i] = { class_type: 'VAEEncode', inputs: { pixels: ['scale' + i, 0], vae: ['vae', 0] } };
+    graph['refp' + i] = { class_type: 'ReferenceLatent', inputs: { conditioning: pos, latent: ['enc' + i, 0] } };
+    graph['refn' + i] = { class_type: 'ReferenceLatent', inputs: { conditioning: neg, latent: ['enc' + i, 0] } };
+    pos = ['refp' + i, 0];
+    neg = ['refn' + i, 0];
+  });
+
+  // With a source image, output size follows it; otherwise the picker
+  let wRef = p.width;
+  let hRef = p.height;
+  if (refNames.length) {
+    graph.size = { class_type: 'GetImageSize', inputs: { image: ['scale1', 0] } };
+    wRef = ['size', 0];
+    hRef = ['size', 1];
+  }
+  graph.latent = { class_type: 'EmptyFlux2LatentImage', inputs: { width: wRef, height: hRef, batch_size: p.batch || 1 } };
+  graph.sched = { class_type: 'Flux2Scheduler', inputs: { steps: 4, width: wRef, height: hRef } };
+  graph.guider = { class_type: 'CFGGuider', inputs: { model: kModel, positive: pos, negative: neg, cfg: 1 } };
+  graph.noise = { class_type: 'RandomNoise', inputs: { noise_seed: p.seed } };
+  graph.sampler_sel = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } };
+  graph.samp = {
+    class_type: 'SamplerCustomAdvanced',
+    inputs: {
+      noise: ['noise', 0], guider: ['guider', 0], sampler: ['sampler_sel', 0],
+      sigmas: ['sched', 0], latent_image: ['latent', 0],
+    },
+  };
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['samp', 0], vae: ['vae', 0] } };
+
+  // Optional: composite changed pixels back onto the original so untouched
+  // areas stay pristine across successive edits (KleinEditComposite node).
+  let out = ['decode', 0];
+  if (p.composite !== false && refNames.length) {
+    const info = await getObjectInfo();
+    if (info.KleinEditComposite) {
+      graph.composite = await nodeFromOrdered(
+        'KleinEditComposite',
+        [],
+        { generated_image: ['decode', 0], original_image: ['scale1', 0] }
+      );
+      out = ['composite', 0];
+    }
+  }
+  graph.save = { class_type: 'SaveImage', inputs: { images: out, filename_prefix: 'KreaStudio/edit' } };
+  return filterInputs(graph);
+}
+
+async function buildUpscale(imageName, opts) {
+  const graph = {};
+  graph.load = { class_type: 'LoadImage', inputs: { image: imageName } };
+  let imgRef = ['load', 0];
+  if (opts.preScale && opts.preScale !== 1) {
+    graph.prescale = {
+      class_type: 'ImageScaleBy',
+      inputs: { image: imgRef, upscale_method: 'lanczos', scale_by: opts.preScale },
+    };
+    imgRef = ['prescale', 0];
+  }
+  // Explicit inputs matching the current SeedVR2 node pack schema
+  // (verified against /object_info via /api/debug/upscale).
+  graph.dit = {
+    class_type: 'SeedVR2LoadDiTModel',
+    inputs: {
+      model: settings.seedvr2Dit,
+      device: 'cuda:0',
+      blocks_to_swap: 0,
+      swap_io_components: true,
+      offload_device: 'cpu',
+      cache_model: false,
+      attention_mode: settings.seedvr2Attention,
+    },
+  };
+  graph.svvae = {
+    class_type: 'SeedVR2LoadVAEModel',
+    inputs: {
+      model: settings.seedvr2Vae,
+      device: 'cuda:0',
+      encode_tiled: true,
+      encode_tile_size: 1024,
+      encode_tile_overlap: 256,
+      decode_tiled: true,
+      decode_tile_size: 1024,
+      decode_tile_overlap: 256,
+      tile_debug: 'false',
+      offload_device: 'cpu',
+      cache_model: false,
+    },
+  };
+  graph.upscale = {
+    class_type: 'SeedVR2VideoUpscaler',
+    inputs: {
+      image: imgRef,
+      dit: ['dit', 0],
+      vae: ['svvae', 0],
+      seed: Math.floor(Math.random() * 2 ** 31),
+      resolution: opts.resolution || 2160,
+      max_resolution: 0,
+      batch_size: 1,
+      uniform_batch_size: false,
+      color_correction: 'lab',
+      temporal_overlap: 0,
+      prepend_frames: 0,
+      input_noise_scale: 0.15,
+      latent_noise_scale: 0,
+      offload_device: 'cpu',
+      enable_debug: false,
+    },
+  };
+  graph.save = { class_type: 'SaveImage', inputs: { images: ['upscale', 0], filename_prefix: 'KreaStudio/upscale' } };
+  return filterInputs(graph);
+}
+
+/* --------------------------- LTX 2.3 Animate ---------------------- */
+/* Replicates the "Black Mixture LTX 2.3 Image to Video" subgraph:     */
+/* two-stage AV generation (base at half res -> x2 latent upsample)    */
+/* with audio and Gemma motion-prompt enhancement.                     */
+
+const LTX_NEGATIVE = 'pc game, console game, video game, cartoon, childish, ugly';
+const BLANK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+const LTX_SIGMAS_BASE = '1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0';
+const LTX_SIGMAS_REFINE = '0.85, 0.7250, 0.4219, 0.0';
+
+function videoDims(w, h) {
+  const long = 1280;
+  const s = long / Math.max(w || 1024, h || 1024);
+  const W = Math.max(256, Math.round((w * s) / 64) * 64);
+  const H = Math.max(256, Math.round((h * s) / 64) * 64);
+  return { W, H };
+}
+
+async function buildAnimate(imageName, opts) {
+  const { W, H } = opts;
+  const seed = opts.seed;
+  const graph = {};
+
+  // Models
+  graph.ckpt = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.ltxCkpt } };
+  graph.model_lora = {
+    class_type: 'LoraLoaderModelOnly',
+    inputs: { model: ['ckpt', 0], lora_name: settings.ltxDistilledLora, strength_model: 0.5 },
+  };
+  const ltxModel = chainModelLoras(graph, ['model_lora', 0], opts.loras, 'ulora');
+  graph.te = await nodeFromOrdered(
+    'LTXAVTextEncoderLoader',
+    [settings.ltxTextEncoder, settings.ltxCkpt, 'default'],
+    {},
+    { text_encoder: settings.ltxTextEncoder, ckpt_name: settings.ltxCkpt }
+  );
+  graph.te_lora = {
+    class_type: 'LoraLoader',
+    inputs: {
+      model: ['ckpt', 0], clip: ['te', 0],
+      lora_name: settings.ltxGemmaLora, strength_model: 0.7, strength_clip: 0.7,
+    },
+  };
+
+  // Prompt (optional Gemma LTX2 enhancement, exactly like the workflow)
+  let promptSource = opts.prompt;
+  if (opts.enhance) {
+    // Give Gemma the image too - its I2V system prompt analyzes the frame
+    // and writes motion that respects what's actually in the picture.
+    graph.refine = {
+      class_type: 'TextGenerateLTX2Prompt',
+      inputs: Object.assign(
+        { clip: ['te_lora', 1], image: ['resize', 0], prompt: opts.prompt },
+        textGenInputs(seed, 256)
+      ),
+    };
+    graph.showPrompt = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
+    promptSource = ['refine', 0];
+  }
+  graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: promptSource } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: LTX_NEGATIVE } };
+  graph.cond = {
+    class_type: 'LTXVConditioning',
+    inputs: { positive: ['pos', 0], negative: ['neg', 0], frame_rate: opts.fps },
+  };
+
+  // Source image -> preprocessed guide
+  graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
+  graph.resize = {
+    class_type: 'ImageScale',
+    inputs: { image: ['img', 0], upscale_method: 'lanczos', width: W, height: H, crop: 'center' },
+  };
+  graph.prep = await nodeFromOrdered('LTXVPreprocess', [opts.imgCompression != null ? opts.imgCompression : 35], { image: ['resize', 0] });
+
+  // Optional end frame
+  if (opts.endImageName) {
+    graph.img_end = { class_type: 'LoadImage', inputs: { image: opts.endImageName } };
+    graph.resize_end = {
+      class_type: 'ImageScale',
+      inputs: { image: ['img_end', 0], upscale_method: 'lanczos', width: W, height: H, crop: 'center' },
+    };
+    graph.prep_end = await nodeFromOrdered('LTXVPreprocess', [opts.imgCompression != null ? opts.imgCompression : 35], { image: ['resize_end', 0] });
+  }
+
+  // Stage 1: base generation at half resolution
+  graph.latent1 = {
+    class_type: 'EmptyLTXVLatentVideo',
+    inputs: { width: W / 2, height: H / 2, length: opts.frames, batch_size: 1 },
+  };
+  if (opts.endImageName) {
+    graph.i2v1 = {
+      class_type: 'LTXVImgToVideoInplaceKJ',
+      inputs: {
+        vae: ['ckpt', 2], latent: ['latent1', 0],
+        num_images: '2',
+        'num_images.strength_1': 0.95, 'num_images.image_1': ['prep', 0], 'num_images.index_1': 0,
+        'num_images.strength_2': 0.95, 'num_images.image_2': ['prep_end', 0], 'num_images.index_2': opts.frames - 1,
+      },
+    };
+  } else {
+    graph.i2v1 = await nodeFromOrdered(
+      'LTXVImgToVideoInplace',
+      [0.95, !!opts.bypass],
+      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['latent1', 0] }
+    );
+  }
+  graph.audio_vae = { class_type: 'LTXVAudioVAELoader', inputs: { ckpt_name: settings.ltxCkpt } };
+  let audioLatent;
+  if (opts.audioName) {
+    audioLatent = audioLatentNodes(graph, opts.audioName);
+  } else {
+    graph.audio_lat = await nodeFromOrdered(
+      'LTXVEmptyLatentAudio',
+      [opts.frames, opts.fps, 1],
+      { audio_vae: ['audio_vae', 0] }
+    );
+    audioLatent = ['audio_lat', 0];
+  }
+  graph.concat1 = {
+    class_type: 'LTXVConcatAVLatent',
+    inputs: { video_latent: ['i2v1', 0], audio_latent: audioLatent },
+  };
+  graph.noise1 = { class_type: 'RandomNoise', inputs: { noise_seed: seed } };
+  graph.guider1 = {
+    class_type: 'CFGGuider',
+    inputs: { model: ltxModel, positive: ['cond', 0], negative: ['cond', 1], cfg: 1 },
+  };
+  graph.sampler_sel1 = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler_ancestral_cfg_pp' } };
+  graph.sigmas1 = await nodeFromOrdered('ManualSigmas', [LTX_SIGMAS_BASE]);
+  graph.samp1 = {
+    class_type: 'SamplerCustomAdvanced',
+    inputs: {
+      noise: ['noise1', 0], guider: ['guider1', 0], sampler: ['sampler_sel1', 0],
+      sigmas: ['sigmas1', 0], latent_image: ['concat1', 0],
+    },
+  };
+  graph.sep1 = { class_type: 'LTXVSeparateAVLatent', inputs: { av_latent: ['samp1', 0] } };
+
+  // Stage 2: x2 latent upsample + refine
+  graph.ups_model = { class_type: 'LatentUpscaleModelLoader', inputs: { model_name: settings.ltxUpscaler } };
+  graph.ups = {
+    class_type: 'LTXVLatentUpsampler',
+    inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['ckpt', 2] },
+  };
+  if (opts.endImageName) {
+    graph.i2v2 = {
+      class_type: 'LTXVImgToVideoInplaceKJ',
+      inputs: {
+        vae: ['ckpt', 2], latent: ['ups', 0],
+        num_images: '2',
+        'num_images.strength_1': 1, 'num_images.image_1': ['prep', 0], 'num_images.index_1': 0,
+        'num_images.strength_2': 1, 'num_images.image_2': ['prep_end', 0], 'num_images.index_2': opts.frames - 1,
+      },
+    };
+  } else {
+    graph.i2v2 = await nodeFromOrdered(
+      'LTXVImgToVideoInplace',
+      [1, !!opts.bypass],
+      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['ups', 0] }
+    );
+  }
+  graph.crop = {
+    class_type: 'LTXVCropGuides',
+    inputs: { positive: ['cond', 0], negative: ['cond', 1], latent: ['sep1', 0] },
+  };
+  graph.guider2 = {
+    class_type: 'CFGGuider',
+    inputs: { model: ltxModel, positive: ['crop', 0], negative: ['crop', 1], cfg: 1 },
+  };
+  graph.noise2 = { class_type: 'RandomNoise', inputs: { noise_seed: 42 } };
+  graph.sampler_sel2 = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler_cfg_pp' } };
+  graph.sigmas2 = await nodeFromOrdered('ManualSigmas', [LTX_SIGMAS_REFINE]);
+  graph.concat2 = {
+    class_type: 'LTXVConcatAVLatent',
+    inputs: { video_latent: ['i2v2', 0], audio_latent: ['sep1', 1] },
+  };
+  graph.samp2 = {
+    class_type: 'SamplerCustomAdvanced',
+    inputs: {
+      noise: ['noise2', 0], guider: ['guider2', 0], sampler: ['sampler_sel2', 0],
+      sigmas: ['sigmas2', 0], latent_image: ['concat2', 0],
+    },
+  };
+  graph.sep2 = { class_type: 'LTXVSeparateAVLatent', inputs: { av_latent: ['samp2', 0] } };
+
+  // Decode + mux
+  graph.decode = await nodeFromOrdered(
+    'VAEDecodeTiled',
+    [768, 64, 4096, 4],
+    { samples: ['sep2', 0], vae: ['ckpt', 2] }
+  );
+  graph.audio_dec = {
+    class_type: 'LTXVAudioVAEDecode',
+    inputs: { samples: ['sep2', 1], audio_vae: ['audio_vae', 0] },
+  };
+
+  let frameSource = ['decode', 0];
+  if (opts.fourK) {
+    graph.vsr = await nodeFromOrdered(
+      'RTXVideoSuperResolution',
+      ['scale by multiplier', 2, 'ULTRA'],
+      { images: ['decode', 0] }
+    );
+    frameSource = ['vsr', 0];
+  }
+  graph.video = {
+    class_type: 'CreateVideo',
+    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps },
+  };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
+  };
+  // Standalone videos (no gallery source): save the first frame as a poster
+  if (opts.makePoster) {
+    const info = await getObjectInfo();
+    if (info.ImageFromBatch) {
+      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['decode', 0], batch_index: 0, length: 1 } };
+      graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
+    }
+  }
+  return filterInputs(graph);
+}
+
+/* ------------------- 10Eros DMD Animate (alt LTX) ----------------- */
+/* Replicates TenStrip's "10Eros_10SNodes_I2V_DMD_v1" workflow:        */
+/* 10Eros v1.2 finetune + DMD distilled LoRA + Echo sampler +          */
+/* LTXReferenceConditioning, two passes with x2 latent upsample, 24fps */
+
+const EROS_SIGMA_PRESETS = {
+  dmd: { first: '1.0, 0.99375, 0.9875, 0.975, 0.909375, 0.78, 0.725, 0.421875, 0.0', up: '0.92, 0.909375, 0.725, 0.421875, 0.0' },
+  card: { first: '1.000, 0.955, 0.893, 0.812, 0.715, 0.603, 0.482, 0.241, 0.121, 0.0', up: '0.92, 0.725, 0.421875, 0.0' },
+  v5: { first: '1.000, 0.955, 0.893, 0.812, 0.715, 0.603, 0.482, 0.241, 0.121, 0.0', up: '0.6435, 0.4342, 0.2171, 0.0' },
+};
+function erosSigmas(preset) {
+  if (preset === 'custom' && settings.erosSigmasFirst.trim() && settings.erosSigmasUpscale.trim()) {
+    return { first: settings.erosSigmasFirst.trim(), up: settings.erosSigmasUpscale.trim() };
+  }
+  return EROS_SIGMA_PRESETS[preset] || EROS_SIGMA_PRESETS.dmd;
+}
+
+/** Chain user LoRAs (model-only) onto a video model path. */
+function chainModelLoras(graph, model, loras, prefix) {
+  let m = model;
+  let n = 0;
+  for (const l of loras || []) {
+    if (!l || !l.on || !l.name) continue;
+    n += 1;
+    const key = prefix + n;
+    graph[key] = {
+      class_type: 'LoraLoaderModelOnly',
+      inputs: { model: m, lora_name: l.name, strength_model: Number(l.strength) || 0 },
+    };
+    m = [key, 0];
+  }
+  return m;
+}
+
+/** Shared: encode an uploaded audio file into a noise-locked AV audio latent. */
+function audioLatentNodes(graph, audioName) {
+  graph.load_audio = { class_type: 'LoadAudio', inputs: { audio: audioName } };
+  graph.audio_enc = { class_type: 'LTXVAudioVAEEncode', inputs: { audio: ['load_audio', 0], audio_vae: ['audio_vae', 0] } };
+  graph.amask = { class_type: 'SolidMask', inputs: { value: 0, width: 1024, height: 1024 } };
+  graph.audio_locked = { class_type: 'SetLatentNoiseMask', inputs: { samples: ['audio_enc', 0], mask: ['amask', 0] } };
+  return ['audio_locked', 0];
+}
+
+async function buildAnimateEros(imageName, opts) {
+  const graph = {};
+  const halfW = Math.max(64, Math.round(opts.W / 2 / 32) * 32);
+  const halfH = Math.max(64, Math.round(opts.H / 2 / 32) * 32);
+
+  // Models (checkpoint provides transformer + video VAE + audio VAE)
+  graph.ckpt = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.erosCkpt } };
+  graph.audio_vae = { class_type: 'LTXVAudioVAELoader', inputs: { ckpt_name: settings.erosCkpt } };
+  graph.te = await nodeFromOrdered(
+    'LTXAVTextEncoderLoader',
+    [settings.erosTextEncoder, settings.erosCkpt, 'default'],
+    {},
+    { text_encoder: settings.erosTextEncoder, ckpt_name: settings.erosCkpt }
+  );
+
+  // Prompt (optional in-graph Gemma LTX2 enhancement, like the stock LTX path)
+  let promptSource = opts.prompt;
+  if (opts.enhance) {
+    graph.refine = {
+      class_type: 'TextGenerateLTX2Prompt',
+      inputs: Object.assign(
+        { clip: ['te', 0], image: ['resize_full', 0], prompt: opts.prompt },
+        textGenInputs(opts.seed, 256)
+      ),
+    };
+    graph.showPrompt = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
+    promptSource = ['refine', 0];
+  }
+  graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['te', 0], text: promptSource } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te', 0], text: '' } };
+  graph.cond = {
+    class_type: 'LTXVConditioning',
+    inputs: { positive: ['pos', 0], negative: ['neg', 0], frame_rate: opts.fps },
+  };
+  graph.negz = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['cond', 1] } };
+
+  // Source image: full-res guide + half-res guide for the first pass
+  graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
+  graph.resize_full = {
+    class_type: 'ImageResizeKJv2',
+    inputs: {
+      image: ['img', 0], width: opts.W, height: opts.H,
+      upscale_method: 'area', keep_proportion: 'crop', pad_color: '0, 0, 0',
+      crop_position: 'center', divisible_by: 32, device: 'cpu',
+    },
+  };
+  graph.resize_half = {
+    class_type: 'ImageResizeKJv2',
+    inputs: {
+      image: ['img', 0], width: halfW, height: halfH,
+      upscale_method: 'area', keep_proportion: 'crop', pad_color: '0, 0, 0',
+      crop_position: 'center', divisible_by: 32, device: 'cpu',
+    },
+  };
+  graph.prep = await nodeFromOrdered(
+    'LTXVPreprocess',
+    [opts.imgCompression != null ? opts.imgCompression : 35],
+    { image: ['resize_half', 0] }
+  );
+
+  // Optional end frame (pinned to the last frame index on both passes)
+  if (opts.endImageName) {
+    graph.img_end = { class_type: 'LoadImage', inputs: { image: opts.endImageName } };
+    graph.resize_end_full = {
+      class_type: 'ImageResizeKJv2',
+      inputs: {
+        image: ['img_end', 0], width: opts.W, height: opts.H,
+        upscale_method: 'area', keep_proportion: 'crop', pad_color: '0, 0, 0',
+        crop_position: 'center', divisible_by: 32, device: 'cpu',
+      },
+    };
+    graph.resize_end_half = {
+      class_type: 'ImageResizeKJv2',
+      inputs: {
+        image: ['img_end', 0], width: halfW, height: halfH,
+        upscale_method: 'area', keep_proportion: 'crop', pad_color: '0, 0, 0',
+        crop_position: 'center', divisible_by: 32, device: 'cpu',
+      },
+    };
+    graph.prep_end = await nodeFromOrdered(
+      'LTXVPreprocess',
+      [opts.imgCompression != null ? opts.imgCompression : 35],
+      { image: ['resize_end_half', 0] }
+    );
+  }
+
+  // Model chain: reference-enable -> DMD LoRA
+  graph.ref_enable = {
+    class_type: 'LTXReferenceEnable',
+    inputs: { model: ['ckpt', 0], zero_ref_timesteps: false, verbose: false },
+  };
+  graph.dmd_lora = {
+    class_type: 'LoraLoaderModelOnly',
+    inputs: { model: ['ref_enable', 0], lora_name: settings.erosDmdLora, strength_model: 1 },
+  };
+  const erosModel = chainModelLoras(graph, ['dmd_lora', 0], opts.loras, 'ulora');
+
+  // Stage 1 (half res)
+  graph.latent1 = {
+    class_type: 'EmptyLTXVLatentVideo',
+    inputs: { width: halfW, height: halfH, length: opts.frames, batch_size: 1 },
+  };
+  let audioLatent;
+  if (opts.audioName) {
+    audioLatent = audioLatentNodes(graph, opts.audioName);
+  } else {
+    graph.audio_lat = await nodeFromOrdered(
+      'LTXVEmptyLatentAudio',
+      [opts.frames, opts.fps, 1],
+      { audio_vae: ['audio_vae', 0] }
+    );
+    audioLatent = ['audio_lat', 0];
+  }
+  const i2v1Inputs = {
+    vae: ['ckpt', 2], latent: ['latent1', 0],
+    num_images: opts.endImageName ? '2' : '1',
+    'num_images.strength_1': 1,
+    'num_images.image_1': ['prep', 0],
+    'num_images.index_1': 0,
+  };
+  if (opts.endImageName) {
+    i2v1Inputs['num_images.strength_2'] = 1;
+    i2v1Inputs['num_images.image_2'] = ['prep_end', 0];
+    i2v1Inputs['num_images.index_2'] = opts.frames - 1;
+  }
+  graph.i2v1 = { class_type: 'LTXVImgToVideoInplaceKJ', inputs: i2v1Inputs };
+  graph.concat1 = {
+    class_type: 'LTXVConcatAVLatent',
+    inputs: { video_latent: ['i2v1', 0], audio_latent: audioLatent },
+  };
+  graph.ref1 = {
+    class_type: 'LTXReferenceConditioning',
+    inputs: {
+      model: erosModel, vae: ['ckpt', 2], image: ['resize_half', 0],
+      target_latent: ['i2v1', 0], strength: 1, position_mode: 'reference', verbose: false,
+    },
+  };
+  graph.sig1 = { class_type: 'EchoDMDSigmas', inputs: { preset: 'custom', custom_sigmas: opts.sigmaFirst } };
+  graph.sig1_remap = { class_type: 'EchoDMDSigmaRemap', inputs: { sigmas: ['sig1', 0], method: 'interpolate' } };
+  graph.dmd_sampler = { class_type: 'EchoDMDSampler', inputs: {} };
+  graph.first = {
+    class_type: 'SamplerCustom',
+    inputs: {
+      model: ['ref1', 0], positive: ['cond', 0], negative: ['negz', 0],
+      sampler: ['dmd_sampler', 0], sigmas: ['sig1_remap', 0], latent_image: ['concat1', 0],
+      add_noise: true, noise_seed: opts.seed, cfg: 1,
+    },
+  };
+  graph.sep1 = { class_type: 'LTXVSeparateAVLatent', inputs: { av_latent: ['first', 1] } };
+
+  // Stage 2 (x2 latent upsample + refine)
+  graph.ups_model = { class_type: 'LatentUpscaleModelLoader', inputs: { model_name: settings.ltxUpscaler } };
+  graph.ups = {
+    class_type: 'LTXVLatentUpsampler',
+    inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['ckpt', 2] },
+  };
+  const i2v2Inputs = {
+    vae: ['ckpt', 2], latent: ['ups', 0],
+    num_images: opts.endImageName ? '2' : '1',
+    'num_images.strength_1': 1,
+    'num_images.image_1': ['resize_full', 0],
+    'num_images.index_1': 0,
+  };
+  if (opts.endImageName) {
+    i2v2Inputs['num_images.strength_2'] = 1;
+    i2v2Inputs['num_images.image_2'] = ['resize_end_full', 0];
+    i2v2Inputs['num_images.index_2'] = opts.frames - 1;
+  }
+  graph.i2v2 = { class_type: 'LTXVImgToVideoInplaceKJ', inputs: i2v2Inputs };
+  graph.concat2 = {
+    class_type: 'LTXVConcatAVLatent',
+    inputs: { video_latent: ['i2v2', 0], audio_latent: ['sep1', 1] },
+  };
+  graph.ref2 = {
+    class_type: 'LTXReferenceConditioning',
+    inputs: {
+      model: erosModel, vae: ['ckpt', 2], image: ['resize_full', 0],
+      target_latent: ['i2v2', 0], strength: 1, position_mode: 'reference', verbose: false,
+    },
+  };
+  graph.sig2 = await nodeFromOrdered('ManualSigmas', [opts.sigmaUp]);
+  graph.sig2_remap = { class_type: 'EchoDMDSigmaRemap', inputs: { sigmas: ['sig2', 0], method: 'none' } };
+  graph.second = {
+    class_type: 'SamplerCustom',
+    inputs: {
+      model: ['ref2', 0], positive: ['cond', 0], negative: ['negz', 0],
+      sampler: ['dmd_sampler', 0], sigmas: ['sig2_remap', 0], latent_image: ['concat2', 0],
+      add_noise: true, noise_seed: opts.seed, cfg: 1,
+    },
+  };
+  graph.sep2 = { class_type: 'LTXVSeparateAVLatent', inputs: { av_latent: ['second', 1] } };
+
+  // Decode + mux
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sep2', 0], vae: ['ckpt', 2] } };
+  graph.audio_dec = {
+    class_type: 'LTXVAudioVAEDecode',
+    inputs: { samples: ['sep2', 1], audio_vae: ['audio_vae', 0] },
+  };
+
+  let frameSource = ['decode', 0];
+  if (opts.fourK) {
+    graph.vsr = await nodeFromOrdered(
+      'RTXVideoSuperResolution',
+      ['scale by multiplier', 2, 'ULTRA'],
+      { images: ['decode', 0] }
+    );
+    frameSource = ['vsr', 0];
+  }
+  if (opts.makePoster) {
+    const info = await getObjectInfo();
+    if (info.ImageFromBatch) {
+      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['decode', 0], batch_index: 0, length: 1 } };
+      graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
+    }
+  }
+  graph.video = {
+    class_type: 'CreateVideo',
+    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps },
+  };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
+  };
+  return filterInputs(graph);
+}
+
+/* --------------------------- Wan 2.2 Animate ---------------------- */
+/* Replicates ComfyUI's official "Wan2.2 14B I2V" template: dual UNET  */
+/* (high-noise -> low-noise expert handoff via two KSamplerAdvanced),  */
+/* ModelSamplingSD3 shift 5, 16 fps, optional lightx2v 4-step LoRAs.   */
+
+const WAN_NEGATIVE = '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走';
+
+function wanDims(w, h) {
+  const long = 960;
+  const s = long / Math.max(w || 1024, h || 1024);
+  const W = Math.max(256, Math.round((w * s) / 16) * 16);
+  const H = Math.max(256, Math.round((h * s) / 16) * 16);
+  return { W, H };
+}
+
+async function buildAnimateWan(imageName, opts) {
+  const graph = {};
+  const fast = opts.fast !== false;
+  const steps = fast ? 4 : 20;
+  const cfg = fast ? 1 : 3.5;
+  const split = fast ? 2 : 10;
+
+  graph.high = { class_type: 'UNETLoader', inputs: { unet_name: settings.wanHighUnet, weight_dtype: 'default' } };
+  graph.low = { class_type: 'UNETLoader', inputs: { unet_name: settings.wanLowUnet, weight_dtype: 'default' } };
+  let hiModel = ['high', 0];
+  let loModel = ['low', 0];
+  if (fast) {
+    graph.high_lora = { class_type: 'LoraLoaderModelOnly', inputs: { model: hiModel, lora_name: settings.wanHighLora, strength_model: 1 } };
+    graph.low_lora = { class_type: 'LoraLoaderModelOnly', inputs: { model: loModel, lora_name: settings.wanLowLora, strength_model: 1 } };
+    hiModel = ['high_lora', 0];
+    loModel = ['low_lora', 0];
+  }
+  hiModel = chainModelLoras(graph, hiModel, opts.loras, 'uhlora');
+  loModel = chainModelLoras(graph, loModel, opts.loras, 'ullora');
+  graph.ms_high = { class_type: 'ModelSamplingSD3', inputs: { model: hiModel, shift: 5 } };
+  graph.ms_low = { class_type: 'ModelSamplingSD3', inputs: { model: loModel, shift: 5 } };
+
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.wanClip, type: 'wan', device: 'default' } };
+  graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: opts.prompt } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: WAN_NEGATIVE } };
+  graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.wanVae } };
+  graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
+  graph.i2v = {
+    class_type: 'WanImageToVideo',
+    inputs: {
+      positive: ['pos', 0], negative: ['neg', 0], vae: ['vae', 0], start_image: ['img', 0],
+      width: opts.W, height: opts.H, length: opts.frames, batch_size: 1,
+    },
+  };
+  graph.ks_high = {
+    class_type: 'KSamplerAdvanced',
+    inputs: {
+      add_noise: 'enable', noise_seed: opts.seed, steps, cfg,
+      sampler_name: 'euler', scheduler: 'simple',
+      start_at_step: 0, end_at_step: split, return_with_leftover_noise: 'enable',
+      model: ['ms_high', 0], positive: ['i2v', 0], negative: ['i2v', 1], latent_image: ['i2v', 2],
+    },
+  };
+  graph.ks_low = {
+    class_type: 'KSamplerAdvanced',
+    inputs: {
+      add_noise: 'disable', noise_seed: 0, steps, cfg,
+      sampler_name: 'euler', scheduler: 'simple',
+      start_at_step: split, end_at_step: 10000, return_with_leftover_noise: 'disable',
+      model: ['ms_low', 0], positive: ['i2v', 0], negative: ['i2v', 1], latent_image: ['ks_high', 0],
+    },
+  };
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['ks_low', 0], vae: ['vae', 0] } };
+
+  let frameSource = ['decode', 0];
+  frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
+  if (opts.fourK) {
+    graph.vsr = await nodeFromOrdered(
+      'RTXVideoSuperResolution',
+      ['scale by multiplier', 2, 'ULTRA'],
+      { images: frameSource }
+    );
+    frameSource = ['vsr', 0];
+  }
+  if (opts.makePoster) {
+    const info = await getObjectInfo();
+    if (info.ImageFromBatch) {
+      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['decode', 0], batch_index: 0, length: 1 } };
+      graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
+    }
+  }
+  graph.video = { class_type: 'CreateVideo', inputs: { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) } };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
+  };
+  return filterInputs(graph);
+}
+
+/* ------------------------------------------------------------------ */
+/* SCAIL-2 motion transfer (video-to-video)                            */
+/* ------------------------------------------------------------------ */
+/* Replicates his "SCAIL-2 to LTX 2.3 Motion Transfer" workflow's      */
+/* SCAIL stage: SAM3 tracks the human in both the driving video and    */
+/* the reference image, SCAIL2ColoredMask pairs the tracks, and        */
+/* WanSCAILToVideo conditions a Wan 2.1 SCAIL UNET (lightx2v 4-step    */
+/* distill LoRA, 6 steps cfg 1) to re-animate the reference.           */
+
+const SCAIL_NEGATIVE = 'worst quality, blurry, jittery, distorted, deformed, extra limbs, fused fingers, static, low quality, watermark, text';
+
+function scailDims(w, h) {
+  // Reference image target ~0.5 MP, dims snapped down to /32 (workflow behavior)
+  const target = 0.5 * 1024 * 1024;
+  const s = Math.sqrt(target / Math.max(1, (w || 832) * (h || 832)));
+  const W = Math.max(256, Math.floor((w * s) / 32) * 32);
+  const H = Math.max(256, Math.floor((h * s) / 32) * 32);
+  return { W, H };
+}
+
+async function buildAnimateScail(imageName, opts) {
+  const graph = {};
+
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.scailUnet, weight_dtype: 'default' } };
+  graph.lightx = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['unet', 0], lora_name: settings.scailLora, strength_model: 1 } };
+  const model = chainModelLoras(graph, ['lightx', 0], opts.loras, 'slora');
+  graph.ms = { class_type: 'ModelSamplingSD3', inputs: { model, shift: 5 } };
+
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.wanClip, type: 'wan', device: 'default' } };
+  graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: opts.prompt } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: SCAIL_NEGATIVE } };
+  graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.wanVae } };
+
+  // Reference image, scaled to ~0.5 MP /32
+  graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
+  graph.ref = {
+    class_type: 'ImageScale',
+    inputs: { image: ['img', 0], upscale_method: 'lanczos', width: opts.W, height: opts.H, crop: 'disabled' },
+  };
+
+  // Driving motion video (already uploaded to ComfyUI's input dir)
+  graph.drive = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+    video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+    frame_load_cap: opts.frames, skip_first_frames: opts.driveSkipFrames || 0,
+    select_every_nth: 1, format: 'None',
+  });
+
+  // SAM3 human tracking on driving video + reference
+  graph.sam = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.scailSam } };
+  graph.sam_txt = { class_type: 'CLIPTextEncode', inputs: { clip: ['sam', 1], text: 'human' } };
+  graph.track_drive = await nodeFromOrdered('SAM3_VideoTrack', [0.5, 0, 1],
+    { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['drive', 0] });
+  graph.track_ref = await nodeFromOrdered('SAM3_VideoTrack', [0.5, 0, 1],
+    { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['ref', 0] });
+  graph.masks = await nodeFromOrdered('SCAIL2ColoredMask', ['', 'area', false],
+    { driving_track_data: ['track_drive', 0], ref_track_data: ['track_ref', 0] });
+
+  // CLIP-vision embedding of the reference
+  graph.cv = { class_type: 'CLIPVisionLoader', inputs: { clip_name: settings.scailClipVision } };
+  graph.cv_enc = { class_type: 'CLIPVisionEncode', inputs: { clip_vision: ['cv', 0], image: ['ref', 0], crop: 'none' } };
+
+  graph.scail = await nodeFromOrdered(
+    'WanSCAILToVideo',
+    [512, 896, 81, 1, 1, 0, 1, 0, 5, false],
+    {
+      positive: ['pos', 0], negative: ['neg', 0], vae: ['vae', 0],
+      pose_video: ['drive', 0], pose_video_mask: ['masks', 0],
+      reference_image: ['ref', 0], reference_image_mask: ['masks', 1],
+      clip_vision_output: ['cv_enc', 0],
+    },
+    { width: opts.W, height: opts.H, length: opts.frames }
+  );
+
+  graph.ks = {
+    class_type: 'KSampler',
+    inputs: {
+      model: ['ms', 0], positive: ['scail', 0], negative: ['scail', 1], latent_image: ['scail', 2],
+      seed: opts.seed, steps: 6, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+    },
+  };
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['ks', 0], vae: ['vae', 0] } };
+
+  let frameSource = ['decode', 0];
+  frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
+  if (opts.fourK) {
+    graph.vsr = await nodeFromOrdered(
+      'RTXVideoSuperResolution',
+      ['scale by multiplier', 2, 'ULTRA'],
+      { images: frameSource }
+    );
+    frameSource = ['vsr', 0];
+  }
+  if (opts.makePoster) {
+    const info = await getObjectInfo();
+    if (info.ImageFromBatch) {
+      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['decode', 0], batch_index: 0, length: 1 } };
+      graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
+    }
+  }
+  graph.video = { class_type: 'CreateVideo', inputs: { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) } };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
+  };
+  return filterInputs(graph);
+}
+
+/** Optional RIFE interpolation stage (16 fps engines -> 32/48 fps). */
+async function rifeSmooth(graph, frameSource, smooth) {
+  if (!smooth || smooth <= 1) return frameSource;
+  const info = await getObjectInfo();
+  if (!info['RIFE VFI']) {
+    throw new Error('RIFE VFI node not found — install ComfyUI-Frame-Interpolation for smooth frame rates.');
+  }
+  const ckpts = info['RIFE VFI'].input?.required?.ckpt_name?.[0] || [];
+  const ckpt = ckpts.includes('rife49.pth') ? 'rife49.pth' : (ckpts[ckpts.length - 1] || 'rife47.pth');
+  graph.rife = await nodeFromOrdered(
+    'RIFE VFI',
+    [ckpt, 10, smooth, true, true, 1],
+    { frames: frameSource }
+  );
+  return ['rife', 0];
+}
+
+/* ------------------------------------------------------------------ */
+/* HTTP helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+function json(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+function readBody(req, limit = 64 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) { reject(new Error('Body too large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+async function readJsonBody(req) {
+  const buf = await readBody(req, 8 * 1024 * 1024);
+  return JSON.parse(buf.toString('utf8') || '{}');
+}
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+};
+function serveFile(res, file, range) {
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) { res.writeHead(404); res.end('not found'); return; }
+    const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    // Range support so <video> can seek
+    if (range) {
+      const m = range.match(/bytes=(\d*)-(\d*)/);
+      if (m) {
+        const start = m[1] ? parseInt(m[1], 10) : 0;
+        const end = m[2] ? Math.min(parseInt(m[2], 10), st.size - 1) : st.size - 1;
+        res.writeHead(206, {
+          'Content-Type': mime,
+          'Content-Range': `bytes ${start}-${end}/${st.size}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': end - start + 1,
+        });
+        fs.createReadStream(file, { start, end }).pipe(res);
+        return;
+      }
+    }
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Content-Length': st.size,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': file.includes(DATA) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    });
+    fs.createReadStream(file).pipe(res);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* API routes                                                          */
+/* ------------------------------------------------------------------ */
+
+const REQUIRED_CLASSES = {
+  core: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoader', 'CLIPTextEncode', 'ConditioningZeroOut',
+    'EmptySD3LatentImage', 'KSampler', 'VAEDecode', 'SaveImage', 'LoadImage', 'ImageScaleBy',
+    'ImageScaleToTotalPixels', 'StringConcatenate', 'TextEncodeQwenImageEditPlus'],
+  enhance: ['TextGenerate', 'PreviewAny'],
+  klein: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'VAEEncode',
+    'ReferenceLatent', 'GetImageSize', 'EmptyFlux2LatentImage', 'Flux2Scheduler', 'CFGGuider',
+    'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage'],
+  qwenedit: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingAuraFlow',
+    'CFGNorm', 'FluxKontextImageScale', 'TextEncodeQwenImageEditPlus', 'FluxKontextMultiReferenceLatentMethod',
+    'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage'],
+  upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
+  video: ['CheckpointLoaderSimple', 'LoraLoaderModelOnly', 'LTXAVTextEncoderLoader', 'TextGenerateLTX2Prompt',
+    'LTXVConditioning', 'EmptyLTXVLatentVideo', 'LTXVImgToVideoInplace', 'LTXVAudioVAELoader',
+    'LTXVEmptyLatentAudio', 'LTXVConcatAVLatent', 'LTXVSeparateAVLatent', 'RandomNoise', 'CFGGuider',
+    'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
+    'LTXVLatentUpsampler', 'LTXVCropGuides', 'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo',
+    'SaveVideo', 'ImageScale', 'LTXVPreprocess'],
+  video4k: ['RTXVideoSuperResolution'],
+  wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
+    'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
+  eros: ['CheckpointLoaderSimple', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
+    'LTXVPreprocess', 'LTXReferenceEnable', 'LTXReferenceConditioning', 'LoraLoaderModelOnly',
+    'EmptyLTXVLatentVideo', 'LTXVEmptyLatentAudio', 'LTXVImgToVideoInplaceKJ', 'LTXVConcatAVLatent',
+    'EchoDMDSigmas', 'EchoDMDSigmaRemap', 'EchoDMDSampler', 'SamplerCustom', 'LTXVSeparateAVLatent',
+    'LatentUpscaleModelLoader', 'LTXVLatentUpsampler', 'ManualSigmas', 'VAEDecode', 'LTXVAudioVAEDecode',
+    'CreateVideo', 'SaveVideo'],
+  scail: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
+    'CLIPVisionLoader', 'CLIPVisionEncode', 'CheckpointLoaderSimple', 'CLIPTextEncode', 'ImageScale',
+    'VHS_LoadVideo', 'SAM3_VideoTrack', 'SCAIL2ColoredMask', 'WanSCAILToVideo', 'KSampler',
+    'VAEDecode', 'CreateVideo', 'SaveVideo'],
+};
+
+async function handleApi(req, res, url) {
+  const route = url.pathname;
+
+  if (route === '/api/events') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write('retry: 2000\n\n');
+    sseClients.add(res);
+    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* noop */ } }, 25000);
+    req.on('close', () => { clearInterval(ping); sseClients.delete(res); });
+    return;
+  }
+
+  if (route === '/api/settings' && req.method === 'GET') return json(res, 200, settings);
+  if (route === '/api/settings' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    for (const key of Object.keys(DEFAULT_SETTINGS)) {
+      if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
+    }
+    settings.galleryPassword = galleryPassword(settings);
+    saveJsonSync(SETTINGS_FILE, settings);
+    objectInfoCache = null;
+    return json(res, 200, settings);
+  }
+
+  if (route === '/api/meta') {
+    try {
+      const info = await getObjectInfo(url.searchParams.has('refresh'));
+      const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];
+      const missing = {};
+      for (const [group, classes] of Object.entries(REQUIRED_CLASSES)) {
+        missing[group] = classes.filter((c) => !info[c]);
+      }
+      return json(res, 200, { ok: true, loras, missing, queue: jobs.size });
+    } catch (e) {
+      return json(res, 200, { ok: false, error: String(e.message || e), loras: [], missing: null, queue: jobs.size });
+    }
+  }
+
+  // Serve a file back out of ComfyUI's input dir (reuse previews: audio,
+  // end frames, motion videos). Client fetches to a blob, so no Range needed.
+  if (route === '/api/input' && req.method === 'GET') {
+    const name = String(url.searchParams.get('name') || '');
+    if (!name) return json(res, 400, { error: 'name required' });
+    const parts = name.split('/');
+    const fn = parts.pop();
+    const sub = parts.join('/');
+    try {
+      const r = await comfyFetch(`/view?filename=${encodeURIComponent(fn)}&subfolder=${encodeURIComponent(sub)}&type=input`);
+      if (!r.ok) return json(res, 404, { error: 'File no longer in the ComfyUI input folder' });
+      const buf = Buffer.from(await r.arrayBuffer());
+      const extra = {
+        '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+        '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.aac': 'audio/aac',
+      };
+      const ext = path.extname(fn).toLowerCase();
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] || extra[ext] || 'application/octet-stream',
+        'Content-Length': buf.length,
+        'Cache-Control': 'no-cache',
+      });
+      res.end(buf);
+    } catch (e) {
+      return json(res, 502, { error: String(e.message || e) });
+    }
+    return;
+  }
+
+  if (route === '/api/upload' && req.method === 'POST') {
+    const buf = await readBody(req, 512 * 1024 * 1024); // motion videos can be large
+    const orig = decodeURIComponent(req.headers['x-filename'] || 'ref.png').replace(/[^\w.\-]+/g, '_');
+    const name = `ks_${Date.now()}_${orig}`;
+    const comfyName = await uploadToComfy(buf, name);
+    return json(res, 200, { name: comfyName });
+  }
+
+  if (route === '/api/generate' && req.method === 'POST') {
+    const p = await readJsonBody(req);
+    p.prompt = String(p.prompt || '').trim();
+    if (!p.prompt) return json(res, 400, { error: 'Prompt is empty' });
+    p.width = clampInt(p.width, 64, 4096, 1024);
+    p.height = clampInt(p.height, 64, 4096, 1024);
+    p.steps = clampInt(p.steps, 1, 100, 12);
+    p.batch = clampInt(p.batch, 1, 8, 1);
+    p.cfg = clampNum(p.cfg, 0, 30, 1);
+    p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : 1);
+    p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
+      ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
+
+    let refined = null;
+    if (p.enhance && p.mode !== 'edit') {
+      const rawText = await enhancePrompt(p);
+      refined = cleanEnhancedText(rawText, p.prompt);
+      p.enhancedText = refined;
+    }
+
+    const refNames = Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [];
+    if (p.mode === 'edit') {
+      p.editEngine = p.editEngine === 'qwen' ? 'qwen' : 'klein';
+      if (p.editEngine === 'qwen' && !refNames.length) {
+        return json(res, 400, { error: 'Qwen Edit needs at least one reference image' });
+      }
+      p.steps = 4; p.cfg = 1; p.denoise = null;
+    }
+    const graph = p.mode === 'edit'
+      ? (p.editEngine === 'qwen' ? await buildEditQwen(p, refNames) : await buildEdit(p, refNames))
+      : await buildT2I(p);
+    const pid = await queuePrompt(graph);
+    jobs.set(pid, { kind: 'gen', params: p, graph, refImageNames: refNames, refinedPrompt: refined });
+    ensureWs();
+    return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });
+  }
+
+  if (route === '/api/upscale' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const item = db.items.find((it) => it.id === body.id);
+    if (!item) return json(res, 404, { error: 'Image not found' });
+    const buf = await fsp.readFile(path.join(IMAGES, item.file));
+    const comfyName = await uploadToComfy(buf, `ks_upsrc_${item.id}.png`);
+    const opts = {
+      resolution: clampInt(body.resolution, 512, 8192, 2160),
+      preScale: clampNum(body.preScale, 1, 4, 2),
+    };
+    const graph = await buildUpscale(comfyName, opts);
+    const pid = await queuePrompt(graph);
+    jobs.set(pid, { kind: 'upscale', itemId: item.id, graph, upscaleInfo: opts });
+    ensureWs();
+    return json(res, 200, { jobId: pid });
+  }
+
+  if (route === '/api/animate' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const motionPrompt = String(body.prompt || '').trim();
+    if (!motionPrompt) return json(res, 400, { error: 'Describe the motion first' });
+    let item = body.id ? db.items.find((it) => it.id === body.id) : null;
+    if (body.id && !item) return json(res, 404, { error: 'Image not found' });
+    // Video-tab jobs that started from a gallery image group under that item
+    if (!item && body.sourceItemId) {
+      item = db.items.find((it) => it.id === body.sourceItemId) || null;
+    }
+
+    let comfyName;
+    let srcW; let srcH;
+    let bypass = false;
+    if (item) {
+      const buf = await fsp.readFile(path.join(IMAGES, item.file));
+      comfyName = await uploadToComfy(buf, `ks_vidsrc_${item.id}.png`);
+      // Trust the file, not the recorded dims (edits snap to their own buckets)
+      const real = pngDims(buf);
+      srcW = (real && real.w) || item.width;
+      srcH = (real && real.h) || item.height;
+    } else if (body.imageName) {
+      comfyName = String(body.imageName); // already uploaded via /api/upload
+      srcW = clampInt(body.width, 64, 8192, 1024);
+      srcH = clampInt(body.height, 64, 8192, 1024);
+    } else {
+      // pure text-to-video: image guide bypassed, aspect from the picker
+      comfyName = await uploadToComfy(BLANK_PNG, 'ks_blank.png');
+      srcW = clampInt(body.width, 64, 8192, 704);
+      srcH = clampInt(body.height, 64, 8192, 1280);
+      bypass = true;
+    }
+
+    const engine = ['wan', 'eros', 'scail'].includes(body.engine) ? body.engine : 'ltx';
+    if (engine !== 'ltx' && bypass) {
+      const label = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[engine];
+      return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
+    }
+    const driveVideoName = engine === 'scail' && body.driveVideoName ? String(body.driveVideoName) : null;
+    if (engine === 'scail' && !driveVideoName) {
+      return json(res, 400, { error: 'SCAIL 2 needs a driving motion video. Attach one with the 🎥 chip.' });
+    }
+
+    // Duration: prefer seconds; fall back to legacy frames (25 fps)
+    let seconds = Number(body.seconds);
+    if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 377, 121) / 25;
+    seconds = Math.max(1, Math.min(15, seconds));
+
+    const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
+    const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
+    let frames; let fps; let W; let H;
+    if (engine === 'scail') {
+      fps = 16;
+      seconds = Math.min(seconds, 10); // pose-video conditioning gets heavy past this
+      if (driveDur > 0) seconds = Math.min(seconds, driveDur); // trimmed clip length
+      seconds = Math.max(1, seconds);
+      frames = Math.floor(seconds * 16) + 1; // Wan needs 4n+1
+      frames = Math.round((frames - 1) / 4) * 4 + 1;
+      ({ W, H } = scailDims(srcW, srcH));
+    } else if (engine === 'wan') {
+      fps = 16;
+      frames = Math.floor(seconds * 16) + 1; // Wan needs 4n+1
+      frames = Math.round((frames - 1) / 4) * 4 + 1;
+      ({ W, H } = wanDims(srcW, srcH));
+    } else if (engine === 'eros') {
+      fps = 24;
+      frames = Math.round(seconds * 24);
+      frames = Math.max(25, Math.min(361, Math.round((frames - 1) / 8) * 8 + 1)); // LTX 8n+1
+      ({ W, H } = videoDims(srcW, srcH));
+    } else {
+      fps = 25;
+      frames = Math.round(seconds * 25);
+      frames = Math.max(25, Math.min(377, Math.round((frames - 1) / 8) * 8 + 1)); // LTX needs 8n+1
+      ({ W, H } = videoDims(srcW, srcH));
+    }
+
+    const seed = Math.floor(Math.random() * 2 ** 48);
+    const enhance = body.enhance !== false;
+    let prompt = motionPrompt;
+    let wanRefined = null;
+    if ((engine === 'wan' || engine === 'scail') && enhance) {
+      // Wan/SCAIL have no in-graph enhancer: run a Qwen3-VL vision pass first
+      const raw = await wanEnhance(comfyName, motionPrompt, seed);
+      wanRefined = cleanEnhancedText(raw, motionPrompt);
+      prompt = wanRefined;
+    }
+
+    const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
+    const sig = erosSigmas(sigmaPreset);
+    // RIFE frame interpolation for the 16 fps engines (Wan/SCAIL)
+    const smooth = (engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
+      ? Number(body.smooth) : 1;
+    const isLtxLike = engine === 'ltx' || engine === 'eros';
+    const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;
+    const endImageName = isLtxLike && body.endImageName ? String(body.endImageName) : null;
+    const opts = {
+      prompt,
+      enhance: isLtxLike ? enhance : false, // LTX/10Eros enhance in-graph
+      frames, fps,
+      fourK: !!body.fourK,
+      seed,
+      W, H, bypass,
+      makePoster: !item,
+      imgCompression: clampInt(body.motionFreedom, 0, 100, 35),
+      fast: body.fast !== false,
+      audioName,
+      endImageName,
+      sigmaFirst: sig.first,
+      sigmaUp: sig.up,
+      driveVideoName,
+      driveSkipFrames: Math.max(0, Math.round(driveStart * 16)),
+      smooth,
+      loras: Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : [],
+    };
+    const graph = engine === 'scail' ? await buildAnimateScail(comfyName, opts)
+      : engine === 'wan' ? await buildAnimateWan(comfyName, opts)
+        : engine === 'eros' ? await buildAnimateEros(comfyName, opts)
+          : await buildAnimate(comfyName, opts);
+    const pid = await queuePrompt(graph);
+    jobs.set(pid, {
+      kind: 'video', itemId: item ? item.id : null, createItem: !item, graph,
+      videoInfo: {
+        engine,
+        motionPrompt, enhance,
+        frames: opts.frames * smooth, fps: opts.fps * smooth,
+        smooth: smooth > 1 ? smooth : undefined,
+        fourK: opts.fourK, width: opts.fourK ? W * 2 : W, height: opts.fourK ? H * 2 : H,
+        seed: opts.seed, t2v: bypass,
+        motionFreedom: isLtxLike ? opts.imgCompression : undefined,
+        fast: engine === 'wan' ? opts.fast : undefined,
+        sigmaPreset: engine === 'eros' ? sigmaPreset : undefined,
+        drivenAudio: !!audioName,
+        endFrame: !!endImageName,
+        motionVideo: !!driveVideoName,
+        // Asset names (ComfyUI input dir) so "Reuse" can restore them
+        imageName: bypass ? undefined : comfyName,
+        srcWidth: bypass ? undefined : srcW,
+        srcHeight: bypass ? undefined : srcH,
+        audioName: audioName || undefined,
+        endImageName: endImageName || undefined,
+        driveVideoName: driveVideoName || undefined,
+        driveStartSeconds: engine === 'scail' && driveStart > 0 ? driveStart : undefined,
+        driveDurSeconds: engine === 'scail' && driveDur > 0 ? driveDur : undefined,
+        loras: opts.loras,
+        refinedMotionPrompt: wanRefined,
+      },
+    });
+    ensureWs();
+    return json(res, 200, { jobId: pid, frames, engine });
+  }
+
+  // Side-by-side comparison: original motion video (left) + SCAIL result
+  // (right), stitched frame-by-frame in ComfyUI and saved as a new video
+  // entry on the same gallery item.
+  if (route === '/api/composite' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const item = db.items.find((it) => it.id === body.id);
+    if (!item) return json(res, 404, { error: 'Item not found' });
+    const entry = (item.videos || []).find((v) => v.id === body.videoId);
+    if (!entry) return json(res, 404, { error: 'Video not found' });
+    const info = entry.info || {};
+    if (!info.driveVideoName) {
+      return json(res, 400, { error: 'No stored motion video for this generation (older videos predate asset tracking)' });
+    }
+    const fps = info.fps || 16;
+    const frames = info.frames || 81;
+
+    // The result lives in our data dir -> push it into ComfyUI's input
+    const buf = await fsp.readFile(path.join(VIDEOS, entry.file));
+    const outName = await uploadToComfy(buf, `ks_cmp_${entry.id}.mp4`);
+
+    const graph = {};
+    graph.drive = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+      video: info.driveVideoName, force_rate: fps, custom_width: 0, custom_height: 0,
+      frame_load_cap: frames, skip_first_frames: Math.max(0, Math.round((info.driveStartSeconds || 0) * fps)),
+      select_every_nth: 1, format: 'None',
+    });
+    graph.result = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+      video: outName, force_rate: fps, custom_width: 0, custom_height: 0,
+      frame_load_cap: frames, skip_first_frames: 0, select_every_nth: 1, format: 'None',
+    });
+
+    // libx264 requires even dims, and container metadata lies about phone
+    // videos (rotation). Resize the DECODED frames in-graph instead:
+    // shared even height, width auto-computed from each stream's true
+    // aspect (width: 0), snapped even via divisible_by. Spacing 8 is even,
+    // so the stitched total stays even.
+    const rdims = mp4Dims(buf) || { w: info.width || 512, h: info.height || 960 };
+    const H = Math.max(2, rdims.h - (rdims.h % 2));
+    const kjResize = (src) => ({
+      class_type: 'ImageResizeKJv2',
+      inputs: {
+        image: src, width: 0, height: H, upscale_method: 'lanczos',
+        keep_proportion: 'resize', pad_color: '0, 0, 0',
+        crop_position: 'center', divisible_by: 2,
+      },
+    });
+    graph.drive_s = kjResize(['drive', 0]);
+    graph.result_s = kjResize(['result', 0]);
+    graph.stitch = await nodeFromOrdered(
+      'ImageStitch',
+      ['right', true, 8, 'black'],
+      { image1: ['drive_s', 0], image2: ['result_s', 0] }
+    );
+    graph.video = { class_type: 'CreateVideo', inputs: { images: ['stitch', 0], fps } };
+    graph.save = {
+      class_type: 'SaveVideo',
+      inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/side', format: 'auto', codec: 'auto' },
+    };
+    const pid = await queuePrompt(await filterInputs(graph));
+    jobs.set(pid, {
+      kind: 'video', itemId: item.id, graph,
+      videoInfo: {
+        engine: info.engine, composite: true,
+        motionPrompt: info.motionPrompt || '',
+        enhance: false, frames, fps, seed: info.seed,
+      },
+    });
+    ensureWs();
+    return json(res, 200, { jobId: pid });
+  }
+
+  if (route === '/api/motionprompt' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const item = db.items.find((it) => it.id === body.id);
+    if (!item) return json(res, 404, { error: 'Image not found' });
+    const buf = await fsp.readFile(path.join(IMAGES, item.file));
+    const comfyName = await uploadToComfy(buf, `ks_motion_${item.id}.png`);
+    const raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+    const prompt = cleanEnhancedText(raw, '');
+    if (!prompt) return json(res, 500, { error: 'Vision model returned no usable text' });
+    return json(res, 200, { prompt });
+  }
+
+  if (route === '/api/debug/models') {
+    const info = await getObjectInfo();
+    const q = (url.searchParams.get('q') || '').toLowerCase();
+    const pick = (cls, field) => ((info[cls]?.input?.required?.[field]?.[0]) || []).filter((n) => n.toLowerCase().includes(q));
+    return json(res, 200, {
+      unets: pick('UNETLoader', 'unet_name'),
+      clips: pick('CLIPLoader', 'clip_name'),
+      vaes: pick('VAELoader', 'vae_name'),
+      loras: pick('LoraLoader', 'lora_name'),
+      checkpoints: pick('CheckpointLoaderSimple', 'ckpt_name'),
+      clip_visions: pick('CLIPVisionLoader', 'clip_name'),
+    });
+  }
+
+  if (route === '/api/debug/classes') {
+    const info = await getObjectInfo();
+    const q = (url.searchParams.get('q') || '').toLowerCase();
+    const names = Object.keys(info).filter((k) => k.toLowerCase().includes(q)).slice(0, 60);
+    return json(res, 200, { names });
+  }
+
+  if (route === '/api/debug/upscale') {
+    const info = await getObjectInfo(true);
+    const defs = {};
+    for (const c of ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler']) {
+      defs[c] = info[c] ? info[c].input : 'MISSING';
+    }
+    const graph = await buildUpscale('debug.png', { resolution: 2160, preScale: 2 });
+    return json(res, 200, { nodeDefinitions: defs, graphTheAppWouldSend: graph });
+  }
+
+  if (route === '/api/debug/animate') {
+    const info = await getObjectInfo(true);
+    const defs = {};
+    for (const c of [...REQUIRED_CLASSES.video, ...REQUIRED_CLASSES.video4k]) {
+      if (['LTXVImgToVideoInplace', 'LTXVPreprocess'].includes(c)) {
+        defs[c] = info[c] ? info[c].input : 'MISSING'; // full spec incl. tooltips
+      } else {
+        defs[c] = info[c] ? { required: Object.keys(info[c].input?.required || {}), optional: Object.keys(info[c].input?.optional || {}) } : 'MISSING';
+      }
+    }
+    const graph = await buildAnimate('debug.png', {
+      prompt: 'debug motion', enhance: true, frames: 121, fps: 25, fourK: false,
+      seed: 1234, W: 704, H: 1280,
+    });
+    return json(res, 200, { nodeDefinitions: defs, graphTheAppWouldSend: graph });
+  }
+
+  if (route === '/api/interrupt' && req.method === 'POST') {
+    await comfyFetch('/interrupt', { method: 'POST' });
+    return json(res, 200, { ok: true });
+  }
+
+  if (route === '/api/queue') {
+    try {
+      const q = await (await comfyFetch('/queue')).json();
+      const describe = (entry) => {
+        const pid = entry[1];
+        const job = jobs.get(pid);
+        return { jobId: pid, kind: job ? job.kind : 'external', itemId: job ? (job.itemId || null) : null, label: jobLabel(job) };
+      };
+      return json(res, 200, {
+        ok: true,
+        running: (q.queue_running || []).map(describe),
+        pending: (q.queue_pending || []).map(describe),
+        history: db.history.slice(0, 20),
+      });
+    } catch (e) {
+      return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [] });
+    }
+  }
+
+  if (route === '/api/queue/cancel' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const pid = String(body.jobId || '');
+    if (!pid) return json(res, 400, { error: 'jobId required' });
+    // remove from pending first
+    await comfyFetch('/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delete: [pid] }),
+    }).catch(() => { /* noop */ });
+    // still running? interrupt it (fires execution_interrupted -> failJob)
+    let stillRunning = false;
+    try {
+      const q = await (await comfyFetch('/queue')).json();
+      stillRunning = (q.queue_running || []).some((e) => e[1] === pid);
+    } catch { /* noop */ }
+    if (stillRunning) {
+      await comfyFetch('/interrupt', { method: 'POST' }).catch(() => { /* noop */ });
+    } else if (jobs.has(pid)) {
+      failJob(pid, 'Cancelled');
+    }
+    return json(res, 200, { ok: true });
+  }
+
+  if (route === '/api/private/status') {
+    return json(res, 200, { unlocked: isPrivateUnlocked(req) });
+  }
+
+  if (route === '/api/private/unlock' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    if (String(body.password || '') !== galleryPassword(settings)) {
+      return json(res, 401, { error: 'Wrong gallery password' });
+    }
+    res.setHeader('Set-Cookie', privateCookie(privateUnlockToken, 60 * 60 * 12));
+    return json(res, 200, { unlocked: true });
+  }
+
+  if (route === '/api/private/lock' && req.method === 'POST') {
+    res.setHeader('Set-Cookie', privateCookie('', 0));
+    return json(res, 200, { unlocked: false });
+  }
+
+  if (route === '/api/gallery') {
+    const unlocked = isPrivateUnlocked(req);
+    return json(res, 200, Object.assign({ unlocked }, galleryView(db, unlocked)));
+  }
+
+  if (route === '/api/lorapresets' && req.method === 'GET') {
+    return json(res, 200, { presets: db.loraPresets });
+  }
+  if (route === '/api/lorapresets' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const name = String(body.name || '').trim().slice(0, 40);
+    if (!name) return json(res, 400, { error: 'Preset name required' });
+    const loras = (Array.isArray(body.loras) ? body.loras : [])
+      .filter((l) => l && l.name)
+      .map((l) => ({ name: String(l.name), strength: Number(l.strength) || 1 }));
+    if (!loras.length) return json(res, 400, { error: 'No LoRAs to save' });
+    const existing = db.loraPresets.find((pr) => pr.name.toLowerCase() === name.toLowerCase());
+    if (existing) { existing.loras = loras; }
+    else db.loraPresets.push({ id: uid(), name, loras });
+    saveDb();
+    return json(res, 200, { presets: db.loraPresets });
+  }
+  const lpDel = route.match(/^\/api\/lorapresets\/([\w]+)$/);
+  if (lpDel && req.method === 'DELETE') {
+    db.loraPresets = db.loraPresets.filter((pr) => pr.id !== lpDel[1]);
+    saveDb();
+    return json(res, 200, { presets: db.loraPresets });
+  }
+
+  if (route === '/api/folders' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const name = String(body.name || '').trim().slice(0, 40);
+    if (!name) return json(res, 400, { error: 'Folder name required' });
+    if (db.folders.some((f) => f.name.toLowerCase() === name.toLowerCase())) return json(res, 400, { error: 'Folder exists' });
+    const folder = { id: uid(), name, locked: false };
+    db.folders.push(folder);
+    saveDb();
+    return json(res, 200, folder);
+  }
+
+  const folderPrivate = route.match(/^\/api\/folders\/([\w]+)\/private$/);
+  if (folderPrivate && req.method === 'POST') {
+    if (!isPrivateUnlocked(req)) return json(res, 401, { error: 'Unlock the gallery first' });
+    const body = await readJsonBody(req);
+    const folder = setFolderLocked(db, folderPrivate[1], !!body.locked);
+    if (!folder) return json(res, 404, { error: 'Folder not found' });
+    saveDb();
+    return json(res, 200, folder);
+  }
+
+  const folderDel = route.match(/^\/api\/folders\/([\w]+)$/);
+  if (folderDel && req.method === 'DELETE') {
+    const folder = db.folders.find((f) => f.id === folderDel[1]);
+    if (folder && folder.locked && !isPrivateUnlocked(req)) {
+      return json(res, 401, { error: 'Unlock the gallery first' });
+    }
+    db.folders = db.folders.filter((f) => f.id !== folderDel[1]);
+    for (const it of db.items) if (it.folder === folderDel[1]) it.folder = null;
+    saveDb();
+    return json(res, 200, { ok: true });
+  }
+
+  const vidRoute = route.match(/^\/api\/item\/([\w]+)\/video\/([\w]+)$/);
+  if (vidRoute && req.method === 'DELETE') {
+    const item = db.items.find((it) => it.id === vidRoute[1]);
+    if (!item) return json(res, 404, { error: 'Not found' });
+    const v = (item.videos || []).find((x) => x.id === vidRoute[2]);
+    item.videos = (item.videos || []).filter((x) => x.id !== vidRoute[2]);
+    saveDb();
+    if (v) fsp.unlink(path.join(VIDEOS, v.file)).catch(() => { /* noop */ });
+    return json(res, 200, item);
+  }
+
+  const itemRoute = route.match(/^\/api\/item\/([\w]+)(?:\/(move))?$/);
+  if (itemRoute) {
+    const item = db.items.find((it) => it.id === itemRoute[1]);
+    if (!item) return json(res, 404, { error: 'Not found' });
+    if (itemRoute[2] === 'move' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const targetFolder = body.folder || null;
+      const allowed = canMoveToFolder(db, targetFolder, isPrivateUnlocked(req));
+      if (!allowed.ok) {
+        return json(res, allowed.reason === 'missing' ? 404 : 401, {
+          error: allowed.reason === 'missing' ? 'Folder not found' : 'Unlock the gallery first',
+        });
+      }
+      item.folder = targetFolder;
+      saveDb();
+      return json(res, 200, item);
+    }
+    if (req.method === 'DELETE') {
+      db.items = db.items.filter((it) => it.id !== item.id);
+      saveDb();
+      for (const f of [item.file, item.upscaled, item.sourceFile]) {
+        if (f) fsp.unlink(path.join(IMAGES, f)).catch(() => { /* noop */ });
+      }
+      for (const v of item.videos || []) {
+        fsp.unlink(path.join(VIDEOS, v.file)).catch(() => { /* noop */ });
+      }
+      return json(res, 200, { ok: true });
+    }
+    return json(res, 200, item);
+  }
+
+  json(res, 404, { error: 'Unknown API route' });
+}
+
+function jobLabel(job) {
+  if (!job) return 'Other ComfyUI job';
+  if (job.kind === 'gen') return (job.params.mode === 'edit' ? 'Edit: ' : 'Create: ') + (job.params.prompt || '').slice(0, 70);
+  if (job.kind === 'upscale') return 'Upscale (SeedVR2)';
+  if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);
+  if (job.kind === 'enhance') return 'Prompt enhance';
+  return job.kind;
+}
+
+function clampInt(v, min, max, dflt) {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt;
+}
+function clampNum(v, min, max, dflt) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt;
+}
+
+/* ------------------------------------------------------------------ */
+/* Server                                                              */
+/* ------------------------------------------------------------------ */
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  try {
+    if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
+    if (url.pathname.startsWith('/images/')) {
+      const file = path.normalize(path.join(IMAGES, url.pathname.slice(8)));
+      if (!file.startsWith(IMAGES)) { res.writeHead(403); return res.end(); }
+      return serveFile(res, file, req.headers.range);
+    }
+    if (url.pathname.startsWith('/videos/')) {
+      const file = path.normalize(path.join(VIDEOS, url.pathname.slice(8)));
+      if (!file.startsWith(VIDEOS)) { res.writeHead(403); return res.end(); }
+      return serveFile(res, file, req.headers.range);
+    }
+    let p = url.pathname === '/' ? '/index.html' : url.pathname;
+    const file = path.normalize(path.join(PUBLIC, p));
+    if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
+    return serveFile(res, file);
+  } catch (e) {
+    console.error('[error]', req.method, url.pathname, e.message);
+    if (!res.headersSent) json(res, 500, { error: String(e.message || e) });
+  }
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('');
+  console.log('  * KreaStudio running');
+  console.log(`    Local:   http://localhost:${PORT}`);
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.family === 'IPv4' && !a.internal) {
+        console.log(`    Phone:   http://${a.address}:${PORT}   (${name})`);
+      }
+    }
+  }
+  console.log(`    ComfyUI: ${settings.comfyUrl}`);
+  if (typeof WebSocket === 'undefined') {
+    console.log('    Note: Node < 22 detected - live progress disabled (polling fallback).');
+  }
+  console.log('');
+});
