@@ -47,7 +47,8 @@
   <section class="panel" id="refPanel" hidden>
     <div class="panel-label">Reference Images <span id="refCount"></span></div>
     <div class="chip-row" id="editEngineRow" style="margin-bottom:10px">
-      <button class="chip active" data-engine="klein">Flux Klein</button>
+      <button class="chip active" data-engine="klein4">Klein 4B</button>
+      <button class="chip" data-engine="klein9">Klein 9B</button>
       <button class="chip" data-engine="qwen">Qwen Edit</button>
       <button class="chip active" id="editComposite" title="Blend only the changed pixels back onto the original">🎯 Preserve unchanged</button>
     </div>
@@ -200,8 +201,10 @@
     <div class="panel-label">LoRAs</div>
     <div id="loraList"></div>
     <div class="lora-empty hidden" id="loraEmpty">No LoRAs added — tap below to add one.</div>
+    <div class="lora-warning hidden" id="loraCompatWarn"></div>
     <button class="add-lora" id="addLora">+ Add LoRA</button>
     <div class="chip-row" style="margin-top:10px; margin-bottom:0">
+      <button class="chip" id="loraAllBtn">Show all</button>
       <button class="chip" id="loraSaveBtn">💾 Save preset</button>
       <button class="chip" id="loraPresetsBtn">📂 Presets</button>
     </div>
@@ -482,8 +485,10 @@
     <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
     <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
     <div class="settings-note" style="margin-top:14px"><b>Edit (Flux 2 Klein)</b></div>
-    <div class="field"><label>Klein UNET</label><input id="setKleinUnet" type="text" /></div>
-    <div class="field"><label>Klein text encoder</label><input id="setKleinClip" type="text" /></div>
+    <div class="field"><label>Klein 4B UNET</label><input id="setKlein4Unet" type="text" /></div>
+    <div class="field"><label>Klein 4B text encoder</label><input id="setKlein4Clip" type="text" /></div>
+    <div class="field"><label>Klein 9B UNET</label><input id="setKlein9Unet" type="text" /></div>
+    <div class="field"><label>Klein 9B text encoder</label><input id="setKlein9Clip" type="text" /></div>
     <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
     <div class="settings-note" style="margin-top:14px"><b>Edit (Qwen Image Edit)</b></div>
     <div class="field"><label>Qwen edit UNET</label><input id="setQeUnet" type="text" /></div>

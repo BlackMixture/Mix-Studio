@@ -20,6 +20,7 @@ const state = {
   loras: [],                 // {name, strength, on} - Create tab (Krea 2)
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
   editLoras: [],             // {name, strength, on} - Edit tab (Klein/Qwen)
+  editEngine: 'klein4',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   vidRef: null,              // {name, url, w, h} - Video tab source image
   folders: [],
@@ -28,6 +29,8 @@ const state = {
   activeFolder: 'all',
   mediaFilter: 'all',
   metaLoras: [],
+  metaLorasInfo: {},
+  showAllLoras: false,
   activeJobs: new Set(),
   upscaling: new Set(),      // item ids
   animating: new Set(),      // item ids
@@ -86,6 +89,7 @@ function saveForm() {
     localStorage.setItem('ks-form', JSON.stringify({
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, prompts: state.prompts,
+      editEngine: state.editEngine,
       customDims: state.customDims, width: state.width, height: state.height,
     }));
   } catch { /* noop */ }
@@ -100,6 +104,7 @@ function loadForm() {
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
+    state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : 'klein4');
     if (f.prompts && typeof f.prompts === 'object') {
       state.prompts = Object.assign({ create: '', edit: '', video: '' }, f.prompts);
     } else if (f.prompt) {
@@ -570,6 +575,45 @@ function curLoras() {
   if (state.view === 'edit') return state.editLoras;
   return state.loras;
 }
+
+function loraCategory(name) {
+  return (state.metaLorasInfo[name] && state.metaLorasInfo[name].category) || 'unknown';
+}
+
+function compatibleLoraCategories() {
+  if (state.view === 'video') return ['video', 'unknown'];
+  if (state.view === 'edit') {
+    if (state.editEngine === 'qwen') return ['qwen-edit', 'unknown'];
+    if (state.editEngine === 'klein9') return ['klein9', 'unknown'];
+    return ['klein4', 'unknown'];
+  }
+  return ['krea2', 'unknown'];
+}
+
+function loraOptionsFor(selected) {
+  if (state.showAllLoras) return state.metaLoras;
+  const allowed = new Set(compatibleLoraCategories());
+  return state.metaLoras.filter((name) => name === selected || allowed.has(loraCategory(name)));
+}
+
+function incompatibleSelectedLoras() {
+  const allowed = new Set(compatibleLoraCategories());
+  return curLoras().filter((l) => l && l.on && l.name && !allowed.has(loraCategory(l.name)));
+}
+
+function renderLoraCompatibility() {
+  const warn = $('#loraCompatWarn');
+  if (!warn) return;
+  const bad = incompatibleSelectedLoras();
+  warn.classList.toggle('hidden', bad.length === 0);
+  warn.textContent = bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : '';
+  const allBtn = $('#loraAllBtn');
+  if (allBtn) {
+    allBtn.classList.toggle('active', state.showAllLoras);
+    allBtn.textContent = state.showAllLoras ? 'Filter' : 'Show all';
+  }
+}
+
 function renderLoras() {
   const arr = curLoras();
   const list = $('#loraList');
@@ -586,10 +630,10 @@ function renderLoras() {
 
     const sel = document.createElement('select');
     sel.className = 'lora-name';
-    const opts = [...new Set([l.name, ...state.metaLoras].filter(Boolean))];
-    if (!l.name) sel.appendChild(new Option('— pick a LoRA —', ''));
+    const opts = [...new Set([l.name, ...loraOptionsFor(l.name)].filter(Boolean))];
+    if (!l.name) sel.appendChild(new Option('-- pick a LoRA --', ''));
     for (const name of opts) sel.appendChild(new Option(prettyLora(name), name, false, name === l.name));
-    sel.addEventListener('change', () => { l.name = sel.value; saveForm(); });
+    sel.addEventListener('change', () => { l.name = sel.value; renderLoras(); saveForm(); });
 
     const x = document.createElement('button');
     x.className = 'lora-x';
@@ -611,10 +655,20 @@ function renderLoras() {
     row.append(tog, sel, x, sub);
     list.appendChild(row);
   });
+  renderLoraCompatibility();
 }
 function prettyLora(name) { return name.replace(/\.safetensors$/i, '').split(/[\\/]/).pop(); }
+function editEngineLabel(engine) {
+  if (engine === 'qwen') return 'Qwen Edit';
+  if (engine === 'klein9') return 'Flux Klein 9B';
+  return 'Flux Klein 4B';
+}
 $('#addLora').addEventListener('click', () => {
   curLoras().push({ name: '', strength: 1, on: true });
+  renderLoras();
+});
+$('#loraAllBtn').addEventListener('click', () => {
+  state.showAllLoras = !state.showAllLoras;
   renderLoras();
 });
 
@@ -1091,10 +1145,12 @@ $('#animQuality').addEventListener('click', () => $('#animQuality').classList.to
 
 state.vidEngine = 'ltx';
 state.animEngine = 'ltx';
-state.editEngine = 'klein';
+function markEngineRow(rowId, engine) {
+  $$(`#${rowId} .chip[data-engine]`).forEach((x) => x.classList.toggle('active', x.dataset.engine === engine));
+}
 function wireEngineRow(rowId, noteWork) {
-  $$(`#${rowId} .chip`).forEach((c) => c.addEventListener('click', () => {
-    $$(`#${rowId} .chip`).forEach((x) => x.classList.toggle('active', x === c));
+  $$(`#${rowId} .chip[data-engine]`).forEach((c) => c.addEventListener('click', () => {
+    $$(`#${rowId} .chip[data-engine]`).forEach((x) => x.classList.toggle('active', x === c));
     noteWork(c.dataset.engine);
   }));
 }
@@ -1126,6 +1182,8 @@ wireEngineRow('animEngineRow', (engine) => {
 wireEngineRow('editEngineRow', (engine) => {
   state.editEngine = engine;
   updateVideoPanels();
+  renderLoras();
+  saveForm();
 });
 $('#editComposite').addEventListener('click', () => $('#editComposite').classList.toggle('active'));
 
@@ -1783,7 +1841,7 @@ function openLightbox(id, mediaSel) {
     }
   } else {
     meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
-    if (it.mode === 'edit' && it.editEngine) meta.push(`<b>Editor:</b> ${it.editEngine === 'qwen' ? 'Qwen Edit (Krea 2)' : 'Flux 2 Klein'}`);
+    if (it.mode === 'edit' && it.editEngine) meta.push(`<b>Editor:</b> ${editEngineLabel(it.editEngine)}`);
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
     if (it.loras && it.loras.length) meta.push('<b>LoRAs:</b> ' + it.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
@@ -2084,8 +2142,14 @@ function reuseItem(it, useEnhanced) {
   state.customDims = true;
   state.width = it.width || 1024;
   state.height = it.height || 1024;
-  state.loras = (it.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) || 1, on: true }));
-  renderLoras();
+  const restoredLoras = (it.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) || 1, on: true }));
+  if (targetView === 'edit') {
+    state.editLoras = restoredLoras;
+    state.editEngine = it.editEngine === 'qwen' ? 'qwen' : (it.editEngine === 'klein9' ? 'klein9' : 'klein4');
+    markEngineRow('editEngineRow', state.editEngine);
+  } else {
+    state.loras = restoredLoras;
+  }
   $('#seedInput').value = it.seed !== undefined && it.seed !== null ? String(it.seed) : '';
   if (it.steps) $('#stepsInput').value = it.steps;
   if (it.cfg !== undefined && it.cfg !== null) $('#cfgInput').value = it.cfg;
@@ -2098,6 +2162,7 @@ function reuseItem(it, useEnhanced) {
   saveForm();
   closeLightbox();
   setView(it.mode === 'edit' ? 'edit' : 'create');
+  renderLoras();
   if (it.mode === 'edit' && it.refImages && it.refImages.length) {
     toast('Settings loaded — re-add the reference image(s)');
   } else if (useEnhanced) {
@@ -2403,8 +2468,10 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setUnet').value = s.unet;
     $('#setClip').value = s.clip;
     $('#setVae').value = s.vae;
-    $('#setKleinUnet').value = s.kleinUnet || '';
-    $('#setKleinClip').value = s.kleinClip || '';
+    $('#setKlein4Unet').value = s.klein4Unet || s.kleinUnet || '';
+    $('#setKlein4Clip').value = s.klein4Clip || s.kleinClip || '';
+    $('#setKlein9Unet').value = s.klein9Unet || '';
+    $('#setKlein9Clip').value = s.klein9Clip || '';
     $('#setKleinVae').value = s.kleinVae || '';
     $('#setQeUnet').value = s.qwenEditUnet || '';
     $('#setQeClip').value = s.qwenEditClip || '';
@@ -2449,8 +2516,12 @@ $('#settingsSave').addEventListener('click', async () => {
           unet: $('#setUnet').value,
         clip: $('#setClip').value,
         vae: $('#setVae').value,
-        kleinUnet: $('#setKleinUnet').value,
-        kleinClip: $('#setKleinClip').value,
+        kleinUnet: $('#setKlein4Unet').value,
+        kleinClip: $('#setKlein4Clip').value,
+        klein4Unet: $('#setKlein4Unet').value,
+        klein4Clip: $('#setKlein4Clip').value,
+        klein9Unet: $('#setKlein9Unet').value,
+        klein9Clip: $('#setKlein9Clip').value,
         kleinVae: $('#setKleinVae').value,
         qwenEditUnet: $('#setQeUnet').value,
         qwenEditClip: $('#setQeClip').value,
@@ -2493,6 +2564,7 @@ async function loadMeta(refresh) {
     lastMeta = await api('/api/meta' + (refresh ? '?refresh=1' : ''));
     state.connOk = lastMeta.ok;
     state.metaLoras = lastMeta.loras || [];
+    state.metaLorasInfo = lastMeta.lorasInfo || {};
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
     renderLoras();
   } catch {
@@ -2515,6 +2587,14 @@ function renderHealth() {
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`
       : `<span class="ok">●</span> ${labels[group]}: OK`);
   }
+  const fieldLabels = { unet: 'UNET', clip: 'text encoder', vae: 'VAE', lora: 'LoRA' };
+  for (const engine of Object.values(lastMeta.models || {})) {
+    const checks = Object.entries(engine).filter(([, v]) => v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'ok'));
+    const missing = checks.filter(([, v]) => !v.ok);
+    rows.push(missing.length
+      ? `<span class="bad">●</span> ${escapeHtml(engine.label)} models: missing ${missing.map(([k, v]) => `${fieldLabels[k] || k} ${escapeHtml(v.name || '')}`).join(', ')}`
+      : `<span class="ok">●</span> ${escapeHtml(engine.label)} models: OK`);
+  }
   el.innerHTML = rows.join('<br>');
 }
 
@@ -2532,6 +2612,7 @@ $$('.sheet').forEach((sheet) => {
 /* ------------------------------------------------------------------ */
 
 loadForm();
+markEngineRow('editEngineRow', state.editEngine);
 updatePromptClear();
 computeDims();
 renderEnhance();

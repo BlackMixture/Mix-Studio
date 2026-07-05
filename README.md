@@ -18,8 +18,8 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 - **Create** — Krea 2 Turbo text-to-image (12 steps, CFG 1, euler/beta, exactly like the Black Mixture workflow)
 - **✨ Prompt enhance** — toggle in the prompt box; Qwen3-VL rewrites your prompt (same system prompt + TextGenerate node as the workflow). The enhanced prompt is saved with each image.
 - **Resolution picker** — aspect-ratio chips + S/M/L size + custom width/height (replaces the ResolutionMaster node with a standard latent, so no extra custom node needed)
-- **LoRAs** — add/remove, on/off toggle, strength slider; the list comes live from your ComfyUI loras folder
-- **Edit mode** — Qwen Image Edit Plus with 0–3 reference images (photos straight from your phone), denoise slider
+- **LoRAs** — add/remove, on/off toggle, strength slider; the list comes live from your ComfyUI loras folder and filters by the active mode/model family
+- **Edit mode** — Flux Klein 4B/9B or Qwen Image Edit Plus with 0–3 reference images (photos straight from your phone), denoise slider
 - **Gallery** — organize into folders (long-press a folder chip to delete it), view metadata, reuse seeds, send any image back into Edit
 - **Private folders** - any gallery folder can be locked and hidden from the default gallery behind a basic password (`1234` by default)
 - **Upscale** — SeedVR2 (3B fp16, optional 2× lanczos pre-resize, target 1080/1440/2160)
@@ -28,6 +28,10 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 ## Requirements on the ComfyUI side
 
 - Krea 2 models: `krea2_turbo_fp8_scaled.safetensors` (unet), `Huihui-Qwen3-VL-4B-Instruct…` (clip), `qwen_image_vae.safetensors` (vae)
+- Flux Klein edit models:
+  - 4B: `flux-2-klein-4b.safetensors` + `qwen_3_4b.safetensors`
+  - 9B: `flux-2-klein-9b-fp8.safetensors` + `qwen_3_8b_fp8mixed.safetensors`
+  - shared VAE: `flux2-vae.safetensors`
 - Prompt enhance: the custom node pack providing `TextGenerate` (same one your workflow uses)
 - Upscaling: **ComfyUI-SeedVR2_VideoUpscaler** with `seedvr2_ema_3b_fp16.safetensors` + `ema_vae_fp16.safetensors`
 

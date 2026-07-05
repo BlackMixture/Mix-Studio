@@ -20,6 +20,7 @@ const {
   canMoveToFolder,
   parseCookies,
 } = require('./lib/private-gallery');
+const { classifyLora } = require('./lib/lora-compat');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
@@ -69,6 +70,10 @@ const DEFAULT_SETTINGS = {
   seedvr2Attention: 'sdpa',
   kleinUnet: 'flux-2-klein-4b.safetensors',
   kleinClip: 'qwen_3_4b.safetensors',
+  klein4Unet: 'flux-2-klein-4b.safetensors',
+  klein4Clip: 'qwen_3_4b.safetensors',
+  klein9Unet: 'flux-2-klein-9b-fp8.safetensors',
+  klein9Clip: 'qwen_3_8b_fp8mixed.safetensors',
   kleinVae: 'flux2-vae.safetensors',
   qwenEditUnet: 'qwen_image_edit_2511_bf16.safetensors',
   qwenEditClip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
@@ -106,8 +111,18 @@ function saveJsonSync(file, obj) {
   fs.renameSync(tmp, file);
 }
 
-let settings = Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {}));
-settings.galleryPassword = galleryPassword(settings);
+function normalizeSettings(s) {
+  if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
+  if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
+  if (!s.klein9Unet) s.klein9Unet = DEFAULT_SETTINGS.klein9Unet;
+  if (!s.klein9Clip) s.klein9Clip = DEFAULT_SETTINGS.klein9Clip;
+  if (!s.kleinUnet) s.kleinUnet = s.klein4Unet;
+  if (!s.kleinClip) s.kleinClip = s.klein4Clip;
+  s.galleryPassword = galleryPassword(s);
+  return s;
+}
+
+let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
 
 /* ------------------------------------------------------------------ */
 /* Gallery DB                                                          */
@@ -250,6 +265,122 @@ async function getObjectInfo(force) {
   objectInfoCache = await res.json();
   objectInfoAt = Date.now();
   return objectInfoCache;
+}
+
+function comboList(info, cls, field) {
+  const spec = info[cls]?.input?.required?.[field] || info[cls]?.input?.optional?.[field];
+  return Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] : [];
+}
+
+function modelStatus(info, cls, field, name, fallbackList) {
+  const list = fallbackList || comboList(info, cls, field);
+  return { name, ok: !name || list.includes(name) };
+}
+
+function configuredModelsStatus(info) {
+  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
+    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
+    : comboList(info, 'LoraLoader', 'lora_name');
+  return {
+    klein4: {
+      label: 'Flux Klein 4B',
+      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein4Unet),
+      clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.klein4Clip),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
+    },
+    klein9: {
+      label: 'Flux Klein 9B',
+      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein9Unet),
+      clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.klein9Clip),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
+    },
+    qwen: {
+      label: 'Qwen Edit',
+      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.qwenEditUnet),
+      clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.qwenEditClip),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.vae),
+      lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.qwenEditLora, loraList),
+    },
+  };
+}
+
+const LORA_INFO_TTL = 5 * 60 * 1000;
+let loraInfoCache = { key: '', at: 0, value: {} };
+
+function uniqueExistingDirs(dirs) {
+  const seen = new Set();
+  const out = [];
+  for (const dir of dirs.filter(Boolean)) {
+    const full = path.resolve(dir);
+    const key = full.toLowerCase();
+    if (seen.has(key) || !fs.existsSync(full)) continue;
+    seen.add(key);
+    out.push(full);
+  }
+  return out;
+}
+
+function candidateLoraRoots() {
+  return uniqueExistingDirs([
+    process.env.COMFYUI_LORA_DIR,
+    process.env.COMFYUI_MODELS_DIR ? path.join(process.env.COMFYUI_MODELS_DIR, 'loras') : '',
+    process.env.COMFYUI_PATH ? path.join(process.env.COMFYUI_PATH, 'models', 'loras') : '',
+    path.join(os.homedir(), 'Documents', 'ComfyUI', 'models', 'loras'),
+    path.join(os.homedir(), 'ComfyUI', 'models', 'loras'),
+  ]);
+}
+
+function resolveLoraPath(root, loraName) {
+  const rel = String(loraName || '').replace(/[\\/]+/g, path.sep);
+  const full = path.resolve(root, rel);
+  const back = path.relative(root, full);
+  if (!back || back.startsWith('..') || path.isAbsolute(back)) return null;
+  return full;
+}
+
+async function readSafetensorsInfo(file) {
+  const fh = await fsp.open(file, 'r');
+  try {
+    const lenBuf = Buffer.alloc(8);
+    const lenRead = await fh.read(lenBuf, 0, 8, 0);
+    if (lenRead.bytesRead !== 8) return null;
+    const headerLen = Number(lenBuf.readBigUInt64LE(0));
+    if (!Number.isSafeInteger(headerLen) || headerLen <= 0 || headerLen > 4 * 1024 * 1024) return null;
+    const headerBuf = Buffer.alloc(headerLen);
+    const headerRead = await fh.read(headerBuf, 0, headerLen, 8);
+    if (headerRead.bytesRead !== headerLen) return null;
+    const header = JSON.parse(headerBuf.toString('utf8'));
+    const metadata = header.__metadata__ || {};
+    const keys = Object.keys(header).filter((k) => k !== '__metadata__').slice(0, 80);
+    return { metadata, keys };
+  } finally {
+    await fh.close().catch(() => {});
+  }
+}
+
+async function loraMetadataMap(loras, force) {
+  const key = (loras || []).join('\n');
+  if (!force && loraInfoCache.key === key && Date.now() - loraInfoCache.at < LORA_INFO_TTL) {
+    return loraInfoCache.value;
+  }
+  const roots = candidateLoraRoots();
+  const value = {};
+  for (const name of loras || []) {
+    let info = { name, metadata: {}, keys: [] };
+    for (const root of roots) {
+      const file = resolveLoraPath(root, name);
+      if (!file || !fs.existsSync(file)) continue;
+      try {
+        info = Object.assign(info, await readSafetensorsInfo(file));
+      } catch {
+        // Header inspection is only for better filtering; filename fallback is fine.
+      }
+      break;
+    }
+    value[name] = { category: classifyLora(info) };
+  }
+  loraInfoCache = { key, at: Date.now(), value };
+  return value;
 }
 
 function isWidgetSpec(spec) {
@@ -556,7 +687,7 @@ async function completeJob(pid) {
       id,
       file: fname,
       mode: job.params.mode,
-      editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein') : undefined,
+      editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
       prompt: job.params.prompt,
@@ -860,10 +991,19 @@ async function buildEditQwen(p, refNames) {
 
 /* Edit (Klein): Flux 2 Klein 4B image editing (ReferenceLatent conditioning,
  * Flux2Scheduler 4 steps, cfg 1 — from the flux2_klein_editV2 workflow). */
+function kleinConfigForEngine(engine) {
+  if (engine === 'klein9') return { unet: settings.klein9Unet, clip: settings.klein9Clip };
+  return {
+    unet: settings.klein4Unet || settings.kleinUnet,
+    clip: settings.klein4Clip || settings.kleinClip,
+  };
+}
+
 async function buildEdit(p, refNames) {
   const graph = {};
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.kleinUnet, weight_dtype: 'default' } };
-  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.kleinClip, type: 'flux2', device: 'default' } };
+  const klein = kleinConfigForEngine(p.editEngine);
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: klein.unet, weight_dtype: 'default' } };
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: klein.clip, type: 'flux2', device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.kleinVae } };
 
   const kModel = chainModelLoras(graph, ['unet', 0], p.loras, 'klora');
@@ -1823,9 +1963,10 @@ async function handleApi(req, res, url) {
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
     }
-    settings.galleryPassword = galleryPassword(settings);
+    settings = normalizeSettings(settings);
     saveJsonSync(SETTINGS_FILE, settings);
     objectInfoCache = null;
+    loraInfoCache = { key: '', at: 0, value: {} };
     return json(res, 200, settings);
   }
 
@@ -1833,13 +1974,21 @@ async function handleApi(req, res, url) {
     try {
       const info = await getObjectInfo(url.searchParams.has('refresh'));
       const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];
+      const lorasInfo = await loraMetadataMap(loras, url.searchParams.has('refresh'));
       const missing = {};
       for (const [group, classes] of Object.entries(REQUIRED_CLASSES)) {
         missing[group] = classes.filter((c) => !info[c]);
       }
-      return json(res, 200, { ok: true, loras, missing, queue: jobs.size });
+      return json(res, 200, {
+        ok: true,
+        loras,
+        lorasInfo,
+        missing,
+        models: configuredModelsStatus(info),
+        queue: jobs.size,
+      });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), loras: [], missing: null, queue: jobs.size });
+      return json(res, 200, { ok: false, error: String(e.message || e), loras: [], lorasInfo: {}, missing: null, models: null, queue: jobs.size });
     }
   }
 
@@ -1902,7 +2051,7 @@ async function handleApi(req, res, url) {
 
     const refNames = Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [];
     if (p.mode === 'edit') {
-      p.editEngine = p.editEngine === 'qwen' ? 'qwen' : 'klein';
+      p.editEngine = p.editEngine === 'qwen' ? 'qwen' : (p.editEngine === 'klein9' ? 'klein9' : 'klein4');
       if (p.editEngine === 'qwen' && !refNames.length) {
         return json(res, 400, { error: 'Qwen Edit needs at least one reference image' });
       }

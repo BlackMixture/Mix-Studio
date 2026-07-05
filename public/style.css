@@ -462,6 +462,17 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   font-weight: 800; font-size: 13px;
 }
 .lora-empty { color: var(--muted-2); font-size: 12.5px; font-weight: 600; padding: 4px 2px; }
+.lora-warning {
+  margin: 8px 0 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 186, 73, 0.32);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 186, 73, 0.08);
+  color: #ffd28a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
 
 /* ---------------- advanced ---------------- */
 details.adv { border-radius: var(--radius-lg); }
