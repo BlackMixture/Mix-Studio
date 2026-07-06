@@ -74,6 +74,50 @@ async function api(path, opts) {
   return data;
 }
 
+let actionMenuEl = null;
+let actionMenuCleanup = null;
+function closeActionMenu() {
+  if (actionMenuCleanup) actionMenuCleanup();
+  actionMenuCleanup = null;
+  if (actionMenuEl) actionMenuEl.remove();
+  actionMenuEl = null;
+}
+
+function openActionMenu(anchor, items) {
+  closeActionMenu();
+  const menu = document.createElement('div');
+  menu.className = 'action-menu';
+  for (const item of items.filter(Boolean)) {
+    const b = document.createElement('button');
+    b.className = 'action-menu-item' + (item.danger ? ' danger' : '');
+    b.type = 'button';
+    b.textContent = item.label;
+    b.addEventListener('click', () => {
+      closeActionMenu();
+      item.action();
+    });
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, rect.left));
+  const top = Math.max(8, rect.top - menuRect.height - 8);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  actionMenuEl = menu;
+  const onDoc = (e) => {
+    if (!menu.contains(e.target) && e.target !== anchor) closeActionMenu();
+  };
+  const onKey = (e) => { if (e.key === 'Escape') closeActionMenu(); };
+  setTimeout(() => document.addEventListener('pointerdown', onDoc), 0);
+  document.addEventListener('keydown', onKey);
+  actionMenuCleanup = () => {
+    document.removeEventListener('pointerdown', onDoc);
+    document.removeEventListener('keydown', onKey);
+  };
+}
+
 function round32(n) { return Math.max(64, Math.round(n / 32) * 32); }
 
 function computeDims() {
@@ -162,6 +206,7 @@ function updateVideoPanels() {
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
+  $('#createPromptTools').hidden = state.view !== 'create';
   $('#denoiseField').hidden = true; // both edit engines run fixed 4-step pipelines
   $('#aspectRow').closest('.panel').hidden = (isVideo && !!state.vidRef) || state.view === 'edit';
   $('#seedInput').closest('.panel').hidden = isVideo;
@@ -464,9 +509,14 @@ wireAudioChip('anim', 'animAudio', 'animDur', 'animDurVal');
 state.vidSigma = 'dmd';
 state.animSigma = 'dmd';
 state.vidSmooth = 1;
+state.vidScailMode = 'chunked';
 $$('#vidFpsRow .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#vidFpsRow .chip').forEach((x) => x.classList.toggle('active', x === c));
   state.vidSmooth = Number(c.dataset.smooth) || 1;
+}));
+$$('#vidScailModeRow .chip').forEach((c) => c.addEventListener('click', () => {
+  $$('#vidScailModeRow .chip').forEach((x) => x.classList.toggle('active', x === c));
+  state.vidScailMode = c.dataset.scailMode === 'direct' ? 'direct' : 'chunked';
 }));
 function wireSigmaRow(rowId, key) {
   $$(`#${rowId} .chip`).forEach((c) => c.addEventListener('click', () => {
@@ -514,6 +564,31 @@ $('#promptClear').addEventListener('click', () => {
   updatePromptClear();
   $('#prompt').focus();
   saveForm();
+});
+
+$('#imagePromptBtn').addEventListener('click', () => {
+  const btn = $('#imagePromptBtn');
+  pickUpload('image/*', async (file) => {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> Reading image...';
+    try {
+      const res = await api('/api/imageprompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageName: file.name }),
+      });
+      state.prompts.create = res.prompt || '';
+      if (state.view !== 'create') setView('create');
+      $('#prompt').value = state.prompts.create;
+      updatePromptClear();
+      saveForm();
+      toast('Prompt created from image');
+    } catch (e) {
+      toast(e.message, true);
+    }
+    btn.disabled = false;
+    btn.textContent = 'Image to Prompt';
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1162,13 +1237,14 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = !(wan || scail);
+  $('#vidScailModeRow').hidden = !scail;
   $('#vidExtras').hidden = wan || scail;
   const dur = $('#vidDur');
-  dur.max = scail ? 10 : 15;
+  dur.max = scail ? 60 : 15;
   if (Number(dur.value) > Number(dur.max)) { dur.value = dur.max; $('#vidDurVal').textContent = dur.value; }
   renderVidDrive();
   $('#vidEngineNote').textContent = wan ? 'Wan 2.2 · 16 fps · needs image'
-    : scail ? 'SCAIL 2 · 16 fps · image + motion video'
+    : scail ? 'SCAIL 2 · 16 fps · motion audio'
       : (engine === 'eros' ? '10Eros DMD · 24 fps · audio · needs image' : 'LTX 2.3 · 25 fps · audio');
 });
 wireEngineRow('animEngineRow', (engine) => {
@@ -1214,6 +1290,7 @@ $('#generateBtn').addEventListener('click', async () => {
       motionFreedom: Number($('#vidFree').value),
       sigmaPreset: state.vidSigma,
       smooth: state.vidSmooth,
+      scailMode: state.vidEngine === 'scail' ? state.vidScailMode : undefined,
       sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.videoLoras,
       audioName: vidAudioName,
@@ -1835,7 +1912,7 @@ function openLightbox(id, mediaSel) {
     if (info.refinedMotionPrompt) meta.push(`<b>✨ Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
     if (info.frames && info.fps) {
       const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[info.engine] || 'LTX 2.3';
-      const flags = [info.composite && '⿻ side-by-side', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, info.drivenAudio && '🎵 audio-driven', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
+      const flags = [info.composite && '⿻ side-by-side', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, info.scailMode && `SCAIL ${info.scailMode}`, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Video:</b> ${eng} · ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     }
@@ -1845,7 +1922,19 @@ function openLightbox(id, mediaSel) {
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
     if (it.loras && it.loras.length) meta.push('<b>LoRAs:</b> ' + it.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
-    if (it.upscaleInfo) meta.push(`<b>SeedVR2:</b> ${it.upscaleInfo.resolution}p target, pre ${it.upscaleInfo.preScale}×`);
+    if (it.upscaleInfo) {
+      if (it.upscaleInfo.engine === 'ultimate') {
+        meta.push(`<b>Ultimate SD:</b> ${it.upscaleInfo.scaleFactor || 2}x prompt-guided upscale`);
+      } else {
+        const prof = it.upscaleInfo.profile === 'sharp' ? 'sharp' : 'balanced';
+        const noise = it.upscaleInfo.noise || 'low';
+        const pre = Number(it.upscaleInfo.preScale) === 1 ? 'off' : `${it.upscaleInfo.preScale}x`;
+        const mode = it.upscaleInfo.upscaleMode === 'scale' && it.upscaleInfo.scaleFactor
+          ? `${it.upscaleInfo.scaleFactor}x, ${it.upscaleInfo.resolution}p short edge`
+          : `${it.upscaleInfo.resolution}p target`;
+        meta.push(`<b>SeedVR2:</b> ${prof}, noise ${noise}, ${mode}, pre ${pre}`);
+      }
+    }
   }
   $('#lbMeta').innerHTML = meta.join('<br>');
 
@@ -1859,14 +1948,20 @@ function openLightbox(id, mediaSel) {
     actions.appendChild(b);
     return b;
   };
+  const mkMenu = (label, cls, items) => {
+    let b;
+    b = mk(label, cls, () => {
+      const list = typeof items === 'function' ? items() : items;
+      openActionMenu(b, list || []);
+    });
+    return b;
+  };
 
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
   } else {
     mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateSheet(it, selVideo));
   }
-  if (!selVideo) mk('🎞 Use in Video tab', '', () => sendToVideoTab(it));
-
   // Edits: hold to flash the original source image
   if (!selVideo && it.mode === 'edit' && it.sourceFile) {
     const hb = mk('👁 Hold: original', '', () => {});
@@ -1880,13 +1975,10 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
   }
-  if (!selVideo && it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
-    mk('↩ Original item', '', () => openLightbox(it.sourceItemId));
-  }
-
   if (selVideo) {
     const vinfo = selVideo.info || {};
-    if (!vinfo.composite) mk('♻ Reuse', '', () => reuseVideo(it, selVideo));
+    const videoUseItems = [];
+    if (!vinfo.composite) videoUseItems.push({ label: 'Reuse settings', action: () => reuseVideo(it, selVideo) });
     // Toggle between the result and the motion video that drove it
     if (vinfo.driveVideoName && !vinfo.composite) {
       let showingInput = false;
@@ -1919,9 +2011,15 @@ function openLightbox(id, mediaSel) {
         }
       });
     }
-    if (!vinfo.composite) mk('🎬→🎞 Use as motion video', '', () => sendVideoAsDrive(it, selVideo));
+    if (!vinfo.composite) videoUseItems.push({ label: 'Use as motion video', action: () => sendVideoAsDrive(it, selVideo) });
+    if (videoUseItems.length) mkMenu('Use', '', videoUseItems);
+    const processItems = [];
+    if (!vinfo.composite) {
+      processItems.push({ label: 'Upscale video', action: () => processVideo(it, selVideo, 'upscale') });
+      processItems.push({ label: 'Increase FPS', action: () => processVideo(it, selVideo, 'interpolate') });
+    }
     if (vinfo.engine === 'scail' && vinfo.driveVideoName && !vinfo.composite) {
-      mk('⿻ Side-by-side', '', async () => {
+      processItems.push({ label: 'Side-by-side', action: async () => {
         try {
           toast('Building side-by-side comparison…');
           const r = await api('/api/composite', {
@@ -1934,8 +2032,9 @@ function openLightbox(id, mediaSel) {
           queueRefreshSoon();
           closeLightbox();
         } catch (e) { toast(e.message, true); }
-      });
+      } });
     }
+    if (processItems.length) mkMenu('Process video', '', processItems);
     mk('↓ Save video', '', () => {
       const a = document.createElement('a');
       a.href = '/videos/' + selVideo.file;
@@ -1966,10 +2065,22 @@ function openLightbox(id, mediaSel) {
     } else {
       mk(it.upscaled ? '⇪ Re-upscale' : '⇪ Upscale', '', () => openUpscaleSheet(it));
     }
-    mk('✎ Use in Edit', '', () => useAsRef(it));
+    const imageUseItems = [
+      { label: 'Use in Video tab', action: () => sendToVideoTab(it) },
+      { label: 'Use in Edit', action: () => useAsRef(it) },
+      { label: 'Reuse settings', action: () => reuseItem(it) },
+    ];
+    if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
+      imageUseItems.push({ label: 'Open original item', action: () => openLightbox(it.sourceItemId) });
+    }
+    mkMenu('Use', '', imageUseItems);
     mk('▤ Move', '', () => openMoveSheet(it));
-    mk('↓ Save', '', () => downloadItem(it));
-    mk('♻ Reuse', '', () => reuseItem(it));
+    mkMenu('Save', '', it.upscaled
+      ? [
+        { label: 'Save upscaled', action: () => downloadItem(it, 'upscaled') },
+        { label: 'Save original', action: () => downloadItem(it, 'original') },
+      ]
+      : [{ label: 'Save image', action: () => downloadItem(it, 'current') }]);
     mk('🗑 Delete', 'danger', async () => {
       const n = videos.length;
       if (!window.confirm(n ? `Delete this image and its ${n} video${n > 1 ? 's' : ''}?` : 'Delete this image?')) return;
@@ -1980,6 +2091,7 @@ function openLightbox(id, mediaSel) {
   }
 }
 function closeLightbox(fromPop) {
+  closeActionMenu();
   $('#lightbox').classList.remove('show');
   const vid = $('#lbVideo');
   try { vid.pause(); } catch { /* noop */ }
@@ -1987,6 +2099,35 @@ function closeLightbox(fromPop) {
   unlockScroll();
   if (!fromPop && window.history.state && window.history.state.lb) {
     try { history.back(); } catch { /* noop */ }
+  }
+}
+
+async function processVideo(it, video, kind) {
+  if (!it || !video) return;
+  const route = kind === 'upscale' ? '/api/video/upscale' : '/api/video/interpolate';
+  const label = kind === 'upscale' ? 'Video upscale queued' : 'Frame interpolation queued';
+  try {
+    setGenerating(true, 'Queued…');
+    state.animating.add(it.id);
+    const res = await api(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: it.id,
+        videoId: video.id,
+        scale: kind === 'upscale' ? 2 : undefined,
+        multiplier: kind === 'interpolate' ? 2 : undefined,
+      }),
+    });
+    state.activeJobs.add(res.jobId);
+    $('#genLbl').textContent = genLabel();
+    queueRefreshSoon();
+    closeLightbox();
+    toast(label);
+  } catch (e) {
+    state.animating.delete(it.id);
+    setGenerating(false);
+    toast(e.message, true);
   }
 }
 
@@ -2200,6 +2341,8 @@ async function reuseVideo(it, v) {
   if (schip) schip.click();
   const fchip = $(`#vidFpsRow .chip[data-smooth="${info.smooth || 1}"]`);
   if (fchip) fchip.click();
+  const scailModeChip = $(`#vidScailModeRow .chip[data-scail-mode="${info.scailMode || 'chunked'}"]`);
+  if (scailModeChip) scailModeChip.click();
 
   // Prompt + toggles
   state.prompts.video = info.motionPrompt || '';
@@ -2326,10 +2469,12 @@ $('#reuseOriginal').addEventListener('click', () => {
   if (state.reuseTarget) reuseItem(state.reuseTarget, false);
 });
 
-function downloadItem(it) {
+function downloadItem(it, variant) {
   const a = document.createElement('a');
-  a.href = '/images/' + (it.upscaled || it.file);
-  a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '.png';
+  const useUpscaled = variant === 'upscaled' || (variant !== 'original' && it.upscaled);
+  const suffix = useUpscaled ? '_upscaled' : '_original';
+  a.href = '/images/' + (useUpscaled ? it.upscaled : it.file);
+  a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
   a.click();
 }
 function escapeHtml(s) {
@@ -2376,21 +2521,70 @@ $('#cmpClose').addEventListener('click', () => {
 
 function openUpscaleSheet(it) {
   state.upscaleTarget = it;
+  $('#upUltimatePrompt').value = '';
+  renderUpscaleMode();
   $('#upscaleSheet').classList.add('show');
 }
+function renderUpscaleMode() {
+  const engine = $('#upEngineChips .chip.active').dataset.engine || 'seedvr2';
+  const ultimate = engine === 'ultimate';
+  const mode = $('#upModeChips .chip.active').dataset.mode || 'resolution';
+  const scale = ultimate || mode === 'scale';
+  $('#upModeField').hidden = ultimate;
+  $('#upModeChips').hidden = ultimate;
+  $('#upTargetField').hidden = scale || ultimate;
+  $('#upResChips').hidden = scale || ultimate;
+  $('#upScaleField').hidden = !scale;
+  $('#upScaleChips').hidden = !scale;
+  $('#upProfileField').hidden = ultimate;
+  $('#upProfileChips').hidden = ultimate;
+  $('#upNoiseField').hidden = ultimate;
+  $('#upNoiseChips').hidden = ultimate;
+  $('#upPreField').hidden = ultimate;
+  $('#upPreChips').hidden = ultimate;
+  $('#upUltimatePromptField').hidden = !ultimate;
+}
+$$('#upEngineChips .chip').forEach((c) => c.addEventListener('click', () => {
+  $$('#upEngineChips .chip').forEach((x) => x.classList.remove('active'));
+  c.classList.add('active');
+  renderUpscaleMode();
+}));
+$$('#upModeChips .chip').forEach((c) => c.addEventListener('click', () => {
+  $$('#upModeChips .chip').forEach((x) => x.classList.remove('active'));
+  c.classList.add('active');
+  renderUpscaleMode();
+}));
 $$('#upResChips .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#upResChips .chip').forEach((x) => x.classList.remove('active'));
+  c.classList.add('active');
+}));
+$$('#upScaleChips .chip').forEach((c) => c.addEventListener('click', () => {
+  $$('#upScaleChips .chip').forEach((x) => x.classList.remove('active'));
   c.classList.add('active');
 }));
 $$('#upPreChips .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#upPreChips .chip').forEach((x) => x.classList.remove('active'));
   c.classList.add('active');
 }));
+$$('#upProfileChips .chip').forEach((c) => c.addEventListener('click', () => {
+  $$('#upProfileChips .chip').forEach((x) => x.classList.remove('active'));
+  c.classList.add('active');
+}));
+$$('#upNoiseChips .chip').forEach((c) => c.addEventListener('click', () => {
+  $$('#upNoiseChips .chip').forEach((x) => x.classList.remove('active'));
+  c.classList.add('active');
+}));
 $('#upscaleGo').addEventListener('click', async () => {
   const it = state.upscaleTarget;
   if (!it) return;
+  const engine = $('#upEngineChips .chip.active').dataset.engine || 'seedvr2';
+  const upscaleMode = $('#upModeChips .chip.active').dataset.mode || 'resolution';
   const resolution = Number($('#upResChips .chip.active').dataset.res);
+  const scaleFactor = Number($('#upScaleChips .chip.active').dataset.scale);
   const preScale = Number($('#upPreChips .chip.active').dataset.pre);
+  const profile = $('#upProfileChips .chip.active').dataset.profile || 'sharp';
+  const noise = $('#upNoiseChips .chip.active').dataset.noise || 'low';
+  const prompt = $('#upUltimatePrompt').value.trim();
   $('#upscaleSheet').classList.remove('show');
   try {
     state.upscaling.add(it.id);
@@ -2399,9 +2593,9 @@ $('#upscaleGo').addEventListener('click', async () => {
     await api('/api/upscale', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: it.id, resolution, preScale }),
+      body: JSON.stringify({ id: it.id, engine, upscaleMode, resolution, scaleFactor, preScale, profile, noise, prompt }),
     });
-    toast('Upscale queued — SeedVR2');
+    toast(engine === 'ultimate' ? 'Upscale queued - Ultimate SD' : 'Upscale queued - SeedVR2');
   } catch (e) {
     state.upscaling.delete(it.id);
     renderGrid();
@@ -2581,7 +2775,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', upscale: 'SeedVR2 nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     rows.push(missing.length
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`

@@ -21,6 +21,27 @@ const {
   parseCookies,
 } = require('./lib/private-gallery');
 const { classifyLora } = require('./lib/lora-compat');
+const {
+  DEFAULT_SEEDVR2_DIT,
+  normalizeSeedVr2Defaults,
+  installedSeedVr2Models,
+  seedVr2Profile,
+  seedVr2DitInputs,
+  targetResolutionForUpscale,
+  rtxVideoSuperResolutionNode,
+  ULTIMATE_SD_UPSCALE_MODEL,
+  buildUltimateSdUpscaleGraph,
+} = require('./lib/upscale-workflows');
+const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
+const {
+  scailMode,
+  scailDurationSeconds,
+  scailFramesForSeconds,
+  scailMaskArgs,
+  scailSegments,
+  scailSamTrackArgs,
+  videoProcessInfo,
+} = require('./lib/video-workflows');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
@@ -65,7 +86,7 @@ const DEFAULT_SETTINGS = {
   clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
   clipType: 'krea2',
   vae: 'qwen_image_vae.safetensors',
-  seedvr2Dit: 'seedvr2_ema_3b_fp16.safetensors',
+  seedvr2Dit: DEFAULT_SEEDVR2_DIT,
   seedvr2Vae: 'ema_vae_fp16.safetensors',
   seedvr2Attention: 'sdpa',
   kleinUnet: 'flux-2-klein-4b.safetensors',
@@ -112,6 +133,7 @@ function saveJsonSync(file, obj) {
 }
 
 function normalizeSettings(s) {
+  normalizeSeedVr2Defaults(s);
   if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
   if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
   if (!s.klein9Unet) s.klein9Unet = DEFAULT_SETTINGS.klein9Unet;
@@ -123,6 +145,23 @@ function normalizeSettings(s) {
 }
 
 let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
+
+function seedVr2ModelDirs() {
+  const roots = [
+    process.env.KREASTUDIO_SEEDVR2_DIR,
+    process.env.COMFYUI_SEEDVR2_DIR,
+  ];
+  const modelRoot = process.env.COMFYUI_MODEL_ROOT;
+  if (modelRoot) {
+    roots.push(path.join(modelRoot, 'SEEDVR2'), path.join(modelRoot, 'seedvr2'));
+  }
+  const home = os.homedir();
+  roots.push(
+    path.join(home, 'Documents', 'ComfyUI', 'models', 'SEEDVR2'),
+    path.join(home, 'Documents', 'ComfyUI', 'models', 'seedvr2')
+  );
+  return [...new Set(roots.filter(Boolean))];
+}
 
 /* ------------------------------------------------------------------ */
 /* Gallery DB                                                          */
@@ -517,6 +556,7 @@ function nodeLabel(pid, nodeId) {
     TextEncodeQwenImageEditPlus: 'Encoding prompt + images...', KSampler: 'Sampling...', VAEDecode: 'Decoding...',
     SaveImage: 'Saving...', SeedVR2LoadDiTModel: 'Loading SeedVR2...', SeedVR2LoadVAEModel: 'Loading SeedVR2 VAE...',
     SeedVR2VideoUpscaler: 'Upscaling...', ImageScaleBy: 'Pre-resizing...', LoadImage: 'Loading image...',
+    UpscaleModelLoader: 'Loading upscale model...', UltimateSDUpscale: 'Upscaling tiles...',
     CheckpointLoaderSimple: 'Loading LTX 2.3...', LTXAVTextEncoderLoader: 'Loading Gemma...',
     TextGenerateLTX2Prompt: 'Enhancing motion prompt...', SamplerCustomAdvanced: 'Generating video...',
     LTXVLatentUpsampler: 'Upsampling video...', VAEDecodeTiled: 'Decoding frames...',
@@ -638,9 +678,12 @@ async function completeJob(pid) {
     };
     item.videos = (Array.isArray(item.videos) ? item.videos : []).concat([entry]);
     saveDb();
+    const videoActionLabel = job.videoInfo.processed === 'upscale'
+      ? 'Video upscale'
+      : (job.videoInfo.processed === 'interpolate' ? 'Frame interpolation' : (job.videoInfo.composite ? 'Side-by-side' : 'Video'));
     pushHistory({
       kind: 'video', itemId: item.id, videoId: entry.id,
-      label: `${job.videoInfo.composite ? 'Side-by-side' : 'Video'} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
+      label: `${videoActionLabel} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
     });
     broadcast('videoDone', { jobId: pid, item });
     return;
@@ -798,6 +841,38 @@ function suggestMotionPrompt(comfyImageName, seed) {
       const timer = setTimeout(() => {
         jobs.delete(pid);
         reject(new Error('Motion prompt timed out (3 min)'));
+      }, 180000);
+      jobs.set(pid, {
+        kind: 'enhance',
+        graph,
+        resolve: (t) => { clearTimeout(timer); resolve(t); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      ensureWs();
+    })().catch(reject);
+  });
+}
+
+/** Vision pass: Qwen3-VL writes a detailed prompt to recreate the image. */
+function suggestImagePrompt(comfyImageName, seed) {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      const graph = {};
+      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.img = { class_type: 'LoadImage', inputs: { image: comfyImageName } };
+      graph.gen = {
+        class_type: 'TextGenerate',
+        inputs: Object.assign(
+          { clip: ['clip', 0], image: ['img', 0], prompt: IMAGE_RECREATION_INSTRUCTION + ENHANCE_TAIL },
+          textGenInputs(seed, 768)
+        ),
+      };
+      graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
+      await filterInputs(graph);
+      const pid = await queuePrompt(graph);
+      const timer = setTimeout(() => {
+        jobs.delete(pid);
+        reject(new Error('Image prompt timed out (3 min)'));
       }, 180000);
       jobs.set(pid, {
         kind: 'enhance',
@@ -1066,7 +1141,22 @@ async function buildEdit(p, refNames) {
 }
 
 async function buildUpscale(imageName, opts) {
+  if (opts.engine === 'ultimate') {
+    return filterInputs(buildUltimateSdUpscaleGraph({
+      imageName,
+      settings,
+      prompt: opts.prompt,
+      scaleFactor: opts.scaleFactor,
+      seed: opts.seed,
+    }));
+  }
+
   const graph = {};
+  const installedDitModels = installedSeedVr2Models(seedVr2ModelDirs());
+  const profile = seedVr2Profile(settings, opts.profile || 'sharp', installedDitModels, opts.noise || 'low');
+  opts.profile = profile.key;
+  opts.noise = profile.noise;
+  opts.profileModel = profile.ditModel;
   graph.load = { class_type: 'LoadImage', inputs: { image: imageName } };
   let imgRef = ['load', 0];
   if (opts.preScale && opts.preScale !== 1) {
@@ -1080,15 +1170,7 @@ async function buildUpscale(imageName, opts) {
   // (verified against /object_info via /api/debug/upscale).
   graph.dit = {
     class_type: 'SeedVR2LoadDiTModel',
-    inputs: {
-      model: settings.seedvr2Dit,
-      device: 'cuda:0',
-      blocks_to_swap: 0,
-      swap_io_components: true,
-      offload_device: 'cpu',
-      cache_model: false,
-      attention_mode: settings.seedvr2Attention,
-    },
+    inputs: seedVr2DitInputs(Object.assign({}, settings, { seedvr2Dit: profile.ditModel })),
   };
   graph.svvae = {
     class_type: 'SeedVR2LoadVAEModel',
@@ -1117,10 +1199,10 @@ async function buildUpscale(imageName, opts) {
       max_resolution: 0,
       batch_size: 1,
       uniform_batch_size: false,
-      color_correction: 'lab',
+      color_correction: profile.colorCorrection,
       temporal_overlap: 0,
       prepend_frames: 0,
-      input_noise_scale: 0.15,
+      input_noise_scale: profile.inputNoiseScale,
       latent_noise_scale: 0,
       offload_device: 'cpu',
       enable_debug: false,
@@ -1128,6 +1210,20 @@ async function buildUpscale(imageName, opts) {
   };
   graph.save = { class_type: 'SaveImage', inputs: { images: ['upscale', 0], filename_prefix: 'KreaStudio/upscale' } };
   return filterInputs(graph);
+}
+
+function ultimateSdUpscaleReadinessError(info) {
+  const missing = [
+    'LoadImage', 'UNETLoader', 'CLIPLoader', 'VAELoader', 'CLIPTextEncode',
+    'ConditioningZeroOut', 'UpscaleModelLoader', 'UltimateSDUpscale', 'SaveImage',
+  ].filter((cls) => !info[cls]);
+  if (missing.length) return `Ultimate SD Upscale is missing ComfyUI node(s): ${missing.join(', ')}`;
+
+  const models = comboList(info, 'UpscaleModelLoader', 'model_name');
+  if (models.length && !models.includes(ULTIMATE_SD_UPSCALE_MODEL)) {
+    return `Ultimate SD Upscale needs ${ULTIMATE_SD_UPSCALE_MODEL} in ComfyUI upscale_models.`;
+  }
+  return null;
 }
 
 /* --------------------------- LTX 2.3 Animate ---------------------- */
@@ -1328,11 +1424,7 @@ async function buildAnimate(imageName, opts) {
 
   let frameSource = ['decode', 0];
   if (opts.fourK) {
-    graph.vsr = await nodeFromOrdered(
-      'RTXVideoSuperResolution',
-      ['scale by multiplier', 2, 'ULTRA'],
-      { images: ['decode', 0] }
-    );
+    graph.vsr = rtxVideoSuperResolutionNode(['decode', 0]);
     frameSource = ['vsr', 0];
   }
   graph.video = {
@@ -1598,11 +1690,7 @@ async function buildAnimateEros(imageName, opts) {
 
   let frameSource = ['decode', 0];
   if (opts.fourK) {
-    graph.vsr = await nodeFromOrdered(
-      'RTXVideoSuperResolution',
-      ['scale by multiplier', 2, 'ULTRA'],
-      { images: ['decode', 0] }
-    );
+    graph.vsr = rtxVideoSuperResolutionNode(['decode', 0]);
     frameSource = ['vsr', 0];
   }
   if (opts.makePoster) {
@@ -1695,11 +1783,7 @@ async function buildAnimateWan(imageName, opts) {
   let frameSource = ['decode', 0];
   frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
   if (opts.fourK) {
-    graph.vsr = await nodeFromOrdered(
-      'RTXVideoSuperResolution',
-      ['scale by multiplier', 2, 'ULTRA'],
-      { images: frameSource }
-    );
+    graph.vsr = rtxVideoSuperResolutionNode(frameSource);
     frameSource = ['vsr', 0];
   }
   if (opts.makePoster) {
@@ -1737,6 +1821,31 @@ function scailDims(w, h) {
   return { W, H };
 }
 
+function imageBatchChain(graph, sources, prefix) {
+  if (!sources.length) return null;
+  let current = sources[0];
+  for (let i = 1; i < sources.length; i += 1) {
+    const key = `${prefix}${i}`;
+    graph[key] = { class_type: 'ImageBatch', inputs: { image1: current, image2: sources[i] } };
+    current = [key, 0];
+  }
+  return current;
+}
+
+async function scailAudioRef(graph, opts, fallbackDriveKey) {
+  if (opts.driveAudio === false || !opts.driveVideoName) return null;
+  const info = await getObjectInfo();
+  if (info.VHS_LoadAudioUpload) {
+    graph.drive_audio = await nodeFromOrdered('VHS_LoadAudioUpload', [], {}, {
+      audio: opts.driveVideoName,
+      start_time: opts.driveStartSeconds || 0,
+      duration: opts.seconds || 0,
+    });
+    return ['drive_audio', 0];
+  }
+  return fallbackDriveKey ? [fallbackDriveKey, 2] : null;
+}
+
 async function buildAnimateScail(imageName, opts) {
   const graph = {};
 
@@ -1757,66 +1866,107 @@ async function buildAnimateScail(imageName, opts) {
     inputs: { image: ['img', 0], upscale_method: 'lanczos', width: opts.W, height: opts.H, crop: 'disabled' },
   };
 
-  // Driving motion video (already uploaded to ComfyUI's input dir)
-  graph.drive = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
-    video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
-    frame_load_cap: opts.frames, skip_first_frames: opts.driveSkipFrames || 0,
-    select_every_nth: 1, format: 'None',
-  });
-
-  // SAM3 human tracking on driving video + reference
+  // SAM3 human tracking on the reference. Driving-video tracking is per segment.
   graph.sam = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.scailSam } };
   graph.sam_txt = { class_type: 'CLIPTextEncode', inputs: { clip: ['sam', 1], text: 'human' } };
-  graph.track_drive = await nodeFromOrdered('SAM3_VideoTrack', [0.5, 0, 1],
-    { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['drive', 0] });
-  graph.track_ref = await nodeFromOrdered('SAM3_VideoTrack', [0.5, 0, 1],
+  graph.track_ref = await nodeFromOrdered('SAM3_VideoTrack', scailSamTrackArgs(),
     { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['ref', 0] });
-  graph.masks = await nodeFromOrdered('SCAIL2ColoredMask', ['', 'area', false],
-    { driving_track_data: ['track_drive', 0], ref_track_data: ['track_ref', 0] });
 
   // CLIP-vision embedding of the reference
   graph.cv = { class_type: 'CLIPVisionLoader', inputs: { clip_name: settings.scailClipVision } };
   graph.cv_enc = { class_type: 'CLIPVisionEncode', inputs: { clip_vision: ['cv', 0], image: ['ref', 0], crop: 'none' } };
 
-  graph.scail = await nodeFromOrdered(
-    'WanSCAILToVideo',
-    [512, 896, 81, 1, 1, 0, 1, 0, 5, false],
-    {
+  const segments = opts.scailMode === 'chunked'
+    ? scailSegments(opts.frames)
+    : [{ index: 0, startFrame: 0, length: opts.frames, keepStart: 0, keepLength: opts.frames }];
+  const frameRanges = [];
+  let previousDecode = null;
+  let previousScail = null;
+  let firstDriveKey = null;
+  let posterSource = null;
+
+  for (const seg of segments) {
+    const suffix = segments.length === 1 ? '' : String(seg.index);
+    const driveKey = `drive${suffix}`;
+    const trackKey = `track_drive${suffix}`;
+    const masksKey = `masks${suffix}`;
+    const scailKey = `scail${suffix}`;
+    const ksKey = `ks${suffix}`;
+    const decodeKey = `decode${suffix}`;
+    if (!firstDriveKey) firstDriveKey = driveKey;
+
+    graph[driveKey] = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+      video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+      frame_load_cap: seg.length, skip_first_frames: (opts.driveSkipFrames || 0) + seg.startFrame,
+      select_every_nth: 1, format: 'None',
+    });
+    graph[trackKey] = await nodeFromOrdered('SAM3_VideoTrack', scailSamTrackArgs(),
+      { model: ['sam', 0], conditioning: ['sam_txt', 0], images: [driveKey, 0] });
+    graph[masksKey] = await nodeFromOrdered('SCAIL2ColoredMask', scailMaskArgs(),
+      { driving_track_data: [trackKey, 0], ref_track_data: ['track_ref', 0] });
+
+    const scailLinks = {
       positive: ['pos', 0], negative: ['neg', 0], vae: ['vae', 0],
-      pose_video: ['drive', 0], pose_video_mask: ['masks', 0],
-      reference_image: ['ref', 0], reference_image_mask: ['masks', 1],
+      pose_video: [driveKey, 0], pose_video_mask: [masksKey, 0],
+      reference_image: ['ref', 0], reference_image_mask: [masksKey, 1],
       clip_vision_output: ['cv_enc', 0],
-    },
-    { width: opts.W, height: opts.H, length: opts.frames }
-  );
+    };
+    if (previousDecode) scailLinks.previous_frames = previousDecode;
+    const scailOverrides = {
+      width: opts.W,
+      height: opts.H,
+      length: seg.length,
+      previous_frame_count: 5,
+    };
+    if (previousScail) scailOverrides.video_frame_offset = [previousScail, 3];
+    graph[scailKey] = await nodeFromOrdered(
+      'WanSCAILToVideo',
+      [512, 896, 81, 1, 1, 0, 1, 0, 5, false],
+      scailLinks,
+      scailOverrides
+    );
 
-  graph.ks = {
-    class_type: 'KSampler',
-    inputs: {
-      model: ['ms', 0], positive: ['scail', 0], negative: ['scail', 1], latent_image: ['scail', 2],
-      seed: opts.seed, steps: 6, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
-    },
-  };
-  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['ks', 0], vae: ['vae', 0] } };
+    graph[ksKey] = {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['ms', 0], positive: [scailKey, 0], negative: [scailKey, 1], latent_image: [scailKey, 2],
+        seed: opts.seed + seg.index, steps: 6, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+      },
+    };
+    graph[decodeKey] = { class_type: 'VAEDecode', inputs: { samples: [ksKey, 0], vae: ['vae', 0] } };
+    previousDecode = [decodeKey, 0];
+    previousScail = scailKey;
+    if (!posterSource) posterSource = previousDecode;
 
-  let frameSource = ['decode', 0];
+    let kept = previousDecode;
+    if (seg.keepStart || seg.keepLength !== seg.length) {
+      const rangeKey = `range${suffix}`;
+      graph[rangeKey] = {
+        class_type: 'GetImageRangeFromBatch',
+        inputs: { images: previousDecode, start_index: seg.keepStart, num_frames: seg.keepLength },
+      };
+      kept = [rangeKey, 0];
+    }
+    frameRanges.push(kept);
+  }
+
+  let frameSource = imageBatchChain(graph, frameRanges, 'join') || ['decode', 0];
   frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
   if (opts.fourK) {
-    graph.vsr = await nodeFromOrdered(
-      'RTXVideoSuperResolution',
-      ['scale by multiplier', 2, 'ULTRA'],
-      { images: frameSource }
-    );
+    graph.vsr = rtxVideoSuperResolutionNode(frameSource);
     frameSource = ['vsr', 0];
   }
   if (opts.makePoster) {
     const info = await getObjectInfo();
     if (info.ImageFromBatch) {
-      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['decode', 0], batch_index: 0, length: 1 } };
+      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: posterSource || frameSource, batch_index: 0, length: 1 } };
       graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
     }
   }
-  graph.video = { class_type: 'CreateVideo', inputs: { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) } };
+  const videoInputs = { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) };
+  const audioRef = await scailAudioRef(graph, opts, firstDriveKey);
+  if (audioRef) videoInputs.audio = audioRef;
+  graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
   graph.save = {
     class_type: 'SaveVideo',
     inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
@@ -1839,6 +1989,50 @@ async function rifeSmooth(graph, frameSource, smooth) {
     { frames: frameSource }
   );
   return ['rife', 0];
+}
+
+async function buildExistingVideoUpscale(videoName, opts) {
+  const graph = {};
+  graph.src = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+    video: videoName,
+    force_rate: opts.fps || 0,
+    custom_width: 0,
+    custom_height: 0,
+    frame_load_cap: opts.frames || 0,
+    skip_first_frames: 0,
+    select_every_nth: 1,
+    format: 'None',
+  });
+  graph.vsr = rtxVideoSuperResolutionNode(['src', 0], opts.scale || 2);
+  graph.video = { class_type: 'CreateVideo', inputs: { images: ['vsr', 0], audio: ['src', 2], fps: opts.fps || 16 } };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video_upscale', format: 'auto', codec: 'auto' },
+  };
+  return filterInputs(graph);
+}
+
+async function buildExistingVideoInterpolate(videoName, opts) {
+  const graph = {};
+  const smooth = [2, 3, 4].includes(Number(opts.smooth)) ? Number(opts.smooth) : 2;
+  const fps = opts.fps || 16;
+  graph.src = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+    video: videoName,
+    force_rate: fps,
+    custom_width: 0,
+    custom_height: 0,
+    frame_load_cap: opts.frames || 0,
+    skip_first_frames: 0,
+    select_every_nth: 1,
+    format: 'None',
+  });
+  const frameSource = await rifeSmooth(graph, ['src', 0], smooth);
+  graph.video = { class_type: 'CreateVideo', inputs: { images: frameSource, audio: ['src', 2], fps: fps * smooth } };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video_interp', format: 'auto', codec: 'auto' },
+  };
+  return filterInputs(graph);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1921,6 +2115,7 @@ const REQUIRED_CLASSES = {
     'CFGNorm', 'FluxKontextImageScale', 'TextEncodeQwenImageEditPlus', 'FluxKontextMultiReferenceLatentMethod',
     'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage'],
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
+  ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
   video: ['CheckpointLoaderSimple', 'LoraLoaderModelOnly', 'LTXAVTextEncoderLoader', 'TextGenerateLTX2Prompt',
     'LTXVConditioning', 'EmptyLTXVLatentVideo', 'LTXVImgToVideoInplace', 'LTXVAudioVAELoader',
     'LTXVEmptyLatentAudio', 'LTXVConcatAVLatent', 'LTXVSeparateAVLatent', 'RandomNoise', 'CFGGuider',
@@ -1939,7 +2134,7 @@ const REQUIRED_CLASSES = {
   scail: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'CLIPVisionLoader', 'CLIPVisionEncode', 'CheckpointLoaderSimple', 'CLIPTextEncode', 'ImageScale',
     'VHS_LoadVideo', 'SAM3_VideoTrack', 'SCAIL2ColoredMask', 'WanSCAILToVideo', 'KSampler',
-    'VAEDecode', 'CreateVideo', 'SaveVideo'],
+    'VAEDecode', 'GetImageRangeFromBatch', 'ImageBatch', 'VHS_LoadAudioUpload', 'CreateVideo', 'SaveVideo'],
 };
 
 async function handleApi(req, res, url) {
@@ -2071,11 +2266,45 @@ async function handleApi(req, res, url) {
     const item = db.items.find((it) => it.id === body.id);
     if (!item) return json(res, 404, { error: 'Image not found' });
     const buf = await fsp.readFile(path.join(IMAGES, item.file));
+    const real = pngDims(buf);
+    const width = (real && real.w) || item.width || 1024;
+    const height = (real && real.h) || item.height || 1024;
+    const engine = body.engine === 'ultimate' ? 'ultimate' : 'seedvr2';
+    const upscaleMode = body.upscaleMode === 'scale' ? 'scale' : 'resolution';
+    const scaleFactor = clampNum(body.scaleFactor, 1, 4, 2);
     const comfyName = await uploadToComfy(buf, `ks_upsrc_${item.id}.png`);
-    const opts = {
-      resolution: clampInt(body.resolution, 512, 8192, 2160),
-      preScale: clampNum(body.preScale, 1, 4, 2),
-    };
+    let opts;
+    if (engine === 'ultimate') {
+      const info = await getObjectInfo();
+      const readinessError = ultimateSdUpscaleReadinessError(info);
+      if (readinessError) return json(res, 400, { error: readinessError });
+      const promptOverride = String(body.prompt || '').trim();
+      const fallbackPrompt = item.refinedPrompt || item.prompt || '';
+      opts = {
+        engine,
+        upscaleMode: 'scale',
+        scaleFactor,
+        prompt: promptOverride || fallbackPrompt || 'a faithful, highly detailed upscale of the source image',
+        promptSource: promptOverride ? 'custom' : (item.refinedPrompt ? 'enhanced' : (item.prompt ? 'original' : 'fallback')),
+        seed: Math.floor(Math.random() * 2 ** 31),
+      };
+    } else {
+      opts = {
+        engine,
+        resolution: targetResolutionForUpscale({
+          mode: upscaleMode,
+          scaleFactor,
+          width,
+          height,
+          fallbackResolution: clampInt(body.resolution, 512, 8192, 2160),
+        }),
+        upscaleMode,
+        scaleFactor: upscaleMode === 'scale' ? scaleFactor : undefined,
+        preScale: clampNum(body.preScale, 1, 4, 1),
+        profile: body.profile === 'balanced' ? 'balanced' : 'sharp',
+        noise: ['off', 'low', 'medium'].includes(body.noise) ? body.noise : 'low',
+      };
+    }
     const graph = await buildUpscale(comfyName, opts);
     const pid = await queuePrompt(graph);
     jobs.set(pid, { kind: 'upscale', itemId: item.id, graph, upscaleInfo: opts });
@@ -2122,6 +2351,9 @@ async function handleApi(req, res, url) {
       return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
     }
     const driveVideoName = engine === 'scail' && body.driveVideoName ? String(body.driveVideoName) : null;
+    const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
+    const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
+    const selectedScailMode = scailMode(body.scailMode);
     if (engine === 'scail' && !driveVideoName) {
       return json(res, 400, { error: 'SCAIL 2 needs a driving motion video. Attach one with the 🎥 chip.' });
     }
@@ -2129,18 +2361,13 @@ async function handleApi(req, res, url) {
     // Duration: prefer seconds; fall back to legacy frames (25 fps)
     let seconds = Number(body.seconds);
     if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 377, 121) / 25;
-    seconds = Math.max(1, Math.min(15, seconds));
-
-    const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
-    const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
+    seconds = engine === 'scail'
+      ? scailDurationSeconds(seconds, driveDur)
+      : Math.max(1, Math.min(15, seconds));
     let frames; let fps; let W; let H;
     if (engine === 'scail') {
       fps = 16;
-      seconds = Math.min(seconds, 10); // pose-video conditioning gets heavy past this
-      if (driveDur > 0) seconds = Math.min(seconds, driveDur); // trimmed clip length
-      seconds = Math.max(1, seconds);
-      frames = Math.floor(seconds * 16) + 1; // Wan needs 4n+1
-      frames = Math.round((frames - 1) / 4) * 4 + 1;
+      frames = scailFramesForSeconds(seconds);
       ({ W, H } = scailDims(srcW, srcH));
     } else if (engine === 'wan') {
       fps = 16;
@@ -2194,6 +2421,10 @@ async function handleApi(req, res, url) {
       sigmaUp: sig.up,
       driveVideoName,
       driveSkipFrames: Math.max(0, Math.round(driveStart * 16)),
+      driveStartSeconds: driveStart,
+      seconds,
+      scailMode: selectedScailMode,
+      driveAudio: engine === 'scail',
       smooth,
       loras: Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : [],
     };
@@ -2214,9 +2445,10 @@ async function handleApi(req, res, url) {
         motionFreedom: isLtxLike ? opts.imgCompression : undefined,
         fast: engine === 'wan' ? opts.fast : undefined,
         sigmaPreset: engine === 'eros' ? sigmaPreset : undefined,
-        drivenAudio: !!audioName,
+        drivenAudio: engine === 'scail' ? true : !!audioName,
         endFrame: !!endImageName,
         motionVideo: !!driveVideoName,
+        scailMode: engine === 'scail' ? selectedScailMode : undefined,
         // Asset names (ComfyUI input dir) so "Reuse" can restore them
         imageName: bypass ? undefined : comfyName,
         srcWidth: bypass ? undefined : srcW,
@@ -2232,6 +2464,48 @@ async function handleApi(req, res, url) {
     });
     ensureWs();
     return json(res, 200, { jobId: pid, frames, engine });
+  }
+
+  if ((route === '/api/video/upscale' || route === '/api/video/interpolate') && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const item = db.items.find((it) => it.id === body.id);
+    if (!item) return json(res, 404, { error: 'Item not found' });
+    const entry = (item.videos || []).find((v) => v.id === body.videoId);
+    if (!entry) return json(res, 404, { error: 'Video not found' });
+
+    const buf = await fsp.readFile(path.join(VIDEOS, entry.file));
+    const info = entry.info || {};
+    const dims = mp4Dims(buf) || {};
+    const baseInfo = Object.assign({}, info, {
+      motionPrompt: info.motionPrompt || item.prompt || 'Processed video',
+      fps: info.fps || 16,
+      frames: info.frames || 0,
+      width: info.width || dims.w || item.width || undefined,
+      height: info.height || dims.h || item.height || undefined,
+    });
+    const comfyName = await uploadToComfy(buf, route === '/api/video/upscale'
+      ? `ks_vup_${entry.id}.mp4`
+      : `ks_vfi_${entry.id}.mp4`);
+
+    const fps = clampNum(baseInfo.fps, 1, 120, 16);
+    const frames = clampInt(baseInfo.frames, 0, 1000000, 0);
+    let graph;
+    let videoInfo;
+    if (route === '/api/video/upscale') {
+      const scale = clampNum(body.scale, 1, 4, 2);
+      graph = await buildExistingVideoUpscale(comfyName, { fps, frames, scale });
+      videoInfo = videoProcessInfo(baseInfo, { kind: 'upscale', scale, parentVideoId: entry.id });
+    } else {
+      const multiplier = [2, 3, 4].includes(Number(body.multiplier)) ? Number(body.multiplier) : 2;
+      graph = await buildExistingVideoInterpolate(comfyName, { fps, frames, smooth: multiplier });
+      videoInfo = videoProcessInfo(baseInfo, { kind: 'interpolate', multiplier, parentVideoId: entry.id });
+    }
+    videoInfo.preservedAudio = true;
+
+    const pid = await queuePrompt(graph);
+    jobs.set(pid, { kind: 'video', itemId: item.id, graph, videoInfo });
+    ensureWs();
+    return json(res, 200, { jobId: pid });
   }
 
   // Side-by-side comparison: original motion video (left) + SCAIL result
@@ -2317,6 +2591,24 @@ async function handleApi(req, res, url) {
     return json(res, 200, { prompt });
   }
 
+  if (route === '/api/imageprompt' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    let comfyName = '';
+    if (body.id) {
+      const item = db.items.find((it) => it.id === body.id);
+      if (!item) return json(res, 404, { error: 'Image not found' });
+      const buf = await fsp.readFile(path.join(IMAGES, item.file));
+      comfyName = await uploadToComfy(buf, `ks_prompt_${item.id}.png`);
+    } else if (body.imageName) {
+      comfyName = String(body.imageName);
+    }
+    if (!comfyName) return json(res, 400, { error: 'Upload an image first' });
+    const raw = await suggestImagePrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+    const prompt = cleanEnhancedText(raw, '');
+    if (!prompt) return json(res, 500, { error: 'Vision model returned no usable prompt' });
+    return json(res, 200, { prompt });
+  }
+
   if (route === '/api/debug/models') {
     const info = await getObjectInfo();
     const q = (url.searchParams.get('q') || '').toLowerCase();
@@ -2341,10 +2633,10 @@ async function handleApi(req, res, url) {
   if (route === '/api/debug/upscale') {
     const info = await getObjectInfo(true);
     const defs = {};
-    for (const c of ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler']) {
+    for (const c of ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler', 'UltimateSDUpscale', 'UpscaleModelLoader']) {
       defs[c] = info[c] ? info[c].input : 'MISSING';
     }
-    const graph = await buildUpscale('debug.png', { resolution: 2160, preScale: 2 });
+    const graph = await buildUpscale('debug.png', { resolution: 2160, preScale: 1, profile: 'sharp', noise: 'low' });
     return json(res, 200, { nodeDefinitions: defs, graphTheAppWouldSend: graph });
   }
 
@@ -2541,7 +2833,9 @@ async function handleApi(req, res, url) {
 function jobLabel(job) {
   if (!job) return 'Other ComfyUI job';
   if (job.kind === 'gen') return (job.params.mode === 'edit' ? 'Edit: ' : 'Create: ') + (job.params.prompt || '').slice(0, 70);
-  if (job.kind === 'upscale') return 'Upscale (SeedVR2)';
+  if (job.kind === 'upscale') return job.upscaleInfo && job.upscaleInfo.engine === 'ultimate' ? 'Upscale (Ultimate SD)' : 'Upscale (SeedVR2)';
+  if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'upscale') return 'Video upscale (RTX)';
+  if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);
   if (job.kind === 'enhance') return 'Prompt enhance';
   return job.kind;

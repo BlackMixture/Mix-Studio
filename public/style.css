@@ -778,6 +778,31 @@ details.adv[open] summary::after { transform: rotate(180deg); }
   border-color: transparent;
 }
 .action-btn.danger { color: #ff9f97; border-color: rgba(234,67,53,0.4); }
+.action-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(13,15,22,0.98);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+}
+.action-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 11px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+}
+.action-menu-item:active,
+.action-menu-item:hover { background: rgba(255,255,255,0.08); }
+.action-menu-item.danger { color: #ff9f97; }
+.prompt-tools { margin-top: 8px; margin-bottom: 0; }
 
 /* ---------------- compare ---------------- */
 .compare-stage {

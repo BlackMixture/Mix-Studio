@@ -68,6 +68,9 @@
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Zm4 2v8h1.5v-8H10Zm3.5 0v8H15v-8h-1.5Z"/></svg>
       </button>
     </div>
+    <div class="chip-row prompt-tools" id="createPromptTools">
+      <button class="chip" id="imagePromptBtn">Image to Prompt</button>
+    </div>
     <div class="attach-zone" id="vidAttachRow" hidden>
       <button class="attach-btn" id="vidAttachBtn">
         <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M5 5h14v14H5V5Zm2 2v10h10V7H7Zm2 7.4 2.2-2.7 1.6 1.9 1.2-1.4 2 2.2H9Zm1.7-4.4a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6Z"/></svg>
@@ -166,6 +169,10 @@
       <button class="chip active" data-smooth="1">16 fps</button>
       <button class="chip" data-smooth="2">32 fps · RIFE</button>
       <button class="chip" data-smooth="3">48 fps · RIFE</button>
+    </div>
+    <div class="chip-row" id="vidScailModeRow" hidden>
+      <button class="chip active" data-scail-mode="chunked">Chunked</button>
+      <button class="chip" data-scail-mode="direct">Direct</button>
     </div>
     <div class="field">
       <label>Duration — <span id="vidDurVal">5</span>s</label>
@@ -318,17 +325,49 @@
 <!-- upscale sheet -->
 <div class="sheet" id="upscaleSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Upscale with SeedVR2 <button data-close>✕</button></h3>
-    <div class="field"><label>Target resolution (short side)</label></div>
+    <h3 class="sheet-title">Upscale image <button data-close>✕</button></h3>
+    <div class="field"><label>Engine</label></div>
+    <div class="chip-row" id="upEngineChips">
+      <button class="chip active" data-engine="seedvr2">SeedVR2</button>
+      <button class="chip" data-engine="ultimate">Ultimate SD</button>
+    </div>
+    <div class="field" id="upModeField"><label>Mode</label></div>
+    <div class="chip-row" id="upModeChips">
+      <button class="chip active" data-mode="resolution">Target</button>
+      <button class="chip" data-mode="scale">Multiplier</button>
+    </div>
+    <div class="field" id="upTargetField"><label>Target resolution (short side)</label></div>
     <div class="chip-row" id="upResChips">
       <button class="chip" data-res="1080">1080</button>
       <button class="chip" data-res="1440">1440</button>
       <button class="chip active" data-res="2160">2160</button>
     </div>
-    <div class="field"><label>Pre-resize (lanczos, before SeedVR2)</label></div>
+    <div class="field" id="upScaleField" hidden><label>Upscale multiplier</label></div>
+    <div class="chip-row" id="upScaleChips" hidden>
+      <button class="chip" data-scale="1.5">1.5×</button>
+      <button class="chip active" data-scale="2">2×</button>
+      <button class="chip" data-scale="3">3×</button>
+      <button class="chip" data-scale="4">4×</button>
+    </div>
+    <div class="field" id="upProfileField"><label>Detail profile</label></div>
+    <div class="chip-row" id="upProfileChips">
+      <button class="chip active" data-profile="sharp">Sharp</button>
+      <button class="chip" data-profile="balanced">Balanced</button>
+    </div>
+    <div class="field" id="upNoiseField"><label>Detail noise</label></div>
+    <div class="chip-row" id="upNoiseChips">
+      <button class="chip" data-noise="off">Off</button>
+      <button class="chip active" data-noise="low">Low</button>
+      <button class="chip" data-noise="medium">Medium</button>
+    </div>
+    <div class="field" id="upPreField"><label>Pre-resize (lanczos, before SeedVR2)</label></div>
     <div class="chip-row" id="upPreChips">
-      <button class="chip" data-pre="1">Off</button>
-      <button class="chip active" data-pre="2">2×</button>
+      <button class="chip active" data-pre="1">Off</button>
+      <button class="chip" data-pre="2">2×</button>
+    </div>
+    <div class="field" id="upUltimatePromptField" hidden>
+      <label>Prompt (optional)</label>
+      <textarea id="upUltimatePrompt" rows="3" class="sheet-textarea" placeholder="Leave blank to use this image's prompt"></textarea>
     </div>
     <button class="sheet-cta" id="upscaleGo">Upscale</button>
   </div>
@@ -382,9 +421,9 @@
     </div>
 
     <div class="info-block">
-      <h4>SCAIL 2 <span>16 fps · silent · image + motion video</span></h4>
+      <h4>SCAIL 2 <span>16 fps · motion-video audio · image + motion video</span></h4>
       <p>The motion transfer engine. Attach a source image <b>and</b> a motion video — SAM3 tracks the person in both, and SCAIL-2 (a Wan 2.1 finetune) re-animates your image with the clip's exact movement. Great for dance, action and performance transfer. Runs 6 steps with the lightx2v distill LoRA. Works best when both show a single, clearly visible person. Wan-family models generate at 16 fps — pick <b>32/48 fps · RIFE</b> to interpolate extra frames for smoother playback.</p>
-      <p class="info-opts">Supports: motion video · RIFE frame rates · LoRAs · RTX 4K · up to 10s</p>
+      <p class="info-opts">Supports: motion video audio · Direct/Chunked length modes · RIFE frame rates · LoRAs · RTX 4K · up to 60s</p>
     </div>
   </div>
 </div>
