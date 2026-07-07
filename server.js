@@ -12,7 +12,8 @@ const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const { updateFromGit } = require('./lib/app-update');
 const {
   DEFAULT_PRIVATE_PASSWORD,
   galleryPassword,
@@ -2777,6 +2778,39 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (route === '/api/update' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update KreaStudio' });
+    if (jobs.size) return json(res, 409, { error: 'Wait for the KreaStudio queue to finish before updating' });
+
+    // ComfyUI can contain jobs submitted outside this server. Restarting while
+    // one is active would lose KreaStudio's completion tracking, so check both.
+    try {
+      const queue = await (await comfyFetch('/queue')).json();
+      if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
+        return json(res, 409, { error: 'Wait for the ComfyUI queue to finish before updating' });
+      }
+    } catch {
+      // An offline ComfyUI instance has no active inference to protect.
+    }
+
+    try {
+      const update = await updateFromGit(ROOT);
+      json(res, 200, {
+        ok: true,
+        updated: update.updated,
+        restarting: update.updated && update.restartRequired,
+        branch: update.branch,
+        version: update.after.slice(0, 7),
+        changedFiles: update.changedFiles,
+      });
+      if (update.updated && update.restartRequired) scheduleServerRestart();
+      return;
+    } catch (e) {
+      const status = ['update_dirty', 'update_branch'].includes(e.code) ? 409 : 500;
+      return json(res, status, { error: String(e.message || e), code: e.code || 'update_failed' });
+    }
+  }
+
   if (route === '/api/settings' && req.method === 'GET') return json(res, 200, settings);
   if (route === '/api/settings' && req.method === 'POST') {
     const body = await readJsonBody(req);
@@ -3690,6 +3724,35 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) json(res, 500, { error: String(e.message || e) });
   }
 });
+
+let restartScheduled = false;
+function launchDetachedReplacement() {
+  const helper = [
+    "const { spawn } = require('child_process');",
+    'const [exe, script, cwd] = process.argv.slice(1);',
+    "setTimeout(() => { const child = spawn(exe, [script], { cwd, detached: true, stdio: 'ignore', windowsHide: true }); child.unref(); }, 1200);",
+  ].join(' ');
+  const child = spawn(process.execPath, ['-e', helper, process.execPath, __filename, ROOT], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+}
+
+function scheduleServerRestart() {
+  if (restartScheduled) return;
+  restartScheduled = true;
+  broadcast('appRestarting', {});
+  setTimeout(() => {
+    if (process.env.KREASTUDIO_RESTART_MODE !== 'batch') launchDetachedReplacement();
+    for (const client of sseClients) {
+      try { client.end(); } catch { /* noop */ }
+    }
+    server.close(() => process.exit(75));
+    setTimeout(() => process.exit(75), 1000).unref();
+  }, 500).unref();
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');

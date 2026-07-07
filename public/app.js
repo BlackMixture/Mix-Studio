@@ -332,7 +332,10 @@ async function checkAuth() {
       state.profileIsOwner = !!(all.profiles && all.profiles[0] && all.profiles[0].id === me.profile.id);
     } catch { state.profileIsOwner = false; }
     renderProfileChip();
-  } catch { /* 401 -> api() already opened the gate */ }
+    renderAppUpdateAccess();
+  } catch {
+    renderAppUpdateAccess(); // 401 -> api() already opened the gate
+  }
 }
 checkAuth();
 
@@ -382,7 +385,7 @@ function openActionMenu(anchor, items) {
 
 let sheetScrollY = 0;
 function syncSheetScrollLock() {
-  const anySheetOpen = $$('.sheet').some((sheet) => sheet.classList.contains('show'));
+  const anySheetOpen = $$('.sheet').some((sheet) => sheet.classList.contains('show')) || $('#appDrawer').classList.contains('show');
   const locked = document.body.classList.contains('sheet-open');
   if (anySheetOpen && !locked) {
     sheetScrollY = window.scrollY || document.documentElement.scrollTop || 0;
@@ -394,6 +397,112 @@ function syncSheetScrollLock() {
     window.scrollTo(0, sheetScrollY);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* App drawer + desktop updates                                       */
+/* ------------------------------------------------------------------ */
+
+let appUpdateRunning = false;
+
+function openAppDrawer() {
+  closeActionMenu();
+  $('#appDrawer').classList.add('show');
+  $('#appDrawer').setAttribute('aria-hidden', 'false');
+  $('#appMenuBtn').setAttribute('aria-expanded', 'true');
+  syncSheetScrollLock();
+  setTimeout(() => $('#appDrawerClose').focus(), 80);
+}
+
+function closeAppDrawer() {
+  $('#appDrawer').classList.remove('show');
+  $('#appDrawer').setAttribute('aria-hidden', 'true');
+  $('#appMenuBtn').setAttribute('aria-expanded', 'false');
+  syncSheetScrollLock();
+  $('#appMenuBtn').focus();
+}
+
+function setAppUpdateStatus(message, tone) {
+  const status = $('#appUpdateStatus');
+  status.textContent = message;
+  status.classList.toggle('good', tone === 'good');
+  status.classList.toggle('bad', tone === 'bad');
+}
+
+function renderAppUpdateAccess() {
+  const button = $('#appUpdateBtn');
+  if (appUpdateRunning) return;
+  const label = button.querySelector('span');
+  if (!state.profile) {
+    button.disabled = true;
+    label.textContent = 'Sign in to update';
+    return;
+  }
+  if (!state.profileIsOwner) {
+    button.disabled = true;
+    label.textContent = 'Owner access required';
+    setAppUpdateStatus('Switch to the owner profile to install updates.', 'bad');
+    return;
+  }
+  button.disabled = false;
+  label.textContent = 'Update KreaStudio';
+}
+
+async function waitForAppRestart() {
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    try {
+      const response = await fetch(`/api/meta?update-restart=${Date.now()}`, { cache: 'no-store' });
+      if (response.ok) {
+        location.reload();
+        return;
+      }
+    } catch { /* server is between processes */ }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error('The update installed, but the app did not come back online. Start KreaStudio on the desktop.');
+}
+
+$('#appMenuBtn').addEventListener('click', openAppDrawer);
+$('#appDrawerClose').addEventListener('click', closeAppDrawer);
+$('#appDrawerBackdrop').addEventListener('click', closeAppDrawer);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && $('#appDrawer').classList.contains('show')) closeAppDrawer();
+});
+
+$('#appUpdateBtn').addEventListener('click', async () => {
+  if (appUpdateRunning) return;
+  const button = $('#appUpdateBtn');
+  const label = button.querySelector('span');
+  appUpdateRunning = true;
+  button.disabled = true;
+  button.classList.add('busy');
+  label.textContent = 'Checking for updates…';
+  setAppUpdateStatus('Connecting to GitHub and checking the current branch…');
+  try {
+    const result = await api('/api/update', { method: 'POST' });
+    button.classList.remove('busy');
+    if (!result.updated) {
+      setAppUpdateStatus(`KreaStudio is up to date · ${result.version}`, 'good');
+      appUpdateRunning = false;
+      renderAppUpdateAccess();
+      return;
+    }
+    if (result.restarting) {
+      label.textContent = 'Restarting KreaStudio…';
+      setAppUpdateStatus(`Updated to ${result.version}. Waiting for the desktop app to restart…`, 'good');
+      await waitForAppRestart();
+      return;
+    }
+    label.textContent = 'Update installed';
+    setAppUpdateStatus(`Updated to ${result.version}. Reloading the app…`, 'good');
+    setTimeout(() => location.reload(), 800);
+  } catch (error) {
+    button.classList.remove('busy');
+    setAppUpdateStatus(error.message, 'bad');
+    appUpdateRunning = false;
+    renderAppUpdateAccess();
+  }
+});
 
 function round32(n) { return Math.max(64, Math.round(n / 32) * 32); }
 

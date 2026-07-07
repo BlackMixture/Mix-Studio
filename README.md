@@ -37,6 +37,8 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 
 **Upscale** — SeedVR2 (selectable attention backend) and Ultimate SD Upscale, with a before/after compare slider.
 
+**Remote updates** — the owner can open the K menu from a phone and pull the desktop app's current Git branch. Updates wait for an idle queue, require a clean checkout, and restart the Node server only when server-side files changed.
+
 ## ComfyUI requirements
 
 All model filenames and the ComfyUI URL are editable in **Settings (gear) → Save & test connection**, which health-checks every node group. Highlights: Krea 2 (unet/clip/vae), Flux Klein 4B/9B, Qwen Image Edit 2511, LTX 2.3 (+ spatial upscaler, Gemma encoder), Wan 2.2, 10Eros, SCAIL-2 (+ SAM3 multiplex, clip_vision_h), Best-FaceID LoRA + [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes), SeedVR2, KJNodes, VideoHelperSuite, ComfyUI-Frame-Interpolation (RIFE), Krea2-Regional-MultiLoRA.

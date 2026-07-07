@@ -63,11 +63,18 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .brand { display: inline-flex; align-items: center; gap: 10px; }
 .brand-mark {
   width: 34px; height: 34px; display: grid; place-items: center;
+  flex: 0 0 auto; padding: 0; color: var(--ink);
   border-radius: 11px;
   background: linear-gradient(#0b0d12, #0b0d12) padding-box, var(--gemini) border-box;
   border: 2px solid transparent;
   box-shadow: 0 0 22px rgba(66,87,255,0.18);
   font-weight: 900; font-size: 15px;
+}
+.brand button.brand-mark { transition: transform 160ms var(--ease), box-shadow 160ms var(--ease); }
+.brand button.brand-mark:active { transform: scale(0.93); }
+.brand button.brand-mark:focus-visible {
+  outline: 2px solid rgba(116,147,255,0.9);
+  outline-offset: 3px;
 }
 .brand-name { font-weight: 900; font-size: 17px; letter-spacing: -0.01em; }
 .brand-name span { color: var(--muted); font-weight: 700; }
@@ -92,6 +99,120 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   display: grid; place-items: center;
 }
 .queue-count[hidden] { display: none; }
+
+/* ---------------- app drawer ---------------- */
+.app-drawer-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  visibility: hidden;
+  pointer-events: none;
+  transition: visibility 260ms step-end;
+}
+.app-drawer-shell.show {
+  visibility: visible;
+  pointer-events: auto;
+  transition: visibility 0s step-start;
+}
+.app-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: rgba(0,0,0,0.7);
+  opacity: 0;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  transition: opacity 220ms var(--ease);
+}
+.app-drawer-shell.show .app-drawer-backdrop { opacity: 1; }
+.app-drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(88vw, 370px);
+  min-height: 100%;
+  padding: calc(18px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(90% 34% at 0 0, rgba(66,87,255,0.13), transparent 75%),
+    rgba(9,11,16,0.985);
+  border-right: 1px solid var(--line);
+  box-shadow: 22px 0 70px rgba(0,0,0,0.58);
+  transform: translateX(-104%);
+  transition: transform 260ms var(--ease);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.app-drawer-shell.show .app-drawer { transform: translateX(0); }
+.app-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(226,232,255,0.08);
+}
+.app-drawer-identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.app-drawer-identity h2 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.app-drawer-identity p { margin: 2px 0 0; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
+.app-drawer-close { flex: 0 0 auto; }
+.app-update-card {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(18,21,29,0.76);
+}
+.app-update-heading { display: flex; align-items: flex-start; gap: 12px; }
+.app-update-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #b9c8ff;
+  background: rgba(66,87,255,0.14);
+  border: 1px solid rgba(112,134,255,0.22);
+}
+.app-update-heading h3 { margin: 1px 0 3px; font-size: 15px; }
+.app-update-heading p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.app-update-btn {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 17px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(#151926, #151926) padding-box, var(--gemini) border-box;
+  font-size: 14px;
+  font-weight: 900;
+  transition: transform 160ms var(--ease), opacity 160ms var(--ease);
+}
+.app-update-btn:active { transform: scale(0.98); }
+.app-update-btn.busy svg { animation: updateSpin 900ms linear infinite; }
+@keyframes updateSpin { to { transform: rotate(360deg); } }
+.app-update-status {
+  min-height: 34px;
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.app-update-status.good { color: #8cd9a4; }
+.app-update-status.bad { color: #ffaaa3; }
+.app-drawer-foot {
+  margin: 18px 4px 0;
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
 .queue-row {
   display: flex; align-items: center; gap: 10px;
   padding: 11px 0;

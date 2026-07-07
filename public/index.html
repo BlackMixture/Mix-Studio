@@ -17,7 +17,7 @@
 
 <header class="topbar">
   <div class="brand">
-    <div class="brand-mark">K</div>
+    <button class="brand-mark" id="appMenuBtn" type="button" aria-label="Open KreaStudio menu" aria-expanded="false" aria-controls="appDrawer">K</button>
     <div class="brand-name">KreaStudio <span>· Krea 2</span></div>
   </div>
   <div class="topbar-actions">
@@ -32,6 +32,43 @@
     </button>
   </div>
 </header>
+
+<div class="app-drawer-shell" id="appDrawer" aria-hidden="true">
+  <button class="app-drawer-backdrop" id="appDrawerBackdrop" type="button" aria-label="Close KreaStudio menu"></button>
+  <aside class="app-drawer" role="dialog" aria-modal="true" aria-labelledby="appDrawerTitle">
+    <div class="app-drawer-head">
+      <div class="app-drawer-identity">
+        <span class="brand-mark" aria-hidden="true">K</span>
+        <div>
+          <h2 id="appDrawerTitle">KreaStudio</h2>
+          <p>Desktop control</p>
+        </div>
+      </div>
+      <button class="icon-btn app-drawer-close" id="appDrawerClose" type="button" aria-label="Close menu">✕</button>
+    </div>
+
+    <div class="app-update-card">
+      <div class="app-update-heading">
+        <span class="app-update-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 4a8 8 0 0 1 7.4 5H22l-3.5 4L15 9h2.2A6 6 0 1 0 18 15l1.7 1A8 8 0 1 1 12 4Z"/></svg>
+        </span>
+        <div>
+          <h3>App updates</h3>
+          <p>Pull the latest version from GitHub.</p>
+        </div>
+      </div>
+      <button class="app-update-btn" id="appUpdateBtn" type="button" disabled>
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3v10.2l3.6-3.6L17 11l-6 6-6-6 1.4-1.4 3.6 3.6V3h2Zm-7 16h14v2H5v-2Z"/></svg>
+        <span>Update KreaStudio</span>
+      </button>
+      <div class="app-update-status" id="appUpdateStatus" role="status" aria-live="polite">
+        The desktop restarts automatically only when server files change.
+      </div>
+    </div>
+
+    <p class="app-drawer-foot">Updates are available to the owner profile while the generation queue is idle.</p>
+  </aside>
+</div>
 
 <div class="tabs-wrap">
   <div class="tabs" id="tabs">
