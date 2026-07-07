@@ -13,7 +13,7 @@ test('create prompt tools expose a regional bounding-box editor', () => {
   assert.match(indexHtml, /id="regionsPromptBtn"/);
   assert.match(indexHtml, /id="regionSheet"/);
   assert.match(indexHtml, /id="regionStage"/);
-  assert.match(indexHtml, /id="regionLoraSelect"/);
+  assert.match(indexHtml, /id="regionLoraBtn"/);
   assert.match(indexHtml, /id="regionRefInput"/);
   assert.match(appJs, /function openRegionEditor/);
   assert.match(appJs, /function renderRegionEditor/);

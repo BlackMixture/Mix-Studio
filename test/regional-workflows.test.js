@@ -77,7 +77,15 @@ test('builds Fedor v3 regions_json, Ideogram elements JSON, and bbox payloads', 
 
   const elements = JSON.parse(regionalPromptBuilderJson(regions));
   assert.equal(elements[0].type, 'obj');
+  // desc already contains spatial language -> passed through untouched
   assert.equal(elements[0].desc, 'left subject wearing a blue coat');
+  // no spatial language -> a position phrase derived from the box is added
+  const injected = JSON.parse(regionalPromptBuilderJson([
+    { description: 'a giant squid', x: 0, y: 0, w: 0.5, h: 1 },
+    { description: 'an alien spaceship', x: 0.18, y: 0, w: 0.63, h: 0.41 },
+  ]));
+  assert.match(injected[0].desc, /occupying the full left half/);
+  assert.match(injected[1].desc, /top center/);
   assert.deepEqual(regionalBboxes(regions, 1024, 768)[0], {
     x: 51,
     y: 154,
