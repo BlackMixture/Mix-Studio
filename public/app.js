@@ -10,7 +10,8 @@ const CameraSettings = window.KreaCameraSettings;
 /* ------------------------------------------------------------------ */
 
 const state = {
-  view: 'create',            // create | edit | gallery
+  view: 'create',            // create | video | edit | gallery
+  createMode: 'image',       // image | region | video (nested under Create)
   enhance: true,
   aspect: '1:1',
   mp: 1,
@@ -406,6 +407,7 @@ let appUpdateRunning = false;
 
 function openAppDrawer() {
   closeActionMenu();
+  document.body.classList.add('app-drawer-open');
   $('#appDrawer').classList.add('show');
   $('#appDrawer').setAttribute('aria-hidden', 'false');
   $('#appMenuBtn').setAttribute('aria-expanded', 'true');
@@ -414,6 +416,7 @@ function openAppDrawer() {
 }
 
 function closeAppDrawer() {
+  document.body.classList.remove('app-drawer-open');
   $('#appDrawer').classList.remove('show');
   $('#appDrawer').setAttribute('aria-hidden', 'true');
   $('#appMenuBtn').setAttribute('aria-expanded', 'false');
@@ -431,7 +434,7 @@ function setAppUpdateStatus(message, tone) {
 function renderAppUpdateAccess() {
   const button = $('#appUpdateBtn');
   if (appUpdateRunning) return;
-  const label = button.querySelector('span');
+  const label = button.querySelector('.app-drawer-label');
   if (!state.profile) {
     button.disabled = true;
     label.textContent = 'Sign in to update';
@@ -444,7 +447,7 @@ function renderAppUpdateAccess() {
     return;
   }
   button.disabled = false;
-  label.textContent = 'Update KreaStudio';
+  label.textContent = 'Update app';
 }
 
 async function waitForAppRestart() {
@@ -472,7 +475,7 @@ document.addEventListener('keydown', (event) => {
 $('#appUpdateBtn').addEventListener('click', async () => {
   if (appUpdateRunning) return;
   const button = $('#appUpdateBtn');
-  const label = button.querySelector('span');
+  const label = button.querySelector('.app-drawer-label');
   appUpdateRunning = true;
   button.disabled = true;
   button.classList.add('busy');
@@ -527,6 +530,7 @@ function saveForm() {
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, prompts: state.prompts,
       editEngine: state.editEngine, vidScailMode: state.vidScailMode,
       cameraSettings: state.cameraSettings,
+      createMode: state.createMode,
       regionsEnabled: state.regionsEnabled,
       regions: state.regions,
       kreaBrush: state.kreaBrush,
@@ -549,6 +553,7 @@ function loadForm() {
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
     state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : (f.editEngine === 'krea2' ? 'krea2' : 'klein4'));
+    state.createMode = ['image', 'region', 'video'].includes(f.createMode) ? f.createMode : 'image';
     state.regionsEnabled = !!f.regionsEnabled;
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
@@ -577,22 +582,43 @@ function loadForm() {
 /* Tabs                                                                */
 /* ------------------------------------------------------------------ */
 
-const tabButtons = $$('#tabs .tab');
-function setView(view) {
+const primaryTabButtons = $$('#primaryTabs .tab');
+const createTabButtons = $$('#createTabs .tab');
+
+function syncNavigation() {
+  const createActive = state.view === 'create' || state.view === 'video';
+  const primaryMode = createActive ? 'create' : state.view;
+  primaryTabButtons.forEach((button, index) => {
+    const active = button.dataset.primaryMode === primaryMode;
+    button.classList.toggle('active', active);
+    if (active) $('#primaryTabPill').style.transform = `translateX(${index * 100}%)`;
+  });
+  $('#createTabs').hidden = !createActive;
+  createTabButtons.forEach((button, index) => {
+    const active = button.dataset.createMode === state.createMode;
+    button.classList.toggle('active', active);
+    if (active) $('#createTabPill').style.transform = `translateX(${index * 100}%)`;
+  });
+  document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
+}
+
+function setView(view, opts = {}) {
   const prev = state.view;
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
     state.prompts[prev] = $('#prompt').value;
+  }
+  if (view === 'video') state.createMode = 'video';
+  if (view === 'create') {
+    state.createMode = ['image', 'region'].includes(opts.createMode) ? opts.createMode : 'image';
+    state.regionsEnabled = state.createMode === 'region';
+    if (state.createMode === 'region' && !state.regions.length) createRegion();
   }
   state.view = view;
   if (Object.prototype.hasOwnProperty.call(state.prompts, view)) {
     $('#prompt').value = state.prompts[view] || '';
     updatePromptClear();
   }
-  tabButtons.forEach((b, i) => {
-    const active = b.dataset.view === view;
-    b.classList.toggle('active', active);
-    if (active) $('#tabPill').style.transform = `translateX(${i * 100}%)`;
-  });
+  syncNavigation();
   exitSelect();
   const isGallery = view === 'gallery';
   $('#view-create').classList.toggle('active', !isGallery);
@@ -604,7 +630,25 @@ function setView(view) {
   $('#genLbl').textContent = genLabel();
   if (isGallery) refreshGallery();
 }
-tabButtons.forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+
+function setCreateMode(mode, openEditor) {
+  if (mode === 'video') {
+    setView('video');
+  } else {
+    setView('create', { createMode: mode });
+    if (mode === 'region' && openEditor) setTimeout(openRegionEditor, 80);
+  }
+  saveForm();
+}
+
+primaryTabButtons.forEach((button) => button.addEventListener('click', () => {
+  const mode = button.dataset.primaryMode;
+  if (mode === 'create') setCreateMode(state.createMode || 'image');
+  else setView(mode);
+}));
+createTabButtons.forEach((button) => button.addEventListener('click', () => {
+  setCreateMode(button.dataset.createMode, button.dataset.createMode === 'region');
+}));
 
 function genLabel() {
   if (state.activeJobs.size) {
@@ -615,6 +659,11 @@ function genLabel() {
 
 function updateVideoPanels() {
   const isVideo = state.view === 'video';
+  $('#prompt').placeholder = isVideo
+    ? 'Describe the motion…'
+    : (state.createMode === 'region' && state.view === 'create'
+      ? 'Describe the full scene… (optional)'
+      : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
@@ -713,6 +762,7 @@ function createRegion() {
 function activeRegionsForRequest() {
   if (!state.regionsEnabled) return [];
   if (state.view !== 'create') return []; // regions are a Create-tab feature
+  if (state.createMode !== 'region') return [];
   return state.regions
     .filter((region) => region && region.enabled !== false)
     .map((region) => {
@@ -975,7 +1025,7 @@ function updateRegionsIndicator() {
   const active = state.regionsEnabled && (state.regions || []).some((r) => r && r.enabled !== false);
   btn.classList.toggle('active', active);
 }
-$('#regionsPromptBtn').addEventListener('click', openRegionEditor);
+$('#regionsPromptBtn').addEventListener('click', () => setCreateMode('region', true));
 $('#regionEnabledChip').addEventListener('click', () => {
   state.regionsEnabled = !state.regionsEnabled;
   if (state.regionsEnabled && !state.regions.length) createRegion();
@@ -1031,7 +1081,9 @@ $('#regionDoneBtn').addEventListener('click', () => {
   updateRegionsIndicator();
   saveForm();
   const count = activeRegionsForRequest().length;
-  toast(count ? `${count} region${count === 1 ? '' : 's'} ready` : 'Regional prompting off');
+  toast(count
+    ? `${count} region${count === 1 ? '' : 's'} ready`
+    : (state.regionsEnabled ? 'Add a prompt, LoRA, or reference to the region' : 'Regional prompting off'));
 });
 
 $('#kreaMaskBtn').addEventListener('click', openKreaMaskPainter);

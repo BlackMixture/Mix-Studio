@@ -17,7 +17,13 @@
 
 <header class="topbar">
   <div class="brand">
-    <button class="brand-mark" id="appMenuBtn" type="button" aria-label="Open KreaStudio menu" aria-expanded="false" aria-controls="appDrawer">K</button>
+    <button class="side-menu-trigger" id="appMenuBtn" type="button" aria-label="Open KreaStudio menu" aria-expanded="false" aria-controls="appDrawer">
+      <span class="side-menu-mark side-menu-mark-logo" aria-hidden="true">K</span>
+      <svg class="side-menu-mark side-menu-mark-menu" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="6" y="5" width="52" height="54" rx="17" fill="none" stroke="currentColor" stroke-width="8"/>
+        <path d="M21 19.5v25" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+      </svg>
+    </button>
     <div class="brand-name">KreaStudio <span>· Krea 2</span></div>
   </div>
   <div class="topbar-actions">
@@ -37,46 +43,48 @@
   <button class="app-drawer-backdrop" id="appDrawerBackdrop" type="button" aria-label="Close KreaStudio menu"></button>
   <aside class="app-drawer" role="dialog" aria-modal="true" aria-labelledby="appDrawerTitle">
     <div class="app-drawer-head">
-      <div class="app-drawer-identity">
-        <span class="brand-mark" aria-hidden="true">K</span>
-        <div>
-          <h2 id="appDrawerTitle">KreaStudio</h2>
-          <p>Desktop control</p>
-        </div>
-      </div>
-      <button class="icon-btn app-drawer-close" id="appDrawerClose" type="button" aria-label="Close menu">✕</button>
-    </div>
-
-    <div class="app-update-card">
-      <div class="app-update-heading">
-        <span class="app-update-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 4a8 8 0 0 1 7.4 5H22l-3.5 4L15 9h2.2A6 6 0 1 0 18 15l1.7 1A8 8 0 1 1 12 4Z"/></svg>
-        </span>
-        <div>
-          <h3>App updates</h3>
-          <p>Pull the latest version from GitHub.</p>
-        </div>
-      </div>
-      <button class="app-update-btn" id="appUpdateBtn" type="button" disabled>
-        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3v10.2l3.6-3.6L17 11l-6 6-6-6 1.4-1.4 3.6 3.6V3h2Zm-7 16h14v2H5v-2Z"/></svg>
-        <span>Update KreaStudio</span>
+      <h2 class="app-drawer-wordmark" id="appDrawerTitle">KreaStudio</h2>
+      <button class="app-drawer-close" id="appDrawerClose" type="button" aria-label="Close menu">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="m6.4 5 12.6 12.6-1.4 1.4L5 6.4 6.4 5zm11.2 0L19 6.4 6.4 19 5 17.6 17.6 5z"/></svg>
       </button>
-      <div class="app-update-status" id="appUpdateStatus" role="status" aria-live="polite">
-        The desktop restarts automatically only when server files change.
-      </div>
     </div>
 
-    <p class="app-drawer-foot">Updates are available to the owner profile while the generation queue is idle.</p>
+    <div class="app-drawer-body">
+      <section class="app-drawer-settings" aria-labelledby="appDrawerControlsTitle">
+        <h3 id="appDrawerControlsTitle">Local controls</h3>
+        <button class="app-drawer-action" id="appUpdateBtn" type="button" disabled>
+          <span class="app-drawer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5a7 7 0 0 1 6.3 4H16l3.3 3.3L22.6 9h-2.2A9 9 0 0 0 4 8.2L5.7 9A7 7 0 0 1 12 5Zm-7.3 6.7L1.4 15h2.2A9 9 0 0 0 20 15.8l-1.7-.8A7 7 0 0 1 5.7 15H8l-3.3-3.3Z"/></svg>
+          </span>
+          <span class="app-drawer-label">Update app</span>
+          <small>GitHub</small>
+        </button>
+        <div class="app-update-status" id="appUpdateStatus" role="status" aria-live="polite">
+          Pulls the latest version and restarts only when needed.
+        </div>
+      </section>
+    </div>
+
+    <footer class="app-drawer-version">
+      <span>Update channel</span>
+      <strong>main</strong>
+      <small>Owner profile · idle queue required</small>
+    </footer>
   </aside>
 </div>
 
-<div class="tabs-wrap">
-  <div class="tabs" id="tabs">
-    <div class="tab-pill" id="tabPill"></div>
-    <button class="tab active" data-view="create">Create</button>
-    <button class="tab" data-view="edit">Edit</button>
-    <button class="tab" data-view="video">Video</button>
-    <button class="tab" data-view="gallery">Gallery</button>
+<div class="tabs-wrap nav-stack">
+  <div class="tabs primary-tabs" id="primaryTabs" aria-label="Main mode">
+    <div class="tab-pill" id="primaryTabPill"></div>
+    <button class="tab active" data-primary-mode="create">Create</button>
+    <button class="tab" data-primary-mode="edit">Edit</button>
+    <button class="tab" data-primary-mode="gallery">Library</button>
+  </div>
+  <div class="tabs create-tabs" id="createTabs" aria-label="Create mode">
+    <div class="tab-pill" id="createTabPill"></div>
+    <button class="tab create-tab active" data-create-mode="image">Image</button>
+    <button class="tab create-tab" data-create-mode="region">Region</button>
+    <button class="tab create-tab" data-create-mode="video">Video</button>
   </div>
 </div>
 
@@ -369,7 +377,7 @@
   </div>
   <div class="folder-row" id="folderRow"></div>
   <div class="grid" id="galleryGrid"></div>
-  <div class="gallery-empty hidden" id="galleryEmpty">Nothing here yet — generate something ✨</div>
+  <div class="gallery-empty hidden" id="galleryEmpty">Nothing here yet</div>
 </main>
 
 <!-- generate dock -->
