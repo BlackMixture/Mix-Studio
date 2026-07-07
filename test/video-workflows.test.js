@@ -5,7 +5,10 @@ const assert = require('node:assert/strict');
 const {
   scailDurationSeconds,
   scailFramesForSeconds,
+  scailInfinityMaskArgs,
+  scailInfinitySamTrackArgs,
   scailMode,
+  normalizeScailChunkOptions,
   scailMaskArgs,
   scailSamTrackArgs,
   scailSegments,
@@ -24,10 +27,12 @@ test('scailFramesForSeconds preserves Wan 4n+1 frame counts at 16 fps', () => {
   assert.equal((scailFramesForSeconds(12) - 1) % 4, 0);
 });
 
-test('scailMode defaults to chunked and accepts direct', () => {
-  assert.equal(scailMode(), 'chunked');
+test('scailMode defaults to infinity and accepts legacy modes', () => {
+  assert.equal(scailMode(), 'infinity');
+  assert.equal(scailMode('infinity'), 'infinity');
+  assert.equal(scailMode('chunked'), 'chunked');
   assert.equal(scailMode('direct'), 'direct');
-  assert.equal(scailMode('weird'), 'chunked');
+  assert.equal(scailMode('weird'), 'infinity');
 });
 
 test('scailSegments plans 81-frame chunks with 5-frame overlap', () => {
@@ -38,9 +43,50 @@ test('scailSegments plans 81-frame chunks with 5-frame overlap', () => {
   ]);
 });
 
+test('scailSegments supports larger overlaps for stable chunk boundaries', () => {
+  assert.deepEqual(scailSegments(193, { chunkFrames: 81, overlapFrames: 13 }), [
+    { index: 0, startFrame: 0, length: 81, keepStart: 0, keepLength: 81 },
+    { index: 1, startFrame: 68, length: 81, keepStart: 13, keepLength: 68 },
+    { index: 2, startFrame: 136, length: 57, keepStart: 13, keepLength: 44 },
+  ]);
+});
+
+test('normalizeScailChunkOptions defaults chunked SCAIL to stable 81-frame chunks with 13-frame overlap', () => {
+  assert.deepEqual(normalizeScailChunkOptions({ mode: 'chunked' }), {
+    stableTracking: true,
+    chunkFrames: 81,
+    overlapFrames: 13,
+  });
+  assert.deepEqual(normalizeScailChunkOptions({
+    mode: 'chunked',
+    stableTracking: false,
+    chunkFrames: 61,
+    overlapFrames: 17,
+  }), {
+    stableTracking: false,
+    chunkFrames: 61,
+    overlapFrames: 17,
+  });
+  assert.deepEqual(normalizeScailChunkOptions({
+    mode: 'infinity',
+    stableTracking: true,
+    chunkFrames: 41,
+    overlapFrames: 9,
+  }), {
+    stableTracking: false,
+    chunkFrames: 41,
+    overlapFrames: 9,
+  });
+});
+
 test('SCAIL tracking defaults keep masks stable across chunks', () => {
   assert.deepEqual(scailSamTrackArgs(), [0.5, 4, 1]);
   assert.deepEqual(scailMaskArgs(), ['', 'left_to_right', false]);
+});
+
+test('SCAIL Infinity uses the provided workflow tracking and mask defaults', () => {
+  assert.deepEqual(scailInfinitySamTrackArgs(), [0.5, 0, 1]);
+  assert.deepEqual(scailInfinityMaskArgs(), ['', 'area', false]);
 });
 
 test('videoProcessInfo updates metadata for after-the-fact interpolation and upscale', () => {

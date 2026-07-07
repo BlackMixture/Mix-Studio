@@ -12,6 +12,7 @@ const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const {
   DEFAULT_PRIVATE_PASSWORD,
   galleryPassword,
@@ -20,6 +21,11 @@ const {
   canMoveToFolder,
   parseCookies,
 } = require('./lib/private-gallery');
+const { comfyResetRequests } = require('./lib/comfy-reset');
+const {
+  assessQueueHealth,
+  parseNvidiaSmiCsv,
+} = require('./lib/queue-health');
 const { classifyLora } = require('./lib/lora-compat');
 const {
   DEFAULT_SEEDVR2_DIT,
@@ -35,8 +41,11 @@ const {
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
 const {
   scailMode,
+  normalizeScailChunkOptions,
   scailDurationSeconds,
   scailFramesForSeconds,
+  scailInfinityMaskArgs,
+  scailInfinitySamTrackArgs,
   scailMaskArgs,
   scailSegments,
   scailSamTrackArgs,
@@ -117,6 +126,7 @@ const DEFAULT_SETTINGS = {
   erosSigmasUpscale: '',
   scailUnet: 'wan2.1_14B_SCAIL_2_fp8_scaled.safetensors',
   scailLora: 'Wan2.1\\Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors',
+  scailPusaLora: 'Pusa\\Wan21_PusaV1_LoRA_14B_rank512_bf16.safetensors',
   scailClipVision: 'clip_vision_h.safetensors',
   scailSam: 'sam3.1_multiplex_fp16.safetensors',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -285,6 +295,79 @@ function broadcast(event, data) {
 
 const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
 const jobs = new Map(); // promptId -> job
+const queueHealthState = { lowGpuSince: null };
+
+function trackJob(pid, job) {
+  const now = Date.now();
+  jobs.set(pid, Object.assign({ enqueuedAt: now, startedAt: null }, job));
+}
+
+function jobBaseTime(job) {
+  return job && (job.startedAt || job.enqueuedAt || job.createdAt) || Date.now();
+}
+
+function jobDurationMs(job, now = Date.now()) {
+  return Math.max(0, now - jobBaseTime(job));
+}
+
+function queueEntryCreatedAt(entry) {
+  const t = entry && entry[3] && Number(entry[3].create_time);
+  return Number.isFinite(t) && t > 0 ? t : null;
+}
+
+function describeQueueEntry(entry, running) {
+  const now = Date.now();
+  const pid = entry[1];
+  const job = jobs.get(pid);
+  const createdAt = queueEntryCreatedAt(entry);
+  const startedAt = running ? (job && (job.startedAt || createdAt)) || createdAt || now : null;
+  const queuedAt = (job && job.enqueuedAt) || createdAt || now;
+  return {
+    jobId: pid,
+    kind: job ? job.kind : 'external',
+    itemId: job ? (job.itemId || null) : null,
+    label: jobLabel(job),
+    queuedAt,
+    startedAt,
+    elapsedMs: now - (running ? (startedAt || queuedAt) : queuedAt),
+    durationMs: now - (running ? (startedAt || queuedAt) : queuedAt),
+  };
+}
+
+function readGpuStats() {
+  return new Promise((resolve) => {
+    execFile(
+      'nvidia-smi',
+      ['--query-gpu=utilization.gpu,memory.used,memory.total,power.draw', '--format=csv,noheader,nounits'],
+      { timeout: 4000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        resolve(parseNvidiaSmiCsv(stdout));
+      }
+    );
+  });
+}
+
+async function queueHealth(running, pending) {
+  const now = Date.now();
+  const gpu = await readGpuStats();
+  const longestRunningMs = running.reduce((max, job) => Math.max(max, Number(job.elapsedMs) || 0), 0);
+  const assessed = assessQueueHealth({
+    runningCount: running.length,
+    pendingCount: pending.length,
+    longestRunningMs,
+    gpu,
+    now,
+    lowGpuSince: queueHealthState.lowGpuSince,
+  });
+  queueHealthState.lowGpuSince = assessed.lowGpuSince;
+  return Object.assign({
+    gpu,
+    runningCount: running.length,
+    pendingCount: pending.length,
+    longestRunningMs,
+  }, assessed);
+}
 
 async function comfyFetch(p, opts) {
   const url = settings.comfyUrl.replace(/\/$/, '') + p;
@@ -316,6 +399,30 @@ function modelStatus(info, cls, field, name, fallbackList) {
   return { name, ok: !name || list.includes(name) };
 }
 
+function scailInfinityStatus(info) {
+  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
+    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
+    : comboList(info, 'LoraLoader', 'lora_name');
+  return {
+    node: { name: 'WanSCAILInfinity', ok: !!info.WanSCAILInfinity },
+    pusa: {
+      name: settings.scailPusaLora,
+      ok: !!settings.scailPusaLora && loraList.includes(settings.scailPusaLora),
+    },
+  };
+}
+
+function scailInfinityError(info) {
+  const status = scailInfinityStatus(info);
+  if (!status.node.ok) {
+    return 'SCAIL-2 Infinity needs the comfyui-scail2-infinity custom node installed and ComfyUI restarted.';
+  }
+  if (!status.pusa.ok) {
+    return `SCAIL-2 Infinity needs the Pusa LoRA in ComfyUI loras: ${settings.scailPusaLora}`;
+  }
+  return null;
+}
+
 function configuredModelsStatus(info) {
   const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
@@ -340,6 +447,7 @@ function configuredModelsStatus(info) {
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.vae),
       lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.qwenEditLora, loraList),
     },
+    scailInfinity: Object.assign({ label: 'SCAIL 2 Infinity' }, scailInfinityStatus(info)),
   };
 }
 
@@ -538,6 +646,8 @@ function handleWsMessage(msg) {
   if (msg.type === 'progress' && pid && jobs.has(pid)) {
     broadcast('progress', { jobId: pid, value: d.value, max: d.max, itemId: jobs.get(pid).itemId || null });
   } else if (msg.type === 'executing' && pid && jobs.has(pid)) {
+    const job = jobs.get(pid);
+    if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();
     if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
     else broadcast('status', { jobId: pid, text: nodeLabel(pid, d.node), itemId: jobs.get(pid).itemId || null });
   } else if (msg.type === 'execution_error' && pid && jobs.has(pid)) {
@@ -583,10 +693,11 @@ function handleWsBinary(buf) {
 
 function failJob(pid, message) {
   const job = jobs.get(pid);
+  const durationMs = job ? jobDurationMs(job) : undefined;
   jobs.delete(pid);
   if (job && job.kind === 'enhance') { job.reject(new Error(message)); return; }
   pushHistory({ kind: 'error', itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
-  broadcast('jobError', { jobId: pid, kind: job ? job.kind : 'gen', itemId: job ? job.itemId : null, message });
+  broadcast('jobError', { jobId: pid, kind: job ? job.kind : 'gen', itemId: job ? job.itemId : null, message, durationMs });
 }
 
 function findOutputFiles(outputs, extRe) {
@@ -614,6 +725,7 @@ async function downloadOutput(entry) {
 async function completeJob(pid) {
   const job = jobs.get(pid);
   if (!job) return;
+  const durationMs = jobDurationMs(job);
   jobs.delete(pid);
   const res = await comfyFetch(`/history/${pid}`);
   const hist = (await res.json())[pid];
@@ -674,6 +786,7 @@ async function completeJob(pid) {
       createdAt: Date.now(),
       info: Object.assign({}, job.videoInfo, {
         refinedMotionPrompt: textOut || (job.videoInfo && job.videoInfo.refinedMotionPrompt) || null,
+        durationMs,
       }),
     };
     item.videos = (Array.isArray(item.videos) ? item.videos : []).concat([entry]);
@@ -682,7 +795,7 @@ async function completeJob(pid) {
       ? 'Video upscale'
       : (job.videoInfo.processed === 'interpolate' ? 'Frame interpolation' : (job.videoInfo.composite ? 'Side-by-side' : 'Video'));
     pushHistory({
-      kind: 'video', itemId: item.id, videoId: entry.id,
+      kind: 'video', itemId: item.id, videoId: entry.id, durationMs,
       label: `${videoActionLabel} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
     });
     broadcast('videoDone', { jobId: pid, item });
@@ -700,8 +813,9 @@ async function completeJob(pid) {
     await fsp.writeFile(path.join(IMAGES, fname), buf);
     item.upscaled = fname;
     item.upscaleInfo = job.upscaleInfo;
+    item.upscaleDurationMs = durationMs;
     saveDb();
-    pushHistory({ kind: 'upscale', itemId: item.id, label: `Upscaled: ${(item.prompt || '').slice(0, 60)}` });
+    pushHistory({ kind: 'upscale', itemId: item.id, durationMs, label: `Upscaled: ${(item.prompt || '').slice(0, 60)}` });
     broadcast('upscaleDone', { jobId: pid, item });
     return;
   }
@@ -746,6 +860,7 @@ async function completeJob(pid) {
       refImages: job.refImageNames || [],
       folder: job.params.folder || null,
       createdAt: Date.now(),
+      durationMs,
       upscaled: null,
       video: null,
     };
@@ -754,7 +869,7 @@ async function completeJob(pid) {
   }
   saveDb();
   for (const it of created) {
-    pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', itemId: it.id, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
+    pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', itemId: it.id, durationMs, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
   }
   broadcast('jobDone', { jobId: pid, items: created });
 }
@@ -842,7 +957,7 @@ function suggestMotionPrompt(comfyImageName, seed) {
         jobs.delete(pid);
         reject(new Error('Motion prompt timed out (3 min)'));
       }, 180000);
-      jobs.set(pid, {
+      trackJob(pid, {
         kind: 'enhance',
         graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
@@ -874,7 +989,7 @@ function suggestImagePrompt(comfyImageName, seed) {
         jobs.delete(pid);
         reject(new Error('Image prompt timed out (3 min)'));
       }, 180000);
-      jobs.set(pid, {
+      trackJob(pid, {
         kind: 'enhance',
         graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
@@ -905,7 +1020,7 @@ function enhancePrompt(p) {
         jobs.delete(pid);
         reject(new Error('Prompt enhance timed out (3 min)'));
       }, 180000);
-      jobs.set(pid, {
+      trackJob(pid, {
         kind: 'enhance',
         graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
@@ -936,7 +1051,7 @@ function wanEnhance(comfyImageName, userPrompt, seed) {
       await filterInputs(graph);
       const pid = await queuePrompt(graph);
       const timer = setTimeout(() => { jobs.delete(pid); reject(new Error('Wan prompt enhance timed out')); }, 180000);
-      jobs.set(pid, {
+      trackJob(pid, {
         kind: 'enhance', graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
         reject: (e) => { clearTimeout(timer); reject(e); },
@@ -1851,8 +1966,22 @@ async function buildAnimateScail(imageName, opts) {
 
   graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.scailUnet, weight_dtype: 'default' } };
   graph.lightx = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['unet', 0], lora_name: settings.scailLora, strength_model: 1 } };
-  const model = chainModelLoras(graph, ['lightx', 0], opts.loras, 'slora');
-  graph.ms = { class_type: 'ModelSamplingSD3', inputs: { model, shift: 5 } };
+  let infinityModel = null;
+  if (opts.scailMode === 'infinity') {
+    graph.ms = { class_type: 'ModelSamplingSD3', inputs: { model: ['lightx', 0], shift: 5 } };
+    let pusaModel = ['ms', 0];
+    if (settings.scailPusaLora) {
+      graph.pusa = {
+        class_type: 'LoraLoaderModelOnly',
+        inputs: { model: ['ms', 0], lora_name: settings.scailPusaLora, strength_model: 1 },
+      };
+      pusaModel = ['pusa', 0];
+    }
+    infinityModel = chainModelLoras(graph, pusaModel, opts.loras, 'slora');
+  } else {
+    const model = chainModelLoras(graph, ['lightx', 0], opts.loras, 'slora');
+    graph.ms = { class_type: 'ModelSamplingSD3', inputs: { model, shift: 5 } };
+  }
 
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.wanClip, type: 'wan', device: 'default' } };
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: opts.prompt } };
@@ -1866,18 +1995,30 @@ async function buildAnimateScail(imageName, opts) {
     inputs: { image: ['img', 0], upscale_method: 'lanczos', width: opts.W, height: opts.H, crop: 'disabled' },
   };
 
-  // SAM3 human tracking on the reference. Driving-video tracking is per segment.
+  // SAM3 human tracking on the reference. Stable chunks track the driving clip once.
   graph.sam = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.scailSam } };
   graph.sam_txt = { class_type: 'CLIPTextEncode', inputs: { clip: ['sam', 1], text: 'human' } };
-  graph.track_ref = await nodeFromOrdered('SAM3_VideoTrack', scailSamTrackArgs(),
+  const trackArgs = opts.scailMode === 'infinity' ? scailInfinitySamTrackArgs() : scailSamTrackArgs();
+  const maskArgs = opts.scailMode === 'infinity' ? scailInfinityMaskArgs() : scailMaskArgs();
+  graph.track_ref = await nodeFromOrdered('SAM3_VideoTrack', trackArgs,
     { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['ref', 0] });
 
   // CLIP-vision embedding of the reference
   graph.cv = { class_type: 'CLIPVisionLoader', inputs: { clip_name: settings.scailClipVision } };
   graph.cv_enc = { class_type: 'CLIPVisionEncode', inputs: { clip_vision: ['cv', 0], image: ['ref', 0], crop: 'none' } };
 
+  const chunkOptions = normalizeScailChunkOptions({
+    mode: opts.scailMode,
+    stableTracking: opts.scailStableTracking,
+    chunkFrames: opts.scailChunkFrames,
+    overlapFrames: opts.scailChunkOverlap,
+  });
+  const useStableChunks = opts.scailMode === 'chunked' && chunkOptions.stableTracking;
   const segments = opts.scailMode === 'chunked'
-    ? scailSegments(opts.frames)
+    ? scailSegments(opts.frames, {
+      chunkFrames: chunkOptions.chunkFrames,
+      overlapFrames: chunkOptions.overlapFrames,
+    })
     : [{ index: 0, startFrame: 0, length: opts.frames, keepStart: 0, keepLength: opts.frames }];
   const frameRanges = [];
   let previousDecode = null;
@@ -1885,30 +2026,110 @@ async function buildAnimateScail(imageName, opts) {
   let firstDriveKey = null;
   let posterSource = null;
 
+  if (opts.scailMode === 'infinity') {
+    graph.drive_infinity = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+      video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+      frame_load_cap: opts.frames, skip_first_frames: opts.driveSkipFrames || 0,
+      select_every_nth: 1, format: 'None',
+    });
+    graph.track_drive_infinity = await nodeFromOrdered('SAM3_VideoTrack', trackArgs,
+      { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['drive_infinity', 0] });
+    graph.masks_infinity = await nodeFromOrdered('SCAIL2ColoredMask', maskArgs,
+      { driving_track_data: ['track_drive_infinity', 0], ref_track_data: ['track_ref', 0] });
+    graph.scail_infinity = {
+      class_type: 'WanSCAILInfinity',
+      inputs: {
+        positive: ['pos', 0], negative: ['neg', 0], model: infinityModel, vae: ['vae', 0],
+        width: opts.W, height: opts.H,
+        seed: opts.seed, steps: 6, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+        window_length: 81, previous_frame_count: 5, max_frames: opts.frames,
+        decode_tiled: false, vary_seed_per_window: false,
+        pose_video: ['drive_infinity', 0], pose_video_mask: ['masks_infinity', 0],
+        reference_image: ['ref', 0], reference_image_mask: ['masks_infinity', 1],
+        clip_vision_output: ['cv_enc', 0],
+        replacement_mode: false, pose_strength: 1, pose_start: 0, pose_end: 1,
+      },
+    };
+
+    let frameSource = ['scail_infinity', 0];
+    frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
+    if (opts.fourK) {
+      graph.vsr = rtxVideoSuperResolutionNode(frameSource);
+      frameSource = ['vsr', 0];
+    }
+    if (opts.makePoster) {
+      const info = await getObjectInfo();
+      if (info.ImageFromBatch) {
+        graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['scail_infinity', 0], batch_index: 0, length: 1 } };
+        graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
+      }
+    }
+    const videoInputs = { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) };
+    const audioRef = await scailAudioRef(graph, opts, 'drive_infinity');
+    if (audioRef) videoInputs.audio = audioRef;
+    graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
+    graph.save = {
+      class_type: 'SaveVideo',
+      inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
+    };
+    return filterInputs(graph);
+  }
+
+  if (useStableChunks) {
+    graph.drive_full = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+      video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+      frame_load_cap: opts.frames, skip_first_frames: opts.driveSkipFrames || 0,
+      select_every_nth: 1, format: 'None',
+    });
+    graph.track_drive_full = await nodeFromOrdered('SAM3_VideoTrack', scailSamTrackArgs(),
+      { model: ['sam', 0], conditioning: ['sam_txt', 0], images: ['drive_full', 0] });
+    graph.masks_full = await nodeFromOrdered('SCAIL2ColoredMask', maskArgs,
+      { driving_track_data: ['track_drive_full', 0], ref_track_data: ['track_ref', 0] });
+    firstDriveKey = 'drive_full';
+  }
+
   for (const seg of segments) {
     const suffix = segments.length === 1 ? '' : String(seg.index);
     const driveKey = `drive${suffix}`;
-    const trackKey = `track_drive${suffix}`;
     const masksKey = `masks${suffix}`;
     const scailKey = `scail${suffix}`;
     const ksKey = `ks${suffix}`;
     const decodeKey = `decode${suffix}`;
-    if (!firstDriveKey) firstDriveKey = driveKey;
+    let driveImage = [driveKey, 0];
+    let poseMask = [masksKey, 0];
+    let referenceMask = [masksKey, 1];
 
-    graph[driveKey] = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
-      video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
-      frame_load_cap: seg.length, skip_first_frames: (opts.driveSkipFrames || 0) + seg.startFrame,
-      select_every_nth: 1, format: 'None',
-    });
-    graph[trackKey] = await nodeFromOrdered('SAM3_VideoTrack', scailSamTrackArgs(),
-      { model: ['sam', 0], conditioning: ['sam_txt', 0], images: [driveKey, 0] });
-    graph[masksKey] = await nodeFromOrdered('SCAIL2ColoredMask', scailMaskArgs(),
-      { driving_track_data: [trackKey, 0], ref_track_data: ['track_ref', 0] });
+    if (useStableChunks) {
+      graph[driveKey] = {
+        class_type: 'GetImageRangeFromBatch',
+        inputs: { images: ['drive_full', 0], start_index: seg.startFrame, num_frames: seg.length },
+      };
+      graph[masksKey] = {
+        class_type: 'GetImageRangeFromBatch',
+        inputs: { images: ['masks_full', 0], start_index: seg.startFrame, num_frames: seg.length },
+      };
+      referenceMask = ['masks_full', 1];
+    } else {
+      const trackKey = `track_drive${suffix}`;
+      if (!firstDriveKey) firstDriveKey = driveKey;
+      graph[driveKey] = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+        video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+        frame_load_cap: seg.length, skip_first_frames: (opts.driveSkipFrames || 0) + seg.startFrame,
+        select_every_nth: 1, format: 'None',
+      });
+      graph[trackKey] = await nodeFromOrdered('SAM3_VideoTrack', scailSamTrackArgs(),
+        { model: ['sam', 0], conditioning: ['sam_txt', 0], images: [driveKey, 0] });
+      graph[masksKey] = await nodeFromOrdered('SCAIL2ColoredMask', maskArgs,
+        { driving_track_data: [trackKey, 0], ref_track_data: ['track_ref', 0] });
+      driveImage = [driveKey, 0];
+      poseMask = [masksKey, 0];
+      referenceMask = [masksKey, 1];
+    }
 
     const scailLinks = {
       positive: ['pos', 0], negative: ['neg', 0], vae: ['vae', 0],
-      pose_video: [driveKey, 0], pose_video_mask: [masksKey, 0],
-      reference_image: ['ref', 0], reference_image_mask: [masksKey, 1],
+      pose_video: driveImage, pose_video_mask: poseMask,
+      reference_image: ['ref', 0], reference_image_mask: referenceMask,
       clip_vision_output: ['cv_enc', 0],
     };
     if (previousDecode) scailLinks.previous_frames = previousDecode;
@@ -2135,6 +2356,7 @@ const REQUIRED_CLASSES = {
     'CLIPVisionLoader', 'CLIPVisionEncode', 'CheckpointLoaderSimple', 'CLIPTextEncode', 'ImageScale',
     'VHS_LoadVideo', 'SAM3_VideoTrack', 'SCAIL2ColoredMask', 'WanSCAILToVideo', 'KSampler',
     'VAEDecode', 'GetImageRangeFromBatch', 'ImageBatch', 'VHS_LoadAudioUpload', 'CreateVideo', 'SaveVideo'],
+  scailinfinity: ['WanSCAILInfinity'],
 };
 
 async function handleApi(req, res, url) {
@@ -2256,7 +2478,7 @@ async function handleApi(req, res, url) {
       ? (p.editEngine === 'qwen' ? await buildEditQwen(p, refNames) : await buildEdit(p, refNames))
       : await buildT2I(p);
     const pid = await queuePrompt(graph);
-    jobs.set(pid, { kind: 'gen', params: p, graph, refImageNames: refNames, refinedPrompt: refined });
+    trackJob(pid, { kind: 'gen', params: p, graph, refImageNames: refNames, refinedPrompt: refined });
     ensureWs();
     return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });
   }
@@ -2307,7 +2529,7 @@ async function handleApi(req, res, url) {
     }
     const graph = await buildUpscale(comfyName, opts);
     const pid = await queuePrompt(graph);
-    jobs.set(pid, { kind: 'upscale', itemId: item.id, graph, upscaleInfo: opts });
+    trackJob(pid, { kind: 'upscale', itemId: item.id, graph, upscaleInfo: opts });
     ensureWs();
     return json(res, 200, { jobId: pid });
   }
@@ -2354,8 +2576,19 @@ async function handleApi(req, res, url) {
     const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
     const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
     const selectedScailMode = scailMode(body.scailMode);
+    const selectedScailChunkOptions = normalizeScailChunkOptions({
+      mode: selectedScailMode,
+      stableTracking: body.scailStableTracking,
+      chunkFrames: body.scailChunkFrames,
+      overlapFrames: body.scailChunkOverlap,
+    });
     if (engine === 'scail' && !driveVideoName) {
       return json(res, 400, { error: 'SCAIL 2 needs a driving motion video. Attach one with the 🎥 chip.' });
+    }
+    if (engine === 'scail' && selectedScailMode === 'infinity') {
+      const info = await getObjectInfo();
+      const err = scailInfinityError(info);
+      if (err) return json(res, 400, { error: err });
     }
 
     // Duration: prefer seconds; fall back to legacy frames (25 fps)
@@ -2424,6 +2657,9 @@ async function handleApi(req, res, url) {
       driveStartSeconds: driveStart,
       seconds,
       scailMode: selectedScailMode,
+      scailStableTracking: selectedScailChunkOptions.stableTracking,
+      scailChunkFrames: selectedScailChunkOptions.chunkFrames,
+      scailChunkOverlap: selectedScailChunkOptions.overlapFrames,
       driveAudio: engine === 'scail',
       smooth,
       loras: Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : [],
@@ -2433,7 +2669,7 @@ async function handleApi(req, res, url) {
         : engine === 'eros' ? await buildAnimateEros(comfyName, opts)
           : await buildAnimate(comfyName, opts);
     const pid = await queuePrompt(graph);
-    jobs.set(pid, {
+    trackJob(pid, {
       kind: 'video', itemId: item ? item.id : null, createItem: !item, graph,
       videoInfo: {
         engine,
@@ -2449,6 +2685,9 @@ async function handleApi(req, res, url) {
         endFrame: !!endImageName,
         motionVideo: !!driveVideoName,
         scailMode: engine === 'scail' ? selectedScailMode : undefined,
+        scailStableTracking: engine === 'scail' ? selectedScailChunkOptions.stableTracking : undefined,
+        scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,
+        scailChunkOverlap: engine === 'scail' ? selectedScailChunkOptions.overlapFrames : undefined,
         // Asset names (ComfyUI input dir) so "Reuse" can restore them
         imageName: bypass ? undefined : comfyName,
         srcWidth: bypass ? undefined : srcW,
@@ -2503,7 +2742,7 @@ async function handleApi(req, res, url) {
     videoInfo.preservedAudio = true;
 
     const pid = await queuePrompt(graph);
-    jobs.set(pid, { kind: 'video', itemId: item.id, graph, videoInfo });
+    trackJob(pid, { kind: 'video', itemId: item.id, graph, videoInfo });
     ensureWs();
     return json(res, 200, { jobId: pid });
   }
@@ -2567,7 +2806,7 @@ async function handleApi(req, res, url) {
       inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/side', format: 'auto', codec: 'auto' },
     };
     const pid = await queuePrompt(await filterInputs(graph));
-    jobs.set(pid, {
+    trackJob(pid, {
       kind: 'video', itemId: item.id, graph,
       videoInfo: {
         engine: info.engine, composite: true,
@@ -2665,15 +2904,13 @@ async function handleApi(req, res, url) {
   if (route === '/api/queue') {
     try {
       const q = await (await comfyFetch('/queue')).json();
-      const describe = (entry) => {
-        const pid = entry[1];
-        const job = jobs.get(pid);
-        return { jobId: pid, kind: job ? job.kind : 'external', itemId: job ? (job.itemId || null) : null, label: jobLabel(job) };
-      };
+      const running = (q.queue_running || []).map((entry) => describeQueueEntry(entry, true));
+      const pending = (q.queue_pending || []).map((entry) => describeQueueEntry(entry, false));
       return json(res, 200, {
         ok: true,
-        running: (q.queue_running || []).map(describe),
-        pending: (q.queue_pending || []).map(describe),
+        running,
+        pending,
+        health: await queueHealth(running, pending),
         history: db.history.slice(0, 20),
       });
     } catch (e) {
@@ -2703,6 +2940,24 @@ async function handleApi(req, res, url) {
       failJob(pid, 'Cancelled');
     }
     return json(res, 200, { ok: true });
+  }
+
+  if (route === '/api/queue/reset' && req.method === 'POST') {
+    const reset = [];
+    for (const reqInfo of comfyResetRequests()) {
+      try {
+        await comfyFetch(reqInfo.path, reqInfo.init);
+        reset.push({ name: reqInfo.name, ok: true });
+      } catch (e) {
+        reset.push({ name: reqInfo.name, ok: false, error: String(e.message || e) });
+      }
+    }
+    const clearedJobs = [...jobs.keys()];
+    for (const pid of clearedJobs) {
+      if (jobs.has(pid)) failJob(pid, 'Reset by user');
+    }
+    broadcast('queueReset', { reset, clearedJobs: clearedJobs.length });
+    return json(res, 200, { ok: true, reset, clearedJobs: clearedJobs.length });
   }
 
   if (route === '/api/private/status') {

@@ -34,3 +34,8 @@ test('create tab exposes image-to-prompt wiring', () => {
   assert.match(indexHtml, /id="imagePromptBtn"/);
   assert.match(appJs, /\/api\/imageprompt/);
 });
+
+test('lightbox image metadata shows generation duration when recorded', () => {
+  assert.match(appJs, /Generated in:/);
+  assert.match(appJs, /formatDuration\(it\.durationMs\)/);
+});

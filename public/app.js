@@ -133,7 +133,11 @@ function saveForm() {
     localStorage.setItem('ks-form', JSON.stringify({
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, prompts: state.prompts,
-      editEngine: state.editEngine,
+      editEngine: state.editEngine, vidScailMode: state.vidScailMode,
+      scailModeVersion: 2,
+      vidScailStableTracking: state.vidScailStableTracking,
+      vidScailChunkFrames: state.vidScailChunkFrames,
+      vidScailChunkOverlap: state.vidScailChunkOverlap,
       customDims: state.customDims, width: state.width, height: state.height,
     }));
   } catch { /* noop */ }
@@ -149,6 +153,12 @@ function loadForm() {
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
     state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : 'klein4');
+    state.vidScailMode = f.scailModeVersion >= 2 && ['infinity', 'chunked', 'direct'].includes(f.vidScailMode)
+      ? f.vidScailMode
+      : (f.vidScailMode === 'direct' ? 'direct' : 'infinity');
+    state.vidScailStableTracking = f.vidScailStableTracking !== false;
+    if ([41, 61, 81].includes(Number(f.vidScailChunkFrames))) state.vidScailChunkFrames = Number(f.vidScailChunkFrames);
+    if ([5, 9, 13, 17].includes(Number(f.vidScailChunkOverlap))) state.vidScailChunkOverlap = Number(f.vidScailChunkOverlap);
     if (f.prompts && typeof f.prompts === 'object') {
       state.prompts = Object.assign({ create: '', edit: '', video: '' }, f.prompts);
     } else if (f.prompt) {
@@ -509,14 +519,51 @@ wireAudioChip('anim', 'animAudio', 'animDur', 'animDurVal');
 state.vidSigma = 'dmd';
 state.animSigma = 'dmd';
 state.vidSmooth = 1;
-state.vidScailMode = 'chunked';
+state.vidScailMode = 'infinity';
+state.vidScailStableTracking = true;
+state.vidScailChunkFrames = 81;
+state.vidScailChunkOverlap = 13;
+function renderScailChunkControls() {
+  const row = $('#vidScailAdvancedRow');
+  if (!row) return;
+  $$('#vidScailModeRow .chip').forEach((x) => {
+    x.classList.toggle('active', x.dataset.scailMode === state.vidScailMode);
+  });
+  const chunked = state.vidEngine === 'scail' && state.vidScailMode === 'chunked';
+  row.hidden = !chunked;
+  $('#vidScailStable').classList.toggle('active', state.vidScailStableTracking !== false);
+  $$('#vidScailChunkRow .chip').forEach((x) => {
+    x.classList.toggle('active', Number(x.dataset.scailChunkFrames) === Number(state.vidScailChunkFrames || 81));
+  });
+  $$('#vidScailOverlapRow .chip').forEach((x) => {
+    x.classList.toggle('active', Number(x.dataset.scailOverlap) === Number(state.vidScailChunkOverlap || 13));
+  });
+}
 $$('#vidFpsRow .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#vidFpsRow .chip').forEach((x) => x.classList.toggle('active', x === c));
   state.vidSmooth = Number(c.dataset.smooth) || 1;
 }));
 $$('#vidScailModeRow .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#vidScailModeRow .chip').forEach((x) => x.classList.toggle('active', x === c));
-  state.vidScailMode = c.dataset.scailMode === 'direct' ? 'direct' : 'chunked';
+  state.vidScailMode = ['infinity', 'chunked', 'direct'].includes(c.dataset.scailMode) ? c.dataset.scailMode : 'infinity';
+  renderScailChunkControls();
+  saveForm();
+}));
+$('#vidScailStable').addEventListener('click', () => {
+  const isOn = state.vidScailStableTracking !== false;
+  state.vidScailStableTracking = !isOn;
+  renderScailChunkControls();
+  saveForm();
+});
+$$('#vidScailChunkRow .chip').forEach((c) => c.addEventListener('click', () => {
+  state.vidScailChunkFrames = Number(c.dataset.scailChunkFrames) || 81;
+  renderScailChunkControls();
+  saveForm();
+}));
+$$('#vidScailOverlapRow .chip').forEach((c) => c.addEventListener('click', () => {
+  state.vidScailChunkOverlap = Number(c.dataset.scailOverlap) || 13;
+  renderScailChunkControls();
+  saveForm();
 }));
 function wireSigmaRow(rowId, key) {
   $$(`#${rowId} .chip`).forEach((c) => c.addEventListener('click', () => {
@@ -1239,6 +1286,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidFpsRow').hidden = !(wan || scail);
   $('#vidScailModeRow').hidden = !scail;
   $('#vidExtras').hidden = wan || scail;
+  renderScailChunkControls();
   const dur = $('#vidDur');
   dur.max = scail ? 60 : 15;
   if (Number(dur.value) > Number(dur.max)) { dur.value = dur.max; $('#vidDurVal').textContent = dur.value; }
@@ -1291,6 +1339,9 @@ $('#generateBtn').addEventListener('click', async () => {
       sigmaPreset: state.vidSigma,
       smooth: state.vidSmooth,
       scailMode: state.vidEngine === 'scail' ? state.vidScailMode : undefined,
+      scailStableTracking: state.vidEngine === 'scail' ? state.vidScailStableTracking !== false : undefined,
+      scailChunkFrames: state.vidEngine === 'scail' ? state.vidScailChunkFrames : undefined,
+      scailChunkOverlap: state.vidEngine === 'scail' ? state.vidScailChunkOverlap : undefined,
       sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.videoLoras,
       audioName: vidAudioName,
@@ -1400,6 +1451,34 @@ function agoStr(ts) {
   if (s < 86400) return Math.floor(s / 3600) + 'h';
   return Math.floor(s / 86400) + 'd';
 }
+function formatDuration(ms) {
+  const total = Math.max(0, Math.round(Number(ms) / 1000) || 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+function renderQueueHealth(health) {
+  const box = $('#queueHealth');
+  if (!box) return;
+  if (!health) {
+    box.innerHTML = '<span class="health-dot unknown"></span><b>Health unavailable</b>';
+    return;
+  }
+  const gpu = health.gpu || {};
+  const memPct = gpu.memoryTotalMb ? Math.round((gpu.memoryUsedMb / gpu.memoryTotalMb) * 100) : null;
+  const cls = health.state === 'stalled' ? 'bad' : (health.state === 'active' ? 'good' : (health.state === 'idle' ? 'idle' : 'watch'));
+  const parts = [
+    `<span class="health-dot ${cls}"></span>`,
+    `<b>${escapeHtml(health.message || 'Queue health')}</b>`,
+  ];
+  if (gpu.utilization != null) parts.push(`<span>GPU ${Math.round(gpu.utilization)}%</span>`);
+  if (memPct != null) parts.push(`<span>VRAM ${memPct}%</span>`);
+  if (health.longestRunningMs) parts.push(`<span>Longest ${formatDuration(health.longestRunningMs)}</span>`);
+  box.innerHTML = parts.join('');
+}
 function openFromQueue(itemId, videoId) {
   $('#queueSheet').classList.remove('show');
   const go = () => { setView('gallery'); openLightbox(itemId, videoId || 'image'); };
@@ -1407,6 +1486,7 @@ function openFromQueue(itemId, videoId) {
   else refreshGallery(true).then(go);
 }
 function renderQueue(q) {
+  renderQueueHealth(q.health);
   const list = $('#queueList');
   list.innerHTML = '';
   const rows = [
@@ -1423,10 +1503,11 @@ function renderQueue(q) {
     st.className = 'q-state' + (j.run ? ' run' : '');
     st.dataset.jobId = j.jobId;
     const pct = state.queueProgress[j.jobId];
+    const elapsed = j.elapsedMs != null ? formatDuration(j.elapsedMs) : '';
     st.textContent = j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued';
     const lb = document.createElement('span');
     lb.className = 'q-label';
-    lb.textContent = j.label;
+    lb.textContent = elapsed ? `${j.label} - ${elapsed}` : j.label;
     if (j.itemId) {
       row.classList.add('q-click');
       lb.addEventListener('click', () => openFromQueue(j.itemId));
@@ -1466,6 +1547,7 @@ function renderQueue(q) {
       const lb = document.createElement('span');
       lb.className = 'q-label';
       lb.textContent = (e.kind === 'error' ? '⚠ ' : '') + e.label;
+      if (e.durationMs) lb.textContent += ` - ${formatDuration(e.durationMs)}`;
       row.append(st, lb);
       if (e.itemId) row.addEventListener('click', () => openFromQueue(e.itemId, e.videoId));
       list.appendChild(row);
@@ -1481,6 +1563,22 @@ $('#queueBtn').addEventListener('click', async () => {
     if (!$('#queueSheet').classList.contains('show')) { clearInterval(queuePoll); return; }
     refreshQueue().catch(() => { /* noop */ });
   }, 3000);
+});
+
+$('#queueResetBtn').addEventListener('click', async () => {
+  if (!window.confirm('Hard reset ComfyUI? This stops the active job, clears queued jobs, and unloads model memory.')) return;
+  const btn = $('#queueResetBtn');
+  btn.disabled = true;
+  try {
+    const res = await api('/api/queue/reset', { method: 'POST' });
+    state.queueProgress = {};
+    toast(`Hard reset complete${res.clearedJobs ? ` - ${res.clearedJobs} tracked job${res.clearedJobs === 1 ? '' : 's'} cleared` : ''}`);
+    await refreshQueue();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -1912,7 +2010,8 @@ function openLightbox(id, mediaSel) {
     if (info.refinedMotionPrompt) meta.push(`<b>✨ Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
     if (info.frames && info.fps) {
       const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[info.engine] || 'LTX 2.3';
-      const flags = [info.composite && '⿻ side-by-side', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, info.scailMode && `SCAIL ${info.scailMode}`, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
+      const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
+      const flags = [info.composite && '⿻ side-by-side', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Video:</b> ${eng} · ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     }
@@ -1921,6 +2020,7 @@ function openLightbox(id, mediaSel) {
     if (it.mode === 'edit' && it.editEngine) meta.push(`<b>Editor:</b> ${editEngineLabel(it.editEngine)}`);
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
+    if (it.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(it.durationMs)}`);
     if (it.loras && it.loras.length) meta.push('<b>LoRAs:</b> ' + it.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     if (it.upscaleInfo) {
       if (it.upscaleInfo.engine === 'ultimate') {
@@ -2341,8 +2441,12 @@ async function reuseVideo(it, v) {
   if (schip) schip.click();
   const fchip = $(`#vidFpsRow .chip[data-smooth="${info.smooth || 1}"]`);
   if (fchip) fchip.click();
-  const scailModeChip = $(`#vidScailModeRow .chip[data-scail-mode="${info.scailMode || 'chunked'}"]`);
+  const scailModeChip = $(`#vidScailModeRow .chip[data-scail-mode="${info.scailMode || 'infinity'}"]`);
   if (scailModeChip) scailModeChip.click();
+  state.vidScailStableTracking = info.scailStableTracking !== false;
+  state.vidScailChunkFrames = [41, 61, 81].includes(Number(info.scailChunkFrames)) ? Number(info.scailChunkFrames) : 81;
+  state.vidScailChunkOverlap = [5, 9, 13, 17].includes(Number(info.scailChunkOverlap)) ? Number(info.scailChunkOverlap) : 13;
+  renderScailChunkControls();
 
   // Prompt + toggles
   state.prompts.video = info.motionPrompt || '';
@@ -2692,6 +2796,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setErosSigU').value = s.erosSigmasUpscale || '';
     $('#setScailUnet').value = s.scailUnet || '';
     $('#setScailLora').value = s.scailLora || '';
+    $('#setScailPusaLora').value = s.scailPusaLora || '';
     $('#setScailCv').value = s.scailClipVision || '';
     $('#setScailSam').value = s.scailSam || '';
   } catch { /* noop */ }
@@ -2740,10 +2845,11 @@ $('#settingsSave').addEventListener('click', async () => {
         erosDmdLora: $('#setErosDmd').value,
         erosSigmasFirst: $('#setErosSigF').value,
         erosSigmasUpscale: $('#setErosSigU').value,
-        scailUnet: $('#setScailUnet').value,
-        scailLora: $('#setScailLora').value,
-        scailClipVision: $('#setScailCv').value,
-        scailSam: $('#setScailSam').value,
+            scailUnet: $('#setScailUnet').value,
+            scailLora: $('#setScailLora').value,
+            scailPusaLora: $('#setScailPusaLora').value,
+            scailClipVision: $('#setScailCv').value,
+            scailSam: $('#setScailSam').value,
       }),
     });
     toast('Settings saved');
@@ -2775,13 +2881,13 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     rows.push(missing.length
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`
       : `<span class="ok">●</span> ${labels[group]}: OK`);
   }
-  const fieldLabels = { unet: 'UNET', clip: 'text encoder', vae: 'VAE', lora: 'LoRA' };
+  const fieldLabels = { unet: 'UNET', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA' };
   for (const engine of Object.values(lastMeta.models || {})) {
     const checks = Object.entries(engine).filter(([, v]) => v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'ok'));
     const missing = checks.filter(([, v]) => !v.ok);
