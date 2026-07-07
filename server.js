@@ -27,6 +27,7 @@ const {
   parseNvidiaSmiCsv,
 } = require('./lib/queue-health');
 const { classifyLora } = require('./lib/lora-compat');
+const { buildLoraContext } = require('./lib/lora-context');
 const {
   DEFAULT_SEEDVR2_DIT,
   normalizeSeedVr2Defaults,
@@ -51,6 +52,21 @@ const {
   scailSamTrackArgs,
   videoProcessInfo,
 } = require('./lib/video-workflows');
+const {
+  buildRegionalT2IGraph,
+  buildKrea2InpaintGraph,
+  hasActiveRegions,
+  normalizeRegions,
+} = require('./lib/regional-workflows');
+const {
+  PROFILE_COOKIE,
+  hashPin,
+  verifyPin,
+  signProfileId,
+  parseProfileToken,
+  publicProfile,
+  adoptOrphans,
+} = require('./lib/profiles');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
@@ -61,6 +77,12 @@ const PORT = Number(process.env.PORT || 3300);
 
 fs.mkdirSync(IMAGES, { recursive: true });
 fs.mkdirSync(VIDEOS, { recursive: true });
+const FACES = path.join(DATA, 'faces');
+fs.mkdirSync(FACES, { recursive: true });
+const AVATARS = path.join(DATA, 'avatars');
+fs.mkdirSync(AVATARS, { recursive: true });
+const LORATHUMBS = path.join(DATA, 'lorathumbs');
+fs.mkdirSync(LORATHUMBS, { recursive: true });
 
 /* ------------------------------------------------------------------ */
 /* Settings                                                            */
@@ -124,6 +146,8 @@ const DEFAULT_SETTINGS = {
   erosDmdLora: 'LTX2.3_DMD_reshaped_r256.safetensors',
   erosSigmasFirst: '',
   erosSigmasUpscale: '',
+  ltxFaceIdLora: 'Best_FaceID_v1.0_LoRA.safetensors',
+  ltxFaceIdDistilledLora: 'ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors',
   scailUnet: 'wan2.1_14B_SCAIL_2_fp8_scaled.safetensors',
   scailLora: 'Wan2.1\\Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors',
   scailPusaLora: 'Pusa\\Wan21_PusaV1_LoRA_14B_rank512_bf16.safetensors',
@@ -247,6 +271,59 @@ function pngDims(buf) {
 }
 if (!Array.isArray(db.history)) db.history = [];
 if (!Array.isArray(db.loraPresets)) db.loraPresets = [];
+if (!Array.isArray(db.faces)) db.faces = [];
+
+/* ---------------------- Profiles (accounts) ------------------------ */
+// Signing secret persists so logins survive server restarts
+const AUTH_SECRET_FILE = path.join(DATA, 'auth_secret.txt');
+let AUTH_SECRET;
+try {
+  AUTH_SECRET = fs.readFileSync(AUTH_SECRET_FILE, 'utf8').trim();
+  if (!AUTH_SECRET) throw new Error('empty');
+} catch {
+  AUTH_SECRET = crypto.randomBytes(24).toString('hex');
+  fs.writeFileSync(AUTH_SECRET_FILE, AUTH_SECRET);
+}
+if (!db.loraThumbs || typeof db.loraThumbs !== 'object') db.loraThumbs = {};
+if (!Array.isArray(db.profiles)) db.profiles = [];
+{
+  // First boot with profiles: create Nathan and adopt all existing content
+  if (!db.profiles.length) {
+    db.profiles.push({ id: uid(), name: 'Nathan', pinHash: null, pinSalt: null, createdAt: Date.now() });
+    console.log('[profiles] created default profile "Nathan"');
+  }
+  const adopted = adoptOrphans(db, db.profiles[0].id);
+  if (adopted) {
+    console.log(`[profiles] assigned ${adopted} existing entr${adopted === 1 ? 'y' : 'ies'} to "${db.profiles[0].name}"`);
+  }
+  saveJsonSync(DB_FILE, db);
+}
+
+/* Rolling db backups: on boot and every 30 minutes, keep the last 40.
+   (Added after the profile-deletion incident — never again.) */
+const BACKUPS = path.join(DATA, 'backups');
+fs.mkdirSync(BACKUPS, { recursive: true });
+function backupDb(tag) {
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.copyFileSync(DB_FILE, path.join(BACKUPS, `db-${stamp}${tag ? '-' + tag : ''}.json`));
+    const all = fs.readdirSync(BACKUPS).filter((f) => f.startsWith('db-')).sort();
+    while (all.length > 40) fs.unlinkSync(path.join(BACKUPS, all.shift()));
+  } catch (e) { console.error('[backup]', e.message); }
+}
+backupDb('boot');
+setInterval(() => backupDb(''), 30 * 60 * 1000);
+
+function currentProfile(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  const id = parseProfileToken(cookies[PROFILE_COOKIE], AUTH_SECRET);
+  if (!id) return null;
+  return db.profiles.find((p) => p.id === id) || null;
+}
+
+function profileCookie(token, maxAge) {
+  return `${PROFILE_COOKIE}=${encodeURIComponent(token || '')}; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+}
 
 // One-time repair: recorded dims can differ from the actual file (edit
 // pipelines snap to resolution buckets). Reads 24 bytes per image.
@@ -667,6 +744,8 @@ function nodeLabel(pid, nodeId) {
     SaveImage: 'Saving...', SeedVR2LoadDiTModel: 'Loading SeedVR2...', SeedVR2LoadVAEModel: 'Loading SeedVR2 VAE...',
     SeedVR2VideoUpscaler: 'Upscaling...', ImageScaleBy: 'Pre-resizing...', LoadImage: 'Loading image...',
     UpscaleModelLoader: 'Loading upscale model...', UltimateSDUpscale: 'Upscaling tiles...',
+    Ideogram4PromptBuilderKJ: 'Building region prompt...', Krea2RegionalMultiLoRAV3: 'Applying region guidance...',
+    ImageToMask: 'Preparing mask...', GrowMask: 'Softening mask...', VAEEncodeForInpaint: 'Encoding inpaint area...',
     CheckpointLoaderSimple: 'Loading LTX 2.3...', LTXAVTextEncoderLoader: 'Loading Gemma...',
     TextGenerateLTX2Prompt: 'Enhancing motion prompt...', SamplerCustomAdvanced: 'Generating video...',
     LTXVLatentUpsampler: 'Upsampling video...', VAEDecodeTiled: 'Decoding frames...',
@@ -696,7 +775,7 @@ function failJob(pid, message) {
   const durationMs = job ? jobDurationMs(job) : undefined;
   jobs.delete(pid);
   if (job && job.kind === 'enhance') { job.reject(new Error(message)); return; }
-  pushHistory({ kind: 'error', itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
+  pushHistory({ kind: 'error', profileId: job ? job.profileId : undefined, itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
   broadcast('jobError', { jobId: pid, kind: job ? job.kind : 'gen', itemId: job ? job.itemId : null, message, durationMs });
 }
 
@@ -763,6 +842,7 @@ async function completeJob(pid) {
         id,
         file: posterName,
         mode: 'video',
+        profileId: job.profileId,
         prompt: job.videoInfo.motionPrompt,
         refinedPrompt: null,
         enhance: !!job.videoInfo.enhance,
@@ -795,7 +875,7 @@ async function completeJob(pid) {
       ? 'Video upscale'
       : (job.videoInfo.processed === 'interpolate' ? 'Frame interpolation' : (job.videoInfo.composite ? 'Side-by-side' : 'Video'));
     pushHistory({
-      kind: 'video', itemId: item.id, videoId: entry.id, durationMs,
+      kind: 'video', profileId: job.profileId, itemId: item.id, videoId: entry.id, durationMs,
       label: `${videoActionLabel} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
     });
     broadcast('videoDone', { jobId: pid, item });
@@ -815,7 +895,7 @@ async function completeJob(pid) {
     item.upscaleInfo = job.upscaleInfo;
     item.upscaleDurationMs = durationMs;
     saveDb();
-    pushHistory({ kind: 'upscale', itemId: item.id, durationMs, label: `Upscaled: ${(item.prompt || '').slice(0, 60)}` });
+    pushHistory({ kind: 'upscale', profileId: job.profileId, itemId: item.id, durationMs, label: `Upscaled: ${(item.prompt || '').slice(0, 60)}` });
     broadcast('upscaleDone', { jobId: pid, item });
     return;
   }
@@ -847,6 +927,9 @@ async function completeJob(pid) {
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
+      profileId: job.profileId,
+      regions: Array.isArray(job.params.regions) && job.params.regions.length
+        ? normalizeRegions(job.params.regions) : undefined,
       prompt: job.params.prompt,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
@@ -869,7 +952,7 @@ async function completeJob(pid) {
   }
   saveDb();
   for (const it of created) {
-    pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', itemId: it.id, durationMs, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
+    pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', profileId: job.profileId, itemId: it.id, durationMs, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
   }
   broadcast('jobDone', { jobId: pid, items: created });
 }
@@ -1117,6 +1200,18 @@ async function buildT2I(p) {
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
   graph.save = { class_type: 'SaveImage', inputs: { images: ['decode', 0], filename_prefix: 'KreaStudio/gen' } };
   return filterInputs(graph);
+}
+
+async function buildRegionalT2I(p) {
+  return filterInputs(buildRegionalT2IGraph(Object.assign({}, p, { settings })));
+}
+
+async function buildKrea2Inpaint(p, refNames) {
+  return filterInputs(buildKrea2InpaintGraph(Object.assign({}, p, {
+    settings,
+    imageName: refNames[0],
+    maskImageName: p.maskImageName,
+  })));
 }
 
 /* Edit (Qwen): the real Qwen-Image-Edit 2511 pipeline (official template):
@@ -1551,6 +1646,180 @@ async function buildAnimate(imageName, opts) {
     inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
   };
   // Standalone videos (no gallery source): save the first frame as a poster
+  if (opts.makePoster) {
+    const info = await getObjectInfo();
+    if (info.ImageFromBatch) {
+      graph.poster_pick = { class_type: 'ImageFromBatch', inputs: { image: ['decode', 0], batch_index: 0, length: 1 } };
+      graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
+    }
+  }
+  return filterInputs(graph);
+}
+
+/* ---------------- LTX Face ID (reference-to-video) ---------------- */
+/* Replicates Alissonerdx's "Best-FaceID v1.0" workflow: LTX 2.3 base  */
+/* + distilled-1.1 LoRA @0.6 + Best_FaceID LoRA @1.0, the BFS          */
+/* LTXIdentityOverlapConditioning node injects the reference face      */
+/* latent at frame-0 with a TASS-RoPE source tag, single-stage,        */
+/* euler_ancestral_cfg_pp on the base sigma schedule, 24 fps.          */
+
+const FACEID_PROMPT_INTRO = 'You will receive two inputs:\n\n1. A reference face image showing the person whose appearance must be preserved.\n2. An original `ref_t2v` video caption describing the scene, action, environment, camera framing, movement, lighting, mood, clothing, and props.\n\nYour task is to analyze the reference face image, extract the person’s visible appearance characteristics, and merge those characteristics naturally into the original video caption.\n\nREFERENCE FACE IMAGE:\n[REFERENCE IMAGE PROVIDED TO THE MODEL]\n\nORIGINAL VIDEO CAPTION:\n';
+
+const FACEID_PROMPT_RULES = '\nSTRICT EDITING RULE:\n\nTreat the original video caption as locked text.\n\nYou are allowed to make only these edits:\n\n1. Expand the first subject phrase:\n   - Replace only `A person`, `A man`, or `A woman` with the same original subject noun plus visible appearance details.\n   - The original subject noun must remain present.\n   - Insert the appearance details immediately around the original subject noun.\n   - Do not delete or replace any words that appear after the original subject phrase.\n\n2. Optionally replace later subject pronouns:\n   - `They`, `He`, or `She` may be replaced with a short appearance-based reference.\n   - Preserve every verb, object, action, and remaining word from the original sentence.\n   - Do not alter the order of the words or actions.\n\nEverything else in the original caption is immutable.\n\nYou must preserve verbatim:\n\n- clothing and costumes;\n- actions;\n- action order;\n- environments;\n- objects and props;\n- camera framing;\n- camera movement;\n- lighting;\n- mood;\n- adjectives;\n- temporal transitions;\n- all principal nouns and verbs.\n\nCRITICAL PRESERVATION RULES:\n\n- Never remove clothing or costume descriptions.\n- Never remove phrases between the original subject and the main action.\n- Never replace original words with synonyms.\n- Never summarize or simplify the caption.\n- Never improve or creatively rewrite the caption.\n- Never add new actions, clothing, props, people, or environments.\n- Never mention or infer the person’s identity or name.\n- Never repeat labels such as `REFERENCE FACE IMAGE` or `ORIGINAL VIDEO CAPTION`.\n- Never write introductory text such as:\n  - `Okay`\n  - `I understand`\n  - `Let\'s proceed`\n  - `Here is the merged caption`\n  - `The result is`\n\nFACE IMAGE ANALYSIS:\n\nExtract only clearly visible, non-sensitive appearance details, such as:\n\n- apparent age group;\n- skin tone;\n- hair color;\n- hair length;\n- hair texture;\n- hairstyle;\n- face shape;\n- visible facial hair;\n- glasses;\n- clearly visible eye color;\n- other distinctive visible facial features.\n\nDo not:\n\n- identify the person;\n- repeat a name supplied in image metadata or surrounding text;\n- infer ethnicity, nationality, occupation, personality, religion, health, or background;\n- invent unclear characteristics;\n- infer clothing from the face image.\n\nMINIMUM-EDIT PROCEDURE:\n\nStep 1:\nCopy the original caption exactly.\n\nStep 2:\nLocate only the first subject phrase:\n- `A person`\n- `A man`\n- `A woman`\n\nStep 3:\nExpand that phrase with the extracted appearance while preserving the original subject noun.\n\nStep 4:\nFor later pronouns, either preserve the original pronoun or replace only the pronoun with a concise appearance-based subject reference.\n\nFINAL VALIDATION:\n\nBefore answering, silently compare the output with the original caption and verify:\n\n- every original costume and clothing phrase remains;\n- every original action remains;\n- every original prop remains;\n- every original environment remains;\n- every original framing term remains;\n- every original lighting and mood phrase remains;\n- the action order is unchanged;\n- no original principal word was removed;\n- no synonym replaced an original word;\n- only subject appearance information was added;\n- no introductory or explanatory text appears.\n\nOUTPUT REQUIREMENT:\n\nOutput exactly one line containing only the final `ref_t2v` caption.\n\nDo not output analysis, headings, labels, explanations, acknowledgements, or quotation marks.\n\nThe line must begin with exactly:\n\nref_t2v:';
+
+function faceIdDims(w, h) {
+  const long = 1024;
+  const s = long / Math.max(w || 1024, h || 1024);
+  const W = Math.max(256, Math.round((w * s) / 32) * 32);
+  const H = Math.max(256, Math.round((h * s) / 32) * 32);
+  return { W, H };
+}
+
+async function buildAnimateFaceId(faceName, opts) {
+  const { W, H } = opts;
+  const graph = {};
+
+  // Models: base ckpt -> distilled-1.1 @0.6 -> FaceID LoRA @1.0 -> user LoRAs
+  graph.ckpt = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.ltxCkpt } };
+  graph.model_lora = {
+    class_type: 'LoraLoaderModelOnly',
+    inputs: { model: ['ckpt', 0], lora_name: settings.ltxFaceIdDistilledLora, strength_model: 0.6 },
+  };
+  graph.faceid_lora = {
+    class_type: 'LoraLoaderModelOnly',
+    inputs: { model: ['model_lora', 0], lora_name: settings.ltxFaceIdLora, strength_model: 1 },
+  };
+  const ltxModel = chainModelLoras(graph, ['faceid_lora', 0], opts.loras, 'flora');
+  graph.te = await nodeFromOrdered(
+    'LTXAVTextEncoderLoader',
+    [settings.ltxTextEncoder, settings.ltxCkpt, 'default'],
+    {},
+    { text_encoder: settings.ltxTextEncoder, ckpt_name: settings.ltxCkpt }
+  );
+  graph.te_lora = {
+    class_type: 'LoraLoader',
+    inputs: {
+      model: ['ckpt', 0], clip: ['te', 0],
+      lora_name: settings.ltxGemmaLora, strength_model: 0.7, strength_clip: 0.7,
+    },
+  };
+
+  // Reference face (resized ~512, aspect kept — matches the FaceID workflow)
+  graph.face_img = { class_type: 'LoadImage', inputs: { image: faceName } };
+  graph.face = await nodeFromOrdered(
+    'ImageResizeKJv2',
+    [512, 512, 'lanczos', 'resize', '0, 0, 0', 'center', 2],
+    { image: ['face_img', 0] }
+  );
+
+  // Prompt: ref_t2v caption; optional Gemma pass that looks at the face and
+  // weaves its visible attributes into the caption (workflow's enhancer).
+  const userPrompt = /^\s*ref_t2v:/i.test(opts.prompt) ? opts.prompt : `ref_t2v: ${opts.prompt}`;
+  let promptSource = userPrompt;
+  if (opts.enhance) {
+    graph.refine = {
+      class_type: 'TextGenerate',
+      inputs: Object.assign(
+        {
+          clip: ['te_lora', 1],
+          image: ['face', 0],
+          prompt: FACEID_PROMPT_INTRO + userPrompt + FACEID_PROMPT_RULES,
+        },
+        textGenInputs(opts.seed, 1024)
+      ),
+    };
+    graph.showPrompt = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
+    promptSource = ['refine', 0];
+  }
+  graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: promptSource } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: LTX_NEGATIVE } };
+  graph.cond = {
+    class_type: 'LTXVConditioning',
+    inputs: { positive: ['pos', 0], negative: ['neg', 0], frame_rate: opts.fps },
+  };
+
+  // Empty AV latent (pure t2v — identity comes from the overlap reference)
+  graph.latent1 = {
+    class_type: 'EmptyLTXVLatentVideo',
+    inputs: { width: W, height: H, length: opts.frames, batch_size: 1 },
+  };
+  graph.audio_vae = { class_type: 'LTXVAudioVAELoader', inputs: { ckpt_name: settings.ltxCkpt } };
+  let audioLatent;
+  if (opts.audioName) {
+    audioLatent = audioLatentNodes(graph, opts.audioName);
+  } else {
+    graph.audio_lat = await nodeFromOrdered(
+      'LTXVEmptyLatentAudio',
+      [opts.frames, opts.fps, 1],
+      { audio_vae: ['audio_vae', 0] }
+    );
+    audioLatent = ['audio_lat', 0];
+  }
+  graph.concat1 = {
+    class_type: 'LTXVConcatAVLatent',
+    inputs: { video_latent: ['latent1', 0], audio_latent: audioLatent },
+  };
+
+  // BFS identity overlap: reference latent shares the frame-0 RoPE grid
+  // with a distinct source phase (widgets: projector None, source_id 2,
+  // phase_scale 1, strength 1, per workflow defaults).
+  graph.ident = await nodeFromOrdered(
+    'LTXIdentityOverlapConditioning',
+    ['None', 2, 1, 1, 'disable', false],
+    {
+      model: ltxModel,
+      positive: ['cond', 0],
+      negative: ['cond', 1],
+      vae: ['ckpt', 2],
+      latent: ['concat1', 0],
+      reference_face: ['face', 0],
+    }
+  );
+
+  graph.noise1 = { class_type: 'RandomNoise', inputs: { noise_seed: opts.seed } };
+  graph.guider1 = {
+    class_type: 'CFGGuider',
+    inputs: { model: ['ident', 0], positive: ['ident', 1], negative: ['ident', 2], cfg: 1 },
+  };
+  graph.sampler_sel1 = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler_ancestral_cfg_pp' } };
+  graph.sigmas1 = await nodeFromOrdered('ManualSigmas', [LTX_SIGMAS_BASE]);
+  graph.samp1 = {
+    class_type: 'SamplerCustomAdvanced',
+    inputs: {
+      noise: ['noise1', 0], guider: ['guider1', 0], sampler: ['sampler_sel1', 0],
+      sigmas: ['sigmas1', 0], latent_image: ['ident', 3],
+    },
+  };
+  graph.sep1 = { class_type: 'LTXVSeparateAVLatent', inputs: { av_latent: ['samp1', 0] } };
+
+  // Trim the overlap reference frame off the output, then decode
+  graph.crop = {
+    class_type: 'LTXVCropGuides',
+    inputs: { positive: ['ident', 1], negative: ['ident', 2], latent: ['sep1', 0] },
+  };
+  graph.decode = await nodeFromOrdered(
+    'VAEDecodeTiled',
+    [768, 64, 4096, 4],
+    { samples: ['crop', 2], vae: ['ckpt', 2] }
+  );
+  graph.audio_dec = {
+    class_type: 'LTXVAudioVAEDecode',
+    inputs: { samples: ['sep1', 1], audio_vae: ['audio_vae', 0] },
+  };
+
+  let frameSource = ['decode', 0];
+  if (opts.fourK) {
+    graph.vsr = rtxVideoSuperResolutionNode(['decode', 0]);
+    frameSource = ['vsr', 0];
+  }
+  graph.video = {
+    class_type: 'CreateVideo',
+    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps },
+  };
+  graph.save = {
+    class_type: 'SaveVideo',
+    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video', format: 'auto', codec: 'auto' },
+  };
   if (opts.makePoster) {
     const info = await getObjectInfo();
     if (info.ImageFromBatch) {
@@ -2335,6 +2604,9 @@ const REQUIRED_CLASSES = {
   qwenedit: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingAuraFlow',
     'CFGNorm', 'FluxKontextImageScale', 'TextEncodeQwenImageEditPlus', 'FluxKontextMultiReferenceLatentMethod',
     'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage'],
+  regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
+  faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
+  krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SaveImage'],
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
   ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
   video: ['CheckpointLoaderSimple', 'LoraLoaderModelOnly', 'LTXAVTextEncoderLoader', 'TextGenerateLTX2Prompt',
@@ -2361,6 +2633,137 @@ const REQUIRED_CLASSES = {
 
 async function handleApi(req, res, url) {
   const route = url.pathname;
+
+  /* ------------------------- Auth / profiles ----------------------- */
+  const profile = currentProfile(req);
+  req.profile = profile;
+
+  if (route === '/api/me') {
+    if (!profile) return json(res, 401, { error: 'Not signed in', code: 'auth' });
+    return json(res, 200, { profile: publicProfile(profile, db) });
+  }
+  if (route === '/api/profiles' && req.method === 'GET') {
+    return json(res, 200, { profiles: db.profiles.map((p) => publicProfile(p, db)) });
+  }
+  if (route === '/api/profiles' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const name = String(body.name || '').trim().slice(0, 30);
+    if (!name) return json(res, 400, { error: 'Profile name required' });
+    if (db.profiles.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+      return json(res, 400, { error: 'That profile name is taken' });
+    }
+    const pin = String(body.pin || '').trim();
+    const entry = { id: uid(), name, pinHash: null, pinSalt: null, createdAt: Date.now() };
+    if (pin) {
+      const { salt, hash } = hashPin(pin);
+      entry.pinSalt = salt;
+      entry.pinHash = hash;
+    }
+    db.profiles.push(entry);
+    saveDb();
+    res.setHeader('Set-Cookie', profileCookie(signProfileId(entry.id, AUTH_SECRET), 60 * 60 * 24 * 365));
+    return json(res, 200, { profile: publicProfile(entry, db) });
+  }
+  const profLogin = route.match(/^\/api\/profiles\/([\w]+)\/login$/);
+  if (profLogin && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const target = db.profiles.find((p) => p.id === profLogin[1]);
+    if (!target) return json(res, 404, { error: 'Profile not found' });
+    if (!verifyPin(target, String(body.pin || ''))) {
+      return json(res, 401, { error: 'Wrong PIN' });
+    }
+    res.setHeader('Set-Cookie', profileCookie(signProfileId(target.id, AUTH_SECRET), 60 * 60 * 24 * 365));
+    return json(res, 200, { profile: publicProfile(target, db) });
+  }
+  if (route === '/api/logout' && req.method === 'POST') {
+    res.setHeader('Set-Cookie', profileCookie('', 0));
+    return json(res, 200, { ok: true });
+  }
+  // Profile management: you can manage yourself; the first profile (owner)
+  // can manage everyone.
+  const isAdmin = () => profile && db.profiles[0] && profile.id === db.profiles[0].id;
+  const canManage = (target) => profile && target && (profile.id === target.id || isAdmin());
+  const profAvatar = route.match(/^\/api\/profiles\/([\w]+)\/avatar$/);
+  if (profAvatar && req.method === 'POST') {
+    const target = db.profiles.find((p) => p.id === profAvatar[1]);
+    if (!target) return json(res, 404, { error: 'Profile not found' });
+    if (!canManage(target)) return json(res, 401, { error: 'Sign in as this profile to change its photo' });
+    const buf = await readBody(req, 10 * 1024 * 1024);
+    if (!buf.length) return json(res, 400, { error: 'No image received' });
+    const file = `${target.id}_${Date.now()}.png`;
+    if (target.avatar) fsp.unlink(path.join(AVATARS, target.avatar)).catch(() => { /* noop */ });
+    await fsp.writeFile(path.join(AVATARS, file), buf);
+    target.avatar = file;
+    saveDb();
+    return json(res, 200, { profile: publicProfile(target, db) });
+  }
+  const profMan = route.match(/^\/api\/profiles\/([\w]+)$/);
+  if (profMan && req.method === 'POST') {
+    const target = db.profiles.find((p) => p.id === profMan[1]);
+    if (!target) return json(res, 404, { error: 'Profile not found' });
+    if (!canManage(target)) return json(res, 401, { error: 'Sign in as this profile to edit it' });
+    const body = await readJsonBody(req);
+    if (typeof body.name === 'string' && body.name.trim()) {
+      const name = body.name.trim().slice(0, 30);
+      if (db.profiles.some((p) => p.id !== target.id && p.name.toLowerCase() === name.toLowerCase())) {
+        return json(res, 400, { error: 'That profile name is taken' });
+      }
+      target.name = name;
+    }
+    if (typeof body.pin === 'string') {
+      const pin = body.pin.trim();
+      if (pin) {
+        const { salt, hash } = hashPin(pin);
+        target.pinSalt = salt;
+        target.pinHash = hash;
+      } else {
+        target.pinSalt = null;
+        target.pinHash = null; // clear PIN
+      }
+    }
+    saveDb();
+    return json(res, 200, { profile: publicProfile(target, db) });
+  }
+  if (profMan && req.method === 'DELETE') {
+    const target = db.profiles.find((p) => p.id === profMan[1]);
+    if (!target) return json(res, 404, { error: 'Profile not found' });
+    if (!canManage(target)) return json(res, 401, { error: 'Sign in as this profile to delete it' });
+    if (db.profiles.length <= 1) return json(res, 400, { error: 'The last profile cannot be deleted' });
+    // Hard confirmation: the exact profile name must accompany the request
+    const body = await readJsonBody(req).catch(() => ({}));
+    if (String(body.confirmName || '') !== target.name) {
+      return json(res, 400, { error: `Deletion needs confirmName: "${target.name}"` });
+    }
+    backupDb('pre-delete');
+    // Content moves to a trash folder instead of being destroyed
+    const TRASH = path.join(DATA, 'trash', `${Date.now()}_${target.name.replace(/[^\w]+/g, '_')}`);
+    await fsp.mkdir(TRASH, { recursive: true });
+    const toTrash = (dir, f) => {
+      if (!f) return Promise.resolve();
+      return fsp.rename(path.join(dir, f), path.join(TRASH, f)).catch(() => { /* noop */ });
+    };
+    const owned = db.items.filter((it) => it.profileId === target.id);
+    for (const it of owned) {
+      for (const f of [it.file, it.upscaled, it.sourceFile]) await toTrash(IMAGES, f);
+      for (const v of it.videos || []) await toTrash(VIDEOS, v.file);
+    }
+    db.items = db.items.filter((it) => it.profileId !== target.id);
+    db.folders = db.folders.filter((f) => f.profileId !== target.id);
+    db.history = db.history.filter((h) => h.profileId !== target.id);
+    db.loraPresets = db.loraPresets.filter((p) => p.profileId !== target.id);
+    for (const f of db.faces.filter((x) => x.profileId === target.id)) await toTrash(FACES, f.file);
+    db.faces = db.faces.filter((f) => f.profileId !== target.id);
+    if (target.avatar) await toTrash(AVATARS, target.avatar);
+    db.profiles = db.profiles.filter((p) => p.id !== target.id);
+    saveDb();
+    if (profile && profile.id === target.id) res.setHeader('Set-Cookie', profileCookie('', 0));
+    return json(res, 200, { ok: true, profiles: db.profiles.map((p) => publicProfile(p, db)) });
+  }
+  // Everything else needs a signed-in profile ( /api/meta and /api/events
+  // stay open so the connection dot and picker work pre-login).
+  if (!profile && route !== '/api/meta' && route !== '/api/events') {
+    return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
+  }
 
   if (route === '/api/events') {
     res.writeHead(200, {
@@ -2400,6 +2803,7 @@ async function handleApi(req, res, url) {
         ok: true,
         loras,
         lorasInfo,
+        loraThumbs: db.loraThumbs,
         missing,
         models: configuredModelsStatus(info),
         queue: jobs.size,
@@ -2449,7 +2853,10 @@ async function handleApi(req, res, url) {
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
-    if (!p.prompt) return json(res, 400, { error: 'Prompt is empty' });
+    p.regions = Array.isArray(p.regions) ? p.regions : [];
+    // Region descriptions can carry the whole composition — no general
+    // prompt needed in that case (the builder supplies a neutral background).
+    if (!p.prompt && !hasActiveRegions(p.regions)) return json(res, 400, { error: 'Prompt is empty' });
     p.width = clampInt(p.width, 64, 4096, 1024);
     p.height = clampInt(p.height, 64, 4096, 1024);
     p.steps = clampInt(p.steps, 1, 100, 12);
@@ -2458,6 +2865,8 @@ async function handleApi(req, res, url) {
     p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : 1);
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
       ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
+    p.regions = Array.isArray(p.regions) ? p.regions : [];
+    p.maskImageName = String(p.maskImageName || '').trim();
 
     let refined = null;
     if (p.enhance && p.mode !== 'edit') {
@@ -2468,24 +2877,36 @@ async function handleApi(req, res, url) {
 
     const refNames = Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [];
     if (p.mode === 'edit') {
-      p.editEngine = p.editEngine === 'qwen' ? 'qwen' : (p.editEngine === 'klein9' ? 'klein9' : 'klein4');
+      p.editEngine = p.editEngine === 'qwen' ? 'qwen' : (p.editEngine === 'klein9' ? 'klein9' : (p.editEngine === 'krea2' ? 'krea2' : 'klein4'));
       if (p.editEngine === 'qwen' && !refNames.length) {
         return json(res, 400, { error: 'Qwen Edit needs at least one reference image' });
       }
-      p.steps = 4; p.cfg = 1; p.denoise = null;
+      if (p.editEngine === 'krea2') {
+        if (p.maskImageName && !refNames.length) {
+          return json(res, 400, { error: 'Krea2 inpaint needs a source image' });
+        }
+      } else {
+        p.steps = 4; p.cfg = 1; p.denoise = null;
+      }
     }
-    const graph = p.mode === 'edit'
-      ? (p.editEngine === 'qwen' ? await buildEditQwen(p, refNames) : await buildEdit(p, refNames))
-      : await buildT2I(p);
+    let graph;
+    if (p.mode === 'edit') {
+      if (p.editEngine === 'qwen') graph = await buildEditQwen(p, refNames);
+      else if (p.editEngine === 'krea2' && p.maskImageName) graph = await buildKrea2Inpaint(p, refNames);
+      else if (p.editEngine === 'krea2') graph = hasActiveRegions(p.regions) ? await buildRegionalT2I(p) : await buildT2I(p);
+      else graph = await buildEdit(p, refNames);
+    } else {
+      graph = hasActiveRegions(p.regions) ? await buildRegionalT2I(p) : await buildT2I(p);
+    }
     const pid = await queuePrompt(graph);
-    trackJob(pid, { kind: 'gen', params: p, graph, refImageNames: refNames, refinedPrompt: refined });
+    trackJob(pid, { kind: 'gen', profileId: req.profile.id, params: p, graph, refImageNames: refNames, refinedPrompt: refined });
     ensureWs();
     return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });
   }
 
   if (route === '/api/upscale' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const item = db.items.find((it) => it.id === body.id);
+    const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Image not found' });
     const buf = await fsp.readFile(path.join(IMAGES, item.file));
     const real = pngDims(buf);
@@ -2529,7 +2950,7 @@ async function handleApi(req, res, url) {
     }
     const graph = await buildUpscale(comfyName, opts);
     const pid = await queuePrompt(graph);
-    trackJob(pid, { kind: 'upscale', itemId: item.id, graph, upscaleInfo: opts });
+    trackJob(pid, { kind: 'upscale', profileId: req.profile.id, itemId: item.id, graph, upscaleInfo: opts });
     ensureWs();
     return json(res, 200, { jobId: pid });
   }
@@ -2538,11 +2959,11 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const motionPrompt = String(body.prompt || '').trim();
     if (!motionPrompt) return json(res, 400, { error: 'Describe the motion first' });
-    let item = body.id ? db.items.find((it) => it.id === body.id) : null;
+    let item = body.id ? db.items.find((it) => it.id === body.id && it.profileId === req.profile.id) : null;
     if (body.id && !item) return json(res, 404, { error: 'Image not found' });
     // Video-tab jobs that started from a gallery image group under that item
     if (!item && body.sourceItemId) {
-      item = db.items.find((it) => it.id === body.sourceItemId) || null;
+      item = db.items.find((it) => it.id === body.sourceItemId && it.profileId === req.profile.id) || null;
     }
 
     let comfyName;
@@ -2572,6 +2993,7 @@ async function handleApi(req, res, url) {
       const label = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[engine];
       return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
     }
+    const faceImageName = engine === 'ltx' && body.faceImageName ? String(body.faceImageName) : null;
     const driveVideoName = engine === 'scail' && body.driveVideoName ? String(body.driveVideoName) : null;
     const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
     const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
@@ -2612,6 +3034,12 @@ async function handleApi(req, res, url) {
       frames = Math.round(seconds * 24);
       frames = Math.max(25, Math.min(361, Math.round((frames - 1) / 8) * 8 + 1)); // LTX 8n+1
       ({ W, H } = videoDims(srcW, srcH));
+    } else if (faceImageName) {
+      // Face ID reference-to-video: single-stage, 24 fps (workflow spec)
+      fps = 24;
+      frames = Math.round(seconds * 24);
+      frames = Math.max(25, Math.min(361, Math.round((frames - 1) / 8) * 8 + 1)); // LTX 8n+1
+      ({ W, H } = faceIdDims(srcW, srcH));
     } else {
       fps = 25;
       frames = Math.round(seconds * 25);
@@ -2637,7 +3065,7 @@ async function handleApi(req, res, url) {
       ? Number(body.smooth) : 1;
     const isLtxLike = engine === 'ltx' || engine === 'eros';
     const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;
-    const endImageName = isLtxLike && body.endImageName ? String(body.endImageName) : null;
+    const endImageName = isLtxLike && !faceImageName && body.endImageName ? String(body.endImageName) : null;
     const opts = {
       prompt,
       enhance: isLtxLike ? enhance : false, // LTX/10Eros enhance in-graph
@@ -2653,6 +3081,7 @@ async function handleApi(req, res, url) {
       sigmaFirst: sig.first,
       sigmaUp: sig.up,
       driveVideoName,
+      faceImageName,
       driveSkipFrames: Math.max(0, Math.round(driveStart * 16)),
       driveStartSeconds: driveStart,
       seconds,
@@ -2667,10 +3096,11 @@ async function handleApi(req, res, url) {
     const graph = engine === 'scail' ? await buildAnimateScail(comfyName, opts)
       : engine === 'wan' ? await buildAnimateWan(comfyName, opts)
         : engine === 'eros' ? await buildAnimateEros(comfyName, opts)
-          : await buildAnimate(comfyName, opts);
+          : faceImageName ? await buildAnimateFaceId(faceImageName, opts)
+            : await buildAnimate(comfyName, opts);
     const pid = await queuePrompt(graph);
     trackJob(pid, {
-      kind: 'video', itemId: item ? item.id : null, createItem: !item, graph,
+      kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
       videoInfo: {
         engine,
         motionPrompt, enhance,
@@ -2695,6 +3125,8 @@ async function handleApi(req, res, url) {
         audioName: audioName || undefined,
         endImageName: endImageName || undefined,
         driveVideoName: driveVideoName || undefined,
+        faceId: !!faceImageName || undefined,
+        faceImageName: faceImageName || undefined,
         driveStartSeconds: engine === 'scail' && driveStart > 0 ? driveStart : undefined,
         driveDurSeconds: engine === 'scail' && driveDur > 0 ? driveDur : undefined,
         loras: opts.loras,
@@ -2707,7 +3139,7 @@ async function handleApi(req, res, url) {
 
   if ((route === '/api/video/upscale' || route === '/api/video/interpolate') && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const item = db.items.find((it) => it.id === body.id);
+    const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Item not found' });
     const entry = (item.videos || []).find((v) => v.id === body.videoId);
     if (!entry) return json(res, 404, { error: 'Video not found' });
@@ -2742,7 +3174,7 @@ async function handleApi(req, res, url) {
     videoInfo.preservedAudio = true;
 
     const pid = await queuePrompt(graph);
-    trackJob(pid, { kind: 'video', itemId: item.id, graph, videoInfo });
+    trackJob(pid, { kind: 'video', profileId: req.profile.id, itemId: item.id, graph, videoInfo });
     ensureWs();
     return json(res, 200, { jobId: pid });
   }
@@ -2752,7 +3184,7 @@ async function handleApi(req, res, url) {
   // entry on the same gallery item.
   if (route === '/api/composite' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const item = db.items.find((it) => it.id === body.id);
+    const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Item not found' });
     const entry = (item.videos || []).find((v) => v.id === body.videoId);
     if (!entry) return json(res, 404, { error: 'Video not found' });
@@ -2807,7 +3239,7 @@ async function handleApi(req, res, url) {
     };
     const pid = await queuePrompt(await filterInputs(graph));
     trackJob(pid, {
-      kind: 'video', itemId: item.id, graph,
+      kind: 'video', profileId: req.profile.id, itemId: item.id, graph,
       videoInfo: {
         engine: info.engine, composite: true,
         motionPrompt: info.motionPrompt || '',
@@ -2820,7 +3252,7 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/motionprompt' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const item = db.items.find((it) => it.id === body.id);
+    const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Image not found' });
     const buf = await fsp.readFile(path.join(IMAGES, item.file));
     const comfyName = await uploadToComfy(buf, `ks_motion_${item.id}.png`);
@@ -2834,7 +3266,7 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     let comfyName = '';
     if (body.id) {
-      const item = db.items.find((it) => it.id === body.id);
+      const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
       if (!item) return json(res, 404, { error: 'Image not found' });
       const buf = await fsp.readFile(path.join(IMAGES, item.file));
       comfyName = await uploadToComfy(buf, `ks_prompt_${item.id}.png`);
@@ -2904,14 +3336,26 @@ async function handleApi(req, res, url) {
   if (route === '/api/queue') {
     try {
       const q = await (await comfyFetch('/queue')).json();
-      const running = (q.queue_running || []).map((entry) => describeQueueEntry(entry, true));
-      const pending = (q.queue_pending || []).map((entry) => describeQueueEntry(entry, false));
+      // Other profiles' jobs stay visible (shared GPU) but get redacted labels
+      const sanitize = (row) => {
+        const job = jobs.get(row.jobId);
+        if (job && job.profileId && job.profileId !== req.profile.id) {
+          const who = db.profiles.find((p) => p.id === job.profileId);
+          return Object.assign({}, row, {
+            label: `${who ? who.name : 'Another profile'}'s job`,
+            itemId: null, videoId: null,
+          });
+        }
+        return row;
+      };
+      const running = (q.queue_running || []).map((entry) => sanitize(describeQueueEntry(entry, true)));
+      const pending = (q.queue_pending || []).map((entry) => sanitize(describeQueueEntry(entry, false)));
       return json(res, 200, {
         ok: true,
         running,
         pending,
         health: await queueHealth(running, pending),
-        history: db.history.slice(0, 20),
+        history: db.history.filter((h) => h.profileId === req.profile.id).slice(0, 20),
       });
     } catch (e) {
       return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [] });
@@ -2980,11 +3424,21 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/gallery') {
     const unlocked = isPrivateUnlocked(req);
-    return json(res, 200, Object.assign({ unlocked }, galleryView(db, unlocked)));
+    const view = galleryView(db, unlocked);
+    view.items = view.items.filter((it) => it.profileId === req.profile.id);
+    view.folders = view.folders.filter((f) => f.profileId === req.profile.id);
+    return json(res, 200, Object.assign({ unlocked, profile: publicProfile(req.profile, db) }, view));
   }
 
+  if (route === '/api/context') {
+    const unlocked = isPrivateUnlocked(req);
+    const view = galleryView(db, unlocked);
+    return json(res, 200, { loras: buildLoraContext(view.items.filter((it) => it.profileId === req.profile.id)) });
+  }
+
+  const ownPresets = () => db.loraPresets.filter((pr) => pr.profileId === req.profile.id);
   if (route === '/api/lorapresets' && req.method === 'GET') {
-    return json(res, 200, { presets: db.loraPresets });
+    return json(res, 200, { presets: ownPresets() });
   }
   if (route === '/api/lorapresets' && req.method === 'POST') {
     const body = await readJsonBody(req);
@@ -2994,25 +3448,85 @@ async function handleApi(req, res, url) {
       .filter((l) => l && l.name)
       .map((l) => ({ name: String(l.name), strength: Number(l.strength) || 1 }));
     if (!loras.length) return json(res, 400, { error: 'No LoRAs to save' });
-    const existing = db.loraPresets.find((pr) => pr.name.toLowerCase() === name.toLowerCase());
+    const existing = ownPresets().find((pr) => pr.name.toLowerCase() === name.toLowerCase());
     if (existing) { existing.loras = loras; }
-    else db.loraPresets.push({ id: uid(), name, loras });
+    else db.loraPresets.push({ id: uid(), name, loras, profileId: req.profile.id });
     saveDb();
-    return json(res, 200, { presets: db.loraPresets });
+    return json(res, 200, { presets: ownPresets() });
   }
   const lpDel = route.match(/^\/api\/lorapresets\/([\w]+)$/);
   if (lpDel && req.method === 'DELETE') {
-    db.loraPresets = db.loraPresets.filter((pr) => pr.id !== lpDel[1]);
+    db.loraPresets = db.loraPresets.filter((pr) => pr.id !== lpDel[1] || pr.profileId !== req.profile.id);
     saveDb();
-    return json(res, 200, { presets: db.loraPresets });
+    return json(res, 200, { presets: ownPresets() });
+  }
+
+  /* Face ID library: named reference faces with a local copy so they
+     survive ComfyUI input-folder cleanups. */
+  // LoRA thumbnails (global — they describe the model file itself)
+  if (route === '/api/lorathumb' && req.method === 'POST') {
+    const name = decodeURIComponent(String(req.headers['x-lora-name'] || '')).trim();
+    if (!name) return json(res, 400, { error: 'x-lora-name header required' });
+    const buf = await readBody(req, 5 * 1024 * 1024);
+    if (!buf.length) return json(res, 400, { error: 'No image received' });
+    if (db.loraThumbs[name]) fsp.unlink(path.join(LORATHUMBS, db.loraThumbs[name])).catch(() => { /* noop */ });
+    const file = `${crypto.createHash('sha1').update(name).digest('hex').slice(0, 16)}_${Date.now()}.jpg`;
+    await fsp.writeFile(path.join(LORATHUMBS, file), buf);
+    db.loraThumbs[name] = file;
+    saveDb();
+    return json(res, 200, { loraThumbs: db.loraThumbs });
+  }
+
+  const ownFaces = () => db.faces.filter((f) => f.profileId === req.profile.id);
+  if (route === '/api/faces' && req.method === 'GET') {
+    return json(res, 200, { faces: ownFaces() });
+  }
+  if (route === '/api/faces' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const name = String(body.name || '').trim().slice(0, 40) || 'Face';
+    const imageName = String(body.imageName || '').trim();
+    if (!imageName) return json(res, 400, { error: 'imageName required (upload the face first)' });
+    // Pull the uploaded bytes back from ComfyUI's input dir for the local copy
+    const parts = imageName.split('/');
+    const fn = parts.pop();
+    const sub = parts.join('/');
+    const r = await comfyFetch(`/view?filename=${encodeURIComponent(fn)}&subfolder=${encodeURIComponent(sub)}&type=input`);
+    const buf = Buffer.from(await r.arrayBuffer());
+    const id = uid();
+    const file = `${id}.png`;
+    await fsp.writeFile(path.join(FACES, file), buf);
+    db.faces.unshift({ id, name, file, imageName, createdAt: Date.now(), profileId: req.profile.id });
+    saveDb();
+    return json(res, 200, { faces: ownFaces() });
+  }
+  const faceOne = route.match(/^\/api\/faces\/([\w]+)$/);
+  if (faceOne && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const face = db.faces.find((f) => f.id === faceOne[1] && f.profileId === req.profile.id);
+    if (!face) return json(res, 404, { error: 'Face not found' });
+    const name = String(body.name || '').trim().slice(0, 40);
+    if (name) face.name = name;
+    saveDb();
+    return json(res, 200, { faces: ownFaces() });
+  }
+  if (faceOne && req.method === 'DELETE') {
+    const face = db.faces.find((f) => f.id === faceOne[1] && f.profileId === req.profile.id);
+    if (face) {
+      try { await fsp.unlink(path.join(FACES, face.file)); } catch { /* noop */ }
+      db.faces = db.faces.filter((f) => f.id !== face.id);
+      saveDb();
+    }
+    return json(res, 200, { faces: ownFaces() });
   }
 
   if (route === '/api/folders' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const name = String(body.name || '').trim().slice(0, 40);
     if (!name) return json(res, 400, { error: 'Folder name required' });
-    if (db.folders.some((f) => f.name.toLowerCase() === name.toLowerCase())) return json(res, 400, { error: 'Folder exists' });
-    const folder = { id: uid(), name, locked: false };
+    if (db.folders.some((f) => f.profileId === req.profile.id && f.name.toLowerCase() === name.toLowerCase())) {
+      return json(res, 400, { error: 'Folder exists' });
+    }
+    const folder = { id: uid(), name, locked: false, profileId: req.profile.id };
     db.folders.push(folder);
     saveDb();
     return json(res, 200, folder);
@@ -3021,6 +3535,8 @@ async function handleApi(req, res, url) {
   const folderPrivate = route.match(/^\/api\/folders\/([\w]+)\/private$/);
   if (folderPrivate && req.method === 'POST') {
     if (!isPrivateUnlocked(req)) return json(res, 401, { error: 'Unlock the gallery first' });
+    const owned = db.folders.find((f) => f.id === folderPrivate[1] && f.profileId === req.profile.id);
+    if (!owned) return json(res, 404, { error: 'Folder not found' });
     const body = await readJsonBody(req);
     const folder = setFolderLocked(db, folderPrivate[1], !!body.locked);
     if (!folder) return json(res, 404, { error: 'Folder not found' });
@@ -3028,10 +3544,37 @@ async function handleApi(req, res, url) {
     return json(res, 200, folder);
   }
 
+  // Merge: move every item from one folder into another, then remove it.
+  // Merging a LOCKED source exposes hidden items -> requires unlock first.
+  const folderMerge = route.match(/^\/api\/folders\/([\w]+)\/merge$/);
+  if (folderMerge && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const src = db.folders.find((f) => f.id === folderMerge[1] && f.profileId === req.profile.id);
+    if (!src) return json(res, 404, { error: 'Folder not found' });
+    const intoId = body.into ? String(body.into) : null;
+    const dst = intoId ? db.folders.find((f) => f.id === intoId && f.profileId === req.profile.id) : null;
+    if (intoId && !dst) return json(res, 404, { error: 'Destination folder not found' });
+    if (intoId === src.id) return json(res, 400, { error: 'Cannot merge a folder into itself' });
+    if (src.locked && !isPrivateUnlocked(req)) {
+      return json(res, 401, { error: 'Unlock the gallery first — merging a locked folder reveals its items' });
+    }
+    let moved = 0;
+    for (const it of db.items) {
+      if (it.profileId === req.profile.id && it.folder === src.id) {
+        it.folder = dst ? dst.id : null;
+        moved++;
+      }
+    }
+    db.folders = db.folders.filter((f) => f.id !== src.id);
+    saveDb();
+    return json(res, 200, { ok: true, moved, into: dst ? dst.name : null });
+  }
+
   const folderDel = route.match(/^\/api\/folders\/([\w]+)$/);
   if (folderDel && req.method === 'DELETE') {
-    const folder = db.folders.find((f) => f.id === folderDel[1]);
-    if (folder && folder.locked && !isPrivateUnlocked(req)) {
+    const folder = db.folders.find((f) => f.id === folderDel[1] && f.profileId === req.profile.id);
+    if (!folder) return json(res, 404, { error: 'Folder not found' });
+    if (folder.locked && !isPrivateUnlocked(req)) {
       return json(res, 401, { error: 'Unlock the gallery first' });
     }
     db.folders = db.folders.filter((f) => f.id !== folderDel[1]);
@@ -3042,7 +3585,7 @@ async function handleApi(req, res, url) {
 
   const vidRoute = route.match(/^\/api\/item\/([\w]+)\/video\/([\w]+)$/);
   if (vidRoute && req.method === 'DELETE') {
-    const item = db.items.find((it) => it.id === vidRoute[1]);
+    const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });
     const v = (item.videos || []).find((x) => x.id === vidRoute[2]);
     item.videos = (item.videos || []).filter((x) => x.id !== vidRoute[2]);
@@ -3053,7 +3596,7 @@ async function handleApi(req, res, url) {
 
   const itemRoute = route.match(/^\/api\/item\/([\w]+)(?:\/(move))?$/);
   if (itemRoute) {
-    const item = db.items.find((it) => it.id === itemRoute[1]);
+    const item = db.items.find((it) => it.id === itemRoute[1] && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });
     if (itemRoute[2] === 'move' && req.method === 'POST') {
       const body = await readJsonBody(req);
@@ -3121,6 +3664,21 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/videos/')) {
       const file = path.normalize(path.join(VIDEOS, url.pathname.slice(8)));
       if (!file.startsWith(VIDEOS)) { res.writeHead(403); return res.end(); }
+      return serveFile(res, file, req.headers.range);
+    }
+    if (url.pathname.startsWith('/faces/')) {
+      const file = path.normalize(path.join(FACES, url.pathname.slice(7)));
+      if (!file.startsWith(FACES)) { res.writeHead(403); return res.end(); }
+      return serveFile(res, file, req.headers.range);
+    }
+    if (url.pathname.startsWith('/avatars/')) {
+      const file = path.normalize(path.join(AVATARS, url.pathname.slice(9)));
+      if (!file.startsWith(AVATARS)) { res.writeHead(403); return res.end(); }
+      return serveFile(res, file, req.headers.range);
+    }
+    if (url.pathname.startsWith('/lorathumbs/')) {
+      const file = path.normalize(path.join(LORATHUMBS, url.pathname.slice(12)));
+      if (!file.startsWith(LORATHUMBS)) { res.writeHead(403); return res.end(); }
       return serveFile(res, file, req.headers.range);
     }
     let p = url.pathname === '/' ? '/index.html' : url.pathname;

@@ -17,6 +17,9 @@ c
 # Codex planning artifacts
 docs/superpowers/
 
+# Scratch copies of third-party sources
+_tmp/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

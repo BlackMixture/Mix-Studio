@@ -32,9 +32,10 @@ test('galleryPassword defaults to 1234', () => {
   assert.equal(galleryPassword({ galleryPassword: '  secret  ' }), 'secret');
 });
 
-test('galleryView hides locked folders and their items while locked', () => {
+test('galleryView lists locked folders but hides their items while locked', () => {
   const view = galleryView(sampleDb(), false);
-  assert.deepEqual(view.folders.map((f) => f.id), ['public']);
+  assert.deepEqual(view.folders.map((f) => f.id), ['public', 'private']);
+  assert.equal(view.folders.find((f) => f.id === 'private').locked, true);
   assert.deepEqual(view.items.map((it) => it.id), ['a', 'b', 'd']);
 });
 
@@ -52,15 +53,15 @@ test('setFolderLocked updates an existing folder', () => {
   assert.equal(db.folders.find((f) => f.id === 'public').locked, true);
 });
 
-test('canMoveToFolder rejects locked folders while gallery is locked', () => {
+test('canMoveToFolder allows dropping into locked folders while locked', () => {
   const result = canMoveToFolder(sampleDb(), 'private', false);
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, 'locked');
+  assert.equal(result.ok, true);
 });
 
-test('canMoveToFolder allows locked folders while gallery is unlocked', () => {
-  const result = canMoveToFolder(sampleDb(), 'private', true);
-  assert.equal(result.ok, true);
+test('canMoveToFolder still rejects missing folders', () => {
+  const result = canMoveToFolder(sampleDb(), 'nope', true);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'missing');
 });
 
 test('parseCookies reads cookie pairs safely', () => {

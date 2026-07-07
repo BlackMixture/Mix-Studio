@@ -3,6 +3,7 @@
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
+const CameraSettings = window.KreaCameraSettings;
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -22,6 +23,14 @@ const state = {
   editLoras: [],             // {name, strength, on} - Edit tab (Klein/Qwen)
   editEngine: 'klein4',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
+  regionsEnabled: false,
+  regions: [],
+  activeRegionId: null,
+  kreaMask: null,
+  kreaMaskPreview: null,
+  kreaMaskDirty: false,
+  kreaMaskErase: false,
+  kreaBrush: 48,
   vidRef: null,              // {name, url, w, h} - Video tab source image
   folders: [],
   items: [],
@@ -30,6 +39,8 @@ const state = {
   mediaFilter: 'all',
   metaLoras: [],
   metaLorasInfo: {},
+  loraContext: {},
+  cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
   showAllLoras: false,
   activeJobs: new Set(),
   upscaling: new Set(),      // item ids
@@ -70,9 +81,260 @@ function toast(msg, isError) {
 async function api(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${path} failed (${res.status})`);
+  if (!res.ok) {
+    if (res.status === 401 && data.code === 'auth') showProfileGate();
+    throw new Error(data.error || `${path} failed (${res.status})`);
+  }
   return data;
 }
+
+/* ------------------------------------------------------------------ */
+/* Profiles (accounts)                                                 */
+/* ------------------------------------------------------------------ */
+
+let profileGateOpen = false;
+let gateProfiles = [];
+
+function avatarHtml(p, cls, idx) {
+  if (p.avatar) return `<span class="${cls}"><img src="/avatars/${p.avatar}" alt="" /></span>`;
+  const grad = `tile-grad-${(idx == null ? (p.name || '?').length : idx) % 5}`;
+  return `<span class="${cls} ${grad}">${escapeHtml((p.name || '?')[0].toUpperCase())}</span>`;
+}
+
+async function showProfileGate() {
+  if (profileGateOpen) return;
+  profileGateOpen = true;
+  $('#profileGate').hidden = false;
+  try {
+    const r = await fetch('/api/profiles').then((x) => x.json());
+    gateProfiles = r.profiles || [];
+  } catch { gateProfiles = []; }
+  renderGateTiles();
+}
+
+function renderGateTiles() {
+  const list = $('#profileList');
+  list.innerHTML = '';
+  gateProfiles.forEach((p, i) => {
+    const tile = document.createElement('button');
+    tile.className = 'profile-tile';
+    tile.innerHTML = `${avatarHtml(p, 'tile-img', i)}<span class="tile-name">${escapeHtml(p.name)}${p.hasPin ? ' 🔒' : ''}</span>`;
+    tile.addEventListener('click', () => loginProfile(p));
+    list.appendChild(tile);
+  });
+  const add = document.createElement('button');
+  add.className = 'profile-tile add';
+  add.innerHTML = '<span class="tile-img">＋</span><span class="tile-name">Add profile</span>';
+  add.addEventListener('click', () => {
+    $('#profileNewForm').hidden = false;
+    $('#newProfileName').focus();
+  });
+  list.appendChild(add);
+}
+
+async function loginProfile(p) {
+  let pin = '';
+  if (p.hasPin) {
+    pin = window.prompt(`PIN for ${p.name}`) || '';
+    if (!pin) return;
+  }
+  try {
+    const r = await api(`/api/profiles/${p.id}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    localStorage.setItem('ks-profile-id', r.profile.id);
+    location.reload();
+  } catch (e) { toast(e.message, true); }
+}
+
+$('#newProfileCancel').addEventListener('click', () => { $('#profileNewForm').hidden = true; });
+$('#newProfileBtn').addEventListener('click', async () => {
+  const name = $('#newProfileName').value.trim();
+  if (!name) return toast('Give the profile a name', true);
+  try {
+    const r = await api('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, pin: $('#newProfilePin').value.trim() }),
+    });
+    localStorage.setItem('ks-profile-id', r.profile.id);
+    location.reload();
+  } catch (e) { toast(e.message, true); }
+});
+
+function renderProfileChip() {
+  const btn = $('#profileBtn');
+  if (!state.profile) { btn.hidden = true; return; }
+  btn.hidden = false;
+  btn.textContent = `👤 ${state.profile.name}`;
+}
+
+$('#profileBtn').addEventListener('click', () => {
+  const isOwner = state.profile && state.profileIsOwner;
+  openActionMenu($('#profileBtn'), [
+    { label: '✎ Edit profile', action: openProfileEdit },
+    isOwner ? { label: '👥 Manage profiles', action: openProfileManage } : null,
+    { label: '⇄ Switch profile', action: switchProfile },
+  ]);
+});
+
+async function switchProfile() {
+  try { await api('/api/logout', { method: 'POST' }); } catch { /* noop */ }
+  localStorage.removeItem('ks-profile-id');
+  location.reload();
+}
+
+/* --- edit own profile: name, PIN, photo, delete --- */
+function openProfileEdit() {
+  if (!state.profile) return;
+  $('#peName').value = state.profile.name;
+  $('#pePin').value = '';
+  $('#pePin').placeholder = state.profile.hasPin ? 'PIN set — type a new one or leave empty to remove' : 'No PIN — type one to add';
+  $('#peAvatar').className = 'profile-avatar-lg' + (state.profile.avatar ? '' : ` tile-grad-${(state.profile.name || '?').length % 5}`);
+  $('#peAvatar').innerHTML = state.profile.avatar
+    ? `<img src="/avatars/${state.profile.avatar}" alt="" />`
+    : escapeHtml((state.profile.name || '?')[0].toUpperCase());
+  $('#profileEditSheet').classList.add('show');
+}
+
+$('#peChangePhoto').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      // Square cover-crop to 512 client-side, then upload raw PNG
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error('Could not read the image')); img.src = url; });
+      const size = 512;
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const s = Math.max(size / img.naturalWidth, size / img.naturalHeight);
+      const dw = img.naturalWidth * s;
+      const dh = img.naturalHeight * s;
+      c.getContext('2d').drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+      const blob = await new Promise((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error('Crop failed'))), 'image/png'));
+      const r = await api(`/api/profiles/${state.profile.id}/avatar`, { method: 'POST', body: blob });
+      state.profile = r.profile;
+      renderProfileChip();
+      openProfileEdit(); // refresh the preview
+      toast('Profile photo updated');
+    } catch (e) { toast(e.message, true); }
+  });
+  input.click();
+});
+
+$('#peSave').addEventListener('click', async () => {
+  try {
+    const body = { name: $('#peName').value.trim() };
+    const pin = $('#pePin').value.trim();
+    // Only send pin when the field was touched (typing clears the mystery)
+    if (pin || $('#pePin').dataset.cleared === '1') body.pin = pin;
+    const r = await api(`/api/profiles/${state.profile.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    state.profile = r.profile;
+    renderProfileChip();
+    $('#profileEditSheet').classList.remove('show');
+    toast('Profile updated');
+  } catch (e) { toast(e.message, true); }
+});
+$('#pePin').addEventListener('input', () => { $('#pePin').dataset.cleared = '1'; });
+
+$('#peDelete').addEventListener('click', async () => {
+  if (!window.confirm(`Delete "${state.profile.name}" and ALL of its generations, folders, presets and faces? This cannot be undone.`)) return;
+  const typed = window.prompt(`Type the profile name (${state.profile.name}) to confirm deletion`);
+  if (typed !== state.profile.name) return toast('Name did not match — nothing deleted');
+  try {
+    await api(`/api/profiles/${state.profile.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmName: typed }),
+    });
+    localStorage.removeItem('ks-profile-id');
+    location.reload();
+  } catch (e) { toast(e.message, true); }
+});
+
+/* --- owner: manage all profiles --- */
+async function openProfileManage() {
+  try {
+    const r = await api('/api/profiles');
+    const list = $('#profileManageList');
+    list.innerHTML = '';
+    (r.profiles || []).forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'pm-row';
+      row.innerHTML = `${avatarHtml(p, 'pm-avatar', i)}<b>${escapeHtml(p.name)}${p.hasPin ? ' 🔒' : ''} · ${p.itemCount}</b>`;
+      if (p.hasPin) {
+        const clear = document.createElement('button');
+        clear.className = 'chip';
+        clear.textContent = 'Clear PIN';
+        clear.addEventListener('click', async () => {
+          if (!window.confirm(`Remove the PIN from "${p.name}"?`)) return;
+          try {
+            await api(`/api/profiles/${p.id}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pin: '' }),
+            });
+            openProfileManage();
+          } catch (e) { toast(e.message, true); }
+        });
+        row.appendChild(clear);
+      }
+      if (p.id !== state.profile.id) {
+        const del = document.createElement('button');
+        del.className = 'chip';
+        del.textContent = '🗑';
+        del.addEventListener('click', async () => {
+          if (!window.confirm(`Delete "${p.name}" and all of its content (${p.itemCount} items)?`)) return;
+          const typed = window.prompt(`Type the profile name (${p.name}) to confirm`);
+          if (typed !== p.name) return toast('Name did not match — nothing deleted');
+          try {
+            await api(`/api/profiles/${p.id}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ confirmName: typed }),
+            });
+            openProfileManage();
+            toast(`${p.name} deleted`);
+          } catch (e) { toast(e.message, true); }
+        });
+        row.appendChild(del);
+      }
+      list.appendChild(row);
+    });
+    $('#profileManageSheet').classList.add('show');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function checkAuth() {
+  try {
+    const me = await api('/api/me');
+    state.profile = me.profile;
+    if (localStorage.getItem('ks-profile-id') !== me.profile.id) {
+      // Cookie changed (another tab / new sign-in): reload under the right key
+      localStorage.setItem('ks-profile-id', me.profile.id);
+      location.reload();
+      return;
+    }
+    try {
+      const all = await fetch('/api/profiles').then((x) => x.json());
+      state.profileIsOwner = !!(all.profiles && all.profiles[0] && all.profiles[0].id === me.profile.id);
+    } catch { state.profileIsOwner = false; }
+    renderProfileChip();
+  } catch { /* 401 -> api() already opened the gate */ }
+}
+checkAuth();
 
 let actionMenuEl = null;
 let actionMenuCleanup = null;
@@ -118,6 +380,21 @@ function openActionMenu(anchor, items) {
   };
 }
 
+let sheetScrollY = 0;
+function syncSheetScrollLock() {
+  const anySheetOpen = $$('.sheet').some((sheet) => sheet.classList.contains('show'));
+  const locked = document.body.classList.contains('sheet-open');
+  if (anySheetOpen && !locked) {
+    sheetScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    document.body.style.top = `-${sheetScrollY}px`;
+    document.body.classList.add('sheet-open');
+  } else if (!anySheetOpen && locked) {
+    document.body.classList.remove('sheet-open');
+    document.body.style.top = '';
+    window.scrollTo(0, sheetScrollY);
+  }
+}
+
 function round32(n) { return Math.max(64, Math.round(n / 32) * 32); }
 
 function computeDims() {
@@ -128,12 +405,22 @@ function computeDims() {
   state.height = round32(Math.sqrt(px / a.ar));
 }
 
+/* Form state is per profile (prompts/regions/LoRAs shouldn't leak
+   between accounts). The id is cached so loadForm can run synchronously. */
+function formKey() {
+  return 'ks-form-' + (localStorage.getItem('ks-profile-id') || 'default');
+}
+
 function saveForm() {
   try {
-    localStorage.setItem('ks-form', JSON.stringify({
+    localStorage.setItem(formKey(), JSON.stringify({
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, prompts: state.prompts,
       editEngine: state.editEngine, vidScailMode: state.vidScailMode,
+      cameraSettings: state.cameraSettings,
+      regionsEnabled: state.regionsEnabled,
+      regions: state.regions,
+      kreaBrush: state.kreaBrush,
       scailModeVersion: 2,
       vidScailStableTracking: state.vidScailStableTracking,
       vidScailChunkFrames: state.vidScailChunkFrames,
@@ -144,7 +431,7 @@ function saveForm() {
 }
 function loadForm() {
   try {
-    const f = JSON.parse(localStorage.getItem('ks-form') || 'null');
+    const f = JSON.parse(localStorage.getItem(formKey()) || localStorage.getItem('ks-form') || 'null');
     if (!f) return;
     state.enhance = f.enhance !== false;
     state.aspect = f.aspect || '1:1';
@@ -152,7 +439,13 @@ function loadForm() {
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
-    state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : 'klein4');
+    state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : (f.editEngine === 'krea2' ? 'krea2' : 'klein4'));
+    state.regionsEnabled = !!f.regionsEnabled;
+    state.regions = Array.isArray(f.regions) ? f.regions : [];
+    state.kreaBrush = Number(f.kreaBrush) || 48;
+    if (f.cameraSettings && CameraSettings) {
+      state.cameraSettings = CameraSettings.normalizeSettings(f.cameraSettings);
+    }
     state.vidScailMode = f.scailModeVersion >= 2 && ['infinity', 'chunked', 'direct'].includes(f.vidScailMode)
       ? f.vidScailMode
       : (f.vidScailMode === 'direct' ? 'direct' : 'infinity');
@@ -217,7 +510,12 @@ function updateVideoPanels() {
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
   $('#createPromptTools').hidden = state.view !== 'create';
-  $('#denoiseField').hidden = true; // both edit engines run fixed 4-step pipelines
+  updateRegionsIndicator();
+  const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
+  $('#denoiseField').hidden = !kreaEdit;
+  $('#kreaMaskTools').hidden = !kreaEdit;
+  $('#editComposite').hidden = kreaEdit;
+  renderKreaMaskTools();
   $('#aspectRow').closest('.panel').hidden = (isVideo && !!state.vidRef) || state.view === 'edit';
   $('#seedInput').closest('.panel').hidden = isVideo;
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
@@ -254,6 +552,434 @@ function pickUpload(accept, cb) {
     } catch (e) { toast(e.message, true); }
   });
   input.click();
+}
+
+/* ------------------------------------------------------------------ */
+/* Regional prompting + Krea2 masks                                    */
+/* ------------------------------------------------------------------ */
+
+const REGION_COLORS = ['#46b4e6', '#e68246', '#82e646', '#e646b4', '#e6e646', '#46e6c8'];
+let regionDrag = null;
+let kreaMaskDrawing = false;
+let kreaMaskLast = null;
+
+function clamp01(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fallback;
+}
+
+function clampRegionBox(region) {
+  region.x = clamp01(region.x, 0.1);
+  region.y = clamp01(region.y, 0.1);
+  region.w = Math.max(0.04, Math.min(1 - region.x, Number(region.w) || 0.35));
+  region.h = Math.max(0.04, Math.min(1 - region.y, Number(region.h) || 0.45));
+}
+
+function selectedRegion() {
+  return state.regions.find((r) => r.id === state.activeRegionId) || state.regions[0] || null;
+}
+
+function createRegion() {
+  const n = state.regions.length;
+  const region = {
+    id: `r${Date.now()}${Math.floor(Math.random() * 1000)}`,
+    description: '',
+    x: Math.min(0.62, 0.08 + n * 0.06),
+    y: Math.min(0.56, 0.12 + n * 0.05),
+    w: 0.34,
+    h: 0.46,
+    lora: 'None',
+    strength: 1,
+    enabled: true,
+    refImageName: '',
+    refUrl: '',
+    color: REGION_COLORS[n % REGION_COLORS.length],
+  };
+  state.regions.push(region);
+  state.activeRegionId = region.id;
+  state.regionsEnabled = true;
+  return region;
+}
+
+function activeRegionsForRequest() {
+  if (!state.regionsEnabled) return [];
+  if (state.view !== 'create') return []; // regions are a Create-tab feature
+  return state.regions
+    .filter((region) => region && region.enabled !== false)
+    .map((region) => {
+      clampRegionBox(region);
+      return {
+        id: region.id,
+        description: (region.description || '').trim(),
+        x: region.x,
+        y: region.y,
+        w: region.w,
+        h: region.h,
+        lora: region.lora || 'None',
+        strength: Number(region.strength) || 1,
+        refImageName: region.refImageName || '',
+        color: region.color || '',
+        enabled: region.enabled !== false,
+      };
+    })
+    .filter((region) => region.description || (region.lora && region.lora !== 'None') || region.refImageName);
+}
+
+function regionLoraOptions(selected) {
+  const allowed = new Set(['krea2', 'unknown']);
+  return state.metaLoras.filter((name) => name === selected || allowed.has(loraCategory(name)));
+}
+
+function renderRegionEditor() {
+  const stage = $('#regionStage');
+  if (!stage) return;
+  if (!state.regions.length) createRegion();
+  if (!selectedRegion()) state.activeRegionId = state.regions[0].id;
+
+  // The canvas mirrors the output: match the selected aspect ratio
+  const arW = state.width || 1024;
+  const arH = state.height || 1024;
+  stage.style.aspectRatio = `${arW} / ${arH}`;
+  stage.style.flex = '0 0 auto';
+  stage.style.minHeight = '0';
+  stage.style.margin = '0 auto';
+  if (arW >= arH) {
+    stage.style.width = '100%';
+    stage.style.height = 'auto';
+  } else {
+    stage.style.height = '52vh';
+    stage.style.width = 'auto';
+  }
+
+  $('#regionEnabledChip').classList.toggle('active', state.regionsEnabled);
+  $('#regionEnabledChip').textContent = state.regionsEnabled ? 'Regions on' : 'Use regions';
+  stage.innerHTML = '';
+  state.regions.forEach((region, index) => {
+    clampRegionBox(region);
+    const box = document.createElement('button');
+    box.type = 'button';
+    box.className = 'region-box' + (region.id === state.activeRegionId ? ' active' : '');
+    box.style.left = `${region.x * 100}%`;
+    box.style.top = `${region.y * 100}%`;
+    box.style.width = `${region.w * 100}%`;
+    box.style.height = `${region.h * 100}%`;
+    box.style.borderColor = region.color || REGION_COLORS[index % REGION_COLORS.length];
+    box.innerHTML = `<span>${index + 1}</span><b>${escapeHtml(region.description || 'Region')}</b><i></i>`;
+    box.addEventListener('click', () => { state.activeRegionId = region.id; renderRegionEditor(); });
+    box.addEventListener('pointerdown', (e) => startRegionDrag(e, region, false));
+    box.querySelector('i').addEventListener('pointerdown', (e) => startRegionDrag(e, region, true));
+    stage.appendChild(box);
+  });
+
+  const region = selectedRegion();
+  const hasRegion = !!region;
+  $('#regionDeleteBtn').disabled = !hasRegion;
+  $('#regionDescInput').disabled = !hasRegion;
+  $('#regionLoraBtn').disabled = !hasRegion;
+  $('#regionStrengthInput').disabled = !hasRegion;
+  $('#regionRefBtn').disabled = !hasRegion;
+  $('#regionRefClear').disabled = !hasRegion || !region.refImageName;
+  if (!region) return;
+
+  $('#regionDescInput').value = region.description || '';
+  const hasLora = region.lora && region.lora !== 'None';
+  $('#regionLoraBtn').innerHTML = hasLora
+    ? `${loraThumbHtml(region.lora, 'lp-thumb')}<span id="regionLoraLabel">${escapeHtml(prettyLora(region.lora))}</span>`
+    : '<span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span>';
+  $('#regionStrengthInput').value = String(Number(region.strength) || 1);
+  $('#regionStrengthVal').textContent = (Number(region.strength) || 1).toFixed(2);
+  $('#regionRefLabel').textContent = region.refImageName ? (region.refImageName.split('/').pop() || 'Reference added') : 'None';
+}
+
+function startRegionDrag(e, region, resize) {
+  e.preventDefault();
+  e.stopPropagation();
+  state.activeRegionId = region.id;
+  const rect = $('#regionStage').getBoundingClientRect();
+  regionDrag = {
+    region,
+    resize,
+    rect,
+    startX: e.clientX,
+    startY: e.clientY,
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: region.h,
+  };
+  document.addEventListener('pointermove', moveRegionDrag);
+  document.addEventListener('pointerup', endRegionDrag, { once: true });
+}
+
+function moveRegionDrag(e) {
+  if (!regionDrag) return;
+  const dx = (e.clientX - regionDrag.startX) / regionDrag.rect.width;
+  const dy = (e.clientY - regionDrag.startY) / regionDrag.rect.height;
+  const r = regionDrag.region;
+  if (regionDrag.resize) {
+    r.w = Math.max(0.04, Math.min(1 - r.x, regionDrag.w + dx));
+    r.h = Math.max(0.04, Math.min(1 - r.y, regionDrag.h + dy));
+  } else {
+    r.x = Math.max(0, Math.min(1 - r.w, regionDrag.x + dx));
+    r.y = Math.max(0, Math.min(1 - r.h, regionDrag.y + dy));
+  }
+  renderRegionEditor();
+}
+
+function endRegionDrag() {
+  document.removeEventListener('pointermove', moveRegionDrag);
+  regionDrag = null;
+  saveForm();
+}
+
+function openRegionEditor() {
+  if (!state.regions.length) createRegion();
+  renderRegionEditor();
+  $('#regionSheet').classList.add('show');
+}
+
+async function uploadRegionReference(file) {
+  const region = selectedRegion();
+  if (!region || !file) return;
+  try {
+    toast('Uploading region reference...');
+    const buf = await file.arrayBuffer();
+    const res = await api('/api/upload', {
+      method: 'POST',
+      headers: { 'x-filename': encodeURIComponent(file.name || 'region_ref.png') },
+      body: buf,
+    });
+    region.refImageName = res.name;
+    region.refUrl = URL.createObjectURL(file);
+    renderRegionEditor();
+    saveForm();
+  } catch (e) { toast(e.message, true); }
+}
+
+function clearKreaMask(silent) {
+  state.kreaMask = null;
+  state.kreaMaskPreview = null;
+  state.kreaMaskDirty = false;
+  const canvas = $('#kreaMaskCanvas');
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+  if (state.refs[0] && state.refs[0].displayUrl) {
+    delete state.refs[0].displayUrl;
+    renderRefs();
+  }
+  renderKreaMaskTools();
+  if (!silent) toast('Mask cleared');
+}
+
+function renderKreaMaskTools() {
+  const tools = $('#kreaMaskTools');
+  if (!tools) return;
+  const hasMask = !!state.kreaMask || state.kreaMaskDirty || !!state.kreaMaskPreview;
+  $('#kreaMaskStatus').textContent = hasMask ? (state.kreaMaskDirty ? 'Mask not uploaded yet' : 'Mask ready') : 'No mask';
+  $('#kreaMaskClear').hidden = !hasMask;
+}
+
+function setupMaskCanvasFromImage() {
+  const base = $('#kreaMaskBase');
+  const canvas = $('#kreaMaskCanvas');
+  const w = base.naturalWidth || 1024;
+  const h = base.naturalHeight || 1024;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  if (state.kreaMaskPreview) {
+    const im = new Image();
+    im.onload = () => ctx.drawImage(im, 0, 0, w, h);
+    im.src = state.kreaMaskPreview;
+  }
+}
+
+function openKreaMaskPainter() {
+  const ref = state.refs[0];
+  if (!ref) return toast('Add a source image in the first reference slot before painting a mask', true);
+  $('#kreaMaskBase').src = ref.url;
+  $('#kreaMaskBase').onload = setupMaskCanvasFromImage;
+  if ($('#kreaMaskBase').complete) setupMaskCanvasFromImage();
+  $('#kreaBrushInput').value = String(state.kreaBrush);
+  $('#kreaBrushVal').textContent = String(state.kreaBrush);
+  $('#kreaMaskErase').classList.toggle('active', state.kreaMaskErase);
+  $('#kreaMaskSheet').classList.add('show');
+}
+
+function maskPoint(e) {
+  const canvas = $('#kreaMaskCanvas');
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+
+function drawKreaMask(e) {
+  if (!kreaMaskDrawing) return;
+  e.preventDefault();
+  const p = maskPoint(e);
+  const canvas = $('#kreaMaskCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = state.kreaBrush;
+  ctx.globalCompositeOperation = state.kreaMaskErase ? 'destination-out' : 'source-over';
+  ctx.strokeStyle = 'rgba(255,255,255,0.86)';
+  ctx.beginPath();
+  ctx.moveTo(kreaMaskLast ? kreaMaskLast.x : p.x, kreaMaskLast ? kreaMaskLast.y : p.y);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
+  kreaMaskLast = p;
+  state.kreaMaskDirty = true;
+  state.kreaMaskPreview = canvas.toDataURL('image/png');
+  renderKreaMaskTools();
+}
+
+async function ensureKreaMaskUploaded() {
+  if (!state.kreaMaskDirty && state.kreaMask && state.kreaMask.name) return state.kreaMask.name;
+  const canvas = $('#kreaMaskCanvas');
+  if (!canvas || !canvas.width || !canvas.height || !state.kreaMaskPreview) return '';
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(canvas, 0, 0);
+  const blob = await new Promise((ok, bad) => out.toBlob((b) => (b ? ok(b) : bad(new Error('Mask export failed'))), 'image/png'));
+  const res = await api('/api/upload', {
+    method: 'POST',
+    headers: { 'x-filename': encodeURIComponent('krea2_mask.png') },
+    body: await blob.arrayBuffer(),
+  });
+  state.kreaMask = { name: res.name, url: URL.createObjectURL(blob) };
+  state.kreaMaskDirty = false;
+  renderKreaMaskTools();
+  return state.kreaMask.name;
+}
+
+/* The regions icon glows while regional prompting is active */
+function updateRegionsIndicator() {
+  const btn = $('#regionsPromptBtn');
+  if (!btn) return;
+  const active = state.regionsEnabled && (state.regions || []).some((r) => r && r.enabled !== false);
+  btn.classList.toggle('active', active);
+}
+$('#regionsPromptBtn').addEventListener('click', openRegionEditor);
+$('#regionEnabledChip').addEventListener('click', () => {
+  state.regionsEnabled = !state.regionsEnabled;
+  if (state.regionsEnabled && !state.regions.length) createRegion();
+  renderRegionEditor();
+  updateRegionsIndicator();
+  saveForm();
+});
+$('#regionAddBtn').addEventListener('click', () => { createRegion(); renderRegionEditor(); saveForm(); });
+$('#regionDeleteBtn').addEventListener('click', () => {
+  const region = selectedRegion();
+  if (!region) return;
+  state.regions = state.regions.filter((r) => r.id !== region.id);
+  state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
+  renderRegionEditor();
+  saveForm();
+});
+$('#regionDescInput').addEventListener('input', () => {
+  const region = selectedRegion();
+  if (!region) return;
+  region.description = $('#regionDescInput').value;
+  const active = $('#regionStage .region-box.active b');
+  if (active) active.textContent = region.description || 'Region';
+  saveForm();
+});
+$('#regionLoraBtn').addEventListener('click', () => {
+  const region = selectedRegion();
+  if (!region) return;
+  openLoraPicker((name) => {
+    region.lora = name || 'None';
+    renderRegionEditor();
+    saveForm();
+  }, { allowNone: true, title: 'Region LoRA' });
+});
+$('#regionStrengthInput').addEventListener('input', () => {
+  const region = selectedRegion();
+  if (!region) return;
+  region.strength = Number($('#regionStrengthInput').value);
+  $('#regionStrengthVal').textContent = region.strength.toFixed(2);
+});
+$('#regionStrengthInput').addEventListener('change', saveForm);
+$('#regionRefBtn').addEventListener('click', () => $('#regionRefInput').click());
+$('#regionRefInput').addEventListener('change', () => uploadRegionReference($('#regionRefInput').files && $('#regionRefInput').files[0]));
+$('#regionRefClear').addEventListener('click', () => {
+  const region = selectedRegion();
+  if (!region) return;
+  region.refImageName = '';
+  region.refUrl = '';
+  renderRegionEditor();
+  saveForm();
+});
+$('#regionDoneBtn').addEventListener('click', () => {
+  $('#regionSheet').classList.remove('show');
+  updateRegionsIndicator();
+  saveForm();
+  const count = activeRegionsForRequest().length;
+  toast(count ? `${count} region${count === 1 ? '' : 's'} ready` : 'Regional prompting off');
+});
+
+$('#kreaMaskBtn').addEventListener('click', openKreaMaskPainter);
+$('#kreaMaskClear').addEventListener('click', () => clearKreaMask());
+$('#kreaMaskCanvas').addEventListener('pointerdown', (e) => {
+  kreaMaskDrawing = true;
+  kreaMaskLast = maskPoint(e);
+  drawKreaMask(e);
+});
+$('#kreaMaskCanvas').addEventListener('pointermove', drawKreaMask);
+document.addEventListener('pointerup', () => { kreaMaskDrawing = false; kreaMaskLast = null; });
+$('#kreaBrushInput').addEventListener('input', () => {
+  state.kreaBrush = Number($('#kreaBrushInput').value) || 48;
+  $('#kreaBrushVal').textContent = String(state.kreaBrush);
+  saveForm();
+});
+$('#kreaMaskErase').addEventListener('click', () => {
+  state.kreaMaskErase = !state.kreaMaskErase;
+  $('#kreaMaskErase').classList.toggle('active', state.kreaMaskErase);
+});
+$('#kreaMaskReset').addEventListener('click', () => clearKreaMask());
+$('#kreaMaskApply').addEventListener('click', async () => {
+  try {
+    await ensureKreaMaskUploaded();
+    updateMaskedRefPreview();
+    $('#kreaMaskSheet').classList.remove('show');
+    toast('Mask ready for Krea2 inpaint');
+  } catch (e) { toast(e.message, true); }
+});
+
+/* Composite the painted mask (red tint) over the source thumbnail so the
+   ref slot shows what will be inpainted after Apply. */
+function updateMaskedRefPreview() {
+  const ref = state.refs[0];
+  const maskCanvas = $('#kreaMaskCanvas');
+  if (!ref || !maskCanvas || !maskCanvas.width || !state.kreaMaskPreview) return;
+  const base = $('#kreaMaskBase');
+  const w = maskCanvas.width;
+  const h = maskCanvas.height;
+  const tint = document.createElement('canvas');
+  tint.width = w;
+  tint.height = h;
+  const tctx = tint.getContext('2d');
+  tctx.drawImage(maskCanvas, 0, 0);
+  tctx.globalCompositeOperation = 'source-in';
+  tctx.fillStyle = 'rgba(255, 60, 60, 0.9)';
+  tctx.fillRect(0, 0, w, h);
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext('2d');
+  try { ctx.drawImage(base, 0, 0, w, h); } catch { /* base not ready */ }
+  ctx.globalAlpha = 0.55;
+  ctx.drawImage(tint, 0, 0);
+  ctx.globalAlpha = 1;
+  ref.displayUrl = out.toDataURL('image/jpeg', 0.85);
+  renderRefs();
 }
 
 /* End frame attachment with thumbnail preview (Video tab + Animate sheet) */
@@ -583,13 +1309,9 @@ $('#engineInfoBtn').addEventListener('click', (e) => {
 /* ------------------------------------------------------------------ */
 
 function renderEnhance() {
-  $('#enhanceBtn').classList.toggle('on', state.enhance);
-  const isVideo = state.view === 'video';
-  $('#enhanceHint').innerHTML = state.enhance
-    ? (isVideo
-      ? '<b>✨ Enhance on</b> — Gemma expands your motion prompt (and sees the image, if provided)'
-      : '<b>✨ Enhance on</b> — Qwen3-VL rewrites your prompt before generating')
-    : 'Enhance off — your prompt is used exactly as written';
+  const btn = $('#enhanceBtn');
+  btn.classList.toggle('on', state.enhance);
+  btn.title = state.enhance ? 'Prompt enhance: on' : 'Prompt enhance: off';
 }
 $('#enhanceBtn').addEventListener('click', () => {
   state.enhance = !state.enhance;
@@ -604,11 +1326,13 @@ $('#prompt').addEventListener('input', () => {
     state.prompts[state.view] = $('#prompt').value;
   }
   updatePromptClear();
+  renderPromptSuggestions();
   saveForm();
 });
 $('#promptClear').addEventListener('click', () => {
   $('#prompt').value = '';
   updatePromptClear();
+  renderPromptSuggestions();
   $('#prompt').focus();
   saveForm();
 });
@@ -638,6 +1362,198 @@ $('#imagePromptBtn').addEventListener('click', () => {
   });
 });
 
+const CAMERA_WHEEL_KEYS = ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso'];
+const cameraWheelScrollTimers = {};
+let cameraWheelSyncing = false;
+
+function clearCameraWheelScrollTimers() {
+  Object.keys(cameraWheelScrollTimers).forEach((key) => {
+    clearTimeout(cameraWheelScrollTimers[key]);
+    delete cameraWheelScrollTimers[key];
+  });
+}
+
+function setCameraSetting(key, value) {
+  if (!CameraSettings) return;
+  state.cameraSettings = CameraSettings.normalizeSettings(Object.assign({}, state.cameraSettings, { [key]: value }));
+  renderCameraPicker();
+  saveForm();
+}
+
+function updateCameraPreview() {
+  const preview = $('#cameraPreview');
+  if (preview) preview.textContent = CameraSettings.cameraPromptPhrase(state.cameraSettings);
+}
+
+function cameraMatchesSettings(settings) {
+  const current = CameraSettings.normalizeSettings(state.cameraSettings);
+  const next = CameraSettings.normalizeSettings(settings);
+  return ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso']
+    .every((key) => current[key] === next[key]);
+}
+
+function applyCameraCombo(comboId) {
+  if (!CameraSettings) return;
+  state.cameraSettings = CameraSettings.applyCameraCombo(comboId, state.cameraSettings);
+  renderCameraPicker();
+  saveForm();
+}
+
+function renderCameraCombos() {
+  const row = $('#cameraComboGrid');
+  if (!row || !CameraSettings) return;
+  row.innerHTML = '';
+  for (const combo of CameraSettings.CAMERA_COMBOS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'camera-combo' + (cameraMatchesSettings(combo.settings) ? ' active' : '');
+    btn.innerHTML = `<b>${escapeHtml(combo.label)}</b><span>${escapeHtml(combo.note || '')}</span>`;
+    btn.addEventListener('click', () => applyCameraCombo(combo.id));
+    row.appendChild(btn);
+  }
+}
+
+function updateCameraWheelActiveState(key) {
+  const wheel = $(`[data-camera-wheel="${key}"]`);
+  if (!wheel) return;
+  wheel.querySelectorAll('.camera-wheel-item').forEach((item) => {
+    item.classList.toggle('active', item.dataset.value === state.cameraSettings[key]);
+  });
+}
+
+function cameraWheelOptions(key) {
+  if (key === 'camera') {
+    return CameraSettings.CAMERA_PRESETS.map((item) => ({
+      value: item.id,
+      label: item.label,
+      sub: item.tag || '',
+    }));
+  }
+  if (key === 'lens') {
+    return CameraSettings.LENS_PRESETS.map((item) => ({
+      value: item.id,
+      label: item.label,
+      sub: item.tag || '',
+    }));
+  }
+  if (key === 'focalLength') {
+    return CameraSettings.FOCAL_LENGTHS.map((value) => ({ value, label: value, sub: 'mm' }));
+  }
+  if (key === 'aperture') {
+    return CameraSettings.APERTURES.map((value) => ({ value, label: `f/${value}`, sub: 'aperture' }));
+  }
+  if (key === 'shutter') {
+    return CameraSettings.SHUTTERS.map((value) => ({ value, label: `${value}s`, sub: 'shutter' }));
+  }
+  if (key === 'iso') {
+    return CameraSettings.ISOS.map((value) => ({ value, label: `ISO ${value}`, sub: 'sensitivity' }));
+  }
+  return [];
+}
+
+function selectCameraWheelFromScroll(list) {
+  const items = [...list.querySelectorAll('.camera-wheel-item')];
+  if (!items.length) return null;
+  const listRect = list.getBoundingClientRect();
+  const center = listRect.top + (listRect.height / 2);
+  let closest = items[0];
+  let closestDistance = Infinity;
+  for (const item of items) {
+    const rect = item.getBoundingClientRect();
+    const itemCenter = rect.top + (rect.height / 2);
+    const distance = Math.abs(itemCenter - center);
+    if (distance < closestDistance) {
+      closest = item;
+      closestDistance = distance;
+    }
+  }
+  return closest.dataset.value || null;
+}
+
+function commitCameraWheelScroll(key, list) {
+  if (!CameraSettings) return;
+  const value = selectCameraWheelFromScroll(list);
+  if (!value || state.cameraSettings[key] === value) return;
+  state.cameraSettings = CameraSettings.normalizeSettings(Object.assign({}, state.cameraSettings, { [key]: value }));
+  updateCameraWheelActiveState(key);
+  renderCameraCombos();
+  updateCameraPreview();
+  saveForm();
+}
+
+function centerCameraWheels() {
+  clearCameraWheelScrollTimers();
+  cameraWheelSyncing = true;
+  requestAnimationFrame(() => {
+    $$('.camera-wheel-list').forEach((list) => {
+      const active = list.querySelector('.camera-wheel-item.active');
+      if (!active) return;
+      list.scrollTop = Math.max(0, active.offsetTop - ((list.clientHeight - active.clientHeight) / 2));
+    });
+    setTimeout(() => {
+      cameraWheelSyncing = false;
+    }, 140);
+  });
+}
+
+function renderCameraWheel(key) {
+  const wheel = $(`[data-camera-wheel="${key}"]`);
+  if (!wheel || !CameraSettings) return;
+  const list = wheel.querySelector('.camera-wheel-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const option of cameraWheelOptions(key)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.value = option.value;
+    btn.className = 'camera-wheel-item' + (state.cameraSettings[key] === option.value ? ' active' : '');
+    btn.innerHTML = `<b>${escapeHtml(option.label)}</b><span>${escapeHtml(option.sub || '')}</span>`;
+    btn.addEventListener('click', () => setCameraSetting(key, option.value));
+    list.appendChild(btn);
+  }
+  if (list.dataset.cameraScrollWired !== '1') {
+    list.dataset.cameraScrollWired = '1';
+    list.addEventListener('scroll', () => {
+      if (cameraWheelSyncing) return;
+      clearTimeout(cameraWheelScrollTimers[key]);
+      cameraWheelScrollTimers[key] = setTimeout(() => commitCameraWheelScroll(key, list), 90);
+    }, { passive: true });
+  }
+}
+
+function renderCameraPicker() {
+  if (!CameraSettings) return;
+  state.cameraSettings = CameraSettings.normalizeSettings(state.cameraSettings);
+  clearCameraWheelScrollTimers();
+  renderCameraCombos();
+  CAMERA_WHEEL_KEYS.forEach(renderCameraWheel);
+  updateCameraPreview();
+  centerCameraWheels();
+}
+
+function openCameraPicker() {
+  if (!CameraSettings) return;
+  renderCameraPicker();
+  $('#cameraSheet').classList.add('show');
+}
+
+function applyCameraPrompt() {
+  if (!CameraSettings) return;
+  const prompt = $('#prompt');
+  prompt.value = CameraSettings.applyCameraPrompt(prompt.value, state.cameraSettings);
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
+    state.prompts[state.view] = prompt.value;
+  }
+  updatePromptClear();
+  renderPromptSuggestions();
+  saveForm();
+  $('#cameraSheet').classList.remove('show');
+  toast('Camera settings added');
+}
+
+$('#cameraPromptBtn').addEventListener('click', openCameraPicker);
+$('#cameraApply').addEventListener('click', applyCameraPrompt);
+
 /* ------------------------------------------------------------------ */
 /* Resolution                                                          */
 /* ------------------------------------------------------------------ */
@@ -666,7 +1582,19 @@ function renderAspects() {
 function renderDims() {
   $('#wInput').value = state.width;
   $('#hInput').value = state.height;
-  $('#resReadout').textContent = `${state.width} × ${state.height}`;
+  $('#resSummary').textContent = state.customDims
+    ? `custom · ${state.width} × ${state.height}`
+    : `${state.aspect} · ${state.width} × ${state.height}`;
+  // Tiny aspect glyph shaped like the output
+  const icon = $('#resAspectIcon');
+  if (icon) {
+    const ar = (state.width || 1) / (state.height || 1);
+    const base = 15;
+    const w = ar >= 1 ? base : Math.max(7, Math.round(base * ar));
+    const h = ar >= 1 ? Math.max(7, Math.round(base / ar)) : base;
+    icon.style.width = `${w}px`;
+    icon.style.height = `${h}px`;
+  }
   $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp && !state.customDims));
 }
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
@@ -707,6 +1635,7 @@ function compatibleLoraCategories() {
   if (state.view === 'edit') {
     if (state.editEngine === 'qwen') return ['qwen-edit', 'unknown'];
     if (state.editEngine === 'klein9') return ['klein9', 'unknown'];
+    if (state.editEngine === 'krea2') return ['krea2', 'unknown'];
     return ['klein4', 'unknown'];
   }
   return ['krea2', 'unknown'];
@@ -723,6 +1652,75 @@ function incompatibleSelectedLoras() {
   return curLoras().filter((l) => l && l.on && l.name && !allowed.has(loraCategory(l.name)));
 }
 
+function loraContextProfile(name) {
+  return name ? state.loraContext[name] || null : null;
+}
+
+function applyContextLoraDefault(lora) {
+  const profile = loraContextProfile(lora && lora.name);
+  if (!profile || !Number.isFinite(Number(profile.defaultStrength))) return;
+  lora.strength = Number(profile.defaultStrength);
+}
+
+async function refreshLoraContext() {
+  try {
+    const data = await api('/api/context');
+    state.loraContext = data.loras || {};
+    renderLoras();
+  } catch {
+    state.loraContext = {};
+    renderPromptSuggestions();
+  }
+}
+
+function selectedPromptSuggestions() {
+  const current = ($('#prompt').value || '').toLowerCase();
+  const seen = new Set();
+  const out = [];
+  for (const lora of curLoras()) {
+    if (!lora || !lora.on || !lora.name) continue;
+    const profile = loraContextProfile(lora.name);
+    const phrase = profile && profile.suggestion;
+    if (!phrase) continue;
+    const key = phrase.toLowerCase();
+    if (seen.has(key) || current.includes(key)) continue;
+    seen.add(key);
+    out.push({ phrase, lora: lora.name });
+  }
+  return out.slice(0, 3);
+}
+
+function appendPromptSuggestion(phrase) {
+  const prompt = $('#prompt');
+  const current = prompt.value.trim();
+  const separator = current ? (/[,.!?;:]$/.test(current) ? ' ' : ', ') : '';
+  prompt.value = current + separator + phrase;
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
+    state.prompts[state.view] = prompt.value;
+  }
+  updatePromptClear();
+  renderPromptSuggestions();
+  saveForm();
+  prompt.focus();
+}
+
+function renderPromptSuggestions() {
+  const row = $('#contextPromptTools');
+  if (!row) return;
+  const suggestions = selectedPromptSuggestions();
+  row.innerHTML = '';
+  row.hidden = suggestions.length === 0;
+  for (const suggestion of suggestions) {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.type = 'button';
+    b.textContent = `Add: ${suggestion.phrase}`;
+    b.title = `${prettyLora(suggestion.lora)}: ${suggestion.phrase}`;
+    b.addEventListener('click', () => appendPromptSuggestion(suggestion.phrase));
+    row.appendChild(b);
+  }
+}
+
 function renderLoraCompatibility() {
   const warn = $('#loraCompatWarn');
   if (!warn) return;
@@ -730,68 +1728,239 @@ function renderLoraCompatibility() {
   warn.classList.toggle('hidden', bad.length === 0);
   warn.textContent = bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : '';
   const allBtn = $('#loraAllBtn');
-  if (allBtn) {
-    allBtn.classList.toggle('active', state.showAllLoras);
-    allBtn.textContent = state.showAllLoras ? 'Filter' : 'Show all';
-  }
+  if (allBtn) allBtn.classList.toggle('active', state.showAllLoras);
+}
+
+function loraThumbHtml(name, cls) {
+  const thumb = state.loraThumbs && state.loraThumbs[name];
+  if (thumb) return `<span class="${cls}"><img src="/lorathumbs/${thumb}" alt="" /></span>`;
+  const initials = prettyLora(name || '?').slice(0, 2).toUpperCase();
+  return `<span class="${cls}">${escapeHtml(initials)}</span>`;
 }
 
 function renderLoras() {
   const arr = curLoras();
   const list = $('#loraList');
   list.innerHTML = '';
-  $('#loraEmpty').classList.toggle('hidden', arr.length > 0);
   arr.forEach((l, idx) => {
-    const row = document.createElement('div');
-    row.className = 'lora-row';
-
-    const tog = document.createElement('button');
-    tog.className = 'toggle' + (l.on ? ' on' : '');
-    tog.setAttribute('aria-label', 'Enable LoRA');
-    tog.addEventListener('click', () => { l.on = !l.on; renderLoras(); saveForm(); });
-
-    const sel = document.createElement('select');
-    sel.className = 'lora-name';
-    const opts = [...new Set([l.name, ...loraOptionsFor(l.name)].filter(Boolean))];
-    if (!l.name) sel.appendChild(new Option('-- pick a LoRA --', ''));
-    for (const name of opts) sel.appendChild(new Option(prettyLora(name), name, false, name === l.name));
-    sel.addEventListener('change', () => { l.name = sel.value; renderLoras(); saveForm(); });
-
-    const x = document.createElement('button');
-    x.className = 'lora-x';
-    x.textContent = '✕';
-    x.addEventListener('click', () => { arr.splice(idx, 1); renderLoras(); saveForm(); });
-
-    const sub = document.createElement('div');
-    sub.className = 'lora-sub';
-    const range = document.createElement('input');
-    range.type = 'range'; range.min = '0'; range.max = '2'; range.step = '0.05';
-    range.value = String(l.strength);
-    const val = document.createElement('span');
-    val.className = 'lora-strength';
-    val.textContent = Number(l.strength).toFixed(2);
-    range.addEventListener('input', () => { l.strength = Number(range.value); val.textContent = l.strength.toFixed(2); });
-    range.addEventListener('change', saveForm);
-    sub.append(range, val);
-
-    row.append(tog, sel, x, sub);
-    list.appendChild(row);
+    if (!l.name) { arr.splice(idx, 1); return; } // legacy empty rows
+    const card = document.createElement('div');
+    card.className = 'lora-card' + (l.on ? ' on' : '');
+    card.innerHTML = `${loraThumbHtml(l.name, 'lc-thumb')}`
+      + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
+      + `<button class="lc-menu" aria-label="LoRA options">⋯</button>`
+      + `<span class="lc-name" title="${escapeHtml(prettyLora(l.name))}">${escapeHtml(prettyLora(l.name))}</span>`
+      + `<span class="lc-adjust"></span>`;
+    wireLoraCard(card, l, idx, arr);
+    list.appendChild(card);
   });
+  const add = document.createElement('button');
+  add.className = 'lora-card add';
+  add.type = 'button';
+  add.textContent = '＋';
+  add.setAttribute('aria-label', 'Add LoRA');
+  add.addEventListener('click', () => openLoraPicker());
+  list.appendChild(add);
+  $('#loraHint').hidden = !arr.length;
   renderLoraCompatibility();
+  renderPromptSuggestions();
 }
+
+/* Card interactions: tap toggles, hold (300ms) + slide up/down adjusts
+   strength, the ⋯ menu handles thumbnail + remove. */
+function wireLoraCard(card, l, idx, arr) {
+  const menuBtn = card.querySelector('.lc-menu');
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openActionMenu(menuBtn, [
+      { label: '🖼 Set thumbnail', action: () => setLoraThumb(l.name) },
+      { label: `Strength: ${Number(l.strength).toFixed(2)}`, action: () => {
+        const v = window.prompt('Strength (0–2)', String(l.strength));
+        if (v == null) return;
+        l.strength = Math.max(0, Math.min(2, Number(v) || 0));
+        renderLoras();
+        saveForm();
+      } },
+      { label: 'Remove from stack', danger: true, action: () => { arr.splice(idx, 1); renderLoras(); saveForm(); } },
+    ]);
+  });
+
+  let holdTimer = null;
+  let adjusting = false;
+  let moved = false;
+  let startY = 0;
+  let startStrength = l.strength;
+  const strengthEl = card.querySelector('.lc-strength');
+  const adjustEl = card.querySelector('.lc-adjust');
+
+  card.addEventListener('pointerdown', (e) => {
+    if (e.target === menuBtn) return;
+    moved = false;
+    adjusting = false;
+    startY = e.clientY;
+    startStrength = Number(l.strength) || 0;
+    holdTimer = setTimeout(() => {
+      adjusting = true;
+      card.classList.add('adjusting');
+      adjustEl.textContent = startStrength.toFixed(2);
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, 300);
+    try { card.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  });
+  card.addEventListener('pointermove', (e) => {
+    if (adjusting) {
+      const dy = startY - e.clientY; // up = stronger
+      l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dy / 90) * 20) / 20));
+      adjustEl.textContent = l.strength.toFixed(2);
+      strengthEl.textContent = l.strength.toFixed(2);
+    } else if (Math.abs(e.clientY - startY) > 12) {
+      moved = true;
+      clearTimeout(holdTimer); // scrolling, not holding
+    }
+  });
+  const finish = () => {
+    clearTimeout(holdTimer);
+    // renderLoras() can change layout (e.g. prompt-suggestion chips appear
+    // when a context LoRA activates) — keep the viewport where it was.
+    const sy = window.scrollY;
+    if (adjusting) {
+      card.classList.remove('adjusting');
+      adjusting = false;
+      saveForm();
+      renderLoras(); // refresh badge formatting
+      window.scrollTo(0, sy);
+    } else if (!moved) {
+      l.on = !l.on;
+      renderLoras();
+      window.scrollTo(0, sy);
+      saveForm();
+    }
+  };
+  card.addEventListener('pointerup', finish);
+  card.addEventListener('pointercancel', () => {
+    clearTimeout(holdTimer);
+    if (adjusting) { card.classList.remove('adjusting'); adjusting = false; saveForm(); renderLoras(); }
+  });
+  card.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+/* Thumbnail: square-crop client-side, stored server-side per LoRA file */
+function setLoraThumb(name) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error('Could not read the image')); img.src = url; });
+      const size = 256;
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const s = Math.max(size / img.naturalWidth, size / img.naturalHeight);
+      c.getContext('2d').drawImage(img, (size - img.naturalWidth * s) / 2, (size - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+      const blob = await new Promise((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error('Crop failed'))), 'image/jpeg', 0.85));
+      const r = await api('/api/lorathumb', {
+        method: 'POST',
+        headers: { 'x-lora-name': encodeURIComponent(name) },
+        body: blob,
+      });
+      state.loraThumbs = r.loraThumbs || {};
+      renderLoras();
+      toast('LoRA thumbnail saved');
+    } catch (e) { toast(e.message, true); }
+  });
+  input.click();
+}
+
+/* Picker sheet: searchable list of available LoRAs. With no handler it
+   adds to the current tab's stack; pass onPick to reuse it anywhere
+   (regions, future engines). */
+let loraPickHandler = null;
+let loraPickAllowNone = false;
+function openLoraPicker(onPick, opts) {
+  loraPickHandler = typeof onPick === 'function' ? onPick : null;
+  loraPickAllowNone = !!(opts && opts.allowNone);
+  $('#loraPickTitle').textContent = (opts && opts.title) || 'Add LoRA';
+  $('#loraSearch').value = '';
+  renderLoraPicker('');
+  $('#loraPickSheet').classList.add('show');
+  syncSheetScrollLock();
+}
+function closeLoraPicker() {
+  $('#loraPickSheet').classList.remove('show');
+  syncSheetScrollLock();
+}
+function renderLoraPicker(query) {
+  const listEl = $('#loraPickList');
+  listEl.innerHTML = '';
+  const q = query.trim().toLowerCase();
+  const pick = (name) => {
+    if (loraPickHandler) {
+      loraPickHandler(name);
+    } else {
+      const l = { name, strength: 1, on: true };
+      applyContextLoraDefault(l);
+      curLoras().push(l);
+      renderLoras();
+      saveForm();
+    }
+    closeLoraPicker();
+  };
+  if (loraPickAllowNone && !q) {
+    const none = document.createElement('button');
+    none.className = 'lora-pick-row';
+    none.innerHTML = '<span class="lp-thumb">–</span>None';
+    none.addEventListener('click', () => pick(''));
+    listEl.appendChild(none);
+  }
+  const inStack = loraPickHandler ? new Set() : new Set(curLoras().map((l) => l.name));
+  const names = loraOptionsFor('').filter((n) => !inStack.has(n) && (!q || n.toLowerCase().includes(q)));
+  if (!names.length && !loraPickAllowNone) {
+    listEl.innerHTML = '<div class="queue-empty">No matching LoRAs.</div>';
+    return;
+  }
+  for (const name of names.slice(0, 200)) {
+    const row = document.createElement('button');
+    row.className = 'lora-pick-row';
+    row.innerHTML = `${loraThumbHtml(name, 'lp-thumb')}${escapeHtml(prettyLora(name))}`;
+    row.addEventListener('click', () => pick(name));
+    listEl.appendChild(row);
+  }
+}
+$('#loraSearch').addEventListener('input', () => renderLoraPicker($('#loraSearch').value));
 function prettyLora(name) { return name.replace(/\.safetensors$/i, '').split(/[\\/]/).pop(); }
 function editEngineLabel(engine) {
+  if (engine === 'krea2') return 'Krea2';
   if (engine === 'qwen') return 'Qwen Edit';
   if (engine === 'klein9') return 'Flux Klein 9B';
   return 'Flux Klein 4B';
 }
-$('#addLora').addEventListener('click', () => {
-  curLoras().push({ name: '', strength: 1, on: true });
-  renderLoras();
-});
+$('#addLora').addEventListener('click', () => openLoraPicker());
 $('#loraAllBtn').addEventListener('click', () => {
   state.showAllLoras = !state.showAllLoras;
   renderLoras();
+  if ($('#loraPickSheet').classList.contains('show')) renderLoraPicker($('#loraSearch').value);
+  toast(state.showAllLoras ? 'Showing every LoRA' : 'Filtering to compatible LoRAs');
+});
+
+/* Collapsible resolution panel: header shows the pick; choosing an
+   aspect or size collapses it again. */
+function collapseRes(open) {
+  const expand = open === true;
+  $('#resPanel').classList.toggle('expanded', expand);
+  $('#resBody').hidden = !expand;
+  $('#resHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#resHeader').addEventListener('click', () => collapseRes($('#resBody').hidden));
+$('#aspectRow').addEventListener('click', (e) => {
+  if (e.target.closest('button')) setTimeout(() => collapseRes(false), 140);
+});
+$('#sizeSeg').addEventListener('click', (e) => {
+  if (e.target.closest('button')) setTimeout(() => collapseRes(false), 140);
 });
 
 /* ---- LoRA presets (stored server-side, shared across devices) ---- */
@@ -859,7 +2028,10 @@ $('#loraPresetsBtn').addEventListener('click', () => {
 function renderRefs() {
   const row = $('#refRow');
   row.innerHTML = '';
-  state.refs.forEach((ref, idx) => {
+  // Krea2 inpaint uses a single source image — hide the unused slots
+  const kreaEdit = state.editEngine === 'krea2';
+  const maxSlots = kreaEdit ? 1 : state.refs.length;
+  state.refs.slice(0, maxSlots).forEach((ref, idx) => {
     const slot = document.createElement('div');
     slot.className = 'ref-slot' + (ref ? ' filled' : '');
     const num = document.createElement('span');
@@ -868,11 +2040,16 @@ function renderRefs() {
     slot.appendChild(num);
     if (ref) {
       const img = document.createElement('img');
-      img.src = ref.url;
+      img.src = (idx === 0 && ref.displayUrl) || ref.url;
       const x = document.createElement('button');
       x.className = 'ref-x';
       x.textContent = '✕';
-      x.addEventListener('click', (e) => { e.stopPropagation(); state.refs[idx] = null; renderRefs(); });
+      x.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.refs[idx] = null;
+        if (idx === 0) clearKreaMask(true);
+        renderRefs();
+      });
       slot.append(img, x);
     } else {
       slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');
@@ -880,8 +2057,10 @@ function renderRefs() {
     }
     row.appendChild(slot);
   });
-  const n = state.refs.filter(Boolean).length;
-  $('#refCount').textContent = n ? `${n}/3` : 'optional · up to 3';
+  const n = state.refs.slice(0, maxSlots).filter(Boolean).length;
+  $('#refCount').textContent = kreaEdit
+    ? (n ? 'source image' : 'source image · required')
+    : (n ? `${n}/3` : 'optional · up to 3');
 }
 
 function pickRef(idx) {
@@ -900,6 +2079,7 @@ function pickRef(idx) {
         body: buf,
       });
       state.refs[idx] = { name: res.name, url: URL.createObjectURL(file) };
+      if (idx === 0) clearKreaMask(true);
       renderRefs();
     } catch (e) { toast(e.message, true); }
   });
@@ -988,14 +2168,142 @@ $('#denoiseInput').addEventListener('input', () => { $('#denoiseVal').textConten
 /* Video tab: inline source-image attachment */
 function renderVidAttach() {
   const has = !!state.vidRef;
-  $('#vidAttachBtn').hidden = has;
+  $('#vidAttachBtn').hidden = has || !!state.vidFace;
   $('#vidAttachThumb').hidden = !has;
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
   }
   if (typeof updateSwapChip === 'function') updateSwapChip();
+  renderVidFace();
 }
+
+/* LTX Face ID: a reference face whose identity drives a text-to-video gen */
+function renderVidFace() {
+  const ltx = state.vidEngine === 'ltx';
+  const has = !!state.vidFace;
+  const faceMode = ltx && has;
+  // Face ID is t2v-based: hide it when a source image (i2v) is attached,
+  // and hide the end-frame chip while a face is attached (not supported).
+  $('#vidFaceChip').hidden = !ltx || has || !!state.vidRef;
+  $('#vidFaceThumb').hidden = !ltx || !has;
+  $('#vidEndChip').hidden = faceMode;
+  if (has) {
+    $('#vidFaceImg').src = state.vidFace.url;
+    $('#vidFaceLabel').textContent = state.vidFace.label
+      ? `${state.vidFace.label} — identity drives the video`
+      : "this person's identity drives the video";
+  }
+  // Contextual controls: Face ID runs a fixed single-stage 24 fps pipeline —
+  // frame-rate (RIFE) chips and motion freedom don't apply.
+  const wanOrScail = state.vidEngine === 'wan' || state.vidEngine === 'scail';
+  $('#vidFpsRow').hidden = !wanOrScail || faceMode;
+  $('#vidFreeField').hidden = wanOrScail || faceMode;
+  if (faceMode) $('#vidEngineNote').textContent = 'LTX Face ID · 24 fps · ref_t2v';
+  else if (ltx) $('#vidEngineNote').textContent = 'LTX 2.3 · 25 fps · audio';
+}
+$('#vidFaceChip').addEventListener('click', () => openFaceSheet());
+$('#vidFaceSwap').addEventListener('click', () => openFaceSheet());
+$('#vidFaceImg').addEventListener('click', () => openFaceSheet());
+$('#vidFaceX').addEventListener('click', () => {
+  state.vidFace = null;
+  renderVidAttach();
+});
+
+/* ---------------- Face ID library (named, reusable faces) ------------ */
+let faceLibrary = [];
+async function openFaceSheet() {
+  $('#faceSheet').classList.add('show');
+  try {
+    const r = await api('/api/faces');
+    faceLibrary = r.faces || [];
+  } catch (e) { toast(e.message, true); }
+  renderFaceGrid();
+}
+function renderFaceGrid() {
+  const grid = $('#faceGrid');
+  grid.innerHTML = '';
+  $('#faceEmpty').hidden = !!faceLibrary.length;
+  faceLibrary.forEach((face) => {
+    const card = document.createElement('div');
+    card.className = 'face-card' + (state.vidFace && state.vidFace.faceId === face.id ? ' active' : '');
+    const img = document.createElement('img');
+    img.src = '/faces/' + face.file;
+    img.alt = face.name;
+    img.addEventListener('click', () => useFace(face));
+    const name = document.createElement('button');
+    name.className = 'face-name';
+    name.textContent = face.name;
+    name.addEventListener('click', async () => {
+      const next = window.prompt('Rename this face', face.name);
+      if (!next || next.trim() === face.name) return;
+      try {
+        const r = await api('/api/faces/' + face.id, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: next.trim() }),
+        });
+        faceLibrary = r.faces || [];
+        if (state.vidFace && state.vidFace.faceId === face.id) {
+          state.vidFace.label = next.trim();
+          renderVidFace();
+        }
+        renderFaceGrid();
+      } catch (e) { toast(e.message, true); }
+    });
+    const del = document.createElement('button');
+    del.className = 'face-del';
+    del.textContent = '🗑';
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!window.confirm(`Delete "${face.name}" from the library?`)) return;
+      try {
+        const r = await api('/api/faces/' + face.id, { method: 'DELETE' });
+        faceLibrary = r.faces || [];
+        renderFaceGrid();
+      } catch (e2) { toast(e2.message, true); }
+    });
+    card.append(img, name, del);
+    grid.appendChild(card);
+  });
+}
+async function useFace(face) {
+  try {
+    toast(`Loading ${face.name}…`);
+    // Fresh upload from the local library copy — ComfyUI's input dir may
+    // have been cleaned since this face was first uploaded.
+    const blob = await (await fetch('/faces/' + face.file)).blob();
+    const buf = await blob.arrayBuffer();
+    const res = await api('/api/upload', {
+      method: 'POST',
+      headers: { 'x-filename': encodeURIComponent(face.name.replace(/[^\w]+/g, '_') + '.png') },
+      body: buf,
+    });
+    state.vidFace = { name: res.name, url: URL.createObjectURL(blob), label: face.name, faceId: face.id };
+    $('#faceSheet').classList.remove('show');
+    renderVidAttach();
+    toast(`${face.name} set as the Face ID reference`);
+  } catch (e) { toast(e.message, true); }
+}
+$('#faceUploadBtn').addEventListener('click', () => {
+  pickUpload('image/*', async (f) => {
+    const suggested = (f.label || 'Face').replace(/\.[^.]+$/, '').slice(0, 40);
+    const name = (window.prompt('Name this face', suggested) || suggested).trim() || 'Face';
+    try {
+      const r = await api('/api/faces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, imageName: f.name }),
+      });
+      faceLibrary = r.faces || [];
+      const saved = faceLibrary.find((x) => x.name === name) || faceLibrary[0];
+      state.vidFace = { name: f.name, url: f.url, label: name, faceId: saved && saved.id };
+      $('#faceSheet').classList.remove('show');
+      renderVidAttach();
+      toast(`${name} saved to the library and set as reference`);
+    } catch (e) { toast(e.message, true); }
+  });
+});
 $('#vidAttachBtn').addEventListener('click', () => pickVidRef());
 $('#vidAttachX').addEventListener('click', () => {
   state.vidRef = null;
@@ -1036,6 +2344,7 @@ $('#vid4k').addEventListener('click', () => $('#vid4k').classList.toggle('active
 
 /* SCAIL 2 driving-video attachment (+ trim + first-frame extract) */
 state.vidDrive = null;
+state.vidFace = null;
 function renderVidDrive() {
   const scail = state.vidEngine === 'scail';
   const has = !!state.vidDrive;
@@ -1291,6 +2600,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   dur.max = scail ? 60 : 15;
   if (Number(dur.value) > Number(dur.max)) { dur.value = dur.max; $('#vidDurVal').textContent = dur.value; }
   renderVidDrive();
+  renderVidFace();
   $('#vidEngineNote').textContent = wan ? 'Wan 2.2 · 16 fps · needs image'
     : scail ? 'SCAIL 2 · 16 fps · motion audio'
       : (engine === 'eros' ? '10Eros DMD · 24 fps · audio · needs image' : 'LTX 2.3 · 25 fps · audio');
@@ -1305,6 +2615,12 @@ wireEngineRow('animEngineRow', (engine) => {
 });
 wireEngineRow('editEngineRow', (engine) => {
   state.editEngine = engine;
+  if (engine === 'krea2' && Number($('#denoiseInput').value) <= 0.5) {
+    // Soft inpaint needs a strong denoise to actually repaint the mask
+    $('#denoiseInput').value = 0.9;
+    $('#denoiseVal').textContent = '0.90';
+  }
+  renderRefs();
   updateVideoPanels();
   renderLoras();
   saveForm();
@@ -1313,7 +2629,8 @@ $('#editComposite').addEventListener('click', () => $('#editComposite').classLis
 
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = $('#prompt').value.trim();
-  if (!prompt) return toast('Type a prompt first', true);
+  const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
+  if (!prompt && !hasRegionPrompts) return toast('Type a prompt first', true);
 
   if (state.view === 'video') {
     if (state.vidEngine !== 'ltx' && !state.vidRef) {
@@ -1345,6 +2662,7 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.videoLoras,
       audioName: vidAudioName,
+      faceImageName: state.vidEngine === 'ltx' && state.vidFace && !state.vidRef ? state.vidFace.name : undefined,
       driveVideoName: state.vidEngine === 'scail' && state.vidDrive ? state.vidDrive.name : undefined,
       driveStartSeconds: state.vidEngine === 'scail' && state.vidDrive ? state.vidDrive.trimStart || 0 : undefined,
       driveDurSeconds: state.vidEngine === 'scail' && state.vidDrive && state.vidDrive.dur
@@ -1373,6 +2691,12 @@ $('#generateBtn').addEventListener('click', async () => {
 
   const mode = state.view === 'edit' ? 'edit' : 't2i';
   const seedRaw = $('#seedInput').value.trim();
+  let maskImageName = '';
+  if (mode === 'edit' && state.editEngine === 'krea2' && (state.kreaMask || state.kreaMaskDirty || state.kreaMaskPreview)) {
+    if (!state.refs[0]) return toast('Krea2 inpaint needs a source image in reference slot 1', true);
+    try { maskImageName = await ensureKreaMaskUploaded(); }
+    catch (e) { return toast(e.message, true); }
+  }
   const body = {
     mode,
     editEngine: mode === 'edit' ? state.editEngine : undefined,
@@ -1387,7 +2711,11 @@ $('#generateBtn').addEventListener('click', async () => {
     denoise: mode === 'edit' ? Number($('#denoiseInput').value) : 1,
     seed: seedRaw === '' ? undefined : Number(seedRaw),
     loras: mode === 'edit' ? state.editLoras : state.loras,
-    refImages: mode === 'edit' ? state.refs.filter(Boolean).map((r) => r.name) : [],
+    refImages: mode === 'edit'
+      ? state.refs.slice(0, state.editEngine === 'krea2' ? 1 : 3).filter(Boolean).map((r) => r.name)
+      : [],
+    regions: activeRegionsForRequest(),
+    maskImageName,
     sourceItemId: mode === 'edit' && state.refs[0] ? state.refs[0].srcItemId : undefined,
     folder: state.activeFolder !== 'all' ? state.activeFolder : null,
   };
@@ -1685,6 +3013,7 @@ async function refreshGallery(soft) {
     if (state.activeFolder !== 'all' && !state.folders.some((f) => f.id === state.activeFolder)) {
       state.activeFolder = 'all';
     }
+    await refreshLoraContext();
     renderFolders();
     renderGrid();
     updatePrivacyButton();
@@ -1728,7 +3057,17 @@ function renderFolders() {
     btn.className = 'folder-chip' + (state.activeFolder === f.id ? ' active' : '');
     btn.textContent = f.name;
     btn.classList.toggle('locked', !!f.locked);
-    btn.addEventListener('click', () => { state.activeFolder = f.id; renderFolders(); renderGrid(); });
+    if (f.locked && !state.privateUnlocked) btn.textContent = `🔒 ${f.name}`;
+    btn.addEventListener('click', async () => {
+      if (f.locked && !state.privateUnlocked) {
+        // Contents are hidden until unlocked — prompt for the gallery PIN
+        await unlockPrivateGallery();
+        if (!state.privateUnlocked) return;
+      }
+      state.activeFolder = f.id;
+      renderFolders();
+      renderGrid();
+    });
     if (f.id !== 'all') {
       let timer = null;
       btn.addEventListener('contextmenu', (e) => { e.preventDefault(); folderActions(f); });
@@ -1758,10 +3097,11 @@ $('#privacyBtn')?.addEventListener('click', async () => {
 
 async function folderActions(f) {
   try {
-    const action = window.prompt(`Folder "${f.name}": type lock, unlock, or delete`, f.locked ? 'unlock' : 'lock');
+    const action = window.prompt(`Folder "${f.name}": type lock, unlock, merge, or delete`, f.locked ? 'unlock' : 'lock');
     if (!action) return;
     const cmd = action.trim().toLowerCase();
     if (cmd === 'delete') { await deleteFolder(f); return; }
+    if (cmd === 'merge') { await mergeFolder(f); return; }
     if (cmd !== 'lock' && cmd !== 'unlock') return;
     if (!state.privateUnlocked) {
       await unlockPrivateGallery();
@@ -1775,6 +3115,32 @@ async function folderActions(f) {
     if (state.activeFolder === f.id && cmd === 'lock') state.activeFolder = 'all';
     await refreshGallery();
     toast(cmd === 'lock' ? 'Folder locked' : 'Folder unlocked');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function mergeFolder(f) {
+  if (f.locked && !state.privateUnlocked) {
+    await unlockPrivateGallery();
+    if (!state.privateUnlocked) return;
+  }
+  const others = state.folders.filter((x) => x.id !== f.id);
+  const names = ['none (All)', ...others.map((x) => x.name)];
+  const pick = window.prompt(`Merge "${f.name}" into which folder?\n${names.join(', ')}`, names[1] || 'none (All)');
+  if (!pick) return;
+  const target = pick.trim().toLowerCase() === 'none (all)' || pick.trim().toLowerCase() === 'none'
+    ? null
+    : others.find((x) => x.name.toLowerCase() === pick.trim().toLowerCase());
+  if (target === undefined) return toast('No folder with that name', true);
+  if (!window.confirm(`Move everything from "${f.name}" ${target ? `into "${target.name}"` : 'out of folders'} and remove "${f.name}"?`)) return;
+  try {
+    const r = await api(`/api/folders/${f.id}/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ into: target ? target.id : null }),
+    });
+    if (state.activeFolder === f.id) state.activeFolder = target ? target.id : 'all';
+    await refreshGallery();
+    toast(`Merged ${r.moved} item${r.moved === 1 ? '' : 's'} ${target ? `into ${target.name}` : 'to All'}`);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1863,8 +3229,25 @@ function renderGrid() {
       }, 450);
     });
     card.addEventListener('pointermove', (e) => {
+      // After the hold engages, dragging across tiles sweeps them into the
+      // selection (Google-Photos style).
+      if (lpFired && state.selectMode) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const other = el && el.closest ? el.closest('.card') : null;
+        const oid = other && other.dataset.id;
+        if (oid && !state.selected.has(oid)) {
+          state.selected.add(oid);
+          other.classList.add('selected');
+          updateSelectBar();
+        }
+        return;
+      }
       if (Math.hypot(e.clientX - startXY[0], e.clientY - startXY[1]) > 12) clearTimeout(lpTimer);
     });
+    // Once drag-select is live, stop the page from scrolling underneath
+    card.addEventListener('touchmove', (e) => {
+      if (lpFired && state.selectMode) e.preventDefault();
+    }, { passive: false });
     card.addEventListener('pointerup', () => clearTimeout(lpTimer));
     card.addEventListener('pointercancel', () => clearTimeout(lpTimer));
     card.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -2011,7 +3394,7 @@ function openLightbox(id, mediaSel) {
     if (info.frames && info.fps) {
       const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[info.engine] || 'LTX 2.3';
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
-      const flags = [info.composite && '⿻ side-by-side', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
+      const flags = [info.composite && '⿻ side-by-side', info.faceId && '🪪 Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Video:</b> ${eng} · ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     }
@@ -2074,6 +3457,42 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('pointercancel', hide);
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  // Region-prompted images: hold to overlay the color-coded boxes,
+  // plus export the annotated version.
+  if (!selVideo && Array.isArray(it.regions) && it.regions.length) {
+    const rb = mk('⬚ Hold: regions', '', () => {});
+    rb.style.userSelect = 'none';
+    rb.style.webkitUserSelect = 'none';
+    const showR = async (e) => {
+      e.preventDefault();
+      try {
+        if (!it._regionOverlayUrl) {
+          const canvas = await buildRegionOverlay(it);
+          it._regionOverlayUrl = canvas.toDataURL('image/jpeg', 0.9);
+        }
+        $('#lbImg').src = it._regionOverlayUrl;
+      } catch { toast('Could not render the region overlay', true); }
+    };
+    const hideR = () => { $('#lbImg').src = '/images/' + (it.upscaled || it.file); };
+    rb.addEventListener('pointerdown', showR);
+    rb.addEventListener('pointerup', hideR);
+    rb.addEventListener('pointercancel', hideR);
+    rb.addEventListener('pointerleave', hideR);
+    rb.addEventListener('contextmenu', (e) => e.preventDefault());
+    mk('⬚ Save region map', '', async () => {
+      try {
+        const canvas = await buildRegionOverlay(it);
+        canvas.toBlob((blob) => {
+          if (!blob) return toast('Export failed', true);
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_regions.png';
+          a.click();
+        }, 'image/png');
+      } catch (e2) { toast(e2.message, true); }
+    });
   }
   if (selVideo) {
     const vinfo = selVideo.info || {};
@@ -2386,7 +3805,7 @@ function reuseItem(it, useEnhanced) {
   const restoredLoras = (it.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) || 1, on: true }));
   if (targetView === 'edit') {
     state.editLoras = restoredLoras;
-    state.editEngine = it.editEngine === 'qwen' ? 'qwen' : (it.editEngine === 'klein9' ? 'klein9' : 'klein4');
+    state.editEngine = it.editEngine === 'qwen' ? 'qwen' : (it.editEngine === 'klein9' ? 'klein9' : (it.editEngine === 'krea2' ? 'krea2' : 'klein4'));
     markEngineRow('editEngineRow', state.editEngine);
   } else {
     state.loras = restoredLoras;
@@ -2426,6 +3845,7 @@ async function reuseVideo(it, v) {
   state.vidRef = null;
   state.vidEnd = null;
   state.vidDrive = null;
+  state.vidFace = null;
   if (state.vidAudio) stopPreview();
   state.vidAudio = null;
   $('#vidAudioChip').classList.remove('active');
@@ -2534,6 +3954,14 @@ async function reuseVideo(it, v) {
   }
   if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
 
+  // Face ID reference (LTX reference-to-video)
+  if (engine === 'ltx' && info.faceImageName) {
+    try {
+      const blob = await inputBlob(info.faceImageName);
+      state.vidFace = { name: info.faceImageName, url: URL.createObjectURL(blob) };
+    } catch { missing.push('face reference'); }
+  }
+
   // Motion video (SCAIL) + its trim window
   if (engine === 'scail' && info.driveVideoName) {
     try {
@@ -2572,6 +4000,69 @@ $('#reuseOriginal').addEventListener('click', () => {
   $('#reuseSheet').classList.remove('show');
   if (state.reuseTarget) reuseItem(state.reuseTarget, false);
 });
+
+/* Render color-coded region boxes + their prompts (bottom-left of each
+   box) over the generated image. Used for the gallery hold-preview and
+   the annotated export. */
+async function buildRegionOverlay(it) {
+  const img = new Image();
+  await new Promise((ok, bad) => {
+    img.onload = ok;
+    img.onerror = () => bad(new Error('Could not load the image'));
+    img.src = '/images/' + (it.upscaled || it.file);
+  });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || 1024;
+  c.height = img.naturalHeight || 1024;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const lw = Math.max(3, Math.round(c.width / 320));
+  const fs = Math.max(13, Math.round(c.width / 52));
+  const lh = Math.round(fs * 1.3);
+  const pad = Math.round(fs * 0.45);
+  ctx.font = `600 ${fs}px -apple-system, "Segoe UI", sans-serif`;
+  ctx.textBaseline = 'alphabetic';
+  it.regions.forEach((r, i) => {
+    const color = r.color || REGION_COLORS[i % REGION_COLORS.length];
+    const x = (r.x || 0) * c.width;
+    const y = (r.y || 0) * c.height;
+    const w = (r.w || 0) * c.width;
+    const h = (r.h || 0) * c.height;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(x, y, w, h);
+    // Numbered tag, top-left
+    const tag = String(i + 1);
+    const tagW = ctx.measureText(tag).width + pad * 2;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, tagW, lh + pad);
+    ctx.fillStyle = '#000';
+    ctx.fillText(tag, x + pad, y + lh);
+    // Prompt label, bottom-left inside the box, wrapped
+    const label = (r.description || '').trim() || `Region ${i + 1}`;
+    const maxW = Math.max(80, w - pad * 3 - lw * 2);
+    const words = label.split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(test).width > maxW) { lines.push(line); line = word; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    const textW = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)));
+    const boxH = lines.length * lh + pad * 2;
+    const bx = x + lw;
+    const by = y + h - lw - boxH;
+    ctx.fillStyle = 'rgba(0,0,0,0.68)';
+    ctx.fillRect(bx, by, textW + pad * 2 + lw * 2, boxH);
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, by, Math.max(3, lw), boxH); // color key strip
+    ctx.fillStyle = '#fff';
+    lines.forEach((l, li) => ctx.fillText(l, bx + pad + lw * 2, by + pad + (li + 1) * lh - Math.round(lh * 0.25)));
+  });
+  return c;
+}
 
 function downloadItem(it, variant) {
   const a = document.createElement('a');
@@ -2723,7 +4214,7 @@ function openMoveSheet(target) {
   for (const f of all) {
     const b = document.createElement('button');
     b.className = 'chip' + (currentFolder !== undefined && currentFolder === f.id ? ' active' : '');
-    b.textContent = f.locked ? `Locked ${f.name}` : f.name;
+    b.textContent = f.locked ? `🔒 ${f.name}` : f.name;
     b.addEventListener('click', async () => {
       try {
         await Promise.all(ids.map((id) => api(`/api/item/${id}/move`, {
@@ -2783,6 +4274,8 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setLtxTe').value = s.ltxTextEncoder || '';
     $('#setLtxGemmaLora').value = s.ltxGemmaLora || '';
     $('#setLtxUps').value = s.ltxUpscaler || '';
+    $('#setFaceIdLora').value = s.ltxFaceIdLora || '';
+    $('#setFaceIdDistilled').value = s.ltxFaceIdDistilledLora || '';
     $('#setWanHigh').value = s.wanHighUnet || '';
     $('#setWanLow').value = s.wanLowUnet || '';
     $('#setWanClip').value = s.wanClip || '';
@@ -2834,6 +4327,8 @@ $('#settingsSave').addEventListener('click', async () => {
         ltxTextEncoder: $('#setLtxTe').value,
         ltxGemmaLora: $('#setLtxGemmaLora').value,
         ltxUpscaler: $('#setLtxUps').value,
+        ltxFaceIdLora: $('#setFaceIdLora').value,
+        ltxFaceIdDistilledLora: $('#setFaceIdDistilled').value,
         wanHighUnet: $('#setWanHigh').value,
         wanLowUnet: $('#setWanLow').value,
         wanClip: $('#setWanClip').value,
@@ -2865,6 +4360,7 @@ async function loadMeta(refresh) {
     state.connOk = lastMeta.ok;
     state.metaLoras = lastMeta.loras || [];
     state.metaLorasInfo = lastMeta.lorasInfo || {};
+    state.loraThumbs = lastMeta.loraThumbs || {};
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
     renderLoras();
   } catch {
@@ -2881,7 +4377,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     rows.push(missing.length
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`
@@ -2905,7 +4401,9 @@ function renderHealth() {
 $$('.sheet').forEach((sheet) => {
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.classList.remove('show'); });
   sheet.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => sheet.classList.remove('show')));
+  new MutationObserver(syncSheetScrollLock).observe(sheet, { attributes: true, attributeFilter: ['class'] });
 });
+syncSheetScrollLock();
 
 /* ------------------------------------------------------------------ */
 /* Init                                                                */

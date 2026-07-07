@@ -21,6 +21,7 @@
     <div class="brand-name">KreaStudio <span>· Krea 2</span></div>
   </div>
   <div class="topbar-actions">
+    <button class="profile-chip" id="profileBtn" hidden></button>
     <span class="conn-dot" id="connDot" title="ComfyUI connection"></span>
     <button class="icon-btn queue-btn" id="queueBtn" aria-label="Queue">
       <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Zm12 0h2v2h-2v-2Zm0-1.5 4-2.8-4-2.8v5.6Z"/></svg>
@@ -50,9 +51,15 @@
       <button class="chip active" data-engine="klein4">Klein 4B</button>
       <button class="chip" data-engine="klein9">Klein 9B</button>
       <button class="chip" data-engine="qwen">Qwen Edit</button>
+      <button class="chip" data-engine="krea2">Krea2</button>
       <button class="chip active" id="editComposite" title="Blend only the changed pixels back onto the original">🎯 Preserve unchanged</button>
     </div>
     <div class="ref-row" id="refRow"></div>
+    <div class="krea-mask-tools" id="kreaMaskTools" hidden>
+      <button class="chip" id="kreaMaskBtn" type="button">Paint mask</button>
+      <button class="chip" id="kreaMaskClear" type="button" hidden>Clear mask</button>
+      <span id="kreaMaskStatus">No mask</span>
+    </div>
     <div class="enhance-hint">Tip: reference them in your prompt by number — “put the jacket from image 2 on the person in image 1”.</div>
   </section>
 
@@ -69,8 +76,17 @@
       </button>
     </div>
     <div class="chip-row prompt-tools" id="createPromptTools">
-      <button class="chip" id="imagePromptBtn">Image to Prompt</button>
+      <button class="chip icon-chip" id="imagePromptBtn" aria-label="Image to prompt" title="Image to prompt">
+        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h14V6H5Zm3.5 3A1.5 1.5 0 1 1 7 10.5 1.5 1.5 0 0 1 8.5 9ZM6 16l3.5-4.5 2.5 3 2-2.5L18 16H6Z"/></svg>
+      </button>
+      <button class="chip icon-chip" id="cameraPromptBtn" aria-label="Camera settings" title="Camera settings">
+        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8L9 4Zm3 5a4 4 0 1 0 4 4 4 4 0 0 0-4-4Zm0 2a2 2 0 1 1-2 2 2 2 0 0 1 2-2Z"/></svg>
+      </button>
+      <button class="chip icon-chip" id="regionsPromptBtn" aria-label="Regions" title="Region prompting">
+        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M4 4h4v2H6v2H4V4Zm12 0h4v4h-2V6h-2V4ZM4 16h2v2h2v2H4v-4Zm16 0v4h-4v-2h2v-2h2ZM7 9h6v7H7V9Zm2 2v3h2v-3H9Zm6-1h3v5h-3v-5Z"/></svg>
+      </button>
     </div>
+    <div class="chip-row prompt-tools context-prompt-tools" id="contextPromptTools" hidden></div>
     <div class="attach-zone" id="vidAttachRow" hidden>
       <button class="attach-btn" id="vidAttachBtn">
         <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M5 5h14v14H5V5Zm2 2v10h10V7H7Zm2 7.4 2.2-2.7 1.6 1.9 1.2-1.4 2 2.2H9Zm1.7-4.4a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6Z"/></svg>
@@ -118,9 +134,19 @@
         <div class="trim-hint">Drag the edges to trim · only the selected section drives the motion</div>
       </div>
       <div class="chip-row" id="vidExtras" style="margin-top:8px; margin-bottom:0" hidden>
+        <button class="chip" id="vidFaceChip" hidden>🪪 Face ID</button>
         <button class="chip" id="vidEndChip">🏁 End frame</button>
         <button class="chip" id="vidAudioChip">🎵 Audio</button>
         <button class="chip" id="vidSwap" hidden>⇅ Swap frames</button>
+      </div>
+      <div class="attach-thumb" id="vidFaceThumb" style="margin-top:8px" hidden>
+        <img id="vidFaceImg" alt="" />
+        <div class="attach-info">
+          <b>🪪 Face ID reference</b>
+          <span id="vidFaceLabel">this person's identity drives the video</span>
+        </div>
+        <button class="attach-x" id="vidFaceSwap" aria-label="Choose another face">⇄</button>
+        <button class="attach-x" id="vidFaceX" aria-label="Remove face reference">✕</button>
       </div>
       <div class="attach-thumb" id="vidEndThumb" style="margin-top:8px" hidden>
         <img id="vidEndImg" alt="" />
@@ -145,7 +171,6 @@
         <div class="trim-hint">Drag the edges to trim · drag the middle to move the selection</div>
       </div>
     </div>
-    <div class="enhance-hint" id="enhanceHint"><b>✨ Enhance on</b> — Qwen3-VL rewrites your prompt before generating</div>
   </section>
 
   <section class="panel" id="vidOptsPanel" hidden>
@@ -211,33 +236,48 @@
     </div>
   </section>
 
-  <section class="panel">
-    <div class="panel-label">Resolution <span class="res-dims" id="resReadout"></span></div>
-    <div class="aspect-row" id="aspectRow"></div>
-    <div class="res-meta">
-      <div class="size-seg" id="sizeSeg">
-        <button data-mp="0.75">S</button>
-        <button data-mp="1" class="active">M</button>
-        <button data-mp="1.75">L</button>
-      </div>
-      <div class="res-dims">
-        <input id="wInput" type="number" inputmode="numeric" step="16" min="64" max="4096" /> ×
-        <input id="hInput" type="number" inputmode="numeric" step="16" min="64" max="4096" />
+  <section class="panel res-panel" id="resPanel">
+    <button class="res-header" id="resHeader" aria-expanded="false">
+      <span class="panel-label" style="margin:0">Resolution</span>
+      <span class="res-summary" id="resSummary">1:1 · 1024 × 1024</span>
+      <span class="res-aspect-icon" id="resAspectIcon"></span>
+      <svg class="res-chevron" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+    </button>
+    <div class="res-body" id="resBody" hidden>
+      <div class="aspect-row" id="aspectRow"></div>
+      <div class="res-meta">
+        <div class="size-seg" id="sizeSeg">
+          <button data-mp="0.75">S</button>
+          <button data-mp="1" class="active">M</button>
+          <button data-mp="1.75">L</button>
+        </div>
+        <div class="res-dims">
+          <input id="wInput" type="number" inputmode="numeric" step="16" min="64" max="4096" /> ×
+          <input id="hInput" type="number" inputmode="numeric" step="16" min="64" max="4096" />
+        </div>
       </div>
     </div>
   </section>
 
   <section class="panel">
-    <div class="panel-label">LoRAs</div>
-    <div id="loraList"></div>
-    <div class="lora-empty hidden" id="loraEmpty">No LoRAs added — tap below to add one.</div>
-    <div class="lora-warning hidden" id="loraCompatWarn"></div>
-    <button class="add-lora" id="addLora">+ Add LoRA</button>
-    <div class="chip-row" style="margin-top:10px; margin-bottom:0">
-      <button class="chip" id="loraAllBtn">Show all</button>
-      <button class="chip" id="loraSaveBtn">💾 Save preset</button>
-      <button class="chip" id="loraPresetsBtn">📂 Presets</button>
+    <div class="panel-label">
+      <span>LoRAs</span>
+      <span class="lora-tools">
+        <button class="chip icon-chip" id="loraAllBtn" aria-label="Show all LoRAs" title="Show all LoRAs (ignore engine filter)">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg>
+        </button>
+        <button class="chip icon-chip" id="loraSaveBtn" aria-label="Save preset" title="Save current LoRAs as a preset">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 2v4h8V5H7Zm5 7a3 3 0 1 0 3 3 3 3 0 0 0-3-3Z"/></svg>
+        </button>
+        <button class="chip icon-chip" id="loraPresetsBtn" aria-label="Load preset" title="Load a saved preset">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2H3V5Zm0 5h18l-1.6 8.4A2 2 0 0 1 17.4 20H6.6a2 2 0 0 1-2-1.6L3 10Z"/></svg>
+        </button>
+      </span>
     </div>
+    <div class="lora-grid" id="loraList"></div>
+    <div class="lora-hint" id="loraHint">Tap a card to toggle · hold and slide to adjust strength</div>
+    <div class="lora-warning hidden" id="loraCompatWarn"></div>
+    <button class="add-lora" id="addLora" hidden>+ Add LoRA</button>
   </section>
 
   <section class="panel">
@@ -345,6 +385,103 @@
   <div class="action-row"></div>
 </div>
 
+<!-- camera settings sheet -->
+<div class="sheet" id="cameraSheet">
+  <div class="sheet-panel camera-panel">
+    <h3 class="sheet-title">Camera Settings <button data-close>✕</button></h3>
+    <div class="camera-preview" id="cameraPreview"></div>
+
+    <div class="field camera-field-label"><label>Recommended</label></div>
+    <div class="camera-combo-grid" id="cameraComboGrid"></div>
+
+    <div class="camera-wheel-board" id="cameraWheelBoard">
+      <section class="camera-wheel" data-camera-wheel="camera">
+        <div class="camera-wheel-label">Camera</div>
+        <div class="camera-wheel-list"></div>
+      </section>
+      <section class="camera-wheel" data-camera-wheel="lens">
+        <div class="camera-wheel-label">Lens</div>
+        <div class="camera-wheel-list"></div>
+      </section>
+      <section class="camera-wheel" data-camera-wheel="focalLength">
+        <div class="camera-wheel-label">Focal length</div>
+        <div class="camera-wheel-list"></div>
+      </section>
+      <section class="camera-wheel" data-camera-wheel="aperture">
+        <div class="camera-wheel-label">Aperture</div>
+        <div class="camera-wheel-list"></div>
+      </section>
+      <section class="camera-wheel" data-camera-wheel="shutter">
+        <div class="camera-wheel-label">Shutter</div>
+        <div class="camera-wheel-list"></div>
+      </section>
+      <section class="camera-wheel" data-camera-wheel="iso">
+        <div class="camera-wheel-label">ISO</div>
+        <div class="camera-wheel-list"></div>
+      </section>
+    </div>
+
+    <button class="sheet-cta" id="cameraApply">Apply to prompt</button>
+  </div>
+</div>
+
+<!-- region prompt sheet -->
+<div class="sheet region-sheet" id="regionSheet">
+  <div class="sheet-panel region-panel">
+    <h3 class="sheet-title">Regional Prompting <button data-close>✕</button></h3>
+    <div class="region-toolbar">
+      <button class="chip" id="regionEnabledChip" type="button">Use regions</button>
+      <button class="chip" id="regionAddBtn" type="button">Add box</button>
+      <button class="chip" id="regionDeleteBtn" type="button">Delete</button>
+    </div>
+    <div class="region-stage" id="regionStage"></div>
+    <div class="region-fields">
+      <div class="field field-span">
+        <label>Region prompt</label>
+        <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
+      </div>
+      <div class="field">
+        <label>Region LoRA</label>
+        <button class="lora-pick-row region-lora-btn" id="regionLoraBtn" type="button"><span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span></button>
+      </div>
+      <div class="field">
+        <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
+        <div class="range-field"><input id="regionStrengthInput" type="range" min="-2" max="2" step="0.05" value="1" /></div>
+      </div>
+      <div class="field field-span">
+        <label>Reference lock</label>
+        <div class="region-ref-row">
+          <button class="chip" id="regionRefBtn" type="button">Add ref image</button>
+          <button class="chip" id="regionRefClear" type="button">Remove ref</button>
+          <span id="regionRefLabel">None</span>
+        </div>
+        <input id="regionRefInput" type="file" accept="image/*" hidden />
+      </div>
+    </div>
+    <button class="sheet-cta" id="regionDoneBtn">Done</button>
+  </div>
+</div>
+
+<!-- Krea2 mask sheet -->
+<div class="sheet region-sheet" id="kreaMaskSheet">
+  <div class="sheet-panel region-panel">
+    <h3 class="sheet-title">Krea2 Inpaint Mask <button data-close>✕</button></h3>
+    <div class="mask-stage" id="kreaMaskStage">
+      <img id="kreaMaskBase" alt="" />
+      <canvas class="krea-mask-canvas" id="kreaMaskCanvas"></canvas>
+    </div>
+    <div class="field">
+      <label>Brush size <span id="kreaBrushVal">48</span></label>
+      <div class="range-field"><input id="kreaBrushInput" type="range" min="12" max="160" step="4" value="48" /></div>
+    </div>
+    <div class="chip-row">
+      <button class="chip" id="kreaMaskErase" type="button">Erase</button>
+      <button class="chip" id="kreaMaskReset" type="button">Clear</button>
+    </div>
+    <button class="sheet-cta" id="kreaMaskApply">Use mask</button>
+  </div>
+</div>
+
 <!-- upscale sheet -->
 <div class="sheet" id="upscaleSheet">
   <div class="sheet-panel">
@@ -427,8 +564,8 @@
 
     <div class="info-block">
       <h4>LTX 2.3 <span>25 fps · generates audio · text or image</span></h4>
-      <p>The all-rounder. Two-stage generation (base + ×2 latent upscale) with Gemma prompt enhancement, straight from the Black Mixture workflow. The only engine that does <b>text-to-video</b> — no image needed. Fast (~1–3 min).</p>
-      <p class="info-opts">Supports: motion freedom · end frame · audio-driven · LoRAs · RTX 4K</p>
+      <p>The all-rounder. Two-stage generation (base + ×2 latent upscale) with Gemma prompt enhancement, straight from the Black Mixture workflow. The only engine that does <b>text-to-video</b> — no image needed. Fast (~1–3 min). Attach a <b>🪪 Face ID</b> reference (with no source image) and the Best-FaceID LoRA re-creates that person performing your prompt — describe the scene in <i>ref_t2v</i> style: action, setting, framing; ✨ enhance automatically weaves the person's looks into the caption. Runs single-stage at 24 fps.</p>
+      <p class="info-opts">Supports: motion freedom · end frame · audio-driven · Face ID · LoRAs · RTX 4K</p>
     </div>
 
     <div class="info-block">
@@ -448,6 +585,66 @@
       <p>The motion transfer engine. Attach a source image <b>and</b> a motion video — SAM3 tracks the person in both, and SCAIL-2 (a Wan 2.1 finetune) re-animates your image with the clip's exact movement. Infinity mode uses the SCAIL-2 Infinity node with the Pusa LoRA to handle long clips inside one workflow. Runs 6 steps with lightx2v. Wan-family models generate at 16 fps — pick <b>32/48 fps · RIFE</b> to interpolate extra frames for smoother playback.</p>
       <p class="info-opts">Supports: motion video audio · Infinity/Chunked/Direct modes · RIFE frame rates · LoRAs · RTX 4K · up to 60s</p>
     </div>
+  </div>
+</div>
+
+<!-- profile gate (sign-in, Netflix-style) -->
+<div class="profile-gate" id="profileGate" hidden>
+  <div class="gate-inner">
+    <h2 class="gate-title">Who's creating?</h2>
+    <div class="profile-tiles" id="profileList"></div>
+    <div class="profile-new" id="profileNewForm" hidden>
+      <input id="newProfileName" type="text" placeholder="Profile name" maxlength="30" />
+      <input id="newProfilePin" type="password" inputmode="numeric" placeholder="PIN (optional)" maxlength="12" />
+      <div class="chip-row" style="justify-content:center">
+        <button class="sheet-cta" id="newProfileBtn">Create profile</button>
+        <button class="chip" id="newProfileCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- profile edit sheet -->
+<div class="sheet" id="profileEditSheet">
+  <div class="sheet-panel">
+    <h3 class="sheet-title">Edit Profile <button data-close>✕</button></h3>
+    <div class="profile-edit-head">
+      <div class="profile-avatar-lg" id="peAvatar"></div>
+      <button class="chip" id="peChangePhoto">📷 Change photo</button>
+    </div>
+    <div class="field"><label>Name</label><input id="peName" type="text" maxlength="30" /></div>
+    <div class="field"><label>PIN — leave empty for no PIN</label><input id="pePin" type="password" inputmode="numeric" placeholder="••••" maxlength="12" /></div>
+    <button class="sheet-cta" id="peSave">Save changes</button>
+    <button class="action-btn danger" id="peDelete" style="width:100%; margin-top:10px">🗑 Delete this profile and all its content</button>
+  </div>
+</div>
+
+<!-- manage profiles sheet (owner) -->
+<div class="sheet" id="profileManageSheet">
+  <div class="sheet-panel">
+    <h3 class="sheet-title">Manage Profiles <button data-close>✕</button></h3>
+    <div class="face-hint">As the owner profile you can rename, clear PINs, or delete any account. Deleting removes all of its generations.</div>
+    <div id="profileManageList"></div>
+  </div>
+</div>
+
+<!-- LoRA picker sheet -->
+<div class="sheet" id="loraPickSheet">
+  <div class="sheet-panel">
+    <h3 class="sheet-title"><span id="loraPickTitle">Add LoRA</span> <button data-close>✕</button></h3>
+    <input class="lora-search" id="loraSearch" type="text" placeholder="Search LoRAs…" />
+    <div class="lora-pick-list" id="loraPickList"></div>
+  </div>
+</div>
+
+<!-- Face ID library sheet -->
+<div class="sheet" id="faceSheet">
+  <div class="sheet-panel">
+    <h3 class="sheet-title">🪪 Face ID Library <button data-close>✕</button></h3>
+    <div class="face-hint">Tap a face to use it. Tap the name to rename. Clean, frontal, well-lit close-ups give the strongest identity.</div>
+    <div class="face-grid" id="faceGrid"></div>
+    <div class="face-empty" id="faceEmpty" hidden>No saved faces yet — upload one below.</div>
+    <button class="add-lora" id="faceUploadBtn">➕ Upload new face</button>
   </div>
 </div>
 
@@ -568,6 +765,8 @@
     <div class="field"><label>Gemma text encoder</label><input id="setLtxTe" type="text" /></div>
     <div class="field"><label>Gemma LoRA</label><input id="setLtxGemmaLora" type="text" /></div>
     <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>
+    <div class="field"><label>Face ID LoRA</label><input id="setFaceIdLora" type="text" /></div>
+    <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
     <div class="settings-note" style="margin-top:14px"><b>Video (Wan 2.2)</b></div>
     <div class="field"><label>High-noise UNET</label><input id="setWanHigh" type="text" /></div>
     <div class="field"><label>Low-noise UNET</label><input id="setWanLow" type="text" /></div>
@@ -616,6 +815,7 @@
 
 <div class="toast-zone" id="toastZone"></div>
 
+<script src="/camera-settings.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
