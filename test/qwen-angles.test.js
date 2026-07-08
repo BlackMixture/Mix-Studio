@@ -14,7 +14,8 @@ const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 test('Qwen Edit exposes a visual multi-angle picker without surfacing control prompts', () => {
   assert.match(html, /id="qwenAnglesBtn"[^>]*aria-label="Camera angles"/);
   assert.match(html, /id="qwenAnglesInline"/);
-  assert.match(html, /id="qwenAnglesTextBtn"[^>]*aria-label="Show text prompt"/);
+  assert.match(html, /id="qwenAnglesModeBtn"[^>]*aria-label="Camera angles"/);
+  assert.match(html, /id="qwenAnglesTextBtn"[^>]*aria-label="Show text prompt"[^>]*>[\s\S]*>T</);
   assert.match(html, /id="qwenAngleGrid"/);
   assert.match(html, /id="qwenElevationRow"/);
   assert.match(html, /id="qwenDistanceRow"/);
@@ -24,10 +25,15 @@ test('Qwen Edit exposes a visual multi-angle picker without surfacing control pr
   assert.match(app, /#qwenAngleTool'\)\.hidden = !\(state\.view === 'edit' && state\.editEngine === 'qwen'\)/);
   assert.match(app, /qwenAnglesMode: false/);
   assert.match(app, /function renderQwenAngleMode\(\)/);
+  assert.match(app, /inline\.classList\.toggle\('is-active', active\)/);
+  assert.match(app, /textPane\.classList\.toggle\('is-collapsed', active\)/);
   assert.match(app, /state\.qwenAnglesMode = true;/);
   assert.match(app, /state\.qwenAnglesMode = false;/);
   assert.match(css, /\.qwen-angle-grid/);
   assert.match(css, /\.qwen-angle-inline/);
+  assert.match(css, /\.qwen-prompt-text\.is-collapsed \{[\s\S]*grid-template-rows: 0fr/);
+  assert.match(css, /\.qwen-angle-inline\.is-active \{[\s\S]*grid-template-rows: 1fr/);
+  assert.match(css, /\.qwen-angle-mode-toggle/);
   assert.match(css, /\.qwen-angle-card\.active/);
   assert.match(app, /const framingIcon = \(id\) =>/);
   assert.match(css, /\.qwen-framing-icon/);

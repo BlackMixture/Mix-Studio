@@ -584,6 +584,18 @@ checkAuth();
 
 let actionMenuEl = null;
 let actionMenuCleanup = null;
+function actionIconMarkup(icon) {
+  const paths = {
+    use: '<path d="M5 4h7v2H7v11h11v-5h2v7H5V4Zm8 0h7v7h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H13V4Z"/>',
+    video: '<path d="M4 6h11a2 2 0 0 1 2 2v2.2l4-2.4v8.4l-4-2.4V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2v8h11V8H4Zm13 2.5v.9l2 1.2v-3.3l-2 1.2Z"/>',
+    edit: '<path d="m5 16.7 9.9-9.9 3.3 3.3-9.9 9.9L4 20l1-3.3Zm11.3-11.3 1.1-1.1a2.1 2.1 0 0 1 3 3l-1.1 1.1-3-3Zm-2.8 2.8L6.7 15l-.3 1.1 1.1-.3 6.9-6.9-1-1Z"/>',
+    reuse: '<path d="M18.5 7.5A7 7 0 0 0 6.7 6L4 8.7V5H2v7h7v-2H5.5l2.6-2.6a5 5 0 1 1 .1 7.1l-1.4 1.4a7 7 0 1 0 11.7-8.4Z"/>',
+    original: '<path d="M12 4a8 8 0 1 0 7.7 10.2l-1.9-.6A6 6 0 1 1 12 6v4l5-5-5-5v4Zm-1 4h2v5l3.4 2-1 1.7-4.4-2.6V8Z"/>',
+    motion: '<path d="M4 7h8V5l4 3-4 3V9H4V7Zm16 8H12v-2l-4 3 4 3v-2h8v-2Z"/>',
+  };
+  return `<svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${paths[icon] || paths.use}</svg>`;
+}
+
 function closeActionMenu() {
   if (actionMenuCleanup) actionMenuCleanup();
   actionMenuCleanup = null;
@@ -591,15 +603,39 @@ function closeActionMenu() {
   actionMenuEl = null;
 }
 
-function openActionMenu(anchor, items) {
+function openActionMenu(anchor, items, options = {}) {
   closeActionMenu();
   const menu = document.createElement('div');
-  menu.className = 'action-menu';
+  menu.className = 'action-menu' + (options.tone ? ` action-menu-${options.tone}` : '');
+  menu.setAttribute('role', 'menu');
+  if (options.menuTitle) {
+    const head = document.createElement('div');
+    head.className = 'action-menu-title';
+    head.innerHTML = '<span class="action-menu-dot" aria-hidden="true"></span>';
+    const label = document.createElement('span');
+    label.textContent = options.menuTitle;
+    head.appendChild(label);
+    menu.appendChild(head);
+  }
   for (const item of items.filter(Boolean)) {
     const b = document.createElement('button');
-    b.className = 'action-menu-item' + (item.danger ? ' danger' : '');
+    b.className = 'action-menu-item' + (item.danger ? ' danger' : '') + (item.tone ? ` action-menu-item-${item.tone}` : '');
     b.type = 'button';
-    b.textContent = item.label;
+    b.setAttribute('role', 'menuitem');
+    const icon = document.createElement('span');
+    icon.className = 'action-menu-icon';
+    icon.innerHTML = actionIconMarkup(item.icon || 'use');
+    const copy = document.createElement('span');
+    copy.className = 'action-menu-copy';
+    const label = document.createElement('span');
+    label.textContent = item.label;
+    copy.appendChild(label);
+    if (item.detail) {
+      const detail = document.createElement('small');
+      detail.textContent = item.detail;
+      copy.appendChild(detail);
+    }
+    b.append(icon, copy);
     b.addEventListener('click', () => {
       closeActionMenu();
       item.action();
@@ -614,8 +650,9 @@ function openActionMenu(anchor, items) {
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
   actionMenuEl = menu;
+  anchor.setAttribute('aria-expanded', 'true');
   const onDoc = (e) => {
-    if (!menu.contains(e.target) && e.target !== anchor) closeActionMenu();
+    if (!menu.contains(e.target) && !anchor.contains(e.target)) closeActionMenu();
   };
   const onKey = (e) => { if (e.key === 'Escape') closeActionMenu(); };
   setTimeout(() => document.addEventListener('pointerdown', onDoc), 0);
@@ -623,6 +660,7 @@ function openActionMenu(anchor, items) {
   actionMenuCleanup = () => {
     document.removeEventListener('pointerdown', onDoc);
     document.removeEventListener('keydown', onKey);
+    anchor.setAttribute('aria-expanded', 'false');
   };
 }
 
@@ -2035,11 +2073,23 @@ function renderQwenAngleTool() {
 function renderQwenAngleMode() {
   const active = state.view === 'edit' && state.editEngine === 'qwen' && state.qwenAnglesMode;
   const inline = $('#qwenAnglesInline');
-  inline.hidden = !active;
-  $('#promptComposer').hidden = active;
-  $('#enhanceBtn').hidden = active || (state.view === 'video' && state.vidEngine === 'ltx-edit');
+  const textPane = $('#qwenTextPromptPane');
+  const promptBox = textPane.closest('.prompt-box');
+  inline.classList.toggle('is-active', active);
+  inline.setAttribute('aria-hidden', String(!active));
+  inline.inert = !active;
+  textPane.classList.toggle('is-collapsed', active);
+  textPane.setAttribute('aria-hidden', String(active));
+  textPane.inert = active;
+  promptBox.classList.toggle('qwen-angles-active', active);
+  const enhance = $('#enhanceBtn');
+  enhance.hidden = state.view === 'video' && state.vidEngine === 'ltx-edit';
+  enhance.classList.toggle('qwen-angle-faded', active);
+  enhance.inert = active || enhance.hidden;
   $('#promptClear').hidden = active || !promptDraft().trim();
   $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || active;
+  $('#qwenAnglesModeBtn').setAttribute('aria-pressed', String(active));
+  $('#qwenAnglesTextBtn').setAttribute('aria-pressed', String(!active));
   if (active) renderQwenAnglePicker();
 }
 
@@ -2121,6 +2171,7 @@ function closeQwenAngles() {
   renderQwenAngleMode();
 }
 $('#qwenAnglesBtn').addEventListener('click', openQwenAngles);
+$('#qwenAnglesModeBtn').addEventListener('click', openQwenAngles);
 $('#qwenAnglesTextBtn').addEventListener('click', closeQwenAngles);
 $('#qwenAnglesToggleAll').addEventListener('click', () => {
   const allSelected = state.qwenAngles.length === QWEN_ANGLE_VIEWS.length;
@@ -5210,20 +5261,25 @@ function openLightbox(id, mediaSel) {
 
   const actions = $('#lbActions');
   actions.innerHTML = '';
-  const mk = (label, cls, fn) => {
+  const mk = (label, cls, fn, options = {}) => {
     const b = document.createElement('button');
     b.className = 'action-btn' + (cls ? ' ' + cls : '');
     b.innerHTML = label;
+    if (options.ariaLabel) b.setAttribute('aria-label', options.ariaLabel);
+    if (options.title) b.title = options.title;
     b.addEventListener('click', fn);
     actions.appendChild(b);
     return b;
   };
-  const mkMenu = (label, cls, items) => {
+  const mkIcon = (icon, label, cls, fn) => mk(actionIconMarkup(icon), `icon-only ${cls || ''}`.trim(), fn, { ariaLabel: label, title: label });
+  const mkMenu = (label, cls, items, options = {}) => {
     let b;
-    b = mk(label, cls, () => {
+    const onOpen = () => {
       const list = typeof items === 'function' ? items() : items;
-      openActionMenu(b, list || []);
-    });
+      openActionMenu(b, list || [], options);
+    };
+    b = options.icon ? mkIcon(options.icon, options.ariaLabel || label, cls, onOpen) : mk(label, cls, onOpen);
+    if (options.icon) b.setAttribute('aria-haspopup', 'menu');
     return b;
   };
 
@@ -5291,7 +5347,7 @@ function openLightbox(id, mediaSel) {
   if (selVideo) {
     const vinfo = selVideo.info || {};
     const videoUseItems = [];
-    if (!vinfo.composite) videoUseItems.push({ label: 'Reuse settings', action: () => reuseVideo(it, selVideo) });
+    if (!vinfo.composite) videoUseItems.push({ label: 'Reuse', detail: 'Settings', icon: 'reuse', tone: 'reuse', action: () => reuseVideo(it, selVideo) });
     // Toggle between the result and the motion video that drove it
     if (vinfo.driveVideoName && !vinfo.composite) {
       let showingInput = false;
@@ -5324,8 +5380,8 @@ function openLightbox(id, mediaSel) {
         }
       });
     }
-    if (!vinfo.composite) videoUseItems.push({ label: 'Use as motion video', action: () => sendVideoAsDrive(it, selVideo) });
-    if (videoUseItems.length) mkMenu('Use', '', videoUseItems);
+    if (!vinfo.composite) videoUseItems.push({ label: 'Motion input', detail: 'Video tab', icon: 'motion', tone: 'video', action: () => sendVideoAsDrive(it, selVideo) });
+    if (videoUseItems.length) mkMenu('Use', '', videoUseItems, { icon: 'use', ariaLabel: 'Use video', menuTitle: 'Use video', tone: 'video' });
     const processItems = [];
     if (!vinfo.composite) {
       processItems.push({ label: 'Upscale video', action: () => processVideo(it, selVideo, 'upscale') });
@@ -5381,14 +5437,14 @@ function openLightbox(id, mediaSel) {
       mk(it.upscaled ? '⇪ Re-upscale' : '⇪ Upscale', '', () => openUpscaleSheet(it));
     }
     const imageUseItems = [
-      { label: 'Use in Video tab', action: () => sendToVideoTab(it) },
-      { label: 'Use in Edit', action: () => useAsRef(it) },
-      { label: 'Reuse settings', action: () => reuseItem(it) },
+      { label: 'Animate', detail: 'Video tab', icon: 'video', tone: 'video', action: () => sendToVideoTab(it) },
+      { label: 'Edit', detail: 'Image editor', icon: 'edit', tone: 'edit', action: () => useAsRef(it) },
+      { label: 'Reuse', detail: 'Generation settings', icon: 'reuse', tone: 'reuse', action: () => reuseItem(it) },
     ];
     if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
-      imageUseItems.push({ label: 'Open original item', action: () => openLightbox(it.sourceItemId) });
+      imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId) });
     }
-    mkMenu('Use', '', imageUseItems);
+    mkMenu('Use', '', imageUseItems, { icon: 'use', ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
     mk('▤ Move', '', () => openMoveSheet(it));
     if (it.upscaled) {
       mkMenu('Save', '', [
