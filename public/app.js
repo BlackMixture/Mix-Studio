@@ -48,6 +48,7 @@ const state = {
   privateUnlocked: false,
   activeFolder: 'all',
   mediaFilter: 'all',
+  likesOnly: false,
   libraryQuery: '',
   metaLoras: [],
   metaLorasInfo: {},
@@ -4508,6 +4509,7 @@ function librarySearchText(it) {
     it.prompt,
     it.refinedPrompt,
     it.mode,
+    it.compositeInfo && it.compositeInfo.label,
     it.file,
     folder && folder.name,
     ...loras,
@@ -4526,6 +4528,7 @@ function matchesLibrarySearch(it, query) {
 function visibleItems() {
   const arr = state.items.filter((it) => {
     if (state.activeFolder !== 'all' && it.folder !== state.activeFolder) return false;
+    if (state.likesOnly && !it.liked) return false;
     const hasVideos = it.videos && it.videos.length;
     if (state.mediaFilter === 'videos' && !hasVideos) return false;
     if (state.mediaFilter === 'images' && hasVideos) return false;
@@ -4603,6 +4606,11 @@ function renderGrid() {
       b.className = 'badge up';
       b.textContent = 'Upscaled';
       card.appendChild(b);
+    } else if (it.mode === 'composite') {
+      const b = document.createElement('span');
+      b.className = 'badge';
+      b.textContent = 'Composite';
+      card.appendChild(b);
     } else if (it.mode === 'edit') {
       const b = document.createElement('span');
       b.className = 'badge';
@@ -4615,6 +4623,12 @@ function renderGrid() {
       badge.title = `${entry.items.length} camera angles`;
       badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2 8 4.5v9L12 20l-8-4.5v-9L12 2Zm0 2.1L6.1 7.4 12 10.7l5.9-3.3L12 4.1Zm-6 5v5.1l5 2.8v-5.2L6 9.2Zm7 7.9 5-2.8V9.2l-5 2.5v5.4Z"/></svg><b>'
         + entry.items.length + '</b>';
+      card.appendChild(badge);
+    }
+    if (it.liked) {
+      const badge = document.createElement('span');
+      badge.className = 'badge liked-badge';
+      badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Z"/></svg>';
       card.appendChild(badge);
     }
     if (state.upscaling.has(it.id) || state.animating.has(it.id) || it.upscalePending) {
@@ -4667,10 +4681,92 @@ function renderGrid() {
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
-      else openLightbox(it.id);
+      else handleGalleryTap(it, card);
     });
     grid.appendChild(card);
   }
+}
+
+let galleryTap = null;
+let lightboxTap = null;
+
+function playLikeBurst(target) {
+  if (!target) return;
+  const burst = target.id === 'lightboxLikeBurst'
+    ? target : document.createElement('div');
+  burst.className = 'like-burst';
+  burst.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/></svg>';
+  if (burst !== target) target.appendChild(burst);
+  burst.classList.remove('pop');
+  requestAnimationFrame(() => burst.classList.add('pop'));
+  setTimeout(() => {
+    burst.classList.remove('pop');
+    if (burst !== target) burst.remove();
+  }, 760);
+}
+
+async function setItemLiked(item, liked, burstTarget) {
+  if (!item) return;
+  const items = angleGroupItems(item);
+  const targets = items.length > 1 ? items : [item];
+  if (targets.some((target) => target._likePending)) return;
+  const previous = targets.map((target) => !!target.liked);
+  targets.forEach((target) => {
+    target.liked = liked;
+    target._likePending = true;
+  });
+  if (liked) playLikeBurst(burstTarget);
+  renderGrid();
+  try {
+    const updated = await Promise.all(targets.map((target) => api(`/api/item/${target.id}/like`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ liked }),
+    })));
+    updated.forEach((result, index) => Object.assign(targets[index], result));
+  } catch (error) {
+    targets.forEach((target, index) => { target.liked = previous[index]; });
+    toast(error.message, true);
+    renderGrid();
+  } finally {
+    targets.forEach((target) => { target._likePending = false; });
+  }
+}
+
+function toggleItemLike(item, burstTarget) {
+  setItemLiked(item, !item.liked, burstTarget);
+}
+
+function handleGalleryTap(item, card) {
+  const now = Date.now();
+  if (galleryTap && galleryTap.itemId === item.id && now - galleryTap.time < 300) {
+    clearTimeout(galleryTap.timer);
+    galleryTap = null;
+    toggleItemLike(item, card);
+    return;
+  }
+  if (galleryTap) clearTimeout(galleryTap.timer);
+  galleryTap = {
+    itemId: item.id,
+    time: now,
+    timer: setTimeout(() => {
+      if (galleryTap && galleryTap.itemId === item.id) {
+        galleryTap = null;
+        openLightbox(item.id);
+      }
+    }, 260),
+  };
+}
+
+function handleLightboxTap() {
+  const item = state.currentItem;
+  if (!item) return;
+  const now = Date.now();
+  if (lightboxTap && lightboxTap.itemId === item.id && now - lightboxTap.time < 300) {
+    lightboxTap = null;
+    toggleItemLike(item, $('#lightboxLikeBurst'));
+    return;
+  }
+  lightboxTap = { itemId: item.id, time: now };
+  setTimeout(() => { if (lightboxTap && lightboxTap.itemId === item.id) lightboxTap = null; }, 320);
 }
 
 function updateLibrarySearch() {
@@ -4770,6 +4866,24 @@ window.addEventListener('popstate', () => {
   if ($('#lightbox').classList.contains('show')) closeLightbox(true);
 });
 
+async function saveImageComposite(item, type) {
+  try {
+    const label = type === 'before-after' ? 'before + after' : 'camera-angle';
+    toast(`Building ${label} composite…`);
+    const result = await api('/api/image-composite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, type }),
+    });
+    state.activeJobs.add(result.jobId);
+    $('#genLbl').textContent = genLabel();
+    queueRefreshSoon();
+    closeLightbox();
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
 function openLightbox(id, mediaSel) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
@@ -4845,6 +4959,7 @@ function openLightbox(id, mediaSel) {
     }
   } else {
     meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
+    if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
     if (angleItems.length > 1) meta.push(`<b>Camera angle set:</b> ${angleViewLabel(it)} · ${angleItems.length} views`);
     if (it.mode === 'edit' && it.editEngine) meta.push(`<b>Editor:</b> ${editEngineLabel(it.editEngine)}`);
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
@@ -4888,8 +5003,14 @@ function openLightbox(id, mediaSel) {
 
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
-  } else {
+  } else if (it.mode !== 'composite') {
     mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateRouteSheet(it));
+  }
+  if (!selVideo || videos.length) {
+    mk(it.liked ? '♥ Liked' : '♡ Like', it.liked ? 'primary' : '', () => toggleItemLike(it, $('#lightboxLikeBurst')));
+  }
+  if (!selVideo && angleItems.length > 1) {
+    mk('▦ Save angle composite', '', () => saveImageComposite(it, 'angles'));
   }
   // Edits: hold to flash the original source image
   if (!selVideo && it.mode === 'edit' && it.sourceFile) {
@@ -4903,6 +5024,7 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('pointercancel', hide);
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
+    mk('▣ Save before + after', '', () => saveImageComposite(it, 'before-after'));
   }
 
   // Region-prompted images: hold to overlay the color-coded boxes,
@@ -5123,6 +5245,13 @@ $$('#mediaFilter button').forEach((b) => b.addEventListener('click', () => {
   $$('#mediaFilter button').forEach((x) => x.classList.toggle('active', x === b));
   renderGrid();
 }));
+$('#likesFilter').addEventListener('click', () => {
+  state.likesOnly = !state.likesOnly;
+  $('#likesFilter').setAttribute('aria-pressed', String(state.likesOnly));
+  renderGrid();
+});
+$('#lbImg').addEventListener('click', handleLightboxTap);
+$('#lbVideo').addEventListener('click', handleLightboxTap);
 state.sortMode = 'new';
 $$('#sortSeg button').forEach((b) => b.addEventListener('click', () => {
   state.sortMode = b.dataset.sort;

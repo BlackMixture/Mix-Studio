@@ -135,3 +135,27 @@ test('every edit engine can queue an optional SeedVR2 finish pass', () => {
   assert.match(server, /async function queuePostEditUpscale\(item, options, profileId\)/);
   assert.match(server, /await queuePostEditUpscale\(item, job\.params\.postUpscale, job\.profileId\)/);
 });
+
+test('an edit can save its original and result as a gallery side-by-side', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(app, /Save before \+ after/);
+  assert.match(app, /saveImageComposite\(it, 'before-after'\)/);
+  assert.match(server, /type === 'before-after'/);
+  assert.match(server, /sources = \[root\.sourceFile, root\.upscaled \|\| root\.file\]/);
+  assert.match(server, /kind: 'imageComposite'/);
+  assert.match(server, /mode: 'composite'/);
+});
+
+test('gallery items support profile-scoped likes by double tap and a likes-only filter', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="likesFilter"[^>]*aria-pressed="false"/);
+  assert.match(html, /id="lightboxLikeBurst"/);
+  assert.match(app, /function handleGalleryTap\(item, card\)/);
+  assert.match(app, /function handleLightboxTap\(\)/);
+  assert.match(app, /function setItemLiked\(item, liked, burstTarget\)/);
+  assert.match(app, /if \(state\.likesOnly && !it\.liked\) return false/);
+  assert.match(app, /Save angle composite/);
+  assert.match(server, /const likeRoute = route\.match\(/);
+  assert.match(server, /likeRoute && req\.method === 'POST'/);
+  assert.match(server, /item\.liked = body\.liked === true/);
+});

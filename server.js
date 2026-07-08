@@ -951,6 +951,40 @@ async function completeJob(pid) {
     return;
   }
 
+  if (job.kind === 'imageComposite') {
+    const buf = await downloadOutput(files[0]);
+    const id = uid();
+    const fname = `${id}_composite.png`;
+    await fsp.writeFile(path.join(IMAGES, fname), buf);
+    const info = job.compositeInfo || {};
+    const item = {
+      id,
+      file: fname,
+      mode: 'composite',
+      compositeInfo: info,
+      profileId: job.profileId,
+      prompt: info.prompt || '',
+      width: (pngDims(buf) || {}).w || info.width || 1024,
+      height: (pngDims(buf) || {}).h || info.height || 1024,
+      seed: null,
+      steps: null,
+      cfg: null,
+      denoise: null,
+      loras: [],
+      refImages: [],
+      folder: info.folder || null,
+      createdAt: Date.now(),
+      durationMs,
+      upscaled: null,
+      video: null,
+    };
+    db.items.unshift(item);
+    saveDb();
+    pushHistory({ kind: 'composite', profileId: job.profileId, itemId: item.id, durationMs, label: `${info.label || 'Image composite'}: ${(item.prompt || '').slice(0, 60)}` });
+    broadcast('jobDone', { jobId: pid, items: [item] });
+    return;
+  }
+
   const created = [];
   for (const img of files) {
     const buf = await downloadOutput(img);
@@ -1562,6 +1596,27 @@ async function buildUpscale(imageName, opts) {
     },
   };
   graph.save = { class_type: 'SaveImage', inputs: { images: ['upscale', 0], filename_prefix: 'KreaStudio/upscale' } };
+  return filterInputs(graph);
+}
+
+async function buildImageComposite(imageNames) {
+  const names = Array.isArray(imageNames) ? imageNames.filter(Boolean) : [];
+  if (names.length < 2) throw new Error('A composite needs at least two images');
+  const graph = {};
+  names.forEach((name, index) => {
+    graph[`image_${index}`] = { class_type: 'LoadImage', inputs: { image: name } };
+  });
+  let output = ['image_0', 0];
+  for (let index = 1; index < names.length; index += 1) {
+    const key = `stitch_${index}`;
+    graph[key] = await nodeFromOrdered(
+      'ImageStitch',
+      ['right', true, 8, 'black'],
+      { image1: output, image2: [`image_${index}`, 0] }
+    );
+    output = [key, 0];
+  }
+  graph.save = { class_type: 'SaveImage', inputs: { images: output, filename_prefix: 'KreaStudio/composite' } };
   return filterInputs(graph);
 }
 
@@ -3556,6 +3611,58 @@ async function handleApi(req, res, url) {
     return json(res, 200, { jobId: pid });
   }
 
+  // Static image composites: either a grouped Qwen multi-angle contact strip
+  // or an edit's original and result side-by-side. These are stored as normal
+  // gallery items rather than browser-only exports.
+  if (route === '/api/image-composite' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const root = db.items.find((item) => item.id === body.id && item.profileId === req.profile.id);
+    if (!root) return json(res, 404, { error: 'Image not found' });
+    const type = body.type === 'before-after' ? 'before-after' : 'angles';
+    let sources;
+    let label;
+    if (type === 'before-after') {
+      if (root.mode !== 'edit' || !root.sourceFile) {
+        return json(res, 400, { error: 'This edit no longer has its original source image' });
+      }
+      sources = [root.sourceFile, root.upscaled || root.file];
+      label = 'Before + after';
+    } else {
+      if (!root.angleGroupId) return json(res, 400, { error: 'This image is not part of a multi-angle set' });
+      const set = db.items
+        .filter((item) => item.profileId === req.profile.id && item.angleGroupId === root.angleGroupId)
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      if (set.length < 2) return json(res, 400, { error: 'This angle set needs at least two completed views' });
+      sources = set.map((item) => item.upscaled || item.file);
+      label = `${set.length} camera angles`;
+    }
+    let buffers;
+    try {
+      buffers = await Promise.all(sources.map((file) => fsp.readFile(path.join(IMAGES, file))));
+    } catch {
+      return json(res, 404, { error: 'One of the saved source images is unavailable' });
+    }
+    const comfyNames = [];
+    for (let index = 0; index < buffers.length; index += 1) {
+      comfyNames.push(await uploadToComfy(buffers[index], `ks_composite_${root.id}_${index + 1}.png`));
+    }
+    const graph = await buildImageComposite(comfyNames);
+    const pid = await queuePrompt(graph);
+    trackJob(pid, {
+      kind: 'imageComposite', profileId: req.profile.id, graph,
+      compositeInfo: {
+        type,
+        label,
+        prompt: root.prompt || '',
+        folder: root.folder || null,
+        sourceItemId: root.id,
+        sourceFiles: sources,
+      },
+    });
+    ensureWs();
+    return json(res, 200, { jobId: pid });
+  }
+
   if (route === '/api/motionprompt' && req.method === 'POST') {
     const body = await readJsonBody(req);
     let comfyName = '';
@@ -3908,6 +4015,15 @@ async function handleApi(req, res, url) {
   }
 
   const itemRoute = route.match(/^\/api\/item\/([\w]+)(?:\/(move))?$/);
+  const likeRoute = route.match(/^\/api\/item\/([\w]+)\/like$/);
+  if (likeRoute && req.method === 'POST') {
+    const item = db.items.find((entry) => entry.id === likeRoute[1] && entry.profileId === req.profile.id);
+    if (!item) return json(res, 404, { error: 'Not found' });
+    const body = await readJsonBody(req);
+    item.liked = body.liked === true;
+    saveDb();
+    return json(res, 200, item);
+  }
   if (itemRoute) {
     const item = db.items.find((it) => it.id === itemRoute[1] && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });

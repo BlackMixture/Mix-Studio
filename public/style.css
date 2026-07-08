@@ -2098,6 +2098,13 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   color: #fff;
   border-color: rgba(255,255,255,0.28);
 }
+.likes-filter {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 999px; border: 1.5px solid var(--line);
+  background: rgba(0,0,0,0.35); color: var(--muted); font-size: 12px; font-weight: 900;
+}
+.likes-filter svg { width: 15px; height: 15px; }
+.likes-filter[aria-pressed="true"] { color: #ffb6c0; border-color: rgba(255, 121, 143, .62); background: rgba(209, 57, 86, .13); }
 .private-access-panel,
 .folder-actions-panel,
 .animate-route-panel { width: min(420px, calc(100vw - 28px)); }
@@ -2323,6 +2330,14 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .lightbox-img-wrap img[hidden],
 .lightbox-img-wrap video[hidden] { display: none; }
 .card .badge.vid { top: auto; bottom: 8px; left: 8px; color: #cfe0ff; }
+.card .badge.liked-badge { top: auto; bottom: 8px; left: auto; right: 8px; padding: 5px 7px; color: #ffb8c2; }
+.liked-badge svg { display: block; width: 13px; height: 13px; }
+.like-burst {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 4;
+}
+.like-burst svg { width: 76px; height: 76px; color: #ff607a; filter: drop-shadow(0 5px 16px rgba(255, 55, 95, .52)); opacity: 0; transform: scale(.35); }
+.like-burst.pop svg { animation: likeBurst 700ms cubic-bezier(.18,.8,.24,1) both; }
+@keyframes likeBurst { 0% { opacity: 0; transform: scale(.35); } 20% { opacity: 1; transform: scale(1.16); } 48% { opacity: 1; transform: scale(.94); } 100% { opacity: 0; transform: scale(1.45); } }
 .card .badge.angle-group-badge {
   top: 8px;
   right: 8px;

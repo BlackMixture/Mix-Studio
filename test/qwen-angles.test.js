@@ -45,6 +45,14 @@ test('Multi-angle exports appear as one gallery set with an angle icon', () => {
   assert.match(server, /p\.angleGroupId = p\.qwenAngle/);
 });
 
+test('a multi-angle gallery set can be saved as one composite image', () => {
+  assert.match(app, /Save angle composite/);
+  assert.match(app, /saveImageComposite\(it, 'angles'\)/);
+  assert.match(server, /route === '\/api\/image-composite'/);
+  assert.match(server, /This image is not part of a multi-angle set/);
+  assert.match(server, /function buildImageComposite\(imageNames\)/);
+});
+
 test('Qwen angle jobs use the installed multi-angle LoRA and the documented control-token format server-side', () => {
   assert.match(server, /qwenEditAnglesLora: 'qwen_image_edit_2511_multiple-angles-lora\.safetensors'/);
   assert.match(server, /function qwenAnglePrompt\(angle\)/);
