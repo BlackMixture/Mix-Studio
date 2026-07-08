@@ -18,6 +18,10 @@ const state = {
   width: 1024,
   height: 1024,
   customDims: false,
+  editAspectOverride: false,
+  editAspect: '1:1',
+  editWidth: 1024,
+  editHeight: 1024,
   prompts: { create: '', edit: '', video: '' }, // per-tab prompt text
   loras: [],                 // {name, strength, on} - Create tab (Krea 2)
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
@@ -693,6 +697,8 @@ function saveForm() {
       vidScailChunkFrames: state.vidScailChunkFrames,
       vidScailChunkOverlap: state.vidScailChunkOverlap,
       customDims: state.customDims, width: state.width, height: state.height,
+      editAspectOverride: state.editAspectOverride, editAspect: state.editAspect,
+      editWidth: state.editWidth, editHeight: state.editHeight,
     }));
   } catch { /* noop */ }
 }
@@ -703,6 +709,10 @@ function loadForm() {
     state.enhance = f.enhance !== false;
     state.aspect = f.aspect || '1:1';
     state.mp = f.mp || 1;
+    state.editAspectOverride = f.editAspectOverride === true;
+    state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
+    state.editWidth = round32(Number(f.editWidth) || 1024);
+    state.editHeight = round32(Number(f.editHeight) || 1024);
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
@@ -837,7 +847,9 @@ function updateVideoPanels() {
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#denoiseField').hidden = !kreaEdit;
   $('#kreaMaskTools').hidden = !kreaEdit;
-  $('#editComposite').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
+  $('#editCompositeWrap').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
+  $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit;
+  renderEditAspects();
   renderKreaMaskTools();
   $('#aspectRow').closest('.panel').hidden = (isVideo && !!state.vidRef) || state.view === 'edit';
   $('#seedInput').closest('.panel').hidden = isVideo;
@@ -2142,6 +2154,68 @@ function renderDims() {
   }
   $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp && !state.customDims));
 }
+
+function renderEditAspects() {
+  const control = $('#editAspectControl');
+  if (!control) return;
+  const override = state.editAspectOverride;
+  $('#editAspectSummary').textContent = override
+    ? `${state.editAspect} · ${state.editWidth} × ${state.editHeight}`
+    : 'Match first image';
+  $('#editWInput').value = state.editWidth;
+  $('#editHInput').value = state.editHeight;
+  const row = $('#editAspectRow');
+  row.innerHTML = '';
+  const source = document.createElement('button');
+  source.type = 'button';
+  source.className = 'aspect-chip edit-aspect-source' + (!override ? ' active' : '');
+  source.innerHTML = '<span class="ar-box edit-source-box"></span>Match image';
+  source.addEventListener('click', () => {
+    state.editAspectOverride = false;
+    renderEditAspects();
+    saveForm();
+  });
+  row.appendChild(source);
+  ASPECTS.forEach((a) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'aspect-chip' + (override && a.label === state.editAspect ? ' active' : '');
+    const maxSide = 22;
+    const w = a.ar >= 1 ? maxSide : Math.round(maxSide * a.ar);
+    const h = a.ar >= 1 ? Math.round(maxSide / a.ar) : maxSide;
+    btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>${a.label}`;
+    btn.addEventListener('click', () => {
+      state.editAspectOverride = true;
+      state.editAspect = a.label;
+      const px = state.mp * 1e6;
+      state.editWidth = round32(Math.sqrt(px * a.ar));
+      state.editHeight = round32(Math.sqrt(px / a.ar));
+      renderEditAspects();
+      saveForm();
+    });
+    row.appendChild(btn);
+  });
+  const body = $('#editAspectBody');
+  $('#editAspectToggle').classList.toggle('custom', override);
+  body.classList.toggle('expanded', $('#editAspectToggle').getAttribute('aria-expanded') === 'true');
+}
+$('#editAspectToggle').addEventListener('click', () => {
+  const open = $('#editAspectToggle').getAttribute('aria-expanded') !== 'true';
+  $('#editAspectToggle').setAttribute('aria-expanded', String(open));
+  $('#editAspectBody').setAttribute('aria-hidden', String(!open));
+  $('#editAspectBody').inert = !open;
+  renderEditAspects();
+});
+for (const id of ['#editWInput', '#editHInput']) {
+  $(id).addEventListener('change', () => {
+    state.editAspectOverride = true;
+    state.editWidth = round32(Number($('#editWInput').value) || 1024);
+    state.editHeight = round32(Number($('#editHInput').value) || 1024);
+    state.editAspect = 'custom';
+    renderEditAspects();
+    saveForm();
+  });
+}
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
   state.mp = Number(b.dataset.mp);
   state.customDims = false;
@@ -2480,7 +2554,7 @@ $('#loraSearch').addEventListener('input', () => renderLoraPicker($('#loraSearch
 function prettyLora(name) { return name.replace(/\.safetensors$/i, '').split(/[\\/]/).pop(); }
 function editEngineLabel(engine) {
   if (engine === 'krea2') return 'Krea2';
-  if (engine === 'krea2ref') return 'Krea2 Ref';
+  if (engine === 'krea2ref') return 'Krea 2 Edit';
   if (engine === 'qwen') return 'Qwen Edit';
   if (engine === 'klein9') return 'Flux Klein 9B';
   return 'Flux Klein 4B';
@@ -3514,12 +3588,6 @@ wireEngineRow('editEngineRow', (engine) => {
   renderLoras();
   saveForm();
 });
-$('#editComposite').addEventListener('click', () => {
-  const button = $('#editComposite');
-  const active = button.classList.toggle('active');
-  button.setAttribute('aria-pressed', String(active));
-});
-
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
@@ -3597,11 +3665,12 @@ $('#generateBtn').addEventListener('click', async () => {
   const body = {
     mode,
     editEngine: mode === 'edit' ? state.editEngine : undefined,
-    composite: mode === 'edit' ? $('#editComposite').classList.contains('active') : undefined,
+    composite: mode === 'edit' ? $('#editComposite').checked : undefined,
     prompt,
     enhance: state.enhance && mode === 't2i',
-    width: state.width,
-    height: state.height,
+    width: mode === 'edit' && state.editAspectOverride ? state.editWidth : state.width,
+    height: mode === 'edit' && state.editAspectOverride ? state.editHeight : state.height,
+    editAspectOverride: mode === 'edit' && state.editAspectOverride,
     steps: Number($('#stepsInput').value) || 12,
     cfg: Number($('#cfgInput').value) || 1,
     batch: Number($('#batchInput').value) || 1,
@@ -3926,17 +3995,55 @@ function updatePrivacyButton() {
 }
 
 async function unlockPrivateGallery() {
-  const password = window.prompt('Gallery password');
-  if (password == null) return;
-  await api('/api/private/unlock', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  });
-  state.privateUnlocked = true;
-  await refreshGallery();
-  toast('Locked folders shown');
+  let error = '';
+  while (true) {
+    const password = await openPrivateUnlockSheet(error);
+    if (password == null) return false;
+    try {
+      await api('/api/private/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      state.privateUnlocked = true;
+      await refreshGallery();
+      toast('Locked folders shown');
+      return true;
+    } catch (e) {
+      error = e.message;
+    }
+  }
 }
+
+let privateUnlockResolver = null;
+function closePrivateUnlockSheet(password = null) {
+  $('#privateUnlockSheet').classList.remove('show');
+  const resolve = privateUnlockResolver;
+  privateUnlockResolver = null;
+  if (resolve) resolve(password);
+}
+function openPrivateUnlockSheet(error = '') {
+  $('#privatePasswordInput').value = '';
+  $('#privatePasswordError').textContent = error;
+  $('#privatePasswordError').hidden = !error;
+  $('#privateUnlockSheet').classList.add('show');
+  setTimeout(() => $('#privatePasswordInput').focus(), 80);
+  return new Promise((resolve) => { privateUnlockResolver = resolve; });
+}
+$('#privateUnlockClose').addEventListener('click', () => closePrivateUnlockSheet());
+$('#privateUnlockSheet').addEventListener('click', (event) => {
+  if (event.target === $('#privateUnlockSheet')) closePrivateUnlockSheet();
+});
+$('#privateUnlockForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const password = $('#privatePasswordInput').value;
+  if (!password) {
+    $('#privatePasswordError').textContent = 'Enter the gallery password.';
+    $('#privatePasswordError').hidden = false;
+    return;
+  }
+  closePrivateUnlockSheet(password);
+});
 
 async function lockPrivateGallery() {
   await api('/api/private/lock', { method: 'POST' });
@@ -3994,27 +4101,51 @@ $('#privacyBtn')?.addEventListener('click', async () => {
 });
 
 async function folderActions(f) {
+  state.folderActionTarget = f;
+  $('#folderActionsTitle').textContent = f.name;
+  $('#folderActionsCopy').textContent = f.locked
+    ? 'This folder is hidden whenever the gallery is locked.'
+    : 'Lock this folder to hide its contents until the gallery is unlocked.';
+  $('#folderLockAction').textContent = f.locked ? 'Unlock folder' : 'Lock folder';
+  $('#folderActionsSheet').classList.add('show');
+}
+
+function closeFolderActionsSheet() {
+  $('#folderActionsSheet').classList.remove('show');
+  state.folderActionTarget = null;
+}
+$('#folderActionsClose').addEventListener('click', closeFolderActionsSheet);
+$('#folderActionsSheet').addEventListener('click', (event) => {
+  if (event.target === $('#folderActionsSheet')) closeFolderActionsSheet();
+});
+$('#folderLockAction').addEventListener('click', async () => {
+  const f = state.folderActionTarget;
+  if (!f) return;
   try {
-    const action = window.prompt(`Folder "${f.name}": type lock, unlock, merge, or delete`, f.locked ? 'unlock' : 'lock');
-    if (!action) return;
-    const cmd = action.trim().toLowerCase();
-    if (cmd === 'delete') { await deleteFolder(f); return; }
-    if (cmd === 'merge') { await mergeFolder(f); return; }
-    if (cmd !== 'lock' && cmd !== 'unlock') return;
     if (!state.privateUnlocked) {
-      await unlockPrivateGallery();
-      if (!state.privateUnlocked) return;
+      const unlocked = await unlockPrivateGallery();
+      if (!unlocked || !state.privateUnlocked) return;
     }
     await api(`/api/folders/${f.id}/private`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locked: cmd === 'lock' }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locked: !f.locked }),
     });
-    if (state.activeFolder === f.id && cmd === 'lock') state.activeFolder = 'all';
+    if (state.activeFolder === f.id && !f.locked) state.activeFolder = 'all';
+    closeFolderActionsSheet();
     await refreshGallery();
-    toast(cmd === 'lock' ? 'Folder locked' : 'Folder unlocked');
+    toast(f.locked ? 'Folder unlocked' : 'Folder locked');
   } catch (e) { toast(e.message, true); }
-}
+});
+$('#folderMergeAction').addEventListener('click', () => {
+  const f = state.folderActionTarget;
+  closeFolderActionsSheet();
+  if (f) mergeFolder(f);
+});
+$('#folderDeleteAction').addEventListener('click', () => {
+  const f = state.folderActionTarget;
+  closeFolderActionsSheet();
+  if (f) deleteFolder(f);
+});
 
 async function mergeFolder(f) {
   if (f.locked && !state.privateUnlocked) {
@@ -5437,7 +5568,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea2 Ref edit (Rebalance) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     rows.push(missing.length
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`

@@ -1242,10 +1242,11 @@ async function buildEditKrea2Ref(p, refNames) {
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 
-  // Output size follows the first reference's true aspect (~1.3 MP, /16)
-  let W = 1024;
-  let H = 1024;
-  try {
+  // Match the first reference by default; an explicit Edit-tab output ratio
+  // overrides it when the user is combining multiple references.
+  let W = p.width || 1024;
+  let H = p.height || 1024;
+  if (!p.editAspectOverride) try {
     const parts = String(refNames[0]).split('/');
     const fn = parts.pop();
     const sub = parts.join('/');
@@ -1256,7 +1257,7 @@ async function buildEditKrea2Ref(p, refNames) {
       W = Math.max(256, Math.round((dims.w * s) / 16) * 16);
       H = Math.max(256, Math.round((dims.h * s) / 16) * 16);
     }
-  } catch { /* fall back to square */ }
+  } catch { /* fall back to the selected output size */ }
 
   const rebalanceInputs = { text: p.prompt, clip: ['clip', 0] };
   refNames.slice(0, 4).forEach((name, i) => {
@@ -1312,7 +1313,13 @@ async function buildEditQwen(p, refNames) {
     const i = idx + 1;
     graph['img' + i] = { class_type: 'LoadImage', inputs: { image: name } };
     let src = ['img' + i, 0];
-    if (i === 1) {
+    if (p.editAspectOverride) {
+      graph['scale' + i] = {
+        class_type: 'ImageScale',
+        inputs: { image: src, upscale_method: 'lanczos', width: p.width, height: p.height, crop: 'center' },
+      };
+      src = ['scale' + i, 0];
+    } else if (i === 1) {
       graph.scale1 = { class_type: 'FluxKontextImageScale', inputs: { image: src } };
       src = ['scale1', 0];
     }
@@ -1389,7 +1396,7 @@ async function buildEdit(p, refNames) {
   // With a source image, output size follows it; otherwise the picker
   let wRef = p.width;
   let hRef = p.height;
-  if (refNames.length) {
+  if (refNames.length && !p.editAspectOverride) {
     graph.size = { class_type: 'GetImageSize', inputs: { image: ['scale1', 0] } };
     wRef = ['size', 0];
     hRef = ['size', 1];
@@ -3044,6 +3051,7 @@ async function handleApi(req, res, url) {
     p.batch = clampInt(p.batch, 1, 8, 1);
     p.cfg = clampNum(p.cfg, 0, 30, 1);
     p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : 1);
+    p.editAspectOverride = p.editAspectOverride === true;
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
       ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
     p.regions = Array.isArray(p.regions) ? p.regions : [];
@@ -3061,7 +3069,7 @@ async function handleApi(req, res, url) {
       const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
       p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
-        return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea2 Ref'} needs at least one reference image` });
+        return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }
       if (p.editEngine === 'krea2') {
         if (p.maskImageName && !refNames.length) {
@@ -3072,6 +3080,10 @@ async function handleApi(req, res, url) {
       } else {
         p.steps = 4; p.cfg = 1; p.denoise = null;
       }
+      // Pixel compositing needs identical source/output dimensions. A custom
+      // output ratio intentionally changes the canvas, so retain the edit
+      // itself but skip the incompatible preservation pass.
+      if (p.editAspectOverride) p.composite = false;
     }
     let graph;
     if (p.mode === 'edit') {

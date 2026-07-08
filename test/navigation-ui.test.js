@@ -81,6 +81,20 @@ test('edit prompts can insert uploaded references as visual @-mention tokens', (
 test('edit model choices settle into place and Preserve unchanged has its own toggle treatment', () => {
   assert.match(css, /@keyframes editEngineSettle/);
   assert.match(css, /\.edit-engine-row \.chip\.active \{[\s\S]*animation: editEngineSettle/);
-  assert.match(html, /class="preserve-toggle active" id="editComposite"[^>]*aria-pressed="true"/);
-  assert.match(css, /\.preserve-toggle\.active \{/);
+  assert.match(html, /class="preserve-check" id="editCompositeWrap"/);
+  assert.match(html, /input id="editComposite" type="checkbox" checked/);
+  assert.match(css, /\.preserve-check input:checked/);
+  assert.match(html, /data-engine="krea2ref">Krea 2 Edit/);
+});
+
+test('Edit keeps source-matched dimensions by default and exposes a custom output-ratio override', () => {
+  const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="editAspectToggle"[^>]*aria-controls="editAspectBody"/);
+  assert.match(html, /id="editAspectSummary">Match first image/);
+  assert.match(html, /id="editWInput"/);
+  assert.match(app, /editAspectOverride: false/);
+  assert.match(app, /editAspectOverride: mode === 'edit' && state\.editAspectOverride/);
+  assert.match(server, /if \(!p\.editAspectOverride\) try/);
+  assert.match(server, /if \(p\.editAspectOverride\) p\.composite = false/);
 });

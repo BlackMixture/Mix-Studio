@@ -10,6 +10,11 @@ const {
   canMoveToFolder,
   parseCookies,
 } = require('../lib/private-gallery');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 
 function sampleDb() {
   return {
@@ -67,4 +72,15 @@ test('canMoveToFolder still rejects missing folders', () => {
 test('parseCookies reads cookie pairs safely', () => {
   assert.deepEqual(parseCookies('ks_private=abc; theme=dark'), { ks_private: 'abc', theme: 'dark' });
   assert.deepEqual(parseCookies(''), {});
+});
+
+test('locked folders use app sheets instead of native password and action prompts', () => {
+  assert.match(html, /id="privateUnlockSheet"/);
+  assert.match(html, /id="privatePasswordInput"[^>]*type="password"/);
+  assert.match(html, /id="folderActionsSheet"/);
+  assert.match(html, /id="folderLockAction"/);
+  assert.match(app, /function openPrivateUnlockSheet\(/);
+  assert.match(app, /function closeFolderActionsSheet\(\)/);
+  assert.doesNotMatch(app, /window\.prompt\('Gallery password'/);
+  assert.doesNotMatch(app, /type lock, unlock, merge, or delete/);
 });
