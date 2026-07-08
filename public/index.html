@@ -118,8 +118,8 @@
   </section>
 
 
-  <section class="panel">
-    <div class="panel-label">Prompt</div>
+  <section class="panel" id="promptPanel">
+    <div class="panel-label" id="promptLabel">Prompt</div>
     <div class="prompt-box">
       <textarea id="prompt" placeholder="Describe your image…" enterkeyhint="done"></textarea>
       <button class="enhance-btn on" id="enhanceBtn" aria-label="Prompt enhance" title="Prompt enhance (Qwen3-VL)">
@@ -142,32 +142,83 @@
     </div>
     <div class="chip-row prompt-tools context-prompt-tools" id="contextPromptTools" hidden></div>
     <div class="attach-zone" id="vidAttachRow" hidden>
-      <button class="attach-btn" id="vidAttachBtn">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M5 5h14v14H5V5Zm2 2v10h10V7H7Zm2 7.4 2.2-2.7 1.6 1.9 1.2-1.4 2 2.2H9Zm1.7-4.4a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6Z"/></svg>
-        Add source image
-        <span id="vidAttachSub">optional · image → video</span>
-      </button>
-      <div class="attach-thumb" id="vidAttachThumb" hidden>
-        <img id="vidAttachImg" alt="" />
-        <div class="attach-info">
-          <b>Image → video</b>
-          <span id="vidAttachDims"></span>
-        </div>
-        <button class="attach-x" id="vidAttachX" aria-label="Remove image">✕</button>
+      <div class="video-inputs-head">
+        <span>Inputs</span>
+        <small>Add only what this generation needs</small>
       </div>
-      <button class="attach-btn" id="vidDriveBtn" style="margin-top:8px" hidden>
-        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M4 6h11a1 1 0 0 1 1 1v2.2l4-2.4v10.4l-4-2.4V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm1 2v8h9V8H5Z"/></svg>
-        Add motion video
-        <span>required · this clip drives the movement</span>
-      </button>
-      <div class="attach-thumb" id="vidDriveThumb" style="margin-top:8px" hidden>
-        <video id="vidDriveVideo" muted loop autoplay playsinline></video>
-        <div class="attach-info">
-          <b>🎥 Motion video</b>
-          <span id="vidDriveLabel"></span>
+      <div class="video-input-grid">
+        <button class="media-input-card" id="vidAttachBtn" type="button">
+          <span class="media-input-art" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
+            <i>+</i>
+          </span>
+          <span class="media-input-copy"><b>Start frame</b><small id="vidAttachSub">Optional · image to video</small></span>
+        </button>
+        <div class="attach-thumb media-input-filled" id="vidAttachThumb" hidden>
+          <img id="vidAttachImg" alt="Start frame preview" />
+          <div class="attach-info">
+            <b>Start frame</b>
+            <span id="vidAttachDims"></span>
+          </div>
+          <button class="attach-x" id="vidAttachX" aria-label="Remove image">✕</button>
         </div>
-        <button class="attach-x" id="vidDriveExpand" aria-label="Expand preview">⤢</button>
-        <button class="attach-x" id="vidDriveX" aria-label="Remove motion video">✕</button>
+        <button class="media-input-card" id="vidDriveBtn" type="button" hidden>
+          <span class="media-input-art" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h11a2 2 0 0 1 2 2v1.2l5-3v11.6l-5-3V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2v8h11V8H4Zm13 3.5v1l3 1.8V9.7l-3 1.8Z"/></svg>
+            <i>+</i>
+          </span>
+          <span class="media-input-copy"><b>Motion video</b><small>Required · drives movement</small></span>
+        </button>
+        <div class="attach-thumb media-input-filled" id="vidDriveThumb" hidden>
+          <video id="vidDriveVideo" muted loop autoplay playsinline></video>
+          <div class="attach-info">
+            <b>Motion video</b>
+            <span id="vidDriveLabel"></span>
+          </div>
+          <button class="attach-x attach-expand" id="vidDriveExpand" aria-label="Expand preview">⤢</button>
+          <button class="attach-x" id="vidDriveX" aria-label="Remove motion video">✕</button>
+        </div>
+        <div class="video-input-extras" id="vidExtras" hidden>
+          <button class="media-input-card" id="vidFaceChip" type="button" hidden>
+            <span class="media-input-art" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-7 8a7 7 0 0 1 14 0H5Zm14-8h2v7h-2v-7Zm-3 2h7v2h-7v-2Z"/></svg>
+              <i>+</i>
+            </span>
+            <span class="media-input-copy"><b>Face ID</b><small>Optional identity reference</small></span>
+          </button>
+          <button class="media-input-card" id="vidEndChip" type="button">
+            <span class="media-input-art" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h14V6H5Zm3 7 2.5-3 2 2.3 1.5-1.8 3 3.5H8Zm8-5h2v2h-2V8Z"/></svg>
+              <i>+</i>
+            </span>
+            <span class="media-input-copy"><b>End frame</b><small>Optional landing image</small></span>
+          </button>
+          <button class="media-input-card" id="vidAudioChip" type="button">
+            <span class="media-input-art" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 18V5l11-2v13.5A3.5 3.5 0 1 1 18 13V7L11 8.3v7.2A3.5 3.5 0 1 1 9 18Z"/></svg>
+              <i>+</i>
+            </span>
+            <span class="media-input-copy"><b data-audio-title>Audio</b><small data-audio-detail>Optional soundtrack</small></span>
+          </button>
+          <button class="chip video-swap-action" id="vidSwap" type="button" hidden>⇅ Swap start and end</button>
+        </div>
+        <div class="attach-thumb media-input-filled" id="vidFaceThumb" hidden>
+          <img id="vidFaceImg" alt="Face ID preview" />
+          <div class="attach-info">
+            <b>Face ID</b>
+            <span id="vidFaceLabel">Identity reference</span>
+          </div>
+          <button class="attach-x attach-expand" id="vidFaceSwap" aria-label="Choose another face">⇄</button>
+          <button class="attach-x" id="vidFaceX" aria-label="Remove face reference">✕</button>
+        </div>
+        <div class="attach-thumb media-input-filled" id="vidEndThumb" hidden>
+          <img id="vidEndImg" alt="End frame preview" />
+          <div class="attach-info">
+            <b>End frame</b>
+            <span>Video lands on this image</span>
+          </div>
+          <button class="attach-x" id="vidEndX" aria-label="Remove end frame">✕</button>
+        </div>
       </div>
       <div class="chip-row" id="vidDriveTools" style="margin-top:8px; margin-bottom:0" hidden>
         <button class="chip" id="vidDriveTrimChip">✂️ Trim</button>
@@ -186,29 +237,6 @@
           <div class="playhead" id="drivePlayhead"></div>
         </div>
         <div class="trim-hint">Drag the edges to trim · only the selected section drives the motion</div>
-      </div>
-      <div class="chip-row" id="vidExtras" style="margin-top:8px; margin-bottom:0" hidden>
-        <button class="chip" id="vidFaceChip" hidden>🪪 Face ID</button>
-        <button class="chip" id="vidEndChip">🏁 End frame</button>
-        <button class="chip" id="vidAudioChip">🎵 Audio</button>
-        <button class="chip" id="vidSwap" hidden>⇅ Swap frames</button>
-      </div>
-      <div class="attach-thumb" id="vidFaceThumb" style="margin-top:8px" hidden>
-        <img id="vidFaceImg" alt="" />
-        <div class="attach-info">
-          <b>🪪 Face ID reference</b>
-          <span id="vidFaceLabel">this person's identity drives the video</span>
-        </div>
-        <button class="attach-x" id="vidFaceSwap" aria-label="Choose another face">⇄</button>
-        <button class="attach-x" id="vidFaceX" aria-label="Remove face reference">✕</button>
-      </div>
-      <div class="attach-thumb" id="vidEndThumb" style="margin-top:8px" hidden>
-        <img id="vidEndImg" alt="" />
-        <div class="attach-info">
-          <b>🏁 End frame</b>
-          <span>the video will land on this image</span>
-        </div>
-        <button class="attach-x" id="vidEndX" aria-label="Remove end frame">✕</button>
       </div>
       <div class="audio-trim" id="vidAudioTrim" hidden>
         <div class="trim-row">
@@ -246,96 +274,150 @@
         Delete
       </button>
     </div>
-    <div class="region-stage-wrap">
-      <div class="region-stage" id="regionStage" aria-label="Region layout preview"></div>
-      <span class="region-stage-hint">Drag to move · use the corner to resize</span>
-    </div>
-    <div class="region-fields">
-      <div class="field field-span">
-        <label>Region prompt</label>
-        <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
-      </div>
-      <div class="field">
-        <label>Region LoRA</label>
-        <button class="lora-pick-row region-lora-btn" id="regionLoraBtn" type="button"><span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span></button>
-      </div>
-      <div class="field">
-        <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
-        <div class="range-field"><input id="regionStrengthInput" type="range" min="0" max="2" step="0.05" value="1" /></div>
-      </div>
-      <div class="field field-span">
-        <label>Reference lock</label>
-        <div class="region-ref-row">
-          <button class="chip" id="regionRefBtn" type="button">Add ref image</button>
-          <button class="chip" id="regionRefClear" type="button">Remove ref</button>
-          <span id="regionRefLabel">None</span>
+    <div class="region-settings" id="regionSettings" aria-hidden="true" inert>
+      <div class="region-settings-inner">
+        <div class="region-settings-head">
+          <div>
+            <span>Selected region</span>
+            <strong id="regionSettingsTitle">Region 1 settings</strong>
+          </div>
+          <div class="region-settings-actions">
+            <small>Auto-saved</small>
+            <button id="regionSettingsClose" type="button" aria-label="Collapse region settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 15 6-6 6 6H6Z"/></svg>
+            </button>
+          </div>
         </div>
-        <input id="regionRefInput" type="file" accept="image/*" hidden />
+        <div class="region-fields">
+          <div class="field field-span">
+            <label>Region prompt</label>
+            <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
+          </div>
+          <div class="field">
+            <label>Region LoRA</label>
+            <button class="region-asset-picker" id="regionLoraBtn" type="button">
+              <span class="region-asset-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg>
+                <i>+</i>
+              </span>
+              <span class="region-asset-copy"><b id="regionLoraLabel">Add Region LoRA</b><small>Optional style for this box</small></span>
+            </button>
+          </div>
+          <div class="field" id="regionStrengthField" hidden>
+            <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
+            <div class="range-field"><input id="regionStrengthInput" type="range" min="0" max="2" step="0.05" value="1" /></div>
+          </div>
+          <div class="field field-span">
+            <label>Reference image</label>
+            <div class="region-reference-control">
+              <button class="region-asset-picker" id="regionRefBtn" type="button">
+                <span class="region-asset-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
+                  <i>+</i>
+                </span>
+                <span class="region-asset-copy"><b>Add reference image</b><small>Guide this region with an image</small></span>
+              </button>
+              <div class="region-ref-preview" id="regionRefPreview" hidden>
+                <img id="regionRefPreviewImg" alt="Region reference preview" />
+                <span class="region-asset-copy"><b>Reference image</b><small id="regionRefLabel">None</small></span>
+                <button id="regionRefClear" type="button" aria-label="Remove region reference image">✕</button>
+              </div>
+            </div>
+            <input id="regionRefInput" type="file" accept="image/*" hidden />
+          </div>
+        </div>
       </div>
     </div>
-    <button class="region-apply" id="regionDoneBtn" type="button">Apply region layout</button>
+    <div class="region-stage-wrap">
+      <div class="region-stage" id="regionStage" aria-label="Region layout preview. Hold an overlapping region to select the box underneath."></div>
+    </div>
+    <div class="region-global-prompt-slot" id="regionGlobalPromptSlot"></div>
   </section>
 
-  <section class="panel" id="vidOptsPanel" hidden>
-    <div class="panel-label">
-      <span>Video Options <button class="info-btn" id="engineInfoBtn" aria-label="About the model options">ⓘ</button></span>
-      <span class="res-dims" id="vidEngineNote">LTX 2.3 · 25 fps · audio</span>
+  <section class="panel video-options-panel" id="vidOptsPanel" hidden>
+    <div class="video-options-head">
+      <button class="video-options-header" id="vidOptsHeader" type="button" aria-expanded="false" aria-controls="vidOptsBody">
+        <span class="panel-label">Video settings</span>
+        <span class="res-dims" id="vidEngineNote">LTX 2.3 · 25 fps · audio</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+      </button>
+      <button class="info-btn" id="engineInfoBtn" type="button" aria-label="About the model options">ⓘ</button>
     </div>
-    <div class="chip-row" id="vidEngineRow">
-      <button class="chip active" data-engine="ltx">LTX 2.3</button>
-      <button class="chip" data-engine="eros">10Eros DMD</button>
-      <button class="chip" data-engine="wan">Wan 2.2</button>
-      <button class="chip" data-engine="scail">SCAIL 2</button>
-    </div>
-    <div class="chip-row" id="vidSigmaRow" hidden>
-      <button class="chip active" data-sig="dmd">DMD v1</button>
-      <button class="chip" data-sig="card">Model card</button>
-      <button class="chip" data-sig="v5">V5 mix</button>
-      <button class="chip" data-sig="custom">Custom</button>
-    </div>
-    <div class="chip-row" id="vidFpsRow" hidden>
-      <button class="chip active" data-smooth="1">16 fps</button>
-      <button class="chip" data-smooth="2">32 fps · RIFE</button>
-      <button class="chip" data-smooth="3">48 fps · RIFE</button>
-    </div>
-    <div class="chip-row" id="vidScailModeRow" hidden>
-      <button class="chip active" data-scail-mode="infinity">Infinity</button>
-      <button class="chip" data-scail-mode="chunked">Chunked</button>
-      <button class="chip" data-scail-mode="direct">Direct</button>
-    </div>
-    <div class="scail-advanced" id="vidScailAdvancedRow" hidden>
-      <div class="chip-row compact" id="vidScailStableRow">
-        <button class="chip active" id="vidScailStable" type="button" title="Track the full motion video once before slicing chunks">Stable chunks</button>
-      </div>
-      <div class="field compact-field">
-        <label>Chunk size</label>
-        <div class="chip-row compact" id="vidScailChunkRow">
-          <button class="chip" data-scail-chunk-frames="41">41</button>
-          <button class="chip" data-scail-chunk-frames="61">61</button>
-          <button class="chip active" data-scail-chunk-frames="81">81</button>
+    <div class="video-options-body" id="vidOptsBody" aria-hidden="true" inert>
+      <div class="video-options-body-inner">
+        <div class="video-option-group">
+          <span class="video-option-label">Model</span>
+          <div class="chip-row video-choice-grid" id="vidEngineRow">
+            <button class="chip active" data-engine="ltx">LTX 2.3</button>
+            <button class="chip" data-engine="eros">10Eros DMD</button>
+            <button class="chip" data-engine="wan">Wan 2.2</button>
+            <button class="chip" data-engine="scail">SCAIL 2</button>
+          </div>
+        </div>
+        <div class="video-fixed-setting" id="vidLtxGenerationRow">
+          <span class="video-option-label">Generation</span>
+          <span class="video-fixed-value" id="vidLtxGeneration">Two-stage · base + refine</span>
+        </div>
+        <div class="video-fixed-setting" id="vidLtxPlaybackRow">
+          <span class="video-option-label">Playback</span>
+          <span class="video-fixed-value" id="vidLtxPlayback">25 fps · native</span>
+        </div>
+        <div class="chip-row video-option-group" id="vidSigmaRow" hidden>
+          <span class="video-option-label">Sampling</span>
+          <button class="chip active" data-sig="dmd">DMD v1</button>
+          <button class="chip" data-sig="card">Model card</button>
+          <button class="chip" data-sig="v5">V5 mix</button>
+          <button class="chip" data-sig="custom">Custom</button>
+        </div>
+        <div class="chip-row video-option-group" id="vidFpsRow" hidden>
+          <span class="video-option-label">Playback</span>
+          <button class="chip active" data-smooth="1">16 fps</button>
+          <button class="chip" data-smooth="2">32 fps · RIFE</button>
+          <button class="chip" data-smooth="3">48 fps · RIFE</button>
+        </div>
+        <div class="chip-row video-option-group" id="vidScailModeRow" hidden>
+          <span class="video-option-label">Generation</span>
+          <button class="chip active" data-scail-mode="infinity">Infinity</button>
+          <button class="chip" data-scail-mode="chunked">Chunked</button>
+          <button class="chip" data-scail-mode="direct">Direct</button>
+        </div>
+        <div class="scail-advanced" id="vidScailAdvancedRow" hidden>
+          <div class="chip-row compact" id="vidScailStableRow">
+            <button class="chip active" id="vidScailStable" type="button" title="Track the full motion video once before slicing chunks">Stable chunks</button>
+          </div>
+          <div class="field compact-field">
+            <label>Chunk size</label>
+            <div class="chip-row compact" id="vidScailChunkRow">
+              <button class="chip" data-scail-chunk-frames="41">41</button>
+              <button class="chip" data-scail-chunk-frames="61">61</button>
+              <button class="chip active" data-scail-chunk-frames="81">81</button>
+            </div>
+          </div>
+          <div class="field compact-field">
+            <label>Overlap</label>
+            <div class="chip-row compact" id="vidScailOverlapRow">
+              <button class="chip" data-scail-overlap="5">5</button>
+              <button class="chip" data-scail-overlap="9">9</button>
+              <button class="chip active" data-scail-overlap="13">13</button>
+              <button class="chip" data-scail-overlap="17">17</button>
+            </div>
+          </div>
+        </div>
+        <div class="video-tuning-grid">
+          <div class="field">
+            <label>Duration — <span id="vidDurVal">5</span>s</label>
+            <div class="range-field"><input id="vidDur" type="range" min="1" max="15" step="1" value="5" /></div>
+          </div>
+          <div class="field" id="vidFreeField">
+            <label>Motion freedom — <span id="vidFreeVal">35</span> <small>higher = livelier</small></label>
+            <div class="range-field"><input id="vidFree" type="range" min="0" max="100" step="1" value="35" /></div>
+          </div>
+        </div>
+        <div class="chip-row video-output-row">
+          <button class="chip" id="vid4k">RTX 4K pass</button>
+          <button class="chip" id="vidQuality" hidden>Full quality · 20 steps</button>
         </div>
       </div>
-      <div class="field compact-field">
-        <label>Overlap</label>
-        <div class="chip-row compact" id="vidScailOverlapRow">
-          <button class="chip" data-scail-overlap="5">5</button>
-          <button class="chip" data-scail-overlap="9">9</button>
-          <button class="chip active" data-scail-overlap="13">13</button>
-          <button class="chip" data-scail-overlap="17">17</button>
-        </div>
-      </div>
-    </div>
-    <div class="field">
-      <label>Duration — <span id="vidDurVal">5</span>s</label>
-      <div class="range-field"><input id="vidDur" type="range" min="1" max="15" step="1" value="5" /></div>
-    </div>
-    <div class="field" id="vidFreeField">
-      <label>Motion freedom — <span id="vidFreeVal">35</span> <small>higher = livelier</small></label>
-      <div class="range-field"><input id="vidFree" type="range" min="0" max="100" step="1" value="35" /></div>
-    </div>
-    <div class="chip-row" style="margin-bottom:2px">
-      <button class="chip" id="vid4k">RTX 4K pass</button>
-      <button class="chip" id="vidQuality" hidden>Full quality · 20 steps</button>
     </div>
   </section>
 
@@ -346,17 +428,19 @@
       <span class="res-aspect-icon" id="resAspectIcon"></span>
       <svg class="res-chevron" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
     </button>
-    <div class="res-body" id="resBody" hidden>
-      <div class="aspect-row" id="aspectRow"></div>
-      <div class="res-meta">
-        <div class="size-seg" id="sizeSeg">
-          <button data-mp="0.75">S</button>
-          <button data-mp="1" class="active">M</button>
-          <button data-mp="1.75">L</button>
-        </div>
-        <div class="res-dims">
-          <input id="wInput" type="number" inputmode="numeric" step="16" min="64" max="4096" /> ×
-          <input id="hInput" type="number" inputmode="numeric" step="16" min="64" max="4096" />
+    <div class="res-body" id="resBody" aria-hidden="true" inert>
+      <div class="res-body-inner">
+        <div class="aspect-row" id="aspectRow"></div>
+        <div class="res-meta">
+          <div class="size-seg" id="sizeSeg">
+            <button data-mp="0.75">S</button>
+            <button data-mp="1" class="active">M</button>
+            <button data-mp="1.75">L</button>
+          </div>
+          <div class="res-dims">
+            <input id="wInput" type="number" inputmode="numeric" step="16" min="64" max="4096" /> ×
+            <input id="hInput" type="number" inputmode="numeric" step="16" min="64" max="4096" />
+          </div>
         </div>
       </div>
     </div>
@@ -384,37 +468,44 @@
   </section>
 
   <section class="panel">
-    <details class="adv">
-      <summary>Advanced</summary>
-      <div class="adv-grid">
-        <div class="field field-span">
-          <label>Seed</label>
-          <div class="seed-wrap">
-            <input id="seedInput" type="text" inputmode="numeric" placeholder="Random" />
-            <button class="icon-btn" id="seedDice" title="Random seed">🎲</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>Steps</label>
-          <input id="stepsInput" type="number" inputmode="numeric" value="12" min="1" max="100" />
-        </div>
-        <div class="field">
-          <label>CFG</label>
-          <input id="cfgInput" type="number" inputmode="decimal" value="1" min="0" max="30" step="0.1" />
-        </div>
-        <div class="field">
-          <label>Batch</label>
-          <input id="batchInput" type="number" inputmode="numeric" value="1" min="1" max="8" />
-        </div>
-        <div class="field" id="denoiseField" hidden>
-          <label>Denoise</label>
-          <div class="range-field">
-            <input id="denoiseInput" type="range" min="0.1" max="1" step="0.05" value="0.4" />
-            <span class="range-val" id="denoiseVal">0.40</span>
+    <div class="adv" id="advPanel">
+      <button class="adv-summary" id="advHeader" type="button" aria-expanded="false" aria-controls="advBody">
+        <span>Advanced</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+      </button>
+      <div class="adv-body" id="advBody" aria-hidden="true" inert>
+        <div class="adv-body-inner">
+          <div class="adv-grid">
+            <div class="field field-span">
+              <label>Seed</label>
+              <div class="seed-wrap">
+                <input id="seedInput" type="text" inputmode="numeric" placeholder="Random" />
+                <button class="icon-btn" id="seedDice" title="Random seed">🎲</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Steps</label>
+              <input id="stepsInput" type="number" inputmode="numeric" value="12" min="1" max="100" />
+            </div>
+            <div class="field">
+              <label>CFG</label>
+              <input id="cfgInput" type="number" inputmode="decimal" value="1" min="0" max="30" step="0.1" />
+            </div>
+            <div class="field">
+              <label>Batch</label>
+              <input id="batchInput" type="number" inputmode="numeric" value="1" min="1" max="8" />
+            </div>
+            <div class="field" id="denoiseField" hidden>
+              <label>Denoise</label>
+              <div class="range-field">
+                <input id="denoiseInput" type="range" min="0.1" max="1" step="0.05" value="0.4" />
+                <span class="range-val" id="denoiseVal">0.40</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </details>
+    </div>
   </section>
 </main>
 

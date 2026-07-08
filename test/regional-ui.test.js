@@ -16,9 +16,40 @@ test('create prompt tools expose an inline regional bounding-box editor', () => 
   assert.match(indexHtml, /id="regionStage"/);
   assert.match(indexHtml, /id="regionLoraBtn"/);
   assert.match(indexHtml, /id="regionRefInput"/);
+  assert.match(indexHtml, /id="regionGlobalPromptSlot"/);
+  assert.match(indexHtml, /id="regionSettings" aria-hidden="true" inert/);
+  assert.doesNotMatch(indexHtml, /region-stage-hint/);
+  assert.doesNotMatch(indexHtml, /id="regionDoneBtn"/);
   assert.match(appJs, /function openRegionEditor/);
   assert.match(appJs, /function renderRegionEditor/);
   assert.match(appJs, /function uploadRegionReference/);
+});
+
+test('Region mode moves the shared prompt below the stage as the global prompt', () => {
+  assert.match(indexHtml, /id="promptPanel"/);
+  assert.match(indexHtml, /id="promptLabel"/);
+  assert.match(appJs, /promptSlot\.appendChild\(promptPanel\)/);
+  assert.match(appJs, /textContent = isRegion \? 'Global prompt' : 'Prompt'/);
+});
+
+test('selecting a region expands auto-saved settings and holding cycles overlaps', () => {
+  assert.match(appJs, /function syncRegionSettings\(focusPrompt\)/);
+  assert.match(appJs, /function selectRegionUnderneath\(clientX, clientY, currentRegion\)/);
+  assert.match(appJs, /setTimeout\(\(\) => \{[\s\S]*selectRegionUnderneath[\s\S]*\}, 520\)/);
+  assert.match(appJs, /regionSettingsOpen = true/);
+  assert.match(styleCss, /\.region-settings\.show \{[\s\S]*grid-template-rows: 1fr/);
+});
+
+test('selected-region inspector appears before the canvas with visual asset inputs', () => {
+  const settingsAt = indexHtml.indexOf('id="regionSettings"');
+  const stageAt = indexHtml.indexOf('id="regionStage"');
+  assert.ok(settingsAt > -1 && settingsAt < stageAt);
+  assert.match(indexHtml, /id="regionLoraBtn"[\s\S]*class="region-asset-icon"[\s\S]*<i>\+<\/i>/);
+  assert.match(indexHtml, /id="regionRefBtn"[\s\S]*class="region-ref-preview" id="regionRefPreview" hidden/);
+  assert.match(indexHtml, /id="regionRefPreviewImg"/);
+  assert.match(indexHtml, /id="regionRefClear"[^>]*aria-label="Remove region reference image"/);
+  assert.match(styleCss, /\.region-ref-preview \{/);
+  assert.match(appJs, /\$\('#regionStrengthField'\)\.hidden = !hasLora/);
 });
 
 test('generate requests include enabled regions for create and Krea2 edit', () => {

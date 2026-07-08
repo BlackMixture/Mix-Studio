@@ -659,6 +659,16 @@ function genLabel() {
 
 function updateVideoPanels() {
   const isVideo = state.view === 'video';
+  const isRegion = state.view === 'create' && state.createMode === 'region';
+  const promptPanel = $('#promptPanel');
+  const regionWorkspace = $('#regionWorkspace');
+  const promptSlot = $('#regionGlobalPromptSlot');
+  if (isRegion && promptPanel.parentElement !== promptSlot) {
+    promptSlot.appendChild(promptPanel);
+  } else if (!isRegion && promptPanel.parentElement !== $('#view-create')) {
+    $('#view-create').insertBefore(promptPanel, regionWorkspace);
+  }
+  $('#promptLabel').textContent = isRegion ? 'Global prompt' : 'Prompt';
   $('#prompt').placeholder = isVideo
     ? 'Describe the motion…'
     : (state.createMode === 'region' && state.view === 'create'
@@ -666,7 +676,7 @@ function updateVideoPanels() {
       : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
-  $('#regionWorkspace').hidden = !(state.view === 'create' && state.createMode === 'region');
+  regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
   $('#createPromptTools').hidden = state.view !== 'create';
   updateRegionsIndicator();
@@ -719,6 +729,8 @@ function pickUpload(accept, cb) {
 
 const REGION_COLORS = ['#46b4e6', '#e68246', '#82e646', '#e646b4', '#e6e646', '#46e6c8'];
 let regionDrag = null;
+let regionSettingsOpen = false;
+let regionClickBlockedUntil = 0;
 let kreaMaskDrawing = false;
 let kreaMaskLast = null;
 
@@ -795,6 +807,57 @@ function regionLoraOptions(selected) {
   return state.metaLoras.filter((name) => name === selected || allowed.has(loraCategory(name)));
 }
 
+function syncRegionSettings(focusPrompt) {
+  const settings = $('#regionSettings');
+  const region = selectedRegion();
+  const open = regionSettingsOpen && !!region;
+  settings.classList.toggle('show', open);
+  settings.inert = !open;
+  settings.setAttribute('aria-hidden', String(!open));
+  if (region) {
+    const index = state.regions.findIndex((item) => item.id === region.id);
+    $('#regionSettingsTitle').textContent = `Region ${index + 1} settings`;
+  }
+  if (open && focusPrompt) setTimeout(() => $('#regionDescInput').focus(), 240);
+}
+
+function selectRegion(region, focusPrompt) {
+  if (!region) return;
+  const wasOpen = regionSettingsOpen;
+  state.activeRegionId = region.id;
+  regionSettingsOpen = true;
+  renderRegionEditor();
+  syncRegionSettings(focusPrompt);
+  if (!wasOpen) {
+    setTimeout(() => $('#regionSettings').scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'nearest',
+    }), 60);
+  }
+}
+
+function regionsAtPoint(clientX, clientY) {
+  const rect = $('#regionStage').getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  return state.regions.filter((region) => (
+    x >= region.x && x <= region.x + region.w && y >= region.y && y <= region.y + region.h
+  ));
+}
+
+function selectRegionUnderneath(clientX, clientY, currentRegion) {
+  const hits = regionsAtPoint(clientX, clientY);
+  if (hits.length < 2) {
+    selectRegion(currentRegion, false);
+    return;
+  }
+  const currentIndex = hits.findIndex((region) => region.id === currentRegion.id);
+  const nextIndex = currentIndex > 0 ? currentIndex - 1 : hits.length - 1;
+  regionClickBlockedUntil = Date.now() + 400;
+  selectRegion(hits[nextIndex], false);
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
 function renderRegionEditor() {
   const stage = $('#regionStage');
   if (!stage) return;
@@ -829,8 +892,12 @@ function renderRegionEditor() {
     box.style.width = `${region.w * 100}%`;
     box.style.height = `${region.h * 100}%`;
     box.style.borderColor = region.color || REGION_COLORS[index % REGION_COLORS.length];
-    box.innerHTML = `<span>${index + 1}</span><b>${escapeHtml(region.description || 'Region')}</b><i></i>`;
-    box.addEventListener('click', () => { state.activeRegionId = region.id; renderRegionEditor(); });
+    box.setAttribute('aria-label', `Region ${index + 1}. Open region settings.`);
+    box.innerHTML = `<span>${index + 1}</span><em class="region-box-settings" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm0 8h16v2H4v-2Zm14-9h2v4h-2V6Zm-8 8h2v4h-2v-4Z"/></svg></em><b>${escapeHtml(region.description || 'Region')}</b><i></i>`;
+    box.addEventListener('click', (event) => {
+      if (Date.now() < regionClickBlockedUntil) return;
+      selectRegion(region, !!event.target.closest('.region-box-settings'));
+    });
     box.addEventListener('pointerdown', (e) => startRegionDrag(e, region, false));
     box.querySelector('i').addEventListener('pointerdown', (e) => startRegionDrag(e, region, true));
     stage.appendChild(box);
@@ -848,13 +915,22 @@ function renderRegionEditor() {
 
   $('#regionDescInput').value = region.description || '';
   const hasLora = region.lora && region.lora !== 'None';
+  $('#regionStrengthField').hidden = !hasLora;
+  $('#regionLoraBtn').classList.toggle('selected', !!hasLora);
   $('#regionLoraBtn').innerHTML = hasLora
-    ? `${loraThumbHtml(region.lora, 'lp-thumb')}<span id="regionLoraLabel">${escapeHtml(prettyLora(region.lora))}</span>`
-    : '<span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span>';
+    ? `${loraThumbHtml(region.lora, 'lp-thumb')}<span class="region-asset-copy"><b id="regionLoraLabel">${escapeHtml(prettyLora(region.lora))}</b><small>Tap to change this LoRA</small></span>`
+    : '<span class="region-asset-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg><i>+</i></span><span class="region-asset-copy"><b id="regionLoraLabel">Add Region LoRA</b><small>Optional style for this box</small></span>';
   region.strength = normalizeRegionStrength(region.strength);
   $('#regionStrengthInput').value = String(region.strength);
   $('#regionStrengthVal').textContent = region.strength.toFixed(2);
-  $('#regionRefLabel').textContent = region.refImageName ? (region.refImageName.split('/').pop() || 'Reference added') : 'None';
+  const hasRef = !!region.refImageName;
+  $('#regionRefBtn').hidden = hasRef;
+  $('#regionRefPreview').hidden = !hasRef;
+  $('#regionRefLabel').textContent = hasRef ? (region.refImageName.split('/').pop() || 'Reference added') : 'None';
+  if (hasRef) {
+    $('#regionRefPreviewImg').src = region.refUrl || `/api/input?name=${encodeURIComponent(region.refImageName)}`;
+  }
+  syncRegionSettings(false);
 }
 
 function startRegionDrag(e, region, resize) {
@@ -862,7 +938,7 @@ function startRegionDrag(e, region, resize) {
   e.stopPropagation();
   state.activeRegionId = region.id;
   const rect = $('#regionStage').getBoundingClientRect();
-  regionDrag = {
+  const drag = {
     region,
     resize,
     rect,
@@ -872,15 +948,36 @@ function startRegionDrag(e, region, resize) {
     y: region.y,
     w: region.w,
     h: region.h,
+    moved: false,
+    holdTimer: null,
   };
+  regionDrag = drag;
+  if (!resize) {
+    drag.holdTimer = setTimeout(() => {
+      if (regionDrag !== drag || drag.moved) return;
+      document.removeEventListener('pointermove', moveRegionDrag);
+      document.removeEventListener('pointerup', endRegionDrag);
+      document.removeEventListener('pointercancel', endRegionDrag);
+      regionDrag = null;
+      selectRegionUnderneath(drag.startX, drag.startY, region);
+    }, 520);
+  }
   document.addEventListener('pointermove', moveRegionDrag);
   document.addEventListener('pointerup', endRegionDrag, { once: true });
+  document.addEventListener('pointercancel', endRegionDrag, { once: true });
 }
 
 function moveRegionDrag(e) {
   if (!regionDrag) return;
   const dx = (e.clientX - regionDrag.startX) / regionDrag.rect.width;
   const dy = (e.clientY - regionDrag.startY) / regionDrag.rect.height;
+  const movedPx = Math.hypot(e.clientX - regionDrag.startX, e.clientY - regionDrag.startY);
+  if (!regionDrag.resize && !regionDrag.moved && movedPx < 8) return;
+  if (!regionDrag.moved) {
+    regionDrag.moved = true;
+    clearTimeout(regionDrag.holdTimer);
+    regionClickBlockedUntil = Date.now() + 250;
+  }
   const r = regionDrag.region;
   if (regionDrag.resize) {
     r.w = Math.max(0.04, Math.min(1 - r.x, regionDrag.w + dx));
@@ -893,7 +990,11 @@ function moveRegionDrag(e) {
 }
 
 function endRegionDrag() {
+  if (!regionDrag) return;
+  clearTimeout(regionDrag.holdTimer);
   document.removeEventListener('pointermove', moveRegionDrag);
+  document.removeEventListener('pointerup', endRegionDrag);
+  document.removeEventListener('pointercancel', endRegionDrag);
   regionDrag = null;
   saveForm();
 }
@@ -1041,7 +1142,11 @@ $('#regionEnabledChip').addEventListener('click', () => {
   updateRegionsIndicator();
   saveForm();
 });
-$('#regionAddBtn').addEventListener('click', () => { createRegion(); renderRegionEditor(); saveForm(); });
+$('#regionAddBtn').addEventListener('click', () => {
+  const region = createRegion();
+  selectRegion(region, true);
+  saveForm();
+});
 $('#regionDeleteBtn').addEventListener('click', () => {
   const region = selectedRegion();
   if (!region) return;
@@ -1084,14 +1189,9 @@ $('#regionRefClear').addEventListener('click', () => {
   renderRegionEditor();
   saveForm();
 });
-$('#regionDoneBtn').addEventListener('click', () => {
-  renderRegionEditor();
-  updateRegionsIndicator();
-  saveForm();
-  const count = activeRegionsForRequest().length;
-  toast(count
-    ? `${count} region${count === 1 ? '' : 's'} ready`
-    : (state.regionsEnabled ? 'Add a prompt, LoRA, or reference to the region' : 'Regional prompting off'));
+$('#regionSettingsClose').addEventListener('click', () => {
+  regionSettingsOpen = false;
+  syncRegionSettings(false);
 });
 
 $('#kreaMaskBtn').addEventListener('click', openKreaMaskPainter);
@@ -1372,8 +1472,7 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
     if (state[stateKey]) {
       stopPreview();
       state[stateKey] = null;
-      chip.classList.remove('active');
-      chip.textContent = '🎵 Audio';
+      setAudioChipVisual(chip, false);
       box.hidden = true;
       return;
     }
@@ -1396,14 +1495,24 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
           uploadedKey: null,
           label: file.name,
         };
-        chip.classList.add('active');
-        chip.textContent = '🎵 Audio ✓';
+        setAudioChipVisual(chip, true);
         box.hidden = false;
         requestAnimationFrame(() => { drawWave(); layout(); });
       } catch (e) { toast('Could not read audio: ' + e.message, true); }
     });
     input.click();
   });
+}
+function setAudioChipVisual(chip, active) {
+  chip.classList.toggle('active', active);
+  const title = chip.querySelector('[data-audio-title]');
+  const detail = chip.querySelector('[data-audio-detail]');
+  if (title) {
+    title.textContent = active ? 'Audio added' : 'Audio';
+    if (detail) detail.textContent = active ? 'Tap to remove or replace' : 'Optional soundtrack';
+  } else {
+    chip.textContent = active ? '🎵 Audio ✓' : '🎵 Audio';
+  }
 }
 window.addEventListener('resize', () => {
   Object.values(waveRedraw).forEach((fn) => fn());
@@ -2120,16 +2229,42 @@ $('#loraAllBtn').addEventListener('click', () => {
    aspect or size collapses it again. */
 function collapseRes(open) {
   const expand = open === true;
+  const body = $('#resBody');
   $('#resPanel').classList.toggle('expanded', expand);
-  $('#resBody').hidden = !expand;
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
   $('#resHeader').setAttribute('aria-expanded', String(expand));
 }
-$('#resHeader').addEventListener('click', () => collapseRes($('#resBody').hidden));
+$('#resHeader').addEventListener('click', () => collapseRes(!$('#resPanel').classList.contains('expanded')));
 $('#aspectRow').addEventListener('click', (e) => {
   if (e.target.closest('button')) setTimeout(() => collapseRes(false), 140);
 });
 $('#sizeSeg').addEventListener('click', (e) => {
   if (e.target.closest('button')) setTimeout(() => collapseRes(false), 140);
+});
+
+function setVideoOptionsExpanded(open) {
+  const expand = open === true;
+  const body = $('#vidOptsBody');
+  $('#vidOptsPanel').classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#vidOptsHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#vidOptsHeader').addEventListener('click', () => {
+  setVideoOptionsExpanded(!$('#vidOptsPanel').classList.contains('expanded'));
+});
+
+function setAdvancedExpanded(open) {
+  const expand = open === true;
+  const body = $('#advBody');
+  $('#advPanel').classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#advHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#advHeader').addEventListener('click', () => {
+  setAdvancedExpanded(!$('#advPanel').classList.contains('expanded'));
 });
 
 /* ---- LoRA presets (stored server-side, shared across devices) ---- */
@@ -2368,6 +2503,12 @@ function renderVidFace() {
   const wanOrScail = state.vidEngine === 'wan' || state.vidEngine === 'scail';
   $('#vidFpsRow').hidden = !wanOrScail || faceMode;
   $('#vidFreeField').hidden = wanOrScail || faceMode;
+  if (ltx) {
+    $('#vidLtxGenerationRow').hidden = false;
+    $('#vidLtxPlaybackRow').hidden = false;
+    $('#vidLtxGeneration').textContent = faceMode ? 'Single-stage · Face ID' : 'Two-stage · base + refine';
+    $('#vidLtxPlayback').textContent = faceMode ? '24 fps · native' : '25 fps · native';
+  }
   if (faceMode) $('#vidEngineNote').textContent = 'LTX Face ID · 24 fps · ref_t2v';
   else if (ltx) $('#vidEngineNote').textContent = 'LTX 2.3 · 25 fps · audio';
 }
@@ -2763,6 +2904,8 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = !(wan || scail);
   $('#vidScailModeRow').hidden = !scail;
+  $('#vidLtxGenerationRow').hidden = engine !== 'ltx';
+  $('#vidLtxPlaybackRow').hidden = engine !== 'ltx';
   $('#vidExtras').hidden = wan || scail;
   renderScailChunkControls();
   const dur = $('#vidDur');
@@ -4017,8 +4160,7 @@ async function reuseVideo(it, v) {
   state.vidFace = null;
   if (state.vidAudio) stopPreview();
   state.vidAudio = null;
-  $('#vidAudioChip').classList.remove('active');
-  $('#vidAudioChip').textContent = '🎵 Audio';
+  setAudioChipVisual($('#vidAudioChip'), false);
   $('#vidAudioTrim').hidden = true;
   $('#vidDriveTrimChip').classList.remove('active');
   $('#vidDriveVideo').removeAttribute('src');
@@ -4107,8 +4249,7 @@ async function reuseVideo(it, v) {
         uploadedKey: `0.00-${buffer.duration.toFixed(2)}`,
         label: 'reused audio',
       };
-      $('#vidAudioChip').classList.add('active');
-      $('#vidAudioChip').textContent = '🎵 Audio ✓';
+      setAudioChipVisual($('#vidAudioChip'), true);
       $('#vidAudioTrim').hidden = false;
       requestAnimationFrame(() => { if (waveRedraw.vidAudio) waveRedraw.vidAudio(); });
     } catch { missing.push('audio'); }

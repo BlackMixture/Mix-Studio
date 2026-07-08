@@ -49,3 +49,21 @@ test('only the Resolution section keeps an outer panel surface', () => {
   assert.match(css, /#view-create > \.panel:not\(\.res-panel\) \{[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
   assert.match(css, /\.prompt-box textarea \{[\s\S]*border: 1px solid var\(--line\)/);
 });
+
+test('Resolution expands with an accessible motion transition', () => {
+  assert.match(html, /id="resBody" aria-hidden="true" inert>[\s\S]*class="res-body-inner"/);
+  assert.match(css, /\.res-body \{[\s\S]*grid-template-rows: 0fr;[\s\S]*transition:/);
+  assert.match(css, /\.res-panel\.expanded \.res-body \{[\s\S]*grid-template-rows: 1fr;/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+  assert.match(app, /body\.inert = !expand/);
+  assert.match(app, /body\.setAttribute\('aria-hidden', String\(!expand\)\)/);
+});
+
+test('Advanced uses the same animated accessible disclosure pattern', () => {
+  assert.doesNotMatch(html, /<details class="adv">/);
+  assert.match(html, /id="advHeader"[^>]*aria-expanded="false"[^>]*aria-controls="advBody"/);
+  assert.match(html, /id="advBody" aria-hidden="true" inert/);
+  assert.match(css, /\.adv-body \{[\s\S]*grid-template-rows: 0fr;[\s\S]*transition:/);
+  assert.match(css, /\.adv\.expanded \.adv-body \{[\s\S]*grid-template-rows: 1fr;/);
+  assert.match(app, /function setAdvancedExpanded\(open\)/);
+});
