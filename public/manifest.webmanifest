@@ -1,6 +1,6 @@
 {
-  "name": "Black Mixture Labs",
-  "short_name": "Black Mixture",
+  "name": "MixBox Studio",
+  "short_name": "MixBox",
   "description": "Local image and video generation with ComfyUI",
   "start_url": "/",
   "display": "standalone",

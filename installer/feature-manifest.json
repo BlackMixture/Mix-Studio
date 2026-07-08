@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "product": "Black Mixture Labs",
+  "product": "MixBox Studio",
   "target": "windows-nvidia",
   "notes": "The bootstrapper uses this selection to install only the required model families and writes the same keys to data/settings.json. Model source URLs and license acknowledgements are resolved separately by the installer.",
   "features": [

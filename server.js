@@ -3106,8 +3106,8 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/update' && req.method === 'POST') {
-    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update Black Mixture Labs' });
-    if (jobs.size) return json(res, 409, { error: 'Wait for the Black Mixture Labs queue to finish before updating' });
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update MixBox Studio' });
+    if (jobs.size) return json(res, 409, { error: 'Wait for the MixBox Studio queue to finish before updating' });
 
     // ComfyUI can contain jobs submitted outside this server. Restarting while
     // one is active would lose KreaStudio's completion tracking, so check both.

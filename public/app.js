@@ -770,7 +770,7 @@ async function waitForAppRestart() {
     } catch { /* server is between processes */ }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error('The update installed, but the app did not come back online. Start Black Mixture Labs on the desktop.');
+  throw new Error('The update installed, but the app did not come back online. Start MixBox Studio on the desktop.');
 }
 
 $('#appMenuBtn').addEventListener('click', openAppDrawer);
@@ -814,13 +814,13 @@ $('#appUpdateBtn').addEventListener('click', async () => {
     const result = await api('/api/update', { method: 'POST' });
     button.classList.remove('busy');
     if (!result.updated) {
-      setAppUpdateStatus(`Black Mixture Labs is up to date · ${result.version}`, 'good');
+      setAppUpdateStatus(`MixBox Studio is up to date · ${result.version}`, 'good');
       appUpdateRunning = false;
       renderAppUpdateAccess();
       return;
     }
     if (result.restarting) {
-      label.textContent = 'Restarting Black Mixture Labs…';
+      label.textContent = 'Restarting MixBox Studio…';
       setAppUpdateStatus(`Updated to ${result.version}. Waiting for the desktop app to restart…`, 'good');
       await waitForAppRestart();
       return;
