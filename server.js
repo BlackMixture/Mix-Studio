@@ -1627,13 +1627,14 @@ async function buildAnimate(imageName, opts) {
   };
 
   let frameSource = ['decode', 0];
+  frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
   if (opts.fourK) {
-    graph.vsr = rtxVideoSuperResolutionNode(['decode', 0]);
+    graph.vsr = rtxVideoSuperResolutionNode(frameSource);
     frameSource = ['vsr', 0];
   }
   graph.video = {
     class_type: 'CreateVideo',
-    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps },
+    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps * (opts.smooth > 1 ? opts.smooth : 1) },
   };
   graph.save = {
     class_type: 'SaveVideo',
@@ -1802,13 +1803,14 @@ async function buildAnimateFaceId(faceName, opts) {
   };
 
   let frameSource = ['decode', 0];
+  frameSource = await rifeSmooth(graph, frameSource, opts.smooth);
   if (opts.fourK) {
-    graph.vsr = rtxVideoSuperResolutionNode(['decode', 0]);
+    graph.vsr = rtxVideoSuperResolutionNode(frameSource);
     frameSource = ['vsr', 0];
   }
   graph.video = {
     class_type: 'CreateVideo',
-    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps },
+    inputs: { images: frameSource, audio: ['audio_dec', 0], fps: opts.fps * (opts.smooth > 1 ? opts.smooth : 1) },
   };
   graph.save = {
     class_type: 'SaveVideo',
@@ -2458,7 +2460,7 @@ async function buildAnimateScail(imageName, opts) {
   return filterInputs(graph);
 }
 
-/** Optional RIFE interpolation stage (16 fps engines -> 32/48 fps). */
+/** Optional RIFE interpolation stage for any supported video frame batch. */
 async function rifeSmooth(graph, frameSource, smooth) {
   if (!smooth || smooth <= 1) return frameSource;
   const info = await getObjectInfo();
@@ -3087,8 +3089,8 @@ async function handleApi(req, res, url) {
 
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
-    // RIFE frame interpolation for the 16 fps engines (Wan/SCAIL)
-    const smooth = (engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
+    // RIFE frame interpolation for LTX, Wan, and SCAIL video outputs.
+    const smooth = (engine === 'ltx' || engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
       ? Number(body.smooth) : 1;
     const isLtxLike = engine === 'ltx' || engine === 'eros';
     const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;

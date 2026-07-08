@@ -64,12 +64,22 @@ test('Duration uses a discoverable clock-style scrubber with a larger tap-to-ope
   assert.match(app, /event\.key === 'ArrowUp'/);
 });
 
-test('LTX settings identify its fixed generation and playback pipelines', () => {
+test('LTX settings identify their native pipeline and optional RIFE playback', () => {
   assert.match(html, /id="vidLtxGeneration"[^>]*>Two-stage · base \+ refine</);
   assert.match(html, /id="vidLtxPlayback"[^>]*>25 fps · native</);
   assert.match(app, /vidLtxGenerationRow'\)\.hidden = engine !== 'ltx'/);
   assert.match(app, /faceMode \? 'Single-stage · Face ID' : 'Two-stage · base \+ refine'/);
-  assert.match(app, /faceMode \? '24 fps · native' : '25 fps · native'/);
+  assert.match(app, /function renderVideoFpsChoices\(\)/);
+  assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : 16/);
+  assert.match(app, /\$\('#vidFpsRow'\)\.hidden = !\(ltx \|\| wanOrScail\)/);
+  assert.match(app, /\$\{baseFps \* multiplier\} fps · RIFE/);
+});
+
+test('LTX requests can pass through the same RIFE interpolation stage as Wan and SCAIL', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(server, /const smooth = \(engine === 'ltx' \|\| engine === 'wan' \|\| engine === 'scail'\)/);
+  assert.match(server, /frameSource = await rifeSmooth\(graph, frameSource, opts\.smooth\);/);
+  assert.match(server, /fps: opts\.fps \* \(opts\.smooth > 1 \? opts\.smooth : 1\)/);
 });
 
 test('Video prompt tools stay hidden and structured audio labels survive state changes', () => {

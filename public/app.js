@@ -3009,16 +3009,20 @@ function renderVidFace() {
       ? `${state.vidFace.label} — identity drives the video`
       : "this person's identity drives the video";
   }
-  // Contextual controls: Face ID runs a fixed single-stage 24 fps pipeline —
-  // frame-rate (RIFE) chips and motion freedom don't apply.
+  // RIFE can smooth any LTX, Wan, or SCAIL output. Motion freedom stays
+  // specific to standard LTX only.
   const wanOrScail = state.vidEngine === 'wan' || state.vidEngine === 'scail';
-  $('#vidFpsRow').hidden = !wanOrScail || faceMode;
+  $('#vidFpsRow').hidden = !(ltx || wanOrScail);
   $('#vidFreeField').hidden = wanOrScail || faceMode;
+  renderVideoFpsChoices();
   if (ltx) {
     $('#vidLtxGenerationRow').hidden = false;
     $('#vidLtxPlaybackRow').hidden = false;
     $('#vidLtxGeneration').textContent = faceMode ? 'Single-stage · Face ID' : 'Two-stage · base + refine';
-    $('#vidLtxPlayback').textContent = faceMode ? '24 fps · native' : '25 fps · native';
+    const nativeFps = faceMode ? 24 : 25;
+    $('#vidLtxPlayback').textContent = state.vidSmooth > 1
+      ? `${nativeFps * state.vidSmooth} fps · RIFE ${state.vidSmooth}×`
+      : `${nativeFps} fps · native`;
   }
   const labels = { ltx: 'LTX 2.3', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
   const notes = {
@@ -3030,6 +3034,15 @@ function renderVidFace() {
   $('#vidEngineSelected').textContent = labels[state.vidEngine] || labels.ltx;
   $('#vidEngineNote').textContent = notes[state.vidEngine] || notes.ltx;
   updateVideoTuningSummary();
+}
+
+function renderVideoFpsChoices() {
+  const ltx = state.vidEngine === 'ltx';
+  const baseFps = ltx ? (state.vidFace ? 24 : 25) : 16;
+  $$('#vidFpsRow .chip').forEach((chip) => {
+    const multiplier = Number(chip.dataset.smooth) || 1;
+    chip.textContent = multiplier === 1 ? `${baseFps} fps` : `${baseFps * multiplier} fps · RIFE`;
+  });
 }
 $('#vidFaceChip').addEventListener('click', () => openFaceSheet());
 $('#vidFaceSwap').addEventListener('click', () => openFaceSheet());
@@ -3421,7 +3434,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidFreeField').hidden = wan || scail;
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
-  $('#vidFpsRow').hidden = !(wan || scail);
+  $('#vidFpsRow').hidden = !(engine === 'ltx' || wan || scail);
   $('#vidScailModeRow').hidden = !scail;
   $('#vidLtxGenerationRow').hidden = engine !== 'ltx';
   $('#vidLtxPlaybackRow').hidden = engine !== 'ltx';
