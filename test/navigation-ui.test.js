@@ -47,7 +47,7 @@ test('only the Resolution section keeps an outer panel surface', () => {
   assert.match(css, /--page-bg: #000/);
   assert.match(css, /\.panel \{[\s\S]*border: 0;/);
   assert.match(css, /#view-create > \.panel:not\(\.res-panel\) \{[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
-  assert.match(css, /\.prompt-box textarea \{[\s\S]*border: 1px solid var\(--line\)/);
+  assert.match(css, /\.prompt-composer \{[\s\S]*border: 1px solid var\(--line\)/);
 });
 
 test('Resolution expands with an accessible motion transition', () => {
@@ -66,4 +66,21 @@ test('Advanced uses the same animated accessible disclosure pattern', () => {
   assert.match(css, /\.adv-body \{[\s\S]*grid-template-rows: 0fr;[\s\S]*transition:/);
   assert.match(css, /\.adv\.expanded \.adv-body \{[\s\S]*grid-template-rows: 1fr;/);
   assert.match(app, /function setAdvancedExpanded\(open\)/);
+});
+
+test('edit prompts can insert uploaded references as visual @-mention tokens', () => {
+  assert.match(html, /id="promptComposer"[^>]*contenteditable="true"/);
+  assert.match(html, /id="promptMentionSheet"/);
+  assert.doesNotMatch(html, /Tip: reference them in your prompt by number/);
+  assert.match(app, /function openPromptMentionPicker\(\)/);
+  assert.match(app, /event\.data === '@'/);
+  assert.match(app, /function promptForGeneration\(\)[\s\S]*@image-\(\\d\+\)/);
+  assert.match(css, /\.prompt-ref-token \{/);
+});
+
+test('edit model choices settle into place and Preserve unchanged has its own toggle treatment', () => {
+  assert.match(css, /@keyframes editEngineSettle/);
+  assert.match(css, /\.edit-engine-row \.chip\.active \{[\s\S]*animation: editEngineSettle/);
+  assert.match(html, /class="preserve-toggle active" id="editComposite"[^>]*aria-pressed="true"/);
+  assert.match(css, /\.preserve-toggle\.active \{/);
 });

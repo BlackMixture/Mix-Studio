@@ -105,12 +105,15 @@
 <main class="view active" id="view-create">
   <section class="panel" id="refPanel" hidden>
     <div class="panel-label">Reference Images <span id="refCount"></span></div>
-    <div class="chip-row" id="editEngineRow" style="margin-bottom:10px">
+    <div class="chip-row edit-engine-row" id="editEngineRow" style="margin-bottom:10px">
       <button class="chip active" data-engine="klein4">Klein 4B</button>
       <button class="chip" data-engine="klein9">Klein 9B</button>
       <button class="chip" data-engine="qwen">Qwen Edit</button>
       <button class="chip" data-engine="krea2">Krea2</button>
-      <button class="chip active" id="editComposite" title="Blend only the changed pixels back onto the original">🎯 Preserve unchanged</button>
+      <button class="preserve-toggle active" id="editComposite" type="button" aria-pressed="true" title="Blend only the changed pixels back onto the original">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 20 6v5c0 5.2-3.4 9.5-8 11-4.6-1.5-8-5.8-8-11V6l8-4Zm0 2.2L6 7v4c0 4.1 2.5 7.7 6 9 3.5-1.3 6-4.9 6-9V7l-6-2.8Zm2.8 5.2 1.4 1.4-5 5-2.2-2.2 1.4-1.4.8.8 3.6-3.6Z"/></svg>
+        <span>Preserve unchanged</span>
+      </button>
     </div>
     <div class="ref-row" id="refRow"></div>
     <div class="krea-mask-tools" id="kreaMaskTools" hidden>
@@ -118,7 +121,6 @@
       <button class="chip" id="kreaMaskClear" type="button" hidden>Clear mask</button>
       <span id="kreaMaskStatus">No mask</span>
     </div>
-    <div class="enhance-hint">Tip: reference them in your prompt by number — “put the jacket from image 2 on the person in image 1”.</div>
   </section>
 
   <section class="panel video-model-panel" id="vidModelPanel" hidden>
@@ -136,7 +138,9 @@
           <button class="chip" data-engine="wan">Wan 2.2</button>
           <button class="chip" data-engine="scail">SCAIL 2</button>
         </div>
-        <button class="info-btn video-model-info" id="engineInfoBtn" type="button">Compare model capabilities</button>
+        <button class="info-btn video-model-info" id="engineInfoBtn" type="button" aria-label="Compare model capabilities" title="Compare model capabilities">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 10h2v7h-2v-7Zm0-3h2v2h-2V7Zm1-5a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg>
+        </button>
       </div>
     </div>
   </section>
@@ -144,7 +148,8 @@
   <section class="panel" id="promptPanel">
     <div class="panel-label" id="promptLabel">Prompt</div>
     <div class="prompt-box">
-      <textarea id="prompt" placeholder="Describe your image…" enterkeyhint="done"></textarea>
+      <textarea id="prompt" class="prompt-source" aria-hidden="true" tabindex="-1"></textarea>
+      <div class="prompt-composer" id="promptComposer" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Prompt" data-placeholder="Describe your image…" spellcheck="true"></div>
       <button class="enhance-btn on" id="enhanceBtn" aria-label="Prompt enhance" title="Prompt enhance (Qwen3-VL)">
         <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 2l1.9 5.4L19 9l-5.1 1.6L12 16l-1.9-5.4L5 9l5.1-1.6L12 2Zm7 11 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1 1-2.7ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z"/></svg>
       </button>
@@ -278,16 +283,8 @@
     </div>
   </section>
 
-  <section class="panel region-workspace" id="regionWorkspace" aria-labelledby="regionWorkspaceTitle" hidden>
-    <div class="region-workspace-head">
-      <div>
-        <div class="panel-label" id="regionWorkspaceTitle">Regional prompting</div>
-        <p>Frame each subject, then describe only what belongs inside that area.</p>
-      </div>
-      <span class="region-count" id="regionWorkspaceSummary">1 region</span>
-    </div>
+  <section class="panel region-workspace" id="regionWorkspace" hidden>
     <div class="region-toolbar" aria-label="Region tools">
-      <button class="chip" id="regionEnabledChip" type="button">Use regions</button>
       <button class="chip" id="regionAddBtn" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
         Add box
@@ -418,8 +415,8 @@
             <div class="video-timing-body-inner">
               <div class="video-number-setting">
                 <span><b>Duration</b><small>Video length</small></span>
-                <button class="video-number-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust" aria-valuemin="1" aria-valuemax="15" aria-valuenow="5">
-                  <strong id="vidDurVal">5</strong><em>s</em>
+                <button class="video-number-scrubber duration-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="15" aria-valuenow="5">
+                  <span class="duration-compact-wheel" aria-hidden="true"><small id="vidDurPrev">4</small><strong id="vidDurVal">5</strong><small id="vidDurNext">6</small></span><em>s</em>
                   <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
                 </button>
                 <input id="vidDur" type="hidden" min="1" max="15" step="1" value="5" />
@@ -1049,6 +1046,23 @@
   <span class="select-count" id="selCount">0 selected</span>
   <button class="action-btn" id="selMove">▤ Move</button>
   <button class="action-btn danger" id="selDelete">🗑 Delete</button>
+</div>
+
+<div class="sheet" id="promptMentionSheet">
+  <div class="sheet-panel prompt-mention-panel">
+    <h3 class="sheet-title">Reference an image <button data-close aria-label="Close image reference picker">✕</button></h3>
+    <p class="prompt-mention-copy">Choose an uploaded reference to add it to this prompt.</p>
+    <div class="prompt-mention-list" id="promptMentionList"></div>
+  </div>
+</div>
+
+<div class="sheet" id="durationPickerSheet">
+  <div class="sheet-panel duration-picker-panel">
+    <h3 class="sheet-title">Duration <button data-close aria-label="Close duration picker">✕</button></h3>
+    <p class="duration-picker-copy">Seconds</p>
+    <div class="duration-wheel" id="durationWheel" role="listbox" aria-label="Duration in seconds"></div>
+    <button class="sheet-cta" id="durationPickerDone" type="button">Done</button>
+  </div>
 </div>
 
 <div class="toast-zone" id="toastZone"></div>

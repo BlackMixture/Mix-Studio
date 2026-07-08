@@ -24,7 +24,6 @@ const state = {
   editLoras: [],             // {name, strength, on} - Edit tab (Klein/Qwen)
   editEngine: 'klein4',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
-  regionsEnabled: false,
   regions: [],
   activeRegionId: null,
   kreaMask: null,
@@ -88,6 +87,161 @@ async function api(path, opts) {
     throw new Error(data.error || `${path} failed (${res.status})`);
   }
   return data;
+}
+
+/* ------------------------------------------------------------------ */
+/* Prompt composer + image references                                  */
+/* ------------------------------------------------------------------ */
+
+let promptSelectionRange = null;
+
+function promptDraft() {
+  return $('#prompt').value || '';
+}
+
+function promptForGeneration() {
+  return promptDraft().replace(/@image-(\d+)/g, 'image $1');
+}
+
+function refForPromptToken(index) {
+  return state.refs[Number(index) - 1] || null;
+}
+
+function makePromptReferenceToken(index) {
+  const ref = refForPromptToken(index);
+  const token = document.createElement('span');
+  token.className = 'prompt-ref-token';
+  token.contentEditable = 'false';
+  token.dataset.refIndex = String(index);
+  token.title = `Reference image ${index}`;
+
+  if (ref && (ref.url || ref.displayUrl)) {
+    const img = document.createElement('img');
+    img.src = ref.displayUrl || ref.url;
+    img.alt = '';
+    token.appendChild(img);
+  }
+  const label = document.createElement('b');
+  label.textContent = `Image ${index}`;
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'prompt-ref-remove';
+  remove.dataset.removePromptRef = String(index);
+  remove.setAttribute('aria-label', `Remove image ${index} from prompt`);
+  remove.textContent = '×';
+  token.append(label, remove);
+  return token;
+}
+
+function renderPromptComposer() {
+  const composer = $('#promptComposer');
+  if (!composer) return;
+  const value = promptDraft();
+  const parts = value.split(/(@image-\d+)/g);
+  composer.replaceChildren();
+  parts.forEach((part) => {
+    const match = /^@image-(\d+)$/.exec(part);
+    if (match) composer.appendChild(makePromptReferenceToken(match[1]));
+    else if (part) composer.appendChild(document.createTextNode(part));
+  });
+}
+
+function composerNodeText(node, root) {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  const el = node;
+  if (el.classList.contains('prompt-ref-token')) return `@image-${el.dataset.refIndex}`;
+  if (el.tagName === 'BR') return '\n';
+  const text = [...el.childNodes].map((child) => composerNodeText(child, root)).join('');
+  return el !== root && /^(DIV|P)$/.test(el.tagName) ? `${text}\n` : text;
+}
+
+function promptDraftFromComposer() {
+  const composer = $('#promptComposer');
+  return [...composer.childNodes].map((node) => composerNodeText(node, composer)).join('').replace(/\n$/, '');
+}
+
+function setPromptDraft(value, { render = true } = {}) {
+  $('#prompt').value = value || '';
+  if (render) renderPromptComposer();
+}
+
+function syncPromptDraftFromComposer() {
+  setPromptDraft(promptDraftFromComposer(), { render: false });
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
+  updatePromptClear();
+  renderPromptSuggestions();
+  saveForm();
+}
+
+function capturePromptSelection() {
+  const composer = $('#promptComposer');
+  const selection = window.getSelection();
+  if (!composer || !selection || !selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (composer.contains(range.commonAncestorContainer)) promptSelectionRange = range.cloneRange();
+}
+
+function placePromptCaretAfter(node) {
+  const range = document.createRange();
+  range.setStartAfter(node);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function insertPromptReference(index) {
+  const composer = $('#promptComposer');
+  composer.focus();
+  const selection = window.getSelection();
+  const range = promptSelectionRange && composer.contains(promptSelectionRange.commonAncestorContainer)
+    ? promptSelectionRange : document.createRange();
+  if (!promptSelectionRange || !composer.contains(promptSelectionRange.commonAncestorContainer)) range.selectNodeContents(composer), range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  range.deleteContents();
+  const token = makePromptReferenceToken(index);
+  const space = document.createTextNode(' ');
+  range.insertNode(space);
+  range.insertNode(token);
+  placePromptCaretAfter(space);
+  promptSelectionRange = null;
+  syncPromptDraftFromComposer();
+}
+
+function renderPromptMentionPicker() {
+  const list = $('#promptMentionList');
+  list.replaceChildren();
+  const refs = state.refs.map((ref, index) => ({ ref, index })).filter(({ ref }) => ref);
+  if (!refs.length) {
+    list.innerHTML = '<div class="prompt-mention-empty">Add a reference image above first, then type <b>@</b> here to place it in the prompt.</div>';
+    return;
+  }
+  refs.forEach(({ ref, index }) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'prompt-mention-option';
+    const img = document.createElement('img');
+    img.src = ref.displayUrl || ref.url;
+    img.alt = '';
+    const copy = document.createElement('span');
+    copy.innerHTML = `<b>Image ${index + 1}</b><small>Insert reference into prompt</small>`;
+    const add = document.createElement('i');
+    add.textContent = '+';
+    option.append(img, copy, add);
+    option.addEventListener('click', () => {
+      $('#promptMentionSheet').classList.remove('show');
+      insertPromptReference(index + 1);
+    });
+    list.appendChild(option);
+  });
+}
+
+function openPromptMentionPicker() {
+  capturePromptSelection();
+  renderPromptMentionPicker();
+  $('#promptMentionSheet').classList.add('show');
 }
 
 /* ------------------------------------------------------------------ */
@@ -532,7 +686,6 @@ function saveForm() {
       editEngine: state.editEngine, vidScailMode: state.vidScailMode,
       cameraSettings: state.cameraSettings,
       createMode: state.createMode,
-      regionsEnabled: state.regionsEnabled,
       regions: state.regions,
       kreaBrush: state.kreaBrush,
       scailModeVersion: 2,
@@ -555,7 +708,6 @@ function loadForm() {
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
     state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : (f.editEngine === 'krea2' ? 'krea2' : 'klein4'));
     state.createMode = ['image', 'region', 'video'].includes(f.createMode) ? f.createMode : 'image';
-    state.regionsEnabled = !!f.regionsEnabled;
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     if (f.cameraSettings && CameraSettings) {
@@ -575,7 +727,7 @@ function loadForm() {
     state.customDims = !!f.customDims;
     if (f.width) state.width = f.width;
     if (f.height) state.height = f.height;
-    if (f.prompt) $('#prompt').value = f.prompt;
+    if (f.prompt) setPromptDraft(f.prompt);
   } catch { /* noop */ }
 }
 
@@ -606,17 +758,16 @@ function syncNavigation() {
 function setView(view, opts = {}) {
   const prev = state.view;
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
-    state.prompts[prev] = $('#prompt').value;
+    state.prompts[prev] = promptDraft();
   }
   if (view === 'video') state.createMode = 'video';
   if (view === 'create') {
     state.createMode = ['image', 'region'].includes(opts.createMode) ? opts.createMode : 'image';
-    state.regionsEnabled = state.createMode === 'region';
     if (state.createMode === 'region' && !state.regions.length) createRegion();
   }
   state.view = view;
   if (Object.prototype.hasOwnProperty.call(state.prompts, view)) {
-    $('#prompt').value = state.prompts[view] || '';
+    setPromptDraft(state.prompts[view] || '');
     updatePromptClear();
   }
   syncNavigation();
@@ -670,7 +821,7 @@ function updateVideoPanels() {
     $('#view-create').insertBefore(promptPanel, regionWorkspace);
   }
   $('#promptLabel').textContent = isRegion ? 'Global prompt' : 'Prompt';
-  $('#prompt').placeholder = isVideo
+  $('#promptComposer').dataset.placeholder = isVideo
     ? 'Describe the motion…'
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
@@ -681,7 +832,6 @@ function updateVideoPanels() {
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
   $('#createPromptTools').hidden = state.view !== 'create';
-  updateRegionsIndicator();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   $('#denoiseField').hidden = !kreaEdit;
   $('#kreaMaskTools').hidden = !kreaEdit;
@@ -768,23 +918,20 @@ function createRegion() {
     h: 0.46,
     lora: 'None',
     strength: 1,
-    enabled: true,
     refImageName: '',
     refUrl: '',
     color: REGION_COLORS[n % REGION_COLORS.length],
   };
   state.regions.push(region);
   state.activeRegionId = region.id;
-  state.regionsEnabled = true;
   return region;
 }
 
 function activeRegionsForRequest() {
-  if (!state.regionsEnabled) return [];
   if (state.view !== 'create') return []; // regions are a Create-tab feature
   if (state.createMode !== 'region') return [];
   return state.regions
-    .filter((region) => region && region.enabled !== false)
+    .filter(Boolean)
     .map((region) => {
       clampRegionBox(region);
       return {
@@ -798,7 +945,7 @@ function activeRegionsForRequest() {
         strength: normalizeRegionStrength(region.strength),
         refImageName: region.refImageName || '',
         color: region.color || '',
-        enabled: region.enabled !== false,
+        enabled: true,
       };
     })
     .filter((region) => region.description || (region.lora && region.lora !== 'None') || region.refImageName);
@@ -1013,13 +1160,6 @@ function renderRegionEditor() {
   stage.style.width = arW >= arH ? '100%' : 'min(100%, 430px)';
   stage.style.height = 'auto';
 
-  $('#regionEnabledChip').classList.toggle('active', state.regionsEnabled);
-  $('#regionEnabledChip').textContent = state.regionsEnabled ? 'Regions on' : 'Use regions';
-  const summary = $('#regionWorkspaceSummary');
-  if (summary) {
-    const count = state.regions.filter((region) => region && region.enabled !== false).length;
-    summary.textContent = state.regionsEnabled ? `${count} region${count === 1 ? '' : 's'}` : 'Regions off';
-  }
   stage.innerHTML = '';
   state.regions.forEach((region, index) => {
     clampRegionBox(region);
@@ -1032,7 +1172,7 @@ function renderRegionEditor() {
     box.style.height = `${region.h * 100}%`;
     box.style.borderColor = region.color || REGION_COLORS[index % REGION_COLORS.length];
     box.setAttribute('aria-label', `Region ${index + 1}. Open region settings.`);
-    box.innerHTML = `<span>${index + 1}</span><em class="region-box-settings" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm0 8h16v2H4v-2Zm14-9h2v4h-2V6Zm-8 8h2v4h-2v-4Z"/></svg></em><b>${escapeHtml(region.description || 'Region')}</b><i></i>`;
+    box.innerHTML = `<span class="region-box-number" aria-hidden="true">${index + 1}</span><em class="region-box-settings" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm0 8h16v2H4v-2Zm14-9h2v4h-2V6Zm-8 8h2v4h-2v-4Z"/></svg></em><b>${escapeHtml(region.description || 'Region')}</b><i></i>`;
     box.addEventListener('click', (event) => {
       if (Date.now() < regionClickBlockedUntil) return;
       selectRegion(region, !!event.target.closest('.region-box-settings'));
@@ -1262,21 +1402,7 @@ async function ensureKreaMaskUploaded() {
   return state.kreaMask.name;
 }
 
-/* The regions icon glows while regional prompting is active */
-function updateRegionsIndicator() {
-  const btn = $('#regionsPromptBtn');
-  if (!btn) return;
-  const active = state.regionsEnabled && (state.regions || []).some((r) => r && r.enabled !== false);
-  btn.classList.toggle('active', active);
-}
 $('#regionsPromptBtn').addEventListener('click', () => setCreateMode('region', true));
-$('#regionEnabledChip').addEventListener('click', () => {
-  state.regionsEnabled = !state.regionsEnabled;
-  if (state.regionsEnabled && !state.regions.length) createRegion();
-  renderRegionEditor();
-  updateRegionsIndicator();
-  saveForm();
-});
 $('#regionAddBtn').addEventListener('click', () => {
   const region = createRegion();
   selectRegion(region, true);
@@ -1726,21 +1852,31 @@ $('#enhanceBtn').addEventListener('click', () => {
   saveForm();
 });
 function updatePromptClear() {
-  $('#promptClear').hidden = !$('#prompt').value.trim();
+  $('#promptClear').hidden = !promptDraft().trim();
 }
-$('#prompt').addEventListener('input', () => {
-  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
-    state.prompts[state.view] = $('#prompt').value;
+$('#promptComposer').addEventListener('beforeinput', (event) => {
+  if (state.view === 'edit' && event.inputType === 'insertText' && event.data === '@') {
+    event.preventDefault();
+    openPromptMentionPicker();
   }
-  updatePromptClear();
-  renderPromptSuggestions();
-  saveForm();
+});
+$('#promptComposer').addEventListener('input', syncPromptDraftFromComposer);
+$('#promptComposer').addEventListener('keyup', capturePromptSelection);
+$('#promptComposer').addEventListener('mouseup', capturePromptSelection);
+$('#promptComposer').addEventListener('click', (event) => {
+  const remove = event.target.closest('[data-remove-prompt-ref]');
+  if (!remove) return;
+  const token = remove.closest('.prompt-ref-token');
+  token.remove();
+  syncPromptDraftFromComposer();
+  $('#promptComposer').focus();
 });
 $('#promptClear').addEventListener('click', () => {
-  $('#prompt').value = '';
+  setPromptDraft('');
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = '';
   updatePromptClear();
   renderPromptSuggestions();
-  $('#prompt').focus();
+  $('#promptComposer').focus();
   saveForm();
 });
 
@@ -1757,7 +1893,7 @@ $('#imagePromptBtn').addEventListener('click', () => {
       });
       state.prompts.create = res.prompt || '';
       if (state.view !== 'create') setView('create');
-      $('#prompt').value = state.prompts.create;
+      setPromptDraft(state.prompts.create);
       updatePromptClear();
       saveForm();
       toast('Prompt created from image');
@@ -1946,10 +2082,10 @@ function openCameraPicker() {
 
 function applyCameraPrompt() {
   if (!CameraSettings) return;
-  const prompt = $('#prompt');
-  prompt.value = CameraSettings.applyCameraPrompt(prompt.value, state.cameraSettings);
+  const value = CameraSettings.applyCameraPrompt(promptDraft(), state.cameraSettings);
+  setPromptDraft(value);
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
-    state.prompts[state.view] = prompt.value;
+    state.prompts[state.view] = value;
   }
   updatePromptClear();
   renderPromptSuggestions();
@@ -2081,7 +2217,7 @@ async function refreshLoraContext() {
 }
 
 function selectedPromptSuggestions() {
-  const current = ($('#prompt').value || '').toLowerCase();
+  const current = promptDraft().toLowerCase();
   const seen = new Set();
   const out = [];
   for (const lora of curLoras()) {
@@ -2098,17 +2234,17 @@ function selectedPromptSuggestions() {
 }
 
 function appendPromptSuggestion(phrase) {
-  const prompt = $('#prompt');
-  const current = prompt.value.trim();
+  const current = promptDraft().trim();
   const separator = current ? (/[,.!?;:]$/.test(current) ? ' ' : ', ') : '';
-  prompt.value = current + separator + phrase;
+  const value = current + separator + phrase;
+  setPromptDraft(value);
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
-    state.prompts[state.view] = prompt.value;
+    state.prompts[state.view] = value;
   }
   updatePromptClear();
   renderPromptSuggestions();
   saveForm();
-  prompt.focus();
+  $('#promptComposer').focus();
 }
 
 function renderPromptSuggestions() {
@@ -2412,18 +2548,88 @@ $('#vidTimingHeader').addEventListener('click', () => {
 });
 
 function updateVideoTuningSummary() {
-  const duration = Number($('#vidDur').value) || 1;
+  const durationInput = $('#vidDur');
+  const duration = Number(durationInput.value) || 1;
   const motion = Number($('#vidFree').value) || 0;
   const motionVisible = !$('#vidFreeField').hidden;
   const summary = motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`;
   $('#vidTimingSummary').textContent = summary;
   $('#vidControlsNote').textContent = summary;
   $('#vidDurVal').textContent = String(duration);
+  $('#vidDurPrev').textContent = String(Math.max(Number(durationInput.min) || 1, duration - (Number(durationInput.step) || 1)));
+  $('#vidDurNext').textContent = String(Math.min(Number(durationInput.max) || 15, duration + (Number(durationInput.step) || 1)));
   $('#vidFreeVal').textContent = String(motion);
   $('#vidDurScrub').setAttribute('aria-valuenow', String(duration));
   $('#vidDurScrub').setAttribute('aria-valuemax', $('#vidDur').max || '15');
   $('#vidFreeScrub').setAttribute('aria-valuenow', String(motion));
 }
+
+function renderDurationWheel() {
+  const input = $('#vidDur');
+  const wheel = $('#durationWheel');
+  const current = Number(input.value) || 1;
+  const min = Number(input.min) || 1;
+  const max = Number(input.max) || 15;
+  const step = Number(input.step) || 1;
+  wheel.replaceChildren();
+  for (let value = min; value <= max; value += step) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'duration-wheel-option' + (value === current ? ' active' : '');
+    option.dataset.duration = String(value);
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(value === current));
+    option.textContent = String(value);
+    option.addEventListener('click', () => {
+      setVideoScrubValue(input, value);
+      renderDurationWheel();
+      centerDurationWheel();
+    });
+    wheel.appendChild(option);
+  }
+}
+
+function centerDurationWheel() {
+  const active = $('#durationWheel .duration-wheel-option.active');
+  if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function syncDurationWheelFromScroll() {
+  const wheel = $('#durationWheel');
+  const options = $$('#durationWheel .duration-wheel-option');
+  if (!options.length) return;
+  const center = wheel.getBoundingClientRect().top + wheel.clientHeight / 2;
+  const nearest = options.reduce((best, option) => {
+    const rect = option.getBoundingClientRect();
+    const distance = Math.abs(rect.top + rect.height / 2 - center);
+    return !best || distance < best.distance ? { option, distance } : best;
+  }, null);
+  if (!nearest) return;
+  const value = Number(nearest.option.dataset.duration);
+  if (value !== Number($('#vidDur').value)) setVideoScrubValue($('#vidDur'), value);
+  options.forEach((option) => {
+    const active = option === nearest.option;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-selected', String(active));
+  });
+}
+
+let durationWheelFrame = 0;
+$('#durationWheel').addEventListener('scroll', () => {
+  if (durationWheelFrame) return;
+  durationWheelFrame = requestAnimationFrame(() => {
+    durationWheelFrame = 0;
+    syncDurationWheelFromScroll();
+  });
+}, { passive: true });
+
+function openDurationPicker() {
+  renderDurationWheel();
+  $('#durationPickerSheet').classList.add('show');
+  requestAnimationFrame(centerDurationWheel);
+}
+
+$('#durationPickerDone').addEventListener('click', () => $('#durationPickerSheet').classList.remove('show'));
 
 function setVideoScrubValue(input, value) {
   const min = Number(input.min);
@@ -2435,7 +2641,7 @@ function setVideoScrubValue(input, value) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function wireVideoScrubber(buttonId, inputId) {
+function wireVideoScrubber(buttonId, inputId, onTap) {
   const button = $('#' + buttonId);
   const input = $('#' + inputId);
   let drag = null;
@@ -2452,8 +2658,10 @@ function wireVideoScrubber(buttonId, inputId) {
     event.preventDefault();
   });
   const finish = () => {
+    const wasTap = drag && !drag.moved;
     drag = null;
     button.classList.remove('adjusting');
+    if (wasTap && onTap) onTap();
   };
   button.addEventListener('pointerup', finish);
   button.addEventListener('pointercancel', finish);
@@ -2471,9 +2679,12 @@ function wireVideoScrubber(buttonId, inputId) {
     event.preventDefault();
     setVideoScrubValue(input, next);
   });
+  button.addEventListener('click', (event) => {
+    if (event.detail === 0 && onTap) onTap();
+  });
 }
 
-wireVideoScrubber('vidDurScrub', 'vidDur');
+wireVideoScrubber('vidDurScrub', 'vidDur', openDurationPicker);
 wireVideoScrubber('vidFreeScrub', 'vidFree');
 
 function setAdvancedExpanded(open) {
@@ -2586,6 +2797,7 @@ function renderRefs() {
   $('#refCount').textContent = kreaEdit
     ? (n ? 'source image' : 'source image · required')
     : (n ? `${n}/3` : 'optional · up to 3');
+  renderPromptComposer();
 }
 
 function pickRef(idx) {
@@ -3243,10 +3455,14 @@ wireEngineRow('editEngineRow', (engine) => {
   renderLoras();
   saveForm();
 });
-$('#editComposite').addEventListener('click', () => $('#editComposite').classList.toggle('active'));
+$('#editComposite').addEventListener('click', () => {
+  const button = $('#editComposite');
+  const active = button.classList.toggle('active');
+  button.setAttribute('aria-pressed', String(active));
+});
 
 $('#generateBtn').addEventListener('click', async () => {
-  const prompt = $('#prompt').value.trim();
+  const prompt = promptForGeneration().trim();
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
   if (!prompt && !hasRegionPrompts) return toast('Type a prompt first', true);
 
@@ -4539,7 +4755,7 @@ async function reuseVideo(it, v) {
 
   // Prompt + toggles
   state.prompts.video = info.motionPrompt || '';
-  $('#prompt').value = state.prompts.video;
+  setPromptDraft(state.prompts.video);
   state.enhance = !!info.enhance;
   renderEnhance();
   $('#vid4k').classList.toggle('active', !!info.fourK);

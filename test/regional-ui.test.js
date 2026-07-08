@@ -23,6 +23,9 @@ test('create prompt tools expose an inline regional bounding-box editor', () => 
   assert.match(appJs, /function openRegionEditor/);
   assert.match(appJs, /function renderRegionEditor/);
   assert.match(appJs, /function uploadRegionReference/);
+  assert.doesNotMatch(indexHtml, /id="regionEnabledChip"/);
+  assert.doesNotMatch(indexHtml, /id="regionWorkspaceSummary"/);
+  assert.doesNotMatch(indexHtml, /Regional prompting[\s\S]*Frame each subject/);
 });
 
 test('Region mode moves the shared prompt below the stage as the global prompt', () => {
@@ -61,10 +64,11 @@ test('region LoRA uses the shared card language and selected region color', () =
   assert.match(styleCss, /\.region-lora-card \{[\s\S]*border-color: var\(--region-card-color\)/);
 });
 
-test('generate requests include enabled regions for create and Krea2 edit', () => {
-  assert.match(appJs, /regionsEnabled/);
+test('Region mode automatically submits its configured regions', () => {
+  assert.doesNotMatch(appJs, /regionsEnabled/);
   assert.match(appJs, /activeRegionsForRequest/);
   assert.match(appJs, /regions:\s*activeRegionsForRequest\(\)/);
+  assert.match(appJs, /enabled: true/);
   assert.match(appJs, /maskImageName/);
 });
 
@@ -89,4 +93,9 @@ test('regional editor is inline while the mask painter retains sheet styling', (
   assert.match(styleCss, /\.region-stage/);
   assert.match(styleCss, /\.region-box/);
   assert.match(styleCss, /\.krea-mask-canvas/);
+});
+
+test('each region box shows its ordinal in the compact canvas badge', () => {
+  assert.match(appJs, /class="region-box-number"[^>]*>\$\{index \+ 1\}/);
+  assert.match(styleCss, /\.region-box-number \{[\s\S]*?background: #05070b;[\s\S]*?color: #f8faff;/);
 });

@@ -26,8 +26,11 @@ test('Video model selection sits above the prompt and collapses after choosing',
   assert.match(html, /id="vidModelHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidModelBody"/);
   assert.match(html, /id="vidModelBody" aria-hidden="true" inert/);
   assert.match(html, /id="vidEngineSelected">LTX 2\.3</);
+  assert.match(html, /id="engineInfoBtn"[^>]*aria-label="Compare model capabilities"/);
+  assert.doesNotMatch(html, />Compare model capabilities<\/button>/);
   assert.match(css, /\.video-model-body[\s\S]*grid-template-rows: 0fr/);
   assert.match(css, /\.video-model-panel\.expanded \.video-model-body[\s\S]*grid-template-rows: 1fr/);
+  assert.match(css, /\.info-btn\.video-model-info \{[\s\S]*width: 34px/);
   assert.match(app, /function setVideoModelExpanded\(open\)/);
   assert.match(app, /setTimeout\(\(\) => setVideoModelExpanded\(false\), 120\)/);
 });
@@ -40,14 +43,23 @@ test('Secondary video controls remain behind an animated accessible disclosure',
   assert.match(app, /function setVideoOptionsExpanded\(open\)/);
 });
 
-test('Duration and motion use collapsible vertical scrubbers instead of range sliders', () => {
+test('Duration uses a discoverable clock-style scrubber with a larger tap-to-open wheel', () => {
   assert.match(html, /id="vidTimingHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidTimingBody"/);
   assert.match(html, /id="vidTimingBody" aria-hidden="true" inert/);
   assert.match(html, /id="vidDurScrub"[^>]*role="spinbutton"/);
+  assert.match(html, /id="vidDurPrev"/);
+  assert.match(html, /id="vidDurNext"/);
+  assert.match(html, /id="durationPickerSheet"/);
+  assert.match(html, /id="durationWheel"[^>]*role="listbox"/);
+  assert.match(html, /id="durationPickerDone"/);
   assert.match(html, /id="vidFreeScrub"[^>]*role="spinbutton"/);
   assert.doesNotMatch(html, /id="vid(?:Dur|Free)" type="range"/);
   assert.match(css, /\.video-number-scrubber \{[\s\S]*touch-action: none/);
-  assert.match(app, /function wireVideoScrubber\(buttonId, inputId\)/);
+  assert.match(css, /\.duration-compact-wheel \{/);
+  assert.match(css, /\.duration-wheel \{[\s\S]*scroll-snap-type: y mandatory/);
+  assert.match(app, /function wireVideoScrubber\(buttonId, inputId, onTap\)/);
+  assert.match(app, /function openDurationPicker\(\)/);
+  assert.match(app, /wireVideoScrubber\('vidDurScrub', 'vidDur', openDurationPicker\)/);
   assert.match(app, /drag\.y - event\.clientY/);
   assert.match(app, /event\.key === 'ArrowUp'/);
 });
