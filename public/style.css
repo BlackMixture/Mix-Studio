@@ -1178,7 +1178,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   background: rgba(0,0,0,0.35);
   opacity: 0.45;
   transition: opacity 140ms var(--ease), border-color 140ms var(--ease), box-shadow 140ms var(--ease);
-  touch-action: pan-y;
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
