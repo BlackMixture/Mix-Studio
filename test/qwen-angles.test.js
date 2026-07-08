@@ -34,6 +34,7 @@ test('Qwen Edit exposes a visual multi-angle picker without surfacing control pr
   assert.match(css, /\.qwen-prompt-text\.is-collapsed \{[\s\S]*grid-template-rows: 0fr/);
   assert.match(css, /\.qwen-angle-inline\.is-active \{[\s\S]*grid-template-rows: 1fr/);
   assert.match(css, /\.qwen-angle-mode-toggle/);
+  assert.match(css, /@media \(max-width: 420px\) \{[\s\S]*\.qwen-angle-options \{ grid-template-columns: 1fr; \}/);
   assert.match(css, /\.qwen-angle-card\.active/);
   assert.match(app, /const framingIcon = \(id\) =>/);
   assert.match(css, /\.qwen-framing-icon/);

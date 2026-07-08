@@ -14,6 +14,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { updateFromGit } = require('./lib/app-update');
+const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
 const {
   EDIT_FEATURES,
   VIDEO_FEATURES,
@@ -333,6 +334,7 @@ function pngDims(buf) {
 }
 if (!Array.isArray(db.history)) db.history = [];
 if (!Array.isArray(db.loraPresets)) db.loraPresets = [];
+if (!Array.isArray(db.userPreferences)) db.userPreferences = [];
 if (!Array.isArray(db.faces)) db.faces = [];
 
 /* ---------------------- Profiles (accounts) ------------------------ */
@@ -3076,6 +3078,7 @@ async function handleApi(req, res, url) {
     db.folders = db.folders.filter((f) => f.profileId !== target.id);
     db.history = db.history.filter((h) => h.profileId !== target.id);
     db.loraPresets = db.loraPresets.filter((p) => p.profileId !== target.id);
+    db.userPreferences = db.userPreferences.filter((p) => p.profileId !== target.id);
     for (const f of db.faces.filter((x) => x.profileId === target.id)) await toTrash(FACES, f.file);
     db.faces = db.faces.filter((f) => f.profileId !== target.id);
     if (target.avatar) await toTrash(AVATARS, target.avatar);
@@ -3895,10 +3898,33 @@ async function handleApi(req, res, url) {
     return json(res, 200, Object.assign({ unlocked, profile: publicProfile(req.profile, db) }, view));
   }
 
+  const ownPreferences = () => db.userPreferences.find((entry) => entry.profileId === req.profile.id) || null;
+  if (route === '/api/preferences' && req.method === 'GET') {
+    const prefs = ownPreferences();
+    return json(res, 200, {
+      defaults: normalizeGenerationDefaults(prefs && prefs.defaults),
+      contextOverrides: normalizeContextOverrides(prefs && prefs.contextOverrides),
+    });
+  }
+  if (route === '/api/preferences' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    let prefs = ownPreferences();
+    if (!prefs) {
+      prefs = { profileId: req.profile.id };
+      db.userPreferences.push(prefs);
+    }
+    if (body.defaults) prefs.defaults = normalizeGenerationDefaults(body.defaults);
+    if (body.contextOverrides) prefs.contextOverrides = normalizeContextOverrides(body.contextOverrides);
+    saveDb();
+    return json(res, 200, { defaults: normalizeGenerationDefaults(prefs.defaults), contextOverrides: normalizeContextOverrides(prefs.contextOverrides) });
+  }
+
   if (route === '/api/context') {
     const unlocked = isPrivateUnlocked(req);
     const view = galleryView(db, unlocked);
-    return json(res, 200, { loras: buildLoraContext(view.items.filter((it) => it.profileId === req.profile.id)) });
+    const learned = buildLoraContext(view.items.filter((it) => it.profileId === req.profile.id));
+    const prefs = ownPreferences();
+    return json(res, 200, { loras: mergeContextOverrides(learned, prefs && prefs.contextOverrides) });
   }
 
   const ownPresets = () => db.loraPresets.filter((pr) => pr.profileId === req.profile.id);

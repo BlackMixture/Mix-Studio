@@ -55,6 +55,13 @@ const state = {
   metaLoras: [],
   metaLorasInfo: {},
   loraContext: {},
+  contextOverrides: {},
+  userDefaults: {
+    create: { steps: 12, cfg: 1, batch: 1 },
+    edit: { steps: 4, cfg: 1, batch: 1, denoise: 0.4 },
+    video: { duration: 5, motionFreedom: 35 },
+    seed: { mode: 'random', value: 0 },
+  },
   cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
   showAllLoras: false,
   activeJobs: new Set(),
@@ -576,6 +583,7 @@ async function checkAuth() {
     } catch { state.profileIsOwner = false; }
     renderProfileChip();
     renderAppUpdateAccess();
+    await loadUserPreferences();
   } catch {
     renderAppUpdateAccess(); // 401 -> api() already opened the gate
   }
@@ -977,6 +985,7 @@ function setView(view, opts = {}) {
   $('#view-gallery').classList.toggle('active', isGallery);
   $('#genDock').style.display = isGallery ? 'none' : '';
   $('#refPanel').hidden = view !== 'edit';
+  if (prev !== view && !isGallery) applyGenerationDefaults();
   updateVideoPanels();
   renderEnhance();
   $('#genLbl').textContent = genLabel();
@@ -2663,10 +2672,131 @@ async function refreshLoraContext() {
     const data = await api('/api/context');
     state.loraContext = data.loras || {};
     renderLoras();
+    renderContextPreferences();
   } catch {
     state.loraContext = {};
     renderPromptSuggestions();
   }
+}
+
+function generationDefaultsFromControls() {
+  return {
+    create: { steps: Number($('#defaultCreateSteps').value), cfg: Number($('#defaultCreateCfg').value), batch: Number($('#defaultCreateBatch').value) },
+    edit: { steps: Number($('#defaultEditSteps').value), cfg: Number($('#defaultEditCfg').value), batch: Number($('#defaultEditBatch').value), denoise: Number($('#defaultEditDenoise').value) },
+    video: { duration: Number($('#defaultVideoDuration').value), motionFreedom: Number($('#defaultVideoMotion').value) },
+    seed: { mode: $('#defaultSeedMode .active')?.dataset.seedMode || 'random', value: Number($('#defaultSeedValue').value) || 0 },
+  };
+}
+
+function renderGenerationDefaults() {
+  const d = state.userDefaults;
+  $('#defaultCreateSteps').value = d.create.steps;
+  $('#defaultCreateCfg').value = d.create.cfg;
+  $('#defaultCreateBatch').value = d.create.batch;
+  $('#defaultEditSteps').value = d.edit.steps;
+  $('#defaultEditCfg').value = d.edit.cfg;
+  $('#defaultEditBatch').value = d.edit.batch;
+  $('#defaultEditDenoise').value = d.edit.denoise;
+  $('#defaultVideoDuration').value = d.video.duration;
+  $('#defaultVideoMotion').value = d.video.motionFreedom;
+  $('#defaultSeedValue').value = d.seed.value;
+  $$('#defaultSeedMode button').forEach((button) => button.classList.toggle('active', button.dataset.seedMode === d.seed.mode));
+  $('#defaultSeedValueField').hidden = d.seed.mode !== 'fixed';
+}
+
+function applyGenerationDefaults() {
+  const d = state.userDefaults;
+  const image = state.view === 'edit' ? d.edit : d.create;
+  $('#stepsInput').value = image.steps;
+  $('#cfgInput').value = image.cfg;
+  $('#batchInput').value = image.batch;
+  $('#denoiseInput').value = d.edit.denoise;
+  $('#denoiseVal').textContent = Number(d.edit.denoise).toFixed(2);
+  $('#seedInput').value = d.seed.mode === 'fixed' ? String(d.seed.value) : '';
+  $('#vidDur').value = d.video.duration;
+  $('#vidFree').value = d.video.motionFreedom;
+  updateVideoTuningSummary();
+}
+
+async function loadUserPreferences() {
+  try {
+    const prefs = await api('/api/preferences');
+    state.userDefaults = prefs.defaults || state.userDefaults;
+    state.contextOverrides = prefs.contextOverrides || {};
+    renderGenerationDefaults();
+    applyGenerationDefaults();
+  } catch { /* profile gate handles auth */ }
+}
+
+async function saveUserPreferences() {
+  state.userDefaults = generationDefaultsFromControls();
+  const prefs = await api('/api/preferences', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaults: state.userDefaults, contextOverrides: state.contextOverrides }),
+  });
+  state.userDefaults = prefs.defaults;
+  state.contextOverrides = prefs.contextOverrides;
+  renderGenerationDefaults();
+  applyGenerationDefaults();
+  await refreshLoraContext();
+}
+
+function renderContextPreferences() {
+  const list = $('#contextPreferenceList');
+  if (!list) return;
+  list.replaceChildren();
+  const entries = Object.entries(state.loraContext).sort(([a], [b]) => prettyLora(a).localeCompare(prettyLora(b)));
+  if (!entries.length) {
+    list.innerHTML = '<div class="queue-empty">No learned LoRA suggestions yet. They appear after a LoRA is used repeatedly with similar prompt phrases.</div>';
+    return;
+  }
+  entries.forEach(([name, profile]) => {
+    const override = state.contextOverrides[name] || {
+      defaultStrength: profile.learnedDefaultStrength ?? profile.defaultStrength,
+      suggestion: profile.learnedSuggestion ?? profile.suggestion,
+    };
+    const card = document.createElement('div');
+    card.className = 'context-preference-card';
+    const title = document.createElement('div');
+    title.className = 'context-preference-title';
+    title.innerHTML = `<strong>${escapeHtml(prettyLora(name))}</strong><small>${profile.uses || 0} uses</small>`;
+    const strength = document.createElement('label');
+    strength.innerHTML = '<span>Default strength</span>';
+    const strengthInput = document.createElement('input');
+    strengthInput.type = 'number'; strengthInput.min = '0'; strengthInput.max = '2'; strengthInput.step = '0.05';
+    strengthInput.value = override.defaultStrength ?? profile.defaultStrength ?? 1;
+    strengthInput.addEventListener('input', () => {
+      state.contextOverrides[name] = { ...state.contextOverrides[name], defaultStrength: Number(strengthInput.value) };
+    });
+    strength.appendChild(strengthInput);
+    const phrase = document.createElement('label');
+    phrase.innerHTML = '<span>Prompt suggestion</span>';
+    const phraseInput = document.createElement('input');
+    phraseInput.type = 'text'; phraseInput.placeholder = 'No saved phrase';
+    phraseInput.value = override.suggestion ?? profile.suggestion ?? '';
+    phraseInput.addEventListener('input', () => {
+      state.contextOverrides[name] = { ...state.contextOverrides[name], suggestion: phraseInput.value };
+    });
+    phrase.appendChild(phraseInput);
+    const enabled = document.createElement('button');
+    enabled.type = 'button'; enabled.className = 'context-preference-toggle';
+    const syncEnabled = () => {
+      const disabled = state.contextOverrides[name]?.disabled === true;
+      enabled.classList.toggle('off', disabled);
+      enabled.setAttribute('aria-pressed', String(!disabled));
+      enabled.textContent = disabled ? 'Suggestion off' : 'Suggestion on';
+    };
+    enabled.addEventListener('click', () => {
+      state.contextOverrides[name] = { ...state.contextOverrides[name], disabled: !(state.contextOverrides[name]?.disabled === true) };
+      syncEnabled();
+    });
+    syncEnabled();
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.className = 'context-preference-reset'; reset.textContent = 'Reset learned values';
+    reset.addEventListener('click', () => { delete state.contextOverrides[name]; renderContextPreferences(); });
+    card.append(title, strength, phrase, enabled, reset);
+    list.appendChild(card);
+  });
 }
 
 function selectedPromptSuggestions() {
@@ -6318,7 +6448,7 @@ document.addEventListener('pointerdown', (event) => {
 setSvAttnValue('sdpa');
 
 let settingsActiveTab = 'general';
-const settingsTabNames = ['general', 'image', 'video', 'system'];
+const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions', 'system'];
 
 function setSettingsTab(name, focus = false) {
   if (!settingsTabNames.includes(name)) name = 'general';
@@ -6353,8 +6483,15 @@ $$('[data-settings-tab]').forEach((tab) => {
   });
 });
 
+$$('#defaultSeedMode button').forEach((button) => button.addEventListener('click', () => {
+  $$('#defaultSeedMode button').forEach((item) => item.classList.toggle('active', item === button));
+  $('#defaultSeedValueField').hidden = button.dataset.seedMode !== 'fixed';
+}));
+
 $('#settingsBtn').addEventListener('click', async () => {
   closeAppDrawer();
+  await loadUserPreferences();
+  await refreshLoraContext();
   try {
     const s = await api('/api/settings');
     $('#setComfy').value = s.comfyUrl;
@@ -6457,6 +6594,7 @@ $('#settingsSave').addEventListener('click', async () => {
             scailSam: $('#setScailSam').value,
       }),
     });
+    await saveUserPreferences();
     toast('Settings saved');
     await loadMeta(true);
     renderHealth();
