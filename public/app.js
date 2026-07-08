@@ -2309,9 +2309,9 @@ function renderLoras() {
   renderPromptSuggestions();
 }
 
-/* Card interactions: tap toggles, hold (300ms) + slide sideways adjusts
-   strength. Vertical gestures remain native page scroll; the ⋯ menu handles
-   thumbnail + remove. */
+/* Card interactions: tap toggles, while a horizontal drag adjusts strength
+   immediately. Vertical gestures remain native page scroll; the ⋯ menu
+   handles thumbnail + remove. */
 function wireLoraCard(card, l, idx, arr) {
   const menuBtn = card.querySelector('.lc-menu');
   menuBtn.addEventListener('click', (e) => {
@@ -2337,6 +2337,14 @@ function wireLoraCard(card, l, idx, arr) {
   let startStrength = l.strength;
   const strengthEl = card.querySelector('.lc-strength');
   const adjustEl = card.querySelector('.lc-adjust');
+  const beginAdjusting = () => {
+    if (adjusting) return;
+    clearTimeout(holdTimer);
+    adjusting = true;
+    card.classList.add('adjusting');
+    adjustEl.textContent = startStrength.toFixed(2);
+    if (navigator.vibrate) navigator.vibrate(10);
+  };
 
   card.addEventListener('pointerdown', (e) => {
     if (e.target === menuBtn) return;
@@ -2345,21 +2353,24 @@ function wireLoraCard(card, l, idx, arr) {
     startX = e.clientX;
     startY = e.clientY;
     startStrength = Number(l.strength) || 0;
-    holdTimer = setTimeout(() => {
-      adjusting = true;
-      card.classList.add('adjusting');
-      adjustEl.textContent = startStrength.toFixed(2);
-      if (navigator.vibrate) navigator.vibrate(10);
-    }, 300);
+    holdTimer = setTimeout(beginAdjusting, 300);
     try { card.setPointerCapture(e.pointerId); } catch { /* noop */ }
   });
   card.addEventListener('pointermove', (e) => {
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
     if (adjusting) {
-      const dx = e.clientX - startX; // right = stronger
+      e.preventDefault();
       l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dx / 75) * 20) / 20));
       adjustEl.textContent = l.strength.toFixed(2);
       strengthEl.textContent = l.strength.toFixed(2);
-    } else if (Math.hypot(e.clientX - startX, e.clientY - startY) > 12) {
+    } else if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      beginAdjusting();
+      l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dx / 75) * 20) / 20));
+      adjustEl.textContent = l.strength.toFixed(2);
+      strengthEl.textContent = l.strength.toFixed(2);
+      e.preventDefault();
+    } else if (Math.abs(dy) > 12) {
       moved = true;
       clearTimeout(holdTimer); // scrolling, not holding
     }
