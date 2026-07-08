@@ -22,6 +22,10 @@ const state = {
   editAspect: '1:1',
   editWidth: 1024,
   editHeight: 1024,
+  editUpscaleEnabled: false,
+  editUpscaleResolution: 2160,
+  editUpscaleProfile: 'sharp',
+  editUpscaleNoise: 'low',
   qwenAngles: [],
   qwenAngleElevation: 'eye-level',
   qwenAngleDistance: 'medium shot',
@@ -726,6 +730,10 @@ function saveForm() {
       customDims: state.customDims, width: state.width, height: state.height,
       editAspectOverride: state.editAspectOverride, editAspect: state.editAspect,
       editWidth: state.editWidth, editHeight: state.editHeight,
+      editUpscaleEnabled: state.editUpscaleEnabled,
+      editUpscaleResolution: state.editUpscaleResolution,
+      editUpscaleProfile: state.editUpscaleProfile,
+      editUpscaleNoise: state.editUpscaleNoise,
       qwenAngles: state.qwenAngles,
       qwenAngleElevation: state.qwenAngleElevation,
       qwenAngleDistance: state.qwenAngleDistance,
@@ -743,6 +751,10 @@ function loadForm() {
     state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
     state.editWidth = round32(Number(f.editWidth) || 1024);
     state.editHeight = round32(Number(f.editHeight) || 1024);
+    state.editUpscaleEnabled = f.editUpscaleEnabled === true;
+    state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
+    state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
+    state.editUpscaleNoise = ['off', 'low', 'medium'].includes(f.editUpscaleNoise) ? f.editUpscaleNoise : 'low';
     state.qwenAngles = Array.isArray(f.qwenAngles) ? [...new Set(f.qwenAngles.filter((id) => QWEN_ANGLE_IDS.has(id)))] : [];
     state.qwenAngleElevation = QWEN_ANGLE_ELEVATIONS.some((option) => option.id === f.qwenAngleElevation)
       ? f.qwenAngleElevation : 'eye-level';
@@ -887,6 +899,7 @@ function updateVideoPanels() {
   $('#editComposite').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
   $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit;
   renderEditAspects();
+  renderEditUpscale();
   renderKreaMaskTools();
   $('#aspectRow').closest('.panel').hidden = (isVideo && !!state.vidRef) || state.view === 'edit';
   $('#seedInput').closest('.panel').hidden = isVideo;
@@ -1898,6 +1911,11 @@ function selectedQwenAngleViews() {
     .map((view) => ({ view: view.id, elevation: state.qwenAngleElevation, distance: state.qwenAngleDistance }));
 }
 
+function createAngleGroupId() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  return `angles-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function renderQwenAngleTool() {
   const button = $('#qwenAnglesBtn');
   const count = state.qwenAngles.length;
@@ -2342,6 +2360,41 @@ function matchedEditOutputDimensions(ref) {
     h: round32(Math.sqrt(1e6 / ratio)),
   };
 }
+
+function renderEditUpscale() {
+  const toggle = $('#editUpscaleToggle');
+  const body = $('#editUpscaleBody');
+  const enabled = state.editUpscaleEnabled === true;
+  toggle.setAttribute('aria-pressed', String(enabled));
+  $('#editUpscaleSummary').textContent = enabled ? `SeedVR2 · ${state.editUpscaleResolution === 3840 ? '4K' : `${state.editUpscaleResolution}p`}` : 'Off';
+  body.classList.toggle('expanded', enabled);
+  body.inert = !enabled;
+  body.setAttribute('aria-hidden', String(!enabled));
+  $$('#editUpscaleResolution .chip').forEach((button) => button.classList.toggle('active', Number(button.dataset.resolution) === state.editUpscaleResolution));
+  $$('#editUpscaleProfile .chip').forEach((button) => button.classList.toggle('active', button.dataset.profile === state.editUpscaleProfile));
+  $$('#editUpscaleNoise .chip').forEach((button) => button.classList.toggle('active', button.dataset.noise === state.editUpscaleNoise));
+}
+
+$('#editUpscaleToggle').addEventListener('click', () => {
+  state.editUpscaleEnabled = !state.editUpscaleEnabled;
+  renderEditUpscale();
+  saveForm();
+});
+$$('#editUpscaleResolution .chip').forEach((button) => button.addEventListener('click', () => {
+  state.editUpscaleResolution = Number(button.dataset.resolution) || 2160;
+  renderEditUpscale();
+  saveForm();
+}));
+$$('#editUpscaleProfile .chip').forEach((button) => button.addEventListener('click', () => {
+  state.editUpscaleProfile = button.dataset.profile === 'balanced' ? 'balanced' : 'sharp';
+  renderEditUpscale();
+  saveForm();
+}));
+$$('#editUpscaleNoise .chip').forEach((button) => button.addEventListener('click', () => {
+  state.editUpscaleNoise = ['off', 'low', 'medium'].includes(button.dataset.noise) ? button.dataset.noise : 'low';
+  renderEditUpscale();
+  saveForm();
+}));
 $('#editAspectToggle').addEventListener('click', () => {
   const open = $('#editAspectToggle').getAttribute('aria-expanded') !== 'true';
   $('#editAspectToggle').setAttribute('aria-expanded', String(open));
@@ -3905,6 +3958,12 @@ $('#generateBtn').addEventListener('click', async () => {
     width: mode === 'edit' && state.editAspectOverride ? state.editWidth : state.width,
     height: mode === 'edit' && state.editAspectOverride ? state.editHeight : state.height,
     editAspectOverride: mode === 'edit' && state.editAspectOverride,
+    postUpscale: mode === 'edit' && state.editUpscaleEnabled ? {
+      enabled: true,
+      resolution: state.editUpscaleResolution,
+      profile: state.editUpscaleProfile,
+      noise: state.editUpscaleNoise,
+    } : undefined,
     steps: Number($('#stepsInput').value) || 12,
     cfg: Number($('#cfgInput').value) || 1,
     batch: Number($('#batchInput').value) || 1,
@@ -3920,9 +3979,11 @@ $('#generateBtn').addEventListener('click', async () => {
     folder: state.activeFolder !== 'all' ? state.activeFolder : null,
   };
   try {
+    const angleGroupId = qwenAngleExports.length > 1 ? createAngleGroupId() : null;
     const requests = qwenAngleExports.length
       ? qwenAngleExports.map((angle, index) => Object.assign({}, body, {
         qwenAngle: angle,
+        angleGroupId,
         seed: seedRaw === '' ? undefined : Number(seedRaw) + index,
       }))
       : [body];
@@ -4477,19 +4538,56 @@ function visibleItems() {
   return arr;
 }
 
+/* Multi-angle Qwen exports are generated as separate jobs so each view has
+   its own reliable result and settings, but they present as one gallery set. */
+function galleryEntries(items) {
+  const entries = [];
+  const byAngleGroup = new Map();
+  items.forEach((item) => {
+    const groupId = item.angleGroupId;
+    if (!groupId) {
+      entries.push({ item, items: [item] });
+      return;
+    }
+    let entry = byAngleGroup.get(groupId);
+    if (!entry) {
+      entry = { item, items: [item], angleGroupId: groupId };
+      byAngleGroup.set(groupId, entry);
+      entries.push(entry);
+    } else {
+      entry.items.push(item);
+    }
+  });
+  return entries;
+}
+
+function angleGroupItems(item) {
+  if (!item || !item.angleGroupId) return [];
+  return state.items
+    .filter((candidate) => candidate.angleGroupId === item.angleGroupId)
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+function angleViewLabel(item) {
+  const id = item && item.angleView && item.angleView.view;
+  return QWEN_ANGLE_VIEWS.find((view) => view.id === id)?.label || 'Angle';
+}
+
 function renderGrid() {
   const grid = $('#galleryGrid');
   grid.innerHTML = '';
   const items = visibleItems();
-  $('#galleryEmpty').classList.toggle('hidden', items.length > 0);
+  const entries = galleryEntries(items);
+  $('#galleryEmpty').classList.toggle('hidden', entries.length > 0);
   const query = state.libraryQuery.trim();
   $('#galleryEmpty').textContent = query ? `No matches for “${query}”` : 'Nothing here yet';
   $('#gallerySearchStatus').textContent = query
-    ? `${items.length} matching generation${items.length === 1 ? '' : 's'}`
+    ? `${entries.length} matching generation${entries.length === 1 ? '' : 's'}`
     : '';
-  for (const it of items) {
+  for (const entry of entries) {
+    const it = entry.item;
     const card = document.createElement('button');
-    card.className = 'card';
+    card.className = 'card' + (entry.angleGroupId ? ' angle-group' : '');
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = '/images/' + it.file;
@@ -4511,7 +4609,15 @@ function renderGrid() {
       b.textContent = 'Edit';
       card.appendChild(b);
     }
-    if (state.upscaling.has(it.id) || state.animating.has(it.id)) {
+    if (entry.angleGroupId) {
+      const badge = document.createElement('span');
+      badge.className = 'badge angle-group-badge';
+      badge.title = `${entry.items.length} camera angles`;
+      badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2 8 4.5v9L12 20l-8-4.5v-9L12 2Zm0 2.1L6.1 7.4 12 10.7l5.9-3.3L12 4.1Zm-6 5v5.1l5 2.8v-5.2L6 9.2Zm7 7.9 5-2.8V9.2l-5 2.5v5.4Z"/></svg><b>'
+        + entry.items.length + '</b>';
+      card.appendChild(badge);
+    }
+    if (state.upscaling.has(it.id) || state.animating.has(it.id) || it.upscalePending) {
       const ov = document.createElement('div');
       ov.className = 'busy-overlay';
       ov.innerHTML = `<span><span class="spin"></span> ${state.animating.has(it.id) ? 'Animating…' : 'Upscaling…'}</span>`;
@@ -4673,6 +4779,8 @@ function openLightbox(id, mediaSel) {
     try { history.pushState({ lb: 1 }, ''); } catch { /* noop */ }
   }
   state.currentItem = it;
+  const angleItems = angleGroupItems(it);
+  const angleIndex = angleItems.findIndex((item) => item.id === it.id);
   const videos = Array.isArray(it.videos) ? it.videos : [];
   let sel = mediaSel;
   if (sel !== 'image' && !videos.some((v) => v.id === sel)) sel = 'image';
@@ -4694,12 +4802,23 @@ function openLightbox(id, mediaSel) {
   }
   $('#lbTitle').textContent = selVideo
     ? `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`
-    : (it.upscaled ? 'Upscaled' : (it.mode === 'edit' ? 'Edit' : (it.mode === 'video' ? 'Video Poster' : 'Generation')));
+    : (angleItems.length > 1
+      ? `${angleViewLabel(it)} · Angle ${angleIndex + 1} of ${angleItems.length}`
+      : (it.upscaled ? 'Upscaled' : (it.mode === 'edit' ? 'Edit' : (it.mode === 'video' ? 'Video Poster' : 'Generation'))));
   $('#lbCompareBtn').hidden = !(!selVideo && it.upscaled);
 
   // media switcher (only when the image has videos)
   const mrow = $('#lbMedia');
   mrow.innerHTML = '';
+  if (angleItems.length > 1) {
+    angleItems.forEach((angleItem, index) => {
+      const button = document.createElement('button');
+      button.className = 'chip angle-group-chip' + (angleItem.id === it.id ? ' active' : '');
+      button.textContent = `${index + 1}. ${angleViewLabel(angleItem)}`;
+      button.addEventListener('click', () => openLightbox(angleItem.id, 'image'));
+      mrow.appendChild(button);
+    });
+  }
   if (videos.length) {
     const mkChip = (label, key) => {
       const b = document.createElement('button');
@@ -4726,6 +4845,7 @@ function openLightbox(id, mediaSel) {
     }
   } else {
     meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
+    if (angleItems.length > 1) meta.push(`<b>Camera angle set:</b> ${angleViewLabel(it)} · ${angleItems.length} views`);
     if (it.mode === 'edit' && it.editEngine) meta.push(`<b>Editor:</b> ${editEngineLabel(it.editEngine)}`);
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
@@ -5104,7 +5224,9 @@ $('#lbCompareBtn').addEventListener('click', () => {
     const dy = t.clientY - y0;
     if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.7 || Date.now() - t0 > 600) return;
     if (!state.currentItem) return;
-    const items = visibleItems();
+    const items = state.currentItem && state.currentItem.angleGroupId
+      ? angleGroupItems(state.currentItem)
+      : visibleItems();
     const idx = items.findIndex((i) => i.id === state.currentItem.id);
     if (idx === -1) return;
     const next = dx < 0 ? items[idx + 1] : items[idx - 1];
@@ -5239,6 +5361,10 @@ async function reuseItem(it, useEnhanced) {
     state.editWidth = it.width || 1024;
     state.editHeight = it.height || 1024;
     state.editAspect = restoredEditAspect(state.editWidth, state.editHeight);
+    state.editUpscaleEnabled = !!it.postUpscale;
+    state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(it.postUpscale?.resolution)) ? Number(it.postUpscale.resolution) : 2160;
+    state.editUpscaleProfile = it.postUpscale?.profile === 'balanced' ? 'balanced' : 'sharp';
+    state.editUpscaleNoise = ['off', 'low', 'medium'].includes(it.postUpscale?.noise) ? it.postUpscale.noise : 'low';
     const angle = it.angleView && QWEN_ANGLE_IDS.has(it.angleView.view) ? it.angleView : null;
     state.qwenAngles = angle ? [angle.view] : [];
     state.qwenAngleElevation = angle && QWEN_ANGLE_ELEVATIONS.some((option) => option.id === angle.elevation)
@@ -5273,6 +5399,7 @@ async function reuseItem(it, useEnhanced) {
   renderAspects();
   renderDims();
   renderLoras();
+  renderEditUpscale();
   renderQwenAngleTool();
   saveForm();
 

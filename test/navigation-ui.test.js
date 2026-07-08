@@ -123,3 +123,15 @@ test('Use settings rehydrates every saved edit input instead of asking for manua
   assert.match(server, /maskImageName: job\.params\.mode === 'edit'/);
   assert.match(server, /batch: job\.params\.batch/);
 });
+
+test('every edit engine can queue an optional SeedVR2 finish pass', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="editUpscaleToggle"[^>]*aria-pressed="false"/);
+  assert.match(html, /id="editUpscaleResolution"/);
+  assert.match(app, /function renderEditUpscale\(\)/);
+  assert.match(app, /postUpscale: mode === 'edit' && state\.editUpscaleEnabled/);
+  assert.match(app, /state\.editUpscaleEnabled = !!it\.postUpscale/);
+  assert.match(server, /function normalizePostEditUpscale\(value\)/);
+  assert.match(server, /async function queuePostEditUpscale\(item, options, profileId\)/);
+  assert.match(server, /await queuePostEditUpscale\(item, job\.params\.postUpscale, job\.profileId\)/);
+});

@@ -31,6 +31,18 @@ test('Each selected Qwen angle queues its own edit request', () => {
   assert.match(app, /qwenAngle: angle/);
   assert.match(app, /for \(const request of requests\)/);
   assert.match(app, /camera-angle exports queued/);
+  assert.match(app, /const angleGroupId = qwenAngleExports\.length > 1 \? createAngleGroupId\(\) : null/);
+  assert.match(app, /angleGroupId,/);
+});
+
+test('Multi-angle exports appear as one gallery set with an angle icon', () => {
+  assert.match(app, /function galleryEntries\(items\)/);
+  assert.match(app, /function angleGroupItems\(item\)/);
+  assert.match(app, /angle-group-badge/);
+  assert.match(app, /Angle \$\{angleIndex \+ 1\} of \$\{angleItems\.length\}/);
+  assert.match(css, /\.card \.badge\.angle-group-badge/);
+  assert.match(server, /angleGroupId: job\.params\.angleGroupId/);
+  assert.match(server, /p\.angleGroupId = p\.qwenAngle/);
 });
 
 test('Qwen angle jobs use the installed multi-angle LoRA and the documented control-token format server-side', () => {

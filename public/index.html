@@ -131,6 +131,20 @@
         </div>
       </div>
     </div>
+    <div class="edit-upscale-control" id="editUpscaleControl">
+      <button class="edit-upscale-toggle" id="editUpscaleToggle" type="button" aria-pressed="false" aria-controls="editUpscaleBody">
+        <span class="edit-upscale-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 5h12v2H6V5Zm2 4h8v2H8V9Zm2 4h4v2h-2v4H8v-4H6v-2h2v-2Z"/></svg>SeedVR2 finish</span>
+        <strong id="editUpscaleSummary">Off</strong>
+        <span class="edit-upscale-switch" aria-hidden="true"></span>
+      </button>
+      <div class="edit-upscale-body" id="editUpscaleBody" aria-hidden="true" inert>
+        <div class="edit-upscale-body-inner">
+          <div class="edit-upscale-row"><span>Target</span><div class="chip-row" id="editUpscaleResolution"><button class="chip" type="button" data-resolution="1440">1440p</button><button class="chip active" type="button" data-resolution="2160">2160p</button><button class="chip" type="button" data-resolution="3840">4K</button></div></div>
+          <div class="edit-upscale-row"><span>Detail</span><div class="chip-row" id="editUpscaleProfile"><button class="chip active" type="button" data-profile="sharp">Sharp</button><button class="chip" type="button" data-profile="balanced">Balanced</button></div></div>
+          <div class="edit-upscale-row"><span>Texture</span><div class="chip-row" id="editUpscaleNoise"><button class="chip" type="button" data-noise="off">Off</button><button class="chip active" type="button" data-noise="low">Low</button><button class="chip" type="button" data-noise="medium">Medium</button></div></div>
+        </div>
+      </div>
+    </div>
     <div class="ref-row" id="refRow"></div>
     <div class="krea-mask-tools" id="kreaMaskTools" hidden>
       <button class="chip" id="kreaMaskBtn" type="button">Paint mask</button>

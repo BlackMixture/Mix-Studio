@@ -818,6 +818,13 @@ function failJob(pid, message) {
   const durationMs = job ? jobDurationMs(job) : undefined;
   jobs.delete(pid);
   if (job && job.kind === 'enhance') { job.reject(new Error(message)); return; }
+  if (job && job.kind === 'upscale' && job.itemId) {
+    const item = db.items.find((entry) => entry.id === job.itemId);
+    if (item && item.upscalePending) {
+      item.upscalePending = false;
+      saveDb();
+    }
+  }
   pushHistory({ kind: 'error', profileId: job ? job.profileId : undefined, itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
   broadcast('jobError', { jobId: pid, kind: job ? job.kind : 'gen', itemId: job ? job.itemId : null, message, durationMs });
 }
@@ -935,6 +942,7 @@ async function completeJob(pid) {
     const fname = `${item.id}_up.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
     item.upscaled = fname;
+    item.upscalePending = false;
     item.upscaleInfo = job.upscaleInfo;
     item.upscaleDurationMs = durationMs;
     saveDb();
@@ -969,9 +977,11 @@ async function completeJob(pid) {
       mode: job.params.mode,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       angleView: job.params.qwenAngle || undefined,
+      angleGroupId: job.params.angleGroupId || undefined,
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
+      postUpscale: job.params.mode === 'edit' ? (job.params.postUpscale || undefined) : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
       profileId: job.profileId,
@@ -999,6 +1009,16 @@ async function completeJob(pid) {
     created.push(item);
   }
   saveDb();
+  if (job.params.mode === 'edit' && job.params.postUpscale) {
+    for (const item of created) {
+      try {
+        await queuePostEditUpscale(item, job.params.postUpscale, job.profileId);
+      } catch (error) {
+        console.error('[KreaStudio] Could not queue post-edit SeedVR2 upscale:', error.message);
+      }
+    }
+    saveDb();
+  }
   for (const it of created) {
     pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', profileId: job.profileId, itemId: it.id, durationMs, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
   }
@@ -1543,6 +1563,28 @@ async function buildUpscale(imageName, opts) {
   };
   graph.save = { class_type: 'SaveImage', inputs: { images: ['upscale', 0], filename_prefix: 'KreaStudio/upscale' } };
   return filterInputs(graph);
+}
+
+function normalizePostEditUpscale(value) {
+  if (!value || value.enabled !== true) return undefined;
+  return {
+    engine: 'seedvr2',
+    resolution: clampInt(value.resolution, 512, 8192, 2160),
+    profile: value.profile === 'balanced' ? 'balanced' : 'sharp',
+    noise: ['off', 'low', 'medium'].includes(value.noise) ? value.noise : 'low',
+    preScale: 1,
+  };
+}
+
+async function queuePostEditUpscale(item, options, profileId) {
+  const buf = await fsp.readFile(path.join(IMAGES, item.file));
+  const comfyName = await uploadToComfy(buf, `ks_edit_finish_${item.id}.png`);
+  const graph = await buildUpscale(comfyName, options);
+  const pid = await queuePrompt(graph);
+  item.upscalePending = true;
+  trackJob(pid, { kind: 'upscale', profileId, itemId: item.id, graph, upscaleInfo: options });
+  ensureWs();
+  return pid;
 }
 
 function ultimateSdUpscaleReadinessError(info) {
@@ -3082,6 +3124,8 @@ async function handleApi(req, res, url) {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
     p.qwenAngle = normalizeQwenAngle(p.qwenAngle);
+    p.angleGroupId = p.qwenAngle && /^[a-z0-9_-]{8,96}$/i.test(String(p.angleGroupId || ''))
+      ? String(p.angleGroupId) : undefined;
     p.regions = Array.isArray(p.regions) ? p.regions : [];
     // Region descriptions can carry the whole composition — no general
     // prompt needed in that case (the builder supplies a neutral background).
@@ -3093,6 +3137,7 @@ async function handleApi(req, res, url) {
     p.cfg = clampNum(p.cfg, 0, 30, 1);
     p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : 1);
     p.editAspectOverride = p.editAspectOverride === true;
+    p.postUpscale = p.mode === 'edit' ? normalizePostEditUpscale(p.postUpscale) : undefined;
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
       ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
     p.regions = Array.isArray(p.regions) ? p.regions : [];
