@@ -22,6 +22,9 @@ const state = {
   editAspect: '1:1',
   editWidth: 1024,
   editHeight: 1024,
+  qwenAngles: [],
+  qwenAngleElevation: 'eye-level',
+  qwenAngleDistance: 'medium shot',
   prompts: { create: '', edit: '', video: '' }, // per-tab prompt text
   loras: [],                 // {name, strength, on} - Create tab (Krea 2)
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
@@ -51,6 +54,7 @@ const state = {
   upscaling: new Set(),      // item ids
   animating: new Set(),      // item ids
   animateTarget: null,
+  animateRouteTarget: null,
   currentItem: null,
   upscaleTarget: null,
   moveTarget: null,
@@ -69,6 +73,29 @@ const ASPECTS = [
   { label: '4:3', ar: 4 / 3 },
   { label: '16:9', ar: 16 / 9 },
   { label: '21:9', ar: 21 / 9 },
+];
+
+const QWEN_ANGLE_VIEWS = [
+  { id: 'front-left', label: 'Front left' },
+  { id: 'front', label: 'Front' },
+  { id: 'front-right', label: 'Front right' },
+  { id: 'left', label: 'Left' },
+  { id: 'right', label: 'Right' },
+  { id: 'back-left', label: 'Back left' },
+  { id: 'back', label: 'Back' },
+  { id: 'back-right', label: 'Back right' },
+];
+const QWEN_ANGLE_IDS = new Set(QWEN_ANGLE_VIEWS.map((view) => view.id));
+const QWEN_ANGLE_ELEVATIONS = [
+  { id: 'low-angle', label: 'Low' },
+  { id: 'eye-level', label: 'Eye level' },
+  { id: 'elevated', label: 'Elevated' },
+  { id: 'high-angle', label: 'High' },
+];
+const QWEN_ANGLE_DISTANCES = [
+  { id: 'close-up', label: 'Close' },
+  { id: 'medium shot', label: 'Medium' },
+  { id: 'wide shot', label: 'Wide' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -699,6 +726,9 @@ function saveForm() {
       customDims: state.customDims, width: state.width, height: state.height,
       editAspectOverride: state.editAspectOverride, editAspect: state.editAspect,
       editWidth: state.editWidth, editHeight: state.editHeight,
+      qwenAngles: state.qwenAngles,
+      qwenAngleElevation: state.qwenAngleElevation,
+      qwenAngleDistance: state.qwenAngleDistance,
     }));
   } catch { /* noop */ }
 }
@@ -713,6 +743,11 @@ function loadForm() {
     state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
     state.editWidth = round32(Number(f.editWidth) || 1024);
     state.editHeight = round32(Number(f.editHeight) || 1024);
+    state.qwenAngles = Array.isArray(f.qwenAngles) ? [...new Set(f.qwenAngles.filter((id) => QWEN_ANGLE_IDS.has(id)))] : [];
+    state.qwenAngleElevation = QWEN_ANGLE_ELEVATIONS.some((option) => option.id === f.qwenAngleElevation)
+      ? f.qwenAngleElevation : 'eye-level';
+    state.qwenAngleDistance = QWEN_ANGLE_DISTANCES.some((option) => option.id === f.qwenAngleDistance)
+      ? f.qwenAngleDistance : 'medium shot';
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
@@ -840,6 +875,8 @@ function updateVideoPanels() {
   $('#vidModelPanel').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
+  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen');
+  renderQwenAngleTool();
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
@@ -847,7 +884,7 @@ function updateVideoPanels() {
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#denoiseField').hidden = !kreaEdit;
   $('#kreaMaskTools').hidden = !kreaEdit;
-  $('#editCompositeWrap').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
+  $('#editComposite').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
   $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit;
   renderEditAspects();
   renderKreaMaskTools();
@@ -1855,6 +1892,96 @@ $('#engineInfoBtn').addEventListener('click', (e) => {
 /* Prompt + enhance                                                    */
 /* ------------------------------------------------------------------ */
 
+function selectedQwenAngleViews() {
+  return QWEN_ANGLE_VIEWS
+    .filter((view) => state.qwenAngles.includes(view.id))
+    .map((view) => ({ view: view.id, elevation: state.qwenAngleElevation, distance: state.qwenAngleDistance }));
+}
+
+function renderQwenAngleTool() {
+  const button = $('#qwenAnglesBtn');
+  const count = state.qwenAngles.length;
+  button.classList.toggle('active', count > 0);
+  button.setAttribute('aria-label', count ? `Camera angles, ${count} selected` : 'Camera angles');
+  $('#qwenAngleCount').hidden = count === 0;
+  $('#qwenAngleCount').textContent = String(count);
+}
+
+function renderQwenAnglePicker() {
+  const grid = $('#qwenAngleGrid');
+  grid.replaceChildren();
+  const slots = [
+    'front-left', 'front', 'front-right',
+    'left', 'subject', 'right',
+    'back-left', 'back', 'back-right',
+  ];
+  slots.forEach((id) => {
+    if (id === 'subject') {
+      const center = document.createElement('div');
+      center.className = 'qwen-angle-center';
+      center.setAttribute('aria-hidden', 'true');
+      grid.appendChild(center);
+      return;
+    }
+    const view = QWEN_ANGLE_VIEWS.find((option) => option.id === id);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.angleView = id;
+    button.className = 'qwen-angle-card' + (state.qwenAngles.includes(id) ? ' active' : '');
+    button.textContent = view.label;
+    button.setAttribute('aria-pressed', String(state.qwenAngles.includes(id)));
+    button.addEventListener('click', () => {
+      state.qwenAngles = state.qwenAngles.includes(id)
+        ? state.qwenAngles.filter((selected) => selected !== id)
+        : [...state.qwenAngles, id];
+      renderQwenAnglePicker();
+      renderQwenAngleTool();
+      saveForm();
+    });
+    grid.appendChild(button);
+  });
+  const framingIcon = (id) => {
+    const rect = id === 'close-up' ? 'x="5" y="5" width="14" height="14"'
+      : (id === 'wide shot' ? 'x="2.5" y="8" width="19" height="8"' : 'x="7" y="7" width="10" height="10"');
+    return `<svg class="qwen-framing-icon" viewBox="0 0 24 24" aria-hidden="true"><rect ${rect} rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
+  };
+  const renderChoiceRow = (row, options, value, setValue) => {
+    row.replaceChildren();
+    options.forEach((option) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = option.id === value ? 'active' : '';
+      if (row.id === 'qwenDistanceRow') button.innerHTML = `${framingIcon(option.id)}<span>${option.label}</span>`;
+      else button.textContent = option.label;
+      button.setAttribute('aria-pressed', String(option.id === value));
+      button.addEventListener('click', () => {
+        setValue(option.id);
+        renderQwenAnglePicker();
+        saveForm();
+      });
+      row.appendChild(button);
+    });
+  };
+  renderChoiceRow($('#qwenElevationRow'), QWEN_ANGLE_ELEVATIONS, state.qwenAngleElevation, (value) => { state.qwenAngleElevation = value; });
+  renderChoiceRow($('#qwenDistanceRow'), QWEN_ANGLE_DISTANCES, state.qwenAngleDistance, (value) => { state.qwenAngleDistance = value; });
+  const selected = state.qwenAngles.length;
+  const elevation = QWEN_ANGLE_ELEVATIONS.find((option) => option.id === state.qwenAngleElevation)?.label.toLowerCase();
+  const distance = QWEN_ANGLE_DISTANCES.find((option) => option.id === state.qwenAngleDistance)?.label.toLowerCase();
+  $('#qwenAngleSummary').textContent = selected
+    ? `${selected} angle export${selected === 1 ? '' : 's'} · ${elevation} · ${distance}`
+    : 'No views selected';
+  $('#qwenAnglesDone').textContent = selected ? `Use ${selected} angle${selected === 1 ? '' : 's'}` : 'Done';
+}
+
+function openQwenAngles() {
+  renderQwenAnglePicker();
+  $('#qwenAnglesSheet').classList.add('show');
+}
+function closeQwenAngles() { $('#qwenAnglesSheet').classList.remove('show'); }
+$('#qwenAnglesBtn').addEventListener('click', openQwenAngles);
+$('#qwenAnglesClose').addEventListener('click', closeQwenAngles);
+$('#qwenAnglesDone').addEventListener('click', closeQwenAngles);
+
 function renderEnhance() {
   const btn = $('#enhanceBtn');
   btn.classList.toggle('on', state.enhance);
@@ -2159,9 +2286,10 @@ function renderEditAspects() {
   const control = $('#editAspectControl');
   if (!control) return;
   const override = state.editAspectOverride;
+  const matched = matchedEditOutputDimensions(state.refs[0]);
   $('#editAspectSummary').textContent = override
     ? `${state.editAspect} · ${state.editWidth} × ${state.editHeight}`
-    : 'Match first image';
+    : (matched ? `Match image · ${matched.w} × ${matched.h}` : 'Match first image');
   $('#editWInput').value = state.editWidth;
   $('#editHInput').value = state.editHeight;
   const row = $('#editAspectRow');
@@ -2169,9 +2297,13 @@ function renderEditAspects() {
   const source = document.createElement('button');
   source.type = 'button';
   source.className = 'aspect-chip edit-aspect-source' + (!override ? ' active' : '');
-  source.innerHTML = '<span class="ar-box edit-source-box"></span>Match image';
+  source.innerHTML = `<span class="ar-box edit-source-box"></span>Match image${matched ? `<small>${matched.w} × ${matched.h}</small>` : ''}`;
   source.addEventListener('click', () => {
     state.editAspectOverride = false;
+    if (matched) {
+      state.editWidth = matched.w;
+      state.editHeight = matched.h;
+    }
     renderEditAspects();
     saveForm();
   });
@@ -2198,6 +2330,17 @@ function renderEditAspects() {
   const body = $('#editAspectBody');
   $('#editAspectToggle').classList.toggle('custom', override);
   body.classList.toggle('expanded', $('#editAspectToggle').getAttribute('aria-expanded') === 'true');
+}
+
+function matchedEditOutputDimensions(ref) {
+  const width = Number(ref?.w);
+  const height = Number(ref?.h);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) return null;
+  const ratio = width / height;
+  return {
+    w: round32(Math.sqrt(1e6 * ratio)),
+    h: round32(Math.sqrt(1e6 / ratio)),
+  };
 }
 $('#editAspectToggle').addEventListener('click', () => {
   const open = $('#editAspectToggle').getAttribute('aria-expanded') !== 'true';
@@ -2844,6 +2987,7 @@ function renderRefs() {
   state.refs.slice(0, maxSlots).forEach((ref, idx) => {
     const slot = document.createElement('div');
     slot.className = 'ref-slot' + (ref ? ' filled' : '');
+    slot.dataset.refIndex = String(idx);
     const num = document.createElement('span');
     num.className = 'ref-num';
     num.textContent = String(idx + 1);
@@ -2861,17 +3005,63 @@ function renderRefs() {
         renderRefs();
       });
       slot.append(img, x);
+      wireRefReorder(slot, idx, maxSlots);
     } else {
       slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');
       slot.addEventListener('click', () => pickRef(idx));
     }
     row.appendChild(slot);
   });
-  const n = state.refs.slice(0, maxSlots).filter(Boolean).length;
-  $('#refCount').textContent = kreaEdit
-    ? (n ? 'source image' : 'source image · required')
-    : (n ? `${n}/3` : 'optional · up to 3');
+  if (state.view === 'edit') renderEditAspects();
   renderPromptComposer();
+}
+
+let refReorder = null;
+function clearRefReorder() {
+  if (!refReorder) return;
+  clearTimeout(refReorder.timer);
+  $$('.ref-slot.ref-drop-target, .ref-slot.ref-reordering')
+    .forEach((el) => el.classList.remove('ref-drop-target', 'ref-reordering'));
+  refReorder = null;
+}
+
+function wireRefReorder(slot, index, maxSlots) {
+  if (maxSlots < 2) return;
+  slot.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.ref-x')) return;
+    clearRefReorder();
+    const drag = { pointerId: event.pointerId, from: index, active: false, target: index, timer: null };
+    refReorder = drag;
+    try { slot.setPointerCapture(event.pointerId); } catch {}
+    drag.timer = setTimeout(() => {
+      if (refReorder !== drag) return;
+      drag.active = true;
+      slot.classList.add('ref-reordering');
+    }, 280);
+  });
+  slot.addEventListener('pointermove', (event) => {
+    const drag = refReorder;
+    if (!drag || drag.pointerId !== event.pointerId || !drag.active) return;
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.ref-slot');
+    const targetIndex = Number(target?.dataset.refIndex);
+    if (!Number.isInteger(targetIndex) || targetIndex === drag.target) return;
+    $$('.ref-slot.ref-drop-target').forEach((el) => el.classList.remove('ref-drop-target'));
+    drag.target = targetIndex;
+    target?.classList.add('ref-drop-target');
+  });
+  const finish = (event) => {
+    const drag = refReorder;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.active && drag.target !== drag.from) {
+      [state.refs[drag.from], state.refs[drag.target]] = [state.refs[drag.target], state.refs[drag.from]];
+      renderRefs();
+      saveForm();
+    }
+    clearRefReorder();
+  };
+  slot.addEventListener('pointerup', finish);
+  slot.addEventListener('pointercancel', clearRefReorder);
 }
 
 function pickRef(idx) {
@@ -2889,7 +3079,14 @@ function pickRef(idx) {
         headers: { 'x-filename': encodeURIComponent(file.name || 'ref.png') },
         body: buf,
       });
-      state.refs[idx] = { name: res.name, url: URL.createObjectURL(file) };
+      const url = URL.createObjectURL(file);
+      const dims = await new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve({ w: image.naturalWidth, h: image.naturalHeight });
+        image.onerror = () => resolve({ w: 0, h: 0 });
+        image.src = url;
+      });
+      state.refs[idx] = { name: res.name, url, w: dims.w, h: dims.h };
       if (idx === 0) clearKreaMask(true);
       renderRefs();
     } catch (e) { toast(e.message, true); }
@@ -2897,7 +3094,7 @@ function pickRef(idx) {
   input.click();
 }
 
-async function sendToVideoTab(item) {
+async function sendToVideoTab(item, role = 'start') {
   try {
     const blob = await (await fetch('/images/' + item.file)).blob();
     const buf = await blob.arrayBuffer();
@@ -2906,14 +3103,41 @@ async function sendToVideoTab(item) {
       headers: { 'x-filename': encodeURIComponent(item.file) },
       body: buf,
     });
-    state.vidRef = { name: res.name, url: '/images/' + item.file, w: item.width || 1024, h: item.height || 1024, srcItemId: item.id };
+    const frame = { name: res.name, url: '/images/' + item.file, w: item.width || 1024, h: item.height || 1024, srcItemId: item.id };
+    if (role === 'end') state.vidEnd = frame;
+    else state.vidRef = frame;
+    closeAnimateRouteSheet();
     closeLightbox();
     setView('video');
     renderVidAttach();
+    if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
     updateVideoPanels();
-    toast('Image loaded in the Video tab — pick engine, LoRAs & settings');
+    toast(role === 'end'
+      ? 'Image set as the end frame — choose the start frame and video settings'
+      : 'Image set as the start frame — choose video settings');
   } catch (e) { toast(e.message, true); }
 }
+
+function openAnimateRouteSheet(item) {
+  state.animateRouteTarget = item;
+  $('#animateRouteSheet').classList.add('show');
+}
+function closeAnimateRouteSheet() {
+  $('#animateRouteSheet').classList.remove('show');
+  state.animateRouteTarget = null;
+}
+$('#animateRouteClose').addEventListener('click', closeAnimateRouteSheet);
+$('#animateRouteSheet').addEventListener('click', (event) => {
+  if (event.target === $('#animateRouteSheet')) closeAnimateRouteSheet();
+});
+$('#animateRouteStart').addEventListener('click', () => {
+  const item = state.animateRouteTarget;
+  if (item) sendToVideoTab(item, 'start');
+});
+$('#animateRouteEnd').addEventListener('click', () => {
+  const item = state.animateRouteTarget;
+  if (item) sendToVideoTab(item, 'end');
+});
 
 /* Send a generated video to the Video tab as the SCAIL 2 motion input */
 async function sendVideoAsDrive(it, v) {
@@ -2960,7 +3184,10 @@ async function useAsRef(item) {
       body: buf,
     });
     const slot = state.refs.findIndex((r) => !r);
-    state.refs[slot === -1 ? 0 : slot] = { name: res.name, url: '/images/' + item.file, srcItemId: item.id };
+    state.refs[slot === -1 ? 0 : slot] = {
+      name: res.name, url: '/images/' + item.file, srcItemId: item.id,
+      w: item.width || 0, h: item.height || 0,
+    };
     renderRefs();
     closeLightbox();
     setView('edit');
@@ -3080,7 +3307,9 @@ function renderVidFace() {
   // and hide the end-frame chip while a face is attached (not supported).
   $('#vidFaceChip').hidden = !ltx || has || !!state.vidRef;
   $('#vidFaceThumb').hidden = !ltx || !has;
-  $('#vidEndChip').hidden = faceMode || ltxEdit;
+  // The end-frame renderer owns the card/preview swap. Do not re-show the
+  // empty input card after swapping while an end frame is already attached.
+  $('#vidEndChip').hidden = faceMode || ltxEdit || !!state.vidEnd;
   if (has) {
     $('#vidFaceImg').src = state.vidFace.url;
     $('#vidFaceLabel').textContent = state.vidFace.label
@@ -3588,10 +3817,15 @@ wireEngineRow('editEngineRow', (engine) => {
   renderLoras();
   saveForm();
 });
+$('#editComposite').addEventListener('click', () => {
+  const button = $('#editComposite');
+  button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+});
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
-  if (!prompt && !hasRegionPrompts) return toast('Type a prompt first', true);
+  const qwenAngleExports = state.view === 'edit' && state.editEngine === 'qwen' ? selectedQwenAngleViews() : [];
+  if (!prompt && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
 
   if (state.view === 'video') {
     const ltxEdit = state.vidEngine === 'ltx-edit';
@@ -3665,7 +3899,7 @@ $('#generateBtn').addEventListener('click', async () => {
   const body = {
     mode,
     editEngine: mode === 'edit' ? state.editEngine : undefined,
-    composite: mode === 'edit' ? $('#editComposite').checked : undefined,
+    composite: mode === 'edit' ? $('#editComposite').getAttribute('aria-pressed') === 'true' : undefined,
     prompt,
     enhance: state.enhance && mode === 't2i',
     width: mode === 'edit' && state.editAspectOverride ? state.editWidth : state.width,
@@ -3686,14 +3920,26 @@ $('#generateBtn').addEventListener('click', async () => {
     folder: state.activeFolder !== 'all' ? state.activeFolder : null,
   };
   try {
-    setGenerating(true, 'Queued…');
-    const res = await api('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    state.activeJobs.add(res.jobId);
+    const requests = qwenAngleExports.length
+      ? qwenAngleExports.map((angle, index) => Object.assign({}, body, {
+        qwenAngle: angle,
+        seed: seedRaw === '' ? undefined : Number(seedRaw) + index,
+      }))
+      : [body];
+    setGenerating(true, requests.length > 1 ? `Queueing ${requests.length} angles…` : 'Queued…');
+    const jobIds = [];
+    for (const request of requests) {
+      const res = await api('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      jobIds.push(res.jobId);
+      state.activeJobs.add(res.jobId);
+    }
     $('#genLbl').textContent = genLabel();
+    queueRefreshSoon();
+    if (jobIds.length > 1) toast(`${jobIds.length} camera-angle exports queued`);
   } catch (e) {
     setGenerating(false);
     toast(e.message, true);
@@ -4523,7 +4769,7 @@ function openLightbox(id, mediaSel) {
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
   } else {
-    mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateSheet(it, selVideo));
+    mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateRouteSheet(it));
   }
   // Edits: hold to flash the original source image
   if (!selVideo && it.mode === 'edit' && it.sourceFile) {
@@ -4867,7 +5113,104 @@ $('#lbCompareBtn').addEventListener('click', () => {
   }, { passive: true });
 })();
 
-function reuseItem(it, useEnhanced) {
+function restoredLoraList(loras) {
+  return (Array.isArray(loras) ? loras : [])
+    .filter((lora) => lora && lora.name)
+    .map((lora) => ({ name: lora.name, strength: Number(lora.strength) || 1, on: true }));
+}
+
+function restoredEditEngine(engine) {
+  return ['qwen', 'klein9', 'krea2', 'krea2ref'].includes(engine) ? engine : 'klein4';
+}
+
+function restoredEditAspect(width, height) {
+  const ratio = Number(width) / Number(height);
+  const match = ASPECTS.find((aspect) => Math.abs(aspect.ar - ratio) < 0.002);
+  return match ? match.label : 'custom';
+}
+
+function imageDimensions(url) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ w: image.naturalWidth || 0, h: image.naturalHeight || 0 });
+    image.onerror = () => resolve({ w: 0, h: 0 });
+    image.src = url;
+  });
+}
+
+/* Rehydrate an edit input directly from ComfyUI. Older gallery items may
+   have lost their first input, so the source copy saved alongside an edit is
+   uploaded back into ComfyUI as a durable fallback. */
+async function restoreEditReference(name, item, index) {
+  let blob = null;
+  let inputName = name;
+  try {
+    const response = await fetch('/api/input?name=' + encodeURIComponent(name));
+    if (!response.ok) throw new Error('missing input');
+    blob = await response.blob();
+  } catch (error) {
+    if (index !== 0 || !item.sourceFile) throw error;
+    const response = await fetch('/images/' + encodeURIComponent(item.sourceFile));
+    if (!response.ok) throw new Error('missing saved source');
+    blob = await response.blob();
+    const upload = await api('/api/upload', {
+      method: 'POST',
+      headers: { 'x-filename': encodeURIComponent(item.sourceFile) },
+      body: await blob.arrayBuffer(),
+    });
+    inputName = upload.name;
+  }
+  const url = URL.createObjectURL(blob);
+  const dims = await imageDimensions(url);
+  return {
+    name: inputName,
+    url,
+    w: dims.w || item.width || 0,
+    h: dims.h || item.height || 0,
+    srcItemId: index === 0 ? item.sourceItemId || item.id : undefined,
+  };
+}
+
+async function restoreEditReferences(item) {
+  const names = Array.isArray(item.refImages) ? item.refImages.filter(Boolean).slice(0, 3) : [];
+  const refs = [null, null, null];
+  const missing = [];
+  for (let index = 0; index < names.length; index += 1) {
+    try {
+      refs[index] = await restoreEditReference(names[index], item, index);
+    } catch {
+      missing.push(`reference image ${index + 1}`);
+    }
+  }
+  // Very early edits did not retain refImages, but do have a source copy.
+  if (!refs[0] && item.sourceFile) {
+    try {
+      refs[0] = await restoreEditReference('', item, 0);
+    } catch {
+      missing.push('reference image 1');
+    }
+  }
+  state.refs = refs;
+  return [...new Set(missing)];
+}
+
+async function restoreKreaMask(item) {
+  clearKreaMask(true);
+  if (!item.maskImageName || state.editEngine !== 'krea2') return false;
+  try {
+    const response = await fetch('/api/input?name=' + encodeURIComponent(item.maskImageName));
+    if (!response.ok) throw new Error('missing mask');
+    const url = URL.createObjectURL(await response.blob());
+    state.kreaMask = { name: item.maskImageName, url };
+    state.kreaMaskPreview = url;
+    state.kreaMaskDirty = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reuseItem(it, useEnhanced) {
   // Enhanced generations: ask whether to reuse the enhanced text directly
   // (skips re-running the LLM) or the original prompt with enhance on.
   if (useEnhanced === undefined && it.enhance && it.refinedPrompt) {
@@ -4876,39 +5219,69 @@ function reuseItem(it, useEnhanced) {
     return;
   }
   const targetView = it.mode === 'edit' ? 'edit' : 'create';
+  const restoringEdit = targetView === 'edit';
+  const restoredRegions = Array.isArray(it.regions) ? it.regions.map((region) => Object.assign({}, region, {
+    refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
+  })) : [];
+
   state.prompts[targetView] = useEnhanced ? (it.refinedPrompt || it.prompt || '') : (it.prompt || '');
   state.enhance = useEnhanced ? false : !!it.enhance;
-  renderEnhance();
   state.customDims = true;
   state.width = it.width || 1024;
   state.height = it.height || 1024;
-  const restoredLoras = (it.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) || 1, on: true }));
-  if (targetView === 'edit') {
-    state.editLoras = restoredLoras;
-    state.editEngine = it.editEngine === 'qwen' ? 'qwen' : (it.editEngine === 'klein9' ? 'klein9' : (it.editEngine === 'krea2' ? 'krea2' : 'klein4'));
+  state.loras = restoringEdit ? state.loras : restoredLoraList(it.loras);
+  state.regions = restoringEdit ? state.regions : restoredRegions;
+  state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
+  if (restoringEdit) {
+    state.editLoras = restoredLoraList(it.loras);
+    state.editEngine = restoredEditEngine(it.editEngine);
+    state.editAspectOverride = it.editAspectOverride === true;
+    state.editWidth = it.width || 1024;
+    state.editHeight = it.height || 1024;
+    state.editAspect = restoredEditAspect(state.editWidth, state.editHeight);
+    const angle = it.angleView && QWEN_ANGLE_IDS.has(it.angleView.view) ? it.angleView : null;
+    state.qwenAngles = angle ? [angle.view] : [];
+    state.qwenAngleElevation = angle && QWEN_ANGLE_ELEVATIONS.some((option) => option.id === angle.elevation)
+      ? angle.elevation : 'eye-level';
+    state.qwenAngleDistance = angle && QWEN_ANGLE_DISTANCES.some((option) => option.id === angle.distance)
+      ? angle.distance : 'medium shot';
     markEngineRow('editEngineRow', state.editEngine);
-  } else {
-    state.loras = restoredLoras;
   }
+
   $('#seedInput').value = it.seed !== undefined && it.seed !== null ? String(it.seed) : '';
-  if (it.steps) $('#stepsInput').value = it.steps;
+  if (it.steps !== undefined && it.steps !== null) $('#stepsInput').value = it.steps;
   if (it.cfg !== undefined && it.cfg !== null) $('#cfgInput').value = it.cfg;
-  if (it.mode === 'edit') {
+  if (it.batch !== undefined && it.batch !== null) $('#batchInput').value = it.batch;
+  if (restoringEdit) {
     $('#denoiseInput').value = it.denoise != null ? it.denoise : 0.4;
     $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
+    $('#editComposite').setAttribute('aria-pressed', String(it.composite === true));
   }
+
+  closeLightbox();
+  setView(restoringEdit ? 'edit' : 'create', restoringEdit ? {} : { createMode: restoredRegions.length ? 'region' : 'image' });
+  let missing = [];
+  if (restoringEdit) {
+    toast('Restoring settings and reference images…');
+    missing = await restoreEditReferences(it);
+    if (it.maskImageName && !(await restoreKreaMask(it))) missing.push('inpaint mask');
+    renderRefs();
+  } else if (restoredRegions.length) {
+    renderRegionEditor();
+  }
+  renderEnhance();
   renderAspects();
   renderDims();
-  saveForm();
-  closeLightbox();
-  setView(it.mode === 'edit' ? 'edit' : 'create');
   renderLoras();
-  if (it.mode === 'edit' && it.refImages && it.refImages.length) {
-    toast('Settings loaded — re-add the reference image(s)');
+  renderQwenAngleTool();
+  saveForm();
+
+  if (missing.length) {
+    toast(`Settings loaded — couldn't restore: ${[...new Set(missing)].join(', ')} (re-add manually)`);
   } else if (useEnhanced) {
     toast('Enhanced prompt loaded — ✨ enhance turned off');
   } else {
-    toast('Settings loaded from this generation');
+    toast('Settings, inputs, prompt, and LoRAs loaded');
   }
 }
 
@@ -5453,6 +5826,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setQeUnet').value = s.qwenEditUnet || '';
     $('#setQeClip').value = s.qwenEditClip || '';
     $('#setQeLora').value = s.qwenEditLora || '';
+    $('#setQeAnglesLora').value = s.qwenEditAnglesLora || '';
     $('#setDit').value = s.seedvr2Dit;
     $('#setSvVae').value = s.seedvr2Vae;
     setSvAttnValue(s.seedvr2Attention || 'sdpa');
@@ -5508,6 +5882,7 @@ $('#settingsSave').addEventListener('click', async () => {
         qwenEditUnet: $('#setQeUnet').value,
         qwenEditClip: $('#setQeClip').value,
         qwenEditLora: $('#setQeLora').value,
+        qwenEditAnglesLora: $('#setQeAnglesLora').value,
         seedvr2Dit: $('#setDit').value,
         seedvr2Vae: $('#setSvVae').value,
         seedvr2Attention: $('#setSvAttn').value,

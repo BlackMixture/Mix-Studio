@@ -133,6 +133,7 @@ const DEFAULT_SETTINGS = {
   qwenEditUnet: 'qwen_image_edit_2511_bf16.safetensors',
   qwenEditClip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
   qwenEditLora: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+  qwenEditAnglesLora: 'qwen_image_edit_2511_multiple-angles-lora.safetensors',
   ltxCkpt: 'ltx-2.3-22b-dev-fp8.safetensors',
   ltxDistilledLora: 'ltx-2.3-22b-distilled-lora-384.safetensors',
   ltxEditLora: 'edit_anything_v1.1_r256.safetensors',
@@ -183,6 +184,32 @@ function normalizeSettings(s) {
 }
 
 let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
+
+const QWEN_ANGLE_AZIMUTHS = {
+  front: 'front view',
+  'front-right': 'front-right quarter view',
+  right: 'right side view',
+  'back-right': 'back-right quarter view',
+  back: 'back view',
+  'back-left': 'back-left quarter view',
+  left: 'left side view',
+  'front-left': 'front-left quarter view',
+};
+const QWEN_ANGLE_ELEVATIONS = new Set(['low-angle', 'eye-level', 'elevated', 'high-angle']);
+const QWEN_ANGLE_DISTANCES = new Set(['close-up', 'medium shot', 'wide shot']);
+
+function normalizeQwenAngle(value) {
+  if (!value || typeof value !== 'object') return null;
+  const view = String(value.view || '');
+  const elevation = String(value.elevation || 'eye-level');
+  const distance = String(value.distance || 'medium shot');
+  if (!QWEN_ANGLE_AZIMUTHS[view] || !QWEN_ANGLE_ELEVATIONS.has(elevation) || !QWEN_ANGLE_DISTANCES.has(distance)) return null;
+  return { view, elevation, distance };
+}
+
+function qwenAnglePrompt(angle) {
+  return `<sks> ${QWEN_ANGLE_AZIMUTHS[angle.view]} ${angle.elevation} shot ${angle.distance}`;
+}
 
 function seedVr2ModelDirs() {
   const roots = [
@@ -941,6 +968,10 @@ async function completeJob(pid) {
       file: fname,
       mode: job.params.mode,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
+      angleView: job.params.qwenAngle || undefined,
+      editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
+      composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
+      maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
       profileId: job.profileId,
@@ -955,6 +986,7 @@ async function completeJob(pid) {
       steps: job.params.steps,
       cfg: job.params.cfg,
       denoise: job.params.denoise,
+      batch: job.params.batch,
       loras: (job.params.loras || []).filter((l) => l.on && l.name),
       refImages: job.refImageNames || [],
       folder: job.params.folder || null,
@@ -1301,13 +1333,21 @@ async function buildEditQwen(p, refNames) {
     class_type: 'LoraLoaderModelOnly',
     inputs: { model: ['unet', 0], lora_name: settings.qwenEditLora, strength_model: 1 },
   };
-  const qModel = chainModelLoras(graph, ['lightning', 0], p.loras, 'qlora');
+  let qwenBaseModel = ['lightning', 0];
+  if (p.qwenAngle) {
+    graph.angle_lora = {
+      class_type: 'LoraLoaderModelOnly',
+      inputs: { model: qwenBaseModel, lora_name: settings.qwenEditAnglesLora, strength_model: 0.9 },
+    };
+    qwenBaseModel = ['angle_lora', 0];
+  }
+  const qModel = chainModelLoras(graph, qwenBaseModel, p.loras, 'qlora');
   graph.ms = { class_type: 'ModelSamplingAuraFlow', inputs: { model: qModel, shift: 3.1 } };
   graph.cfgnorm = { class_type: 'CFGNorm', inputs: { model: ['ms', 0], strength: 1 } };
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.qwenEditClip, type: 'qwen_image', device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 
-  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.prompt };
+  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.qwenAnglePrompt || p.prompt };
   const negInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: '' };
   refNames.slice(0, 3).forEach((name, idx) => {
     const i = idx + 1;
@@ -3041,10 +3081,11 @@ async function handleApi(req, res, url) {
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
+    p.qwenAngle = normalizeQwenAngle(p.qwenAngle);
     p.regions = Array.isArray(p.regions) ? p.regions : [];
     // Region descriptions can carry the whole composition — no general
     // prompt needed in that case (the builder supplies a neutral background).
-    if (!p.prompt && !hasActiveRegions(p.regions)) return json(res, 400, { error: 'Prompt is empty' });
+    if (!p.prompt && !p.qwenAngle && !hasActiveRegions(p.regions)) return json(res, 400, { error: 'Prompt is empty' });
     p.width = clampInt(p.width, 64, 4096, 1024);
     p.height = clampInt(p.height, 64, 4096, 1024);
     p.steps = clampInt(p.steps, 1, 100, 12);
@@ -3068,6 +3109,12 @@ async function handleApi(req, res, url) {
     if (p.mode === 'edit') {
       const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
       p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
+      if (p.qwenAngle && p.editEngine !== 'qwen') {
+        return json(res, 400, { error: 'Camera angles are available with Qwen Edit only' });
+      }
+      if (p.qwenAngle) {
+        p.qwenAnglePrompt = [qwenAnglePrompt(p.qwenAngle), p.prompt].filter(Boolean).join('. ');
+      }
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }

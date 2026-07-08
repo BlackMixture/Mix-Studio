@@ -615,6 +615,39 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .prompt-clear:active { color: #ff9f97; transform: scale(0.92); }
 .prompt-clear[hidden] { display: none; }
+.qwen-angle-tool { position: absolute; top: 10px; right: 56px; }
+.qwen-angle-tool[hidden] { display: none; }
+.qwen-angle-trigger {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+.qwen-angle-trigger svg { width: 19px; height: 19px; }
+.qwen-angle-trigger.active { color: #fff; border-color: rgba(255,255,255,0.66); background: var(--panel-soft); }
+.prompt-box:has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 98px; }
+.qwen-angle-count {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  border: 1.5px solid #0d1019;
+  border-radius: 999px;
+  background: #4b7eec;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+}
 .enhance-hint { font-size: 11.5px; color: var(--muted-2); margin: 8px 2px 0; font-weight: 600; }
 .attach-zone { margin-top: 10px; }
 .prompt-tools[hidden],
@@ -1619,7 +1652,12 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   font-weight: 900; font-size: 13px; line-height: 1;
   display: grid; place-items: center;
 }
-.ref-slot.filled { border-style: solid; border-color: var(--line); }
+.ref-slot.filled { border-style: solid; border-color: var(--line); touch-action: none; }
+.ref-slot.ref-reordering { opacity: 0.58; border-color: var(--accent); }
+.ref-slot.ref-drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 34%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 24%, transparent);
+}
 .ref-slot .ref-num {
   position: absolute;
   top: 6px; left: 6px;
@@ -1645,43 +1683,14 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   58% { transform: scale(1.045); box-shadow: 0 0 20px rgba(101,117,255,0.26); }
   100% { transform: scale(1); filter: none; box-shadow: none; }
 }
-.preserve-check {
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 2px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 850;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
-  cursor: pointer;
-  transition: background 180ms var(--ease), border-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease);
-}
-.preserve-check input {
-  appearance: none;
-  width: 17px;
-  height: 17px;
-  margin: 0;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid rgba(145,169,225,0.72);
-  border-radius: 5px;
-  background: rgba(0,0,0,0.22);
-}
-.preserve-check input:checked {
+.preserve-icon { width: 34px; height: 34px; padding: 0; color: var(--muted); }
+.preserve-icon svg { width: 17px; height: 17px; }
+.preserve-icon[aria-pressed="true"] {
   border-color: rgba(93,150,255,0.74);
-  background: #477bed;
-  box-shadow: 0 0 10px rgba(67,121,244,0.4);
+  color: #eff4ff;
+  background: rgba(57,95,185,0.4);
+  box-shadow: 0 0 14px rgba(67,121,244,0.22);
 }
-.preserve-check input:checked::after { content: '✓'; color: #fff; font-size: 12px; font-weight: 900; }
-.preserve-check input:focus-visible { outline: 2px solid #7da4ff; outline-offset: 3px; }
-.preserve-check:has(input:checked) {
-  color: #f5f8ff;
-}
-.preserve-check:active { transform: scale(0.97); }
 .edit-aspect-control { margin: -2px 0 12px; }
 .edit-aspect-toggle {
   width: 100%;
@@ -2068,11 +2077,93 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   border-color: rgba(255,255,255,0.28);
 }
 .private-access-panel,
-.folder-actions-panel { width: min(420px, calc(100vw - 28px)); }
+.folder-actions-panel,
+.animate-route-panel { width: min(420px, calc(100vw - 28px)); }
 .private-access-copy { margin: -2px 0 18px; color: var(--muted); font-size: 13px; font-weight: 650; line-height: 1.5; }
+.animate-route-actions { display: grid; gap: 2px; }
 .private-access-error { margin: 8px 0 0; color: #ff8f86; font-size: 12px; font-weight: 750; }
 .folder-action-stack { display: grid; gap: 9px; }
 .sheet-cta.danger { border-color: rgba(242,91,81,0.64); color: #ffd4d0; }
+.sheet-panel.qwen-angles-panel {
+  width: min(510px, calc(100vw - 24px));
+  background: #000;
+}
+.qwen-angle-section > span {
+  display: block;
+  margin: 0 2px 8px;
+  color: var(--muted-2);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.qwen-angle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 16px;
+  background: #000;
+}
+.qwen-angle-card,
+.qwen-angle-center {
+  position: relative;
+  min-height: 54px;
+  border-radius: 11px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 850;
+}
+.qwen-angle-card {
+  border: 1px solid rgba(255,255,255,0.1);
+  background: #080809;
+  color: rgba(255,255,255,0.58);
+  transition: border-color 170ms var(--ease), color 170ms var(--ease), transform 150ms var(--ease);
+}
+.qwen-angle-card::before { color: currentColor; font-size: 15px; line-height: 1; }
+.qwen-angle-card[data-angle-view="front"]::before { content: '↑'; }
+.qwen-angle-card[data-angle-view="front-right"]::before { content: '↗'; }
+.qwen-angle-card[data-angle-view="right"]::before { content: '→'; }
+.qwen-angle-card[data-angle-view="back-right"]::before { content: '↘'; }
+.qwen-angle-card[data-angle-view="back"]::before { content: '↓'; }
+.qwen-angle-card[data-angle-view="back-left"]::before { content: '↙'; }
+.qwen-angle-card[data-angle-view="left"]::before { content: '←'; }
+.qwen-angle-card[data-angle-view="front-left"]::before { content: '↖'; }
+.qwen-angle-card:active { transform: scale(0.97); }
+.qwen-angle-card.active {
+  border: 1px solid rgba(255,255,255,0.66);
+  background: #080809;
+  color: #fff;
+  box-shadow: none;
+}
+.qwen-angle-card.active::after { content: '✓'; position: absolute; top: 6px; right: 7px; color: #fff; font-size: 10px; font-weight: 950; }
+.qwen-angle-center {
+  border: 1px dashed rgba(255,255,255,0.15);
+  background: radial-gradient(circle, #8fa9e7 0 8px, rgba(143,169,231,0.22) 9px 10px, transparent 11px), #000;
+}
+.qwen-angle-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 12px; }
+.qwen-angle-choice { display: grid; gap: 5px; padding: 5px; border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; background: #000; }
+#qwenElevationRow { grid-template-columns: 1fr; }
+#qwenDistanceRow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.qwen-angle-choice button {
+  min-height: 34px;
+  padding: 5px 6px;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  background: #080809;
+  color: rgba(255,255,255,0.58);
+  font-size: 11px;
+  font-weight: 800;
+}
+.qwen-angle-choice button.active { border: 1px solid rgba(255,255,255,0.66); background: #080809; color: #fff; }
+.qwen-angle-choice#qwenDistanceRow button { display: grid; place-items: center; gap: 2px; }
+.qwen-framing-icon { width: 17px; height: 17px; color: currentColor; }
+.qwen-angle-summary { margin: 11px 2px 2px; color: var(--muted); font-size: 12px; font-weight: 750; }
+.qwen-angles-panel .sheet-cta { margin-top: 11px; }
 .queue-section {
   font-size: 10px;
   letter-spacing: 0.12em;

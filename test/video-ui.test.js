@@ -19,6 +19,14 @@ test('Video frame and media inputs use visual source cards', () => {
   assert.match(css, /\.video-input-grid \.media-input-filled/);
 });
 
+test('Video inputs keep start and end frames together, followed by Face ID and audio', () => {
+  const start = html.indexOf('id="vidAttachBtn"');
+  const end = html.indexOf('id="vidEndChip"');
+  const face = html.indexOf('id="vidFaceChip"');
+  const audio = html.indexOf('id="vidAudioChip"');
+  assert.ok(start > -1 && start < end && end < face && face < audio);
+});
+
 test('Video model selection sits above the prompt and collapses after choosing', () => {
   const modelAt = html.indexOf('id="vidModelPanel"');
   const promptAt = html.indexOf('id="promptPanel"');
@@ -110,4 +118,27 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(app, /state\.prompts\.video = res\.prompt/);
   assert.match(server, /body\.imageName/);
   assert.match(server, /suggestMotionPrompt\(comfyName/);
+});
+
+test('Swapping start and end frames keeps the end-frame input card hidden while its preview is attached', () => {
+  assert.match(app, /#vidEndChip'\)\.hidden = faceMode \|\| ltxEdit \|\| !!state\.vidEnd/);
+  assert.match(app, /state\.vidRef = state\.vidEnd;[\s\S]*state\.vidEnd = a;[\s\S]*endFrameRefresh\.vidEnd\(\)/);
+});
+
+test('Gallery Animate routes an image into the full Video tab as either a start or end frame', () => {
+  assert.match(html, /id="animateRouteSheet"/);
+  assert.match(html, /id="animateRouteStart"/);
+  assert.match(html, /id="animateRouteEnd"/);
+  assert.match(app, /function openAnimateRouteSheet\(item\)/);
+  assert.match(app, /function sendToVideoTab\(item, role = 'start'\)/);
+  assert.match(app, /if \(role === 'end'\) state\.vidEnd = frame/);
+  assert.match(app, /else state\.vidRef = frame/);
+  assert.match(app, /openAnimateRouteSheet\(it\)/);
+});
+
+test('Multiple edit references support hold-and-drag reordering', () => {
+  assert.match(app, /function wireRefReorder\(slot, index, maxSlots\)/);
+  assert.match(app, /setTimeout\(\(\) => \{/);
+  assert.match(app, /\[state\.refs\[drag\.from\], state\.refs\[drag\.target\]\]/);
+  assert.match(css, /\.ref-slot\.ref-drop-target/);
 });

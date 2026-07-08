@@ -81,9 +81,10 @@ test('edit prompts can insert uploaded references as visual @-mention tokens', (
 test('edit model choices settle into place and Preserve unchanged has its own toggle treatment', () => {
   assert.match(css, /@keyframes editEngineSettle/);
   assert.match(css, /\.edit-engine-row \.chip\.active \{[\s\S]*animation: editEngineSettle/);
-  assert.match(html, /class="preserve-check" id="editCompositeWrap"/);
-  assert.match(html, /input id="editComposite" type="checkbox" checked/);
-  assert.match(css, /\.preserve-check input:checked/);
+  assert.match(html, /class="icon-btn preserve-icon" id="editComposite"[^>]*aria-pressed="false"/);
+  assert.match(html, /title="Preserve unchanged areas"/);
+  assert.match(css, /\.preserve-icon\[aria-pressed="true"\]/);
+  assert.match(app, /#editComposite'\)\.addEventListener\('click'/);
   assert.match(html, /data-engine="krea2ref">Krea 2 Edit/);
 });
 
@@ -97,4 +98,28 @@ test('Edit keeps source-matched dimensions by default and exposes a custom outpu
   assert.match(app, /editAspectOverride: mode === 'edit' && state\.editAspectOverride/);
   assert.match(server, /if \(!p\.editAspectOverride\) try/);
   assert.match(server, /if \(p\.editAspectOverride\) p\.composite = false/);
+});
+
+test('Matching an edit image reports its derived one-megapixel output dimensions', () => {
+  const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  assert.doesNotMatch(html, /id="refCount"/);
+  assert.match(app, /function matchedEditOutputDimensions\(ref\)/);
+  assert.match(app, /Match image · \$\{matched\.w\} × \$\{matched\.h\}/);
+  assert.match(app, /Math\.sqrt\(1e6 \* ratio\)/);
+});
+
+test('Use settings rehydrates every saved edit input instead of asking for manual re-upload', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(app, /async function reuseItem\(it, useEnhanced\)/);
+  assert.match(app, /async function restoreEditReferences\(item\)/);
+  assert.match(app, /fetch\('\/api\/input\?name=' \+ encodeURIComponent\(name\)\)/);
+  assert.match(app, /state\.refs = refs/);
+  assert.match(app, /state\.editLoras = restoredLoraList\(it\.loras\)/);
+  assert.match(app, /state\.regions = restoringEdit \? state\.regions : restoredRegions/);
+  assert.match(app, /state\.editAspectOverride = it\.editAspectOverride === true/);
+  assert.match(app, /state\.qwenAngles = angle \? \[angle\.view\] : \[\]/);
+  assert.match(app, /restoreKreaMask\(it\)/);
+  assert.match(server, /editAspectOverride: job\.params\.mode === 'edit'/);
+  assert.match(server, /maskImageName: job\.params\.mode === 'edit'/);
+  assert.match(server, /batch: job\.params\.batch/);
 });
