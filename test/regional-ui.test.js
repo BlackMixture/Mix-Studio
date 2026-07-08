@@ -14,7 +14,7 @@ test('create prompt tools expose an inline regional bounding-box editor', () => 
   assert.match(indexHtml, /id="regionWorkspace"/);
   assert.doesNotMatch(indexHtml, /id="regionSheet"/);
   assert.match(indexHtml, /id="regionStage"/);
-  assert.match(indexHtml, /id="regionLoraBtn"/);
+  assert.match(indexHtml, /id="regionLoraSlot"/);
   assert.match(indexHtml, /id="regionRefInput"/);
   assert.match(indexHtml, /id="regionGlobalPromptSlot"/);
   assert.match(indexHtml, /id="regionSettings" aria-hidden="true" inert/);
@@ -44,12 +44,21 @@ test('selected-region inspector appears before the canvas with visual asset inpu
   const settingsAt = indexHtml.indexOf('id="regionSettings"');
   const stageAt = indexHtml.indexOf('id="regionStage"');
   assert.ok(settingsAt > -1 && settingsAt < stageAt);
-  assert.match(indexHtml, /id="regionLoraBtn"[\s\S]*class="region-asset-icon"[\s\S]*<i>\+<\/i>/);
+  assert.match(indexHtml, /class="lora-grid region-lora-slot" id="regionLoraSlot"/);
   assert.match(indexHtml, /id="regionRefBtn"[\s\S]*class="region-ref-preview" id="regionRefPreview" hidden/);
   assert.match(indexHtml, /id="regionRefPreviewImg"/);
   assert.match(indexHtml, /id="regionRefClear"[^>]*aria-label="Remove region reference image"/);
   assert.match(styleCss, /\.region-ref-preview \{/);
   assert.match(appJs, /\$\('#regionStrengthField'\)\.hidden = !hasLora/);
+});
+
+test('region LoRA uses the shared card language and selected region color', () => {
+  assert.match(appJs, /function renderRegionLoraCard\(region\)/);
+  assert.match(appJs, /className = 'lora-card on region-lora-card'/);
+  assert.match(appJs, /style\.setProperty\('--region-card-color', color\)/);
+  assert.match(appJs, /Region LoRA options/);
+  assert.match(appJs, /const dx = event\.clientX - startX/);
+  assert.match(styleCss, /\.region-lora-card \{[\s\S]*border-color: var\(--region-card-color\)/);
 });
 
 test('generate requests include enabled regions for create and Krea2 edit', () => {

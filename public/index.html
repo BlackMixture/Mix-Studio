@@ -295,13 +295,7 @@
           </div>
           <div class="field">
             <label>Region LoRA</label>
-            <button class="region-asset-picker" id="regionLoraBtn" type="button">
-              <span class="region-asset-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg>
-                <i>+</i>
-              </span>
-              <span class="region-asset-copy"><b id="regionLoraLabel">Add Region LoRA</b><small>Optional style for this box</small></span>
-            </button>
+            <div class="lora-grid region-lora-slot" id="regionLoraSlot"></div>
           </div>
           <div class="field" id="regionStrengthField" hidden>
             <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
@@ -462,7 +456,7 @@
       </span>
     </div>
     <div class="lora-grid" id="loraList"></div>
-    <div class="lora-hint" id="loraHint">Tap a card to toggle · hold and slide to adjust strength</div>
+    <div class="lora-hint" id="loraHint">Tap to toggle · hold and slide sideways to adjust strength</div>
     <div class="lora-warning hidden" id="loraCompatWarn"></div>
     <button class="add-lora" id="addLora" hidden>+ Add LoRA</button>
   </section>
@@ -510,6 +504,12 @@
 </main>
 
 <main class="view" id="view-gallery">
+  <div class="library-search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 4a6.5 6.5 0 1 0 4.04 11.59L19.95 21 21 19.95l-5.41-5.41A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+    <input id="gallerySearch" type="search" inputmode="search" autocomplete="off" placeholder="Search prompts, LoRAs, folders…" aria-label="Search library" />
+    <button id="gallerySearchClear" type="button" aria-label="Clear library search" hidden>✕</button>
+  </div>
+  <div class="sr-only" id="gallerySearchStatus" aria-live="polite"></div>
   <div class="gallery-top">
     <div class="size-seg" id="mediaFilter">
       <button data-f="all" class="active">All</button>

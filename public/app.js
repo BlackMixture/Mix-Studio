@@ -38,6 +38,7 @@ const state = {
   privateUnlocked: false,
   activeFolder: 'all',
   mediaFilter: 'all',
+  libraryQuery: '',
   metaLoras: [],
   metaLorasInfo: {},
   loraContext: {},
@@ -858,6 +859,143 @@ function selectRegionUnderneath(clientX, clientY, currentRegion) {
   if (navigator.vibrate) navigator.vibrate(12);
 }
 
+function openRegionLoraPicker(region) {
+  if (!region) return;
+  const regionId = region.id;
+  openLoraPicker((name) => {
+    const target = state.regions.find((item) => item.id === regionId);
+    if (!target) return;
+    if (name) {
+      const selected = { name, strength: 1, on: true };
+      applyContextLoraDefault(selected);
+      target.lora = name;
+      target.strength = normalizeRegionStrength(selected.strength);
+    } else {
+      target.lora = 'None';
+      target.strength = 1;
+    }
+    renderRegionEditor();
+    saveForm();
+  }, { allowNone: true, title: 'Region LoRA' });
+}
+
+function renderRegionLoraCard(region) {
+  const slot = $('#regionLoraSlot');
+  slot.innerHTML = '';
+  if (!region) return;
+  const color = region.color || '#46b4e6';
+  const hasLora = region.lora && region.lora !== 'None';
+  if (!hasLora) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'lora-card add region-lora-add';
+    add.style.setProperty('--region-card-color', color);
+    add.textContent = '＋';
+    add.setAttribute('aria-label', 'Add Region LoRA');
+    add.addEventListener('click', () => openRegionLoraPicker(region));
+    slot.appendChild(add);
+    return;
+  }
+
+  region.strength = normalizeRegionStrength(region.strength);
+  const card = document.createElement('div');
+  card.className = 'lora-card on region-lora-card';
+  card.style.setProperty('--region-card-color', color);
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.setAttribute('aria-label', `${prettyLora(region.lora)}, strength ${region.strength.toFixed(2)}. Tap to change.`);
+  card.innerHTML = `${loraThumbHtml(region.lora, 'lc-thumb')}`
+    + `<span class="lc-strength">${region.strength.toFixed(2)}</span>`
+    + '<button class="lc-menu" type="button" aria-label="Region LoRA options">⋯</button>'
+    + `<span class="lc-name" title="${escapeHtml(prettyLora(region.lora))}">${escapeHtml(prettyLora(region.lora))}</span>`
+    + '<span class="lc-adjust"></span>';
+  slot.appendChild(card);
+
+  const menuBtn = card.querySelector('.lc-menu');
+  menuBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openActionMenu(menuBtn, [
+      { label: 'Change LoRA', action: () => openRegionLoraPicker(region) },
+      { label: `Strength: ${region.strength.toFixed(2)}`, action: () => {
+        const value = window.prompt('Strength (0–2)', String(region.strength));
+        if (value == null) return;
+        region.strength = normalizeRegionStrength(value);
+        renderRegionEditor();
+        saveForm();
+      } },
+      { label: 'Remove from region', danger: true, action: () => {
+        region.lora = 'None';
+        region.strength = 1;
+        renderRegionEditor();
+        saveForm();
+      } },
+    ]);
+  });
+
+  let holdTimer = null;
+  let adjusting = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+  let startStrength = region.strength;
+  const strengthEl = card.querySelector('.lc-strength');
+  const adjustEl = card.querySelector('.lc-adjust');
+  card.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.lc-menu')) return;
+    moved = false;
+    adjusting = false;
+    startX = event.clientX;
+    startY = event.clientY;
+    startStrength = normalizeRegionStrength(region.strength);
+    holdTimer = setTimeout(() => {
+      adjusting = true;
+      card.classList.add('adjusting');
+      adjustEl.textContent = startStrength.toFixed(2);
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, 300);
+    try { card.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  });
+  card.addEventListener('pointermove', (event) => {
+    if (adjusting) {
+      const dx = event.clientX - startX;
+      region.strength = normalizeRegionStrength(Math.round((startStrength + dx / 75) * 20) / 20);
+      strengthEl.textContent = region.strength.toFixed(2);
+      adjustEl.textContent = region.strength.toFixed(2);
+    } else if (Math.hypot(event.clientX - startX, event.clientY - startY) > 12) {
+      moved = true;
+      clearTimeout(holdTimer);
+    }
+  });
+  const finish = (event) => {
+    if (event && event.target.closest('.lc-menu')) return;
+    clearTimeout(holdTimer);
+    if (adjusting) {
+      card.classList.remove('adjusting');
+      adjusting = false;
+      renderRegionEditor();
+      saveForm();
+    } else if (!moved) {
+      openRegionLoraPicker(region);
+    }
+  };
+  card.addEventListener('pointerup', finish);
+  card.addEventListener('pointercancel', () => {
+    clearTimeout(holdTimer);
+    if (adjusting) {
+      card.classList.remove('adjusting');
+      adjusting = false;
+      renderRegionEditor();
+      saveForm();
+    }
+  });
+  card.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openRegionLoraPicker(region);
+  });
+  card.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
 function renderRegionEditor() {
   const stage = $('#regionStage');
   if (!stage) return;
@@ -907,7 +1045,6 @@ function renderRegionEditor() {
   const hasRegion = !!region;
   $('#regionDeleteBtn').disabled = !hasRegion;
   $('#regionDescInput').disabled = !hasRegion;
-  $('#regionLoraBtn').disabled = !hasRegion;
   $('#regionStrengthInput').disabled = !hasRegion;
   $('#regionRefBtn').disabled = !hasRegion;
   $('#regionRefClear').disabled = !hasRegion || !region.refImageName;
@@ -916,11 +1053,8 @@ function renderRegionEditor() {
   $('#regionDescInput').value = region.description || '';
   const hasLora = region.lora && region.lora !== 'None';
   $('#regionStrengthField').hidden = !hasLora;
-  $('#regionLoraBtn').classList.toggle('selected', !!hasLora);
-  $('#regionLoraBtn').innerHTML = hasLora
-    ? `${loraThumbHtml(region.lora, 'lp-thumb')}<span class="region-asset-copy"><b id="regionLoraLabel">${escapeHtml(prettyLora(region.lora))}</b><small>Tap to change this LoRA</small></span>`
-    : '<span class="region-asset-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg><i>+</i></span><span class="region-asset-copy"><b id="regionLoraLabel">Add Region LoRA</b><small>Optional style for this box</small></span>';
   region.strength = normalizeRegionStrength(region.strength);
+  renderRegionLoraCard(region);
   $('#regionStrengthInput').value = String(region.strength);
   $('#regionStrengthVal').textContent = region.strength.toFixed(2);
   const hasRef = !!region.refImageName;
@@ -1163,20 +1297,13 @@ $('#regionDescInput').addEventListener('input', () => {
   if (active) active.textContent = region.description || 'Region';
   saveForm();
 });
-$('#regionLoraBtn').addEventListener('click', () => {
-  const region = selectedRegion();
-  if (!region) return;
-  openLoraPicker((name) => {
-    region.lora = name || 'None';
-    renderRegionEditor();
-    saveForm();
-  }, { allowNone: true, title: 'Region LoRA' });
-});
 $('#regionStrengthInput').addEventListener('input', () => {
   const region = selectedRegion();
   if (!region) return;
   region.strength = normalizeRegionStrength($('#regionStrengthInput').value);
   $('#regionStrengthVal').textContent = region.strength.toFixed(2);
+  const badge = $('#regionLoraSlot .lc-strength');
+  if (badge) badge.textContent = region.strength.toFixed(2);
 });
 $('#regionStrengthInput').addEventListener('change', saveForm);
 $('#regionRefBtn').addEventListener('click', () => $('#regionRefInput').click());
@@ -2044,8 +2171,9 @@ function renderLoras() {
   renderPromptSuggestions();
 }
 
-/* Card interactions: tap toggles, hold (300ms) + slide up/down adjusts
-   strength, the ⋯ menu handles thumbnail + remove. */
+/* Card interactions: tap toggles, hold (300ms) + slide sideways adjusts
+   strength. Vertical gestures remain native page scroll; the ⋯ menu handles
+   thumbnail + remove. */
 function wireLoraCard(card, l, idx, arr) {
   const menuBtn = card.querySelector('.lc-menu');
   menuBtn.addEventListener('click', (e) => {
@@ -2066,6 +2194,7 @@ function wireLoraCard(card, l, idx, arr) {
   let holdTimer = null;
   let adjusting = false;
   let moved = false;
+  let startX = 0;
   let startY = 0;
   let startStrength = l.strength;
   const strengthEl = card.querySelector('.lc-strength');
@@ -2075,6 +2204,7 @@ function wireLoraCard(card, l, idx, arr) {
     if (e.target === menuBtn) return;
     moved = false;
     adjusting = false;
+    startX = e.clientX;
     startY = e.clientY;
     startStrength = Number(l.strength) || 0;
     holdTimer = setTimeout(() => {
@@ -2087,11 +2217,11 @@ function wireLoraCard(card, l, idx, arr) {
   });
   card.addEventListener('pointermove', (e) => {
     if (adjusting) {
-      const dy = startY - e.clientY; // up = stronger
-      l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dy / 90) * 20) / 20));
+      const dx = e.clientX - startX; // right = stronger
+      l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dx / 75) * 20) / 20));
       adjustEl.textContent = l.strength.toFixed(2);
       strengthEl.textContent = l.strength.toFixed(2);
-    } else if (Math.abs(e.clientY - startY) > 12) {
+    } else if (Math.hypot(e.clientX - startX, e.clientY - startY) > 12) {
       moved = true;
       clearTimeout(holdTimer); // scrolling, not holding
     }
@@ -3472,13 +3602,40 @@ function itemActivity(it) {
   for (const v of it.videos || []) t = Math.max(t, v.createdAt || 0);
   return t;
 }
+function librarySearchText(it) {
+  const folder = state.folders.find((entry) => entry.id === it.folder);
+  const loras = (it.loras || []).map((lora) => lora && lora.name).filter(Boolean);
+  const regions = (it.regions || []).flatMap((region) => [region && region.description, region && region.lora]).filter(Boolean);
+  const videoText = (it.videos || []).flatMap((video) => {
+    const info = (video && video.info) || {};
+    return [info.engine, info.motionPrompt, info.refinedMotionPrompt];
+  }).filter(Boolean);
+  return [
+    it.prompt,
+    it.refinedPrompt,
+    it.mode,
+    it.file,
+    folder && folder.name,
+    ...loras,
+    ...regions,
+    ...videoText,
+  ].filter(Boolean).join(' ').toLocaleLowerCase();
+}
+
+function matchesLibrarySearch(it, query) {
+  const terms = String(query || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const text = librarySearchText(it);
+  return terms.every((term) => text.includes(term));
+}
+
 function visibleItems() {
   const arr = state.items.filter((it) => {
     if (state.activeFolder !== 'all' && it.folder !== state.activeFolder) return false;
     const hasVideos = it.videos && it.videos.length;
-    if (state.mediaFilter === 'videos') return !!hasVideos;
-    if (state.mediaFilter === 'images') return !hasVideos;
-    return true;
+    if (state.mediaFilter === 'videos' && !hasVideos) return false;
+    if (state.mediaFilter === 'images' && hasVideos) return false;
+    return matchesLibrarySearch(it, state.libraryQuery);
   });
   if (state.sortMode === 'old') arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   else if (state.sortMode === 'az') arr.sort((a, b) => (a.prompt || '').localeCompare(b.prompt || ''));
@@ -3492,6 +3649,11 @@ function renderGrid() {
   grid.innerHTML = '';
   const items = visibleItems();
   $('#galleryEmpty').classList.toggle('hidden', items.length > 0);
+  const query = state.libraryQuery.trim();
+  $('#galleryEmpty').textContent = query ? `No matches for “${query}”` : 'Nothing here yet';
+  $('#gallerySearchStatus').textContent = query
+    ? `${items.length} matching generation${items.length === 1 ? '' : 's'}`
+    : '';
   for (const it of items) {
     const card = document.createElement('button');
     card.className = 'card';
@@ -3571,6 +3733,25 @@ function renderGrid() {
     grid.appendChild(card);
   }
 }
+
+function updateLibrarySearch() {
+  state.libraryQuery = $('#gallerySearch').value;
+  $('#gallerySearchClear').hidden = !state.libraryQuery;
+  renderGrid();
+}
+$('#gallerySearch').addEventListener('input', updateLibrarySearch);
+$('#gallerySearch').addEventListener('search', updateLibrarySearch);
+$('#gallerySearch').addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !state.libraryQuery) return;
+  event.preventDefault();
+  $('#gallerySearch').value = '';
+  updateLibrarySearch();
+});
+$('#gallerySearchClear').addEventListener('click', () => {
+  $('#gallerySearch').value = '';
+  updateLibrarySearch();
+  $('#gallerySearch').focus();
+});
 
 /* ------------------------------------------------------------------ */
 /* Multi-select                                                        */
