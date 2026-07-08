@@ -10,6 +10,7 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const modatoryLogo = fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8');
 
 test('the logo mark opens a labeled mobile app drawer', () => {
   assert.match(html, /class="side-menu-trigger"[^>]+id="appMenuBtn"[^>]+aria-label="Open MixBox Studio menu"[^>]+aria-controls="appDrawer"/);
@@ -29,8 +30,11 @@ test('the installed web interface uses the MixBox Studio name and Modatory logo'
   assert.match(html, /id="appDrawerTitle">MixBox Studio/);
   assert.equal(manifest.name, 'MixBox Studio');
   assert.equal(manifest.short_name, 'MixBox');
-  // top-left mark is the Modatory logo (neon-green bars + dot)
-  assert.match(html, /side-menu-mark-logo[\s\S]{0,400}#75ff19/);
+  assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/modatory-logo\.svg"/);
+  assert.match(modatoryLogo, /viewBox="0 0 734\.42 753\.63"/);
+  assert.match(modatoryLogo, /#fdc302/);
+  assert.match(modatoryLogo, /#026cfc/);
+  assert.match(modatoryLogo, /#fb2026/);
 });
 
 test('advanced settings live in the app drawer instead of the top bar', () => {

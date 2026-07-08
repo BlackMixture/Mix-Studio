@@ -113,7 +113,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   line-height: 1;
   transition: opacity 180ms var(--ease), transform 220ms var(--ease);
 }
-.side-menu-mark-logo { opacity: 1; transform: scale(1) rotate(0deg); }
+.side-menu-mark-logo { object-fit: contain; opacity: 1; transform: scale(1) rotate(0deg); }
 .side-menu-mark-menu { opacity: 0; transform: scale(0.72) rotate(-8deg); }
 .side-menu-trigger:hover .side-menu-mark-logo,
 .side-menu-trigger:focus-visible .side-menu-mark-logo,

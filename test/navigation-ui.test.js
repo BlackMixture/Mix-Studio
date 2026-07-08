@@ -128,6 +128,8 @@ test('Use settings rehydrates every saved edit input instead of asking for manua
 test('every edit engine can queue an optional SeedVR2 finish pass', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="editUpscaleToggle"[^>]*aria-pressed="false"/);
+  assert.match(html, /class="edit-upscale-title"[^>]*>[\s\S]*?Upscale<\/span>/);
+  assert.doesNotMatch(html, />SeedVR2 finish<\/span>/i);
   assert.match(html, /id="editUpscaleResolution"/);
   assert.match(app, /function renderEditUpscale\(\)/);
   assert.match(app, /postUpscale: mode === 'edit' && state\.editUpscaleEnabled/);
