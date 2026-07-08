@@ -822,15 +822,16 @@ function updateVideoPanels() {
   }
   $('#promptLabel').textContent = isRegion ? 'Global prompt' : 'Prompt';
   $('#promptComposer').dataset.placeholder = isVideo
-    ? 'Describe the motion…'
+    ? (state.vidEngine === 'ltx-edit' ? 'Describe the edit…' : 'Describe the motion…')
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
       : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidModelPanel').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
+  $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
   regionWorkspace.hidden = !isRegion;
-  $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
+  $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   $('#denoiseField').hidden = !kreaEdit;
@@ -2980,8 +2981,10 @@ $('#denoiseInput').addEventListener('input', () => { $('#denoiseVal').textConten
 /* Video tab: inline source-image attachment */
 function renderVidAttach() {
   const has = !!state.vidRef;
-  $('#vidAttachBtn').hidden = has || !!state.vidFace;
-  $('#vidAttachThumb').hidden = !has;
+  const editAnything = state.vidEngine === 'ltx-edit';
+  $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
+  $('#vidAttachThumb').hidden = editAnything || !has;
+  $('#vidMotionPromptBtn').hidden = editAnything || !has;
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
@@ -2993,13 +2996,15 @@ function renderVidAttach() {
 /* LTX Face ID: a reference face whose identity drives a text-to-video gen */
 function renderVidFace() {
   const ltx = state.vidEngine === 'ltx';
+  const ltxEdit = state.vidEngine === 'ltx-edit';
+  const ltxFamily = ltx || ltxEdit;
   const has = !!state.vidFace;
   const faceMode = ltx && has;
   // Face ID is t2v-based: hide it when a source image (i2v) is attached,
   // and hide the end-frame chip while a face is attached (not supported).
   $('#vidFaceChip').hidden = !ltx || has || !!state.vidRef;
   $('#vidFaceThumb').hidden = !ltx || !has;
-  $('#vidEndChip').hidden = faceMode;
+  $('#vidEndChip').hidden = faceMode || ltxEdit;
   if (has) {
     $('#vidFaceImg').src = state.vidFace.url;
     $('#vidFaceLabel').textContent = state.vidFace.label
@@ -3009,21 +3014,24 @@ function renderVidFace() {
   // RIFE can smooth any LTX, Wan, or SCAIL output. Motion freedom stays
   // specific to standard LTX only.
   const wanOrScail = state.vidEngine === 'wan' || state.vidEngine === 'scail';
-  $('#vidFpsRow').hidden = !(ltx || wanOrScail);
-  $('#vidFreeField').hidden = wanOrScail || faceMode;
+  $('#vidFpsRow').hidden = !(ltxFamily || wanOrScail);
+  $('#vidFreeField').hidden = wanOrScail || ltxEdit || faceMode;
   renderVideoFpsChoices();
-  if (ltx) {
+  if (ltxFamily) {
     $('#vidLtxGenerationRow').hidden = false;
     $('#vidLtxPlaybackRow').hidden = false;
-    $('#vidLtxGeneration').textContent = faceMode ? 'Single-stage · Face ID' : 'Two-stage · base + refine';
+    $('#vidLtxGeneration').textContent = ltxEdit
+      ? 'Video-guided · Edit Anything'
+      : (faceMode ? 'Single-stage · Face ID' : 'Two-stage · base + refine');
     const nativeFps = faceMode ? 24 : 25;
     $('#vidLtxPlayback').textContent = state.vidSmooth > 1
       ? `${nativeFps * state.vidSmooth} fps · RIFE ${state.vidSmooth}×`
       : `${nativeFps} fps · native`;
   }
-  const labels = { ltx: 'LTX 2.3', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
+  const labels = { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
   const notes = {
     ltx: faceMode ? 'Face ID · 24 fps' : '25 fps · audio',
+    'ltx-edit': 'guide video · exact prompt',
     eros: '24 fps · image required',
     wan: '16 fps · image required',
     scail: '16 fps · motion transfer',
@@ -3034,7 +3042,7 @@ function renderVidFace() {
 }
 
 function renderVideoFpsChoices() {
-  const ltx = state.vidEngine === 'ltx';
+  const ltx = state.vidEngine === 'ltx' || state.vidEngine === 'ltx-edit';
   const baseFps = ltx ? (state.vidFace ? 24 : 25) : 16;
   $$('#vidFpsRow .chip').forEach((chip) => {
     const multiplier = Number(chip.dataset.smooth) || 1;
@@ -3149,6 +3157,31 @@ $('#vidAttachX').addEventListener('click', () => {
   renderVidAttach();
   updateVideoPanels();
 });
+$('#vidMotionPromptBtn').addEventListener('click', async () => {
+  if (!state.vidRef || state.vidEngine === 'ltx-edit') return;
+  const btn = $('#vidMotionPromptBtn');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  try {
+    toast('Reading the start frame…');
+    const res = await api('/api/motionprompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageName: state.vidRef.name }),
+    });
+    if (!res.prompt) throw new Error('Vision model returned no usable motion prompt');
+    state.prompts.video = res.prompt;
+    setPromptDraft(res.prompt);
+    updatePromptClear();
+    saveForm();
+    toast('Motion prompt created from the start frame');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+});
 function pickVidRef() {
   const input = document.createElement('input');
   input.type = 'file';
@@ -3186,15 +3219,21 @@ state.vidDrive = null;
 state.vidFace = null;
 function renderVidDrive() {
   const scail = state.vidEngine === 'scail';
+  const editAnything = state.vidEngine === 'ltx-edit';
+  const usesGuideVideo = scail || editAnything;
   const has = !!state.vidDrive;
-  $('#vidDriveBtn').hidden = !scail || has;
-  $('#vidDriveThumb').hidden = !scail || !has;
-  $('#vidDriveTools').hidden = !scail || !has;
-  $('#vidDriveTrim').hidden = !scail || !has || !$('#vidDriveTrimChip').classList.contains('active');
+  $('#vidDriveBtn').hidden = !usesGuideVideo || has;
+  $('#vidDriveThumb').hidden = !usesGuideVideo || !has;
+  $('#vidDriveTools').hidden = !usesGuideVideo || !has;
+  $('#vidDriveTrim').hidden = !usesGuideVideo || !has || !$('#vidDriveTrimChip').classList.contains('active');
+  $('#vidDriveFrameChip').hidden = editAnything;
+  $('#vidDriveTitle').textContent = editAnything ? 'Source video' : 'Motion video';
+  $('#vidDriveSub').textContent = editAnything ? 'Required · video to edit' : 'Required · drives movement';
+  $('#vidDriveFilledTitle').textContent = editAnything ? 'Source video' : 'Motion video';
   $('#vidAttachSub').textContent = scail
     ? 'required · the person to re-animate'
     : 'optional · image → video';
-  if (scail && has) {
+  if (usesGuideVideo && has) {
     const v = $('#vidDriveVideo');
     if (v.src !== state.vidDrive.url) v.src = state.vidDrive.url;
     driveLayout();
@@ -3211,6 +3250,8 @@ $('#vidDriveBtn').addEventListener('click', () => {
     probe.src = f.url;
     probe.onloadedmetadata = () => {
       f.dur = probe.duration || 0;
+      f.w = probe.videoWidth || 0;
+      f.h = probe.videoHeight || 0;
       f.trimStart = 0;
       f.trimEnd = f.dur;
       driveLayout();
@@ -3428,14 +3469,19 @@ wireEngineRow('vidEngineRow', (engine) => {
   state.vidEngine = engine;
   const wan = engine === 'wan';
   const scail = engine === 'scail';
-  $('#vidFreeField').hidden = wan || scail;
+  const ltxEdit = engine === 'ltx-edit';
+  const ltxFamily = engine === 'ltx' || ltxEdit;
+  $('#vidFreeField').hidden = wan || scail || ltxEdit;
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
-  $('#vidFpsRow').hidden = !(engine === 'ltx' || wan || scail);
+  $('#vidFpsRow').hidden = !(ltxFamily || wan || scail);
   $('#vidScailModeRow').hidden = !scail;
-  $('#vidLtxGenerationRow').hidden = engine !== 'ltx';
-  $('#vidLtxPlaybackRow').hidden = engine !== 'ltx';
-  $('#vidExtras').hidden = wan || scail;
+  $('#vidLtxGenerationRow').hidden = !ltxFamily;
+  $('#vidLtxPlaybackRow').hidden = !ltxFamily;
+  $('#vidExtras').hidden = wan || scail || ltxEdit;
+  // The Edit Anything workflow is trained on literal edit captions; do not
+  // send those captions through the creative prompt enhancer.
+  $('#enhanceBtn').hidden = ltxEdit;
   renderScailChunkControls();
   const dur = $('#vidDur');
   dur.max = scail ? 60 : 15;
@@ -3443,6 +3489,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   if (Number(dur.value) > Number(dur.max)) dur.value = dur.max;
   renderVidDrive();
   renderVidFace();
+  updateVideoPanels();
   setTimeout(() => setVideoModelExpanded(false), 120);
 });
 wireEngineRow('animEngineRow', (engine) => {
@@ -3477,9 +3524,13 @@ $('#generateBtn').addEventListener('click', async () => {
   if (!prompt && !hasRegionPrompts) return toast('Type a prompt first', true);
 
   if (state.view === 'video') {
-    if (state.vidEngine !== 'ltx' && !state.vidRef) {
+    const ltxEdit = state.vidEngine === 'ltx-edit';
+    if (!ltxEdit && state.vidEngine !== 'ltx' && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
       return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 for text-to-video`, true);
+    }
+    if (ltxEdit && !state.vidDrive) {
+      return toast('LTX Edit needs the source video you want to edit', true);
     }
     if (state.vidEngine === 'scail' && !state.vidDrive) {
       return toast('SCAIL 2 needs a motion video — attach the clip whose movement you want to copy', true);
@@ -3493,7 +3544,7 @@ $('#generateBtn').addEventListener('click', async () => {
       prompt,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
-      enhance: state.enhance,
+      enhance: ltxEdit ? false : state.enhance,
       fourK: $('#vid4k').classList.contains('active'),
       fast: !$('#vidQuality').classList.contains('active'),
       motionFreedom: Number($('#vidFree').value),
@@ -3507,14 +3558,14 @@ $('#generateBtn').addEventListener('click', async () => {
       loras: state.videoLoras,
       audioName: vidAudioName,
       faceImageName: state.vidEngine === 'ltx' && state.vidFace && !state.vidRef ? state.vidFace.name : undefined,
-      driveVideoName: state.vidEngine === 'scail' && state.vidDrive ? state.vidDrive.name : undefined,
-      driveStartSeconds: state.vidEngine === 'scail' && state.vidDrive ? state.vidDrive.trimStart || 0 : undefined,
-      driveDurSeconds: state.vidEngine === 'scail' && state.vidDrive && state.vidDrive.dur
+      driveVideoName: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.name : undefined,
+      driveStartSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.trimStart || 0 : undefined,
+      driveDurSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive && state.vidDrive.dur
         ? Math.max(0.5, (state.vidDrive.trimEnd || state.vidDrive.dur) - (state.vidDrive.trimStart || 0)) : undefined,
       endImageName: state.vidEnd ? state.vidEnd.name : undefined,
       imageName: state.vidRef ? state.vidRef.name : undefined,
-      width: state.vidRef ? state.vidRef.w : state.width,
-      height: state.vidRef ? state.vidRef.h : state.height,
+      width: ltxEdit && state.vidDrive ? (state.vidDrive.w || state.width) : (state.vidRef ? state.vidRef.w : state.width),
+      height: ltxEdit && state.vidDrive ? (state.vidDrive.h || state.height) : (state.vidRef ? state.vidRef.h : state.height),
     };
     try {
       setGenerating(true, 'Queued…');
@@ -4288,7 +4339,7 @@ function openLightbox(id, mediaSel) {
     meta.push(`<b>🎬 Motion:</b> ${escapeHtml(info.motionPrompt || '')}`);
     if (info.refinedMotionPrompt) meta.push(`<b>✨ Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
     if (info.frames && info.fps) {
-      const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[info.engine] || 'LTX 2.3';
+      const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[info.engine] || 'LTX 2.3';
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
       const flags = [info.composite && '⿻ side-by-side', info.faceId && '🪪 Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Video:</b> ${eng} · ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
@@ -5275,6 +5326,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';
+    $('#setLtxEditLora').value = s.ltxEditLora || '';
     $('#setLtxTe').value = s.ltxTextEncoder || '';
     $('#setLtxGemmaLora').value = s.ltxGemmaLora || '';
     $('#setLtxUps').value = s.ltxUpscaler || '';
@@ -5329,6 +5381,7 @@ $('#settingsSave').addEventListener('click', async () => {
         systemPrompt: $('#setSysPrompt').value,
         ltxCkpt: $('#setLtxCkpt').value,
         ltxDistilledLora: $('#setLtxLora').value,
+        ltxEditLora: $('#setLtxEditLora').value,
         ltxTextEncoder: $('#setLtxTe').value,
         ltxGemmaLora: $('#setLtxGemmaLora').value,
         ltxUpscaler: $('#setLtxUps').value,
@@ -5382,7 +5435,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     rows.push(missing.length
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`

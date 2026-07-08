@@ -134,6 +134,7 @@
       <div class="video-model-body-inner">
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model">
           <button class="chip active" data-engine="ltx">LTX 2.3</button>
+          <button class="chip" data-engine="ltx-edit">LTX Edit</button>
           <button class="chip" data-engine="eros">10Eros DMD</button>
           <button class="chip" data-engine="wan">Wan 2.2</button>
           <button class="chip" data-engine="scail">SCAIL 2</button>
@@ -188,6 +189,9 @@
             <b>Start frame</b>
             <span id="vidAttachDims"></span>
           </div>
+          <button class="attach-x attach-expand attach-prompt" id="vidMotionPromptBtn" aria-label="Create a motion prompt from this image" title="Create a motion prompt from this image" hidden>
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 3a5 5 0 0 0-1.6 9.74c.38.19.6.55.6.94V15h10v-1.32c0-.39.22-.75.6-.94A5 5 0 0 0 16 3a4.97 4.97 0 0 0-4 2 4.97 4.97 0 0 0-4-2Zm1 14h6v2H9v-2Zm1 3h4v1h-4v-1Z"/></svg>
+          </button>
           <button class="attach-x" id="vidAttachX" aria-label="Remove image">✕</button>
         </div>
         <button class="media-input-card" id="vidDriveBtn" type="button" hidden>
@@ -195,12 +199,12 @@
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h11a2 2 0 0 1 2 2v1.2l5-3v11.6l-5-3V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2v8h11V8H4Zm13 3.5v1l3 1.8V9.7l-3 1.8Z"/></svg>
             <i>+</i>
           </span>
-          <span class="media-input-copy"><b>Motion video</b><small>Required · drives movement</small></span>
+          <span class="media-input-copy"><b id="vidDriveTitle">Motion video</b><small id="vidDriveSub">Required · drives movement</small></span>
         </button>
         <div class="attach-thumb media-input-filled" id="vidDriveThumb" hidden>
           <video id="vidDriveVideo" muted loop autoplay playsinline></video>
           <div class="attach-info">
-            <b>Motion video</b>
+            <b id="vidDriveFilledTitle">Motion video</b>
             <span id="vidDriveLabel"></span>
           </div>
           <button class="attach-x attach-expand" id="vidDriveExpand" aria-label="Expand preview">⤢</button>
@@ -751,6 +755,12 @@
     </div>
 
     <div class="info-block">
+      <h4>LTX Edit <span>25 fps · guide video required · prompt-led edits</span></h4>
+      <p>Edit Anything runs on LTX 2.3 with the Edit Anything LoRA. Attach the clip you want to change, then write a short, literal instruction such as <i>“Replace the red jacket with a black leather jacket.”</i> The source video guides every frame, so prompt enhancement, first/end-frame controls, Face ID, and audio replacement stay out of the way. RIFE remains available for smoother playback.</p>
+      <p class="info-opts">Supports: source-video edit · trim · LoRAs · RIFE frame rates · RTX 4K</p>
+    </div>
+
+    <div class="info-block">
       <h4>10Eros DMD <span>24 fps · generates audio · image only</span></h4>
       <p>The motion specialist. TenStrip's 10Eros finetune of LTX 2.3 with a DMD distilled LoRA, Echo sampler and <b>reference conditioning</b> — motion that stays truer to your image, uncensored, and quick (~8 effective steps). The sigma presets change its character: <b>DMD v1</b> is the balanced default, <b>Model card</b> follows the author's recommendation, <b>V5 mix</b> pushes a sharper upscale pass, <b>Custom</b> uses your schedules from Settings.</p>
       <p class="info-opts">Supports: motion freedom · sigma presets · end frame · audio-driven · LoRAs · RTX 4K</p>
@@ -978,6 +988,7 @@
           <div class="settings-group"><h5>LTX 2.3 &amp; Face ID</h5>
             <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
             <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
+            <div class="field"><label>Edit Anything LoRA</label><input id="setLtxEditLora" type="text" /></div>
             <div class="field"><label>Gemma text encoder</label><input id="setLtxTe" type="text" /></div>
             <div class="field"><label>Gemma LoRA</label><input id="setLtxGemmaLora" type="text" /></div>
             <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>

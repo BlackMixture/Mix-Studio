@@ -135,6 +135,7 @@ const DEFAULT_SETTINGS = {
   qwenEditLora: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
   ltxCkpt: 'ltx-2.3-22b-dev-fp8.safetensors',
   ltxDistilledLora: 'ltx-2.3-22b-distilled-lora-384.safetensors',
+  ltxEditLora: 'edit_anything_v1.1_r256.safetensors',
   ltxTextEncoder: 'gemma_3_12B_it_fp4_mixed.safetensors',
   ltxGemmaLora: 'gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors',
   ltxUpscaler: 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors',
@@ -1459,7 +1460,17 @@ async function buildAnimate(imageName, opts) {
     class_type: 'LoraLoaderModelOnly',
     inputs: { model: ['ckpt', 0], lora_name: settings.ltxDistilledLora, strength_model: 0.5 },
   };
-  const ltxModel = chainModelLoras(graph, ['model_lora', 0], opts.loras, 'ulora');
+  let ltxBaseModel = ['model_lora', 0];
+  // Edit Anything is trained as a normal LTX 2.3 model LoRA. Keep it at
+  // its authored strength; raising it can make the source clip less stable.
+  if (opts.editAnything) {
+    graph.edit_anything_lora = {
+      class_type: 'LoraLoaderModelOnly',
+      inputs: { model: ltxBaseModel, lora_name: settings.ltxEditLora, strength_model: 1 },
+    };
+    ltxBaseModel = ['edit_anything_lora', 0];
+  }
+  const ltxModel = chainModelLoras(graph, ltxBaseModel, opts.loras, 'ulora');
   graph.te = await nodeFromOrdered(
     'LTXAVTextEncoderLoader',
     [settings.ltxTextEncoder, settings.ltxCkpt, 'default'],
@@ -1496,16 +1507,32 @@ async function buildAnimate(imageName, opts) {
     inputs: { positive: ['pos', 0], negative: ['neg', 0], frame_rate: opts.fps },
   };
 
-  // Source image -> preprocessed guide
-  graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
-  graph.resize = {
-    class_type: 'ImageScale',
-    inputs: { image: ['img', 0], upscale_method: 'lanczos', width: W, height: H, crop: 'center' },
-  };
-  graph.prep = await nodeFromOrdered('LTXVPreprocess', [opts.imgCompression != null ? opts.imgCompression : 35], { image: ['resize', 0] });
+  // Standard LTX uses a first-frame guide. Edit Anything uses every frame
+  // from the supplied clip as an LTX guide, with the edit prompt steering
+  // what changes. VHS decodes at the final sampling frame rate so temporal
+  // alignment remains 8n+1 after LTX crops the sequence.
+  if (opts.guideVideoName) {
+    graph.edit_source = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+      video: opts.guideVideoName, force_rate: opts.fps, custom_width: W, custom_height: H,
+      frame_load_cap: opts.frames, skip_first_frames: opts.guideSkipFrames || 0,
+      select_every_nth: 1, format: 'None',
+    });
+    graph.edit_source_base = {
+      class_type: 'ImageScale',
+      inputs: { image: ['edit_source', 0], upscale_method: 'lanczos', width: W / 2, height: H / 2, crop: 'center' },
+    };
+  } else {
+    // Source image -> preprocessed guide
+    graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
+    graph.resize = {
+      class_type: 'ImageScale',
+      inputs: { image: ['img', 0], upscale_method: 'lanczos', width: W, height: H, crop: 'center' },
+    };
+    graph.prep = await nodeFromOrdered('LTXVPreprocess', [opts.imgCompression != null ? opts.imgCompression : 35], { image: ['resize', 0] });
+  }
 
   // Optional end frame
-  if (opts.endImageName) {
+  if (opts.endImageName && !opts.guideVideoName) {
     graph.img_end = { class_type: 'LoadImage', inputs: { image: opts.endImageName } };
     graph.resize_end = {
       class_type: 'ImageScale',
@@ -1519,7 +1546,21 @@ async function buildAnimate(imageName, opts) {
     class_type: 'EmptyLTXVLatentVideo',
     inputs: { width: W / 2, height: H / 2, length: opts.frames, batch_size: 1 },
   };
-  if (opts.endImageName) {
+  let basePositive = ['cond', 0];
+  let baseNegative = ['cond', 1];
+  let baseLatent;
+  if (opts.guideVideoName) {
+    graph.edit_guide1 = {
+      class_type: 'LTXVAddGuide',
+      inputs: {
+        positive: basePositive, negative: baseNegative, vae: ['ckpt', 2], latent: ['latent1', 0],
+        image: ['edit_source_base', 0], frame_idx: 0, strength: 1,
+      },
+    };
+    basePositive = ['edit_guide1', 0];
+    baseNegative = ['edit_guide1', 1];
+    baseLatent = ['edit_guide1', 2];
+  } else if (opts.endImageName) {
     graph.i2v1 = {
       class_type: 'LTXVImgToVideoInplaceKJ',
       inputs: {
@@ -1529,12 +1570,14 @@ async function buildAnimate(imageName, opts) {
         'num_images.strength_2': 0.95, 'num_images.image_2': ['prep_end', 0], 'num_images.index_2': opts.frames - 1,
       },
     };
+    baseLatent = ['i2v1', 0];
   } else {
     graph.i2v1 = await nodeFromOrdered(
       'LTXVImgToVideoInplace',
       [0.95, !!opts.bypass],
       { vae: ['ckpt', 2], image: ['prep', 0], latent: ['latent1', 0] }
     );
+    baseLatent = ['i2v1', 0];
   }
   graph.audio_vae = { class_type: 'LTXVAudioVAELoader', inputs: { ckpt_name: settings.ltxCkpt } };
   let audioLatent;
@@ -1550,12 +1593,12 @@ async function buildAnimate(imageName, opts) {
   }
   graph.concat1 = {
     class_type: 'LTXVConcatAVLatent',
-    inputs: { video_latent: ['i2v1', 0], audio_latent: audioLatent },
+    inputs: { video_latent: baseLatent, audio_latent: audioLatent },
   };
   graph.noise1 = { class_type: 'RandomNoise', inputs: { noise_seed: seed } };
   graph.guider1 = {
     class_type: 'CFGGuider',
-    inputs: { model: ltxModel, positive: ['cond', 0], negative: ['cond', 1], cfg: 1 },
+    inputs: { model: ltxModel, positive: basePositive, negative: baseNegative, cfg: 1 },
   };
   graph.sampler_sel1 = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler_ancestral_cfg_pp' } };
   graph.sigmas1 = await nodeFromOrdered('ManualSigmas', [LTX_SIGMAS_BASE]);
@@ -1574,7 +1617,27 @@ async function buildAnimate(imageName, opts) {
     class_type: 'LTXVLatentUpsampler',
     inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['ckpt', 2] },
   };
-  if (opts.endImageName) {
+  let refinePositive;
+  let refineNegative;
+  let refineLatent;
+  if (opts.guideVideoName) {
+    // Crop first-pass guide tokens before inserting the full-resolution
+    // source clip for refinement. This mirrors LTX's multi-guide flow.
+    graph.edit_crop1 = {
+      class_type: 'LTXVCropGuides',
+      inputs: { positive: basePositive, negative: baseNegative, latent: ['sep1', 0] },
+    };
+    graph.edit_guide2 = {
+      class_type: 'LTXVAddGuide',
+      inputs: {
+        positive: ['edit_crop1', 0], negative: ['edit_crop1', 1], vae: ['ckpt', 2], latent: ['ups', 0],
+        image: ['edit_source', 0], frame_idx: 0, strength: 1,
+      },
+    };
+    refinePositive = ['edit_guide2', 0];
+    refineNegative = ['edit_guide2', 1];
+    refineLatent = ['edit_guide2', 2];
+  } else if (opts.endImageName) {
     graph.i2v2 = {
       class_type: 'LTXVImgToVideoInplaceKJ',
       inputs: {
@@ -1584,27 +1647,33 @@ async function buildAnimate(imageName, opts) {
         'num_images.strength_2': 1, 'num_images.image_2': ['prep_end', 0], 'num_images.index_2': opts.frames - 1,
       },
     };
+    refineLatent = ['i2v2', 0];
   } else {
     graph.i2v2 = await nodeFromOrdered(
       'LTXVImgToVideoInplace',
       [1, !!opts.bypass],
       { vae: ['ckpt', 2], image: ['prep', 0], latent: ['ups', 0] }
     );
+    refineLatent = ['i2v2', 0];
   }
-  graph.crop = {
-    class_type: 'LTXVCropGuides',
-    inputs: { positive: ['cond', 0], negative: ['cond', 1], latent: ['sep1', 0] },
-  };
+  if (!opts.guideVideoName) {
+    graph.crop = {
+      class_type: 'LTXVCropGuides',
+      inputs: { positive: ['cond', 0], negative: ['cond', 1], latent: ['sep1', 0] },
+    };
+    refinePositive = ['crop', 0];
+    refineNegative = ['crop', 1];
+  }
   graph.guider2 = {
     class_type: 'CFGGuider',
-    inputs: { model: ltxModel, positive: ['crop', 0], negative: ['crop', 1], cfg: 1 },
+    inputs: { model: ltxModel, positive: refinePositive, negative: refineNegative, cfg: 1 },
   };
   graph.noise2 = { class_type: 'RandomNoise', inputs: { noise_seed: 42 } };
   graph.sampler_sel2 = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler_cfg_pp' } };
   graph.sigmas2 = await nodeFromOrdered('ManualSigmas', [LTX_SIGMAS_REFINE]);
   graph.concat2 = {
     class_type: 'LTXVConcatAVLatent',
-    inputs: { video_latent: ['i2v2', 0], audio_latent: ['sep1', 1] },
+    inputs: { video_latent: refineLatent, audio_latent: ['sep1', 1] },
   };
   graph.samp2 = {
     class_type: 'SamplerCustomAdvanced',
@@ -2611,6 +2680,7 @@ const REQUIRED_CLASSES = {
     'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
     'LTXVLatentUpsampler', 'LTXVCropGuides', 'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo',
     'SaveVideo', 'ImageScale', 'LTXVPreprocess'],
+  videoedit: ['VHS_LoadVideo', 'LTXVAddGuide'],
   video4k: ['RTXVideoSuperResolution'],
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
@@ -2988,6 +3058,8 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const motionPrompt = String(body.prompt || '').trim();
     if (!motionPrompt) return json(res, 400, { error: 'Describe the motion first' });
+    const engine = ['wan', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
+    const isLtxEdit = engine === 'ltx-edit';
     let item = body.id ? db.items.find((it) => it.id === body.id && it.profileId === req.profile.id) : null;
     if (body.id && !item) return json(res, 404, { error: 'Image not found' });
     // Video-tab jobs that started from a gallery image group under that item
@@ -3009,6 +3081,12 @@ async function handleApi(req, res, url) {
       comfyName = String(body.imageName); // already uploaded via /api/upload
       srcW = clampInt(body.width, 64, 8192, 1024);
       srcH = clampInt(body.height, 64, 8192, 1024);
+    } else if (isLtxEdit) {
+      // Edit Anything conditions from the uploaded video, rather than a
+      // still image. A placeholder keeps shared job metadata code simple.
+      comfyName = await uploadToComfy(BLANK_PNG, 'ks_blank.png');
+      srcW = clampInt(body.width, 64, 8192, 1280);
+      srcH = clampInt(body.height, 64, 8192, 720);
     } else {
       // pure text-to-video: image guide bypassed, aspect from the picker
       comfyName = await uploadToComfy(BLANK_PNG, 'ks_blank.png');
@@ -3017,13 +3095,12 @@ async function handleApi(req, res, url) {
       bypass = true;
     }
 
-    const engine = ['wan', 'eros', 'scail'].includes(body.engine) ? body.engine : 'ltx';
     if (engine !== 'ltx' && bypass) {
-      const label = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[engine];
+      const label = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[engine];
       return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
     }
     const faceImageName = engine === 'ltx' && body.faceImageName ? String(body.faceImageName) : null;
-    const driveVideoName = engine === 'scail' && body.driveVideoName ? String(body.driveVideoName) : null;
+    const driveVideoName = (engine === 'scail' || isLtxEdit) && body.driveVideoName ? String(body.driveVideoName) : null;
     const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
     const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
     const selectedScailMode = scailMode(body.scailMode);
@@ -3036,6 +3113,9 @@ async function handleApi(req, res, url) {
     if (engine === 'scail' && !driveVideoName) {
       return json(res, 400, { error: 'SCAIL 2 needs a driving motion video. Attach one with the 🎥 chip.' });
     }
+    if (isLtxEdit && !driveVideoName) {
+      return json(res, 400, { error: 'LTX Edit needs the source video you want to edit.' });
+    }
     if (engine === 'scail' && selectedScailMode === 'infinity') {
       const info = await getObjectInfo();
       const err = scailInfinityError(info);
@@ -3047,7 +3127,9 @@ async function handleApi(req, res, url) {
     if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 377, 121) / 25;
     seconds = engine === 'scail'
       ? scailDurationSeconds(seconds, driveDur)
-      : Math.max(1, Math.min(15, seconds));
+      : isLtxEdit && driveDur > 0
+        ? Math.max(1, Math.min(15, driveDur, seconds))
+        : Math.max(1, Math.min(15, seconds));
     let frames; let fps; let W; let H;
     if (engine === 'scail') {
       fps = 16;
@@ -3077,7 +3159,9 @@ async function handleApi(req, res, url) {
     }
 
     const seed = Math.floor(Math.random() * 2 ** 48);
-    const enhance = body.enhance !== false;
+    // Edit Anything expects concise, literal editing instructions. Its author
+    // specifically advises against the LTX prompt rewriter for this workflow.
+    const enhance = isLtxEdit ? false : body.enhance !== false;
     let prompt = motionPrompt;
     let wanRefined = null;
     if ((engine === 'wan' || engine === 'scail') && enhance) {
@@ -3090,7 +3174,7 @@ async function handleApi(req, res, url) {
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
     // RIFE frame interpolation for LTX, Wan, and SCAIL video outputs.
-    const smooth = (engine === 'ltx' || engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
+    const smooth = (engine === 'ltx' || isLtxEdit || engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
       ? Number(body.smooth) : 1;
     const isLtxLike = engine === 'ltx' || engine === 'eros';
     const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;
@@ -3110,6 +3194,9 @@ async function handleApi(req, res, url) {
       sigmaFirst: sig.first,
       sigmaUp: sig.up,
       driveVideoName,
+      guideVideoName: isLtxEdit ? driveVideoName : null,
+      guideSkipFrames: isLtxEdit ? Math.max(0, Math.round(driveStart * fps)) : 0,
+      editAnything: isLtxEdit,
       faceImageName,
       driveSkipFrames: Math.max(0, Math.round(driveStart * 16)),
       driveStartSeconds: driveStart,
@@ -3156,8 +3243,8 @@ async function handleApi(req, res, url) {
         driveVideoName: driveVideoName || undefined,
         faceId: !!faceImageName || undefined,
         faceImageName: faceImageName || undefined,
-        driveStartSeconds: engine === 'scail' && driveStart > 0 ? driveStart : undefined,
-        driveDurSeconds: engine === 'scail' && driveDur > 0 ? driveDur : undefined,
+        driveStartSeconds: (engine === 'scail' || isLtxEdit) && driveStart > 0 ? driveStart : undefined,
+        driveDurSeconds: (engine === 'scail' || isLtxEdit) && driveDur > 0 ? driveDur : undefined,
         loras: opts.loras,
         refinedMotionPrompt: wanRefined,
       },
@@ -3281,10 +3368,17 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/motionprompt' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
-    if (!item) return json(res, 404, { error: 'Image not found' });
-    const buf = await fsp.readFile(path.join(IMAGES, item.file));
-    const comfyName = await uploadToComfy(buf, `ks_motion_${item.id}.png`);
+    let comfyName = '';
+    if (body.id) {
+      const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
+      if (!item) return json(res, 404, { error: 'Image not found' });
+      const buf = await fsp.readFile(path.join(IMAGES, item.file));
+      comfyName = await uploadToComfy(buf, `ks_motion_${item.id}.png`);
+    } else if (body.imageName) {
+      // The Video tab has already uploaded its start frame to ComfyUI.
+      comfyName = String(body.imageName);
+    }
+    if (!comfyName) return json(res, 400, { error: 'Attach a start frame first' });
     const raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
     const prompt = cleanEnhancedText(raw, '');
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable text' });

@@ -742,6 +742,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   color: #fff;
 }
 .video-input-grid .media-input-filled .attach-expand { right: 48px; }
+.video-input-grid .media-input-filled .attach-prompt.is-loading {
+  opacity: 0.64;
+  pointer-events: none;
+}
+.video-input-grid .media-input-filled .attach-prompt.is-loading svg { animation: rot 0.8s linear infinite; }
 .video-input-grid .media-input-filled.expanded { grid-column: 1 / -1; }
 .video-swap-action { grid-column: 1 / -1; justify-content: center; }
 .attach-btn {

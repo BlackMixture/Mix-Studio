@@ -67,19 +67,32 @@ test('Duration uses a discoverable clock-style scrubber with a larger tap-to-ope
 test('LTX settings identify their native pipeline and optional RIFE playback', () => {
   assert.match(html, /id="vidLtxGeneration"[^>]*>Two-stage · base \+ refine</);
   assert.match(html, /id="vidLtxPlayback"[^>]*>25 fps · native</);
-  assert.match(app, /vidLtxGenerationRow'\)\.hidden = engine !== 'ltx'/);
+  assert.match(app, /const ltxFamily = engine === 'ltx' \|\| ltxEdit/);
   assert.match(app, /faceMode \? 'Single-stage · Face ID' : 'Two-stage · base \+ refine'/);
   assert.match(app, /function renderVideoFpsChoices\(\)/);
   assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : 16/);
-  assert.match(app, /\$\('#vidFpsRow'\)\.hidden = !\(ltx \|\| wanOrScail\)/);
+  assert.match(app, /\$\('#vidFpsRow'\)\.hidden = !\(ltxFamily \|\| wanOrScail\)/);
   assert.match(app, /\$\{baseFps \* multiplier\} fps · RIFE/);
 });
 
 test('LTX requests can pass through the same RIFE interpolation stage as Wan and SCAIL', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(server, /const smooth = \(engine === 'ltx' \|\| engine === 'wan' \|\| engine === 'scail'\)/);
+  assert.match(server, /const smooth = \(engine === 'ltx' \|\| isLtxEdit \|\| engine === 'wan' \|\| engine === 'scail'\)/);
   assert.match(server, /frameSource = await rifeSmooth\(graph, frameSource, opts\.smooth\);/);
   assert.match(server, /fps: opts\.fps \* \(opts\.smooth > 1 \? opts\.smooth : 1\)/);
+});
+
+test('LTX Edit uses a source-video workflow and forces literal edit prompts', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /data-engine="ltx-edit">LTX Edit/);
+  assert.match(html, /id="setLtxEditLora"/);
+  assert.match(app, /'Describe the edit…'/);
+  assert.match(app, /'Source video'/);
+  assert.match(app, /enhance: ltxEdit \? false : state\.enhance/);
+  assert.match(server, /ltxEditLora: 'edit_anything_v1\.1_r256\.safetensors'/);
+  assert.match(server, /class_type: 'LTXVAddGuide'/);
+  assert.match(server, /guideVideoName: isLtxEdit \? driveVideoName : null/);
+  assert.match(server, /const enhance = isLtxEdit \? false : body\.enhance !== false/);
 });
 
 test('Video prompt tools stay hidden and structured audio labels survive state changes', () => {
@@ -87,4 +100,14 @@ test('Video prompt tools stay hidden and structured audio labels survive state c
   assert.match(css, /#vidDriveTools\[hidden\]/);
   assert.match(html, /data-audio-title/);
   assert.match(app, /function setAudioChipVisual\(chip, active\)/);
+});
+
+test('A start-frame action can ask the vision model for a fitting motion prompt', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="vidMotionPromptBtn"[^>]*aria-label="Create a motion prompt from this image"/);
+  assert.match(app, /#vidMotionPromptBtn'\)\.addEventListener\('click'/);
+  assert.match(app, /api\('\/api\/motionprompt'/);
+  assert.match(app, /state\.prompts\.video = res\.prompt/);
+  assert.match(server, /body\.imageName/);
+  assert.match(server, /suggestMotionPrompt\(comfyName/);
 });
