@@ -21,6 +21,14 @@ test('the K mark opens a labeled mobile app drawer', () => {
   assert.match(css, /\.chip-row\.prompt-tools \{ margin-top: 6px; margin-bottom: -6px; \}/);
 });
 
+test('advanced settings live in the app drawer instead of the top bar', () => {
+  const topbar = html.match(/<header class="topbar">([\s\S]*?)<\/header>/)?.[1] || '';
+  const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
+  assert.doesNotMatch(topbar, /id="settingsBtn"/);
+  assert.match(drawer, /id="settingsBtn"[\s\S]*Advanced Settings[\s\S]*Models &amp; connection/);
+  assert.match(app, /\$\('#settingsBtn'\)\.addEventListener\('click', async \(\) => \{\s*closeAppDrawer\(\)/);
+});
+
 test('the update flow pulls safely and waits for a conditional restart', () => {
   assert.match(server, /route === '\/api\/update'/);
   assert.match(server, /updateFromGit\(ROOT\)/);

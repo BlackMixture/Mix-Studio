@@ -19,13 +19,37 @@ test('Video frame and media inputs use visual source cards', () => {
   assert.match(css, /\.video-input-grid \.media-input-filled/);
 });
 
-test('Video settings are grouped behind an animated accessible disclosure', () => {
+test('Video model selection sits above the prompt and collapses after choosing', () => {
+  const modelAt = html.indexOf('id="vidModelPanel"');
+  const promptAt = html.indexOf('id="promptPanel"');
+  assert.ok(modelAt > -1 && modelAt < promptAt);
+  assert.match(html, /id="vidModelHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidModelBody"/);
+  assert.match(html, /id="vidModelBody" aria-hidden="true" inert/);
+  assert.match(html, /id="vidEngineSelected">LTX 2\.3</);
+  assert.match(css, /\.video-model-body[\s\S]*grid-template-rows: 0fr/);
+  assert.match(css, /\.video-model-panel\.expanded \.video-model-body[\s\S]*grid-template-rows: 1fr/);
+  assert.match(app, /function setVideoModelExpanded\(open\)/);
+  assert.match(app, /setTimeout\(\(\) => setVideoModelExpanded\(false\), 120\)/);
+});
+
+test('Secondary video controls remain behind an animated accessible disclosure', () => {
   assert.match(html, /id="vidOptsHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidOptsBody"/);
   assert.match(html, /id="vidOptsBody" aria-hidden="true" inert/);
-  assert.match(html, /class="video-option-label">Model/);
   assert.match(css, /\.video-options-body \{[\s\S]*grid-template-rows: 0fr/);
   assert.match(css, /\.video-options-panel\.expanded \.video-options-body \{[\s\S]*grid-template-rows: 1fr/);
   assert.match(app, /function setVideoOptionsExpanded\(open\)/);
+});
+
+test('Duration and motion use collapsible vertical scrubbers instead of range sliders', () => {
+  assert.match(html, /id="vidTimingHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidTimingBody"/);
+  assert.match(html, /id="vidTimingBody" aria-hidden="true" inert/);
+  assert.match(html, /id="vidDurScrub"[^>]*role="spinbutton"/);
+  assert.match(html, /id="vidFreeScrub"[^>]*role="spinbutton"/);
+  assert.doesNotMatch(html, /id="vid(?:Dur|Free)" type="range"/);
+  assert.match(css, /\.video-number-scrubber \{[\s\S]*touch-action: none/);
+  assert.match(app, /function wireVideoScrubber\(buttonId, inputId\)/);
+  assert.match(app, /drag\.y - event\.clientY/);
+  assert.match(app, /event\.key === 'ArrowUp'/);
 });
 
 test('LTX settings identify its fixed generation and playback pipelines', () => {

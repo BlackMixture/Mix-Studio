@@ -59,6 +59,8 @@ const {
   hasActiveRegions,
   normalizeRegions,
 } = require('./lib/regional-workflows');
+const { nodeLabelForJob } = require('./lib/progress-labels');
+const { decodePreviewPayload } = require('./lib/preview-payload');
 const {
   PROFILE_COOKIE,
   hashPin,
@@ -702,12 +704,24 @@ function ensureWs() {
   const url = settings.comfyUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws?clientId=' + CLIENT_ID;
   try { ws = new WebSocket(url); } catch { return scheduleWsRetry(); }
   ws.binaryType = 'arraybuffer';
-  ws.onmessage = (ev) => {
+  ws.onmessage = async (ev) => {
     if (typeof ev.data === 'string') {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       handleWsMessage(msg);
     } else {
-      handleWsBinary(Buffer.from(ev.data));
+      try {
+        const data = ev.data;
+        const buf = Buffer.isBuffer(data)
+          ? data
+          : (data instanceof ArrayBuffer
+            ? Buffer.from(data)
+            : (ArrayBuffer.isView(data)
+              ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+              : (data && typeof data.arrayBuffer === 'function' ? Buffer.from(await data.arrayBuffer()) : null)));
+        if (buf) handleWsBinary(buf);
+      } catch (e) {
+        console.warn('[preview] could not decode ComfyUI websocket frame:', e.message);
+      }
     }
   };
   ws.onclose = scheduleWsRetry;
@@ -736,37 +750,16 @@ function handleWsMessage(msg) {
 }
 
 function nodeLabel(pid, nodeId) {
-  const job = jobs.get(pid);
-  const cls = job && job.graph && job.graph[nodeId] ? job.graph[nodeId].class_type : '';
-  const map = {
-    UNETLoader: 'Loading Krea 2...', CLIPLoader: 'Loading text encoder...', VAELoader: 'Loading VAE...',
-    LoraLoader: 'Applying LoRAs...', TextGenerate: 'Enhancing prompt...', CLIPTextEncode: 'Encoding prompt...',
-    TextEncodeQwenImageEditPlus: 'Encoding prompt + images...', KSampler: 'Sampling...', VAEDecode: 'Decoding...',
-    SaveImage: 'Saving...', SeedVR2LoadDiTModel: 'Loading SeedVR2...', SeedVR2LoadVAEModel: 'Loading SeedVR2 VAE...',
-    SeedVR2VideoUpscaler: 'Upscaling...', ImageScaleBy: 'Pre-resizing...', LoadImage: 'Loading image...',
-    UpscaleModelLoader: 'Loading upscale model...', UltimateSDUpscale: 'Upscaling tiles...',
-    Ideogram4PromptBuilderKJ: 'Building region prompt...', Krea2RegionalMultiLoRAV3: 'Applying region guidance...',
-    ImageToMask: 'Preparing mask...', GrowMask: 'Softening mask...', VAEEncodeForInpaint: 'Encoding inpaint area...',
-    CheckpointLoaderSimple: 'Loading LTX 2.3...', LTXAVTextEncoderLoader: 'Loading Gemma...',
-    TextGenerateLTX2Prompt: 'Enhancing motion prompt...', SamplerCustomAdvanced: 'Generating video...',
-    LTXVLatentUpsampler: 'Upsampling video...', VAEDecodeTiled: 'Decoding frames...',
-    RTXVideoSuperResolution: 'RTX 4K pass...', CreateVideo: 'Encoding video...', SaveVideo: 'Saving video...',
-  };
-  return map[cls] || 'Working...';
+  return nodeLabelForJob(jobs.get(pid), nodeId);
 }
 
 function handleWsBinary(buf) {
-  // [4B event][4B format][image bytes] - event 1 = preview image
-  if (buf.length < 9) return;
-  const event = buf.readUInt32BE(0);
-  if (event !== 1) return;
+  const preview = decodePreviewPayload(buf);
+  if (!preview) return;
   const now = Date.now();
   if (now - lastPreviewAt < 450) return;
   lastPreviewAt = now;
-  const format = buf.readUInt32BE(4);
-  const mime = format === 2 ? 'image/png' : 'image/jpeg';
-  const b64 = buf.subarray(8).toString('base64');
-  broadcast('preview', { dataUrl: `data:${mime};base64,${b64}` });
+  broadcast('preview', { dataUrl: `data:${preview.mime};base64,${preview.image.toString('base64')}` });
 }
 
 /* --------------------------- Job lifecycle ------------------------ */

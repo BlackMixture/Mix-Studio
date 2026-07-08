@@ -676,6 +676,7 @@ function updateVideoPanels() {
       ? 'Describe the full scene… (optional)'
       : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
+  $('#vidModelPanel').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
@@ -1527,6 +1528,7 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
     const durEl = $('#' + durInputId);
     durEl.value = Math.max(1, Math.min(15, Math.round(len)));
     $('#' + durValId).textContent = durEl.value;
+    durEl.dispatchEvent(new Event('input', { bubbles: true }));
   };
   waveRedraw[stateKey] = () => { drawWave(); layout(); };
 
@@ -2385,6 +2387,95 @@ $('#vidOptsHeader').addEventListener('click', () => {
   setVideoOptionsExpanded(!$('#vidOptsPanel').classList.contains('expanded'));
 });
 
+function setVideoModelExpanded(open) {
+  const expand = open === true;
+  const body = $('#vidModelBody');
+  $('#vidModelPanel').classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#vidModelHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#vidModelHeader').addEventListener('click', () => {
+  setVideoModelExpanded(!$('#vidModelPanel').classList.contains('expanded'));
+});
+
+function setVideoTimingExpanded(open) {
+  const expand = open === true;
+  const body = $('#vidTimingBody');
+  $('#vidTimingPanel').classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#vidTimingHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#vidTimingHeader').addEventListener('click', () => {
+  setVideoTimingExpanded(!$('#vidTimingPanel').classList.contains('expanded'));
+});
+
+function updateVideoTuningSummary() {
+  const duration = Number($('#vidDur').value) || 1;
+  const motion = Number($('#vidFree').value) || 0;
+  const motionVisible = !$('#vidFreeField').hidden;
+  const summary = motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`;
+  $('#vidTimingSummary').textContent = summary;
+  $('#vidControlsNote').textContent = summary;
+  $('#vidDurVal').textContent = String(duration);
+  $('#vidFreeVal').textContent = String(motion);
+  $('#vidDurScrub').setAttribute('aria-valuenow', String(duration));
+  $('#vidDurScrub').setAttribute('aria-valuemax', $('#vidDur').max || '15');
+  $('#vidFreeScrub').setAttribute('aria-valuenow', String(motion));
+}
+
+function setVideoScrubValue(input, value) {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const step = Number(input.step) || 1;
+  const next = Math.max(min, Math.min(max, Math.round(value / step) * step));
+  if (Number(input.value) === next) return;
+  input.value = String(next);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function wireVideoScrubber(buttonId, inputId) {
+  const button = $('#' + buttonId);
+  const input = $('#' + inputId);
+  let drag = null;
+  button.addEventListener('pointerdown', (event) => {
+    drag = { id: event.pointerId, y: event.clientY, value: Number(input.value), moved: false };
+    button.classList.add('adjusting');
+    try { button.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  });
+  button.addEventListener('pointermove', (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    const delta = Math.round((drag.y - event.clientY) / 10);
+    if (delta) drag.moved = true;
+    setVideoScrubValue(input, drag.value + delta * (Number(input.step) || 1));
+    event.preventDefault();
+  });
+  const finish = () => {
+    drag = null;
+    button.classList.remove('adjusting');
+  };
+  button.addEventListener('pointerup', finish);
+  button.addEventListener('pointercancel', finish);
+  button.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    setVideoScrubValue(input, Number(input.value) + (event.deltaY < 0 ? 1 : -1) * (Number(input.step) || 1));
+  }, { passive: false });
+  button.addEventListener('keydown', (event) => {
+    let next = null;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowRight') next = Number(input.value) + (Number(input.step) || 1);
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') next = Number(input.value) - (Number(input.step) || 1);
+    else if (event.key === 'Home') next = Number(input.min);
+    else if (event.key === 'End') next = Number(input.max);
+    if (next == null) return;
+    event.preventDefault();
+    setVideoScrubValue(input, next);
+  });
+}
+
+wireVideoScrubber('vidDurScrub', 'vidDur');
+wireVideoScrubber('vidFreeScrub', 'vidFree');
+
 function setAdvancedExpanded(open) {
   const expand = open === true;
   const body = $('#advBody');
@@ -2596,7 +2687,85 @@ async function useAsRef(item) {
 /* ------------------------------------------------------------------ */
 
 $('#seedDice').addEventListener('click', () => { $('#seedInput').value = ''; toast('Seed: random'); });
-$('#liveDismiss').addEventListener('click', () => $('#livePreview').classList.remove('show'));
+let livePreviewSwipe = null;
+let livePreviewDismissTimer = null;
+
+function resetLivePreviewMotion() {
+  clearTimeout(livePreviewDismissTimer);
+  const preview = $('#livePreview');
+  preview.classList.remove('swiping', 'dismissing');
+  preview.style.transform = '';
+  preview.style.opacity = '';
+  livePreviewSwipe = null;
+}
+
+function dismissLivePreview(direction = 1) {
+  const preview = $('#livePreview');
+  if (!preview.classList.contains('show')) return;
+  clearTimeout(livePreviewDismissTimer);
+  preview.classList.remove('swiping');
+  preview.classList.add('dismissing');
+  preview.style.transform = `translateX(${direction * (window.innerWidth + 40)}px)`;
+  preview.style.opacity = '0';
+  livePreviewDismissTimer = setTimeout(() => {
+    preview.classList.remove('show');
+    resetLivePreviewMotion();
+  }, 180);
+}
+
+function settleLivePreviewSwipe() {
+  const preview = $('#livePreview');
+  preview.classList.remove('swiping');
+  preview.style.transform = '';
+  preview.style.opacity = '';
+  livePreviewSwipe = null;
+}
+
+$('#liveDismiss').addEventListener('click', () => dismissLivePreview(1));
+$('#livePreview').addEventListener('pointerdown', (event) => {
+  if (event.target.closest('#liveDismiss') || event.button !== 0) return;
+  livePreviewSwipe = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    lastX: event.clientX,
+    lastAt: performance.now(),
+    velocityX: 0,
+    active: false,
+  };
+});
+$('#livePreview').addEventListener('pointermove', (event) => {
+  const swipe = livePreviewSwipe;
+  if (!swipe || swipe.pointerId !== event.pointerId) return;
+  const dx = event.clientX - swipe.startX;
+  const dy = event.clientY - swipe.startY;
+  if (!swipe.active) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    if (Math.abs(dy) >= Math.abs(dx)) { livePreviewSwipe = null; return; }
+    swipe.active = true;
+    $('#livePreview').classList.add('swiping');
+    try { $('#livePreview').setPointerCapture(event.pointerId); } catch { /* noop */ }
+  }
+  const now = performance.now();
+  const elapsed = Math.max(1, now - swipe.lastAt);
+  swipe.velocityX = (event.clientX - swipe.lastX) / elapsed;
+  swipe.lastX = event.clientX;
+  swipe.lastAt = now;
+  $('#livePreview').style.transform = `translateX(${dx}px)`;
+  $('#livePreview').style.opacity = String(Math.max(0.28, 1 - Math.abs(dx) / 260));
+});
+$('#livePreview').addEventListener('pointerup', (event) => {
+  const swipe = livePreviewSwipe;
+  if (!swipe || swipe.pointerId !== event.pointerId) return;
+  const dx = event.clientX - swipe.startX;
+  if (swipe.active && (Math.abs(dx) >= 72 || Math.abs(swipe.velocityX) >= 0.55)) {
+    dismissLivePreview(dx < 0 ? -1 : 1);
+  } else {
+    settleLivePreviewSwipe();
+  }
+});
+$('#livePreview').addEventListener('pointercancel', settleLivePreviewSwipe);
+$('#livePreviewImg').addEventListener('error', () => $('#livePreviewImg').removeAttribute('src'));
 $('#denoiseInput').addEventListener('input', () => { $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2); });
 
 /* Video tab: inline source-image attachment */
@@ -2639,8 +2808,16 @@ function renderVidFace() {
     $('#vidLtxGeneration').textContent = faceMode ? 'Single-stage · Face ID' : 'Two-stage · base + refine';
     $('#vidLtxPlayback').textContent = faceMode ? '24 fps · native' : '25 fps · native';
   }
-  if (faceMode) $('#vidEngineNote').textContent = 'LTX Face ID · 24 fps · ref_t2v';
-  else if (ltx) $('#vidEngineNote').textContent = 'LTX 2.3 · 25 fps · audio';
+  const labels = { ltx: 'LTX 2.3', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
+  const notes = {
+    ltx: faceMode ? 'Face ID · 24 fps' : '25 fps · audio',
+    eros: '24 fps · image required',
+    wan: '16 fps · image required',
+    scail: '16 fps · motion transfer',
+  };
+  $('#vidEngineSelected').textContent = labels[state.vidEngine] || labels.ltx;
+  $('#vidEngineNote').textContent = notes[state.vidEngine] || notes.ltx;
+  updateVideoTuningSummary();
 }
 $('#vidFaceChip').addEventListener('click', () => openFaceSheet());
 $('#vidFaceSwap').addEventListener('click', () => openFaceSheet());
@@ -2779,7 +2956,7 @@ function pickVidRef() {
   });
   input.click();
 }
-$('#vidDur').addEventListener('input', () => { $('#vidDurVal').textContent = $('#vidDur').value; });
+$('#vidDur').addEventListener('input', updateVideoTuningSummary);
 $('#vid4k').addEventListener('click', () => $('#vid4k').classList.toggle('active'));
 
 /* SCAIL 2 driving-video attachment (+ trim + first-frame extract) */
@@ -2842,7 +3019,7 @@ function driveLayout() {
   if (state.vidEngine === 'scail') {
     const durEl = $('#vidDur');
     durEl.value = Math.max(1, Math.min(Number(durEl.max) || 10, Math.round(len)));
-    $('#vidDurVal').textContent = durEl.value;
+    durEl.dispatchEvent(new Event('input', { bubbles: true }));
   }
 }
 let filmstripToken = 0;
@@ -3040,12 +3217,11 @@ wireEngineRow('vidEngineRow', (engine) => {
   renderScailChunkControls();
   const dur = $('#vidDur');
   dur.max = scail ? 60 : 15;
-  if (Number(dur.value) > Number(dur.max)) { dur.value = dur.max; $('#vidDurVal').textContent = dur.value; }
+  $('#vidDurScrub').setAttribute('aria-valuemax', dur.max);
+  if (Number(dur.value) > Number(dur.max)) dur.value = dur.max;
   renderVidDrive();
   renderVidFace();
-  $('#vidEngineNote').textContent = wan ? 'Wan 2.2 · 16 fps · needs image'
-    : scail ? 'SCAIL 2 · 16 fps · motion audio'
-      : (engine === 'eros' ? '10Eros DMD · 24 fps · audio · needs image' : 'LTX 2.3 · 25 fps · audio');
+  setTimeout(() => setVideoModelExpanded(false), 120);
 });
 wireEngineRow('animEngineRow', (engine) => {
   state.animEngine = engine;
@@ -3178,6 +3354,7 @@ $('#generateBtn').addEventListener('click', async () => {
 
 function setGenerating(on, statusText) {
   if (on) {
+    resetLivePreviewMotion();
     $('#livePreview').classList.add('show');
     $('#livePreviewImg').removeAttribute('src');
     $('#liveStatusText').innerHTML = `<span class="spin"></span> ${statusText || 'Working…'}`;
@@ -4163,7 +4340,7 @@ function openAnimateSheet(it, selVideo) {
 }
 $('#animDur').addEventListener('input', () => { $('#animDurVal').textContent = $('#animDur').value; });
 $('#animFree').addEventListener('input', () => { $('#animFreeVal').textContent = $('#animFree').value; });
-$('#vidFree').addEventListener('input', () => { $('#vidFreeVal').textContent = $('#vidFree').value; });
+$('#vidFree').addEventListener('input', updateVideoTuningSummary);
 $('#animEnhance').addEventListener('click', () => $('#animEnhance').classList.toggle('active'));
 $$('#mediaFilter button').forEach((b) => b.addEventListener('click', () => {
   state.mediaFilter = b.dataset.f;
@@ -4369,12 +4546,11 @@ async function reuseVideo(it, v) {
   $('#vidQuality').classList.toggle('active', engine === 'wan' && info.fast === false);
   if (info.motionFreedom !== undefined && info.motionFreedom !== null) {
     $('#vidFree').value = info.motionFreedom;
-    $('#vidFreeVal').textContent = info.motionFreedom;
   }
   const dur = $('#vidDur');
   const secs = info.frames && info.fps ? Math.round(info.frames / info.fps) : 5;
   dur.value = Math.max(1, Math.min(Number(dur.max) || 15, secs));
-  $('#vidDurVal').textContent = dur.value;
+  updateVideoTuningSummary();
 
   // LoRAs
   state.videoLoras = (info.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) || 1, on: true }));
@@ -4740,7 +4916,118 @@ $('#newFolderBtn').addEventListener('click', async () => {
 /* Settings                                                            */
 /* ------------------------------------------------------------------ */
 
+const svAttentionOptions = {
+  sdpa: { label: 'SDPA', description: 'Safest · no extra DLLs' },
+  sageattn_2: { label: 'SageAttention 2', description: 'Faster · requires Triton' },
+  sageattn_3: { label: 'SageAttention 3', description: 'RTX 50-series only' },
+  flash_attn_2: { label: 'Flash Attention 2', description: 'Flash Attention compatible GPUs' },
+  flash_attn_3: { label: 'Flash Attention 3', description: 'Hopper generation and newer' },
+};
+
+function setSvAttnValue(value) {
+  const next = svAttentionOptions[value] ? value : 'sdpa';
+  const copy = svAttentionOptions[next];
+  $('#setSvAttn').value = next;
+  $('#svAttnLabel').textContent = copy.label;
+  $('#svAttnDescription').textContent = copy.description;
+  $$('#svAttnList [role="option"]').forEach((option) => {
+    option.setAttribute('aria-selected', String(option.dataset.attention === next));
+  });
+}
+
+function setSvAttnPickerOpen(open, focusOption = false) {
+  const expand = open === true;
+  const picker = $('#svAttnPicker');
+  const list = $('#svAttnList');
+  picker.classList.toggle('open', expand);
+  list.inert = !expand;
+  list.setAttribute('aria-hidden', String(!expand));
+  $('#svAttnTrigger').setAttribute('aria-expanded', String(expand));
+  if (expand && focusOption) {
+    const selected = $('#svAttnList [aria-selected="true"]');
+    if (selected) selected.focus();
+  }
+}
+
+$('#svAttnTrigger').addEventListener('click', () => {
+  setSvAttnPickerOpen(!$('#svAttnPicker').classList.contains('open'));
+});
+$('#svAttnTrigger').addEventListener('keydown', (event) => {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  setSvAttnPickerOpen(true, true);
+  if (event.key === 'ArrowUp' || event.key === 'End') {
+    const options = $$('#svAttnList [role="option"]');
+    options[options.length - 1]?.focus();
+  } else if (event.key === 'Home') {
+    $('#svAttnList [role="option"]')?.focus();
+  }
+});
+const svAttnOptionButtons = $$('#svAttnList [role="option"]');
+svAttnOptionButtons.forEach((option, index) => {
+  option.addEventListener('click', () => {
+    setSvAttnValue(option.dataset.attention);
+    setSvAttnPickerOpen(false);
+    $('#svAttnTrigger').focus();
+  });
+  option.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSvAttnPickerOpen(false);
+      $('#svAttnTrigger').focus();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? svAttnOptionButtons.length - 1
+        : (index + (event.key === 'ArrowDown' ? 1 : -1) + svAttnOptionButtons.length) % svAttnOptionButtons.length;
+    svAttnOptionButtons[next].focus();
+  });
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!$('#svAttnPicker').contains(event.target)) setSvAttnPickerOpen(false);
+});
+setSvAttnValue('sdpa');
+
+let settingsActiveTab = 'general';
+const settingsTabNames = ['general', 'image', 'video', 'system'];
+
+function setSettingsTab(name, focus = false) {
+  if (!settingsTabNames.includes(name)) name = 'general';
+  if (name !== 'system') setSvAttnPickerOpen(false);
+  settingsActiveTab = name;
+  $$('[data-settings-tab]').forEach((tab) => {
+    const active = tab.dataset.settingsTab === name;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    if (active && focus) tab.focus();
+  });
+  $$('[data-settings-pane]').forEach((pane) => {
+    const active = pane.dataset.settingsPane === name;
+    pane.hidden = !active;
+    pane.classList.toggle('active', active);
+  });
+  const content = $('.settings-content');
+  if (content) content.scrollTop = 0;
+}
+
+$$('[data-settings-tab]').forEach((tab) => {
+  tab.addEventListener('click', () => setSettingsTab(tab.dataset.settingsTab));
+  tab.addEventListener('keydown', (event) => {
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const current = settingsTabNames.indexOf(tab.dataset.settingsTab);
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? settingsTabNames.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + settingsTabNames.length) % settingsTabNames.length;
+    setSettingsTab(settingsTabNames[next], true);
+  });
+});
+
 $('#settingsBtn').addEventListener('click', async () => {
+  closeAppDrawer();
   try {
     const s = await api('/api/settings');
     $('#setComfy').value = s.comfyUrl;
@@ -4758,7 +5045,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setQeLora').value = s.qwenEditLora || '';
     $('#setDit').value = s.seedvr2Dit;
     $('#setSvVae').value = s.seedvr2Vae;
-    $('#setSvAttn').value = s.seedvr2Attention || 'sdpa';
+    setSvAttnValue(s.seedvr2Attention || 'sdpa');
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';
@@ -4784,6 +5071,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setScailCv').value = s.scailClipVision || '';
     $('#setScailSam').value = s.scailSam || '';
   } catch { /* noop */ }
+  setSettingsTab(settingsActiveTab);
   $('#settingsSheet').classList.add('show');
   renderHealth();
 });

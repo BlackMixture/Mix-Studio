@@ -175,5 +175,5 @@ test('server advertises regional Krea2 and inpaint readiness groups', () => {
   assert.match(serverJs, /Krea2RegionalMultiLoRAV3/);
   assert.match(serverJs, /Ideogram4PromptBuilderKJ/);
   assert.match(serverJs, /krea2inpaint:\s*\[/);
-  assert.match(serverJs, /VAEEncodeForInpaint/);
+  assert.match(serverJs, /krea2inpaint:\s*\[[^\]]*'VAEEncode'[^\]]*'SetLatentNoiseMask'/);
 });

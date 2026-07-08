@@ -24,7 +24,7 @@
         <path d="M21 19.5v25" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
       </svg>
     </button>
-    <div class="brand-name">KreaStudio <span>· Krea 2</span></div>
+    <div class="brand-name">KreaStudio</div>
   </div>
   <div class="topbar-actions">
     <button class="profile-chip" id="profileBtn" hidden></button>
@@ -32,9 +32,6 @@
     <button class="icon-btn queue-btn" id="queueBtn" aria-label="Queue">
       <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Zm12 0h2v2h-2v-2Zm0-1.5 4-2.8-4-2.8v5.6Z"/></svg>
       <span class="queue-count" id="queueCount" hidden>0</span>
-    </button>
-    <button class="icon-btn" id="settingsBtn" aria-label="Settings">
-      <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="m9.3 21-.5-3.1a6 6 0 0 1-1-.57l-2.9 1.2-2.7-4.66 2.4-1.9a6.7 6.7 0 0 1 0-1.14l-2.4-1.9L4.9 4.27l2.9 1.2a6 6 0 0 1 1-.57L9.3 1.8h5.4l.5 3.1a6 6 0 0 1 1 .57l2.9-1.2 2.7 4.66-2.4 1.9c.03.38.03.76 0 1.14l2.4 1.9-2.7 4.66-2.9-1.2a6 6 0 0 1-1 .57l-.5 3.1H9.3Zm2.7-5.6a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"/></svg>
     </button>
   </div>
 </header>
@@ -62,6 +59,13 @@
         <div class="app-update-status" id="appUpdateStatus" role="status" aria-live="polite">
           Pulls the latest version and restarts only when needed.
         </div>
+        <button class="app-drawer-action" id="settingsBtn" type="button">
+          <span class="app-drawer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m9.3 21-.5-3.1a6 6 0 0 1-1-.57l-2.9 1.2-2.7-4.66 2.4-1.9a6.7 6.7 0 0 1 0-1.14l-2.4-1.9L4.9 4.27l2.9 1.2a6 6 0 0 1 1-.57L9.3 1.8h5.4l.5 3.1a6 6 0 0 1 1 .57l2.9-1.2 2.7 4.66-2.4 1.9c.03.38.03.76 0 1.14l2.4 1.9-2.7 4.66-2.9-1.2a6 6 0 0 1-1 .57l-.5 3.1H9.3Zm2.7-5.6a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"/></svg>
+          </span>
+          <span class="app-drawer-label">Advanced Settings</span>
+          <small>Models &amp; connection</small>
+        </button>
       </section>
     </div>
 
@@ -117,6 +121,25 @@
     <div class="enhance-hint">Tip: reference them in your prompt by number — “put the jacket from image 2 on the person in image 1”.</div>
   </section>
 
+  <section class="panel video-model-panel" id="vidModelPanel" hidden>
+    <button class="video-model-header" id="vidModelHeader" type="button" aria-expanded="false" aria-controls="vidModelBody">
+      <span class="video-model-kicker">Model</span>
+      <span class="video-model-selected" id="vidEngineSelected">LTX 2.3</span>
+      <span class="video-model-note" id="vidEngineNote">25 fps · audio</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+    </button>
+    <div class="video-model-body" id="vidModelBody" aria-hidden="true" inert>
+      <div class="video-model-body-inner">
+        <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model">
+          <button class="chip active" data-engine="ltx">LTX 2.3</button>
+          <button class="chip" data-engine="eros">10Eros DMD</button>
+          <button class="chip" data-engine="wan">Wan 2.2</button>
+          <button class="chip" data-engine="scail">SCAIL 2</button>
+        </div>
+        <button class="info-btn video-model-info" id="engineInfoBtn" type="button">Compare model capabilities</button>
+      </div>
+    </div>
+  </section>
 
   <section class="panel" id="promptPanel">
     <div class="panel-label" id="promptLabel">Prompt</div>
@@ -329,25 +352,13 @@
   </section>
 
   <section class="panel video-options-panel" id="vidOptsPanel" hidden>
-    <div class="video-options-head">
-      <button class="video-options-header" id="vidOptsHeader" type="button" aria-expanded="false" aria-controls="vidOptsBody">
-        <span class="panel-label">Video settings</span>
-        <span class="res-dims" id="vidEngineNote">LTX 2.3 · 25 fps · audio</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
-      </button>
-      <button class="info-btn" id="engineInfoBtn" type="button" aria-label="About the model options">ⓘ</button>
-    </div>
+    <button class="video-options-header" id="vidOptsHeader" type="button" aria-expanded="false" aria-controls="vidOptsBody">
+      <span class="panel-label">Video controls</span>
+      <span class="res-dims" id="vidControlsNote">5s · motion 35</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+    </button>
     <div class="video-options-body" id="vidOptsBody" aria-hidden="true" inert>
       <div class="video-options-body-inner">
-        <div class="video-option-group">
-          <span class="video-option-label">Model</span>
-          <div class="chip-row video-choice-grid" id="vidEngineRow">
-            <button class="chip active" data-engine="ltx">LTX 2.3</button>
-            <button class="chip" data-engine="eros">10Eros DMD</button>
-            <button class="chip" data-engine="wan">Wan 2.2</button>
-            <button class="chip" data-engine="scail">SCAIL 2</button>
-          </div>
-        </div>
         <div class="video-fixed-setting" id="vidLtxGenerationRow">
           <span class="video-option-label">Generation</span>
           <span class="video-fixed-value" id="vidLtxGeneration">Two-stage · base + refine</span>
@@ -397,14 +408,31 @@
             </div>
           </div>
         </div>
-        <div class="video-tuning-grid">
-          <div class="field">
-            <label>Duration — <span id="vidDurVal">5</span>s</label>
-            <div class="range-field"><input id="vidDur" type="range" min="1" max="15" step="1" value="5" /></div>
-          </div>
-          <div class="field" id="vidFreeField">
-            <label>Motion freedom — <span id="vidFreeVal">35</span> <small>higher = livelier</small></label>
-            <div class="range-field"><input id="vidFree" type="range" min="0" max="100" step="1" value="35" /></div>
+        <div class="video-timing-disclosure" id="vidTimingPanel">
+          <button class="video-timing-header" id="vidTimingHeader" type="button" aria-expanded="false" aria-controls="vidTimingBody">
+            <span>Timing</span>
+            <span id="vidTimingSummary">5s · motion 35</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+          </button>
+          <div class="video-timing-body" id="vidTimingBody" aria-hidden="true" inert>
+            <div class="video-timing-body-inner">
+              <div class="video-number-setting">
+                <span><b>Duration</b><small>Video length</small></span>
+                <button class="video-number-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust" aria-valuemin="1" aria-valuemax="15" aria-valuenow="5">
+                  <strong id="vidDurVal">5</strong><em>s</em>
+                  <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
+                </button>
+                <input id="vidDur" type="hidden" min="1" max="15" step="1" value="5" />
+              </div>
+              <div class="video-number-setting" id="vidFreeField">
+                <span><b>Motion freedom</b><small>Higher is livelier</small></span>
+                <button class="video-number-scrubber" id="vidFreeScrub" type="button" role="spinbutton" aria-label="Motion freedom. Swipe up or down to adjust" aria-valuemin="0" aria-valuemax="100" aria-valuenow="35">
+                  <strong id="vidFreeVal">35</strong>
+                  <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
+                </button>
+                <input id="vidFree" type="hidden" min="0" max="100" step="1" value="35" />
+              </div>
+            </div>
           </div>
         </div>
         <div class="chip-row video-output-row">
@@ -896,69 +924,122 @@
 
 <!-- settings sheet -->
 <div class="sheet" id="settingsSheet">
-  <div class="sheet-panel">
+  <div class="sheet-panel settings-panel">
     <h3 class="sheet-title">Settings <button data-close>✕</button></h3>
-    <div class="settings-note">The app talks to ComfyUI on your desktop. Model names must match your ComfyUI folders.</div>
-    <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
-    <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
-    <div class="field"><label>Krea 2 UNET</label><input id="setUnet" type="text" /></div>
-    <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
-    <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
-    <div class="settings-note" style="margin-top:14px"><b>Edit (Flux 2 Klein)</b></div>
-    <div class="field"><label>Klein 4B UNET</label><input id="setKlein4Unet" type="text" /></div>
-    <div class="field"><label>Klein 4B text encoder</label><input id="setKlein4Clip" type="text" /></div>
-    <div class="field"><label>Klein 9B UNET</label><input id="setKlein9Unet" type="text" /></div>
-    <div class="field"><label>Klein 9B text encoder</label><input id="setKlein9Clip" type="text" /></div>
-    <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
-    <div class="settings-note" style="margin-top:14px"><b>Edit (Qwen Image Edit)</b></div>
-    <div class="field"><label>Qwen edit UNET</label><input id="setQeUnet" type="text" /></div>
-    <div class="field"><label>Qwen edit text encoder</label><input id="setQeClip" type="text" /></div>
-    <div class="field"><label>Lightning LoRA</label><input id="setQeLora" type="text" /></div>
-    <div class="field"><label>SeedVR2 DiT model</label><input id="setDit" type="text" /></div>
-    <div class="field"><label>SeedVR2 VAE</label><input id="setSvVae" type="text" /></div>
-    <div class="settings-note" style="margin-top:14px"><b>Video (LTX 2.3)</b></div>
-    <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
-    <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
-    <div class="field"><label>Gemma text encoder</label><input id="setLtxTe" type="text" /></div>
-    <div class="field"><label>Gemma LoRA</label><input id="setLtxGemmaLora" type="text" /></div>
-    <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>
-    <div class="field"><label>Face ID LoRA</label><input id="setFaceIdLora" type="text" /></div>
-    <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
-    <div class="settings-note" style="margin-top:14px"><b>Video (Wan 2.2)</b></div>
-    <div class="field"><label>High-noise UNET</label><input id="setWanHigh" type="text" /></div>
-    <div class="field"><label>Low-noise UNET</label><input id="setWanLow" type="text" /></div>
-    <div class="field"><label>UMT5 text encoder</label><input id="setWanClip" type="text" /></div>
-    <div class="field"><label>Wan VAE</label><input id="setWanVae" type="text" /></div>
-    <div class="field"><label>lightx2v high LoRA</label><input id="setWanHighLora" type="text" /></div>
-    <div class="field"><label>lightx2v low LoRA</label><input id="setWanLowLora" type="text" /></div>
-    <div class="settings-note" style="margin-top:14px"><b>Video (10Eros DMD)</b></div>
-    <div class="field"><label>10Eros checkpoint</label><input id="setErosCkpt" type="text" /></div>
-    <div class="field"><label>Gemma biproj encoder</label><input id="setErosTe" type="text" /></div>
-    <div class="field"><label>DMD LoRA</label><input id="setErosDmd" type="text" /></div>
-    <div class="field"><label>Custom sigmas — first pass (comma list ending in 0.0)</label><input id="setErosSigF" type="text" placeholder="e.g. 1.0, 0.99, 0.9, 0.7, 0.42, 0.0" /></div>
-    <div class="field"><label>Custom sigmas — upscale pass</label><input id="setErosSigU" type="text" placeholder="e.g. 0.92, 0.725, 0.42, 0.0" /></div>
-    <div class="settings-note" style="margin-top:14px"><b>Video (SCAIL 2 motion transfer)</b></div>
-    <div class="field"><label>SCAIL-2 UNET</label><input id="setScailUnet" type="text" /></div>
-    <div class="field"><label>lightx2v distill LoRA</label><input id="setScailLora" type="text" /></div>
-    <div class="field"><label>Pusa LoRA</label><input id="setScailPusaLora" type="text" /></div>
-    <div class="field"><label>CLIP Vision</label><input id="setScailCv" type="text" /></div>
-    <div class="field"><label>SAM3 checkpoint</label><input id="setScailSam" type="text" /></div>
-    <div class="field">
-      <label>SeedVR2 attention</label>
-      <select id="setSvAttn">
-        <option value="sdpa">sdpa — safest, no extra DLLs</option>
-        <option value="sageattn_2">sageattn_2 — fast, needs Triton</option>
-        <option value="sageattn_3">sageattn_3 — RTX 50xx only</option>
-        <option value="flash_attn_2">flash_attn_2</option>
-        <option value="flash_attn_3">flash_attn_3 — Hopper+</option>
-      </select>
+    <div class="settings-shell">
+      <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+        <button class="active" id="settingsTabGeneral" type="button" role="tab" aria-selected="true" aria-controls="settingsPaneGeneral" data-settings-tab="general">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h10v2H4V6Zm0 10h16v2H4v-2Zm14-11h2v4h-2V5Zm-8 10h2v4h-2v-4Z"/></svg><span>General</span>
+        </button>
+        <button id="settingsTabImage" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneImage" data-settings-tab="image" tabindex="-1">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm2 10 4-5 3 3 2-2 3 4H6Z"/></svg><span>Image</span>
+        </button>
+        <button id="settingsTabVideo" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneVideo" data-settings-tab="video" tabindex="-1">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h11a2 2 0 0 1 2 2v1.2l5-3v11.6l-5-3V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2v8h11V8H4Zm13 3.5v1l3 1.8V9.7l-3 1.8Z"/></svg><span>Video</span>
+        </button>
+        <button id="settingsTabSystem" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneSystem" data-settings-tab="system" tabindex="-1">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3v2H8v-2h3v-2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v9h14V6H5Z"/></svg><span>System</span>
+        </button>
+      </nav>
+
+      <div class="settings-content">
+        <section class="settings-pane active" id="settingsPaneGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-pane="general">
+          <div class="settings-pane-head"><h4>General</h4><p>Connection, access, and installation health.</p></div>
+          <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
+          <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
+          <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
+          <div class="health-list" id="healthList"></div>
+        </section>
+
+        <section class="settings-pane" id="settingsPaneImage" role="tabpanel" aria-labelledby="settingsTabImage" data-settings-pane="image" hidden>
+          <div class="settings-pane-head"><h4>Image Models</h4><p>Create, edit, and upscale pipelines.</p></div>
+          <div class="settings-group"><h5>Krea 2</h5>
+            <div class="field"><label>Krea 2 UNET</label><input id="setUnet" type="text" /></div>
+            <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
+            <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>Flux 2 Klein Edit</h5>
+            <div class="field"><label>Klein 4B UNET</label><input id="setKlein4Unet" type="text" /></div>
+            <div class="field"><label>Klein 4B text encoder</label><input id="setKlein4Clip" type="text" /></div>
+            <div class="field"><label>Klein 9B UNET</label><input id="setKlein9Unet" type="text" /></div>
+            <div class="field"><label>Klein 9B text encoder</label><input id="setKlein9Clip" type="text" /></div>
+            <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>Qwen Image Edit</h5>
+            <div class="field"><label>Qwen edit UNET</label><input id="setQeUnet" type="text" /></div>
+            <div class="field"><label>Qwen edit text encoder</label><input id="setQeClip" type="text" /></div>
+            <div class="field"><label>Lightning LoRA</label><input id="setQeLora" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>SeedVR2 Upscale</h5>
+            <div class="field"><label>SeedVR2 DiT model</label><input id="setDit" type="text" /></div>
+            <div class="field"><label>SeedVR2 VAE</label><input id="setSvVae" type="text" /></div>
+          </div>
+        </section>
+
+        <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" hidden>
+          <div class="settings-pane-head"><h4>Video Models</h4><p>LTX, Wan, 10Eros, and SCAIL pipelines.</p></div>
+          <div class="settings-group"><h5>LTX 2.3 &amp; Face ID</h5>
+            <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
+            <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
+            <div class="field"><label>Gemma text encoder</label><input id="setLtxTe" type="text" /></div>
+            <div class="field"><label>Gemma LoRA</label><input id="setLtxGemmaLora" type="text" /></div>
+            <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>
+            <div class="field"><label>Face ID LoRA</label><input id="setFaceIdLora" type="text" /></div>
+            <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>Wan 2.2</h5>
+            <div class="field"><label>High-noise UNET</label><input id="setWanHigh" type="text" /></div>
+            <div class="field"><label>Low-noise UNET</label><input id="setWanLow" type="text" /></div>
+            <div class="field"><label>UMT5 text encoder</label><input id="setWanClip" type="text" /></div>
+            <div class="field"><label>Wan VAE</label><input id="setWanVae" type="text" /></div>
+            <div class="field"><label>lightx2v high LoRA</label><input id="setWanHighLora" type="text" /></div>
+            <div class="field"><label>lightx2v low LoRA</label><input id="setWanLowLora" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>10Eros DMD</h5>
+            <div class="field"><label>10Eros checkpoint</label><input id="setErosCkpt" type="text" /></div>
+            <div class="field"><label>Gemma biproj encoder</label><input id="setErosTe" type="text" /></div>
+            <div class="field"><label>DMD LoRA</label><input id="setErosDmd" type="text" /></div>
+            <div class="field"><label>Custom sigmas — first pass (comma list ending in 0.0)</label><input id="setErosSigF" type="text" placeholder="e.g. 1.0, 0.99, 0.9, 0.7, 0.42, 0.0" /></div>
+            <div class="field"><label>Custom sigmas — upscale pass</label><input id="setErosSigU" type="text" placeholder="e.g. 0.92, 0.725, 0.42, 0.0" /></div>
+          </div>
+          <div class="settings-group"><h5>SCAIL 2 Motion Transfer</h5>
+            <div class="field"><label>SCAIL-2 UNET</label><input id="setScailUnet" type="text" /></div>
+            <div class="field"><label>lightx2v distill LoRA</label><input id="setScailLora" type="text" /></div>
+            <div class="field"><label>Pusa LoRA</label><input id="setScailPusaLora" type="text" /></div>
+            <div class="field"><label>CLIP Vision</label><input id="setScailCv" type="text" /></div>
+            <div class="field"><label>SAM3 checkpoint</label><input id="setScailSam" type="text" /></div>
+          </div>
+        </section>
+
+        <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
+          <div class="settings-pane-head"><h4>System</h4><p>Runtime performance and prompt enhancement.</p></div>
+          <div class="field">
+            <label>SeedVR2 attention</label>
+            <div class="settings-choice" id="svAttnPicker">
+              <input id="setSvAttn" type="hidden" value="sdpa" />
+              <button class="settings-choice-trigger" id="svAttnTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="svAttnList">
+                <span><strong id="svAttnLabel">SDPA</strong><small id="svAttnDescription">Safest · no extra DLLs</small></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+              </button>
+              <div class="settings-choice-list" id="svAttnList" role="listbox" aria-label="SeedVR2 attention" aria-hidden="true" inert>
+                <button type="button" role="option" aria-selected="true" data-attention="sdpa"><span><b>SDPA</b><small>Safest · no extra DLLs</small></span><i>✓</i></button>
+                <button type="button" role="option" aria-selected="false" data-attention="sageattn_2"><span><b>SageAttention 2</b><small>Faster · requires Triton</small></span><i>✓</i></button>
+                <button type="button" role="option" aria-selected="false" data-attention="sageattn_3"><span><b>SageAttention 3</b><small>RTX 50-series only</small></span><i>✓</i></button>
+                <button type="button" role="option" aria-selected="false" data-attention="flash_attn_2"><span><b>Flash Attention 2</b><small>Flash Attention compatible GPUs</small></span><i>✓</i></button>
+                <button type="button" role="option" aria-selected="false" data-attention="flash_attn_3"><span><b>Flash Attention 3</b><small>Hopper generation and newer</small></span><i>✓</i></button>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Prompt-enhance system prompt</label>
+            <textarea class="settings-system-prompt" id="setSysPrompt" rows="12"></textarea>
+          </div>
+        </section>
+      </div>
     </div>
-    <div class="field">
-      <label>Prompt-enhance system prompt</label>
-      <textarea id="setSysPrompt" rows="6" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;color:var(--ink);font-size:13px;line-height:1.4;outline:none;resize:vertical;"></textarea>
+    <div class="settings-footer">
+      <button class="sheet-cta" id="settingsSave">Save &amp; test connection</button>
     </div>
-    <div class="health-list" id="healthList"></div>
-    <button class="sheet-cta" id="settingsSave">Save & test connection</button>
   </div>
 </div>
 
