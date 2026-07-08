@@ -82,9 +82,18 @@
   </div>
   <div class="tabs create-tabs" id="createTabs" aria-label="Create mode">
     <div class="tab-pill" id="createTabPill"></div>
-    <button class="tab create-tab active" data-create-mode="image">Image</button>
-    <button class="tab create-tab" data-create-mode="region">Region</button>
-    <button class="tab create-tab" data-create-mode="video">Video</button>
+    <button class="tab create-tab active" data-create-mode="image">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
+      <span>Image</span>
+    </button>
+    <button class="tab create-tab" data-create-mode="region">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg>
+      <span>Region</span>
+    </button>
+    <button class="tab create-tab" data-create-mode="video">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Zm13 4.5v1l3 1.8V9.7l-3 1.8Z"/></svg>
+      <span>Video</span>
+    </button>
   </div>
 </div>
 
@@ -216,6 +225,55 @@
         <div class="trim-hint">Drag the edges to trim · drag the middle to move the selection</div>
       </div>
     </div>
+  </section>
+
+  <section class="panel region-workspace" id="regionWorkspace" aria-labelledby="regionWorkspaceTitle" hidden>
+    <div class="region-workspace-head">
+      <div>
+        <div class="panel-label" id="regionWorkspaceTitle">Regional prompting</div>
+        <p>Frame each subject, then describe only what belongs inside that area.</p>
+      </div>
+      <span class="region-count" id="regionWorkspaceSummary">1 region</span>
+    </div>
+    <div class="region-toolbar" aria-label="Region tools">
+      <button class="chip" id="regionEnabledChip" type="button">Use regions</button>
+      <button class="chip" id="regionAddBtn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+        Add box
+      </button>
+      <button class="chip" id="regionDeleteBtn" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 9h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Z"/></svg>
+        Delete
+      </button>
+    </div>
+    <div class="region-stage-wrap">
+      <div class="region-stage" id="regionStage" aria-label="Region layout preview"></div>
+      <span class="region-stage-hint">Drag to move · use the corner to resize</span>
+    </div>
+    <div class="region-fields">
+      <div class="field field-span">
+        <label>Region prompt</label>
+        <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
+      </div>
+      <div class="field">
+        <label>Region LoRA</label>
+        <button class="lora-pick-row region-lora-btn" id="regionLoraBtn" type="button"><span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span></button>
+      </div>
+      <div class="field">
+        <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
+        <div class="range-field"><input id="regionStrengthInput" type="range" min="0" max="2" step="0.05" value="1" /></div>
+      </div>
+      <div class="field field-span">
+        <label>Reference lock</label>
+        <div class="region-ref-row">
+          <button class="chip" id="regionRefBtn" type="button">Add ref image</button>
+          <button class="chip" id="regionRefClear" type="button">Remove ref</button>
+          <span id="regionRefLabel">None</span>
+        </div>
+        <input id="regionRefInput" type="file" accept="image/*" hidden />
+      </div>
+    </div>
+    <button class="region-apply" id="regionDoneBtn" type="button">Apply region layout</button>
   </section>
 
   <section class="panel" id="vidOptsPanel" hidden>
@@ -467,43 +525,6 @@
     </div>
 
     <button class="sheet-cta" id="cameraApply">Apply to prompt</button>
-  </div>
-</div>
-
-<!-- region prompt sheet -->
-<div class="sheet region-sheet" id="regionSheet">
-  <div class="sheet-panel region-panel">
-    <h3 class="sheet-title">Regional Prompting <button data-close>✕</button></h3>
-    <div class="region-toolbar">
-      <button class="chip" id="regionEnabledChip" type="button">Use regions</button>
-      <button class="chip" id="regionAddBtn" type="button">Add box</button>
-      <button class="chip" id="regionDeleteBtn" type="button">Delete</button>
-    </div>
-    <div class="region-stage" id="regionStage"></div>
-    <div class="region-fields">
-      <div class="field field-span">
-        <label>Region prompt</label>
-        <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
-      </div>
-      <div class="field">
-        <label>Region LoRA</label>
-        <button class="lora-pick-row region-lora-btn" id="regionLoraBtn" type="button"><span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span></button>
-      </div>
-      <div class="field">
-        <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
-        <div class="range-field"><input id="regionStrengthInput" type="range" min="-2" max="2" step="0.05" value="1" /></div>
-      </div>
-      <div class="field field-span">
-        <label>Reference lock</label>
-        <div class="region-ref-row">
-          <button class="chip" id="regionRefBtn" type="button">Add ref image</button>
-          <button class="chip" id="regionRefClear" type="button">Remove ref</button>
-          <span id="regionRefLabel">None</span>
-        </div>
-        <input id="regionRefInput" type="file" accept="image/*" hidden />
-      </div>
-    </div>
-    <button class="sheet-cta" id="regionDoneBtn">Done</button>
   </div>
 </div>
 

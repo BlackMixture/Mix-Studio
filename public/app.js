@@ -666,6 +666,7 @@ function updateVideoPanels() {
       : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
+  $('#regionWorkspace').hidden = !(state.view === 'create' && state.createMode === 'region');
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail';
   $('#createPromptTools').hidden = state.view !== 'create';
   updateRegionsIndicator();
@@ -737,6 +738,11 @@ function selectedRegion() {
   return state.regions.find((r) => r.id === state.activeRegionId) || state.regions[0] || null;
 }
 
+function normalizeRegionStrength(value) {
+  const strength = Number(value);
+  return Number.isFinite(strength) ? Math.max(0, Math.min(2, strength)) : 1;
+}
+
 function createRegion() {
   const n = state.regions.length;
   const region = {
@@ -775,7 +781,7 @@ function activeRegionsForRequest() {
         w: region.w,
         h: region.h,
         lora: region.lora || 'None',
-        strength: Number(region.strength) || 1,
+        strength: normalizeRegionStrength(region.strength),
         refImageName: region.refImageName || '',
         color: region.color || '',
         enabled: region.enabled !== false,
@@ -802,16 +808,16 @@ function renderRegionEditor() {
   stage.style.flex = '0 0 auto';
   stage.style.minHeight = '0';
   stage.style.margin = '0 auto';
-  if (arW >= arH) {
-    stage.style.width = '100%';
-    stage.style.height = 'auto';
-  } else {
-    stage.style.height = '52vh';
-    stage.style.width = 'auto';
-  }
+  stage.style.width = arW >= arH ? '100%' : 'min(100%, 430px)';
+  stage.style.height = 'auto';
 
   $('#regionEnabledChip').classList.toggle('active', state.regionsEnabled);
   $('#regionEnabledChip').textContent = state.regionsEnabled ? 'Regions on' : 'Use regions';
+  const summary = $('#regionWorkspaceSummary');
+  if (summary) {
+    const count = state.regions.filter((region) => region && region.enabled !== false).length;
+    summary.textContent = state.regionsEnabled ? `${count} region${count === 1 ? '' : 's'}` : 'Regions off';
+  }
   stage.innerHTML = '';
   state.regions.forEach((region, index) => {
     clampRegionBox(region);
@@ -845,8 +851,9 @@ function renderRegionEditor() {
   $('#regionLoraBtn').innerHTML = hasLora
     ? `${loraThumbHtml(region.lora, 'lp-thumb')}<span id="regionLoraLabel">${escapeHtml(prettyLora(region.lora))}</span>`
     : '<span class="lp-thumb">–</span><span id="regionLoraLabel">No region LoRA</span>';
-  $('#regionStrengthInput').value = String(Number(region.strength) || 1);
-  $('#regionStrengthVal').textContent = (Number(region.strength) || 1).toFixed(2);
+  region.strength = normalizeRegionStrength(region.strength);
+  $('#regionStrengthInput').value = String(region.strength);
+  $('#regionStrengthVal').textContent = region.strength.toFixed(2);
   $('#regionRefLabel').textContent = region.refImageName ? (region.refImageName.split('/').pop() || 'Reference added') : 'None';
 }
 
@@ -894,7 +901,8 @@ function endRegionDrag() {
 function openRegionEditor() {
   if (!state.regions.length) createRegion();
   renderRegionEditor();
-  $('#regionSheet').classList.add('show');
+  const workspace = $('#regionWorkspace');
+  workspace.hidden = false;
 }
 
 async function uploadRegionReference(file) {
@@ -1062,7 +1070,7 @@ $('#regionLoraBtn').addEventListener('click', () => {
 $('#regionStrengthInput').addEventListener('input', () => {
   const region = selectedRegion();
   if (!region) return;
-  region.strength = Number($('#regionStrengthInput').value);
+  region.strength = normalizeRegionStrength($('#regionStrengthInput').value);
   $('#regionStrengthVal').textContent = region.strength.toFixed(2);
 });
 $('#regionStrengthInput').addEventListener('change', saveForm);
@@ -1077,7 +1085,7 @@ $('#regionRefClear').addEventListener('click', () => {
   saveForm();
 });
 $('#regionDoneBtn').addEventListener('click', () => {
-  $('#regionSheet').classList.remove('show');
+  renderRegionEditor();
   updateRegionsIndicator();
   saveForm();
   const count = activeRegionsForRequest().length;
