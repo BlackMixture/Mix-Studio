@@ -244,6 +244,27 @@ function mp4Dims(buf) {
   return null;
 }
 
+/** JPEG dimensions from SOF markers (phone photos arrive as JPEG). */
+function jpegDims(buf) {
+  if (!buf || buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  let off = 2;
+  while (off + 9 < buf.length) {
+    if (buf[off] !== 0xff) { off++; continue; }
+    const marker = buf[off + 1];
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { h: buf.readUInt16BE(off + 5), w: buf.readUInt16BE(off + 7) };
+    }
+    const len = buf.readUInt16BE(off + 2);
+    if (len < 2) return null;
+    off += 2 + len;
+  }
+  return null;
+}
+
+function imageDims(buf) {
+  return pngDims(buf) || jpegDims(buf);
+}
+
 /** Actual pixel dimensions from a PNG buffer (IHDR). Edit pipelines snap
  *  output to their own resolution buckets, so recorded request dims can lie. */
 function pngDims(buf) {
@@ -1207,6 +1228,66 @@ async function buildKrea2Inpaint(p, refNames) {
     imageName: refNames[0],
     maskImageName: p.maskImageName,
   })));
+}
+
+/* Edit (Krea2 Ref): the nova452 Conditioning-Rebalance technique — the
+ * instruction and up to 4 reference images are fused by Krea2EditRebalance
+ * into a single conditioning (IP-Adapter-like identity/composition
+ * preservation), sampled cfg-free on the Krea2 turbo model from an EMPTY
+ * latent (the refs steer content; nothing is latent-copied). */
+async function buildEditKrea2Ref(p, refNames) {
+  const graph = {};
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.unet, weight_dtype: 'default' } };
+  const model = chainModelLoras(graph, ['unet', 0], p.loras, 'kelora');
+  graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+  graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
+
+  // Output size follows the first reference's true aspect (~1.3 MP, /16)
+  let W = 1024;
+  let H = 1024;
+  try {
+    const parts = String(refNames[0]).split('/');
+    const fn = parts.pop();
+    const sub = parts.join('/');
+    const r = await comfyFetch(`/view?filename=${encodeURIComponent(fn)}&subfolder=${encodeURIComponent(sub)}&type=input`);
+    const dims = imageDims(Buffer.from(await r.arrayBuffer()));
+    if (dims && dims.w && dims.h) {
+      const s = Math.sqrt((1.3 * 1024 * 1024) / (dims.w * dims.h));
+      W = Math.max(256, Math.round((dims.w * s) / 16) * 16);
+      H = Math.max(256, Math.round((dims.h * s) / 16) * 16);
+    }
+  } catch { /* fall back to square */ }
+
+  const rebalanceInputs = { text: p.prompt, clip: ['clip', 0] };
+  refNames.slice(0, 4).forEach((name, i) => {
+    const k = i + 1;
+    graph[`ref${k}`] = { class_type: 'LoadImage', inputs: { image: name } };
+    rebalanceInputs[`image${k}`] = [`ref${k}`, 0];
+    // The primary reference carries the subject: give it the bigger budget
+    rebalanceInputs[`image${k}_tokens`] = i === 0 ? 'high' : 'normal';
+  });
+  graph.rebalance = { class_type: 'Krea2EditRebalance', inputs: rebalanceInputs };
+  graph.guider = { class_type: 'BasicGuider', inputs: { model, conditioning: ['rebalance', 0] } };
+  graph.noise = { class_type: 'RandomNoise', inputs: { noise_seed: p.seed } };
+  graph.sampler_sel = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } };
+  graph.sched = {
+    class_type: 'BasicScheduler',
+    inputs: { model, scheduler: 'simple', steps: p.steps || 8, denoise: 1 },
+  };
+  graph.latent = {
+    class_type: 'EmptySD3LatentImage',
+    inputs: { width: W, height: H, batch_size: p.batch || 1 },
+  };
+  graph.samp = {
+    class_type: 'SamplerCustomAdvanced',
+    inputs: {
+      noise: ['noise', 0], guider: ['guider', 0], sampler: ['sampler_sel', 0],
+      sigmas: ['sched', 0], latent_image: ['latent', 0],
+    },
+  };
+  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['samp', 0], vae: ['vae', 0] } };
+  graph.save = { class_type: 'SaveImage', inputs: { images: ['decode', 0], filename_prefix: 'KreaStudio/edit' } };
+  return filterInputs(graph);
 }
 
 /* Edit (Qwen): the real Qwen-Image-Edit 2511 pipeline (official template):
@@ -2671,6 +2752,7 @@ const REQUIRED_CLASSES = {
     'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage'],
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
+  krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SaveImage'],
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
   ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
@@ -2976,14 +3058,17 @@ async function handleApi(req, res, url) {
 
     const refNames = Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [];
     if (p.mode === 'edit') {
-      p.editEngine = p.editEngine === 'qwen' ? 'qwen' : (p.editEngine === 'klein9' ? 'klein9' : (p.editEngine === 'krea2' ? 'krea2' : 'klein4'));
-      if (p.editEngine === 'qwen' && !refNames.length) {
-        return json(res, 400, { error: 'Qwen Edit needs at least one reference image' });
+      const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
+      p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
+      if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
+        return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea2 Ref'} needs at least one reference image` });
       }
       if (p.editEngine === 'krea2') {
         if (p.maskImageName && !refNames.length) {
           return json(res, 400, { error: 'Krea2 inpaint needs a source image' });
         }
+      } else if (p.editEngine === 'krea2ref') {
+        p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null; // turbo: 8 steps
       } else {
         p.steps = 4; p.cfg = 1; p.denoise = null;
       }
@@ -2991,6 +3076,7 @@ async function handleApi(req, res, url) {
     let graph;
     if (p.mode === 'edit') {
       if (p.editEngine === 'qwen') graph = await buildEditQwen(p, refNames);
+      else if (p.editEngine === 'krea2ref') graph = await buildEditKrea2Ref(p, refNames);
       else if (p.editEngine === 'krea2' && p.maskImageName) graph = await buildKrea2Inpaint(p, refNames);
       else if (p.editEngine === 'krea2') graph = hasActiveRegions(p.regions) ? await buildRegionalT2I(p) : await buildT2I(p);
       else graph = await buildEdit(p, refNames);

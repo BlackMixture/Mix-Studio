@@ -706,7 +706,7 @@ function loadForm() {
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.editLoras = Array.isArray(f.editLoras) ? f.editLoras : [];
-    state.editEngine = f.editEngine === 'qwen' ? 'qwen' : (f.editEngine === 'klein9' ? 'klein9' : (f.editEngine === 'krea2' ? 'krea2' : 'klein4'));
+    state.editEngine = ['qwen', 'klein9', 'krea2', 'krea2ref'].includes(f.editEngine) ? f.editEngine : 'klein4';
     state.createMode = ['image', 'region', 'video'].includes(f.createMode) ? f.createMode : 'image';
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
@@ -834,9 +834,10 @@ function updateVideoPanels() {
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
+  const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#denoiseField').hidden = !kreaEdit;
   $('#kreaMaskTools').hidden = !kreaEdit;
-  $('#editComposite').hidden = kreaEdit;
+  $('#editComposite').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
   renderKreaMaskTools();
   $('#aspectRow').closest('.panel').hidden = (isVideo && !!state.vidRef) || state.view === 'edit';
   $('#seedInput').closest('.panel').hidden = isVideo;
@@ -2479,6 +2480,7 @@ $('#loraSearch').addEventListener('input', () => renderLoraPicker($('#loraSearch
 function prettyLora(name) { return name.replace(/\.safetensors$/i, '').split(/[\\/]/).pop(); }
 function editEngineLabel(engine) {
   if (engine === 'krea2') return 'Krea2';
+  if (engine === 'krea2ref') return 'Krea2 Ref';
   if (engine === 'qwen') return 'Qwen Edit';
   if (engine === 'klein9') return 'Flux Klein 9B';
   return 'Flux Klein 4B';
@@ -5435,7 +5437,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea2 Ref edit (Rebalance) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     rows.push(missing.length
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`
