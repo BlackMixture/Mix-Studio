@@ -1,7 +1,7 @@
 {
-  "name": "KreaStudio",
-  "short_name": "KreaStudio",
-  "description": "Minimalist Krea 2 image generation on ComfyUI",
+  "name": "Black Mixture Labs",
+  "short_name": "Black Mixture",
+  "description": "Local image and video generation with ComfyUI",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

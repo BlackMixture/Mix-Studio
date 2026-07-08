@@ -13,17 +13,25 @@ const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('Qwen Edit exposes a visual multi-angle picker without surfacing control prompts', () => {
   assert.match(html, /id="qwenAnglesBtn"[^>]*aria-label="Camera angles"/);
-  assert.match(html, /id="qwenAnglesSheet"/);
+  assert.match(html, /id="qwenAnglesInline"/);
+  assert.match(html, /id="qwenAnglesTextBtn"[^>]*aria-label="Show text prompt"/);
   assert.match(html, /id="qwenAngleGrid"/);
   assert.match(html, /id="qwenElevationRow"/);
   assert.match(html, /id="qwenDistanceRow"/);
+  assert.match(html, /id="qwenAnglesToggleAll"/);
   assert.doesNotMatch(html, /Each selected view becomes its own Qwen Edit export/);
   assert.match(app, /function selectedQwenAngleViews\(\)/);
   assert.match(app, /#qwenAngleTool'\)\.hidden = !\(state\.view === 'edit' && state\.editEngine === 'qwen'\)/);
+  assert.match(app, /qwenAnglesMode: false/);
+  assert.match(app, /function renderQwenAngleMode\(\)/);
+  assert.match(app, /state\.qwenAnglesMode = true;/);
+  assert.match(app, /state\.qwenAnglesMode = false;/);
   assert.match(css, /\.qwen-angle-grid/);
+  assert.match(css, /\.qwen-angle-inline/);
   assert.match(css, /\.qwen-angle-card\.active/);
   assert.match(app, /const framingIcon = \(id\) =>/);
   assert.match(css, /\.qwen-framing-icon/);
+  assert.match(app, /state\.qwenAngles = allSelected \? \[\] : QWEN_ANGLE_VIEWS\.map/);
 });
 
 test('Each selected Qwen angle queues its own edit request', () => {
@@ -41,6 +49,10 @@ test('Multi-angle exports appear as one gallery set with an angle icon', () => {
   assert.match(app, /angle-group-badge/);
   assert.match(app, /Angle \$\{angleIndex \+ 1\} of \$\{angleItems\.length\}/);
   assert.match(css, /\.card \.badge\.angle-group-badge/);
+  assert.match(app, /function galleryNavigationTarget\(item, direction\)/);
+  assert.match(app, /const next = galleryNavigationTarget\(state\.currentItem/);
+  assert.match(app, /angle-group-glyph/);
+  assert.match(css, /\.angle-group-chip\.active/);
   assert.match(server, /angleGroupId: job\.params\.angleGroupId/);
   assert.match(server, /p\.angleGroupId = p\.qwenAngle/);
 });

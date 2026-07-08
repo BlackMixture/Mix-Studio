@@ -9,10 +9,11 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('navigation has primary modes and nested Create modes', () => {
-  assert.match(html, /id="primaryTabs"[\s\S]*data-primary-mode="create">Create[\s\S]*data-primary-mode="edit">Edit[\s\S]*data-primary-mode="gallery">Library/);
-  assert.match(html, /id="createTabs"[\s\S]*data-create-mode="image">[\s\S]*<span>Image<\/span>[\s\S]*data-create-mode="region">[\s\S]*<span>Region<\/span>[\s\S]*data-create-mode="video">[\s\S]*<span>Video<\/span>/);
+  assert.match(html, /id="primaryTabs"[\s\S]*data-primary-mode="create"[^>]*>Create[\s\S]*data-primary-mode="edit"[^>]*>Edit[\s\S]*data-primary-mode="gallery"[^>]*>Library/);
+  assert.match(html, /id="createTabs"[\s\S]*data-create-mode="image"[^>]*>[\s\S]*<span>Image<\/span>[\s\S]*data-create-mode="region"[^>]*>[\s\S]*<span>Region<\/span>[\s\S]*data-create-mode="video"[^>]*>[\s\S]*<span>Video<\/span>/);
   assert.match(app, /function setCreateMode\(mode, openEditor\)/);
   assert.match(app, /const createActive = state\.view === 'create' \|\| state\.view === 'video'/);
 });
@@ -23,9 +24,9 @@ test('regional prompts only submit from the Region create mode', () => {
 });
 
 test('nested Create modes use icons instead of color dots', () => {
-  assert.match(html, /data-create-mode="image">[\s\S]*<svg/);
-  assert.match(html, /data-create-mode="region">[\s\S]*<svg/);
-  assert.match(html, /data-create-mode="video">[\s\S]*<svg/);
+  assert.match(html, /data-create-mode="image"[^>]*>[\s\S]*<svg/);
+  assert.match(html, /data-create-mode="region"[^>]*>[\s\S]*<svg/);
+  assert.match(html, /data-create-mode="video"[^>]*>[\s\S]*<svg/);
   assert.match(css, /\.create-tabs \.tab::before \{ display: none; \}/);
 });
 
@@ -85,7 +86,7 @@ test('edit model choices settle into place and Preserve unchanged has its own to
   assert.match(html, /title="Preserve unchanged areas"/);
   assert.match(css, /\.preserve-icon\[aria-pressed="true"\]/);
   assert.match(app, /#editComposite'\)\.addEventListener\('click'/);
-  assert.match(html, /data-engine="krea2ref">Krea 2 Edit/);
+  assert.match(html, /data-engine="krea2ref"[^>]*>Krea 2 Edit/);
 });
 
 test('Edit keeps source-matched dimensions by default and exposes a custom output-ratio override', () => {
@@ -136,6 +137,25 @@ test('every edit engine can queue an optional SeedVR2 finish pass', () => {
   assert.match(server, /await queuePostEditUpscale\(item, job\.params\.postUpscale, job\.profileId\)/);
 });
 
+test('each edit model remembers its own selected LoRAs', () => {
+  assert.match(app, /editLorasByEngine: \{\}/);
+  assert.match(app, /function switchEditEngine\(engine\)/);
+  assert.match(app, /state\.editLorasByEngine\[editEngineId\(state\.editEngine\)\] = state\.editLoras/);
+  assert.match(app, /editLorasByEngine: state\.editLorasByEngine/);
+  assert.match(app, /switchEditEngine\(engine\);/);
+});
+
+test('installer-selected engines are hidden from the corresponding app controls', () => {
+  assert.match(html, /data-feature-engine="edit\.qwen"/);
+  assert.match(html, /data-feature-engine="video\.eros"/);
+  assert.match(html, /data-feature-view="edit"/);
+  assert.match(html, /data-feature-view="video"/);
+  assert.match(app, /function renderFeatureVisibility\(\)/);
+  assert.match(app, /state\.features = lastMeta\.features \|\| \{\}/);
+  assert.match(server, /This edit model was not installed on this machine/);
+  assert.match(server, /This video model was not installed on this machine/);
+});
+
 test('an edit can save its original and result as a gallery side-by-side', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(app, /Save before \+ after/);
@@ -144,6 +164,21 @@ test('an edit can save its original and result as a gallery side-by-side', () =>
   assert.match(server, /sources = \[root\.sourceFile, root\.upscaled \|\| root\.file\]/);
   assert.match(server, /kind: 'imageComposite'/);
   assert.match(server, /mode: 'composite'/);
+  assert.match(server, /parent\.composites = \(Array\.isArray\(parent\.composites\)/);
+  assert.match(server, /broadcast\('imageCompositeDone'/);
+  assert.match(app, /es\.addEventListener\('imageCompositeDone'/);
+  assert.match(app, /'composite:' \+ d\.composite\.id/);
+});
+
+test('gallery saves directly when only one image is available and is grouped by date', () => {
+  assert.match(app, /function galleryDateLabel\(timestamp\)/);
+  assert.match(app, /gallery-date-divider/);
+  assert.match(app, /mk\('↓ Save', '', \(\) => downloadItem\(it, 'current'\)\)/);
+  assert.match(app, /if \(it\.upscaled\) \{/);
+  assert.match(app, /function downloadComposite\(it, composite\)/);
+  assert.match(app, /attached-composite-badge/);
+  assert.match(css, /\.gallery-date-divider/);
+  assert.match(css, /\.card \.badge\.attached-composite-badge/);
 });
 
 test('gallery items support profile-scoped likes by double tap and a likes-only filter', () => {
@@ -153,9 +188,13 @@ test('gallery items support profile-scoped likes by double tap and a likes-only 
   assert.match(app, /function handleGalleryTap\(item, card\)/);
   assert.match(app, /function handleLightboxTap\(\)/);
   assert.match(app, /function setItemLiked\(item, liked, burstTarget\)/);
+  assert.match(app, /playLikeBurst\(burstTarget, liked \? 'like' : 'unlike'\)/);
+  assert.match(app, /setTimeout\(renderGrid, liked \? 720 : 520\)/);
   assert.match(app, /if \(state\.likesOnly && !it\.liked\) return false/);
   assert.match(app, /Save angle composite/);
   assert.match(server, /const likeRoute = route\.match\(/);
   assert.match(server, /likeRoute && req\.method === 'POST'/);
   assert.match(server, /item\.liked = body\.liked === true/);
+  assert.match(css, /@keyframes unlikeBurst/);
+  assert.match(css, /\.like-burst\.unlike svg/);
 });

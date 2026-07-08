@@ -92,7 +92,7 @@ test('LTX requests can pass through the same RIFE interpolation stage as Wan and
 
 test('LTX Edit uses a source-video workflow and forces literal edit prompts', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(html, /data-engine="ltx-edit">LTX Edit/);
+  assert.match(html, /data-engine="ltx-edit"[^>]*>LTX Edit/);
   assert.match(html, /id="setLtxEditLora"/);
   assert.match(app, /'Describe the edit…'/);
   assert.match(app, /'Source video'/);
@@ -108,6 +108,14 @@ test('Video prompt tools stay hidden and structured audio labels survive state c
   assert.match(css, /#vidDriveTools\[hidden\]/);
   assert.match(html, /data-audio-title/);
   assert.match(app, /function setAudioChipVisual\(chip, active\)/);
+});
+
+test('SCAIL accepts a driving video without a typed motion prompt', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(app, /const promptOptional = state\.view === 'video' && state\.vidEngine === 'scail';/);
+  assert.match(app, /'Optional motion direction…'/);
+  assert.match(server, /if \(!suppliedMotionPrompt && engine !== 'scail'\)/);
+  assert.match(server, /const motionPrompt = suppliedMotionPrompt \|\| 'preserve the movement from the driving video';/);
 });
 
 test('A start-frame action can ask the vision model for a fitting motion prompt', () => {

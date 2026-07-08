@@ -15,6 +15,12 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { updateFromGit } = require('./lib/app-update');
 const {
+  EDIT_FEATURES,
+  VIDEO_FEATURES,
+  DEFAULT_FEATURES,
+  normalizeFeatures,
+} = require('./lib/features');
+const {
   DEFAULT_PRIVATE_PASSWORD,
   galleryPassword,
   galleryView,
@@ -160,6 +166,9 @@ const DEFAULT_SETTINGS = {
   scailSam: 'sam3.1_multiplex_fp16.safetensors',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
+  // Existing installs default every optional workflow on. The installer writes
+  // explicit choices only for a brand-new machine.
+  features: DEFAULT_FEATURES,
 };
 
 function loadJson(file, fallback) {
@@ -180,6 +189,7 @@ function normalizeSettings(s) {
   if (!s.kleinUnet) s.kleinUnet = s.klein4Unet;
   if (!s.kleinClip) s.kleinClip = s.klein4Clip;
   s.galleryPassword = galleryPassword(s);
+  s.features = normalizeFeatures(s.features);
   return s;
 }
 
@@ -953,10 +963,33 @@ async function completeJob(pid) {
 
   if (job.kind === 'imageComposite') {
     const buf = await downloadOutput(files[0]);
+    const info = job.compositeInfo || {};
     const id = uid();
     const fname = `${id}_composite.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
-    const info = job.compositeInfo || {};
+    const dims = pngDims(buf) || {};
+    // A before/after belongs to the edit it documents. Keeping it on that
+    // item makes the gallery read as one coherent generation rather than a
+    // second, disconnected card.
+    if (info.type === 'before-after' && info.sourceItemId) {
+      const parent = db.items.find((it) => it.id === info.sourceItemId && it.profileId === job.profileId);
+      if (!parent) return;
+      const composite = {
+        id,
+        file: fname,
+        type: 'before-after',
+        label: info.label || 'Before + after',
+        createdAt: Date.now(),
+        width: dims.w || info.width || parent.width || 1024,
+        height: dims.h || info.height || parent.height || 1024,
+        durationMs,
+      };
+      parent.composites = (Array.isArray(parent.composites) ? parent.composites : []).concat([composite]);
+      saveDb();
+      pushHistory({ kind: 'composite', profileId: job.profileId, itemId: parent.id, durationMs, label: `${composite.label}: ${(parent.prompt || '').slice(0, 60)}` });
+      broadcast('imageCompositeDone', { jobId: pid, item: parent, composite });
+      return;
+    }
     const item = {
       id,
       file: fname,
@@ -964,8 +997,8 @@ async function completeJob(pid) {
       compositeInfo: info,
       profileId: job.profileId,
       prompt: info.prompt || '',
-      width: (pngDims(buf) || {}).w || info.width || 1024,
-      height: (pngDims(buf) || {}).h || info.height || 1024,
+      width: dims.w || info.width || 1024,
+      height: dims.h || info.height || 1024,
       seed: null,
       steps: null,
       cfg: null,
@@ -3036,7 +3069,7 @@ async function handleApi(req, res, url) {
     };
     const owned = db.items.filter((it) => it.profileId === target.id);
     for (const it of owned) {
-      for (const f of [it.file, it.upscaled, it.sourceFile]) await toTrash(IMAGES, f);
+      for (const f of [it.file, it.upscaled, it.sourceFile, ...(it.composites || []).map((composite) => composite.file)]) await toTrash(IMAGES, f);
       for (const v of it.videos || []) await toTrash(VIDEOS, v.file);
     }
     db.items = db.items.filter((it) => it.profileId !== target.id);
@@ -3070,8 +3103,8 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/update' && req.method === 'POST') {
-    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update KreaStudio' });
-    if (jobs.size) return json(res, 409, { error: 'Wait for the KreaStudio queue to finish before updating' });
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update Black Mixture Labs' });
+    if (jobs.size) return json(res, 409, { error: 'Wait for the Black Mixture Labs queue to finish before updating' });
 
     // ComfyUI can contain jobs submitted outside this server. Restarting while
     // one is active would lose KreaStudio's completion tracking, so check both.
@@ -3108,6 +3141,7 @@ async function handleApi(req, res, url) {
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
     }
+    if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
     settings = normalizeSettings(settings);
     saveJsonSync(SETTINGS_FILE, settings);
     objectInfoCache = null;
@@ -3131,10 +3165,11 @@ async function handleApi(req, res, url) {
         loraThumbs: db.loraThumbs,
         missing,
         models: configuredModelsStatus(info),
+        features: settings.features,
         queue: jobs.size,
       });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), loras: [], lorasInfo: {}, missing: null, models: null, queue: jobs.size });
+      return json(res, 200, { ok: false, error: String(e.message || e), loras: [], lorasInfo: {}, missing: null, models: null, features: settings.features, queue: jobs.size });
     }
   }
 
@@ -3209,6 +3244,9 @@ async function handleApi(req, res, url) {
     if (p.mode === 'edit') {
       const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
       p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
+      if (settings.features[EDIT_FEATURES[p.editEngine]] === false) {
+        return json(res, 400, { error: 'This edit model was not installed on this machine.' });
+      }
       if (p.qwenAngle && p.editEngine !== 'qwen') {
         return json(res, 400, { error: 'Camera angles are available with Qwen Edit only' });
       }
@@ -3301,9 +3339,15 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/animate' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const motionPrompt = String(body.prompt || '').trim();
-    if (!motionPrompt) return json(res, 400, { error: 'Describe the motion first' });
     const engine = ['wan', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
+    if (settings.features[VIDEO_FEATURES[engine]] === false) {
+      return json(res, 400, { error: 'This video model was not installed on this machine.' });
+    }
+    const suppliedMotionPrompt = String(body.prompt || '').trim();
+    // SCAIL follows its driving clip, so a motion sentence is an optional
+    // creative nudge rather than a prerequisite for a faithful transfer.
+    if (!suppliedMotionPrompt && engine !== 'scail') return json(res, 400, { error: 'Describe the motion first' });
+    const motionPrompt = suppliedMotionPrompt || 'preserve the movement from the driving video';
     const isLtxEdit = engine === 'ltx-edit';
     let item = body.id ? db.items.find((it) => it.id === body.id && it.profileId === req.profile.id) : null;
     if (body.id && !item) return json(res, 404, { error: 'Image not found' });
@@ -3409,7 +3453,7 @@ async function handleApi(req, res, url) {
     const enhance = isLtxEdit ? false : body.enhance !== false;
     let prompt = motionPrompt;
     let wanRefined = null;
-    if ((engine === 'wan' || engine === 'scail') && enhance) {
+    if ((engine === 'wan' || engine === 'scail') && enhance && suppliedMotionPrompt) {
       // Wan/SCAIL have no in-graph enhancer: run a Qwen3-VL vision pass first
       const raw = await wanEnhance(comfyName, motionPrompt, seed);
       wanRefined = cleanEnhancedText(raw, motionPrompt);
@@ -3464,7 +3508,8 @@ async function handleApi(req, res, url) {
       kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
       videoInfo: {
         engine,
-        motionPrompt, enhance,
+        motionPrompt: suppliedMotionPrompt || (engine === 'scail' ? 'Motion copied from driving video' : motionPrompt),
+        enhance: enhance && !!suppliedMotionPrompt,
         frames: opts.frames * smooth, fps: opts.fps * smooth,
         smooth: smooth > 1 ? smooth : undefined,
         fourK: opts.fourK, width: opts.fourK ? W * 2 : W, height: opts.fourK ? H * 2 : H,
@@ -4043,7 +4088,7 @@ async function handleApi(req, res, url) {
     if (req.method === 'DELETE') {
       db.items = db.items.filter((it) => it.id !== item.id);
       saveDb();
-      for (const f of [item.file, item.upscaled, item.sourceFile]) {
+      for (const f of [item.file, item.upscaled, item.sourceFile, ...(item.composites || []).map((composite) => composite.file)]) {
         if (f) fsp.unlink(path.join(IMAGES, f)).catch(() => { /* noop */ });
       }
       for (const v of item.videos || []) {

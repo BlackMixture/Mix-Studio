@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#000000" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="KreaStudio" />
-<title>KreaStudio — Black Mixture</title>
+<meta name="apple-mobile-web-app-title" content="Black Mixture Labs" />
+<title>Black Mixture Labs</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/icon.svg" />
@@ -17,14 +17,14 @@
 
 <header class="topbar">
   <div class="brand">
-    <button class="side-menu-trigger" id="appMenuBtn" type="button" aria-label="Open KreaStudio menu" aria-expanded="false" aria-controls="appDrawer">
+    <button class="side-menu-trigger" id="appMenuBtn" type="button" aria-label="Open Black Mixture Labs menu" aria-expanded="false" aria-controls="appDrawer">
       <span class="side-menu-mark side-menu-mark-logo" aria-hidden="true">K</span>
       <svg class="side-menu-mark side-menu-mark-menu" viewBox="0 0 64 64" aria-hidden="true">
         <rect x="6" y="5" width="52" height="54" rx="17" fill="none" stroke="currentColor" stroke-width="8"/>
         <path d="M21 19.5v25" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
       </svg>
     </button>
-    <div class="brand-name">KreaStudio</div>
+    <div class="brand-name">Black Mixture Labs</div>
   </div>
   <div class="topbar-actions">
     <button class="profile-chip" id="profileBtn" hidden></button>
@@ -37,16 +37,36 @@
 </header>
 
 <div class="app-drawer-shell" id="appDrawer" aria-hidden="true">
-  <button class="app-drawer-backdrop" id="appDrawerBackdrop" type="button" aria-label="Close KreaStudio menu"></button>
+  <button class="app-drawer-backdrop" id="appDrawerBackdrop" type="button" aria-label="Close Black Mixture Labs menu"></button>
   <aside class="app-drawer" role="dialog" aria-modal="true" aria-labelledby="appDrawerTitle">
     <div class="app-drawer-head">
-      <h2 class="app-drawer-wordmark" id="appDrawerTitle">KreaStudio</h2>
+      <h2 class="app-drawer-wordmark" id="appDrawerTitle">Black Mixture Labs</h2>
       <button class="app-drawer-close" id="appDrawerClose" type="button" aria-label="Close menu">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="m6.4 5 12.6 12.6-1.4 1.4L5 6.4 6.4 5zm11.2 0L19 6.4 6.4 19 5 17.6 17.6 5z"/></svg>
       </button>
     </div>
 
     <div class="app-drawer-body">
+      <nav class="app-drawer-nav" aria-label="Navigate">
+        <h3>Navigate</h3>
+        <button class="app-drawer-nav-item app-drawer-nav-create" id="drawerCreateBtn" type="button" aria-expanded="true" aria-controls="drawerCreateModes">
+          <span class="app-drawer-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></span>
+          <span>Create</span><svg class="app-drawer-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+        </button>
+        <div class="app-drawer-create-modes" id="drawerCreateModes">
+          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="image"><span aria-hidden="true">▧</span>Image</button>
+          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="region"><span aria-hidden="true">⌗</span>Region</button>
+          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="video" data-feature-view="video"><span aria-hidden="true">▹</span>Video</button>
+        </div>
+        <button class="app-drawer-nav-item" type="button" data-drawer-view="edit" data-feature-view="edit">
+          <span class="app-drawer-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1l-2.8-2.8Z"/></svg></span>
+          <span>Edit</span>
+        </button>
+        <button class="app-drawer-nav-item" type="button" data-drawer-view="gallery">
+          <span class="app-drawer-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16v16H4V4Zm2 2v12h12V6H6Zm2 2h3v3H8V8Zm5 1h3v2h-3V9ZM8 13h8v3H8v-3Z"/></svg></span>
+          <span>Library</span>
+        </button>
+      </nav>
       <section class="app-drawer-settings" aria-labelledby="appDrawerControlsTitle">
         <h3 id="appDrawerControlsTitle">Local controls</h3>
         <button class="app-drawer-action" id="appUpdateBtn" type="button" disabled>
@@ -81,7 +101,7 @@
   <div class="tabs primary-tabs" id="primaryTabs" aria-label="Main mode">
     <div class="tab-pill" id="primaryTabPill"></div>
     <button class="tab active" data-primary-mode="create">Create</button>
-    <button class="tab" data-primary-mode="edit">Edit</button>
+    <button class="tab" data-primary-mode="edit" data-feature-view="edit">Edit</button>
     <button class="tab" data-primary-mode="gallery">Library</button>
   </div>
   <div class="tabs create-tabs" id="createTabs" aria-label="Create mode">
@@ -94,7 +114,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg>
       <span>Region</span>
     </button>
-    <button class="tab create-tab" data-create-mode="video">
+    <button class="tab create-tab" data-create-mode="video" data-feature-view="video">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Zm13 4.5v1l3 1.8V9.7l-3 1.8Z"/></svg>
       <span>Video</span>
     </button>
@@ -106,11 +126,11 @@
   <section class="panel" id="refPanel" hidden>
     <div class="panel-label">Reference Images</div>
     <div class="chip-row edit-engine-row" id="editEngineRow" style="margin-bottom:10px">
-      <button class="chip active" data-engine="klein4">Klein 4B</button>
-      <button class="chip" data-engine="klein9">Klein 9B</button>
-      <button class="chip" data-engine="qwen">Qwen Edit</button>
-      <button class="chip" data-engine="krea2">Krea2</button>
-      <button class="chip" data-engine="krea2ref">Krea 2 Edit</button>
+      <button class="chip active" data-engine="klein4" data-feature-engine="edit.klein4">Klein 4B</button>
+      <button class="chip" data-engine="klein9" data-feature-engine="edit.klein9">Klein 9B</button>
+      <button class="chip" data-engine="qwen" data-feature-engine="edit.qwen">Qwen Edit</button>
+      <button class="chip" data-engine="krea2" data-feature-engine="edit.krea2">Krea2</button>
+      <button class="chip" data-engine="krea2ref" data-feature-engine="edit.krea2ref">Krea 2 Edit</button>
       <button class="icon-btn preserve-icon" id="editComposite" type="button" aria-pressed="false" aria-label="Preserve unchanged areas" title="Preserve unchanged areas">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 20 6v5c0 5.2-3.4 9.5-8 11-4.6-1.5-8-5.8-8-11V6l8-4Zm0 2.2L6 7v4c0 4.1 2.5 7.7 6 9 3.5-1.3 6-4.9 6-9V7l-6-2.8Zm2.8 5.2 1.4 1.4-5 5-2.2-2.2 1.4-1.4.8.8 3.6-3.6Z"/></svg>
       </button>
@@ -163,11 +183,11 @@
     <div class="video-model-body" id="vidModelBody" aria-hidden="true" inert>
       <div class="video-model-body-inner">
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model">
-          <button class="chip active" data-engine="ltx">LTX 2.3</button>
-          <button class="chip" data-engine="ltx-edit">LTX Edit</button>
-          <button class="chip" data-engine="eros">10Eros DMD</button>
-          <button class="chip" data-engine="wan">Wan 2.2</button>
-          <button class="chip" data-engine="scail">SCAIL 2</button>
+          <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx">LTX 2.3</button>
+          <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit">LTX Edit</button>
+          <button class="chip" data-engine="eros" data-feature-engine="video.eros">10Eros DMD</button>
+          <button class="chip" data-engine="wan" data-feature-engine="video.wan">Wan 2.2</button>
+          <button class="chip" data-engine="scail" data-feature-engine="video.scail">SCAIL 2</button>
         </div>
         <button class="info-btn video-model-info" id="engineInfoBtn" type="button" aria-label="Compare model capabilities" title="Compare model capabilities">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 10h2v7h-2v-7Zm0-3h2v2h-2V7Zm1-5a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg>
@@ -189,6 +209,27 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2 8 4.5v9L12 20l-8-4.5v-9L12 2Zm0 2.1L6.1 7.4 12 10.7l5.9-3.3L12 4.1Zm-6 5v5.1l5 2.8v-5.2L6 9.2Zm7 7.9 5-2.8V9.2l-5 2.5v5.4Z"/></svg>
           <span class="qwen-angle-count" id="qwenAngleCount" hidden>0</span>
         </button>
+      </div>
+      <div class="qwen-angle-inline" id="qwenAnglesInline" hidden>
+        <div class="qwen-angle-inline-head">
+          <span>Camera angles</span>
+          <span class="qwen-angle-head-actions"><button class="qwen-angle-toggle-all" id="qwenAnglesToggleAll" type="button">Select all</button><button class="qwen-angle-text-toggle" id="qwenAnglesTextBtn" type="button" aria-label="Show text prompt" title="Show text prompt"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h16v2H4V5Zm0 6h10v2H4v-2Zm0 6h16v2H4v-2Zm14-7 3 2-3 2v-4Z"/></svg></button></span>
+        </div>
+        <div class="qwen-angle-section">
+          <span>View direction</span>
+          <div class="qwen-angle-grid" id="qwenAngleGrid" aria-label="Camera view directions"></div>
+        </div>
+        <div class="qwen-angle-options">
+          <div class="qwen-angle-section">
+            <span>Camera height</span>
+            <div class="qwen-angle-choice" id="qwenElevationRow"></div>
+          </div>
+          <div class="qwen-angle-section">
+            <span>Framing</span>
+            <div class="qwen-angle-choice" id="qwenDistanceRow"></div>
+          </div>
+        </div>
+        <div class="qwen-angle-summary" id="qwenAngleSummary">No views selected</div>
       </div>
       <button class="prompt-clear" id="promptClear" aria-label="Clear prompt" title="Clear prompt" hidden>
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Zm4 2v8h1.5v-8H10Zm3.5 0v8H15v-8h-1.5Z"/></svg>
@@ -1129,29 +1170,6 @@
     <div class="settings-footer">
       <button class="sheet-cta" id="settingsSave">Save &amp; test connection</button>
     </div>
-  </div>
-</div>
-
-<!-- Qwen Image Edit multiple-angle camera control -->
-<div class="sheet" id="qwenAnglesSheet">
-  <div class="sheet-panel qwen-angles-panel">
-    <h3 class="sheet-title">Camera angles <button id="qwenAnglesClose" type="button" aria-label="Close">✕</button></h3>
-    <div class="qwen-angle-section">
-      <span>View direction</span>
-      <div class="qwen-angle-grid" id="qwenAngleGrid" aria-label="Camera view directions"></div>
-    </div>
-    <div class="qwen-angle-options">
-      <div class="qwen-angle-section">
-        <span>Camera height</span>
-        <div class="qwen-angle-choice" id="qwenElevationRow"></div>
-      </div>
-      <div class="qwen-angle-section">
-        <span>Framing</span>
-        <div class="qwen-angle-choice" id="qwenDistanceRow"></div>
-      </div>
-    </div>
-    <div class="qwen-angle-summary" id="qwenAngleSummary">No views selected</div>
-    <button class="sheet-cta" id="qwenAnglesDone" type="button">Done</button>
   </div>
 </div>
 
