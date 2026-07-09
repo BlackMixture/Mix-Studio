@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "installMode": "portable",
+  "dataDir": "data",
+  "update": {
+    "provider": "git",
+    "channel": "main"
+  },
+  "comfy": {
+    "mode": "external",
+    "path": "C:/ComfyUI",
+    "modelsPath": "C:/ComfyUI/models",
+    "url": "http://127.0.0.1:8188"
+  }
+}

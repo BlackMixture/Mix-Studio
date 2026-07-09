@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * KreaStudio - minimalist ComfyUI + Krea 2 image generation app
+ * MixBox Studio - mobile-first ComfyUI generation app
  * Zero-dependency Node server (Node >= 20 recommended, >= 22 for live progress).
  * Serves a mobile-first web app; ComfyUI does the heavy lifting.
  */
@@ -14,6 +14,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { updateFromGit } = require('./lib/app-update');
+const { resolveRuntimeConfig } = require('./lib/runtime-config');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
 const {
   EDIT_FEATURES,
@@ -80,7 +81,8 @@ const {
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
-const DATA = path.join(ROOT, 'data');
+const RUNTIME = resolveRuntimeConfig(ROOT);
+const DATA = RUNTIME.dataDir;
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
 const PORT = Number(process.env.PORT || 3300);
@@ -122,7 +124,7 @@ Follow these rules strictly:
 User's Input:`;
 
 const DEFAULT_SETTINGS = {
-  comfyUrl: 'http://127.0.0.1:8188',
+  comfyUrl: RUNTIME.comfy.url || 'http://127.0.0.1:8188',
   unet: 'krea2_turbo_fp8_scaled.safetensors',
   clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
   clipType: 'krea2',
@@ -227,9 +229,15 @@ function seedVr2ModelDirs() {
     process.env.KREASTUDIO_SEEDVR2_DIR,
     process.env.COMFYUI_SEEDVR2_DIR,
   ];
-  const modelRoot = process.env.COMFYUI_MODEL_ROOT;
+  const modelRoot = process.env.COMFYUI_MODEL_ROOT || RUNTIME.comfy.modelsPath;
   if (modelRoot) {
     roots.push(path.join(modelRoot, 'SEEDVR2'), path.join(modelRoot, 'seedvr2'));
+  }
+  if (RUNTIME.comfy.path) {
+    roots.push(
+      path.join(RUNTIME.comfy.path, 'models', 'SEEDVR2'),
+      path.join(RUNTIME.comfy.path, 'models', 'seedvr2')
+    );
   }
   const home = os.homedir();
   roots.push(
@@ -613,6 +621,8 @@ function candidateLoraRoots() {
     process.env.COMFYUI_LORA_DIR,
     process.env.COMFYUI_MODELS_DIR ? path.join(process.env.COMFYUI_MODELS_DIR, 'loras') : '',
     process.env.COMFYUI_PATH ? path.join(process.env.COMFYUI_PATH, 'models', 'loras') : '',
+    RUNTIME.comfy.modelsPath ? path.join(RUNTIME.comfy.modelsPath, 'loras') : '',
+    RUNTIME.comfy.path ? path.join(RUNTIME.comfy.path, 'models', 'loras') : '',
     path.join(os.homedir(), 'Documents', 'ComfyUI', 'models', 'loras'),
     path.join(os.homedir(), 'ComfyUI', 'models', 'loras'),
   ]);
@@ -3110,7 +3120,7 @@ async function handleApi(req, res, url) {
     if (jobs.size) return json(res, 409, { error: 'Wait for the MixBox Studio queue to finish before updating' });
 
     // ComfyUI can contain jobs submitted outside this server. Restarting while
-    // one is active would lose KreaStudio's completion tracking, so check both.
+    // one is active would lose MixBox Studio's completion tracking, so check both.
     try {
       const queue = await (await comfyFetch('/queue')).json();
       if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
@@ -4211,7 +4221,8 @@ function scheduleServerRestart() {
   restartScheduled = true;
   broadcast('appRestarting', {});
   setTimeout(() => {
-    if (process.env.KREASTUDIO_RESTART_MODE !== 'batch') launchDetachedReplacement();
+    const restartMode = process.env.MIXBOX_RESTART_MODE || process.env.KREASTUDIO_RESTART_MODE;
+    if (restartMode !== 'batch') launchDetachedReplacement();
     for (const client of sseClients) {
       try { client.end(); } catch { /* noop */ }
     }
@@ -4222,7 +4233,7 @@ function scheduleServerRestart() {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
-  console.log('  * KreaStudio running');
+  console.log('  * MixBox Studio running');
   console.log(`    Local:   http://localhost:${PORT}`);
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
     for (const a of addrs || []) {

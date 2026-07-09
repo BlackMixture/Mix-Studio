@@ -1,19 +1,54 @@
-# KreaStudio
+# MixBox Studio
 
 Minimalist, mobile-first web app for driving a local **ComfyUI** install — image and video generation in the Modatory design language. Generations run on the Windows desktop; you drive it from your phone (same Wi-Fi or Tailscale). Zero dependencies: one Node.js server, vanilla JS frontend, no build step.
 
 > Working on this codebase (human or AI agent)? **Read `AGENTS.md` first.**
 
-## Quick start
+## Portable Windows install
 
-1. Start **ComfyUI** on the desktop (URL configurable in Settings, e.g. `http://127.0.0.1:8161`).
-2. Double-click **start.bat** (or `node server.js`). Node 22+ recommended — older Node works but without live progress/previews.
-3. The console prints two URLs:
+This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
+
+The current bootstrap supports an existing ComfyUI installation and can install Node.js through `winget`. Automated installation of ComfyUI, custom nodes, and optional model packs will build on the checked-in feature manifest; those downloads are not enabled until their exact sources and license acknowledgements are defined.
+
+1. Install [Git for Windows](https://git-scm.com/download/win) and Node.js 22 or newer.
+2. Clone the repository. Do not use GitHub's **Download ZIP** if you want in-app updates:
+
+   ```powershell
+   git clone https://github.com/BlackMixture/KreaStudio.git
+   ```
+
+3. Open the cloned folder and double-click **install.bat**. A MixBox Studio-styled setup window walks through prerequisites, ComfyUI connection, optional model families, review, and installation.
+4. Enter the URL and optional folders for an existing ComfyUI installation. Existing models stay where they are; MixBox Studio does not copy or redownload them.
+5. Choose which optional Edit and Video model families should appear in the interface.
+6. Start ComfyUI, then double-click **start.bat**.
+
+The visual installer delegates all writes to a separate non-interactive install engine. That engine writes ignored, machine-specific configuration to `install.json` and merges the ComfyUI URL and feature choices into `data/settings.json`. If settings already exist, it creates a timestamped backup first. It never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
+
+The console prints two URLs:
+
    - `Local:  http://localhost:3300` — on the desktop
    - `Phone:  http://192.168.x.x:3300` — open on your phone (same Wi-Fi)
-4. On the phone, use **Add to Home Screen** for an app-like fullscreen experience.
+
+On the phone, use **Add to Home Screen** for an app-like fullscreen experience.
 
 If the phone can't connect, allow Node through Windows Defender Firewall (private networks). Port changes via the `PORT` env var.
+
+### Existing ComfyUI and shared models
+
+The installer supports an existing ComfyUI URL, application folder, and models folder. MixBox Studio uses those paths for local LoRA metadata and SeedVR2 discovery, while ComfyUI remains responsible for loading the models used by generation graphs. If your models folder is outside the ComfyUI folder, make sure that ComfyUI already includes it through its `extra_model_paths.yaml` configuration.
+
+You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
+
+### Updating
+
+Open MixBox Studio's side menu and choose **Update app**. Updates require:
+
+- a Git clone with its `.git` directory;
+- a named branch and configured `origin` remote;
+- no uncommitted tracked code changes; and
+- idle MixBox Studio and ComfyUI queues.
+
+Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side updates restart the Node process automatically; frontend-only updates do not need a restart.
 
 ## Features
 
@@ -37,7 +72,7 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 
 **Upscale** — SeedVR2 (selectable attention backend) and Ultimate SD Upscale, with a before/after compare slider.
 
-**Remote updates** — the owner can open the K menu from a phone and pull the desktop app's current Git branch. Updates wait for an idle queue, require a clean checkout, and restart the Node server only when server-side files changed.
+**Remote updates** — the owner can open the side menu from a phone and pull the desktop app's current Git branch. Updates wait for an idle queue, require a clean checkout, and restart the Node server only when server-side files changed.
 
 ## ComfyUI requirements
 

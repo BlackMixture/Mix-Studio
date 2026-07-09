@@ -5,10 +5,13 @@ data/
 .env
 .env.*
 node_modules/
+/install.json*
+/installer/install-config.json
 
 # Machine-specific helper scripts and scratch probes
 *.bat
 !start.bat
+!install.bat
 check*.txt
 check*.json
 *_done.txt
