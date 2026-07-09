@@ -1362,13 +1362,9 @@ function renderRegionLoraCard(region) {
   card.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
-function renderRegionEditor() {
+function syncRegionStageAspect() {
   const stage = $('#regionStage');
   if (!stage) return;
-  if (!state.regions.length) createRegion();
-  if (!selectedRegion()) state.activeRegionId = state.regions[0].id;
-
-  // The canvas mirrors the output: match the selected aspect ratio
   const arW = state.width || 1024;
   const arH = state.height || 1024;
   stage.style.aspectRatio = `${arW} / ${arH}`;
@@ -1377,6 +1373,16 @@ function renderRegionEditor() {
   stage.style.margin = '0 auto';
   stage.style.width = arW >= arH ? '100%' : 'min(100%, 430px)';
   stage.style.height = 'auto';
+}
+
+function renderRegionEditor() {
+  const stage = $('#regionStage');
+  if (!stage) return;
+  if (!state.regions.length) createRegion();
+  if (!selectedRegion()) state.activeRegionId = state.regions[0].id;
+
+  // The canvas mirrors the output and updates independently of its boxes.
+  syncRegionStageAspect();
 
   stage.innerHTML = '';
   state.regions.forEach((region, index) => {
@@ -2488,6 +2494,7 @@ function renderDims() {
     icon.style.height = `${h}px`;
   }
   $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp && !state.customDims));
+  syncRegionStageAspect();
 }
 
 function renderEditAspects() {

@@ -2728,7 +2728,6 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   position: relative;
   width: 100%;
   min-height: 240px;
-  max-height: 440px;
   border: 1px solid rgba(226,232,255,0.12);
   border-radius: var(--radius-sm);
   background:

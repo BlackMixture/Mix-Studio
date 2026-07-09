@@ -28,6 +28,15 @@ test('create prompt tools expose an inline regional bounding-box editor', () => 
   assert.doesNotMatch(indexHtml, /Regional prompting[\s\S]*Frame each subject/);
 });
 
+test('region canvas follows resolution aspect changes without rebuilding its boxes', () => {
+  const stageCss = styleCss.match(/\.region-stage \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(appJs, /function syncRegionStageAspect\(\)/);
+  assert.match(appJs, /function renderDims\(\)[\s\S]*?syncRegionStageAspect\(\);\s*\}/);
+  assert.match(appJs, /function renderRegionEditor\(\)[\s\S]*?syncRegionStageAspect\(\);/);
+  assert.match(appJs, /stage\.style\.aspectRatio = `\$\{arW\} \/ \$\{arH\}`/);
+  assert.doesNotMatch(stageCss, /max-height/);
+});
+
 test('Region mode moves the shared prompt below the stage as the global prompt', () => {
   assert.match(indexHtml, /id="promptPanel"/);
   assert.match(indexHtml, /id="promptLabel"/);
