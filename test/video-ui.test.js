@@ -13,10 +13,12 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 test('Video frame and media inputs use visual source cards', () => {
   assert.match(html, /class="video-input-grid"/);
   for (const id of ['vidAttachBtn', 'vidDriveBtn', 'vidFaceChip', 'vidEndChip', 'vidAudioChip']) {
-    assert.match(html, new RegExp(`class="media-input-card" id="${id}"`));
+    assert.match(html, new RegExp(`class="media-input-card[^"]*" id="${id}"`));
   }
   assert.match(css, /\.media-input-card \{[\s\S]*min-height: 132px/);
   assert.match(css, /\.video-input-grid \.media-input-filled/);
+  assert.match(html, /class="audio-input-icon"[^>]*preserveAspectRatio="xMidYMid meet"/);
+  assert.match(css, /\.media-input-art > \.audio-input-icon \{[\s\S]*min-width: 32px;[\s\S]*min-height: 32px;/);
 });
 
 test('Video inputs keep start and end frames together, followed by Face ID and audio', () => {
@@ -128,9 +130,14 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(server, /suggestMotionPrompt\(comfyName/);
 });
 
-test('Swapping start and end frames keeps the end-frame input card hidden while its preview is attached', () => {
+test('First and last frames can be moved or swapped from the visible frame row', () => {
   assert.match(app, /#vidEndChip'\)\.hidden = faceMode \|\| ltxEdit \|\| !!state\.vidEnd/);
-  assert.match(app, /state\.vidRef = state\.vidEnd;[\s\S]*state\.vidEnd = a;[\s\S]*endFrameRefresh\.vidEnd\(\)/);
+  assert.match(html, /id="vidEndThumb"[^>]*data-frame-role="end"[\s\S]*id="vidSwap"[\s\S]*id="vidFaceChip"/);
+  assert.match(app, /swap\.hidden = !supportsEnd \|\| \(!hasFirst && !hasLast\)/);
+  assert.match(app, /\[state\.vidRef, state\.vidEnd\] = \[state\.vidEnd \|\| null, state\.vidRef \|\| null\]/);
+  assert.match(app, /function wireVideoFrameDrag\(slot, role\)/);
+  assert.match(app, /document\.elementFromPoint\(event\.clientX, event\.clientY\)\?\.closest\('\.video-frame-slot'\)/);
+  assert.match(css, /\.video-frame-slot\.frame-drop-target/);
 });
 
 test('Gallery Animate routes an image into the full Video tab as either a start or end frame', () => {
@@ -142,6 +149,11 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
   assert.match(app, /if \(role === 'end'\) state\.vidEnd = frame/);
   assert.match(app, /else state\.vidRef = frame/);
   assert.match(app, /openAnimateRouteSheet\(it\)/);
+  assert.match(app, /label: 'First frame'[\s\S]*sendToVideoTab\(it, 'start'\)/);
+  assert.match(app, /label: 'Last frame'[\s\S]*sendToVideoTab\(it, 'end'\)/);
+  assert.match(app, /const endEngine = \['ltx', 'eros'\]\.find/);
+  assert.match(html, /id="animateRouteStart"[\s\S]*<b>First frame<\/b>/);
+  assert.match(html, /id="animateRouteEnd"[\s\S]*<b>Last frame<\/b>/);
 });
 
 test('Multiple edit references support hold-and-drag reordering', () => {

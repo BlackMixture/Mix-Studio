@@ -29,7 +29,8 @@ test('gallery Use menus are icon-led and show concise image destinations', () =>
   assert.match(appJs, /function actionIconMarkup\(icon\)/);
   assert.match(appJs, /menuTitle: 'Use image'/);
   assert.match(appJs, /ariaLabel: 'Use image'/);
-  assert.match(appJs, /label: 'Animate', detail: 'Video tab', icon: 'video'/);
+  assert.match(appJs, /label: 'First frame', detail: 'Start a video here', icon: 'first-frame'/);
+  assert.match(appJs, /label: 'Last frame', detail: 'End a video here', icon: 'last-frame'/);
   assert.match(appJs, /label: 'Edit', detail: 'Image editor', icon: 'edit'/);
   assert.match(appJs, /label: 'Reuse', detail: 'Generation settings', icon: 'reuse'/);
   assert.match(appJs, /menuTitle: 'Use video'/);

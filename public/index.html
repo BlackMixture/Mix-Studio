@@ -254,20 +254,20 @@
     <div class="attach-zone" id="vidAttachRow" hidden>
       <div class="video-inputs-head">
         <span>Inputs</span>
-        <small>Add only what this generation needs</small>
+        <small>Tap to add · hold frames to move</small>
       </div>
       <div class="video-input-grid">
-        <button class="media-input-card" id="vidAttachBtn" type="button">
+        <button class="media-input-card video-frame-slot" id="vidAttachBtn" type="button" data-frame-role="start">
           <span class="media-input-art" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
             <i>+</i>
           </span>
-          <span class="media-input-copy"><b>Start frame</b><small id="vidAttachSub">Optional · image to video</small></span>
+          <span class="media-input-copy"><b>First frame</b><small id="vidAttachSub">Optional · image to video</small></span>
         </button>
-        <div class="attach-thumb media-input-filled" id="vidAttachThumb" hidden>
-          <img id="vidAttachImg" alt="Start frame preview" />
+        <div class="attach-thumb media-input-filled video-frame-slot" id="vidAttachThumb" data-frame-role="start" hidden>
+          <img id="vidAttachImg" alt="First frame preview" />
           <div class="attach-info">
-            <b>Start frame</b>
+            <b>First frame</b>
             <span id="vidAttachDims"></span>
           </div>
           <button class="attach-x attach-expand attach-prompt" id="vidMotionPromptBtn" aria-label="Create a motion prompt from this image" title="Create a motion prompt from this image" hidden>
@@ -292,21 +292,25 @@
           <button class="attach-x" id="vidDriveX" aria-label="Remove motion video">✕</button>
         </div>
         <div class="video-input-extras" id="vidExtras" hidden>
-          <button class="media-input-card" id="vidEndChip" type="button">
+          <button class="media-input-card video-frame-slot" id="vidEndChip" type="button" data-frame-role="end">
             <span class="media-input-art" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h14V6H5Zm3 7 2.5-3 2 2.3 1.5-1.8 3 3.5H8Zm8-5h2v2h-2V8Z"/></svg>
               <i>+</i>
             </span>
-            <span class="media-input-copy"><b>End frame</b><small>Optional landing image</small></span>
+            <span class="media-input-copy"><b>Last frame</b><small>Optional landing image</small></span>
           </button>
-          <div class="attach-thumb media-input-filled" id="vidEndThumb" hidden>
-            <img id="vidEndImg" alt="End frame preview" />
+          <div class="attach-thumb media-input-filled video-frame-slot" id="vidEndThumb" data-frame-role="end" hidden>
+            <img id="vidEndImg" alt="Last frame preview" />
             <div class="attach-info">
-              <b>End frame</b>
+              <b>Last frame</b>
               <span>Video lands on this image</span>
             </div>
-            <button class="attach-x" id="vidEndX" aria-label="Remove end frame">✕</button>
+            <button class="attach-x" id="vidEndX" aria-label="Remove last frame">✕</button>
           </div>
+          <button class="chip video-swap-action" id="vidSwap" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 5h10l-2.8-2.8L15.6.8 21.8 7l-6.2 6.2-1.4-1.4L17 9H7V5Zm10 14H7l2.8 2.8-1.4 1.4L2.2 17l6.2-6.2 1.4 1.4L7 15h10v4Z"/></svg>
+            <span id="vidSwapLabel">Swap first and last</span>
+          </button>
           <button class="media-input-card" id="vidFaceChip" type="button" hidden>
             <span class="media-input-art" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-7 8a7 7 0 0 1 14 0H5Zm14-8h2v7h-2v-7Zm-3 2h7v2h-7v-2Z"/></svg>
@@ -325,12 +329,11 @@
           </div>
           <button class="media-input-card" id="vidAudioChip" type="button">
             <span class="media-input-art" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 18V5l11-2v13.5A3.5 3.5 0 1 1 18 13V7L11 8.3v7.2A3.5 3.5 0 1 1 9 18Z"/></svg>
+              <svg class="audio-input-icon" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet"><path fill="currentColor" d="M3 10h2v4H3v-4Zm4-3h2v10H7V7Zm4-4h2v18h-2V3Zm4 5h2v8h-2V8Zm4 2h2v4h-2v-4Z"/></svg>
               <i>+</i>
             </span>
             <span class="media-input-copy"><b data-audio-title>Audio</b><small data-audio-detail>Optional soundtrack</small></span>
           </button>
-          <button class="chip video-swap-action" id="vidSwap" type="button" hidden>⇅ Swap start and end</button>
         </div>
       </div>
       <div class="chip-row" id="vidDriveTools" style="margin-top:8px; margin-bottom:0" hidden>
@@ -705,11 +708,17 @@
 <!-- gallery image → video route -->
 <div class="sheet" id="animateRouteSheet">
   <div class="sheet-panel animate-route-panel">
-    <h3 class="sheet-title">Animate image <button id="animateRouteClose" type="button" aria-label="Close">✕</button></h3>
-    <p class="private-access-copy">Choose how this gallery image should guide the video. You can adjust every generation control in the Video tab next.</p>
+    <h3 class="sheet-title">Send to Video <button id="animateRouteClose" type="button" aria-label="Close">✕</button></h3>
+    <p class="private-access-copy">Choose where this image belongs in the shot.</p>
     <div class="animate-route-actions">
-      <button class="sheet-cta" id="animateRouteStart" type="button">Use as start frame</button>
-      <button class="sheet-cta ghost" id="animateRouteEnd" type="button">Use as end frame</button>
+      <button class="animate-frame-choice" id="animateRouteStart" type="button">
+        <span class="animate-frame-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h16v14H4V5Zm2 2v10h12V7H6Zm1 9 3.2-4 2.3 2.4 1.8-2.1L17 16H7Zm-5-5h2v2H2v-2Zm18 0h2v2h-2v-2Z"/></svg><i>1</i></span>
+        <span><b>First frame</b><small>Begin the video here</small></span>
+      </button>
+      <button class="animate-frame-choice" id="animateRouteEnd" type="button">
+        <span class="animate-frame-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h16v14H4V5Zm2 2v10h12V7H6Zm1 9 3.2-4 2.3 2.4 1.8-2.1L17 16H7Zm-5-5h2v2H2v-2Zm18 0h2v2h-2v-2Z"/></svg><i>2</i></span>
+        <span><b>Last frame</b><small>Finish the video here</small></span>
+      </button>
     </div>
   </div>
 </div>

@@ -600,6 +600,8 @@ function actionIconMarkup(icon) {
     reuse: '<path d="M18.5 7.5A7 7 0 0 0 6.7 6L4 8.7V5H2v7h7v-2H5.5l2.6-2.6a5 5 0 1 1 .1 7.1l-1.4 1.4a7 7 0 1 0 11.7-8.4Z"/>',
     original: '<path d="M12 4a8 8 0 1 0 7.7 10.2l-1.9-.6A6 6 0 1 1 12 6v4l5-5-5-5v4Zm-1 4h2v5l3.4 2-1 1.7-4.4-2.6V8Z"/>',
     motion: '<path d="M4 7h8V5l4 3-4 3V9H4V7Zm16 8H12v-2l-4 3 4 3v-2h8v-2Z"/>',
+    'first-frame': '<path d="M5 5h15v14H5V5Zm2 2v10h11V7H7Zm-5 4h2v2H2v-2Zm7 4 2.7-3.2 2 2.1 1.5-1.8L17 15H9Z"/>',
+    'last-frame': '<path d="M4 5h15v14H4V5Zm2 2v10h11V7H6Zm14 4h2v2h-2v-2ZM8 15l2.7-3.2 2 2.1 1.5-1.8L17 15H8Z"/>',
   };
   return `<svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${paths[icon] || paths.use}</svg>`;
 }
@@ -1762,7 +1764,7 @@ function wireEndFrame(prefix, stateKey) {
   x.addEventListener('click', () => {
     state[stateKey] = null;
     refresh();
-    toast('End frame removed');
+    toast('Last frame removed');
   });
   endFrameRefresh[stateKey] = refresh;
 }
@@ -1771,17 +1773,93 @@ wireEndFrame('anim', 'animEnd');
 
 /* Swap first/last frame in the Video tab */
 function updateSwapChip() {
-  $('#vidSwap').hidden = !(state.vidRef && state.vidEnd);
+  const swap = $('#vidSwap');
+  const supportsEnd = state.vidEngine === 'ltx' || state.vidEngine === 'eros';
+  const hasFirst = !!state.vidRef;
+  const hasLast = !!state.vidEnd;
+  swap.hidden = !supportsEnd || (!hasFirst && !hasLast);
+  const label = hasFirst && hasLast
+    ? 'Swap first and last'
+    : (hasFirst ? 'Move to last frame' : 'Move to first frame');
+  $('#vidSwapLabel').textContent = label;
+  swap.setAttribute('aria-label', label);
 }
-$('#vidSwap').addEventListener('click', () => {
-  const a = state.vidRef;
-  state.vidRef = state.vidEnd;
-  state.vidEnd = a;
+
+function swapVideoFrames(message = 'First and last frames swapped') {
+  [state.vidRef, state.vidEnd] = [state.vidEnd || null, state.vidRef || null];
   renderVidAttach();
   endFrameRefresh.vidEnd();
   updateVideoPanels();
-  toast('Frames swapped — end is now the start');
+  toast(message);
+}
+
+$('#vidSwap').addEventListener('click', () => {
+  const message = state.vidRef && state.vidEnd
+    ? 'First and last frames swapped'
+    : (state.vidRef ? 'Image moved to the last frame' : 'Image moved to the first frame');
+  swapVideoFrames(message);
 });
+
+let videoFrameDrag = null;
+function clearVideoFrameDrag() {
+  if (videoFrameDrag) clearTimeout(videoFrameDrag.timer);
+  $$('.video-frame-slot.frame-reordering, .video-frame-slot.frame-drop-target')
+    .forEach((slot) => slot.classList.remove('frame-reordering', 'frame-drop-target'));
+  videoFrameDrag = null;
+}
+
+function wireVideoFrameDrag(slot, role) {
+  slot.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.attach-x')) return;
+    clearVideoFrameDrag();
+    const drag = {
+      pointerId: event.pointerId,
+      role,
+      target: role,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      timer: null,
+    };
+    videoFrameDrag = drag;
+    drag.timer = setTimeout(() => {
+      if (videoFrameDrag !== drag) return;
+      drag.active = true;
+      slot.classList.add('frame-reordering');
+      try { slot.setPointerCapture(event.pointerId); } catch { /* noop */ }
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, 300);
+  });
+  slot.addEventListener('pointermove', (event) => {
+    const drag = videoFrameDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 8) clearVideoFrameDrag();
+      return;
+    }
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.video-frame-slot');
+    const targetRole = target?.dataset.frameRole;
+    $$('.video-frame-slot.frame-drop-target').forEach((item) => item.classList.remove('frame-drop-target'));
+    drag.target = targetRole === 'start' || targetRole === 'end' ? targetRole : drag.role;
+    if (drag.target !== drag.role) target.classList.add('frame-drop-target');
+  }, { passive: false });
+  const finish = (event) => {
+    const drag = videoFrameDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.active && drag.target !== drag.role) {
+      swapVideoFrames(state.vidRef && state.vidEnd
+        ? 'First and last frames swapped'
+        : `Image moved to the ${drag.target === 'start' ? 'first' : 'last'} frame`);
+    }
+    clearVideoFrameDrag();
+  };
+  slot.addEventListener('pointerup', finish);
+  slot.addEventListener('pointercancel', clearVideoFrameDrag);
+  slot.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+wireVideoFrameDrag($('#vidAttachThumb'), 'start');
+wireVideoFrameDrag($('#vidEndThumb'), 'end');
 
 /* ---- Audio attach with trimming ---- */
 let audioCtx = null;
@@ -3514,6 +3592,14 @@ function pickRef(idx) {
 
 async function sendToVideoTab(item, role = 'start') {
   try {
+    const enabled = enabledVideoEngines();
+    if (role === 'end' && !['ltx', 'eros'].includes(state.vidEngine)) {
+      const endEngine = ['ltx', 'eros'].find((engine) => enabled.includes(engine));
+      if (!endEngine) throw new Error('Enable LTX 2.3 or 10Eros to use a gallery image as the last frame');
+      state.vidEngine = endEngine;
+    } else if (role === 'start' && state.vidEngine === 'ltx-edit') {
+      state.vidEngine = ['ltx', 'eros', 'wan', 'scail'].find((engine) => enabled.includes(engine)) || state.vidEngine;
+    }
     const blob = await (await fetch('/images/' + item.file)).blob();
     const buf = await blob.arrayBuffer();
     const res = await api('/api/upload', {
@@ -3531,8 +3617,8 @@ async function sendToVideoTab(item, role = 'start') {
     if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
     updateVideoPanels();
     toast(role === 'end'
-      ? 'Image set as the end frame — choose the start frame and video settings'
-      : 'Image set as the start frame — choose video settings');
+      ? 'Image set as the last frame — choose the first frame and video settings'
+      : 'Image set as the first frame — choose video settings');
   } catch (e) { toast(e.message, true); }
 }
 
@@ -5621,7 +5707,8 @@ function openLightbox(id, mediaSel) {
       mk(it.upscaled ? '⇪ Re-upscale' : '⇪ Upscale', '', () => openUpscaleSheet(it));
     }
     const imageUseItems = [
-      { label: 'Animate', detail: 'Video tab', icon: 'video', tone: 'video', action: () => sendToVideoTab(it) },
+      { label: 'First frame', detail: 'Start a video here', icon: 'first-frame', tone: 'video', action: () => sendToVideoTab(it, 'start') },
+      { label: 'Last frame', detail: 'End a video here', icon: 'last-frame', tone: 'video', action: () => sendToVideoTab(it, 'end') },
       { label: 'Edit', detail: 'Image editor', icon: 'edit', tone: 'edit', action: () => useAsRef(it) },
       { label: 'Reuse', detail: 'Generation settings', icon: 'reuse', tone: 'reuse', action: () => reuseItem(it) },
     ];
