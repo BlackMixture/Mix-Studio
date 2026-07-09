@@ -152,11 +152,16 @@
       </div>
     </div>
     <div class="edit-upscale-control" id="editUpscaleControl">
-      <button class="edit-upscale-toggle" id="editUpscaleToggle" type="button" aria-pressed="false" aria-controls="editUpscaleBody" aria-label="Upscale final image with SeedVR2">
-        <span class="edit-upscale-title"><svg class="edit-upscale-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4-1.4 3.3 3.3V14Z"/></svg>Upscale</span>
-        <strong id="editUpscaleSummary">Off</strong>
-        <span class="edit-upscale-switch" aria-hidden="true"></span>
-      </button>
+      <div class="edit-upscale-head">
+        <button class="edit-upscale-details" id="editUpscaleDetails" type="button" aria-expanded="false" aria-controls="editUpscaleBody">
+          <span class="edit-upscale-title"><svg class="edit-upscale-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4-1.4 3.3 3.3V14Z"/></svg>Upscale</span>
+          <strong id="editUpscaleSummary">Off</strong>
+          <svg class="edit-upscale-chevron" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m7 10 5 5 5-5H7Z"/></svg>
+        </button>
+        <button class="edit-upscale-toggle" id="editUpscaleToggle" type="button" aria-pressed="false" aria-label="Enable final SeedVR2 upscale">
+          <span class="edit-upscale-switch" aria-hidden="true"></span>
+        </button>
+      </div>
       <div class="edit-upscale-body" id="editUpscaleBody" aria-hidden="true" inert>
         <div class="edit-upscale-body-inner">
           <div class="edit-upscale-row"><span>Target</span><div class="chip-row" id="editUpscaleResolution"><button class="chip" type="button" data-resolution="1440">1440p</button><button class="chip active" type="button" data-resolution="2160">2160p</button><button class="chip" type="button" data-resolution="3840">4K</button></div></div>

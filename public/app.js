@@ -26,11 +26,13 @@ const state = {
   editUpscaleResolution: 2160,
   editUpscaleProfile: 'sharp',
   editUpscaleNoise: 'low',
+  editUpscaleExpanded: false,
   editSequential: false,
   createUpscaleEnabled: false,
   createUpscaleResolution: 2160,
   createUpscaleProfile: 'sharp',
   createUpscaleNoise: 'low',
+  createUpscaleExpanded: false,
   qwenAngles: [],
   qwenAnglesMode: false,
   qwenAngleElevation: 'eye-level',
@@ -914,11 +916,13 @@ function saveForm() {
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
       editUpscaleNoise: state.editUpscaleNoise,
+      editUpscaleExpanded: state.editUpscaleExpanded,
       editSequential: state.editSequential,
       createUpscaleEnabled: state.createUpscaleEnabled,
       createUpscaleResolution: state.createUpscaleResolution,
       createUpscaleProfile: state.createUpscaleProfile,
       createUpscaleNoise: state.createUpscaleNoise,
+      createUpscaleExpanded: state.createUpscaleExpanded,
       qwenAngles: state.qwenAngles,
       qwenAngleElevation: state.qwenAngleElevation,
       qwenAngleDistance: state.qwenAngleDistance,
@@ -940,11 +944,13 @@ function loadForm() {
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
     state.editUpscaleNoise = ['off', 'low', 'medium'].includes(f.editUpscaleNoise) ? f.editUpscaleNoise : 'low';
+    state.editUpscaleExpanded = f.editUpscaleExpanded === true;
     state.editSequential = f.editSequential === true;
     state.createUpscaleEnabled = f.createUpscaleEnabled === true;
     state.createUpscaleResolution = [1440, 2160, 3840].includes(Number(f.createUpscaleResolution)) ? Number(f.createUpscaleResolution) : 2160;
     state.createUpscaleProfile = f.createUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
     state.createUpscaleNoise = ['off', 'low', 'medium'].includes(f.createUpscaleNoise) ? f.createUpscaleNoise : 'low';
+    state.createUpscaleExpanded = f.createUpscaleExpanded === true;
     state.qwenAngles = Array.isArray(f.qwenAngles) ? [...new Set(f.qwenAngles.filter((id) => QWEN_ANGLE_IDS.has(id)))] : [];
     state.qwenAngleElevation = QWEN_ANGLE_ELEVATIONS.some((option) => option.id === f.qwenAngleElevation)
       ? f.qwenAngleElevation : 'eye-level';
@@ -3558,15 +3564,24 @@ function positionUpscaleFinish() {
 
 function renderEditUpscale() {
   positionUpscaleFinish();
+  const control = $('#editUpscaleControl');
   const toggle = $('#editUpscaleToggle');
+  const details = $('#editUpscaleDetails');
   const body = $('#editUpscaleBody');
   const settings = upscaleFinishSettings();
   const enabled = settings.enabled;
+  const expanded = enabled && state[`${settings.prefix}UpscaleExpanded`] === true;
   toggle.setAttribute('aria-pressed', String(enabled));
+  control.classList.toggle('is-enabled', enabled);
+  details.disabled = !enabled;
+  details.setAttribute('aria-expanded', String(expanded));
+  details.setAttribute('aria-label', enabled
+    ? `${expanded ? 'Hide' : 'Show'} upscale settings`
+    : 'Enable Upscale from the switch to configure its settings');
   $('#editUpscaleSummary').textContent = enabled ? `SeedVR2 · ${settings.resolution === 3840 ? '4K' : `${settings.resolution}p`}` : 'Off';
-  body.classList.toggle('expanded', enabled);
-  body.inert = !enabled;
-  body.setAttribute('aria-hidden', String(!enabled));
+  body.classList.toggle('expanded', expanded);
+  body.inert = !expanded;
+  body.setAttribute('aria-hidden', String(!expanded));
   $$('#editUpscaleResolution .chip').forEach((button) => button.classList.toggle('active', Number(button.dataset.resolution) === settings.resolution));
   $$('#editUpscaleProfile .chip').forEach((button) => button.classList.toggle('active', button.dataset.profile === settings.profile));
   $$('#editUpscaleNoise .chip').forEach((button) => button.classList.toggle('active', button.dataset.noise === settings.noise));
@@ -3575,6 +3590,14 @@ function renderEditUpscale() {
 $('#editUpscaleToggle').addEventListener('click', () => {
   const { prefix, enabled } = upscaleFinishSettings();
   state[`${prefix}UpscaleEnabled`] = !enabled;
+  if (enabled) state[`${prefix}UpscaleExpanded`] = false;
+  renderEditUpscale();
+  saveForm();
+});
+$('#editUpscaleDetails').addEventListener('click', () => {
+  const { prefix, enabled } = upscaleFinishSettings();
+  if (!enabled) return;
+  state[`${prefix}UpscaleExpanded`] = !state[`${prefix}UpscaleExpanded`];
   renderEditUpscale();
   saveForm();
 });
