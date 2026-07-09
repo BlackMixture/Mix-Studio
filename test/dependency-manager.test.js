@@ -16,6 +16,7 @@ const {
   NODE_PACKS,
   availableComponents,
   cleanRelative,
+  requirementsArgs,
   sameRepo,
 } = require('../lib/dependency-installer');
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
@@ -87,4 +88,12 @@ test('node installs preserve unrelated ComfyUI packages and make a repair explic
   assert.match(installer, /snapshotPythonEnvironment/);
   assert.match(sam3, /--upgrade-strategy', 'only-if-needed'/);
   assert.doesNotMatch(sam3, /'--upgrade', '-r'/);
+});
+
+test('Smart Mask dependency installs retain the NumPy 1 compatibility line', () => {
+  assert.deepEqual(
+    requirementsArgs('requirements.txt', false, { keepNumpy1: true }).slice(-2),
+    ['requirements.txt', 'numpy<2']
+  );
+  assert.equal(requirementsArgs('requirements.txt', true, { keepNumpy1: true }).includes('numpy<2'), false);
 });
