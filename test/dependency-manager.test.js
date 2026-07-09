@@ -16,6 +16,7 @@ const {
   NODE_PACKS,
   availableComponents,
   cleanRelative,
+  filterProtectedRuntimeRequirements,
   requirementsArgs,
   sameRepo,
 } = require('../lib/dependency-installer');
@@ -90,10 +91,21 @@ test('node installs preserve unrelated ComfyUI packages and make a repair explic
   assert.doesNotMatch(sam3, /'--upgrade', '-r'/);
 });
 
-test('Smart Mask dependency installs retain the NumPy 1 compatibility line', () => {
+test('node installs constrain the existing environment instead of replacing runtime packages', () => {
   assert.deepEqual(
-    requirementsArgs('requirements.txt', false, { keepNumpy1: true }).slice(-2),
-    ['requirements.txt', 'numpy<2']
+    requirementsArgs('requirements.txt', false, { constraintFile: 'before-install.freeze.txt' }).slice(-4),
+    ['--constraint', 'before-install.freeze.txt', '-r', 'requirements.txt']
   );
-  assert.equal(requirementsArgs('requirements.txt', true, { keepNumpy1: true }).includes('numpy<2'), false);
+  assert.equal(requirementsArgs('requirements.txt', true, { constraintFile: 'before-install.freeze.txt' }).includes('--constraint'), false);
+});
+
+test('repair requirements never reinstall ComfyUI runtime packages from PyPI', () => {
+  const filtered = filterProtectedRuntimeRequirements([
+    'torch', 'torchvision>=0.20', 'torchaudio==2.0', 'numpy',
+    'opencv-python', 'opencv-python-headless>=4.9', 'opencv-contrib-python',
+    'diffusers>=0.33.1', 'omegaconf>=2.3.0', '# comment', '',
+  ].join('\n'));
+  assert.doesNotMatch(filtered, /torch|numpy|opencv/i);
+  assert.match(filtered, /diffusers>=0.33.1/);
+  assert.match(filtered, /omegaconf>=2.3.0/);
 });
