@@ -7551,6 +7551,56 @@ $('#settingsSave').addEventListener('click', async () => {
 });
 
 let lastMeta = null;
+let sam3InstallBusy = false;
+let sam3InstallResult = null;
+
+function renderSam3Dependency() {
+  const card = $('#sam3DependencyCard');
+  if (!card) return;
+  const missing = (lastMeta && lastMeta.missing && lastMeta.missing.smartmask) || [];
+  const dependency = (lastMeta && lastMeta.dependencies && lastMeta.dependencies.sam3) || {};
+  const ready = !!lastMeta?.ok && missing.length === 0;
+  const badge = $('#sam3DependencyBadge');
+  const status = $('#sam3DependencyStatus');
+  const install = $('#sam3DependencyInstall');
+  const check = $('#sam3DependencyCheck');
+  card.classList.toggle('ready', ready);
+  card.classList.toggle('installing', sam3InstallBusy);
+  install.disabled = sam3InstallBusy;
+  check.disabled = sam3InstallBusy;
+
+  if (ready) {
+    badge.textContent = 'Ready';
+    status.textContent = 'Tap selection and text-guided masks are available.';
+    install.hidden = true;
+    return;
+  }
+  if (sam3InstallBusy) {
+    badge.textContent = 'Installing';
+    status.textContent = 'Downloading the SAM3 nodes and installing them into the ComfyUI Python environment. This can take several minutes.';
+    install.hidden = false;
+    install.textContent = 'Installing…';
+    return;
+  }
+  if (sam3InstallResult?.restartRequired) {
+    badge.textContent = 'Restart needed';
+    status.textContent = 'Installation finished. Restart ComfyUI, wait for it to reconnect, then press Check again. The SAM3 model downloads on first use.';
+    install.hidden = true;
+    return;
+  }
+
+  badge.textContent = 'Missing';
+  install.textContent = 'Install required tools';
+  install.hidden = !dependency.canInstall || !state.profileIsOwner;
+  if (!state.profileIsOwner) {
+    status.textContent = 'Switch to the owner profile to install the missing SAM3 tools.';
+  } else if (!dependency.canInstall) {
+    status.textContent = dependency.reason || 'Run install.bat again and select the existing ComfyUI folder so MixBox Studio can find its Python environment.';
+  } else {
+    status.textContent = `${missing.length || 'Some'} SAM3 components are missing. MixBox Studio can install the official node pack without changing gallery data.`;
+  }
+}
+
 async function loadMeta(refresh) {
   try {
     lastMeta = await api('/api/meta' + (refresh ? '?refresh=1' : ''));
@@ -7563,11 +7613,36 @@ async function loadMeta(refresh) {
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
     renderKrea2Mode();
     renderLoras();
+    renderSam3Dependency();
   } catch {
     state.connOk = false;
     $('#connDot').className = 'conn-dot bad';
+    renderSam3Dependency();
   }
 }
+
+$('#sam3DependencyInstall').addEventListener('click', async () => {
+  if (sam3InstallBusy) return;
+  sam3InstallBusy = true;
+  sam3InstallResult = null;
+  renderSam3Dependency();
+  try {
+    sam3InstallResult = await api('/api/dependencies/sam3/install', { method: 'POST' });
+    toast('SAM3 tools installed — restart ComfyUI to finish');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    sam3InstallBusy = false;
+    renderSam3Dependency();
+  }
+});
+
+$('#sam3DependencyCheck').addEventListener('click', async () => {
+  await loadMeta(true);
+  if (!lastMeta?.missing?.smartmask?.length) sam3InstallResult = null;
+  renderHealth();
+  renderSam3Dependency();
+});
 
 function renderHealth() {
   const el = $('#healthList');
@@ -7577,11 +7652,13 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
+    if (group === 'smartmask') continue; // The actionable installer card above owns this status.
+    const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');
     rows.push(missing.length
-      ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`
-      : `<span class="ok">●</span> ${labels[group]}: OK`);
+      ? `<span class="bad">●</span> ${escapeHtml(label)}: missing ${missing.map(escapeHtml).join(', ')}`
+      : `<span class="ok">●</span> ${escapeHtml(label)}: OK`);
   }
   const fieldLabels = { unet: 'UNET', turbo: 'Turbo UNET', raw: 'Raw UNET', turboLora: 'Turbo LoRA', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA' };
   for (const engine of Object.values(lastMeta.models || {})) {
@@ -7592,6 +7669,7 @@ function renderHealth() {
       : `<span class="ok">●</span> ${escapeHtml(engine.label)} models: OK`);
   }
   el.innerHTML = rows.join('<br>');
+  renderSam3Dependency();
 }
 
 /* ------------------------------------------------------------------ */

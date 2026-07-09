@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { updateFromGit } = require('./lib/app-update');
 const { resolveRuntimeConfig } = require('./lib/runtime-config');
+const { installSam3, sam3InstallStatus } = require('./lib/sam3-installer');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
 const {
   EDIT_FEATURES,
@@ -457,6 +458,7 @@ function broadcast(event, data) {
 const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
 const jobs = new Map(); // promptId -> job
 const queueHealthState = { lowGpuSince: null };
+let dependencyInstallRunning = false;
 
 function trackJob(pid, job) {
   const now = Date.now();
@@ -3313,6 +3315,12 @@ async function handleApi(req, res, url) {
         lorasInfo,
         loraThumbs: db.loraThumbs,
         missing,
+        dependencies: {
+          sam3: (() => {
+            const status = sam3InstallStatus(RUNTIME);
+            return { canInstall: status.canInstall, downloaded: status.downloaded, reason: status.reason };
+          })(),
+        },
         models: configuredModelsStatus(info),
         krea2: {
           rawUnet: settings.krea2RawUnet,
@@ -3361,6 +3369,35 @@ async function handleApi(req, res, url) {
     const name = `ks_${Date.now()}_${orig}`;
     const comfyName = await uploadToComfy(buf, name);
     return json(res, 200, { name: comfyName, hasAudio: detectAudioStream(buf, orig) === true });
+  }
+
+  if (route === '/api/dependencies/sam3/install' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install desktop dependencies' });
+    if (dependencyInstallRunning) return json(res, 409, { error: 'A dependency installation is already running' });
+    if (jobs.size) return json(res, 409, { error: 'Wait for the MixBox Studio queue to finish before installing dependencies' });
+    try {
+      const queue = await (await comfyFetch('/queue')).json();
+      if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
+        return json(res, 409, { error: 'Wait for the ComfyUI queue to finish before installing dependencies' });
+      }
+    } catch {
+      // Installation can repair an offline ComfyUI instance.
+    }
+    dependencyInstallRunning = true;
+    try {
+      const result = await installSam3(RUNTIME);
+      objectInfoCache = null;
+      return json(res, 200, {
+        ok: true,
+        downloaded: result.downloaded,
+        restartRequired: result.restartRequired,
+        message: 'SAM3 tools installed. Restart ComfyUI to load the new nodes; the model downloads automatically on first use.',
+      });
+    } catch (error) {
+      return json(res, 500, { error: String(error.message || error), code: error.code || 'sam3_install_failed' });
+    } finally {
+      dependencyInstallRunning = false;
+    }
   }
 
   if (route === '/api/edit-mask/sam3' && req.method === 'POST') {

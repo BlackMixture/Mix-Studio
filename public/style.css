@@ -4303,6 +4303,33 @@ body.sheet-open {
 }
 .health-list { font-size: 12px; color: var(--muted); margin: 8px 0 12px; line-height: 1.7; font-weight: 600; }
 .health-list .ok { color: var(--spectrum-green); }
+.dependency-card {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px 12px;
+  margin: 12px 0;
+  padding: 13px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 15px;
+  background: #050609;
+}
+.dependency-card-icon { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; color: #a9b7d6; background: #0b0d12; }
+.dependency-card-icon svg { width: 20px; height: 20px; }
+.dependency-card-copy { min-width: 0; }
+.dependency-card-copy > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dependency-card-copy strong { color: var(--ink); font-size: 13px; }
+.dependency-card-copy span { flex: 0 0 auto; padding: 3px 7px; border-radius: 999px; color: #ffd5a1; background: rgba(255,159,67,.12); font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.dependency-card.ready .dependency-card-copy span { color: #b9f6ca; background: rgba(52,168,83,.13); }
+.dependency-card.installing .dependency-card-copy span { color: #c8dcff; background: rgba(66,133,244,.15); }
+.dependency-card-copy p { margin: 5px 0 0; color: var(--muted); font-size: 10.5px; font-weight: 650; line-height: 1.45; }
+.dependency-card-actions { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+.dependency-card-actions button { min-height: 38px; padding: 0 12px; border-radius: 10px; font-size: 11px; font-weight: 850; }
+.dependency-install { border: 1px solid rgba(110,154,255,.54); background: rgba(66,133,244,.1); color: #dce7ff; }
+.dependency-check { border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.dependency-card-actions button:disabled { opacity: .5; }
+@media (max-width: 640px) {
+  .dependency-card-actions { grid-template-columns: 1fr; }
+}
 .health-list .bad { color: var(--spectrum-red); }
 
 /* ---------------- toast ---------------- */

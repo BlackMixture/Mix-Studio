@@ -1195,6 +1195,19 @@
           <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
           <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
           <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
+          <div class="dependency-card" id="sam3DependencyCard">
+            <div class="dependency-card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a2 2 0 0 1 2 2v1.1A7 7 0 0 1 18.9 10H20a2 2 0 1 1 0 4h-1.1a7 7 0 0 1-4.9 4.9V20a2 2 0 1 1-4 0v-1.1A7 7 0 0 1 5.1 14H4a2 2 0 1 1 0-4h1.1A7 7 0 0 1 10 5.1V4a2 2 0 0 1 2-2Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg>
+            </div>
+            <div class="dependency-card-copy">
+              <div><strong>Smart Mask Tools</strong><span id="sam3DependencyBadge">Checking</span></div>
+              <p id="sam3DependencyStatus">Checking the SAM3 nodes used by tap and text selection…</p>
+            </div>
+            <div class="dependency-card-actions">
+              <button class="dependency-install" id="sam3DependencyInstall" type="button">Install required tools</button>
+              <button class="dependency-check" id="sam3DependencyCheck" type="button">Check again</button>
+            </div>
+          </div>
           <div class="health-list" id="healthList"></div>
         </section>
 
