@@ -1137,7 +1137,7 @@ function pickUpload(accept, cb) {
           im.src = url;
         });
       }
-      cb({ name: res.name, url, w: dims.w, h: dims.h, label: file.name });
+      cb({ name: res.name, url, w: dims.w, h: dims.h, label: file.name, hasAudio: res.hasAudio === true });
     } catch (e) { toast(e.message, true); }
   });
   input.click();
@@ -4002,7 +4002,7 @@ async function sendVideoAsDrive(it, v) {
       body: buf,
     });
     const url = URL.createObjectURL(blob);
-    const d = { name: res.name, url, label: 'from gallery' };
+    const d = { name: res.name, url, label: 'from gallery', hasAudio: res.hasAudio === true };
     state.vidDrive = d;
     $('#vidDriveTrimChip').classList.remove('active');
     $('#vidDriveLabel').textContent = d.label;
@@ -4715,6 +4715,7 @@ $('#generateBtn').addEventListener('click', async () => {
       audioName: vidAudioName,
       faceImageName: state.vidEngine === 'ltx' && state.vidFace && !state.vidRef ? state.vidFace.name : undefined,
       driveVideoName: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.name : undefined,
+      driveHasAudio: state.vidEngine === 'scail' && state.vidDrive ? state.vidDrive.hasAudio === true : undefined,
       driveStartSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.trimStart || 0 : undefined,
       driveDurSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive && state.vidDrive.dur
         ? Math.max(0.5, (state.vidDrive.trimEnd || state.vidDrive.dur) - (state.vidDrive.trimStart || 0)) : undefined,
@@ -6624,7 +6625,7 @@ async function reuseVideo(it, v) {
     try {
       const blob = await inputBlob(info.driveVideoName);
       const urlObj = URL.createObjectURL(blob);
-      const d = { name: info.driveVideoName, url: urlObj, label: 'reused motion video' };
+      const d = { name: info.driveVideoName, url: urlObj, label: 'reused motion video', hasAudio: info.driveHasAudio === true };
       state.vidDrive = d;
       $('#vidDriveLabel').textContent = d.label;
       const probe = document.createElement('video');

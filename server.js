@@ -50,6 +50,7 @@ const {
 } = require('./lib/upscale-workflows');
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
 const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
+const { detectAudioStream } = require('./lib/media-inspection');
 const {
   scailMode,
   normalizeScailChunkOptions,
@@ -3237,7 +3238,7 @@ async function handleApi(req, res, url) {
     const orig = decodeURIComponent(req.headers['x-filename'] || 'ref.png').replace(/[^\w.\-]+/g, '_');
     const name = `ks_${Date.now()}_${orig}`;
     const comfyName = await uploadToComfy(buf, name);
-    return json(res, 200, { name: comfyName });
+    return json(res, 200, { name: comfyName, hasAudio: detectAudioStream(buf, orig) === true });
   }
 
   if (route === '/api/generate' && req.method === 'POST') {
@@ -3535,7 +3536,7 @@ async function handleApi(req, res, url) {
       scailStableTracking: selectedScailChunkOptions.stableTracking,
       scailChunkFrames: selectedScailChunkOptions.chunkFrames,
       scailChunkOverlap: selectedScailChunkOptions.overlapFrames,
-      driveAudio: engine === 'scail',
+      driveAudio: engine === 'scail' && body.driveHasAudio === true,
       smooth,
       loras: Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : [],
     };
@@ -3558,7 +3559,7 @@ async function handleApi(req, res, url) {
         motionFreedom: isLtxLike ? opts.imgCompression : undefined,
         fast: engine === 'wan' ? opts.fast : undefined,
         sigmaPreset: engine === 'eros' ? sigmaPreset : undefined,
-        drivenAudio: engine === 'scail' ? true : !!audioName,
+        drivenAudio: engine === 'scail' ? opts.driveAudio === true : !!audioName,
         endFrame: !!endImageName,
         motionVideo: !!driveVideoName,
         scailMode: engine === 'scail' ? selectedScailMode : undefined,
@@ -3572,6 +3573,7 @@ async function handleApi(req, res, url) {
         audioName: audioName || undefined,
         endImageName: endImageName || undefined,
         driveVideoName: driveVideoName || undefined,
+        driveHasAudio: engine === 'scail' ? opts.driveAudio === true : undefined,
         faceId: !!faceImageName || undefined,
         faceImageName: faceImageName || undefined,
         driveStartSeconds: (engine === 'scail' || isLtxEdit) && driveStart > 0 ? driveStart : undefined,

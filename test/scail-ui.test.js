@@ -30,6 +30,13 @@ test('SCAIL requests include stable chunk settings and saved videos remember the
   assert.match(serverJs, /scailStableTracking/);
 });
 
+test('SCAIL only extracts driving audio when the uploaded video contains an audio track', () => {
+  assert.match(appJs, /driveHasAudio: state\.vidEngine === 'scail'/);
+  assert.match(serverJs, /driveAudio: engine === 'scail' && body\.driveHasAudio === true/);
+  assert.match(serverJs, /drivenAudio: engine === 'scail' \? opts\.driveAudio === true/);
+  assert.match(serverJs, /hasAudio: detectAudioStream\(buf, orig\) === true/);
+});
+
 test('SCAIL Infinity uses and reports the Pusa LoRA dependency', () => {
   assert.match(indexHtml, /id="setScailPusaLora"/);
   assert.match(appJs, /scailPusaLora/);
