@@ -42,7 +42,7 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(html, /id="kreaMaskGesture"/);
   assert.match(app, /ctx\.filter = `blur\(\$\{feather\}px\)`/);
   assert.match(app, /function invertKreaMask\(\)/);
-  assert.match(app, /const value = 255 - image\.data\[i \+ 3\]/);
+  assert.match(app, /const current = \(image\.data\[i\] \* image\.data\[i \+ 3\]\) \/ 255/);
   assert.match(app, /function renderMaskOverlay\(\)/);
   assert.match(app, /function beginMaskGesture\(event\)/);
   assert.match(app, /Brush Size \$\{state\.kreaBrush\} px · Brush Pressure/);

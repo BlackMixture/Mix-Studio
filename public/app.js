@@ -1829,6 +1829,8 @@ function clearKreaMask(silent) {
   state.kreaMaskPreviewCutout = false;
   const canvas = $('#kreaMaskCanvas');
   if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+  const overlay = $('#kreaMaskOverlayCanvas');
+  if (overlay) overlay.getContext('2d').clearRect(0, 0, overlay.width || 1, overlay.height || 1);
   const cutout = $('#kreaMaskCutoutCanvas');
   if (cutout) cutout.getContext('2d').clearRect(0, 0, cutout.width || 1, cutout.height || 1);
   if (state.refs[0] && state.refs[0].displayUrl) {
@@ -2045,9 +2047,11 @@ function invertKreaMask() {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < image.data.length; i += 4) {
-    // The drawing canvas is transparent outside a brush stroke. Turning the
-    // alpha into an opaque inverse makes the inverse visible and exportable.
-    const value = 255 - image.data[i + 3];
+    // Brush masks are transparent outside the stroke, while SAM3 returns an
+    // opaque black-and-white image. Invert the effective luminance so both
+    // representations produce the same visible, exportable inverse.
+    const current = (image.data[i] * image.data[i + 3]) / 255;
+    const value = 255 - current;
     image.data[i] = value;
     image.data[i + 1] = value;
     image.data[i + 2] = value;
