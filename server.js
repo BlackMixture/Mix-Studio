@@ -15,7 +15,9 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { updateFromGit } = require('./lib/app-update');
 const { resolveRuntimeConfig } = require('./lib/runtime-config');
-const { installSam3, sam3InstallStatus } = require('./lib/sam3-installer');
+const { sam3InstallStatus } = require('./lib/sam3-installer');
+const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponents } = require('./lib/dependency-installer');
+const { restartComfy, restartStatus } = require('./lib/comfy-restart');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
 const {
   EDIT_FEATURES,
@@ -459,6 +461,48 @@ const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
 const jobs = new Map(); // promptId -> job
 const queueHealthState = { lowGpuSince: null };
 let dependencyInstallRunning = false;
+let comfyRestartRunning = false;
+let dependencyInstallState = {
+  state: 'idle',
+  phase: 'idle',
+  message: 'No dependency installation is running.',
+  completed: 0,
+  total: 0,
+  restartRequired: false,
+  error: null,
+  updatedAt: Date.now(),
+};
+
+function updateDependencyInstallState(patch) {
+  dependencyInstallState = Object.assign({}, dependencyInstallState, patch, { updatedAt: Date.now() });
+  broadcast('dependencyInstall', dependencyInstallState);
+}
+
+async function assertDesktopIsIdle() {
+  if (jobs.size) throw new Error('Wait for the MixBox Studio queue to finish before changing desktop dependencies.');
+  try {
+    const queue = await (await comfyFetch('/queue')).json();
+    if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
+      throw new Error('Wait for the ComfyUI queue to finish before changing desktop dependencies.');
+    }
+  } catch (error) {
+    if (/Wait for the ComfyUI queue/.test(String(error.message || error))) throw error;
+    // A stopped ComfyUI instance is recoverable during dependency installation.
+  }
+}
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForComfyReconnect(timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await comfyFetch('/system_stats');
+      return true;
+    } catch { await pause(1500); }
+  }
+  return false;
+}
 
 function trackJob(pid, job) {
   const now = Date.now();
@@ -562,6 +606,11 @@ function modelStatus(info, cls, field, name, fallbackList) {
   return { name, ok: !name || list.includes(name) };
 }
 
+function modelStatusAny(info, name, choices, fallbackList) {
+  const list = fallbackList || choices.flatMap(([cls, field]) => comboList(info, cls, field));
+  return { name, ok: !name || list.includes(name) };
+}
+
 function scailInfinityStatus(info) {
   const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
@@ -615,9 +664,85 @@ function configuredModelsStatus(info) {
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.qwenEditClip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.vae),
       lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.qwenEditLora, loraList),
+      angles: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.qwenEditAnglesLora, loraList),
+    },
+    upscale: {
+      label: 'SeedVR2 Upscale',
+      dit: { name: settings.seedvr2Dit, ok: installedSeedVr2Models(seedVr2ModelDirs()).includes(settings.seedvr2Dit) },
+      vae: modelStatusAny(info, settings.seedvr2Vae, [['SeedVR2LoadVAEModel', 'model']]),
+    },
+    ltx: {
+      label: 'LTX 2.3',
+      checkpoint: modelStatus(info, 'CheckpointLoaderSimple', 'ckpt_name', settings.ltxCkpt),
+      distilled: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxDistilledLora, loraList),
+      textEncoder: modelStatusAny(info, settings.ltxTextEncoder, [['LTXAVTextEncoderLoader', 'text_encoder']]),
+      gemmaLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.ltxGemmaLora, loraList),
+      upscaler: modelStatus(info, 'LatentUpscaleModelLoader', 'model_name', settings.ltxUpscaler),
+    },
+    ltxEdit: {
+      label: 'LTX Edit',
+      lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxEditLora, loraList),
+    },
+    faceid: {
+      label: 'LTX Face ID',
+      faceLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxFaceIdLora, loraList),
+      distilled: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxFaceIdDistilledLora, loraList),
+    },
+    wan: {
+      label: 'Wan 2.2',
+      high: modelStatus(info, 'UNETLoader', 'unet_name', settings.wanHighUnet),
+      low: modelStatus(info, 'UNETLoader', 'unet_name', settings.wanLowUnet),
+      textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', settings.wanClip),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.wanVae),
+      highLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.wanHighLora, loraList),
+      lowLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.wanLowLora, loraList),
+    },
+    eros: {
+      label: '10Eros DMD',
+      checkpoint: modelStatus(info, 'CheckpointLoaderSimple', 'ckpt_name', settings.erosCkpt),
+      textEncoder: modelStatusAny(info, settings.erosTextEncoder, [['LTXAVTextEncoderLoader', 'text_encoder']]),
+      lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.erosDmdLora, loraList),
+    },
+    scail: {
+      label: 'SCAIL 2',
+      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.scailUnet),
+      lightx: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.scailLora, loraList),
+      clipVision: modelStatus(info, 'CLIPVisionLoader', 'clip_name', settings.scailClipVision),
+      sam: modelStatus(info, 'CheckpointLoaderSimple', 'ckpt_name', settings.scailSam),
     },
     scailInfinity: Object.assign({ label: 'SCAIL 2 Infinity' }, scailInfinityStatus(info)),
   };
+}
+
+function missingDependencyComponentIds(missing, models) {
+  const ids = new Set();
+  const nodeToComponent = {
+    regional: ['regional'],
+    krea2ref: ['krea2ref'],
+    smartmask: ['smartmask'],
+    upscale: ['upscale'],
+    ultimateupscale: ['ultimateupscale'],
+    video: ['video'],
+    videoedit: ['videoedit'],
+    video4k: ['video4k'],
+    wan: ['wan'],
+    eros: ['eros'],
+    scail: ['scail'],
+    scailinfinity: ['scailinfinity'],
+    faceid: ['faceid'],
+    klein: ['klein4', 'klein9'],
+    qwenedit: ['qwen'],
+    krea2inpaint: ['image'],
+  };
+  for (const [group, classes] of Object.entries(missing || {})) {
+    if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
+  }
+  const modelToComponent = { krea2: 'image', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  for (const [model, value] of Object.entries(models || {})) {
+    const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
+    if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
+  }
+  return [...ids];
 }
 
 const LORA_INFO_TTL = 5 * 60 * 1000;
@@ -3309,6 +3434,8 @@ async function handleApi(req, res, url) {
       for (const [group, classes] of Object.entries(REQUIRED_CLASSES)) {
         missing[group] = classes.filter((c) => !info[c]);
       }
+      const models = configuredModelsStatus(info);
+      const installStatus = sam3InstallStatus(RUNTIME);
       return json(res, 200, {
         ok: true,
         loras,
@@ -3316,12 +3443,15 @@ async function handleApi(req, res, url) {
         loraThumbs: db.loraThumbs,
         missing,
         dependencies: {
-          sam3: (() => {
-            const status = sam3InstallStatus(RUNTIME);
-            return { canInstall: status.canInstall, downloaded: status.downloaded, reason: status.reason };
-          })(),
+          canInstall: installStatus.canInstall,
+          reason: installStatus.reason,
+          restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
+          components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label })),
+          missingComponents: missingDependencyComponentIds(missing, models),
+          install: dependencyInstallState,
+          sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
         },
-        models: configuredModelsStatus(info),
+        models,
         krea2: {
           rawUnet: settings.krea2RawUnet,
           turboLora: settings.krea2TurboLora,
@@ -3371,33 +3501,98 @@ async function handleApi(req, res, url) {
     return json(res, 200, { name: comfyName, hasAudio: detectAudioStream(buf, orig) === true });
   }
 
+  if (route === '/api/dependencies/status' && req.method === 'GET') {
+    return json(res, 200, dependencyInstallState);
+  }
+
+  if (route === '/api/comfy/restart' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restart ComfyUI' });
+    if (dependencyInstallRunning || comfyRestartRunning) return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
+    try {
+      await assertDesktopIsIdle();
+    } catch (error) {
+      return json(res, 409, { error: String(error.message || error) });
+    }
+    const restart = restartStatus(RUNTIME);
+    if (!restart.canRestart) return json(res, 409, { error: restart.reason || 'ComfyUI restart is not configured for this machine.' });
+    comfyRestartRunning = true;
+    updateDependencyInstallState({ state: 'restarting', phase: 'stopping', message: 'Stopping ComfyUI…', error: null });
+    (async () => {
+      try {
+        await restartComfy(RUNTIME, (phase, message) => updateDependencyInstallState({ state: 'restarting', phase, message, error: null }));
+        const reconnected = await waitForComfyReconnect();
+        objectInfoCache = null;
+        updateDependencyInstallState(reconnected
+          ? { state: 'complete', phase: 'reconnected', message: 'ComfyUI is back online. Checking installed models and nodes…', restartRequired: false, error: null }
+          : { state: 'error', phase: 'timeout', message: 'ComfyUI did not reconnect yet. Check the desktop app, then press Check again.', error: 'Reconnect timed out.' });
+      } catch (error) {
+        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Could not restart ComfyUI.', error: String(error.message || error) });
+      } finally {
+        comfyRestartRunning = false;
+      }
+    })();
+    return json(res, 202, { ok: true, restart: true, install: dependencyInstallState });
+  }
+
+  if (route === '/api/dependencies/install' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install desktop dependencies' });
+    if (dependencyInstallRunning) return json(res, 409, { error: 'A dependency installation is already running' });
+    const body = await readJsonBody(req);
+    const requested = Array.isArray(body.components) ? body.components.map((value) => String(value)) : [];
+    const repair = body.repair === true;
+    const components = [...new Set(requested.filter((id) => Object.prototype.hasOwnProperty.call(DEPENDENCY_COMPONENTS, id)))];
+    if (!components.length) return json(res, 400, { error: 'Choose at least one missing model or node group to install.' });
+    try {
+      await assertDesktopIsIdle();
+    } catch (error) {
+      return json(res, 409, { error: String(error.message || error) });
+    }
+    dependencyInstallRunning = true;
+    updateDependencyInstallState({
+      state: 'running', phase: 'queued', message: 'Starting dependency installation…',
+      components, repair, completed: 0, total: 0, restartRequired: false, error: null,
+    });
+    (async () => {
+      try {
+        const result = await installComponents({
+          runtime: RUNTIME,
+          settings,
+          components,
+          options: { repair },
+          report: (phase, message, detail) => updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {})),
+        });
+        objectInfoCache = null;
+        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null });
+      } catch (error) {
+        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Dependency installation stopped.', error: String(error.message || error) });
+      } finally {
+        dependencyInstallRunning = false;
+      }
+    })();
+    return json(res, 202, { ok: true, install: dependencyInstallState });
+  }
+
   if (route === '/api/dependencies/sam3/install' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install desktop dependencies' });
     if (dependencyInstallRunning) return json(res, 409, { error: 'A dependency installation is already running' });
-    if (jobs.size) return json(res, 409, { error: 'Wait for the MixBox Studio queue to finish before installing dependencies' });
     try {
-      const queue = await (await comfyFetch('/queue')).json();
-      if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
-        return json(res, 409, { error: 'Wait for the ComfyUI queue to finish before installing dependencies' });
-      }
-    } catch {
-      // Installation can repair an offline ComfyUI instance.
-    }
+      await assertDesktopIsIdle();
+    } catch (error) { return json(res, 409, { error: String(error.message || error) }); }
     dependencyInstallRunning = true;
-    try {
-      const result = await installSam3(RUNTIME);
-      objectInfoCache = null;
-      return json(res, 200, {
-        ok: true,
-        downloaded: result.downloaded,
-        restartRequired: result.restartRequired,
-        message: 'SAM3 tools installed. Restart ComfyUI to load the new nodes; the model downloads automatically on first use.',
-      });
-    } catch (error) {
-      return json(res, 500, { error: String(error.message || error), code: error.code || 'sam3_install_failed' });
-    } finally {
-      dependencyInstallRunning = false;
-    }
+    updateDependencyInstallState({ state: 'running', phase: 'queued', message: 'Starting the safe Smart Mask installation…', components: ['smartmask'], repair: false, completed: 0, total: 0, restartRequired: false, error: null });
+    (async () => {
+      try {
+        const result = await installComponents({
+          runtime: RUNTIME, settings, components: ['smartmask'],
+          report: (phase, message, detail) => updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {})),
+        });
+        objectInfoCache = null;
+        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: 'Smart Mask tools installed safely. Restart ComfyUI, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null });
+      } catch (error) {
+        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Smart Mask installation stopped.', error: String(error.message || error) });
+      } finally { dependencyInstallRunning = false; }
+    })();
+    return json(res, 202, { ok: true, install: dependencyInstallState });
   }
 
   if (route === '/api/edit-mask/sam3' && req.method === 'POST') {
@@ -3521,7 +3716,7 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }
       if (p.maskImageName && !supportsEditMask(p.editEngine)) {
-        return json(res, 400, { error: 'Edit areas are available with Klein 9B, Qwen Edit, and Krea2 only' });
+        return json(res, 400, { error: 'Edit areas are available with Klein 4B, Klein 9B, Qwen Edit, and Krea2 only' });
       }
       if (p.maskImageName && !refNames.length) {
         return json(res, 400, { error: 'An edit area needs a source image in reference slot 1' });

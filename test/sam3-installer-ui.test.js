@@ -21,6 +21,6 @@ test('Settings presents a styled SAM3 dependency installer instead of an undefin
 test('SAM3 dependency installation is owner-only and never runs during generation', () => {
   assert.match(server, /route === '\/api\/dependencies\/sam3\/install'/);
   assert.match(server, /Only the owner profile can install desktop dependencies/);
-  assert.match(server, /Wait for the MixBox Studio queue to finish before installing dependencies/);
-  assert.match(server, /installSam3\(RUNTIME\)/);
+  assert.match(server, /await assertDesktopIsIdle\(\)/);
+  assert.match(server, /installComponents\(\{/);
 });

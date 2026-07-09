@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'),
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
 
 test('Edit exposes SAM3, brush, and bounding-box area selection for supported engines', () => {
-  assert.match(app, /const EDIT_MASK_ENGINES = new Set\(\['klein9', 'qwen', 'krea2'\]\)/);
+  assert.match(app, /const EDIT_MASK_ENGINES = new Set\(\['klein4', 'klein9', 'qwen', 'krea2'\]\)/);
   assert.match(html, /id="kreaMaskSmartMode"/);
   assert.match(html, /id="kreaMaskBrushMode"/);
   assert.match(html, /id="kreaMaskBoxMode"/);
@@ -25,19 +25,27 @@ test('Edit exposes SAM3, brush, and bounding-box area selection for supported en
   assert.match(css, /\.edit-area-mode/);
 });
 
-test('localized edit requests upload their mask and preserve source-matched output', () => {
+test('localized edit requests upload their mask automatically and preserve source-matched output', () => {
   assert.match(app, /supportsCurrentEditMask\(\) && hasEditMask\(\)/);
   assert.match(app, /editAspectOverride: mode === 'edit' && state\.editAspectOverride && !localizedEdit/);
   assert.match(app, /editMaskMode: localizedEdit \? \(state\.kreaMaskKind \|\| state\.kreaMaskTool\)/);
-  assert.match(app, /changes stay inside this area/);
+  assert.match(app, /Edit area is active — changes stay inside the mask/);
+  assert.match(html, /id="kreaMaskApply">Done/);
 });
 
-test('mask refinements include feather, invert, and a true transparent cutout preview', () => {
+test('mask refinements visibly apply feathering and invert the current pixels', () => {
   assert.match(html, /id="kreaMaskFeather"/);
   assert.match(html, /id="kreaMaskInvert"/);
   assert.match(html, /id="kreaMaskPreviewToggle"/);
   assert.match(html, /id="kreaMaskCutoutCanvas"/);
+  assert.match(html, /id="kreaMaskOverlayCanvas"/);
+  assert.match(html, /id="kreaMaskGesture"/);
   assert.match(app, /ctx\.filter = `blur\(\$\{feather\}px\)`/);
+  assert.match(app, /function invertKreaMask\(\)/);
+  assert.match(app, /const value = 255 - image\.data\[i \+ 3\]/);
+  assert.match(app, /function renderMaskOverlay\(\)/);
+  assert.match(app, /function beginMaskGesture\(event\)/);
+  assert.match(app, /Brush Size \$\{state\.kreaBrush\} px · Brush Pressure/);
   assert.match(app, /ctx\.globalCompositeOperation = 'destination-out'/);
   assert.match(app, /ref\.displayUrl = cutout\.toDataURL\('image\/png'\)/);
   assert.doesNotMatch(app, /red tint/);

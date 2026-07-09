@@ -1,0 +1,90 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const {
+  COMPONENTS,
+  MODEL_ASSETS,
+  NODE_PACKS,
+  availableComponents,
+  cleanRelative,
+  sameRepo,
+} = require('../lib/dependency-installer');
+const { comfyPort, restartStatus } = require('../lib/comfy-restart');
+
+test('dependency catalog covers every enabled image and video family', () => {
+  for (const component of ['image', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+    assert.ok(COMPONENTS[component], `${component} is installable`);
+  }
+  for (const group of ['image', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+    assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
+  }
+  assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
+  assert.ok(availableComponents().includes('smartmask'));
+});
+
+test('dependency paths stay inside ComfyUI model folders and trusted repos compare safely', () => {
+  assert.equal(cleanRelative('Wan2.1\\model.safetensors'), path.join('Wan2.1', 'model.safetensors'));
+  assert.throws(() => cleanRelative('../outside.safetensors'));
+  assert.equal(sameRepo('git@github.com:PozzettiAndrea/ComfyUI-SAM3.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), true);
+  assert.equal(sameRepo('https://github.com/example/other.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), false);
+});
+
+test('dependency routes run asynchronously and publish progress instead of holding the browser request open', () => {
+  assert.match(server, /route === '\/api\/dependencies\/status'/);
+  assert.match(server, /route === '\/api\/dependencies\/install'/);
+  assert.match(server, /return json\(res, 202, \{ ok: true, install: dependencyInstallState \}\)/);
+  assert.match(server, /updateDependencyInstallState\(/);
+  assert.match(server, /broadcast\('dependencyInstall'/);
+  assert.match(server, /await assertDesktopIsIdle\(\)/);
+  assert.match(server, /qwenedit: \['qwen'\]/);
+  assert.match(server, /klein: \['klein4', 'klein9'\]/);
+  assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /downloadTotal/);
+});
+
+test('ComfyUI restart is owner-only, queue-safe, and reports reconnect state', () => {
+  assert.equal(comfyPort('http://127.0.0.1:8188'), 8188);
+  assert.equal(comfyPort('http://localhost:9000'), 9000);
+  const status = restartStatus({ comfy: { path: 'C:/ComfyUI', url: 'http://127.0.0.1:8188' } }, {
+    platform: 'win32',
+    existsSync(file) { return /(?:ComfyUI|run_nvidia_gpu\.bat|custom_nodes)$/.test(file); },
+    env: {}, home: 'C:/Users/test',
+  });
+  assert.equal(status.canRestart, true);
+  assert.match(server, /route === '\/api\/comfy\/restart'/);
+  assert.match(server, /Only the owner profile can restart ComfyUI/);
+  assert.match(server, /waitForComfyReconnect/);
+});
+
+test('Settings presents a compact dependency manager with progress and restart controls', () => {
+  assert.match(html, /id="dependencyManagerCard"/);
+  assert.match(html, /id="dependencyInstallMissing"/);
+  assert.match(html, /id="dependencyRepairMissing"/);
+  assert.match(html, /id="dependencyRestartComfy"/);
+  assert.match(html, /id="dependencyProgress"/);
+  assert.match(app, /function renderDependencyManager\(\)/);
+  assert.match(app, /function scheduleDependencyPoll\(\)/);
+  assert.match(app, /Repair missing tools/);
+  assert.match(app, /formatDependencyBytes/);
+  assert.match(css, /\.dependency-progress/);
+  assert.match(css, /@keyframes dependencyProgress/);
+});
+
+test('node installs preserve unrelated ComfyUI packages and make a repair explicit', () => {
+  const installer = fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8');
+  const sam3 = fs.readFileSync(path.join(root, 'lib', 'sam3-installer.js'), 'utf8');
+  assert.match(installer, /function requirementsArgs/);
+  assert.doesNotMatch(installer, /pip', 'install', '--upgrade', '-r'/);
+  assert.match(installer, /--force-reinstall', '--no-deps/);
+  assert.match(installer, /snapshotPythonEnvironment/);
+  assert.match(sam3, /--upgrade-strategy', 'only-if-needed'/);
+  assert.doesNotMatch(sam3, /'--upgrade', '-r'/);
+});

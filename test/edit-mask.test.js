@@ -15,11 +15,11 @@ const {
 
 const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
-test('localized edit masks are limited to Klein 9B, Qwen Edit, and Krea2', () => {
+test('localized edit masks are available for both Klein editors, Qwen Edit, and Krea2', () => {
+  assert.equal(supportsEditMask('klein4'), true);
   assert.equal(supportsEditMask('klein9'), true);
   assert.equal(supportsEditMask('qwen'), true);
   assert.equal(supportsEditMask('krea2'), true);
-  assert.equal(supportsEditMask('klein4'), false);
   assert.equal(supportsEditMask('krea2ref'), false);
 });
 
@@ -47,12 +47,12 @@ test('edit masks constrain latent noise and composite unchanged pixels from the 
   assert.deepEqual(output, ['area_composite', 0]);
 });
 
-test('Klein 9B and Qwen builders route masked source latents through localized composites', () => {
+test('Klein editors and Qwen route masked source latents through localized composites', () => {
   assert.match(serverJs, /prefix: 'qwen_mask'[\s\S]*samples: \['latent', 0\]/);
   assert.match(serverJs, /latent_image: editMask \? editMask\.latent : \['latent', 0\]/);
   assert.match(serverJs, /prefix: 'klein_mask'[\s\S]*samples: \['enc1', 0\]/);
   assert.match(serverJs, /key: 'klein_mask_composite'/);
-  assert.match(serverJs, /Edit areas are available with Klein 9B, Qwen Edit, and Krea2 only/);
+  assert.match(serverJs, /Edit areas are available with Klein 4B, Klein 9B, Qwen Edit, and Krea2 only/);
 });
 
 test('SAM3 smart masks support text grounding and corrective point prompts', () => {

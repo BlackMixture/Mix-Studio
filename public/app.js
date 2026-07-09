@@ -134,7 +134,7 @@ const QWEN_ANGLE_DISTANCES = [
 ];
 const EDIT_ENGINES = ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'];
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
-const EDIT_MASK_ENGINES = new Set(['klein9', 'qwen', 'krea2']);
+const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref' };
 const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
 
@@ -983,7 +983,9 @@ function loadForm() {
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     state.kreaMaskFeather = Math.max(0, Math.min(64, Number(f.kreaMaskFeather) || 8));
-    state.kreaMaskInvert = f.kreaMaskInvert === true;
+    // Older form state treated inversion as an export-time toggle. The mask
+    // editor now applies inversion directly to the visible mask canvas.
+    state.kreaMaskInvert = false;
     if (f.cameraSettings && CameraSettings) {
       state.cameraSettings = CameraSettings.normalizeSettings(f.cameraSettings);
     }
@@ -1082,6 +1084,7 @@ function genLabel() {
   if (state.activeJobs.size) {
     return `➕ Add to Queue · ${state.activeJobs.size} running`;
   }
+  if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Inpaint';
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
@@ -1382,6 +1385,7 @@ let regionClickBlockedUntil = 0;
 let kreaMaskDrawing = false;
 let kreaMaskLast = null;
 let kreaMaskBoxStart = null;
+let kreaMaskGesture = null;
 
 function clamp01(v, fallback) {
   const n = Number(v);
@@ -1860,12 +1864,15 @@ function renderKreaMaskTools() {
   const tools = $('#kreaMaskTools');
   if (!tools) return;
   const hasMask = hasEditMask();
+  const isInpaint = state.editEngine === 'krea2';
   const kind = state.kreaMaskKind === 'box' ? 'Box selected'
     : (state.kreaMaskKind === 'smart' ? 'Smart mask selected' : 'Mask selected');
-  $('#kreaMaskStatus').textContent = hasMask ? kind : 'Whole image';
+  $('#kreaMaskLabel').textContent = isInpaint ? 'Inpaint area' : 'Edit area';
+  $('#kreaMaskStatus').textContent = hasMask ? (isInpaint ? `Inpaint · ${kind.toLowerCase()}` : kind) : (isInpaint ? 'Whole image · no inpaint' : 'Whole image');
   $('#kreaMaskClear').hidden = !hasMask;
   $('#kreaMaskBtn').classList.toggle('active', hasMask);
   syncEditAreaChrome();
+  $('#genLbl').textContent = genLabel();
 }
 
 function renderKreaMaskMode() {
@@ -1886,12 +1893,15 @@ function renderKreaMaskMode() {
 function setupMaskCanvasFromImage() {
   const base = $('#kreaMaskBase');
   const canvas = $('#kreaMaskCanvas');
+  const overlay = $('#kreaMaskOverlayCanvas');
   const cutout = $('#kreaMaskCutoutCanvas');
   const w = base.naturalWidth || 1024;
   const h = base.naturalHeight || 1024;
   $('#kreaMaskStage').style.setProperty('--mask-aspect', String(w / h));
   canvas.width = w;
   canvas.height = h;
+  overlay.width = w;
+  overlay.height = h;
   cutout.width = w;
   cutout.height = h;
   const ctx = canvas.getContext('2d');
@@ -1900,10 +1910,14 @@ function setupMaskCanvasFromImage() {
     const im = new Image();
     im.onload = () => {
       ctx.drawImage(im, 0, 0, w, h);
+      renderMaskOverlay();
       refreshMaskCutoutPreview();
     };
     im.src = state.kreaMaskPreview;
-  } else refreshMaskCutoutPreview();
+  } else {
+    renderMaskOverlay();
+    refreshMaskCutoutPreview();
+  }
   requestAnimationFrame(renderSmartMaskPoints);
 }
 
@@ -1921,7 +1935,9 @@ function openKreaMaskPainter() {
   $('#kreaMaskBase').src = ref.url;
   $('#kreaMaskBase').onload = setupMaskCanvasFromImage;
   if ($('#kreaMaskBase').complete) setupMaskCanvasFromImage();
-  $('#kreaMaskTitle').textContent = `${editEngineLabel(state.editEngine)} edit area`;
+  $('#kreaMaskTitle').textContent = state.editEngine === 'krea2'
+    ? 'Krea 2 inpaint area'
+    : `${editEngineLabel(state.editEngine)} edit area`;
   $('#kreaMaskPrompt').value = '';
   $('#kreaBrushInput').value = String(state.kreaBrush);
   $('#kreaBrushVal').textContent = String(state.kreaBrush);
@@ -1987,6 +2003,8 @@ function drawKreaMask(e) {
   }
   state.kreaMaskDirty = true;
   state.kreaMaskPreview = canvas.toDataURL('image/png');
+  state.kreaMaskInvert = false;
+  renderMaskOverlay();
   refreshMaskCutoutPreview();
   renderKreaMaskTools();
 }
@@ -1997,7 +2015,7 @@ function processedMaskCanvas() {
   const out = document.createElement('canvas');
   out.width = source.width;
   out.height = source.height;
-  const ctx = out.getContext('2d', { willReadFrequently: state.kreaMaskInvert });
+  const ctx = out.getContext('2d');
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, out.width, out.height);
   ctx.save();
@@ -2005,18 +2023,45 @@ function processedMaskCanvas() {
   if (feather) ctx.filter = `blur(${feather}px)`;
   ctx.drawImage(source, 0, 0);
   ctx.restore();
-  if (state.kreaMaskInvert) {
-    const image = ctx.getImageData(0, 0, out.width, out.height);
-    for (let i = 0; i < image.data.length; i += 4) {
-      const value = 255 - image.data[i];
-      image.data[i] = value;
-      image.data[i + 1] = value;
-      image.data[i + 2] = value;
-      image.data[i + 3] = 255;
-    }
-    ctx.putImageData(image, 0, 0);
-  }
   return out;
+}
+
+function renderMaskOverlay() {
+  const overlay = $('#kreaMaskOverlayCanvas');
+  const mask = processedMaskCanvas();
+  if (!overlay || !mask) return;
+  if (overlay.width !== mask.width || overlay.height !== mask.height) {
+    overlay.width = mask.width;
+    overlay.height = mask.height;
+  }
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.drawImage(mask, 0, 0);
+}
+
+function invertKreaMask() {
+  const canvas = $('#kreaMaskCanvas');
+  if (!canvas || !canvas.width || !canvas.height || !hasEditMask()) return toast('Create a mask before inverting it', true);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < image.data.length; i += 4) {
+    // The drawing canvas is transparent outside a brush stroke. Turning the
+    // alpha into an opaque inverse makes the inverse visible and exportable.
+    const value = 255 - image.data[i + 3];
+    image.data[i] = value;
+    image.data[i + 1] = value;
+    image.data[i + 2] = value;
+    image.data[i + 3] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+  state.kreaMaskPreview = canvas.toDataURL('image/png');
+  state.kreaMaskDirty = true;
+  state.kreaMaskInvert = false;
+  renderMaskOverlay();
+  refreshMaskCutoutPreview();
+  renderKreaMaskTools();
+  renderMaskAdjustments();
+  saveForm();
 }
 
 function maskAlphaCanvas(mask) {
@@ -2054,12 +2099,24 @@ function refreshMaskCutoutPreview() {
 }
 
 function renderMaskAdjustments() {
+  $('#kreaBrushInput').value = String(state.kreaBrush);
+  $('#kreaBrushVal').textContent = String(state.kreaBrush);
   $('#kreaMaskFeatherVal').textContent = String(state.kreaMaskFeather);
-  $('#kreaMaskInvert').classList.toggle('active', state.kreaMaskInvert);
-  $('#kreaMaskInvert').setAttribute('aria-pressed', String(state.kreaMaskInvert));
+  $('#kreaMaskFeather').value = String(state.kreaMaskFeather);
+  $('#kreaMaskInvert').classList.remove('active');
+  $('#kreaMaskInvert').setAttribute('aria-pressed', 'false');
   $('#kreaMaskPreviewToggle').classList.toggle('active', state.kreaMaskPreviewCutout);
   $('#kreaMaskPreviewToggle').setAttribute('aria-pressed', String(state.kreaMaskPreviewCutout));
   $('#kreaMaskStage').classList.toggle('preview-cutout', state.kreaMaskPreviewCutout);
+  const gesture = $('#kreaMaskGesture');
+  const preview = $('#kreaMaskBrushPreview');
+  const values = $('#kreaMaskGestureValues');
+  if (gesture && preview && values) {
+    const diameter = Math.round(20 + (state.kreaBrush / 160) * 50);
+    preview.style.setProperty('--brush-diameter', `${diameter}px`);
+    preview.style.setProperty('--brush-feather', `${Math.round(3 + (state.kreaMaskFeather / 64) * 15)}px`);
+    values.textContent = `${state.kreaBrush} px · Soft ${state.kreaMaskFeather}`;
+  }
 }
 
 function renderSmartPointMode() {
@@ -2124,7 +2181,9 @@ async function runSmartMask({ prompt = '', point = null } = {}) {
     ctx.globalCompositeOperation = 'source-over';
     state.kreaMaskPreview = canvas.toDataURL('image/png');
     state.kreaMaskDirty = true;
+    state.kreaMaskInvert = false;
     state.kreaMaskKind = 'smart';
+    renderMaskOverlay();
     refreshMaskCutoutPreview();
     renderKreaMaskTools();
   } catch (error) {
@@ -2153,6 +2212,75 @@ async function ensureKreaMaskUploaded() {
   state.kreaMaskDirty = false;
   renderKreaMaskTools();
   return state.kreaMask.name;
+}
+
+function setMaskGestureValues(brush, feather, { announce = false } = {}) {
+  state.kreaBrush = Math.max(12, Math.min(160, Math.round(Number(brush) / 4) * 4 || 48));
+  state.kreaMaskFeather = Math.max(0, Math.min(64, Math.round(Number(feather) || 0)));
+  if (hasEditMask()) state.kreaMaskDirty = true;
+  renderMaskAdjustments();
+  renderMaskOverlay();
+  refreshMaskCutoutPreview();
+  const live = $('#kreaMaskGestureLive');
+  if (announce && live) live.textContent = `Brush Size ${state.kreaBrush} px · Brush Pressure ${state.kreaMaskFeather}`;
+}
+
+function finishMaskGesture() {
+  if (!kreaMaskGesture) return;
+  clearTimeout(kreaMaskGesture.timer);
+  const wasAdjusting = kreaMaskGesture.active;
+  const control = $('#kreaMaskGesture');
+  control?.classList.remove('is-adjusting');
+  if (control?.hasPointerCapture?.(kreaMaskGesture.pointerId)) control.releasePointerCapture(kreaMaskGesture.pointerId);
+  kreaMaskGesture = null;
+  if (wasAdjusting) saveForm();
+}
+
+function beginMaskGesture(event) {
+  if (kreaMaskGesture) return;
+  const control = $('#kreaMaskGesture');
+  if (!control) return;
+  const start = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    brush: state.kreaBrush,
+    feather: state.kreaMaskFeather,
+    active: false,
+    timer: null,
+  };
+  kreaMaskGesture = start;
+  control.setPointerCapture?.(event.pointerId);
+  start.timer = setTimeout(() => {
+    if (kreaMaskGesture !== start) return;
+    start.active = true;
+    control.classList.add('is-adjusting');
+    $('#kreaMaskGestureLive').textContent = `Brush Size ${state.kreaBrush} px · Brush Pressure ${state.kreaMaskFeather}`;
+    if (navigator.vibrate) navigator.vibrate(10);
+  }, 180);
+}
+
+function moveMaskGesture(event) {
+  const current = kreaMaskGesture;
+  if (!current || current.pointerId !== event.pointerId) return;
+  const dx = event.clientX - current.x;
+  const dy = current.y - event.clientY;
+  if (!current.active) {
+    if (Math.hypot(dx, dy) > 12) finishMaskGesture();
+    return;
+  }
+  event.preventDefault();
+  setMaskGestureValues(current.brush + dy, current.feather + dx / 2, { announce: true });
+}
+
+function keyboardMaskGesture(event) {
+  const key = event.key;
+  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
+  event.preventDefault();
+  const brush = state.kreaBrush + (key === 'ArrowUp' ? 4 : key === 'ArrowDown' ? -4 : 0);
+  const feather = state.kreaMaskFeather + (key === 'ArrowRight' ? 2 : key === 'ArrowLeft' ? -2 : 0);
+  setMaskGestureValues(brush, feather, { announce: true });
+  saveForm();
 }
 
 $('#regionsPromptBtn').addEventListener('click', () => setCreateMode('region', true));
@@ -2203,6 +2331,11 @@ $('#regionSettingsClose').addEventListener('click', () => {
 
 $('#kreaMaskBtn').addEventListener('click', openKreaMaskPainter);
 $('#kreaMaskClear').addEventListener('click', () => clearKreaMask());
+$('#kreaMaskGesture').addEventListener('pointerdown', beginMaskGesture);
+$('#kreaMaskGesture').addEventListener('pointermove', moveMaskGesture);
+$('#kreaMaskGesture').addEventListener('pointerup', finishMaskGesture);
+$('#kreaMaskGesture').addEventListener('pointercancel', finishMaskGesture);
+$('#kreaMaskGesture').addEventListener('keydown', keyboardMaskGesture);
 $('#kreaMaskCanvas').addEventListener('pointerdown', (e) => {
   if (state.kreaMaskTool === 'smart') {
     if (!state.kreaMaskPreviewCutout) runSmartMask({ point: maskPoint(e) });
@@ -2250,7 +2383,7 @@ $('#kreaMaskPrompt').addEventListener('keydown', (event) => {
 });
 $('#kreaBrushInput').addEventListener('input', () => {
   state.kreaBrush = Number($('#kreaBrushInput').value) || 48;
-  $('#kreaBrushVal').textContent = String(state.kreaBrush);
+  renderMaskAdjustments();
   saveForm();
 });
 $('#kreaMaskErase').addEventListener('click', () => {
@@ -2261,15 +2394,12 @@ $('#kreaMaskFeather').addEventListener('input', () => {
   state.kreaMaskFeather = Number($('#kreaMaskFeather').value) || 0;
   state.kreaMaskDirty = hasEditMask();
   renderMaskAdjustments();
+  renderMaskOverlay();
   refreshMaskCutoutPreview();
   saveForm();
 });
 $('#kreaMaskInvert').addEventListener('click', () => {
-  state.kreaMaskInvert = !state.kreaMaskInvert;
-  state.kreaMaskDirty = hasEditMask();
-  renderMaskAdjustments();
-  refreshMaskCutoutPreview();
-  saveForm();
+  invertKreaMask();
 });
 $('#kreaMaskPreviewToggle').addEventListener('click', () => {
   if (!hasEditMask()) return toast('Create a mask before previewing it', true);
@@ -2280,11 +2410,9 @@ $('#kreaMaskPreviewToggle').addEventListener('click', () => {
 $('#kreaMaskReset').addEventListener('click', () => clearKreaMask());
 $('#kreaMaskApply').addEventListener('click', async () => {
   try {
-    await ensureKreaMaskUploaded();
-    updateMaskedRefPreview();
     $('#kreaMaskSheet').classList.remove('show');
     renderKreaMaskTools();
-    toast(`${state.kreaMaskKind === 'box' ? 'Box' : 'Mask'} ready — changes stay inside this area`);
+    toast(hasEditMask() ? 'Edit area is active — changes stay inside the mask' : 'No edit area selected');
   } catch (e) { toast(e.message, true); }
 });
 
@@ -6812,7 +6940,8 @@ async function restoreKreaMask(item) {
     state.kreaMaskKind = ['smart', 'box', 'brush'].includes(item.editMaskMode) ? item.editMaskMode : 'brush';
     state.kreaMaskTool = state.kreaMaskKind;
     state.kreaMaskFeather = Math.max(0, Math.min(64, Number(item.editMaskFeather) || 0));
-    state.kreaMaskInvert = item.editMaskInvert === true;
+    // Saved mask files already contain their final (possibly inverted) pixels.
+    state.kreaMaskInvert = false;
     return true;
   } catch {
     return false;
@@ -7579,21 +7708,130 @@ $('#settingsSave').addEventListener('click', async () => {
 let lastMeta = null;
 let sam3InstallBusy = false;
 let sam3InstallResult = null;
+let dependencyPollTimer = null;
+
+function formatDependencyBytes(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const power = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / (1024 ** power)).toFixed(power ? 1 : 0)} ${units[power]}`;
+}
+
+function dependencyMissingLabels() {
+  const dependency = lastMeta && lastMeta.dependencies;
+  const labels = new Map(((dependency && dependency.components) || []).map((entry) => [entry.id, entry.label]));
+  return ((dependency && dependency.missingComponents) || []).map((id) => ({ id, label: labels.get(id) || id }));
+}
+
+function renderDependencyManager() {
+  const card = $('#dependencyManagerCard');
+  if (!card) return;
+  const dependency = (lastMeta && lastMeta.dependencies) || {};
+  const installState = dependency.install || { state: 'idle', phase: 'idle' };
+  const missing = dependencyMissingLabels();
+  const badge = $('#dependencyManagerBadge');
+  const status = $('#dependencyManagerStatus');
+  const progress = $('#dependencyProgress');
+  const fill = $('#dependencyProgressFill');
+  const list = $('#dependencyMissingList');
+  const install = $('#dependencyInstallMissing');
+  const repair = $('#dependencyRepairMissing');
+  const restart = $('#dependencyRestartComfy');
+  const check = $('#dependencyCheckAll');
+  const busy = installState.state === 'running' || installState.state === 'restarting';
+  const ready = !!lastMeta?.ok && !missing.length && !busy;
+  card.classList.toggle('ready', ready);
+  card.classList.toggle('installing', busy);
+  list.innerHTML = missing.map((entry) => `<span class="bad" title="${escapeHtml(entry.label)}">${escapeHtml(entry.label)}</span>`).join('');
+  install.disabled = busy;
+  repair.disabled = busy;
+  restart.disabled = busy;
+  check.disabled = busy;
+  progress.hidden = !busy;
+  progress.classList.toggle('indeterminate', busy && !(Number(installState.total) > 0));
+  if (busy && Number(installState.total) > 0) {
+    const pct = Math.max(3, Math.min(100, (Number(installState.completed || 0) / Number(installState.total)) * 100));
+    fill.style.width = `${pct}%`;
+  } else {
+    fill.style.width = '0';
+  }
+
+  if (!lastMeta?.ok) {
+    badge.textContent = 'Offline';
+    status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
+  } else if (busy) {
+    badge.textContent = installState.state === 'restarting' ? 'Restarting' : 'Installing';
+    const transfer = installState.phase === 'downloading-model' && installState.downloaded
+      ? ` ${formatDependencyBytes(installState.downloaded)}${installState.downloadTotal ? ` / ${formatDependencyBytes(installState.downloadTotal)}` : ''}`
+      : '';
+    status.textContent = `${installState.message || 'Working…'}${transfer}`;
+  } else if (installState.state === 'error') {
+    badge.textContent = 'Needs attention';
+    status.textContent = installState.error || installState.message || 'The last dependency operation did not finish.';
+  } else if (ready) {
+    badge.textContent = 'Green';
+    status.textContent = 'Every enabled MixBox model and node group is ready.';
+  } else if (installState.restartRequired) {
+    badge.textContent = 'Restart needed';
+    status.textContent = 'The downloads are finished. Restart ComfyUI, then Check again to load the new nodes and models.';
+  } else if (!state.profileIsOwner) {
+    badge.textContent = 'Owner only';
+    status.textContent = `${missing.length} missing component${missing.length === 1 ? '' : 's'} can be installed by the owner profile.`;
+  } else if (!dependency.canInstall) {
+    badge.textContent = 'Setup needed';
+    status.textContent = dependency.reason || 'Run install.bat and select the existing ComfyUI folder to enable downloads.';
+  } else {
+    badge.textContent = 'Missing';
+    status.textContent = `${missing.length} component${missing.length === 1 ? '' : 's'} need${missing.length === 1 ? 's' : ''} attention. Install only those missing pieces.`;
+  }
+
+  install.hidden = ready || !state.profileIsOwner;
+  repair.hidden = ready || !state.profileIsOwner;
+  install.textContent = busy ? 'Installing…' : `Install ${missing.length || 'missing'}`;
+  install.disabled = busy || !missing.length || !dependency.canInstall || !state.profileIsOwner;
+  repair.textContent = busy ? 'Repairing…' : 'Repair missing tools';
+  repair.disabled = busy || !missing.length || !dependency.canInstall || !state.profileIsOwner;
+  const restartInfo = dependency.restart || {};
+  restart.hidden = !state.profileIsOwner || !restartInfo.canRestart;
+  restart.title = restartInfo.canRestart ? 'Stops and starts the configured Windows ComfyUI instance when queues are idle' : (restartInfo.reason || 'Restart unavailable');
+}
+
+function scheduleDependencyPoll() {
+  clearTimeout(dependencyPollTimer);
+  const install = lastMeta && lastMeta.dependencies && lastMeta.dependencies.install;
+  if (!install || !['running', 'restarting'].includes(install.state)) return;
+  dependencyPollTimer = setTimeout(async () => {
+    try {
+      const status = await api('/api/dependencies/status');
+      if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = status;
+      renderDependencyManager();
+      renderSam3Dependency();
+      if (status.state === 'complete' && status.phase === 'reconnected') await loadMeta(true);
+    } catch { /* keep the last visible progress while the desktop reconnects */ }
+    scheduleDependencyPoll();
+  }, 1000);
+}
 
 function renderSam3Dependency() {
   const card = $('#sam3DependencyCard');
   if (!card) return;
   const missing = (lastMeta && lastMeta.missing && lastMeta.missing.smartmask) || [];
   const dependency = (lastMeta && lastMeta.dependencies && lastMeta.dependencies.sam3) || {};
+  const sharedInstall = (lastMeta && lastMeta.dependencies && lastMeta.dependencies.install) || {};
+  const installingSmartMask = sharedInstall.state === 'running'
+    && Array.isArray(sharedInstall.components)
+    && sharedInstall.components.includes('smartmask');
+  const busy = sam3InstallBusy || installingSmartMask;
   const ready = !!lastMeta?.ok && missing.length === 0;
   const badge = $('#sam3DependencyBadge');
   const status = $('#sam3DependencyStatus');
   const install = $('#sam3DependencyInstall');
   const check = $('#sam3DependencyCheck');
   card.classList.toggle('ready', ready);
-  card.classList.toggle('installing', sam3InstallBusy);
-  install.disabled = sam3InstallBusy;
-  check.disabled = sam3InstallBusy;
+  card.classList.toggle('installing', busy);
+  install.disabled = busy;
+  check.disabled = busy;
 
   if (ready) {
     badge.textContent = 'Ready';
@@ -7601,9 +7839,9 @@ function renderSam3Dependency() {
     install.hidden = true;
     return;
   }
-  if (sam3InstallBusy) {
+  if (busy) {
     badge.textContent = 'Installing';
-    status.textContent = 'Downloading the SAM3 nodes and installing them into the ComfyUI Python environment. This can take several minutes.';
+    status.textContent = sharedInstall.message || 'Installing SAM3 without force-upgrading ComfyUI’s shared Python environment. This can take several minutes.';
     install.hidden = false;
     install.textContent = 'Installing…';
     return;
@@ -7640,10 +7878,13 @@ async function loadMeta(refresh) {
     renderKrea2Mode();
     renderLoras();
     renderSam3Dependency();
+    renderDependencyManager();
+    scheduleDependencyPoll();
   } catch {
     state.connOk = false;
     $('#connDot').className = 'conn-dot bad';
     renderSam3Dependency();
+    renderDependencyManager();
   }
 }
 
@@ -7653,8 +7894,11 @@ $('#sam3DependencyInstall').addEventListener('click', async () => {
   sam3InstallResult = null;
   renderSam3Dependency();
   try {
-    sam3InstallResult = await api('/api/dependencies/sam3/install', { method: 'POST' });
-    toast('SAM3 tools installed — restart ComfyUI to finish');
+    const result = await api('/api/dependencies/sam3/install', { method: 'POST' });
+    sam3InstallResult = result.install || result;
+    if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
+    scheduleDependencyPoll();
+    toast('Smart Mask installation started — progress is shown below');
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -7668,6 +7912,47 @@ $('#sam3DependencyCheck').addEventListener('click', async () => {
   if (!lastMeta?.missing?.smartmask?.length) sam3InstallResult = null;
   renderHealth();
   renderSam3Dependency();
+});
+
+$('#dependencyInstallMissing').addEventListener('click', async () => {
+  const components = dependencyMissingLabels().map((entry) => entry.id);
+  if (!components.length) return;
+  try {
+    const result = await api('/api/dependencies/install', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components }),
+    });
+    if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
+    renderDependencyManager();
+    scheduleDependencyPoll();
+  } catch (error) { toast(error.message, true); }
+});
+
+$('#dependencyRepairMissing').addEventListener('click', async () => {
+  const components = dependencyMissingLabels().map((entry) => entry.id);
+  if (!components.length) return;
+  try {
+    const result = await api('/api/dependencies/install', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components, repair: true }),
+    });
+    if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
+    renderDependencyManager();
+    scheduleDependencyPoll();
+  } catch (error) { toast(error.message, true); }
+});
+
+$('#dependencyRestartComfy').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/comfy/restart', { method: 'POST' });
+    if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
+    renderDependencyManager();
+    scheduleDependencyPoll();
+  } catch (error) { toast(error.message, true); }
+});
+
+$('#dependencyCheckAll').addEventListener('click', async () => {
+  await loadMeta(true);
+  renderHealth();
+  renderDependencyManager();
 });
 
 function renderHealth() {
@@ -7686,7 +7971,7 @@ function renderHealth() {
       ? `<span class="bad">●</span> ${escapeHtml(label)}: missing ${missing.map(escapeHtml).join(', ')}`
       : `<span class="ok">●</span> ${escapeHtml(label)}: OK`);
   }
-  const fieldLabels = { unet: 'UNET', turbo: 'Turbo UNET', raw: 'Raw UNET', turboLora: 'Turbo LoRA', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA' };
+  const fieldLabels = { unet: 'UNET', turbo: 'Turbo UNET', raw: 'Raw UNET', turboLora: 'Turbo LoRA', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA', angles: 'multi-angle LoRA', dit: 'DiT', checkpoint: 'checkpoint', distilled: 'distilled LoRA', textEncoder: 'text encoder', gemmaLora: 'Gemma LoRA', upscaler: 'spatial upscaler', faceLora: 'Face ID LoRA', high: 'high-noise UNET', low: 'low-noise UNET', highLora: 'high-noise LoRA', lowLora: 'low-noise LoRA', lightx: 'lightx2v LoRA', clipVision: 'CLIP Vision', sam: 'SAM3 checkpoint' };
   for (const engine of Object.values(lastMeta.models || {})) {
     const checks = Object.entries(engine).filter(([, v]) => v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'ok'));
     const missing = checks.filter(([, v]) => !v.ok);
@@ -7696,6 +7981,7 @@ function renderHealth() {
   }
   el.innerHTML = rows.join('<br>');
   renderSam3Dependency();
+  renderDependencyManager();
 }
 
 /* ------------------------------------------------------------------ */

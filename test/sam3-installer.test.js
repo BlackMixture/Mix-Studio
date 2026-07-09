@@ -55,7 +55,7 @@ test('SAM3 installer updates a fixed upstream checkout and uses the ComfyUI envi
   assert.equal(result.restartRequired, true);
   assert.deepEqual(calls[0].args, ['-C', nodePath, 'remote', 'get-url', 'origin']);
   assert.deepEqual(calls[1].args, ['-C', nodePath, 'pull', '--ff-only']);
-  assert.deepEqual(calls[2].args, ['-m', 'pip', 'install', '--upgrade', '-r', requirements]);
+  assert.deepEqual(calls[2].args, ['-m', 'pip', 'install', '--upgrade-strategy', 'only-if-needed', '-r', requirements]);
   assert.deepEqual(calls[3].args, [installScript]);
   assert.equal(calls[2].command, python);
   assert.equal(SAM3_REPO_URL, 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git');
