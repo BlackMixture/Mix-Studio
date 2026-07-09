@@ -5711,6 +5711,32 @@ function itemActivity(it) {
   for (const v of it.videos || []) t = Math.max(t, v.createdAt || 0);
   return t;
 }
+
+function videoEngineLabel(engine) {
+  return {
+    ltx: 'LTX 2.3',
+    'ltx-edit': 'LTX Edit',
+    eros: '10Eros DMD',
+    wan: 'Wan 2.2',
+    scail: 'SCAIL 2',
+  }[engine] || 'LTX 2.3';
+}
+
+function galleryImageModelLabel(item) {
+  if (!item) return '';
+  if (item.mode === 'edit') return editEngineLabel(item.editEngine || 'klein4');
+  if (item.mode === 't2i') return item.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo';
+  return '';
+}
+
+function latestGalleryVideo(item) {
+  const videos = Array.isArray(item && item.videos) ? item.videos : [];
+  return videos.reduce((newest, video) => {
+    if (!newest) return video;
+    return Number(video.createdAt || 0) >= Number(newest.createdAt || 0) ? video : newest;
+  }, null);
+}
+
 function librarySearchText(it) {
   const folder = state.folders.find((entry) => entry.id === it.folder);
   const loras = (it.loras || []).map((lora) => lora && lora.name).filter(Boolean);
@@ -5723,12 +5749,14 @@ function librarySearchText(it) {
     it.prompt,
     it.refinedPrompt,
     it.mode,
+    galleryImageModelLabel(it),
     it.compositeInfo && it.compositeInfo.label,
     it.file,
     folder && folder.name,
     ...loras,
     ...regions,
     ...videoText,
+    ...(it.videos || []).map((video) => videoEngineLabel(video && video.info && video.info.engine)),
   ].filter(Boolean).join(' ').toLocaleLowerCase();
 }
 
@@ -5831,12 +5859,8 @@ function galleryDateLabel(timestamp) {
 }
 
 function galleryItemDurationMs(item) {
-  const videos = Array.isArray(item && item.videos) ? item.videos : [];
-  if (videos.length) {
-    const latest = videos.reduce((newest, video) => {
-      if (!newest) return video;
-      return Number(video.createdAt || 0) >= Number(newest.createdAt || 0) ? video : newest;
-    }, null);
+  const latest = latestGalleryVideo(item);
+  if (latest) {
     const videoDuration = Number(latest && latest.info && latest.info.durationMs);
     if (Number.isFinite(videoDuration) && videoDuration > 0) return videoDuration;
   }
@@ -5884,32 +5908,32 @@ function renderGrid() {
     img.src = '/images/' + it.file;
     card.appendChild(img);
     const cardDuration = galleryItemDurationMs(it);
+    const imageModel = galleryImageModelLabel(it);
+    if (imageModel) {
+      const model = document.createElement('span');
+      model.className = 'badge model-badge' + (it.upscaled ? ' up' : '');
+      model.textContent = `${it.upscaled ? '↑ ' : ''}${imageModel}`;
+      model.title = `${it.upscaled ? 'Upscaled · ' : ''}Image model: ${imageModel}`;
+      if (!(it.videos && it.videos.length)) addGalleryDuration(model, cardDuration);
+      card.appendChild(model);
+    }
     if (it.videos && it.videos.length) {
+      const latestVideo = latestGalleryVideo(it);
+      const videoModel = videoEngineLabel(latestVideo && latestVideo.info && latestVideo.info.engine);
       const v = document.createElement('span');
       v.className = 'badge vid';
-      v.textContent = it.videos.length > 1 ? `▶ ${it.videos.length} Videos` : '▶ Video';
+      v.textContent = it.videos.length > 1 ? `▶ ${videoModel} +${it.videos.length - 1}` : `▶ ${videoModel}`;
+      v.title = `Video model: ${videoModel}`;
       addGalleryDuration(v, cardDuration);
       card.appendChild(v);
     }
-    if (it.upscaled) {
-      const b = document.createElement('span');
-      b.className = 'badge up';
-      b.textContent = 'Upscaled';
-      if (!(it.videos && it.videos.length)) addGalleryDuration(b, cardDuration);
-      card.appendChild(b);
-    } else if (it.mode === 'composite') {
+    if (it.mode === 'composite') {
       const b = document.createElement('span');
       b.className = 'badge';
       b.textContent = 'Composite';
       if (!(it.videos && it.videos.length)) addGalleryDuration(b, cardDuration);
       card.appendChild(b);
-    } else if (it.mode === 'edit') {
-      const b = document.createElement('span');
-      b.className = 'badge';
-      b.textContent = 'Edit';
-      if (!(it.videos && it.videos.length)) addGalleryDuration(b, cardDuration);
-      card.appendChild(b);
-    } else if (cardDuration && !(it.videos && it.videos.length)) {
+    } else if (!imageModel && cardDuration && !(it.videos && it.videos.length)) {
       const b = document.createElement('span');
       b.className = 'badge duration-badge';
       addGalleryDuration(b, cardDuration, true);
@@ -6260,22 +6284,24 @@ function openLightbox(id, mediaSel) {
   const meta = [];
   if (selVideo) {
     const info = selVideo.info || {};
+    const model = videoEngineLabel(info.engine);
+    meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
     meta.push(`<b>🎬 Motion:</b> ${escapeHtml(info.motionPrompt || '')}`);
     if (info.refinedMotionPrompt) meta.push(`<b>✨ Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
-      const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[info.engine] || 'LTX 2.3';
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
       const flags = [info.composite && '⿻ side-by-side', info.faceId && '🪪 Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
-      meta.push(`<b>Video:</b> ${eng} · ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
+      meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     }
   } else {
+    const model = galleryImageModelLabel(it);
+    if (model) meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
     meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
     if (angleItems.length > 1) meta.push(`<b>Camera angle set:</b> ${angleViewLabel(it)} · ${angleItems.length} views`);
-    if (it.mode === 'edit' && it.editEngine) meta.push(`<b>Editor:</b> ${editEngineLabel(it.editEngine)}`);
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
     if (it.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(it.durationMs)}`);
