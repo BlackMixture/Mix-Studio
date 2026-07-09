@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 276 38" role="img" aria-labelledby="title">
+  <title id="title">Mix Studio</title>
+  <defs>
+    <linearGradient id="wordmark" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".5" stop-color="#dce5ff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#wordmark)" stroke-linecap="square" stroke-linejoin="miter" stroke-width="3.7">
+    <path d="M3 32V6l10 15L23 6v26"/>
+    <path d="M34 6h16M42 6v26M34 32h16"/>
+    <path d="m58 6 24 26M82 6 58 32"/>
+    <path d="M117 9c-4-3-15-4-20 1-4 5 1 9 10 11 9 2 12 6 8 10-5 5-16 4-21 0"/>
+    <path d="M125 6h24M137 6v26"/>
+    <path d="M156 6v19c0 10 24 10 24 0V6"/>
+    <path d="M188 6h10c21 0 21 26 0 26h-10V6Z"/>
+    <path d="M221 6h16M229 6v26M221 32h16"/>
+    <path d="M258 5c17 0 17 28 0 28s-17-28 0-28Z"/>
+  </g>
+</svg>

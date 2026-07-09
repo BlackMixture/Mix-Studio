@@ -127,7 +127,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   opacity: 1;
   transform: scale(1) rotate(0deg);
 }
-.brand-name { font-weight: 900; font-size: 17px; letter-spacing: -0.01em; white-space: nowrap; }
+.brand-wordmark { width: 132px; height: auto; display: block; flex: 0 1 auto; min-width: 0; }
 .topbar-actions { display: inline-flex; gap: 8px; align-items: center; flex: 0 0 auto; }
 .icon-btn {
   width: 38px; height: 38px; display: grid; place-items: center;
@@ -204,11 +204,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .app-drawer-wordmark {
   margin: 0;
-  color: var(--ink);
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  line-height: 0;
 }
+.app-drawer-wordmark img { width: 154px; height: auto; display: block; }
 .app-drawer-close {
   width: 40px;
   height: 40px;
@@ -406,7 +404,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   }
 }
 @media (max-width: 480px) {
-  .brand-name { font-size: 16px; }
+  .brand-wordmark { width: 124px; }
 }
 .queue-row {
   display: flex; align-items: center; gap: 10px;
