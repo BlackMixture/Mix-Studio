@@ -26,6 +26,7 @@ const state = {
   editUpscaleResolution: 2160,
   editUpscaleProfile: 'sharp',
   editUpscaleNoise: 'low',
+  editSequential: false,
   createUpscaleEnabled: false,
   createUpscaleResolution: 2160,
   createUpscaleProfile: 'sharp',
@@ -125,6 +126,7 @@ const QWEN_ANGLE_DISTANCES = [
   { id: 'wide shot', label: 'Wide' },
 ];
 const EDIT_ENGINES = ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'];
+const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref' };
 const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
 
@@ -269,6 +271,7 @@ function promptDraftFromComposer() {
 function setPromptDraft(value, { render = true } = {}) {
   $('#prompt').value = value || '';
   if (render) renderPromptComposer();
+  if ($('#editSequenceBtn')) renderEditSequence();
 }
 
 function syncPromptDraftFromComposer() {
@@ -895,6 +898,7 @@ function saveForm() {
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
       editUpscaleNoise: state.editUpscaleNoise,
+      editSequential: state.editSequential,
       createUpscaleEnabled: state.createUpscaleEnabled,
       createUpscaleResolution: state.createUpscaleResolution,
       createUpscaleProfile: state.createUpscaleProfile,
@@ -920,6 +924,7 @@ function loadForm() {
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
     state.editUpscaleNoise = ['off', 'low', 'medium'].includes(f.editUpscaleNoise) ? f.editUpscaleNoise : 'low';
+    state.editSequential = f.editSequential === true;
     state.createUpscaleEnabled = f.createUpscaleEnabled === true;
     state.createUpscaleResolution = [1440, 2160, 3840].includes(Number(f.createUpscaleResolution)) ? Number(f.createUpscaleResolution) : 2160;
     state.createUpscaleProfile = f.createUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
@@ -1091,6 +1096,7 @@ function updateVideoPanels() {
   $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode;
   renderQwenAngleTool();
   renderQwenAngleMode();
+  renderEditSequence();
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
@@ -2528,8 +2534,13 @@ function renderQwenAnglePicker() {
 }
 
 function openQwenAngles() {
+  if (state.editSequential) {
+    state.editSequential = false;
+    renderEditSequence();
+  }
   state.qwenAnglesMode = true;
   renderQwenAngleMode();
+  saveForm();
 }
 function closeQwenAngles() {
   state.qwenAnglesMode = false;
@@ -2556,6 +2567,43 @@ $('#enhanceBtn').addEventListener('click', () => {
   renderEnhance();
   saveForm();
 });
+
+function sequentialEditPrompts(value = promptForGeneration()) {
+  return String(value || '')
+    .trim()
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((step) => step.trim())
+    .filter(Boolean);
+}
+
+function renderEditSequence() {
+  const button = $('#editSequenceBtn');
+  if (!button) return;
+  const inEdit = state.view === 'edit';
+  const engineSupported = SEQUENTIAL_EDIT_ENGINES.has(state.editEngine);
+  const supported = inEdit && engineSupported;
+  if (inEdit && !engineSupported) state.editSequential = false;
+  button.hidden = !supported;
+  button.setAttribute('aria-pressed', String(supported && state.editSequential));
+  const steps = supported && state.editSequential ? sequentialEditPrompts() : [];
+  const count = $('#editSequenceCount');
+  count.hidden = !state.editSequential;
+  count.textContent = String(steps.length);
+  const tooltip = state.editSequential
+    ? `Sequential edits on — ${steps.length || 0} sentence${steps.length === 1 ? '' : 's'}; each result feeds the next edit`
+    : 'Sequential edits off — run the prompt as one edit';
+  button.title = tooltip;
+  button.setAttribute('aria-label', tooltip);
+}
+
+$('#editSequenceBtn').addEventListener('click', () => {
+  if (!SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)) return;
+  state.editSequential = !state.editSequential;
+  if (state.editSequential && state.qwenAnglesMode) closeQwenAngles();
+  renderEditSequence();
+  saveForm();
+});
+
 function updatePromptClear() {
   $('#promptClear').hidden = !promptDraft().trim();
 }
@@ -4675,7 +4723,7 @@ $('#editComposite').addEventListener('click', () => {
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
-  const qwenAngleExports = state.view === 'edit' && state.editEngine === 'qwen' ? selectedQwenAngleViews() : [];
+  const qwenAngleExports = state.view === 'edit' && state.editEngine === 'qwen' && !state.editSequential ? selectedQwenAngleViews() : [];
   const promptOptional = state.view === 'video' && state.vidEngine === 'scail';
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
 
@@ -4742,6 +4790,12 @@ $('#generateBtn').addEventListener('click', async () => {
   }
 
   const mode = state.view === 'edit' ? 'edit' : 't2i';
+  const sequenceSteps = mode === 'edit' && state.editSequential && SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)
+    ? sequentialEditPrompts(prompt)
+    : [];
+  if (state.editSequential && sequenceSteps.length < 2) {
+    return toast('Sequential edits need at least two sentences', true);
+  }
   const createImageGuide = mode === 't2i' && state.createMode === 'image' ? state.createRef : null;
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
@@ -4768,7 +4822,8 @@ $('#generateBtn').addEventListener('click', async () => {
     krea2Turbo: !krea2Raw,
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit' ? $('#editComposite').getAttribute('aria-pressed') === 'true' : undefined,
-    prompt,
+    prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
+    editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
     enhance: state.enhance && mode === 't2i',
     width: mode === 'edit' && state.editAspectOverride ? state.editWidth : state.width,
     height: mode === 'edit' && state.editAspectOverride ? state.editHeight : state.height,
@@ -4781,7 +4836,7 @@ $('#generateBtn').addEventListener('click', async () => {
     } : undefined,
     steps: Number($('#stepsInput').value) || 12,
     cfg: Number($('#cfgInput').value) || 1,
-    batch: Number($('#batchInput').value) || 1,
+    batch: sequenceSteps.length ? 1 : (Number($('#batchInput').value) || 1),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)
       : (createImageGuide ? createDenoiseFromInfluence() : 1),
     seed: seedRaw === '' ? undefined : Number(seedRaw),
@@ -4805,7 +4860,9 @@ $('#generateBtn').addEventListener('click', async () => {
         seed: seedRaw === '' ? undefined : Number(seedRaw) + index,
       }))
       : [body];
-    setGenerating(true, requests.length > 1 ? `Queueing ${requests.length} angles…` : 'Queued…');
+    setGenerating(true, sequenceSteps.length
+      ? `Sequential edit 1 of ${sequenceSteps.length}…`
+      : (requests.length > 1 ? `Queueing ${requests.length} angles…` : 'Queued…'));
     const jobIds = [];
     for (const request of requests) {
       const res = await api('/api/generate', {
@@ -5027,6 +5084,18 @@ function connectEvents() {
     const d = JSON.parse(ev.data);
     if (state.activeJobs.size) $('#livePreviewImg').src = d.dataUrl;
   });
+  es.addEventListener('sequenceStep', (ev) => {
+    const d = JSON.parse(ev.data);
+    if (state.activeJobs.has(d.jobId)) {
+      state.activeJobs.delete(d.jobId);
+      state.activeJobs.add(d.nextJobId);
+      setGenerating(true, `Sequential edit ${d.nextStep} of ${d.total}…`);
+      if (d.items && d.items[0]) $('#livePreviewImg').src = '/images/' + d.items[0].file;
+    }
+    toast(`Step ${d.completedStep} complete · running ${d.nextStep} of ${d.total}`);
+    refreshGallery(true);
+    queueRefreshSoon();
+  });
   es.addEventListener('jobDone', (ev) => {
     const d = JSON.parse(ev.data);
     const compositeJob = state.compositeJobs.get(d.jobId);
@@ -5040,7 +5109,7 @@ function connectEvents() {
         const open = () => { refreshGallery().then(() => openLightbox(d.items[0].id)); };
         $('#livePreviewImg').onclick = open;
         $('#liveStatusText').onclick = open;
-        toast('✓ Generated');
+        toast(d.sequenceComplete ? '✓ Sequential edits complete' : '✓ Generated');
       }
     }
     refreshGallery(true).then(() => {
@@ -5116,6 +5185,7 @@ function connectEvents() {
       setGenerating(false);
     }
     renderGrid();
+    if (d.items && d.items.length) refreshGallery(true);
     toast('Error: ' + d.message, true);
     queueRefreshSoon();
   });

@@ -51,6 +51,7 @@ const {
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
 const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
+const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const {
   scailMode,
   normalizeScailChunkOptions,
@@ -1040,6 +1041,8 @@ async function completeJob(pid) {
     return;
   }
 
+  const editSequence = job.params.editSequence;
+  const sequenceFinal = !editSequence || editSequence.index >= editSequence.prompts.length - 1;
   const created = [];
   for (const img of files) {
     const buf = await downloadOutput(img);
@@ -1069,12 +1072,17 @@ async function completeJob(pid) {
       krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
       krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
+      editSequence: job.params.editSequence ? {
+        id: job.params.editSequence.id,
+        index: job.params.editSequence.index,
+        total: job.params.editSequence.total,
+      } : undefined,
       angleView: job.params.qwenAngle || undefined,
       angleGroupId: job.params.angleGroupId || undefined,
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
-      postUpscale: job.params.postUpscale || undefined,
+      postUpscale: job.params.postUpscale && sequenceFinal ? job.params.postUpscale : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
       profileId: job.profileId,
@@ -1102,7 +1110,7 @@ async function completeJob(pid) {
     created.push(item);
   }
   saveDb();
-  if (job.params.postUpscale) {
+  if (job.params.postUpscale && sequenceFinal) {
     for (const item of created) {
       try {
         await queuePostUpscale(item, job.params.postUpscale, job.profileId);
@@ -1115,7 +1123,25 @@ async function completeJob(pid) {
   for (const it of created) {
     pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', profileId: job.profileId, itemId: it.id, durationMs, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
   }
-  broadcast('jobDone', { jobId: pid, items: created });
+  if (editSequence && !sequenceFinal) {
+    try {
+      const next = await queueNextSequentialEdit(job, created[0]);
+      broadcast('sequenceStep', {
+        jobId: pid,
+        nextJobId: next.pid,
+        items: created,
+        completedStep: editSequence.index + 1,
+        nextStep: editSequence.index + 2,
+        total: editSequence.total,
+      });
+    } catch (error) {
+      const message = `Sequential edit stopped after step ${editSequence.index + 1}: ${error.message}`;
+      pushHistory({ kind: 'error', profileId: job.profileId, itemId: created[0] && created[0].id, label: message.slice(0, 120) });
+      broadcast('jobError', { jobId: pid, kind: 'gen', itemId: created[0] && created[0].id, items: created, message, durationMs });
+    }
+  } else {
+    broadcast('jobDone', { jobId: pid, items: created, sequenceComplete: !!editSequence });
+  }
 }
 
 /* Polling fallback: no native WebSocket (Node < 22) OR the WS connection is down. */
@@ -1583,6 +1609,47 @@ async function buildEdit(p, refNames) {
   }
   graph.save = { class_type: 'SaveImage', inputs: { images: out, filename_prefix: 'KreaStudio/edit' } };
   return filterInputs(graph);
+}
+
+async function buildGenerationGraph(p, refNames) {
+  if (p.mode === 'edit') {
+    if (p.editEngine === 'qwen') return buildEditQwen(p, refNames);
+    if (p.editEngine === 'krea2ref') return buildEditKrea2Ref(p, refNames);
+    if (p.editEngine === 'krea2' && p.maskImageName) return buildKrea2Inpaint(p, refNames);
+    if (p.editEngine === 'krea2') return hasActiveRegions(p.regions) ? buildRegionalT2I(p) : buildT2I(p);
+    return buildEdit(p, refNames);
+  }
+  return hasActiveRegions(p.regions) ? buildRegionalT2I(p) : buildT2I(p);
+}
+
+async function queueGenerationJob(p, profileId, refNames, refinedPrompt = null) {
+  const graph = await buildGenerationGraph(p, refNames);
+  const pid = await queuePrompt(graph);
+  trackJob(pid, { kind: 'gen', profileId, params: p, graph, refImageNames: refNames, refinedPrompt });
+  ensureWs();
+  return { pid, graph };
+}
+
+async function queueNextSequentialEdit(job, sourceItem) {
+  const sequence = job.params.editSequence;
+  if (!sequence || sequence.index >= sequence.prompts.length - 1) return null;
+  const nextIndex = sequence.index + 1;
+  const source = await fsp.readFile(path.join(IMAGES, sourceItem.file));
+  const sourceName = await uploadToComfy(source, `ks_sequence_${sequence.id}_${nextIndex + 1}.png`);
+  const refNames = [sourceName, ...(job.refImageNames || []).slice(1)];
+  const nextParams = Object.assign({}, job.params, {
+    prompt: sequence.prompts[nextIndex],
+    seed: (Number(job.params.seed) + 1) % (2 ** 48),
+    batch: 1,
+    sourceItemId: sourceItem.id,
+    refImages: refNames,
+    qwenAngle: undefined,
+    qwenAnglePrompt: undefined,
+    angleGroupId: undefined,
+    editSequence: Object.assign({}, sequence, { index: nextIndex }),
+  });
+  const queued = await queueGenerationJob(nextParams, job.profileId, refNames, null);
+  return { pid: queued.pid, params: nextParams };
 }
 
 async function buildUpscale(imageName, opts) {
@@ -3283,11 +3350,27 @@ async function handleApi(req, res, url) {
     const refNames = p.mode === 'edit'
       ? (Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [])
       : (p.imageName ? [p.imageName] : []);
+    if (p.mode !== 'edit') p.editSequence = undefined;
     if (p.mode === 'edit') {
       const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
       p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
       if (settings.features[EDIT_FEATURES[p.editEngine]] === false) {
         return json(res, 400, { error: 'This edit model was not installed on this machine.' });
+      }
+      const sequenceRequested = !!p.editSequence;
+      if (sequenceRequested && !supportsSequentialEdit(p.editEngine)) {
+        return json(res, 400, { error: 'Sequential edits are available with Klein 4B, Klein 9B, Qwen Edit, and Krea 2 Edit only' });
+      }
+      p.editSequence = normalizeEditSequence(p.editSequence, p.editEngine) || undefined;
+      if (sequenceRequested && !p.editSequence) {
+        return json(res, 400, { error: 'Sequential edits need at least two valid sentences' });
+      }
+      if (p.editSequence && p.qwenAngle) {
+        return json(res, 400, { error: 'Use either sequential edits or Qwen camera angles for a single run' });
+      }
+      if (p.editSequence) {
+        p.prompt = p.editSequence.prompts[p.editSequence.index];
+        p.batch = 1;
       }
       if (p.qwenAngle && p.editEngine !== 'qwen') {
         return json(res, 400, { error: 'Camera angles are available with Qwen Edit only' });
@@ -3312,19 +3395,7 @@ async function handleApi(req, res, url) {
       // itself but skip the incompatible preservation pass.
       if (p.editAspectOverride) p.composite = false;
     }
-    let graph;
-    if (p.mode === 'edit') {
-      if (p.editEngine === 'qwen') graph = await buildEditQwen(p, refNames);
-      else if (p.editEngine === 'krea2ref') graph = await buildEditKrea2Ref(p, refNames);
-      else if (p.editEngine === 'krea2' && p.maskImageName) graph = await buildKrea2Inpaint(p, refNames);
-      else if (p.editEngine === 'krea2') graph = hasActiveRegions(p.regions) ? await buildRegionalT2I(p) : await buildT2I(p);
-      else graph = await buildEdit(p, refNames);
-    } else {
-      graph = hasActiveRegions(p.regions) ? await buildRegionalT2I(p) : await buildT2I(p);
-    }
-    const pid = await queuePrompt(graph);
-    trackJob(pid, { kind: 'gen', profileId: req.profile.id, params: p, graph, refImageNames: refNames, refinedPrompt: refined });
-    ensureWs();
+    const { pid } = await queueGenerationJob(p, req.profile.id, refNames, refined);
     return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });
   }
 
@@ -4170,7 +4241,13 @@ async function handleApi(req, res, url) {
 
 function jobLabel(job) {
   if (!job) return 'Other ComfyUI job';
-  if (job.kind === 'gen') return (job.params.mode === 'edit' ? 'Edit: ' : 'Create: ') + (job.params.prompt || '').slice(0, 70);
+  if (job.kind === 'gen') {
+    const sequence = job.params.editSequence;
+    const prefix = sequence
+      ? `Sequential edit ${sequence.index + 1}/${sequence.total}: `
+      : (job.params.mode === 'edit' ? 'Edit: ' : 'Create: ');
+    return prefix + (job.params.prompt || '').slice(0, 70);
+  }
   if (job.kind === 'upscale') return job.upscaleInfo && job.upscaleInfo.engine === 'ultimate' ? 'Upscale (Ultimate SD)' : 'Upscale (SeedVR2)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'upscale') return 'Video upscale (RTX)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';

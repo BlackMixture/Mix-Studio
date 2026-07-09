@@ -693,6 +693,42 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   box-shadow: 0 0 20px rgba(109,85,255,0.45);
 }
 .enhance-btn.qwen-angle-faded { opacity: 0; transform: translateY(-6px) scale(.94); pointer-events: none; }
+.edit-sequence-btn {
+  position: absolute;
+  top: 10px;
+  right: 56px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  transition: border-color 180ms var(--ease), color 180ms var(--ease), transform 150ms var(--ease);
+}
+.edit-sequence-btn[hidden] { display: none; }
+.edit-sequence-btn svg { width: 19px; height: 19px; }
+.edit-sequence-btn:active { transform: scale(.94); }
+.edit-sequence-btn[aria-pressed="true"] { color: #fff; border-color: rgba(255,255,255,.56); }
+.edit-sequence-count {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  border: 1.5px solid #0d1019;
+  border-radius: 999px;
+  background: #4b7eec;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+}
+.edit-sequence-count[hidden] { display: none; }
 .prompt-clear {
   position: absolute;
   top: 54px;
@@ -710,6 +746,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .prompt-clear:active { color: #ff9f97; transform: scale(0.92); }
 .prompt-clear[hidden] { display: none; }
 .qwen-angle-tool { position: absolute; top: 10px; right: 56px; }
+.prompt-box:has(.edit-sequence-btn:not([hidden])) .qwen-angle-tool { right: 102px; }
 .qwen-angle-tool[hidden] { display: none; }
 .qwen-angle-trigger {
   position: relative;
@@ -726,6 +763,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .qwen-angle-trigger svg { width: 19px; height: 19px; }
 .qwen-angle-trigger.active { color: #fff; border-color: rgba(255,255,255,0.66); background: var(--panel-soft); }
 .prompt-box:has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 98px; }
+.prompt-box:has(.edit-sequence-btn:not([hidden])) .prompt-composer { padding-right: 98px; }
+.prompt-box:has(.edit-sequence-btn:not([hidden])):has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 144px; }
 .qwen-angle-count {
   position: absolute;
   top: -6px;
