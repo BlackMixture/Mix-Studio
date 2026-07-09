@@ -5510,7 +5510,7 @@ function connectEvents() {
   });
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);
-    if (state.activeJobs.size) $('#livePreviewImg').src = d.dataUrl;
+    if (state.activeJobs.size && (!d.jobId || state.activeJobs.has(d.jobId))) $('#livePreviewImg').src = d.dataUrl;
   });
   es.addEventListener('sequenceStep', (ev) => {
     const d = JSON.parse(ev.data);

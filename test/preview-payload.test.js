@@ -11,11 +11,25 @@ function frame(eventType, format, image) {
   return Buffer.concat([header, image]);
 }
 
+function metadataFrame(image, metadata = {}) {
+  const metadataBuffer = Buffer.from(JSON.stringify(metadata), 'utf8');
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(4, 0);
+  header.writeUInt32BE(metadataBuffer.length, 4);
+  return Buffer.concat([header, metadataBuffer, image]);
+}
+
 test('decodes ComfyUI JPEG and PNG preview frames after the eight-byte header', () => {
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00]);
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
-  assert.deepEqual(decodePreviewPayload(frame(1, 1, jpeg)), { mime: 'image/jpeg', image: jpeg });
-  assert.deepEqual(decodePreviewPayload(frame(1, 2, png)), { mime: 'image/png', image: png });
+  assert.deepEqual(decodePreviewPayload(frame(1, 1, jpeg)), { mime: 'image/jpeg', image: jpeg, metadata: null });
+  assert.deepEqual(decodePreviewPayload(frame(1, 2, png)), { mime: 'image/png', image: png, metadata: null });
+});
+
+test('decodes ComfyUI metadata preview frames and preserves the prompt id', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+  const metadata = { prompt_id: 'preview-job', node_id: 'sampler' };
+  assert.deepEqual(decodePreviewPayload(metadataFrame(png, metadata)), { mime: 'image/png', image: png, metadata });
 });
 
 test('detects encoded image type even when the format hint is wrong', () => {

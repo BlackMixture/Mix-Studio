@@ -925,6 +925,11 @@ function ensureWs() {
   const url = settings.comfyUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws?clientId=' + CLIENT_ID;
   try { ws = new WebSocket(url); } catch { return scheduleWsRetry(); }
   ws.binaryType = 'arraybuffer';
+  ws.onopen = () => {
+    // ComfyUI 0.27 sends sampler previews through PREVIEW_IMAGE_WITH_METADATA
+    // only after this first-message capability negotiation.
+    try { ws.send(JSON.stringify({ type: 'feature_flags', data: { supports_preview_metadata: true } })); } catch { /* noop */ }
+  };
   ws.onmessage = async (ev) => {
     if (typeof ev.data === 'string') {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
@@ -980,7 +985,10 @@ function handleWsBinary(buf) {
   const now = Date.now();
   if (now - lastPreviewAt < 450) return;
   lastPreviewAt = now;
-  broadcast('preview', { dataUrl: `data:${preview.mime};base64,${preview.image.toString('base64')}` });
+  broadcast('preview', {
+    jobId: preview.metadata?.prompt_id || null,
+    dataUrl: `data:${preview.mime};base64,${preview.image.toString('base64')}`,
+  });
 }
 
 /* --------------------------- Job lifecycle ------------------------ */
