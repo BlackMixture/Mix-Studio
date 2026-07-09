@@ -127,7 +127,16 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   opacity: 1;
   transform: scale(1) rotate(0deg);
 }
-.brand-wordmark { width: 132px; height: auto; display: block; flex: 0 1 auto; min-width: 0; }
+.brand-wordmark {
+  position: relative;
+  width: 124px;
+  height: 25px;
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.brand-wordmark img { position: absolute; top: -5px; left: -30px; width: auto; height: 47px; max-width: none; }
 .topbar-actions { display: inline-flex; gap: 8px; align-items: center; flex: 0 0 auto; }
 .icon-btn {
   width: 38px; height: 38px; display: grid; place-items: center;
@@ -206,7 +215,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   margin: 0;
   line-height: 0;
 }
-.app-drawer-wordmark img { width: 154px; height: auto; display: block; }
+.drawer-wordmark-crop { position: relative; width: 146px; height: 30px; display: block; overflow: hidden; }
+.drawer-wordmark-crop img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
 .app-drawer-close {
   width: 40px;
   height: 40px;
@@ -404,7 +414,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   }
 }
 @media (max-width: 480px) {
-  .brand-wordmark { width: 124px; }
+  .brand-wordmark { width: 116px; height: 24px; }
+  .brand-wordmark img { top: -5px; left: -28px; height: 45px; }
 }
 .queue-row {
   display: flex; align-items: center; gap: 10px;

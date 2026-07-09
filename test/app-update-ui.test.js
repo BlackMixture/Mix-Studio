@@ -26,13 +26,13 @@ test('the installed web interface uses the Mix Studio name and Modatory logo', (
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.webmanifest'), 'utf8'));
   assert.match(html, /apple-mobile-web-app-title" content="Mix Studio"/);
   assert.match(html, /<title>Mix Studio<\/title>/);
-  assert.match(html, /class="brand-wordmark" src="\.\/mix-studio-wordmark\.svg" alt="Mix Studio"/);
-  assert.match(html, /id="appDrawerTitle"><img src="\.\/mix-studio-wordmark\.svg" alt="Mix Studio"/);
+  assert.match(html, /class="brand-wordmark"><img src="\.\/mix-studio-wordmark\.svg" alt="Mix Studio"/);
+  assert.match(html, /id="appDrawerTitle"><span class="drawer-wordmark-crop"><img src="\.\/mix-studio-wordmark\.svg" alt="Mix Studio"/);
   assert.equal(manifest.name, 'Mix Studio');
   assert.equal(manifest.short_name, 'Mix Studio');
   assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/modatory-logo\.svg"/);
   const wordmark = fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark.svg'), 'utf8');
-  assert.match(wordmark, /<svg[^>]+viewBox="0 0 276 38"/);
+  assert.match(wordmark, /<svg[^>]+viewBox="0 0 1500 383\.03998"/);
   assert.match(wordmark, /<path/g);
   assert.doesNotMatch(wordmark, /<text\b/);
   assert.match(modatoryLogo, /viewBox="0 0 734\.42 753\.63"/);
