@@ -1216,7 +1216,7 @@ function detachKrea2RawTurboLora() {
 
 function applyKrea2SamplingPreset() {
   if (state.krea2Turbo) {
-    $('#stepsInput').value = 12;
+    $('#stepsInput').value = 8;
     $('#cfgInput').value = 1;
     return;
   }
@@ -1235,7 +1235,10 @@ function renderKrea2Mode() {
     state.krea2SamplingReady = false;
     return;
   }
-  if (state.krea2Turbo) detachKrea2RawTurboLora();
+  if (state.krea2Turbo) {
+    detachKrea2RawTurboLora();
+    if (!state.krea2SamplingReady) applyKrea2SamplingPreset();
+  }
   else {
     ensureKrea2RawTurboLora();
     if (!state.krea2SamplingReady) applyKrea2SamplingPreset();
@@ -1244,7 +1247,7 @@ function renderKrea2Mode() {
   button.setAttribute('aria-checked', String(state.krea2Turbo));
   const rawStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.raw;
   if (state.krea2Turbo) {
-    $('#kreaModelSummary').textContent = 'Krea 2 · fast · 12 steps';
+    $('#kreaModelSummary').textContent = 'Krea 2 · fast · 8 steps';
   } else if (rawStatus && !rawStatus.ok) {
     $('#kreaModelSummary').textContent = 'Raw model missing · configure in Settings';
   } else {
@@ -5383,7 +5386,7 @@ $('#generateBtn').addEventListener('click', async () => {
       profile: upscaleFinish.profile,
       noise: upscaleFinish.noise,
     } : undefined,
-    steps: Number($('#stepsInput').value) || 12,
+    steps: Number($('#stepsInput').value) || (mode === 't2i' && state.krea2Turbo ? 8 : 12),
     cfg: Number($('#cfgInput').value) || 1,
     batch: sequenceSteps.length ? 1 : (Number($('#batchInput').value) || 1),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)

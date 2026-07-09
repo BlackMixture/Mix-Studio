@@ -14,10 +14,12 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'featur
 
 test('Create Image exposes a Turbo switch that defaults on', () => {
   assert.match(html, /id="kreaTurboToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
-  assert.match(html, /id="kreaModelSummary">Krea 2 · fast · 12 steps/);
+  assert.match(html, /id="kreaModelSummary">Krea 2 · fast · 8 steps/);
   assert.match(css, /\.krea-model-switch\[aria-checked="true"\]/);
   assert.match(app, /krea2Turbo: true/);
   assert.match(app, /button\.setAttribute\('aria-checked', String\(state\.krea2Turbo\)\)/);
+  assert.match(app, /if \(state\.krea2Turbo\) \{\s*\$\('#stepsInput'\)\.value = 8;/);
+  assert.match(server, /p\.steps = clampInt\(p\.steps, 1, 100, p\.mode === 't2i' && p\.krea2Turbo \? 8 : 12\)/);
 });
 
 test('Raw mode manages the Turbo LoRA and matching sampling presets', () => {

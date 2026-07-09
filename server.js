@@ -3681,10 +3681,10 @@ async function handleApi(req, res, url) {
     if (!p.prompt && !p.qwenAngle && !hasActiveRegions(p.regions)) return json(res, 400, { error: 'Prompt is empty' });
     p.width = clampInt(p.width, 64, 4096, 1024);
     p.height = clampInt(p.height, 64, 4096, 1024);
-    p.steps = clampInt(p.steps, 1, 100, 12);
+    p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
+    p.steps = clampInt(p.steps, 1, 100, p.mode === 't2i' && p.krea2Turbo ? 8 : 12);
     p.batch = clampInt(p.batch, 1, 8, 1);
     p.cfg = clampNum(p.cfg, 0, 30, 1);
-    p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
     p.krea2RawTurboLora = p.krea2Turbo || !p.krea2RawTurboLora || typeof p.krea2RawTurboLora !== 'object'
       ? undefined
       : {
