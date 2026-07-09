@@ -37,6 +37,8 @@ const state = {
   editLorasByEngine: {},     // remembered independently for each edit model
   editEngine: 'klein4',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
+  createRef: null,           // optional Krea 2 image-to-image source
+  createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
   regions: [],
   activeRegionId: null,
   kreaMask: null,
@@ -863,6 +865,10 @@ function saveForm() {
       editEngine: state.editEngine, vidScailMode: state.vidScailMode,
       cameraSettings: state.cameraSettings,
       createMode: state.createMode,
+      createRef: state.createRef ? {
+        name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
+      } : null,
+      createInfluence: state.createInfluence,
       regions: state.regions,
       kreaBrush: state.kreaBrush,
       scailModeVersion: 2,
@@ -917,6 +923,16 @@ function loadForm() {
     state.editLoras = state.editLorasByEngine[state.editEngine] || [];
     state.editLorasByEngine[state.editEngine] = state.editLoras;
     state.createMode = ['image', 'region', 'video'].includes(f.createMode) ? f.createMode : 'image';
+    const savedCreateInfluence = Number(f.createInfluence);
+    state.createInfluence = Number.isFinite(savedCreateInfluence)
+      ? Math.max(0, Math.min(100, savedCreateInfluence)) : 55;
+    state.createRef = f.createRef && f.createRef.name ? {
+      name: String(f.createRef.name),
+      url: '/api/input?name=' + encodeURIComponent(String(f.createRef.name)),
+      w: Number(f.createRef.w) || 0,
+      h: Number(f.createRef.h) || 0,
+      label: String(f.createRef.label || 'Source image'),
+    } : null;
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     if (f.cameraSettings && CameraSettings) {
@@ -1048,6 +1064,7 @@ function updateVideoPanels() {
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
+  renderCreateImageGuide();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#denoiseField').hidden = !kreaEdit;
@@ -1094,6 +1111,58 @@ function pickUpload(accept, cb) {
   });
   input.click();
 }
+
+function createDenoiseFromInfluence(influence = state.createInfluence) {
+  const normalized = Math.max(0, Math.min(100, Number(influence) || 0)) / 100;
+  return Number((1 - normalized * 0.95).toFixed(2));
+}
+
+function createInfluenceFromDenoise(denoise) {
+  const value = Math.max(0.05, Math.min(1, Number(denoise) || 1));
+  return Math.round(((1 - value) / 0.95) * 20) * 5;
+}
+
+function renderCreateImageGuide() {
+  const section = $('#createImageGuide');
+  if (!section) return;
+  section.hidden = !(state.view === 'create' && state.createMode === 'image');
+  const hasImage = !!state.createRef;
+  $('#createImageGuideAdd').hidden = hasImage;
+  $('#createImageGuideFilled').hidden = !hasImage;
+  const influence = Math.max(0, Math.min(100, Number(state.createInfluence) || 0));
+  $('#createImageInfluence').value = String(influence);
+  $('#createImageInfluence').style.setProperty('--influence', influence + '%');
+  $('#createImageInfluenceVal').textContent = influence + '%';
+  if (!hasImage) return;
+  $('#createImageGuideImg').src = state.createRef.url;
+  $('#createImageGuideName').textContent = state.createRef.label || 'Source image';
+  $('#createImageGuideDims').textContent = state.createRef.w && state.createRef.h
+    ? `${state.createRef.w} × ${state.createRef.h} · tap to replace`
+    : 'Tap to replace';
+}
+
+function pickCreateImageGuide() {
+  pickUpload('image/*', (file) => {
+    state.createRef = file;
+    renderCreateImageGuide();
+    saveForm();
+    toast('Image guide added');
+  });
+}
+
+$('#createImageGuideAdd').addEventListener('click', pickCreateImageGuide);
+$('#createImageGuideChange').addEventListener('click', pickCreateImageGuide);
+$('#createImageGuideRemove').addEventListener('click', () => {
+  state.createRef = null;
+  renderCreateImageGuide();
+  saveForm();
+  toast('Image guide removed');
+});
+$('#createImageInfluence').addEventListener('input', (event) => {
+  state.createInfluence = Number(event.target.value);
+  renderCreateImageGuide();
+  saveForm();
+});
 
 /* ------------------------------------------------------------------ */
 /* Regional prompting + Krea2 masks                                    */
@@ -4410,6 +4479,7 @@ $('#generateBtn').addEventListener('click', async () => {
   }
 
   const mode = state.view === 'edit' ? 'edit' : 't2i';
+  const createImageGuide = mode === 't2i' && state.createMode === 'image' ? state.createRef : null;
   const seedRaw = $('#seedInput').value.trim();
   let maskImageName = '';
   if (mode === 'edit' && state.editEngine === 'krea2' && (state.kreaMask || state.kreaMaskDirty || state.kreaMaskPreview)) {
@@ -4435,15 +4505,18 @@ $('#generateBtn').addEventListener('click', async () => {
     steps: Number($('#stepsInput').value) || 12,
     cfg: Number($('#cfgInput').value) || 1,
     batch: Number($('#batchInput').value) || 1,
-    denoise: mode === 'edit' ? Number($('#denoiseInput').value) : 1,
+    denoise: mode === 'edit' ? Number($('#denoiseInput').value)
+      : (createImageGuide ? createDenoiseFromInfluence() : 1),
     seed: seedRaw === '' ? undefined : Number(seedRaw),
     loras: mode === 'edit' ? state.editLoras : state.loras,
     refImages: mode === 'edit'
       ? state.refs.slice(0, state.editEngine === 'krea2' ? 1 : 3).filter(Boolean).map((r) => r.name)
       : [],
+    imageName: createImageGuide ? createImageGuide.name : undefined,
     regions: activeRegionsForRequest(),
     maskImageName,
-    sourceItemId: mode === 'edit' && state.refs[0] ? state.refs[0].srcItemId : undefined,
+    sourceItemId: mode === 'edit' && state.refs[0] ? state.refs[0].srcItemId
+      : (createImageGuide ? createImageGuide.srcItemId : undefined),
     folder: state.activeFolder !== 'all' ? state.activeFolder : null,
   };
   try {
@@ -6013,6 +6086,15 @@ async function restoreEditReferences(item) {
   return [...new Set(missing)];
 }
 
+async function restoreCreateImageGuide(item) {
+  const name = Array.isArray(item.refImages) ? item.refImages.filter(Boolean)[0] : '';
+  if (!name && !item.sourceFile) return null;
+  const ref = await restoreEditReference(name, item, 0);
+  ref.srcItemId = item.sourceItemId || undefined;
+  ref.label = 'Restored source image';
+  return ref;
+}
+
 async function restoreKreaMask(item) {
   clearKreaMask(true);
   if (!item.maskImageName || state.editEngine !== 'krea2') return false;
@@ -6050,6 +6132,10 @@ async function reuseItem(it, useEnhanced) {
   state.height = it.height || 1024;
   state.loras = restoringEdit ? state.loras : restoredLoraList(it.loras);
   state.regions = restoringEdit ? state.regions : restoredRegions;
+  if (!restoringEdit) {
+    state.createRef = null;
+    state.createInfluence = createInfluenceFromDenoise(it.denoise);
+  }
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
   if (restoringEdit) {
     switchEditEngine(restoredEditEngine(it.editEngine));
@@ -6092,6 +6178,10 @@ async function reuseItem(it, useEnhanced) {
     renderRefs();
   } else if (restoredRegions.length) {
     renderRegionEditor();
+  } else if ((Array.isArray(it.refImages) && it.refImages.some(Boolean)) || it.sourceFile) {
+    toast('Restoring settings and image guide…');
+    try { state.createRef = await restoreCreateImageGuide(it); }
+    catch { missing.push('image guide'); }
   }
   renderEnhance();
   renderAspects();
@@ -6099,6 +6189,7 @@ async function reuseItem(it, useEnhanced) {
   renderLoras();
   renderEditUpscale();
   renderQwenAngleTool();
+  renderCreateImageGuide();
   saveForm();
 
   if (missing.length) {

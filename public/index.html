@@ -251,6 +251,32 @@
       </button>
     </div>
     <div class="chip-row prompt-tools context-prompt-tools" id="contextPromptTools" hidden></div>
+    <div class="create-image-guide" id="createImageGuide" hidden>
+      <div class="create-image-guide-head">
+        <span>Image guide</span>
+        <small>Optional · image to image</small>
+      </div>
+      <button class="create-image-guide-empty" id="createImageGuideAdd" type="button">
+        <span class="create-image-guide-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
+          <i>+</i>
+        </span>
+        <span><b>Add source image</b><small>Guide composition, color, and structure</small></span>
+      </button>
+      <div class="create-image-guide-filled" id="createImageGuideFilled" hidden>
+        <button class="create-image-guide-preview" id="createImageGuideChange" type="button" aria-label="Replace source image">
+          <img id="createImageGuideImg" alt="Image guide preview" />
+          <span><b id="createImageGuideName">Source image</b><small id="createImageGuideDims"></small></span>
+        </button>
+        <button class="create-image-guide-remove" id="createImageGuideRemove" type="button" aria-label="Remove source image">✕</button>
+        <label class="create-image-influence" for="createImageInfluence">
+          <span><b>Image influence</b><small>Higher stays closer to the source</small></span>
+          <output id="createImageInfluenceVal" for="createImageInfluence">55%</output>
+        </label>
+        <input class="create-image-influence-range" id="createImageInfluence" type="range" min="0" max="100" step="5" value="55" aria-label="Image influence" />
+        <div class="create-image-influence-scale" aria-hidden="true"><span>Freer</span><span>Closer</span></div>
+      </div>
+    </div>
     <div class="attach-zone" id="vidAttachRow" hidden>
       <div class="video-inputs-head">
         <span>Inputs</span>

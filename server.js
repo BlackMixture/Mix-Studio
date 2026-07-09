@@ -49,6 +49,7 @@ const {
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
+const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const {
   scailMode,
   normalizeScailChunkOptions,
@@ -1036,11 +1037,13 @@ async function completeJob(pid) {
     const id = uid();
     const fname = `${id}.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
-    // Edits: keep a copy of the source image for hold-to-compare
+    // Keep a durable copy of edit and image-to-image sources so gallery
+    // reuse still works if ComfyUI's input folder is later cleaned.
     let sourceFile = null;
-    if (job.params.mode === 'edit' && job.refImageNames && job.refImageNames[0]) {
+    const sourceImageName = job.refImageNames && job.refImageNames[0];
+    if (sourceImageName && (job.params.mode === 'edit' || job.params.imageName)) {
       try {
-        const parts = String(job.refImageNames[0]).split('/');
+        const parts = String(sourceImageName).split('/');
         const fn = parts.pop();
         const sub = parts.join('/');
         const sbuf = Buffer.from(await (await comfyFetch(
@@ -1333,15 +1336,13 @@ async function buildT2I(p) {
   const textSource = p.enhancedText || p.prompt;
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip, text: textSource } };
   graph.neg = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos', 0] } };
-  graph.latent = {
-    class_type: 'EmptySD3LatentImage',
-    inputs: { width: p.width, height: p.height, batch_size: p.batch || 1 },
-  };
+  const latentInput = buildKrea2LatentInput(p);
+  Object.assign(graph, latentInput.nodes);
   graph.sampler = {
     class_type: 'KSampler',
     inputs: {
-      model, positive: ['pos', 0], negative: ['neg', 0], latent_image: ['latent', 0],
-      seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'euler', scheduler: 'beta', denoise: 1,
+      model, positive: ['pos', 0], negative: ['neg', 0], latent_image: latentInput.latent,
+      seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'euler', scheduler: 'beta', denoise: latentInput.denoise,
     },
   };
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
@@ -2930,7 +2931,8 @@ function serveFile(res, file, range) {
 
 const REQUIRED_CLASSES = {
   core: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoader', 'CLIPTextEncode', 'ConditioningZeroOut',
-    'EmptySD3LatentImage', 'KSampler', 'VAEDecode', 'SaveImage', 'LoadImage', 'ImageScaleBy',
+    'EmptySD3LatentImage', 'KSampler', 'VAEDecode', 'SaveImage', 'LoadImage', 'ImageScale', 'ImageScaleBy',
+    'VAEEncode', 'RepeatLatentBatch',
     'ImageScaleToTotalPixels', 'StringConcatenate', 'TextEncodeQwenImageEditPlus'],
   enhance: ['TextGenerate', 'PreviewAny'],
   klein: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'VAEEncode',
@@ -3238,7 +3240,8 @@ async function handleApi(req, res, url) {
     p.steps = clampInt(p.steps, 1, 100, 12);
     p.batch = clampInt(p.batch, 1, 8, 1);
     p.cfg = clampNum(p.cfg, 0, 30, 1);
-    p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : 1);
+    p.imageName = p.mode === 'edit' ? '' : String(p.imageName || '').trim();
+    p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : (p.imageName ? 0.45 : 1));
     p.editAspectOverride = p.editAspectOverride === true;
     p.postUpscale = p.mode === 'edit' ? normalizePostEditUpscale(p.postUpscale) : undefined;
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
@@ -3253,7 +3256,9 @@ async function handleApi(req, res, url) {
       p.enhancedText = refined;
     }
 
-    const refNames = Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [];
+    const refNames = p.mode === 'edit'
+      ? (Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [])
+      : (p.imageName ? [p.imageName] : []);
     if (p.mode === 'edit') {
       const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
       p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
