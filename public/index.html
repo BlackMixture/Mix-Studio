@@ -551,24 +551,32 @@
   </section>
 
   <section class="panel">
-    <div class="panel-label">
-      <span>LoRAs</span>
-      <span class="lora-tools">
-        <button class="chip icon-chip" id="loraAllBtn" aria-label="Show all LoRAs" title="Show all LoRAs (ignore engine filter)">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg>
-        </button>
-        <button class="chip icon-chip" id="loraSaveBtn" aria-label="Save preset" title="Save current LoRAs as a preset">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 2v4h8V5H7Zm5 7a3 3 0 1 0 3 3 3 3 0 0 0-3-3Z"/></svg>
-        </button>
-        <button class="chip icon-chip" id="loraPresetsBtn" aria-label="Load preset" title="Load a saved preset">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2H3V5Zm0 5h18l-1.6 8.4A2 2 0 0 1 17.4 20H6.6a2 2 0 0 1-2-1.6L3 10Z"/></svg>
-        </button>
-      </span>
+    <div class="lora-disclosure" id="loraPanel">
+      <button class="lora-summary" id="loraHeader" type="button" aria-expanded="false" aria-controls="loraBody">
+        <span>LoRAs</span>
+        <span class="lora-summary-meta" id="loraSummary">None selected</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+      </button>
+      <div class="lora-body" id="loraBody" aria-hidden="true" inert>
+        <div class="lora-body-inner">
+          <div class="lora-tools" aria-label="LoRA tools">
+            <button class="chip icon-chip" id="loraAllBtn" aria-label="Show all LoRAs" title="Show all LoRAs (ignore engine filter)">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg>
+            </button>
+            <button class="chip icon-chip" id="loraSaveBtn" aria-label="Save preset" title="Save current LoRAs as a preset">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 2v4h8V5H7Zm5 7a3 3 0 1 0 3 3 3 3 0 0 0-3-3Z"/></svg>
+            </button>
+            <button class="chip icon-chip" id="loraPresetsBtn" aria-label="Load preset" title="Load a saved preset">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2H3V5Zm0 5h18l-1.6 8.4A2 2 0 0 1 17.4 20H6.6a2 2 0 0 1-2-1.6L3 10Z"/></svg>
+            </button>
+          </div>
+          <div class="lora-grid" id="loraList"></div>
+          <div class="lora-hint" id="loraHint">Tap to toggle · hold and slide up or down to adjust strength</div>
+          <div class="lora-warning hidden" id="loraCompatWarn"></div>
+          <button class="add-lora" id="addLora" hidden>+ Add LoRA</button>
+        </div>
+      </div>
     </div>
-    <div class="lora-grid" id="loraList"></div>
-    <div class="lora-hint" id="loraHint">Tap to toggle · hold and slide up or down to adjust strength</div>
-    <div class="lora-warning hidden" id="loraCompatWarn"></div>
-    <button class="add-lora" id="addLora" hidden>+ Add LoRA</button>
   </section>
 
   <section class="panel">

@@ -69,6 +69,16 @@ test('Advanced uses the same animated accessible disclosure pattern', () => {
   assert.match(app, /function setAdvancedExpanded\(open\)/);
 });
 
+test('LoRAs use the same animated accessible disclosure pattern', () => {
+  assert.match(html, /id="loraHeader"[^>]*aria-expanded="false"[^>]*aria-controls="loraBody"/);
+  assert.match(html, /id="loraBody" aria-hidden="true" inert/);
+  assert.match(html, /id="loraSummary">None selected/);
+  assert.match(css, /\.lora-body \{[\s\S]*grid-template-rows: 0fr;[\s\S]*transition:/);
+  assert.match(css, /\.lora-disclosure\.expanded \.lora-body \{[\s\S]*grid-template-rows: 1fr;/);
+  assert.match(app, /function setLorasExpanded\(open\)/);
+  assert.match(app, /summary\.textContent = active \? `\$\{active\} active`/);
+});
+
 test('edit prompts can insert uploaded references as visual @-mention tokens', () => {
   assert.match(html, /id="promptComposer"[^>]*contenteditable="true"/);
   assert.match(html, /id="promptMentionSheet"/);

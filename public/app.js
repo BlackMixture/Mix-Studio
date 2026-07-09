@@ -2907,6 +2907,10 @@ function renderLoras() {
   add.setAttribute('aria-label', 'Add LoRA');
   add.addEventListener('click', () => openLoraPicker());
   list.appendChild(add);
+  const loaded = arr.filter((l) => l && l.name).length;
+  const active = arr.filter((l) => l && l.name && l.on).length;
+  const summary = $('#loraSummary');
+  if (summary) summary.textContent = active ? `${active} active` : (loaded ? `${loaded} loaded · off` : 'None selected');
   $('#loraHint').hidden = !arr.length;
   renderLoraCompatibility();
   renderPromptSuggestions();
@@ -3305,6 +3309,18 @@ function wireVideoScrubber(buttonId, inputId, onTap) {
 
 wireVideoScrubber('vidDurScrub', 'vidDur', openDurationPicker);
 wireVideoScrubber('vidFreeScrub', 'vidFree');
+
+function setLorasExpanded(open) {
+  const expand = open === true;
+  const body = $('#loraBody');
+  $('#loraPanel').classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#loraHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#loraHeader').addEventListener('click', () => {
+  setLorasExpanded(!$('#loraPanel').classList.contains('expanded'));
+});
 
 function setAdvancedExpanded(open) {
   const expand = open === true;
