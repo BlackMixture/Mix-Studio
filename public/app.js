@@ -5534,6 +5534,30 @@ function galleryDateLabel(timestamp) {
   return new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
 }
 
+function galleryItemDurationMs(item) {
+  const videos = Array.isArray(item && item.videos) ? item.videos : [];
+  if (videos.length) {
+    const latest = videos.reduce((newest, video) => {
+      if (!newest) return video;
+      return Number(video.createdAt || 0) >= Number(newest.createdAt || 0) ? video : newest;
+    }, null);
+    const videoDuration = Number(latest && latest.info && latest.info.durationMs);
+    if (Number.isFinite(videoDuration) && videoDuration > 0) return videoDuration;
+  }
+  const itemDuration = Number(item && item.durationMs);
+  return Number.isFinite(itemDuration) && itemDuration > 0 ? itemDuration : null;
+}
+
+function addGalleryDuration(badge, durationMs, standalone = false) {
+  if (!durationMs) return;
+  const duration = document.createElement('span');
+  duration.className = 'gallery-card-duration' + (standalone ? ' standalone' : '');
+  duration.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm1-13h-2v6l5 3 1-1.7-4-2.3V7Z"/></svg><span>'
+    + escapeHtml(formatDuration(durationMs)) + '</span>';
+  badge.title = `Generated in ${formatDuration(durationMs)}`;
+  badge.appendChild(duration);
+}
+
 function renderGrid() {
   const grid = $('#galleryGrid');
   grid.innerHTML = '';
@@ -5563,26 +5587,36 @@ function renderGrid() {
     img.loading = 'lazy';
     img.src = '/images/' + it.file;
     card.appendChild(img);
+    const cardDuration = galleryItemDurationMs(it);
     if (it.videos && it.videos.length) {
       const v = document.createElement('span');
       v.className = 'badge vid';
       v.textContent = it.videos.length > 1 ? `▶ ${it.videos.length} Videos` : '▶ Video';
+      addGalleryDuration(v, cardDuration);
       card.appendChild(v);
     }
     if (it.upscaled) {
       const b = document.createElement('span');
       b.className = 'badge up';
       b.textContent = 'Upscaled';
+      if (!(it.videos && it.videos.length)) addGalleryDuration(b, cardDuration);
       card.appendChild(b);
     } else if (it.mode === 'composite') {
       const b = document.createElement('span');
       b.className = 'badge';
       b.textContent = 'Composite';
+      if (!(it.videos && it.videos.length)) addGalleryDuration(b, cardDuration);
       card.appendChild(b);
     } else if (it.mode === 'edit') {
       const b = document.createElement('span');
       b.className = 'badge';
       b.textContent = 'Edit';
+      if (!(it.videos && it.videos.length)) addGalleryDuration(b, cardDuration);
+      card.appendChild(b);
+    } else if (cardDuration && !(it.videos && it.videos.length)) {
+      const b = document.createElement('span');
+      b.className = 'badge duration-badge';
+      addGalleryDuration(b, cardDuration, true);
       card.appendChild(b);
     }
     if (Array.isArray(it.composites) && it.composites.length) {
@@ -5932,6 +5966,7 @@ function openLightbox(id, mediaSel) {
     const info = selVideo.info || {};
     meta.push(`<b>🎬 Motion:</b> ${escapeHtml(info.motionPrompt || '')}`);
     if (info.refinedMotionPrompt) meta.push(`<b>✨ Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
+    if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
       const eng = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[info.engine] || 'LTX 2.3';
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');

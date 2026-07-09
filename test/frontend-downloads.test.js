@@ -56,3 +56,10 @@ test('lightbox image metadata shows generation duration when recorded', () => {
   assert.match(appJs, /Generated in:/);
   assert.match(appJs, /formatDuration\(it\.durationMs\)/);
 });
+
+test('gallery cards and focused videos show recorded generation duration', () => {
+  assert.match(appJs, /function galleryItemDurationMs\(item\)/);
+  assert.match(appJs, /latest\.info && latest\.info\.durationMs/);
+  assert.match(appJs, /addGalleryDuration\(v, cardDuration\)/);
+  assert.match(appJs, /info\.durationMs\) meta\.push\(`<b>Generated in:<\/b>/);
+});

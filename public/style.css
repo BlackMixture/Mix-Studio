@@ -2881,6 +2881,20 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   background: rgba(0,0,0,0.68); color: var(--ink-soft);
   backdrop-filter: blur(6px);
 }
+.gallery-card-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  color: rgba(238,242,255,.76);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.gallery-card-duration::before { content: '·'; margin-right: 2px; color: rgba(238,242,255,.42); }
+.gallery-card-duration svg { width: 10px; height: 10px; flex: 0 0 10px; }
+.gallery-card-duration.standalone { margin-left: 0; }
+.gallery-card-duration.standalone::before { content: none; }
 .card .badge.up { color: #b7ffd2; }
 .card .badge.attached-composite-badge {
   top: 8px;
