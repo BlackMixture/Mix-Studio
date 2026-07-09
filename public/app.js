@@ -55,7 +55,14 @@ const state = {
   kreaMaskPreview: null,
   kreaMaskDirty: false,
   kreaMaskErase: false,
+  kreaMaskTool: 'smart',
+  kreaMaskKind: null,
   kreaBrush: 48,
+  kreaMaskFeather: 8,
+  kreaMaskInvert: false,
+  kreaMaskPoints: [],
+  kreaMaskPointForeground: true,
+  kreaMaskPreviewCutout: false,
   vidRef: null,              // {name, url, w, h} - Video tab source image
   folders: [],
   items: [],
@@ -127,6 +134,7 @@ const QWEN_ANGLE_DISTANCES = [
 ];
 const EDIT_ENGINES = ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'];
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
+const EDIT_MASK_ENGINES = new Set(['klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref' };
 const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
 
@@ -887,6 +895,9 @@ function saveForm() {
       krea2RawTurboLora: state.krea2RawTurboLora,
       regions: state.regions,
       kreaBrush: state.kreaBrush,
+      kreaMaskTool: state.kreaMaskTool,
+      kreaMaskFeather: state.kreaMaskFeather,
+      kreaMaskInvert: state.kreaMaskInvert,
       scailModeVersion: 2,
       vidScailStableTracking: state.vidScailStableTracking,
       vidScailChunkFrames: state.vidScailChunkFrames,
@@ -968,8 +979,11 @@ function loadForm() {
     } : null;
     state.createImageGuideOpen = f.createImageGuideOpen === true;
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
+    state.kreaMaskTool = ['smart', 'brush', 'box'].includes(f.kreaMaskTool) ? f.kreaMaskTool : 'smart';
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
+    state.kreaMaskFeather = Math.max(0, Math.min(64, Number(f.kreaMaskFeather) || 8));
+    state.kreaMaskInvert = f.kreaMaskInvert === true;
     if (f.cameraSettings && CameraSettings) {
       state.cameraSettings = CameraSettings.normalizeSettings(f.cameraSettings);
     }
@@ -1093,7 +1107,7 @@ function updateVideoPanels() {
   $('#vidOptsPanel').hidden = !isVideo;
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
   if (!(state.view === 'edit' && state.editEngine === 'qwen')) state.qwenAnglesMode = false;
-  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode;
+  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode || hasEditMask();
   renderQwenAngleTool();
   renderQwenAngleMode();
   renderEditSequence();
@@ -1103,11 +1117,8 @@ function updateVideoPanels() {
   renderKrea2Mode();
   renderCreateImageGuide();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
-  const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#denoiseField').hidden = !kreaEdit;
-  $('#kreaMaskTools').hidden = !kreaEdit;
-  $('#editComposite').hidden = kreaEdit || kreaRef; // pixel-composite is a Klein mechanism
-  $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit;
+  syncEditAreaChrome();
   renderEditAspects();
   renderEditUpscale();
   renderKreaMaskTools();
@@ -1361,7 +1372,7 @@ $('#createImageInfluence').addEventListener('input', (event) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Regional prompting + Krea2 masks                                    */
+/* Regional prompting + localized edit masks                           */
 /* ------------------------------------------------------------------ */
 
 const REGION_COLORS = ['#46b4e6', '#e68246', '#82e646', '#e646b4', '#e6e646', '#46e6c8'];
@@ -1370,6 +1381,7 @@ let regionSettingsOpen = false;
 let regionClickBlockedUntil = 0;
 let kreaMaskDrawing = false;
 let kreaMaskLast = null;
+let kreaMaskBoxStart = null;
 
 function clamp01(v, fallback) {
   const n = Number(v);
@@ -1807,58 +1819,142 @@ function clearKreaMask(silent) {
   state.kreaMask = null;
   state.kreaMaskPreview = null;
   state.kreaMaskDirty = false;
+  state.kreaMaskKind = null;
+  state.kreaMaskPoints = [];
+  state.kreaMaskInvert = false;
+  state.kreaMaskPreviewCutout = false;
   const canvas = $('#kreaMaskCanvas');
   if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+  const cutout = $('#kreaMaskCutoutCanvas');
+  if (cutout) cutout.getContext('2d').clearRect(0, 0, cutout.width || 1, cutout.height || 1);
   if (state.refs[0] && state.refs[0].displayUrl) {
     delete state.refs[0].displayUrl;
     renderRefs();
   }
+  renderSmartMaskPoints();
+  renderMaskAdjustments();
   renderKreaMaskTools();
-  if (!silent) toast('Mask cleared');
+  if (!silent) toast('Edit area cleared');
+}
+
+function supportsCurrentEditMask() {
+  return state.view === 'edit' && EDIT_MASK_ENGINES.has(state.editEngine);
+}
+
+function hasEditMask() {
+  return !!state.kreaMask || state.kreaMaskDirty || !!state.kreaMaskPreview;
+}
+
+function syncEditAreaChrome() {
+  const supported = supportsCurrentEditMask();
+  const active = supported && hasEditMask();
+  const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
+  const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
+  $('#kreaMaskTools').hidden = !supported;
+  $('#editComposite').hidden = kreaEdit || kreaRef || active;
+  $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit || active;
+  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode || active;
 }
 
 function renderKreaMaskTools() {
   const tools = $('#kreaMaskTools');
   if (!tools) return;
-  const hasMask = !!state.kreaMask || state.kreaMaskDirty || !!state.kreaMaskPreview;
-  $('#kreaMaskStatus').textContent = hasMask ? (state.kreaMaskDirty ? 'Mask not uploaded yet' : 'Mask ready') : 'No mask';
+  const hasMask = hasEditMask();
+  const kind = state.kreaMaskKind === 'box' ? 'Box selected'
+    : (state.kreaMaskKind === 'smart' ? 'Smart mask selected' : 'Mask selected');
+  $('#kreaMaskStatus').textContent = hasMask ? kind : 'Whole image';
   $('#kreaMaskClear').hidden = !hasMask;
+  $('#kreaMaskBtn').classList.toggle('active', hasMask);
+  syncEditAreaChrome();
+}
+
+function renderKreaMaskMode() {
+  const tool = state.kreaMaskTool;
+  [['smart', '#kreaMaskSmartMode'], ['brush', '#kreaMaskBrushMode'], ['box', '#kreaMaskBoxMode']].forEach(([name, selector]) => {
+    const active = tool === name;
+    $(selector).classList.toggle('active', active);
+    $(selector).setAttribute('aria-pressed', String(active));
+  });
+  $('#kreaMaskSmartControls').hidden = tool !== 'smart';
+  $('#kreaBrushField').hidden = tool !== 'brush';
+  $('#kreaMaskErase').hidden = tool !== 'brush';
+  $('#kreaMaskStage').classList.toggle('box-mode', tool === 'box');
+  $('#kreaMaskStage').classList.toggle('smart-mode', tool === 'smart');
+  renderSmartPointMode();
 }
 
 function setupMaskCanvasFromImage() {
   const base = $('#kreaMaskBase');
   const canvas = $('#kreaMaskCanvas');
+  const cutout = $('#kreaMaskCutoutCanvas');
   const w = base.naturalWidth || 1024;
   const h = base.naturalHeight || 1024;
+  $('#kreaMaskStage').style.setProperty('--mask-aspect', String(w / h));
   canvas.width = w;
   canvas.height = h;
+  cutout.width = w;
+  cutout.height = h;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, w, h);
   if (state.kreaMaskPreview) {
     const im = new Image();
-    im.onload = () => ctx.drawImage(im, 0, 0, w, h);
+    im.onload = () => {
+      ctx.drawImage(im, 0, 0, w, h);
+      refreshMaskCutoutPreview();
+    };
     im.src = state.kreaMaskPreview;
-  }
+  } else refreshMaskCutoutPreview();
+  requestAnimationFrame(renderSmartMaskPoints);
 }
 
 function openKreaMaskPainter() {
   const ref = state.refs[0];
-  if (!ref) return toast('Add a source image in the first reference slot before painting a mask', true);
+  if (!ref) return toast('Add a source image in reference slot 1 before selecting an edit area', true);
+  if (state.qwenAnglesMode || state.qwenAngles.length) {
+    state.qwenAnglesMode = false;
+    state.qwenAngles = [];
+    renderQwenAngleTool();
+    renderQwenAngleMode();
+  }
+  state.editAspectOverride = false;
+  renderEditAspects();
   $('#kreaMaskBase').src = ref.url;
   $('#kreaMaskBase').onload = setupMaskCanvasFromImage;
   if ($('#kreaMaskBase').complete) setupMaskCanvasFromImage();
+  $('#kreaMaskTitle').textContent = `${editEngineLabel(state.editEngine)} edit area`;
+  $('#kreaMaskPrompt').value = '';
   $('#kreaBrushInput').value = String(state.kreaBrush);
   $('#kreaBrushVal').textContent = String(state.kreaBrush);
+  $('#kreaMaskFeather').value = String(state.kreaMaskFeather);
+  $('#kreaMaskFeatherVal').textContent = String(state.kreaMaskFeather);
   $('#kreaMaskErase').classList.toggle('active', state.kreaMaskErase);
+  renderKreaMaskMode();
+  renderMaskAdjustments();
   $('#kreaMaskSheet').classList.add('show');
+}
+
+function maskContentRect() {
+  const stage = $('#kreaMaskStage');
+  const rect = stage.getBoundingClientRect();
+  const base = $('#kreaMaskBase');
+  const iw = base.naturalWidth || $('#kreaMaskCanvas').width || 1;
+  const ih = base.naturalHeight || $('#kreaMaskCanvas').height || 1;
+  const scale = Math.min(rect.width / iw, rect.height / ih);
+  const width = iw * scale;
+  const height = ih * scale;
+  return { left: (rect.width - width) / 2, top: (rect.height - height) / 2, width, height, stageRect: rect };
 }
 
 function maskPoint(e) {
   const canvas = $('#kreaMaskCanvas');
-  const rect = canvas.getBoundingClientRect();
+  const content = maskContentRect();
+  const nx = Math.max(0, Math.min(1, (e.clientX - content.stageRect.left - content.left) / content.width));
+  const ny = Math.max(0, Math.min(1, (e.clientY - content.stageRect.top - content.top) / content.height));
   return {
-    x: (e.clientX - rect.left) * (canvas.width / rect.width),
-    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    x: nx * canvas.width,
+    y: ny * canvas.height,
+    nx,
+    ny,
   };
 }
 
@@ -1868,36 +1964,189 @@ function drawKreaMask(e) {
   const p = maskPoint(e);
   const canvas = $('#kreaMaskCanvas');
   const ctx = canvas.getContext('2d');
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = state.kreaBrush;
-  ctx.globalCompositeOperation = state.kreaMaskErase ? 'destination-out' : 'source-over';
-  ctx.strokeStyle = 'rgba(255,255,255,0.86)';
-  ctx.beginPath();
-  ctx.moveTo(kreaMaskLast ? kreaMaskLast.x : p.x, kreaMaskLast ? kreaMaskLast.y : p.y);
-  ctx.lineTo(p.x, p.y);
-  ctx.stroke();
-  kreaMaskLast = p;
+  if (state.kreaMaskTool === 'box') {
+    const start = kreaMaskBoxStart || p;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(Math.min(start.x, p.x), Math.min(start.y, p.y), Math.abs(p.x - start.x), Math.abs(p.y - start.y));
+    state.kreaMaskKind = 'box';
+    state.kreaMaskErase = false;
+  } else {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = state.kreaBrush;
+    ctx.globalCompositeOperation = state.kreaMaskErase ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(kreaMaskLast ? kreaMaskLast.x : p.x, kreaMaskLast ? kreaMaskLast.y : p.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    kreaMaskLast = p;
+    state.kreaMaskKind = 'brush';
+  }
   state.kreaMaskDirty = true;
   state.kreaMaskPreview = canvas.toDataURL('image/png');
+  refreshMaskCutoutPreview();
   renderKreaMaskTools();
+}
+
+function processedMaskCanvas() {
+  const source = $('#kreaMaskCanvas');
+  if (!source || !source.width || !source.height) return null;
+  const out = document.createElement('canvas');
+  out.width = source.width;
+  out.height = source.height;
+  const ctx = out.getContext('2d', { willReadFrequently: state.kreaMaskInvert });
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.save();
+  const feather = Math.max(0, Math.min(64, Number(state.kreaMaskFeather) || 0));
+  if (feather) ctx.filter = `blur(${feather}px)`;
+  ctx.drawImage(source, 0, 0);
+  ctx.restore();
+  if (state.kreaMaskInvert) {
+    const image = ctx.getImageData(0, 0, out.width, out.height);
+    for (let i = 0; i < image.data.length; i += 4) {
+      const value = 255 - image.data[i];
+      image.data[i] = value;
+      image.data[i + 1] = value;
+      image.data[i + 2] = value;
+      image.data[i + 3] = 255;
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+  return out;
+}
+
+function maskAlphaCanvas(mask) {
+  const alpha = document.createElement('canvas');
+  alpha.width = mask.width;
+  alpha.height = mask.height;
+  const ctx = alpha.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(mask, 0, 0);
+  const image = ctx.getImageData(0, 0, alpha.width, alpha.height);
+  for (let i = 0; i < image.data.length; i += 4) {
+    image.data[i + 3] = image.data[i];
+    image.data[i] = 255;
+    image.data[i + 1] = 255;
+    image.data[i + 2] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+  return alpha;
+}
+
+function refreshMaskCutoutPreview() {
+  const base = $('#kreaMaskBase');
+  const cutout = $('#kreaMaskCutoutCanvas');
+  const mask = processedMaskCanvas();
+  if (!cutout || !mask || !base.complete || !base.naturalWidth) return;
+  if (cutout.width !== mask.width || cutout.height !== mask.height) {
+    cutout.width = mask.width;
+    cutout.height = mask.height;
+  }
+  const ctx = cutout.getContext('2d');
+  ctx.clearRect(0, 0, cutout.width, cutout.height);
+  ctx.drawImage(base, 0, 0, cutout.width, cutout.height);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.drawImage(maskAlphaCanvas(mask), 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function renderMaskAdjustments() {
+  $('#kreaMaskFeatherVal').textContent = String(state.kreaMaskFeather);
+  $('#kreaMaskInvert').classList.toggle('active', state.kreaMaskInvert);
+  $('#kreaMaskInvert').setAttribute('aria-pressed', String(state.kreaMaskInvert));
+  $('#kreaMaskPreviewToggle').classList.toggle('active', state.kreaMaskPreviewCutout);
+  $('#kreaMaskPreviewToggle').setAttribute('aria-pressed', String(state.kreaMaskPreviewCutout));
+  $('#kreaMaskStage').classList.toggle('preview-cutout', state.kreaMaskPreviewCutout);
+}
+
+function renderSmartPointMode() {
+  const include = state.kreaMaskPointForeground;
+  $('#kreaMaskPointAdd').classList.toggle('active', include);
+  $('#kreaMaskPointAdd').setAttribute('aria-pressed', String(include));
+  $('#kreaMaskPointRemove').classList.toggle('active', !include);
+  $('#kreaMaskPointRemove').setAttribute('aria-pressed', String(!include));
+}
+
+function renderSmartMaskPoints() {
+  const layer = $('#kreaMaskPoints');
+  if (!layer) return;
+  layer.innerHTML = '';
+  const content = maskContentRect();
+  for (const point of state.kreaMaskPoints) {
+    const dot = document.createElement('i');
+    dot.className = `smart-mask-point${point.foreground === false ? ' negative' : ''}`;
+    dot.style.left = `${content.left + point.x * content.width}px`;
+    dot.style.top = `${content.top + point.y * content.height}px`;
+    layer.append(dot);
+  }
+}
+
+let smartMaskRunning = false;
+async function runSmartMask({ prompt = '', point = null } = {}) {
+  if (smartMaskRunning) return;
+  const ref = state.refs[0];
+  if (!ref || !ref.name) return toast('Add a source image before using Smart Select', true);
+  if (point) {
+    state.kreaMaskPoints.push({ x: point.nx, y: point.ny, foreground: state.kreaMaskPointForeground });
+    renderSmartMaskPoints();
+  }
+  const textPrompt = String(prompt || '').trim();
+  if (!textPrompt && !state.kreaMaskPoints.length) return toast('Describe an object or tap the image', true);
+  smartMaskRunning = true;
+  $('#kreaMaskLoading').hidden = false;
+  try {
+    const result = await api('/api/edit-mask/sam3', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageName: ref.name,
+        prompt: textPrompt,
+        points: textPrompt ? [] : state.kreaMaskPoints,
+      }),
+    });
+    const maskImages = await Promise.all((Array.isArray(result.dataUrls) && result.dataUrls.length
+      ? result.dataUrls : [result.dataUrl]).map((src) => new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Could not read the SAM3 mask'));
+      image.src = src;
+    })));
+    const canvas = $('#kreaMaskCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    maskImages.forEach((image, index) => {
+      ctx.globalCompositeOperation = index ? 'lighten' : 'source-over';
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    });
+    ctx.globalCompositeOperation = 'source-over';
+    state.kreaMaskPreview = canvas.toDataURL('image/png');
+    state.kreaMaskDirty = true;
+    state.kreaMaskKind = 'smart';
+    refreshMaskCutoutPreview();
+    renderKreaMaskTools();
+  } catch (error) {
+    if (point) state.kreaMaskPoints.pop();
+    renderSmartMaskPoints();
+    toast(error.message, true);
+  } finally {
+    smartMaskRunning = false;
+    $('#kreaMaskLoading').hidden = true;
+  }
 }
 
 async function ensureKreaMaskUploaded() {
   if (!state.kreaMaskDirty && state.kreaMask && state.kreaMask.name) return state.kreaMask.name;
   const canvas = $('#kreaMaskCanvas');
   if (!canvas || !canvas.width || !canvas.height || !state.kreaMaskPreview) return '';
-  const out = document.createElement('canvas');
-  out.width = canvas.width;
-  out.height = canvas.height;
-  const ctx = out.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(canvas, 0, 0);
+  const out = processedMaskCanvas();
+  if (!out) return '';
   const blob = await new Promise((ok, bad) => out.toBlob((b) => (b ? ok(b) : bad(new Error('Mask export failed'))), 'image/png'));
   const res = await api('/api/upload', {
     method: 'POST',
-    headers: { 'x-filename': encodeURIComponent('krea2_mask.png') },
+    headers: { 'x-filename': encodeURIComponent('edit_mask.png') },
     body: await blob.arrayBuffer(),
   });
   state.kreaMask = { name: res.name, url: URL.createObjectURL(blob) };
@@ -1955,12 +2204,50 @@ $('#regionSettingsClose').addEventListener('click', () => {
 $('#kreaMaskBtn').addEventListener('click', openKreaMaskPainter);
 $('#kreaMaskClear').addEventListener('click', () => clearKreaMask());
 $('#kreaMaskCanvas').addEventListener('pointerdown', (e) => {
+  if (state.kreaMaskTool === 'smart') {
+    if (!state.kreaMaskPreviewCutout) runSmartMask({ point: maskPoint(e) });
+    return;
+  }
   kreaMaskDrawing = true;
   kreaMaskLast = maskPoint(e);
+  kreaMaskBoxStart = state.kreaMaskTool === 'box' ? kreaMaskLast : null;
   drawKreaMask(e);
 });
 $('#kreaMaskCanvas').addEventListener('pointermove', drawKreaMask);
-document.addEventListener('pointerup', () => { kreaMaskDrawing = false; kreaMaskLast = null; });
+document.addEventListener('pointerup', () => {
+  kreaMaskDrawing = false;
+  kreaMaskLast = null;
+  kreaMaskBoxStart = null;
+});
+$('#kreaMaskSmartMode').addEventListener('click', () => {
+  state.kreaMaskTool = 'smart';
+  state.kreaMaskErase = false;
+  state.kreaMaskPreviewCutout = false;
+  renderKreaMaskMode();
+  renderMaskAdjustments();
+  saveForm();
+});
+$('#kreaMaskBrushMode').addEventListener('click', () => {
+  state.kreaMaskTool = 'brush';
+  state.kreaMaskPreviewCutout = false;
+  renderKreaMaskMode();
+  renderMaskAdjustments();
+  saveForm();
+});
+$('#kreaMaskBoxMode').addEventListener('click', () => {
+  state.kreaMaskTool = 'box';
+  state.kreaMaskErase = false;
+  state.kreaMaskPreviewCutout = false;
+  renderKreaMaskMode();
+  renderMaskAdjustments();
+  saveForm();
+});
+$('#kreaMaskPointAdd').addEventListener('click', () => { state.kreaMaskPointForeground = true; renderSmartPointMode(); });
+$('#kreaMaskPointRemove').addEventListener('click', () => { state.kreaMaskPointForeground = false; renderSmartPointMode(); });
+$('#kreaMaskPromptRun').addEventListener('click', () => runSmartMask({ prompt: $('#kreaMaskPrompt').value }));
+$('#kreaMaskPrompt').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); runSmartMask({ prompt: $('#kreaMaskPrompt').value }); }
+});
 $('#kreaBrushInput').addEventListener('input', () => {
   state.kreaBrush = Number($('#kreaBrushInput').value) || 48;
   $('#kreaBrushVal').textContent = String(state.kreaBrush);
@@ -1970,42 +2257,45 @@ $('#kreaMaskErase').addEventListener('click', () => {
   state.kreaMaskErase = !state.kreaMaskErase;
   $('#kreaMaskErase').classList.toggle('active', state.kreaMaskErase);
 });
+$('#kreaMaskFeather').addEventListener('input', () => {
+  state.kreaMaskFeather = Number($('#kreaMaskFeather').value) || 0;
+  state.kreaMaskDirty = hasEditMask();
+  renderMaskAdjustments();
+  refreshMaskCutoutPreview();
+  saveForm();
+});
+$('#kreaMaskInvert').addEventListener('click', () => {
+  state.kreaMaskInvert = !state.kreaMaskInvert;
+  state.kreaMaskDirty = hasEditMask();
+  renderMaskAdjustments();
+  refreshMaskCutoutPreview();
+  saveForm();
+});
+$('#kreaMaskPreviewToggle').addEventListener('click', () => {
+  if (!hasEditMask()) return toast('Create a mask before previewing it', true);
+  state.kreaMaskPreviewCutout = !state.kreaMaskPreviewCutout;
+  refreshMaskCutoutPreview();
+  renderMaskAdjustments();
+});
 $('#kreaMaskReset').addEventListener('click', () => clearKreaMask());
 $('#kreaMaskApply').addEventListener('click', async () => {
   try {
     await ensureKreaMaskUploaded();
     updateMaskedRefPreview();
     $('#kreaMaskSheet').classList.remove('show');
-    toast('Mask ready for Krea2 inpaint');
+    renderKreaMaskTools();
+    toast(`${state.kreaMaskKind === 'box' ? 'Box' : 'Mask'} ready — changes stay inside this area`);
   } catch (e) { toast(e.message, true); }
 });
 
-/* Composite the painted mask (red tint) over the source thumbnail so the
-   ref slot shows what will be inpainted after Apply. */
+/* The reference thumbnail shows a real cutout: selected pixels become
+   transparent instead of receiving a decorative color tint. */
 function updateMaskedRefPreview() {
   const ref = state.refs[0];
-  const maskCanvas = $('#kreaMaskCanvas');
-  if (!ref || !maskCanvas || !maskCanvas.width || !state.kreaMaskPreview) return;
-  const base = $('#kreaMaskBase');
-  const w = maskCanvas.width;
-  const h = maskCanvas.height;
-  const tint = document.createElement('canvas');
-  tint.width = w;
-  tint.height = h;
-  const tctx = tint.getContext('2d');
-  tctx.drawImage(maskCanvas, 0, 0);
-  tctx.globalCompositeOperation = 'source-in';
-  tctx.fillStyle = 'rgba(255, 60, 60, 0.9)';
-  tctx.fillRect(0, 0, w, h);
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
-  const ctx = out.getContext('2d');
-  try { ctx.drawImage(base, 0, 0, w, h); } catch { /* base not ready */ }
-  ctx.globalAlpha = 0.55;
-  ctx.drawImage(tint, 0, 0);
-  ctx.globalAlpha = 1;
-  ref.displayUrl = out.toDataURL('image/jpeg', 0.85);
+  const cutout = $('#kreaMaskCutoutCanvas');
+  if (!ref || !cutout || !cutout.width || !state.kreaMaskPreview) return;
+  refreshMaskCutoutPreview();
+  ref.displayUrl = cutout.toDataURL('image/png');
   renderRefs();
 }
 
@@ -3945,6 +4235,7 @@ function wireRefReorder(slot, index, maxSlots) {
     const drag = refReorder;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (drag.active && drag.target !== drag.from) {
+      if (drag.from === 0 || drag.target === 0) clearKreaMask(true);
       [state.refs[drag.from], state.refs[drag.target]] = [state.refs[drag.target], state.refs[drag.from]];
       renderRefs();
       saveForm();
@@ -4707,9 +4998,9 @@ wireEngineRow('animEngineRow', (engine) => {
 wireEngineRow('editEngineRow', (engine) => {
   switchEditEngine(engine);
   if (engine === 'krea2' && Number($('#denoiseInput').value) <= 0.5) {
-    // Soft inpaint needs a strong denoise to actually repaint the mask
-    $('#denoiseInput').value = 0.9;
-    $('#denoiseVal').textContent = '0.90';
+    // Keep enough source signal for the new content to inherit its surroundings.
+    $('#denoiseInput').value = 0.82;
+    $('#denoiseVal').textContent = '0.82';
   }
   renderRefs();
   updateVideoPanels();
@@ -4723,7 +5014,8 @@ $('#editComposite').addEventListener('click', () => {
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
-  const qwenAngleExports = state.view === 'edit' && state.editEngine === 'qwen' && !state.editSequential ? selectedQwenAngleViews() : [];
+  const qwenAngleExports = state.view === 'edit' && state.editEngine === 'qwen' && !state.editSequential && !hasEditMask()
+    ? selectedQwenAngleViews() : [];
   const promptOptional = state.view === 'video' && state.vidEngine === 'scail';
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
 
@@ -4800,11 +5092,12 @@ $('#generateBtn').addEventListener('click', async () => {
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
   let maskImageName = '';
-  if (mode === 'edit' && state.editEngine === 'krea2' && (state.kreaMask || state.kreaMaskDirty || state.kreaMaskPreview)) {
-    if (!state.refs[0]) return toast('Krea2 inpaint needs a source image in reference slot 1', true);
+  if (mode === 'edit' && supportsCurrentEditMask() && hasEditMask()) {
+    if (!state.refs[0]) return toast('A localized edit needs a source image in reference slot 1', true);
     try { maskImageName = await ensureKreaMaskUploaded(); }
     catch (e) { return toast(e.message, true); }
   }
+  const localizedEdit = !!maskImageName;
   const upscaleFinish = mode === 'edit' ? {
     enabled: state.editUpscaleEnabled,
     resolution: state.editUpscaleResolution,
@@ -4825,9 +5118,9 @@ $('#generateBtn').addEventListener('click', async () => {
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
     enhance: state.enhance && mode === 't2i',
-    width: mode === 'edit' && state.editAspectOverride ? state.editWidth : state.width,
-    height: mode === 'edit' && state.editAspectOverride ? state.editHeight : state.height,
-    editAspectOverride: mode === 'edit' && state.editAspectOverride,
+    width: mode === 'edit' && state.editAspectOverride && !localizedEdit ? state.editWidth : state.width,
+    height: mode === 'edit' && state.editAspectOverride && !localizedEdit ? state.editHeight : state.height,
+    editAspectOverride: mode === 'edit' && state.editAspectOverride && !localizedEdit,
     postUpscale: upscaleFinish.enabled ? {
       enabled: true,
       resolution: upscaleFinish.resolution,
@@ -4847,6 +5140,9 @@ $('#generateBtn').addEventListener('click', async () => {
     imageName: createImageGuide ? createImageGuide.name : undefined,
     regions: activeRegionsForRequest(),
     maskImageName,
+    editMaskMode: localizedEdit ? (state.kreaMaskKind || state.kreaMaskTool) : undefined,
+    editMaskFeather: localizedEdit ? state.kreaMaskFeather : undefined,
+    editMaskInvert: localizedEdit ? state.kreaMaskInvert : undefined,
     sourceItemId: mode === 'edit' && state.refs[0] ? state.refs[0].srcItemId
       : (createImageGuide ? createImageGuide.srcItemId : undefined),
     folder: state.activeFolder !== 'all' ? state.activeFolder : null,
@@ -6479,7 +6775,7 @@ async function restoreCreateImageGuide(item) {
 
 async function restoreKreaMask(item) {
   clearKreaMask(true);
-  if (!item.maskImageName || state.editEngine !== 'krea2') return false;
+  if (!item.maskImageName || !EDIT_MASK_ENGINES.has(state.editEngine)) return false;
   try {
     const response = await fetch('/api/input?name=' + encodeURIComponent(item.maskImageName));
     if (!response.ok) throw new Error('missing mask');
@@ -6487,6 +6783,10 @@ async function restoreKreaMask(item) {
     state.kreaMask = { name: item.maskImageName, url };
     state.kreaMaskPreview = url;
     state.kreaMaskDirty = false;
+    state.kreaMaskKind = ['smart', 'box', 'brush'].includes(item.editMaskMode) ? item.editMaskMode : 'brush';
+    state.kreaMaskTool = state.kreaMaskKind;
+    state.kreaMaskFeather = Math.max(0, Math.min(64, Number(item.editMaskFeather) || 0));
+    state.kreaMaskInvert = item.editMaskInvert === true;
     return true;
   } catch {
     return false;

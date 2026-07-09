@@ -3166,17 +3166,138 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   white-space: nowrap;
 }
 .krea-mask-tools {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   margin: 10px 0 4px;
 }
 .krea-mask-tools[hidden] { display: none; }
-.krea-mask-tools span {
+.edit-area-trigger {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.018);
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
+  text-align: left;
+}
+.edit-area-trigger.active { border-color: rgba(255,255,255,.34); color: #fff; }
+.edit-area-trigger > svg { width: 20px; height: 20px; }
+.edit-area-trigger > span { min-width: 0; display: grid; gap: 2px; }
+.edit-area-trigger b { color: var(--ink-soft); font-size: 12px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.edit-area-trigger small { overflow: hidden; color: var(--muted-2); font-size: 10.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.edit-area-trigger i { color: var(--muted-2); font-size: 22px; font-style: normal; font-weight: 500; }
+.edit-area-clear { width: 42px; height: 42px; color: var(--muted); }
+.edit-area-mode {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.edit-area-mode .chip { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.edit-area-mode .chip svg { width: 16px; height: 16px; }
+.edit-area-mode .chip.active { color: #fff; border-color: rgba(255,255,255,.5); background: #0a0a0b; box-shadow: none; }
+.edit-mask-panel {
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-color: rgba(255,255,255,.13);
+  overflow: hidden;
+}
+.edit-mask-panel .mask-stage {
+  width: min(100%, calc(54dvh * var(--mask-aspect, 1)));
+  max-height: 54dvh;
+  aspect-ratio: var(--mask-aspect, 1);
+  align-self: center;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.smart-mask-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.smart-mask-controls[hidden] { display: none; }
+.smart-mask-prompt {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 40px;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 13px;
+  background: #070707;
+  overflow: hidden;
+}
+.smart-mask-prompt:focus-within { border-color: rgba(255,255,255,.36); }
+.smart-mask-prompt input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 13px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+}
+.smart-mask-prompt input::placeholder { color: var(--muted-2); }
+.smart-mask-prompt button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+}
+.smart-mask-prompt button svg { width: 18px; height: 18px; }
+.smart-mask-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; font-weight: 750; }
+.smart-mask-point-mode { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid rgba(255,255,255,.11); border-radius: 10px; background: #060606; }
+.smart-mask-point-mode button { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 850; }
+.smart-mask-point-mode button.active { background: #151515; color: #fff; }
+.smart-mask-point-mode i { width: 8px; height: 8px; border-radius: 50%; background: #71a7ff; box-shadow: 0 0 0 2px rgba(113,167,255,.18); }
+.smart-mask-point-mode #kreaMaskPointRemove i { background: #ff8c83; box-shadow: 0 0 0 2px rgba(255,140,131,.18); }
+.edit-mask-toolbar { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 10px 0; }
+.edit-mask-tool-button,
+.edit-mask-erase {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 11px;
+  background: #070707;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+.edit-mask-tool-button svg { width: 15px; height: 15px; }
+.edit-mask-tool-button.active,
+.edit-mask-tool-button[aria-pressed="true"],
+.edit-mask-erase.active { border-color: rgba(255,255,255,.38); color: #fff; background: #101010; }
+.edit-mask-adjustments { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.edit-mask-adjustments .field { min-width: 0; }
+.edit-mask-erase { margin: -2px 0 10px; }
+.edit-mask-erase[hidden] { display: none; }
+.mask-stage.box-mode .krea-mask-canvas { cursor: crosshair; }
+#kreaBrushField[hidden],
+#kreaMaskErase[hidden] { display: none; }
+@media (max-width: 420px) {
+  .edit-area-mode .chip { padding-inline: 8px; }
+  .edit-mask-adjustments { grid-template-columns: 1fr; gap: 0; }
+  .smart-mask-hint { align-items: flex-start; }
 }
 
 /* ---------------- regional prompting / Krea2 inpaint ---------------- */
@@ -3495,22 +3616,40 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   min-height: 260px;
   border: 1px solid rgba(226,232,255,0.12);
   border-radius: var(--radius-sm);
-  background: #050505;
+  background-color: #080808;
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,.035) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,.035) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255,255,255,.035) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.035) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
   overflow: hidden;
   touch-action: none;
 }
 .mask-stage img,
-.krea-mask-canvas {
+.krea-mask-canvas,
+.krea-mask-cutout {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
+.krea-mask-cutout { display: none; pointer-events: none; }
 .krea-mask-canvas {
   mix-blend-mode: screen;
   touch-action: none;
 }
+.mask-stage.preview-cutout #kreaMaskBase,
+.mask-stage.preview-cutout .krea-mask-canvas { visibility: hidden; }
+.mask-stage.preview-cutout .krea-mask-cutout { display: block; }
+.smart-mask-points { position: absolute; inset: 0; pointer-events: none; }
+.smart-mask-point { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; border: 2px solid #fff; border-radius: 50%; background: #4e8fff; box-shadow: 0 2px 10px rgba(0,0,0,.8), 0 0 0 3px rgba(78,143,255,.25); }
+.smart-mask-point.negative { background: #ff665d; box-shadow: 0 2px 10px rgba(0,0,0,.8), 0 0 0 3px rgba(255,102,93,.23); }
+.smart-mask-loading { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 9px; background: rgba(0,0,0,.68); color: #fff; font-size: 12px; font-weight: 850; }
+.smart-mask-loading[hidden] { display: none; }
+.smart-mask-loading span { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 @media (max-width: 640px) {
   .region-workspace { padding: 14px; }
   .region-stage { min-height: 220px; }
@@ -3523,7 +3662,12 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     min-height: 58px;
     max-height: 76px;
   }
-  .mask-stage { min-height: 300px; }
+  .edit-mask-panel { height: min(94dvh, 860px); max-height: 94dvh; padding: 14px 14px calc(16px + env(safe-area-inset-bottom)); }
+  .edit-mask-panel .mask-stage {
+    width: min(100%, calc(44dvh * var(--mask-aspect, 1)));
+    max-height: 44dvh;
+    min-height: 0;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .region-settings,

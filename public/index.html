@@ -167,9 +167,12 @@
     </div>
     <div class="ref-row" id="refRow"></div>
     <div class="krea-mask-tools" id="kreaMaskTools" hidden>
-      <button class="chip" id="kreaMaskBtn" type="button">Paint mask</button>
-      <button class="chip" id="kreaMaskClear" type="button" hidden>Clear mask</button>
-      <span id="kreaMaskStatus">No mask</span>
+      <button class="edit-area-trigger" id="kreaMaskBtn" type="button" aria-controls="kreaMaskSheet" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 3h6v2H6v4H4V3Zm10 0h6v6h-2V5h-4V3ZM4 15h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg>
+        <span><b>Edit area</b><small id="kreaMaskStatus">Whole image</small></span>
+        <i aria-hidden="true">›</i>
+      </button>
+      <button class="icon-btn edit-area-clear" id="kreaMaskClear" type="button" aria-label="Clear edit area" title="Clear edit area" hidden>✕</button>
     </div>
   </section>
 
@@ -803,23 +806,72 @@
   </div>
 </div>
 
-<!-- Krea2 mask sheet -->
+<!-- localized edit mask sheet -->
 <div class="sheet region-sheet" id="kreaMaskSheet">
-  <div class="sheet-panel region-panel">
-    <h3 class="sheet-title">Krea2 Inpaint Mask <button data-close>✕</button></h3>
+  <div class="sheet-panel edit-mask-panel">
+    <h3 class="sheet-title"><span id="kreaMaskTitle">Edit area</span><button data-close aria-label="Close">✕</button></h3>
+    <div class="edit-area-mode" role="group" aria-label="Edit area selection tool">
+      <button class="chip active" id="kreaMaskSmartMode" type="button" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a2 2 0 0 1 2 2v1.1A7 7 0 0 1 18.9 10H20a2 2 0 1 1 0 4h-1.1a7 7 0 0 1-4.9 4.9V20a2 2 0 1 1-4 0v-1.1A7 7 0 0 1 5.1 14H4a2 2 0 1 1 0-4h1.1A7 7 0 0 1 10 5.1V4a2 2 0 0 1 2-2Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg>
+        Smart
+      </button>
+      <button class="chip" id="kreaMaskBrushMode" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m15.5 3 5.5 5.5-9.6 9.6a6 6 0 0 1-3.5 1.7L3 21l1.2-4.9a6 6 0 0 1 1.7-3.5L15.5 3Zm0 2.8-8.2 8.3a4 4 0 0 0-1.1 2.4l-.4 1.7 1.7-.4a4 4 0 0 0 2.4-1.1l8.3-8.2-2.7-2.7Z"/></svg>
+        Brush
+      </button>
+      <button class="chip" id="kreaMaskBoxMode" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16v16H4V4Zm2 2v12h12V6H6Z"/></svg>
+        Box
+      </button>
+    </div>
+    <div class="smart-mask-controls" id="kreaMaskSmartControls">
+      <div class="smart-mask-prompt">
+        <input id="kreaMaskPrompt" type="text" maxlength="240" placeholder="Mask a person, jacket, sky…" autocomplete="off" />
+        <button id="kreaMaskPromptRun" type="button" aria-label="Create mask from description">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m9.6 5.4 6.6 6.6-6.6 6.6 1.4 1.4 8-8-8-8-1.4 1.4Z"/></svg>
+        </button>
+      </div>
+      <div class="smart-mask-hint">
+        <span>Or tap the object</span>
+        <div class="smart-mask-point-mode" role="group" aria-label="SAM3 point type">
+          <button class="active" id="kreaMaskPointAdd" type="button" aria-pressed="true"><i></i> Include</button>
+          <button id="kreaMaskPointRemove" type="button" aria-pressed="false"><i></i> Exclude</button>
+        </div>
+      </div>
+    </div>
     <div class="mask-stage" id="kreaMaskStage">
       <img id="kreaMaskBase" alt="" />
+      <canvas class="krea-mask-cutout" id="kreaMaskCutoutCanvas"></canvas>
       <canvas class="krea-mask-canvas" id="kreaMaskCanvas"></canvas>
+      <div class="smart-mask-points" id="kreaMaskPoints" aria-hidden="true"></div>
+      <div class="smart-mask-loading" id="kreaMaskLoading" hidden><span></span>Finding selection</div>
     </div>
-    <div class="field">
-      <label>Brush size <span id="kreaBrushVal">48</span></label>
-      <div class="range-field"><input id="kreaBrushInput" type="range" min="12" max="160" step="4" value="48" /></div>
+    <div class="edit-mask-toolbar">
+      <button class="edit-mask-tool-button" id="kreaMaskPreviewToggle" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5c5.5 0 9.5 5.6 9.7 5.9l.4.6-.4.6C21.5 12.4 17.5 18 12 18S2.5 12.4 2.3 12.1l-.4-.6.4-.6C2.5 10.6 6.5 5 12 5Zm0 2c-3.5 0-6.4 3.1-7.6 4.5C5.6 12.9 8.5 16 12 16s6.4-3.1 7.6-4.5C18.4 10.1 15.5 7 12 7Zm0 1.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>
+        Preview cutout
+      </button>
+      <button class="edit-mask-tool-button" id="kreaMaskInvert" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18V3Zm-2 2.3v13.4A7 7 0 0 1 10 5.3Z"/></svg>
+        Invert
+      </button>
+      <button class="edit-mask-tool-button" id="kreaMaskReset" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4h10l1 2h3v2H3V6h3l1-2Zm1 6h2v8H8v-8Zm6 0h2v8h-2v-8ZM6 10h2v10h8V10h2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10Z"/></svg>
+        Clear
+      </button>
     </div>
-    <div class="chip-row">
-      <button class="chip" id="kreaMaskErase" type="button">Erase</button>
-      <button class="chip" id="kreaMaskReset" type="button">Clear</button>
+    <div class="edit-mask-adjustments">
+      <div class="field" id="kreaBrushField">
+        <label>Brush <span id="kreaBrushVal">48</span></label>
+        <div class="range-field"><input id="kreaBrushInput" type="range" min="12" max="160" step="4" value="48" /></div>
+      </div>
+      <div class="field">
+        <label>Feather <span id="kreaMaskFeatherVal">8</span></label>
+        <div class="range-field"><input id="kreaMaskFeather" type="range" min="0" max="64" step="2" value="8" /></div>
+      </div>
     </div>
-    <button class="sheet-cta" id="kreaMaskApply">Use mask</button>
+    <button class="edit-mask-erase" id="kreaMaskErase" type="button">Erase brush</button>
+    <button class="sheet-cta" id="kreaMaskApply">Use edit area</button>
   </div>
 </div>
 

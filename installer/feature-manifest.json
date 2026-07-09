@@ -22,22 +22,22 @@
       "id": "edit.klein9",
       "label": "Klein 9B Edit",
       "default": true,
-      "models": ["flux-2-klein-9b", "qwen-3-8b", "flux2-vae"],
-      "nodes": ["Flux2Scheduler", "ReferenceLatent"]
+      "models": ["flux-2-klein-9b", "qwen-3-8b", "flux2-vae", "sam3"],
+      "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3"]
     },
     {
       "id": "edit.qwen",
       "label": "Qwen Edit + multi-angle",
       "default": true,
-      "models": ["qwen-image-edit-2511", "qwen-image-edit-lightning", "qwen-image-edit-multi-angle"],
-      "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod"]
+      "models": ["qwen-image-edit-2511", "qwen-image-edit-lightning", "qwen-image-edit-multi-angle", "sam3"],
+      "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod", "ComfyUI-SAM3"]
     },
     {
       "id": "edit.krea2",
       "label": "Krea 2 Inpaint + Regions",
       "default": true,
-      "models": ["krea2"],
-      "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ"]
+      "models": ["krea2", "sam3"],
+      "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ", "ComfyUI-SAM3"]
     },
     {
       "id": "edit.krea2ref",

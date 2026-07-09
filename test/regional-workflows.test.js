@@ -168,6 +168,35 @@ test('Krea2 inpaint graph uses image mask and optional regional controls', () =>
   assert.equal(graph.inpaint_latent.class_type, 'SetLatentNoiseMask');
   assert.equal(graph.regional.class_type, 'Krea2RegionalMultiLoRAV3');
   assert.equal(graph.sampler.inputs.latent_image[0], 'inpaint_latent');
+  assert.equal(graph.composite.class_type, 'ImageCompositeMasked');
+  assert.deepEqual(graph.save.inputs.images, ['composite', 0]);
+});
+
+test('Krea2 inpaint can condition directly on the surrounding source image', () => {
+  const graph = buildKrea2InpaintGraph({
+    imageName: 'source.png',
+    maskImageName: 'mask.png',
+    prompt: 'replace the sign while matching the wall lighting',
+    width: 1024,
+    height: 1024,
+    seed: 12,
+    steps: 12,
+    cfg: 1,
+    denoise: 0.82,
+    useSourceConditioning: true,
+    settings: {
+      unet: 'krea2.safetensors',
+      clip: 'clip.safetensors',
+      clipType: 'krea2',
+      vae: 'vae.safetensors',
+    },
+  });
+
+  assert.equal(graph.pos.class_type, 'Krea2EditRebalance');
+  assert.deepEqual(graph.pos.inputs.image1, ['source', 0]);
+  assert.equal(graph.pos.inputs.image1_tokens, 'high');
+  assert.deepEqual(graph.composite.inputs.destination, ['source', 0]);
+  assert.deepEqual(graph.composite.inputs.mask, ['grow_mask', 0]);
 });
 
 test('server advertises regional Krea2 and inpaint readiness groups', () => {

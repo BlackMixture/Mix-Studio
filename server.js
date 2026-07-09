@@ -53,6 +53,13 @@ const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const {
+  appendEditMaskNodes,
+  appendEditMaskComposite,
+  buildSam3MaskGraph,
+  SAM3_MASK_CLASSES,
+  supportsEditMask,
+} = require('./lib/edit-mask');
+const {
   scailMode,
   normalizeScailChunkOptions,
   scailDurationSeconds,
@@ -850,7 +857,7 @@ function failJob(pid, message) {
   const job = jobs.get(pid);
   const durationMs = job ? jobDurationMs(job) : undefined;
   jobs.delete(pid);
-  if (job && job.kind === 'enhance') { job.reject(new Error(message)); return; }
+  if (job && (job.kind === 'enhance' || job.kind === 'smartMask')) { job.reject(new Error(message)); return; }
   if (job && job.kind === 'upscale' && job.itemId) {
     const item = db.items.find((entry) => entry.id === job.itemId);
     if (item && item.upscalePending) {
@@ -903,6 +910,19 @@ async function completeJob(pid) {
   if (job.kind === 'enhance') {
     if (textOut === null) { job.reject(new Error('Prompt enhance produced no text')); return; }
     job.resolve(textOut);
+    return;
+  }
+
+  if (job.kind === 'smartMask') {
+    const files = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
+    if (!files.length) { job.reject(new Error('SAM3 produced no mask image')); return; }
+    const dataUrls = await Promise.all(files.map(async (entry) => {
+      const buf = await downloadOutput(entry);
+      const ext = path.extname(entry.filename).toLowerCase();
+      const mime = ext === '.webp' ? 'image/webp' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png');
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    }));
+    job.resolve({ dataUrl: dataUrls[0], dataUrls });
     return;
   }
 
@@ -1082,6 +1102,9 @@ async function completeJob(pid) {
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
+      editMaskMode: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskMode : undefined,
+      editMaskFeather: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskFeather : undefined,
+      editMaskInvert: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskInvert : undefined,
       postUpscale: job.params.postUpscale && sequenceFinal ? job.params.postUpscale : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
@@ -1393,10 +1416,12 @@ async function buildRegionalT2I(p) {
 }
 
 async function buildKrea2Inpaint(p, refNames) {
+  const info = await getObjectInfo();
   return filterInputs(buildKrea2InpaintGraph(Object.assign({}, p, {
     settings,
     imageName: refNames[0],
     maskImageName: p.maskImageName,
+    useSourceConditioning: !!info.Krea2EditRebalance,
   })));
 }
 
@@ -1510,17 +1535,29 @@ async function buildEditQwen(p, refNames) {
   graph.posm = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: { conditioning: ['pos', 0], reference_latents_method: 'index_timestep_zero' } };
   graph.negm = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: { conditioning: ['neg', 0], reference_latents_method: 'index_timestep_zero' } };
   graph.latent = { class_type: 'VAEEncode', inputs: { pixels: ['scale1', 0], vae: ['vae', 0] } };
+  const editMask = appendEditMaskNodes(graph, {
+    prefix: 'qwen_mask',
+    maskImageName: p.maskImageName,
+    samples: ['latent', 0],
+  });
   graph.sampler = {
     class_type: 'KSampler',
     inputs: {
-      model: ['cfgnorm', 0], positive: ['posm', 0], negative: ['negm', 0], latent_image: ['latent', 0],
+      model: ['cfgnorm', 0], positive: ['posm', 0], negative: ['negm', 0], latent_image: editMask ? editMask.latent : ['latent', 0],
       seed: p.seed, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
     },
   };
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
 
   let out = ['decode', 0];
-  if (p.composite !== false) {
+  if (editMask) {
+    out = appendEditMaskComposite(graph, {
+      key: 'qwen_mask_composite',
+      original: ['scale1', 0],
+      generated: ['decode', 0],
+      mask: editMask.mask,
+    });
+  } else if (p.composite !== false) {
     const info = await getObjectInfo();
     if (info.KleinEditComposite) {
       graph.composite = await nodeFromOrdered(
@@ -1579,7 +1616,14 @@ async function buildEdit(p, refNames) {
     wRef = ['size', 0];
     hRef = ['size', 1];
   }
-  graph.latent = { class_type: 'EmptyFlux2LatentImage', inputs: { width: wRef, height: hRef, batch_size: p.batch || 1 } };
+  const editMask = appendEditMaskNodes(graph, {
+    prefix: 'klein_mask',
+    maskImageName: p.maskImageName,
+    samples: ['enc1', 0],
+  });
+  if (!editMask) {
+    graph.latent = { class_type: 'EmptyFlux2LatentImage', inputs: { width: wRef, height: hRef, batch_size: p.batch || 1 } };
+  }
   graph.sched = { class_type: 'Flux2Scheduler', inputs: { steps: 4, width: wRef, height: hRef } };
   graph.guider = { class_type: 'CFGGuider', inputs: { model: kModel, positive: pos, negative: neg, cfg: 1 } };
   graph.noise = { class_type: 'RandomNoise', inputs: { noise_seed: p.seed } };
@@ -1588,7 +1632,7 @@ async function buildEdit(p, refNames) {
     class_type: 'SamplerCustomAdvanced',
     inputs: {
       noise: ['noise', 0], guider: ['guider', 0], sampler: ['sampler_sel', 0],
-      sigmas: ['sched', 0], latent_image: ['latent', 0],
+      sigmas: ['sched', 0], latent_image: editMask ? editMask.latent : ['latent', 0],
     },
   };
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['samp', 0], vae: ['vae', 0] } };
@@ -1596,7 +1640,14 @@ async function buildEdit(p, refNames) {
   // Optional: composite changed pixels back onto the original so untouched
   // areas stay pristine across successive edits (KleinEditComposite node).
   let out = ['decode', 0];
-  if (p.composite !== false && refNames.length) {
+  if (editMask) {
+    out = appendEditMaskComposite(graph, {
+      key: 'klein_mask_composite',
+      original: ['scale1', 0],
+      generated: ['decode', 0],
+      mask: editMask.mask,
+    });
+  } else if (p.composite !== false && refNames.length) {
     const info = await getObjectInfo();
     if (info.KleinEditComposite) {
       graph.composite = await nodeFromOrdered(
@@ -3016,14 +3067,18 @@ const REQUIRED_CLASSES = {
   enhance: ['TextGenerate', 'PreviewAny'],
   klein: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'VAEEncode',
     'ReferenceLatent', 'GetImageSize', 'EmptyFlux2LatentImage', 'Flux2Scheduler', 'CFGGuider',
-    'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage'],
+    'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage',
+    'ImageToMask', 'GrowMask', 'SetLatentNoiseMask', 'ImageCompositeMasked'],
   qwenedit: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingAuraFlow',
     'CFGNorm', 'FluxKontextImageScale', 'TextEncodeQwenImageEditPlus', 'FluxKontextMultiReferenceLatentMethod',
-    'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage'],
+    'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage', 'ImageToMask', 'GrowMask',
+    'SetLatentNoiseMask', 'ImageCompositeMasked'],
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
-  krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SaveImage'],
+  krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
+    'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
+  smartmask: SAM3_MASK_CLASSES,
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
   ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
   video: ['CheckpointLoaderSimple', 'LoraLoaderModelOnly', 'LTXAVTextEncoderLoader', 'TextGenerateLTX2Prompt',
@@ -3308,6 +3363,47 @@ async function handleApi(req, res, url) {
     return json(res, 200, { name: comfyName, hasAudio: detectAudioStream(buf, orig) === true });
   }
 
+  if (route === '/api/edit-mask/sam3' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const imageName = String(body.imageName || '').trim();
+    const prompt = String(body.prompt || '').trim().slice(0, 240);
+    const points = Array.isArray(body.points) ? body.points.slice(0, 10) : [];
+    if (!imageName) return json(res, 400, { error: 'Add a source image before using smart select' });
+    if (!prompt && !points.length) return json(res, 400, { error: 'Describe an object or tap the image' });
+    const info = await getObjectInfo();
+    const needed = prompt
+      ? ['LoadSAM3Model', 'SAM3Grounding', 'MaskToImage', 'SaveImage']
+      : ['LoadSAM3Model', 'SAM3CreatePoint', 'SAM3CombinePoints', 'SAM3Segmentation', 'MaskToImage', 'SaveImage'];
+    const missing = needed.filter((name) => !info[name]);
+    if (missing.length) {
+      return json(res, 501, {
+        error: 'Smart Select needs the ComfyUI-SAM3 custom node pack. Brush and Box selection still work.',
+        code: 'sam3_unavailable',
+        missing,
+      });
+    }
+    const graph = buildSam3MaskGraph({ imageName, prompt, points });
+    await filterInputs(graph);
+    const result = await new Promise((resolve, reject) => {
+      (async () => {
+        const pid = await queuePrompt(graph);
+        const timer = setTimeout(() => {
+          jobs.delete(pid);
+          reject(new Error('SAM3 selection timed out (3 min)'));
+        }, 180000);
+        trackJob(pid, {
+          kind: 'smartMask',
+          graph,
+          profileId: req.profile.id,
+          resolve: (value) => { clearTimeout(timer); resolve(value); },
+          reject: (error) => { clearTimeout(timer); reject(error); },
+        });
+        ensureWs();
+      })().catch(reject);
+    });
+    return json(res, 200, result);
+  }
+
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
@@ -3339,6 +3435,9 @@ async function handleApi(req, res, url) {
       ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
     p.regions = Array.isArray(p.regions) ? p.regions : [];
     p.maskImageName = String(p.maskImageName || '').trim();
+    p.editMaskMode = ['smart', 'box', 'brush'].includes(p.editMaskMode) ? p.editMaskMode : 'brush';
+    p.editMaskFeather = clampInt(p.editMaskFeather, 0, 64, 0);
+    p.editMaskInvert = p.editMaskInvert === true;
 
     let refined = null;
     if (p.enhance && p.mode !== 'edit') {
@@ -3375,12 +3474,22 @@ async function handleApi(req, res, url) {
       if (p.qwenAngle && p.editEngine !== 'qwen') {
         return json(res, 400, { error: 'Camera angles are available with Qwen Edit only' });
       }
+      if (p.qwenAngle && p.maskImageName) {
+        return json(res, 400, { error: 'Use either a Qwen camera angle or a localized edit area for a single run' });
+      }
       if (p.qwenAngle) {
         p.qwenAnglePrompt = [qwenAnglePrompt(p.qwenAngle), p.prompt].filter(Boolean).join('. ');
       }
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }
+      if (p.maskImageName && !supportsEditMask(p.editEngine)) {
+        return json(res, 400, { error: 'Edit areas are available with Klein 9B, Qwen Edit, and Krea2 only' });
+      }
+      if (p.maskImageName && !refNames.length) {
+        return json(res, 400, { error: 'An edit area needs a source image in reference slot 1' });
+      }
+      if (p.maskImageName) p.editAspectOverride = false;
       if (p.editEngine === 'krea2') {
         if (p.maskImageName && !refNames.length) {
           return json(res, 400, { error: 'Krea2 inpaint needs a source image' });
@@ -4253,6 +4362,7 @@ function jobLabel(job) {
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);
   if (job.kind === 'enhance') return 'Prompt enhance';
+  if (job.kind === 'smartMask') return 'SAM3 smart selection';
   return job.kind;
 }
 
