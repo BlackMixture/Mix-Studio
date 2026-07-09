@@ -503,7 +503,7 @@
             <div class="video-timing-body-inner">
               <div class="video-number-setting">
                 <span><b>Duration</b><small>Video length</small></span>
-                <button class="video-number-scrubber duration-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="15" aria-valuenow="5">
+                <button class="video-number-scrubber wheel-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="15" aria-valuenow="5">
                   <span class="duration-compact-wheel" aria-hidden="true"><small id="vidDurPrev">4</small><strong id="vidDurVal">5</strong><small id="vidDurNext">6</small></span><em>s</em>
                   <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
                 </button>
@@ -511,8 +511,8 @@
               </div>
               <div class="video-number-setting" id="vidFreeField">
                 <span><b>Motion freedom</b><small>Higher is livelier</small></span>
-                <button class="video-number-scrubber" id="vidFreeScrub" type="button" role="spinbutton" aria-label="Motion freedom. Swipe up or down to adjust" aria-valuemin="0" aria-valuemax="100" aria-valuenow="35">
-                  <strong id="vidFreeVal">35</strong>
+                <button class="video-number-scrubber wheel-scrubber" id="vidFreeScrub" type="button" role="spinbutton" aria-label="Motion freedom. Swipe up or down to adjust, or tap to open the motion freedom picker" aria-valuemin="0" aria-valuemax="100" aria-valuenow="35">
+                  <span class="duration-compact-wheel" aria-hidden="true"><small id="vidFreePrev">34</small><strong id="vidFreeVal">35</strong><small id="vidFreeNext">36</small></span>
                   <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
                 </button>
                 <input id="vidFree" type="hidden" min="0" max="100" step="1" value="35" />
@@ -1250,6 +1250,15 @@
     <p class="duration-picker-copy">Seconds</p>
     <div class="duration-wheel" id="durationWheel" role="listbox" aria-label="Duration in seconds"></div>
     <button class="sheet-cta" id="durationPickerDone" type="button">Done</button>
+  </div>
+</div>
+
+<div class="sheet" id="motionPickerSheet">
+  <div class="sheet-panel duration-picker-panel">
+    <h3 class="sheet-title">Motion freedom <button data-close aria-label="Close motion freedom picker">✕</button></h3>
+    <p class="duration-picker-copy">Higher values create livelier motion.</p>
+    <div class="duration-wheel" id="motionWheel" role="listbox" aria-label="Motion freedom"></div>
+    <button class="sheet-cta" id="motionPickerDone" type="button">Done</button>
   </div>
 </div>
 

@@ -53,7 +53,7 @@ test('Secondary video controls remain behind an animated accessible disclosure',
   assert.match(app, /function setVideoOptionsExpanded\(open\)/);
 });
 
-test('Duration uses a discoverable clock-style scrubber with a larger tap-to-open wheel', () => {
+test('Duration and Motion Freedom use discoverable clock-style scrubbers with larger tap-to-open wheels', () => {
   assert.match(html, /id="vidTimingHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidTimingBody"/);
   assert.match(html, /id="vidTimingBody" aria-hidden="true" inert/);
   assert.match(html, /id="vidDurScrub"[^>]*role="spinbutton"/);
@@ -63,13 +63,21 @@ test('Duration uses a discoverable clock-style scrubber with a larger tap-to-ope
   assert.match(html, /id="durationWheel"[^>]*role="listbox"/);
   assert.match(html, /id="durationPickerDone"/);
   assert.match(html, /id="vidFreeScrub"[^>]*role="spinbutton"/);
+  assert.match(html, /id="vidFreePrev"/);
+  assert.match(html, /id="vidFreeNext"/);
+  assert.match(html, /id="motionPickerSheet"/);
+  assert.match(html, /id="motionWheel"[^>]*role="listbox"/);
+  assert.match(html, /id="motionPickerDone"/);
   assert.doesNotMatch(html, /id="vid(?:Dur|Free)" type="range"/);
   assert.match(css, /\.video-number-scrubber \{[\s\S]*touch-action: none/);
   assert.match(css, /\.duration-compact-wheel \{/);
   assert.match(css, /\.duration-wheel \{[\s\S]*scroll-snap-type: y mandatory/);
   assert.match(app, /function wireVideoScrubber\(buttonId, inputId, onTap\)/);
+  assert.match(app, /function renderVideoValueWheel\(inputId, wheelId\)/);
   assert.match(app, /function openDurationPicker\(\)/);
+  assert.match(app, /function openMotionPicker\(\)/);
   assert.match(app, /wireVideoScrubber\('vidDurScrub', 'vidDur', openDurationPicker\)/);
+  assert.match(app, /wireVideoScrubber\('vidFreeScrub', 'vidFree', openMotionPicker\)/);
   assert.match(app, /drag\.y - event\.clientY/);
   assert.match(app, /event\.key === 'ArrowUp'/);
 });

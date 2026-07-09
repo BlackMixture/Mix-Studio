@@ -1236,7 +1236,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .video-number-scrubber strong { min-width: 26px; font-size: 17px; text-align: right; font-variant-numeric: tabular-nums; }
 .video-number-scrubber em { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 800; }
 .video-number-scrubber svg { width: 15px; height: 20px; margin-left: 4px; color: var(--muted-2); }
-.duration-scrubber {
+.wheel-scrubber {
   min-width: 104px;
   min-height: 62px;
   padding: 5px 8px 5px 11px;
@@ -1266,8 +1266,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   line-height: 1;
   text-align: center;
 }
-.duration-scrubber em { align-self: center; }
-.duration-scrubber svg { margin-left: 1px; }
+.wheel-scrubber em { align-self: center; }
+.wheel-scrubber svg { margin-left: 1px; }
 .video-number-scrubber.adjusting,
 .video-number-scrubber:focus-visible {
   outline: 0;

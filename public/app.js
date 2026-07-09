@@ -3260,44 +3260,48 @@ function updateVideoTuningSummary() {
   $('#vidDurPrev').textContent = String(Math.max(Number(durationInput.min) || 1, duration - (Number(durationInput.step) || 1)));
   $('#vidDurNext').textContent = String(Math.min(Number(durationInput.max) || 15, duration + (Number(durationInput.step) || 1)));
   $('#vidFreeVal').textContent = String(motion);
+  $('#vidFreePrev').textContent = String(Math.max(Number($('#vidFree').min) || 0, motion - (Number($('#vidFree').step) || 1)));
+  $('#vidFreeNext').textContent = String(Math.min(Number($('#vidFree').max) || 100, motion + (Number($('#vidFree').step) || 1)));
   $('#vidDurScrub').setAttribute('aria-valuenow', String(duration));
   $('#vidDurScrub').setAttribute('aria-valuemax', $('#vidDur').max || '15');
   $('#vidFreeScrub').setAttribute('aria-valuenow', String(motion));
 }
 
-function renderDurationWheel() {
-  const input = $('#vidDur');
-  const wheel = $('#durationWheel');
-  const current = Number(input.value) || 1;
-  const min = Number(input.min) || 1;
-  const max = Number(input.max) || 15;
+function renderVideoValueWheel(inputId, wheelId) {
+  const input = $('#' + inputId);
+  const wheel = $('#' + wheelId);
+  const min = Number(input.min);
+  const max = Number(input.max);
   const step = Number(input.step) || 1;
+  const currentValue = Number(input.value);
+  const current = Number.isFinite(currentValue) ? currentValue : min;
   wheel.replaceChildren();
   for (let value = min; value <= max; value += step) {
     const option = document.createElement('button');
     option.type = 'button';
     option.className = 'duration-wheel-option' + (value === current ? ' active' : '');
-    option.dataset.duration = String(value);
+    option.dataset.videoValue = String(value);
     option.setAttribute('role', 'option');
     option.setAttribute('aria-selected', String(value === current));
     option.textContent = String(value);
     option.addEventListener('click', () => {
       setVideoScrubValue(input, value);
-      renderDurationWheel();
-      centerDurationWheel();
+      renderVideoValueWheel(inputId, wheelId);
+      centerVideoValueWheel(wheelId);
     });
     wheel.appendChild(option);
   }
 }
 
-function centerDurationWheel() {
-  const active = $('#durationWheel .duration-wheel-option.active');
-  if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+function centerVideoValueWheel(wheelId) {
+  const active = $('#' + wheelId + ' .duration-wheel-option.active');
+  if (active) active.scrollIntoView({ block: 'center', behavior: 'auto' });
 }
 
-function syncDurationWheelFromScroll() {
-  const wheel = $('#durationWheel');
-  const options = $$('#durationWheel .duration-wheel-option');
+function syncVideoValueWheelFromScroll(inputId, wheelId) {
+  const input = $('#' + inputId);
+  const wheel = $('#' + wheelId);
+  const options = $$('#' + wheelId + ' .duration-wheel-option');
   if (!options.length) return;
   const center = wheel.getBoundingClientRect().top + wheel.clientHeight / 2;
   const nearest = options.reduce((best, option) => {
@@ -3306,8 +3310,8 @@ function syncDurationWheelFromScroll() {
     return !best || distance < best.distance ? { option, distance } : best;
   }, null);
   if (!nearest) return;
-  const value = Number(nearest.option.dataset.duration);
-  if (value !== Number($('#vidDur').value)) setVideoScrubValue($('#vidDur'), value);
+  const value = Number(nearest.option.dataset.videoValue);
+  if (value !== Number(input.value)) setVideoScrubValue(input, value);
   options.forEach((option) => {
     const active = option === nearest.option;
     option.classList.toggle('active', active);
@@ -3315,22 +3319,34 @@ function syncDurationWheelFromScroll() {
   });
 }
 
-let durationWheelFrame = 0;
-$('#durationWheel').addEventListener('scroll', () => {
-  if (durationWheelFrame) return;
-  durationWheelFrame = requestAnimationFrame(() => {
-    durationWheelFrame = 0;
-    syncDurationWheelFromScroll();
-  });
-}, { passive: true });
+function wireVideoValueWheel(inputId, wheelId) {
+  let frame = 0;
+  $('#' + wheelId).addEventListener('scroll', () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      syncVideoValueWheelFromScroll(inputId, wheelId);
+    });
+  }, { passive: true });
+}
+
+wireVideoValueWheel('vidDur', 'durationWheel');
+wireVideoValueWheel('vidFree', 'motionWheel');
 
 function openDurationPicker() {
-  renderDurationWheel();
+  renderVideoValueWheel('vidDur', 'durationWheel');
   $('#durationPickerSheet').classList.add('show');
-  requestAnimationFrame(centerDurationWheel);
+  requestAnimationFrame(() => centerVideoValueWheel('durationWheel'));
+}
+
+function openMotionPicker() {
+  renderVideoValueWheel('vidFree', 'motionWheel');
+  $('#motionPickerSheet').classList.add('show');
+  requestAnimationFrame(() => centerVideoValueWheel('motionWheel'));
 }
 
 $('#durationPickerDone').addEventListener('click', () => $('#durationPickerSheet').classList.remove('show'));
+$('#motionPickerDone').addEventListener('click', () => $('#motionPickerSheet').classList.remove('show'));
 
 function setVideoScrubValue(input, value) {
   const min = Number(input.min);
@@ -3386,7 +3402,7 @@ function wireVideoScrubber(buttonId, inputId, onTap) {
 }
 
 wireVideoScrubber('vidDurScrub', 'vidDur', openDurationPicker);
-wireVideoScrubber('vidFreeScrub', 'vidFree');
+wireVideoScrubber('vidFreeScrub', 'vidFree', openMotionPicker);
 
 function setLorasExpanded(open) {
   const expand = open === true;
