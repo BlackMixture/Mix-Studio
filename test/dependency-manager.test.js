@@ -91,6 +91,10 @@ test('node installs preserve unrelated ComfyUI packages and make a repair explic
   assert.doesNotMatch(sam3, /'--upgrade', '-r'/);
 });
 
+test('model readiness accepts ComfyUI DynamicCombo option lists', () => {
+  assert.match(server, /spec\[0\] === 'COMBO' && Array\.isArray\(spec\[1\]\?\.options\)/);
+});
+
 test('node installs constrain the existing environment instead of replacing runtime packages', () => {
   assert.deepEqual(
     requirementsArgs('requirements.txt', false, { constraintFile: 'before-install.freeze.txt' }).slice(-4),

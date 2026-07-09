@@ -598,7 +598,12 @@ async function getObjectInfo(force) {
 
 function comboList(info, cls, field) {
   const spec = info[cls]?.input?.required?.[field] || info[cls]?.input?.optional?.[field];
-  return Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] : [];
+  if (!Array.isArray(spec)) return [];
+  if (Array.isArray(spec[0])) return spec[0];
+  // Recent ComfyUI releases serialize DynamicCombo inputs as
+  // ['COMBO', { options: [...] }] instead of putting choices in slot 0.
+  // Accept both API shapes so installed models are not reported missing.
+  return spec[0] === 'COMBO' && Array.isArray(spec[1]?.options) ? spec[1].options : [];
 }
 
 function modelStatus(info, cls, field, name, fallbackList) {
