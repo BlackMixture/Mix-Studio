@@ -127,6 +127,8 @@ User's Input:`;
 const DEFAULT_SETTINGS = {
   comfyUrl: RUNTIME.comfy.url || 'http://127.0.0.1:8188',
   unet: 'krea2_turbo_fp8_scaled.safetensors',
+  krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
+  krea2TurboLora: 'krea2_turbo_lora_rank_64_bf16.safetensors',
   clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
   clipType: 'krea2',
   vae: 'qwen_image_vae.safetensors',
@@ -578,6 +580,12 @@ function configuredModelsStatus(info) {
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
     : comboList(info, 'LoraLoader', 'lora_name');
   return {
+    krea2: {
+      label: 'Krea 2',
+      turbo: modelStatus(info, 'UNETLoader', 'unet_name', settings.unet),
+      raw: modelStatus(info, 'UNETLoader', 'unet_name', settings.krea2RawUnet),
+      turboLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.krea2TurboLora, loraList),
+    },
     klein4: {
       label: 'Flux Klein 4B',
       unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein4Unet),
@@ -1057,13 +1065,15 @@ async function completeJob(pid) {
       id,
       file: fname,
       mode: job.params.mode,
+      krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
+      krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       angleView: job.params.qwenAngle || undefined,
       angleGroupId: job.params.angleGroupId || undefined,
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
-      postUpscale: job.params.mode === 'edit' ? (job.params.postUpscale || undefined) : undefined,
+      postUpscale: job.params.postUpscale || undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
       profileId: job.profileId,
@@ -1091,12 +1101,12 @@ async function completeJob(pid) {
     created.push(item);
   }
   saveDb();
-  if (job.params.mode === 'edit' && job.params.postUpscale) {
+  if (job.params.postUpscale) {
     for (const item of created) {
       try {
-        await queuePostEditUpscale(item, job.params.postUpscale, job.profileId);
+        await queuePostUpscale(item, job.params.postUpscale, job.profileId);
       } catch (error) {
-        console.error('[KreaStudio] Could not queue post-edit SeedVR2 upscale:', error.message);
+        console.error('[MixBox Studio] Could not queue SeedVR2 finish upscale:', error.message);
       }
     }
     saveDb();
@@ -1322,15 +1332,16 @@ function buildLoraChain(graph, loras) {
   return { model, clip };
 }
 
-function baseLoaders(graph) {
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.unet, weight_dtype: 'default' } };
+function baseLoaders(graph, params = {}) {
+  const unetName = params.krea2Turbo === false ? settings.krea2RawUnet : settings.unet;
+  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: unetName, weight_dtype: 'default' } };
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 }
 
 async function buildT2I(p) {
   const graph = {};
-  baseLoaders(graph);
+  baseLoaders(graph, p);
   const { model, clip } = buildLoraChain(graph, p.loras);
 
   const textSource = p.enhancedText || p.prompt;
@@ -1666,7 +1677,7 @@ async function buildImageComposite(imageNames) {
   return filterInputs(graph);
 }
 
-function normalizePostEditUpscale(value) {
+function normalizePostUpscale(value) {
   if (!value || value.enabled !== true) return undefined;
   return {
     engine: 'seedvr2',
@@ -1677,9 +1688,9 @@ function normalizePostEditUpscale(value) {
   };
 }
 
-async function queuePostEditUpscale(item, options, profileId) {
+async function queuePostUpscale(item, options, profileId) {
   const buf = await fsp.readFile(path.join(IMAGES, item.file));
-  const comfyName = await uploadToComfy(buf, `ks_edit_finish_${item.id}.png`);
+  const comfyName = await uploadToComfy(buf, `ks_finish_${item.id}.png`);
   const graph = await buildUpscale(comfyName, options);
   const pid = await queuePrompt(graph);
   item.upscalePending = true;
@@ -3180,6 +3191,10 @@ async function handleApi(req, res, url) {
         loraThumbs: db.loraThumbs,
         missing,
         models: configuredModelsStatus(info),
+        krea2: {
+          rawUnet: settings.krea2RawUnet,
+          turboLora: settings.krea2TurboLora,
+        },
         features: settings.features,
         queue: jobs.size,
       });
@@ -3240,10 +3255,18 @@ async function handleApi(req, res, url) {
     p.steps = clampInt(p.steps, 1, 100, 12);
     p.batch = clampInt(p.batch, 1, 8, 1);
     p.cfg = clampNum(p.cfg, 0, 30, 1);
+    p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
+    p.krea2RawTurboLora = p.krea2Turbo || !p.krea2RawTurboLora || typeof p.krea2RawTurboLora !== 'object'
+      ? undefined
+      : {
+          name: String(p.krea2RawTurboLora.name || settings.krea2TurboLora),
+          strength: clampNum(p.krea2RawTurboLora.strength, 0, 2, 0.6),
+          on: p.krea2RawTurboLora.on !== false,
+        };
     p.imageName = p.mode === 'edit' ? '' : String(p.imageName || '').trim();
     p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : (p.imageName ? 0.45 : 1));
     p.editAspectOverride = p.editAspectOverride === true;
-    p.postUpscale = p.mode === 'edit' ? normalizePostEditUpscale(p.postUpscale) : undefined;
+    p.postUpscale = p.mode === 'edit' || p.mode === 't2i' ? normalizePostUpscale(p.postUpscale) : undefined;
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
       ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
     p.regions = Array.isArray(p.regions) ? p.regions : [];

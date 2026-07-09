@@ -135,18 +135,22 @@ test('Use settings rehydrates every saved edit input instead of asking for manua
   assert.match(server, /batch: job\.params\.batch/);
 });
 
-test('every edit engine can queue an optional SeedVR2 finish pass', () => {
+test('create and edit image workflows can queue an optional SeedVR2 finish pass', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="editUpscaleToggle"[^>]*aria-pressed="false"/);
   assert.match(html, /class="edit-upscale-title"[^>]*>[\s\S]*?Upscale<\/span>/);
   assert.doesNotMatch(html, />SeedVR2 finish<\/span>/i);
   assert.match(html, /id="editUpscaleResolution"/);
+  assert.match(html, /class="edit-upscale-icon"/);
   assert.match(app, /function renderEditUpscale\(\)/);
-  assert.match(app, /postUpscale: mode === 'edit' && state\.editUpscaleEnabled/);
+  assert.match(app, /createUpscaleEnabled: false/);
+  assert.match(app, /postUpscale: upscaleFinish\.enabled/);
+  assert.match(app, /state\.createUpscaleEnabled = !!it\.postUpscale/);
   assert.match(app, /state\.editUpscaleEnabled = !!it\.postUpscale/);
-  assert.match(server, /function normalizePostEditUpscale\(value\)/);
-  assert.match(server, /async function queuePostEditUpscale\(item, options, profileId\)/);
-  assert.match(server, /await queuePostEditUpscale\(item, job\.params\.postUpscale, job\.profileId\)/);
+  assert.match(server, /function normalizePostUpscale\(value\)/);
+  assert.match(server, /async function queuePostUpscale\(item, options, profileId\)/);
+  assert.match(server, /p\.mode === 'edit' \|\| p\.mode === 't2i' \? normalizePostUpscale/);
+  assert.match(server, /await queuePostUpscale\(item, job\.params\.postUpscale, job\.profileId\)/);
 });
 
 test('each edit model remembers its own selected LoRAs', () => {

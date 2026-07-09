@@ -8,7 +8,7 @@
       "id": "core.image",
       "label": "Image generation",
       "required": true,
-      "models": ["krea2", "qwen3-vl", "qwen-image-vae"],
+      "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "qwen3-vl", "qwen-image-vae"],
       "nodes": ["core", "TextGenerate"]
     },
     {

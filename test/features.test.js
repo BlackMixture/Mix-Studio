@@ -36,4 +36,7 @@ test('installer manifest exposes optional edit and video components', () => {
   assert.ok(ids.includes('video.ltxEdit'));
   assert.ok(ids.includes('video.eros'));
   assert.ok(ids.includes('video.scail'));
+  const core = manifest.features.find((feature) => feature.id === 'core.image');
+  assert.ok(core.models.includes('krea2-raw'));
+  assert.ok(core.models.includes('krea2-turbo-lora'));
 });

@@ -26,6 +26,10 @@ const state = {
   editUpscaleResolution: 2160,
   editUpscaleProfile: 'sharp',
   editUpscaleNoise: 'low',
+  createUpscaleEnabled: false,
+  createUpscaleResolution: 2160,
+  createUpscaleProfile: 'sharp',
+  createUpscaleNoise: 'low',
   qwenAngles: [],
   qwenAnglesMode: false,
   qwenAngleElevation: 'eye-level',
@@ -38,7 +42,12 @@ const state = {
   editEngine: 'klein4',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   createRef: null,           // optional Krea 2 image-to-image source
+  createImageGuideOpen: false,
+  createMatchSource: false,
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
+  krea2Turbo: true,          // merged Turbo checkpoint vs Raw checkpoint
+  krea2RawTurboLora: null,   // managed Raw-mode Turbo LoRA, preserved while hidden
+  krea2SamplingReady: false,
   regions: [],
   activeRegionId: null,
   kreaMask: null,
@@ -868,7 +877,11 @@ function saveForm() {
       createRef: state.createRef ? {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
       } : null,
+      createImageGuideOpen: state.createImageGuideOpen,
+      createMatchSource: state.createMatchSource,
       createInfluence: state.createInfluence,
+      krea2Turbo: state.krea2Turbo,
+      krea2RawTurboLora: state.krea2RawTurboLora,
       regions: state.regions,
       kreaBrush: state.kreaBrush,
       scailModeVersion: 2,
@@ -882,6 +895,10 @@ function saveForm() {
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
       editUpscaleNoise: state.editUpscaleNoise,
+      createUpscaleEnabled: state.createUpscaleEnabled,
+      createUpscaleResolution: state.createUpscaleResolution,
+      createUpscaleProfile: state.createUpscaleProfile,
+      createUpscaleNoise: state.createUpscaleNoise,
       qwenAngles: state.qwenAngles,
       qwenAngleElevation: state.qwenAngleElevation,
       qwenAngleDistance: state.qwenAngleDistance,
@@ -903,6 +920,10 @@ function loadForm() {
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
     state.editUpscaleNoise = ['off', 'low', 'medium'].includes(f.editUpscaleNoise) ? f.editUpscaleNoise : 'low';
+    state.createUpscaleEnabled = f.createUpscaleEnabled === true;
+    state.createUpscaleResolution = [1440, 2160, 3840].includes(Number(f.createUpscaleResolution)) ? Number(f.createUpscaleResolution) : 2160;
+    state.createUpscaleProfile = f.createUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
+    state.createUpscaleNoise = ['off', 'low', 'medium'].includes(f.createUpscaleNoise) ? f.createUpscaleNoise : 'low';
     state.qwenAngles = Array.isArray(f.qwenAngles) ? [...new Set(f.qwenAngles.filter((id) => QWEN_ANGLE_IDS.has(id)))] : [];
     state.qwenAngleElevation = QWEN_ANGLE_ELEVATIONS.some((option) => option.id === f.qwenAngleElevation)
       ? f.qwenAngleElevation : 'eye-level';
@@ -926,6 +947,13 @@ function loadForm() {
     const savedCreateInfluence = Number(f.createInfluence);
     state.createInfluence = Number.isFinite(savedCreateInfluence)
       ? Math.max(0, Math.min(100, savedCreateInfluence)) : 55;
+    state.krea2Turbo = f.krea2Turbo !== false;
+    state.krea2RawTurboLora = f.krea2RawTurboLora && f.krea2RawTurboLora.name ? {
+      name: String(f.krea2RawTurboLora.name),
+      strength: Math.max(0, Math.min(2, Number(f.krea2RawTurboLora.strength) || 0.6)),
+      on: f.krea2RawTurboLora.on !== false,
+      managed: 'krea2-raw-turbo',
+    } : null;
     state.createRef = f.createRef && f.createRef.name ? {
       name: String(f.createRef.name),
       url: '/api/input?name=' + encodeURIComponent(String(f.createRef.name)),
@@ -933,6 +961,8 @@ function loadForm() {
       h: Number(f.createRef.h) || 0,
       label: String(f.createRef.label || 'Source image'),
     } : null;
+    state.createImageGuideOpen = f.createImageGuideOpen === true;
+    state.createMatchSource = f.createMatchSource === true && !!state.createRef;
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     if (f.cameraSettings && CameraSettings) {
@@ -1064,6 +1094,7 @@ function updateVideoPanels() {
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
+  renderKrea2Mode();
   renderCreateImageGuide();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
@@ -1117,16 +1148,164 @@ function createDenoiseFromInfluence(influence = state.createInfluence) {
   return Number((1 - normalized * 0.95).toFixed(2));
 }
 
+const DEFAULT_KREA2_TURBO_LORA = 'krea2_turbo_lora_rank_64_bf16.safetensors';
+
+function assetNameKey(name) {
+  return String(name || '').replace(/\\/g, '/').toLowerCase();
+}
+
+function krea2TurboLoraName() {
+  return (lastMeta && lastMeta.krea2 && lastMeta.krea2.turboLora) || DEFAULT_KREA2_TURBO_LORA;
+}
+
+function ensureKrea2RawTurboLora() {
+  const name = krea2TurboLoraName();
+  const key = assetNameKey(name);
+  let lora = state.krea2RawTurboLora;
+  if (!lora || assetNameKey(lora.name) !== key) {
+    lora = state.loras.find((item) => item && assetNameKey(item.name) === key) || {
+      name, strength: 0.6, on: true,
+    };
+  }
+  lora.name = name;
+  lora.managed = 'krea2-raw-turbo';
+  if (!Number.isFinite(Number(lora.strength))) lora.strength = 0.6;
+  if (typeof lora.on !== 'boolean') lora.on = true;
+  state.krea2RawTurboLora = lora;
+  state.loras = state.loras.filter((item) => item && item !== lora && item.managed !== 'krea2-raw-turbo' && assetNameKey(item.name) !== key);
+  state.loras.unshift(lora);
+  return lora;
+}
+
+function detachKrea2RawTurboLora() {
+  const key = assetNameKey(krea2TurboLoraName());
+  const current = state.loras.find((item) => item && (item.managed === 'krea2-raw-turbo' || assetNameKey(item.name) === key));
+  if (current) {
+    current.managed = 'krea2-raw-turbo';
+    state.krea2RawTurboLora = current;
+  }
+  state.loras = state.loras.filter((item) => item && item.managed !== 'krea2-raw-turbo' && assetNameKey(item.name) !== key);
+}
+
+function applyKrea2SamplingPreset() {
+  if (state.krea2Turbo) {
+    $('#stepsInput').value = 12;
+    $('#cfgInput').value = 1;
+    return;
+  }
+  const turboLora = ensureKrea2RawTurboLora();
+  $('#stepsInput').value = turboLora.on ? 12 : 52;
+  $('#cfgInput').value = turboLora.on ? 1 : 3.5;
+}
+
+function renderKrea2Mode() {
+  const button = $('#kreaTurboToggle');
+  if (!button) return;
+  const visible = state.view === 'create' && state.createMode === 'image';
+  button.hidden = !visible;
+  if (!visible) {
+    detachKrea2RawTurboLora();
+    state.krea2SamplingReady = false;
+    return;
+  }
+  if (state.krea2Turbo) detachKrea2RawTurboLora();
+  else {
+    ensureKrea2RawTurboLora();
+    if (!state.krea2SamplingReady) applyKrea2SamplingPreset();
+  }
+  state.krea2SamplingReady = true;
+  button.setAttribute('aria-checked', String(state.krea2Turbo));
+  const rawStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.raw;
+  if (state.krea2Turbo) {
+    $('#kreaModelSummary').textContent = 'Krea 2 · fast · 12 steps';
+  } else if (rawStatus && !rawStatus.ok) {
+    $('#kreaModelSummary').textContent = 'Raw model missing · configure in Settings';
+  } else {
+    const lora = state.krea2RawTurboLora;
+    $('#kreaModelSummary').textContent = lora && lora.on
+      ? `Raw · LoRA ${Number(lora.strength).toFixed(2)} · ${$('#stepsInput').value || 12} steps`
+      : `Raw · full sampling · ${$('#stepsInput').value || 52} steps`;
+  }
+}
+
+function krea2ManagedLoraChanged(lora) {
+  if (!lora || lora.managed !== 'krea2-raw-turbo') return;
+  state.krea2RawTurboLora = lora;
+  if (!state.krea2Turbo) applyKrea2SamplingPreset();
+  renderKrea2Mode();
+}
+
+$('#kreaTurboToggle').addEventListener('click', () => {
+  const nextTurbo = !state.krea2Turbo;
+  if (!nextTurbo) {
+    const rawStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.raw;
+    if (rawStatus && !rawStatus.ok) {
+      toast('Krea 2 Raw is not installed — configure the Raw UNET in Advanced Settings', true);
+      return;
+    }
+  }
+  state.krea2Turbo = nextTurbo;
+  state.krea2SamplingReady = false;
+  if (state.krea2Turbo) detachKrea2RawTurboLora();
+  else {
+    const lora = ensureKrea2RawTurboLora();
+    const loraStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.turboLora;
+    if (loraStatus && !loraStatus.ok) {
+      lora.on = false;
+      toast('Turbo LoRA is not installed — Raw will use full 52-step sampling', true);
+    }
+  }
+  applyKrea2SamplingPreset();
+  state.krea2SamplingReady = true;
+  renderKrea2Mode();
+  renderLoras();
+  saveForm();
+});
+
 function createInfluenceFromDenoise(denoise) {
   const value = Math.max(0.05, Math.min(1, Number(denoise) || 1));
   return Math.round(((1 - value) / 0.95) * 20) * 5;
 }
 
+function matchedCreateOutputDimensions(ref = state.createRef) {
+  const sourceWidth = Number(ref?.w);
+  const sourceHeight = Number(ref?.h);
+  if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight) || sourceWidth < 1 || sourceHeight < 1) return null;
+  const scale = Math.min(1, 4096 / Math.max(sourceWidth, sourceHeight));
+  return {
+    w: round32(sourceWidth * scale),
+    h: round32(sourceHeight * scale),
+  };
+}
+
+function applyCreateMatchedDimensions() {
+  const matched = matchedCreateOutputDimensions();
+  if (!matched) return false;
+  state.createMatchSource = true;
+  state.customDims = true;
+  state.width = matched.w;
+  state.height = matched.h;
+  return true;
+}
+
 function renderCreateImageGuide() {
   const section = $('#createImageGuide');
   if (!section) return;
-  section.hidden = !(state.view === 'create' && state.createMode === 'image');
+  const toggle = $('#createImageGuideToggle');
+  const toolbar = $('#createPromptTools');
+  const visible = state.view === 'create' && state.createMode === 'image';
+  if (section.previousElementSibling !== toolbar) toolbar.after(section);
+  section.hidden = !visible;
+  toggle.hidden = !visible;
   const hasImage = !!state.createRef;
+  const open = visible && state.createImageGuideOpen;
+  toggle.classList.toggle('has-image', hasImage);
+  toggle.classList.toggle('active', open);
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', hasImage ? 'Image guide, source image added' : 'Image guide');
+  section.classList.toggle('expanded', open);
+  section.inert = !open;
+  section.setAttribute('aria-hidden', String(!open));
   $('#createImageGuideAdd').hidden = hasImage;
   $('#createImageGuideFilled').hidden = !hasImage;
   const influence = Math.max(0, Math.min(100, Number(state.createInfluence) || 0));
@@ -1144,17 +1323,28 @@ function renderCreateImageGuide() {
 function pickCreateImageGuide() {
   pickUpload('image/*', (file) => {
     state.createRef = file;
+    if (state.createMatchSource) applyCreateMatchedDimensions();
     renderCreateImageGuide();
+    renderAspects();
+    renderDims();
     saveForm();
     toast('Image guide added');
   });
 }
 
+$('#createImageGuideToggle').addEventListener('click', () => {
+  state.createImageGuideOpen = !state.createImageGuideOpen;
+  renderCreateImageGuide();
+  saveForm();
+});
 $('#createImageGuideAdd').addEventListener('click', pickCreateImageGuide);
 $('#createImageGuideChange').addEventListener('click', pickCreateImageGuide);
 $('#createImageGuideRemove').addEventListener('click', () => {
   state.createRef = null;
+  state.createMatchSource = false;
   renderCreateImageGuide();
+  renderAspects();
+  renderDims();
   saveForm();
   toast('Image guide removed');
 });
@@ -2619,6 +2809,27 @@ $('#cameraApply').addEventListener('click', applyCameraPrompt);
 function renderAspects() {
   const row = $('#aspectRow');
   row.innerHTML = '';
+  const matched = state.view === 'create' && state.createMode === 'image'
+    ? matchedCreateOutputDimensions()
+    : null;
+  if (matched) {
+    const source = document.createElement('button');
+    source.type = 'button';
+    source.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && state.customDims ? ' active' : '');
+    source.setAttribute('aria-label', `Match source image at ${matched.w} by ${matched.h}`);
+    const ratio = matched.w / matched.h;
+    const maxSide = 22;
+    const w = ratio >= 1 ? maxSide : Math.max(7, Math.round(maxSide * ratio));
+    const h = ratio >= 1 ? Math.max(7, Math.round(maxSide / ratio)) : maxSide;
+    source.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Match image<small>${matched.w} × ${matched.h}</small>`;
+    source.addEventListener('click', () => {
+      applyCreateMatchedDimensions();
+      renderAspects();
+      renderDims();
+      saveForm();
+    });
+    row.appendChild(source);
+  }
   for (const a of ASPECTS) {
     const btn = document.createElement('button');
     btn.className = 'aspect-chip' + (a.label === state.aspect && !state.customDims ? ' active' : '');
@@ -2628,6 +2839,7 @@ function renderAspects() {
     btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>${a.label}`;
     btn.addEventListener('click', () => {
       state.aspect = a.label;
+      state.createMatchSource = false;
       state.customDims = false;
       computeDims();
       renderAspects();
@@ -2640,9 +2852,11 @@ function renderAspects() {
 function renderDims() {
   $('#wInput').value = state.width;
   $('#hInput').value = state.height;
-  $('#resSummary').textContent = state.customDims
-    ? `custom · ${state.width} × ${state.height}`
-    : `${state.aspect} · ${state.width} × ${state.height}`;
+  $('#resSummary').textContent = state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
+    ? `Match image · ${state.width} × ${state.height}`
+    : (state.customDims
+      ? `custom · ${state.width} × ${state.height}`
+      : `${state.aspect} · ${state.width} × ${state.height}`);
   // Tiny aspect glyph shaped like the output
   const icon = $('#resAspectIcon');
   if (icon) {
@@ -2718,37 +2932,70 @@ function matchedEditOutputDimensions(ref) {
   };
 }
 
+function upscaleFinishSettings() {
+  const prefix = state.view === 'edit' ? 'edit' : 'create';
+  return {
+    prefix,
+    enabled: state[`${prefix}UpscaleEnabled`] === true,
+    resolution: state[`${prefix}UpscaleResolution`],
+    profile: state[`${prefix}UpscaleProfile`],
+    noise: state[`${prefix}UpscaleNoise`],
+  };
+}
+
+function positionUpscaleFinish() {
+  const control = $('#editUpscaleControl');
+  const isEdit = state.view === 'edit';
+  const isCreate = state.view === 'create';
+  control.hidden = !(isEdit || isCreate);
+  control.classList.toggle('is-create', isCreate);
+  if (isEdit) {
+    const refRow = $('#refRow');
+    if (control.parentElement !== $('#refPanel') || control.nextElementSibling !== refRow) {
+      $('#refPanel').insertBefore(control, refRow);
+    }
+  } else if (isCreate && (control.parentElement !== $('#view-create') || control.nextElementSibling !== $('#resPanel'))) {
+    $('#view-create').insertBefore(control, $('#resPanel'));
+  }
+}
+
 function renderEditUpscale() {
+  positionUpscaleFinish();
   const toggle = $('#editUpscaleToggle');
   const body = $('#editUpscaleBody');
-  const enabled = state.editUpscaleEnabled === true;
+  const settings = upscaleFinishSettings();
+  const enabled = settings.enabled;
   toggle.setAttribute('aria-pressed', String(enabled));
-  $('#editUpscaleSummary').textContent = enabled ? `SeedVR2 · ${state.editUpscaleResolution === 3840 ? '4K' : `${state.editUpscaleResolution}p`}` : 'Off';
+  $('#editUpscaleSummary').textContent = enabled ? `SeedVR2 · ${settings.resolution === 3840 ? '4K' : `${settings.resolution}p`}` : 'Off';
   body.classList.toggle('expanded', enabled);
   body.inert = !enabled;
   body.setAttribute('aria-hidden', String(!enabled));
-  $$('#editUpscaleResolution .chip').forEach((button) => button.classList.toggle('active', Number(button.dataset.resolution) === state.editUpscaleResolution));
-  $$('#editUpscaleProfile .chip').forEach((button) => button.classList.toggle('active', button.dataset.profile === state.editUpscaleProfile));
-  $$('#editUpscaleNoise .chip').forEach((button) => button.classList.toggle('active', button.dataset.noise === state.editUpscaleNoise));
+  $$('#editUpscaleResolution .chip').forEach((button) => button.classList.toggle('active', Number(button.dataset.resolution) === settings.resolution));
+  $$('#editUpscaleProfile .chip').forEach((button) => button.classList.toggle('active', button.dataset.profile === settings.profile));
+  $$('#editUpscaleNoise .chip').forEach((button) => button.classList.toggle('active', button.dataset.noise === settings.noise));
 }
 
 $('#editUpscaleToggle').addEventListener('click', () => {
-  state.editUpscaleEnabled = !state.editUpscaleEnabled;
+  const { prefix, enabled } = upscaleFinishSettings();
+  state[`${prefix}UpscaleEnabled`] = !enabled;
   renderEditUpscale();
   saveForm();
 });
 $$('#editUpscaleResolution .chip').forEach((button) => button.addEventListener('click', () => {
-  state.editUpscaleResolution = Number(button.dataset.resolution) || 2160;
+  const { prefix } = upscaleFinishSettings();
+  state[`${prefix}UpscaleResolution`] = Number(button.dataset.resolution) || 2160;
   renderEditUpscale();
   saveForm();
 }));
 $$('#editUpscaleProfile .chip').forEach((button) => button.addEventListener('click', () => {
-  state.editUpscaleProfile = button.dataset.profile === 'balanced' ? 'balanced' : 'sharp';
+  const { prefix } = upscaleFinishSettings();
+  state[`${prefix}UpscaleProfile`] = button.dataset.profile === 'balanced' ? 'balanced' : 'sharp';
   renderEditUpscale();
   saveForm();
 }));
 $$('#editUpscaleNoise .chip').forEach((button) => button.addEventListener('click', () => {
-  state.editUpscaleNoise = ['off', 'low', 'medium'].includes(button.dataset.noise) ? button.dataset.noise : 'low';
+  const { prefix } = upscaleFinishSettings();
+  state[`${prefix}UpscaleNoise`] = ['off', 'low', 'medium'].includes(button.dataset.noise) ? button.dataset.noise : 'low';
   renderEditUpscale();
   saveForm();
 }));
@@ -2771,6 +3018,7 @@ for (const id of ['#editWInput', '#editHInput']) {
 }
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
   state.mp = Number(b.dataset.mp);
+  state.createMatchSource = false;
   state.customDims = false;
   computeDims();
   renderAspects();
@@ -2779,6 +3027,7 @@ $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
 }));
 for (const id of ['#wInput', '#hInput']) {
   $(id).addEventListener('change', () => {
+    state.createMatchSource = false;
     state.customDims = true;
     state.width = round32(Number($('#wInput').value) || 1024);
     state.height = round32(Number($('#hInput').value) || 1024);
@@ -3075,10 +3324,20 @@ function wireLoraCard(card, l, idx, arr) {
         const v = window.prompt('Strength (0–2)', String(l.strength));
         if (v == null) return;
         l.strength = Math.max(0, Math.min(2, Number(v) || 0));
+        krea2ManagedLoraChanged(l);
         renderLoras();
         saveForm();
       } },
-      { label: 'Remove from stack', danger: true, action: () => { arr.splice(idx, 1); renderLoras(); saveForm(); } },
+      { label: l.managed === 'krea2-raw-turbo' ? 'Turn off Turbo LoRA' : 'Remove from stack', danger: true, action: () => {
+        if (l.managed === 'krea2-raw-turbo') {
+          l.on = false;
+          krea2ManagedLoraChanged(l);
+        } else {
+          arr.splice(idx, 1);
+        }
+        renderLoras();
+        saveForm();
+      } },
     ]);
   });
 
@@ -3134,11 +3393,13 @@ function wireLoraCard(card, l, idx, arr) {
     if (adjusting) {
       card.classList.remove('adjusting');
       adjusting = false;
+      krea2ManagedLoraChanged(l);
       saveForm();
       renderLoras(); // refresh badge formatting
       window.scrollTo(0, sy);
     } else if (!moved) {
       l.on = !l.on;
+      krea2ManagedLoraChanged(l);
       renderLoras();
       window.scrollTo(0, sy);
       saveForm();
@@ -3151,6 +3412,7 @@ function wireLoraCard(card, l, idx, arr) {
       const sy = window.scrollY;
       card.classList.remove('adjusting');
       adjusting = false;
+      krea2ManagedLoraChanged(l);
       saveForm();
       renderLoras();
       window.scrollTo(0, sy);
@@ -4480,6 +4742,7 @@ $('#generateBtn').addEventListener('click', async () => {
 
   const mode = state.view === 'edit' ? 'edit' : 't2i';
   const createImageGuide = mode === 't2i' && state.createMode === 'image' ? state.createRef : null;
+  const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
   let maskImageName = '';
   if (mode === 'edit' && state.editEngine === 'krea2' && (state.kreaMask || state.kreaMaskDirty || state.kreaMaskPreview)) {
@@ -4487,20 +4750,33 @@ $('#generateBtn').addEventListener('click', async () => {
     try { maskImageName = await ensureKreaMaskUploaded(); }
     catch (e) { return toast(e.message, true); }
   }
+  const upscaleFinish = mode === 'edit' ? {
+    enabled: state.editUpscaleEnabled,
+    resolution: state.editUpscaleResolution,
+    profile: state.editUpscaleProfile,
+    noise: state.editUpscaleNoise,
+  } : {
+    enabled: state.createUpscaleEnabled,
+    resolution: state.createUpscaleResolution,
+    profile: state.createUpscaleProfile,
+    noise: state.createUpscaleNoise,
+  };
   const body = {
     mode,
     editEngine: mode === 'edit' ? state.editEngine : undefined,
+    krea2Turbo: !krea2Raw,
+    krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit' ? $('#editComposite').getAttribute('aria-pressed') === 'true' : undefined,
     prompt,
     enhance: state.enhance && mode === 't2i',
     width: mode === 'edit' && state.editAspectOverride ? state.editWidth : state.width,
     height: mode === 'edit' && state.editAspectOverride ? state.editHeight : state.height,
     editAspectOverride: mode === 'edit' && state.editAspectOverride,
-    postUpscale: mode === 'edit' && state.editUpscaleEnabled ? {
+    postUpscale: upscaleFinish.enabled ? {
       enabled: true,
-      resolution: state.editUpscaleResolution,
-      profile: state.editUpscaleProfile,
-      noise: state.editUpscaleNoise,
+      resolution: upscaleFinish.resolution,
+      profile: upscaleFinish.profile,
+      noise: upscaleFinish.noise,
     } : undefined,
     steps: Number($('#stepsInput').value) || 12,
     cfg: Number($('#cfgInput').value) || 1,
@@ -6134,7 +6410,22 @@ async function reuseItem(it, useEnhanced) {
   state.regions = restoringEdit ? state.regions : restoredRegions;
   if (!restoringEdit) {
     state.createRef = null;
+    state.createMatchSource = false;
     state.createInfluence = createInfluenceFromDenoise(it.denoise);
+    state.krea2Turbo = it.krea2Turbo !== false;
+    const savedRawTurboLora = it.krea2RawTurboLora || (!state.krea2Turbo
+      ? (Array.isArray(it.loras) ? it.loras.find((lora) => assetNameKey(lora && lora.name) === assetNameKey(krea2TurboLoraName())) : null)
+      : null);
+    state.krea2RawTurboLora = savedRawTurboLora && savedRawTurboLora.name ? {
+      name: savedRawTurboLora.name,
+      strength: Number.isFinite(Number(savedRawTurboLora.strength)) ? Number(savedRawTurboLora.strength) : 0.6,
+      on: savedRawTurboLora.on !== false,
+      managed: 'krea2-raw-turbo',
+    } : null;
+    state.createUpscaleEnabled = !!it.postUpscale;
+    state.createUpscaleResolution = [1440, 2160, 3840].includes(Number(it.postUpscale?.resolution)) ? Number(it.postUpscale.resolution) : 2160;
+    state.createUpscaleProfile = it.postUpscale?.profile === 'balanced' ? 'balanced' : 'sharp';
+    state.createUpscaleNoise = ['off', 'low', 'medium'].includes(it.postUpscale?.noise) ? it.postUpscale.noise : 'low';
   }
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
   if (restoringEdit) {
@@ -6745,6 +7036,8 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setComfy').value = s.comfyUrl;
     $('#galleryPasswordInput').value = s.galleryPassword || '1234';
     $('#setUnet').value = s.unet;
+    $('#setKrea2RawUnet').value = s.krea2RawUnet || '';
+    $('#setKrea2TurboLora').value = s.krea2TurboLora || '';
     $('#setClip').value = s.clip;
     $('#setVae').value = s.vae;
     $('#setKlein4Unet').value = s.klein4Unet || s.kleinUnet || '';
@@ -6799,6 +7092,8 @@ $('#settingsSave').addEventListener('click', async () => {
           comfyUrl: $('#setComfy').value,
           galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
           unet: $('#setUnet').value,
+        krea2RawUnet: $('#setKrea2RawUnet').value,
+        krea2TurboLora: $('#setKrea2TurboLora').value,
         clip: $('#setClip').value,
         vae: $('#setVae').value,
         kleinUnet: $('#setKlein4Unet').value,
@@ -6860,6 +7155,7 @@ async function loadMeta(refresh) {
     state.features = lastMeta.features || {};
     renderFeatureVisibility();
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
+    renderKrea2Mode();
     renderLoras();
   } catch {
     state.connOk = false;
@@ -6881,7 +7177,7 @@ function renderHealth() {
       ? `<span class="bad">●</span> ${labels[group]}: missing ${missing.map(escapeHtml).join(', ')}`
       : `<span class="ok">●</span> ${labels[group]}: OK`);
   }
-  const fieldLabels = { unet: 'UNET', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA' };
+  const fieldLabels = { unet: 'UNET', turbo: 'Turbo UNET', raw: 'Raw UNET', turboLora: 'Turbo LoRA', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA' };
   for (const engine of Object.values(lastMeta.models || {})) {
     const checks = Object.entries(engine).filter(([, v]) => v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'ok'));
     const missing = checks.filter(([, v]) => !v.ok);

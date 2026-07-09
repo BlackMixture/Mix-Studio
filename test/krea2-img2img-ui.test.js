@@ -11,17 +11,20 @@ const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
-test('Create Image exposes an optional image guide directly below the prompt', () => {
+test('Create Image exposes its optional image guide as an animated prompt-tool disclosure', () => {
   const prompt = html.indexOf('id="promptComposer"');
+  const toggle = html.indexOf('id="createImageGuideToggle"');
   const guide = html.indexOf('id="createImageGuide"');
   const videoInputs = html.indexOf('id="vidAttachRow"');
-  assert.ok(prompt > -1 && prompt < guide && guide < videoInputs);
+  assert.ok(prompt > -1 && prompt < toggle && toggle < guide && guide < videoInputs);
+  assert.match(html, /id="createImageGuideToggle"[^>]*aria-expanded="false"[^>]*aria-controls="createImageGuide"/);
   assert.match(html, /id="createImageGuideAdd"/);
   assert.match(html, /id="createImageGuideFilled"/);
   assert.match(html, /id="createImageGuideImg"/);
   assert.match(html, /id="createImageGuideRemove"/);
   assert.match(html, /id="createImageInfluence"[^>]*min="0"[^>]*max="100"[^>]*step="5"/);
   assert.match(css, /\.create-image-guide-empty/);
+  assert.match(css, /\.create-image-guide\.expanded \{ grid-template-rows: 1fr; \}/);
   assert.match(css, /\.create-image-influence-range::-webkit-slider-runnable-track/);
 });
 
@@ -35,6 +38,15 @@ test('Create Image uploads, persists, and submits the guide with inverse denoise
   assert.match(app, /createImageGuide \? createDenoiseFromInfluence\(\) : 1/);
   assert.match(app, /createRef: state\.createRef \?/);
   assert.match(app, /function restoreCreateImageGuide\(item\)/);
+});
+
+test('Resolution can match an uploaded image guide and reports the derived dimensions', () => {
+  assert.match(app, /createMatchSource: false/);
+  assert.match(app, /function matchedCreateOutputDimensions\(ref = state\.createRef\)/);
+  assert.match(app, /function applyCreateMatchedDimensions\(\)/);
+  assert.match(app, /source\.className = 'aspect-chip create-match-aspect'/);
+  assert.match(app, /Match image · \$\{state\.width\} × \$\{state\.height\}/);
+  assert.match(app, /state\.createMatchSource = false;\s*state\.customDims = false;/);
 });
 
 test('Krea 2 generation routes image guides through the encoded latent builder', () => {
