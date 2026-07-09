@@ -10,6 +10,10 @@ const {
   appendEditMaskNodes,
   appendEditMaskComposite,
   buildSam3MaskGraph,
+  localizedEditPrompt,
+  maskExpand,
+  maskInfluence,
+  maskInfluenceDenoise,
   normalizeMaskPoints,
 } = require('../lib/edit-mask');
 
@@ -40,6 +44,7 @@ test('edit masks constrain latent noise and composite unchanged pixels from the 
   assert.equal(graph.area_load.class_type, 'LoadImage');
   assert.equal(graph.area_channel.class_type, 'ImageToMask');
   assert.equal(graph.area_grow.class_type, 'GrowMask');
+  assert.equal(graph.area_grow.inputs.expand, 14);
   assert.equal(graph.area_latent.class_type, 'SetLatentNoiseMask');
   assert.deepEqual(graph.area_latent.inputs.samples, ['source_latent', 0]);
   assert.equal(graph.area_composite.class_type, 'ImageCompositeMasked');
@@ -47,10 +52,28 @@ test('edit masks constrain latent noise and composite unchanged pixels from the 
   assert.deepEqual(output, ['area_composite', 0]);
 });
 
+test('localized edits reserve a modest transition collar and tell the model to integrate it', () => {
+  assert.equal(maskExpand(), 14);
+  assert.equal(maskExpand(1), 6);
+  assert.equal(maskExpand(99), 32);
+  assert.match(localizedEditPrompt('replace the jacket'), /Localized edit only/);
+  assert.match(localizedEditPrompt('replace the jacket'), /lighting direction/);
+});
+
+test('localized edit influence and expansion stay in a safe, useful range', () => {
+  assert.equal(maskInfluence(), 78);
+  assert.equal(maskInfluence(1), 25);
+  assert.equal(maskInfluence(999), 100);
+  assert.equal(maskInfluenceDenoise(78), 0.78);
+  assert.equal(maskInfluenceDenoise(1), 0.25);
+});
+
 test('Klein editors and Qwen route masked source latents through localized composites', () => {
   assert.match(serverJs, /prefix: 'qwen_mask'[\s\S]*samples: \['latent', 0\]/);
   assert.match(serverJs, /latent_image: editMask \? editMask\.latent : \['latent', 0\]/);
   assert.match(serverJs, /prefix: 'klein_mask'[\s\S]*samples: \['enc1', 0\]/);
+  assert.match(serverJs, /expand: p\.maskExpand/);
+  assert.match(serverJs, /maskInfluenceDenoise\(p\.maskInfluence\)/);
   assert.match(serverJs, /key: 'klein_mask_composite'/);
   assert.match(serverJs, /Edit areas are available with Klein 4B, Klein 9B, Qwen Edit, and Krea2 only/);
 });

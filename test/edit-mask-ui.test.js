@@ -17,12 +17,19 @@ test('Edit exposes SAM3, brush, and bounding-box area selection for supported en
   assert.match(html, /id="kreaMaskPrompt"/);
   assert.match(html, /id="kreaMaskPointAdd"/);
   assert.match(html, /id="kreaMaskPointRemove"/);
+  assert.match(html, /id="kreaMaskPointDelete"/);
   assert.match(app, /state\.kreaMaskTool === 'box'/);
   assert.match(app, /ctx\.fillRect\(Math\.min\(start\.x, p\.x\)/);
   assert.match(app, /api\('\/api\/edit-mask\/sam3'/);
   assert.match(app, /Array\.isArray\(result\.dataUrls\)/);
   assert.match(app, /globalCompositeOperation = index \? 'lighten' : 'source-over'/);
+  assert.match(app, /function beginSmartMaskPointDrag\(event\)/);
+  assert.match(app, /function moveSmartMaskPointDrag\(event\)/);
+  assert.match(app, /function finishSmartMaskPointDrag\(event\)/);
+  assert.match(app, /rerunSmartMaskFromPoints\(\)/);
+  assert.match(app, /state\.kreaMaskPointDeleteMode/);
   assert.match(css, /\.edit-area-mode/);
+  assert.match(css, /\.smart-mask-point\.dragging/);
 });
 
 test('localized edit requests upload their mask automatically and preserve source-matched output', () => {
@@ -40,6 +47,8 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(html, /id="kreaMaskCutoutCanvas"/);
   assert.match(html, /id="kreaMaskOverlayCanvas"/);
   assert.match(html, /id="kreaMaskGesture"/);
+  assert.match(html, /id="editMaskInfluence"/);
+  assert.match(html, /id="editMaskExpand"/);
   assert.match(app, /ctx\.filter = `blur\(\$\{feather\}px\)`/);
   assert.match(app, /function invertKreaMask\(\)/);
   assert.match(app, /const current = \(image\.data\[i\] \* image\.data\[i \+ 3\]\) \/ 255/);
@@ -51,5 +60,9 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(app, /d\.kind === 'smartMask' && smartMaskRunning/);
   assert.match(app, /ctx\.globalCompositeOperation = 'destination-out'/);
   assert.match(app, /ref\.displayUrl = cutout\.toDataURL\('image\/png'\)/);
+  assert.match(app, /function scheduleMaskedRefPreview\(\)/);
+  assert.match(app, /scheduleMaskedRefPreview\(\);/);
+  assert.match(app, /maskInfluence: localizedEdit \? state\.editMaskInfluence/);
+  assert.match(app, /maskExpand: localizedEdit \? state\.editMaskExpand/);
   assert.doesNotMatch(app, /red tint/);
 });

@@ -78,5 +78,5 @@ test('Qwen angle jobs use the installed multi-angle LoRA and the documented cont
   assert.match(server, /return `<sks> \$\{QWEN_ANGLE_AZIMUTHS\[angle\.view\]\} \$\{angle\.elevation\} shot \$\{angle\.distance\}`/);
   assert.match(server, /graph\.angle_lora/);
   assert.match(server, /strength_model: 0\.9/);
-  assert.match(server, /prompt: p\.qwenAnglePrompt \|\| p\.prompt/);
+  assert.match(server, /prompt: p\.maskImageName \? localizedEditPrompt\(p\.qwenAnglePrompt \|\| p\.prompt\) : \(p\.qwenAnglePrompt \|\| p\.prompt\)/);
 });

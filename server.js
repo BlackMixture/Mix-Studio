@@ -61,6 +61,10 @@ const {
   buildSam3MaskGraph,
   SAM3_MASK_CLASSES,
   supportsEditMask,
+  localizedEditPrompt,
+  maskExpand,
+  maskInfluence,
+  maskInfluenceDenoise,
 } = require('./lib/edit-mask');
 const {
   scailMode,
@@ -1256,6 +1260,8 @@ async function completeJob(pid) {
       editMaskMode: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskMode : undefined,
       editMaskFeather: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskFeather : undefined,
       editMaskInvert: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskInvert : undefined,
+      editMaskInfluence: job.params.mode === 'edit' && job.params.maskImageName ? job.params.maskInfluence : undefined,
+      editMaskExpand: job.params.mode === 'edit' && job.params.maskImageName ? job.params.maskExpand : undefined,
       postUpscale: job.params.postUpscale && sequenceFinal ? job.params.postUpscale : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
@@ -1661,7 +1667,7 @@ async function buildEditQwen(p, refNames) {
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.qwenEditClip, type: 'qwen_image', device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 
-  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.qwenAnglePrompt || p.prompt };
+  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.maskImageName ? localizedEditPrompt(p.qwenAnglePrompt || p.prompt) : (p.qwenAnglePrompt || p.prompt) };
   const negInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: '' };
   refNames.slice(0, 3).forEach((name, idx) => {
     const i = idx + 1;
@@ -1690,12 +1696,13 @@ async function buildEditQwen(p, refNames) {
     prefix: 'qwen_mask',
     maskImageName: p.maskImageName,
     samples: ['latent', 0],
+    expand: p.maskExpand,
   });
   graph.sampler = {
     class_type: 'KSampler',
     inputs: {
       model: ['cfgnorm', 0], positive: ['posm', 0], negative: ['negm', 0], latent_image: editMask ? editMask.latent : ['latent', 0],
-      seed: p.seed, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+      seed: p.seed, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: editMask ? maskInfluenceDenoise(p.maskInfluence) : 1,
     },
   };
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
@@ -1741,7 +1748,7 @@ async function buildEdit(p, refNames) {
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.kleinVae } };
 
   const kModel = chainModelLoras(graph, ['unet', 0], p.loras, 'klora');
-  graph.pos_text = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: p.prompt } };
+  graph.pos_text = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: p.maskImageName ? localizedEditPrompt(p.prompt) : p.prompt } };
   graph.neg0 = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos_text', 0] } };
   let pos = ['pos_text', 0];
   let neg = ['neg0', 0];
@@ -1771,11 +1778,12 @@ async function buildEdit(p, refNames) {
     prefix: 'klein_mask',
     maskImageName: p.maskImageName,
     samples: ['enc1', 0],
+    expand: p.maskExpand,
   });
   if (!editMask) {
     graph.latent = { class_type: 'EmptyFlux2LatentImage', inputs: { width: wRef, height: hRef, batch_size: p.batch || 1 } };
   }
-  graph.sched = { class_type: 'Flux2Scheduler', inputs: { steps: 4, width: wRef, height: hRef } };
+  graph.sched = { class_type: 'Flux2Scheduler', inputs: { steps: 4, width: wRef, height: hRef, denoise: editMask ? maskInfluenceDenoise(p.maskInfluence) : 1 } };
   graph.guider = { class_type: 'CFGGuider', inputs: { model: kModel, positive: pos, negative: neg, cfg: 1 } };
   graph.noise = { class_type: 'RandomNoise', inputs: { noise_seed: p.seed } };
   graph.sampler_sel = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } };
@@ -3695,6 +3703,8 @@ async function handleApi(req, res, url) {
     p.editMaskMode = ['smart', 'box', 'brush'].includes(p.editMaskMode) ? p.editMaskMode : 'brush';
     p.editMaskFeather = clampInt(p.editMaskFeather, 0, 64, 0);
     p.editMaskInvert = p.editMaskInvert === true;
+    p.maskInfluence = maskInfluence(p.maskInfluence);
+    p.maskExpand = maskExpand(p.maskExpand);
 
     let refined = null;
     if (p.enhance && p.mode !== 'edit') {
@@ -3747,6 +3757,7 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: 'An edit area needs a source image in reference slot 1' });
       }
       if (p.maskImageName) p.editAspectOverride = false;
+      if (p.maskImageName) p.denoise = maskInfluenceDenoise(p.maskInfluence);
       if (p.editEngine === 'krea2') {
         if (p.maskImageName && !refNames.length) {
           return json(res, 400, { error: 'Krea2 inpaint needs a source image' });

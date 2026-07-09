@@ -660,6 +660,24 @@
                 <span class="range-val" id="denoiseVal">0.40</span>
               </div>
             </div>
+            <div class="edit-mask-advanced field-span" id="editMaskAdvanced" hidden>
+              <div class="edit-mask-advanced-head">
+                <span>Localized edit</span>
+                <small>Applies only when an edit area is active</small>
+              </div>
+              <div class="edit-mask-advanced-grid">
+                <label class="edit-mask-advanced-control" for="editMaskInfluence">
+                  <span><b>Edit influence</b><small>How freely the selected area can change</small></span>
+                  <output id="editMaskInfluenceVal" for="editMaskInfluence">78%</output>
+                  <input id="editMaskInfluence" type="range" min="25" max="100" step="1" value="78" aria-label="Edit influence" />
+                </label>
+                <label class="edit-mask-advanced-control" for="editMaskExpand">
+                  <span><b>Mask expansion</b><small>Extra room for a seamless transition</small></span>
+                  <output id="editMaskExpandVal" for="editMaskExpand">14 px</output>
+                  <input id="editMaskExpand" type="range" min="6" max="32" step="1" value="14" aria-label="Mask expansion" />
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -836,6 +854,9 @@
         <div class="smart-mask-point-mode" role="group" aria-label="SAM3 point type">
           <button class="active" id="kreaMaskPointAdd" type="button" aria-pressed="true"><i></i> Include</button>
           <button id="kreaMaskPointRemove" type="button" aria-pressed="false"><i></i> Exclude</button>
+          <button id="kreaMaskPointDelete" type="button" aria-pressed="false" aria-label="Delete selection points" title="Delete dots">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4h10l1 2h3v2H3V6h3l1-2Zm1 6h2v8H8v-8Zm6 0h2v8h-2v-8ZM6 10h2v10h8V10h2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10Z"/></svg>
+          </button>
         </div>
       </div>
     </div>
@@ -844,7 +865,7 @@
       <canvas class="krea-mask-cutout" id="kreaMaskCutoutCanvas"></canvas>
       <canvas class="krea-mask-canvas" id="kreaMaskCanvas"></canvas>
       <canvas class="krea-mask-overlay" id="kreaMaskOverlayCanvas" aria-hidden="true"></canvas>
-      <div class="smart-mask-points" id="kreaMaskPoints" aria-hidden="true"></div>
+      <div class="smart-mask-points" id="kreaMaskPoints"></div>
       <div class="smart-mask-loading" id="kreaMaskLoading" hidden><span></span><b id="kreaMaskLoadingText">Finding selection</b></div>
     </div>
     <div class="edit-mask-toolbar">

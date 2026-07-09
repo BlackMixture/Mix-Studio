@@ -164,6 +164,7 @@ test('Krea2 inpaint graph uses image mask and optional regional controls', () =>
   assert.equal(graph.mask_load.class_type, 'LoadImage');
   assert.equal(graph.mask.class_type, 'ImageToMask');
   assert.equal(graph.grow_mask.class_type, 'GrowMask');
+  assert.equal(graph.grow_mask.inputs.expand, 14);
   assert.equal(graph.encode.class_type, 'VAEEncode');
   assert.equal(graph.inpaint_latent.class_type, 'SetLatentNoiseMask');
   assert.equal(graph.regional.class_type, 'Krea2RegionalMultiLoRAV3');
@@ -193,6 +194,7 @@ test('Krea2 inpaint can condition directly on the surrounding source image', () 
   });
 
   assert.equal(graph.pos.class_type, 'Krea2EditRebalance');
+  assert.match(graph.pos.inputs.text, /Seamlessly integrate/);
   assert.deepEqual(graph.pos.inputs.image1, ['source', 0]);
   assert.equal(graph.pos.inputs.image1_tokens, 'high');
   assert.deepEqual(graph.composite.inputs.destination, ['source', 0]);

@@ -2412,6 +2412,30 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .adv-body-inner { min-height: 0; overflow: hidden; }
 .adv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 12px; }
+.edit-mask-advanced {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 14px;
+  background: #080808;
+}
+.edit-mask-advanced[hidden] { display: none; }
+.edit-mask-advanced-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.edit-mask-advanced-head span { color: var(--ink-soft); font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.edit-mask-advanced-head small { color: var(--muted-2); font-size: 10px; font-weight: 700; text-align: right; }
+.edit-mask-advanced-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.edit-mask-advanced-control { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 5px 8px; margin: 0; }
+.edit-mask-advanced-control > span { min-width: 0; display: grid; gap: 2px; }
+.edit-mask-advanced-control b { color: #fff; font-size: 11px; font-weight: 850; }
+.edit-mask-advanced-control small { color: var(--muted-2); font-size: 10px; font-weight: 650; line-height: 1.3; }
+.edit-mask-advanced-control output { align-self: start; color: var(--ink-soft); font-size: 11px; font-weight: 850; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.edit-mask-advanced-control input { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; accent-color: #dfe6ff; }
+@media (max-width: 420px) {
+  .edit-mask-advanced-grid { grid-template-columns: 1fr; gap: 14px; }
+  .edit-mask-advanced-head { align-items: flex-start; }
+  .edit-mask-advanced-head small { max-width: 170px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .adv-body,
   .adv.expanded .adv-body,
@@ -3277,6 +3301,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .smart-mask-point-mode button.active { background: #151515; color: #fff; }
 .smart-mask-point-mode i { width: 8px; height: 8px; border-radius: 50%; background: #71a7ff; box-shadow: 0 0 0 2px rgba(113,167,255,.18); }
 .smart-mask-point-mode #kreaMaskPointRemove i { background: #ff8c83; box-shadow: 0 0 0 2px rgba(255,140,131,.18); }
+.smart-mask-point-mode #kreaMaskPointDelete { width: 30px; justify-content: center; padding: 0; }
+.smart-mask-point-mode #kreaMaskPointDelete svg { width: 14px; height: 14px; }
+.smart-mask-point-mode #kreaMaskPointDelete.active { background: rgba(255,102,93,.16); color: #ffaba5; }
 .edit-mask-toolbar { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 10px 0; }
 .edit-mask-tool-button,
 .edit-mask-erase {
@@ -3694,7 +3721,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .mask-stage.preview-cutout .krea-mask-overlay { visibility: hidden; }
 .mask-stage.preview-cutout .krea-mask-cutout { display: block; }
 .smart-mask-points { position: absolute; inset: 0; pointer-events: none; }
-.smart-mask-point { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; border: 2px solid #fff; border-radius: 50%; background: #4e8fff; box-shadow: 0 2px 10px rgba(0,0,0,.8), 0 0 0 3px rgba(78,143,255,.25); }
+.smart-mask-point { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 2px solid #fff; border-radius: 50%; background: #4e8fff; box-shadow: 0 2px 10px rgba(0,0,0,.8), 0 0 0 3px rgba(78,143,255,.25); cursor: grab; pointer-events: auto; touch-action: none; transition: transform .14s ease, box-shadow .14s ease; }
+.smart-mask-point:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.smart-mask-point.dragging { cursor: grabbing; transform: scale(1.22); box-shadow: 0 3px 14px rgba(0,0,0,.9), 0 0 0 5px rgba(78,143,255,.3); }
+.mask-stage.delete-points-mode .smart-mask-point { box-shadow: 0 2px 10px rgba(0,0,0,.8), 0 0 0 3px rgba(255,102,93,.34); }
 .smart-mask-point.negative { background: #ff665d; box-shadow: 0 2px 10px rgba(0,0,0,.8), 0 0 0 3px rgba(255,102,93,.23); }
 .smart-mask-loading { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 9px; background: rgba(0,0,0,.68); color: #fff; font-size: 12px; font-weight: 850; }
 .smart-mask-loading[hidden] { display: none; }
