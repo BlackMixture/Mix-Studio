@@ -1393,6 +1393,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   color: var(--muted);
   font-size: 26px;
   background: rgba(255,255,255,0.03);
+  touch-action: pan-y;
 }
 .lora-search {
   width: 100%;
@@ -3397,7 +3398,9 @@ body.sheet-open {
 .settings-content {
   min-width: 0;
   min-height: 0;
+  max-width: 100%;
   padding: 18px;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -3554,15 +3557,17 @@ body.sheet-open {
 .settings-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 4px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 13px; background: #050609; }
 .settings-segment button { min-height: 36px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 850; }
 .settings-segment button.active { color: #fff; border-color: rgba(255,183,77,.56); background: rgba(255,183,77,.1); }
-.context-preference-list { display: grid; gap: 10px; }
-.context-preference-card { display: grid; grid-template-columns: 120px minmax(0,1fr); gap: 10px 12px; padding: 13px; border: 1px solid var(--line); border-radius: 16px; background: #050609; }
+.context-preference-list { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
+.context-preference-card { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; display: grid; grid-template-columns: 120px minmax(0,1fr); gap: 10px 12px; padding: 13px; border: 1px solid var(--line); border-radius: 16px; background: #050609; }
 .context-preference-title { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.context-preference-title strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-preference-title strong { min-width: 0; max-width: 100%; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-preference-title small { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.context-preference-card > *,
+.context-preference-card label { min-width: 0; max-width: 100%; }
 .context-preference-card label { display: grid; gap: 5px; color: var(--muted-2); font-size: 10px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
-.context-preference-card input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #000; color: var(--ink); }
+.context-preference-card input { width: 100%; min-width: 0; max-width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #000; color: var(--ink); text-overflow: ellipsis; }
 .context-preference-toggle,
-.context-preference-reset { min-height: 36px; border: 1px solid rgba(57,189,164,.42); border-radius: 10px; background: rgba(57,189,164,.08); color: #c9fff4; font-size: 11px; font-weight: 850; }
+.context-preference-reset { width: 100%; min-width: 0; max-width: 100%; min-height: 36px; padding-inline: 8px; border: 1px solid rgba(57,189,164,.42); border-radius: 10px; background: rgba(57,189,164,.08); color: #c9fff4; font-size: 11px; font-weight: 850; white-space: normal; }
 .context-preference-toggle.off { border-color: var(--line); background: transparent; color: var(--muted); }
 .context-preference-reset { border-color: var(--line); background: transparent; color: var(--muted); }
 .settings-footer {

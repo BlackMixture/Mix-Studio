@@ -69,7 +69,8 @@ test('region LoRA uses the shared card language and selected region color', () =
   assert.match(appJs, /className = 'lora-card on region-lora-card'/);
   assert.match(appJs, /style\.setProperty\('--region-card-color', color\)/);
   assert.match(appJs, /Region LoRA options/);
-  assert.match(appJs, /const dx = event\.clientX - startX/);
+  assert.match(appJs, /const dy = startY - event\.clientY/);
+  assert.match(appJs, /card\.setPointerCapture\(pointerId\)/);
   assert.match(styleCss, /\.region-lora-card \{[\s\S]*border-color: var\(--region-card-color\)/);
 });
 

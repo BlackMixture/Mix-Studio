@@ -6,6 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('Advanced Settings exposes profile defaults and contextual suggestions', () => {
@@ -16,6 +17,13 @@ test('Advanced Settings exposes profile defaults and contextual suggestions', ()
   assert.match(html, /id="defaultEditDenoise"/);
   assert.match(html, /id="defaultVideoMotion"/);
   assert.match(html, /id="contextPreferenceList"/);
+});
+
+test('contextual suggestion cards stay within the mobile settings pane', () => {
+  assert.match(css, /\.settings-content \{[\s\S]*?overflow-x: hidden;/);
+  assert.match(css, /\.context-preference-card \{[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;[\s\S]*?overflow: hidden;/);
+  assert.match(css, /\.context-preference-card input \{[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;/);
+  assert.match(css, /\.context-preference-title strong \{[\s\S]*?text-overflow: ellipsis;/);
 });
 
 test('profile preferences save separately from machine model settings', () => {

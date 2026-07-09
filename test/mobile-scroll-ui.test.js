@@ -10,10 +10,13 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
-test('LoRA cards preserve their hold-and-vertical-slide strength gesture', () => {
-  assert.match(css, /\.lora-card \{[\s\S]*?touch-action: none;/);
+test('LoRA cards scroll immediately and reserve vertical strength changes for hold gestures', () => {
+  const loraCardCss = css.match(/\.lora-card \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(loraCardCss, /touch-action: none;/);
+  assert.match(css, /\.lora-card\.add \{[\s\S]*?touch-action: pan-y;/);
   assert.match(app, /hold \(300ms\) \+ slide up\/down adjusts[\s\S]*const dy = startY - e\.clientY/);
-  assert.match(app, /Math\.abs\(e\.clientY - startY\) > 12/);
+  assert.match(app, /const distance = Math\.abs\(e\.clientY - startY\)[\s\S]*?distance > 8[\s\S]*?window\.scrollBy\(0, lastY - e\.clientY\)/);
+  assert.match(app, /holdTimer = setTimeout\(\(\) => \{[\s\S]*?\}, 300\);[\s\S]*?card\.setPointerCapture\(pointerId\)/);
   assert.match(html, /hold and slide up or down to adjust strength/);
 });
 

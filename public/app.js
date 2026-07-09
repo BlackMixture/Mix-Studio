@@ -1301,8 +1301,9 @@ function renderRegionLoraCard(region) {
   let holdTimer = null;
   let adjusting = false;
   let moved = false;
-  let startX = 0;
   let startY = 0;
+  let lastY = 0;
+  let pointerId = null;
   let startStrength = region.strength;
   const strengthEl = card.querySelector('.lc-strength');
   const adjustEl = card.querySelector('.lc-adjust');
@@ -1310,35 +1311,45 @@ function renderRegionLoraCard(region) {
     if (event.target.closest('.lc-menu')) return;
     moved = false;
     adjusting = false;
-    startX = event.clientX;
     startY = event.clientY;
+    lastY = event.clientY;
+    pointerId = event.pointerId;
     startStrength = normalizeRegionStrength(region.strength);
     holdTimer = setTimeout(() => {
       adjusting = true;
       card.classList.add('adjusting');
       adjustEl.textContent = startStrength.toFixed(2);
+      try { card.setPointerCapture(pointerId); } catch { /* noop */ }
       if (navigator.vibrate) navigator.vibrate(10);
     }, 300);
-    try { card.setPointerCapture(event.pointerId); } catch { /* noop */ }
+    try { card.setPointerCapture(pointerId); } catch { /* noop */ }
   });
   card.addEventListener('pointermove', (event) => {
+    if (event.cancelable) event.preventDefault();
     if (adjusting) {
-      const dx = event.clientX - startX;
-      region.strength = normalizeRegionStrength(Math.round((startStrength + dx / 75) * 20) / 20);
+      const dy = startY - event.clientY;
+      region.strength = normalizeRegionStrength(Math.round((startStrength + dy / 90) * 20) / 20);
       strengthEl.textContent = region.strength.toFixed(2);
       adjustEl.textContent = region.strength.toFixed(2);
-    } else if (Math.hypot(event.clientX - startX, event.clientY - startY) > 12) {
-      moved = true;
-      clearTimeout(holdTimer);
+    } else {
+      const distance = Math.abs(event.clientY - startY);
+      if (distance > 8) {
+        moved = true;
+        clearTimeout(holdTimer);
+        window.scrollBy(0, lastY - event.clientY);
+        lastY = event.clientY;
+      }
     }
-  });
+  }, { passive: false });
   const finish = (event) => {
     if (event && event.target.closest('.lc-menu')) return;
     clearTimeout(holdTimer);
     if (adjusting) {
+      const scrollY = window.scrollY;
       card.classList.remove('adjusting');
       adjusting = false;
       renderRegionEditor();
+      window.scrollTo(0, scrollY);
       saveForm();
     } else if (!moved) {
       openRegionLoraPicker(region);
@@ -1348,9 +1359,11 @@ function renderRegionLoraCard(region) {
   card.addEventListener('pointercancel', () => {
     clearTimeout(holdTimer);
     if (adjusting) {
+      const scrollY = window.scrollY;
       card.classList.remove('adjusting');
       adjusting = false;
       renderRegionEditor();
+      window.scrollTo(0, scrollY);
       saveForm();
     }
   });
@@ -2922,6 +2935,8 @@ function wireLoraCard(card, l, idx, arr) {
   let adjusting = false;
   let moved = false;
   let startY = 0;
+  let lastY = 0;
+  let pointerId = null;
   let startStrength = l.strength;
   const strengthEl = card.querySelector('.lc-strength');
   const adjustEl = card.querySelector('.lc-adjust');
@@ -2931,26 +2946,35 @@ function wireLoraCard(card, l, idx, arr) {
     moved = false;
     adjusting = false;
     startY = e.clientY;
+    lastY = e.clientY;
+    pointerId = e.pointerId;
     startStrength = Number(l.strength) || 0;
     holdTimer = setTimeout(() => {
       adjusting = true;
       card.classList.add('adjusting');
       adjustEl.textContent = startStrength.toFixed(2);
+      try { card.setPointerCapture(pointerId); } catch { /* noop */ }
       if (navigator.vibrate) navigator.vibrate(10);
     }, 300);
-    try { card.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    try { card.setPointerCapture(pointerId); } catch { /* noop */ }
   });
   card.addEventListener('pointermove', (e) => {
+    if (e.cancelable) e.preventDefault();
     if (adjusting) {
       const dy = startY - e.clientY; // up = stronger
       l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dy / 90) * 20) / 20));
       adjustEl.textContent = l.strength.toFixed(2);
       strengthEl.textContent = l.strength.toFixed(2);
-    } else if (Math.abs(e.clientY - startY) > 12) {
-      moved = true;
-      clearTimeout(holdTimer);
+    } else {
+      const distance = Math.abs(e.clientY - startY);
+      if (distance > 8) {
+        moved = true;
+        clearTimeout(holdTimer);
+        window.scrollBy(0, lastY - e.clientY);
+        lastY = e.clientY;
+      }
     }
-  });
+  }, { passive: false });
   const finish = () => {
     clearTimeout(holdTimer);
     // renderLoras() can change layout (e.g. prompt-suggestion chips appear
@@ -2972,7 +2996,14 @@ function wireLoraCard(card, l, idx, arr) {
   card.addEventListener('pointerup', finish);
   card.addEventListener('pointercancel', () => {
     clearTimeout(holdTimer);
-    if (adjusting) { card.classList.remove('adjusting'); adjusting = false; saveForm(); renderLoras(); }
+    if (adjusting) {
+      const sy = window.scrollY;
+      card.classList.remove('adjusting');
+      adjusting = false;
+      saveForm();
+      renderLoras();
+      window.scrollTo(0, sy);
+    }
   });
   card.addEventListener('contextmenu', (e) => e.preventDefault());
 }
