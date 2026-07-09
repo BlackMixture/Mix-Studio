@@ -46,6 +46,9 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(app, /function renderMaskOverlay\(\)/);
   assert.match(app, /function beginMaskGesture\(event\)/);
   assert.match(app, /Brush Size \$\{state\.kreaBrush\} px · Brush Pressure/);
+  assert.match(app, /function setSmartMaskLoading\(message\)/);
+  assert.match(app, /Still loading SAM3 — first use can take a few minutes/);
+  assert.match(app, /d\.kind === 'smartMask' && smartMaskRunning/);
   assert.match(app, /ctx\.globalCompositeOperation = 'destination-out'/);
   assert.match(app, /ref\.displayUrl = cutout\.toDataURL\('image\/png'\)/);
   assert.doesNotMatch(app, /red tint/);

@@ -2146,6 +2146,11 @@ function renderSmartMaskPoints() {
 }
 
 let smartMaskRunning = false;
+let smartMaskSlowTimer = null;
+function setSmartMaskLoading(message) {
+  const label = $('#kreaMaskLoadingText');
+  if (label) label.textContent = message;
+}
 async function runSmartMask({ prompt = '', point = null } = {}) {
   if (smartMaskRunning) return;
   const ref = state.refs[0];
@@ -2157,7 +2162,12 @@ async function runSmartMask({ prompt = '', point = null } = {}) {
   const textPrompt = String(prompt || '').trim();
   if (!textPrompt && !state.kreaMaskPoints.length) return toast('Describe an object or tap the image', true);
   smartMaskRunning = true;
+  setSmartMaskLoading('Starting Smart Select…');
   $('#kreaMaskLoading').hidden = false;
+  clearTimeout(smartMaskSlowTimer);
+  smartMaskSlowTimer = setTimeout(() => {
+    if (smartMaskRunning) setSmartMaskLoading('Still loading SAM3 — first use can take a few minutes');
+  }, 12000);
   try {
     const result = await api('/api/edit-mask/sam3', {
       method: 'POST',
@@ -2196,6 +2206,8 @@ async function runSmartMask({ prompt = '', point = null } = {}) {
     toast(error.message, true);
   } finally {
     smartMaskRunning = false;
+    clearTimeout(smartMaskSlowTimer);
+    smartMaskSlowTimer = null;
     $('#kreaMaskLoading').hidden = true;
   }
 }
@@ -5504,6 +5516,7 @@ function connectEvents() {
   });
   es.addEventListener('status', (ev) => {
     const d = JSON.parse(ev.data);
+    if (d.kind === 'smartMask' && smartMaskRunning) setSmartMaskLoading(d.text || 'Finding selection…');
     if (state.activeJobs.has(d.jobId) || d.jobId === 'pre') {
       $('#liveStatusText').innerHTML = `<span class="spin"></span> ${d.text}`;
     }

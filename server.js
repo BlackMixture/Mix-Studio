@@ -967,7 +967,7 @@ function handleWsMessage(msg) {
     const job = jobs.get(pid);
     if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();
     if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
-    else broadcast('status', { jobId: pid, text: nodeLabel(pid, d.node), itemId: jobs.get(pid).itemId || null });
+    else broadcast('status', { jobId: pid, kind: job.kind, text: nodeLabel(pid, d.node), itemId: job.itemId || null });
   } else if (msg.type === 'execution_error' && pid && jobs.has(pid)) {
     failJob(pid, (d.exception_message || 'execution error') + (d.node_type ? ` (${d.node_type})` : ''));
   } else if (msg.type === 'execution_interrupted' && pid && jobs.has(pid)) {
@@ -1034,6 +1034,30 @@ async function downloadOutput(entry) {
 async function completeJob(pid) {
   const job = jobs.get(pid);
   if (!job) return;
+  if (job.kind === 'smartMask') {
+    // Keep this job in the Map until its output has been verified. The old
+    // lifecycle removed it before checking /history, so a missing or delayed
+    // SAM3 output could not reject the waiting browser request and appeared
+    // to be stuck until its timeout.
+    if (job.completing) return;
+    job.completing = true;
+    const res = await comfyFetch(`/history/${pid}`);
+    const hist = (await res.json())[pid];
+    if (!hist) return failJob(pid, 'SAM3 finished but ComfyUI did not return its history entry. Try again after ComfyUI is idle.');
+    const files = findOutputFiles(hist.outputs || {}, /\.(png|jpg|jpeg|webp)$/i);
+    if (!files.length) return failJob(pid, 'SAM3 finished without a mask image. Check the ComfyUI console for the SAM3 node error.');
+    broadcast('status', { jobId: pid, kind: 'smartMask', text: 'Reading selected mask…', itemId: null });
+    const dataUrls = await Promise.all(files.map(async (entry) => {
+      const buf = await downloadOutput(entry);
+      const ext = path.extname(entry.filename).toLowerCase();
+      const mime = ext === '.webp' ? 'image/webp' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png');
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    }));
+    jobs.delete(pid);
+    broadcast('status', { jobId: pid, kind: 'smartMask', text: 'Mask ready', itemId: null });
+    job.resolve({ dataUrl: dataUrls[0], dataUrls });
+    return;
+  }
   const durationMs = jobDurationMs(job);
   jobs.delete(pid);
   const res = await comfyFetch(`/history/${pid}`);
@@ -1050,19 +1074,6 @@ async function completeJob(pid) {
   if (job.kind === 'enhance') {
     if (textOut === null) { job.reject(new Error('Prompt enhance produced no text')); return; }
     job.resolve(textOut);
-    return;
-  }
-
-  if (job.kind === 'smartMask') {
-    const files = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
-    if (!files.length) { job.reject(new Error('SAM3 produced no mask image')); return; }
-    const dataUrls = await Promise.all(files.map(async (entry) => {
-      const buf = await downloadOutput(entry);
-      const ext = path.extname(entry.filename).toLowerCase();
-      const mime = ext === '.webp' ? 'image/webp' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png');
-      return `data:${mime};base64,${buf.toString('base64')}`;
-    }));
-    job.resolve({ dataUrl: dataUrls[0], dataUrls });
     return;
   }
 
@@ -3634,8 +3645,8 @@ async function handleApi(req, res, url) {
         const pid = await queuePrompt(graph);
         const timer = setTimeout(() => {
           jobs.delete(pid);
-          reject(new Error('SAM3 selection timed out (3 min)'));
-        }, 180000);
+          reject(new Error('SAM3 selection timed out after 8 minutes. Check the ComfyUI console for a model download or SAM3 error.'));
+        }, 480000);
         trackJob(pid, {
           kind: 'smartMask',
           graph,
@@ -3644,6 +3655,7 @@ async function handleApi(req, res, url) {
           reject: (error) => { clearTimeout(timer); reject(error); },
         });
         ensureWs();
+        broadcast('status', { jobId: pid, kind: 'smartMask', text: 'Queued Smart Select…', itemId: null });
       })().catch(reject);
     });
     return json(res, 200, result);
