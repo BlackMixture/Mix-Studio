@@ -799,7 +799,7 @@ async function waitForAppRestart() {
     } catch { /* server is between processes */ }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error('The update installed, but the app did not come back online. Start MixBox Studio on the desktop.');
+  throw new Error('The update installed, but the app did not come back online. Start Mix Studio on the desktop.');
 }
 
 $('#appMenuBtn').addEventListener('click', openAppDrawer);
@@ -843,13 +843,13 @@ $('#appUpdateBtn').addEventListener('click', async () => {
     const result = await api('/api/update', { method: 'POST' });
     button.classList.remove('busy');
     if (!result.updated) {
-      setAppUpdateStatus(`MixBox Studio is up to date · ${result.version}`, 'good');
+      setAppUpdateStatus(`Mix Studio is up to date · ${result.version}`, 'good');
       appUpdateRunning = false;
       renderAppUpdateAccess();
       return;
     }
     if (result.restarting) {
-      label.textContent = 'Restarting MixBox Studio…';
+      label.textContent = 'Restarting Mix Studio…';
       setAppUpdateStatus(`Updated to ${result.version}. Waiting for the desktop app to restart…`, 'good');
       await waitForAppRestart();
       return;
@@ -7930,7 +7930,7 @@ function renderDependencyManager() {
     status.textContent = installState.error || installState.message || 'The last dependency operation did not finish.';
   } else if (ready) {
     badge.textContent = 'Green';
-    status.textContent = 'Every enabled MixBox model and node group is ready.';
+    status.textContent = 'Every enabled Mix Studio model and node group is ready.';
   } else if (installState.restartRequired) {
     badge.textContent = 'Restart needed';
     status.textContent = 'The downloads are finished. Restart ComfyUI, then Check again to load the new nodes and models.';
@@ -8018,9 +8018,9 @@ function renderSam3Dependency() {
   if (!state.profileIsOwner) {
     status.textContent = 'Switch to the owner profile to install the missing SAM3 tools.';
   } else if (!dependency.canInstall) {
-    status.textContent = dependency.reason || 'Run install.bat again and select the existing ComfyUI folder so MixBox Studio can find its Python environment.';
+    status.textContent = dependency.reason || 'Run install.bat again and select the existing ComfyUI folder so Mix Studio can find its Python environment.';
   } else {
-    status.textContent = `${missing.length || 'Some'} SAM3 components are missing. MixBox Studio can install the official node pack without changing gallery data.`;
+    status.textContent = `${missing.length || 'Some'} SAM3 components are missing. Mix Studio can install the official node pack without changing gallery data.`;
   }
 }
 

@@ -13,7 +13,7 @@ const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const modatoryLogo = fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8');
 
 test('the logo mark opens a labeled mobile app drawer', () => {
-  assert.match(html, /class="side-menu-trigger"[^>]+id="appMenuBtn"[^>]+aria-label="Open MixBox Studio menu"[^>]+aria-controls="appDrawer"/);
+  assert.match(html, /class="side-menu-trigger"[^>]+id="appMenuBtn"[^>]+aria-label="Open Mix Studio menu"[^>]+aria-controls="appDrawer"/);
   assert.match(html, /id="appDrawer"[^>]+aria-hidden="true"/);
   assert.match(html, /id="appUpdateBtn"/);
   assert.match(app, /function openAppDrawer\(\)/);
@@ -22,14 +22,14 @@ test('the logo mark opens a labeled mobile app drawer', () => {
   assert.match(css, /\.chip-row\.prompt-tools \{ margin-top: 6px; margin-bottom: -6px; \}/);
 });
 
-test('the installed web interface uses the MixBox Studio name and Modatory logo', () => {
+test('the installed web interface uses the Mix Studio name and Modatory logo', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.webmanifest'), 'utf8'));
-  assert.match(html, /apple-mobile-web-app-title" content="MixBox Studio"/);
-  assert.match(html, /<title>MixBox Studio<\/title>/);
-  assert.match(html, /class="brand-name">MixBox Studio/);
-  assert.match(html, /id="appDrawerTitle">MixBox Studio/);
-  assert.equal(manifest.name, 'MixBox Studio');
-  assert.equal(manifest.short_name, 'MixBox');
+  assert.match(html, /apple-mobile-web-app-title" content="Mix Studio"/);
+  assert.match(html, /<title>Mix Studio<\/title>/);
+  assert.match(html, /class="brand-name">Mix Studio/);
+  assert.match(html, /id="appDrawerTitle">Mix Studio/);
+  assert.equal(manifest.name, 'Mix Studio');
+  assert.equal(manifest.short_name, 'Mix Studio');
   assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/modatory-logo\.svg"/);
   assert.match(modatoryLogo, /viewBox="0 0 734\.42 753\.63"/);
   assert.match(modatoryLogo, /#fdc302/);

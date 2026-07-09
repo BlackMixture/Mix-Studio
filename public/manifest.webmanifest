@@ -1,6 +1,6 @@
 {
-  "name": "MixBox Studio",
-  "short_name": "MixBox",
+  "name": "Mix Studio",
+  "short_name": "Mix Studio",
   "description": "Local image and video generation with ComfyUI",
   "start_url": "/",
   "display": "standalone",
