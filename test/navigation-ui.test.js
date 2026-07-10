@@ -198,8 +198,12 @@ test('image-to-image generations retain their reference for hold-preview and a g
   assert.match(app, /Hold: reference/);
   assert.match(app, /Save reference \+ generation/);
   assert.match(app, /saveImageComposite\(it, isEditSource \? 'before-after' : 'reference-generation'\)/);
+  assert.match(app, /function existingImageComposite\(item, type\)/);
+  assert.match(app, /Downloaded existing \$\{label\} composite/);
   assert.match(server, /type === 'reference-generation'/);
   assert.match(server, /Reference \+ generation/);
+  assert.match(server, /sourceFiles: Array\.isArray\(info\.sourceFiles\)/);
+  assert.match(server, /existing: true, item: root, composite: existing/);
   assert.match(server, /\['before-after', 'reference-generation'\]\.includes\(info\.type\)/);
 });
 

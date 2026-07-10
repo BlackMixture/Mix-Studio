@@ -1183,6 +1183,7 @@ async function completeJob(pid) {
         width: dims.w || info.width || parent.width || 1024,
         height: dims.h || info.height || parent.height || 1024,
         durationMs,
+        sourceFiles: Array.isArray(info.sourceFiles) ? info.sourceFiles : undefined,
       };
       parent.composites = (Array.isArray(parent.composites) ? parent.composites : []).concat([composite]);
       saveDb();
@@ -4191,6 +4192,24 @@ async function handleApi(req, res, url) {
       if (set.length < 2) return json(res, 400, { error: 'This angle set needs at least two completed views' });
       sources = set.map((item) => item.upscaled || item.file);
       label = `${set.length} camera angles`;
+    }
+    if (['before-after', 'reference-generation'].includes(type)) {
+      const existing = (Array.isArray(root.composites) ? root.composites : []).find((composite) => {
+        if (!composite || composite.type !== type) return false;
+        if (Array.isArray(composite.sourceFiles)) {
+          return composite.sourceFiles.length === sources.length
+            && composite.sourceFiles.every((file, index) => file === sources[index]);
+        }
+        // Composites created before sourceFiles was recorded are safe to
+        // reuse until a newer upscale changes the current source pair.
+        return !root.upscaled;
+      });
+      if (existing) {
+        try {
+          await fsp.access(path.join(IMAGES, existing.file));
+          return json(res, 200, { existing: true, item: root, composite: existing });
+        } catch { /* stale attachment: rebuild it below */ }
+      }
     }
     let buffers;
     try {

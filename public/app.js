@@ -7080,16 +7080,43 @@ window.addEventListener('popstate', () => {
   if ($('#lightbox').classList.contains('show')) closeLightbox(true);
 });
 
+function existingImageComposite(item, type) {
+  if (!item || !['before-after', 'reference-generation'].includes(type) || !item.sourceFile) return null;
+  const currentSources = [item.sourceFile, item.upscaled || item.file];
+  return (Array.isArray(item.composites) ? item.composites : []).find((composite) => {
+    if (!composite || composite.type !== type) return false;
+    if (Array.isArray(composite.sourceFiles)) {
+      return composite.sourceFiles.length === currentSources.length
+        && composite.sourceFiles.every((file, index) => file === currentSources[index]);
+    }
+    // Older composites did not record their source pair. They are safe to
+    // reuse while the parent has no newer upscale output.
+    return !item.upscaled;
+  }) || null;
+}
+
 async function saveImageComposite(item, type) {
   try {
     const label = type === 'before-after' ? 'before + after'
       : (type === 'reference-generation' ? 'reference + generation' : 'camera-angle');
+    const existing = existingImageComposite(item, type);
+    if (existing) {
+      downloadComposite(item, existing);
+      toast(`Downloaded existing ${label} composite`);
+      return;
+    }
     toast(`Building ${label} composite…`);
     const result = await api('/api/image-composite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: item.id, type }),
     });
+    if (result.existing && result.composite) {
+      Object.assign(item, result.item || {});
+      downloadComposite(item, result.composite);
+      toast(`Downloaded existing ${label} composite`);
+      return;
+    }
     state.activeJobs.add(result.jobId);
     state.compositeJobs.set(result.jobId, { parentId: item.id, type });
     $('#genLbl').textContent = genLabel();
@@ -8085,7 +8112,8 @@ function downloadItem(it, variant) {
 function downloadComposite(it, composite) {
   const a = document.createElement('a');
   a.href = '/images/' + composite.file;
-  a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_before_after.png';
+  const suffix = composite.type === 'reference-generation' ? '_reference_generation' : '_before_after';
+  a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
   a.click();
 }
 function escapeHtml(s) {
