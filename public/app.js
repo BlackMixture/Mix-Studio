@@ -8151,6 +8151,7 @@ function updateSelectBar() {
   $('#selGroup').disabled = state.selected.size < 2;
   $('#selComposite').disabled = state.selected.size < 2;
   syncSelectionVisuals();
+  if ($('#selectBar').classList.contains('is-expanded')) scheduleSelectionInsightsRefresh();
 }
 $('#selCancel').addEventListener('click', exitSelect);
 $('#selSave').addEventListener('click', () => {
@@ -8231,18 +8232,11 @@ function selectionDateRange(earliest, latest) {
 }
 
 let selectionInsightsRequest = 0;
-async function openSelectionInsights() {
+let selectionInsightsTimer = null;
+async function refreshSelectionInsights() {
   const ids = [...state.selected];
   if (!ids.length) return;
   const request = ++selectionInsightsRequest;
-  const consoleBar = $('#selectBar');
-  consoleBar.classList.add('is-expanded');
-  consoleBar.classList.remove('is-dragging');
-  consoleBar.style.removeProperty('--selection-detail-height');
-  document.body.classList.add('selection-console-expanded');
-  $('#selectionConsoleDetails').setAttribute('aria-hidden', 'false');
-  $('#selInsightsHandle').setAttribute('aria-expanded', 'true');
-  $('#selInsightsHandle').setAttribute('aria-label', 'Dock selection console');
   $('#selectionInsightsStatus').textContent = `Calculating ${ids.length} selected generation${ids.length === 1 ? '' : 's'}…`;
   ['selectionDiskSpace', 'selectionGenerationTime', 'selectionDateRange', 'selectionMediaCount']
     .forEach((id) => { $('#' + id).textContent = '—'; });
@@ -8253,7 +8247,9 @@ async function openSelectionInsights() {
     if (request !== selectionInsightsRequest) return;
     $('#selectionInsightsStatus').textContent = `${stats.items} selected generation${stats.items === 1 ? '' : 's'} · ${stats.files} stored file${stats.files === 1 ? '' : 's'}`;
     $('#selectionDiskSpace').textContent = formatSelectionBytes(stats.bytes);
-    $('#selectionGenerationTime').textContent = stats.generationMs ? formatDuration(stats.generationMs) : 'Not recorded';
+    $('#selectionGenerationTime').textContent = stats.generationMs
+      ? `${stats.generationTimingComplete === false ? '~' : ''}${formatDuration(stats.generationMs)}`
+      : 'Not recorded';
     $('#selectionDateRange').textContent = selectionDateRange(stats.earliest, stats.latest);
     $('#selectionMediaCount').textContent = `${stats.images} image${stats.images === 1 ? '' : 's'} · ${stats.videos} video${stats.videos === 1 ? '' : 's'}`;
   } catch (error) {
@@ -8261,11 +8257,36 @@ async function openSelectionInsights() {
   }
 }
 
+function scheduleSelectionInsightsRefresh(delay = 120) {
+  clearTimeout(selectionInsightsTimer);
+  selectionInsightsRequest += 1;
+  selectionInsightsTimer = setTimeout(() => {
+    selectionInsightsTimer = null;
+    refreshSelectionInsights();
+  }, delay);
+}
+
+function openSelectionInsights() {
+  if (!state.selected.size) return;
+  const consoleBar = $('#selectBar');
+  consoleBar.classList.add('is-expanded');
+  consoleBar.classList.remove('is-dragging');
+  consoleBar.style.removeProperty('--selection-detail-height');
+  document.body.classList.add('selection-console-expanded');
+  $('#selectionConsoleDetails').setAttribute('aria-hidden', 'false');
+  $('#selInsightsHandle').setAttribute('aria-expanded', 'true');
+  $('#selInsightsHandle').setAttribute('aria-label', 'Dock selection console');
+  scheduleSelectionInsightsRefresh(0);
+}
+
 function dockSelectionConsole() {
   const consoleBar = $('#selectBar');
   consoleBar.classList.remove('is-expanded', 'is-dragging');
   consoleBar.style.removeProperty('--selection-detail-height');
   document.body.classList.remove('selection-console-expanded');
+  clearTimeout(selectionInsightsTimer);
+  selectionInsightsTimer = null;
+  selectionInsightsRequest += 1;
   const details = $('#selectionConsoleDetails');
   if (details) details.setAttribute('aria-hidden', 'true');
   const handle = $('#selInsightsHandle');
@@ -8575,6 +8596,14 @@ function openLightbox(id, mediaSel) {
         action: () => openDocumentationBuilder(it),
       });
     }
+    if (Array.isArray(it.regions) && it.regions.length) {
+      imageSaveItems.push({
+        label: 'Save region map',
+        detail: 'Regions + prompts',
+        icon: 'documentation',
+        action: () => downloadRegionMap(it),
+      });
+    }
     if (angleItems.length > 1) {
       imageSaveItems.push({ label: 'Save angle composite', detail: 'All camera views', icon: 'composite', action: () => saveImageComposite(it, 'angles') });
     }
@@ -8616,8 +8645,8 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  // Region-prompted images: hold to overlay the color-coded boxes,
-  // plus export the annotated version.
+  // Region-prompted images: hold to overlay the color-coded boxes.
+  // The annotated export lives in the Save menu with the other files.
   if (!selVideo && !selComposite && Array.isArray(it.regions) && it.regions.length) {
     const rb = mk('⬚ Hold: regions', '', () => {});
     rb.style.userSelect = 'none';
@@ -8638,18 +8667,6 @@ function openLightbox(id, mediaSel) {
     rb.addEventListener('pointercancel', hideR);
     rb.addEventListener('pointerleave', hideR);
     rb.addEventListener('contextmenu', (e) => e.preventDefault());
-    mk('⬚ Save region map', '', async () => {
-      try {
-        const canvas = await buildRegionOverlay(it);
-        canvas.toBlob((blob) => {
-          if (!blob) return toast('Export failed', true);
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_regions.png';
-          a.click();
-        }, 'image/png');
-      } catch (e2) { toast(e2.message, true); }
-    });
   }
   if (selVideo) {
     const vinfo = selVideo.info || {};
@@ -9412,6 +9429,22 @@ async function buildRegionOverlay(it) {
   return c;
 }
 
+async function downloadRegionMap(it) {
+  try {
+    const canvas = await buildRegionOverlay(it);
+    canvas.toBlob((blob) => {
+      if (!blob) return toast('Export failed', true);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_regions.png';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }, 'image/png');
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
 const documentationBuilderState = {
   item: null,
   image: null,
@@ -9569,8 +9602,8 @@ function drawDocumentationLines(ctx, lines, x, y, lineHeight) {
 }
 
 function renderDocumentationContactCard(canvas, ctx, image, metadata) {
-  const width = image.naturalWidth || 1024;
-  const imageHeight = image.naturalHeight || 1024;
+  const width = image.naturalWidth || image.width || 1024;
+  const imageHeight = image.naturalHeight || image.height || 1024;
   const density = Math.max(.55, width / 1000) * (documentationBuilderState.textScale / 100);
   const pad = Math.max(22, Math.round(width * .042));
   const labelSize = Math.max(9, 12 * density);
@@ -9662,8 +9695,8 @@ function renderDocumentationContactCard(canvas, ctx, image, metadata) {
 }
 
 function renderDocumentationOverlay(canvas, ctx, image, metadata) {
-  const width = image.naturalWidth || 1024;
-  const height = image.naturalHeight || 1024;
+  const width = image.naturalWidth || image.width || 1024;
+  const height = image.naturalHeight || image.height || 1024;
   canvas.width = width;
   canvas.height = height;
   ctx.drawImage(image, 0, 0, width, height);
@@ -9786,18 +9819,25 @@ function openDocumentationBuilder(item) {
   status.hidden = false;
   $('#documentationSheet').classList.add('show');
   syncSheetScrollLock();
-  const image = new Image();
-  image.decoding = 'async';
-  image.onload = () => {
+  const loadSource = async () => {
+    if (Array.isArray(item.regions) && item.regions.length) return buildRegionOverlay(item);
+    const image = new Image();
+    image.decoding = 'async';
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('Could not load this image'));
+      image.src = '/images/' + (item.upscaled || item.file);
+    });
+    return image;
+  };
+  loadSource().then((image) => {
     if (documentationBuilderState.item !== item) return;
     documentationBuilderState.image = image;
     renderDocumentationCanvas();
-  };
-  image.onerror = () => {
+  }).catch(() => {
     status.textContent = 'Could not load this image';
     toast('Could not build the documentation image', true);
-  };
-  image.src = '/images/' + (item.upscaled || item.file);
+  });
 }
 
 function saveDocumentationImage() {

@@ -17,6 +17,13 @@ test('lightbox routes original and upscaled image downloads through one save men
   assert.doesNotMatch(appJs, /mk\([^)]*Save upscaled[^)]*downloadItem\(it, 'upscaled'\)/);
 });
 
+test('region map export lives in the image save menu', () => {
+  assert.match(appJs, /label: 'Save region map'/);
+  assert.match(appJs, /detail: 'Regions \+ prompts'/);
+  assert.match(appJs, /action: \(\) => downloadRegionMap\(it\)/);
+  assert.doesNotMatch(appJs, /mk\('⬚ Save region map'/);
+});
+
 test('lightbox groups after-the-fact video processing actions in one menu', () => {
   assert.match(appJs, /Process video/);
   assert.match(appJs, /Upscale video/);

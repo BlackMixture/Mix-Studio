@@ -32,7 +32,21 @@ test('selectionSummary totals duration, media counts, bytes, and date range', ()
     files: 4,
     bytes: 4096,
     generationMs: 12500,
+    generationTimesRecorded: 4,
+    generationTimesMissing: 1,
+    generationTimingComplete: false,
     earliest: 500,
     latest: 2000,
   });
+});
+
+test('selectionSummary marks a mixed timing total as approximate while preserving known time', () => {
+  const summary = selectionSummary([
+    { file: 'known.png', durationMs: 8000 },
+    { file: 'unknown.png' },
+  ]);
+  assert.equal(summary.generationMs, 8000);
+  assert.equal(summary.generationTimesRecorded, 1);
+  assert.equal(summary.generationTimesMissing, 1);
+  assert.equal(summary.generationTimingComplete, false);
 });

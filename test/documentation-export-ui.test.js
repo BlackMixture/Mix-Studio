@@ -52,6 +52,12 @@ test('camera variation documentation uses its angle-specific graph prompt', () =
   assert.match(app, /item\.editEngine === 'qwen'/);
 });
 
+test('region documentation uses the annotated region map as its figure', () => {
+  assert.match(app, /Array\.isArray\(item\.regions\) && item\.regions\.length\) return buildRegionOverlay\(item\)/);
+  assert.match(app, /image\.naturalWidth \|\| image\.width \|\| 1024/);
+  assert.match(app, /image\.naturalHeight \|\| image\.height \|\| 1024/);
+});
+
 test('export uses a restrained research-record treatment without branding', () => {
   assert.doesNotMatch(app, /GENERATION DOCUMENTATION|MIX STUDIO/);
   assert.match(app, /setDocumentationMonoFont/);

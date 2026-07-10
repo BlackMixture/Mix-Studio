@@ -41,10 +41,14 @@ test('selection bar exposes save, group, composite, move, delete, and swipe-up i
   assert.match(html, /id="selDock"/);
   assert.match(app, /function openSelectionInsights\(\)/);
   assert.match(app, /function dockSelectionConsole\(\)/);
+  assert.match(app, /function scheduleSelectionInsightsRefresh\(delay = 120\)/);
+  assert.match(app, /classList\.contains\('is-expanded'\)\) scheduleSelectionInsightsRefresh\(\)/);
+  assert.match(app, /generationTimingComplete === false \? '~' : ''/);
   assert.match(app, /selectBarSwipe\.height > target \* 0\.46/);
-  assert.match(css, /\.select-bar\.is-expanded \{ --selection-detail-height:/);
+  assert.match(css, /\.select-bar\.is-expanded \{[^}]*background: #000/);
   assert.match(css, /\.select-actions \{[\s\S]*overflow-x: auto/);
-  assert.match(css, /\.select-actions \.action-btn \{[\s\S]*border-radius: 999px/);
+  assert.match(css, /\.select-actions \.action-btn \{[\s\S]*min-height: 50px;[\s\S]*border-radius: 999px/);
+  assert.match(css, /\.selection-insights-grid section \{[\s\S]*background: transparent/);
   assert.match(app, /\/api\/items\/selection-stats/);
   assert.match(app, /\/api\/items\/group/);
   assert.match(app, /\/api\/items\/download\?ids=/);
