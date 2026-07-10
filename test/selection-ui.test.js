@@ -37,9 +37,14 @@ test('selection bar exposes save, group, composite, move, delete, and swipe-up i
   for (const id of ['selSave', 'selGroup', 'selComposite', 'selMove', 'selDelete', 'selInsightsHandle']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(html, /id="selectionInsightsSheet"/);
+  assert.match(html, /id="selectionConsoleDetails"/);
+  assert.match(html, /id="selDock"/);
   assert.match(app, /function openSelectionInsights\(\)/);
-  assert.match(app, /selectBarSwipe\.delta < -46/);
+  assert.match(app, /function dockSelectionConsole\(\)/);
+  assert.match(app, /selectBarSwipe\.height > target \* 0\.46/);
+  assert.match(css, /\.select-bar\.is-expanded \{ --selection-detail-height:/);
+  assert.match(css, /\.select-actions \{[\s\S]*overflow-x: auto/);
+  assert.match(css, /\.select-actions \.action-btn \{[\s\S]*border-radius: 999px/);
   assert.match(app, /\/api\/items\/selection-stats/);
   assert.match(app, /\/api\/items\/group/);
   assert.match(app, /\/api\/items\/download\?ids=/);

@@ -7356,6 +7356,9 @@ const galleryDateScrub = {
   ignoreScrollUntil: 0,
   trackTop: 0,
   trackHeight: 1,
+  previewTarget: 0,
+  previewFrame: 0,
+  settleFrame: 0,
   startX: 0,
   startY: 0,
 };
@@ -7386,12 +7389,73 @@ function setGalleryDateScrubberRatio(ratio, haptic = false) {
   if (haptic && changed && navigator.vibrate) navigator.vibrate(6);
 }
 
+function galleryDateLayoutTop(element) {
+  let top = 0;
+  let current = element;
+  while (current) {
+    top += current.offsetTop || 0;
+    current = current.offsetParent;
+  }
+  return Math.max(0, top - 72);
+}
+
 function scrollGalleryToDate(index, behavior = 'smooth') {
   const group = galleryDateScrub.groups[index];
   if (!group) return;
   galleryDateScrub.ignoreScrollUntil = performance.now() + (behavior === 'smooth' ? 720 : 80);
-  const target = window.scrollY + group.divider.getBoundingClientRect().top - 72;
+  const target = galleryDateLayoutTop(group.divider);
   window.scrollTo({ top: Math.max(0, target), behavior });
+}
+
+function galleryDateScrollTarget(ratio) {
+  const groups = galleryDateScrub.groups;
+  if (!groups.length) return window.scrollY;
+  const position = Math.max(0, Math.min(groups.length - 1, ratio * Math.max(0, groups.length - 1)));
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  const mix = position - lower;
+  const targetFor = (index) => galleryDateLayoutTop(groups[index].divider);
+  const start = targetFor(lower);
+  const end = targetFor(upper);
+  return start + (end - start) * mix;
+}
+
+function runGalleryDatePreviewScroll() {
+  galleryDateScrub.previewFrame = 0;
+  if (!galleryDateScrub.active) return;
+  const delta = galleryDateScrub.previewTarget - window.scrollY;
+  if (Math.abs(delta) > 0.8) {
+    const step = Math.sign(delta) * Math.min(Math.abs(delta) * 0.105 + 1.5, 52);
+    window.scrollTo({ top: window.scrollY + step, behavior: 'auto' });
+  }
+  galleryDateScrub.previewFrame = requestAnimationFrame(runGalleryDatePreviewScroll);
+}
+
+function previewGalleryDateScroll(ratio) {
+  galleryDateScrub.previewTarget = galleryDateScrollTarget(ratio);
+  if (!galleryDateScrub.previewFrame) galleryDateScrub.previewFrame = requestAnimationFrame(runGalleryDatePreviewScroll);
+}
+
+function settleGalleryToDate(index) {
+  const groups = galleryDateScrub.groups;
+  if (!groups[index]) return;
+  if (galleryDateScrub.previewFrame) cancelAnimationFrame(galleryDateScrub.previewFrame);
+  if (galleryDateScrub.settleFrame) cancelAnimationFrame(galleryDateScrub.settleFrame);
+  galleryDateScrub.previewFrame = 0;
+  const start = window.scrollY;
+  const target = galleryDateLayoutTop(groups[index].divider);
+  const distance = target - start;
+  const duration = Math.max(150, Math.min(280, 150 + Math.abs(distance) * 0.035));
+  const started = performance.now();
+  galleryDateScrub.ignoreScrollUntil = started + duration + 120;
+  const tick = (now) => {
+    const progress = Math.min(1, (now - started) / duration);
+    const eased = 1 - Math.pow(1 - progress, 4);
+    window.scrollTo({ top: start + distance * eased, behavior: 'auto' });
+    if (progress < 1) galleryDateScrub.settleFrame = requestAnimationFrame(tick);
+    else galleryDateScrub.settleFrame = 0;
+  };
+  galleryDateScrub.settleFrame = requestAnimationFrame(tick);
 }
 
 function setGalleryDateScrubberIndex(index, scroll = false, haptic = false, behavior = 'smooth') {
@@ -7484,6 +7548,7 @@ function scrubGalleryDateAt(clientY, haptic = true) {
   const height = galleryDateScrub.active ? galleryDateScrub.trackHeight : rect.height;
   const ratio = Math.max(0, Math.min(1, (clientY - top) / Math.max(1, height)));
   setGalleryDateScrubberRatio(ratio, haptic);
+  if (galleryDateScrub.active) previewGalleryDateScroll(ratio);
 }
 
 function finishGalleryDateScrub(event) {
@@ -7493,8 +7558,8 @@ function finishGalleryDateScrub(event) {
   if (shouldSettle) setGalleryDateScrubberIndex(selectedIndex);
   resetGalleryDateScrubGesture();
   if (shouldSettle) {
-    scrollGalleryToDate(selectedIndex, 'smooth');
-    resumeGalleryDateMedia(560);
+    settleGalleryToDate(selectedIndex);
+    resumeGalleryDateMedia(380);
   } else {
     resumeGalleryDateMedia();
   }
@@ -7507,6 +7572,7 @@ function beginGalleryDateScrub() {
   $('#galleryDateScrubber').classList.remove('is-pressed');
   $('#galleryDateScrubber').classList.add('is-active');
   document.body.classList.add('gallery-date-scrubbing');
+  galleryDateScrub.previewTarget = window.scrollY;
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   $$('.gallery-card-video').forEach((video) => video.pause());
   if (navigator.vibrate) navigator.vibrate(10);
@@ -8045,8 +8111,8 @@ function exitSelect() {
   if (!state.selectMode && !state.selected.size) { $('#selectBar').hidden = true; return; }
   state.selectMode = false;
   state.selected = new Set();
+  dockSelectionConsole();
   $('#selectBar').hidden = true;
-  $('#selectionInsightsSheet').classList.remove('show');
   syncSelectionVisuals();
 }
 function updateSelectBar() {
@@ -8139,7 +8205,14 @@ async function openSelectionInsights() {
   const ids = [...state.selected];
   if (!ids.length) return;
   const request = ++selectionInsightsRequest;
-  $('#selectionInsightsSheet').classList.add('show');
+  const consoleBar = $('#selectBar');
+  consoleBar.classList.add('is-expanded');
+  consoleBar.classList.remove('is-dragging');
+  consoleBar.style.removeProperty('--selection-detail-height');
+  document.body.classList.add('selection-console-expanded');
+  $('#selectionConsoleDetails').setAttribute('aria-hidden', 'false');
+  $('#selInsightsHandle').setAttribute('aria-expanded', 'true');
+  $('#selInsightsHandle').setAttribute('aria-label', 'Dock selection console');
   $('#selectionInsightsStatus').textContent = `Calculating ${ids.length} selected generation${ids.length === 1 ? '' : 's'}…`;
   ['selectionDiskSpace', 'selectionGenerationTime', 'selectionDateRange', 'selectionMediaCount']
     .forEach((id) => { $('#' + id).textContent = '—'; });
@@ -8158,24 +8231,69 @@ async function openSelectionInsights() {
   }
 }
 
-$('#selInsightsHandle').addEventListener('click', openSelectionInsights);
+function dockSelectionConsole() {
+  const consoleBar = $('#selectBar');
+  consoleBar.classList.remove('is-expanded', 'is-dragging');
+  consoleBar.style.removeProperty('--selection-detail-height');
+  document.body.classList.remove('selection-console-expanded');
+  const details = $('#selectionConsoleDetails');
+  if (details) details.setAttribute('aria-hidden', 'true');
+  const handle = $('#selInsightsHandle');
+  if (handle) {
+    handle.setAttribute('aria-expanded', 'false');
+    handle.setAttribute('aria-label', 'Expand selection console');
+  }
+}
+
+function selectionConsoleHeight() {
+  return Math.min(290, window.innerHeight * 0.38);
+}
+
+let suppressSelectionConsoleClick = false;
+$('#selInsightsHandle').addEventListener('click', () => {
+  if (suppressSelectionConsoleClick) {
+    suppressSelectionConsoleClick = false;
+    return;
+  }
+  if ($('#selectBar').classList.contains('is-expanded')) dockSelectionConsole();
+  else openSelectionInsights();
+});
+$('#selDock').addEventListener('click', dockSelectionConsole);
 let selectBarSwipe = null;
 $('#selectBar').addEventListener('pointerdown', (event) => {
-  if (event.target.closest('.select-actions button, #selCancel')) return;
-  selectBarSwipe = { pointerId: event.pointerId, startY: event.clientY, delta: 0 };
+  if (event.target.closest('.select-actions, #selCancel, #selDock')) return;
+  const expanded = $('#selectBar').classList.contains('is-expanded');
+  selectBarSwipe = {
+    pointerId: event.pointerId,
+    startY: event.clientY,
+    lastY: event.clientY,
+    startTime: performance.now(),
+    expanded,
+    height: expanded ? selectionConsoleHeight() : 0,
+  };
   try { $('#selectBar').setPointerCapture(event.pointerId); } catch { /* noop */ }
 });
 $('#selectBar').addEventListener('pointermove', (event) => {
   if (!selectBarSwipe || event.pointerId !== selectBarSwipe.pointerId) return;
-  selectBarSwipe.delta = Math.min(0, event.clientY - selectBarSwipe.startY);
-  $('#selectBar').style.setProperty('--select-bar-lift', `${Math.max(-24, selectBarSwipe.delta * 0.28)}px`);
+  const target = selectionConsoleHeight();
+  const delta = event.clientY - selectBarSwipe.startY;
+  selectBarSwipe.lastY = event.clientY;
+  selectBarSwipe.height = Math.max(0, Math.min(target, (selectBarSwipe.expanded ? target : 0) - delta));
+  const consoleBar = $('#selectBar');
+  consoleBar.classList.add('is-dragging');
+  consoleBar.style.setProperty('--selection-detail-height', `${selectBarSwipe.height}px`);
+  suppressSelectionConsoleClick = Math.abs(delta) > 8;
 });
 function finishSelectBarSwipe(event) {
   if (!selectBarSwipe || (event && event.pointerId !== selectBarSwipe.pointerId)) return;
-  const open = selectBarSwipe.delta < -46;
+  const target = selectionConsoleHeight();
+  const delta = selectBarSwipe.lastY - selectBarSwipe.startY;
+  const elapsed = Math.max(1, performance.now() - selectBarSwipe.startTime);
+  const velocity = delta / elapsed;
+  const open = velocity < -0.35 || (velocity <= 0.35 && selectBarSwipe.height > target * 0.46);
   selectBarSwipe = null;
-  $('#selectBar').style.removeProperty('--select-bar-lift');
   if (open) openSelectionInsights();
+  else dockSelectionConsole();
 }
 $('#selectBar').addEventListener('pointerup', finishSelectBarSwipe);
 $('#selectBar').addEventListener('pointercancel', finishSelectBarSwipe);
@@ -9285,8 +9403,9 @@ function documentationMetadata(item) {
     if (hasDocumentationValue(value)) metadata.push({ key, label, value: String(value) });
   };
   add('model', 'Model', galleryImageModelLabel(item));
-  add('prompt', 'Prompt', item.prompt);
-  add('enhanced', 'Enhanced prompt', item.refinedPrompt);
+  const prompt = item.refinedPrompt || item.prompt;
+  add('prompt', 'Prompt', prompt);
+  if (item.refinedPrompt && item.prompt && item.refinedPrompt !== item.prompt) add('originalPrompt', 'Original prompt', item.prompt);
   if (hasDocumentationValue(item.width) && hasDocumentationValue(item.height)) add('size', 'Size', `${item.width} × ${item.height}`);
   add('seed', 'Seed', item.seed);
   add('steps', 'Steps', item.steps);
@@ -9599,7 +9718,7 @@ function openDocumentationBuilder(item) {
   documentationBuilderState.item = item;
   documentationBuilderState.image = null;
   documentationBuilderState.metadata = documentationMetadata(item);
-  documentationBuilderState.selected = new Set(documentationBuilderState.metadata.map((entry) => entry.key));
+  documentationBuilderState.selected = new Set(documentationBuilderState.metadata.filter((entry) => entry.key !== 'originalPrompt').map((entry) => entry.key));
   documentationBuilderState.layout = 'contact';
   documentationBuilderState.theme = 'dark';
   documentationBuilderState.textScale = 100;

@@ -227,7 +227,9 @@ test('gallery exposes a draggable date scrubber with keyboard navigation', () =>
   assert.match(app, /function syncGalleryDateScrubber\(\)/);
   assert.match(app, /function scrubGalleryDateAt\(clientY, haptic = true\)/);
   assert.match(app, /function setGalleryDateScrubberRatio\(ratio, haptic = false\)/);
-  assert.match(app, /scrollGalleryToDate\(selectedIndex, 'smooth'\)/);
+  assert.match(app, /function previewGalleryDateScroll\(ratio\)/);
+  assert.match(app, /function settleGalleryToDate\(index\)/);
+  assert.match(app, /settleGalleryToDate\(selectedIndex\)/);
   assert.match(app, /setTimeout\(beginGalleryDateScrub, 180\)/);
   assert.match(app, /setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /event\.key === 'ArrowDown'/);
@@ -236,6 +238,7 @@ test('gallery exposes a draggable date scrubber with keyboard navigation', () =>
   assert.match(css, /\.gallery-date-scrubber \{[\s\S]*position: fixed;[\s\S]*touch-action: none;/);
   assert.match(css, /\.gallery-date-scrubber\.is-active,[\s\S]*height: var\(--gallery-scrub-expanded-height/);
   assert.match(css, /\.gallery-date-scrubber\.is-active \.gallery-date-scrubber-label/);
+  assert.match(css, /\.gallery-date-scrubber-label \{[\s\S]*font-size: 17px/);
   assert.match(css, /body\.gallery-date-scrubbing #galleryGrid \{[\s\S]*translateX\(-12px\) scale\(0\.94\)/);
 });
 
