@@ -424,23 +424,6 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .side-menu-trigger { width: 40px; height: 40px; flex-basis: 40px; border-radius: 14px; }
   .brand-wordmark { width: 118px; flex-basis: 118px; }
   .topbar-actions { gap: 6px; }
-  .profile-chip {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    display: grid;
-    place-items: center;
-    font-size: 0;
-  }
-  .profile-chip::before {
-    content: '';
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--ink-soft);
-    box-shadow: 0 9px 0 3px var(--ink-soft);
-    transform: translateY(-4px);
-  }
 }
 .queue-row {
   display: flex; align-items: center; gap: 10px;
@@ -1894,6 +1877,26 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   text-overflow: ellipsis;
 }
 .profile-chip[hidden] { display: none; }
+@media (max-width: 420px) {
+  .profile-chip {
+    width: 36px;
+    height: 36px;
+    max-width: none;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font-size: 0;
+  }
+  .profile-chip::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ink-soft);
+    box-shadow: 0 9px 0 3px var(--ink-soft);
+    transform: translateY(-4px);
+  }
+}
 .profile-gate {
   position: fixed;
   inset: 0;
