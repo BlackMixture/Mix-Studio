@@ -545,6 +545,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   -webkit-backdrop-filter: blur(16px) saturate(140%);
   transition: opacity 180ms var(--ease), transform 220ms var(--ease);
 }
+.primary-tabs { background: #000; }
 .create-tabs { min-height: 42px; background: rgba(7,9,13,0.84); }
 .create-tabs[hidden] { display: none; }
 .tab {
