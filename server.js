@@ -3445,6 +3445,18 @@ async function handleApi(req, res, url) {
     }
   }
 
+  if (route === '/api/app/restart' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restart MixBox Studio' });
+    try {
+      await assertDesktopIsIdle();
+    } catch (error) {
+      return json(res, 409, { error: String(error.message || error) });
+    }
+    json(res, 202, { ok: true, restarting: true });
+    scheduleServerRestart();
+    return;
+  }
+
   if (route === '/api/settings' && req.method === 'GET') return json(res, 200, settings);
   if (route === '/api/settings' && req.method === 'POST') {
     const body = await readJsonBody(req);
