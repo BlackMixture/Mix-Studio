@@ -293,16 +293,9 @@ function makePromptLoraTriggerToken(name) {
   token.className = 'prompt-lora-token';
   token.contentEditable = 'false';
   token.dataset.loraName = name;
+  token.style.setProperty('--lora-trigger-color', loraTriggerColor(name));
   token.title = `LoRA trigger: ${phrase || prettyLora(name)}`;
-  const label = document.createElement('b');
-  label.textContent = phrase || prettyLora(name);
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'prompt-ref-remove';
-  remove.dataset.removePromptLora = name;
-  remove.setAttribute('aria-label', `Remove ${phrase || 'LoRA trigger'} from prompt`);
-  remove.textContent = '×';
-  token.append(label, remove);
+  token.textContent = phrase || prettyLora(name);
   return token;
 }
 
@@ -4018,6 +4011,11 @@ function loraTriggerPhrase(lora) {
   return normalizeLoraTriggerPhrase(match && match.triggerPhrase);
 }
 
+function loraTriggerColor(name) {
+  const index = curLoras().findIndex((item) => item && item.name === name);
+  return REGION_COLORS[(index < 0 ? 0 : index) % REGION_COLORS.length];
+}
+
 function promptHasLoraTrigger(prompt, phrase) {
   const needle = normalizeLoraTriggerPhrase(phrase).toLocaleLowerCase();
   const resolvedPrompt = expandPromptLoraTriggers(prompt);
@@ -4042,6 +4040,23 @@ function promoteLoraTriggerInPrompt(lora) {
   const match = pattern && pattern.exec(draft);
   if (!match) return false;
   const value = draft.slice(0, match.index) + token + draft.slice(match.index + match[0].length);
+  setPromptDraft(value);
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = value;
+  updatePromptClear();
+  return true;
+}
+
+function demoteLoraTriggerInPrompt(lora) {
+  const name = lora && lora.name;
+  const phrase = loraTriggerPhrase(lora);
+  if (!name || !phrase) return false;
+  let changed = false;
+  const value = promptDraft().replace(/@lora-trigger\[[^\]]+\]|@lora-trigger-[^\s,;:!?]+/g, (token) => {
+    if (loraNameFromTriggerToken(token) !== name) return token;
+    changed = true;
+    return phrase;
+  });
+  if (!changed) return false;
   setPromptDraft(value);
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = value;
   updatePromptClear();
@@ -4328,6 +4343,7 @@ function wireLoraCard(card, l, idx, arr) {
         saveForm();
       } },
       { label: l.managed === 'krea2-raw-turbo' ? 'Turn off Turbo LoRA' : 'Remove from stack', danger: true, action: () => {
+        demoteLoraTriggerInPrompt(l);
         if (l.managed === 'krea2-raw-turbo') {
           l.on = false;
           krea2ManagedLoraChanged(l);
@@ -4400,6 +4416,7 @@ function wireLoraCard(card, l, idx, arr) {
       const wasOn = l.on === true;
       l.on = !l.on;
       if (!wasOn && l.on) ensureLoraTriggerInPrompt(l);
+      else if (wasOn && !l.on) demoteLoraTriggerInPrompt(l);
       krea2ManagedLoraChanged(l);
       renderLoras();
       window.scrollTo(0, sy);

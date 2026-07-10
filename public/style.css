@@ -741,29 +741,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .prompt-ref-remove:hover,
 .prompt-ref-remove:focus-visible { background: rgba(255,255,255,0.12); color: #fff; }
 .prompt-lora-token {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
-  max-width: min(220px, 70vw);
-  height: 28px;
-  margin: 1px 3px 1px 0;
-  padding: 2px 5px 2px 4px;
-  gap: 5px;
-  border: 1px solid rgba(196, 145, 255, .66);
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(122, 70, 196, .3), rgba(29, 20, 49, .9));
-  color: #f0e4ff;
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1;
-  user-select: none;
-  box-shadow: 0 5px 15px rgba(68, 35, 123, .24);
-}
-.prompt-lora-token b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--lora-trigger-color, #46b4e6);
 }
 .enhance-btn {
   position: absolute; top: 10px; right: 10px;
