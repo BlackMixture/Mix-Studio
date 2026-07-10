@@ -37,8 +37,21 @@ test('profile preferences save separately from machine model settings', () => {
 
 test('saved defaults are applied to image, edit, and video controls', () => {
   assert.match(app, /function applyGenerationDefaults\(\)/);
-  assert.match(app, /#stepsInput'\)\.value = image\.steps/);
-  assert.match(app, /#seedInput'\)\.value = d\.seed\.mode === 'fixed'/);
+  assert.match(app, /function defaultGenerationTuning\(mode\)/);
+  assert.match(app, /function restoreGenerationTuning\(mode/);
+  assert.match(app, /#stepsInput'\)\.value = tuning\.steps/);
+  assert.match(app, /#seedInput'\)\.value = tuning\.seed/);
   assert.match(app, /#vidDur'\)\.value = d\.video\.duration/);
   assert.match(app, /#vidFree'\)\.value = d\.video\.motionFreedom/);
+});
+
+test('image sampling values persist by mode and expose quick default controls', () => {
+  assert.match(html, /id="advDefaultsBtn"/);
+  assert.match(html, /Double-tap any value to reset it/);
+  assert.match(app, /generationTuning: \{ create: null, edit: null \}/);
+  assert.match(app, /generationTuning: state\.generationTuning/);
+  assert.match(app, /function captureGenerationTuning/);
+  assert.match(app, /function resetGenerationControl/);
+  assert.match(app, /control\.addEventListener\('dblclick'/);
+  assert.match(app, /setSettingsTab\('defaults'\)/);
 });

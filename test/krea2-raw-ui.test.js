@@ -14,22 +14,25 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'featur
 
 test('Create Image exposes a Turbo switch that defaults on', () => {
   assert.match(html, /id="kreaTurboToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
-  assert.match(html, /id="kreaModelSummary">Krea 2 · fast · 8 steps/);
+  assert.match(html, /id="kreaModelSummary">Krea 2 · fast</);
+  assert.ok(html.indexOf('id="resPanel"') < html.indexOf('id="kreaTurboToggle"'));
   assert.match(css, /\.krea-model-switch\[aria-checked="true"\]/);
   assert.match(app, /krea2Turbo: true/);
   assert.match(app, /button\.setAttribute\('aria-checked', String\(state\.krea2Turbo\)\)/);
-  assert.match(app, /if \(state\.krea2Turbo\) \{\s*\$\('#stepsInput'\)\.value = 8;/);
+  assert.match(app, /`Krea 2 · fast · \$\{steps\} steps`/);
+  assert.doesNotMatch(app, /\$\('#stepsInput'\)\.value = 8;/);
   assert.match(server, /p\.steps = clampInt\(p\.steps, 1, 100, p\.mode === 't2i' && p\.krea2Turbo \? 8 : 12\)/);
 });
 
-test('Raw mode manages the Turbo LoRA and matching sampling presets', () => {
+test('Raw mode manages the Turbo LoRA without overwriting user sampling values', () => {
   assert.match(app, /DEFAULT_KREA2_TURBO_LORA = 'krea2_turbo_lora_rank_64_bf16\.safetensors'/);
   assert.match(app, /name, strength: 0\.6, on: true/);
   assert.match(app, /managed = 'krea2-raw-turbo'/);
-  assert.match(app, /turboLora\.on \? 12 : 52/);
-  assert.match(app, /turboLora\.on \? 1 : 3\.5/);
+  assert.doesNotMatch(app, /turboLora\.on \? 12 : 52/);
+  assert.doesNotMatch(app, /turboLora\.on \? 1 : 3\.5/);
   assert.match(app, /function detachKrea2RawTurboLora\(\)/);
   assert.match(app, /krea2ManagedLoraChanged\(l\)/);
+  assert.match(app, /const steps = Number\(\$\('#stepsInput'\)\.value\)/);
   assert.match(app, /krea2Turbo: !krea2Raw/);
   assert.match(app, /krea2RawTurboLora: krea2Raw \? state\.krea2RawTurboLora : undefined/);
 });

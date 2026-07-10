@@ -51,7 +51,6 @@ const state = {
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
   krea2Turbo: true,          // merged Turbo checkpoint vs Raw checkpoint
   krea2RawTurboLora: null,   // managed Raw-mode Turbo LoRA, preserved while hidden
-  krea2SamplingReady: false,
   regions: [],
   activeRegionId: null,
   kreaMask: null,
@@ -91,6 +90,7 @@ const state = {
     video: { duration: 5, motionFreedom: 35 },
     seed: { mode: 'random', value: 0 },
   },
+  generationTuning: { create: null, edit: null },
   cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
   showAllLoras: false,
   activeJobs: new Set(),
@@ -1038,6 +1038,7 @@ function saveForm() {
       qwenAngles: state.qwenAngles,
       qwenAngleElevation: state.qwenAngleElevation,
       qwenAngleDistance: state.qwenAngleDistance,
+      generationTuning: state.generationTuning,
     }));
   } catch { /* noop */ }
 }
@@ -1109,6 +1110,10 @@ function loadForm() {
     } : null;
     state.createImageGuideOpen = f.createImageGuideOpen === true;
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
+    state.generationTuning = {
+      create: normalizeGenerationTuning('create', f.generationTuning && f.generationTuning.create),
+      edit: normalizeGenerationTuning('edit', f.generationTuning && f.generationTuning.edit),
+    };
     state.kreaMaskTool = ['smart', 'brush', 'box'].includes(f.kreaMaskTool) ? f.kreaMaskTool : 'smart';
     state.regions = Array.isArray(f.regions) ? f.regions : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
@@ -1166,6 +1171,7 @@ function syncNavigation() {
 
 function setView(view, opts = {}) {
   const prev = state.view;
+  if (prev !== view) captureGenerationTuning(generationTuningMode(prev));
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
     state.prompts[prev] = promptDraft();
   }
@@ -1186,7 +1192,7 @@ function setView(view, opts = {}) {
   $('#view-gallery').classList.toggle('active', isGallery);
   $('#genDock').style.display = isGallery ? 'none' : '';
   $('#refPanel').hidden = view !== 'edit';
-  if (prev !== view && !isGallery) applyGenerationDefaults();
+  if (prev !== view && !isGallery) restoreGenerationTuning(generationTuningMode(view));
   updateVideoPanels();
   renderEnhance();
   $('#genLbl').textContent = genLabel();
@@ -1503,54 +1509,40 @@ function detachKrea2RawTurboLora() {
   state.loras = state.loras.filter((item) => item && item.managed !== 'krea2-raw-turbo' && assetNameKey(item.name) !== key);
 }
 
-function applyKrea2SamplingPreset() {
-  if (state.krea2Turbo) {
-    $('#stepsInput').value = 8;
-    $('#cfgInput').value = 1;
-    return;
-  }
-  const turboLora = ensureKrea2RawTurboLora();
-  $('#stepsInput').value = turboLora.on ? 12 : 52;
-  $('#cfgInput').value = turboLora.on ? 1 : 3.5;
-}
-
 function renderKrea2Mode() {
   const button = $('#kreaTurboToggle');
   if (!button) return;
   const visible = state.view === 'create' && state.createMode === 'image';
+  $('#kreaModelPanel').hidden = !visible;
   button.hidden = !visible;
   if (!visible) {
     detachKrea2RawTurboLora();
-    state.krea2SamplingReady = false;
     return;
   }
   if (state.krea2Turbo) {
     detachKrea2RawTurboLora();
-    if (!state.krea2SamplingReady) applyKrea2SamplingPreset();
   }
   else {
     ensureKrea2RawTurboLora();
-    if (!state.krea2SamplingReady) applyKrea2SamplingPreset();
   }
-  state.krea2SamplingReady = true;
   button.setAttribute('aria-checked', String(state.krea2Turbo));
   const rawStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.raw;
+  const steps = Number($('#stepsInput').value) || state.userDefaults.create.steps;
   if (state.krea2Turbo) {
-    $('#kreaModelSummary').textContent = 'Krea 2 · fast · 8 steps';
+    $('#kreaModelSummary').textContent = `Krea 2 · fast · ${steps} steps`;
   } else if (rawStatus && !rawStatus.ok) {
     $('#kreaModelSummary').textContent = 'Raw model missing · configure in Settings';
   } else {
     const lora = state.krea2RawTurboLora;
     $('#kreaModelSummary').textContent = lora && lora.on
-      ? `Raw · LoRA ${Number(lora.strength).toFixed(2)} · ${$('#stepsInput').value || 12} steps`
-      : `Raw · full sampling · ${$('#stepsInput').value || 52} steps`;
+      ? `Raw · LoRA ${Number(lora.strength).toFixed(2)} · ${steps} steps`
+      : `Raw · full sampling · ${steps} steps`;
   }
 }
 
 function krea2ManagedLoraChanged(lora) {
   if (!lora || lora.managed !== 'krea2-raw-turbo') return;
   state.krea2RawTurboLora = lora;
-  if (!state.krea2Turbo) applyKrea2SamplingPreset();
   renderKrea2Mode();
 }
 
@@ -1564,18 +1556,15 @@ $('#kreaTurboToggle').addEventListener('click', () => {
     }
   }
   state.krea2Turbo = nextTurbo;
-  state.krea2SamplingReady = false;
   if (state.krea2Turbo) detachKrea2RawTurboLora();
   else {
     const lora = ensureKrea2RawTurboLora();
     const loraStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.turboLora;
     if (loraStatus && !loraStatus.ok) {
       lora.on = false;
-      toast('Turbo LoRA is not installed — Raw will use full 52-step sampling', true);
+      toast('Turbo LoRA is not installed — Raw will use the current sampling settings', true);
     }
   }
-  applyKrea2SamplingPreset();
-  state.krea2SamplingReady = true;
   renderKrea2Mode();
   renderLoras();
   saveForm();
@@ -4104,6 +4093,79 @@ function generationDefaultsFromControls() {
   };
 }
 
+function generationTuningMode(view = state.view) {
+  if (view === 'create') return 'create';
+  if (view === 'edit') return 'edit';
+  return null;
+}
+
+function defaultGenerationTuning(mode) {
+  const defaults = state.userDefaults[mode] || state.userDefaults.create;
+  return {
+    steps: Number(defaults.steps),
+    cfg: Number(defaults.cfg),
+    batch: Number(defaults.batch),
+    denoise: mode === 'edit' ? Number(state.userDefaults.edit.denoise) : undefined,
+    seed: state.userDefaults.seed.mode === 'fixed' ? String(state.userDefaults.seed.value) : '',
+  };
+}
+
+function normalizeGenerationTuning(mode, value) {
+  if (!value || typeof value !== 'object') return null;
+  const defaults = defaultGenerationTuning(mode);
+  const number = (input, min, max, fallback) => {
+    const parsed = Number(input);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+  };
+  const seed = String(value.seed ?? '').trim();
+  return {
+    steps: Math.round(number(value.steps, 1, 100, defaults.steps)),
+    cfg: number(value.cfg, 0, 30, defaults.cfg),
+    batch: Math.round(number(value.batch, 1, 8, defaults.batch)),
+    denoise: mode === 'edit' ? number(value.denoise, 0.1, 1, defaults.denoise) : undefined,
+    seed: /^\d+$/.test(seed) ? seed : '',
+  };
+}
+
+function captureGenerationTuning(mode = generationTuningMode()) {
+  if (!mode) return;
+  const previous = state.generationTuning[mode] || defaultGenerationTuning(mode);
+  state.generationTuning[mode] = normalizeGenerationTuning(mode, {
+    steps: $('#stepsInput').value || previous.steps,
+    cfg: $('#cfgInput').value === '' ? previous.cfg : $('#cfgInput').value,
+    batch: $('#batchInput').value || previous.batch,
+    denoise: mode === 'edit' ? $('#denoiseInput').value : undefined,
+    seed: $('#seedInput').value,
+  });
+}
+
+function restoreGenerationTuning(mode = generationTuningMode()) {
+  if (!mode) return;
+  const tuning = state.generationTuning[mode] || defaultGenerationTuning(mode);
+  $('#stepsInput').value = tuning.steps;
+  $('#cfgInput').value = tuning.cfg;
+  $('#batchInput').value = tuning.batch;
+  $('#seedInput').value = tuning.seed;
+  if (mode === 'edit') {
+    $('#denoiseInput').value = tuning.denoise;
+    $('#denoiseVal').textContent = Number(tuning.denoise).toFixed(2);
+  }
+  renderKrea2Mode();
+}
+
+function resetGenerationControl(control) {
+  const mode = generationTuningMode();
+  if (!mode || !control) return;
+  const defaults = defaultGenerationTuning(mode);
+  const key = control.dataset.defaultReset;
+  if (key === 'seed') control.value = defaults.seed;
+  else if (Object.prototype.hasOwnProperty.call(defaults, key)) control.value = defaults[key];
+  if (key === 'denoise') $('#denoiseVal').textContent = Number(control.value).toFixed(2);
+  captureGenerationTuning(mode);
+  renderKrea2Mode();
+  saveForm();
+}
+
 function renderGenerationDefaults() {
   const d = state.userDefaults;
   $('#defaultCreateSteps').value = d.create.steps;
@@ -4122,13 +4184,7 @@ function renderGenerationDefaults() {
 
 function applyGenerationDefaults() {
   const d = state.userDefaults;
-  const image = state.view === 'edit' ? d.edit : d.create;
-  $('#stepsInput').value = image.steps;
-  $('#cfgInput').value = image.cfg;
-  $('#batchInput').value = image.batch;
-  $('#denoiseInput').value = d.edit.denoise;
-  $('#denoiseVal').textContent = Number(d.edit.denoise).toFixed(2);
-  $('#seedInput').value = d.seed.mode === 'fixed' ? String(d.seed.value) : '';
+  restoreGenerationTuning();
   $('#vidDur').value = d.video.duration;
   $('#vidFree').value = d.video.motionFreedom;
   updateVideoTuningSummary();
@@ -4777,6 +4833,45 @@ function setAdvancedExpanded(open) {
 $('#advHeader').addEventListener('click', () => {
   setAdvancedExpanded(!$('#advPanel').classList.contains('expanded'));
 });
+$('#advDefaultsBtn').addEventListener('click', () => {
+  setSettingsTab('defaults');
+  $('#settingsBtn').click();
+});
+
+const generationResetControls = {
+  seedInput: 'seed',
+  stepsInput: 'steps',
+  cfgInput: 'cfg',
+  batchInput: 'batch',
+  denoiseInput: 'denoise',
+};
+Object.entries(generationResetControls).forEach(([id, key]) => {
+  const control = $('#' + id);
+  let lastTouchTap = 0;
+  control.dataset.defaultReset = key;
+  control.title = 'Double-tap to reset to your default';
+  control.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    resetGenerationControl(control);
+  });
+  control.addEventListener('pointerup', (event) => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+    const now = performance.now();
+    if (now - lastTouchTap < 360) {
+      event.preventDefault();
+      resetGenerationControl(control);
+      lastTouchTap = 0;
+    } else {
+      lastTouchTap = now;
+    }
+  });
+  control.addEventListener('change', () => {
+    captureGenerationTuning();
+    renderKrea2Mode();
+    saveForm();
+  });
+});
+$('#stepsInput').addEventListener('input', renderKrea2Mode);
 
 /* ---- LoRA presets (stored server-side, shared across devices) ---- */
 $('#loraSaveBtn').addEventListener('click', async () => {
@@ -5053,7 +5148,12 @@ async function useAsRef(item) {
 /* Generate                                                            */
 /* ------------------------------------------------------------------ */
 
-$('#seedDice').addEventListener('click', () => { $('#seedInput').value = ''; toast('Seed: random'); });
+$('#seedDice').addEventListener('click', () => {
+  $('#seedInput').value = '';
+  captureGenerationTuning();
+  saveForm();
+  toast('Seed: random');
+});
 let livePreviewSwipe = null;
 let livePreviewDismissTimer = null;
 
@@ -5133,7 +5233,9 @@ $('#livePreview').addEventListener('pointerup', (event) => {
 });
 $('#livePreview').addEventListener('pointercancel', settleLivePreviewSwipe);
 $('#livePreviewImg').addEventListener('error', () => $('#livePreviewImg').removeAttribute('src'));
-$('#denoiseInput').addEventListener('input', () => { $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2); });
+$('#denoiseInput').addEventListener('input', () => {
+  $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
+});
 
 /* Video tab: inline source-image attachment */
 function renderVidAttach() {
@@ -8145,6 +8247,14 @@ async function reuseItem(it, useEnhanced) {
     $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
     $('#editComposite').setAttribute('aria-pressed', String(it.composite === true));
   }
+  const restoredMode = restoringEdit ? 'edit' : 'create';
+  state.generationTuning[restoredMode] = normalizeGenerationTuning(restoredMode, {
+    seed: $('#seedInput').value,
+    steps: $('#stepsInput').value,
+    cfg: $('#cfgInput').value,
+    batch: $('#batchInput').value,
+    denoise: restoringEdit ? $('#denoiseInput').value : undefined,
+  });
 
   closeLightbox();
   setView(restoringEdit ? 'edit' : 'create', restoringEdit ? {} : { createMode: restoredRegions.length ? 'region' : 'image' });
@@ -9153,6 +9263,7 @@ syncSheetScrollLock();
 
 loadForm();
 loadMediaPreferences();
+restoreGenerationTuning('create');
 markEngineRow('editEngineRow', state.editEngine);
 updatePromptClear();
 computeDims();

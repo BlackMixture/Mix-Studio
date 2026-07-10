@@ -38,14 +38,17 @@ test('gallery Use menus are icon-led and show concise image destinations', () =>
   assert.match(appJs, /menuTitle: 'Use video'/);
 });
 
-test('upscale selections use one restrained accent outline instead of the global rainbow state', () => {
+test('upscale selections use a restrained neutral state instead of colored outlines', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
-  assert.match(css, /#upscaleSheet \.chip\.active \{[\s\S]*border-color: rgba\(125,164,255,\.82\)/);
-  assert.doesNotMatch(css.match(/#upscaleSheet \.chip\.active \{[\s\S]*?\n\}/)?.[0] || '', /var\(--gemini\)/);
+  const activeState = css.match(/#upscaleSheet \.chip\.active,[\s\S]*?\.edit-upscale-row \.chip\.active \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.match(activeState, /border-color: rgba\(255,255,255,\.2\)/);
+  assert.match(activeState, /box-shadow: none/);
+  assert.doesNotMatch(activeState, /var\(--gemini\)|125,164,255/);
 });
 
 test('upscale sheet exposes target and multiplier modes', () => {
   assert.match(appJs, /upModeChips/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8'), /#upResChips\[hidden\],[\s\S]*#upScaleChips\[hidden\] \{ display: none; \}/);
   assert.match(appJs, /scaleFactor/);
 });
 

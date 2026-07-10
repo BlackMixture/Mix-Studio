@@ -871,6 +871,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   text-align: left;
   transition: border-color 180ms var(--ease), background 180ms var(--ease), transform 150ms var(--ease);
 }
+.krea-model-panel .krea-model-switch { margin-top: 0; }
 .krea-model-switch:active { transform: scale(.992); }
 .krea-model-switch[aria-checked="true"] {
   border-color: rgba(var(--mode-rgb), .35);
@@ -2595,7 +2596,32 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     visibility 0s;
 }
 .adv-body-inner { min-height: 0; overflow: hidden; }
+.adv-defaults-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+}
+.adv-defaults-row small {
+  color: var(--muted-2);
+  font-size: 10px;
+  font-weight: 700;
+}
+.adv-defaults-row button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+.adv-defaults-row button:hover,
+.adv-defaults-row button:focus-visible { border-color: var(--line-strong); color: var(--ink-soft); }
 .adv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 12px; }
+.adv-grid input[data-default-reset] { touch-action: manipulation; }
 .edit-mask-advanced {
   display: grid;
   gap: 10px;
@@ -3416,12 +3442,15 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .action-menu-item-edit .action-menu-icon { color: #c7abff; background: rgba(142,94,255,.14); }
 .action-menu-item-reuse .action-menu-icon { color: #80c8ff; background: rgba(71,150,230,.14); }
 .action-menu-item.danger .action-menu-icon { color: #ffaaa1; background: rgba(234,67,53,.13); }
-#upscaleSheet .chip.active {
-  color: #f4f7ff;
-  background: rgba(82,125,224,.13);
-  border-color: rgba(125,164,255,.82);
-  box-shadow: 0 0 0 1px rgba(125,164,255,.12) inset;
+#upscaleSheet .chip.active,
+.edit-upscale-row .chip.active {
+  color: var(--ink);
+  background: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.2);
+  box-shadow: none;
 }
+#upResChips[hidden],
+#upScaleChips[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .action-menu { animation-duration: 1ms; } }
 .chip-row.prompt-tools { margin-top: 6px; margin-bottom: -6px; }
 .res-aspect-icon {
