@@ -226,16 +226,27 @@ function promptDraft() {
 }
 
 function loraTriggerToken(name) {
-  return `@lora-trigger-${encodeURIComponent(String(name || ''))}`;
+  return `@lora-trigger[${encodeURIComponent(String(name || ''))}]`;
 }
 
 function loraNameFromTriggerToken(token) {
-  const encoded = String(token || '').replace(/^@lora-trigger-/, '');
+  const value = String(token || '');
+  const current = /^@lora-trigger\[([^\]]+)\]$/.exec(value);
+  const legacy = /^@lora-trigger-([^\s,;:!?]+)$/.exec(value);
+  const encoded = (current && current[1]) || (legacy && legacy[1]) || '';
   try { return decodeURIComponent(encoded); } catch { return ''; }
 }
 
+function promptLoraTriggerTokens(value) {
+  return String(value || '').match(/@lora-trigger\[[^\]]+\]|@lora-trigger-[^\s,;:!?]+/g) || [];
+}
+
+function promptHasLoraTriggerToken(value, name) {
+  return promptLoraTriggerTokens(value).some((token) => loraNameFromTriggerToken(token) === name);
+}
+
 function expandPromptLoraTriggers(value) {
-  return String(value || '').replace(/@lora-trigger-([^\s]+)/g, (token) => {
+  return String(value || '').replace(/@lora-trigger\[[^\]]+\]|@lora-trigger-[^\s,;:!?]+/g, (token) => {
     const name = loraNameFromTriggerToken(token);
     const phrase = name && typeof loraTriggerPhrase === 'function' ? loraTriggerPhrase({ name }) : '';
     return phrase || token;
@@ -299,11 +310,11 @@ function renderPromptComposer() {
   const composer = $('#promptComposer');
   if (!composer) return;
   const value = promptDraft();
-  const parts = value.split(/(@image-\d+|@lora-trigger-[^\s]+)/g);
+  const parts = value.split(/(@image-\d+|@lora-trigger\[[^\]]+\]|@lora-trigger-[^\s,;:!?]+)/g);
   composer.replaceChildren();
   parts.forEach((part) => {
     const refMatch = /^@image-(\d+)$/.exec(part);
-    const loraMatch = /^@lora-trigger-(.+)$/.exec(part);
+    const loraMatch = /^@lora-trigger(?:\[[^\]]+\]|-[^\s,;:!?]+)$/.test(part);
     if (refMatch) composer.appendChild(makePromptReferenceToken(refMatch[1]));
     else if (loraMatch) composer.appendChild(makePromptLoraTriggerToken(loraNameFromTriggerToken(part)));
     else if (part) composer.appendChild(document.createTextNode(part));
@@ -4013,13 +4024,22 @@ function promptHasLoraTrigger(prompt, phrase) {
   return !!needle && resolvedPrompt.toLocaleLowerCase().includes(needle);
 }
 
+function loraTriggerLiteralPattern(phrase) {
+  const escaped = normalizeLoraTriggerPhrase(phrase)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s+');
+  return escaped ? new RegExp(escaped, 'i') : null;
+}
+
 function promoteLoraTriggerInPrompt(lora) {
   const phrase = loraTriggerPhrase(lora);
   const draft = promptDraft();
   const token = loraTriggerToken(lora && lora.name);
-  if (!phrase || draft.includes(token)) return false;
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  const match = new RegExp(escaped, 'i').exec(draft);
+  if (!phrase) return false;
+  if (lora && lora.name) state.loraTriggers[lora.name] = phrase;
+  if (promptHasLoraTriggerToken(draft, lora && lora.name)) return false;
+  const pattern = loraTriggerLiteralPattern(phrase);
+  const match = pattern && pattern.exec(draft);
   if (!match) return false;
   const value = draft.slice(0, match.index) + token + draft.slice(match.index + match[0].length);
   setPromptDraft(value);
@@ -4181,7 +4201,7 @@ function renderContextPreferences() {
 }
 
 function selectedPromptSuggestions() {
-  const current = promptDraft().toLowerCase();
+  const current = expandPromptLoraTriggers(promptDraft()).toLowerCase();
   const seen = new Set();
   const out = [];
   for (const lora of curLoras()) {
@@ -4197,7 +4217,7 @@ function selectedPromptSuggestions() {
   return out.slice(0, 3);
 }
 
-function appendPromptSuggestion(phrase) {
+function appendPromptSuggestion(phrase, loraName) {
   const current = promptDraft().trim();
   const separator = current ? (/[,.!?;:]$/.test(current) ? ' ' : ', ') : '';
   const value = current + separator + phrase;
@@ -4205,6 +4225,8 @@ function appendPromptSuggestion(phrase) {
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
     state.prompts[state.view] = value;
   }
+  const lora = curLoras().find((item) => item && item.on && item.name === loraName);
+  if (lora) promoteLoraTriggerInPrompt(lora);
   updatePromptClear();
   renderPromptSuggestions();
   saveForm();
@@ -4223,7 +4245,7 @@ function renderPromptSuggestions() {
     b.type = 'button';
     b.textContent = `Add: ${suggestion.phrase}`;
     b.title = `${prettyLora(suggestion.lora)}: ${suggestion.phrase}`;
-    b.addEventListener('click', () => appendPromptSuggestion(suggestion.phrase));
+    b.addEventListener('click', () => appendPromptSuggestion(suggestion.phrase, suggestion.lora));
     row.appendChild(b);
   }
 }

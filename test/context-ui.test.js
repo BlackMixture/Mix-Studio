@@ -29,11 +29,16 @@ test('LoRAs can persist trigger phrases and add them to the prompt on activation
   assert.match(appJs, /ensureLoraTriggerInPrompt/);
   assert.match(appJs, /function promoteLoraTriggerInPrompt/);
   assert.match(appJs, /const value = draft\.slice\(0, match\.index\) \+ token/);
+  assert.match(appJs, /function appendPromptSuggestion\(phrase, loraName\)/);
+  assert.match(appJs, /promoteLoraTriggerInPrompt\(lora\)/);
   assert.match(appJs, /if \(!wasOn && l\.on\) ensureLoraTriggerInPrompt\(l\)/);
   assert.match(appJs, /triggerPhrase: loraTriggerPhrase\(l\)/);
   assert.match(appJs, /makePromptLoraTriggerToken/);
   assert.match(appJs, /prompt-lora-token/);
   assert.match(appJs, /expandPromptLoraTriggers/);
+  assert.match(appJs, /@lora-trigger\[\$\{encodeURIComponent/);
+  assert.match(appJs, /@lora-trigger\\\[[^\n]+@lora-trigger-/);
+  assert.match(appJs, /const current = expandPromptLoraTriggers\(promptDraft\(\)\)\.toLowerCase\(\)/);
   assert.match(serverJs, /triggerPhrase: String\(l\.triggerPhrase \|\| ''\)/);
 });
 
