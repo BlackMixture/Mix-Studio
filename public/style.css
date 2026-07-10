@@ -3234,6 +3234,23 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   justify-content: center;
   padding: 0;
 }
+.action-btn.menu-trigger {
+  min-height: 42px;
+  padding: 9px 13px;
+}
+.action-btn.menu-trigger .action-glyph { width: 17px; height: 17px; }
+.action-btn.like-toggle {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.9);
+}
+.action-btn.like-toggle.liked {
+  color: #fff;
+  border-color: rgba(255,255,255,0.54);
+  background: rgba(255,255,255,0.11);
+}
+.action-btn.like-toggle .action-glyph { width: 19px; height: 19px; }
 .action-glyph { width: 18px; height: 18px; display: block; }
 .action-btn.icon-only .action-glyph { width: 19px; height: 19px; }
 .action-menu {

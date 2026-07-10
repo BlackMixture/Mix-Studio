@@ -630,6 +630,11 @@ function actionIconMarkup(icon) {
     motion: '<path d="M4 7h8V5l4 3-4 3V9H4V7Zm16 8H12v-2l-4 3 4 3v-2h8v-2Z"/>',
     'first-frame': '<path d="M5 5h15v14H5V5Zm2 2v10h11V7H7Zm-5 4h2v2H2v-2Zm7 4 2.7-3.2 2 2.1 1.5-1.8L17 15H9Z"/>',
     'last-frame': '<path d="M4 5h15v14H4V5Zm2 2v10h11V7H6Zm14 4h2v2h-2v-2ZM8 15l2.7-3.2 2 2.1 1.5-1.8L17 15H8Z"/>',
+    save: '<path d="M5 3h12l3 3v15H4V3h1Zm1 2v14h12V6.8L16.2 5H6Zm2 0h6v5H8V5Zm1 10h6v4H9v-4Z"/>',
+    composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
+    process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
+    heart: '<path d="M12 20.7 4.4 13A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 7.6 7L12 20.7Zm0-2.8 6.1-6.2a3.2 3.2 0 0 0-4.5-4.5L12 8.8l-1.6-1.6a3.2 3.2 0 0 0-4.5 4.5L12 17.9Z"/>',
+    'heart-fill': '<path d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/>',
   };
   return `<svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${paths[icon] || paths.use}</svg>`;
 }
@@ -6813,10 +6818,38 @@ function openLightbox(id, mediaSel) {
       const list = typeof items === 'function' ? items() : items;
       openActionMenu(b, list || [], options);
     };
-    b = options.icon ? mkIcon(options.icon, options.ariaLabel || label, cls, onOpen) : mk(label, cls, onOpen);
+    b = options.icon
+      ? mk(`${actionIconMarkup(options.icon)}<span>${escapeHtml(label)}</span>`, `menu-trigger ${cls || ''}`.trim(), onOpen, { ariaLabel: options.ariaLabel || label, title: options.ariaLabel || label })
+      : mk(label, cls, onOpen);
     if (options.icon) b.setAttribute('aria-haspopup', 'menu');
     return b;
   };
+
+  const sourceReference = !selVideo && !selComposite && it.sourceFile
+    && (it.mode === 'edit' || it.mode === 't2i');
+  const isEditSource = sourceReference && it.mode === 'edit';
+  const imageSaveItems = [];
+  if (!selVideo && !selComposite) {
+    if (it.upscaled) {
+      imageSaveItems.push(
+        { label: 'Save upscaled', detail: 'Current image', icon: 'save', action: () => downloadItem(it, 'upscaled') },
+        { label: 'Save original', detail: 'Before upscale', icon: 'save', action: () => downloadItem(it, 'original') },
+      );
+    } else {
+      imageSaveItems.push({ label: 'Save image', icon: 'save', action: () => downloadItem(it, 'current') });
+    }
+    if (angleItems.length > 1) {
+      imageSaveItems.push({ label: 'Save angle composite', detail: 'All camera views', icon: 'composite', action: () => saveImageComposite(it, 'angles') });
+    }
+    if (sourceReference) {
+      imageSaveItems.push({
+        label: isEditSource ? 'Save before + after' : 'Save reference + generation',
+        detail: isEditSource ? 'Original and edited image' : 'Reference and generated image',
+        icon: 'composite',
+        action: () => saveImageComposite(it, isEditSource ? 'before-after' : 'reference-generation'),
+      });
+    }
+  }
 
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
@@ -6824,16 +6857,11 @@ function openLightbox(id, mediaSel) {
     mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateRouteSheet(it));
   }
   if ((!selVideo && !selComposite) || videos.length) {
-    mk(it.liked ? '♥ Liked' : '♡ Like', it.liked ? 'primary' : '', () => toggleItemLike(it, $('#lightboxLikeBurst')));
-  }
-  if (!selVideo && !selComposite && angleItems.length > 1) {
-    mk('▦ Save angle composite', '', () => saveImageComposite(it, 'angles'));
+    const like = mkIcon(it.liked ? 'heart-fill' : 'heart', it.liked ? 'Unlike' : 'Like', `like-toggle${it.liked ? ' liked' : ''}`, () => toggleItemLike(it, $('#lightboxLikeBurst')));
+    like.setAttribute('aria-pressed', String(!!it.liked));
   }
   // Reference-backed generations: hold to flash the retained source image.
-  const sourceReference = !selVideo && !selComposite && it.sourceFile
-    && (it.mode === 'edit' || it.mode === 't2i');
   if (sourceReference) {
-    const isEditSource = it.mode === 'edit';
     const hb = mk(isEditSource ? '👁 Hold: original' : '👁 Hold: reference', '', () => {});
     hb.style.userSelect = 'none';
     hb.style.webkitUserSelect = 'none';
@@ -6844,9 +6872,6 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('pointercancel', hide);
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
-    mk(isEditSource ? '▣ Save before + after' : '▣ Save reference + generation', '', () => {
-      saveImageComposite(it, isEditSource ? 'before-after' : 'reference-generation');
-    });
   }
 
   // Region-prompted images: hold to overlay the color-coded boxes,
@@ -6924,11 +6949,11 @@ function openLightbox(id, mediaSel) {
     if (videoUseItems.length) mkMenu('Use', '', videoUseItems, { icon: 'use', ariaLabel: 'Use video', menuTitle: 'Use video', tone: 'video' });
     const processItems = [];
     if (!vinfo.composite) {
-      processItems.push({ label: 'Upscale video', action: () => processVideo(it, selVideo, 'upscale') });
-      processItems.push({ label: 'Increase FPS', action: () => processVideo(it, selVideo, 'interpolate') });
+      processItems.push({ label: 'Upscale video', detail: 'SeedVR2 finish', icon: 'process', action: () => processVideo(it, selVideo, 'upscale') });
+      processItems.push({ label: 'Increase FPS', detail: 'RIFE interpolation', icon: 'process', action: () => processVideo(it, selVideo, 'interpolate') });
     }
     if (vinfo.engine === 'scail' && vinfo.driveVideoName && !vinfo.composite) {
-      processItems.push({ label: 'Side-by-side', action: async () => {
+      processItems.push({ label: 'Side-by-side', detail: 'Reference and result', icon: 'composite', action: async () => {
         try {
           toast('Building side-by-side comparison…');
           const r = await api('/api/composite', {
@@ -6943,7 +6968,7 @@ function openLightbox(id, mediaSel) {
         } catch (e) { toast(e.message, true); }
       } });
     }
-    if (processItems.length) mkMenu('Process video', '', processItems);
+    if (processItems.length) mkMenu('Process', '', processItems, { icon: 'process', ariaLabel: 'Process video', menuTitle: 'Process video', tone: 'video' });
     mk('↓ Save video', '', () => {
       const a = document.createElement('a');
       a.href = '/videos/' + selVideo.file;
@@ -6987,13 +7012,10 @@ function openLightbox(id, mediaSel) {
     }
     mkMenu('Use', '', imageUseItems, { icon: 'use', ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
     mk('▤ Move', '', () => openMoveSheet(it));
-    if (it.upscaled) {
-      mkMenu('Save', '', [
-        { label: 'Save upscaled', action: () => downloadItem(it, 'upscaled') },
-        { label: 'Save original', action: () => downloadItem(it, 'original') },
-      ]);
-    } else {
-      mk('↓ Save', '', () => downloadItem(it, 'current'));
+    if (imageSaveItems.length > 1) {
+      mkMenu('Save', '', imageSaveItems, { icon: 'save', ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
+    } else if (imageSaveItems.length === 1) {
+      mk('↓ Save', '', imageSaveItems[0].action);
     }
     mk('🗑 Delete', 'danger', async () => {
       const n = videos.length;
