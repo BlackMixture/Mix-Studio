@@ -7303,6 +7303,134 @@ function resetGalleryPreviewObservation() {
   $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
 }
 
+const galleryDateScrub = {
+  active: false,
+  pointerId: null,
+  index: 0,
+  groups: [],
+};
+let galleryDateScrollFrame = 0;
+
+function galleryDateScrubberGroups() {
+  return $$('#galleryGrid .gallery-date-divider').map((divider, index) => ({
+    divider,
+    index,
+    label: (divider.textContent || '').trim(),
+  }));
+}
+
+function setGalleryDateScrubberIndex(index, scroll = false, haptic = false) {
+  const scrubber = $('#galleryDateScrubber');
+  const label = $('#galleryDateScrubberLabel');
+  const groups = galleryDateScrub.groups;
+  if (!scrubber || !groups.length) return;
+  const next = Math.max(0, Math.min(groups.length - 1, Math.round(index)));
+  const changed = next !== galleryDateScrub.index;
+  galleryDateScrub.index = next;
+  const ratio = groups.length > 1 ? next / (groups.length - 1) : 0;
+  const rail = scrubber.querySelector('.gallery-date-scrubber-rail');
+  const railTop = rail ? rail.offsetTop : 22;
+  const railHeight = rail ? rail.clientHeight : Math.max(1, scrubber.clientHeight - 44);
+  scrubber.style.setProperty('--gallery-scrub-ratio', String(ratio));
+  scrubber.style.setProperty('--gallery-scrub-y', `${railTop + ratio * railHeight}px`);
+  scrubber.setAttribute('aria-valuenow', String(next));
+  scrubber.setAttribute('aria-valuetext', groups[next].label);
+  label.textContent = groups[next].label;
+  if (haptic && changed && navigator.vibrate) navigator.vibrate(6);
+  if (scroll && changed) {
+    const target = window.scrollY + groups[next].divider.getBoundingClientRect().top - 72;
+    window.scrollTo({ top: Math.max(0, target), behavior: 'auto' });
+  }
+}
+
+function currentGalleryDateIndex() {
+  const groups = galleryDateScrub.groups;
+  if (!groups.length) return 0;
+  if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 3) return groups.length - 1;
+  const marker = 76;
+  let index = 0;
+  groups.forEach((group, groupIndex) => {
+    if (group.divider.getBoundingClientRect().top <= marker) index = groupIndex;
+  });
+  return index;
+}
+
+function syncGalleryDateScrubber() {
+  const scrubber = $('#galleryDateScrubber');
+  if (!scrubber) return;
+  galleryDateScrub.groups = galleryDateScrubberGroups();
+  const visible = state.view === 'gallery' && galleryDateScrub.groups.length > 1;
+  scrubber.hidden = !visible;
+  if (!visible) {
+    galleryDateScrub.active = false;
+    galleryDateScrub.pointerId = null;
+    scrubber.classList.remove('is-active');
+    document.body.classList.remove('gallery-date-scrubbing');
+    return;
+  }
+  scrubber.setAttribute('aria-valuemax', String(galleryDateScrub.groups.length - 1));
+  setGalleryDateScrubberIndex(currentGalleryDateIndex());
+}
+
+function scrubGalleryDateAt(clientY, haptic = true) {
+  const scrubber = $('#galleryDateScrubber');
+  const rail = scrubber && scrubber.querySelector('.gallery-date-scrubber-rail');
+  if (!rail || !galleryDateScrub.groups.length) return;
+  const rect = rail.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(1, rect.height)));
+  setGalleryDateScrubberIndex(ratio * (galleryDateScrub.groups.length - 1), true, haptic);
+}
+
+function finishGalleryDateScrub(event) {
+  const scrubber = $('#galleryDateScrubber');
+  if (!scrubber || !galleryDateScrub.active) return;
+  if (event && galleryDateScrub.pointerId !== null && event.pointerId !== galleryDateScrub.pointerId) return;
+  try { scrubber.releasePointerCapture(galleryDateScrub.pointerId); } catch { /* noop */ }
+  galleryDateScrub.active = false;
+  galleryDateScrub.pointerId = null;
+  scrubber.classList.remove('is-active');
+  document.body.classList.remove('gallery-date-scrubbing');
+}
+
+$('#galleryDateScrubber').addEventListener('pointerdown', (event) => {
+  if (event.button !== undefined && event.button !== 0) return;
+  event.preventDefault();
+  galleryDateScrub.active = true;
+  galleryDateScrub.pointerId = event.pointerId;
+  $('#galleryDateScrubber').classList.add('is-active');
+  document.body.classList.add('gallery-date-scrubbing');
+  try { $('#galleryDateScrubber').setPointerCapture(event.pointerId); } catch { /* noop */ }
+  scrubGalleryDateAt(event.clientY, false);
+});
+$('#galleryDateScrubber').addEventListener('pointermove', (event) => {
+  if (!galleryDateScrub.active || event.pointerId !== galleryDateScrub.pointerId) return;
+  event.preventDefault();
+  scrubGalleryDateAt(event.clientY);
+});
+$('#galleryDateScrubber').addEventListener('pointerup', finishGalleryDateScrub);
+$('#galleryDateScrubber').addEventListener('pointercancel', finishGalleryDateScrub);
+$('#galleryDateScrubber').addEventListener('keydown', (event) => {
+  const last = galleryDateScrub.groups.length - 1;
+  let next = null;
+  if (event.key === 'ArrowDown' || event.key === 'PageDown') next = galleryDateScrub.index + 1;
+  if (event.key === 'ArrowUp' || event.key === 'PageUp') next = galleryDateScrub.index - 1;
+  if (event.key === 'Home') next = 0;
+  if (event.key === 'End') next = last;
+  if (next === null) return;
+  event.preventDefault();
+  setGalleryDateScrubberIndex(next, true);
+});
+window.addEventListener('scroll', () => {
+  if (galleryDateScrub.active || state.view !== 'gallery' || galleryDateScrollFrame) return;
+  galleryDateScrollFrame = requestAnimationFrame(() => {
+    galleryDateScrollFrame = 0;
+    if (!galleryDateScrub.active && !$('#galleryDateScrubber').hidden) {
+      setGalleryDateScrubberIndex(currentGalleryDateIndex());
+    }
+  });
+}, { passive: true });
+window.addEventListener('resize', syncGalleryDateScrubber);
+
 function renderGrid() {
   const grid = $('#galleryGrid');
   ensureGalleryPreviewObserver();
@@ -7469,6 +7597,7 @@ function renderGrid() {
     grid.appendChild(card);
   }
   resetGalleryPreviewObservation();
+  syncGalleryDateScrubber();
   if (state.mediaPreferences.previewCache) schedulePreviewCacheWarmup(items);
 }
 
