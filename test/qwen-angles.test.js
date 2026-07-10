@@ -62,7 +62,7 @@ test('Multi-angle exports appear as one gallery set with an angle icon', () => {
   assert.match(app, /Variation \$\{angleIndex \+ 1\} of \$\{angleItems\.length\}/);
   assert.match(css, /\.card \.badge\.angle-group-badge/);
   assert.match(app, /function galleryNavigationTarget\(item, direction\)/);
-  assert.match(app, /const next = galleryNavigationTarget\(state\.currentItem/);
+  assert.match(app, /galleryNavigationTarget\(state\.currentItem, direction\)/);
   assert.match(app, /angle-group-glyph/);
   assert.match(css, /\.angle-group-chip\.active/);
   assert.match(server, /angleGroupId: job\.params\.angleGroupId/);
