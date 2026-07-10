@@ -31,3 +31,22 @@ test('library search includes friendly model names', () => {
   assert.match(app, /galleryImageModelLabel\(it\)/);
   assert.match(app, /\.map\(\(video\) => videoEngineLabel/);
 });
+
+test('gallery cards use compact labels, grouped counts, and middle-of-viewport video previews', () => {
+  assert.match(app, /function galleryCardModelLabel\(item\)/);
+  assert.match(app, /return item\.krea2Turbo === false \? 'Raw' : 'Turbo'/);
+  assert.match(app, /className = 'gallery-card-video'/);
+  assert.match(app, /rootMargin: '-24% 0px -24% 0px'/);
+  assert.match(app, /generation-count-badge/);
+  assert.match(app, /grouped/);
+  assert.match(css, /\.card \.badge\.attached-composite-badge[\s\S]*bottom: 8px/);
+  assert.match(css, /\.card \.gallery-card-video/);
+});
+
+test('focused media switchers use restrained active states and expose per-video likes', () => {
+  assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked\)\)/);
+  assert.match(app, /className = 'chip' \+ /);
+  assert.match(app, /lb-media-like/);
+  assert.match(css, /\.lb-media \.chip\.active/);
+  assert.match(css, /\.lb-media-like/);
+});

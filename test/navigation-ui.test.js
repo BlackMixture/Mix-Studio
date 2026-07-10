@@ -179,6 +179,8 @@ test('installer-selected engines are hidden from the corresponding app controls'
 test('an edit can save its original and result as a gallery side-by-side', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(app, /Save before \+ after/);
+  assert.match(app, /const imageSaveItems = \[\]/);
+  assert.match(app, /mkMenu\('Save', '', imageSaveItems/);
   assert.match(app, /saveImageComposite\(it, isEditSource \? 'before-after' : 'reference-generation'\)/);
   assert.match(server, /type === 'before-after'/);
   assert.match(server, /sources = \[root\.sourceFile, root\.upscaled \|\| root\.file\]/);
@@ -204,7 +206,9 @@ test('image-to-image generations retain their reference for hold-preview and a g
 test('gallery saves directly when only one image is available and is grouped by date', () => {
   assert.match(app, /function galleryDateLabel\(timestamp\)/);
   assert.match(app, /gallery-date-divider/);
-  assert.match(app, /mk\('↓ Save', '', \(\) => downloadItem\(it, 'current'\)\)/);
+  assert.match(app, /imageSaveItems\.push\(\{ label: 'Save image', icon: 'save', action: \(\) => downloadItem\(it, 'current'\) \}\)/);
+  assert.match(app, /if \(imageSaveItems\.length > 1\)/);
+  assert.match(app, /mk\('↓ Save', '', imageSaveItems\[0\]\.action\)/);
   assert.match(app, /if \(it\.upscaled\) \{/);
   assert.match(app, /function downloadComposite\(it, composite\)/);
   assert.match(app, /attached-composite-badge/);
@@ -212,7 +216,7 @@ test('gallery saves directly when only one image is available and is grouped by 
   assert.match(css, /\.card \.badge\.attached-composite-badge/);
 });
 
-test('gallery items support profile-scoped likes by double tap and a likes-only filter', () => {
+test('gallery media supports profile-scoped likes by double tap and a likes-only filter', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="likesFilter"[^>]*aria-pressed="false"/);
   assert.match(html, /id="lightboxLikeBurst"/);
@@ -221,7 +225,12 @@ test('gallery items support profile-scoped likes by double tap and a likes-only 
   assert.match(app, /function setItemLiked\(item, liked, burstTarget\)/);
   assert.match(app, /playLikeBurst\(burstTarget, liked \? 'like' : 'unlike'\)/);
   assert.match(app, /setTimeout\(renderGrid, liked \? 720 : 520\)/);
-  assert.match(app, /if \(state\.likesOnly && !it\.liked\) return false/);
+  assert.match(app, /if \(state\.likesOnly && !it\.liked\)/);
+  assert.match(app, /videoLiked = \(it\.videos \|\| \[\]\)\.some/);
+  assert.match(app, /function setVideoLiked\(item, video, liked, burstTarget\)/);
+  assert.match(server, /video\.liked = body\.liked === true/);
+  assert.match(app, /like-toggle/);
+  assert.match(app, /heart-fill/);
   assert.match(app, /Save angle composite/);
   assert.match(server, /const likeRoute = route\.match\(/);
   assert.match(server, /likeRoute && req\.method === 'POST'/);

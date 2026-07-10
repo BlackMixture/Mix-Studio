@@ -426,13 +426,44 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .topbar-actions { gap: 6px; }
 }
 .queue-row {
+  position: relative;
   display: flex; align-items: center; gap: 10px;
   padding: 11px 0;
   border-bottom: 1px solid rgba(226,232,255,0.06);
   font-size: 13px; font-weight: 700;
+  transition: background 150ms var(--ease), opacity 150ms var(--ease), box-shadow 150ms var(--ease);
 }
 .queue-row:last-child { border-bottom: 0; }
 .queue-row .q-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
+.q-handle {
+  flex: 0 0 16px;
+  color: var(--muted-2);
+  font-size: 16px;
+  letter-spacing: -4px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+.queue-row[data-reorderable="true"] { touch-action: pan-y; user-select: none; }
+.queue-row[data-reorderable="true"]:active .q-handle { cursor: grabbing; }
+.queue-drag-source { opacity: 0.26; }
+.queue-drag-over-before { box-shadow: inset 0 2px 0 var(--mode-color); }
+.queue-drag-over-after { box-shadow: inset 0 -2px 0 var(--mode-color); }
+.queue-drag-ghost {
+  position: fixed;
+  z-index: 250;
+  margin: 0;
+  pointer-events: none;
+  border: 1px solid rgba(116,147,255,0.72);
+  border-radius: 12px;
+  padding-left: 10px;
+  background: rgba(15,18,29,0.94);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.52), 0 0 24px rgba(66,133,244,0.24);
+  transform-origin: center;
+  transition: box-shadow 180ms var(--ease), filter 180ms var(--ease);
+  will-change: transform;
+}
+.queue-drag-ghost-lifted { filter: saturate(1.15) brightness(1.12); }
 .q-state {
   flex: 0 0 auto; width: 62px;
   font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
@@ -441,17 +472,33 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .q-state.run { color: var(--spectrum-green); }
 .q-cancel { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-weight: 900; }
 .queue-tools { display: flex; justify-content: flex-end; margin: -4px 0 8px; }
+.queue-clear-btn,
 .queue-reset-btn {
   height: 34px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid rgba(234,67,53,0.45);
-  background: rgba(234,67,53,0.12);
-  color: #ffb3ad;
   font-size: 12px;
   font-weight: 900;
 }
+.queue-clear-btn {
+  margin-right: auto;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.05);
+  color: var(--ink-soft);
+}
+.queue-clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.queue-reset-btn {
+  border: 1px solid rgba(234,67,53,0.45);
+  background: rgba(234,67,53,0.12);
+  color: #ffb3ad;
+}
 .queue-reset-btn:active { transform: scale(0.97); }
+.queue-reorder-hint {
+  margin: -2px 0 8px;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 750;
+}
 .queue-health {
   display: flex;
   flex-wrap: wrap;
@@ -2963,7 +3010,14 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   background: var(--panel-strong);
   padding: 0;
 }
-.card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.card img,
+.card .gallery-card-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: #050609;
+}
 .card .badge {
   position: absolute; top: 8px; left: 8px;
   font-size: 9.5px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;
@@ -2997,9 +3051,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .card .badge.model-badge.up { color: #b7ffd2; }
 .card .badge.attached-composite-badge {
-  top: 8px;
-  right: 8px;
-  left: auto;
+  top: auto;
+  right: auto;
+  bottom: 8px;
+  left: 8px;
   color: #e5e8f1;
 }
 .card .busy-overlay {
@@ -3088,6 +3143,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .lightbox-img-wrap img[hidden],
 .lightbox-img-wrap video[hidden] { display: none; }
 .card .badge.vid { top: auto; bottom: 8px; left: 8px; color: #cfe0ff; }
+.card.has-attached-composite .badge.vid { bottom: 36px; }
 .card .badge.liked-badge { top: auto; bottom: 8px; left: auto; right: 8px; padding: 5px 7px; color: #fff; }
 .liked-badge svg { display: block; width: 13px; height: 13px; }
 .like-burst {
@@ -3106,6 +3162,15 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   align-items: center;
   gap: 4px;
   color: #eef2ff;
+}
+.card .badge.generation-count-badge {
+  top: 8px;
+  right: 8px;
+  left: auto;
+  min-width: 24px;
+  padding-left: 7px;
+  padding-right: 7px;
+  text-align: center;
 }
 .angle-group-badge svg { width: 13px; height: 13px; }
 .angle-group-badge b { font: inherit; }
@@ -3153,6 +3218,25 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .lb-media::-webkit-scrollbar { display: none; }
 .lb-media:empty { display: none; }
+.lb-media .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.035);
+  color: rgba(255,255,255,0.62);
+  font-size: 12px;
+  transition: border-color 160ms var(--ease), background 160ms var(--ease), color 160ms var(--ease);
+}
+.lb-media .chip.active {
+  border-color: rgba(148,170,220,0.62);
+  background: rgba(118,145,205,0.14);
+  color: #f4f6ff;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+.lb-media-like { color: #fff; font-size: 12px; line-height: 1; }
 .lightbox-meta {
   padding: 12px 18px 6px;
   font-size: 12.5px; color: var(--muted); line-height: 1.5;
@@ -3187,6 +3271,23 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   justify-content: center;
   padding: 0;
 }
+.action-btn.menu-trigger {
+  min-height: 42px;
+  padding: 9px 13px;
+}
+.action-btn.menu-trigger .action-glyph { width: 17px; height: 17px; }
+.action-btn.like-toggle {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.9);
+}
+.action-btn.like-toggle.liked {
+  color: #fff;
+  border-color: rgba(255,255,255,0.54);
+  background: rgba(255,255,255,0.11);
+}
+.action-btn.like-toggle .action-glyph { width: 19px; height: 19px; }
 .action-glyph { width: 18px; height: 18px; display: block; }
 .action-btn.icon-only .action-glyph { width: 19px; height: 19px; }
 .action-menu {

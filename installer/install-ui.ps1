@@ -7,8 +7,8 @@ Add-Type -AssemblyName System.Windows.Forms
 
 trap {
   [System.Windows.MessageBox]::Show(
-    "MixBox Studio Setup could not open.`n`n$($_.Exception.Message)",
-    'MixBox Studio Setup',
+    "Mix Studio Setup could not open.`n`n$($_.Exception.Message)",
+    'Mix Studio Setup',
     [System.Windows.MessageBoxButton]::OK,
     [System.Windows.MessageBoxImage]::Error
   ) | Out-Null
@@ -24,7 +24,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
 [xml]$Xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MixBox Studio Setup" Width="980" Height="720" MinWidth="860" MinHeight="640"
+        Title="Mix Studio Setup" Width="980" Height="720" MinWidth="860" MinHeight="640"
         WindowStartupLocation="CenterScreen" Background="#000000" Foreground="#F6F8FF"
         FontFamily="Segoe UI" ResizeMode="CanResizeWithGrip">
   <Window.Resources>
@@ -163,15 +163,22 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           <Border Width="48" Height="48" CornerRadius="15" BorderThickness="2" BorderBrush="{StaticResource Spectrum}"
                   Background="#090B10" Padding="8">
             <Viewbox>
-              <Canvas Width="44" Height="46">
-                <Polygon Points="22,2 40,12 22,22 4,12" Fill="#FBBC04"/>
-                <Polygon Points="4,14 21,24 21,44 4,34" Fill="#4285F4"/>
-                <Polygon Points="23,24 40,14 40,34 23,44" Fill="#7C4DFF"/>
+              <Canvas Width="734.42" Height="753.63">
+                <Path Fill="#fdc302" Data="M615.65 208.12c-15.14-3.45-30.62-1.14-44.15 7.05L366.77 339.12l-82.59-50.59-121.3-73.24c-13.51-8.16-29.27-10.69-44.22-7.24l-.38-36.63c-.19-18.31 7.8-38.19 24.31-47.95L339 7.31c16.59-9.81 38.81-9.68 55.26-.02l190.82 111.96c18.08 10.61 30.68 27.5 30.64 49.47l-.08 39.4Z"/>
+                <Path Fill="#47ad49" Data="m366.77 339.12.09.87-48.9 31.04-59.13 36.83c-12.32 7.67-19 19.03-23.8 32.13-2.52-1.15-4.65-2.62-7.36-4.35l-80.77-51.51c-17.97-11.46-28.62-29-28.66-50.54L118 208.69l.66-.64c14.95-3.45 30.71-.92 44.22 7.24l121.3 73.24 82.59 50.59Z"/>
+                <Path Fill="#432dd0" Data="m332.59 501.15 34.33 21.71-.18 179.91.13.97c-.22-.13-.57 0-.81-.09-35.73-24.32-73.67-45.47-110.31-69.84-13.42-8.92-21.64-25.24-21.67-41.48l-.32-137.55c-.01-4.96.41-9.12 1.4-13.36.91.05 1.9.37 2.9.98l22.1 13.57 72.44 45.17Z"/>
+                <Path Fill="#564aa7" Data="m366.92 522.86-34.33-21.71-72.44-45.17-22.1-13.57c-1-.61-1.99-.93-2.9-.98.1-.43-.28-1.02-.12-1.44 4.81-13.1 11.49-24.46 23.8-32.13l59.13-36.83 48.91-31.04.05 182.87Z"/>
+                <Path Fill="#822292" Data="M499.44 441.41c.94 2.58 1.52 5.3 1.51 8.73l-.21 142.47c-.03 18.67-10.55 34.44-25.85 43.95l-104.6 65.01c-1.35.84-2.57.73-3.55 1.2l.18-179.91 92.76-57.37 31.62-19.69c2.77-1.72 5.25-3.57 8.15-4.39Z"/>
+                <Path Fill="#973975" Data="M499.54 440.09c.11.4-.16.91-.1 1.32-2.9.82-5.39 2.67-8.15 4.39l-31.62 19.69-92.76 57.37-.05-182.87c1.98.17 3.37 1.31 5.38 2.56l104.15 65.36c11.88 7.46 19.61 19.04 23.15 32.17Z"/>
+                <Path Fill="#026cfc" Data="m118 208.7.24 124.9c.04 21.54 10.69 39.08 28.66 50.54l80.77 51.51c2.71 1.73 4.84 3.2 7.36 4.35-.15.42.22 1.01.12 1.44-.98 4.23-1.41 8.4-1.4 13.36l.32 137.55c.04 16.25 8.25 32.56 21.67 41.48 36.65 24.36 74.58 45.52 110.31 69.84l-71.48 42.61c-16.45 9.81-39.02 9.86-55.74-.07L28.62 621.52C12.66 612.05.29 594.24.27 574.83L0 304.32c-.02-17.99 9.59-35.35 24.74-44.31l74.56-44.12c6.08-3.6 12.06-6.74 18.7-7.2Z"/>
+                <Path Fill="#fb2026" Data="M734.42 308.79c-.63-.38-1.3-.07-1.56 1.06V576.2c.21.86.39 1.09.83 1-1.39 17.82-11.84 34.61-27.56 44.06L501.5 744.21c-20.46 12.29-44.38 11.76-65.01-.17l-69.63-40.28-.13-.97c.98-.46 2.21-.36 3.55-1.2l104.6-65.01c15.3-9.51 25.83-25.28 25.85-43.95l.21-142.47c0-3.43-.57-6.15-1.51-8.73-.06-.41.21-.92.1-1.32 1.1-.15 1.99-.65 3.27-1.49l90.13-58.72c13.61-8.87 22.36-24.62 22.4-40.8l.31-130.96c6.52 1.49 12.24 3.64 18.42 7.3l77.83 46.13c16.79 9.95 22.53 29.12 22.52 47.24Z"/>
+                <Path Fill="#fa0f17" Data="m734.42 308.79-.04 263.53c0 2.07-.58 3.41-.69 4.88-.44.1-.62-.13-.83-1V309.85c.25-1.13.92-1.44 1.55-1.06Z"/>
+                <Path Fill="#fc6f01" Data="m615.65 208.12-.31 130.96c-.04 16.18-8.79 31.93-22.4 40.8l-90.13 58.72c-1.28.83-2.17 1.33-3.27 1.49-3.54-13.13-11.27-24.71-23.15-32.17l-104.15-65.36c-2-1.26-3.4-2.39-5.38-2.56l-.09-.87L571.5 215.18c13.53-8.19 29.02-10.5 44.15-7.05Z"/>
               </Canvas>
             </Viewbox>
           </Border>
           <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="MixBox Studio" FontSize="20" FontWeight="Bold"/>
+            <TextBlock Text="Mix Studio" FontSize="20" FontWeight="Bold"/>
             <TextBlock Text="Portable setup" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,3,0,0"/>
           </StackPanel>
         </StackPanel>
@@ -210,7 +217,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           <Grid x:Name="PageWelcome">
             <StackPanel VerticalAlignment="Center" MaxWidth="610">
               <TextBlock Text="Build your local studio" FontSize="34" FontWeight="Bold"/>
-              <TextBlock Text="A portable MixBox Studio connected to the ComfyUI and models already on your machine." TextWrapping="Wrap" FontSize="16" Foreground="{StaticResource Soft}" Margin="0,12,0,28" LineHeight="24"/>
+              <TextBlock Text="A portable Mix Studio connected to the ComfyUI and models already on your machine." TextWrapping="Wrap" FontSize="16" Foreground="{StaticResource Soft}" Margin="0,12,0,28" LineHeight="24"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
@@ -230,7 +237,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <StackPanel MaxWidth="650">
                 <TextBlock Text="Connect ComfyUI" FontSize="30" FontWeight="Bold"/>
-                <TextBlock Text="Point MixBox Studio at the ComfyUI installation that performs generation." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,25"/>
+                <TextBlock Text="Point Mix Studio at the ComfyUI installation that performs generation." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,25"/>
                 <TextBlock Text="COMFYUI URL" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="Bold"/>
                 <Grid Margin="0,8,0,18"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="118"/></Grid.ColumnDefinitions><TextBox x:Name="ComfyUrlBox" Text="http://127.0.0.1:8188"/><Button x:Name="TestComfyButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Test connection" Padding="12,10"/></Grid>
                 <Border x:Name="ConnectionStatus" Visibility="Collapsed" Background="#0C1116" BorderBrush="#273342" BorderThickness="1" CornerRadius="12" Padding="13" Margin="0,0,0,18"><TextBlock x:Name="ConnectionStatusText" TextWrapping="Wrap"/></Border>
@@ -270,7 +277,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           <Grid x:Name="PageProgress" Visibility="Collapsed">
             <StackPanel MaxWidth="610" VerticalAlignment="Center" HorizontalAlignment="Center">
               <Border Width="76" Height="76" CornerRadius="24" BorderBrush="{StaticResource Spectrum}" BorderThickness="2" Background="#0B0E15"><TextBlock Text="↻" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#A9BDF6"/></Border>
-              <TextBlock Text="Setting up MixBox Studio" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,22,0,8"/>
+              <TextBlock Text="Setting up Mix Studio" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,22,0,8"/>
               <TextBlock x:Name="ProgressDetail" Text="Preparing your portable configuration…" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
               <ProgressBar x:Name="InstallProgress" Height="5" IsIndeterminate="True" Margin="0,26,0,0" Background="#151923" Foreground="#526FFF"/>
             </StackPanel>
@@ -280,8 +287,8 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
             <StackPanel MaxWidth="610" VerticalAlignment="Center" HorizontalAlignment="Center">
               <Border Width="76" Height="76" CornerRadius="24" Background="#0B1710" BorderBrush="#315D3C" BorderThickness="1"><TextBlock Text="✓" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#7DDF95"/></Border>
               <TextBlock Text="Your studio is ready" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,22,0,8"/>
-              <TextBlock Text="Start ComfyUI, then open MixBox Studio from this portable folder." Foreground="{StaticResource Soft}" TextAlignment="Center" TextWrapping="Wrap" FontSize="15"/>
-              <Button x:Name="LaunchButton" Style="{StaticResource PrimaryButton}" Content="Launch MixBox Studio" Margin="0,28,0,0" MinWidth="240"/>
+              <TextBlock Text="Start ComfyUI, then open Mix Studio from this portable folder." Foreground="{StaticResource Soft}" TextAlignment="Center" TextWrapping="Wrap" FontSize="15"/>
+              <Button x:Name="LaunchButton" Style="{StaticResource PrimaryButton}" Content="Launch Mix Studio" Margin="0,28,0,0" MinWidth="240"/>
               <TextBlock Text="Your first profile is created inside the app." Foreground="{StaticResource Muted}" HorizontalAlignment="Center" FontSize="12" Margin="0,14,0,0"/>
             </StackPanel>
           </Grid>
@@ -492,7 +499,7 @@ function Test-ComfyConnection {
     $Response.Close()
     $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#315D3C')
     $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#9FD8AE')
-    $Text.Text = 'Connected. ComfyUI is ready to answer MixBox Studio.'
+    $Text.Text = 'Connected. ComfyUI is ready to answer Mix Studio.'
   } catch {
     $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#704141')
     $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#F0A8A8')

@@ -904,11 +904,13 @@ async function uploadToComfy(buffer, filename) {
   return (json.subfolder ? json.subfolder + '/' : '') + json.name;
 }
 
-async function queuePrompt(graph) {
+async function queuePrompt(graph, options = {}) {
+  const body = { prompt: graph, client_id: CLIENT_ID };
+  if (options.front === true) body.front = true;
   const res = await comfyFetch('/prompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: graph, client_id: CLIENT_ID }),
+    body: JSON.stringify(body),
   });
   const json = await res.json();
   if (json.node_errors && Object.keys(json.node_errors).length) {
@@ -4310,8 +4312,14 @@ async function handleApi(req, res, url) {
         }
         return row;
       };
-      const running = (q.queue_running || []).map((entry) => sanitize(describeQueueEntry(entry, true)));
-      const pending = (q.queue_pending || []).map((entry) => sanitize(describeQueueEntry(entry, false)));
+      const markReorderable = (row) => {
+        const job = jobs.get(row.jobId);
+        return Object.assign(row, {
+          reorderable: !!job && job.profileId === req.profile.id && !!job.graph,
+        });
+      };
+      const running = (q.queue_running || []).map((entry) => markReorderable(sanitize(describeQueueEntry(entry, true))));
+      const pending = (q.queue_pending || []).map((entry) => markReorderable(sanitize(describeQueueEntry(entry, false))));
       return json(res, 200, {
         ok: true,
         running,
@@ -4322,6 +4330,57 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [] });
     }
+  }
+
+  if (route === '/api/queue/history/clear' && req.method === 'POST') {
+    const before = db.history.length;
+    db.history = db.history.filter((entry) => entry.profileId !== req.profile.id);
+    const cleared = before - db.history.length;
+    saveDb();
+    broadcast('queueHistoryCleared', { profileId: req.profile.id, cleared });
+    return json(res, 200, { ok: true, cleared });
+  }
+
+  if (route === '/api/queue/reorder' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const order = Array.isArray(body.order) ? body.order.map((id) => String(id || '')).filter(Boolean) : [];
+    const q = await (await comfyFetch('/queue')).json();
+    const pendingIds = (q.queue_pending || []).map((entry) => String(entry && entry[1] || '')).filter(Boolean);
+    if (!pendingIds.length) return json(res, 409, { error: 'There are no queued jobs to reorder' });
+    const requestedSet = new Set(order);
+    if (order.length !== pendingIds.length || requestedSet.size !== order.length
+      || pendingIds.some((id) => !requestedSet.has(id))) {
+      return json(res, 409, { error: 'The queue changed — refresh and try again' });
+    }
+    for (const pid of order) {
+      const job = jobs.get(pid);
+      if (!job || job.profileId !== req.profile.id || !job.graph) {
+        return json(res, 409, { error: 'Only Mix Studio jobs from this profile can be reordered' });
+      }
+    }
+    await comfyFetch('/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delete: pendingIds }),
+    });
+    const mapping = {};
+    try {
+      for (const oldPid of order) {
+        const job = jobs.get(oldPid);
+        const newPid = await queuePrompt(job.graph);
+        jobs.delete(oldPid);
+        jobs.set(newPid, Object.assign(job, {
+          enqueuedAt: Date.now(),
+          startedAt: null,
+          requeuedFrom: oldPid,
+        }));
+        mapping[oldPid] = newPid;
+      }
+    } catch (error) {
+      return json(res, 502, { error: `Could not rebuild the queue: ${error.message}` });
+    }
+    broadcast('queueReordered', { profileId: req.profile.id });
+    return json(res, 200, { ok: true, mapping });
   }
 
   if (route === '/api/queue/cancel' && req.method === 'POST') {
@@ -4569,6 +4628,16 @@ async function handleApi(req, res, url) {
   }
 
   const vidRoute = route.match(/^\/api\/item\/([\w]+)\/video\/([\w]+)$/);
+  if (vidRoute && req.method === 'POST') {
+    const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
+    if (!item) return json(res, 404, { error: 'Not found' });
+    const video = (item.videos || []).find((entry) => entry.id === vidRoute[2]);
+    if (!video) return json(res, 404, { error: 'Video not found' });
+    const body = await readJsonBody(req);
+    video.liked = body.liked === true;
+    saveDb();
+    return json(res, 200, item);
+  }
   if (vidRoute && req.method === 'DELETE') {
     const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });

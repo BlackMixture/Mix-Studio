@@ -95,6 +95,7 @@ const state = {
   animateTarget: null,
   animateRouteTarget: null,
   currentItem: null,
+  currentMedia: null,
   upscaleTarget: null,
   moveTarget: null,
   selectMode: false,
@@ -630,6 +631,11 @@ function actionIconMarkup(icon) {
     motion: '<path d="M4 7h8V5l4 3-4 3V9H4V7Zm16 8H12v-2l-4 3 4 3v-2h8v-2Z"/>',
     'first-frame': '<path d="M5 5h15v14H5V5Zm2 2v10h11V7H7Zm-5 4h2v2H2v-2Zm7 4 2.7-3.2 2 2.1 1.5-1.8L17 15H9Z"/>',
     'last-frame': '<path d="M4 5h15v14H4V5Zm2 2v10h11V7H6Zm14 4h2v2h-2v-2ZM8 15l2.7-3.2 2 2.1 1.5-1.8L17 15H8Z"/>',
+    save: '<path d="M5 3h12l3 3v15H4V3h1Zm1 2v14h12V6.8L16.2 5H6Zm2 0h6v5H8V5Zm1 10h6v4H9v-4Z"/>',
+    composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
+    process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
+    heart: '<path d="M12 20.7 4.4 13A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 7.6 7L12 20.7Zm0-2.8 6.1-6.2a3.2 3.2 0 0 0-4.5-4.5L12 8.8l-1.6-1.6a3.2 3.2 0 0 0-4.5 4.5L12 17.9Z"/>',
+    'heart-fill': '<path d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/>',
   };
   return `<svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${paths[icon] || paths.use}</svg>`;
 }
@@ -5486,6 +5492,7 @@ function setGenerating(on, statusText) {
 
 state.queueProgress = {};
 let queueRefreshAt = 0;
+let queueDrag = null;
 
 async function refreshQueue() {
   const q = await api('/api/queue');
@@ -5543,8 +5550,156 @@ function openFromQueue(itemId, videoId) {
   if (state.items.some((i) => i.id === itemId)) go();
   else refreshGallery(true).then(go);
 }
+
+function queueReorderRows() {
+  return [...document.querySelectorAll('#queueList .queue-row[data-reorderable="true"]')];
+}
+
+function clearQueueDragClasses() {
+  document.querySelectorAll('#queueList .queue-drag-over-before, #queueList .queue-drag-over-after')
+    .forEach((row) => row.classList.remove('queue-drag-over-before', 'queue-drag-over-after'));
+}
+
+function cancelQueueDrag(gesture) {
+  if (!gesture || queueDrag !== gesture) return;
+  clearTimeout(gesture.timer);
+  try { gesture.row.releasePointerCapture(gesture.pointerId); } catch { /* noop */ }
+  if (gesture.ghost) gesture.ghost.remove();
+  gesture.row.classList.remove('queue-drag-source');
+  clearQueueDragClasses();
+  queueDrag = null;
+}
+
+function updateQueueDragTarget(gesture, clientY) {
+  clearQueueDragClasses();
+  const target = queueReorderRows().find((row) => {
+    if (row === gesture.row) return false;
+    const rect = row.getBoundingClientRect();
+    return clientY >= rect.top && clientY <= rect.bottom;
+  });
+  if (!target) {
+    gesture.target = null;
+    return;
+  }
+  const rect = target.getBoundingClientRect();
+  const before = clientY < rect.top + rect.height / 2;
+  gesture.target = { row: target, before };
+  target.classList.add(before ? 'queue-drag-over-before' : 'queue-drag-over-after');
+}
+
+function beginQueueDrag(gesture) {
+  if (!gesture || queueDrag !== gesture || gesture.active) return;
+  gesture.active = true;
+  gesture.row.classList.add('queue-drag-source');
+  const rect = gesture.row.getBoundingClientRect();
+  const ghost = gesture.row.cloneNode(true);
+  ghost.classList.add('queue-drag-ghost', 'queue-drag-ghost-lifted');
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  document.body.appendChild(ghost);
+  gesture.ghost = ghost;
+}
+
+function finishQueueDrag(gesture, clientY) {
+  if (!gesture || queueDrag !== gesture) return;
+  if (!gesture.active) return cancelQueueDrag(gesture);
+  updateQueueDragTarget(gesture, clientY);
+  const rows = queueReorderRows();
+  const target = gesture.target;
+  const current = rows.map((row) => row.dataset.jobId);
+  const sourceIndex = current.indexOf(gesture.jobId);
+  let order = current.slice();
+  if (target && sourceIndex !== -1) {
+    order.splice(sourceIndex, 1);
+    let targetIndex = order.indexOf(target.row.dataset.jobId);
+    if (targetIndex !== -1 && !target.before) targetIndex += 1;
+    order.splice(Math.max(0, targetIndex), 0, gesture.jobId);
+  }
+  gesture.row.dataset.queueDragged = 'true';
+  setTimeout(() => gesture.row.removeAttribute('data-queue-dragged'), 0);
+  cancelQueueDrag(gesture);
+  if (order.join('|') === current.join('|')) return;
+  const rowById = new Map(rows.map((row) => [row.dataset.jobId, row]));
+  const fragment = document.createDocumentFragment();
+  order.forEach((id) => fragment.appendChild(rowById.get(id)));
+  $('#queueList').insertBefore(fragment, $('#queueList').firstElementChild);
+  submitQueueReorder(order);
+}
+
+function attachQueueDrag(row, job) {
+  let gesture = null;
+  row.dataset.reorderable = 'true';
+  row.addEventListener('pointerdown', (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest('button, a, input, select, textarea')) return;
+    if (queueDrag) return;
+    gesture = {
+      row,
+      jobId: job.jobId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      timer: setTimeout(() => beginQueueDrag(gesture), 180),
+      ghost: null,
+      target: null,
+    };
+    queueDrag = gesture;
+    try { row.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  });
+  row.addEventListener('pointermove', (event) => {
+    if (!gesture || queueDrag !== gesture || event.pointerId !== gesture.pointerId) return;
+    if (!gesture.active) {
+      if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 8) cancelQueueDrag(gesture);
+      return;
+    }
+    if (gesture.ghost) gesture.ghost.style.transform = `translate3d(0, ${event.clientY - gesture.startY}px, 0)`;
+    updateQueueDragTarget(gesture, event.clientY);
+  });
+  row.addEventListener('pointerup', (event) => {
+    if (gesture && event.pointerId === gesture.pointerId) finishQueueDrag(gesture, event.clientY);
+  });
+  row.addEventListener('pointercancel', () => cancelQueueDrag(gesture));
+}
+
+function applyQueueJobMapping(mapping) {
+  for (const [oldId, newId] of Object.entries(mapping || {})) {
+    if (state.activeJobs.has(oldId)) {
+      state.activeJobs.delete(oldId);
+      state.activeJobs.add(newId);
+    }
+    if (state.queueProgress[oldId] != null) {
+      state.queueProgress[newId] = state.queueProgress[oldId];
+      delete state.queueProgress[oldId];
+    }
+    const composite = state.compositeJobs.get(oldId);
+    if (composite) {
+      state.compositeJobs.delete(oldId);
+      state.compositeJobs.set(newId, composite);
+    }
+  }
+}
+
+async function submitQueueReorder(order) {
+  try {
+    const result = await api('/api/queue/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order }),
+    });
+    applyQueueJobMapping(result.mapping);
+    toast('Queue order updated');
+    await refreshQueue();
+  } catch (error) {
+    toast(error.message, true);
+    try { await refreshQueue(); } catch { /* noop */ }
+  }
+}
+
 function renderQueue(q) {
   renderQueueHealth(q.health);
+  if (queueDrag) return;
   const list = $('#queueList');
   list.innerHTML = '';
   const rows = [
@@ -5554,9 +5709,16 @@ function renderQueue(q) {
   if (!rows.length) {
     list.innerHTML = '<div class="queue-empty">Queue is empty — nothing running.</div>';
   }
+  const pending = q.pending || [];
+  const canReorder = pending.length > 1 && pending.every((job) => job.reorderable === true);
+  const hint = $('#queueReorderHint');
+  if (hint) hint.hidden = !canReorder;
+  const clearHistory = $('#queueClearHistoryBtn');
+  if (clearHistory) clearHistory.disabled = !(q.history || []).length;
   for (const j of rows) {
     const row = document.createElement('div');
     row.className = 'queue-row';
+    row.dataset.jobId = j.jobId;
     const st = document.createElement('span');
     st.className = 'q-state' + (j.run ? ' run' : '');
     st.dataset.jobId = j.jobId;
@@ -5568,7 +5730,12 @@ function renderQueue(q) {
     lb.textContent = elapsed ? `${j.label} - ${elapsed}` : j.label;
     if (j.itemId) {
       row.classList.add('q-click');
-      lb.addEventListener('click', () => openFromQueue(j.itemId));
+      row.title = 'Open in Library';
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('button, a')) return;
+        if (row.dataset.queueDragged === 'true') return;
+        openFromQueue(j.itemId, j.videoId);
+      });
     }
     const x = document.createElement('button');
     x.className = 'q-cancel';
@@ -5586,7 +5753,16 @@ function renderQueue(q) {
         refreshQueue();
       } catch (e2) { toast(e2.message, true); }
     });
-    row.append(st, lb, x);
+    if (!j.run && canReorder) {
+      const handle = document.createElement('span');
+      handle.className = 'q-handle';
+      handle.textContent = '⋮⋮';
+      handle.setAttribute('aria-hidden', 'true');
+      row.append(handle, st, lb, x);
+      attachQueueDrag(row, j);
+    } else {
+      row.append(st, lb, x);
+    }
     list.appendChild(row);
   }
   // Recent generations (history)
@@ -5635,6 +5811,21 @@ $('#queueResetBtn').addEventListener('click', async () => {
   } catch (e) {
     toast(e.message, true);
   } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#queueClearHistoryBtn').addEventListener('click', async () => {
+  const btn = $('#queueClearHistoryBtn');
+  if (btn.disabled) return;
+  if (!window.confirm('Clear recent queue history? Gallery items will not be deleted.')) return;
+  btn.disabled = true;
+  try {
+    const result = await api('/api/queue/history/clear', { method: 'POST' });
+    toast(`${result.cleared || 0} history item${result.cleared === 1 ? '' : 's'} cleared`);
+    await refreshQueue();
+  } catch (error) {
+    toast(error.message, true);
     btn.disabled = false;
   }
 });
@@ -6015,6 +6206,16 @@ function galleryImageModelLabel(item) {
   return '';
 }
 
+function galleryCardModelLabel(item) {
+  if (!item) return '';
+  if (item.mode === 't2i') return item.krea2Turbo === false ? 'Raw' : 'Turbo';
+  return galleryImageModelLabel(item);
+}
+
+function itemHasLike(item) {
+  return !!(item && (item.liked || (item.videos || []).some((video) => video && video.liked)));
+}
+
 function latestGalleryVideo(item) {
   const videos = Array.isArray(item && item.videos) ? item.videos : [];
   return videos.reduce((newest, video) => {
@@ -6054,14 +6255,26 @@ function matchesLibrarySearch(it, query) {
 }
 
 function visibleItems() {
-  const arr = state.items.filter((it) => {
+  const eligible = state.items.filter((it) => {
     if (state.activeFolder !== 'all' && it.folder !== state.activeFolder) return false;
-    if (state.likesOnly && !it.liked) return false;
     const hasVideos = it.videos && it.videos.length;
     if (state.mediaFilter === 'videos' && !hasVideos) return false;
     if (state.mediaFilter === 'images' && hasVideos) return false;
     return matchesLibrarySearch(it, state.libraryQuery);
   });
+  let arr = eligible.filter((it) => {
+    if (state.likesOnly && !it.liked) {
+      const videoLiked = (it.videos || []).some((video) => video && video.liked);
+      if (!videoLiked) return false;
+    }
+    return true;
+  });
+  if (state.likesOnly) {
+    const likedAngleGroups = new Set(arr.map((it) => it.angleGroupId).filter(Boolean));
+    if (likedAngleGroups.size) {
+      arr = eligible.filter((it) => !it.angleGroupId || likedAngleGroups.has(it.angleGroupId));
+    }
+  }
   if (state.sortMode === 'old') arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   else if (state.sortMode === 'az') arr.sort((a, b) => (a.prompt || '').localeCompare(b.prompt || ''));
   else if (state.sortMode === 'active') arr.sort((a, b) => itemActivity(b) - itemActivity(a));
@@ -6164,8 +6377,34 @@ function addGalleryDuration(badge, durationMs, standalone = false) {
   badge.appendChild(duration);
 }
 
+let galleryPreviewObserver = null;
+function galleryPreviewMotionAllowed() {
+  return document.visibilityState === 'visible'
+    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+function ensureGalleryPreviewObserver() {
+  if (galleryPreviewObserver || !('IntersectionObserver' in window)) return;
+  galleryPreviewObserver = new IntersectionObserver((entries) => {
+    entries.forEach(({ target, isIntersecting }) => {
+      if (isIntersecting && galleryPreviewMotionAllowed()) {
+        target.play().catch(() => { /* autoplay may be blocked */ });
+      } else {
+        target.pause();
+        try { target.currentTime = 0; } catch { /* noop */ }
+      }
+    });
+  }, { root: null, rootMargin: '-24% 0px -24% 0px', threshold: 0.05 });
+}
+function resetGalleryPreviewObservation() {
+  if (!galleryPreviewObserver) return;
+  galleryPreviewObserver.disconnect();
+  $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
+}
+
 function renderGrid() {
   const grid = $('#galleryGrid');
+  ensureGalleryPreviewObserver();
+  if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   grid.innerHTML = '';
   const items = visibleItems();
   const entries = galleryEntries(items);
@@ -6188,18 +6427,36 @@ function renderGrid() {
       grid.appendChild(divider);
     }
     const card = document.createElement('button');
-    card.className = 'card' + (entry.angleGroupId ? ' angle-group' : '');
-    const img = document.createElement('img');
-    img.loading = 'lazy';
-    img.src = '/images/' + it.file;
-    card.appendChild(img);
+    const hasAttachedComposite = Array.isArray(it.composites) && it.composites.length > 0;
+    card.className = 'card'
+      + (entry.angleGroupId ? ' angle-group' : '')
+      + (hasAttachedComposite ? ' has-attached-composite' : '');
+    const latestVideo = latestGalleryVideo(it);
+    if (latestVideo) {
+      const preview = document.createElement('video');
+      preview.className = 'gallery-card-video';
+      preview.muted = true;
+      preview.loop = true;
+      preview.playsInline = true;
+      preview.preload = 'metadata';
+      preview.poster = '/images/' + it.file;
+      preview.src = '/videos/' + latestVideo.file;
+      preview.tabIndex = -1;
+      preview.setAttribute('aria-hidden', 'true');
+      card.appendChild(preview);
+    } else {
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = '/images/' + it.file;
+      card.appendChild(img);
+    }
     const cardDuration = galleryItemDurationMs(it);
-    const imageModel = galleryImageModelLabel(it);
+    const imageModel = galleryCardModelLabel(it);
     if (imageModel) {
       const model = document.createElement('span');
       model.className = 'badge model-badge' + (it.upscaled ? ' up' : '');
       model.textContent = `${it.upscaled ? '↑ ' : ''}${imageModel}`;
-      model.title = `${it.upscaled ? 'Upscaled · ' : ''}Image model: ${imageModel}`;
+      model.title = `${it.upscaled ? 'Upscaled · ' : ''}Image model: ${galleryImageModelLabel(it)}`;
       if (!(it.videos && it.videos.length)) addGalleryDuration(model, cardDuration);
       card.appendChild(model);
     }
@@ -6208,7 +6465,7 @@ function renderGrid() {
       const videoModel = videoEngineLabel(latestVideo && latestVideo.info && latestVideo.info.engine);
       const v = document.createElement('span');
       v.className = 'badge vid';
-      v.textContent = it.videos.length > 1 ? `▶ ${videoModel} +${it.videos.length - 1}` : `▶ ${videoModel}`;
+      v.textContent = `▶ ${videoModel}`;
       v.title = `Video model: ${videoModel}`;
       addGalleryDuration(v, cardDuration);
       card.appendChild(v);
@@ -6225,21 +6482,23 @@ function renderGrid() {
       addGalleryDuration(b, cardDuration, true);
       card.appendChild(b);
     }
-    if (Array.isArray(it.composites) && it.composites.length) {
+    if (hasAttachedComposite) {
       const b = document.createElement('span');
       b.className = 'badge attached-composite-badge';
       b.textContent = 'Before + after';
       card.appendChild(b);
     }
-    if (entry.angleGroupId) {
+    const groupCount = entry.angleGroupId && entry.items.length > 1
+      ? entry.items.length
+      : (it.videos && it.videos.length > 1 ? it.videos.length : 0);
+    if (groupCount) {
       const badge = document.createElement('span');
-      badge.className = 'badge angle-group-badge';
-      badge.title = `${entry.items.length} camera angles`;
-      badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2 8 4.5v9L12 20l-8-4.5v-9L12 2Zm0 2.1L6.1 7.4 12 10.7l5.9-3.3L12 4.1Zm-6 5v5.1l5 2.8v-5.2L6 9.2Zm7 7.9 5-2.8V9.2l-5 2.5v5.4Z"/></svg><b>'
-        + entry.items.length + '</b>';
+      badge.className = 'badge generation-count-badge' + (entry.angleGroupId ? ' angle-group-badge' : '');
+      badge.textContent = String(groupCount);
+      badge.title = `${groupCount} generations grouped`;
       card.appendChild(badge);
     }
-    if (it.liked) {
+    if (entry.items.some(itemHasLike)) {
       const badge = document.createElement('span');
       badge.className = 'badge liked-badge';
       badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Z"/></svg>';
@@ -6252,6 +6511,7 @@ function renderGrid() {
       card.appendChild(ov);
     }
     card.dataset.id = it.id;
+    card.dataset.media = latestVideo ? latestVideo.id : 'image';
     if (state.selected.has(it.id)) card.classList.add('selected');
 
     // long-press -> multi-select mode; tap -> toggle (in select mode) or open
@@ -6299,7 +6559,20 @@ function renderGrid() {
     });
     grid.appendChild(card);
   }
+  resetGalleryPreviewObservation();
 }
+
+document.addEventListener('visibilitychange', () => {
+  const previews = $$('.gallery-card-video');
+  if (document.hidden || !galleryPreviewMotionAllowed()) {
+    previews.forEach((video) => {
+      video.pause();
+      try { video.currentTime = 0; } catch { /* noop */ }
+    });
+  } else {
+    resetGalleryPreviewObservation();
+  }
+});
 
 let galleryTap = null;
 let lightboxTap = null;
@@ -6321,8 +6594,7 @@ function playLikeBurst(target, mode = 'like') {
 
 async function setItemLiked(item, liked, burstTarget) {
   if (!item) return;
-  const items = angleGroupItems(item);
-  const targets = items.length > 1 ? items : [item];
+  const targets = [item];
   if (targets.some((target) => target._likePending)) return;
   const previous = targets.map((target) => !!target.liked);
   targets.forEach((target) => {
@@ -6347,6 +6619,29 @@ async function setItemLiked(item, liked, burstTarget) {
   }
 }
 
+async function setVideoLiked(item, video, liked, burstTarget) {
+  if (!item || !video || video._likePending) return;
+  const previous = !!video.liked;
+  video.liked = liked;
+  video._likePending = true;
+  playLikeBurst(burstTarget, liked ? 'like' : 'unlike');
+  try {
+    const updated = await api(`/api/item/${item.id}/video/${video.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ liked }),
+    });
+    Object.assign(item, updated);
+    if (state.currentItem && state.currentItem.id === item.id) openLightbox(item.id, video.id);
+  } catch (error) {
+    video.liked = previous;
+    toast(error.message, true);
+  } finally {
+    video._likePending = false;
+  }
+  setTimeout(renderGrid, liked ? 720 : 520);
+}
+
 function toggleItemLike(item, burstTarget) {
   setItemLiked(item, !item.liked, burstTarget);
 }
@@ -6366,7 +6661,7 @@ function handleGalleryTap(item, card) {
     timer: setTimeout(() => {
       if (galleryTap && galleryTap.itemId === item.id) {
         galleryTap = null;
-        openLightbox(item.id);
+        openLightbox(item.id, card.dataset.media || 'image');
       }
     }, 260),
   };
@@ -6375,14 +6670,21 @@ function handleGalleryTap(item, card) {
 function handleLightboxTap() {
   const item = state.currentItem;
   if (!item) return;
+  const selectedVideo = state.currentMedia && state.currentMedia.type === 'video'
+    ? (item.videos || []).find((video) => video.id === state.currentMedia.id)
+    : null;
+  const mediaId = selectedVideo ? selectedVideo.id : 'image';
   const now = Date.now();
-  if (lightboxTap && lightboxTap.itemId === item.id && now - lightboxTap.time < 300) {
+  if (lightboxTap && lightboxTap.itemId === item.id && lightboxTap.mediaId === mediaId && now - lightboxTap.time < 300) {
     lightboxTap = null;
-    toggleItemLike(item, $('#lightboxLikeBurst'));
+    if (selectedVideo) setVideoLiked(item, selectedVideo, !selectedVideo.liked, $('#lightboxLikeBurst'));
+    else toggleItemLike(item, $('#lightboxLikeBurst'));
     return;
   }
-  lightboxTap = { itemId: item.id, time: now };
-  setTimeout(() => { if (lightboxTap && lightboxTap.itemId === item.id) lightboxTap = null; }, 320);
+  lightboxTap = { itemId: item.id, mediaId, time: now };
+  setTimeout(() => {
+    if (lightboxTap && lightboxTap.itemId === item.id && lightboxTap.mediaId === mediaId) lightboxTap = null;
+  }, 320);
 }
 
 function updateLibrarySearch() {
@@ -6519,6 +6821,8 @@ function openLightbox(id, mediaSel) {
   if (sel !== 'image' && !videos.some((v) => v.id === sel) && !composites.some((composite) => 'composite:' + composite.id === sel)) sel = 'image';
   const selVideo = videos.find((v) => v.id === sel) || null;
   const selComposite = composites.find((composite) => 'composite:' + composite.id === sel) || null;
+  state.currentMedia = selVideo ? { type: 'video', id: selVideo.id }
+    : (selComposite ? { type: 'composite', id: selComposite.id } : { type: 'image', id: 'image' });
   $('#lightbox').classList.add('show');
 
   const vid = $('#lbVideo');
@@ -6556,16 +6860,16 @@ function openLightbox(id, mediaSel) {
     });
   }
   if (videos.length || composites.length) {
-    const mkChip = (label, key) => {
+    const mkChip = (label, key, liked = false) => {
       const b = document.createElement('button');
       b.className = 'chip' + ((key === 'image' ? (!selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
-      b.textContent = label;
+      b.innerHTML = `<span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
       b.addEventListener('click', () => openLightbox(id, key));
       mrow.appendChild(b);
     };
-    mkChip('🖼 Image', 'image');
-    composites.forEach((composite) => mkChip('▣ ' + (composite.label || 'Before + after'), 'composite:' + composite.id));
-    videos.forEach((v, i) => mkChip('▶ ' + (i + 1), v.id));
+    mkChip('Image', 'image', !!it.liked);
+    composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id));
+    videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked));
   }
 
   const meta = [];
@@ -6628,27 +6932,55 @@ function openLightbox(id, mediaSel) {
       const list = typeof items === 'function' ? items() : items;
       openActionMenu(b, list || [], options);
     };
-    b = options.icon ? mkIcon(options.icon, options.ariaLabel || label, cls, onOpen) : mk(label, cls, onOpen);
+    b = options.icon
+      ? mk(`${actionIconMarkup(options.icon)}<span>${escapeHtml(label)}</span>`, `menu-trigger ${cls || ''}`.trim(), onOpen, { ariaLabel: options.ariaLabel || label, title: options.ariaLabel || label })
+      : mk(label, cls, onOpen);
     if (options.icon) b.setAttribute('aria-haspopup', 'menu');
     return b;
   };
+
+  const sourceReference = !selVideo && !selComposite && it.sourceFile
+    && (it.mode === 'edit' || it.mode === 't2i');
+  const isEditSource = sourceReference && it.mode === 'edit';
+  const imageSaveItems = [];
+  if (!selVideo && !selComposite) {
+    if (it.upscaled) {
+      imageSaveItems.push(
+        { label: 'Save upscaled', detail: 'Current image', icon: 'save', action: () => downloadItem(it, 'upscaled') },
+        { label: 'Save original', detail: 'Before upscale', icon: 'save', action: () => downloadItem(it, 'original') },
+      );
+    } else {
+      imageSaveItems.push({ label: 'Save image', icon: 'save', action: () => downloadItem(it, 'current') });
+    }
+    if (angleItems.length > 1) {
+      imageSaveItems.push({ label: 'Save angle composite', detail: 'All camera views', icon: 'composite', action: () => saveImageComposite(it, 'angles') });
+    }
+    if (sourceReference) {
+      imageSaveItems.push({
+        label: isEditSource ? 'Save before + after' : 'Save reference + generation',
+        detail: isEditSource ? 'Original and edited image' : 'Reference and generated image',
+        icon: 'composite',
+        action: () => saveImageComposite(it, isEditSource ? 'before-after' : 'reference-generation'),
+      });
+    }
+  }
 
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
   } else if (it.mode !== 'composite') {
     mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateRouteSheet(it));
   }
-  if ((!selVideo && !selComposite) || videos.length) {
-    mk(it.liked ? '♥ Liked' : '♡ Like', it.liked ? 'primary' : '', () => toggleItemLike(it, $('#lightboxLikeBurst')));
-  }
-  if (!selVideo && !selComposite && angleItems.length > 1) {
-    mk('▦ Save angle composite', '', () => saveImageComposite(it, 'angles'));
+  if (!selComposite) {
+    const liked = selVideo ? !!selVideo.liked : !!it.liked;
+    const label = selVideo ? (liked ? 'Unlike video' : 'Like video') : (liked ? 'Unlike' : 'Like');
+    const like = mkIcon(liked ? 'heart-fill' : 'heart', label, `like-toggle${liked ? ' liked' : ''}`, () => {
+      if (selVideo) setVideoLiked(it, selVideo, !selVideo.liked, $('#lightboxLikeBurst'));
+      else toggleItemLike(it, $('#lightboxLikeBurst'));
+    });
+    like.setAttribute('aria-pressed', String(liked));
   }
   // Reference-backed generations: hold to flash the retained source image.
-  const sourceReference = !selVideo && !selComposite && it.sourceFile
-    && (it.mode === 'edit' || it.mode === 't2i');
   if (sourceReference) {
-    const isEditSource = it.mode === 'edit';
     const hb = mk(isEditSource ? '👁 Hold: original' : '👁 Hold: reference', '', () => {});
     hb.style.userSelect = 'none';
     hb.style.webkitUserSelect = 'none';
@@ -6659,9 +6991,6 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('pointercancel', hide);
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
-    mk(isEditSource ? '▣ Save before + after' : '▣ Save reference + generation', '', () => {
-      saveImageComposite(it, isEditSource ? 'before-after' : 'reference-generation');
-    });
   }
 
   // Region-prompted images: hold to overlay the color-coded boxes,
@@ -6739,11 +7068,11 @@ function openLightbox(id, mediaSel) {
     if (videoUseItems.length) mkMenu('Use', '', videoUseItems, { icon: 'use', ariaLabel: 'Use video', menuTitle: 'Use video', tone: 'video' });
     const processItems = [];
     if (!vinfo.composite) {
-      processItems.push({ label: 'Upscale video', action: () => processVideo(it, selVideo, 'upscale') });
-      processItems.push({ label: 'Increase FPS', action: () => processVideo(it, selVideo, 'interpolate') });
+      processItems.push({ label: 'Upscale video', detail: 'SeedVR2 finish', icon: 'process', action: () => processVideo(it, selVideo, 'upscale') });
+      processItems.push({ label: 'Increase FPS', detail: 'RIFE interpolation', icon: 'process', action: () => processVideo(it, selVideo, 'interpolate') });
     }
     if (vinfo.engine === 'scail' && vinfo.driveVideoName && !vinfo.composite) {
-      processItems.push({ label: 'Side-by-side', action: async () => {
+      processItems.push({ label: 'Side-by-side', detail: 'Reference and result', icon: 'composite', action: async () => {
         try {
           toast('Building side-by-side comparison…');
           const r = await api('/api/composite', {
@@ -6758,7 +7087,7 @@ function openLightbox(id, mediaSel) {
         } catch (e) { toast(e.message, true); }
       } });
     }
-    if (processItems.length) mkMenu('Process video', '', processItems);
+    if (processItems.length) mkMenu('Process', '', processItems, { icon: 'process', ariaLabel: 'Process video', menuTitle: 'Process video', tone: 'video' });
     mk('↓ Save video', '', () => {
       const a = document.createElement('a');
       a.href = '/videos/' + selVideo.file;
@@ -6802,13 +7131,10 @@ function openLightbox(id, mediaSel) {
     }
     mkMenu('Use', '', imageUseItems, { icon: 'use', ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
     mk('▤ Move', '', () => openMoveSheet(it));
-    if (it.upscaled) {
-      mkMenu('Save', '', [
-        { label: 'Save upscaled', action: () => downloadItem(it, 'upscaled') },
-        { label: 'Save original', action: () => downloadItem(it, 'original') },
-      ]);
-    } else {
-      mk('↓ Save', '', () => downloadItem(it, 'current'));
+    if (imageSaveItems.length > 1) {
+      mkMenu('Save', '', imageSaveItems, { icon: 'save', ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
+    } else if (imageSaveItems.length === 1) {
+      mk('↓ Save', '', imageSaveItems[0].action);
     }
     mk('🗑 Delete', 'danger', async () => {
       const n = videos.length;
@@ -6825,6 +7151,7 @@ function closeLightbox(fromPop) {
   const vid = $('#lbVideo');
   try { vid.pause(); } catch { /* noop */ }
   state.currentItem = null;
+  state.currentMedia = null;
   unlockScroll();
   if (!fromPop && window.history.state && window.history.state.lb) {
     try { history.back(); } catch { /* noop */ }

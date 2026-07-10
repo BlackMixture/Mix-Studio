@@ -27,6 +27,8 @@ test('lightbox groups after-the-fact video processing actions in one menu', () =
 
 test('gallery Use menus are icon-led and show concise image destinations', () => {
   assert.match(appJs, /function actionIconMarkup\(icon\)/);
+  assert.match(appJs, /menu-trigger/);
+  assert.match(appJs, /<span>\$\{escapeHtml\(label\)\}<\/span>/);
   assert.match(appJs, /menuTitle: 'Use image'/);
   assert.match(appJs, /ariaLabel: 'Use image'/);
   assert.match(appJs, /label: 'First frame', detail: 'Start a video here', icon: 'first-frame'/);

@@ -1,4 +1,4 @@
-# MixBox Studio
+# Mix Studio
 
 Minimalist, mobile-first web app for driving a local **ComfyUI** install — image and video generation in the Modatory design language. Generations run on the Windows desktop; you drive it from your phone (same Wi-Fi or Tailscale). Zero dependencies: one Node.js server, vanilla JS frontend, no build step.
 
@@ -17,8 +17,8 @@ The current bootstrap supports an existing ComfyUI installation and can install 
    git clone https://github.com/BlackMixture/KreaStudio.git
    ```
 
-3. Open the cloned folder and double-click **install.bat**. A MixBox Studio-styled setup window walks through prerequisites, ComfyUI connection, optional model families, review, and installation.
-4. Enter the URL and optional folders for an existing ComfyUI installation. Existing models stay where they are; MixBox Studio does not copy or redownload them.
+3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI connection, optional model families, review, and installation.
+4. Enter the URL and optional folders for an existing ComfyUI installation. Existing models stay where they are; Mix Studio does not copy or redownload them.
 5. Choose which optional Edit and Video model families should appear in the interface.
 6. Start ComfyUI, then double-click **start.bat**.
 
@@ -35,28 +35,28 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 
 ### Existing ComfyUI and shared models
 
-The installer supports an existing ComfyUI URL, application folder, and models folder. MixBox Studio uses those paths for local LoRA metadata and SeedVR2 discovery, while ComfyUI remains responsible for loading the models used by generation graphs. If your models folder is outside the ComfyUI folder, make sure that ComfyUI already includes it through its `extra_model_paths.yaml` configuration.
+The installer supports an existing ComfyUI URL, application folder, and models folder. Mix Studio uses those paths for local LoRA metadata and SeedVR2 discovery, while ComfyUI remains responsible for loading the models used by generation graphs. If your models folder is outside the ComfyUI folder, make sure that ComfyUI already includes it through its `extra_model_paths.yaml` configuration.
 
 You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
 
-To remove MixBox Studio, double-click **uninstall.bat**. The uninstaller removes the portable app checkout but keeps `data/` by default so profiles and generated media can be reused after reinstalling. Use the explicit `-RemoveData` option only when you also want to erase that local gallery data; it requires typing `DELETE`. ComfyUI, shared model folders, and the system Node.js installation are never removed.
+To remove Mix Studio, double-click **uninstall.bat**. The uninstaller removes the portable app checkout but keeps `data/` by default so profiles and generated media can be reused after reinstalling. Use the explicit `-RemoveData` option only when you also want to erase that local gallery data; it requires typing `DELETE`. ComfyUI, shared model folders, and the system Node.js installation are never removed.
 
 ### Installing missing dependencies
 
-In **Advanced Settings → General**, the **Desktop Dependencies** card scans every enabled MixBox model and node family. The owner profile can install only the red groups; node packs are cloned into the configured `custom_nodes` directory and their requirements are added with that ComfyUI instance's Python environment **without a blanket pip upgrade**. Before any node requirements are changed, MixBox Studio saves a `pip freeze` snapshot under `data/dependency-backups/`. Model files download into the configured shared models folder with live byte progress, and partial downloads are kept as `.mixbox.part` files until complete.
+In **Advanced Settings → General**, the **Desktop Dependencies** card scans every enabled Mix Studio model and node family. The owner profile can install only the red groups; node packs are cloned into the configured `custom_nodes` directory and their requirements are added with that ComfyUI instance's Python environment **without a blanket pip upgrade**. Before any node requirements are changed, Mix Studio saves a `pip freeze` snapshot under `data/dependency-backups/`. Model files download into the configured shared models folder with live byte progress, and partial downloads are kept as `.mixbox.part` files until complete.
 
 Use **Repair missing tools** after an interrupted install or a custom-node dependency conflict. It reinstalls only the affected packs' declared Python packages, then asks for a ComfyUI restart; it does not reset profiles, gallery data, model files, or unrelated custom nodes.
 
-Some upstream Hugging Face files require accepting a license before their download URL will work. Accept the license on the model page first; if the provider requires authentication, launch MixBox Studio with an `HF_TOKEN` environment variable. The card also exposes **Restart ComfyUI** for a configured Windows ComfyUI folder, but it will refuse while either queue is active.
+Some upstream Hugging Face files require accepting a license before their download URL will work. Accept the license on the model page first; if the provider requires authentication, launch Mix Studio with an `HF_TOKEN` environment variable. The card also exposes **Restart ComfyUI** for a configured Windows ComfyUI folder, but it will refuse while either queue is active.
 
 ### Updating
 
-Open MixBox Studio's side menu and choose **Update app**. Updates require:
+Open Mix Studio's side menu and choose **Update app**. Updates require:
 
 - a Git clone with its `.git` directory;
 - a named branch and configured `origin` remote;
 - no uncommitted tracked code changes; and
-- idle MixBox Studio and ComfyUI queues.
+- idle Mix Studio and ComfyUI queues.
 
 Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side updates restart the Node process automatically; frontend-only updates do not need a restart.
 
