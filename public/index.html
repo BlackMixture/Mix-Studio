@@ -801,6 +801,52 @@
   <div class="action-row" id="lbActions"></div>
 </div>
 
+<!-- shareable generation documentation builder -->
+<div class="sheet" id="documentationSheet">
+  <div class="sheet-panel documentation-panel" role="dialog" aria-modal="true" aria-labelledby="documentationTitle">
+    <h3 class="sheet-title" id="documentationTitle">Documentation image <button data-close aria-label="Close documentation builder">✕</button></h3>
+    <p class="documentation-intro">Turn this generation into a polished, share-ready image. Only details saved with the generation are available.</p>
+    <div class="documentation-builder">
+      <div class="documentation-preview-wrap">
+        <div class="documentation-preview" id="documentationPreview">
+          <canvas id="documentationCanvas" aria-label="Documentation image preview"></canvas>
+          <div class="documentation-preview-status" id="documentationPreviewStatus">Preparing preview…</div>
+        </div>
+        <p class="documentation-preview-note">The exported PNG uses the original image resolution.</p>
+      </div>
+      <div class="documentation-controls">
+        <div class="documentation-control-group">
+          <span class="documentation-control-label">Layout</span>
+          <div class="documentation-segment" id="documentationLayout" role="group" aria-label="Documentation layout">
+            <button type="button" data-doc-layout="contact" class="active">Contact card</button>
+            <button type="button" data-doc-layout="overlay">Overlay</button>
+          </div>
+        </div>
+        <div class="documentation-control-group" id="documentationThemeGroup">
+          <span class="documentation-control-label">Card color</span>
+          <div class="documentation-segment documentation-theme" id="documentationTheme" role="group" aria-label="Contact card color">
+            <button type="button" data-doc-theme="dark" class="active"><i class="documentation-swatch dark" aria-hidden="true"></i>Black</button>
+            <button type="button" data-doc-theme="light"><i class="documentation-swatch light" aria-hidden="true"></i>White</button>
+          </div>
+        </div>
+        <div class="documentation-control-group documentation-slider-group">
+          <label class="documentation-control-label" for="documentationTextScale">Text size <output id="documentationTextScaleValue">100%</output></label>
+          <input id="documentationTextScale" type="range" min="80" max="130" step="5" value="100" />
+        </div>
+        <div class="documentation-control-group documentation-slider-group" id="documentationShadeGroup" hidden>
+          <label class="documentation-control-label" for="documentationShade">Overlay shade <output id="documentationShadeValue">72%</output></label>
+          <input id="documentationShade" type="range" min="45" max="90" step="1" value="72" />
+        </div>
+        <div class="documentation-control-group">
+          <span class="documentation-control-label">Include</span>
+          <div class="documentation-field-list" id="documentationFields"></div>
+        </div>
+      </div>
+    </div>
+    <button class="sheet-cta documentation-save" id="documentationSave" type="button">Save documentation PNG</button>
+  </div>
+</div>
+
 <!-- compare -->
 <div class="overlay" id="compare">
   <div class="overlay-top">
@@ -1448,7 +1494,17 @@
 
 <!-- multi-select action bar -->
 <div class="select-bar" id="selectBar" hidden>
-  <button class="select-bar-grabber" id="selInsightsHandle" type="button" aria-label="Show selection details"><span></span></button>
+  <button class="select-bar-grabber" id="selInsightsHandle" type="button" aria-label="Expand selection console" aria-expanded="false"><span></span></button>
+  <div class="selection-console-details" id="selectionConsoleDetails" aria-hidden="true">
+    <div class="selection-console-heading"><strong>Selection details</strong><button id="selDock" type="button" aria-label="Dock selection console">↓</button></div>
+    <p class="selection-insights-status" id="selectionInsightsStatus">Pull up for selection details</p>
+    <div class="selection-insights-grid">
+      <section><span>Disk space</span><strong id="selectionDiskSpace">—</strong></section>
+      <section><span>Generation time</span><strong id="selectionGenerationTime">—</strong></section>
+      <section><span>Date range</span><strong id="selectionDateRange">—</strong></section>
+      <section><span>Media</span><strong id="selectionMediaCount">—</strong></section>
+    </div>
+  </div>
   <div class="select-bar-main">
     <button class="icon-btn" id="selCancel" aria-label="Cancel selection">✕</button>
     <span class="select-count" id="selCount">0 selected</span>
@@ -1458,19 +1514,6 @@
       <button class="action-btn" id="selComposite" type="button"><b>▦</b><span>Composite</span></button>
       <button class="action-btn" id="selMove" type="button"><b>▤</b><span>Move</span></button>
       <button class="action-btn danger" id="selDelete" type="button"><b>⌫</b><span>Delete</span></button>
-    </div>
-  </div>
-</div>
-
-<div class="sheet" id="selectionInsightsSheet">
-  <div class="sheet-panel selection-insights-panel">
-    <h3 class="sheet-title">Selection <button data-close aria-label="Close selection details">✕</button></h3>
-    <p class="selection-insights-status" id="selectionInsightsStatus">Calculating selection…</p>
-    <div class="selection-insights-grid">
-      <section><span>Disk space</span><strong id="selectionDiskSpace">—</strong></section>
-      <section><span>Generation time</span><strong id="selectionGenerationTime">—</strong></section>
-      <section><span>Date range</span><strong id="selectionDateRange">—</strong></section>
-      <section><span>Media</span><strong id="selectionMediaCount">—</strong></section>
     </div>
   </div>
 </div>

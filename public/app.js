@@ -684,6 +684,7 @@ function actionIconMarkup(icon) {
     'first-frame': '<path d="M5 5h15v14H5V5Zm2 2v10h11V7H7Zm-5 4h2v2H2v-2Zm7 4 2.7-3.2 2 2.1 1.5-1.8L17 15H9Z"/>',
     'last-frame': '<path d="M4 5h15v14H4V5Zm2 2v10h11V7H6Zm14 4h2v2h-2v-2ZM8 15l2.7-3.2 2 2.1 1.5-1.8L17 15H8Z"/>',
     save: '<path d="M5 3h12l3 3v15H4V3h1Zm1 2v14h12V6.8L16.2 5H6Zm2 0h6v5H8V5Zm1 10h6v4H9v-4Z"/>',
+    documentation: '<path d="M5 3h10l4 4v14H5V3Zm2 2v14h10V8h-3V5H7Zm2 6h6v2H9v-2Zm0 4h6v2H9v-2Z"/>',
     composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
     process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
     heart: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/>',
@@ -8418,6 +8419,14 @@ function openLightbox(id, mediaSel) {
     } else {
       imageSaveItems.push({ label: 'Save image', icon: 'save', action: () => downloadItem(it, 'current') });
     }
+    if (it.mode !== 'composite') {
+      imageSaveItems.push({
+        label: 'Documentation image',
+        detail: 'Image + generation details',
+        icon: 'documentation',
+        action: () => openDocumentationBuilder(it),
+      });
+    }
     if (angleItems.length > 1) {
       imageSaveItems.push({ label: 'Save angle composite', detail: 'All camera views', icon: 'composite', action: () => saveImageComposite(it, 'angles') });
     }
@@ -9254,6 +9263,417 @@ async function buildRegionOverlay(it) {
   });
   return c;
 }
+
+const documentationBuilderState = {
+  item: null,
+  image: null,
+  metadata: [],
+  selected: new Set(),
+  layout: 'contact',
+  theme: 'dark',
+  textScale: 100,
+  shade: 72,
+};
+
+function hasDocumentationValue(value) {
+  return value !== null && value !== undefined && value !== '';
+}
+
+function documentationMetadata(item) {
+  const metadata = [];
+  const add = (key, label, value) => {
+    if (hasDocumentationValue(value)) metadata.push({ key, label, value: String(value) });
+  };
+  add('model', 'Model', galleryImageModelLabel(item));
+  add('prompt', 'Prompt', item.prompt);
+  add('enhanced', 'Enhanced prompt', item.refinedPrompt);
+  if (hasDocumentationValue(item.width) && hasDocumentationValue(item.height)) add('size', 'Size', `${item.width} × ${item.height}`);
+  add('seed', 'Seed', item.seed);
+  add('steps', 'Steps', item.steps);
+  add('cfg', 'CFG', item.cfg);
+  if (Array.isArray(item.loras) && item.loras.length) {
+    const loras = item.loras.map((lora) => {
+      const rawName = typeof lora === 'string' ? lora : lora && lora.name;
+      if (!hasDocumentationValue(rawName)) return '';
+      const name = prettyLora(String(rawName));
+      const strength = lora && typeof lora === 'object' && hasDocumentationValue(lora.strength) && Number.isFinite(Number(lora.strength))
+        ? ` (${Number(lora.strength).toFixed(2)})` : '';
+      return name ? name + strength : '';
+    }).filter(Boolean);
+    if (loras.length) add('loras', 'LoRAs', loras.join(', '));
+  }
+  if (item.editEngine === 'qwen') {
+    add('sampling', 'Sampling', item.qwenQuality === 'fast' || (item.qwenQuality == null && Number(item.steps) <= 4) ? 'Fast' : 'Quality');
+  }
+  if (item.durationMs) add('duration', 'Generated in', formatDuration(item.durationMs));
+  if (item.upscaleInfo) {
+    const info = item.upscaleInfo;
+    if (info.engine === 'ultimate') {
+      const parts = ['Ultimate SD'];
+      if (hasDocumentationValue(info.scaleFactor)) parts.push(`${info.scaleFactor}×`);
+      parts.push('Prompt-guided');
+      add('upscale', 'Upscale', parts.join(' · '));
+    } else {
+      const parts = ['SeedVR2'];
+      if (hasDocumentationValue(info.profile)) parts.push(info.profile === 'sharp' ? 'Sharp' : 'Balanced');
+      if (info.upscaleMode === 'scale' && hasDocumentationValue(info.scaleFactor)) parts.push(`${info.scaleFactor}×`);
+      if (hasDocumentationValue(info.resolution)) parts.push(`${info.resolution}p${info.upscaleMode === 'scale' ? ' short edge' : ' target'}`);
+      add('upscale', 'Upscale', parts.join(' · '));
+    }
+  }
+  return metadata;
+}
+
+function selectedDocumentationMetadata() {
+  return documentationBuilderState.metadata.filter((entry) => documentationBuilderState.selected.has(entry.key));
+}
+
+function setDocumentationFont(ctx, weight, size) {
+  ctx.font = `${weight} ${Math.max(9, Math.round(size))}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+}
+
+function truncateCanvasText(ctx, text, maxWidth) {
+  const value = String(text || '');
+  if (ctx.measureText(value).width <= maxWidth) return value;
+  let output = value;
+  while (output.length > 1 && ctx.measureText(output + '…').width > maxWidth) output = output.slice(0, -1);
+  return output.trimEnd() + '…';
+}
+
+function wrapCanvasText(ctx, text, maxWidth, maxLines = Infinity) {
+  const paragraphs = String(text || '').split(/\n+/);
+  const lines = [];
+  for (const paragraph of paragraphs) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+        if (lines.length >= maxLines) break;
+      } else {
+        line = candidate;
+      }
+    }
+    if (lines.length >= maxLines) break;
+    if (line) lines.push(line);
+  }
+  if (!lines.length) lines.push('');
+  if (lines.length >= maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] = truncateCanvasText(ctx, lines[maxLines - 1], maxWidth);
+    const sourceWords = String(text || '').trim().split(/\s+/).length;
+    const visibleWords = lines.join(' ').trim().split(/\s+/).filter(Boolean).length;
+    if (visibleWords < sourceWords && !lines[maxLines - 1].endsWith('…')) {
+      lines[maxLines - 1] = truncateCanvasText(ctx, lines[maxLines - 1] + '…', maxWidth);
+    }
+  }
+  return lines;
+}
+
+function drawDocumentationLines(ctx, lines, x, y, lineHeight) {
+  lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return y + lines.length * lineHeight;
+}
+
+function renderDocumentationContactCard(canvas, ctx, image, metadata) {
+  const width = image.naturalWidth || 1024;
+  const imageHeight = image.naturalHeight || 1024;
+  const density = Math.max(.55, width / 1000) * (documentationBuilderState.textScale / 100);
+  const pad = Math.max(24, Math.round(width * .055));
+  const labelSize = Math.max(10, 15 * density);
+  const bodySize = Math.max(15, 27 * density);
+  const modelSize = Math.max(19, 38 * density);
+  const bodyLine = Math.round(bodySize * 1.36);
+  const labelLine = Math.round(labelSize * 1.45);
+  const maxWidth = width - pad * 2;
+  const byKey = new Map(metadata.map((entry) => [entry.key, entry]));
+  const narratives = ['prompt', 'enhanced', 'loras'].map((key) => byKey.get(key)).filter(Boolean);
+  const factKeys = new Set(['size', 'seed', 'steps', 'cfg', 'sampling', 'duration', 'upscale']);
+  const facts = metadata.filter((entry) => factKeys.has(entry.key));
+  const narrativeLayouts = narratives.map((entry) => {
+    setDocumentationFont(ctx, 650, bodySize);
+    return { entry, lines: wrapCanvasText(ctx, entry.value, maxWidth) };
+  });
+  const columns = width < 700 ? 2 : 3;
+  const factRows = Math.ceil(facts.length / columns);
+  const factCellHeight = labelLine + bodyLine + Math.round(pad * .26);
+  let cardHeight = pad * 2 + labelLine + (byKey.has('model') ? Math.round(modelSize * 1.35) : Math.round(bodySize * 1.25));
+  narrativeLayouts.forEach((layout) => { cardHeight += Math.round(pad * .48) + labelLine + layout.lines.length * bodyLine; });
+  if (factRows) cardHeight += Math.round(pad * .58) + factRows * factCellHeight;
+  cardHeight = Math.max(Math.round(width * .24), Math.ceil(cardHeight));
+
+  canvas.width = width;
+  canvas.height = imageHeight + cardHeight;
+  const dark = documentationBuilderState.theme === 'dark';
+  const background = dark ? '#050506' : '#ffffff';
+  const ink = dark ? '#f7f7f8' : '#0a0a0b';
+  const muted = dark ? 'rgba(247,247,248,.56)' : 'rgba(10,10,11,.56)';
+  const line = dark ? 'rgba(255,255,255,.15)' : 'rgba(0,0,0,.14)';
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, canvas.height);
+  ctx.drawImage(image, 0, 0, width, imageHeight);
+  const accent = ctx.createLinearGradient(0, imageHeight, width, imageHeight);
+  accent.addColorStop(0, '#7ba6ff');
+  accent.addColorStop(.5, '#d7b4ff');
+  accent.addColorStop(1, '#ffbd8a');
+  ctx.fillStyle = accent;
+  ctx.fillRect(0, imageHeight, width, Math.max(3, Math.round(width / 420)));
+
+  let y = imageHeight + pad;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = muted;
+  setDocumentationFont(ctx, 850, labelSize);
+  ctx.fillText('GENERATION DOCUMENTATION', pad, y);
+  ctx.textAlign = 'right';
+  ctx.fillText('MIX STUDIO', width - pad, y);
+  ctx.textAlign = 'left';
+  y += labelLine;
+  const model = byKey.get('model');
+  ctx.fillStyle = ink;
+  setDocumentationFont(ctx, 780, modelSize);
+  ctx.fillText(truncateCanvasText(ctx, model ? model.value : 'Generation notes', maxWidth), pad, y);
+  y += Math.round(modelSize * 1.35);
+
+  narrativeLayouts.forEach(({ entry, lines }) => {
+    y += Math.round(pad * .48);
+    ctx.fillStyle = muted;
+    setDocumentationFont(ctx, 850, labelSize);
+    ctx.fillText(entry.label.toUpperCase(), pad, y);
+    y += labelLine;
+    ctx.fillStyle = ink;
+    setDocumentationFont(ctx, entry.key === 'prompt' ? 680 : 600, bodySize);
+    y = drawDocumentationLines(ctx, lines, pad, y, bodyLine);
+  });
+
+  if (factRows) {
+    y += Math.round(pad * .58);
+    ctx.fillStyle = line;
+    ctx.fillRect(pad, y, maxWidth, Math.max(1, Math.round(width / 1100)));
+    y += Math.round(pad * .4);
+    const gap = Math.round(pad * .55);
+    const cellWidth = (maxWidth - gap * (columns - 1)) / columns;
+    facts.forEach((entry, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = pad + col * (cellWidth + gap);
+      const cellY = y + row * factCellHeight;
+      ctx.fillStyle = muted;
+      setDocumentationFont(ctx, 850, labelSize);
+      ctx.fillText(entry.label.toUpperCase(), x, cellY);
+      ctx.fillStyle = ink;
+      setDocumentationFont(ctx, 700, bodySize);
+      ctx.fillText(truncateCanvasText(ctx, entry.value, cellWidth), x, cellY + labelLine);
+    });
+  }
+}
+
+function renderDocumentationOverlay(canvas, ctx, image, metadata) {
+  const width = image.naturalWidth || 1024;
+  const height = image.naturalHeight || 1024;
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(image, 0, 0, width, height);
+  const density = Math.max(.55, Math.min(width / 1000, height / 850)) * (documentationBuilderState.textScale / 100);
+  const pad = Math.max(24, Math.round(width * .055));
+  const labelSize = Math.max(10, 14 * density);
+  const bodySize = Math.max(14, 25 * density);
+  const modelSize = Math.max(18, 36 * density);
+  const bodyLine = Math.round(bodySize * 1.3);
+  const labelLine = Math.round(labelSize * 1.5);
+  const maxWidth = width - pad * 2;
+  const byKey = new Map(metadata.map((entry) => [entry.key, entry]));
+  const promptLayouts = ['prompt', 'enhanced'].map((key) => byKey.get(key)).filter(Boolean).map((entry) => {
+    setDocumentationFont(ctx, entry.key === 'prompt' ? 680 : 600, bodySize);
+    return { entry, lines: wrapCanvasText(ctx, entry.value, maxWidth, entry.key === 'prompt' ? 4 : 2) };
+  });
+  const facts = metadata.filter((entry) => ['size', 'seed', 'steps', 'cfg', 'sampling', 'duration', 'upscale'].includes(entry.key));
+  const factText = facts.map((entry) => `${entry.label.toUpperCase()}  ${entry.value}`).join('   •   ');
+  setDocumentationFont(ctx, 750, labelSize);
+  const factLines = factText ? wrapCanvasText(ctx, factText, maxWidth, 3) : [];
+  const loras = byKey.get('loras');
+  setDocumentationFont(ctx, 650, labelSize * 1.12);
+  const loraLines = loras ? wrapCanvasText(ctx, `LORAS  ${loras.value}`, maxWidth, 2) : [];
+  let contentHeight = labelLine + (byKey.has('model') ? Math.round(modelSize * 1.35) : bodyLine);
+  promptLayouts.forEach(({ lines }) => { contentHeight += Math.round(pad * .3) + labelLine + lines.length * bodyLine; });
+  if (factLines.length) contentHeight += Math.round(pad * .36) + factLines.length * labelLine;
+  if (loraLines.length) contentHeight += Math.round(pad * .25) + loraLines.length * labelLine;
+  let y = Math.max(pad, height - pad - contentHeight);
+  const gradient = ctx.createLinearGradient(0, Math.max(0, y - pad * 2.2), 0, height);
+  const shade = documentationBuilderState.shade / 100;
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(.35, `rgba(0,0,0,${Math.max(.08, shade * .28)})`);
+  gradient.addColorStop(1, `rgba(0,0,0,${shade})`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, Math.max(0, y - pad * 2.2), width, height - Math.max(0, y - pad * 2.2));
+  ctx.textBaseline = 'top';
+  ctx.shadowColor = 'rgba(0,0,0,.42)';
+  ctx.shadowBlur = Math.max(2, Math.round(width / 320));
+  ctx.fillStyle = 'rgba(255,255,255,.7)';
+  setDocumentationFont(ctx, 850, labelSize);
+  ctx.fillText('GENERATION DOCUMENTATION', pad, y);
+  ctx.textAlign = 'right';
+  ctx.fillText('MIX STUDIO', width - pad, y);
+  ctx.textAlign = 'left';
+  y += labelLine;
+  const model = byKey.get('model');
+  ctx.fillStyle = '#fff';
+  setDocumentationFont(ctx, 780, modelSize);
+  ctx.fillText(truncateCanvasText(ctx, model ? model.value : 'Generation notes', maxWidth), pad, y);
+  y += byKey.has('model') ? Math.round(modelSize * 1.35) : bodyLine;
+  promptLayouts.forEach(({ entry, lines }) => {
+    y += Math.round(pad * .3);
+    ctx.fillStyle = 'rgba(255,255,255,.68)';
+    setDocumentationFont(ctx, 850, labelSize);
+    ctx.fillText(entry.label.toUpperCase(), pad, y);
+    y += labelLine;
+    ctx.fillStyle = '#fff';
+    setDocumentationFont(ctx, entry.key === 'prompt' ? 680 : 600, bodySize);
+    y = drawDocumentationLines(ctx, lines, pad, y, bodyLine);
+  });
+  if (factLines.length) {
+    y += Math.round(pad * .36);
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    setDocumentationFont(ctx, 750, labelSize);
+    y = drawDocumentationLines(ctx, factLines, pad, y, labelLine);
+  }
+  if (loraLines.length) {
+    y += Math.round(pad * .25);
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    setDocumentationFont(ctx, 650, labelSize * 1.12);
+    drawDocumentationLines(ctx, loraLines, pad, y, labelLine);
+  }
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+}
+
+function renderDocumentationCanvas() {
+  const { image } = documentationBuilderState;
+  if (!image) return;
+  const canvas = $('#documentationCanvas');
+  const ctx = canvas.getContext('2d');
+  const metadata = selectedDocumentationMetadata();
+  if (documentationBuilderState.layout === 'overlay') renderDocumentationOverlay(canvas, ctx, image, metadata);
+  else renderDocumentationContactCard(canvas, ctx, image, metadata);
+  $('#documentationPreviewStatus').hidden = true;
+}
+
+function syncDocumentationControls() {
+  $$('[data-doc-layout]').forEach((button) => {
+    const active = button.dataset.docLayout === documentationBuilderState.layout;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $$('[data-doc-theme]').forEach((button) => {
+    const active = button.dataset.docTheme === documentationBuilderState.theme;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('#documentationThemeGroup').hidden = documentationBuilderState.layout !== 'contact';
+  $('#documentationShadeGroup').hidden = documentationBuilderState.layout !== 'overlay';
+  $('#documentationTextScale').value = documentationBuilderState.textScale;
+  $('#documentationTextScaleValue').textContent = `${documentationBuilderState.textScale}%`;
+  $('#documentationShade').value = documentationBuilderState.shade;
+  $('#documentationShadeValue').textContent = `${documentationBuilderState.shade}%`;
+}
+
+function renderDocumentationFieldControls() {
+  const container = $('#documentationFields');
+  container.innerHTML = '';
+  documentationBuilderState.metadata.forEach((entry) => {
+    const label = document.createElement('label');
+    label.className = 'documentation-field-toggle';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = documentationBuilderState.selected.has(entry.key);
+    input.dataset.docField = entry.key;
+    const text = document.createElement('span');
+    text.textContent = entry.label;
+    label.append(input, text);
+    container.appendChild(label);
+  });
+}
+
+function openDocumentationBuilder(item) {
+  documentationBuilderState.item = item;
+  documentationBuilderState.image = null;
+  documentationBuilderState.metadata = documentationMetadata(item);
+  documentationBuilderState.selected = new Set(documentationBuilderState.metadata.map((entry) => entry.key));
+  documentationBuilderState.layout = 'contact';
+  documentationBuilderState.theme = 'dark';
+  documentationBuilderState.textScale = 100;
+  documentationBuilderState.shade = 72;
+  renderDocumentationFieldControls();
+  syncDocumentationControls();
+  const status = $('#documentationPreviewStatus');
+  status.textContent = 'Preparing preview…';
+  status.hidden = false;
+  $('#documentationSheet').classList.add('show');
+  syncSheetScrollLock();
+  const image = new Image();
+  image.decoding = 'async';
+  image.onload = () => {
+    if (documentationBuilderState.item !== item) return;
+    documentationBuilderState.image = image;
+    renderDocumentationCanvas();
+  };
+  image.onerror = () => {
+    status.textContent = 'Could not load this image';
+    toast('Could not build the documentation image', true);
+  };
+  image.src = '/images/' + (item.upscaled || item.file);
+}
+
+function saveDocumentationImage() {
+  const { item, image, layout, theme } = documentationBuilderState;
+  if (!item || !image) return toast('The preview is still loading', true);
+  renderDocumentationCanvas();
+  const canvas = $('#documentationCanvas');
+  canvas.toBlob((blob) => {
+    if (!blob) return toast('Documentation export failed', true);
+    const link = document.createElement('a');
+    const stem = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${stem || 'mix_studio'}_documentation_${layout}${layout === 'contact' ? '_' + theme : ''}.png`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    toast('Documentation image saved');
+  }, 'image/png');
+}
+
+$('#documentationLayout').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-doc-layout]');
+  if (!button) return;
+  documentationBuilderState.layout = button.dataset.docLayout;
+  syncDocumentationControls();
+  renderDocumentationCanvas();
+});
+$('#documentationTheme').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-doc-theme]');
+  if (!button) return;
+  documentationBuilderState.theme = button.dataset.docTheme;
+  syncDocumentationControls();
+  renderDocumentationCanvas();
+});
+$('#documentationTextScale').addEventListener('input', (event) => {
+  documentationBuilderState.textScale = Number(event.target.value) || 100;
+  syncDocumentationControls();
+  renderDocumentationCanvas();
+});
+$('#documentationShade').addEventListener('input', (event) => {
+  documentationBuilderState.shade = Number(event.target.value) || 72;
+  syncDocumentationControls();
+  renderDocumentationCanvas();
+});
+$('#documentationFields').addEventListener('change', (event) => {
+  const input = event.target.closest('[data-doc-field]');
+  if (!input) return;
+  if (input.checked) documentationBuilderState.selected.add(input.dataset.docField);
+  else documentationBuilderState.selected.delete(input.dataset.docField);
+  renderDocumentationCanvas();
+});
+$('#documentationSave').addEventListener('click', saveDocumentationImage);
 
 function downloadItem(it, variant) {
   const a = document.createElement('a');
