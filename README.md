@@ -8,7 +8,15 @@ Minimalist, mobile-first web app for driving a local **ComfyUI** install — ima
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
 
-The current bootstrap supports an existing ComfyUI installation and can install Node.js through `winget`. Automated installation of ComfyUI, custom nodes, and optional model packs will build on the checked-in feature manifest; those downloads are not enabled until their exact sources and license acknowledgements are defined.
+The downloadable bootstrap installs Git through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, and opens the setup wizard. Setup supports an existing ComfyUI installation and can install Node.js through `winget`. Automated installation of ComfyUI, custom nodes, and optional model packs remains separate because every artifact needs a pinned source, checksum, destination, and license acknowledgement.
+
+### One-file download
+
+On Windows, open the [Mix Studio download page](https://blackmixture.github.io/KreaStudio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
+
+ComfyUI must already be installed. Mix Studio does not silently install ComfyUI or large model files as part of the bootstrap.
+
+### Manual Git install
 
 1. Install [Git for Windows](https://git-scm.com/download/win) and Node.js 22 or newer.
 2. Clone the repository. Do not use GitHub's **Download ZIP** if you want in-app updates:

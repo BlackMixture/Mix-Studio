@@ -1,0 +1,52 @@
+name: Publish download page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/pages.yml
+      - docs/download/**
+      - install.bat
+      - public/modatory-logo.svg
+      - public/mix-studio-wordmark-white-on-black.svg
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Stage static site
+        run: |
+          mkdir -p _site
+          cp docs/download/index.html _site/index.html
+          cp install.bat _site/install.bat
+          cp public/modatory-logo.svg _site/modatory-logo.svg
+          cp public/mix-studio-wordmark-white-on-black.svg _site/mix-studio-wordmark.svg
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

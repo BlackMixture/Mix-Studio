@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Download the Mix Studio installer for Windows." />
+  <title>Download Mix Studio</title>
+  <link rel="icon" href="./modatory-logo.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f6f8ff;
+      --soft: #c9d2e7;
+      --muted: #8e99b7;
+      --line: rgba(226,232,255,.12);
+      --panel: rgba(10,12,18,.9);
+      --blue: #4285f4;
+      --violet: #6d55ff;
+      --radius: 24px;
+    }
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: #000; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(780px 480px at 15% 5%, rgba(66,133,244,.16), transparent 68%),
+        radial-gradient(700px 430px at 90% 25%, rgba(109,85,255,.13), transparent 70%),
+        #000;
+    }
+    a { color: inherit; }
+    .shell { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; min-height: 84px; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      padding: 7px;
+      border: 2px solid transparent;
+      border-radius: 14px;
+      background: linear-gradient(#0b0d12,#0b0d12) padding-box,
+        linear-gradient(110deg,#4285f4,#ea4335 36%,#fbbc04 67%,#34a853) border-box;
+      box-shadow: 0 0 26px rgba(66,87,255,.2);
+    }
+    .brand-wordmark { position: relative; width: 150px; height: 30px; max-width: 42vw; display: block; overflow: hidden; }
+    .brand-wordmark img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
+    .source-link { color: var(--muted); font-size: 13px; font-weight: 750; text-decoration: none; }
+    .source-link:hover, .source-link:focus-visible { color: var(--ink); }
+    main { padding: 78px 0 76px; }
+    .hero { max-width: 790px; }
+    .eyebrow { margin: 0 0 18px; color: #9db3f7; font-size: 12px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { max-width: 740px; margin: 0; font-size: clamp(46px, 8vw, 86px); line-height: .98; letter-spacing: -.055em; }
+    .lede { max-width: 680px; margin: 26px 0 0; color: var(--soft); font-size: clamp(17px, 2.4vw, 21px); line-height: 1.55; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 36px; }
+    .download {
+      min-height: 56px;
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      padding: 0 24px;
+      border: 2px solid transparent;
+      border-radius: 18px;
+      background: linear-gradient(#111522,#111522) padding-box,
+        linear-gradient(110deg,#4285f4,#ea4335 36%,#fbbc04 67%,#34a853) border-box;
+      box-shadow: 0 15px 50px rgba(46,67,255,.2);
+      font-weight: 850;
+      text-decoration: none;
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+    .download:hover, .download:focus-visible { transform: translateY(-2px); box-shadow: 0 18px 58px rgba(46,67,255,.3); }
+    .download svg { width: 19px; height: 19px; }
+    .requirements { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .details { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 78px; }
+    .detail {
+      min-height: 178px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 60%),var(--panel);
+    }
+    .step { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 11px; background: #151925; color: #a9bdf6; font-size: 12px; font-weight: 900; }
+    .detail h2 { margin: 25px 0 8px; font-size: 17px; }
+    .detail p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .notice { margin-top: 14px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .notice strong { color: var(--soft); }
+    footer { display: flex; justify-content: space-between; gap: 20px; padding: 26px 0 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    footer a { text-decoration: none; }
+    footer a:hover, footer a:focus-visible { color: var(--ink); }
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 28px, 620px); }
+      header { min-height: 72px; }
+      .source-link { font-size: 0; }
+      .source-link::after { content: "GitHub"; font-size: 12px; }
+      main { padding: 54px 0 58px; }
+      h1 { font-size: clamp(44px, 15vw, 68px); }
+      .details { grid-template-columns: 1fr; margin-top: 58px; }
+      .detail { min-height: 0; }
+      footer { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) { .download { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <img class="brand-mark" src="./modatory-logo.svg" alt="" />
+        <span class="brand-wordmark"><img src="./mix-studio-wordmark.svg" alt="Mix Studio" /></span>
+      </div>
+      <a class="source-link" href="https://github.com/BlackMixture/KreaStudio">View source on GitHub</a>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Windows · NVIDIA · Local generation</p>
+        <h1>Your studio.<br />On your machine.</h1>
+        <p class="lede">Download one small installer. It fetches the official Mix Studio repository, keeps your gallery local, and connects to the ComfyUI setup you already use.</p>
+        <div class="actions">
+          <a class="download" href="./install.bat" download="install.bat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
+            Download for Windows
+          </a>
+          <span class="requirements">Windows 10/11 · Existing ComfyUI installation</span>
+        </div>
+      </section>
+
+      <section class="details" aria-label="Installation steps">
+        <article class="detail"><span class="step">01</span><h2>Download</h2><p>Save <strong>install.bat</strong> from this page. Your browser may ask you to confirm keeping an executable script.</p></article>
+        <article class="detail"><span class="step">02</span><h2>Run</h2><p>The downloader installs Git through Windows Package Manager if needed, then clones Mix Studio into your user folder.</p></article>
+        <article class="detail"><span class="step">03</span><h2>Connect</h2><p>The Mix Studio setup window opens automatically so you can select your ComfyUI URL, folders, and model families.</p></article>
+      </section>
+
+      <p class="notice"><strong>Transparent by design.</strong> The downloader retrieves only the public repository at <a href="https://github.com/BlackMixture/KreaStudio">BlackMixture/KreaStudio</a>. It does not install ComfyUI or model files automatically.</p>
+    </main>
+
+    <footer>
+      <span>Mix Studio · Modatory design language</span>
+      <a href="https://github.com/BlackMixture/KreaStudio/blob/main/docs/portable-install.md">Installation details</a>
+    </footer>
+  </div>
+</body>
+</html>

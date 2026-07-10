@@ -18,6 +18,29 @@ test('portable installer has a double-click Windows entry point', () => {
   assert.doesNotMatch(start, /MixBox Studio/);
 });
 
+test('standalone installer downloads the official Git checkout before opening setup', () => {
+  const launcher = fs.readFileSync(path.join(root, 'install.bat'), 'utf8');
+  assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/KreaStudio\.git/);
+  assert.match(launcher, /winget install --id Git\.Git/);
+  assert.match(launcher, /clone --branch main --single-branch/);
+  assert.match(launcher, /%USERPROFILE%\\Mix Studio/);
+  assert.match(launcher, /if exist "%~dp0installer\\install-ui\.ps1" goto run_setup/i);
+  assert.match(launcher, /target folder already exists but is not a Mix Studio Git checkout/i);
+});
+
+test('GitHub Pages publishes the canonical installer from a branded download page', () => {
+  const page = fs.readFileSync(path.join(root, 'docs', 'download', 'index.html'), 'utf8');
+  const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
+  assert.match(page, /Download for Windows/);
+  assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
+  assert.match(page, /Existing ComfyUI installation/);
+  assert.match(page, /modatory-logo\.svg/);
+  assert.match(workflow, /cp install\.bat _site\/install\.bat/);
+  assert.match(workflow, /actions\/configure-pages@v5/);
+  assert.match(workflow, /actions\/upload-pages-artifact@v4/);
+  assert.match(workflow, /actions\/deploy-pages@v4/);
+});
+
 test('portable installer opens a branded WPF wizard instead of a terminal questionnaire', () => {
   const ui = fs.readFileSync(path.join(root, 'installer', 'install-ui.ps1'), 'utf8');
   assert.match(ui, /PresentationFramework/);
