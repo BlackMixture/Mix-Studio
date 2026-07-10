@@ -35,8 +35,8 @@ const state = {
   createUpscaleExpanded: false,
   qwenAngles: [],
   qwenAnglesMode: false,
-  qwenAngleElevation: 'eye-level',
-  qwenAngleDistance: 'medium shot',
+  qwenAngleElevations: [],
+  qwenAngleDistances: [],
   qwenQuality: 'quality',
   prompts: { create: '', edit: '', video: '' }, // per-tab prompt text
   loras: [],                 // {name, strength, on} - Create tab (Krea 2)
@@ -1039,8 +1039,8 @@ function saveForm() {
       createUpscaleNoise: state.createUpscaleNoise,
       createUpscaleExpanded: state.createUpscaleExpanded,
       qwenAngles: state.qwenAngles,
-      qwenAngleElevation: state.qwenAngleElevation,
-      qwenAngleDistance: state.qwenAngleDistance,
+      qwenAngleElevations: state.qwenAngleElevations,
+      qwenAngleDistances: state.qwenAngleDistances,
       qwenQuality: state.qwenQuality,
       generationTuning: state.generationTuning,
     }));
@@ -1069,10 +1069,10 @@ function loadForm() {
     state.createUpscaleNoise = ['off', 'low', 'medium'].includes(f.createUpscaleNoise) ? f.createUpscaleNoise : 'low';
     state.createUpscaleExpanded = f.createUpscaleExpanded === true;
     state.qwenAngles = Array.isArray(f.qwenAngles) ? [...new Set(f.qwenAngles.filter((id) => QWEN_ANGLE_IDS.has(id)))] : [];
-    state.qwenAngleElevation = QWEN_ANGLE_ELEVATIONS.some((option) => option.id === f.qwenAngleElevation)
-      ? f.qwenAngleElevation : 'eye-level';
-    state.qwenAngleDistance = QWEN_ANGLE_DISTANCES.some((option) => option.id === f.qwenAngleDistance)
-      ? f.qwenAngleDistance : 'medium shot';
+    state.qwenAngleElevations = Array.isArray(f.qwenAngleElevations)
+      ? [...new Set(f.qwenAngleElevations.filter((id) => QWEN_ANGLE_ELEVATIONS.some((option) => option.id === id)))] : [];
+    state.qwenAngleDistances = Array.isArray(f.qwenAngleDistances)
+      ? [...new Set(f.qwenAngleDistances.filter((id) => QWEN_ANGLE_DISTANCES.some((option) => option.id === id)))] : [];
     state.qwenQuality = f.qwenQuality === 'fast' ? 'fast' : 'quality';
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
@@ -2340,9 +2340,11 @@ function setupMaskCanvasFromImage() {
 function openKreaMaskPainter() {
   const ref = state.refs[0];
   if (!ref) return toast('Add a source image in reference slot 1 before selecting an edit area', true);
-  if (state.qwenAnglesMode || state.qwenAngles.length) {
+  if (state.qwenAnglesMode || selectedQwenAngleViews().length) {
     state.qwenAnglesMode = false;
     state.qwenAngles = [];
+    state.qwenAngleElevations = [];
+    state.qwenAngleDistances = [];
     renderQwenAngleTool();
     renderQwenAngleMode();
   }
@@ -3400,9 +3402,16 @@ $('#qwenQualityControl').addEventListener('click', (event) => {
 });
 
 function selectedQwenAngleViews() {
-  return QWEN_ANGLE_VIEWS
+  const views = QWEN_ANGLE_VIEWS
     .filter((view) => state.qwenAngles.includes(view.id))
-    .map((view) => ({ view: view.id, elevation: state.qwenAngleElevation, distance: state.qwenAngleDistance }));
+    .map((view) => ({ view: view.id }));
+  const elevations = QWEN_ANGLE_ELEVATIONS
+    .filter((option) => state.qwenAngleElevations.includes(option.id))
+    .map((option) => ({ elevation: option.id }));
+  const distances = QWEN_ANGLE_DISTANCES
+    .filter((option) => state.qwenAngleDistances.includes(option.id))
+    .map((option) => ({ distance: option.id }));
+  return [...views, ...elevations, ...distances];
 }
 
 function createAngleGroupId() {
@@ -3412,7 +3421,7 @@ function createAngleGroupId() {
 
 function renderQwenAngleTool() {
   const button = $('#qwenAnglesBtn');
-  const count = state.qwenAngles.length;
+  const count = selectedQwenAngleViews().length;
   button.classList.toggle('active', count > 0);
   button.setAttribute('aria-label', count ? `Camera angles, ${count} selected` : 'Camera angles');
   $('#qwenAngleCount').hidden = count === 0;
@@ -3480,35 +3489,43 @@ function renderQwenAnglePicker() {
       : (id === 'wide shot' ? 'x="2.5" y="8" width="19" height="8"' : 'x="7" y="7" width="10" height="10"');
     return `<svg class="qwen-framing-icon" viewBox="0 0 24 24" aria-hidden="true"><rect ${rect} rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
   };
-  const renderChoiceRow = (row, options, value, setValue) => {
+  const renderChoiceRow = (row, options, values, setValues) => {
     row.replaceChildren();
     options.forEach((option) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = option.id === value ? 'active' : '';
+      const selected = values.includes(option.id);
+      button.className = selected ? 'active' : '';
       if (row.id === 'qwenDistanceRow') button.innerHTML = `${framingIcon(option.id)}<span>${option.label}</span>`;
       else button.textContent = option.label;
-      button.setAttribute('aria-pressed', String(option.id === value));
+      button.setAttribute('aria-pressed', String(selected));
       button.addEventListener('click', () => {
-        setValue(option.id);
+        setValues(values.includes(option.id)
+          ? values.filter((value) => value !== option.id)
+          : [...values, option.id]);
         renderQwenAnglePicker();
+        renderQwenAngleTool();
         saveForm();
       });
       row.appendChild(button);
     });
   };
-  renderChoiceRow($('#qwenElevationRow'), QWEN_ANGLE_ELEVATIONS, state.qwenAngleElevation, (value) => { state.qwenAngleElevation = value; });
-  renderChoiceRow($('#qwenDistanceRow'), QWEN_ANGLE_DISTANCES, state.qwenAngleDistance, (value) => { state.qwenAngleDistance = value; });
-  const selected = state.qwenAngles.length;
-  const allSelected = selected === QWEN_ANGLE_VIEWS.length;
+  renderChoiceRow($('#qwenElevationRow'), QWEN_ANGLE_ELEVATIONS, state.qwenAngleElevations, (values) => { state.qwenAngleElevations = values; });
+  renderChoiceRow($('#qwenDistanceRow'), QWEN_ANGLE_DISTANCES, state.qwenAngleDistances, (values) => { state.qwenAngleDistances = values; });
+  const selectedViews = state.qwenAngles.length;
+  const allSelected = selectedViews === QWEN_ANGLE_VIEWS.length;
   const allToggle = $('#qwenAnglesToggleAll');
-  allToggle.textContent = allSelected ? 'Clear all' : 'Select all';
+  allToggle.textContent = allSelected ? 'Clear views' : 'All views';
   allToggle.setAttribute('aria-pressed', String(allSelected));
-  const elevation = QWEN_ANGLE_ELEVATIONS.find((option) => option.id === state.qwenAngleElevation)?.label.toLowerCase();
-  const distance = QWEN_ANGLE_DISTANCES.find((option) => option.id === state.qwenAngleDistance)?.label.toLowerCase();
+  const selected = selectedQwenAngleViews().length;
+  const parts = [
+    selectedViews ? `${selectedViews} view${selectedViews === 1 ? '' : 's'}` : '',
+    state.qwenAngleElevations.length ? `${state.qwenAngleElevations.length} height${state.qwenAngleElevations.length === 1 ? '' : 's'}` : '',
+    state.qwenAngleDistances.length ? `${state.qwenAngleDistances.length} framing${state.qwenAngleDistances.length === 1 ? '' : 's'}` : '',
+  ].filter(Boolean);
   $('#qwenAngleSummary').textContent = selected
-    ? `${selected} angle export${selected === 1 ? '' : 's'} · ${elevation} · ${distance}`
-    : 'No views selected';
+    ? `${selected} export${selected === 1 ? '' : 's'} · ${parts.join(' · ')}`
+    : 'No camera options selected';
 }
 
 function openQwenAngles() {
@@ -5947,7 +5964,7 @@ $('#generateBtn').addEventListener('click', async () => {
     ? selectedQwenAngleViews() : [];
   const promptOptional = state.view === 'video' && state.vidEngine === 'scail';
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
-  if (qwenAngleExports.length && !state.refs[0]) return toast('Camera angles need a source image in reference slot 1', true);
+  if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
 
   if (state.view === 'video') {
     const ltxEdit = state.vidEngine === 'ltx-edit';
@@ -6091,7 +6108,7 @@ $('#generateBtn').addEventListener('click', async () => {
       : [body];
     setGenerating(true, sequenceSteps.length
       ? `Sequential edit 1 of ${sequenceSteps.length}…`
-      : (requests.length > 1 ? `Queueing ${requests.length} angles…` : 'Queued…'));
+      : (requests.length > 1 ? `Queueing ${requests.length} camera variations…` : 'Queued…'));
     const jobIds = [];
     for (const request of requests) {
       const res = await api('/api/generate', {
@@ -6104,7 +6121,7 @@ $('#generateBtn').addEventListener('click', async () => {
     }
     $('#genLbl').textContent = genLabel();
     queueRefreshSoon();
-    if (jobIds.length > 1) toast(`${jobIds.length} camera-angle exports queued`);
+    if (jobIds.length > 1) toast(`${jobIds.length} camera variations queued`);
   } catch (e) {
     setGenerating(false);
     toast(e.message, true);
@@ -7002,15 +7019,20 @@ function generationGroupItems(item) {
 }
 
 function angleViewLabel(item) {
-  const id = item && item.angleView && item.angleView.view;
-  return QWEN_ANGLE_VIEWS.find((view) => view.id === id)?.label || 'Angle';
+  const angle = item && item.angleView;
+  if (!angle) return 'Camera variation';
+  if (angle.view) return QWEN_ANGLE_VIEWS.find((view) => view.id === angle.view)?.label || 'View';
+  if (angle.elevation) return QWEN_ANGLE_ELEVATIONS.find((option) => option.id === angle.elevation)?.label || 'Height';
+  if (angle.distance) return `${QWEN_ANGLE_DISTANCES.find((option) => option.id === angle.distance)?.label || 'Custom'} framing`;
+  return 'Camera variation';
 }
 
 function angleViewGlyph(item) {
   return ({
     'front-left': '↖', front: '↑', 'front-right': '↗', left: '←', right: '→',
     'back-left': '↙', back: '↓', 'back-right': '↘',
-  })[item && item.angleView && item.angleView.view] || '•';
+  })[item && item.angleView && item.angleView.view]
+    || (item && item.angleView && item.angleView.elevation ? '↕' : '□');
 }
 
 function galleryNavigationTarget(item, direction) {
@@ -8273,7 +8295,7 @@ function openLightbox(id, mediaSel) {
   let lightboxTitle = it.upscaled ? 'Upscaled'
     : (it.mode === 'edit' ? 'Edit' : (it.mode === 'video' ? 'Video Poster' : 'Generation'));
   if (generationItems.length > 1) lightboxTitle = `Generation ${generationIndex + 1} of ${generationItems.length}`;
-  if (angleItems.length > 1) lightboxTitle = `${angleViewLabel(it)} · Angle ${angleIndex + 1} of ${angleItems.length}`;
+  if (angleItems.length > 1) lightboxTitle = `${angleViewLabel(it)} · Variation ${angleIndex + 1} of ${angleItems.length}`;
   if (selComposite) lightboxTitle = selComposite.label || 'Before + after';
   if (selVideo) lightboxTitle = `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`;
   $('#lbTitle').textContent = lightboxTitle;
@@ -8287,7 +8309,7 @@ function openLightbox(id, mediaSel) {
       const button = document.createElement('button');
       button.className = 'chip angle-group-chip' + (angleItem.id === it.id ? ' active' : '');
       button.innerHTML = `<span class="angle-group-glyph" aria-hidden="true">${angleViewGlyph(angleItem)}</span><span>${escapeHtml(angleViewLabel(angleItem))}</span>`;
-      button.title = `Angle ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
+      button.title = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
       button.addEventListener('click', () => openLightbox(angleItem.id, 'image'));
       mrow.appendChild(button);
     });
@@ -8336,7 +8358,7 @@ function openLightbox(id, mediaSel) {
     meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
-    if (angleItems.length > 1) meta.push(`<b>Camera angle set:</b> ${angleViewLabel(it)} · ${angleItems.length} views`);
+    if (angleItems.length > 1) meta.push(`<b>Camera variation set:</b> ${angleViewLabel(it)} · ${angleItems.length} exports`);
     if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
     if (it.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(it.durationMs)}`);
@@ -8944,12 +8966,12 @@ async function reuseItem(it, useEnhanced) {
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(it.postUpscale?.resolution)) ? Number(it.postUpscale.resolution) : 2160;
     state.editUpscaleProfile = it.postUpscale?.profile === 'balanced' ? 'balanced' : 'sharp';
     state.editUpscaleNoise = ['off', 'low', 'medium'].includes(it.postUpscale?.noise) ? it.postUpscale.noise : 'low';
-    const angle = it.angleView && QWEN_ANGLE_IDS.has(it.angleView.view) ? it.angleView : null;
-    state.qwenAngles = angle ? [angle.view] : [];
-    state.qwenAngleElevation = angle && QWEN_ANGLE_ELEVATIONS.some((option) => option.id === angle.elevation)
-      ? angle.elevation : 'eye-level';
-    state.qwenAngleDistance = angle && QWEN_ANGLE_DISTANCES.some((option) => option.id === angle.distance)
-      ? angle.distance : 'medium shot';
+    const angle = it.angleView && typeof it.angleView === 'object' ? it.angleView : null;
+    state.qwenAngles = angle && QWEN_ANGLE_IDS.has(angle.view) ? [angle.view] : [];
+    state.qwenAngleElevations = angle && QWEN_ANGLE_ELEVATIONS.some((option) => option.id === angle.elevation)
+      ? [angle.elevation] : [];
+    state.qwenAngleDistances = angle && QWEN_ANGLE_DISTANCES.some((option) => option.id === angle.distance)
+      ? [angle.distance] : [];
     markEngineRow('editEngineRow', state.editEngine);
   }
 

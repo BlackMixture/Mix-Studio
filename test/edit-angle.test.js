@@ -21,6 +21,10 @@ test('camera angle support is limited to Qwen and both Klein editors', () => {
 
 test('camera angles normalize only documented view, elevation, and distance values', () => {
   assert.deepEqual(normalizeEditAngle(angle), angle);
+  assert.deepEqual(normalizeEditAngle({ elevation: 'low-angle' }), { elevation: 'low-angle' });
+  assert.deepEqual(normalizeEditAngle({ distance: 'close-up' }), { distance: 'close-up' });
+  assert.deepEqual(normalizeEditAngle({ view: 'front' }), { view: 'front' });
+  assert.equal(normalizeEditAngle({}), null);
   assert.equal(normalizeEditAngle({ view: 'overhead', elevation: 'elevated', distance: 'medium shot' }), null);
   assert.equal(normalizeEditAngle({ view: 'front', elevation: 'extreme', distance: 'medium shot' }), null);
 });
@@ -34,4 +38,6 @@ test('Qwen keeps its trigger syntax while Klein receives a natural-language reco
   assert.doesNotMatch(klein, /<sks>/);
   assert.match(editAnglePrompt('klein4', angle, 'make the jacket blue'), /make the jacket blue$/);
   assert.match(editAnglePrompt('qwen', angle), /^<sks>/);
+  assert.equal(qwenEditAnglePrompt({ elevation: 'high-angle' }), '<sks> high-angle shot');
+  assert.match(kleinEditAnglePrompt({ distance: 'wide shot' }), /with wide shot framing/);
 });

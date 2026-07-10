@@ -3778,7 +3778,7 @@ async function handleApi(req, res, url) {
         p.batch = 1;
       }
       if (p.qwenAngle && !supportsEditAngles(p.editEngine)) {
-        return json(res, 400, { error: 'Camera angles are available with Klein 4B, Klein 9B, and Qwen Edit only' });
+        return json(res, 400, { error: 'Camera variations are available with Klein 4B, Klein 9B, and Qwen Edit only' });
       }
       if (p.qwenAngle && p.maskImageName) {
         return json(res, 400, { error: 'Use either a camera angle or a localized edit area for a single run' });
@@ -3788,7 +3788,7 @@ async function handleApi(req, res, url) {
         if (p.editEngine === 'qwen') p.qwenAnglePrompt = p.anglePrompt;
       }
       if (p.qwenAngle && !refNames.length) {
-        return json(res, 400, { error: 'Camera angles need a source image in reference slot 1' });
+        return json(res, 400, { error: 'Camera variations need a source image in reference slot 1' });
       }
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });

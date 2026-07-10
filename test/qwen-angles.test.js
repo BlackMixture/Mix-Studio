@@ -22,6 +22,7 @@ test('supported Edit models expose a visual multi-angle picker without surfacing
   assert.match(html, /id="qwenAnglesToggleAll"/);
   assert.doesNotMatch(html, /Each selected view becomes its own Qwen Edit export/);
   assert.match(app, /function selectedQwenAngleViews\(\)/);
+  assert.match(app, /return \[\.\.\.views, \.\.\.elevations, \.\.\.distances\]/);
   assert.match(app, /const ANGLE_EDIT_ENGINES = new Set\(\['klein4', 'klein9', 'qwen'\]\)/);
   assert.match(app, /#qwenAngleTool'\)\.hidden = !supportsCurrentEditAngles\(\)/);
   assert.match(app, /qwenAnglesMode: false/);
@@ -40,13 +41,16 @@ test('supported Edit models expose a visual multi-angle picker without surfacing
   assert.match(app, /const framingIcon = \(id\) =>/);
   assert.match(css, /\.qwen-framing-icon/);
   assert.match(app, /state\.qwenAngles = allSelected \? \[\] : QWEN_ANGLE_VIEWS\.map/);
+  assert.match(app, /qwenAngleElevations: \[\]/);
+  assert.match(app, /qwenAngleDistances: \[\]/);
+  assert.match(app, /setValues\(values\.includes\(option\.id\)/);
 });
 
 test('Each selected camera angle queues its own edit request for supported models', () => {
   assert.match(app, /const qwenAngleExports = supportsCurrentEditAngles\(\)/);
   assert.match(app, /qwenAngle: angle/);
   assert.match(app, /for \(const request of requests\)/);
-  assert.match(app, /camera-angle exports queued/);
+  assert.match(app, /camera variations queued/);
   assert.match(app, /const angleGroupId = qwenAngleExports\.length > 1 \? createAngleGroupId\(\) : null/);
   assert.match(app, /angleGroupId,/);
 });
@@ -55,7 +59,7 @@ test('Multi-angle exports appear as one gallery set with an angle icon', () => {
   assert.match(app, /function galleryEntries\(items\)/);
   assert.match(app, /function angleGroupItems\(item\)/);
   assert.match(app, /angle-group-badge/);
-  assert.match(app, /Angle \$\{angleIndex \+ 1\} of \$\{angleItems\.length\}/);
+  assert.match(app, /Variation \$\{angleIndex \+ 1\} of \$\{angleItems\.length\}/);
   assert.match(css, /\.card \.badge\.angle-group-badge/);
   assert.match(app, /function galleryNavigationTarget\(item, direction\)/);
   assert.match(app, /const next = galleryNavigationTarget\(state\.currentItem/);
@@ -85,6 +89,6 @@ test('Klein camera angles use prompt conditioning without loading the Qwen angle
   assert.match(server, /const editPrompt = p\.anglePrompt \|\| p\.prompt/);
   assert.match(server, /!supportsEditAngles\(p\.editEngine\)/);
   assert.match(server, /p\.anglePrompt = editAnglePrompt\(p\.editEngine, p\.qwenAngle, p\.prompt\)/);
-  assert.match(server, /Camera angles need a source image in reference slot 1/);
+  assert.match(server, /Camera variations need a source image in reference slot 1/);
   assert.match(app, /qwenAngleExports\.length && !state\.refs\[0\]/);
 });
