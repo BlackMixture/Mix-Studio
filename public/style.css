@@ -1397,6 +1397,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   text-align: left;
 }
 .video-model-kicker {
+  flex: 0 0 auto;
   color: var(--muted-2);
   font-size: 10px;
   font-weight: 900;
@@ -1404,9 +1405,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   text-transform: uppercase;
 }
 .video-model-selected {
+  flex: 0 0 auto;
   color: var(--ink);
   font-size: 14px;
   font-weight: 900;
+  white-space: nowrap;
 }
 .video-model-note {
   min-width: 0;

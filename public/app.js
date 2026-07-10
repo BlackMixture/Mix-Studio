@@ -1233,6 +1233,7 @@ function genLabel() {
 
 function updateVideoPanels() {
   const isVideo = state.view === 'video';
+  const isEdit = state.view === 'edit';
   const isRegion = state.view === 'create' && state.createMode === 'region';
   const promptPanel = $('#promptPanel');
   const regionWorkspace = $('#regionWorkspace');
@@ -1250,6 +1251,8 @@ function updateVideoPanels() {
       : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidModelPanel').hidden = !isVideo;
+  $('#editModelPanel').hidden = !isEdit;
+  if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
   if (!supportsCurrentEditAngles()) state.qwenAnglesMode = false;
@@ -1257,6 +1260,7 @@ function updateVideoPanels() {
   renderQwenAngleTool();
   renderQwenAngleMode();
   renderQwenQuality();
+  renderEditModelSummary();
   renderEditSequence();
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
@@ -3391,6 +3395,7 @@ $('#qwenQualityControl').addEventListener('click', (event) => {
   if (!button) return;
   state.qwenQuality = button.dataset.qwenQuality === 'fast' ? 'fast' : 'quality';
   renderQwenQuality();
+  renderEditModelSummary();
   saveForm();
 });
 
@@ -4740,6 +4745,25 @@ function editEngineLabel(engine) {
   if (engine === 'klein9') return 'Flux Klein 9B';
   return 'Flux Klein 4B';
 }
+
+function renderEditModelSummary() {
+  const labels = {
+    klein4: 'Klein 4B',
+    klein9: 'Klein 9B',
+    qwen: 'Qwen Edit',
+    krea2: 'Krea2',
+    krea2ref: 'Krea 2 Edit',
+  };
+  const notes = {
+    klein4: '4B · fast edits',
+    klein9: '9B · higher fidelity',
+    qwen: state.qwenQuality === 'fast' ? 'multi-reference · fast' : 'multi-reference · quality',
+    krea2: 'inpaint · one reference',
+    krea2ref: 'reference-guided · 8 steps',
+  };
+  $('#editEngineSelected').textContent = labels[state.editEngine] || labels.klein4;
+  $('#editEngineNote').textContent = notes[state.editEngine] || notes.klein4;
+}
 $('#addLora').addEventListener('click', () => openLoraPicker());
 $('#loraAllBtn').addEventListener('click', () => {
   state.showAllLoras = !state.showAllLoras;
@@ -4788,6 +4812,18 @@ function setVideoModelExpanded(open) {
 }
 $('#vidModelHeader').addEventListener('click', () => {
   setVideoModelExpanded(!$('#vidModelPanel').classList.contains('expanded'));
+});
+
+function setEditModelExpanded(open) {
+  const expand = open === true;
+  const body = $('#editModelBody');
+  $('#editModelPanel').classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#editModelHeader').setAttribute('aria-expanded', String(expand));
+}
+$('#editModelHeader').addEventListener('click', () => {
+  setEditModelExpanded(!$('#editModelPanel').classList.contains('expanded'));
 });
 
 function setVideoTimingExpanded(open) {
