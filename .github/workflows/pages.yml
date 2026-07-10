@@ -32,6 +32,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Enables Pages (build_type: workflow) on first run — the repo had
+          # Pages disabled, which failed every previous deploy with Not Found.
+          enablement: true
 
       - name: Stage static site
         run: |
