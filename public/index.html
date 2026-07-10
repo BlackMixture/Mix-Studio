@@ -1357,6 +1357,19 @@
 
         <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
           <div class="settings-pane-head"><h4>System</h4><p>Runtime performance and prompt enhancement.</p></div>
+          <div class="settings-group">
+            <h5>Gallery performance</h5>
+            <button class="settings-media-toggle" id="setVideoPreviews" type="button" role="switch" aria-checked="true">
+              <span class="settings-media-toggle-copy"><strong>Video previews</strong><small>Play muted video previews while they are centered in the gallery.</small></span>
+              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+            </button>
+            <button class="settings-media-toggle" id="setPreviewCache" type="button" role="switch" aria-checked="false">
+              <span class="settings-media-toggle-copy"><strong>Compressed image preview cache</strong><small>Build up to 250 smaller browser-cached thumbnails during idle time for faster future gallery loads.</small></span>
+              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+            </button>
+            <div class="media-cache-status" id="previewCacheStatus" role="status" aria-live="polite">Off · no background preview work</div>
+            <button class="settings-cache-clear" id="previewCacheClear" type="button" disabled>Clear preview cache</button>
+          </div>
           <div class="field">
             <label>SeedVR2 attention</label>
             <div class="settings-choice" id="svAttnPicker">

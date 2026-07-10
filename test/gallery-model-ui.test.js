@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
@@ -36,6 +37,9 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /function galleryCardModelLabel\(item\)/);
   assert.match(app, /return item\.krea2Turbo === false \? 'Raw' : 'Turbo'/);
   assert.match(app, /className = 'gallery-card-video'/);
+  assert.match(app, /preview\.preload = 'none'/);
+  assert.match(app, /preview\.dataset\.src = '\/videos\/' \+ latestVideo\.file/);
+  assert.match(app, /target\.dataset\.loaded !== 'true'/);
   assert.match(app, /rootMargin: '-24% 0px -24% 0px'/);
   assert.match(app, /generation-count-badge/);
   assert.match(app, /grouped/);
@@ -43,10 +47,24 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(css, /\.card \.gallery-card-video/);
 });
 
+test('gallery performance controls can disable video previews and build an idle compressed cache', () => {
+  assert.match(html, /id="setVideoPreviews"[^>]*role="switch"/);
+  assert.match(html, /id="setPreviewCache"[^>]*role="switch"/);
+  assert.match(html, /id="previewCacheStatus"[^>]*aria-live="polite"/);
+  assert.match(html, /id="previewCacheClear"/);
+  assert.match(app, /mediaPreferences: \{[\s\S]*videoPreviews: true,[\s\S]*previewCache: false/);
+  assert.match(app, /function saveMediaPreferences\(next\)/);
+  assert.match(app, /function compressedPreviewResponse\(response\)/);
+  assert.match(app, /window\.requestIdleCallback\(work/);
+  assert.match(app, /run\.cache\.put\(source, compressed\)/);
+  assert.match(app, /MAX_PREVIEW_CACHE_ITEMS = 250/);
+});
+
 test('focused media switchers use restrained active states and expose per-video likes', () => {
   assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked\)\)/);
   assert.match(app, /className = 'chip' \+ /);
   assert.match(app, /lb-media-like/);
+  assert.match(app, /vid\.load\(\)/);
   assert.match(css, /\.lb-media \.chip\.active/);
   assert.match(css, /\.lb-media-like/);
 });

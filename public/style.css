@@ -4318,6 +4318,77 @@ body.sheet-open {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.settings-media-toggle {
+  width: 100%;
+  min-height: 58px;
+  margin-top: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255,255,255,0.025);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+.settings-media-toggle:focus-visible,
+.settings-cache-clear:focus-visible {
+  outline: 2px solid rgba(169,102,255,.72);
+  outline-offset: 2px;
+}
+.settings-media-toggle-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 3px;
+}
+.settings-media-toggle-copy strong { font-size: 12.5px; font-weight: 850; }
+.settings-media-toggle-copy small { color: var(--muted); font-size: 10.5px; font-weight: 650; line-height: 1.35; }
+.settings-media-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 21px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #080a10;
+}
+.settings-media-switch i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  transition: transform 180ms var(--ease), background 180ms var(--ease);
+}
+.settings-media-toggle[aria-checked="true"] { border-color: rgba(169,102,255,.42); background: rgba(169,102,255,.07); }
+.settings-media-toggle[aria-checked="true"] .settings-media-switch { border-color: rgba(169,102,255,.62); background: rgba(169,102,255,.18); }
+.settings-media-toggle[aria-checked="true"] .settings-media-switch i { transform: translateX(15px); background: #d9c5ff; }
+.media-cache-status {
+  margin-top: 9px;
+  color: var(--muted-2);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+.media-cache-status.ready { color: #b9f6ca; }
+.media-cache-status.running { color: #c8dcff; }
+.media-cache-status.bad { color: #ffaaa3; }
+.settings-cache-clear {
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+.settings-cache-clear:disabled { opacity: .45; }
 .settings-choice { position: relative; }
 .settings-choice-trigger {
   width: 100%;
