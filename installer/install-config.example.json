@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "appId": "mixbox-studio",
   "installMode": "portable",
   "dataDir": "data",
   "update": {

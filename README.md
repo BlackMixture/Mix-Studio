@@ -39,6 +39,8 @@ The installer supports an existing ComfyUI URL, application folder, and models f
 
 You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
 
+To remove MixBox Studio, double-click **uninstall.bat**. The uninstaller removes the portable app checkout but keeps `data/` by default so profiles and generated media can be reused after reinstalling. Use the explicit `-RemoveData` option only when you also want to erase that local gallery data; it requires typing `DELETE`. ComfyUI, shared model folders, and the system Node.js installation are never removed.
+
 ### Installing missing dependencies
 
 In **Advanced Settings → General**, the **Desktop Dependencies** card scans every enabled MixBox model and node family. The owner profile can install only the red groups; node packs are cloned into the configured `custom_nodes` directory and their requirements are added with that ComfyUI instance's Python environment **without a blanket pip upgrade**. Before any node requirements are changed, MixBox Studio saves a `pip freeze` snapshot under `data/dependency-backups/`. Model files download into the configured shared models folder with live byte progress, and partial downloads are kept as `.mixbox.part` files until complete.

@@ -1166,17 +1166,17 @@ async function completeJob(pid) {
     const fname = `${id}_composite.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
     const dims = pngDims(buf) || {};
-    // A before/after belongs to the edit it documents. Keeping it on that
-    // item makes the gallery read as one coherent generation rather than a
-    // second, disconnected card.
-    if (info.type === 'before-after' && info.sourceItemId) {
+    // Source/result composites belong to the generation they document.
+    // Keeping them on that item makes the gallery read as one coherent
+    // generation rather than a second, disconnected card.
+    if (['before-after', 'reference-generation'].includes(info.type) && info.sourceItemId) {
       const parent = db.items.find((it) => it.id === info.sourceItemId && it.profileId === job.profileId);
       if (!parent) return;
       const composite = {
         id,
         file: fname,
-        type: 'before-after',
-        label: info.label || 'Before + after',
+        type: info.type,
+        label: info.label || (info.type === 'reference-generation' ? 'Reference + generation' : 'Before + after'),
         createdAt: Date.now(),
         width: dims.w || info.width || parent.width || 1024,
         height: dims.h || info.height || parent.height || 1024,
@@ -4147,14 +4147,14 @@ async function handleApi(req, res, url) {
     return json(res, 200, { jobId: pid });
   }
 
-  // Static image composites: either a grouped Qwen multi-angle contact strip
-  // or an edit's original and result side-by-side. These are stored as normal
-  // gallery items rather than browser-only exports.
+  // Static image composites: a grouped Qwen multi-angle contact strip, an
+  // edit's original/result, or an image-to-image reference/result pair.
   if (route === '/api/image-composite' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const root = db.items.find((item) => item.id === body.id && item.profileId === req.profile.id);
     if (!root) return json(res, 404, { error: 'Image not found' });
-    const type = body.type === 'before-after' ? 'before-after' : 'angles';
+    const type = ['before-after', 'reference-generation'].includes(body.type)
+      ? body.type : 'angles';
     let sources;
     let label;
     if (type === 'before-after') {
@@ -4163,6 +4163,12 @@ async function handleApi(req, res, url) {
       }
       sources = [root.sourceFile, root.upscaled || root.file];
       label = 'Before + after';
+    } else if (type === 'reference-generation') {
+      if (root.mode !== 't2i' || !root.sourceFile) {
+        return json(res, 400, { error: 'This generation no longer has its saved reference image' });
+      }
+      sources = [root.sourceFile, root.upscaled || root.file];
+      label = 'Reference + generation';
     } else {
       if (!root.angleGroupId) return json(res, 400, { error: 'This image is not part of a multi-angle set' });
       const set = db.items

@@ -129,11 +129,12 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .brand-wordmark {
   position: relative;
-  width: 124px;
+  width: 128px;
   height: 25px;
   display: block;
-  flex: 0 1 auto;
-  min-width: 0;
+  /* The supplied SVG has generous export margins. Keep a fixed crop so
+     flexbox never trims the final letters when the header gets crowded. */
+  flex: 0 0 128px;
   overflow: hidden;
 }
 .brand-wordmark img { position: absolute; top: -5px; left: -30px; width: auto; height: 47px; max-width: none; }
@@ -414,8 +415,32 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   }
 }
 @media (max-width: 480px) {
-  .brand-wordmark { width: 116px; height: 24px; }
-  .brand-wordmark img { top: -5px; left: -28px; height: 45px; }
+  .brand-wordmark { width: 120px; height: 23px; flex-basis: 120px; }
+  .brand-wordmark img { top: -4px; left: -28px; height: 43px; }
+}
+@media (max-width: 420px) {
+  .topbar { gap: 8px; padding-left: 10px; padding-right: 10px; }
+  .brand { gap: 8px; }
+  .side-menu-trigger { width: 40px; height: 40px; flex-basis: 40px; border-radius: 14px; }
+  .brand-wordmark { width: 118px; flex-basis: 118px; }
+  .topbar-actions { gap: 6px; }
+  .profile-chip {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font-size: 0;
+  }
+  .profile-chip::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ink-soft);
+    box-shadow: 0 9px 0 3px var(--ink-soft);
+    transform: translateY(-4px);
+  }
 }
 .queue-row {
   display: flex; align-items: center; gap: 10px;

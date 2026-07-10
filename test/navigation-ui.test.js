@@ -179,7 +179,7 @@ test('installer-selected engines are hidden from the corresponding app controls'
 test('an edit can save its original and result as a gallery side-by-side', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(app, /Save before \+ after/);
-  assert.match(app, /saveImageComposite\(it, 'before-after'\)/);
+  assert.match(app, /saveImageComposite\(it, isEditSource \? 'before-after' : 'reference-generation'\)/);
   assert.match(server, /type === 'before-after'/);
   assert.match(server, /sources = \[root\.sourceFile, root\.upscaled \|\| root\.file\]/);
   assert.match(server, /kind: 'imageComposite'/);
@@ -188,6 +188,17 @@ test('an edit can save its original and result as a gallery side-by-side', () =>
   assert.match(server, /broadcast\('imageCompositeDone'/);
   assert.match(app, /es\.addEventListener\('imageCompositeDone'/);
   assert.match(app, /'composite:' \+ d\.composite\.id/);
+});
+
+test('image-to-image generations retain their reference for hold-preview and a grouped composite', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(app, /it\.mode === 'edit' \|\| it\.mode === 't2i'/);
+  assert.match(app, /Hold: reference/);
+  assert.match(app, /Save reference \+ generation/);
+  assert.match(app, /saveImageComposite\(it, isEditSource \? 'before-after' : 'reference-generation'\)/);
+  assert.match(server, /type === 'reference-generation'/);
+  assert.match(server, /Reference \+ generation/);
+  assert.match(server, /\['before-after', 'reference-generation'\]\.includes\(info\.type\)/);
 });
 
 test('gallery saves directly when only one image is available and is grouped by date', () => {

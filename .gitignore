@@ -12,6 +12,7 @@ node_modules/
 *.bat
 !start.bat
 !install.bat
+!uninstall.bat
 check*.txt
 check*.json
 *_done.txt

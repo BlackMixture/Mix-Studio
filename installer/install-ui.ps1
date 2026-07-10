@@ -433,20 +433,27 @@ function Begin-Install {
   $Worker.add_DoWork({
     param($Sender, $Event)
     $WorkItem = $Event.Argument
-    $Info = New-Object System.Diagnostics.ProcessStartInfo
-    $Info.FileName = 'powershell.exe'
-    $Info.Arguments = $WorkItem.EngineArguments
-    $Info.UseShellExecute = $false
-    $Info.CreateNoWindow = $true
-    $Info.RedirectStandardOutput = $true
-    $Info.RedirectStandardError = $true
-    $Process = New-Object System.Diagnostics.Process
-    $Process.StartInfo = $Info
-    [void]$Process.Start()
-    $Output = $Process.StandardOutput.ReadToEnd()
-    $ErrorOutput = $Process.StandardError.ReadToEnd()
-    $Process.WaitForExit()
-    $Event.Result = [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = $Output; Error = $ErrorOutput; FeatureFile = $WorkItem.FeatureFile }
+    try {
+      $Info = New-Object System.Diagnostics.ProcessStartInfo
+      $Info.FileName = 'powershell.exe'
+      $Info.Arguments = $WorkItem.EngineArguments
+      $Info.UseShellExecute = $false
+      $Info.CreateNoWindow = $true
+      $Info.RedirectStandardOutput = $true
+      $Info.RedirectStandardError = $true
+      $Process = New-Object System.Diagnostics.Process
+      $Process.StartInfo = $Info
+      [void]$Process.Start()
+      $Output = $Process.StandardOutput.ReadToEnd()
+      $ErrorOutput = $Process.StandardError.ReadToEnd()
+      $Process.WaitForExit()
+      $Event.Result = [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = $Output; Error = $ErrorOutput; FeatureFile = $WorkItem.FeatureFile }
+    } catch {
+      if ($WorkItem.FeatureFile -and (Test-Path $WorkItem.FeatureFile)) {
+        Remove-Item $WorkItem.FeatureFile -Force -ErrorAction SilentlyContinue
+      }
+      throw
+    }
   })
   $Worker.add_RunWorkerCompleted({
     param($Sender, $Event)
@@ -456,7 +463,9 @@ function Begin-Install {
       return
     }
     $Result = $Event.Result
-    if ($Result.FeatureFile -and (Test-Path $Result.FeatureFile)) { Remove-Item $Result.FeatureFile -Force -ErrorAction SilentlyContinue }
+    if ($Result.FeatureFile -and (Test-Path $Result.FeatureFile)) {
+      Remove-Item $Result.FeatureFile -Force -ErrorAction SilentlyContinue
+    }
     if ($Result.ExitCode -eq 0) {
       Show-Page 5
     } else {

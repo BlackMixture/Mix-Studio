@@ -59,9 +59,14 @@ function Read-JsonObject([string]$File) {
 
 function Write-JsonAtomic([string]$File, $Value) {
   $temp = "$File.tmp"
-  $json = $Value | ConvertTo-Json -Depth 20
-  [IO.File]::WriteAllText($temp, $json, $Utf8NoBom)
-  Move-Item -Force $temp $File
+  try {
+    $json = $Value | ConvertTo-Json -Depth 20
+    [IO.File]::WriteAllText($temp, $json, $Utf8NoBom)
+    Move-Item -Force $temp $File
+  }
+  finally {
+    if (Test-Path $temp) { Remove-Item $temp -Force -ErrorAction SilentlyContinue }
+  }
 }
 
 function Existing-PropertyValue($Object, [string]$Name, $Fallback) {
@@ -69,6 +74,29 @@ function Existing-PropertyValue($Object, [string]$Name, $Fallback) {
     return $Object.PSObject.Properties[$Name].Value
   }
   return $Fallback
+}
+
+function Normalize-ComfyUrl([string]$Value) {
+  $Candidate = ([string]$Value).Trim().TrimEnd('/')
+  $Parsed = $null
+  if (-not [Uri]::TryCreate($Candidate, [UriKind]::Absolute, [ref]$Parsed) -or
+      $Parsed.Scheme -notin @('http', 'https') -or
+      [string]::IsNullOrWhiteSpace($Parsed.Host)) {
+    throw 'ComfyUI URL must be a full http:// or https:// URL with a host.'
+  }
+  return $Candidate
+}
+
+function Backup-File([string]$File, [string]$Timestamp) {
+  if (-not (Test-Path $File)) { return }
+  $Backup = "$File.backup-$Timestamp"
+  $Suffix = 1
+  while (Test-Path $Backup) {
+    $Backup = "$File.backup-$Timestamp-$Suffix"
+    $Suffix++
+  }
+  Copy-Item $File $Backup
+  Write-Host "Backed up $([IO.Path]::GetFileName($File))." -ForegroundColor DarkGray
 }
 
 Write-Host ''
@@ -121,6 +149,7 @@ $DefaultModels = [string](Existing-PropertyValue $ExistingComfy 'modelsPath' '')
 if (-not [string]::IsNullOrWhiteSpace($ModelsPath)) { $DefaultModels = $ModelsPath.Trim() }
 
 $SelectedUrl = Read-WithDefault 'ComfyUI URL' $DefaultUrl
+$SelectedUrl = Normalize-ComfyUrl $SelectedUrl
 $SelectedPath = Read-WithDefault 'Existing ComfyUI folder (optional)' $DefaultPath
 if (-not $DefaultModels -and $SelectedPath) { $DefaultModels = Join-Path $SelectedPath 'models' }
 $SelectedModels = Read-WithDefault 'Existing models folder (optional)' $DefaultModels
@@ -135,7 +164,10 @@ if ($SelectedModels -and -not (Test-Path $SelectedModels)) {
 Write-Step 'Choosing optional model families'
 $FeatureValues = [pscustomobject]@{}
 $ExistingFeatures = Existing-PropertyValue $Settings 'features' ([pscustomobject]@{})
-$RequestedFeatures = if ($FeatureConfigFile) { Read-JsonObject $FeatureConfigFile } else { [pscustomobject]@{} }
+$RequestedFeatures = if ($FeatureConfigFile) {
+  if (-not (Test-Path $FeatureConfigFile)) { throw "Feature selection file not found: $FeatureConfigFile" }
+  Read-JsonObject $FeatureConfigFile
+} else { [pscustomobject]@{} }
 if (Test-Path $FeatureManifest) {
   $Manifest = Get-Content $FeatureManifest -Raw | ConvertFrom-Json
   $LastGroup = ''
@@ -163,8 +195,11 @@ if (Test-Path $FeatureManifest) {
 
 $InstallConfig = [pscustomobject]@{
   schemaVersion = 1
+  appId = 'mixbox-studio'
   installMode = 'portable'
   dataDir = 'data'
+  createdAt = [string](Existing-PropertyValue $ExistingInstall 'createdAt' ([DateTime]::UtcNow.ToString('o')))
+  updatedAt = [DateTime]::UtcNow.ToString('o')
   update = [pscustomobject]@{
     provider = 'git'
     channel = $Branch
@@ -184,11 +219,8 @@ if (@($FeatureValues.PSObject.Properties).Count -gt 0) {
 
 Write-Step 'Saving portable configuration'
 $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-if (Test-Path $SettingsFile) {
-  Copy-Item $SettingsFile "$SettingsFile.backup-$Timestamp"
-  Write-Host 'Backed up the existing settings file.' -ForegroundColor DarkGray
-}
-if (Test-Path $InstallFile) { Copy-Item $InstallFile "$InstallFile.backup-$Timestamp" }
+Backup-File $SettingsFile $Timestamp
+Backup-File $InstallFile $Timestamp
 Write-JsonAtomic $SettingsFile $Settings
 Write-JsonAtomic $InstallFile $InstallConfig
 Write-Host 'Saved install.json and merged settings without replacing gallery data.' -ForegroundColor Green

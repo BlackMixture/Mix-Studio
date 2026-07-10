@@ -446,6 +446,7 @@ function renderProfileChip() {
   if (!state.profile) { btn.hidden = true; return; }
   btn.hidden = false;
   btn.textContent = `👤 ${state.profile.name}`;
+  btn.setAttribute('aria-label', `Profile: ${state.profile.name}`);
 }
 
 $('#profileBtn').addEventListener('click', () => {
@@ -6483,7 +6484,8 @@ window.addEventListener('popstate', () => {
 
 async function saveImageComposite(item, type) {
   try {
-    const label = type === 'before-after' ? 'before + after' : 'camera-angle';
+    const label = type === 'before-after' ? 'before + after'
+      : (type === 'reference-generation' ? 'reference + generation' : 'camera-angle');
     toast(`Building ${label} composite…`);
     const result = await api('/api/image-composite', {
       method: 'POST',
@@ -6642,9 +6644,12 @@ function openLightbox(id, mediaSel) {
   if (!selVideo && !selComposite && angleItems.length > 1) {
     mk('▦ Save angle composite', '', () => saveImageComposite(it, 'angles'));
   }
-  // Edits: hold to flash the original source image
-  if (!selVideo && !selComposite && it.mode === 'edit' && it.sourceFile) {
-    const hb = mk('👁 Hold: original', '', () => {});
+  // Reference-backed generations: hold to flash the retained source image.
+  const sourceReference = !selVideo && !selComposite && it.sourceFile
+    && (it.mode === 'edit' || it.mode === 't2i');
+  if (sourceReference) {
+    const isEditSource = it.mode === 'edit';
+    const hb = mk(isEditSource ? '👁 Hold: original' : '👁 Hold: reference', '', () => {});
     hb.style.userSelect = 'none';
     hb.style.webkitUserSelect = 'none';
     const show = (e) => { e.preventDefault(); $('#lbImg').src = '/images/' + it.sourceFile; };
@@ -6654,7 +6659,9 @@ function openLightbox(id, mediaSel) {
     hb.addEventListener('pointercancel', hide);
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
-    mk('▣ Save before + after', '', () => saveImageComposite(it, 'before-after'));
+    mk(isEditSource ? '▣ Save before + after' : '▣ Save reference + generation', '', () => {
+      saveImageComposite(it, isEditSource ? 'before-after' : 'reference-generation');
+    });
   }
 
   // Region-prompted images: hold to overlay the color-coded boxes,

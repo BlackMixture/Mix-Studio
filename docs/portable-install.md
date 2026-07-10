@@ -25,6 +25,12 @@ The installer is intentionally idempotent: rerunning it reads existing values, p
 
 All are machine-specific and ignored by Git. The installer does not delete or replace `data/db.json` or any media directory.
 
+## Uninstalling
+
+Double-click `uninstall.bat` in the checkout. It removes the portable MixBox Studio application files after the confirmation and keeps the local `data/` folder by default. This makes a later reinstall possible without losing profiles, settings, uploads, or generations. The uninstaller never removes ComfyUI, shared model folders, or Node.js.
+
+For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout and its local `data/` folder; external data and model paths are not touched.
+
 ## Reusing models
 
 MixBox Studio sends model filenames to the connected ComfyUI API. The selected ComfyUI instance must therefore already see the model folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; the installer does not modify an existing ComfyUI configuration without permission.

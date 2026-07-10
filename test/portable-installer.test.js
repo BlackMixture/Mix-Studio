@@ -45,8 +45,29 @@ test('portable installer requires Git for safe in-app updates and Node 22', () =
 
 test('portable installer preserves settings and supports existing ComfyUI paths', () => {
   const installer = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
-  assert.match(installer, /Copy-Item \$SettingsFile/);
+  assert.match(installer, /Copy-Item \$File \$Backup/);
   assert.match(installer, /Existing ComfyUI folder/);
   assert.match(installer, /Existing models folder/);
   assert.doesNotMatch(installer, /Remove-Item[^\r\n]*(data|SettingsFile)/i);
+});
+
+test('portable installer validates direct engine input and keeps unique backups', () => {
+  const installer = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
+  assert.match(installer, /Normalize-ComfyUrl/);
+  assert.match(installer, /http.*https/);
+  assert.match(installer, /while \(Test-Path \$Backup\)/);
+  assert.match(installer, /appId = 'mixbox-studio'/);
+});
+
+test('portable checkout has a conservative uninstaller entry point', () => {
+  const launcher = fs.readFileSync(path.join(root, 'uninstall.bat'), 'utf8');
+  const uninstaller = fs.readFileSync(path.join(root, 'installer', 'uninstall.ps1'), 'utf8');
+  assert.match(launcher, /installer\\uninstall\.ps1/i);
+  assert.match(launcher, /ExecutionPolicy Bypass/i);
+  assert.match(uninstaller, /Assert-SafeInstallRoot/);
+  assert.match(uninstaller, /ComfyUI.*Node\.js.*never removed/i);
+  assert.match(uninstaller, /-RemoveData/);
+  assert.match(uninstaller, /Type DELETE to continue/);
+  assert.match(uninstaller, /Where-Object \{ `\$_.FullName -ne `\$Data \}/);
+  assert.match(uninstaller, /Start-Process -FilePath \$PowerShell/);
 });
