@@ -145,6 +145,7 @@ const QWEN_ANGLE_DISTANCES = [
   { id: 'wide shot', label: 'Wide' },
 ];
 const EDIT_ENGINES = ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'];
+const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref' };
@@ -153,6 +154,7 @@ const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'v
 function featureEnabled(key) { return state.features[key] !== false; }
 function enabledEditEngines() { return EDIT_ENGINES.filter((engine) => featureEnabled(EDIT_FEATURES[engine])); }
 function enabledVideoEngines() { return Object.keys(VIDEO_FEATURES).filter((engine) => featureEnabled(VIDEO_FEATURES[engine])); }
+function supportsCurrentEditAngles() { return state.view === 'edit' && ANGLE_EDIT_ENGINES.has(state.editEngine); }
 
 function renderFeatureVisibility() {
   const editEngines = enabledEditEngines();
@@ -1250,8 +1252,8 @@ function updateVideoPanels() {
   $('#vidModelPanel').hidden = !isVideo;
   $('#vidOptsPanel').hidden = !isVideo;
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
-  if (!(state.view === 'edit' && state.editEngine === 'qwen')) state.qwenAnglesMode = false;
-  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode || hasEditMask();
+  if (!supportsCurrentEditAngles()) state.qwenAnglesMode = false;
+  $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || hasEditMask();
   renderQwenAngleTool();
   renderQwenAngleMode();
   renderQwenQuality();
@@ -2163,7 +2165,7 @@ function syncEditAreaChrome() {
   $('#kreaMaskTools').hidden = !supported;
   $('#editComposite').hidden = kreaEdit || kreaRef || active;
   $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit || active;
-  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode || active;
+  $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || active;
 }
 
 function renderKreaMaskTools() {
@@ -3326,7 +3328,7 @@ function renderQwenAngleTool() {
 }
 
 function renderQwenAngleMode() {
-  const active = state.view === 'edit' && state.editEngine === 'qwen' && state.qwenAnglesMode;
+  const active = supportsCurrentEditAngles() && state.qwenAnglesMode;
   const inline = $('#qwenAnglesInline');
   const textPane = $('#qwenTextPromptPane');
   const promptBox = textPane.closest('.prompt-box');
@@ -3342,7 +3344,7 @@ function renderQwenAngleMode() {
   enhance.classList.toggle('qwen-angle-faded', active);
   enhance.inert = active || enhance.hidden;
   $('#promptClear').hidden = active || !promptDraft().trim();
-  $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || active;
+  $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || active;
   $('#qwenAnglesModeBtn').setAttribute('aria-pressed', String(active));
   $('#qwenAnglesTextBtn').setAttribute('aria-pressed', String(!active));
   if (active) renderQwenAnglePicker();
@@ -5818,10 +5820,11 @@ $('#editComposite').addEventListener('click', () => {
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
-  const qwenAngleExports = state.view === 'edit' && state.editEngine === 'qwen' && !state.editSequential && !hasEditMask()
+  const qwenAngleExports = supportsCurrentEditAngles() && !state.editSequential && !hasEditMask()
     ? selectedQwenAngleViews() : [];
   const promptOptional = state.view === 'video' && state.vidEngine === 'scail';
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
+  if (qwenAngleExports.length && !state.refs[0]) return toast('Camera angles need a source image in reference slot 1', true);
 
   if (state.view === 'video') {
     const ltxEdit = state.vidEngine === 'ltx-edit';

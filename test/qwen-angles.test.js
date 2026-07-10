@@ -11,7 +11,7 @@ const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
-test('Qwen Edit exposes a visual multi-angle picker without surfacing control prompts', () => {
+test('supported Edit models expose a visual multi-angle picker without surfacing control prompts', () => {
   assert.match(html, /id="qwenAnglesBtn"[^>]*aria-label="Camera angles"/);
   assert.match(html, /id="qwenAnglesInline"/);
   assert.match(html, /id="qwenAnglesModeBtn"[^>]*aria-label="Camera angles"/);
@@ -22,7 +22,8 @@ test('Qwen Edit exposes a visual multi-angle picker without surfacing control pr
   assert.match(html, /id="qwenAnglesToggleAll"/);
   assert.doesNotMatch(html, /Each selected view becomes its own Qwen Edit export/);
   assert.match(app, /function selectedQwenAngleViews\(\)/);
-  assert.match(app, /#qwenAngleTool'\)\.hidden = !\(state\.view === 'edit' && state\.editEngine === 'qwen'\)/);
+  assert.match(app, /const ANGLE_EDIT_ENGINES = new Set\(\['klein4', 'klein9', 'qwen'\]\)/);
+  assert.match(app, /#qwenAngleTool'\)\.hidden = !supportsCurrentEditAngles\(\)/);
   assert.match(app, /qwenAnglesMode: false/);
   assert.match(app, /function renderQwenAngleMode\(\)/);
   assert.match(app, /inline\.classList\.toggle\('is-active', active\)/);
@@ -41,8 +42,8 @@ test('Qwen Edit exposes a visual multi-angle picker without surfacing control pr
   assert.match(app, /state\.qwenAngles = allSelected \? \[\] : QWEN_ANGLE_VIEWS\.map/);
 });
 
-test('Each selected Qwen angle queues its own edit request', () => {
-  assert.match(app, /const qwenAngleExports = state\.view === 'edit' && state\.editEngine === 'qwen'/);
+test('Each selected camera angle queues its own edit request for supported models', () => {
+  assert.match(app, /const qwenAngleExports = supportsCurrentEditAngles\(\)/);
   assert.match(app, /qwenAngle: angle/);
   assert.match(app, /for \(const request of requests\)/);
   assert.match(app, /camera-angle exports queued/);
@@ -72,11 +73,18 @@ test('a multi-angle gallery set can be saved as one composite image', () => {
   assert.match(server, /function buildImageComposite\(imageNames\)/);
 });
 
-test('Qwen angle jobs use the installed multi-angle LoRA and the documented control-token format server-side', () => {
+test('Qwen angle jobs retain the installed LoRA and documented control-token format', () => {
   assert.match(server, /qwenEditAnglesLora: 'qwen_image_edit_2511_multiple-angles-lora\.safetensors'/);
-  assert.match(server, /function qwenAnglePrompt\(angle\)/);
-  assert.match(server, /return `<sks> \$\{QWEN_ANGLE_AZIMUTHS\[angle\.view\]\} \$\{angle\.elevation\} shot \$\{angle\.distance\}`/);
   assert.match(server, /graph\.angle_lora/);
   assert.match(server, /strength_model: 0\.9/);
-  assert.match(server, /prompt: p\.maskImageName \? localizedEditPrompt\(p\.qwenAnglePrompt \|\| p\.prompt\) : \(p\.qwenAnglePrompt \|\| p\.prompt\)/);
+  assert.match(server, /const qwenPrompt = p\.anglePrompt \|\| p\.qwenAnglePrompt \|\| p\.prompt/);
+  assert.match(server, /if \(p\.editEngine === 'qwen'\) p\.qwenAnglePrompt = p\.anglePrompt/);
+});
+
+test('Klein camera angles use prompt conditioning without loading the Qwen angle LoRA', () => {
+  assert.match(server, /const editPrompt = p\.anglePrompt \|\| p\.prompt/);
+  assert.match(server, /!supportsEditAngles\(p\.editEngine\)/);
+  assert.match(server, /p\.anglePrompt = editAnglePrompt\(p\.editEngine, p\.qwenAngle, p\.prompt\)/);
+  assert.match(server, /Camera angles need a source image in reference slot 1/);
+  assert.match(app, /qwenAngleExports\.length && !state\.refs\[0\]/);
 });

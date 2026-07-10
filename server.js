@@ -56,6 +56,7 @@ const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
+const { normalizeEditAngle, supportsEditAngles, editAnglePrompt } = require('./lib/edit-angle');
 const {
   appendEditMaskNodes,
   appendEditMaskComposite,
@@ -217,32 +218,6 @@ function normalizeSettings(s) {
 }
 
 let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
-
-const QWEN_ANGLE_AZIMUTHS = {
-  front: 'front view',
-  'front-right': 'front-right quarter view',
-  right: 'right side view',
-  'back-right': 'back-right quarter view',
-  back: 'back view',
-  'back-left': 'back-left quarter view',
-  left: 'left side view',
-  'front-left': 'front-left quarter view',
-};
-const QWEN_ANGLE_ELEVATIONS = new Set(['low-angle', 'eye-level', 'elevated', 'high-angle']);
-const QWEN_ANGLE_DISTANCES = new Set(['close-up', 'medium shot', 'wide shot']);
-
-function normalizeQwenAngle(value) {
-  if (!value || typeof value !== 'object') return null;
-  const view = String(value.view || '');
-  const elevation = String(value.elevation || 'eye-level');
-  const distance = String(value.distance || 'medium shot');
-  if (!QWEN_ANGLE_AZIMUTHS[view] || !QWEN_ANGLE_ELEVATIONS.has(elevation) || !QWEN_ANGLE_DISTANCES.has(distance)) return null;
-  return { view, elevation, distance };
-}
-
-function qwenAnglePrompt(angle) {
-  return `<sks> ${QWEN_ANGLE_AZIMUTHS[angle.view]} ${angle.elevation} shot ${angle.distance}`;
-}
 
 function seedVr2ModelDirs() {
   const roots = [
@@ -1677,7 +1652,8 @@ async function buildEditQwen(p, refNames) {
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.qwenEditClip, type: 'qwen_image', device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 
-  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.maskImageName ? localizedEditPrompt(p.qwenAnglePrompt || p.prompt) : (p.qwenAnglePrompt || p.prompt) };
+  const qwenPrompt = p.anglePrompt || p.qwenAnglePrompt || p.prompt;
+  const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.maskImageName ? localizedEditPrompt(qwenPrompt) : qwenPrompt };
   const negInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: '' };
   refNames.slice(0, 3).forEach((name, idx) => {
     const i = idx + 1;
@@ -1758,7 +1734,8 @@ async function buildEdit(p, refNames) {
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.kleinVae } };
 
   const kModel = chainModelLoras(graph, ['unet', 0], p.loras, 'klora');
-  graph.pos_text = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: p.maskImageName ? localizedEditPrompt(p.prompt) : p.prompt } };
+  const editPrompt = p.anglePrompt || p.prompt;
+  graph.pos_text = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: p.maskImageName ? localizedEditPrompt(editPrompt) : editPrompt } };
   graph.neg0 = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos_text', 0] } };
   let pos = ['pos_text', 0];
   let neg = ['neg0', 0];
@@ -1865,6 +1842,7 @@ async function queueNextSequentialEdit(job, sourceItem) {
     refImages: refNames,
     qwenAngle: undefined,
     qwenAnglePrompt: undefined,
+    anglePrompt: undefined,
     angleGroupId: undefined,
     editSequence: Object.assign({}, sequence, { index: nextIndex }),
   });
@@ -3694,7 +3672,7 @@ async function handleApi(req, res, url) {
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
-    p.qwenAngle = normalizeQwenAngle(p.qwenAngle);
+    p.qwenAngle = normalizeEditAngle(p.qwenAngle);
     p.angleGroupId = p.qwenAngle && /^[a-z0-9_-]{8,96}$/i.test(String(p.angleGroupId || ''))
       ? String(p.angleGroupId) : undefined;
     p.regions = Array.isArray(p.regions) ? p.regions : [];
@@ -3754,20 +3732,24 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: 'Sequential edits need at least two valid sentences' });
       }
       if (p.editSequence && p.qwenAngle) {
-        return json(res, 400, { error: 'Use either sequential edits or Qwen camera angles for a single run' });
+        return json(res, 400, { error: 'Use either sequential edits or camera angles for a single run' });
       }
       if (p.editSequence) {
         p.prompt = p.editSequence.prompts[p.editSequence.index];
         p.batch = 1;
       }
-      if (p.qwenAngle && p.editEngine !== 'qwen') {
-        return json(res, 400, { error: 'Camera angles are available with Qwen Edit only' });
+      if (p.qwenAngle && !supportsEditAngles(p.editEngine)) {
+        return json(res, 400, { error: 'Camera angles are available with Klein 4B, Klein 9B, and Qwen Edit only' });
       }
       if (p.qwenAngle && p.maskImageName) {
-        return json(res, 400, { error: 'Use either a Qwen camera angle or a localized edit area for a single run' });
+        return json(res, 400, { error: 'Use either a camera angle or a localized edit area for a single run' });
       }
       if (p.qwenAngle) {
-        p.qwenAnglePrompt = [qwenAnglePrompt(p.qwenAngle), p.prompt].filter(Boolean).join('. ');
+        p.anglePrompt = editAnglePrompt(p.editEngine, p.qwenAngle, p.prompt);
+        if (p.editEngine === 'qwen') p.qwenAnglePrompt = p.anglePrompt;
+      }
+      if (p.qwenAngle && !refNames.length) {
+        return json(res, 400, { error: 'Camera angles need a source image in reference slot 1' });
       }
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
