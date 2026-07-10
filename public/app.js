@@ -7359,6 +7359,8 @@ const galleryDateScrub = {
   previewTarget: 0,
   previewFrame: 0,
   settleFrame: 0,
+  dragOffsetY: 0,
+  dragMoved: false,
   startX: 0,
   startY: 0,
 };
@@ -7418,6 +7420,21 @@ function galleryDateScrollTarget(ratio) {
   const start = targetFor(lower);
   const end = targetFor(upper);
   return start + (end - start) * mix;
+}
+
+function galleryDateRatioForScroll(scrollY = window.scrollY) {
+  const groups = galleryDateScrub.groups;
+  if (groups.length < 2) return 0;
+  const targets = groups.map((group) => galleryDateLayoutTop(group.divider));
+  if (scrollY <= targets[0]) return 0;
+  if (scrollY >= targets[targets.length - 1]) return 1;
+  for (let index = 0; index < targets.length - 1; index += 1) {
+    if (scrollY > targets[index + 1]) continue;
+    const span = Math.max(1, targets[index + 1] - targets[index]);
+    const local = Math.max(0, Math.min(1, (scrollY - targets[index]) / span));
+    return (index + local) / (targets.length - 1);
+  }
+  return 1;
 }
 
 function runGalleryDatePreviewScroll() {
@@ -7488,6 +7505,8 @@ function resetGalleryDateScrubGesture() {
   }
   galleryDateScrub.active = false;
   galleryDateScrub.pointerId = null;
+  galleryDateScrub.dragOffsetY = 0;
+  galleryDateScrub.dragMoved = false;
   if (scrubber) scrubber.classList.remove('is-active', 'is-pressed');
   document.body.classList.remove('gallery-date-scrubbing');
 }
@@ -7536,7 +7555,7 @@ function syncGalleryDateScrubber() {
   }
   scrubber.setAttribute('aria-valuemax', String(galleryDateScrub.groups.length - 1));
   positionGalleryDateScrubber();
-  setGalleryDateScrubberIndex(currentGalleryDateIndex());
+  setGalleryDateScrubberRatio(galleryDateRatioForScroll());
 }
 
 function scrubGalleryDateAt(clientY, haptic = true) {
@@ -7546,14 +7565,15 @@ function scrubGalleryDateAt(clientY, haptic = true) {
   const rect = rail.getBoundingClientRect();
   const top = galleryDateScrub.active ? galleryDateScrub.trackTop : rect.top;
   const height = galleryDateScrub.active ? galleryDateScrub.trackHeight : rect.height;
-  const ratio = Math.max(0, Math.min(1, (clientY - top) / Math.max(1, height)));
+  const effectiveY = clientY - galleryDateScrub.dragOffsetY;
+  const ratio = Math.max(0, Math.min(1, (effectiveY - top) / Math.max(1, height)));
   setGalleryDateScrubberRatio(ratio, haptic);
   if (galleryDateScrub.active) previewGalleryDateScroll(ratio);
 }
 
 function finishGalleryDateScrub(event) {
   if (event && galleryDateScrub.pointerId !== null && event.pointerId !== galleryDateScrub.pointerId) return;
-  const shouldSettle = galleryDateScrub.active;
+  const shouldSettle = galleryDateScrub.active && galleryDateScrub.dragMoved;
   const selectedIndex = galleryDateScrub.index;
   if (shouldSettle) setGalleryDateScrubberIndex(selectedIndex);
   resetGalleryDateScrubGesture();
@@ -7569,6 +7589,11 @@ function beginGalleryDateScrub() {
   if (galleryDateScrub.pointerId === null || galleryDateScrub.active) return;
   galleryDateScrub.holdTimer = null;
   galleryDateScrub.active = true;
+  const currentRatio = galleryDateRatioForScroll();
+  setGalleryDateScrubberRatio(currentRatio);
+  const thumbY = galleryDateScrub.trackTop + galleryDateScrub.trackHeight * currentRatio;
+  galleryDateScrub.dragOffsetY = galleryDateScrub.startY - thumbY;
+  galleryDateScrub.dragMoved = false;
   $('#galleryDateScrubber').classList.remove('is-pressed');
   $('#galleryDateScrubber').classList.add('is-active');
   document.body.classList.add('gallery-date-scrubbing');
@@ -7585,6 +7610,7 @@ $('#galleryDateScrubber').addEventListener('pointerdown', (event) => {
   galleryDateScrub.pointerId = event.pointerId;
   galleryDateScrub.startX = event.clientX;
   galleryDateScrub.startY = event.clientY;
+  galleryDateScrub.dragMoved = false;
   $('#galleryDateScrubber').classList.add('is-pressed');
   try { $('#galleryDateScrubber').setPointerCapture(event.pointerId); } catch { /* noop */ }
   galleryDateScrub.holdTimer = setTimeout(beginGalleryDateScrub, 180);
@@ -7598,6 +7624,10 @@ $('#galleryDateScrubber').addEventListener('pointermove', (event) => {
     return;
   }
   event.preventDefault();
+  if (!galleryDateScrub.dragMoved) {
+    if (Math.abs(event.clientY - galleryDateScrub.startY) < 4) return;
+    galleryDateScrub.dragMoved = true;
+  }
   scrubGalleryDateAt(event.clientY);
 });
 $('#galleryDateScrubber').addEventListener('pointerup', finishGalleryDateScrub);
@@ -7623,7 +7653,7 @@ window.addEventListener('scroll', () => {
     galleryDateScrollFrame = 0;
     if (!galleryDateScrub.active && !$('#galleryDateScrubber').hidden) {
       positionGalleryDateScrubber();
-      setGalleryDateScrubberIndex(currentGalleryDateIndex());
+      setGalleryDateScrubberRatio(galleryDateRatioForScroll());
     }
   });
 }, { passive: true });

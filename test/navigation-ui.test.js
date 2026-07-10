@@ -228,6 +228,10 @@ test('gallery exposes a draggable date scrubber with keyboard navigation', () =>
   assert.match(app, /function scrubGalleryDateAt\(clientY, haptic = true\)/);
   assert.match(app, /function setGalleryDateScrubberRatio\(ratio, haptic = false\)/);
   assert.match(app, /function previewGalleryDateScroll\(ratio\)/);
+  assert.match(app, /function galleryDateRatioForScroll\(scrollY = window\.scrollY\)/);
+  assert.match(app, /galleryDateScrub\.dragOffsetY = galleryDateScrub\.startY - thumbY/);
+  assert.match(app, /galleryDateScrub\.active && galleryDateScrub\.dragMoved/);
+  assert.match(app, /Math\.abs\(event\.clientY - galleryDateScrub\.startY\) < 4/);
   assert.match(app, /function settleGalleryToDate\(index\)/);
   assert.match(app, /settleGalleryToDate\(selectedIndex\)/);
   assert.match(app, /setTimeout\(beginGalleryDateScrub, 180\)/);
