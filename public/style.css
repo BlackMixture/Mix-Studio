@@ -3189,7 +3189,13 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   content: "Locked ";
   color: var(--muted-2);
 }
-.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  transform-origin: left top;
+  transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 220ms ease;
+}
 @media (min-width: 560px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 .gallery-date-divider {
   grid-column: 1 / -1;
@@ -3234,7 +3240,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .gallery-date-scrubber {
   position: fixed;
   z-index: 28;
-  top: 50%;
+  top: var(--gallery-scrub-center, 50%);
   right: max(3px, calc((100vw - 720px) / 2 + 3px));
   width: 46px;
   height: 44px;
@@ -3254,7 +3260,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .gallery-date-scrubber::after {
   content: '';
   position: absolute;
-  right: 3px;
+  left: 50%;
   width: 7px;
   height: 7px;
   border-color: rgba(255,255,255,0.72);
@@ -3265,23 +3271,24 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   top: 7px;
   border-top: 1.5px solid;
   border-left: 1.5px solid;
-  transform: translateY(5px) rotate(45deg);
+  transform: translate(-50%, 5px) rotate(45deg);
 }
 .gallery-date-scrubber::after {
   bottom: 7px;
   border-right: 1.5px solid;
   border-bottom: 1.5px solid;
-  transform: translateY(-5px) rotate(45deg);
+  transform: translate(-50%, -5px) rotate(45deg);
 }
 .gallery-date-scrubber-rail {
   position: absolute;
   top: 8px;
-  right: 2px;
+  left: 50%;
   bottom: 8px;
   width: 5px;
   border-radius: 999px;
   background: rgba(255,255,255,0.14);
   opacity: 0.78;
+  transform: translateX(-50%);
   transition: inset 300ms cubic-bezier(.2,.8,.2,1), width 180ms var(--ease), opacity 180ms var(--ease), background 180ms var(--ease);
 }
 .gallery-date-scrubber-thumb {
@@ -3323,7 +3330,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .gallery-date-scrubber.is-active,
 .gallery-date-scrubber.is-keyboard-active {
-  height: min(58dvh, 480px);
+  height: var(--gallery-scrub-expanded-height, min(58dvh, 480px));
 }
 .gallery-date-scrubber.is-active::before,
 .gallery-date-scrubber.is-active::after,
@@ -3332,9 +3339,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   opacity: 1;
 }
 .gallery-date-scrubber.is-active::before,
-.gallery-date-scrubber.is-keyboard-active::before { transform: translateY(0) rotate(45deg); }
+.gallery-date-scrubber.is-keyboard-active::before { transform: translate(-50%, 0) rotate(45deg); }
 .gallery-date-scrubber.is-active::after,
-.gallery-date-scrubber.is-keyboard-active::after { transform: translateY(0) rotate(45deg); }
+.gallery-date-scrubber.is-keyboard-active::after { transform: translate(-50%, 0) rotate(45deg); }
 .gallery-date-scrubber.is-active .gallery-date-scrubber-rail,
 .gallery-date-scrubber.is-keyboard-active .gallery-date-scrubber-rail {
   top: 30px;
@@ -3360,6 +3367,18 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   box-shadow: 0 0 0 5px rgba(255,255,255,0.1), 0 3px 14px rgba(0,0,0,0.48);
 }
 body.gallery-date-scrubbing { cursor: ns-resize; user-select: none; -webkit-user-select: none; }
+body.gallery-select-dragging {
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior-y: contain;
+}
+body.gallery-date-scrubbing #galleryGrid {
+  transform: translateX(-12px) scale(0.94);
+  opacity: 0.86;
+  will-change: transform;
+}
+body.gallery-date-scrubbing .gallery-date-scrubber-thumb { transition: width 180ms var(--ease), height 180ms var(--ease), background 180ms var(--ease), box-shadow 180ms var(--ease), transform 150ms var(--ease); }
 body.sheet-open .gallery-date-scrubber { opacity: 0; pointer-events: none; }
 @media (max-width: 760px) {
   .gallery-date-scrubber { right: 2px; width: 42px; }
@@ -3368,7 +3387,8 @@ body.sheet-open .gallery-date-scrubber { opacity: 0; pointer-events: none; }
   .gallery-date-scrubber,
   .gallery-date-scrubber-rail,
   .gallery-date-scrubber-thumb,
-  .gallery-date-scrubber-label { transition-duration: 1ms; }
+  .gallery-date-scrubber-label,
+  .grid { transition-duration: 1ms; }
 }
 .card {
   position: relative;

@@ -7326,8 +7326,13 @@ const galleryDateScrub = {
   active: false,
   pointerId: null,
   index: 0,
+  ratio: 0,
   groups: [],
   holdTimer: null,
+  previewResumeTimer: null,
+  ignoreScrollUntil: 0,
+  trackTop: 0,
+  trackHeight: 1,
   startX: 0,
   startY: 0,
 };
@@ -7341,24 +7346,38 @@ function galleryDateScrubberGroups() {
   }));
 }
 
-function setGalleryDateScrubberIndex(index, scroll = false, haptic = false) {
+function setGalleryDateScrubberRatio(ratio, haptic = false) {
   const scrubber = $('#galleryDateScrubber');
   const label = $('#galleryDateScrubberLabel');
   const groups = galleryDateScrub.groups;
   if (!scrubber || !groups.length) return;
-  const next = Math.max(0, Math.min(groups.length - 1, Math.round(index)));
+  const bounded = Math.max(0, Math.min(1, Number(ratio) || 0));
+  const next = Math.round(bounded * Math.max(0, groups.length - 1));
   const changed = next !== galleryDateScrub.index;
   galleryDateScrub.index = next;
-  const ratio = groups.length > 1 ? next / (groups.length - 1) : 0;
-  scrubber.style.setProperty('--gallery-scrub-ratio', String(ratio));
+  galleryDateScrub.ratio = bounded;
+  scrubber.style.setProperty('--gallery-scrub-ratio', String(bounded));
   scrubber.setAttribute('aria-valuenow', String(next));
   scrubber.setAttribute('aria-valuetext', groups[next].label);
   label.textContent = groups[next].label;
   if (haptic && changed && navigator.vibrate) navigator.vibrate(6);
-  if (scroll && changed) {
-    const target = window.scrollY + groups[next].divider.getBoundingClientRect().top - 72;
-    window.scrollTo({ top: Math.max(0, target), behavior: 'auto' });
-  }
+}
+
+function scrollGalleryToDate(index, behavior = 'smooth') {
+  const group = galleryDateScrub.groups[index];
+  if (!group) return;
+  galleryDateScrub.ignoreScrollUntil = performance.now() + (behavior === 'smooth' ? 720 : 80);
+  const target = window.scrollY + group.divider.getBoundingClientRect().top - 72;
+  window.scrollTo({ top: Math.max(0, target), behavior });
+}
+
+function setGalleryDateScrubberIndex(index, scroll = false, haptic = false, behavior = 'smooth') {
+  const groups = galleryDateScrub.groups;
+  if (!groups.length) return;
+  const next = Math.max(0, Math.min(groups.length - 1, Math.round(index)));
+  const ratio = groups.length > 1 ? next / (groups.length - 1) : 0;
+  setGalleryDateScrubberRatio(ratio, haptic);
+  if (scroll) scrollGalleryToDate(next, behavior);
 }
 
 function currentGalleryDateIndex() {
@@ -7386,6 +7405,37 @@ function resetGalleryDateScrubGesture() {
   document.body.classList.remove('gallery-date-scrubbing');
 }
 
+function positionGalleryDateScrubber() {
+  const scrubber = $('#galleryDateScrubber');
+  const grid = $('#galleryGrid');
+  if (!scrubber || !grid) return;
+  const gridRect = grid.getBoundingClientRect();
+  const selectBar = $('#selectBar');
+  const viewportBottom = selectBar && !selectBar.hidden
+    ? Math.min(window.innerHeight - 16, selectBar.getBoundingClientRect().top - 12)
+    : window.innerHeight - 18;
+  let top = Math.max(88, gridRect.top);
+  let bottom = Math.min(viewportBottom, gridRect.bottom);
+  if (bottom - top < 180) {
+    top = Math.max(88, Math.min(gridRect.top, window.innerHeight * 0.36));
+    bottom = Math.max(top + 180, viewportBottom);
+  }
+  const height = Math.max(180, Math.min(480, bottom - top));
+  const center = top + (bottom - top) / 2;
+  galleryDateScrub.trackTop = center - height / 2 + 30;
+  galleryDateScrub.trackHeight = Math.max(1, height - 60);
+  scrubber.style.setProperty('--gallery-scrub-center', `${center}px`);
+  scrubber.style.setProperty('--gallery-scrub-expanded-height', `${height}px`);
+}
+
+function resumeGalleryDateMedia(delay = 0) {
+  clearTimeout(galleryDateScrub.previewResumeTimer);
+  galleryDateScrub.previewResumeTimer = setTimeout(() => {
+    galleryDateScrub.previewResumeTimer = null;
+    resetGalleryPreviewObservation();
+  }, delay);
+}
+
 function syncGalleryDateScrubber() {
   const scrubber = $('#galleryDateScrubber');
   if (!scrubber) return;
@@ -7398,6 +7448,7 @@ function syncGalleryDateScrubber() {
     return;
   }
   scrubber.setAttribute('aria-valuemax', String(galleryDateScrub.groups.length - 1));
+  positionGalleryDateScrubber();
   setGalleryDateScrubberIndex(currentGalleryDateIndex());
 }
 
@@ -7406,13 +7457,24 @@ function scrubGalleryDateAt(clientY, haptic = true) {
   const rail = scrubber && scrubber.querySelector('.gallery-date-scrubber-rail');
   if (!rail || !galleryDateScrub.groups.length) return;
   const rect = rail.getBoundingClientRect();
-  const ratio = Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(1, rect.height)));
-  setGalleryDateScrubberIndex(ratio * (galleryDateScrub.groups.length - 1), true, haptic);
+  const top = galleryDateScrub.active ? galleryDateScrub.trackTop : rect.top;
+  const height = galleryDateScrub.active ? galleryDateScrub.trackHeight : rect.height;
+  const ratio = Math.max(0, Math.min(1, (clientY - top) / Math.max(1, height)));
+  setGalleryDateScrubberRatio(ratio, haptic);
 }
 
 function finishGalleryDateScrub(event) {
   if (event && galleryDateScrub.pointerId !== null && event.pointerId !== galleryDateScrub.pointerId) return;
+  const shouldSettle = galleryDateScrub.active;
+  const selectedIndex = galleryDateScrub.index;
+  if (shouldSettle) setGalleryDateScrubberIndex(selectedIndex);
   resetGalleryDateScrubGesture();
+  if (shouldSettle) {
+    scrollGalleryToDate(selectedIndex, 'smooth');
+    resumeGalleryDateMedia(560);
+  } else {
+    resumeGalleryDateMedia();
+  }
 }
 
 function beginGalleryDateScrub() {
@@ -7422,6 +7484,8 @@ function beginGalleryDateScrub() {
   $('#galleryDateScrubber').classList.remove('is-pressed');
   $('#galleryDateScrubber').classList.add('is-active');
   document.body.classList.add('gallery-date-scrubbing');
+  if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
+  $$('.gallery-card-video').forEach((video) => video.pause());
   if (navigator.vibrate) navigator.vibrate(10);
 }
 
@@ -7465,15 +7529,96 @@ $('#galleryDateScrubber').addEventListener('blur', () => {
   if (!galleryDateScrub.active) $('#galleryDateScrubber').classList.remove('is-keyboard-active');
 });
 window.addEventListener('scroll', () => {
-  if (galleryDateScrub.active || state.view !== 'gallery' || galleryDateScrollFrame) return;
+  if (galleryDateScrub.active || performance.now() < galleryDateScrub.ignoreScrollUntil || state.view !== 'gallery' || galleryDateScrollFrame) return;
   galleryDateScrollFrame = requestAnimationFrame(() => {
     galleryDateScrollFrame = 0;
     if (!galleryDateScrub.active && !$('#galleryDateScrubber').hidden) {
+      positionGalleryDateScrubber();
       setGalleryDateScrubberIndex(currentGalleryDateIndex());
     }
   });
 }, { passive: true });
 window.addEventListener('resize', syncGalleryDateScrubber);
+
+const gallerySelectionDrag = {
+  active: false,
+  pointerId: null,
+  card: null,
+  x: 0,
+  y: 0,
+  frame: 0,
+};
+
+function selectGalleryCardAtPoint(clientX, clientY) {
+  const actionBar = $('#selectBar');
+  const barTop = actionBar && !actionBar.hidden ? actionBar.getBoundingClientRect().top : window.innerHeight;
+  const sampleY = Math.max(84, Math.min(clientY, barTop - 10));
+  const element = document.elementFromPoint(clientX, sampleY);
+  const card = element && element.closest ? element.closest('#galleryGrid .card') : null;
+  const id = card && card.dataset.id;
+  if (!id || state.selected.has(id)) return;
+  state.selected.add(id);
+  card.classList.add('selected');
+  updateSelectBar();
+}
+
+function gallerySelectionScrollSpeed(clientY) {
+  const actionBar = $('#selectBar');
+  const bottom = actionBar && !actionBar.hidden
+    ? Math.min(window.innerHeight - 8, actionBar.getBoundingClientRect().top - 8)
+    : window.innerHeight - 8;
+  const top = 82;
+  const zone = Math.min(88, Math.max(54, (bottom - top) * 0.18));
+  if (clientY < top + zone) {
+    const pressure = Math.max(0, Math.min(1, (top + zone - clientY) / zone));
+    return -Math.round(4 + pressure * 18);
+  }
+  if (clientY > bottom - zone) {
+    const pressure = Math.max(0, Math.min(1, (clientY - (bottom - zone)) / zone));
+    return Math.round(4 + pressure * 18);
+  }
+  return 0;
+}
+
+function runGallerySelectionAutoScroll() {
+  gallerySelectionDrag.frame = 0;
+  if (!gallerySelectionDrag.active) return;
+  const speed = gallerySelectionScrollSpeed(gallerySelectionDrag.y);
+  if (speed) {
+    window.scrollBy(0, speed);
+    selectGalleryCardAtPoint(gallerySelectionDrag.x, gallerySelectionDrag.y);
+  }
+  gallerySelectionDrag.frame = requestAnimationFrame(runGallerySelectionAutoScroll);
+}
+
+function beginGallerySelectionDrag(card, pointerId, clientX, clientY) {
+  gallerySelectionDrag.active = true;
+  gallerySelectionDrag.pointerId = pointerId;
+  gallerySelectionDrag.card = card;
+  gallerySelectionDrag.x = clientX;
+  gallerySelectionDrag.y = clientY;
+  document.body.classList.add('gallery-select-dragging');
+  try { card.setPointerCapture(pointerId); } catch { /* pointer capture is an enhancement */ }
+  if (!gallerySelectionDrag.frame) gallerySelectionDrag.frame = requestAnimationFrame(runGallerySelectionAutoScroll);
+}
+
+function updateGallerySelectionDrag(event) {
+  if (!gallerySelectionDrag.active || event.pointerId !== gallerySelectionDrag.pointerId) return;
+  gallerySelectionDrag.x = event.clientX;
+  gallerySelectionDrag.y = event.clientY;
+  selectGalleryCardAtPoint(event.clientX, event.clientY);
+}
+
+function stopGallerySelectionDrag(event) {
+  if (!gallerySelectionDrag.active || (event && event.pointerId !== gallerySelectionDrag.pointerId)) return;
+  if (gallerySelectionDrag.frame) cancelAnimationFrame(gallerySelectionDrag.frame);
+  try { gallerySelectionDrag.card && gallerySelectionDrag.card.releasePointerCapture(gallerySelectionDrag.pointerId); } catch { /* noop */ }
+  gallerySelectionDrag.active = false;
+  gallerySelectionDrag.pointerId = null;
+  gallerySelectionDrag.card = null;
+  gallerySelectionDrag.frame = 0;
+  document.body.classList.remove('gallery-select-dragging');
+}
 
 function renderGrid() {
   const grid = $('#galleryGrid');
@@ -7613,29 +7758,29 @@ function renderGrid() {
     let lpTimer = null;
     let lpFired = false;
     let startXY = [0, 0];
+    let lastXY = [0, 0];
+    let pointerId = null;
     card.addEventListener('pointerdown', (e) => {
       lpFired = false;
+      pointerId = e.pointerId;
       startXY = [e.clientX, e.clientY];
+      lastXY = startXY;
       clearTimeout(lpTimer);
       lpTimer = setTimeout(() => {
         lpFired = true;
         if (navigator.vibrate) navigator.vibrate(12);
         if (!state.selectMode) enterSelectWith(it.id);
         else toggleSelect(it.id);
+        beginGallerySelectionDrag(card, pointerId, lastXY[0], lastXY[1]);
       }, 450);
     });
     card.addEventListener('pointermove', (e) => {
+      lastXY = [e.clientX, e.clientY];
       // After the hold engages, dragging across tiles sweeps them into the
       // selection (Google-Photos style).
       if (lpFired && state.selectMode) {
-        const el = document.elementFromPoint(e.clientX, e.clientY);
-        const other = el && el.closest ? el.closest('.card') : null;
-        const oid = other && other.dataset.id;
-        if (oid && !state.selected.has(oid)) {
-          state.selected.add(oid);
-          other.classList.add('selected');
-          updateSelectBar();
-        }
+        e.preventDefault();
+        updateGallerySelectionDrag(e);
         return;
       }
       if (Math.hypot(e.clientX - startXY[0], e.clientY - startXY[1]) > 12) clearTimeout(lpTimer);
@@ -7644,8 +7789,8 @@ function renderGrid() {
     card.addEventListener('touchmove', (e) => {
       if (lpFired && state.selectMode) e.preventDefault();
     }, { passive: false });
-    card.addEventListener('pointerup', () => clearTimeout(lpTimer));
-    card.addEventListener('pointercancel', () => clearTimeout(lpTimer));
+    card.addEventListener('pointerup', (event) => { clearTimeout(lpTimer); stopGallerySelectionDrag(event); });
+    card.addEventListener('pointercancel', (event) => { clearTimeout(lpTimer); stopGallerySelectionDrag(event); });
     card.addEventListener('contextmenu', (e) => e.preventDefault());
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }

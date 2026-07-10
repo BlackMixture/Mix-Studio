@@ -25,6 +25,14 @@ test('selected gallery cards shrink and restore with a smooth transition', () =>
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*\.card/);
 });
 
+test('hold-and-drag selection auto-scrolls near the visible gallery edges', () => {
+  assert.match(app, /function gallerySelectionScrollSpeed\(clientY\)/);
+  assert.match(app, /function runGallerySelectionAutoScroll\(\)/);
+  assert.match(app, /window\.scrollBy\(0, speed\)/);
+  assert.match(app, /beginGallerySelectionDrag\(card, pointerId, lastXY\[0\], lastXY\[1\]\)/);
+  assert.match(css, /body\.gallery-select-dragging \{/);
+});
+
 test('selection bar exposes save, group, composite, move, delete, and swipe-up insights', () => {
   for (const id of ['selSave', 'selGroup', 'selComposite', 'selMove', 'selDelete', 'selInsightsHandle']) {
     assert.match(html, new RegExp(`id="${id}"`));
