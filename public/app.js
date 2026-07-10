@@ -8266,6 +8266,41 @@ function scheduleSelectionInsightsRefresh(delay = 120) {
   }, delay);
 }
 
+const selectionActionIds = ['selSave', 'selGroup', 'selComposite', 'selMove', 'selDelete'];
+
+function restoreSelectionActions() {
+  const row = $('.select-actions');
+  const more = $('#selectionConsoleMoreActions');
+  if (!row || !more) return;
+  selectionActionIds.forEach((id) => {
+    const button = $('#' + id);
+    if (button) row.appendChild(button);
+  });
+  row.scrollLeft = 0;
+  more.hidden = true;
+}
+
+function populateSelectionExpandedActions() {
+  const row = $('.select-actions');
+  const more = $('#selectionConsoleMoreActions');
+  if (!row || !more) return;
+  restoreSelectionActions();
+  const buttons = selectionActionIds.map((id) => $('#' + id)).filter(Boolean);
+  const gap = parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap) || 0;
+  let used = 0;
+  let visible = 0;
+  buttons.forEach((button) => {
+    const width = button.getBoundingClientRect().width;
+    const next = used + (visible ? gap : 0) + width;
+    if (!visible || next <= row.clientWidth + 0.5) {
+      used = next;
+      visible += 1;
+    }
+  });
+  buttons.slice(visible).forEach((button) => more.appendChild(button));
+  more.hidden = more.childElementCount === 0;
+}
+
 function openSelectionInsights() {
   if (!state.selected.size) return;
   const consoleBar = $('#selectBar');
@@ -8276,11 +8311,13 @@ function openSelectionInsights() {
   $('#selectionConsoleDetails').setAttribute('aria-hidden', 'false');
   $('#selInsightsHandle').setAttribute('aria-expanded', 'true');
   $('#selInsightsHandle').setAttribute('aria-label', 'Dock selection console');
+  populateSelectionExpandedActions();
   scheduleSelectionInsightsRefresh(0);
 }
 
 function dockSelectionConsole() {
   const consoleBar = $('#selectBar');
+  restoreSelectionActions();
   consoleBar.classList.remove('is-expanded', 'is-dragging');
   consoleBar.style.removeProperty('--selection-detail-height');
   document.body.classList.remove('selection-console-expanded');
@@ -8295,6 +8332,10 @@ function dockSelectionConsole() {
     handle.setAttribute('aria-label', 'Expand selection console');
   }
 }
+
+window.addEventListener('resize', () => {
+  if ($('#selectBar').classList.contains('is-expanded')) populateSelectionExpandedActions();
+});
 
 function selectionConsoleHeight() {
   return Math.min(290, window.innerHeight * 0.38);

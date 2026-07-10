@@ -3486,7 +3486,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   display: grid;
   gap: 2px;
   padding: 4px 12px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(5, 6, 10, 0.95);
+  background: #000;
   border: 1px solid var(--line);
   border-bottom: 0;
   border-radius: 22px 22px 0 0;
@@ -3531,7 +3531,9 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .select-bar .select-count { flex: 0 0 auto; min-width: 70px; font-weight: 900; font-size: 13px; color: var(--ink); }
 .select-actions { min-width: 0; flex: 1; display: flex; gap: 7px; overflow-x: auto; padding: 3px 1px 5px; scrollbar-width: none; scroll-snap-type: x proximity; touch-action: pan-x; overscroll-behavior-x: contain; }
 .select-actions::-webkit-scrollbar { display: none; }
-.select-actions .action-btn {
+.select-bar.is-expanded .select-actions { overflow: hidden; scroll-snap-type: none; }
+.select-actions .action-btn,
+.selection-console-more-actions .action-btn {
   flex: 0 0 auto;
   min-width: 90px;
   min-height: 50px;
@@ -3548,11 +3550,19 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   font-weight: 800;
   scroll-snap-align: start;
 }
-.select-actions .action-btn b { color: currentColor; font-size: 17px; line-height: 1; }
-.select-actions .action-btn:active { background: rgba(255,255,255,0.09); transform: scale(0.96); }
-.select-actions .action-btn:disabled { opacity: 0.34; }
+.select-actions .action-btn b,
+.selection-console-more-actions .action-btn b { color: currentColor; font-size: 17px; line-height: 1; }
+.select-actions .action-btn:active,
+.selection-console-more-actions .action-btn:active { background: rgba(255,255,255,0.09); transform: scale(0.96); }
+.select-actions .action-btn:disabled,
+.selection-console-more-actions .action-btn:disabled { opacity: 0.34; }
 .select-actions .action-btn.danger b,
-.select-actions .action-btn.danger span { color: #ff9f97; }
+.select-actions .action-btn.danger span,
+.selection-console-more-actions .action-btn.danger b,
+.selection-console-more-actions .action-btn.danger span { color: #ff9f97; }
+.selection-console-more-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.selection-console-more-actions[hidden] { display: none; }
+.selection-console-more-actions .action-btn { width: 100%; min-width: 0; }
 .select-bar[hidden] { display: none; }
 .selection-insights-status { margin: 0 0 14px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .selection-insights-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
