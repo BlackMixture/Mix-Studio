@@ -38,9 +38,18 @@ test('documentation metadata omits unavailable values and exposes saved generati
 });
 
 test('prompt control represents the prompt used for generation', () => {
-  assert.match(app, /const prompt = item\.refinedPrompt \|\| item\.prompt/);
+  assert.match(app, /const prompt = documentationAnglePrompt\(item\) \|\| item\.refinedPrompt \|\| item\.prompt/);
   assert.match(app, /add\('prompt', 'Prompt', prompt\)/);
   assert.match(app, /add\('originalPrompt', 'Original prompt', item\.prompt\)/);
+});
+
+test('camera variation documentation uses its angle-specific graph prompt', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(server, /anglePrompt: job\.params\.anglePrompt \|\| undefined/);
+  assert.match(app, /function documentationAnglePrompt\(item\)/);
+  assert.match(app, /item && item\.anglePrompt/);
+  assert.match(app, /front-right quarter view/);
+  assert.match(app, /item\.editEngine === 'qwen'/);
 });
 
 test('export uses a restrained research-record treatment without branding', () => {

@@ -9427,15 +9427,53 @@ function hasDocumentationValue(value) {
   return value !== null && value !== undefined && value !== '';
 }
 
+function documentationAnglePrompt(item) {
+  if (hasDocumentationValue(item && item.anglePrompt)) return String(item.anglePrompt);
+  const angle = item && item.angleView;
+  if (!angle || typeof angle !== 'object') return '';
+  const viewLabels = {
+    front: 'front view',
+    'front-right': 'front-right quarter view',
+    right: 'right side view',
+    'back-right': 'back-right quarter view',
+    back: 'back view',
+    'back-left': 'back-left quarter view',
+    left: 'left side view',
+    'front-left': 'front-left quarter view',
+  };
+  let instruction = '';
+  if (item.editEngine === 'qwen') {
+    instruction = [
+      '<sks>',
+      angle.view ? viewLabels[angle.view] : '',
+      angle.elevation ? `${angle.elevation} shot` : '',
+      angle.distance || '',
+    ].filter(Boolean).join(' ');
+  } else {
+    const camera = [
+      angle.view && viewLabels[angle.view] ? `from a ${viewLabels[angle.view]}` : '',
+      angle.elevation ? `using a ${angle.elevation} shot` : '',
+      angle.distance ? `with ${angle.distance} framing` : '',
+    ].filter(Boolean).join(', ');
+    instruction = [
+      `Re-render the same subject ${camera}`,
+      'Preserve the subject identity, clothing, proportions, materials, lighting, environment, and visual style',
+      'Infer unseen surfaces as a coherent continuation of the same subject',
+      'Show one image from only this new viewpoint; do not make a collage, split screen, turntable, or duplicate subject',
+    ].join('. ');
+  }
+  return [instruction, String(item.prompt || '').trim()].filter(Boolean).join('. ');
+}
+
 function documentationMetadata(item) {
   const metadata = [];
   const add = (key, label, value) => {
     if (hasDocumentationValue(value)) metadata.push({ key, label, value: String(value) });
   };
   add('model', 'Model', galleryImageModelLabel(item));
-  const prompt = item.refinedPrompt || item.prompt;
+  const prompt = documentationAnglePrompt(item) || item.refinedPrompt || item.prompt;
   add('prompt', 'Prompt', prompt);
-  if (item.refinedPrompt && item.prompt && item.refinedPrompt !== item.prompt) add('originalPrompt', 'Original prompt', item.prompt);
+  if (item.prompt && prompt && prompt !== item.prompt) add('originalPrompt', 'Original prompt', item.prompt);
   if (hasDocumentationValue(item.width) && hasDocumentationValue(item.height)) add('size', 'Size', `${item.width} × ${item.height}`);
   add('seed', 'Seed', item.seed);
   add('steps', 'Steps', item.steps);

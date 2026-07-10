@@ -1236,6 +1236,7 @@ async function completeJob(pid) {
         total: job.params.editSequence.total,
       } : undefined,
       angleView: job.params.qwenAngle || undefined,
+      anglePrompt: job.params.anglePrompt || undefined,
       angleGroupId: job.params.angleGroupId || undefined,
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
