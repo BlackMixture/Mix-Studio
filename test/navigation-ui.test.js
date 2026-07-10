@@ -234,6 +234,8 @@ test('gallery media supports profile-scoped likes by double tap and a likes-only
   assert.match(app, /const likedIds = new Set\(arr\.map\(\(it\) => it\.id\)\)/);
   assert.match(app, /likedIds\.has\(it\.id\)[\s\S]*likedAngleGroups\.has\(it\.angleGroupId\)/);
   assert.match(app, /function setVideoLiked\(item, video, liked, burstTarget\)/);
+  assert.match(app, /heart: '<path fill="none" stroke="currentColor"/);
+  assert.match(app, /function syncLightboxLikeButton\(liked, label\)/);
   assert.match(server, /video\.liked = body\.liked === true/);
   assert.match(app, /like-toggle/);
   assert.match(app, /heart-fill/);

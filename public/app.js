@@ -639,7 +639,7 @@ function actionIconMarkup(icon) {
     save: '<path d="M5 3h12l3 3v15H4V3h1Zm1 2v14h12V6.8L16.2 5H6Zm2 0h6v5H8V5Zm1 10h6v4H9v-4Z"/>',
     composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
     process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
-    heart: '<path d="M12 20.7 4.4 13A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 7.6 7L12 20.7Zm0-2.8 6.1-6.2a3.2 3.2 0 0 0-4.5-4.5L12 8.8l-1.6-1.6a3.2 3.2 0 0 0-4.5 4.5L12 17.9Z"/>',
+    heart: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/>',
     'heart-fill': '<path d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/>',
   };
   return `<svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${paths[icon] || paths.use}</svg>`;
@@ -6888,6 +6888,16 @@ function playLikeBurst(target, mode = 'like') {
   }, mode === 'like' ? 760 : 580);
 }
 
+function syncLightboxLikeButton(liked, label) {
+  const button = $('#lbActions .like-toggle');
+  if (!button) return;
+  button.classList.toggle('liked', liked);
+  button.innerHTML = actionIconMarkup(liked ? 'heart-fill' : 'heart');
+  button.setAttribute('aria-pressed', String(liked));
+  button.setAttribute('aria-label', label);
+  button.title = label;
+}
+
 async function setItemLiked(item, liked, burstTarget) {
   if (!item) return;
   const targets = [item];
@@ -6897,6 +6907,7 @@ async function setItemLiked(item, liked, burstTarget) {
     target.liked = liked;
     target._likePending = true;
   });
+  syncLightboxLikeButton(liked, liked ? 'Unlike' : 'Like');
   playLikeBurst(burstTarget, liked ? 'like' : 'unlike');
   // Leave the original card mounted until the heart motion has painted.
   // Rendering immediately used to remove the grid burst before it was visible.
@@ -6908,6 +6919,7 @@ async function setItemLiked(item, liked, burstTarget) {
     updated.forEach((result, index) => Object.assign(targets[index], result));
   } catch (error) {
     targets.forEach((target, index) => { target.liked = previous[index]; });
+    syncLightboxLikeButton(previous[0], previous[0] ? 'Unlike' : 'Like');
     toast(error.message, true);
     renderGrid();
   } finally {
@@ -6920,6 +6932,7 @@ async function setVideoLiked(item, video, liked, burstTarget) {
   const previous = !!video.liked;
   video.liked = liked;
   video._likePending = true;
+  syncLightboxLikeButton(liked, liked ? 'Unlike video' : 'Like video');
   playLikeBurst(burstTarget, liked ? 'like' : 'unlike');
   try {
     const updated = await api(`/api/item/${item.id}/video/${video.id}`, {
@@ -6931,6 +6944,7 @@ async function setVideoLiked(item, video, liked, burstTarget) {
     if (state.currentItem && state.currentItem.id === item.id) openLightbox(item.id, video.id);
   } catch (error) {
     video.liked = previous;
+    syncLightboxLikeButton(previous, previous ? 'Unlike video' : 'Like video');
     toast(error.message, true);
   } finally {
     video._likePending = false;
