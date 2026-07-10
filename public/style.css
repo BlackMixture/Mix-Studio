@@ -216,7 +216,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   margin: 0;
   line-height: 0;
 }
-.drawer-wordmark-crop { position: relative; width: 146px; height: 30px; display: block; overflow: hidden; }
+.drawer-wordmark-crop { position: relative; width: 154px; height: 30px; display: block; overflow: hidden; }
 .drawer-wordmark-crop img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
 .app-drawer-close {
   width: 40px;
