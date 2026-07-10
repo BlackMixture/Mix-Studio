@@ -10,6 +10,7 @@ const {
   parseProfileToken,
   publicProfile,
   adoptOrphans,
+  hasOrphans,
 } = require('../lib/profiles');
 
 test('pin hashing verifies correct pin and rejects wrong pin', () => {
@@ -34,6 +35,14 @@ test('publicProfile counts items and hides pin material', () => {
   const pub = publicProfile({ id: 'p1', name: 'Nathan', pinHash: 'x', pinSalt: 'y', createdAt: 1 }, db);
   assert.deepEqual(pub, { id: 'p1', name: 'Nathan', hasPin: true, avatar: null, createdAt: 1, itemCount: 2 });
   assert.equal('pinHash' in pub, false);
+});
+
+test('hasOrphans is false on a fresh db, true when legacy content is unowned', () => {
+  assert.equal(hasOrphans({}), false);
+  assert.equal(hasOrphans({ items: [], folders: [], history: [], loraPresets: [], faces: [] }), false);
+  assert.equal(hasOrphans({ items: [{ id: 'a', profileId: 'p1' }] }), false);
+  assert.equal(hasOrphans({ items: [{ id: 'a' }] }), true);
+  assert.equal(hasOrphans({ history: [{ ts: 1 }] }), true);
 });
 
 test('adoptOrphans assigns unowned content to the given profile', () => {

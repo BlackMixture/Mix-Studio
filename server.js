@@ -98,6 +98,7 @@ const {
   parseProfileToken,
   publicProfile,
   adoptOrphans,
+  hasOrphans,
 } = require('./lib/profiles');
 
 const ROOT = __dirname;
@@ -356,12 +357,14 @@ try {
 if (!db.loraThumbs || typeof db.loraThumbs !== 'object') db.loraThumbs = {};
 if (!Array.isArray(db.profiles)) db.profiles = [];
 {
-  // First boot with profiles: create Nathan and adopt all existing content
-  if (!db.profiles.length) {
-    db.profiles.push({ id: uid(), name: 'Nathan', pinHash: null, pinSalt: null, createdAt: Date.now() });
-    console.log('[profiles] created default profile "Nathan"');
+  // Migration from the pre-profiles era: if content exists that nobody owns,
+  // create an owner profile and adopt it. Fresh installs (empty db) skip this
+  // and go straight to the create-profile gate in the UI.
+  if (!db.profiles.length && hasOrphans(db)) {
+    db.profiles.push({ id: uid(), name: 'Owner', pinHash: null, pinSalt: null, createdAt: Date.now() });
+    console.log('[profiles] created default profile "Owner" for existing content');
   }
-  const adopted = adoptOrphans(db, db.profiles[0].id);
+  const adopted = db.profiles.length ? adoptOrphans(db, db.profiles[0].id) : 0;
   if (adopted) {
     console.log(`[profiles] assigned ${adopted} existing entr${adopted === 1 ? 'y' : 'ies'} to "${db.profiles[0].name}"`);
   }

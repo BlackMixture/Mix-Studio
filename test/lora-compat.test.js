@@ -10,7 +10,7 @@ const {
 
 test('classifies Krea2 LoRAs from metadata and key samples', () => {
   assert.equal(classifyLora({
-    name: 'nathan_likeness_krea2 3500.safetensors',
+    name: 'subject_likeness_krea2 3500.safetensors',
     metadata: { ss_base_model_version: 'krea2' },
     keys: ['diffusion_model.blocks.0.attn.wq.lora_A.weight'],
   }), 'krea2');
@@ -39,10 +39,10 @@ test('unknown LoRAs are allowed by context filters', () => {
 
 test('warning lists incompatible selected LoRAs', () => {
   const warning = loraCompatibilityWarning(
-    [{ name: 'nathan.safetensors', on: true }],
-    { 'nathan.safetensors': { category: 'krea2' } },
+    [{ name: 'portrait.safetensors', on: true }],
+    { 'portrait.safetensors': { category: 'krea2' } },
     'edit',
     'qwen'
   );
-  assert.match(warning, /nathan/);
+  assert.match(warning, /portrait/);
 });
