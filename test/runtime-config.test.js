@@ -28,7 +28,7 @@ test('source installs keep the legacy data folder and Git updater by default', (
 });
 
 test('portable install metadata can reuse an existing ComfyUI and shared models', () => {
-  const root = path.resolve('/apps/MixBox Studio');
+  const root = path.resolve('/apps/Mix Studio');
   const installFile = path.join(root, 'install.json');
   const io = fakeFs({
     [installFile]: {

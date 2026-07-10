@@ -31,6 +31,8 @@ Double-click `uninstall.bat` in the checkout. It removes the portable Mix Studio
 
 For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout and its local `data/` folder; external data and model paths are not touched.
 
+Browser-installed shortcuts, form state, media preferences, and compressed preview caches are stored independently on each device. Remove or clear them from that browser if a complete device-side cleanup is required.
+
 ## Reusing models
 
 Mix Studio sends model filenames to the connected ComfyUI API. The selected ComfyUI instance must therefore already see the model folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; the installer does not modify an existing ComfyUI configuration without permission.
@@ -46,5 +48,7 @@ git pull --ff-only origin <current-branch>
 ```
 
 It refuses to update a detached HEAD or a checkout with modified tracked code. Because `data/` and `install.json` are ignored, updating code does not overwrite the local database, settings, uploads, generations, or ComfyUI paths.
+
+The owner-only **Restart app** action uses the restart-aware `start.bat` launcher. It refuses while either the Mix Studio queue or the connected ComfyUI queue is active.
 
 A ZIP archive is runnable after setup, but it has no Git metadata and therefore cannot use the in-app updater. A clone is the supported installation method.

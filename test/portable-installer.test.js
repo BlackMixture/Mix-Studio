@@ -9,9 +9,13 @@ const root = path.resolve(__dirname, '..');
 
 test('portable installer has a double-click Windows entry point', () => {
   const launcher = fs.readFileSync(path.join(root, 'install.bat'), 'utf8');
+  const start = fs.readFileSync(path.join(root, 'start.bat'), 'utf8');
   assert.match(launcher, /installer\\install-ui\.ps1/i);
   assert.match(launcher, /ExecutionPolicy Bypass/i);
   assert.match(launcher, /-STA/);
+  assert.match(start, /title Mix Studio/i);
+  assert.match(start, /MIXBOX_RESTART_MODE=batch/);
+  assert.doesNotMatch(start, /MixBox Studio/);
 });
 
 test('portable installer opens a branded WPF wizard instead of a terminal questionnaire', () => {
@@ -58,7 +62,7 @@ test('portable installer validates direct engine input and keeps unique backups'
   assert.match(installer, /Normalize-ComfyUrl/);
   assert.match(installer, /http.*https/);
   assert.match(installer, /while \(Test-Path \$Backup\)/);
-  assert.match(installer, /appId = 'mixbox-studio'/);
+  assert.match(installer, /appId = 'mix-studio'/);
 });
 
 test('portable checkout has a conservative uninstaller entry point', () => {
@@ -67,6 +71,7 @@ test('portable checkout has a conservative uninstaller entry point', () => {
   assert.match(launcher, /installer\\uninstall\.ps1/i);
   assert.match(launcher, /ExecutionPolicy Bypass/i);
   assert.match(uninstaller, /Assert-SafeInstallRoot/);
+  assert.match(uninstaller, /@\('mix-studio', 'mixbox-studio'\)/);
   assert.match(uninstaller, /ComfyUI.*Node\.js.*never removed/i);
   assert.match(uninstaller, /-RemoveData/);
   assert.match(uninstaller, /Type DELETE to continue/);

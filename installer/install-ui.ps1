@@ -221,7 +221,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
-                  <StackPanel><TextBlock Text="↻" FontSize="22" Foreground="#7EA2FF"/><TextBlock Text="Updates stay simple" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Pull new versions from Git without replacing your local data." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
+                  <StackPanel><TextBlock Text="↻" FontSize="22" Foreground="#7EA2FF"/><TextBlock Text="Updates and restarts" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Pull new versions or restart from the app menu when both queues are idle." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
                 </Border>
                 <Border Grid.Column="2" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
                   <StackPanel><TextBlock Text="◇" FontSize="22" Foreground="#A88CFF"/><TextBlock Text="Reuse your setup" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Keep ComfyUI and large model files exactly where they are." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>

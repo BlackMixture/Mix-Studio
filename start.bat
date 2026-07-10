@@ -1,7 +1,7 @@
 @echo off
-title MixBox Studio
+title Mix Studio
 cd /d "%~dp0"
-echo Starting MixBox Studio...
+echo Starting Mix Studio...
 where node >nul 2>nul
 if errorlevel 1 (
   echo Node.js was not found. Run install.bat first.

@@ -53,9 +53,9 @@ test('tracked local changes block an update before pulling', async () => {
   assert.equal(fake.calls.length, 1);
 });
 
-test('owner can restart MixBox Studio safely from the app drawer', () => {
+test('owner can restart Mix Studio safely from the app drawer', () => {
   assert.match(server, /route === '\/api\/app\/restart'/);
-  assert.match(server, /Only the owner profile can restart MixBox Studio/);
+  assert.match(server, /Only the owner profile can restart Mix Studio/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
   assert.match(html, /id="appRestartBtn"/);
   assert.match(html, /id="appRestartBtn"[\s\S]*stroke="currentColor"/);

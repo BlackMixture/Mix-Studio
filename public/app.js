@@ -7938,6 +7938,7 @@ document.addEventListener('visibilitychange', () => {
 
 let galleryTap = null;
 let lightboxTap = null;
+let lightboxSwipeSuppressTap = false;
 
 function playLikeBurst(target, mode = 'like') {
   if (!target) return;
@@ -8044,6 +8045,7 @@ function handleGalleryTap(item, card) {
 }
 
 function handleLightboxTap() {
+  if (lightboxSwipeSuppressTap) return;
   const item = state.currentItem;
   if (!item) return;
   const selectedVideo = state.currentMedia && state.currentMedia.type === 'video'
@@ -8466,15 +8468,28 @@ async function saveImageComposite(item, type) {
   }
 }
 
+let resetLightboxSwipeVisuals = () => {};
+
+function preloadLightboxNeighbors(item) {
+  [-1, 1].forEach((direction) => {
+    const neighbor = galleryNavigationTarget(item, direction);
+    if (!neighbor || !neighbor.file) return;
+    const image = new Image();
+    image.src = '/images/' + (neighbor.upscaled || neighbor.file);
+  });
+}
+
 function openLightbox(id, mediaSel) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
+  resetLightboxSwipeVisuals();
   const freshOpen = !$('#lightbox').classList.contains('show');
   if (freshOpen) {
     lockScroll();
     try { history.pushState({ lb: 1 }, ''); } catch { /* noop */ }
   }
   state.currentItem = it;
+  preloadLightboxNeighbors(it);
   const angleItems = angleGroupItems(it);
   const angleIndex = angleItems.findIndex((item) => item.id === it.id);
   const generationItems = generationGroupItems(it);
@@ -8828,6 +8843,7 @@ function openLightbox(id, mediaSel) {
 }
 function closeLightbox(fromPop) {
   closeActionMenu();
+  resetLightboxSwipeVisuals();
   $('#lightbox').classList.remove('show');
   const vid = $('#lbVideo');
   try { vid.pause(); } catch { /* noop */ }
@@ -8981,34 +8997,152 @@ $('#lbCompareBtn').addEventListener('click', () => {
 /* Swipe left/right in the lightbox to move between generations */
 (() => {
   const wrap = document.querySelector('.lightbox-img-wrap');
-  let x0 = 0;
-  let y0 = 0;
-  let t0 = 0;
-  let active = false;
+  const preview = $('#lbSwipePreview');
+  let swipe = null;
+  let animationToken = 0;
+
+  const currentMedia = () => ($('#lbVideo').hidden ? $('#lbImg') : $('#lbVideo'));
+
+  function clearSwipeVisuals() {
+    animationToken += 1;
+    [$('#lbImg'), $('#lbVideo'), preview].forEach((element) => {
+      element.getAnimations().forEach((animation) => animation.cancel());
+      element.style.transform = '';
+      element.style.opacity = '';
+    });
+    preview.hidden = true;
+    preview.removeAttribute('src');
+    wrap.classList.remove('is-swiping', 'is-settling');
+    swipe = null;
+  }
+  resetLightboxSwipeVisuals = clearSwipeVisuals;
+
+  function setSwipeNeighbor(direction) {
+    if (!swipe || swipe.direction === direction) return;
+    swipe.direction = direction;
+    swipe.neighbor = state.currentItem ? galleryNavigationTarget(state.currentItem, direction) : null;
+    if (!swipe.neighbor) {
+      preview.hidden = true;
+      preview.removeAttribute('src');
+      return;
+    }
+    preview.src = '/images/' + (swipe.neighbor.upscaled || swipe.neighbor.file);
+    preview.hidden = false;
+  }
+
+  function renderLightboxSwipe(rawDx) {
+    if (!swipe) return;
+    const width = Math.max(1, wrap.clientWidth);
+    const direction = rawDx < 0 ? 1 : -1;
+    setSwipeNeighbor(direction);
+    const dx = swipe.neighbor ? rawDx : rawDx * 0.22;
+    const progress = Math.min(1, Math.abs(dx) / width);
+    const side = direction > 0 ? width : -width;
+    swipe.dx = dx;
+    swipe.current.style.transform = `translate3d(${dx}px, 0, 0) scale(${1 - progress * 0.018})`;
+    swipe.current.style.opacity = String(1 - progress * 0.22);
+    if (swipe.neighbor) {
+      preview.style.transform = `translate3d(${side + dx}px, 0, 0) scale(${0.985 + progress * 0.015})`;
+      preview.style.opacity = String(0.46 + progress * 0.54);
+    }
+    wrap.classList.add('is-swiping');
+  }
+
+  function finishLightboxSwipe(commit) {
+    if (!swipe) return;
+    const currentSwipe = swipe;
+    const width = Math.max(1, wrap.clientWidth);
+    const side = currentSwipe.direction > 0 ? width : -width;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const duration = reduced ? 1 : (commit ? 210 : 260);
+    const easing = commit ? 'cubic-bezier(.2,.78,.22,1)' : 'cubic-bezier(.18,.82,.22,1)';
+    const token = ++animationToken;
+    wrap.classList.add('is-settling');
+    const animations = [currentSwipe.current.animate([
+      { transform: currentSwipe.current.style.transform || 'translate3d(0,0,0)', opacity: currentSwipe.current.style.opacity || 1 },
+      { transform: `translate3d(${commit ? -side : 0}px,0,0) scale(${commit ? 0.98 : 1})`, opacity: commit ? 0.18 : 1 },
+    ], { duration, easing, fill: 'forwards' })];
+    if (currentSwipe.neighbor) {
+      animations.push(preview.animate([
+        { transform: preview.style.transform, opacity: preview.style.opacity || 0.46 },
+        { transform: `translate3d(${commit ? 0 : side}px,0,0) scale(${commit ? 1 : 0.985})`, opacity: commit ? 1 : 0.46 },
+      ], { duration, easing, fill: 'forwards' }));
+    }
+    Promise.all(animations.map((animation) => animation.finished.catch(() => null))).then(() => {
+      if (token !== animationToken) return;
+      const next = commit ? currentSwipe.neighbor : null;
+      clearSwipeVisuals();
+      if (next) openLightbox(next.id);
+      setTimeout(() => { lightboxSwipeSuppressTap = false; }, commit ? 280 : 80);
+    });
+  }
+
   wrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
     if (e.target.tagName === 'VIDEO') {
       // allow swiping on the video body, but not over the control bar
       const r = e.target.getBoundingClientRect();
-      if (e.touches[0].clientY > r.bottom - 72) { active = false; return; }
+      if (e.touches[0].clientY > r.bottom - 72) return;
     }
+    clearSwipeVisuals();
     const t = e.touches[0];
-    x0 = t.clientX;
-    y0 = t.clientY;
-    t0 = Date.now();
-    active = true;
+    const now = performance.now();
+    swipe = {
+      x0: t.clientX,
+      y0: t.clientY,
+      t0: now,
+      lastX: t.clientX,
+      lastTime: now,
+      velocityX: 0,
+      dx: 0,
+      direction: 0,
+      neighbor: null,
+      current: currentMedia(),
+      locked: false,
+    };
   }, { passive: true });
+
+  wrap.addEventListener('touchmove', (e) => {
+    if (!swipe || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = t.clientX - swipe.x0;
+    const dy = t.clientY - swipe.y0;
+    if (!swipe.locked) {
+      if (Math.hypot(dx, dy) < 8) return;
+      if (Math.abs(dy) > Math.abs(dx) * 0.82) {
+        clearSwipeVisuals();
+        return;
+      }
+      swipe.locked = true;
+      lightboxSwipeSuppressTap = true;
+    }
+    e.preventDefault();
+    const now = performance.now();
+    const elapsed = Math.max(1, now - swipe.lastTime);
+    swipe.velocityX = (t.clientX - swipe.lastX) / elapsed;
+    swipe.lastX = t.clientX;
+    swipe.lastTime = now;
+    renderLightboxSwipe(dx);
+  }, { passive: false });
+
   wrap.addEventListener('touchend', (e) => {
-    if (!active) return;
-    active = false;
+    if (!swipe) return;
     const t = e.changedTouches[0];
-    const dx = t.clientX - x0;
-    const dy = t.clientY - y0;
-    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.7 || Date.now() - t0 > 600) return;
-    if (!state.currentItem) return;
-    const next = galleryNavigationTarget(state.currentItem, dx < 0 ? 1 : -1);
-    if (next) openLightbox(next.id);
-    else toast(dx < 0 ? 'Last item' : 'Newest item');
+    const rawDx = t.clientX - swipe.x0;
+    if (!swipe.locked) {
+      clearSwipeVisuals();
+      return;
+    }
+    renderLightboxSwipe(rawDx);
+    const velocity = Math.abs(swipe.velocityX) > 0.05
+      ? swipe.velocityX
+      : rawDx / Math.max(1, performance.now() - swipe.t0);
+    const commit = !!swipe.neighbor
+      && (Math.abs(rawDx) >= wrap.clientWidth * 0.2 || Math.abs(velocity) >= 0.48);
+    if (!swipe.neighbor) toast(rawDx < 0 ? 'Last item' : 'Newest item');
+    finishLightboxSwipe(commit);
   }, { passive: true });
+  wrap.addEventListener('touchcancel', () => finishLightboxSwipe(false), { passive: true });
 })();
 
 function restoredLoraList(loras) {

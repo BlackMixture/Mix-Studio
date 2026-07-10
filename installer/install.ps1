@@ -195,7 +195,7 @@ if (Test-Path $FeatureManifest) {
 
 $InstallConfig = [pscustomobject]@{
   schemaVersion = 1
-  appId = 'mixbox-studio'
+  appId = 'mix-studio'
   installMode = 'portable'
   dataDir = 'data'
   createdAt = [string](Existing-PropertyValue $ExistingInstall 'createdAt' ([DateTime]::UtcNow.ToString('o')))

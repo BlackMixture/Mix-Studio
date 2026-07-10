@@ -78,7 +78,8 @@ Assert-SafeInstallRoot
 $Install = Read-JsonObject $InstallFile
 $AppId = [string](Property-Or $Install 'appId' '')
 $InstallMode = [string](Property-Or $Install 'installMode' '')
-if ($AppId -and $AppId -ne 'mixbox-studio') { throw "This checkout belongs to another application ($AppId). Nothing was changed." }
+$SupportedAppIds = @('mix-studio', 'mixbox-studio')
+if ($AppId -and $AppId -notin $SupportedAppIds) { throw "This checkout belongs to another application ($AppId). Nothing was changed." }
 if ($InstallMode -and $InstallMode -ne 'portable') { throw "This is not a portable Mix Studio install. Nothing was changed." }
 if ($RemoveData -and $KeepData) { throw 'Choose either -RemoveData or -KeepData, not both.' }
 
@@ -86,6 +87,7 @@ $PreserveData = -not $RemoveData
 Write-Host ''
 Write-Host '  Mix Studio uninstaller' -ForegroundColor White
 Write-Host '  ComfyUI, shared models, and Node.js are never removed by this tool.' -ForegroundColor DarkGray
+Write-Host '  Browser shortcuts, browser form settings, and preview caches must be removed on each device.' -ForegroundColor DarkGray
 Write-Host "  Application folder: $Root" -ForegroundColor DarkGray
 if (Test-Path $LocalData) {
   if ($PreserveData) {

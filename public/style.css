@@ -3603,6 +3603,18 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   border-radius: 10px;
 }
 .lightbox-img-wrap video { background: #000; }
+#lbImg,
+#lbVideo,
+.lightbox-swipe-preview { will-change: transform, opacity; }
+#lbImg,
+#lbVideo { z-index: 2; }
+.lightbox-swipe-preview {
+  z-index: 1;
+  pointer-events: none;
+  background: #000;
+  box-shadow: 0 16px 50px rgba(0,0,0,0.46);
+}
+.lightbox-img-wrap.is-swiping .lb-float-btn { opacity: 0; }
 .lb-float-btn {
   position: absolute;
   top: 18px;
@@ -3635,6 +3647,11 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .like-burst.unlike svg { animation: unlikeBurst 520ms cubic-bezier(.42,0,.7,.5) both; }
 @keyframes likeBurst { 0% { opacity: 0; transform: scale(.35); } 20% { opacity: 1; transform: scale(1.16); } 48% { opacity: 1; transform: scale(.94); } 100% { opacity: 0; transform: scale(1.45); } }
 @keyframes unlikeBurst { 0% { opacity: .96; transform: scale(1); } 35% { opacity: 1; transform: scale(.78); } 100% { opacity: 0; transform: translateY(18px) scale(.2); } }
+@media (prefers-reduced-motion: reduce) {
+  #lbImg,
+  #lbVideo,
+  .lightbox-swipe-preview { will-change: auto; }
+}
 .card .badge.angle-group-badge {
   top: 8px;
   right: 8px;

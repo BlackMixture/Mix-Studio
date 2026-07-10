@@ -39,7 +39,7 @@ The installer supports an existing ComfyUI URL, application folder, and models f
 
 You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
 
-To remove Mix Studio, double-click **uninstall.bat**. The uninstaller removes the portable app checkout but keeps `data/` by default so profiles and generated media can be reused after reinstalling. Use the explicit `-RemoveData` option only when you also want to erase that local gallery data; it requires typing `DELETE`. ComfyUI, shared model folders, and the system Node.js installation are never removed.
+To remove Mix Studio, double-click **uninstall.bat**. The uninstaller removes the portable app checkout but keeps `data/` by default so profiles and generated media can be reused after reinstalling. Use the explicit `-RemoveData` option only when you also want to erase that local gallery data; it requires typing `DELETE`. ComfyUI, shared model folders, and the system Node.js installation are never removed. Browser-installed shortcuts, local form settings, and compressed preview caches live on each phone or browser and must be cleared there.
 
 ### Installing missing dependencies
 
@@ -60,13 +60,15 @@ Open Mix Studio's side menu and choose **Update app**. Updates require:
 
 Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side updates restart the Node process automatically; frontend-only updates do not need a restart.
 
+The owner can also choose **Restart app** from the same menu. It checks both Mix Studio and ComfyUI queues before restarting the Node server, and is available because `start.bat` launches the server in restart-aware mode.
+
 ## Features
 
 **Profiles** — Netflix-style profile picker with avatars and optional PINs. Every profile has its own gallery, folders, history, LoRA presets, Face ID library, and form state. The first profile owns profile management. Signed-cookie sessions; rolling db backups (boot + every 30 min).
 
 **Create (text-to-image)** — Krea 2 Turbo by default, with a Raw checkpoint switch (Raw starts with the Turbo LoRA at 0.6/12 steps and can fall back to full 52-step CFG sampling); optional image-to-image guidance; ✨ prompt enhance via Qwen3-VL; collapsible resolution selector with live aspect glyph; camera-settings helper; image→prompt vision tool; **regional prompting**: draw boxes on an aspect-true canvas, per-region prompt/LoRA/reference, no general prompt required, gallery hold-preview + color-coded annotated PNG export.
 
-**Edit** — Flux 2 Klein 4B/9B multi-reference editing (numbered slots: "the jacket from image 2"), Qwen Image Edit 2511 (Lightning 4-step), **Krea2 mask inpainting** (paint the mask, denoise = change strength, mask preview on the slot), KleinEditComposite preserve-unchanged, hold-to-compare original.
+**Edit** — Flux 2 Klein 4B/9B multi-reference editing (numbered slots: "the jacket from image 2"), Qwen Image Edit 2511 with Fast/Quality sampling, camera variations for Qwen and Klein, sequential sentence-by-sentence edits, **Krea2 mask inpainting** (paint the mask, denoise = change strength, mask preview on the slot), Krea 2 reference editing, KleinEditComposite preserve-unchanged, hold-to-compare original.
 
 **Video** — five engines with per-engine contextual controls:
 - **LTX 2.3**: two-stage, 25 fps, generates audio, t2v/i2v, end frames, audio-driven with waveform trimming, motion freedom
@@ -78,11 +80,11 @@ Machine-specific `install.json` and all `data/` content are ignored by Git, so n
 
 **LoRAs** — card grid shared by every tab: tap to toggle, hold-and-slide to adjust strength, thumbnails, searchable picker (also used for region LoRAs), server-stored presets.
 
-**Gallery** — folders with PIN-locked privates (items can be dropped in without unlocking; viewing requires the PIN), folder merge, long-press + drag-sweep multi-select, filter/sort, full-page swipe viewer, videos grouped under their source image, queue viewer with per-profile history and GPU health.
+**Gallery** — folders with PIN-locked privates (items can be dropped in without unlocking; viewing requires the PIN), folder merge, date scrubber, search, long-press + drag-sweep multi-select, selection insights, ZIP/group/composite actions, shareable documentation PNGs, searchable gallery source picker, optional browser preview cache, full-page swipe viewer, videos grouped under their source image, queue viewer with per-profile history and GPU health.
 
 **Upscale** — SeedVR2 (selectable attention backend) and Ultimate SD Upscale, with a before/after compare slider.
 
-**Remote updates** — the owner can open the side menu from a phone and pull the desktop app's current Git branch. Updates wait for an idle queue, require a clean checkout, and restart the Node server only when server-side files changed.
+**Remote maintenance** — the owner can update or safely restart the desktop app from a phone. Updates require a clean checkout; updates and manual restarts both wait for idle Mix Studio and ComfyUI queues.
 
 ## ComfyUI requirements
 

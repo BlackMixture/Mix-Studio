@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * MixBox Studio - mobile-first ComfyUI generation app
+ * Mix Studio - mobile-first ComfyUI generation app
  * Zero-dependency Node server (Node >= 20 recommended, >= 22 for live progress).
  * Serves a mobile-first web app; ComfyUI does the heavy lifting.
  */
@@ -461,7 +461,7 @@ function updateDependencyInstallState(patch) {
 }
 
 async function assertDesktopIsIdle() {
-  if (jobs.size) throw new Error('Wait for the MixBox Studio queue to finish before changing desktop dependencies.');
+  if (jobs.size) throw new Error('Wait for the Mix Studio queue to finish before changing desktop dependencies.');
   try {
     const queue = await (await comfyFetch('/queue')).json();
     if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
@@ -1279,7 +1279,7 @@ async function completeJob(pid) {
       try {
         await queuePostUpscale(item, job.params.postUpscale, job.profileId);
       } catch (error) {
-        console.error('[MixBox Studio] Could not queue SeedVR2 finish upscale:', error.message);
+        console.error('[Mix Studio] Could not queue SeedVR2 finish upscale:', error.message);
       }
     }
     saveDb();
@@ -3439,11 +3439,11 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/update' && req.method === 'POST') {
-    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update MixBox Studio' });
-    if (jobs.size) return json(res, 409, { error: 'Wait for the MixBox Studio queue to finish before updating' });
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update Mix Studio' });
+    if (jobs.size) return json(res, 409, { error: 'Wait for the Mix Studio queue to finish before updating' });
 
     // ComfyUI can contain jobs submitted outside this server. Restarting while
-    // one is active would lose MixBox Studio's completion tracking, so check both.
+    // one is active would lose Mix Studio's completion tracking, so check both.
     try {
       const queue = await (await comfyFetch('/queue')).json();
       if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
@@ -3472,7 +3472,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/app/restart' && req.method === 'POST') {
-    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restart MixBox Studio' });
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restart Mix Studio' });
     try {
       await assertDesktopIsIdle();
     } catch (error) {
@@ -4956,7 +4956,7 @@ function scheduleServerRestart() {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
-  console.log('  * MixBox Studio running');
+  console.log('  * Mix Studio running');
   console.log(`    Local:   http://localhost:${PORT}`);
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
     for (const a of addrs || []) {
