@@ -2,7 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { restartRequiredForFiles, updateFromGit } = require('../lib/app-update');
+
+const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const app = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 
 function gitSequence(outputs) {
   const calls = [];
@@ -45,4 +51,13 @@ test('tracked local changes block an update before pulling', async () => {
     (error) => error.code === 'update_dirty'
   );
   assert.equal(fake.calls.length, 1);
+});
+
+test('owner can restart MixBox Studio safely from the app drawer', () => {
+  assert.match(server, /route === '\/api\/app\/restart'/);
+  assert.match(server, /Only the owner profile can restart MixBox Studio/);
+  assert.match(server, /await assertDesktopIsIdle\(\)/);
+  assert.match(html, /id="appRestartBtn"/);
+  assert.match(app, /api\/app\/restart/);
+  assert.match(app, /waitForAppRestart\(\)/);
 });

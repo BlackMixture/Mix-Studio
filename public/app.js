@@ -733,6 +733,7 @@ function syncSheetScrollLock() {
 /* ------------------------------------------------------------------ */
 
 let appUpdateRunning = false;
+let appRestartRunning = false;
 let appDrawerCreateExpanded = true;
 
 function renderAppDrawerNavigation() {
@@ -782,21 +783,29 @@ function setAppUpdateStatus(message, tone) {
 
 function renderAppUpdateAccess() {
   const button = $('#appUpdateBtn');
-  if (appUpdateRunning) return;
+  const restartButton = $('#appRestartBtn');
+  if (appUpdateRunning || appRestartRunning) return;
   const label = button.querySelector('.app-drawer-label');
+  const restartLabel = restartButton.querySelector('.app-drawer-label');
   if (!state.profile) {
     button.disabled = true;
+    restartButton.disabled = true;
     label.textContent = 'Sign in to update';
+    restartLabel.textContent = 'Sign in to restart';
     return;
   }
   if (!state.profileIsOwner) {
     button.disabled = true;
+    restartButton.disabled = true;
     label.textContent = 'Owner access required';
+    restartLabel.textContent = 'Owner access required';
     setAppUpdateStatus('Switch to the owner profile to install updates.', 'bad');
     return;
   }
   button.disabled = false;
+  restartButton.disabled = false;
   label.textContent = 'Update app';
+  restartLabel.textContent = 'Restart app';
 }
 
 async function waitForAppRestart() {
@@ -873,6 +882,26 @@ $('#appUpdateBtn').addEventListener('click', async () => {
     button.classList.remove('busy');
     setAppUpdateStatus(error.message, 'bad');
     appUpdateRunning = false;
+    renderAppUpdateAccess();
+  }
+});
+
+$('#appRestartBtn').addEventListener('click', async () => {
+  if (appRestartRunning) return;
+  const button = $('#appRestartBtn');
+  const label = button.querySelector('.app-drawer-label');
+  appRestartRunning = true;
+  button.disabled = true;
+  button.classList.add('busy');
+  label.textContent = 'Restarting Mix Studioâ€¦';
+  setAppUpdateStatus('Checking both queues, then restarting Mix Studioâ€¦');
+  try {
+    await api('/api/app/restart', { method: 'POST' });
+    await waitForAppRestart();
+  } catch (error) {
+    button.classList.remove('busy');
+    appRestartRunning = false;
+    setAppUpdateStatus(error.message, 'bad');
     renderAppUpdateAccess();
   }
 });

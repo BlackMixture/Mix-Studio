@@ -24,6 +24,9 @@ docs/superpowers/
 # Scratch copies of third-party sources
 _tmp/
 
+# Archived agent scratch (probe/deploy/test remnants)
+_archive/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
