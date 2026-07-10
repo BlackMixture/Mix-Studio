@@ -1291,26 +1291,26 @@ function previousGenerationAssets(accept) {
       for (const video of Array.isArray(item.videos) ? item.videos : []) {
         if (!video || !video.file) continue;
         const engine = videoEngineLabel(video.info && video.info.engine);
+        const createdAt = Number(video.createdAt || item.createdAt || 0);
         assets.push({
-          kind, file: video.file, itemId: item.id, label: item.prompt || 'Previous video',
-          detail: `${engine} · ${new Date(video.createdAt || item.createdAt || Date.now()).toLocaleDateString()}`,
-          poster: item.file,
+          kind, file: video.file, itemId: item.id,
+          label: video.info?.motionPrompt || item.prompt || 'Previous video',
+          detail: `${engine} · ${new Date(createdAt || Date.now()).toLocaleDateString()}`,
+          poster: item.file, activity: createdAt || itemActivity(item),
         });
       }
     } else if (item.file) {
       const model = galleryImageModelLabel(item);
+      const createdAt = Number(item.createdAt || 0);
       assets.push({
         kind, file: item.upscaled || item.file, itemId: item.id,
         label: item.prompt || 'Previous image',
         detail: `${model || 'Image'} · ${new Date(item.createdAt || Date.now()).toLocaleDateString()}`,
+        activity: createdAt || itemActivity(item),
       });
     }
   }
-  return assets.sort((a, b) => {
-    const itemA = (state.items || []).find((item) => item.id === a.itemId);
-    const itemB = (state.items || []).find((item) => item.id === b.itemId);
-    return (itemB ? itemActivity(itemB) : 0) - (itemA ? itemActivity(itemA) : 0);
-  }).slice(0, 80);
+  return assets.sort((a, b) => b.activity - a.activity);
 }
 
 function assetPickerImageUrl(asset) {
@@ -1318,23 +1318,37 @@ function assetPickerImageUrl(asset) {
   return '/images/' + encodeURIComponent(asset.file);
 }
 
+function assetPickerMediaUrl(asset) {
+  return (asset.kind === 'video' ? '/videos/' : '/images/') + encodeURIComponent(asset.file);
+}
+
+function assetMatchesQuery(asset, query) {
+  const terms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = `${asset.label || ''} ${asset.detail || ''} ${asset.file || ''}`.toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
 function renderAssetPickerList() {
   const list = $('#assetPickerList');
   const gallery = $('#assetPickerGallery');
   const count = $('#assetPickerCount');
   if (!list || !gallery || !assetPickerState) return;
-  const assets = previousGenerationAssets(assetPickerState.accept);
+  const allAssets = previousGenerationAssets(assetPickerState.accept);
+  const assets = allAssets.filter((asset) => assetMatchesQuery(asset, assetPickerState.query));
   list.replaceChildren();
-  gallery.hidden = false;
-  count.textContent = assets.length ? `${assets.length} available` : '';
+  count.textContent = assetPickerState.query
+    ? `${assets.length} of ${allAssets.length}`
+    : `${allAssets.length} available`;
   if (!assets.length) {
-    list.innerHTML = `<div class="asset-picker-empty">No previous ${assetPickerKind(assetPickerState.accept)} generations yet.</div>`;
+    list.innerHTML = `<div class="asset-picker-empty">${allAssets.length ? 'No generations match that search.' : `No previous ${assetPickerKind(assetPickerState.accept)} generations yet.`}</div>`;
     return;
   }
   assets.forEach((asset) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'asset-picker-item';
+    button.setAttribute('aria-label', `Preview ${asset.label || `previous ${asset.kind}`}`);
     const thumb = document.createElement('span');
     thumb.className = 'asset-picker-thumb';
     const src = assetPickerImageUrl(asset);
@@ -1356,38 +1370,82 @@ function renderAssetPickerList() {
     copy.className = 'asset-picker-item-copy';
     const label = document.createElement('b');
     label.textContent = asset.label;
+    label.title = asset.label;
     const detail = document.createElement('small');
     detail.textContent = asset.detail;
     copy.append(label, detail);
     button.append(thumb, copy);
-    button.addEventListener('click', () => usePreviousGeneration(asset));
+    button.addEventListener('click', () => openAssetPickerPreview(asset));
     list.appendChild(button);
   });
 }
 
+function openAssetPickerPreview(asset) {
+  if (!assetPickerState || !asset) return;
+  assetPickerState.preview = asset;
+  const panel = $('#assetPickerSheet .asset-picker-panel');
+  const media = $('#assetPickerPreviewMedia');
+  panel.scrollTop = 0;
+  panel.classList.add('previewing');
+  $('#assetPickerGallery').hidden = true;
+  $('#assetPickerPreview').hidden = false;
+  media.replaceChildren();
+  if (asset.kind === 'video') {
+    const video = document.createElement('video');
+    video.src = assetPickerMediaUrl(asset);
+    video.poster = assetPickerImageUrl(asset);
+    video.controls = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    media.appendChild(video);
+  } else {
+    const img = document.createElement('img');
+    img.src = assetPickerMediaUrl(asset);
+    img.alt = asset.label || 'Previous generation preview';
+    media.appendChild(img);
+  }
+  $('#assetPickerPreviewDetail').textContent = asset.detail || '';
+  $('#assetPickerPreviewPrompt').textContent = asset.label || '';
+  $('#assetPickerPreviewUse').textContent = asset.kind === 'video' ? 'Use video' : 'Use image';
+}
+
+function closeAssetPickerPreview() {
+  if (!assetPickerState) return;
+  assetPickerState.preview = null;
+  $('#assetPickerSheet .asset-picker-panel').classList.remove('previewing');
+  $('#assetPickerPreview').hidden = true;
+  $('#assetPickerPreviewMedia').replaceChildren();
+  $('#assetPickerGallery').hidden = false;
+}
+
 function openAssetPicker(accept, callback, title) {
-  assetPickerState = { accept, callback };
+  assetPickerState = { accept, callback, query: '', preview: null };
   const picker = assetPickerState;
+  const panel = $('#assetPickerSheet .asset-picker-panel');
+  panel.classList.remove('browsing', 'previewing');
+  $('#assetPickerSearch').value = '';
+  $('#assetPickerSearchClear').hidden = true;
+  $('#assetPickerPreview').hidden = true;
+  $('#assetPickerPreviewMedia').replaceChildren();
   $('#assetPickerTitle').textContent = title || (assetPickerKind(accept) === 'video' ? 'Choose a video source' : 'Choose an image source');
   $('#assetPickerCopy').textContent = assetPickerKind(accept) === 'video'
     ? 'Use a video from your device or select one from your gallery.'
     : 'Use an image from your device or select one from your gallery.';
   $('#assetPickerSheet').classList.add('show');
-  renderAssetPickerList();
   $('#assetPickerGallery').hidden = true;
   syncSheetScrollLock();
   if (!state.items.length) {
     refreshGallery(true).then(() => {
       if (assetPickerState !== picker) return;
-      const shouldShow = !$('#assetPickerGallery').hidden;
-      renderAssetPickerList();
-      $('#assetPickerGallery').hidden = !shouldShow;
+      if (panel.classList.contains('browsing') && !panel.classList.contains('previewing')) renderAssetPickerList();
     });
   }
 }
 
 function closeAssetPicker() {
   $('#assetPickerSheet').classList.remove('show');
+  $('#assetPickerSheet .asset-picker-panel').classList.remove('browsing', 'previewing');
+  $('#assetPickerPreviewMedia').replaceChildren();
   assetPickerState = null;
   syncSheetScrollLock();
 }
@@ -1463,12 +1521,41 @@ $('#assetPickerUpload').addEventListener('click', () => {
   pickDeviceUpload(picker.accept, picker.callback);
 });
 $('#assetPickerPrevious').addEventListener('click', () => {
+  const panel = $('#assetPickerSheet .asset-picker-panel');
+  panel.scrollTop = 0;
+  panel.classList.add('browsing');
   $('#assetPickerGallery').hidden = false;
   renderAssetPickerList();
-  $('#assetPickerList').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  requestAnimationFrame(() => $('#assetPickerSearch').focus());
+});
+$('#assetPickerBrowseBack').addEventListener('click', () => {
+  if (!assetPickerState) return;
+  assetPickerState.preview = null;
+  $('#assetPickerSheet .asset-picker-panel').classList.remove('browsing', 'previewing');
+  $('#assetPickerGallery').hidden = true;
+  $('#assetPickerPreview').hidden = true;
+  $('#assetPickerPreviewMedia').replaceChildren();
+});
+$('#assetPickerSearch').addEventListener('input', (event) => {
+  if (!assetPickerState) return;
+  assetPickerState.query = event.target.value;
+  $('#assetPickerSearchClear').hidden = !event.target.value;
+  renderAssetPickerList();
+});
+$('#assetPickerSearchClear').addEventListener('click', () => {
+  if (!assetPickerState) return;
+  assetPickerState.query = '';
+  $('#assetPickerSearch').value = '';
+  $('#assetPickerSearchClear').hidden = true;
+  renderAssetPickerList();
+  $('#assetPickerSearch').focus();
+});
+$('#assetPickerPreviewBack').addEventListener('click', closeAssetPickerPreview);
+$('#assetPickerPreviewUse').addEventListener('click', () => {
+  if (assetPickerState?.preview) usePreviousGeneration(assetPickerState.preview);
 });
 $('#assetPickerSheet').addEventListener('click', (event) => {
-  if (event.target === $('#assetPickerSheet') || event.target.closest('[data-close]')) assetPickerState = null;
+  if (event.target === $('#assetPickerSheet') || event.target.closest('[data-close]')) closeAssetPicker();
 });
 
 function createDenoiseFromInfluence(influence = state.createInfluence) {

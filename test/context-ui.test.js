@@ -57,6 +57,14 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(indexHtml, /id="assetPickerPrevious"/);
   assert.match(appJs, /function openAssetPicker/);
   assert.match(appJs, /function previousGenerationAssets/);
+  assert.doesNotMatch(appJs, /return assets\.sort\([\s\S]{0,240}\.slice\(0, 80\)/);
+  assert.match(indexHtml, /id="assetPickerSearch"/);
+  assert.match(indexHtml, /id="assetPickerPreview"/);
+  assert.match(indexHtml, /id="assetPickerPreviewUse"/);
+  assert.match(appJs, /function assetMatchesQuery\(asset, query\)/);
+  assert.match(appJs, /function openAssetPickerPreview\(asset\)/);
+  assert.match(appJs, /button\.addEventListener\('click', \(\) => openAssetPickerPreview\(asset\)\)/);
+  assert.match(appJs, /assetPickerState\?\.preview\) usePreviousGeneration\(assetPickerState\.preview\)/);
   assert.match(appJs, /function usePreviousGeneration/);
   assert.match(appJs, /function pickRef\(idx\) \{[\s\S]*pickUpload\('image\/\*'/);
   assert.match(appJs, /function pickVidRef\(\) \{[\s\S]*pickUpload\('image\/\*'/);

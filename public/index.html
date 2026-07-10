@@ -1455,8 +1455,26 @@
       </button>
     </div>
     <div class="asset-picker-gallery" id="assetPickerGallery" hidden>
-      <div class="asset-picker-gallery-head"><span>Previous generations</span><small id="assetPickerCount"></small></div>
+      <div class="asset-picker-gallery-head">
+        <button class="asset-picker-back" id="assetPickerBrowseBack" type="button" aria-label="Back to source choices">‹</button>
+        <span>Previous generations</span>
+        <small id="assetPickerCount"></small>
+      </div>
+      <label class="asset-picker-search" for="assetPickerSearch">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 3a7.5 7.5 0 1 1-4.72 13.33L2.7 19.4l-1.4-1.4 3.07-3.08A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+        <input id="assetPickerSearch" type="search" placeholder="Search prompts, models, or dates" autocomplete="off" />
+        <button id="assetPickerSearchClear" type="button" aria-label="Clear search" hidden>✕</button>
+      </label>
       <div class="asset-picker-list" id="assetPickerList"></div>
+    </div>
+    <div class="asset-picker-preview" id="assetPickerPreview" hidden>
+      <button class="asset-picker-preview-back" id="assetPickerPreviewBack" type="button">‹ Back to generations</button>
+      <div class="asset-picker-preview-media" id="assetPickerPreviewMedia"></div>
+      <div class="asset-picker-preview-copy">
+        <b id="assetPickerPreviewDetail"></b>
+        <p id="assetPickerPreviewPrompt"></p>
+      </div>
+      <button class="sheet-cta asset-picker-preview-use" id="assetPickerPreviewUse" type="button">Use image</button>
     </div>
   </div>
 </div>
