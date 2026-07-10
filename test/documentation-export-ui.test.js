@@ -53,7 +53,12 @@ test('camera variation documentation uses its angle-specific graph prompt', () =
 });
 
 test('region documentation uses the annotated region map as its figure', () => {
-  assert.match(app, /Array\.isArray\(item\.regions\) && item\.regions\.length\) return buildRegionOverlay\(item\)/);
+  assert.match(html, /id="documentationRegionGroup" hidden/);
+  assert.match(html, /data-doc-region-map="false">Original/);
+  assert.match(html, /data-doc-region-map="true"[^>]*>Region map/);
+  assert.match(app, /function setDocumentationFigure\(useRegionMap\)/);
+  assert.match(app, /await buildRegionOverlay\(item\)/);
+  assert.match(app, /await loadDocumentationOriginal\(item\)/);
   assert.match(app, /image\.naturalWidth \|\| image\.width \|\| 1024/);
   assert.match(app, /image\.naturalHeight \|\| image\.height \|\| 1024/);
 });

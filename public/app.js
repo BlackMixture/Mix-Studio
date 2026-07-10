@@ -9489,10 +9489,13 @@ async function downloadRegionMap(it) {
 const documentationBuilderState = {
   item: null,
   image: null,
+  sources: { original: null, region: null },
   metadata: [],
   selected: new Set(),
   layout: 'contact',
   theme: 'dark',
+  regionMap: true,
+  sourceRequest: 0,
   textScale: 100,
   shade: 72,
 };
@@ -9819,12 +9822,60 @@ function syncDocumentationControls() {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  $$('[data-doc-region-map]').forEach((button) => {
+    const active = (button.dataset.docRegionMap === 'true') === documentationBuilderState.regionMap;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('#documentationRegionGroup').hidden = !(documentationBuilderState.item
+    && Array.isArray(documentationBuilderState.item.regions)
+    && documentationBuilderState.item.regions.length);
   $('#documentationThemeGroup').hidden = documentationBuilderState.layout !== 'contact';
   $('#documentationShadeGroup').hidden = documentationBuilderState.layout !== 'overlay';
   $('#documentationTextScale').value = documentationBuilderState.textScale;
   $('#documentationTextScaleValue').textContent = `${documentationBuilderState.textScale}%`;
   $('#documentationShade').value = documentationBuilderState.shade;
   $('#documentationShadeValue').textContent = `${documentationBuilderState.shade}%`;
+}
+
+async function loadDocumentationOriginal(item) {
+  const image = new Image();
+  image.decoding = 'async';
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Could not load this image'));
+    image.src = '/images/' + (item.upscaled || item.file);
+  });
+  return image;
+}
+
+async function setDocumentationFigure(useRegionMap) {
+  const item = documentationBuilderState.item;
+  if (!item) return;
+  const hasRegions = Array.isArray(item.regions) && item.regions.length;
+  documentationBuilderState.regionMap = !!(useRegionMap && hasRegions);
+  const sourceKey = documentationBuilderState.regionMap ? 'region' : 'original';
+  const request = ++documentationBuilderState.sourceRequest;
+  syncDocumentationControls();
+  const status = $('#documentationPreviewStatus');
+  status.textContent = documentationBuilderState.regionMap ? 'Preparing region map…' : 'Preparing preview…';
+  status.hidden = false;
+  try {
+    let image = documentationBuilderState.sources[sourceKey];
+    if (!image) {
+      image = documentationBuilderState.regionMap
+        ? await buildRegionOverlay(item)
+        : await loadDocumentationOriginal(item);
+      documentationBuilderState.sources[sourceKey] = image;
+    }
+    if (request !== documentationBuilderState.sourceRequest || documentationBuilderState.item !== item) return;
+    documentationBuilderState.image = image;
+    renderDocumentationCanvas();
+  } catch {
+    if (request !== documentationBuilderState.sourceRequest) return;
+    status.textContent = 'Could not load this image';
+    toast('Could not build the documentation image', true);
+  }
 }
 
 function renderDocumentationFieldControls() {
@@ -9847,10 +9898,12 @@ function renderDocumentationFieldControls() {
 function openDocumentationBuilder(item) {
   documentationBuilderState.item = item;
   documentationBuilderState.image = null;
+  documentationBuilderState.sources = { original: null, region: null };
   documentationBuilderState.metadata = documentationMetadata(item);
   documentationBuilderState.selected = new Set(documentationBuilderState.metadata.filter((entry) => entry.key !== 'originalPrompt').map((entry) => entry.key));
   documentationBuilderState.layout = 'contact';
   documentationBuilderState.theme = 'dark';
+  documentationBuilderState.regionMap = Array.isArray(item.regions) && item.regions.length > 0;
   documentationBuilderState.textScale = 100;
   documentationBuilderState.shade = 72;
   renderDocumentationFieldControls();
@@ -9860,25 +9913,7 @@ function openDocumentationBuilder(item) {
   status.hidden = false;
   $('#documentationSheet').classList.add('show');
   syncSheetScrollLock();
-  const loadSource = async () => {
-    if (Array.isArray(item.regions) && item.regions.length) return buildRegionOverlay(item);
-    const image = new Image();
-    image.decoding = 'async';
-    await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = () => reject(new Error('Could not load this image'));
-      image.src = '/images/' + (item.upscaled || item.file);
-    });
-    return image;
-  };
-  loadSource().then((image) => {
-    if (documentationBuilderState.item !== item) return;
-    documentationBuilderState.image = image;
-    renderDocumentationCanvas();
-  }).catch(() => {
-    status.textContent = 'Could not load this image';
-    toast('Could not build the documentation image', true);
-  });
+  setDocumentationFigure(documentationBuilderState.regionMap);
 }
 
 function saveDocumentationImage() {
@@ -9911,6 +9946,11 @@ $('#documentationTheme').addEventListener('click', (event) => {
   documentationBuilderState.theme = button.dataset.docTheme;
   syncDocumentationControls();
   renderDocumentationCanvas();
+});
+$('#documentationRegionMode').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-doc-region-map]');
+  if (!button) return;
+  setDocumentationFigure(button.dataset.docRegionMap === 'true');
 });
 $('#documentationTextScale').addEventListener('input', (event) => {
   documentationBuilderState.textScale = Number(event.target.value) || 100;

@@ -4587,7 +4587,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   .documentation-preview-note { margin-bottom: 16px; }
   .documentation-controls { gap: 12px; }
   .documentation-control-group { padding-bottom: 12px; }
-  .sheet-cta.documentation-save { position: sticky; bottom: 0; z-index: 3; box-shadow: 0 -12px 24px #090a0e; }
+  .sheet-cta.documentation-save { position: static; box-shadow: none; }
 }
 
 /* ---------------- compare ---------------- */
