@@ -216,7 +216,7 @@ test('gallery saves directly when only one image is available and is grouped by 
   assert.match(css, /\.card \.badge\.attached-composite-badge/);
 });
 
-test('gallery items support profile-scoped likes by double tap and a likes-only filter', () => {
+test('gallery media supports profile-scoped likes by double tap and a likes-only filter', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="likesFilter"[^>]*aria-pressed="false"/);
   assert.match(html, /id="lightboxLikeBurst"/);
@@ -225,7 +225,10 @@ test('gallery items support profile-scoped likes by double tap and a likes-only 
   assert.match(app, /function setItemLiked\(item, liked, burstTarget\)/);
   assert.match(app, /playLikeBurst\(burstTarget, liked \? 'like' : 'unlike'\)/);
   assert.match(app, /setTimeout\(renderGrid, liked \? 720 : 520\)/);
-  assert.match(app, /if \(state\.likesOnly && !it\.liked\) return false/);
+  assert.match(app, /if \(state\.likesOnly && !it\.liked\)/);
+  assert.match(app, /videoLiked = \(it\.videos \|\| \[\]\)\.some/);
+  assert.match(app, /function setVideoLiked\(item, video, liked, burstTarget\)/);
+  assert.match(server, /video\.liked = body\.liked === true/);
   assert.match(app, /like-toggle/);
   assert.match(app, /heart-fill/);
   assert.match(app, /Save angle composite/);

@@ -4628,6 +4628,16 @@ async function handleApi(req, res, url) {
   }
 
   const vidRoute = route.match(/^\/api\/item\/([\w]+)\/video\/([\w]+)$/);
+  if (vidRoute && req.method === 'POST') {
+    const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
+    if (!item) return json(res, 404, { error: 'Not found' });
+    const video = (item.videos || []).find((entry) => entry.id === vidRoute[2]);
+    if (!video) return json(res, 404, { error: 'Video not found' });
+    const body = await readJsonBody(req);
+    video.liked = body.liked === true;
+    saveDb();
+    return json(res, 200, item);
+  }
   if (vidRoute && req.method === 'DELETE') {
     const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });
