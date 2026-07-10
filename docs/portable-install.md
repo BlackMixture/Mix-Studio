@@ -14,6 +14,15 @@ The guided bootstrap supports both a clean Windows machine and an existing Comfy
 6. Enable the desired Edit and Video families, then leave dependency downloads enabled to install their reviewed models and custom nodes. Fresh installations start with the image-focused set; optional video and advanced edit families can each add tens of gigabytes.
 7. Double-click `start.bat` inside the Mix Studio folder.
 
+## Phone-first access with Tailscale
+
+1. Install [Tailscale](https://tailscale.com/download) on the Windows generation machine and the phone.
+2. Sign both devices into the same tailnet.
+3. Start Mix Studio on Windows and find the `Phone:` URL associated with the Tailscale network adapter in the terminal output.
+4. Open that address on the phone with port `3300`, then add it to the home screen for app-like access.
+
+ComfyUI, model files, galleries, and generation work remain on the Windows machine. The phone sends requests and displays the Mix Studio interface over the private Tailscale connection; public port forwarding is not required.
+
 For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/Mix-Studio.git`, then launch `install.bat` from that checkout.
 
 The installer is intentionally idempotent: rerunning it reads existing values, presents them as defaults, backs up `settings.json` and `install.json`, and writes merged configuration atomically. `installer/install-ui.ps1` owns only presentation and invokes `installer/install.ps1` non-interactively for prerequisite checks and writes.

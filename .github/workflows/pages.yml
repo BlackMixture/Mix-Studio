@@ -47,6 +47,7 @@ jobs:
           cp docs/download/mix-studio-create.png _site/mix-studio-create.png
           cp docs/download/mix-studio-region.png _site/mix-studio-region.png
           cp docs/download/mix-studio-video.png _site/mix-studio-video.png
+          cp docs/download/mix-studio-mobile.png _site/mix-studio-mobile.png
           touch _site/.nojekyll
 
       - name: Upload Pages artifact

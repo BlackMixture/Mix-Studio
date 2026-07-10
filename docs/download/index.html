@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#000000" />
-  <meta name="description" content="Create, edit, animate, and organize AI media locally with Mix Studio for ComfyUI." />
+  <meta name="description" content="Run local AI generation on your Windows desktop and create from a mobile-first interface over Tailscale." />
   <title>Mix Studio — Local AI creation for ComfyUI</title>
   <link rel="icon" href="./modatory-logo.svg" type="image/svg+xml" />
   <style>
@@ -71,11 +71,23 @@
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
     .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
     .window img { width: 100%; aspect-ratio: 1.095 / 1; object-fit: cover; object-position: top center; }
+    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 32px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); transform: rotate(-4deg); z-index: 2; }
+    .phone-preview img { width: 100%; aspect-ratio: .462 / 1; object-fit: cover; object-position: top center; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
     .proof-item { padding: 26px 24px; }
     .proof-item + .proof-item { border-left: 1px solid var(--line); }
     .proof-item strong { display: block; margin-bottom: 6px; font-size: 15px; }
     .proof-item span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .mobile-story { display: grid; grid-template-columns: .82fr 1.18fr; gap: 72px; align-items: center; padding: 130px 0 80px; }
+    .mobile-story h2 { margin: 0; max-width: 520px; font-size: clamp(38px,5vw,60px); line-height: 1.02; letter-spacing: -.048em; }
+    .mobile-story-copy > p:last-child { margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+    .control-flow { display: grid; grid-template-columns: 1fr 36px 1fr 36px 1fr; align-items: center; }
+    .flow-node { min-height: 190px; padding: 22px 18px; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 60%),var(--panel); }
+    .flow-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: #141927; color: #a9bdf6; }
+    .flow-icon svg { width: 23px; height: 23px; }
+    .flow-node strong { display: block; margin-top: 28px; font-size: 15px; }
+    .flow-node span { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .flow-arrow { color: #596784; font-size: 21px; text-align: center; }
     .section { padding: 120px 0; }
     .section-head { display: grid; grid-template-columns: .75fr 1fr; gap: 70px; align-items: end; margin-bottom: 48px; }
     .section-head h2, .quick-copy h2, .closing h2 { margin: 0; font-size: clamp(36px, 5vw, 58px); line-height: 1.02; letter-spacing: -.045em; }
@@ -123,7 +135,8 @@
     @media (max-width: 900px) {
       .hero { grid-template-columns: 1fr; gap: 52px; padding-top: 62px; }
       .hero-copy { max-width: 700px; }
-      .hero-visual { width: min(100%,700px); transform: none; }
+      .hero-visual { width: min(100%,700px); margin-bottom: 58px; transform: none; }
+      .mobile-story { grid-template-columns: 1fr; gap: 42px; }
       .feature-grid { grid-template-columns: repeat(2,1fr); }
       .section-head { grid-template-columns: 1fr; gap: 20px; }
       .quick { grid-template-columns: 1fr; gap: 52px; }
@@ -143,6 +156,11 @@
       .proof { grid-template-columns: 1fr; }
       .proof-item { padding-inline: 0; }
       .proof-item + .proof-item { border-left: 0; border-top: 1px solid var(--line); }
+      .phone-preview { right: 12px; bottom: -48px; width: 35%; border-width: 5px; border-radius: 23px; }
+      .mobile-story { padding: 92px 0 36px; }
+      .control-flow { grid-template-columns: 1fr; gap: 12px; }
+      .flow-node { min-height: 0; }
+      .flow-arrow { transform: rotate(90deg); }
       .section { padding: 86px 0; }
       .feature-grid, .showcase { grid-template-columns: 1fr; }
       .feature { min-height: 0; }
@@ -163,6 +181,7 @@
         <span class="brand-wordmark"><img src="./mix-studio-wordmark.svg" alt="Mix Studio" /></span>
       </a>
       <nav class="header-links" aria-label="Site navigation">
+        <a href="#mobile-first">Mobile-first</a>
         <a href="#features">Features</a>
         <a href="#quick-start">Quick start</a>
         <a href="https://github.com/BlackMixture/Mix-Studio">View source on GitHub</a>
@@ -172,9 +191,9 @@
     <main id="top">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Windows · NVIDIA · Local generation</p>
-          <h1>Your studio.<br />On your machine.</h1>
-          <p class="lede">A focused workspace for creating images, making precise edits, generating video, and organizing everything your local ComfyUI can produce.</p>
+          <p class="eyebrow">Desktop powered · Phone first · Private access</p>
+          <h1>Your GPU.<br />In your pocket.</h1>
+          <p class="lede">Run ComfyUI on your Windows desktop, then create from a mobile-first interface on your phone—at home or away—through your private Tailscale network.</p>
           <div class="actions">
             <a class="download" href="./install.bat" download="install.bat">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
@@ -185,19 +204,31 @@
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
           <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.png" alt="Mix Studio Create Image workspace with prompt, resolution, Turbo, upscale, and generate controls" /></div>
+          <div class="phone-preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
         </div>
       </section>
 
       <section class="proof" aria-label="Product principles">
-        <div class="proof-item"><strong>Local by default</strong><span>Your gallery, prompts, and profile data remain on your machine.</span></div>
-        <div class="proof-item"><strong>Guided ComfyUI setup</strong><span>Install the official desktop app or reuse the environment you already maintain.</span></div>
-        <div class="proof-item"><strong>One coherent workspace</strong><span>Create, edit, animate, upscale, and revisit work without graph juggling.</span></div>
+        <div class="proof-item"><strong>Desktop GPU power</strong><span>Your Windows machine runs ComfyUI, models, and every generation.</span></div>
+        <div class="proof-item"><strong>Private Tailscale access</strong><span>Reach the studio from your phone without exposing it to the public internet.</span></div>
+        <div class="proof-item"><strong>Designed for touch</strong><span>Prompt, edit, queue, review, and reuse work from a phone-sized interface.</span></div>
+      </section>
+
+      <section class="mobile-story" id="mobile-first">
+        <div class="mobile-story-copy"><p class="section-kicker">A different local AI workflow</p><h2>The computer does the work. Your phone runs the studio.</h2><p>Most local generation tools assume you are sitting at the desktop. Mix Studio is designed so the desktop can stay with the GPU while the interface goes wherever you do.</p></div>
+        <div class="control-flow" aria-label="Desktop to phone connection flow">
+          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 4h18v13H3V4Zm2 2v9h14V6H5Zm3 13h8v2H8v-2Z"/></svg></div><strong>Windows desktop</strong><span>ComfyUI, models, storage, and GPU stay on the machine.</span></div>
+          <div class="flow-arrow" aria-hidden="true">→</div>
+          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a6 6 0 0 1 5.2 9H21v2h-5.3A6 6 0 0 1 7 14H3v-2h3.8A6 6 0 0 1 12 3Zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-9 12h18v2H3v-2Z"/></svg></div><strong>Private Tailscale network</strong><span>Both devices sign in to the same tailnet; no public port forwarding.</span></div>
+          <div class="flow-arrow" aria-hidden="true">→</div>
+          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h10V4H7Zm4 13h2v2h-2v-2Z"/></svg></div><strong>Your phone</strong><span>Open the Mix Studio URL, add it to the home screen, and create anywhere.</span></div>
+        </div>
       </section>
 
       <section class="section" id="features">
         <div class="section-head">
-          <div><p class="section-kicker">What you can do</p><h2>From first prompt to final media.</h2></div>
-          <p>Mix Studio turns advanced local workflows into clear, task-focused controls while keeping the power of your ComfyUI installation underneath.</p>
+          <div><p class="section-kicker">Made for the phone in your hand</p><h2>From first prompt to final media.</h2></div>
+          <p>Mix Studio turns advanced local workflows into clear, touch-friendly controls while keeping the full power of your desktop ComfyUI installation underneath.</p>
         </div>
         <div class="feature-grid">
           <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div><h3>Create images</h3><p>Generate with Krea 2, image guides, LoRAs, camera controls, prompt assistance, and optional finish upscaling.</p></article>
@@ -219,20 +250,21 @@
       </section>
 
       <section class="quick" id="quick-start">
-        <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>From download to first launch.</h2><p>The small bootstrap gets the app, checks the essentials, and opens the same guided setup used for future configuration changes.</p></div>
+        <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>Set up once. Create from your phone.</h2><p>The Windows installer prepares the generation machine. Tailscale turns its Mix Studio address into a private studio you can carry.</p></div>
         <div>
           <div class="step-list">
             <article class="guide-step"><div><h3>Prepare the machine</h3><p>Use Windows 10 or 11 with an NVIDIA GPU, current drivers, and enough SSD space. The wizard can install ComfyUI Desktop and explains before any large model download begins.</p></div></article>
             <article class="guide-step"><div><h3>Download and run</h3><p>Save <code>install.bat</code> from this page and open it. Windows may ask you to confirm keeping or running an executable script.</p></div></article>
             <article class="guide-step"><div><h3>Follow the setup window</h3><p>Choose a new official ComfyUI Desktop installation or an existing environment, then select the image, edit, and video families you want on this machine.</p></div></article>
-            <article class="guide-step"><div><h3>Download and launch</h3><p>Setup installs the reviewed models and custom nodes for the selected tools, reuses any completed files, and configures Mix Studio before first launch.</p></div></article>
+            <article class="guide-step"><div><h3>Connect both devices</h3><p>Install <a href="https://tailscale.com/download">Tailscale</a> on the Windows desktop and your phone, then sign in to the same private network.</p></div></article>
+            <article class="guide-step"><div><h3>Open Mix Studio on your phone</h3><p>Start Mix Studio on the desktop and open the labeled <code>Tailscale:</code> URL shown in its terminal. Add it to the phone's home screen for an app-like launch.</p></div></article>
           </div>
           <p class="notice"><strong>Transparent by design.</strong> The bootstrap retrieves the public <a href="https://github.com/BlackMixture/Mix-Studio">BlackMixture/Mix-Studio</a> repository, the signed official ComfyUI Desktop installer, and reviewed model or node sources selected in the wizard. Existing settings are preserved, and the included uninstaller leaves ComfyUI and shared models in place.</p>
         </div>
       </section>
 
       <section class="closing">
-        <div class="closing-copy"><p class="section-kicker">Ready when your ComfyUI is</p><h2>Bring your local creative stack into focus.</h2><p>One download starts the guided installation. Your models, media, and generation history stay under your control.</p></div>
+        <div class="closing-copy"><p class="section-kicker">Desktop power, mobile freedom</p><h2>Carry your local studio without carrying the workstation.</h2><p>One download prepares the desktop. Your phone becomes the focused interface for generating, reviewing, and reusing work wherever your private network reaches.</p></div>
         <a class="download" href="./install.bat" download="install.bat"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>Download for Windows</a>
       </section>
     </main>

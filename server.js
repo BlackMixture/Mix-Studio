@@ -90,6 +90,7 @@ const { nodeLabelForJob } = require('./lib/progress-labels');
 const { decodePreviewPayload } = require('./lib/preview-payload');
 const { selectionAssetRefs, selectionSummary } = require('./lib/selection-summary');
 const { streamStoredZip } = require('./lib/zip-stream');
+const { mobileAccessAddresses } = require('./lib/mobile-access');
 const {
   PROFILE_COOKIE,
   hashPin,
@@ -4961,12 +4962,10 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  * Mix Studio running');
   console.log(`    Local:   http://localhost:${PORT}`);
-  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
-    for (const a of addrs || []) {
-      if (a.family === 'IPv4' && !a.internal) {
-        console.log(`    Phone:   http://${a.address}:${PORT}   (${name})`);
-      }
-    }
+  for (const entry of mobileAccessAddresses(os.networkInterfaces())) {
+    const label = entry.tailscale ? 'Tailscale' : 'Phone';
+    const note = entry.tailscale ? 'private phone access' : entry.name;
+    console.log(`    ${(label + ':').padEnd(11)}http://${entry.address}:${PORT}   (${note})`);
   }
   console.log(`    ComfyUI: ${settings.comfyUrl}`);
   if (typeof WebSocket === 'undefined') {

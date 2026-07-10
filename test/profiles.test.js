@@ -32,8 +32,8 @@ test('profile tokens round-trip and reject tampering', () => {
 
 test('publicProfile counts items and hides pin material', () => {
   const db = { items: [{ profileId: 'p1' }, { profileId: 'p1' }, { profileId: 'p2' }] };
-  const pub = publicProfile({ id: 'p1', name: 'Nathan', pinHash: 'x', pinSalt: 'y', createdAt: 1 }, db);
-  assert.deepEqual(pub, { id: 'p1', name: 'Nathan', hasPin: true, avatar: null, createdAt: 1, itemCount: 2 });
+  const pub = publicProfile({ id: 'p1', name: 'Example', pinHash: 'x', pinSalt: 'y', createdAt: 1 }, db);
+  assert.deepEqual(pub, { id: 'p1', name: 'Example', hasPin: true, avatar: null, createdAt: 1, itemCount: 2 });
   assert.equal('pinHash' in pub, false);
 });
 

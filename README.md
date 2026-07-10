@@ -39,6 +39,8 @@ The console prints two URLs:
 
 On the phone, use **Add to Home Screen** for an app-like fullscreen experience.
 
+For private access away from home, install [Tailscale](https://tailscale.com/download) on both the Windows desktop and phone, sign both into the same tailnet, then open the `Phone:` URL printed for the Tailscale adapter. The desktop keeps ComfyUI, models, and generated media; the phone remains the touch-first control surface.
+
 If the phone can't connect, allow Node through Windows Defender Firewall (private networks). Port changes via the `PORT` env var.
 
 ### ComfyUI and shared models

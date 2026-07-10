@@ -40,8 +40,13 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /mix-studio-create\.png/);
   assert.match(page, /mix-studio-region\.png/);
   assert.match(page, /mix-studio-video\.png/);
+  assert.match(page, /mix-studio-mobile\.png/);
+  assert.match(page, /id="mobile-first"/);
+  assert.match(page, /tailscale\.com\/download/);
+  assert.match(page, /Your GPU/);
   assert.match(workflow, /cp install\.bat _site\/install\.bat/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);
   assert.match(workflow, /actions\/configure-pages@v5/);
   assert.match(workflow, /actions\/upload-pages-artifact@v4/);
   assert.match(workflow, /actions\/deploy-pages@v4/);
