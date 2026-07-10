@@ -14,6 +14,7 @@ const {
 const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
 
 test('parses nvidia-smi utilization and memory csv', () => {
   assert.deepEqual(parseNvidiaSmiCsv('100, 52824, 97887, 599.94'), {
@@ -80,6 +81,10 @@ test('queue sheet supports clearing history, gallery navigation, and drag reorde
   assert.match(appJs, /openFromQueue\(j\.itemId, j\.videoId\)/);
   assert.match(appJs, /function attachQueueDrag\(row, job\)/);
   assert.match(appJs, /queue-drag-ghost/);
+  assert.match(appJs, /function setQueueDragScrollLock\(gesture, locked\)/);
+  assert.match(appJs, /touchmove', preventQueueDragTouchScroll, \{ passive: false, capture: true \}/);
+  assert.match(appJs, /setQueueDragScrollLock\(gesture, true\)/);
+  assert.match(styleCss, /\.sheet-panel\.queue-drag-scroll-lock \{[\s\S]*overflow-y: hidden;[\s\S]*touch-action: none;/);
   assert.match(appJs, /\/api\/queue\/history\/clear/);
   assert.match(appJs, /\/api\/queue\/reorder/);
 });

@@ -446,6 +446,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .queue-row[data-reorderable="true"] { touch-action: pan-y; user-select: none; }
 .queue-row[data-reorderable="true"]:active .q-handle { cursor: grabbing; }
+.sheet-panel.queue-drag-scroll-lock {
+  overflow-y: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
 .queue-drag-source { opacity: 0.26; }
 .queue-drag-over-before { box-shadow: inset 0 2px 0 var(--mode-color); }
 .queue-drag-over-after { box-shadow: inset 0 -2px 0 var(--mode-color); }

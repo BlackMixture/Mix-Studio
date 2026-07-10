@@ -6202,9 +6202,36 @@ function clearQueueDragClasses() {
     .forEach((row) => row.classList.remove('queue-drag-over-before', 'queue-drag-over-after'));
 }
 
+function preventQueueDragTouchScroll(event) {
+  if (!queueDrag || !queueDrag.active) return;
+  if (event.cancelable) event.preventDefault();
+  if (queueDrag.scrollPanel && Number.isFinite(queueDrag.scrollTop)) {
+    queueDrag.scrollPanel.scrollTop = queueDrag.scrollTop;
+  }
+}
+
+function setQueueDragScrollLock(gesture, locked) {
+  if (!gesture) return;
+  if (locked) {
+    const panel = gesture.row.closest('.sheet-panel');
+    gesture.scrollPanel = panel;
+    gesture.scrollTop = panel ? panel.scrollTop : 0;
+    if (panel) panel.classList.add('queue-drag-scroll-lock');
+    document.addEventListener('touchmove', preventQueueDragTouchScroll, { passive: false, capture: true });
+    return;
+  }
+  document.removeEventListener('touchmove', preventQueueDragTouchScroll, true);
+  if (gesture.scrollPanel) {
+    gesture.scrollPanel.classList.remove('queue-drag-scroll-lock');
+    if (Number.isFinite(gesture.scrollTop)) gesture.scrollPanel.scrollTop = gesture.scrollTop;
+  }
+  gesture.scrollPanel = null;
+}
+
 function cancelQueueDrag(gesture) {
   if (!gesture || queueDrag !== gesture) return;
   clearTimeout(gesture.timer);
+  setQueueDragScrollLock(gesture, false);
   try { gesture.row.releasePointerCapture(gesture.pointerId); } catch { /* noop */ }
   if (gesture.ghost) gesture.ghost.remove();
   gesture.row.classList.remove('queue-drag-source');
@@ -6232,6 +6259,7 @@ function updateQueueDragTarget(gesture, clientY) {
 function beginQueueDrag(gesture) {
   if (!gesture || queueDrag !== gesture || gesture.active) return;
   gesture.active = true;
+  setQueueDragScrollLock(gesture, true);
   gesture.row.classList.add('queue-drag-source');
   const rect = gesture.row.getBoundingClientRect();
   const ghost = gesture.row.cloneNode(true);
@@ -6286,6 +6314,8 @@ function attachQueueDrag(row, job) {
       timer: setTimeout(() => beginQueueDrag(gesture), 180),
       ghost: null,
       target: null,
+      scrollPanel: null,
+      scrollTop: null,
     };
     queueDrag = gesture;
     try { row.setPointerCapture(event.pointerId); } catch { /* noop */ }
@@ -6296,6 +6326,8 @@ function attachQueueDrag(row, job) {
       if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 8) cancelQueueDrag(gesture);
       return;
     }
+    if (event.cancelable) event.preventDefault();
+    if (gesture.scrollPanel && Number.isFinite(gesture.scrollTop)) gesture.scrollPanel.scrollTop = gesture.scrollTop;
     if (gesture.ghost) gesture.ghost.style.transform = `translate3d(0, ${event.clientY - gesture.startY}px, 0)`;
     updateQueueDragTarget(gesture, event.clientY);
   });
