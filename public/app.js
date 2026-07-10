@@ -3992,7 +3992,19 @@ function normalizeLoraTriggerPhrase(value) {
 
 function loraTriggerPhrase(lora) {
   const direct = normalizeLoraTriggerPhrase(lora && lora.triggerPhrase);
-  return direct || normalizeLoraTriggerPhrase(lora && lora.name ? state.loraTriggers[lora.name] : '');
+  if (direct) return direct;
+  const name = lora && lora.name;
+  const registered = normalizeLoraTriggerPhrase(name ? state.loraTriggers[name] : '');
+  if (registered) return registered;
+  if (!name) return '';
+  const stacks = [
+    state.loras,
+    state.videoLoras,
+    state.editLoras,
+    ...Object.values(state.editLorasByEngine || {}),
+  ];
+  const match = stacks.flat().find((item) => item && item.name === name && item !== lora);
+  return normalizeLoraTriggerPhrase(match && match.triggerPhrase);
 }
 
 function promptHasLoraTrigger(prompt, phrase) {

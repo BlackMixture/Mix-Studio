@@ -23,6 +23,7 @@ test('LoRA picker applies learned strength defaults from context endpoint', () =
 
 test('LoRAs can persist trigger phrases and add them to the prompt on activation', () => {
   assert.match(appJs, /normalizeLoraTriggerPhrase/);
+  assert.match(appJs, /state\.videoLoras,[\s\S]*state\.editLoras,[\s\S]*Object\.values\(state\.editLorasByEngine/);
   assert.match(appJs, /loraTriggers: state\.loraTriggers/);
   assert.match(appJs, /state\.loraTriggers\[l\.name\] = l\.triggerPhrase/);
   assert.match(appJs, /ensureLoraTriggerInPrompt/);
