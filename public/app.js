@@ -37,6 +37,7 @@ const state = {
   qwenAnglesMode: false,
   qwenAngleElevation: 'eye-level',
   qwenAngleDistance: 'medium shot',
+  qwenQuality: 'quality',
   prompts: { create: '', edit: '', video: '' }, // per-tab prompt text
   loras: [],                 // {name, strength, on} - Create tab (Krea 2)
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
@@ -1038,6 +1039,7 @@ function saveForm() {
       qwenAngles: state.qwenAngles,
       qwenAngleElevation: state.qwenAngleElevation,
       qwenAngleDistance: state.qwenAngleDistance,
+      qwenQuality: state.qwenQuality,
       generationTuning: state.generationTuning,
     }));
   } catch { /* noop */ }
@@ -1069,6 +1071,7 @@ function loadForm() {
       ? f.qwenAngleElevation : 'eye-level';
     state.qwenAngleDistance = QWEN_ANGLE_DISTANCES.some((option) => option.id === f.qwenAngleDistance)
       ? f.qwenAngleDistance : 'medium shot';
+    state.qwenQuality = f.qwenQuality === 'fast' ? 'fast' : 'quality';
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.loraTriggers = f.loraTriggers && typeof f.loraTriggers === 'object' ? Object.fromEntries(
@@ -1251,6 +1254,7 @@ function updateVideoPanels() {
   $('#qwenAngleTool').hidden = !(state.view === 'edit' && state.editEngine === 'qwen') || state.qwenAnglesMode || hasEditMask();
   renderQwenAngleTool();
   renderQwenAngleMode();
+  renderQwenQuality();
   renderEditSequence();
   regionWorkspace.hidden = !isRegion;
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
@@ -3258,6 +3262,49 @@ $('#engineInfoBtn').addEventListener('click', (e) => {
 /* Prompt + enhance                                                    */
 /* ------------------------------------------------------------------ */
 
+function renderQwenQuality() {
+  const active = state.view === 'edit' && state.editEngine === 'qwen';
+  const control = $('#qwenQualityControl');
+  const steps = $('#stepsInput');
+  const cfg = $('#cfgInput');
+  const wasLocked = steps.dataset.qwenLocked === 'true';
+  control.hidden = !active;
+  if (active) {
+    const quality = state.qwenQuality === 'fast' ? 'fast' : 'quality';
+    const preset = quality === 'fast' ? { steps: 4, cfg: 1 } : { steps: 20, cfg: 4 };
+    control.querySelectorAll('[data-qwen-quality]').forEach((button) => {
+      const selected = button.dataset.qwenQuality === quality;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    $('#qwenQualitySummary').textContent = quality === 'fast' ? '4 steps · quick preview' : '20 steps · best detail';
+    steps.value = preset.steps;
+    cfg.value = preset.cfg;
+    steps.disabled = true;
+    cfg.disabled = true;
+    steps.dataset.qwenLocked = 'true';
+    cfg.dataset.qwenLocked = 'true';
+    steps.title = 'Controlled by the Qwen sampling preset';
+    cfg.title = 'Controlled by the Qwen sampling preset';
+  } else {
+    steps.disabled = false;
+    cfg.disabled = false;
+    delete steps.dataset.qwenLocked;
+    delete cfg.dataset.qwenLocked;
+    steps.title = 'Double-tap to reset to your default';
+    cfg.title = 'Double-tap to reset to your default';
+    if (wasLocked && state.view === 'edit') restoreGenerationTuning('edit');
+  }
+}
+
+$('#qwenQualityControl').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-qwen-quality]');
+  if (!button) return;
+  state.qwenQuality = button.dataset.qwenQuality === 'fast' ? 'fast' : 'quality';
+  renderQwenQuality();
+  saveForm();
+});
+
 function selectedQwenAngleViews() {
   return QWEN_ANGLE_VIEWS
     .filter((view) => state.qwenAngles.includes(view.id))
@@ -4139,9 +4186,10 @@ function normalizeGenerationTuning(mode, value) {
 function captureGenerationTuning(mode = generationTuningMode()) {
   if (!mode) return;
   const previous = state.generationTuning[mode] || defaultGenerationTuning(mode);
+  const qwenLocked = mode === 'edit' && state.editEngine === 'qwen';
   state.generationTuning[mode] = normalizeGenerationTuning(mode, {
-    steps: $('#stepsInput').value || previous.steps,
-    cfg: $('#cfgInput').value === '' ? previous.cfg : $('#cfgInput').value,
+    steps: qwenLocked ? previous.steps : ($('#stepsInput').value || previous.steps),
+    cfg: qwenLocked ? previous.cfg : ($('#cfgInput').value === '' ? previous.cfg : $('#cfgInput').value),
     batch: $('#batchInput').value || previous.batch,
     denoise: mode === 'edit' ? $('#denoiseInput').value : undefined,
     seed: $('#seedInput').value,
@@ -5751,6 +5799,7 @@ wireEngineRow('animEngineRow', (engine) => {
   $('#animExtras').hidden = wan;
 });
 wireEngineRow('editEngineRow', (engine) => {
+  captureGenerationTuning('edit');
   switchEditEngine(engine);
   if (engine === 'krea2' && Number($('#denoiseInput').value) <= 0.5) {
     // Keep enough source signal for the new content to inherit its surroundings.
@@ -5867,6 +5916,7 @@ $('#generateBtn').addEventListener('click', async () => {
   const body = {
     mode,
     editEngine: mode === 'edit' ? state.editEngine : undefined,
+    qwenQuality: mode === 'edit' && state.editEngine === 'qwen' ? state.qwenQuality : undefined,
     krea2Turbo: !krea2Raw,
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit' ? $('#editComposite').getAttribute('aria-pressed') === 'true' : undefined,
@@ -7633,6 +7683,7 @@ function openLightbox(id, mediaSel) {
   } else {
     const model = galleryImageModelLabel(it);
     if (model) meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
+    if (it.editEngine === 'qwen') meta.push(`<b>Sampling:</b> ${it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4) ? 'Fast' : 'Quality'}`);
     meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
@@ -8230,6 +8281,10 @@ async function reuseItem(it, useEnhanced) {
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
   if (restoringEdit) {
     switchEditEngine(restoredEditEngine(it.editEngine));
+    if (state.editEngine === 'qwen') {
+      state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)
+        ? 'fast' : 'quality';
+    }
     state.editLoras = restoredLoraList(it.loras);
     state.editLorasByEngine[state.editEngine] = state.editLoras;
     state.editAspectOverride = it.editAspectOverride === true;

@@ -55,6 +55,7 @@ const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
 const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
+const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
 const {
   appendEditMaskNodes,
   appendEditMaskComposite,
@@ -1250,6 +1251,8 @@ async function completeJob(pid) {
       krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
       krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
+      qwenQuality: job.params.mode === 'edit' && job.params.editEngine === 'qwen'
+        ? normalizeQwenEditQuality(job.params.qwenQuality) : undefined,
       editSequence: job.params.editSequence ? {
         id: job.params.editSequence.id,
         index: job.params.editSequence.index,
@@ -1647,16 +1650,20 @@ async function buildEditKrea2Ref(p, refNames) {
 }
 
 /* Edit (Qwen): the real Qwen-Image-Edit 2511 pipeline (official template):
- * dedicated edit UNET + Lightning 4-step LoRA, source image encoded as the
- * starting latent, FluxKontext scaling + multi-reference conditioning. */
+ * dedicated edit UNET, optional Lightning acceleration, source image encoded
+ * as the starting latent, FluxKontext scaling + multi-reference conditioning. */
 async function buildEditQwen(p, refNames) {
   const graph = {};
+  const preset = qwenEditPreset(p.qwenQuality);
   graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.qwenEditUnet, weight_dtype: 'default' } };
-  graph.lightning = {
-    class_type: 'LoraLoaderModelOnly',
-    inputs: { model: ['unet', 0], lora_name: settings.qwenEditLora, strength_model: 1 },
-  };
-  let qwenBaseModel = ['lightning', 0];
+  let qwenBaseModel = ['unet', 0];
+  if (preset.lightning) {
+    graph.lightning = {
+      class_type: 'LoraLoaderModelOnly',
+      inputs: { model: qwenBaseModel, lora_name: settings.qwenEditLora, strength_model: 1 },
+    };
+    qwenBaseModel = ['lightning', 0];
+  }
   if (p.qwenAngle) {
     graph.angle_lora = {
       class_type: 'LoraLoaderModelOnly',
@@ -1705,7 +1712,7 @@ async function buildEditQwen(p, refNames) {
     class_type: 'KSampler',
     inputs: {
       model: ['cfgnorm', 0], positive: ['posm', 0], negative: ['negm', 0], latent_image: editMask ? editMask.latent : ['latent', 0],
-      seed: p.seed, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: editMask ? maskInfluenceDenoise(p.maskInfluence) : 1,
+      seed: p.seed, steps: preset.steps, cfg: preset.cfg, sampler_name: 'euler', scheduler: 'simple', denoise: editMask ? maskInfluenceDenoise(p.maskInfluence) : 1,
     },
   };
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
@@ -3779,6 +3786,10 @@ async function handleApi(req, res, url) {
         }
       } else if (p.editEngine === 'krea2ref') {
         p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null; // turbo: 8 steps
+      } else if (p.editEngine === 'qwen') {
+        p.qwenQuality = normalizeQwenEditQuality(p.qwenQuality);
+        const preset = qwenEditPreset(p.qwenQuality);
+        p.steps = preset.steps; p.cfg = preset.cfg; p.denoise = null;
       } else {
         p.steps = 4; p.cfg = 1; p.denoise = null;
       }

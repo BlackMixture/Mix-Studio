@@ -2288,6 +2288,48 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   58% { transform: scale(1.045); box-shadow: 0 0 20px rgba(101,117,255,0.26); }
   100% { transform: scale(1); filter: none; box-shadow: none; }
 }
+.qwen-quality-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -2px 0 12px;
+  padding: 8px 9px 8px 13px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 13px;
+  background: rgba(255,255,255,.025);
+}
+.qwen-quality-control[hidden] { display: none; }
+.qwen-quality-copy { min-width: 0; display: grid; gap: 1px; }
+.qwen-quality-copy b { color: var(--text); font-size: 12px; font-weight: 850; }
+.qwen-quality-copy small { color: var(--muted); font-size: 10px; font-weight: 700; }
+.qwen-quality-options {
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 10px;
+  background: #060607;
+}
+.qwen-quality-options button {
+  min-height: 29px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  transition: color 160ms var(--ease), background 160ms var(--ease);
+}
+.qwen-quality-options button.active {
+  color: var(--text);
+  background: rgba(255,255,255,.1);
+}
+.adv-grid input:disabled { opacity: .58; cursor: not-allowed; }
 .preserve-icon { width: 34px; height: 34px; padding: 0; color: var(--muted); }
 .preserve-icon svg { width: 17px; height: 17px; }
 .preserve-icon[aria-pressed="true"] {
