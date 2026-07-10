@@ -20,3 +20,27 @@ test('LoRA picker applies learned strength defaults from context endpoint', () =
   assert.match(appJs, /refreshLoraContext/);
   assert.match(appJs, /applyContextLoraDefault/);
 });
+
+test('LoRAs can persist trigger phrases and add them to the prompt on activation', () => {
+  assert.match(indexHtml, /id="loraTriggerCards"/);
+  assert.match(appJs, /normalizeLoraTriggerPhrase/);
+  assert.match(appJs, /loraTriggers: state\.loraTriggers/);
+  assert.match(appJs, /state\.loraTriggers\[l\.name\] = l\.triggerPhrase/);
+  assert.match(appJs, /ensureLoraTriggerInPrompt/);
+  assert.match(appJs, /if \(!wasOn && l\.on\) ensureLoraTriggerInPrompt\(l\)/);
+  assert.match(appJs, /triggerPhrase: loraTriggerPhrase\(l\)/);
+  assert.match(appJs, /lora-trigger-card/);
+  assert.match(serverJs, /triggerPhrase: String\(l\.triggerPhrase \|\| ''\)/);
+});
+
+test('generation image and video inputs offer device upload or previous gallery generations', () => {
+  assert.match(indexHtml, /id="assetPickerSheet"/);
+  assert.match(indexHtml, /id="assetPickerUpload"/);
+  assert.match(indexHtml, /id="assetPickerPrevious"/);
+  assert.match(appJs, /function openAssetPicker/);
+  assert.match(appJs, /function previousGenerationAssets/);
+  assert.match(appJs, /function usePreviousGeneration/);
+  assert.match(appJs, /function pickRef\(idx\) \{[\s\S]*pickUpload\('image\/\*'/);
+  assert.match(appJs, /function pickVidRef\(\) \{[\s\S]*pickUpload\('image\/\*'/);
+  assert.match(appJs, /pickUpload\('video\/\*'/);
+});

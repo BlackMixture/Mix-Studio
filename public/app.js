@@ -42,6 +42,7 @@ const state = {
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
   editLoras: [],             // {name, strength, on} - Edit tab (Klein/Qwen)
   editLorasByEngine: {},     // remembered independently for each edit model
+  loraTriggers: {},          // profile-local trigger phrase by LoRA filename
   editEngine: 'klein4',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   createRef: null,           // optional Krea 2 image-to-image source
@@ -954,6 +955,7 @@ function saveForm() {
     localStorage.setItem(formKey(), JSON.stringify({
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, editLorasByEngine: state.editLorasByEngine, prompts: state.prompts,
+      loraTriggers: state.loraTriggers,
       editEngine: state.editEngine, vidScailMode: state.vidScailMode,
       cameraSettings: state.cameraSettings,
       createMode: state.createMode,
@@ -1025,6 +1027,13 @@ function loadForm() {
       ? f.qwenAngleDistance : 'medium shot';
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
+    state.loraTriggers = f.loraTriggers && typeof f.loraTriggers === 'object' ? Object.fromEntries(
+      Object.entries(f.loraTriggers).map(([name, phrase]) => [name, normalizeLoraTriggerPhrase(phrase)]).filter(([, phrase]) => phrase),
+    ) : {};
+    [...state.loras, ...state.videoLoras, ...Object.values(f.editLorasByEngine || {}).flat()].forEach((lora) => {
+      const phrase = normalizeLoraTriggerPhrase(lora && lora.triggerPhrase);
+      if (lora && lora.name && phrase && !state.loraTriggers[lora.name]) state.loraTriggers[lora.name] = phrase;
+    });
     state.editEngine = editEngineId(f.editEngine);
     state.editLorasByEngine = {};
     if (f.editLorasByEngine && typeof f.editLorasByEngine === 'object') {
@@ -1211,8 +1220,124 @@ function updateVideoPanels() {
   renderLoras();
 }
 
-/* Generic upload picker: uploads to ComfyUI via the server, returns {name,url,w,h} */
-function pickUpload(accept, cb) {
+/* Shared source picker: every generation media dropzone can accept either a
+   fresh device file or an existing image/video from the current gallery. */
+let assetPickerState = null;
+
+function assetPickerKind(accept) {
+  return String(accept || '').toLowerCase().startsWith('video') ? 'video' : 'image';
+}
+
+function previousGenerationAssets(accept) {
+  const kind = assetPickerKind(accept);
+  const assets = [];
+  for (const item of state.items || []) {
+    if (kind === 'video') {
+      for (const video of Array.isArray(item.videos) ? item.videos : []) {
+        if (!video || !video.file) continue;
+        const engine = videoEngineLabel(video.info && video.info.engine);
+        assets.push({
+          kind, file: video.file, itemId: item.id, label: item.prompt || 'Previous video',
+          detail: `${engine} · ${new Date(video.createdAt || item.createdAt || Date.now()).toLocaleDateString()}`,
+          poster: item.file,
+        });
+      }
+    } else if (item.file) {
+      const model = galleryImageModelLabel(item);
+      assets.push({
+        kind, file: item.upscaled || item.file, itemId: item.id,
+        label: item.prompt || 'Previous image',
+        detail: `${model || 'Image'} · ${new Date(item.createdAt || Date.now()).toLocaleDateString()}`,
+      });
+    }
+  }
+  return assets.sort((a, b) => {
+    const itemA = (state.items || []).find((item) => item.id === a.itemId);
+    const itemB = (state.items || []).find((item) => item.id === b.itemId);
+    return (itemB ? itemActivity(itemB) : 0) - (itemA ? itemActivity(itemA) : 0);
+  }).slice(0, 80);
+}
+
+function assetPickerImageUrl(asset) {
+  if (asset.kind === 'video') return asset.poster ? '/images/' + encodeURIComponent(asset.poster) : '';
+  return '/images/' + encodeURIComponent(asset.file);
+}
+
+function renderAssetPickerList() {
+  const list = $('#assetPickerList');
+  const gallery = $('#assetPickerGallery');
+  const count = $('#assetPickerCount');
+  if (!list || !gallery || !assetPickerState) return;
+  const assets = previousGenerationAssets(assetPickerState.accept);
+  list.replaceChildren();
+  gallery.hidden = false;
+  count.textContent = assets.length ? `${assets.length} available` : '';
+  if (!assets.length) {
+    list.innerHTML = `<div class="asset-picker-empty">No previous ${assetPickerKind(assetPickerState.accept)} generations yet.</div>`;
+    return;
+  }
+  assets.forEach((asset) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'asset-picker-item';
+    const thumb = document.createElement('span');
+    thumb.className = 'asset-picker-thumb';
+    const src = assetPickerImageUrl(asset);
+    if (src) {
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = src;
+      img.alt = '';
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent = '▶';
+    }
+    if (asset.kind === 'video') {
+      const badge = document.createElement('i');
+      badge.textContent = '▶';
+      thumb.appendChild(badge);
+    }
+    const copy = document.createElement('span');
+    copy.className = 'asset-picker-item-copy';
+    const label = document.createElement('b');
+    label.textContent = asset.label;
+    const detail = document.createElement('small');
+    detail.textContent = asset.detail;
+    copy.append(label, detail);
+    button.append(thumb, copy);
+    button.addEventListener('click', () => usePreviousGeneration(asset));
+    list.appendChild(button);
+  });
+}
+
+function openAssetPicker(accept, callback, title) {
+  assetPickerState = { accept, callback };
+  const picker = assetPickerState;
+  $('#assetPickerTitle').textContent = title || (assetPickerKind(accept) === 'video' ? 'Choose a video source' : 'Choose an image source');
+  $('#assetPickerCopy').textContent = assetPickerKind(accept) === 'video'
+    ? 'Use a video from your device or select one from your gallery.'
+    : 'Use an image from your device or select one from your gallery.';
+  $('#assetPickerSheet').classList.add('show');
+  renderAssetPickerList();
+  $('#assetPickerGallery').hidden = true;
+  syncSheetScrollLock();
+  if (!state.items.length) {
+    refreshGallery(true).then(() => {
+      if (assetPickerState !== picker) return;
+      const shouldShow = !$('#assetPickerGallery').hidden;
+      renderAssetPickerList();
+      $('#assetPickerGallery').hidden = !shouldShow;
+    });
+  }
+}
+
+function closeAssetPicker() {
+  $('#assetPickerSheet').classList.remove('show');
+  assetPickerState = null;
+  syncSheetScrollLock();
+}
+
+function pickDeviceUpload(accept, cb) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = accept;
@@ -1242,6 +1367,54 @@ function pickUpload(accept, cb) {
   });
   input.click();
 }
+
+async function usePreviousGeneration(asset) {
+  const picker = assetPickerState;
+  if (!picker || !asset) return;
+  try {
+    toast('Loading previous generation…');
+    const path = asset.kind === 'video' ? '/videos/' : '/images/';
+    const response = await fetch(path + encodeURIComponent(asset.file));
+    if (!response.ok) throw new Error('That generation is no longer available');
+    const blob = await response.blob();
+    const buf = await blob.arrayBuffer();
+    const res = await api('/api/upload', {
+      method: 'POST',
+      headers: { 'x-filename': encodeURIComponent(asset.file) },
+      body: buf,
+    });
+    const url = URL.createObjectURL(blob);
+    const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+    closeAssetPicker();
+    await picker.callback({
+      name: res.name, url, w: dims.w, h: dims.h,
+      label: asset.label || 'Previous generation', hasAudio: res.hasAudio === true,
+      srcItemId: asset.itemId,
+    });
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+/* Generic upload picker: uploads to ComfyUI via the server, returns {name,url,w,h}. */
+function pickUpload(accept, cb, title) {
+  openAssetPicker(accept, (asset) => cb(asset), title);
+}
+
+$('#assetPickerUpload').addEventListener('click', () => {
+  const picker = assetPickerState;
+  if (!picker) return;
+  closeAssetPicker();
+  pickDeviceUpload(picker.accept, picker.callback);
+});
+$('#assetPickerPrevious').addEventListener('click', () => {
+  $('#assetPickerGallery').hidden = false;
+  renderAssetPickerList();
+  $('#assetPickerList').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+$('#assetPickerSheet').addEventListener('click', (event) => {
+  if (event.target === $('#assetPickerSheet') || event.target.closest('[data-close]')) assetPickerState = null;
+});
 
 function createDenoiseFromInfluence(influence = state.createInfluence) {
   const normalized = Math.max(0, Math.min(100, Number(influence) || 0)) / 100;
@@ -1903,6 +2076,16 @@ async function uploadRegionReference(file) {
   } catch (e) { toast(e.message, true); }
 }
 
+function setRegionReference(asset) {
+  const region = selectedRegion();
+  if (!region || !asset) return;
+  region.refImageName = asset.name;
+  region.refUrl = asset.url;
+  renderRegionEditor();
+  saveForm();
+  toast('Region reference added');
+}
+
 function clearKreaMask(silent) {
   state.kreaMask = null;
   state.kreaMaskPreview = null;
@@ -2500,7 +2683,7 @@ $('#regionStrengthInput').addEventListener('input', () => {
   if (badge) badge.textContent = region.strength.toFixed(2);
 });
 $('#regionStrengthInput').addEventListener('change', saveForm);
-$('#regionRefBtn').addEventListener('click', () => $('#regionRefInput').click());
+$('#regionRefBtn').addEventListener('click', () => pickUpload('image/*', setRegionReference, 'Choose region reference'));
 $('#regionRefInput').addEventListener('change', () => uploadRegionReference($('#regionRefInput').files && $('#regionRefInput').files[0]));
 $('#regionRefClear').addEventListener('click', () => {
   const region = selectedRegion();
@@ -3764,6 +3947,32 @@ function loraContextProfile(name) {
   return name ? state.loraContext[name] || null : null;
 }
 
+function normalizeLoraTriggerPhrase(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+}
+
+function loraTriggerPhrase(lora) {
+  const direct = normalizeLoraTriggerPhrase(lora && lora.triggerPhrase);
+  return direct || normalizeLoraTriggerPhrase(lora && lora.name ? state.loraTriggers[lora.name] : '');
+}
+
+function promptHasLoraTrigger(prompt, phrase) {
+  const needle = normalizeLoraTriggerPhrase(phrase).toLocaleLowerCase();
+  return !!needle && String(prompt || '').toLocaleLowerCase().includes(needle);
+}
+
+function ensureLoraTriggerInPrompt(lora) {
+  const phrase = loraTriggerPhrase(lora);
+  if (!phrase || promptHasLoraTrigger(promptDraft(), phrase)) return false;
+  const current = promptDraft().trim();
+  const separator = current ? (/[,.!?;:]$/.test(current) ? ' ' : ', ') : '';
+  const value = current + separator + phrase;
+  setPromptDraft(value);
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = value;
+  updatePromptClear();
+  return true;
+}
+
 function applyContextLoraDefault(lora) {
   const profile = loraContextProfile(lora && lora.name);
   if (!profile || !Number.isFinite(Number(profile.defaultStrength))) return;
@@ -3948,6 +4157,52 @@ function renderPromptSuggestions() {
     b.addEventListener('click', () => appendPromptSuggestion(suggestion.phrase));
     row.appendChild(b);
   }
+  renderLoraTriggerCards();
+}
+
+function renderLoraTriggerCards() {
+  const row = $('#loraTriggerCards');
+  if (!row) return;
+  row.replaceChildren();
+  const active = curLoras().filter((l) => l && l.on && l.name && loraTriggerPhrase(l));
+  row.hidden = active.length === 0;
+  for (const lora of active) {
+    const phrase = loraTriggerPhrase(lora);
+    const present = promptHasLoraTrigger(promptDraft(), phrase);
+    const card = document.createElement('div');
+    card.className = `lora-trigger-card${present ? ' present' : ' missing'}`;
+    const icon = document.createElement('span');
+    icon.className = 'lora-trigger-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '✦';
+    const copy = document.createElement('span');
+    copy.className = 'lora-trigger-copy';
+    const label = document.createElement('strong');
+    label.textContent = phrase;
+    const source = document.createElement('small');
+    source.textContent = `${prettyLora(lora.name)} · ${present ? 'added to prompt' : 'not in prompt'}`;
+    copy.append(label, source);
+    card.append(icon, copy);
+    if (!present) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'lora-trigger-add';
+      add.textContent = 'Add';
+      add.addEventListener('click', () => {
+        ensureLoraTriggerInPrompt(lora);
+        renderLoraTriggerCards();
+        saveForm();
+      });
+      card.appendChild(add);
+    } else {
+      const check = document.createElement('span');
+      check.className = 'lora-trigger-check';
+      check.setAttribute('aria-label', 'Trigger phrase is in the prompt');
+      check.textContent = '✓';
+      card.appendChild(check);
+    }
+    row.appendChild(card);
+  }
 }
 
 function renderLoraCompatibility() {
@@ -3974,10 +4229,12 @@ function renderLoras() {
   arr.forEach((l, idx) => {
     if (!l.name) { arr.splice(idx, 1); return; } // legacy empty rows
     const card = document.createElement('div');
-    card.className = 'lora-card' + (l.on ? ' on' : '');
+    const trigger = loraTriggerPhrase(l);
+    card.className = 'lora-card' + (l.on ? ' on' : '') + (trigger ? ' has-trigger' : '');
     card.innerHTML = `${loraThumbHtml(l.name, 'lc-thumb')}`
       + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
       + `<button class="lc-menu" aria-label="LoRA options">⋯</button>`
+      + (trigger ? `<span class="lc-trigger-badge" title="Trigger phrase: ${escapeHtml(trigger)}" aria-label="Has trigger phrase">✦</span>` : '')
       + `<span class="lc-name" title="${escapeHtml(prettyLora(l.name))}">${escapeHtml(prettyLora(l.name))}</span>`
       + `<span class="lc-adjust"></span>`;
     wireLoraCard(card, l, idx, arr);
@@ -4007,6 +4264,16 @@ function wireLoraCard(card, l, idx, arr) {
     e.stopPropagation();
     openActionMenu(menuBtn, [
       { label: '🖼 Set thumbnail', action: () => setLoraThumb(l.name) },
+      { label: loraTriggerPhrase(l) ? `Trigger: ${loraTriggerPhrase(l)}` : 'Add trigger phrase', action: () => {
+        const value = window.prompt('Trigger word or phrase (leave blank to clear)', loraTriggerPhrase(l));
+        if (value == null) return;
+        l.triggerPhrase = normalizeLoraTriggerPhrase(value);
+        if (l.triggerPhrase) state.loraTriggers[l.name] = l.triggerPhrase;
+        else delete state.loraTriggers[l.name];
+        if (l.on) ensureLoraTriggerInPrompt(l);
+        renderLoras();
+        saveForm();
+      } },
       { label: `Strength: ${Number(l.strength).toFixed(2)}`, action: () => {
         const v = window.prompt('Strength (0–2)', String(l.strength));
         if (v == null) return;
@@ -4085,7 +4352,9 @@ function wireLoraCard(card, l, idx, arr) {
       renderLoras(); // refresh badge formatting
       window.scrollTo(0, sy);
     } else if (!moved) {
+      const wasOn = l.on === true;
       l.on = !l.on;
+      if (!wasOn && l.on) ensureLoraTriggerInPrompt(l);
       krea2ManagedLoraChanged(l);
       renderLoras();
       window.scrollTo(0, sy);
@@ -4169,6 +4438,7 @@ function renderLoraPicker(query) {
       const l = { name, strength: 1, on: true };
       applyContextLoraDefault(l);
       curLoras().push(l);
+      ensureLoraTriggerInPrompt(l);
       renderLoras();
       saveForm();
     }
@@ -4456,7 +4726,7 @@ $('#loraSaveBtn').addEventListener('click', async () => {
     await api('/api/lorapresets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, loras: loras.map((l) => ({ name: l.name, strength: l.strength })) }),
+      body: JSON.stringify({ name, loras: loras.map((l) => ({ name: l.name, strength: l.strength, triggerPhrase: loraTriggerPhrase(l) })) }),
     });
     toast(`Preset “${name.trim()}” saved`);
   } catch (e) { toast(e.message, true); }
@@ -4478,7 +4748,12 @@ async function renderLoraPresets() {
     lb.textContent = `${pr.name} — ${pr.loras.map((l) => prettyLora(l.name)).join(', ')}`;
     lb.addEventListener('click', () => {
       const arr = curLoras();
-      arr.splice(0, arr.length, ...pr.loras.map((l) => ({ name: l.name, strength: l.strength, on: true })));
+      arr.splice(0, arr.length, ...pr.loras.map((l) => {
+        const triggerPhrase = normalizeLoraTriggerPhrase(l.triggerPhrase);
+        if (triggerPhrase) state.loraTriggers[l.name] = triggerPhrase;
+        return { name: l.name, strength: l.strength, triggerPhrase, on: true };
+      }));
+      arr.forEach((l) => ensureLoraTriggerInPrompt(l));
       renderLoras();
       saveForm();
       $('#loraPresetSheet').classList.remove('show');
@@ -4596,33 +4871,11 @@ function wireRefReorder(slot, index, maxSlots) {
 }
 
 function pickRef(idx) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.addEventListener('change', async () => {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    try {
-      toast('Uploading image…');
-      const buf = await file.arrayBuffer();
-      const res = await api('/api/upload', {
-        method: 'POST',
-        headers: { 'x-filename': encodeURIComponent(file.name || 'ref.png') },
-        body: buf,
-      });
-      const url = URL.createObjectURL(file);
-      const dims = await new Promise((resolve) => {
-        const image = new Image();
-        image.onload = () => resolve({ w: image.naturalWidth, h: image.naturalHeight });
-        image.onerror = () => resolve({ w: 0, h: 0 });
-        image.src = url;
-      });
-      state.refs[idx] = { name: res.name, url, w: dims.w, h: dims.h };
-      if (idx === 0) clearKreaMask(true);
-      renderRefs();
-    } catch (e) { toast(e.message, true); }
-  });
-  input.click();
+  pickUpload('image/*', (file) => {
+    state.refs[idx] = file;
+    if (idx === 0) clearKreaMask(true);
+    renderRefs();
+  }, `Choose reference image ${idx + 1}`);
 }
 
 async function sendToVideoTab(item, role = 'start') {
@@ -5027,33 +5280,11 @@ $('#vidMotionPromptBtn').addEventListener('click', async () => {
   }
 });
 function pickVidRef() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.addEventListener('change', async () => {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    try {
-      toast('Uploading image…');
-      const buf = await file.arrayBuffer();
-      const res = await api('/api/upload', {
-        method: 'POST',
-        headers: { 'x-filename': encodeURIComponent(file.name || 'src.png') },
-        body: buf,
-      });
-      const url = URL.createObjectURL(file);
-      const dims = await new Promise((resolve) => {
-        const im = new Image();
-        im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
-        im.onerror = () => resolve({ w: 1024, h: 1024 });
-        im.src = url;
-      });
-      state.vidRef = { name: res.name, url, w: dims.w, h: dims.h };
-      renderVidAttach();
-      updateVideoPanels();
-    } catch (e) { toast(e.message, true); }
-  });
-  input.click();
+  pickUpload('image/*', (file) => {
+    state.vidRef = file;
+    renderVidAttach();
+    updateVideoPanels();
+  }, 'Choose first frame');
 }
 $('#vidDur').addEventListener('input', updateVideoTuningSummary);
 $('#vid4k').addEventListener('click', () => $('#vid4k').classList.toggle('active'));

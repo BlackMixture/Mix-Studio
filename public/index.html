@@ -284,6 +284,7 @@
       </button>
     </div>
     <div class="chip-row prompt-tools context-prompt-tools" id="contextPromptTools" hidden></div>
+    <div class="lora-trigger-cards" id="loraTriggerCards" hidden aria-live="polite"></div>
     <button class="krea-model-switch" id="kreaTurboToggle" type="button" role="switch" aria-checked="true">
       <span class="krea-model-switch-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m13.2 2-8 11H11l-.9 9 8.7-12H13l.2-8Z"/></svg></span>
       <span class="krea-model-switch-copy"><b>Turbo</b><small id="kreaModelSummary">Krea 2 · fast · 8 steps</small></span>
@@ -1431,6 +1432,27 @@
     <h3 class="sheet-title">Reference an image <button data-close aria-label="Close image reference picker">✕</button></h3>
     <p class="prompt-mention-copy">Choose an uploaded reference to add it to this prompt.</p>
     <div class="prompt-mention-list" id="promptMentionList"></div>
+  </div>
+</div>
+
+<div class="sheet" id="assetPickerSheet">
+  <div class="sheet-panel asset-picker-panel">
+    <h3 class="sheet-title"><span id="assetPickerTitle">Choose a source</span> <button data-close aria-label="Close source picker">✕</button></h3>
+    <p class="asset-picker-copy" id="assetPickerCopy">Use a file from your device or select something from your gallery.</p>
+    <div class="asset-picker-actions">
+      <button class="asset-picker-action" id="assetPickerUpload" type="button">
+        <span class="asset-picker-action-icon" aria-hidden="true">↑</span>
+        <span><b>Upload from device</b><small>Choose a new file</small></span>
+      </button>
+      <button class="asset-picker-action" id="assetPickerPrevious" type="button">
+        <span class="asset-picker-action-icon" aria-hidden="true">✦</span>
+        <span><b>Use previous generation</b><small>Select from your gallery</small></span>
+      </button>
+    </div>
+    <div class="asset-picker-gallery" id="assetPickerGallery" hidden>
+      <div class="asset-picker-gallery-head"><span>Previous generations</span><small id="assetPickerCount"></small></div>
+      <div class="asset-picker-list" id="assetPickerList"></div>
+    </div>
   </div>
 </div>
 

@@ -4521,7 +4521,11 @@ async function handleApi(req, res, url) {
     if (!name) return json(res, 400, { error: 'Preset name required' });
     const loras = (Array.isArray(body.loras) ? body.loras : [])
       .filter((l) => l && l.name)
-      .map((l) => ({ name: String(l.name), strength: Number(l.strength) || 1 }));
+      .map((l) => ({
+        name: String(l.name),
+        strength: Number(l.strength) || 1,
+        triggerPhrase: String(l.triggerPhrase || '').trim().replace(/\s+/g, ' ').slice(0, 160),
+      }));
     if (!loras.length) return json(res, 400, { error: 'No LoRAs to save' });
     const existing = ownPresets().find((pr) => pr.name.toLowerCase() === name.toLowerCase());
     if (existing) { existing.loras = loras; }
