@@ -58,8 +58,8 @@ test('owner can restart MixBox Studio safely from the app drawer', () => {
   assert.match(server, /Only the owner profile can restart MixBox Studio/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
   assert.match(html, /id="appRestartBtn"/);
-  assert.match(html, /class="restart-brand-icon"/);
-  assert.match(html, /id="restartBrandGradient"/);
+  assert.match(html, /id="appRestartBtn"[\s\S]*stroke="currentColor"/);
+  assert.doesNotMatch(html, /restartBrandGradient/);
   assert.match(app, /api\/app\/restart/);
   assert.match(app, /waitForAppRestart\(\)/);
 });
