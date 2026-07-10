@@ -225,8 +225,25 @@ function promptDraft() {
   return $('#prompt').value || '';
 }
 
+function loraTriggerToken(name) {
+  return `@lora-trigger-${encodeURIComponent(String(name || ''))}`;
+}
+
+function loraNameFromTriggerToken(token) {
+  const encoded = String(token || '').replace(/^@lora-trigger-/, '');
+  try { return decodeURIComponent(encoded); } catch { return ''; }
+}
+
+function expandPromptLoraTriggers(value) {
+  return String(value || '').replace(/@lora-trigger-([^\s]+)/g, (token) => {
+    const name = loraNameFromTriggerToken(token);
+    const phrase = name && typeof loraTriggerPhrase === 'function' ? loraTriggerPhrase({ name }) : '';
+    return phrase || token;
+  });
+}
+
 function promptForGeneration() {
-  return promptDraft().replace(/@image-(\d+)/g, 'image $1');
+  return expandPromptLoraTriggers(promptDraft().replace(/@image-(\d+)/g, 'image $1'));
 }
 
 function refForPromptToken(index) {
@@ -259,15 +276,36 @@ function makePromptReferenceToken(index) {
   return token;
 }
 
+function makePromptLoraTriggerToken(name) {
+  const token = document.createElement('span');
+  const phrase = typeof loraTriggerPhrase === 'function' ? loraTriggerPhrase({ name }) : '';
+  token.className = 'prompt-lora-token';
+  token.contentEditable = 'false';
+  token.dataset.loraName = name;
+  token.title = `LoRA trigger: ${phrase || prettyLora(name)}`;
+  const label = document.createElement('b');
+  label.textContent = phrase || prettyLora(name);
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'prompt-ref-remove';
+  remove.dataset.removePromptLora = name;
+  remove.setAttribute('aria-label', `Remove ${phrase || 'LoRA trigger'} from prompt`);
+  remove.textContent = '×';
+  token.append(label, remove);
+  return token;
+}
+
 function renderPromptComposer() {
   const composer = $('#promptComposer');
   if (!composer) return;
   const value = promptDraft();
-  const parts = value.split(/(@image-\d+)/g);
+  const parts = value.split(/(@image-\d+|@lora-trigger-[^\s]+)/g);
   composer.replaceChildren();
   parts.forEach((part) => {
-    const match = /^@image-(\d+)$/.exec(part);
-    if (match) composer.appendChild(makePromptReferenceToken(match[1]));
+    const refMatch = /^@image-(\d+)$/.exec(part);
+    const loraMatch = /^@lora-trigger-(.+)$/.exec(part);
+    if (refMatch) composer.appendChild(makePromptReferenceToken(refMatch[1]));
+    else if (loraMatch) composer.appendChild(makePromptLoraTriggerToken(loraNameFromTriggerToken(part)));
     else if (part) composer.appendChild(document.createTextNode(part));
   });
 }
@@ -277,6 +315,7 @@ function composerNodeText(node, root) {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node;
   if (el.classList.contains('prompt-ref-token')) return `@image-${el.dataset.refIndex}`;
+  if (el.classList.contains('prompt-lora-token')) return loraTriggerToken(el.dataset.loraName);
   if (el.tagName === 'BR') return '\n';
   const text = [...el.childNodes].map((child) => composerNodeText(child, root)).join('');
   return el !== root && /^(DIV|P)$/.test(el.tagName) ? `${text}\n` : text;
@@ -3422,9 +3461,9 @@ $('#promptComposer').addEventListener('input', syncPromptDraftFromComposer);
 $('#promptComposer').addEventListener('keyup', capturePromptSelection);
 $('#promptComposer').addEventListener('mouseup', capturePromptSelection);
 $('#promptComposer').addEventListener('click', (event) => {
-  const remove = event.target.closest('[data-remove-prompt-ref]');
+  const remove = event.target.closest('[data-remove-prompt-ref], [data-remove-prompt-lora]');
   if (!remove) return;
-  const token = remove.closest('.prompt-ref-token');
+  const token = remove.closest('.prompt-ref-token, .prompt-lora-token');
   token.remove();
   syncPromptDraftFromComposer();
   $('#promptComposer').focus();
@@ -3958,7 +3997,8 @@ function loraTriggerPhrase(lora) {
 
 function promptHasLoraTrigger(prompt, phrase) {
   const needle = normalizeLoraTriggerPhrase(phrase).toLocaleLowerCase();
-  return !!needle && String(prompt || '').toLocaleLowerCase().includes(needle);
+  const resolvedPrompt = expandPromptLoraTriggers(prompt);
+  return !!needle && resolvedPrompt.toLocaleLowerCase().includes(needle);
 }
 
 function ensureLoraTriggerInPrompt(lora) {
@@ -3966,7 +4006,7 @@ function ensureLoraTriggerInPrompt(lora) {
   if (!phrase || promptHasLoraTrigger(promptDraft(), phrase)) return false;
   const current = promptDraft().trim();
   const separator = current ? (/[,.!?;:]$/.test(current) ? ' ' : ', ') : '';
-  const value = current + separator + phrase;
+  const value = current + separator + loraTriggerToken(lora.name) + ' ';
   setPromptDraft(value);
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = value;
   updatePromptClear();
@@ -4156,52 +4196,6 @@ function renderPromptSuggestions() {
     b.title = `${prettyLora(suggestion.lora)}: ${suggestion.phrase}`;
     b.addEventListener('click', () => appendPromptSuggestion(suggestion.phrase));
     row.appendChild(b);
-  }
-  renderLoraTriggerCards();
-}
-
-function renderLoraTriggerCards() {
-  const row = $('#loraTriggerCards');
-  if (!row) return;
-  row.replaceChildren();
-  const active = curLoras().filter((l) => l && l.on && l.name && loraTriggerPhrase(l));
-  row.hidden = active.length === 0;
-  for (const lora of active) {
-    const phrase = loraTriggerPhrase(lora);
-    const present = promptHasLoraTrigger(promptDraft(), phrase);
-    const card = document.createElement('div');
-    card.className = `lora-trigger-card${present ? ' present' : ' missing'}`;
-    const icon = document.createElement('span');
-    icon.className = 'lora-trigger-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = '✦';
-    const copy = document.createElement('span');
-    copy.className = 'lora-trigger-copy';
-    const label = document.createElement('strong');
-    label.textContent = phrase;
-    const source = document.createElement('small');
-    source.textContent = `${prettyLora(lora.name)} · ${present ? 'added to prompt' : 'not in prompt'}`;
-    copy.append(label, source);
-    card.append(icon, copy);
-    if (!present) {
-      const add = document.createElement('button');
-      add.type = 'button';
-      add.className = 'lora-trigger-add';
-      add.textContent = 'Add';
-      add.addEventListener('click', () => {
-        ensureLoraTriggerInPrompt(lora);
-        renderLoraTriggerCards();
-        saveForm();
-      });
-      card.appendChild(add);
-    } else {
-      const check = document.createElement('span');
-      check.className = 'lora-trigger-check';
-      check.setAttribute('aria-label', 'Trigger phrase is in the prompt');
-      check.textContent = '✓';
-      card.appendChild(check);
-    }
-    row.appendChild(card);
   }
 }
 
