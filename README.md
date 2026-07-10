@@ -12,7 +12,7 @@ The downloadable bootstrap installs Git through `winget` when needed, clones the
 
 ### One-file download
 
-On Windows, open the [Mix Studio download page](https://blackmixture.github.io/KreaStudio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
+On Windows, open the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
 
 The wizard separates ComfyUI, feature selection, and review into explicit steps. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
 
@@ -22,7 +22,7 @@ The wizard separates ComfyUI, feature selection, and review into explicit steps.
 2. Clone the repository. Do not use GitHub's **Download ZIP** if you want in-app updates:
 
    ```powershell
-   git clone https://github.com/BlackMixture/KreaStudio.git
+   git clone https://github.com/BlackMixture/Mix-Studio.git
    ```
 
 3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI, model families, review, and installation.

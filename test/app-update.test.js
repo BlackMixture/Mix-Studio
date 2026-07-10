@@ -22,12 +22,20 @@ function gitSequence(outputs) {
 }
 
 test('public-only updates do not require a server restart', async () => {
-  const fake = gitSequence(['', 'main\n', 'aaa\n', 'Updating aaa..bbb\n', 'bbb\n', 'public/app.js\npublic/style.css\n']);
+  const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n', 'Updating aaa..bbb\n', 'bbb\n', 'public/app.js\npublic/style.css\n']);
   const result = await updateFromGit('/app', { runGit: fake.runGit });
   assert.equal(result.updated, true);
   assert.equal(result.restartRequired, false);
+  assert.equal(result.originMigrated, false);
   assert.deepEqual(result.changedFiles, ['public/app.js', 'public/style.css']);
-  assert.deepEqual(fake.calls[3], ['pull', '--ff-only', 'origin', 'main']);
+  assert.deepEqual(fake.calls[4], ['pull', '--ff-only', 'origin', 'main']);
+});
+
+test('a legacy KreaStudio origin migrates to Mix-Studio before pulling', async () => {
+  const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/KreaStudio.git\n', '', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
+  const result = await updateFromGit('/app', { runGit: fake.runGit });
+  assert.equal(result.originMigrated, true);
+  assert.deepEqual(fake.calls[3], ['remote', 'set-url', 'origin', 'https://github.com/BlackMixture/Mix-Studio.git']);
 });
 
 test('server and library updates require a restart', () => {
@@ -37,7 +45,7 @@ test('server and library updates require a restart', () => {
 });
 
 test('an up-to-date checkout reports no changed files', async () => {
-  const fake = gitSequence(['', 'main\n', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
+  const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
   const result = await updateFromGit('/app', { runGit: fake.runGit });
   assert.equal(result.updated, false);
   assert.equal(result.restartRequired, false);

@@ -5,7 +5,7 @@ cd /d "%~dp0"
 
 if exist "%~dp0installer\install-ui.ps1" goto run_setup
 
-set "MIX_STUDIO_REPO=https://github.com/BlackMixture/KreaStudio.git"
+set "MIX_STUDIO_REPO=https://github.com/BlackMixture/Mix-Studio.git"
 set "MIX_STUDIO_HOME=%USERPROFILE%\Mix Studio"
 set "GIT_EXE="
 

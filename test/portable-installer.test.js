@@ -20,7 +20,7 @@ test('portable installer has a double-click Windows entry point', () => {
 
 test('standalone installer downloads the official Git checkout before opening setup', () => {
   const launcher = fs.readFileSync(path.join(root, 'install.bat'), 'utf8');
-  assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/KreaStudio\.git/);
+  assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
   assert.match(launcher, /winget install --id Git\.Git/);
   assert.match(launcher, /clone --branch main --single-branch/);
   assert.match(launcher, /%USERPROFILE%\\Mix Studio/);

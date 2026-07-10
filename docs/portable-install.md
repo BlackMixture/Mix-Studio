@@ -6,7 +6,7 @@ The guided bootstrap supports both a clean Windows machine and an existing Comfy
 
 ## New machine
 
-1. Open `https://blackmixture.github.io/KreaStudio/` on Windows and download `install.bat`.
+1. Open `https://blackmixture.github.io/Mix-Studio/` on Windows and download `install.bat`.
 2. Run the downloaded file. It installs Git through `winget` when necessary and clones the official repository into `%USERPROFILE%\Mix Studio`.
 3. The native setup wizard opens automatically and uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the Mix Studio web interface.
 4. Let setup install Node.js LTS with `winget` if Node 22+ is not already available, then rerun `%USERPROFILE%\Mix Studio\install.bat` after PATH refreshes.
@@ -14,7 +14,7 @@ The guided bootstrap supports both a clean Windows machine and an existing Comfy
 6. Enable the desired Edit and Video families, then leave dependency downloads enabled to install their reviewed models and custom nodes. Fresh installations start with the image-focused set; optional video and advanced edit families can each add tens of gigabytes.
 7. Double-click `start.bat` inside the Mix Studio folder.
 
-For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/KreaStudio.git`, then launch `install.bat` from that checkout.
+For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/Mix-Studio.git`, then launch `install.bat` from that checkout.
 
 The installer is intentionally idempotent: rerunning it reads existing values, presents them as defaults, backs up `settings.json` and `install.json`, and writes merged configuration atomically. `installer/install-ui.ps1` owns only presentation and invokes `installer/install.ps1` non-interactively for prerequisite checks and writes.
 

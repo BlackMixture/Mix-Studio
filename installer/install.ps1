@@ -180,7 +180,7 @@ Write-Host '  Your gallery and settings are preserved. Setup never deletes data.
 
 Write-Step 'Checking the portable checkout'
 if (-not (Test-Path (Join-Path $Root '.git'))) {
-  throw "This folder is not a Git checkout. Install Git, run 'git clone https://github.com/BlackMixture/KreaStudio.git', then double-click install.bat inside that folder. A ZIP download cannot use in-app updates."
+  throw "This folder is not a Git checkout. Install Git, run 'git clone https://github.com/BlackMixture/Mix-Studio.git', then double-click install.bat inside that folder. A ZIP download cannot use in-app updates."
 }
 if ($null -eq (Get-Command git -ErrorAction SilentlyContinue)) {
   throw 'Git is not installed or is not on PATH. Install Git for Windows, then run install.bat again.'
