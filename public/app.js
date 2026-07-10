@@ -9000,6 +9000,7 @@ $('#lbCompareBtn').addEventListener('click', () => {
   const preview = $('#lbSwipePreview');
   let swipe = null;
   let animationToken = 0;
+  let pendingNavigationItem = null;
 
   const currentMedia = () => ($('#lbVideo').hidden ? $('#lbImg') : $('#lbVideo'));
 
@@ -9014,6 +9015,7 @@ $('#lbCompareBtn').addEventListener('click', () => {
     preview.removeAttribute('src');
     wrap.classList.remove('is-swiping', 'is-settling');
     swipe = null;
+    pendingNavigationItem = null;
   }
   resetLightboxSwipeVisuals = clearSwipeVisuals;
 
@@ -9057,6 +9059,7 @@ $('#lbCompareBtn').addEventListener('click', () => {
     const duration = reduced ? 1 : (commit ? 210 : 260);
     const easing = commit ? 'cubic-bezier(.2,.78,.22,1)' : 'cubic-bezier(.18,.82,.22,1)';
     const token = ++animationToken;
+    if (commit && currentSwipe.neighbor) pendingNavigationItem = currentSwipe.neighbor;
     wrap.classList.add('is-settling');
     const animations = [currentSwipe.current.animate([
       { transform: currentSwipe.current.style.transform || 'translate3d(0,0,0)', opacity: currentSwipe.current.style.opacity || 1 },
@@ -9084,7 +9087,12 @@ $('#lbCompareBtn').addEventListener('click', () => {
       const r = e.target.getBoundingClientRect();
       if (e.touches[0].clientY > r.bottom - 72) return;
     }
-    clearSwipeVisuals();
+    // A committed swipe owns its destination immediately, before the settle
+    // animation or image decode completes. Sync to that destination before a
+    // rapid follow-up gesture so it advances again instead of starting over.
+    const pending = pendingNavigationItem;
+    if (pending) openLightbox(pending.id);
+    else clearSwipeVisuals();
     const t = e.touches[0];
     const now = performance.now();
     swipe = {

@@ -19,6 +19,8 @@ test('focused gallery swipe directly moves current and neighboring media', () =>
   assert.match(app, /Math\.abs\(rawDx\) >= wrap\.clientWidth \* 0\.2/);
   assert.match(app, /Math\.abs\(velocity\) >= 0\.48/);
   assert.match(app, /finishLightboxSwipe\(commit\)/);
+  assert.match(app, /pendingNavigationItem = currentSwipe\.neighbor/);
+  assert.match(app, /if \(pending\) openLightbox\(pending\.id\)/);
   assert.match(css, /\.lightbox-swipe-preview \{[\s\S]*will-change|#lbImg,[\s\S]*will-change: transform, opacity/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*\.lightbox-swipe-preview/);
 });
