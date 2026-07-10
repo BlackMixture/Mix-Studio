@@ -88,6 +88,8 @@ const {
 } = require('./lib/regional-workflows');
 const { nodeLabelForJob } = require('./lib/progress-labels');
 const { decodePreviewPayload } = require('./lib/preview-payload');
+const { selectionAssetRefs, selectionSummary } = require('./lib/selection-summary');
+const { streamStoredZip } = require('./lib/zip-stream');
 const {
   PROFILE_COOKIE,
   hashPin,
@@ -1940,6 +1942,43 @@ async function buildImageComposite(imageNames) {
     output = [key, 0];
   }
   graph.save = { class_type: 'SaveImage', inputs: { images: output, filename_prefix: 'KreaStudio/composite' } };
+  return filterInputs(graph);
+}
+
+async function buildImageContactSheet(imageNames) {
+  const names = Array.isArray(imageNames) ? imageNames.filter(Boolean) : [];
+  if (names.length < 2) throw new Error('A contact sheet needs at least two images');
+  const graph = {};
+  names.forEach((name, index) => {
+    graph[`image_${index}`] = { class_type: 'LoadImage', inputs: { image: name } };
+  });
+  const columns = Math.ceil(Math.sqrt(names.length));
+  const rows = [];
+  for (let start = 0; start < names.length; start += columns) {
+    let row = [`image_${start}`, 0];
+    const end = Math.min(names.length, start + columns);
+    for (let index = start + 1; index < end; index += 1) {
+      const key = `row_${start}_${index}`;
+      graph[key] = await nodeFromOrdered(
+        'ImageStitch',
+        ['right', true, 8, 'black'],
+        { image1: row, image2: [`image_${index}`, 0] }
+      );
+      row = [key, 0];
+    }
+    rows.push(row);
+  }
+  let output = rows[0];
+  for (let index = 1; index < rows.length; index += 1) {
+    const key = `column_${index}`;
+    graph[key] = await nodeFromOrdered(
+      'ImageStitch',
+      ['down', true, 8, 'black'],
+      { image1: output, image2: rows[index] }
+    );
+    output = [key, 0];
+  }
+  graph.save = { class_type: 'SaveImage', inputs: { images: output, filename_prefix: 'KreaStudio/contact_sheet' } };
   return filterInputs(graph);
 }
 
@@ -4159,12 +4198,29 @@ async function handleApi(req, res, url) {
   // edit's original/result, or an image-to-image reference/result pair.
   if (route === '/api/image-composite' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const root = db.items.find((item) => item.id === body.id && item.profileId === req.profile.id);
-    if (!root) return json(res, 404, { error: 'Image not found' });
-    const type = ['before-after', 'reference-generation'].includes(body.type)
-      ? body.type : 'angles';
+    const type = body.type === 'selection'
+      ? 'selection'
+      : (['before-after', 'reference-generation'].includes(body.type) ? body.type : 'angles');
+    let root;
     let sources;
     let label;
+    let sourceItems = [];
+    if (type === 'selection') {
+      const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))];
+      if (ids.length < 2) return json(res, 400, { error: 'Choose at least two images for a composite' });
+      if (ids.length > 16) return json(res, 400, { error: 'A contact sheet supports up to 16 selected images' });
+      const unlocked = isPrivateUnlocked(req);
+      const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+      const byId = new Map(visible.map((item) => [item.id, item]));
+      sourceItems = ids.map((id) => byId.get(id)).filter(Boolean);
+      if (sourceItems.length !== ids.length) return json(res, 404, { error: 'One or more selected images are unavailable' });
+      root = sourceItems[0];
+      sources = sourceItems.map((item) => item.upscaled || item.file);
+      label = `${sourceItems.length} generation contact sheet`;
+    } else {
+      root = db.items.find((item) => item.id === body.id && item.profileId === req.profile.id);
+      if (!root) return json(res, 404, { error: 'Image not found' });
+    }
     if (type === 'before-after') {
       if (root.mode !== 'edit' || !root.sourceFile) {
         return json(res, 400, { error: 'This edit no longer has its original source image' });
@@ -4177,7 +4233,7 @@ async function handleApi(req, res, url) {
       }
       sources = [root.sourceFile, root.upscaled || root.file];
       label = 'Reference + generation';
-    } else {
+    } else if (type === 'angles') {
       if (!root.angleGroupId) return json(res, 400, { error: 'This image is not part of a multi-angle set' });
       const set = db.items
         .filter((item) => item.profileId === req.profile.id && item.angleGroupId === root.angleGroupId)
@@ -4214,7 +4270,9 @@ async function handleApi(req, res, url) {
     for (let index = 0; index < buffers.length; index += 1) {
       comfyNames.push(await uploadToComfy(buffers[index], `ks_composite_${root.id}_${index + 1}.png`));
     }
-    const graph = await buildImageComposite(comfyNames);
+    const graph = type === 'selection'
+      ? await buildImageContactSheet(comfyNames)
+      : await buildImageComposite(comfyNames);
     const pid = await queuePrompt(graph);
     trackJob(pid, {
       kind: 'imageComposite', profileId: req.profile.id, graph,
@@ -4223,8 +4281,9 @@ async function handleApi(req, res, url) {
         label,
         prompt: root.prompt || '',
         folder: root.folder || null,
-        sourceItemId: root.id,
+        sourceItemId: type === 'selection' ? undefined : root.id,
         sourceFiles: sources,
+        sourceItemIds: type === 'selection' ? sourceItems.map((item) => item.id) : undefined,
       },
     });
     ensureWs();
@@ -4473,6 +4532,81 @@ async function handleApi(req, res, url) {
     view.items = view.items.filter((it) => it.profileId === req.profile.id);
     view.folders = view.folders.filter((f) => f.profileId === req.profile.id);
     return json(res, 200, Object.assign({ unlocked, profile: publicProfile(req.profile, db) }, view));
+  }
+
+  if (route === '/api/items/selection-stats' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))].slice(0, 500);
+    if (!ids.length) return json(res, 400, { error: 'Select at least one generation' });
+    const unlocked = isPrivateUnlocked(req);
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const byId = new Map(visible.map((item) => [item.id, item]));
+    const items = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (items.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    let bytes = 0;
+    for (const ref of selectionAssetRefs(items)) {
+      const base = ref.kind === 'video' ? VIDEOS : IMAGES;
+      const full = path.resolve(base, ref.file);
+      if (full !== base && !full.startsWith(base + path.sep)) continue;
+      try { bytes += (await fsp.stat(full)).size; } catch { /* missing assets do not block the summary */ }
+    }
+    return json(res, 200, selectionSummary(items, bytes));
+  }
+
+  if (route === '/api/items/download' && req.method === 'GET') {
+    const ids = [...new Set(String(url.searchParams.get('ids') || '').split(',').filter(Boolean))].slice(0, 250);
+    if (!ids.length) return json(res, 400, { error: 'Select at least one generation' });
+    const unlocked = isPrivateUnlocked(req);
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const byId = new Map(visible.map((item) => [item.id, item]));
+    const items = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (items.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const usedNames = new Set();
+    const entries = [];
+    for (const [index, item] of items.entries()) {
+      const file = item.upscaled || item.file;
+      const full = path.resolve(IMAGES, file || '');
+      if (!file || (full !== IMAGES && !full.startsWith(IMAGES + path.sep))) {
+        return json(res, 400, { error: 'A selected generation has an invalid image path' });
+      }
+      try { await fsp.access(full); } catch { return json(res, 404, { error: 'A selected image file is unavailable' }); }
+      const ext = path.extname(file) || '.png';
+      const base = String(item.prompt || `generation-${index + 1}`)
+        .slice(0, 48)
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-|-$/g, '') || `generation-${index + 1}`;
+      let name = `${base}${ext}`;
+      let duplicate = 2;
+      while (usedNames.has(name.toLowerCase())) name = `${base}-${duplicate++}${ext}`;
+      usedNames.add(name.toLowerCase());
+      entries.push({ name, path: full });
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': 'attachment; filename="mix-studio-selection.zip"',
+      'Cache-Control': 'no-store',
+    });
+    try {
+      await streamStoredZip(res, entries);
+    } catch (error) {
+      if (!res.destroyed) res.destroy(error);
+    }
+    return;
+  }
+
+  if (route === '/api/items/group' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))].slice(0, 100);
+    if (ids.length < 2) return json(res, 400, { error: 'Choose at least two generations to group' });
+    const unlocked = isPrivateUnlocked(req);
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const byId = new Map(visible.map((item) => [item.id, item]));
+    const items = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (items.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const generationGroupId = uid();
+    items.forEach((item) => { item.generationGroupId = generationGroupId; });
+    saveDb();
+    return json(res, 200, { generationGroupId, items });
   }
 
   const ownPreferences = () => db.userPreferences.find((entry) => entry.profileId === req.profile.id) || null;

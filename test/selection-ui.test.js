@@ -1,0 +1,57 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+
+test('gallery dates and search results can be selected as visible groups', () => {
+  assert.match(html, /id="gallerySearchSelectAll"[^>]*>Select all/);
+  assert.match(app, /divider\.dataset\.itemIds = dateIds\.join\(','\)/);
+  assert.match(app, /divider\.addEventListener\('click', \(\) => toggleBulkSelection\(dateIds\)\)/);
+  assert.match(app, /gallerySearchSelectAll.*toggleBulkSelection\(visibleItems\(\)\.map/s);
+  assert.match(app, /function syncSelectionVisuals\(\)/);
+});
+
+test('selected gallery cards shrink and restore with a smooth transition', () => {
+  assert.match(css, /\.card \{[\s\S]*transition: transform 280ms cubic-bezier/);
+  assert.match(css, /\.card\.selected \{[\s\S]*transform: scale\(0\.89\)/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*\.card/);
+});
+
+test('selection bar exposes save, group, composite, move, delete, and swipe-up insights', () => {
+  for (const id of ['selSave', 'selGroup', 'selComposite', 'selMove', 'selDelete', 'selInsightsHandle']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(html, /id="selectionInsightsSheet"/);
+  assert.match(app, /function openSelectionInsights\(\)/);
+  assert.match(app, /selectBarSwipe\.delta < -46/);
+  assert.match(app, /\/api\/items\/selection-stats/);
+  assert.match(app, /\/api\/items\/group/);
+  assert.match(app, /\/api\/items\/download\?ids=/);
+  assert.match(app, /mix-studio-selection\.zip/);
+  assert.match(server, /route === '\/api\/items\/selection-stats'/);
+  assert.match(server, /route === '\/api\/items\/group'/);
+  assert.match(server, /route === '\/api\/items\/download'/);
+});
+
+test('selected images can create a grid contact sheet', () => {
+  assert.match(app, /type: 'selection', ids/);
+  assert.match(server, /async function buildImageContactSheet\(imageNames\)/);
+  assert.match(server, /\['down', true, 8, 'black'\]/);
+  assert.match(server, /type === 'selection'/);
+  assert.match(server, /sourceItemIds:/);
+});
+
+test('arbitrary generation groups collapse into one gallery entry and remain browsable', () => {
+  assert.match(app, /item\.angleGroupId \|\| item\.generationGroupId/);
+  assert.match(app, /function generationGroupItems\(item\)/);
+  assert.match(app, /Generation \$\{generationIndex \+ 1\} of \$\{generationItems\.length\}/);
+  assert.match(server, /item\.generationGroupId = generationGroupId/);
+});

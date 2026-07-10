@@ -226,11 +226,13 @@ test('gallery exposes a draggable date scrubber with keyboard navigation', () =>
   assert.match(html, /id="galleryDateScrubberLabel"/);
   assert.match(app, /function syncGalleryDateScrubber\(\)/);
   assert.match(app, /function scrubGalleryDateAt\(clientY, haptic = true\)/);
+  assert.match(app, /setTimeout\(beginGalleryDateScrub, 180\)/);
   assert.match(app, /setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /event\.key === 'ArrowDown'/);
   assert.match(app, /event\.key === 'Home'/);
   assert.match(app, /window\.addEventListener\('scroll'/);
   assert.match(css, /\.gallery-date-scrubber \{[\s\S]*position: fixed;[\s\S]*touch-action: none;/);
+  assert.match(css, /\.gallery-date-scrubber\.is-active,[\s\S]*height: min\(58dvh, 480px\)/);
   assert.match(css, /\.gallery-date-scrubber\.is-active \.gallery-date-scrubber-label/);
 });
 

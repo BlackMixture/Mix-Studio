@@ -6962,17 +6962,23 @@ function visibleItems() {
    its own reliable result and settings, but they present as one gallery set. */
 function galleryEntries(items) {
   const entries = [];
-  const byAngleGroup = new Map();
+  const byGroup = new Map();
   items.forEach((item) => {
-    const groupId = item.angleGroupId;
+    const groupId = item.angleGroupId || item.generationGroupId;
     if (!groupId) {
       entries.push({ item, items: [item] });
       return;
     }
-    let entry = byAngleGroup.get(groupId);
+    const key = `${item.angleGroupId ? 'angle' : 'generation'}:${groupId}`;
+    let entry = byGroup.get(key);
     if (!entry) {
-      entry = { item, items: [item], angleGroupId: groupId };
-      byAngleGroup.set(groupId, entry);
+      entry = {
+        item,
+        items: [item],
+        angleGroupId: item.angleGroupId || null,
+        generationGroupId: item.generationGroupId || null,
+      };
+      byGroup.set(key, entry);
       entries.push(entry);
     } else {
       entry.items.push(item);
@@ -6985,6 +6991,13 @@ function angleGroupItems(item) {
   if (!item || !item.angleGroupId) return [];
   return state.items
     .filter((candidate) => candidate.angleGroupId === item.angleGroupId)
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+function generationGroupItems(item) {
+  if (!item || !item.generationGroupId) return [];
+  return state.items
+    .filter((candidate) => candidate.generationGroupId === item.generationGroupId)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
 
@@ -7009,6 +7022,12 @@ function galleryNavigationTarget(item, direction) {
     const angles = angleGroupItems(item);
     const angleIndex = angles.findIndex((candidate) => candidate.id === item.id);
     const withinGroup = angles[angleIndex + direction];
+    if (withinGroup) return withinGroup;
+  }
+  if (currentEntry.generationGroupId) {
+    const grouped = generationGroupItems(item);
+    const groupedIndex = grouped.findIndex((candidate) => candidate.id === item.id);
+    const withinGroup = grouped[groupedIndex + direction];
     if (withinGroup) return withinGroup;
   }
   const adjacentEntry = entries[entryIndex + direction];
@@ -7308,6 +7327,9 @@ const galleryDateScrub = {
   pointerId: null,
   index: 0,
   groups: [],
+  holdTimer: null,
+  startX: 0,
+  startY: 0,
 };
 let galleryDateScrollFrame = 0;
 
@@ -7328,11 +7350,7 @@ function setGalleryDateScrubberIndex(index, scroll = false, haptic = false) {
   const changed = next !== galleryDateScrub.index;
   galleryDateScrub.index = next;
   const ratio = groups.length > 1 ? next / (groups.length - 1) : 0;
-  const rail = scrubber.querySelector('.gallery-date-scrubber-rail');
-  const railTop = rail ? rail.offsetTop : 22;
-  const railHeight = rail ? rail.clientHeight : Math.max(1, scrubber.clientHeight - 44);
   scrubber.style.setProperty('--gallery-scrub-ratio', String(ratio));
-  scrubber.style.setProperty('--gallery-scrub-y', `${railTop + ratio * railHeight}px`);
   scrubber.setAttribute('aria-valuenow', String(next));
   scrubber.setAttribute('aria-valuetext', groups[next].label);
   label.textContent = groups[next].label;
@@ -7355,6 +7373,19 @@ function currentGalleryDateIndex() {
   return index;
 }
 
+function resetGalleryDateScrubGesture() {
+  const scrubber = $('#galleryDateScrubber');
+  clearTimeout(galleryDateScrub.holdTimer);
+  galleryDateScrub.holdTimer = null;
+  if (scrubber && galleryDateScrub.pointerId !== null) {
+    try { scrubber.releasePointerCapture(galleryDateScrub.pointerId); } catch { /* noop */ }
+  }
+  galleryDateScrub.active = false;
+  galleryDateScrub.pointerId = null;
+  if (scrubber) scrubber.classList.remove('is-active', 'is-pressed');
+  document.body.classList.remove('gallery-date-scrubbing');
+}
+
 function syncGalleryDateScrubber() {
   const scrubber = $('#galleryDateScrubber');
   if (!scrubber) return;
@@ -7362,10 +7393,8 @@ function syncGalleryDateScrubber() {
   const visible = state.view === 'gallery' && galleryDateScrub.groups.length > 1;
   scrubber.hidden = !visible;
   if (!visible) {
-    galleryDateScrub.active = false;
-    galleryDateScrub.pointerId = null;
-    scrubber.classList.remove('is-active');
-    document.body.classList.remove('gallery-date-scrubbing');
+    resetGalleryDateScrubGesture();
+    scrubber.classList.remove('is-keyboard-active');
     return;
   }
   scrubber.setAttribute('aria-valuemax', String(galleryDateScrub.groups.length - 1));
@@ -7382,28 +7411,39 @@ function scrubGalleryDateAt(clientY, haptic = true) {
 }
 
 function finishGalleryDateScrub(event) {
-  const scrubber = $('#galleryDateScrubber');
-  if (!scrubber || !galleryDateScrub.active) return;
   if (event && galleryDateScrub.pointerId !== null && event.pointerId !== galleryDateScrub.pointerId) return;
-  try { scrubber.releasePointerCapture(galleryDateScrub.pointerId); } catch { /* noop */ }
-  galleryDateScrub.active = false;
-  galleryDateScrub.pointerId = null;
-  scrubber.classList.remove('is-active');
-  document.body.classList.remove('gallery-date-scrubbing');
+  resetGalleryDateScrubGesture();
+}
+
+function beginGalleryDateScrub() {
+  if (galleryDateScrub.pointerId === null || galleryDateScrub.active) return;
+  galleryDateScrub.holdTimer = null;
+  galleryDateScrub.active = true;
+  $('#galleryDateScrubber').classList.remove('is-pressed');
+  $('#galleryDateScrubber').classList.add('is-active');
+  document.body.classList.add('gallery-date-scrubbing');
+  if (navigator.vibrate) navigator.vibrate(10);
 }
 
 $('#galleryDateScrubber').addEventListener('pointerdown', (event) => {
   if (event.button !== undefined && event.button !== 0) return;
   event.preventDefault();
-  galleryDateScrub.active = true;
+  resetGalleryDateScrubGesture();
   galleryDateScrub.pointerId = event.pointerId;
-  $('#galleryDateScrubber').classList.add('is-active');
-  document.body.classList.add('gallery-date-scrubbing');
+  galleryDateScrub.startX = event.clientX;
+  galleryDateScrub.startY = event.clientY;
+  $('#galleryDateScrubber').classList.add('is-pressed');
   try { $('#galleryDateScrubber').setPointerCapture(event.pointerId); } catch { /* noop */ }
-  scrubGalleryDateAt(event.clientY, false);
+  galleryDateScrub.holdTimer = setTimeout(beginGalleryDateScrub, 180);
 });
 $('#galleryDateScrubber').addEventListener('pointermove', (event) => {
-  if (!galleryDateScrub.active || event.pointerId !== galleryDateScrub.pointerId) return;
+  if (event.pointerId !== galleryDateScrub.pointerId) return;
+  if (!galleryDateScrub.active) {
+    if (Math.hypot(event.clientX - galleryDateScrub.startX, event.clientY - galleryDateScrub.startY) > 10) {
+      resetGalleryDateScrubGesture();
+    }
+    return;
+  }
   event.preventDefault();
   scrubGalleryDateAt(event.clientY);
 });
@@ -7418,7 +7458,11 @@ $('#galleryDateScrubber').addEventListener('keydown', (event) => {
   if (event.key === 'End') next = last;
   if (next === null) return;
   event.preventDefault();
+  $('#galleryDateScrubber').classList.add('is-keyboard-active');
   setGalleryDateScrubberIndex(next, true);
+});
+$('#galleryDateScrubber').addEventListener('blur', () => {
+  if (!galleryDateScrub.active) $('#galleryDateScrubber').classList.remove('is-keyboard-active');
 });
 window.addEventListener('scroll', () => {
   if (galleryDateScrub.active || state.view !== 'gallery' || galleryDateScrollFrame) return;
@@ -7439,12 +7483,19 @@ function renderGrid() {
   grid.innerHTML = '';
   const items = visibleItems();
   const entries = galleryEntries(items);
+  const dateItemIds = new Map();
+  items.forEach((item) => {
+    const key = galleryDateKey(item.createdAt);
+    if (!dateItemIds.has(key)) dateItemIds.set(key, []);
+    dateItemIds.get(key).push(item.id);
+  });
   $('#galleryEmpty').classList.toggle('hidden', entries.length > 0);
   const query = state.libraryQuery.trim();
   $('#galleryEmpty').textContent = query ? `No matches for “${query}”` : 'Nothing here yet';
   $('#gallerySearchStatus').textContent = query
     ? `${entries.length} matching generation${entries.length === 1 ? '' : 's'}`
     : '';
+  $('#gallerySearchSelectAll').hidden = !query || !items.length;
   let previousDate = '';
   const showDates = state.sortMode !== 'az';
   for (const entry of entries) {
@@ -7452,15 +7503,22 @@ function renderGrid() {
     const dateKey = galleryDateKey(it.createdAt);
     if (showDates && dateKey !== previousDate) {
       previousDate = dateKey;
-      const divider = document.createElement('div');
+      const divider = document.createElement('button');
+      divider.type = 'button';
       divider.className = 'gallery-date-divider';
+      const dateIds = dateItemIds.get(dateKey) || [];
+      divider.dataset.itemIds = dateIds.join(',');
+      divider.setAttribute('aria-pressed', String(dateIds.length > 0 && dateIds.every((id) => state.selected.has(id))));
+      divider.setAttribute('aria-label', `Select all from ${galleryDateLabel(it.createdAt)}`);
       divider.innerHTML = `<span>${escapeHtml(galleryDateLabel(it.createdAt))}</span>`;
+      divider.addEventListener('click', () => toggleBulkSelection(dateIds));
       grid.appendChild(divider);
     }
     const card = document.createElement('button');
     const hasAttachedComposite = Array.isArray(it.composites) && it.composites.length > 0;
     card.className = 'card'
       + (entry.angleGroupId ? ' angle-group' : '')
+      + (entry.generationGroupId ? ' generation-group' : '')
       + (hasAttachedComposite ? ' has-attached-composite' : '');
     const latestVideo = latestGalleryVideo(it);
     if (latestVideo && state.mediaPreferences.videoPreviews) {
@@ -7525,7 +7583,7 @@ function renderGrid() {
       b.textContent = 'Before + after';
       card.appendChild(b);
     }
-    const groupCount = entry.angleGroupId && entry.items.length > 1
+    const groupCount = (entry.angleGroupId || entry.generationGroupId) && entry.items.length > 1
       ? entry.items.length
       : (it.videos && it.videos.length > 1 ? it.videos.length : 0);
     if (groupCount) {
@@ -7597,6 +7655,7 @@ function renderGrid() {
     grid.appendChild(card);
   }
   resetGalleryPreviewObservation();
+  syncSelectionVisuals();
   syncGalleryDateScrubber();
   if (state.mediaPreferences.previewCache) schedulePreviewCacheWarmup(items);
 }
@@ -7758,6 +7817,9 @@ $('#gallerySearchClear').addEventListener('click', () => {
   updateLibrarySearch();
   $('#gallerySearch').focus();
 });
+$('#gallerySearchSelectAll').addEventListener('click', () => {
+  toggleBulkSelection(visibleItems().map((item) => item.id));
+});
 
 /* ------------------------------------------------------------------ */
 /* Multi-select                                                        */
@@ -7766,17 +7828,47 @@ $('#gallerySearchClear').addEventListener('click', () => {
 function enterSelectWith(id) {
   state.selectMode = true;
   state.selected = new Set([id]);
-  document.querySelector(`.card[data-id="${id}"]`)?.classList.add('selected');
   updateSelectBar();
 }
+
+function selectedGalleryItems() {
+  return state.items.filter((item) => state.selected.has(item.id));
+}
+
+function syncSelectionVisuals() {
+  $$('#galleryGrid .card').forEach((card) => card.classList.toggle('selected', state.selected.has(card.dataset.id)));
+  $$('#galleryGrid .gallery-date-divider').forEach((divider) => {
+    const ids = String(divider.dataset.itemIds || '').split(',').filter(Boolean);
+    divider.setAttribute('aria-pressed', String(ids.length > 0 && ids.every((id) => state.selected.has(id))));
+  });
+  const searchButton = $('#gallerySearchSelectAll');
+  if (searchButton && !searchButton.hidden) {
+    const ids = visibleItems().map((item) => item.id);
+    const allSelected = ids.length > 0 && ids.every((id) => state.selected.has(id));
+    searchButton.setAttribute('aria-pressed', String(allSelected));
+    searchButton.setAttribute('aria-label', allSelected ? 'Clear selected search results' : 'Select all search results');
+    searchButton.textContent = allSelected ? 'Selected' : 'Select all';
+  }
+}
+
+function toggleBulkSelection(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  if (!unique.length) return;
+  const allSelected = unique.every((id) => state.selected.has(id));
+  unique.forEach((id) => {
+    if (allSelected) state.selected.delete(id);
+    else state.selected.add(id);
+  });
+  if (!state.selected.size) return exitSelect();
+  state.selectMode = true;
+  updateSelectBar();
+}
+
 function toggleSelect(id) {
-  const card = document.querySelector(`.card[data-id="${id}"]`);
   if (state.selected.has(id)) {
     state.selected.delete(id);
-    card?.classList.remove('selected');
   } else {
     state.selected.add(id);
-    card?.classList.add('selected');
   }
   if (!state.selected.size) exitSelect();
   else updateSelectBar();
@@ -7785,21 +7877,66 @@ function exitSelect() {
   if (!state.selectMode && !state.selected.size) { $('#selectBar').hidden = true; return; }
   state.selectMode = false;
   state.selected = new Set();
-  $$('.card.selected').forEach((c) => c.classList.remove('selected'));
   $('#selectBar').hidden = true;
+  $('#selectionInsightsSheet').classList.remove('show');
+  syncSelectionVisuals();
 }
 function updateSelectBar() {
   $('#selectBar').hidden = false;
   $('#selCount').textContent = `${state.selected.size} selected`;
+  $('#selGroup').disabled = state.selected.size < 2;
+  $('#selComposite').disabled = state.selected.size < 2;
+  syncSelectionVisuals();
 }
 $('#selCancel').addEventListener('click', exitSelect);
+$('#selSave').addEventListener('click', () => {
+  const items = selectedGalleryItems();
+  if (!items.length) return;
+  if (items.length === 1) {
+    downloadItem(items[0], 'current');
+    toast('Saving photo…');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = `/api/items/download?ids=${encodeURIComponent(items.map((item) => item.id).join(','))}`;
+  a.download = 'mix-studio-selection.zip';
+  a.click();
+  toast(`Saving ${items.length} photos as a ZIP…`);
+});
+$('#selGroup').addEventListener('click', async () => {
+  const ids = [...state.selected];
+  if (ids.length < 2) return;
+  try {
+    await api('/api/items/group', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+    });
+    exitSelect();
+    await refreshGallery();
+    toast(`Grouped ${ids.length} generations`);
+  } catch (error) { toast(error.message, true); }
+});
+$('#selComposite').addEventListener('click', async () => {
+  const ids = [...state.selected];
+  if (ids.length < 2) return;
+  try {
+    toast('Building contact sheet…');
+    const result = await api('/api/image-composite', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'selection', ids }),
+    });
+    state.activeJobs.add(result.jobId);
+    state.compositeJobs.set(result.jobId, { type: 'selection' });
+    queueRefreshSoon();
+    exitSelect();
+  } catch (error) { toast(error.message, true); }
+});
 $('#selMove').addEventListener('click', () => {
   if (state.selected.size) openMoveSheet([...state.selected]);
 });
 $('#selDelete').addEventListener('click', async () => {
   const ids = [...state.selected];
   if (!ids.length) return;
-  if (!window.confirm(`Delete ${ids.length} image${ids.length > 1 ? 's' : ''}? This can't be undone.`)) return;
+  if (!window.confirm(`Delete ${ids.length} generation${ids.length > 1 ? 's' : ''}? This can't be undone.`)) return;
   try {
     await Promise.all(ids.map((id) => api('/api/item/' + id, { method: 'DELETE' })));
     exitSelect();
@@ -7807,6 +7944,73 @@ $('#selDelete').addEventListener('click', async () => {
     toast(`Deleted ${ids.length} image${ids.length > 1 ? 's' : ''}`);
   } catch (e) { toast(e.message, true); refreshGallery(); }
 });
+
+function formatSelectionBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = value / 1024;
+  let unit = units[0];
+  for (let index = 1; index < units.length && size >= 1024; index += 1) {
+    size /= 1024;
+    unit = units[index];
+  }
+  return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${unit}`;
+}
+
+function selectionDateRange(earliest, latest) {
+  if (!earliest || !latest) return 'Unknown';
+  const format = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const first = format.format(new Date(earliest));
+  const last = format.format(new Date(latest));
+  return first === last ? first : `${first} – ${last}`;
+}
+
+let selectionInsightsRequest = 0;
+async function openSelectionInsights() {
+  const ids = [...state.selected];
+  if (!ids.length) return;
+  const request = ++selectionInsightsRequest;
+  $('#selectionInsightsSheet').classList.add('show');
+  $('#selectionInsightsStatus').textContent = `Calculating ${ids.length} selected generation${ids.length === 1 ? '' : 's'}…`;
+  ['selectionDiskSpace', 'selectionGenerationTime', 'selectionDateRange', 'selectionMediaCount']
+    .forEach((id) => { $('#' + id).textContent = '—'; });
+  try {
+    const stats = await api('/api/items/selection-stats', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+    });
+    if (request !== selectionInsightsRequest) return;
+    $('#selectionInsightsStatus').textContent = `${stats.items} selected generation${stats.items === 1 ? '' : 's'} · ${stats.files} stored file${stats.files === 1 ? '' : 's'}`;
+    $('#selectionDiskSpace').textContent = formatSelectionBytes(stats.bytes);
+    $('#selectionGenerationTime').textContent = stats.generationMs ? formatDuration(stats.generationMs) : 'Not recorded';
+    $('#selectionDateRange').textContent = selectionDateRange(stats.earliest, stats.latest);
+    $('#selectionMediaCount').textContent = `${stats.images} image${stats.images === 1 ? '' : 's'} · ${stats.videos} video${stats.videos === 1 ? '' : 's'}`;
+  } catch (error) {
+    if (request === selectionInsightsRequest) $('#selectionInsightsStatus').textContent = error.message;
+  }
+}
+
+$('#selInsightsHandle').addEventListener('click', openSelectionInsights);
+let selectBarSwipe = null;
+$('#selectBar').addEventListener('pointerdown', (event) => {
+  if (event.target.closest('.select-actions button, #selCancel')) return;
+  selectBarSwipe = { pointerId: event.pointerId, startY: event.clientY, delta: 0 };
+  try { $('#selectBar').setPointerCapture(event.pointerId); } catch { /* noop */ }
+});
+$('#selectBar').addEventListener('pointermove', (event) => {
+  if (!selectBarSwipe || event.pointerId !== selectBarSwipe.pointerId) return;
+  selectBarSwipe.delta = Math.min(0, event.clientY - selectBarSwipe.startY);
+  $('#selectBar').style.setProperty('--select-bar-lift', `${Math.max(-24, selectBarSwipe.delta * 0.28)}px`);
+});
+function finishSelectBarSwipe(event) {
+  if (!selectBarSwipe || (event && event.pointerId !== selectBarSwipe.pointerId)) return;
+  const open = selectBarSwipe.delta < -46;
+  selectBarSwipe = null;
+  $('#selectBar').style.removeProperty('--select-bar-lift');
+  if (open) openSelectionInsights();
+}
+$('#selectBar').addEventListener('pointerup', finishSelectBarSwipe);
+$('#selectBar').addEventListener('pointercancel', finishSelectBarSwipe);
 
 /* ------------------------------------------------------------------ */
 /* Lightbox                                                            */
@@ -7895,6 +8099,8 @@ function openLightbox(id, mediaSel) {
   state.currentItem = it;
   const angleItems = angleGroupItems(it);
   const angleIndex = angleItems.findIndex((item) => item.id === it.id);
+  const generationItems = generationGroupItems(it);
+  const generationIndex = generationItems.findIndex((item) => item.id === it.id);
   const videos = Array.isArray(it.videos) ? it.videos : [];
   const composites = Array.isArray(it.composites) ? it.composites : [];
   let sel = mediaSel;
@@ -7919,12 +8125,13 @@ function openLightbox(id, mediaSel) {
     $('#lbImg').hidden = false;
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
   }
-  $('#lbTitle').textContent = selVideo
-    ? `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`
-    : (selComposite ? (selComposite.label || 'Before + after')
-    : (angleItems.length > 1
-      ? `${angleViewLabel(it)} · Angle ${angleIndex + 1} of ${angleItems.length}`
-      : (it.upscaled ? 'Upscaled' : (it.mode === 'edit' ? 'Edit' : (it.mode === 'video' ? 'Video Poster' : 'Generation')))));
+  let lightboxTitle = it.upscaled ? 'Upscaled'
+    : (it.mode === 'edit' ? 'Edit' : (it.mode === 'video' ? 'Video Poster' : 'Generation'));
+  if (generationItems.length > 1) lightboxTitle = `Generation ${generationIndex + 1} of ${generationItems.length}`;
+  if (angleItems.length > 1) lightboxTitle = `${angleViewLabel(it)} · Angle ${angleIndex + 1} of ${angleItems.length}`;
+  if (selComposite) lightboxTitle = selComposite.label || 'Before + after';
+  if (selVideo) lightboxTitle = `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`;
+  $('#lbTitle').textContent = lightboxTitle;
   $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
 
   // media switcher keeps attached composites with the image they describe.
@@ -7937,6 +8144,16 @@ function openLightbox(id, mediaSel) {
       button.innerHTML = `<span class="angle-group-glyph" aria-hidden="true">${angleViewGlyph(angleItem)}</span><span>${escapeHtml(angleViewLabel(angleItem))}</span>`;
       button.title = `Angle ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
       button.addEventListener('click', () => openLightbox(angleItem.id, 'image'));
+      mrow.appendChild(button);
+    });
+  }
+  if (generationItems.length > 1) {
+    generationItems.forEach((groupItem, index) => {
+      const button = document.createElement('button');
+      button.className = 'chip generation-group-chip' + (groupItem.id === it.id ? ' active' : '');
+      button.textContent = `Generation ${index + 1}`;
+      button.title = `Generation ${index + 1} of ${generationItems.length}`;
+      button.addEventListener('click', () => openLightbox(groupItem.id, 'image'));
       mrow.appendChild(button);
     });
   }

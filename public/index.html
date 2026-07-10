@@ -731,6 +731,7 @@
   <div class="library-search">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 4a6.5 6.5 0 1 0 4.04 11.59L19.95 21 21 19.95l-5.41-5.41A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
     <input id="gallerySearch" type="search" inputmode="search" autocomplete="off" placeholder="Search prompts, LoRAs, folders…" aria-label="Search library" />
+    <button class="library-search-select-all" id="gallerySearchSelectAll" type="button" aria-pressed="false" hidden>Select all</button>
     <button id="gallerySearchClear" type="button" aria-label="Clear library search" hidden>✕</button>
   </div>
   <div class="sr-only" id="gallerySearchStatus" aria-live="polite"></div>
@@ -758,8 +759,8 @@
   <div class="gallery-date-scrubber" id="galleryDateScrubber" role="slider" tabindex="0"
        aria-label="Browse gallery dates" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0"
        aria-valuenow="0" aria-valuetext="" hidden>
-    <output class="gallery-date-scrubber-label" id="galleryDateScrubberLabel" aria-hidden="true"></output>
     <span class="gallery-date-scrubber-rail" aria-hidden="true">
+      <output class="gallery-date-scrubber-label" id="galleryDateScrubberLabel"></output>
       <span class="gallery-date-scrubber-thumb"></span>
     </span>
   </div>
@@ -1447,10 +1448,31 @@
 
 <!-- multi-select action bar -->
 <div class="select-bar" id="selectBar" hidden>
-  <button class="icon-btn" id="selCancel" aria-label="Cancel selection">✕</button>
-  <span class="select-count" id="selCount">0 selected</span>
-  <button class="action-btn" id="selMove">▤ Move</button>
-  <button class="action-btn danger" id="selDelete">🗑 Delete</button>
+  <button class="select-bar-grabber" id="selInsightsHandle" type="button" aria-label="Show selection details"><span></span></button>
+  <div class="select-bar-main">
+    <button class="icon-btn" id="selCancel" aria-label="Cancel selection">✕</button>
+    <span class="select-count" id="selCount">0 selected</span>
+    <div class="select-actions" aria-label="Selection actions">
+      <button class="action-btn" id="selSave" type="button"><b>↓</b><span>Save</span></button>
+      <button class="action-btn" id="selGroup" type="button"><b>◫</b><span>Group</span></button>
+      <button class="action-btn" id="selComposite" type="button"><b>▦</b><span>Composite</span></button>
+      <button class="action-btn" id="selMove" type="button"><b>▤</b><span>Move</span></button>
+      <button class="action-btn danger" id="selDelete" type="button"><b>⌫</b><span>Delete</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="selectionInsightsSheet">
+  <div class="sheet-panel selection-insights-panel">
+    <h3 class="sheet-title">Selection <button data-close aria-label="Close selection details">✕</button></h3>
+    <p class="selection-insights-status" id="selectionInsightsStatus">Calculating selection…</p>
+    <div class="selection-insights-grid">
+      <section><span>Disk space</span><strong id="selectionDiskSpace">—</strong></section>
+      <section><span>Generation time</span><strong id="selectionGenerationTime">—</strong></section>
+      <section><span>Date range</span><strong id="selectionDateRange">—</strong></section>
+      <section><span>Media</span><strong id="selectionMediaCount">—</strong></section>
+    </div>
+  </div>
 </div>
 
 <div class="sheet" id="promptMentionSheet">
