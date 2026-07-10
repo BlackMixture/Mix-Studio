@@ -4436,19 +4436,10 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   overflow: hidden;
   border: 1px solid rgba(226,232,255,.12);
   border-radius: 18px;
-  background:
-    radial-gradient(circle at 18% 12%, rgba(114,137,200,.12), transparent 34%),
-    linear-gradient(145deg, #11131a, #050507 68%);
-  box-shadow: inset 0 1px rgba(255,255,255,.035);
+  background: #111216;
 }
 .documentation-preview::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: .2;
-  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
-  background-size: 22px 22px;
+  content: none;
 }
 .documentation-preview canvas {
   position: relative;
@@ -4458,8 +4449,8 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   max-height: calc(62dvh - 32px);
   width: auto;
   height: auto;
-  border-radius: 3px;
-  box-shadow: 0 22px 70px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 1px;
 }
 .documentation-preview-status {
   position: absolute;
@@ -4565,7 +4556,12 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   color: #f6f7fb;
 }
 .documentation-field-toggle input:focus-visible + span { outline: 2px solid #9db8ff; outline-offset: 2px; }
-.sheet-cta.documentation-save { margin-top: 18px; }
+.sheet-cta.documentation-save {
+  margin-top: 18px;
+  border: 1px solid rgba(226,232,255,.22);
+  background: #121318;
+  box-shadow: none;
+}
 
 @media (max-width: 720px) {
   .sheet-panel.documentation-panel {

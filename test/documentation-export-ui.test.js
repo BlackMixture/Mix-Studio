@@ -37,6 +37,19 @@ test('documentation metadata omits unavailable values and exposes saved generati
   assert.match(app, /documentationBuilderState\.selected/);
 });
 
+test('prompt control represents the prompt used for generation', () => {
+  assert.match(app, /const prompt = item\.refinedPrompt \|\| item\.prompt/);
+  assert.match(app, /add\('prompt', 'Prompt', prompt\)/);
+  assert.match(app, /add\('originalPrompt', 'Original prompt', item\.prompt\)/);
+});
+
+test('export uses a restrained research-record treatment without branding', () => {
+  assert.doesNotMatch(app, /GENERATION DOCUMENTATION|MIX STUDIO/);
+  assert.match(app, /setDocumentationMonoFont/);
+  assert.doesNotMatch(app, /accent\.addColorStop|createLinearGradient\(0, imageHeight/);
+  assert.match(css, /\.documentation-preview \{[\s\S]*background: #111216/);
+});
+
 test('documentation builder has responsive preview and adjustment controls', () => {
   assert.match(html, /id="documentationTextScale"/);
   assert.match(html, /id="documentationShade"/);

@@ -9451,6 +9451,10 @@ function setDocumentationFont(ctx, weight, size) {
   ctx.font = `${weight} ${Math.max(9, Math.round(size))}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 }
 
+function setDocumentationMonoFont(ctx, weight, size) {
+  ctx.font = `${weight} ${Math.max(9, Math.round(size))}px ui-monospace, "SFMono-Regular", Consolas, monospace`;
+}
+
 function truncateCanvasText(ctx, text, maxWidth) {
   const value = String(text || '');
   if (ctx.measureText(value).width <= maxWidth) return value;
@@ -9500,28 +9504,34 @@ function renderDocumentationContactCard(canvas, ctx, image, metadata) {
   const width = image.naturalWidth || 1024;
   const imageHeight = image.naturalHeight || 1024;
   const density = Math.max(.55, width / 1000) * (documentationBuilderState.textScale / 100);
-  const pad = Math.max(24, Math.round(width * .055));
-  const labelSize = Math.max(10, 15 * density);
-  const bodySize = Math.max(15, 27 * density);
-  const modelSize = Math.max(19, 38 * density);
-  const bodyLine = Math.round(bodySize * 1.36);
-  const labelLine = Math.round(labelSize * 1.45);
+  const pad = Math.max(22, Math.round(width * .042));
+  const labelSize = Math.max(9, 12 * density);
+  const bodySize = Math.max(14, 22 * density);
+  const bodyLine = Math.round(bodySize * 1.38);
+  const labelLine = Math.round(labelSize * 1.55);
   const maxWidth = width - pad * 2;
   const byKey = new Map(metadata.map((entry) => [entry.key, entry]));
-  const narratives = ['prompt', 'enhanced', 'loras'].map((key) => byKey.get(key)).filter(Boolean);
-  const factKeys = new Set(['size', 'seed', 'steps', 'cfg', 'sampling', 'duration', 'upscale']);
-  const facts = metadata.filter((entry) => factKeys.has(entry.key));
-  const narrativeLayouts = narratives.map((entry) => {
-    setDocumentationFont(ctx, 650, bodySize);
+  const promptEntries = ['prompt', 'originalPrompt'].map((key) => byKey.get(key)).filter(Boolean);
+  const loras = byKey.get('loras');
+  const facts = metadata.filter((entry) => !['prompt', 'originalPrompt', 'loras'].includes(entry.key));
+  const promptLayouts = promptEntries.map((entry) => {
+    setDocumentationFont(ctx, 500, bodySize);
     return { entry, lines: wrapCanvasText(ctx, entry.value, maxWidth) };
   });
+  setDocumentationFont(ctx, 500, bodySize * .9);
+  const loraLines = loras ? wrapCanvasText(ctx, loras.value, maxWidth) : [];
   const columns = width < 700 ? 2 : 3;
   const factRows = Math.ceil(facts.length / columns);
-  const factCellHeight = labelLine + bodyLine + Math.round(pad * .26);
-  let cardHeight = pad * 2 + labelLine + (byKey.has('model') ? Math.round(modelSize * 1.35) : Math.round(bodySize * 1.25));
-  narrativeLayouts.forEach((layout) => { cardHeight += Math.round(pad * .48) + labelLine + layout.lines.length * bodyLine; });
-  if (factRows) cardHeight += Math.round(pad * .58) + factRows * factCellHeight;
-  cardHeight = Math.max(Math.round(width * .24), Math.ceil(cardHeight));
+  const factCellHeight = labelLine + bodyLine + Math.round(pad * .18);
+  let cardHeight = metadata.length ? pad : 0;
+  promptLayouts.forEach((layout, index) => {
+    if (index) cardHeight += Math.round(pad * .38);
+    cardHeight += labelLine + layout.lines.length * bodyLine;
+  });
+  if (factRows) cardHeight += (promptLayouts.length ? Math.round(pad * .55) : 0) + Math.max(1, Math.round(width / 1200)) + Math.round(pad * .42) + factRows * factCellHeight;
+  if (loraLines.length) cardHeight += ((promptLayouts.length || factRows) ? Math.round(pad * .4) : 0) + labelLine + loraLines.length * Math.round(bodyLine * .92);
+  if (metadata.length) cardHeight += pad;
+  cardHeight = Math.ceil(cardHeight);
 
   canvas.width = width;
   canvas.height = imageHeight + cardHeight;
@@ -9533,41 +9543,25 @@ function renderDocumentationContactCard(canvas, ctx, image, metadata) {
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, canvas.height);
   ctx.drawImage(image, 0, 0, width, imageHeight);
-  const accent = ctx.createLinearGradient(0, imageHeight, width, imageHeight);
-  accent.addColorStop(0, '#7ba6ff');
-  accent.addColorStop(.5, '#d7b4ff');
-  accent.addColorStop(1, '#ffbd8a');
-  ctx.fillStyle = accent;
-  ctx.fillRect(0, imageHeight, width, Math.max(3, Math.round(width / 420)));
+  if (!metadata.length) return;
+  ctx.fillStyle = line;
+  ctx.fillRect(0, imageHeight, width, Math.max(1, Math.round(width / 1200)));
 
   let y = imageHeight + pad;
   ctx.textBaseline = 'top';
-  ctx.fillStyle = muted;
-  setDocumentationFont(ctx, 850, labelSize);
-  ctx.fillText('GENERATION DOCUMENTATION', pad, y);
-  ctx.textAlign = 'right';
-  ctx.fillText('MIX STUDIO', width - pad, y);
-  ctx.textAlign = 'left';
-  y += labelLine;
-  const model = byKey.get('model');
-  ctx.fillStyle = ink;
-  setDocumentationFont(ctx, 780, modelSize);
-  ctx.fillText(truncateCanvasText(ctx, model ? model.value : 'Generation notes', maxWidth), pad, y);
-  y += Math.round(modelSize * 1.35);
-
-  narrativeLayouts.forEach(({ entry, lines }) => {
-    y += Math.round(pad * .48);
+  promptLayouts.forEach(({ entry, lines }, index) => {
+    if (index) y += Math.round(pad * .38);
     ctx.fillStyle = muted;
-    setDocumentationFont(ctx, 850, labelSize);
-    ctx.fillText(entry.label.toUpperCase(), pad, y);
+    setDocumentationMonoFont(ctx, 600, labelSize);
+    ctx.fillText(entry.label, pad, y);
     y += labelLine;
     ctx.fillStyle = ink;
-    setDocumentationFont(ctx, entry.key === 'prompt' ? 680 : 600, bodySize);
+    setDocumentationFont(ctx, 500, bodySize);
     y = drawDocumentationLines(ctx, lines, pad, y, bodyLine);
   });
 
   if (factRows) {
-    y += Math.round(pad * .58);
+    if (promptLayouts.length) y += Math.round(pad * .55);
     ctx.fillStyle = line;
     ctx.fillRect(pad, y, maxWidth, Math.max(1, Math.round(width / 1100)));
     y += Math.round(pad * .4);
@@ -9579,12 +9573,23 @@ function renderDocumentationContactCard(canvas, ctx, image, metadata) {
       const x = pad + col * (cellWidth + gap);
       const cellY = y + row * factCellHeight;
       ctx.fillStyle = muted;
-      setDocumentationFont(ctx, 850, labelSize);
-      ctx.fillText(entry.label.toUpperCase(), x, cellY);
+      setDocumentationMonoFont(ctx, 600, labelSize);
+      ctx.fillText(entry.label, x, cellY);
       ctx.fillStyle = ink;
-      setDocumentationFont(ctx, 700, bodySize);
+      setDocumentationFont(ctx, 500, bodySize);
       ctx.fillText(truncateCanvasText(ctx, entry.value, cellWidth), x, cellY + labelLine);
     });
+    y += factRows * factCellHeight;
+  }
+  if (loraLines.length) {
+    if (promptLayouts.length || factRows) y += Math.round(pad * .4);
+    ctx.fillStyle = muted;
+    setDocumentationMonoFont(ctx, 600, labelSize);
+    ctx.fillText(loras.label, pad, y);
+    y += labelLine;
+    ctx.fillStyle = ink;
+    setDocumentationFont(ctx, 500, bodySize * .9);
+    drawDocumentationLines(ctx, loraLines, pad, y, Math.round(bodyLine * .92));
   }
 }
 
@@ -9594,77 +9599,60 @@ function renderDocumentationOverlay(canvas, ctx, image, metadata) {
   canvas.width = width;
   canvas.height = height;
   ctx.drawImage(image, 0, 0, width, height);
+  if (!metadata.length) return;
   const density = Math.max(.55, Math.min(width / 1000, height / 850)) * (documentationBuilderState.textScale / 100);
-  const pad = Math.max(24, Math.round(width * .055));
-  const labelSize = Math.max(10, 14 * density);
-  const bodySize = Math.max(14, 25 * density);
-  const modelSize = Math.max(18, 36 * density);
-  const bodyLine = Math.round(bodySize * 1.3);
+  const pad = Math.max(20, Math.round(width * .04));
+  const labelSize = Math.max(9, 12 * density);
+  const bodySize = Math.max(13, 21 * density);
+  const bodyLine = Math.round(bodySize * 1.35);
   const labelLine = Math.round(labelSize * 1.5);
   const maxWidth = width - pad * 2;
   const byKey = new Map(metadata.map((entry) => [entry.key, entry]));
-  const promptLayouts = ['prompt', 'enhanced'].map((key) => byKey.get(key)).filter(Boolean).map((entry) => {
-    setDocumentationFont(ctx, entry.key === 'prompt' ? 680 : 600, bodySize);
+  const promptLayouts = ['prompt', 'originalPrompt'].map((key) => byKey.get(key)).filter(Boolean).map((entry) => {
+    setDocumentationFont(ctx, 500, bodySize);
     return { entry, lines: wrapCanvasText(ctx, entry.value, maxWidth, entry.key === 'prompt' ? 4 : 2) };
   });
-  const facts = metadata.filter((entry) => ['size', 'seed', 'steps', 'cfg', 'sampling', 'duration', 'upscale'].includes(entry.key));
-  const factText = facts.map((entry) => `${entry.label.toUpperCase()}  ${entry.value}`).join('   •   ');
-  setDocumentationFont(ctx, 750, labelSize);
+  const facts = metadata.filter((entry) => !['prompt', 'originalPrompt', 'loras'].includes(entry.key));
+  const factText = facts.map((entry) => `${entry.label}: ${entry.value}`).join('   |   ');
+  setDocumentationMonoFont(ctx, 500, labelSize);
   const factLines = factText ? wrapCanvasText(ctx, factText, maxWidth, 3) : [];
   const loras = byKey.get('loras');
-  setDocumentationFont(ctx, 650, labelSize * 1.12);
-  const loraLines = loras ? wrapCanvasText(ctx, `LORAS  ${loras.value}`, maxWidth, 2) : [];
-  let contentHeight = labelLine + (byKey.has('model') ? Math.round(modelSize * 1.35) : bodyLine);
-  promptLayouts.forEach(({ lines }) => { contentHeight += Math.round(pad * .3) + labelLine + lines.length * bodyLine; });
-  if (factLines.length) contentHeight += Math.round(pad * .36) + factLines.length * labelLine;
-  if (loraLines.length) contentHeight += Math.round(pad * .25) + loraLines.length * labelLine;
-  let y = Math.max(pad, height - pad - contentHeight);
-  const gradient = ctx.createLinearGradient(0, Math.max(0, y - pad * 2.2), 0, height);
+  setDocumentationMonoFont(ctx, 500, labelSize);
+  const loraLines = loras ? wrapCanvasText(ctx, `LoRAs: ${loras.value}`, maxWidth, 2) : [];
+  let contentHeight = 0;
+  promptLayouts.forEach(({ lines }, index) => { contentHeight += (index ? Math.round(pad * .28) : 0) + labelLine + lines.length * bodyLine; });
+  if (factLines.length) contentHeight += (promptLayouts.length ? Math.round(pad * .38) : 0) + factLines.length * labelLine;
+  if (loraLines.length) contentHeight += ((promptLayouts.length || factLines.length) ? Math.round(pad * .25) : 0) + loraLines.length * labelLine;
+  const panelHeight = Math.min(height, contentHeight + pad * 2);
+  let y = height - panelHeight + pad;
   const shade = documentationBuilderState.shade / 100;
-  gradient.addColorStop(0, 'rgba(0,0,0,0)');
-  gradient.addColorStop(.35, `rgba(0,0,0,${Math.max(.08, shade * .28)})`);
-  gradient.addColorStop(1, `rgba(0,0,0,${shade})`);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, Math.max(0, y - pad * 2.2), width, height - Math.max(0, y - pad * 2.2));
+  ctx.fillStyle = `rgba(0,0,0,${shade})`;
+  ctx.fillRect(0, height - panelHeight, width, panelHeight);
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.fillRect(0, height - panelHeight, width, Math.max(1, Math.round(width / 1400)));
   ctx.textBaseline = 'top';
-  ctx.shadowColor = 'rgba(0,0,0,.42)';
-  ctx.shadowBlur = Math.max(2, Math.round(width / 320));
-  ctx.fillStyle = 'rgba(255,255,255,.7)';
-  setDocumentationFont(ctx, 850, labelSize);
-  ctx.fillText('GENERATION DOCUMENTATION', pad, y);
-  ctx.textAlign = 'right';
-  ctx.fillText('MIX STUDIO', width - pad, y);
-  ctx.textAlign = 'left';
-  y += labelLine;
-  const model = byKey.get('model');
-  ctx.fillStyle = '#fff';
-  setDocumentationFont(ctx, 780, modelSize);
-  ctx.fillText(truncateCanvasText(ctx, model ? model.value : 'Generation notes', maxWidth), pad, y);
-  y += byKey.has('model') ? Math.round(modelSize * 1.35) : bodyLine;
-  promptLayouts.forEach(({ entry, lines }) => {
-    y += Math.round(pad * .3);
-    ctx.fillStyle = 'rgba(255,255,255,.68)';
-    setDocumentationFont(ctx, 850, labelSize);
-    ctx.fillText(entry.label.toUpperCase(), pad, y);
+  promptLayouts.forEach(({ entry, lines }, index) => {
+    if (index) y += Math.round(pad * .28);
+    ctx.fillStyle = 'rgba(255,255,255,.62)';
+    setDocumentationMonoFont(ctx, 600, labelSize);
+    ctx.fillText(entry.label, pad, y);
     y += labelLine;
     ctx.fillStyle = '#fff';
-    setDocumentationFont(ctx, entry.key === 'prompt' ? 680 : 600, bodySize);
+    setDocumentationFont(ctx, 500, bodySize);
     y = drawDocumentationLines(ctx, lines, pad, y, bodyLine);
   });
   if (factLines.length) {
-    y += Math.round(pad * .36);
-    ctx.fillStyle = 'rgba(255,255,255,.9)';
-    setDocumentationFont(ctx, 750, labelSize);
+    if (promptLayouts.length) y += Math.round(pad * .38);
+    ctx.fillStyle = 'rgba(255,255,255,.82)';
+    setDocumentationMonoFont(ctx, 500, labelSize);
     y = drawDocumentationLines(ctx, factLines, pad, y, labelLine);
   }
   if (loraLines.length) {
-    y += Math.round(pad * .25);
-    ctx.fillStyle = 'rgba(255,255,255,.72)';
-    setDocumentationFont(ctx, 650, labelSize * 1.12);
+    if (promptLayouts.length || factLines.length) y += Math.round(pad * .25);
+    ctx.fillStyle = 'rgba(255,255,255,.68)';
+    setDocumentationMonoFont(ctx, 500, labelSize);
     drawDocumentationLines(ctx, loraLines, pad, y, labelLine);
   }
-  ctx.shadowColor = 'transparent';
-  ctx.shadowBlur = 0;
 }
 
 function renderDocumentationCanvas() {
