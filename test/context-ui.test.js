@@ -39,6 +39,9 @@ test('LoRAs can persist trigger phrases and add them to the prompt on activation
   assert.match(appJs, /prompt-lora-token/);
   assert.match(appJs, /token\.textContent = phrase \|\| prettyLora\(name\)/);
   assert.match(appJs, /--lora-trigger-color', loraTriggerColor\(name\)/);
+  assert.match(appJs, /--lora-color', loraTriggerColor\(l\.name\)/);
+  assert.match(appJs, /function syncPromptLoraTokenColors/);
+  assert.match(appJs, /syncPromptLoraTokenColors\(\)/);
   assert.match(appJs, /REGION_COLORS\[\(index < 0 \? 0 : index\) % REGION_COLORS\.length\]/);
   assert.doesNotMatch(appJs, /remove\.dataset\.removePromptLora/);
   assert.match(appJs, /expandPromptLoraTriggers/);

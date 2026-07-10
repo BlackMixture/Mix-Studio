@@ -54,4 +54,5 @@ test('image sampling values persist by mode and expose quick default controls', 
   assert.match(app, /function resetGenerationControl/);
   assert.match(app, /control\.addEventListener\('dblclick'/);
   assert.match(app, /setSettingsTab\('defaults'\)/);
+  assert.match(app, /turboPanel\.after\(control\)/);
 });

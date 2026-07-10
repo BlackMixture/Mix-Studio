@@ -1782,8 +1782,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .lora-card.on {
   opacity: 1;
-  border-color: rgba(160,140,255,0.7);
-  box-shadow: 0 0 0 1px rgba(160,140,255,0.35), 0 0 18px rgba(120,90,255,0.18);
+  border-color: var(--lora-color, #46b4e6);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lora-color, #46b4e6) 34%, transparent),
+    0 0 18px color-mix(in srgb, var(--lora-color, #46b4e6) 18%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .lora-body,
@@ -1846,11 +1848,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   place-items: center;
   width: 20px;
   height: 20px;
-  border: 1px solid rgba(213, 170, 255, .55);
+  border: 1px solid color-mix(in srgb, var(--lora-color, #46b4e6) 55%, transparent);
   border-radius: 7px;
-  color: #ead9ff;
-  background: rgba(85, 45, 145, .78);
-  box-shadow: 0 2px 8px rgba(42, 18, 84, .35);
+  color: var(--lora-color, #46b4e6);
+  background: color-mix(in srgb, var(--lora-color, #46b4e6) 18%, #08090d);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--lora-color, #46b4e6) 20%, transparent);
   font-size: 11px;
   font-weight: 900;
   pointer-events: none;

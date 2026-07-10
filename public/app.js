@@ -3839,8 +3839,11 @@ function positionUpscaleFinish() {
     if (control.parentElement !== $('#refPanel') || control.nextElementSibling !== refRow) {
       $('#refPanel').insertBefore(control, refRow);
     }
-  } else if (isCreate && (control.parentElement !== $('#view-create') || control.nextElementSibling !== $('#resPanel'))) {
-    $('#view-create').insertBefore(control, $('#resPanel'));
+  } else if (isCreate) {
+    const turboPanel = $('#kreaModelPanel');
+    if (control.parentElement !== $('#view-create') || control.previousElementSibling !== turboPanel) {
+      turboPanel.after(control);
+    }
   }
 }
 
@@ -4003,6 +4006,12 @@ function loraTriggerPhrase(lora) {
 function loraTriggerColor(name) {
   const index = curLoras().findIndex((item) => item && item.name === name);
   return REGION_COLORS[(index < 0 ? 0 : index) % REGION_COLORS.length];
+}
+
+function syncPromptLoraTokenColors() {
+  $$('.prompt-lora-token').forEach((token) => {
+    token.style.setProperty('--lora-trigger-color', loraTriggerColor(token.dataset.loraName));
+  });
 }
 
 function promptHasLoraTrigger(prompt, phrase) {
@@ -4347,6 +4356,7 @@ function renderLoras() {
     const card = document.createElement('div');
     const trigger = loraTriggerPhrase(l);
     card.className = 'lora-card' + (l.on ? ' on' : '') + (trigger ? ' has-trigger' : '');
+    card.style.setProperty('--lora-color', loraTriggerColor(l.name));
     card.innerHTML = `${loraThumbHtml(l.name, 'lc-thumb')}`
       + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
       + `<button class="lc-menu" aria-label="LoRA options">⋯</button>`
@@ -4369,6 +4379,7 @@ function renderLoras() {
   if (summary) summary.textContent = active ? `${active} active` : (loaded ? `${loaded} loaded · off` : 'None selected');
   $('#loraHint').hidden = !arr.length;
   renderLoraCompatibility();
+  syncPromptLoraTokenColors();
   renderPromptSuggestions();
 }
 
