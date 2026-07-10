@@ -4001,9 +4001,26 @@ function promptHasLoraTrigger(prompt, phrase) {
   return !!needle && resolvedPrompt.toLocaleLowerCase().includes(needle);
 }
 
+function promoteLoraTriggerInPrompt(lora) {
+  const phrase = loraTriggerPhrase(lora);
+  const draft = promptDraft();
+  const token = loraTriggerToken(lora && lora.name);
+  if (!phrase || draft.includes(token)) return false;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const match = new RegExp(escaped, 'i').exec(draft);
+  if (!match) return false;
+  const value = draft.slice(0, match.index) + token + draft.slice(match.index + match[0].length);
+  setPromptDraft(value);
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = value;
+  updatePromptClear();
+  return true;
+}
+
 function ensureLoraTriggerInPrompt(lora) {
   const phrase = loraTriggerPhrase(lora);
-  if (!phrase || promptHasLoraTrigger(promptDraft(), phrase)) return false;
+  if (!phrase) return false;
+  if (promoteLoraTriggerInPrompt(lora)) return true;
+  if (promptHasLoraTrigger(promptDraft(), phrase)) return false;
   const current = promptDraft().trim();
   const separator = current ? (/[,.!?;:]$/.test(current) ? ' ' : ', ') : '';
   const value = current + separator + loraTriggerToken(lora.name) + ' ';

@@ -26,6 +26,8 @@ test('LoRAs can persist trigger phrases and add them to the prompt on activation
   assert.match(appJs, /loraTriggers: state\.loraTriggers/);
   assert.match(appJs, /state\.loraTriggers\[l\.name\] = l\.triggerPhrase/);
   assert.match(appJs, /ensureLoraTriggerInPrompt/);
+  assert.match(appJs, /function promoteLoraTriggerInPrompt/);
+  assert.match(appJs, /const value = draft\.slice\(0, match\.index\) \+ token/);
   assert.match(appJs, /if \(!wasOn && l\.on\) ensureLoraTriggerInPrompt\(l\)/);
   assert.match(appJs, /triggerPhrase: loraTriggerPhrase\(l\)/);
   assert.match(appJs, /makePromptLoraTriggerToken/);
