@@ -4,6 +4,9 @@ param(
   [string]$ComfyPath,
   [string]$ModelsPath,
   [string]$FeatureConfigFile,
+  [ValidateSet('existing', 'desktop')]
+  [string]$ComfyMode = 'existing',
+  [switch]$InstallDependencies,
   [switch]$SkipLaunch
 )
 
@@ -13,7 +16,9 @@ $InstallFile = Join-Path $Root 'install.json'
 $DataDir = Join-Path $Root 'data'
 $SettingsFile = Join-Path $DataDir 'settings.json'
 $FeatureManifest = Join-Path $PSScriptRoot 'feature-manifest.json'
+$DependencyInstaller = Join-Path $PSScriptRoot 'install-dependencies.js'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$OfficialComfyDesktopUrl = 'https://download.comfy.org/windows/nsis/x64'
 
 function Write-Step([string]$Message) {
   Write-Host "`n==> $Message" -ForegroundColor Cyan
@@ -99,6 +104,76 @@ function Backup-File([string]$File, [string]$Timestamp) {
   Write-Host "Backed up $([IO.Path]::GetFileName($File))." -ForegroundColor DarkGray
 }
 
+function Get-ComfyDesktopBase {
+  if ([string]::IsNullOrWhiteSpace($env:APPDATA)) { return '' }
+  $ConfigFile = Join-Path $env:APPDATA 'ComfyUI\config.json'
+  if (-not (Test-Path $ConfigFile)) { return '' }
+  try {
+    $Config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+    foreach ($Name in @('basePath', 'base_path')) {
+      if ($null -ne $Config.PSObject.Properties[$Name]) {
+        $Value = [string]$Config.PSObject.Properties[$Name].Value
+        if ($Value -and (Test-Path $Value)) { return (Resolve-Path $Value).Path }
+      }
+    }
+  } catch { return '' }
+  return ''
+}
+
+function Test-ComfyEnvironmentReady([string]$Base) {
+  if (-not $Base) { return $false }
+  $Candidates = @(
+    (Join-Path $Base '.venv\Scripts\python.exe'),
+    (Join-Path $Base 'venv\Scripts\python.exe'),
+    (Join-Path $Base 'ComfyUI\.venv\Scripts\python.exe'),
+    (Join-Path $Base 'ComfyUI\venv\Scripts\python.exe'),
+    (Join-Path (Split-Path $Base -Parent) 'python_embeded\python.exe')
+  )
+  return $null -ne ($Candidates | Where-Object { Test-Path $_ } | Select-Object -First 1)
+}
+
+function Install-ComfyDesktop {
+  $Existing = Get-ComfyDesktopBase
+  if ($Existing -and (Test-ComfyEnvironmentReady $Existing)) {
+    Write-Host "ComfyUI Desktop is already initialized at $Existing" -ForegroundColor Green
+    return $Existing
+  }
+
+  if (-not $Existing) {
+    Write-Step 'Installing official ComfyUI Desktop'
+    Write-Host 'The official ComfyUI setup will open. Complete its NVIDIA and install-location steps.' -ForegroundColor Yellow
+    $Installer = Join-Path $env:TEMP 'ComfyUI-Desktop-Setup.exe'
+    Invoke-WebRequest -Uri $OfficialComfyDesktopUrl -OutFile $Installer -UseBasicParsing
+    $Signature = Get-AuthenticodeSignature -FilePath $Installer
+    if ($Signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+      Remove-Item $Installer -Force -ErrorAction SilentlyContinue
+      throw "The downloaded ComfyUI Desktop installer did not have a valid Windows signature ($($Signature.Status)). Nothing was run."
+    }
+    $Process = Start-Process -FilePath $Installer -PassThru
+    $Process.WaitForExit()
+    if ($Process.ExitCode -ne 0) { throw "ComfyUI Desktop setup exited with code $($Process.ExitCode)." }
+  } else {
+    Write-Host 'ComfyUI Desktop is installed and still finishing its Python environment.' -ForegroundColor Yellow
+  }
+
+  Write-Host 'Waiting for ComfyUI Desktop initialization. Finish the steps in its window.' -ForegroundColor Yellow
+  $DesktopCandidates = @(
+    (Join-Path $env:LOCALAPPDATA 'Programs\ComfyUI\ComfyUI.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\@comfyorgcomfyui-electron\ComfyUI.exe')
+  )
+  if (-not (Get-ComfyDesktopBase)) {
+    $DesktopApp = $DesktopCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($DesktopApp) { Start-Process -FilePath $DesktopApp | Out-Null }
+  }
+  $Deadline = [DateTime]::UtcNow.AddMinutes(30)
+  while ([DateTime]::UtcNow -lt $Deadline) {
+    $Base = Get-ComfyDesktopBase
+    if ($Base -and (Test-ComfyEnvironmentReady $Base)) { return $Base }
+    Start-Sleep -Seconds 2
+  }
+  throw 'ComfyUI Desktop was installed, but initialization was not completed within 30 minutes. Finish its setup, then run install.bat again; the completed installation will be detected.'
+}
+
 Write-Host ''
 Write-Host '  Mix Studio portable setup' -ForegroundColor White
 Write-Host '  Your gallery and settings are preserved. Setup never deletes data.' -ForegroundColor DarkGray
@@ -147,6 +222,14 @@ $DefaultPath = [string](Existing-PropertyValue $ExistingComfy 'path' '')
 if (-not [string]::IsNullOrWhiteSpace($ComfyPath)) { $DefaultPath = $ComfyPath.Trim() }
 $DefaultModels = [string](Existing-PropertyValue $ExistingComfy 'modelsPath' '')
 if (-not [string]::IsNullOrWhiteSpace($ModelsPath)) { $DefaultModels = $ModelsPath.Trim() }
+
+if ($ComfyMode -eq 'desktop') {
+  $InstalledComfyPath = Install-ComfyDesktop
+  if ($InstalledComfyPath) {
+    $DefaultPath = $InstalledComfyPath
+    $DefaultModels = Join-Path $InstalledComfyPath 'models'
+  }
+}
 
 $SelectedUrl = Read-WithDefault 'ComfyUI URL' $DefaultUrl
 $SelectedUrl = Normalize-ComfyUrl $SelectedUrl
@@ -205,7 +288,7 @@ $InstallConfig = [pscustomobject]@{
     channel = $Branch
   }
   comfy = [pscustomobject]@{
-    mode = if ($SelectedPath) { 'external' } else { 'configured' }
+    mode = if ($ComfyMode -eq 'desktop') { 'desktop' } elseif ($SelectedPath) { 'external' } else { 'configured' }
     path = $SelectedPath
     modelsPath = $SelectedModels
     url = $SelectedUrl
@@ -225,6 +308,16 @@ Write-JsonAtomic $SettingsFile $Settings
 Write-JsonAtomic $InstallFile $InstallConfig
 Write-Host 'Saved install.json and merged settings without replacing gallery data.' -ForegroundColor Green
 
+if ($InstallDependencies) {
+  Write-Step 'Installing selected models and custom nodes'
+  if (-not (Test-Path $DependencyInstaller)) { throw 'The dependency installer is missing from this checkout.' }
+  if (-not $FeatureConfigFile -or -not (Test-Path $FeatureConfigFile)) { throw 'The selected feature list is required for model installation.' }
+  & node $DependencyInstaller --features $FeatureConfigFile
+  if ($LASTEXITCODE -ne 0) {
+    throw 'One or more selected model or custom-node downloads did not finish. Existing files and saved settings were preserved; rerun setup to continue.'
+  }
+}
+
 Write-Step 'Testing ComfyUI'
 try {
   $ObjectInfoUrl = $SelectedUrl.TrimEnd('/') + '/object_info'
@@ -237,7 +330,7 @@ try {
 Write-Host ''
 Write-Host 'Setup complete.' -ForegroundColor Green
 Write-Host 'Use start.bat to launch Mix Studio. The in-app Update button pulls this Git branch.'
-Write-Host 'Existing model files are reused in place; setup does not copy or redownload them.'
+Write-Host 'Existing model files are reused in place; completed downloads are not repeated.'
 
 if (-not $SkipLaunch -and (Read-YesNo 'Start Mix Studio now?' $true)) {
   Start-Process (Join-Path $Root 'start.bat') -WorkingDirectory $Root

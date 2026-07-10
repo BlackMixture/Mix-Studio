@@ -69,6 +69,15 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
       </Setter>
     </Style>
 
+    <Style TargetType="PasswordBox">
+      <Setter Property="Foreground" Value="#F6F8FF"/>
+      <Setter Property="Background" Value="#050609"/>
+      <Setter Property="BorderBrush" Value="#252A36"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="14,11"/>
+      <Setter Property="FontSize" Value="14"/>
+    </Style>
+
     <Style x:Key="BaseButton" TargetType="Button">
       <Setter Property="Foreground" Value="#F6F8FF"/>
       <Setter Property="Background" Value="#10131B"/>
@@ -217,14 +226,14 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           <Grid x:Name="PageWelcome">
             <StackPanel VerticalAlignment="Center" MaxWidth="610">
               <TextBlock Text="Build your local studio" FontSize="34" FontWeight="Bold"/>
-              <TextBlock Text="A portable Mix Studio connected to the ComfyUI and models already on your machine." TextWrapping="Wrap" FontSize="16" Foreground="{StaticResource Soft}" Margin="0,12,0,28" LineHeight="24"/>
+              <TextBlock Text="Set up a complete local studio, or connect Mix Studio to the ComfyUI and models already on your machine." TextWrapping="Wrap" FontSize="16" Foreground="{StaticResource Soft}" Margin="0,12,0,28" LineHeight="24"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
                   <StackPanel><TextBlock Text="↻" FontSize="22" Foreground="#7EA2FF"/><TextBlock Text="Updates and restarts" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Pull new versions or restart from the app menu when both queues are idle." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
                 </Border>
                 <Border Grid.Column="2" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
-                  <StackPanel><TextBlock Text="◇" FontSize="22" Foreground="#A88CFF"/><TextBlock Text="Reuse your setup" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Keep ComfyUI and large model files exactly where they are." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
+                  <StackPanel><TextBlock Text="◇" FontSize="22" Foreground="#A88CFF"/><TextBlock Text="Guided dependencies" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Choose model families and let setup place approved models and nodes correctly." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
                 </Border>
               </Grid>
               <Border Background="#05070A" BorderBrush="#202530" BorderThickness="1" CornerRadius="15" Padding="17" Margin="0,18,0,0">
@@ -236,14 +245,24 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           <Grid x:Name="PageConnection" Visibility="Collapsed">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <StackPanel MaxWidth="650">
-                <TextBlock Text="Connect ComfyUI" FontSize="30" FontWeight="Bold"/>
-                <TextBlock Text="Point Mix Studio at the ComfyUI installation that performs generation." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,25"/>
+                <TextBlock Text="Set up ComfyUI" FontSize="30" FontWeight="Bold"/>
+                <TextBlock Text="Install the official Windows desktop app, or reuse an installation already on this machine." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,20" TextWrapping="Wrap"/>
+                <Border Background="#07090D" BorderBrush="#252A36" BorderThickness="1" CornerRadius="14" Padding="15" Margin="0,0,0,10">
+                  <RadioButton x:Name="InstallComfyOption" GroupName="ComfyMode" IsChecked="True" Foreground="#F6F8FF">
+                    <StackPanel Margin="7,0,0,0"><TextBlock Text="Install ComfyUI Desktop" FontWeight="SemiBold"/><TextBlock Text="Download the signed official NVIDIA installer and guide me through initialization." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
+                  </RadioButton>
+                </Border>
+                <Border Background="#07090D" BorderBrush="#252A36" BorderThickness="1" CornerRadius="14" Padding="15" Margin="0,0,0,20">
+                  <RadioButton x:Name="ExistingComfyOption" GroupName="ComfyMode" Foreground="#F6F8FF">
+                    <StackPanel Margin="7,0,0,0"><TextBlock Text="Use existing ComfyUI" FontWeight="SemiBold"/><TextBlock Text="Keep the current environment and install only selected missing components." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
+                  </RadioButton>
+                </Border>
                 <TextBlock Text="COMFYUI URL" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="Bold"/>
                 <Grid Margin="0,8,0,18"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="118"/></Grid.ColumnDefinitions><TextBox x:Name="ComfyUrlBox" Text="http://127.0.0.1:8188"/><Button x:Name="TestComfyButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Test connection" Padding="12,10"/></Grid>
                 <Border x:Name="ConnectionStatus" Visibility="Collapsed" Background="#0C1116" BorderBrush="#273342" BorderThickness="1" CornerRadius="12" Padding="13" Margin="0,0,0,18"><TextBlock x:Name="ConnectionStatusText" TextWrapping="Wrap"/></Border>
                 <TextBlock Text="COMFYUI FOLDER" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="Bold"/>
                 <Grid Margin="0,8,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBox x:Name="ComfyPathBox"/><Button x:Name="BrowseComfyButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Browse" Padding="12,10"/></Grid>
-                <TextBlock Text="Optional. Used to discover models and local metadata." Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,17"/>
+                <TextBlock Text="For a new Desktop install this is detected automatically after initialization." Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,17"/>
                 <TextBlock Text="MODELS FOLDER" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="Bold"/>
                 <Grid Margin="0,8,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBox x:Name="ModelsPathBox"/><Button x:Name="BrowseModelsButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Browse" Padding="12,10"/></Grid>
                 <TextBlock Text="No files are moved or duplicated. ComfyUI must already be configured to see this folder." Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,0"/>
@@ -252,9 +271,17 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           </Grid>
 
           <Grid x:Name="PageFeatures" Visibility="Collapsed">
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <StackPanel><TextBlock Text="Choose your tools" FontSize="30" FontWeight="Bold"/><TextBlock Text="Only show model families you plan to use. You can rerun setup later." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,22"/></StackPanel>
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0"><StackPanel x:Name="FeatureList"/></ScrollViewer>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Text="Choose your tools" FontSize="30" FontWeight="Bold"/><TextBlock Text="Core image generation is always included. Optional video and advanced edit families can each add tens of gigabytes; existing files are skipped." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,18" TextWrapping="Wrap"/></StackPanel>
+            <StackPanel Grid.Row="1">
+              <ToggleButton x:Name="DownloadModelsToggle" Style="{StaticResource FeatureToggle}" IsChecked="True">
+                <StackPanel><TextBlock Text="Download models and custom nodes" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="Install reviewed dependencies for the selected tools after ComfyUI is ready." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
+              </ToggleButton>
+              <TextBlock Text="HUGGING FACE TOKEN · OPTIONAL" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="Bold" Margin="2,4,0,6"/>
+              <PasswordBox x:Name="HfTokenBox" Margin="0,0,0,5"/>
+              <TextBlock Text="Used only for this setup session. Some providers require accepting their model license first; the token is never saved." Foreground="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" Margin="2,0,0,14"/>
+            </StackPanel>
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0"><StackPanel x:Name="FeatureList"/></ScrollViewer>
           </Grid>
 
           <Grid x:Name="PageReview" Visibility="Collapsed">
@@ -265,9 +292,13 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
                 <StackPanel>
                   <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="ComfyUI" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewUrl" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
                   <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
+                  <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Setup plan" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewComfyMode" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
+                  <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
                   <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Models" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewModels" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
                   <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Enabled tools" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewFeatures" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
+                  <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Enabled tools" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewFeatures" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
+                  <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
+                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Dependencies" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewDownloads" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
                 </StackPanel>
               </Border>
               <Border Background="#09100C" BorderBrush="#20382A" BorderThickness="1" CornerRadius="14" Padding="15" Margin="0,16,0,0"><TextBlock Text="✓ Existing settings are backed up and merged. Gallery data is never replaced." Foreground="#9FD8AE" TextWrapping="Wrap"/></Border>
@@ -278,7 +309,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
             <StackPanel MaxWidth="610" VerticalAlignment="Center" HorizontalAlignment="Center">
               <Border Width="76" Height="76" CornerRadius="24" BorderBrush="{StaticResource Spectrum}" BorderThickness="2" Background="#0B0E15"><TextBlock Text="↻" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#A9BDF6"/></Border>
               <TextBlock Text="Setting up Mix Studio" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,22,0,8"/>
-              <TextBlock x:Name="ProgressDetail" Text="Preparing your portable configuration…" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
+              <TextBlock x:Name="ProgressDetail" Text="Preparing your portable configuration…" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="560"/>
               <ProgressBar x:Name="InstallProgress" Height="5" IsIndeterminate="True" Margin="0,26,0,0" Background="#151923" Foreground="#526FFF"/>
             </StackPanel>
           </Grid>
@@ -287,7 +318,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
             <StackPanel MaxWidth="610" VerticalAlignment="Center" HorizontalAlignment="Center">
               <Border Width="76" Height="76" CornerRadius="24" Background="#0B1710" BorderBrush="#315D3C" BorderThickness="1"><TextBlock Text="✓" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#7DDF95"/></Border>
               <TextBlock Text="Your studio is ready" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,22,0,8"/>
-              <TextBlock Text="Start ComfyUI, then open Mix Studio from this portable folder." Foreground="{StaticResource Soft}" TextAlignment="Center" TextWrapping="Wrap" FontSize="15"/>
+              <TextBlock Text="ComfyUI, selected dependencies, and Mix Studio are configured. Restart ComfyUI once if new custom nodes were installed." Foreground="{StaticResource Soft}" TextAlignment="Center" TextWrapping="Wrap" FontSize="15"/>
               <Button x:Name="LaunchButton" Style="{StaticResource PrimaryButton}" Content="Launch Mix Studio" Margin="0,28,0,0" MinWidth="240"/>
               <TextBlock Text="Your first profile is created inside the app." Foreground="{StaticResource Muted}" HorizontalAlignment="Center" FontSize="12" Margin="0,14,0,0"/>
             </StackPanel>
@@ -305,7 +336,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
     </Grid>
 
     <Border Grid.Row="2" Background="#020203" BorderBrush="#171A22" BorderThickness="0,1,0,0" Padding="26,15">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="10"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="FooterHint" Text="Portable setup · nothing is installed system-wide" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="12"/><Button x:Name="BackButton" Grid.Column="1" Style="{StaticResource BaseButton}" Content="Back" IsEnabled="False" MinWidth="104"/><Button x:Name="NextButton" Grid.Column="3" Style="{StaticResource PrimaryButton}" Content="Continue" MinWidth="138"/></Grid>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="10"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="FooterHint" Text="Guided local setup · existing files are reused" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="12"/><Button x:Name="BackButton" Grid.Column="1" Style="{StaticResource BaseButton}" Content="Back" IsEnabled="False" MinWidth="104"/><Button x:Name="NextButton" Grid.Column="3" Style="{StaticResource PrimaryButton}" Content="Continue" MinWidth="138"/></Grid>
     </Border>
   </Grid>
 </Window>
@@ -405,11 +436,13 @@ function Quote-Argument([string]$Value) {
 
 function Update-Review {
   (Ui 'ReviewUrl').Text = (Ui 'ComfyUrlBox').Text.Trim()
+  (Ui 'ReviewComfyMode').Text = if ((Ui 'InstallComfyOption').IsChecked) { 'Install official ComfyUI Desktop for NVIDIA' } else { 'Reuse the existing ComfyUI environment' }
   $Models = (Ui 'ModelsPathBox').Text.Trim()
-  (Ui 'ReviewModels').Text = if ($Models) { $Models } else { 'Use the connected ComfyUI model paths' }
+  (Ui 'ReviewModels').Text = if ($Models) { $Models } elseif ((Ui 'InstallComfyOption').IsChecked) { 'Use the model folder selected during ComfyUI initialization' } else { 'Use the connected ComfyUI model paths' }
   $Enabled = @()
   foreach ($Id in $FeatureToggles.Keys) { if ($FeatureToggles[$Id].IsChecked) { $Enabled += $FeatureLabels[$Id] } }
   (Ui 'ReviewFeatures').Text = if ($Enabled.Count) { $Enabled -join ', ' } else { 'Core image generation only' }
+  (Ui 'ReviewDownloads').Text = if ((Ui 'DownloadModelsToggle').IsChecked) { 'Download missing approved models and custom nodes' } else { 'Configure features without downloading dependencies' }
 }
 
 function Write-FeatureSelection {
@@ -421,22 +454,30 @@ function Write-FeatureSelection {
 }
 
 function Begin-Install {
+  (Ui 'ProgressDetail').Text = if ((Ui 'InstallComfyOption').IsChecked) { 'Downloading and verifying official ComfyUI Desktop…' } elseif ((Ui 'DownloadModelsToggle').IsChecked) { 'Preparing selected model and custom-node downloads…' } else { 'Saving the portable configuration…' }
   Show-Page 4
   $FeatureFile = Write-FeatureSelection
   $Url = (Ui 'ComfyUrlBox').Text.Trim()
   $Comfy = (Ui 'ComfyPathBox').Text.Trim()
   $Models = (Ui 'ModelsPathBox').Text.Trim()
+  $ComfyMode = if ((Ui 'InstallComfyOption').IsChecked) { 'desktop' } else { 'existing' }
+  $InstallDependencies = [bool](Ui 'DownloadModelsToggle').IsChecked
+  $Token = (Ui 'HfTokenBox').Password
   $EngineArguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-Argument $EngineFile) +
     ' -NonInteractive -SkipLaunch -ComfyUrl ' + (Quote-Argument $Url) +
     ' -ComfyPath ' + (Quote-Argument $Comfy) +
     ' -ModelsPath ' + (Quote-Argument $Models) +
-    ' -FeatureConfigFile ' + (Quote-Argument $FeatureFile)
+    ' -FeatureConfigFile ' + (Quote-Argument $FeatureFile) +
+    ' -ComfyMode ' + (Quote-Argument $ComfyMode)
+  if ($InstallDependencies) { $EngineArguments += ' -InstallDependencies' }
   $Work = [pscustomobject]@{
     EngineArguments = $EngineArguments
     FeatureFile = $FeatureFile
+    HfToken = $Token
   }
 
   $Worker = New-Object System.ComponentModel.BackgroundWorker
+  $Worker.WorkerReportsProgress = $true
   $Worker.add_DoWork({
     param($Sender, $Event)
     $WorkItem = $Event.Argument
@@ -448,19 +489,31 @@ function Begin-Install {
       $Info.CreateNoWindow = $true
       $Info.RedirectStandardOutput = $true
       $Info.RedirectStandardError = $true
+      if ($WorkItem.HfToken) { $Info.EnvironmentVariables['HF_TOKEN'] = $WorkItem.HfToken }
       $Process = New-Object System.Diagnostics.Process
       $Process.StartInfo = $Info
       [void]$Process.Start()
-      $Output = $Process.StandardOutput.ReadToEnd()
+      $OutputLines = New-Object System.Collections.Generic.List[string]
+      while (-not $Process.StandardOutput.EndOfStream) {
+        $Line = $Process.StandardOutput.ReadLine()
+        if ($Line) {
+          $OutputLines.Add($Line)
+          $Sender.ReportProgress(0, $Line)
+        }
+      }
       $ErrorOutput = $Process.StandardError.ReadToEnd()
       $Process.WaitForExit()
-      $Event.Result = [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = $Output; Error = $ErrorOutput; FeatureFile = $WorkItem.FeatureFile }
+      $Event.Result = [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = ($OutputLines -join "`n"); Error = $ErrorOutput; FeatureFile = $WorkItem.FeatureFile }
     } catch {
       if ($WorkItem.FeatureFile -and (Test-Path $WorkItem.FeatureFile)) {
         Remove-Item $WorkItem.FeatureFile -Force -ErrorAction SilentlyContinue
       }
       throw
     }
+  })
+  $Worker.add_ProgressChanged({
+    param($Sender, $Event)
+    if ($Event.UserState) { (Ui 'ProgressDetail').Text = [string]$Event.UserState }
   })
   $Worker.add_RunWorkerCompleted({
     param($Sender, $Event)
@@ -514,8 +567,14 @@ $ComfyConfig = Property-Or $Install 'comfy' ([pscustomobject]@{})
 (Ui 'ComfyUrlBox').Text = [string](Property-Or $Settings 'comfyUrl' 'http://127.0.0.1:8188')
 (Ui 'ComfyPathBox').Text = [string](Property-Or $ComfyConfig 'path' '')
 (Ui 'ModelsPathBox').Text = [string](Property-Or $ComfyConfig 'modelsPath' '')
+$HasExistingComfy = -not [string]::IsNullOrWhiteSpace((Ui 'ComfyPathBox').Text)
+(Ui 'ExistingComfyOption').IsChecked = $HasExistingComfy
+(Ui 'InstallComfyOption').IsChecked = -not $HasExistingComfy
 
 $SavedFeatures = Property-Or $Settings 'features' ([pscustomobject]@{})
+$HasSavedFeatureSelection = @($SavedFeatures.PSObject.Properties).Count -gt 0
+$ConfiguredBefore = Test-Path $InstallFile
+(Ui 'DownloadModelsToggle').IsChecked = -not $ConfiguredBefore
 if (Test-Path $ManifestFile) {
   $Manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
   $CurrentGroup = ''
@@ -534,7 +593,8 @@ if (Test-Path $ManifestFile) {
     }
     $Toggle = New-Object Windows.Controls.Primitives.ToggleButton
     $Toggle.Style = $Window.Resources['FeatureToggle']
-    $Toggle.IsChecked = [bool](Property-Or $SavedFeatures ([string]$Feature.id) ([bool]$Feature.default))
+    $FreshDefault = if ($ConfiguredBefore -and -not $HasSavedFeatureSelection) { $true } else { [bool]$Feature.default }
+    $Toggle.IsChecked = [bool](Property-Or $SavedFeatures ([string]$Feature.id) $FreshDefault)
     $Copy = New-Object Windows.Controls.StackPanel
     $Title = New-Object Windows.Controls.TextBlock
     $Title.Text = [string]$Feature.label
@@ -599,11 +659,15 @@ if ($HasGitCheckout -and $GitCommand -and $NodeMajor -ge 22) {
 })
 (Ui 'TestComfyButton').Add_Click({ Test-ComfyConnection })
 (Ui 'BrowseComfyButton').Add_Click({
+  (Ui 'ExistingComfyOption').IsChecked = $true
   $Chosen = Select-Folder 'Select the existing ComfyUI folder' (Ui 'ComfyPathBox').Text
   (Ui 'ComfyPathBox').Text = $Chosen
   if ($Chosen -and -not (Ui 'ModelsPathBox').Text.Trim()) { (Ui 'ModelsPathBox').Text = Join-Path $Chosen 'models' }
 })
-(Ui 'BrowseModelsButton').Add_Click({ (Ui 'ModelsPathBox').Text = Select-Folder 'Select the models folder used by ComfyUI' (Ui 'ModelsPathBox').Text })
+(Ui 'BrowseModelsButton').Add_Click({
+  (Ui 'ExistingComfyOption').IsChecked = $true
+  (Ui 'ModelsPathBox').Text = Select-Folder 'Select the models folder used by ComfyUI' (Ui 'ModelsPathBox').Text
+})
 (Ui 'RetryButton').Add_Click({ Update-Review; Show-Page 3 })
 (Ui 'LaunchButton').Add_Click({
   Start-Process (Join-Path $Root 'start.bat') -WorkingDirectory $Root

@@ -8,13 +8,13 @@ Minimalist, mobile-first web app for driving a local **ComfyUI** install — ima
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
 
-The downloadable bootstrap installs Git through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, and opens the setup wizard. Setup supports an existing ComfyUI installation and can install Node.js through `winget`. Automated installation of ComfyUI, custom nodes, and optional model packs remains separate because every artifact needs a pinned source, checksum, destination, and license acknowledgement.
+The downloadable bootstrap installs Git through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, and opens the setup wizard. Setup can install Node.js, launch the signed official ComfyUI Desktop installer, detect its initialized environment, and download the reviewed models and custom nodes selected by the user. Existing ComfyUI installations and completed model files are reused.
 
 ### One-file download
 
 On Windows, open the [Mix Studio download page](https://blackmixture.github.io/KreaStudio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
 
-ComfyUI must already be installed. Mix Studio does not silently install ComfyUI or large model files as part of the bootstrap.
+The wizard separates ComfyUI, feature selection, and review into explicit steps. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
 
 ### Manual Git install
 
@@ -25,10 +25,10 @@ ComfyUI must already be installed. Mix Studio does not silently install ComfyUI 
    git clone https://github.com/BlackMixture/KreaStudio.git
    ```
 
-3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI connection, optional model families, review, and installation.
-4. Enter the URL and optional folders for an existing ComfyUI installation. Existing models stay where they are; Mix Studio does not copy or redownload them.
-5. Choose which optional Edit and Video model families should appear in the interface.
-6. Start ComfyUI, then double-click **start.bat**.
+3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI, model families, review, and installation.
+4. Choose **Install ComfyUI Desktop** or **Use existing ComfyUI**. New installations use the signed official NVIDIA desktop installer and are detected after initialization.
+5. Choose the Edit and Video families for this machine and whether setup should download their reviewed models and custom nodes. Some selections can add tens of gigabytes.
+6. Review the plan, finish setup, and launch Mix Studio.
 
 The visual installer delegates all writes to a separate non-interactive install engine. That engine writes ignored, machine-specific configuration to `install.json` and merges the ComfyUI URL and feature choices into `data/settings.json`. If settings already exist, it creates a timestamped backup first. It never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
 
@@ -41,9 +41,9 @@ On the phone, use **Add to Home Screen** for an app-like fullscreen experience.
 
 If the phone can't connect, allow Node through Windows Defender Firewall (private networks). Port changes via the `PORT` env var.
 
-### Existing ComfyUI and shared models
+### ComfyUI and shared models
 
-The installer supports an existing ComfyUI URL, application folder, and models folder. Mix Studio uses those paths for local LoRA metadata and SeedVR2 discovery, while ComfyUI remains responsible for loading the models used by generation graphs. If your models folder is outside the ComfyUI folder, make sure that ComfyUI already includes it through its `extra_model_paths.yaml` configuration.
+For new machines, setup downloads ComfyUI Desktop only from the official stable Windows endpoint and refuses to run it unless Windows reports a valid Authenticode signature. Existing environments can provide their ComfyUI URL, application folder, and models folder. If the models folder is separate, ensure ComfyUI includes it through `extra_model_paths.yaml`.
 
 You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
 

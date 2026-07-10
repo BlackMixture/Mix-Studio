@@ -50,6 +50,7 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /qwenedit: \['qwen'\]/);
   assert.match(server, /klein: \['klein4', 'klein9'\]/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /downloadTotal/);
+  assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /settings\[settingKey\] \|\| sourceName/);
 });
 
 test('ComfyUI restart is owner-only, queue-safe, and reports reconnect state', () => {

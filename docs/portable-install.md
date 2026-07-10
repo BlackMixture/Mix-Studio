@@ -2,7 +2,7 @@
 
 Mix Studio uses a portable Git checkout on Windows. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
 
-This first bootstrap configures an existing ComfyUI installation. Automatic ComfyUI, custom-node, and model-pack downloads remain a separate installer phase because every artifact needs a pinned source, checksum, destination, and license acknowledgement. The optional families are already represented in `installer/feature-manifest.json` so that phase can use the same choices as the interface.
+The guided bootstrap supports both a clean Windows machine and an existing ComfyUI environment. It can launch the signed official ComfyUI Desktop installer, detect the initialized environment, and install only the reviewed model and custom-node groups selected from `installer/feature-manifest.json`.
 
 ## New machine
 
@@ -10,8 +10,8 @@ This first bootstrap configures an existing ComfyUI installation. Automatic Comf
 2. Run the downloaded file. It installs Git through `winget` when necessary and clones the official repository into `%USERPROFILE%\Mix Studio`.
 3. The native setup wizard opens automatically and uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the Mix Studio web interface.
 4. Let setup install Node.js LTS with `winget` if Node 22+ is not already available, then rerun `%USERPROFILE%\Mix Studio\install.bat` after PATH refreshes.
-5. Enter the running ComfyUI URL. If ComfyUI and its models already exist, enter those folders to reuse them in place.
-6. Enable only the Edit and Video model families installed on that machine.
+5. Choose whether to install official ComfyUI Desktop or reuse an existing environment. Complete ComfyUI's NVIDIA and storage-location screens if it is new.
+6. Enable the desired Edit and Video families, then leave dependency downloads enabled to install their reviewed models and custom nodes. Fresh installations start with the image-focused set; optional video and advanced edit families can each add tens of gigabytes.
 7. Double-click `start.bat` inside the Mix Studio folder.
 
 For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/KreaStudio.git`, then launch `install.bat` from that checkout.
@@ -37,7 +37,7 @@ Browser-installed shortcuts, form state, media preferences, and compressed previ
 
 ## Reusing models
 
-Mix Studio sends model filenames to the connected ComfyUI API. The selected ComfyUI instance must therefore already see the model folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; the installer does not modify an existing ComfyUI configuration without permission.
+Mix Studio sends model filenames to the connected ComfyUI API. Guided downloads are placed under the selected ComfyUI models folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; setup does not rewrite an existing path configuration without permission.
 
 The optional local models path additionally lets Mix Studio discover LoRA metadata and SeedVR2 files directly. No model is copied merely to satisfy the portable app layout.
 

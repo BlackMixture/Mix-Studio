@@ -180,7 +180,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
               Download for Windows
             </a>
-            <span class="requirements">Windows 10/11 · Existing ComfyUI installation</span>
+            <span class="requirements">Windows 10/11 · NVIDIA GPU · Guided ComfyUI setup</span>
           </div>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
@@ -190,7 +190,7 @@
 
       <section class="proof" aria-label="Product principles">
         <div class="proof-item"><strong>Local by default</strong><span>Your gallery, prompts, and profile data remain on your machine.</span></div>
-        <div class="proof-item"><strong>Built around ComfyUI</strong><span>Connect to the models and custom nodes you already maintain.</span></div>
+        <div class="proof-item"><strong>Guided ComfyUI setup</strong><span>Install the official desktop app or reuse the environment you already maintain.</span></div>
         <div class="proof-item"><strong>One coherent workspace</strong><span>Create, edit, animate, upscale, and revisit work without graph juggling.</span></div>
       </section>
 
@@ -222,12 +222,12 @@
         <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>From download to first launch.</h2><p>The small bootstrap gets the app, checks the essentials, and opens the same guided setup used for future configuration changes.</p></div>
         <div>
           <div class="step-list">
-            <article class="guide-step"><div><h3>Prepare ComfyUI</h3><p>Have a working local ComfyUI installation and the models you intend to use. Mix Studio connects to it; it does not silently install large model packs.</p></div></article>
+            <article class="guide-step"><div><h3>Prepare the machine</h3><p>Use Windows 10 or 11 with an NVIDIA GPU, current drivers, and enough SSD space. The wizard can install ComfyUI Desktop and explains before any large model download begins.</p></div></article>
             <article class="guide-step"><div><h3>Download and run</h3><p>Save <code>install.bat</code> from this page and open it. Windows may ask you to confirm keeping or running an executable script.</p></div></article>
-            <article class="guide-step"><div><h3>Follow the setup window</h3><p>The bootstrap installs Git through Windows Package Manager when needed, downloads Mix Studio to <code>%USERPROFILE%\Mix Studio</code>, and opens the branded setup wizard.</p></div></article>
-            <article class="guide-step"><div><h3>Connect and launch</h3><p>Enter your ComfyUI URL and folders, select the model families available on the machine, then open <code>start.bat</code> from the Mix Studio folder.</p></div></article>
+            <article class="guide-step"><div><h3>Follow the setup window</h3><p>Choose a new official ComfyUI Desktop installation or an existing environment, then select the image, edit, and video families you want on this machine.</p></div></article>
+            <article class="guide-step"><div><h3>Download and launch</h3><p>Setup installs the reviewed models and custom nodes for the selected tools, reuses any completed files, and configures Mix Studio before first launch.</p></div></article>
           </div>
-          <p class="notice"><strong>Transparent by design.</strong> The bootstrap retrieves only the public <a href="https://github.com/BlackMixture/KreaStudio">BlackMixture/KreaStudio</a> repository. Existing settings are preserved when setup is rerun, and an uninstaller is included in the downloaded checkout.</p>
+          <p class="notice"><strong>Transparent by design.</strong> The bootstrap retrieves the public <a href="https://github.com/BlackMixture/KreaStudio">BlackMixture/KreaStudio</a> repository, the signed official ComfyUI Desktop installer, and reviewed model or node sources selected in the wizard. Existing settings are preserved, and the included uninstaller leaves ComfyUI and shared models in place.</p>
         </div>
       </section>
 

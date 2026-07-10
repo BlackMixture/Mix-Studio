@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": "Mix Studio",
   "target": "windows-nvidia",
-  "notes": "The bootstrapper uses this selection to install only the required model families and writes the same keys to data/settings.json. Model source URLs and license acknowledgements are resolved separately by the installer.",
+  "notes": "The guided installer downloads only selected reviewed model and node groups. Fresh installs default to the image-focused starter set; existing saved selections are preserved.",
   "features": [
     {
       "id": "core.image",
@@ -14,21 +14,21 @@
     {
       "id": "edit.klein4",
       "label": "Klein 4B Edit",
-      "default": true,
+      "default": false,
       "models": ["flux-2-klein-4b", "qwen-3-4b", "flux2-vae"],
       "nodes": ["Flux2Scheduler", "ReferenceLatent"]
     },
     {
       "id": "edit.klein9",
       "label": "Klein 9B Edit",
-      "default": true,
+      "default": false,
       "models": ["flux-2-klein-9b", "qwen-3-8b", "flux2-vae", "sam3"],
       "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3"]
     },
     {
       "id": "edit.qwen",
       "label": "Qwen Edit + multi-angle",
-      "default": true,
+      "default": false,
       "models": ["qwen-image-edit-2511", "qwen-image-edit-lightning", "qwen-image-edit-multi-angle", "sam3"],
       "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod", "ComfyUI-SAM3"]
     },
@@ -49,14 +49,14 @@
     {
       "id": "video.ltx",
       "label": "LTX 2.3 Video",
-      "default": true,
+      "default": false,
       "models": ["ltx-2.3", "ltx-distilled", "gemma-3", "ltx-spatial-upscaler"],
       "nodes": ["VideoHelperSuite", "LTXV"]
     },
     {
       "id": "video.ltxEdit",
       "label": "LTX Edit Anything",
-      "default": true,
+      "default": false,
       "dependsOn": ["video.ltx"],
       "models": ["ltx-edit-anything"],
       "nodes": ["VideoHelperSuite", "LTXVAddGuide"]
@@ -64,21 +64,21 @@
     {
       "id": "video.eros",
       "label": "10Eros DMD",
-      "default": true,
+      "default": false,
       "models": ["10eros", "ltx-dmd", "gemma-3"],
       "nodes": ["EchoDMDSampler", "KJNodes"]
     },
     {
       "id": "video.wan",
       "label": "Wan 2.2 Video",
-      "default": true,
+      "default": false,
       "models": ["wan2.2-high", "wan2.2-low", "umt5-xxl", "wan-vae", "wan-lightx2v"],
       "nodes": ["WanImageToVideo", "VideoHelperSuite"]
     },
     {
       "id": "video.scail",
       "label": "SCAIL 2 Motion Transfer",
-      "default": true,
+      "default": false,
       "dependsOn": ["video.wan"],
       "models": ["scail2", "sam3.1", "clip-vision-h", "pusa"],
       "nodes": ["WanSCAILToVideo", "SAM3_VideoTrack", "comfyui-scail2-infinity"]

@@ -33,7 +33,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
   assert.match(page, /Download for Windows/);
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
-  assert.match(page, /Existing ComfyUI installation/);
+  assert.match(page, /Guided ComfyUI setup/);
   assert.match(page, /modatory-logo\.svg/);
   assert.match(page, /id="features"/);
   assert.match(page, /id="quick-start"/);
@@ -69,6 +69,26 @@ test('visual wizard delegates writes to the non-interactive safe install engine'
   assert.match(ui, /-NonInteractive/);
   assert.match(ui, /-FeatureConfigFile/);
   assert.match(engine, /\[string\]\$FeatureConfigFile/);
+});
+
+test('guided setup can install official ComfyUI and selected dependencies', () => {
+  const ui = fs.readFileSync(path.join(root, 'installer', 'install-ui.ps1'), 'utf8');
+  const engine = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
+  const dependencyCli = require('../installer/install-dependencies');
+  assert.match(ui, /InstallComfyOption/);
+  assert.match(ui, /Install ComfyUI Desktop/);
+  assert.match(ui, /DownloadModelsToggle/);
+  assert.match(ui, /HfTokenBox/);
+  assert.match(ui, /EnvironmentVariables\['HF_TOKEN'\]/);
+  assert.match(engine, /https:\/\/download\.comfy\.org\/windows\/nsis\/x64/);
+  assert.match(engine, /Get-AuthenticodeSignature/);
+  assert.match(engine, /SignatureStatus\]::Valid/);
+  assert.match(engine, /Install-ComfyDesktop/);
+  assert.match(engine, /\[switch\]\$InstallDependencies/);
+  assert.deepEqual(dependencyCli.selectedComponents(
+    { features: [{ id: 'core.image', required: true }, { id: 'video.wan' }, { id: 'video.scail' }] },
+    { 'video.wan': true, 'video.scail': true },
+  ), ['image', 'wan', 'scail', 'scailinfinity']);
 });
 
 test('portable installer requires Git for safe in-app updates and Node 22', () => {
