@@ -6330,9 +6330,11 @@ function visibleItems() {
     return true;
   });
   if (state.likesOnly) {
+    const likedIds = new Set(arr.map((it) => it.id));
     const likedAngleGroups = new Set(arr.map((it) => it.angleGroupId).filter(Boolean));
     if (likedAngleGroups.size) {
-      arr = eligible.filter((it) => !it.angleGroupId || likedAngleGroups.has(it.angleGroupId));
+      arr = eligible.filter((it) => likedIds.has(it.id)
+        || (it.angleGroupId && likedAngleGroups.has(it.angleGroupId)));
     }
   }
   if (state.sortMode === 'old') arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));

@@ -227,6 +227,8 @@ test('gallery media supports profile-scoped likes by double tap and a likes-only
   assert.match(app, /setTimeout\(renderGrid, liked \? 720 : 520\)/);
   assert.match(app, /if \(state\.likesOnly && !it\.liked\)/);
   assert.match(app, /videoLiked = \(it\.videos \|\| \[\]\)\.some/);
+  assert.match(app, /const likedIds = new Set\(arr\.map\(\(it\) => it\.id\)\)/);
+  assert.match(app, /likedIds\.has\(it\.id\)[\s\S]*likedAngleGroups\.has\(it\.angleGroupId\)/);
   assert.match(app, /function setVideoLiked\(item, video, liked, burstTarget\)/);
   assert.match(server, /video\.liked = body\.liked === true/);
   assert.match(app, /like-toggle/);
