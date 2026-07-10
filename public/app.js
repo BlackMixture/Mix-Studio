@@ -5486,6 +5486,7 @@ function setGenerating(on, statusText) {
 
 state.queueProgress = {};
 let queueRefreshAt = 0;
+let queueDrag = null;
 
 async function refreshQueue() {
   const q = await api('/api/queue');
@@ -5543,8 +5544,156 @@ function openFromQueue(itemId, videoId) {
   if (state.items.some((i) => i.id === itemId)) go();
   else refreshGallery(true).then(go);
 }
+
+function queueReorderRows() {
+  return [...document.querySelectorAll('#queueList .queue-row[data-reorderable="true"]')];
+}
+
+function clearQueueDragClasses() {
+  document.querySelectorAll('#queueList .queue-drag-over-before, #queueList .queue-drag-over-after')
+    .forEach((row) => row.classList.remove('queue-drag-over-before', 'queue-drag-over-after'));
+}
+
+function cancelQueueDrag(gesture) {
+  if (!gesture || queueDrag !== gesture) return;
+  clearTimeout(gesture.timer);
+  try { gesture.row.releasePointerCapture(gesture.pointerId); } catch { /* noop */ }
+  if (gesture.ghost) gesture.ghost.remove();
+  gesture.row.classList.remove('queue-drag-source');
+  clearQueueDragClasses();
+  queueDrag = null;
+}
+
+function updateQueueDragTarget(gesture, clientY) {
+  clearQueueDragClasses();
+  const target = queueReorderRows().find((row) => {
+    if (row === gesture.row) return false;
+    const rect = row.getBoundingClientRect();
+    return clientY >= rect.top && clientY <= rect.bottom;
+  });
+  if (!target) {
+    gesture.target = null;
+    return;
+  }
+  const rect = target.getBoundingClientRect();
+  const before = clientY < rect.top + rect.height / 2;
+  gesture.target = { row: target, before };
+  target.classList.add(before ? 'queue-drag-over-before' : 'queue-drag-over-after');
+}
+
+function beginQueueDrag(gesture) {
+  if (!gesture || queueDrag !== gesture || gesture.active) return;
+  gesture.active = true;
+  gesture.row.classList.add('queue-drag-source');
+  const rect = gesture.row.getBoundingClientRect();
+  const ghost = gesture.row.cloneNode(true);
+  ghost.classList.add('queue-drag-ghost', 'queue-drag-ghost-lifted');
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  document.body.appendChild(ghost);
+  gesture.ghost = ghost;
+}
+
+function finishQueueDrag(gesture, clientY) {
+  if (!gesture || queueDrag !== gesture) return;
+  if (!gesture.active) return cancelQueueDrag(gesture);
+  updateQueueDragTarget(gesture, clientY);
+  const rows = queueReorderRows();
+  const target = gesture.target;
+  const current = rows.map((row) => row.dataset.jobId);
+  const sourceIndex = current.indexOf(gesture.jobId);
+  let order = current.slice();
+  if (target && sourceIndex !== -1) {
+    order.splice(sourceIndex, 1);
+    let targetIndex = order.indexOf(target.row.dataset.jobId);
+    if (targetIndex !== -1 && !target.before) targetIndex += 1;
+    order.splice(Math.max(0, targetIndex), 0, gesture.jobId);
+  }
+  gesture.row.dataset.queueDragged = 'true';
+  setTimeout(() => gesture.row.removeAttribute('data-queue-dragged'), 0);
+  cancelQueueDrag(gesture);
+  if (order.join('|') === current.join('|')) return;
+  const rowById = new Map(rows.map((row) => [row.dataset.jobId, row]));
+  const fragment = document.createDocumentFragment();
+  order.forEach((id) => fragment.appendChild(rowById.get(id)));
+  $('#queueList').insertBefore(fragment, $('#queueList').firstElementChild);
+  submitQueueReorder(order);
+}
+
+function attachQueueDrag(row, job) {
+  let gesture = null;
+  row.dataset.reorderable = 'true';
+  row.addEventListener('pointerdown', (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest('button, a, input, select, textarea')) return;
+    if (queueDrag) return;
+    gesture = {
+      row,
+      jobId: job.jobId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      timer: setTimeout(() => beginQueueDrag(gesture), 180),
+      ghost: null,
+      target: null,
+    };
+    queueDrag = gesture;
+    try { row.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  });
+  row.addEventListener('pointermove', (event) => {
+    if (!gesture || queueDrag !== gesture || event.pointerId !== gesture.pointerId) return;
+    if (!gesture.active) {
+      if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 8) cancelQueueDrag(gesture);
+      return;
+    }
+    if (gesture.ghost) gesture.ghost.style.transform = `translate3d(0, ${event.clientY - gesture.startY}px, 0)`;
+    updateQueueDragTarget(gesture, event.clientY);
+  });
+  row.addEventListener('pointerup', (event) => {
+    if (gesture && event.pointerId === gesture.pointerId) finishQueueDrag(gesture, event.clientY);
+  });
+  row.addEventListener('pointercancel', () => cancelQueueDrag(gesture));
+}
+
+function applyQueueJobMapping(mapping) {
+  for (const [oldId, newId] of Object.entries(mapping || {})) {
+    if (state.activeJobs.has(oldId)) {
+      state.activeJobs.delete(oldId);
+      state.activeJobs.add(newId);
+    }
+    if (state.queueProgress[oldId] != null) {
+      state.queueProgress[newId] = state.queueProgress[oldId];
+      delete state.queueProgress[oldId];
+    }
+    const composite = state.compositeJobs.get(oldId);
+    if (composite) {
+      state.compositeJobs.delete(oldId);
+      state.compositeJobs.set(newId, composite);
+    }
+  }
+}
+
+async function submitQueueReorder(order) {
+  try {
+    const result = await api('/api/queue/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order }),
+    });
+    applyQueueJobMapping(result.mapping);
+    toast('Queue order updated');
+    await refreshQueue();
+  } catch (error) {
+    toast(error.message, true);
+    try { await refreshQueue(); } catch { /* noop */ }
+  }
+}
+
 function renderQueue(q) {
   renderQueueHealth(q.health);
+  if (queueDrag) return;
   const list = $('#queueList');
   list.innerHTML = '';
   const rows = [
@@ -5554,9 +5703,16 @@ function renderQueue(q) {
   if (!rows.length) {
     list.innerHTML = '<div class="queue-empty">Queue is empty — nothing running.</div>';
   }
+  const pending = q.pending || [];
+  const canReorder = pending.length > 1 && pending.every((job) => job.reorderable === true);
+  const hint = $('#queueReorderHint');
+  if (hint) hint.hidden = !canReorder;
+  const clearHistory = $('#queueClearHistoryBtn');
+  if (clearHistory) clearHistory.disabled = !(q.history || []).length;
   for (const j of rows) {
     const row = document.createElement('div');
     row.className = 'queue-row';
+    row.dataset.jobId = j.jobId;
     const st = document.createElement('span');
     st.className = 'q-state' + (j.run ? ' run' : '');
     st.dataset.jobId = j.jobId;
@@ -5568,7 +5724,12 @@ function renderQueue(q) {
     lb.textContent = elapsed ? `${j.label} - ${elapsed}` : j.label;
     if (j.itemId) {
       row.classList.add('q-click');
-      lb.addEventListener('click', () => openFromQueue(j.itemId));
+      row.title = 'Open in Library';
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('button, a')) return;
+        if (row.dataset.queueDragged === 'true') return;
+        openFromQueue(j.itemId, j.videoId);
+      });
     }
     const x = document.createElement('button');
     x.className = 'q-cancel';
@@ -5586,7 +5747,16 @@ function renderQueue(q) {
         refreshQueue();
       } catch (e2) { toast(e2.message, true); }
     });
-    row.append(st, lb, x);
+    if (!j.run && canReorder) {
+      const handle = document.createElement('span');
+      handle.className = 'q-handle';
+      handle.textContent = '⋮⋮';
+      handle.setAttribute('aria-hidden', 'true');
+      row.append(handle, st, lb, x);
+      attachQueueDrag(row, j);
+    } else {
+      row.append(st, lb, x);
+    }
     list.appendChild(row);
   }
   // Recent generations (history)
@@ -5635,6 +5805,21 @@ $('#queueResetBtn').addEventListener('click', async () => {
   } catch (e) {
     toast(e.message, true);
   } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#queueClearHistoryBtn').addEventListener('click', async () => {
+  const btn = $('#queueClearHistoryBtn');
+  if (btn.disabled) return;
+  if (!window.confirm('Clear recent queue history? Gallery items will not be deleted.')) return;
+  btn.disabled = true;
+  try {
+    const result = await api('/api/queue/history/clear', { method: 'POST' });
+    toast(`${result.cleared || 0} history item${result.cleared === 1 ? '' : 's'} cleared`);
+    await refreshQueue();
+  } catch (error) {
+    toast(error.message, true);
     btn.disabled = false;
   }
 });

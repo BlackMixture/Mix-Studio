@@ -70,3 +70,16 @@ test('queue sheet renders health and durations', () => {
   assert.match(appJs, /formatDuration/);
   assert.match(appJs, /durationMs/);
 });
+
+test('queue sheet supports clearing history, gallery navigation, and drag reordering', () => {
+  assert.match(indexHtml, /id="queueClearHistoryBtn"/);
+  assert.match(indexHtml, /id="queueReorderHint"/);
+  assert.match(serverJs, /\/api\/queue\/history\/clear/);
+  assert.match(serverJs, /\/api\/queue\/reorder/);
+  assert.match(serverJs, /reorderable/);
+  assert.match(appJs, /openFromQueue\(j\.itemId, j\.videoId\)/);
+  assert.match(appJs, /function attachQueueDrag\(row, job\)/);
+  assert.match(appJs, /queue-drag-ghost/);
+  assert.match(appJs, /\/api\/queue\/history\/clear/);
+  assert.match(appJs, /\/api\/queue\/reorder/);
+});

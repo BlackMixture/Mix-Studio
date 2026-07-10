@@ -426,13 +426,44 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .topbar-actions { gap: 6px; }
 }
 .queue-row {
+  position: relative;
   display: flex; align-items: center; gap: 10px;
   padding: 11px 0;
   border-bottom: 1px solid rgba(226,232,255,0.06);
   font-size: 13px; font-weight: 700;
+  transition: background 150ms var(--ease), opacity 150ms var(--ease), box-shadow 150ms var(--ease);
 }
 .queue-row:last-child { border-bottom: 0; }
 .queue-row .q-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
+.q-handle {
+  flex: 0 0 16px;
+  color: var(--muted-2);
+  font-size: 16px;
+  letter-spacing: -4px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+.queue-row[data-reorderable="true"] { touch-action: pan-y; user-select: none; }
+.queue-row[data-reorderable="true"]:active .q-handle { cursor: grabbing; }
+.queue-drag-source { opacity: 0.26; }
+.queue-drag-over-before { box-shadow: inset 0 2px 0 var(--mode-color); }
+.queue-drag-over-after { box-shadow: inset 0 -2px 0 var(--mode-color); }
+.queue-drag-ghost {
+  position: fixed;
+  z-index: 250;
+  margin: 0;
+  pointer-events: none;
+  border: 1px solid rgba(116,147,255,0.72);
+  border-radius: 12px;
+  padding-left: 10px;
+  background: rgba(15,18,29,0.94);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.52), 0 0 24px rgba(66,133,244,0.24);
+  transform-origin: center;
+  transition: box-shadow 180ms var(--ease), filter 180ms var(--ease);
+  will-change: transform;
+}
+.queue-drag-ghost-lifted { filter: saturate(1.15) brightness(1.12); }
 .q-state {
   flex: 0 0 auto; width: 62px;
   font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
@@ -441,17 +472,33 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .q-state.run { color: var(--spectrum-green); }
 .q-cancel { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-weight: 900; }
 .queue-tools { display: flex; justify-content: flex-end; margin: -4px 0 8px; }
+.queue-clear-btn,
 .queue-reset-btn {
   height: 34px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid rgba(234,67,53,0.45);
-  background: rgba(234,67,53,0.12);
-  color: #ffb3ad;
   font-size: 12px;
   font-weight: 900;
 }
+.queue-clear-btn {
+  margin-right: auto;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.05);
+  color: var(--ink-soft);
+}
+.queue-clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.queue-reset-btn {
+  border: 1px solid rgba(234,67,53,0.45);
+  background: rgba(234,67,53,0.12);
+  color: #ffb3ad;
+}
 .queue-reset-btn:active { transform: scale(0.97); }
+.queue-reorder-hint {
+  margin: -2px 0 8px;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 750;
+}
 .queue-health {
   display: flex;
   flex-wrap: wrap;
