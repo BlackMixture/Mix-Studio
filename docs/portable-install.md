@@ -1,6 +1,6 @@
 # Portable installation and updates
 
-MixBox Studio uses a portable Git checkout on Windows. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
+Mix Studio uses a portable Git checkout on Windows. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
 
 This first bootstrap configures an existing ComfyUI installation. Automatic ComfyUI, custom-node, and model-pack downloads remain a separate installer phase because every artifact needs a pinned source, checksum, destination, and license acknowledgement. The optional families are already represented in `installer/feature-manifest.json` so that phase can use the same choices as the interface.
 
@@ -8,7 +8,7 @@ This first bootstrap configures an existing ComfyUI installation. Automatic Comf
 
 1. Install Git for Windows.
 2. Clone `https://github.com/BlackMixture/KreaStudio.git`.
-3. Double-click `install.bat`. The native Windows wizard uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the MixBox Studio web interface.
+3. Double-click `install.bat`. The native Windows wizard uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the Mix Studio web interface.
 4. Let setup install Node.js LTS with `winget` if Node 22+ is not already available, then rerun `install.bat` after PATH refreshes.
 5. Enter the running ComfyUI URL. If ComfyUI and its models already exist, enter those folders to reuse them in place.
 6. Enable only the Edit and Video model families installed on that machine.
@@ -27,15 +27,15 @@ All are machine-specific and ignored by Git. The installer does not delete or re
 
 ## Uninstalling
 
-Double-click `uninstall.bat` in the checkout. It removes the portable MixBox Studio application files after the confirmation and keeps the local `data/` folder by default. This makes a later reinstall possible without losing profiles, settings, uploads, or generations. The uninstaller never removes ComfyUI, shared model folders, or Node.js.
+Double-click `uninstall.bat` in the checkout. It removes the portable Mix Studio application files after the confirmation and keeps the local `data/` folder by default. This makes a later reinstall possible without losing profiles, settings, uploads, or generations. The uninstaller never removes ComfyUI, shared model folders, or Node.js.
 
 For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout and its local `data/` folder; external data and model paths are not touched.
 
 ## Reusing models
 
-MixBox Studio sends model filenames to the connected ComfyUI API. The selected ComfyUI instance must therefore already see the model folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; the installer does not modify an existing ComfyUI configuration without permission.
+Mix Studio sends model filenames to the connected ComfyUI API. The selected ComfyUI instance must therefore already see the model folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; the installer does not modify an existing ComfyUI configuration without permission.
 
-The optional local models path additionally lets MixBox Studio discover LoRA metadata and SeedVR2 files directly. No model is copied merely to satisfy the portable app layout.
+The optional local models path additionally lets Mix Studio discover LoRA metadata and SeedVR2 files directly. No model is copied merely to satisfy the portable app layout.
 
 ## Updates
 

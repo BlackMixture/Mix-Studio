@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title MixBox Studio Uninstaller
+title Mix Studio Uninstaller
 cd /d "%~dp0"
 if not exist "%~dp0installer\uninstall.ps1" (
-  echo MixBox Studio Uninstaller could not find installer\uninstall.ps1.
+  echo Mix Studio Uninstaller could not find installer\uninstall.ps1.
   pause
   exit /b 1
 )

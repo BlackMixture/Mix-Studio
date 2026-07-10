@@ -100,7 +100,7 @@ function Backup-File([string]$File, [string]$Timestamp) {
 }
 
 Write-Host ''
-Write-Host '  MixBox Studio portable setup' -ForegroundColor White
+Write-Host '  Mix Studio portable setup' -ForegroundColor White
 Write-Host '  Your gallery and settings are preserved. Setup never deletes data.' -ForegroundColor DarkGray
 
 Write-Step 'Checking the portable checkout'
@@ -231,14 +231,14 @@ try {
   Invoke-RestMethod -Uri $ObjectInfoUrl -Method Get -TimeoutSec 5 | Out-Null
   Write-Host 'ComfyUI is reachable.' -ForegroundColor Green
 } catch {
-  Write-Host 'ComfyUI is not reachable yet. Start it, then use Advanced Settings in MixBox Studio to test again.' -ForegroundColor Yellow
+  Write-Host 'ComfyUI is not reachable yet. Start it, then use Advanced Settings in Mix Studio to test again.' -ForegroundColor Yellow
 }
 
 Write-Host ''
 Write-Host 'Setup complete.' -ForegroundColor Green
-Write-Host 'Use start.bat to launch MixBox Studio. The in-app Update button pulls this Git branch.'
+Write-Host 'Use start.bat to launch Mix Studio. The in-app Update button pulls this Git branch.'
 Write-Host 'Existing model files are reused in place; setup does not copy or redownload them.'
 
-if (-not $SkipLaunch -and (Read-YesNo 'Start MixBox Studio now?' $true)) {
+if (-not $SkipLaunch -and (Read-YesNo 'Start Mix Studio now?' $true)) {
   Start-Process (Join-Path $Root 'start.bat') -WorkingDirectory $Root
 }

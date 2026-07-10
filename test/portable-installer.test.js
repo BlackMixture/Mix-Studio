@@ -18,7 +18,9 @@ test('portable installer opens a branded WPF wizard instead of a terminal questi
   const ui = fs.readFileSync(path.join(root, 'installer', 'install-ui.ps1'), 'utf8');
   assert.match(ui, /PresentationFramework/);
   assert.match(ui, /Background="#000000"/);
-  assert.match(ui, /MixBox Studio/);
+  assert.match(ui, /Mix Studio/);
+  assert.match(ui, /Path Fill="#fdc302"/);
+  assert.doesNotMatch(ui, /MixBox Studio/);
   assert.match(ui, /PageWelcome/);
   assert.match(ui, /PageConnection/);
   assert.match(ui, /PageFeatures/);

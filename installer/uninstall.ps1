@@ -48,7 +48,7 @@ function Assert-SafeInstallRoot {
   }
   if (-not (Test-Path (Join-Path $Root 'server.js')) -or
       -not (Test-Path (Join-Path $Root 'installer\uninstall.ps1'))) {
-    throw "This does not look like a MixBox Studio checkout: $RootFull"
+    throw "This does not look like a Mix Studio checkout: $RootFull"
   }
 }
 
@@ -79,12 +79,12 @@ $Install = Read-JsonObject $InstallFile
 $AppId = [string](Property-Or $Install 'appId' '')
 $InstallMode = [string](Property-Or $Install 'installMode' '')
 if ($AppId -and $AppId -ne 'mixbox-studio') { throw "This checkout belongs to another application ($AppId). Nothing was changed." }
-if ($InstallMode -and $InstallMode -ne 'portable') { throw "This is not a portable MixBox Studio install. Nothing was changed." }
+if ($InstallMode -and $InstallMode -ne 'portable') { throw "This is not a portable Mix Studio install. Nothing was changed." }
 if ($RemoveData -and $KeepData) { throw 'Choose either -RemoveData or -KeepData, not both.' }
 
 $PreserveData = -not $RemoveData
 Write-Host ''
-Write-Host '  MixBox Studio uninstaller' -ForegroundColor White
+Write-Host '  Mix Studio uninstaller' -ForegroundColor White
 Write-Host '  ComfyUI, shared models, and Node.js are never removed by this tool.' -ForegroundColor DarkGray
 Write-Host "  Application folder: $Root" -ForegroundColor DarkGray
 if (Test-Path $LocalData) {
@@ -99,7 +99,7 @@ if (Test-Path $LocalData) {
 
 if (-not $NonInteractive) {
   if ($PreserveData) {
-    if (-not (Read-YesNo 'Remove MixBox Studio but keep the local data folder?' $true)) { Write-Host 'Cancelled.'; exit 0 }
+    if (-not (Read-YesNo 'Remove Mix Studio but keep the local data folder?' $true)) { Write-Host 'Cancelled.'; exit 0 }
   } else {
     Write-Host 'This permanently deletes the local data folder, including profiles and gallery media.' -ForegroundColor Red
     $Confirmation = Read-Host 'Type DELETE to continue'
@@ -109,7 +109,7 @@ if (-not $NonInteractive) {
   throw 'Non-interactive uninstall requires -Force.'
 }
 
-Write-Host 'Uninstall is scheduled. Close MixBox Studio before the cleanup runs.' -ForegroundColor Yellow
+Write-Host 'Uninstall is scheduled. Close Mix Studio before the cleanup runs.' -ForegroundColor Yellow
 Start-Cleanup $PreserveData
 if ($PreserveData) {
   Write-Host "The data folder will remain at $LocalData." -ForegroundColor Green
