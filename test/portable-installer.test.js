@@ -35,7 +35,13 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
   assert.match(page, /Existing ComfyUI installation/);
   assert.match(page, /modatory-logo\.svg/);
+  assert.match(page, /id="features"/);
+  assert.match(page, /id="quick-start"/);
+  assert.match(page, /mix-studio-create\.png/);
+  assert.match(page, /mix-studio-region\.png/);
+  assert.match(page, /mix-studio-video\.png/);
   assert.match(workflow, /cp install\.bat _site\/install\.bat/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
   assert.match(workflow, /actions\/configure-pages@v5/);
   assert.match(workflow, /actions\/upload-pages-artifact@v4/);
   assert.match(workflow, /actions\/deploy-pages@v4/);

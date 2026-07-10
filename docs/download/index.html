@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#000000" />
-  <meta name="description" content="Download the Mix Studio installer for Windows." />
-  <title>Download Mix Studio</title>
+  <meta name="description" content="Create, edit, animate, and organize AI media locally with Mix Studio for ComfyUI." />
+  <title>Mix Studio — Local AI creation for ComfyUI</title>
   <link rel="icon" href="./modatory-logo.svg" type="image/svg+xml" />
   <style>
     :root {
@@ -16,130 +16,228 @@
       --line: rgba(226,232,255,.12);
       --panel: rgba(10,12,18,.9);
       --blue: #4285f4;
-      --violet: #6d55ff;
+      --violet: #7657ff;
+      --red: #ea4335;
+      --yellow: #fbbc04;
+      --green: #34a853;
       --radius: 24px;
     }
     * { box-sizing: border-box; }
-    html { min-height: 100%; background: #000; }
+    html { min-height: 100%; background: #000; scroll-behavior: smooth; }
     body {
       min-height: 100vh;
       margin: 0;
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
-        radial-gradient(780px 480px at 15% 5%, rgba(66,133,244,.16), transparent 68%),
-        radial-gradient(700px 430px at 90% 25%, rgba(109,85,255,.13), transparent 70%),
+        radial-gradient(900px 560px at 12% 0%, rgba(66,133,244,.16), transparent 68%),
+        radial-gradient(780px 520px at 92% 18%, rgba(109,85,255,.13), transparent 72%),
         #000;
     }
     a { color: inherit; }
-    .shell { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
-    header { display: flex; align-items: center; justify-content: space-between; min-height: 84px; gap: 24px; }
-    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    img { display: block; max-width: 100%; }
+    .shell { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
+    .site-header { display: flex; align-items: center; justify-content: space-between; min-height: 84px; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; text-decoration: none; }
     .brand-mark {
-      width: 42px;
-      height: 42px;
-      padding: 7px;
-      border: 2px solid transparent;
-      border-radius: 14px;
+      width: 42px; height: 42px; padding: 7px; border: 2px solid transparent; border-radius: 14px;
       background: linear-gradient(#0b0d12,#0b0d12) padding-box,
-        linear-gradient(110deg,#4285f4,#ea4335 36%,#fbbc04 67%,#34a853) border-box;
+        linear-gradient(110deg,var(--blue),var(--red) 36%,var(--yellow) 67%,var(--green)) border-box;
       box-shadow: 0 0 26px rgba(66,87,255,.2);
     }
-    .brand-wordmark { position: relative; width: 150px; height: 30px; max-width: 42vw; display: block; overflow: hidden; }
+    .brand-wordmark { position: relative; width: 150px; height: 30px; max-width: 42vw; overflow: hidden; }
     .brand-wordmark img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
-    .source-link { color: var(--muted); font-size: 13px; font-weight: 750; text-decoration: none; }
-    .source-link:hover, .source-link:focus-visible { color: var(--ink); }
-    main { padding: 78px 0 76px; }
-    .hero { max-width: 790px; }
-    .eyebrow { margin: 0 0 18px; color: #9db3f7; font-size: 12px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
-    h1 { max-width: 740px; margin: 0; font-size: clamp(46px, 8vw, 86px); line-height: .98; letter-spacing: -.055em; }
-    .lede { max-width: 680px; margin: 26px 0 0; color: var(--soft); font-size: clamp(17px, 2.4vw, 21px); line-height: 1.55; }
-    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 36px; }
+    .header-links { display: flex; align-items: center; gap: 24px; }
+    .header-links a { color: var(--muted); font-size: 13px; font-weight: 750; text-decoration: none; }
+    .header-links a:hover, .header-links a:focus-visible { color: var(--ink); }
+    .hero { display: grid; grid-template-columns: minmax(0,.88fr) minmax(500px,1.12fr); align-items: center; gap: 58px; padding: 82px 0 110px; }
+    .eyebrow, .section-kicker { margin: 0 0 18px; color: #9db3f7; font-size: 12px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(50px, 6.5vw, 82px); line-height: .96; letter-spacing: -.058em; }
+    .lede { max-width: 590px; margin: 26px 0 0; color: var(--soft); font-size: clamp(17px, 2vw, 20px); line-height: 1.55; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 34px; }
     .download {
-      min-height: 56px;
-      display: inline-flex;
-      align-items: center;
-      gap: 11px;
-      padding: 0 24px;
-      border: 2px solid transparent;
-      border-radius: 18px;
+      min-height: 56px; display: inline-flex; align-items: center; justify-content: center; gap: 11px; padding: 0 24px;
+      border: 2px solid transparent; border-radius: 18px;
       background: linear-gradient(#111522,#111522) padding-box,
-        linear-gradient(110deg,#4285f4,#ea4335 36%,#fbbc04 67%,#34a853) border-box;
-      box-shadow: 0 15px 50px rgba(46,67,255,.2);
-      font-weight: 850;
-      text-decoration: none;
+        linear-gradient(110deg,var(--blue),var(--red) 36%,var(--yellow) 67%,var(--green)) border-box;
+      box-shadow: 0 15px 50px rgba(46,67,255,.2); font-weight: 850; text-decoration: none;
       transition: transform 180ms ease, box-shadow 180ms ease;
     }
     .download:hover, .download:focus-visible { transform: translateY(-2px); box-shadow: 0 18px 58px rgba(46,67,255,.3); }
     .download svg { width: 19px; height: 19px; }
     .requirements { color: var(--muted); font-size: 12px; font-weight: 700; }
-    .details { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 78px; }
-    .detail {
-      min-height: 178px;
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 60%),var(--panel);
-    }
-    .step { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 11px; background: #151925; color: #a9bdf6; font-size: 12px; font-weight: 900; }
-    .detail h2 { margin: 25px 0 8px; font-size: 17px; }
-    .detail p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
-    .notice { margin-top: 14px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .hero-visual { position: relative; padding: 1px; border-radius: 28px; background: linear-gradient(125deg,rgba(66,133,244,.72),rgba(234,67,53,.2) 38%,rgba(118,87,255,.68)); box-shadow: 0 34px 100px rgba(10,21,74,.36); transform: rotate(1deg); }
+    .window { overflow: hidden; border-radius: 27px; background: #050608; }
+    .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
+    .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
+    .window img { width: 100%; aspect-ratio: 1.095 / 1; object-fit: cover; object-position: top center; }
+    .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
+    .proof-item { padding: 26px 24px; }
+    .proof-item + .proof-item { border-left: 1px solid var(--line); }
+    .proof-item strong { display: block; margin-bottom: 6px; font-size: 15px; }
+    .proof-item span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .section { padding: 120px 0; }
+    .section-head { display: grid; grid-template-columns: .75fr 1fr; gap: 70px; align-items: end; margin-bottom: 48px; }
+    .section-head h2, .quick-copy h2, .closing h2 { margin: 0; font-size: clamp(36px, 5vw, 58px); line-height: 1.02; letter-spacing: -.045em; }
+    .section-head p, .quick-copy > p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+    .feature { min-height: 210px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 58%),var(--panel); }
+    .feature-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: #131725; color: #a9bdf6; }
+    .feature-icon svg { width: 21px; height: 21px; }
+    .feature h3 { margin: 34px 0 8px; font-size: 17px; }
+    .feature p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .showcase { display: grid; grid-template-columns: 1.05fr .95fr; gap: 14px; }
+    .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
+    .shot-image { position: relative; overflow: hidden; background: #030405; }
+    .shot:first-child .shot-image { aspect-ratio: 1.25 / 1; }
+    .shot:not(:first-child) .shot-image { aspect-ratio: 1.55 / 1; }
+    .shot-image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+    .shot:first-child { grid-row: span 2; display: flex; flex-direction: column; }
+    .shot:first-child .shot-image { flex: 1; }
+    .shot:first-child .shot-image img { object-position: top center; }
+    .shot-copy { padding: 22px 24px 24px; border-top: 1px solid var(--line); }
+    .shot-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+    .shot-copy h3 { margin: 8px 0 5px; font-size: 19px; }
+    .shot-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .quick { display: grid; grid-template-columns: .8fr 1.2fr; gap: 82px; align-items: start; padding: 112px 0; border-top: 1px solid var(--line); }
+    .quick-copy { position: sticky; top: 40px; }
+    .quick-copy > p { margin-top: 22px; }
+    .step-list { counter-reset: guide; }
+    .guide-step { counter-increment: guide; display: grid; grid-template-columns: 46px 1fr; gap: 20px; padding: 26px 0; border-top: 1px solid var(--line); }
+    .guide-step:first-child { border-top: 0; padding-top: 0; }
+    .guide-step::before { content: "0" counter(guide); width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: #141824; color: #a9bdf6; font-size: 12px; font-weight: 900; }
+    .guide-step h3 { margin: 1px 0 7px; font-size: 18px; }
+    .guide-step p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .guide-step code { color: var(--soft); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .92em; }
+    .notice { margin-top: 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
     .notice strong { color: var(--soft); }
-    footer { display: flex; justify-content: space-between; gap: 20px; padding: 26px 0 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .closing { position: relative; overflow: hidden; display: flex; align-items: end; justify-content: space-between; gap: 40px; margin: 20px 0 100px; padding: 54px; border: 1px solid var(--line); border-radius: 32px; background: linear-gradient(130deg,rgba(66,133,244,.12),rgba(118,87,255,.08) 55%,rgba(234,67,53,.08)),#090b10; }
+    .closing::after { content: ""; position: absolute; right: -100px; bottom: -160px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle,rgba(118,87,255,.18),transparent 65%); pointer-events: none; }
+    .closing-copy { max-width: 650px; }
+    .closing-copy p { margin: 18px 0 0; color: var(--muted); line-height: 1.6; }
+    .closing .download { position: relative; z-index: 1; flex: 0 0 auto; }
+    footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    footer div { display: flex; gap: 22px; }
     footer a { text-decoration: none; }
     footer a:hover, footer a:focus-visible { color: var(--ink); }
-    @media (max-width: 720px) {
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; gap: 52px; padding-top: 62px; }
+      .hero-copy { max-width: 700px; }
+      .hero-visual { width: min(100%,700px); transform: none; }
+      .feature-grid { grid-template-columns: repeat(2,1fr); }
+      .section-head { grid-template-columns: 1fr; gap: 20px; }
+      .quick { grid-template-columns: 1fr; gap: 52px; }
+      .quick-copy { position: static; }
+      .closing { align-items: start; flex-direction: column; }
+    }
+    @media (max-width: 680px) {
       .shell { width: min(100% - 28px, 620px); }
-      header { min-height: 72px; }
-      .source-link { font-size: 0; }
-      .source-link::after { content: "GitHub"; font-size: 12px; }
-      main { padding: 54px 0 58px; }
-      h1 { font-size: clamp(44px, 15vw, 68px); }
-      .details { grid-template-columns: 1fr; margin-top: 58px; }
-      .detail { min-height: 0; }
+      .site-header { min-height: 72px; }
+      .header-links a:not(:last-child) { display: none; }
+      .header-links a:last-child { font-size: 0; }
+      .header-links a:last-child::after { content: "GitHub"; font-size: 12px; }
+      .hero { padding: 56px 0 74px; }
+      h1 { font-size: clamp(48px,15.5vw,68px); }
+      .actions { align-items: stretch; flex-direction: column; }
+      .download { width: 100%; }
+      .proof { grid-template-columns: 1fr; }
+      .proof-item { padding-inline: 0; }
+      .proof-item + .proof-item { border-left: 0; border-top: 1px solid var(--line); }
+      .section { padding: 86px 0; }
+      .feature-grid, .showcase { grid-template-columns: 1fr; }
+      .feature { min-height: 0; }
+      .shot:first-child { grid-row: auto; display: block; }
+      .shot:first-child .shot-image, .shot:not(:first-child) .shot-image { aspect-ratio: 1.1 / 1; }
+      .quick { padding: 86px 0; }
+      .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       footer { flex-direction: column; }
     }
-    @media (prefers-reduced-motion: reduce) { .download { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .download { transition: none; } }
   </style>
 </head>
 <body>
   <div class="shell">
-    <header>
-      <div class="brand">
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Mix Studio home">
         <img class="brand-mark" src="./modatory-logo.svg" alt="" />
         <span class="brand-wordmark"><img src="./mix-studio-wordmark.svg" alt="Mix Studio" /></span>
-      </div>
-      <a class="source-link" href="https://github.com/BlackMixture/KreaStudio">View source on GitHub</a>
+      </a>
+      <nav class="header-links" aria-label="Site navigation">
+        <a href="#features">Features</a>
+        <a href="#quick-start">Quick start</a>
+        <a href="https://github.com/BlackMixture/KreaStudio">View source on GitHub</a>
+      </nav>
     </header>
 
-    <main>
+    <main id="top">
       <section class="hero">
-        <p class="eyebrow">Windows · NVIDIA · Local generation</p>
-        <h1>Your studio.<br />On your machine.</h1>
-        <p class="lede">Download one small installer. It fetches the official Mix Studio repository, keeps your gallery local, and connects to the ComfyUI setup you already use.</p>
-        <div class="actions">
-          <a class="download" href="./install.bat" download="install.bat">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
-            Download for Windows
-          </a>
-          <span class="requirements">Windows 10/11 · Existing ComfyUI installation</span>
+        <div class="hero-copy">
+          <p class="eyebrow">Windows · NVIDIA · Local generation</p>
+          <h1>Your studio.<br />On your machine.</h1>
+          <p class="lede">A focused workspace for creating images, making precise edits, generating video, and organizing everything your local ComfyUI can produce.</p>
+          <div class="actions">
+            <a class="download" href="./install.bat" download="install.bat">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
+              Download for Windows
+            </a>
+            <span class="requirements">Windows 10/11 · Existing ComfyUI installation</span>
+          </div>
+        </div>
+        <div class="hero-visual" aria-label="Mix Studio Create Image interface">
+          <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.png" alt="Mix Studio Create Image workspace with prompt, resolution, Turbo, upscale, and generate controls" /></div>
         </div>
       </section>
 
-      <section class="details" aria-label="Installation steps">
-        <article class="detail"><span class="step">01</span><h2>Download</h2><p>Save <strong>install.bat</strong> from this page. Your browser may ask you to confirm keeping an executable script.</p></article>
-        <article class="detail"><span class="step">02</span><h2>Run</h2><p>The downloader installs Git through Windows Package Manager if needed, then clones Mix Studio into your user folder.</p></article>
-        <article class="detail"><span class="step">03</span><h2>Connect</h2><p>The Mix Studio setup window opens automatically so you can select your ComfyUI URL, folders, and model families.</p></article>
+      <section class="proof" aria-label="Product principles">
+        <div class="proof-item"><strong>Local by default</strong><span>Your gallery, prompts, and profile data remain on your machine.</span></div>
+        <div class="proof-item"><strong>Built around ComfyUI</strong><span>Connect to the models and custom nodes you already maintain.</span></div>
+        <div class="proof-item"><strong>One coherent workspace</strong><span>Create, edit, animate, upscale, and revisit work without graph juggling.</span></div>
       </section>
 
-      <p class="notice"><strong>Transparent by design.</strong> The downloader retrieves only the public repository at <a href="https://github.com/BlackMixture/KreaStudio">BlackMixture/KreaStudio</a>. It does not install ComfyUI or model files automatically.</p>
+      <section class="section" id="features">
+        <div class="section-head">
+          <div><p class="section-kicker">What you can do</p><h2>From first prompt to final media.</h2></div>
+          <p>Mix Studio turns advanced local workflows into clear, task-focused controls while keeping the power of your ComfyUI installation underneath.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div><h3>Create images</h3><p>Generate with Krea 2, image guides, LoRAs, camera controls, prompt assistance, and optional finish upscaling.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div><h3>Edit precisely</h3><p>Use references, masks, smart selection, camera-angle variants, and sequential edits across Klein, Qwen, and Krea models.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div><h3>Direct with regions</h3><p>Lay out multiple prompt regions, references, and LoRAs visually for deliberate compositions in a single generation.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using first and last frames, Face ID, audio, motion, and interpolation controls.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4-1.4L16.6 18H14v2Z"/></svg></div><h3>Finish and upscale</h3><p>Send images through SeedVR2 or Ultimate SD profiles and process completed videos without leaving the library.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div><h3>Keep a usable library</h3><p>Search, like, group, compare, reuse, document, and export generations with their settings and relationships intact.</p></article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="workspace-title">
+        <div class="section-head"><div><p class="section-kicker">The workspace</p><h2 id="workspace-title">Complex workflows, made direct.</h2></div><p>Each mode reveals only the controls that matter for the job, with the same compact, responsive interface across the studio.</p></div>
+        <div class="showcase">
+          <article class="shot"><div class="shot-image"><img src="./mix-studio-create.png" alt="Create Image interface in Mix Studio" /></div><div class="shot-copy"><span>Create</span><h3>Prompt with useful context</h3><p>Start simple, then reveal references, LoRAs, resolution, sampling, and finishing controls as needed.</p></div></article>
+          <article class="shot"><div class="shot-image"><img src="./mix-studio-region.png" alt="Visual region composition interface in Mix Studio" /></div><div class="shot-copy"><span>Region</span><h3>Compose spatially</h3><p>Draw, overlap, and configure prompt areas directly on the output canvas.</p></div></article>
+          <article class="shot"><div class="shot-image"><img src="./mix-studio-video.png" alt="Video generation interface in Mix Studio" /></div><div class="shot-copy"><span>Video</span><h3>Build motion from the right inputs</h3><p>Frames, identity, audio, model, and motion controls stay together in one clear flow.</p></div></article>
+        </div>
+      </section>
+
+      <section class="quick" id="quick-start">
+        <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>From download to first launch.</h2><p>The small bootstrap gets the app, checks the essentials, and opens the same guided setup used for future configuration changes.</p></div>
+        <div>
+          <div class="step-list">
+            <article class="guide-step"><div><h3>Prepare ComfyUI</h3><p>Have a working local ComfyUI installation and the models you intend to use. Mix Studio connects to it; it does not silently install large model packs.</p></div></article>
+            <article class="guide-step"><div><h3>Download and run</h3><p>Save <code>install.bat</code> from this page and open it. Windows may ask you to confirm keeping or running an executable script.</p></div></article>
+            <article class="guide-step"><div><h3>Follow the setup window</h3><p>The bootstrap installs Git through Windows Package Manager when needed, downloads Mix Studio to <code>%USERPROFILE%\Mix Studio</code>, and opens the branded setup wizard.</p></div></article>
+            <article class="guide-step"><div><h3>Connect and launch</h3><p>Enter your ComfyUI URL and folders, select the model families available on the machine, then open <code>start.bat</code> from the Mix Studio folder.</p></div></article>
+          </div>
+          <p class="notice"><strong>Transparent by design.</strong> The bootstrap retrieves only the public <a href="https://github.com/BlackMixture/KreaStudio">BlackMixture/KreaStudio</a> repository. Existing settings are preserved when setup is rerun, and an uninstaller is included in the downloaded checkout.</p>
+        </div>
+      </section>
+
+      <section class="closing">
+        <div class="closing-copy"><p class="section-kicker">Ready when your ComfyUI is</p><h2>Bring your local creative stack into focus.</h2><p>One download starts the guided installation. Your models, media, and generation history stay under your control.</p></div>
+        <a class="download" href="./install.bat" download="install.bat"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>Download for Windows</a>
+      </section>
     </main>
 
-    <footer>
-      <span>Mix Studio · Modatory design language</span>
-      <a href="https://github.com/BlackMixture/KreaStudio/blob/main/docs/portable-install.md">Installation details</a>
-    </footer>
+    <footer><span>Mix Studio · Modatory design language</span><div><a href="https://github.com/BlackMixture/KreaStudio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/KreaStudio">GitHub</a></div></footer>
   </div>
 </body>
 </html>
