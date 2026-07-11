@@ -70,7 +70,7 @@
     .window { overflow: hidden; border-radius: 27px; background: #050608; }
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
     .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
-    .window img { width: 100%; aspect-ratio: 1.095 / 1; object-fit: cover; object-position: top center; }
+    .window img { width: 100%; aspect-ratio: 1.5 / 1; object-fit: cover; object-position: top center; }
     .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 32px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; }
     .phone-preview img { width: 100%; aspect-ratio: .462 / 1; object-fit: cover; object-position: top center; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
@@ -101,7 +101,7 @@
     .showcase { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
     .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
     .shot-image { position: relative; overflow: hidden; background: #030405; }
-    .shot-image { aspect-ratio: 1.095 / 1; }
+    .shot-image { aspect-ratio: 1.5 / 1; }
     .shot-image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
     .shot-copy { padding: 22px 24px 24px; border-top: 1px solid var(--line); }
     .shot-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
@@ -160,7 +160,7 @@
       .section { padding: 86px 0; }
       .feature-grid, .showcase { grid-template-columns: 1fr; }
       .feature { min-height: 0; }
-      .shot-image { aspect-ratio: 1.1 / 1; }
+      .shot-image { aspect-ratio: 1.5 / 1; }
       .quick { padding: 86px 0; }
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       footer { flex-direction: column; }
@@ -198,7 +198,7 @@
           </div>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
-          <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.png" alt="Mix Studio Create Image workspace with prompt, resolution, Turbo, upscale, and generate controls" /></div>
+          <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.png" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" /></div>
           <div class="phone-preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
         </div>
       </section>
@@ -226,21 +226,21 @@
           <p>Mix Studio turns advanced local workflows into clear, touch-friendly controls while keeping the full power of your desktop ComfyUI installation underneath.</p>
         </div>
         <div class="feature-grid">
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div><h3>Create images</h3><p>Generate with Krea 2, image guides, LoRAs, camera controls, prompt assistance, and optional finish upscaling.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div><h3>Edit precisely</h3><p>Use references, masks, smart selection, camera-angle variants, and sequential edits across Klein, Qwen, and Krea models.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div><h3>Create images</h3><p>Generate with Krea 2, pixel or depth guidance, depth-map previews, LoRAs, camera controls, prompt assistance, and finish upscaling.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div><h3>Edit precisely</h3><p>Use references, masks, smart selection, camera-angle variants, sequential edits, and Continue Edit across Klein, Qwen, and Krea models.</p></article>
           <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div><h3>Direct with regions</h3><p>Lay out multiple prompt regions, references, and LoRAs visually for deliberate compositions in a single generation.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using first and last frames, Face ID, audio, motion, and interpolation controls.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using frames, Face ID, your own audio for lipsync, motion transfer, and interpolation.</p></article>
           <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4-1.4L16.6 18H14v2Z"/></svg></div><h3>Finish and upscale</h3><p>Send images through SeedVR2 or Ultimate SD profiles and process completed videos without leaving the library.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div><h3>Keep a usable library</h3><p>Search, like, group, compare, reuse, document, and export generations with their settings and relationships intact.</p></article>
+          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div><h3>Keep a usable library</h3><p>Search, like, group, compare, continue editing, document, and export generations in a focused mobile or full desktop library.</p></article>
         </div>
       </section>
 
       <section class="section" aria-labelledby="workspace-title">
-        <div class="section-head"><div><p class="section-kicker">The workspace</p><h2 id="workspace-title">Complex workflows, made direct.</h2></div><p>Each mode reveals only the controls that matter for the job, with the same compact, responsive interface across the studio.</p></div>
+        <div class="section-head"><div><p class="section-kicker">The workspace</p><h2 id="workspace-title">Complex workflows, made direct.</h2></div><p>On desktop, inputs, live generation progress, and recent work stay visible together. On mobile, the same controls settle into a focused single-column flow.</p></div>
         <div class="showcase">
-          <article class="shot"><div class="shot-image"><img src="./mix-studio-create.png" alt="Create Image interface in Mix Studio" /></div><div class="shot-copy"><span>Create</span><h3>Prompt with useful context</h3><p>Start simple, then reveal references, LoRAs, resolution, sampling, and finishing controls as needed.</p></div></article>
+          <article class="shot"><div class="shot-image"><img src="./mix-studio-create.png" alt="Create Image desktop workspace in Mix Studio" /></div><div class="shot-copy"><span>Create</span><h3>Stay in one workspace</h3><p>Build on the left, watch progress in the center, and keep recent generations within reach.</p></div></article>
           <article class="shot"><div class="shot-image"><img src="./mix-studio-region.png" alt="Visual region composition interface in Mix Studio" /></div><div class="shot-copy"><span>Region</span><h3>Compose spatially</h3><p>Draw, overlap, and configure prompt areas directly on the output canvas.</p></div></article>
-          <article class="shot"><div class="shot-image"><img src="./mix-studio-video.png" alt="Video generation interface in Mix Studio" /></div><div class="shot-copy"><span>Video</span><h3>Build motion from the right inputs</h3><p>Frames, identity, audio, model, and motion controls stay together in one clear flow.</p></div></article>
+          <article class="shot"><div class="shot-image"><img src="./mix-studio-video.png" alt="Video generation desktop workspace in Mix Studio" /></div><div class="shot-copy"><span>Video</span><h3>Build motion from the right inputs</h3><p>Frames, identity, lipsync audio, model, and motion controls stay together in one clear flow.</p></div></article>
         </div>
       </section>
 
@@ -250,7 +250,7 @@
           <div class="step-list">
             <article class="guide-step"><div><h3>Prepare the machine</h3><p>Use Windows 10 or 11 with an NVIDIA GPU, current drivers, and enough SSD space. The wizard can install ComfyUI Desktop and explains before any large model download begins.</p></div></article>
             <article class="guide-step"><div><h3>Download and run</h3><p>Save <code>install.bat</code> from this page and open it. Windows may ask you to confirm keeping or running an executable script.</p></div></article>
-            <article class="guide-step"><div><h3>Follow the setup window</h3><p>Choose a new official ComfyUI Desktop installation or an existing environment, then select the image, edit, and video families you want on this machine.</p></div></article>
+            <article class="guide-step"><div><h3>Follow the setup window</h3><p>Choose a new official ComfyUI Desktop installation or an existing environment, then select the image, edit, and video families you want. Image setup includes depth guidance, and LTX setup includes Face ID support.</p></div></article>
             <article class="guide-step"><div><h3>Connect both devices</h3><p>Install <a href="https://tailscale.com/download">Tailscale</a> on the Windows desktop and your phone, then sign in to the same private network.</p></div></article>
             <article class="guide-step"><div><h3>Open Mix Studio on your phone</h3><p>Start Mix Studio on the desktop and open the labeled <code>Tailscale:</code> URL shown in its terminal. Add it to the phone's home screen for an app-like launch.</p></div></article>
           </div>

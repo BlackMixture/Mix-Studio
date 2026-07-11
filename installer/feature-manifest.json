@@ -6,7 +6,7 @@
   "features": [
     {
       "id": "core.image",
-      "label": "Image generation",
+      "label": "Image generation + depth guidance",
       "required": true,
       "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae"],
       "nodes": ["core", "TextGenerate", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3"]
@@ -48,10 +48,10 @@
     },
     {
       "id": "video.ltx",
-      "label": "LTX 2.3 Video",
+      "label": "LTX 2.3 Video + Face ID",
       "default": false,
-      "models": ["ltx-2.3", "ltx-distilled", "gemma-3", "ltx-spatial-upscaler"],
-      "nodes": ["VideoHelperSuite", "LTXV"]
+      "models": ["ltx-2.3", "ltx-distilled", "gemma-3", "ltx-spatial-upscaler", "ltx-face-id", "ltx-face-id-distilled"],
+      "nodes": ["VideoHelperSuite", "LTXV", "BFS Nodes", "KJNodes"]
     },
     {
       "id": "video.ltxEdit",

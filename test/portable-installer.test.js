@@ -42,6 +42,10 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /mix-studio-video\.png/);
   assert.match(page, /mix-studio-mobile\.png/);
   assert.match(page, /id="mobile-first"/);
+  assert.match(page, /depth guidance/);
+  assert.match(page, /Continue Edit/);
+  assert.match(page, /audio for lipsync/);
+  assert.match(page, /live generation progress/);
   assert.match(page, /tailscale\.com\/download/);
   assert.match(page, /Your studio/);
   assert.doesNotMatch(page, /—/);
@@ -81,6 +85,9 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   const ui = fs.readFileSync(path.join(root, 'installer', 'install-ui.ps1'), 'utf8');
   const engine = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
   const dependencyCli = require('../installer/install-dependencies');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
+  const ltx = manifest.features.find((feature) => feature.id === 'video.ltx');
+  const image = manifest.features.find((feature) => feature.id === 'core.image');
   assert.match(ui, /InstallComfyOption/);
   assert.match(ui, /Install ComfyUI Desktop/);
   assert.match(ui, /DownloadModelsToggle/);
@@ -91,10 +98,14 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   assert.match(engine, /SignatureStatus\]::Valid/);
   assert.match(engine, /Install-ComfyDesktop/);
   assert.match(engine, /\[switch\]\$InstallDependencies/);
+  assert.match(image.label, /depth guidance/i);
+  assert.match(ltx.label, /Face ID/);
+  assert.ok(ltx.models.includes('ltx-face-id'));
+  assert.ok(ltx.nodes.includes('BFS Nodes'));
   assert.deepEqual(dependencyCli.selectedComponents(
-    { features: [{ id: 'core.image', required: true }, { id: 'video.wan' }, { id: 'video.scail' }] },
-    { 'video.wan': true, 'video.scail': true },
-  ), ['image', 'krea2depth', 'wan', 'scail', 'scailinfinity']);
+    { features: [{ id: 'core.image', required: true }, { id: 'video.ltx' }, { id: 'video.wan' }, { id: 'video.scail' }] },
+    { 'video.ltx': true, 'video.wan': true, 'video.scail': true },
+  ), ['image', 'krea2depth', 'video', 'faceid', 'wan', 'scail', 'scailinfinity']);
 });
 
 test('portable installer requires Git for safe in-app updates and Node 22', () => {

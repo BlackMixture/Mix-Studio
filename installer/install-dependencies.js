@@ -28,7 +28,7 @@ const FEATURE_COMPONENTS = Object.freeze({
   'edit.qwen': ['qwen', 'smartmask'],
   'edit.krea2': ['regional', 'smartmask'],
   'edit.krea2ref': ['krea2ref'],
-  'video.ltx': ['video'],
+  'video.ltx': ['video', 'faceid'],
   'video.ltxEdit': ['videoedit'],
   'video.eros': ['eros'],
   'video.wan': ['wan'],
