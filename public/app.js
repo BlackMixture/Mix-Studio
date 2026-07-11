@@ -6257,6 +6257,7 @@ $('#generateBtn').addEventListener('click', async () => {
 
 function setGenerating(on, statusText) {
   if (on) {
+    renderDesktopStageGenerating(statusText || 'Working…');
     resetLivePreviewMotion();
     $('#livePreview').classList.add('show');
     $('#livePreviewImg').removeAttribute('src');
@@ -6267,6 +6268,7 @@ function setGenerating(on, statusText) {
     if (!state.activeJobs.size) {
       $('#genFill').style.width = '0%';
       $('#liveStatusText').textContent = 'Done';
+      renderDesktopStage();
     }
     $('#genLbl').textContent = genLabel();
   }
@@ -6663,17 +6665,24 @@ function connectEvents() {
     if (!state.activeJobs.has(d.jobId) && !isUpscaleJob(d.jobId)) return;
     $('#genFill').style.width = pct + '%';
     $('#livePct').textContent = pct + '%';
+    $('#desktopStageProgress').hidden = false;
+    $('#desktopStageProgress').querySelector('i').style.width = pct + '%';
+    $('#desktopStageStatus').textContent = pct ? `Working · ${pct}%` : 'Working';
   });
   es.addEventListener('status', (ev) => {
     const d = JSON.parse(ev.data);
     if (d.kind === 'smartMask' && smartMaskRunning) setSmartMaskLoading(d.text || 'Finding selection…');
     if (state.activeJobs.has(d.jobId) || d.jobId === 'pre') {
       $('#liveStatusText').innerHTML = `<span class="spin"></span> ${d.text}`;
+      $('#desktopStageDims').textContent = d.text || 'Working…';
     }
   });
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);
-    if (state.activeJobs.size && (!d.jobId || state.activeJobs.has(d.jobId))) $('#livePreviewImg').src = d.dataUrl;
+    if (state.activeJobs.size && (!d.jobId || state.activeJobs.has(d.jobId))) {
+      $('#livePreviewImg').src = d.dataUrl;
+      setDesktopStageMedia({ image: d.dataUrl });
+    }
   });
   es.addEventListener('sequenceStep', (ev) => {
     const d = JSON.parse(ev.data);
@@ -6800,6 +6809,7 @@ async function refreshGallery(soft) {
     await refreshLoraContext();
     renderFolders();
     renderGrid();
+    renderDesktopStage();
     updatePrivacyButton();
   } catch (e) { if (!soft) toast(e.message, true); }
 }
@@ -11084,6 +11094,11 @@ syncSheetScrollLock();
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
 /* ------------------------------------------------------------------ */
+
+desktopWorkspaceQuery.addEventListener('change', (event) => {
+  if (event.matches && state.view === 'gallery') setView('create', { createMode: state.createMode });
+  renderDesktopStage();
+});
 
 loadForm();
 loadMediaPreferences();
