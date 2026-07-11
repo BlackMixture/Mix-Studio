@@ -9586,7 +9586,13 @@ $('#lbVideo').addEventListener('click', handleLightboxTap);
 state.sortMode = 'new';
 $$('#sortSeg button').forEach((b) => b.addEventListener('click', () => {
   state.sortMode = b.dataset.sort;
-  $$('#sortSeg button').forEach((x) => x.classList.toggle('active', x === b));
+  const buttons = $$('#sortSeg button');
+  buttons.forEach((x) => {
+    const active = x === b;
+    x.classList.toggle('active', active);
+    x.setAttribute('aria-pressed', String(active));
+  });
+  $('#sortSeg').style.setProperty('--sort-index', String(buttons.indexOf(b)));
   renderGrid();
 }));
 $('#animUsePrompt').addEventListener('click', () => {

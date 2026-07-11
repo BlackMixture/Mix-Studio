@@ -2726,6 +2726,21 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .media-filter button { position: relative; z-index: 1; min-width: 72px; transition: color 180ms ease; }
 .media-filter button.active { background: transparent; }
+.sort-filter { position: relative; isolation: isolate; --sort-index: 0; }
+.sort-filter .sort-filter-indicator {
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 4);
+  border-radius: 999px;
+  background: #1b2030;
+  transform: translateX(calc(var(--sort-index) * 100%));
+  transition: transform 260ms cubic-bezier(.2,.8,.2,1), background 180ms ease;
+}
+.sort-filter button { position: relative; z-index: 1; min-width: 72px; transition: color 180ms ease; }
+.sort-filter button.active { background: transparent; }
 .res-dims { font-size: 12.5px; color: var(--muted); font-weight: 700; }
 .res-dims input {
   width: 62px; background: rgba(0,0,0,0.4); border: 1px solid var(--line);

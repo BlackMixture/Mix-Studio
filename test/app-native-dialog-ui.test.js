@@ -33,6 +33,9 @@ test('Library filters animate and folders use a compact icon-led picker', () => 
   assert.match(html, /id="mediaFilter"[\s\S]*media-filter-indicator/);
   assert.match(css, /\.media-filter \.media-filter-indicator[\s\S]*transition: transform 260ms/);
   assert.match(app, /--filter-index/);
+  assert.match(html, /id="sortSeg"[\s\S]*sort-filter-indicator/);
+  assert.match(css, /\.sort-filter \.sort-filter-indicator[\s\S]*transition: transform 260ms/);
+  assert.match(app, /--sort-index/);
   assert.match(html, /id="folderPickerTrigger"[\s\S]*id="folderAddBtn"[\s\S]*id="privacyBtn"/);
   assert.match(app, /function closeFolderPicker\(\)/);
   assert.match(app, /f\.locked \? '<svg/);
