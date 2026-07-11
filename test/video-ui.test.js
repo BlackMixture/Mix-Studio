@@ -25,6 +25,18 @@ test('Video frame and media inputs use visual source cards', () => {
   assert.match(css, /\.media-input-art > \.audio-input-icon \{[\s\S]*min-width: 32px;[\s\S]*min-height: 32px;/);
 });
 
+test('Video trim and frame actions use one minimalist SVG icon language', () => {
+  assert.match(html, /id="vidDriveTrimChip"[\s\S]*<svg[\s\S]*<span>Trim<\/span>/);
+  assert.match(html, /id="vidDriveFrameChip"[\s\S]*<svg[\s\S]*<span>First frame → Edit<\/span>/);
+  assert.match(html, /id="driveTrimPlay"[^>]*aria-label="Play preview"[\s\S]*<svg/);
+  assert.match(html, /id="vidTrimPlay"[^>]*aria-label="Play preview"[\s\S]*<svg/);
+  assert.match(html, /id="animTrimPlay"[^>]*aria-label="Play preview"[\s\S]*<svg/);
+  assert.match(app, /function setTrimPlaybackIcon\(button, playing\)/);
+  assert.match(app, /playing \? TRIM_PAUSE_ICON : TRIM_PLAY_ICON/);
+  assert.doesNotMatch(app, /\.textContent = '⏹'/);
+  assert.match(css, /\.trim-play \{[\s\S]*background: #090a0d;[\s\S]*color: #fff/);
+});
+
 test('Video inputs keep start and end frames together, followed by Face ID and audio', () => {
   const start = html.indexOf('id="vidAttachBtn"');
   const end = html.indexOf('id="vidEndChip"');

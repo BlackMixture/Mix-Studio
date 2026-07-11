@@ -3186,9 +3186,16 @@ wireVideoFrameDrag($('#vidEndThumb'), 'end');
 /* ---- Audio attach with trimming ---- */
 let audioCtx = null;
 let previewSrc = null;
+const TRIM_PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13L18 12 8 5.5Z" fill="currentColor"/></svg>';
+const TRIM_PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5.5" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="13.5" y="5.5" width="3.5" height="13" rx="1" fill="currentColor"/></svg>';
+function setTrimPlaybackIcon(button, playing) {
+  if (!button) return;
+  button.innerHTML = playing ? TRIM_PAUSE_ICON : TRIM_PLAY_ICON;
+  button.setAttribute('aria-label', playing ? 'Pause preview' : 'Play preview');
+}
 function stopPreview() {
   if (previewSrc) { try { previewSrc.stop(); } catch { /* noop */ } previewSrc = null; }
-  $$('.trim-play').forEach((b) => { b.textContent = '▶'; });
+  $$('.trim-play:not(#driveTrimPlay)').forEach((b) => setTrimPlaybackIcon(b, false));
   $$('.playhead').forEach((p) => { p.style.display = 'none'; });
 }
 function fmtT(s) {
@@ -3349,7 +3356,7 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
     src.onended = stopPreview;
     src.start(0, a.trimStart, Math.max(0.1, a.trimEnd - a.trimStart));
     previewSrc = src;
-    play.textContent = '⏹';
+    setTrimPlaybackIcon(play, true);
     playhead.style.display = 'block';
     const tick = () => {
       if (!previewSrc) return;
@@ -3403,7 +3410,7 @@ function setAudioChipVisual(chip, active) {
     title.textContent = active ? 'Audio added' : 'Audio';
     if (detail) detail.textContent = active ? 'Tap to remove or replace' : 'Optional soundtrack';
   } else {
-    chip.textContent = active ? '🎵 Audio ✓' : '🎵 Audio';
+    chip.textContent = active ? 'Audio added' : 'Audio';
   }
 }
 window.addEventListener('resize', () => {
@@ -5964,13 +5971,19 @@ $('#vidDriveVideo').addEventListener('timeupdate', () => {
     ph.style.left = Math.min(100, (dv.currentTime / d.dur) * 100) + '%';
   }
 });
+$('#vidDriveVideo').addEventListener('play', () => setTrimPlaybackIcon($('#driveTrimPlay'), true));
+$('#vidDriveVideo').addEventListener('pause', () => setTrimPlaybackIcon($('#driveTrimPlay'), false));
+$('#vidDriveVideo').addEventListener('ended', () => setTrimPlaybackIcon($('#driveTrimPlay'), false));
 /* Expand the motion-video thumb into a full-width inline preview */
 $('#vidDriveExpand').addEventListener('click', () => {
   const th = $('#vidDriveThumb');
   const v = $('#vidDriveVideo');
   const on = th.classList.toggle('expanded');
   v.controls = on;
-  $('#vidDriveExpand').textContent = on ? '⤡' : '⤢';
+  $('#vidDriveExpand').innerHTML = on
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9H4V4M15 9h5V4M15 15h5v5M9 15H4v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  $('#vidDriveExpand').setAttribute('aria-label', on ? 'Collapse preview' : 'Expand preview');
 });
 $('#driveTrimPlay').addEventListener('click', () => {
   const dv = $('#vidDriveVideo');
@@ -5979,10 +5992,10 @@ $('#driveTrimPlay').addEventListener('click', () => {
   if (dv.paused) {
     if (d.dur) try { dv.currentTime = d.trimStart; } catch { /* noop */ }
     dv.play();
-    $('#driveTrimPlay').textContent = '⏹';
+    setTrimPlaybackIcon($('#driveTrimPlay'), true);
   } else {
     dv.pause();
-    $('#driveTrimPlay').textContent = '▶';
+    setTrimPlaybackIcon($('#driveTrimPlay'), false);
   }
 });
 

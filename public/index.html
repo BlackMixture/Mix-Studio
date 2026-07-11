@@ -368,7 +368,9 @@
             <b id="vidDriveFilledTitle">Motion video</b>
             <span id="vidDriveLabel"></span>
           </div>
-          <button class="attach-x attach-expand" id="vidDriveExpand" aria-label="Expand preview">⤢</button>
+          <button class="attach-x attach-expand" id="vidDriveExpand" aria-label="Expand preview">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <button class="attach-x" id="vidDriveX" aria-label="Remove motion video">✕</button>
         </div>
         <div class="video-input-extras" id="vidExtras" hidden>
@@ -404,7 +406,9 @@
               <b>Face ID</b>
               <span id="vidFaceLabel">Identity reference</span>
             </div>
-            <button class="attach-x attach-expand" id="vidFaceSwap" aria-label="Choose another face">⇄</button>
+            <button class="attach-x attach-expand" id="vidFaceSwap" aria-label="Choose another face">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h12m0 0-3-3m3 3-3 3M19 16H7m0 0 3-3m-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
             <button class="attach-x" id="vidFaceX" aria-label="Remove face reference">✕</button>
           </div>
           <button class="media-input-card" id="vidAudioChip" type="button">
@@ -417,12 +421,18 @@
         </div>
       </div>
       <div class="chip-row" id="vidDriveTools" style="margin-top:8px; margin-bottom:0" hidden>
-        <button class="chip" id="vidDriveTrimChip">✂️ Trim</button>
-        <button class="chip" id="vidDriveFrameChip">🖼 First frame → Edit</button>
+        <button class="chip video-tool-chip" id="vidDriveTrimChip">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="m8.2 8.2 10.3 8.3M8.2 15.8 18.5 7.5"/></svg>
+          <span>Trim</span>
+        </button>
+        <button class="chip video-tool-chip" id="vidDriveFrameChip">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="11" height="14" rx="2"/><path d="m5.5 15 2.8-3 2.2 2 1.7-1.5 2.3 2.2M16 16h5m-2.5-2.5L21 16l-2.5 2.5"/></svg>
+          <span>First frame → Edit</span>
+        </button>
       </div>
       <div class="audio-trim" id="vidDriveTrim" hidden>
         <div class="trim-row">
-          <button class="icon-btn trim-play" id="driveTrimPlay" aria-label="Preview">▶</button>
+          <button class="icon-btn trim-play" id="driveTrimPlay" aria-label="Play preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13L18 12 8 5.5Z" fill="currentColor"/></svg></button>
           <span class="trim-label" id="driveTrimLabel"></span>
         </div>
         <div class="wave-wrap" id="driveWave">
@@ -436,7 +446,7 @@
       </div>
       <div class="audio-trim" id="vidAudioTrim" hidden>
         <div class="trim-row">
-          <button class="icon-btn trim-play" id="vidTrimPlay" aria-label="Preview">▶</button>
+          <button class="icon-btn trim-play" id="vidTrimPlay" aria-label="Play preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13L18 12 8 5.5Z" fill="currentColor"/></svg></button>
           <span class="trim-label" id="vidTrimLabel"></span>
         </div>
         <div class="wave-wrap" id="vidWave">
@@ -1290,8 +1300,8 @@
       <textarea id="animPrompt" rows="3" class="sheet-textarea" placeholder="Describe the motion… e.g. “the camera slowly pushes in as she turns her head and smiles”"></textarea>
     </div>
     <div class="chip-row">
-      <button class="chip" id="animAuto">👁 Auto from image</button>
-      <button class="chip" id="animUsePrompt">📝 Use image prompt</button>
+      <button class="chip svg-chip" id="animAuto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5Z"/><circle cx="12" cy="12" r="2.4"/></svg><span>Auto from image</span></button>
+      <button class="chip svg-chip" id="animUsePrompt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 3.8-.8L19 8l-3-3L5.8 15.2 5 19ZM14.8 6.2l3 3"/></svg><span>Use image prompt</span></button>
     </div>
     <div class="chip-row" id="animEngineRow">
       <button class="chip active" data-engine="ltx">LTX 2.3</button>
@@ -1305,20 +1315,20 @@
       <button class="chip" data-sig="custom">Custom</button>
     </div>
     <div class="chip-row" id="animExtras">
-      <button class="chip" id="animEndChip">🏁 End frame</button>
-      <button class="chip" id="animAudioChip">🎵 Audio</button>
+      <button class="chip svg-chip" id="animEndChip"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m6.5 15 3-3 2.3 2.2 2.2-2.1 3.5 3.4"/></svg><span>End frame</span></button>
+      <button class="chip svg-chip" id="animAudioChip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 10v4"/></svg><span data-audio-title>Audio</span><small data-audio-detail hidden></small></button>
     </div>
     <div class="attach-thumb" id="animEndThumb" style="margin-bottom:10px" hidden>
       <img id="animEndImg" alt="" />
       <div class="attach-info">
-        <b>🏁 End frame</b>
+        <b>End frame</b>
         <span>the video will land on this image</span>
       </div>
       <button class="attach-x" id="animEndX" aria-label="Remove end frame">✕</button>
     </div>
     <div class="audio-trim" id="animAudioTrim" hidden>
       <div class="trim-row">
-        <button class="icon-btn trim-play" id="animTrimPlay" aria-label="Preview">▶</button>
+        <button class="icon-btn trim-play" id="animTrimPlay" aria-label="Play preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13L18 12 8 5.5Z" fill="currentColor"/></svg></button>
         <span class="trim-label" id="animTrimLabel"></span>
       </div>
       <div class="wave-wrap" id="animWave">

@@ -1282,6 +1282,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   color: #fff;
 }
 .video-input-grid .media-input-filled .attach-expand { right: 48px; }
+.video-input-grid .media-input-filled .attach-x svg,
+.attach-thumb .attach-x svg { width: 16px; height: 16px; display: block; }
 .video-input-grid .media-input-filled .attach-prompt.is-loading {
   opacity: 0.64;
   pointer-events: none;
@@ -2227,7 +2229,30 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .audio-trim[hidden] { display: none; }
 .trim-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.trim-play { width: 32px; height: 32px; flex: 0 0 auto; }
+.trim-play {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-color: rgba(255,255,255,0.14);
+  background: #090a0d;
+  color: #fff;
+}
+.trim-play svg { width: 14px; height: 14px; display: block; }
+.video-tool-chip,
+.svg-chip { display: inline-flex; align-items: center; gap: 7px; }
+.video-tool-chip svg,
+.svg-chip svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: rgba(255,255,255,0.9);
+}
+.svg-chip small[hidden] { display: none; }
 .trim-label {
   flex: 1;
   min-width: 0;
