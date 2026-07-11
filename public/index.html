@@ -27,7 +27,13 @@
       <span class="brand-wordmark"><img src="./mix-studio-wordmark-white-on-black.svg" alt="Mix Studio" /></span>
   </div>
   <div class="topbar-actions">
-    <button class="profile-chip" id="profileBtn" hidden></button>
+    <button class="profile-chip" id="profileBtn" hidden>
+      <svg class="profile-chip-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.25" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path d="M5.75 19.25c.55-3.35 2.65-5.25 6.25-5.25s5.7 1.9 6.25 5.25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+      <span id="profileBtnName"></span>
+    </button>
     <span class="conn-dot" id="connDot" title="ComfyUI connection"></span>
     <button class="icon-btn queue-btn" id="queueBtn" aria-label="Queue">
       <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Zm12 0h2v2h-2v-2Zm0-1.5 4-2.8-4-2.8v5.6Z"/></svg>

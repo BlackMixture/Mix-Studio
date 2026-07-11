@@ -497,7 +497,7 @@ function renderProfileChip() {
   const btn = $('#profileBtn');
   if (!state.profile) { btn.hidden = true; return; }
   btn.hidden = false;
-  btn.textContent = `👤 ${state.profile.name}`;
+  $('#profileBtnName').textContent = state.profile.name;
   btn.setAttribute('aria-label', `Profile: ${state.profile.name}`);
 }
 

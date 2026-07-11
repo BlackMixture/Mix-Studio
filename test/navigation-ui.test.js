@@ -45,6 +45,13 @@ test('primary navigation uses the neutral Modatory glow treatment', () => {
   assert.match(css, /\.primary-tabs \.tab-pill::after/);
 });
 
+test('mobile profile control uses a compact vector icon', () => {
+  assert.match(html, /id="profileBtn"[\s\S]*class="profile-chip-icon"[\s\S]*id="profileBtnName"/);
+  assert.match(app, /\$\('#profileBtnName'\)\.textContent = state\.profile\.name/);
+  assert.doesNotMatch(app, /btn\.textContent = `👤/);
+  assert.match(css, /@media \(max-width: 420px\) \{[\s\S]*\.profile-chip-icon \{ width: 16px; height: 16px; \}/);
+});
+
 test('only the Resolution section keeps an outer panel surface', () => {
   assert.match(css, /--page-bg: #000/);
   assert.match(css, /\.panel \{[\s\S]*border: 0;/);

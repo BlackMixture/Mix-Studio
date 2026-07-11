@@ -1996,6 +1996,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   border-radius: 999px;
   background: rgba(255,255,255,0.06);
   color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   font-size: 12px;
   font-weight: 800;
   padding: 6px 12px;
@@ -2003,6 +2007,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.profile-chip-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
 }
 .profile-chip[hidden] { display: none; }
 @media (max-width: 420px) {
@@ -2013,17 +2022,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     padding: 0;
     display: grid;
     place-items: center;
-    font-size: 0;
   }
-  .profile-chip::before {
-    content: '';
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--ink-soft);
-    box-shadow: 0 9px 0 3px var(--ink-soft);
-    transform: translateY(-4px);
-  }
+  .profile-chip-icon { width: 16px; height: 16px; }
+  .profile-chip > span { display: none; }
 }
 .profile-gate {
   position: fixed;
