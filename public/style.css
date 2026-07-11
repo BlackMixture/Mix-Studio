@@ -5671,6 +5671,31 @@ body.sheet-open {
   #view-gallery .card { border-radius: 13px; }
   #view-gallery .gallery-date-scrubber { display: none !important; }
 
+  body.desktop-library-expanded .tabs-wrap {
+    grid-template-columns: minmax(360px, 430px);
+  }
+  body.desktop-library-expanded .studio-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  body.desktop-library-expanded #view-create,
+  body.desktop-library-expanded .desktop-stage {
+    display: none;
+  }
+  body.desktop-library-expanded #view-gallery {
+    display: block;
+    grid-column: 1 / -1;
+    padding: 18px 22px 46px;
+  }
+  body.desktop-library-expanded #view-gallery::before { content: "Library"; }
+  body.desktop-library-expanded #view-gallery #sortSeg { display: flex; }
+  body.desktop-library-expanded #view-gallery .grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  body.desktop-library-expanded #view-gallery .gallery-date-divider { margin-top: 12px; }
+  body.desktop-library-expanded #view-gallery .card { border-radius: 16px; }
+
   .desktop-stage {
     min-width: 0;
     height: 100%;

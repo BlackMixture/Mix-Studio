@@ -1177,17 +1177,11 @@ function syncNavigation() {
     if (active) $('#createTabPill').style.transform = `translateX(${index * 100}%)`;
   });
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
+  document.body.classList.toggle('desktop-library-expanded', desktopWorkspaceActive() && state.view === 'gallery');
   renderAppDrawerNavigation();
 }
 
 function setView(view, opts = {}) {
-  if (view === 'gallery' && desktopWorkspaceActive()) {
-    exitSelect();
-    refreshGallery(true);
-    const search = $('#gallerySearch');
-    if (search && !$('#lightbox').classList.contains('show')) search.focus({ preventScroll: true });
-    return;
-  }
   const prev = state.view;
   if (prev !== view) captureGenerationTuning(generationTuningMode(prev));
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
@@ -11145,7 +11139,7 @@ syncSheetScrollLock();
 /* ------------------------------------------------------------------ */
 
 desktopWorkspaceQuery.addEventListener('change', (event) => {
-  if (event.matches && state.view === 'gallery') setView('create', { createMode: state.createMode });
+  syncNavigation();
   renderDesktopStage();
 });
 

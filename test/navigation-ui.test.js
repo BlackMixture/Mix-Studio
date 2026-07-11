@@ -18,6 +18,14 @@ test('navigation has primary modes and nested Create modes', () => {
   assert.match(app, /const createActive = state\.view === 'create' \|\| state\.view === 'video'/);
 });
 
+test('desktop Library navigation expands the gallery into the full workspace', () => {
+  assert.doesNotMatch(app, /view === 'gallery' && desktopWorkspaceActive\(\)[\s\S]*refreshGallery\(true\)[\s\S]*return;/);
+  assert.match(app, /classList\.toggle\('desktop-library-expanded', desktopWorkspaceActive\(\) && state\.view === 'gallery'\)/);
+  assert.match(css, /body\.desktop-library-expanded \.studio-workspace \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-create,[\s\S]*body\.desktop-library-expanded \.desktop-stage \{[\s\S]*display: none;/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(220px, 1fr\)\)/);
+});
+
 test('regional prompts only submit from the Region create mode', () => {
   assert.match(app, /if \(state\.createMode !== 'region'\) return \[\]/);
   assert.match(app, /setCreateMode\('region', true\)/);
