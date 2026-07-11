@@ -4777,9 +4777,11 @@ async function handleApi(req, res, url) {
         triggerPhrase: String(l.triggerPhrase || '').trim().replace(/\s+/g, ' ').slice(0, 160),
       }));
     if (!loras.length) return json(res, 400, { error: 'No LoRAs to save' });
+    const requestedThumbnail = String(body.thumbnailLora || '');
+    const thumbnailLora = loras.some((l) => l.name === requestedThumbnail) ? requestedThumbnail : loras[0].name;
     const existing = ownPresets().find((pr) => pr.name.toLowerCase() === name.toLowerCase());
-    if (existing) { existing.loras = loras; }
-    else db.loraPresets.push({ id: uid(), name, loras, profileId: req.profile.id });
+    if (existing) { existing.loras = loras; existing.thumbnailLora = thumbnailLora; }
+    else db.loraPresets.push({ id: uid(), name, loras, thumbnailLora, profileId: req.profile.id });
     saveDb();
     return json(res, 200, { presets: ownPresets() });
   }

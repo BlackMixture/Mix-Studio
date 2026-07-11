@@ -428,6 +428,115 @@ function openPromptMentionPicker() {
 let profileGateOpen = false;
 let gateProfiles = [];
 
+let appDialogResolver = null;
+let appDialogOptions = null;
+let appDialogChoice = null;
+
+function closeAppDialog(value = null) {
+  $('#appDialogSheet').classList.remove('show');
+  const resolve = appDialogResolver;
+  appDialogResolver = null;
+  appDialogOptions = null;
+  appDialogChoice = null;
+  if (resolve) resolve(value);
+}
+
+function openAppDialog(options = {}) {
+  if (appDialogResolver) closeAppDialog();
+  appDialogOptions = options;
+  appDialogChoice = options.defaultChoice ?? null;
+  $('#appDialogTitle').textContent = options.title || 'Continue?';
+  $('#appDialogCopy').textContent = options.message || '';
+  $('#appDialogCopy').hidden = !options.message;
+  $('#appDialogConfirm').textContent = options.confirmLabel || 'Continue';
+  $('#appDialogCancel').textContent = options.cancelLabel || 'Cancel';
+  $('#appDialogForm').classList.toggle('danger', !!options.danger);
+  $('#appDialogError').hidden = true;
+  $('#appDialogError').textContent = '';
+
+  const inputOptions = options.input;
+  $('#appDialogField').hidden = !inputOptions;
+  if (inputOptions) {
+    const input = $('#appDialogInput');
+    $('#appDialogLabel').textContent = inputOptions.label || 'Value';
+    input.type = inputOptions.type || 'text';
+    input.value = inputOptions.value == null ? '' : String(inputOptions.value);
+    input.placeholder = inputOptions.placeholder || '';
+    input.setAttribute('maxlength', String(inputOptions.maxLength || 160));
+    if (inputOptions.min != null) input.min = String(inputOptions.min); else input.removeAttribute('min');
+    if (inputOptions.max != null) input.max = String(inputOptions.max); else input.removeAttribute('max');
+    if (inputOptions.step != null) input.step = String(inputOptions.step); else input.removeAttribute('step');
+    input.autocomplete = inputOptions.autocomplete || 'off';
+  }
+
+  const choices = Array.isArray(options.choices) ? options.choices : [];
+  const list = $('#appDialogChoices');
+  list.innerHTML = '';
+  list.hidden = !choices.length;
+  choices.forEach((choice, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'app-dialog-choice' + ((appDialogChoice ?? choices[0].value) === choice.value ? ' active' : '');
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', String(button.classList.contains('active')));
+    button.innerHTML = `<b>${escapeHtml(choice.label)}</b>${choice.detail ? `<small>${escapeHtml(choice.detail)}</small>` : ''}<i>✓</i>`;
+    button.addEventListener('click', () => {
+      appDialogChoice = choice.value;
+      [...list.querySelectorAll('.app-dialog-choice')].forEach((item) => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-selected', String(active));
+      });
+    });
+    if (index === 0 && appDialogChoice == null) appDialogChoice = choice.value;
+    list.appendChild(button);
+  });
+
+  $('#appDialogSheet').classList.add('show');
+  setTimeout(() => {
+    if (inputOptions) $('#appDialogInput').focus();
+    else list.querySelector('.app-dialog-choice')?.focus();
+  }, 80);
+  return new Promise((resolve) => { appDialogResolver = resolve; });
+}
+
+function askText(options = {}) {
+  return openAppDialog(Object.assign({}, options, {
+    input: Object.assign({ required: true }, options.input || {}),
+  }));
+}
+
+async function askConfirm(options = {}) {
+  return (await openAppDialog(Object.assign({ confirmLabel: 'Confirm' }, options))) === true;
+}
+
+$('#appDialogClose').addEventListener('click', () => closeAppDialog());
+$('#appDialogCancel').addEventListener('click', () => closeAppDialog());
+$('#appDialogSheet').addEventListener('click', (event) => {
+  if (event.target === $('#appDialogSheet')) closeAppDialog();
+});
+$('#appDialogForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const options = appDialogOptions || {};
+  let value = true;
+  if (options.input) {
+    value = options.input.trim === false ? $('#appDialogInput').value : $('#appDialogInput').value.trim();
+    if (options.input.required !== false && !value) {
+      $('#appDialogError').textContent = options.input.requiredMessage || 'Enter a value to continue.';
+      $('#appDialogError').hidden = false;
+      return;
+    }
+    if (options.input.expected != null && value !== String(options.input.expected)) {
+      $('#appDialogError').textContent = options.input.expectedMessage || 'The value does not match.';
+      $('#appDialogError').hidden = false;
+      return;
+    }
+  } else if (Array.isArray(options.choices) && options.choices.length) {
+    value = appDialogChoice;
+  }
+  closeAppDialog(value);
+});
+
 function avatarHtml(p, cls, idx) {
   if (p.avatar) return `<span class="${cls}"><img src="/avatars/${p.avatar}" alt="" /></span>`;
   const grad = `tile-grad-${(idx == null ? (p.name || '?').length : idx) % 5}`;
@@ -468,8 +577,13 @@ function renderGateTiles() {
 async function loginProfile(p) {
   let pin = '';
   if (p.hasPin) {
-    pin = window.prompt(`PIN for ${p.name}`) || '';
-    if (!pin) return;
+    pin = await askText({
+      title: `Unlock ${p.name}`,
+      message: 'Enter this profile’s PIN.',
+      confirmLabel: 'Unlock profile',
+      input: { label: 'PIN', type: 'password', autocomplete: 'current-password', requiredMessage: 'Enter the profile PIN.' },
+    });
+    if (pin == null) return;
   }
   try {
     const r = await api(`/api/profiles/${p.id}/login`, {
@@ -584,9 +698,14 @@ $('#peSave').addEventListener('click', async () => {
 $('#pePin').addEventListener('input', () => { $('#pePin').dataset.cleared = '1'; });
 
 $('#peDelete').addEventListener('click', async () => {
-  if (!window.confirm(`Delete "${state.profile.name}" and ALL of its generations, folders, presets and faces? This cannot be undone.`)) return;
-  const typed = window.prompt(`Type the profile name (${state.profile.name}) to confirm deletion`);
-  if (typed !== state.profile.name) return toast('Name did not match — nothing deleted');
+  const typed = await askText({
+    title: `Delete ${state.profile.name}?`,
+    message: 'This permanently removes this profile, its generations, folders, presets, and faces. Type the profile name to confirm.',
+    confirmLabel: 'Delete profile',
+    danger: true,
+    input: { label: 'Profile name', expected: state.profile.name, expectedMessage: 'The profile name does not match.' },
+  });
+  if (typed == null) return;
   try {
     await api(`/api/profiles/${state.profile.id}`, {
       method: 'DELETE',
@@ -613,7 +732,7 @@ async function openProfileManage() {
         clear.className = 'chip';
         clear.textContent = 'Clear PIN';
         clear.addEventListener('click', async () => {
-          if (!window.confirm(`Remove the PIN from "${p.name}"?`)) return;
+          if (!await askConfirm({ title: 'Remove profile PIN?', message: `${p.name} will open without a PIN.`, confirmLabel: 'Remove PIN' })) return;
           try {
             await api(`/api/profiles/${p.id}`, {
               method: 'POST',
@@ -630,9 +749,14 @@ async function openProfileManage() {
         del.className = 'chip';
         del.textContent = '🗑';
         del.addEventListener('click', async () => {
-          if (!window.confirm(`Delete "${p.name}" and all of its content (${p.itemCount} items)?`)) return;
-          const typed = window.prompt(`Type the profile name (${p.name}) to confirm`);
-          if (typed !== p.name) return toast('Name did not match — nothing deleted');
+          const typed = await askText({
+            title: `Delete ${p.name}?`,
+            message: `This permanently removes the profile and its ${p.itemCount} item${p.itemCount === 1 ? '' : 's'}. Type the profile name to confirm.`,
+            confirmLabel: 'Delete profile',
+            danger: true,
+            input: { label: 'Profile name', expected: p.name, expectedMessage: 'The profile name does not match.' },
+          });
+          if (typed == null) return;
           try {
             await api(`/api/profiles/${p.id}`, {
               method: 'DELETE',
@@ -2082,8 +2206,12 @@ function renderRegionLoraCard(region) {
     event.stopPropagation();
     openActionMenu(menuBtn, [
       { label: 'Change LoRA', action: () => openRegionLoraPicker(region) },
-      { label: `Strength: ${region.strength.toFixed(2)}`, action: () => {
-        const value = window.prompt('Strength (0–2)', String(region.strength));
+      { label: `Strength: ${region.strength.toFixed(2)}`, action: async () => {
+        const value = await askText({
+          title: 'Region LoRA strength',
+          confirmLabel: 'Set strength',
+          input: { label: 'Strength · 0 to 2', value: region.strength, type: 'number' },
+        });
         if (value == null) return;
         region.strength = normalizeRegionStrength(value);
         renderRegionEditor();
@@ -4776,8 +4904,13 @@ function wireLoraCard(card, l, idx, arr) {
     e.stopPropagation();
     openActionMenu(menuBtn, [
       { label: '🖼 Set thumbnail', action: () => setLoraThumb(l.name) },
-      { label: loraTriggerPhrase(l) ? `Trigger: ${loraTriggerPhrase(l)}` : 'Add trigger phrase', action: () => {
-        const value = window.prompt('Trigger word or phrase (leave blank to clear)', loraTriggerPhrase(l));
+      { label: loraTriggerPhrase(l) ? `Trigger: ${loraTriggerPhrase(l)}` : 'Add trigger phrase', action: async () => {
+        const value = await askText({
+          title: 'LoRA trigger phrase',
+          message: 'This phrase is highlighted in the prompt whenever the LoRA is active. Leave it blank to clear it.',
+          confirmLabel: 'Save phrase',
+          input: { label: 'Trigger word or phrase', value: loraTriggerPhrase(l), required: false, maxLength: 160 },
+        });
         if (value == null) return;
         l.triggerPhrase = normalizeLoraTriggerPhrase(value);
         if (l.triggerPhrase) state.loraTriggers[l.name] = l.triggerPhrase;
@@ -4786,8 +4919,12 @@ function wireLoraCard(card, l, idx, arr) {
         renderLoras();
         saveForm();
       } },
-      { label: `Strength: ${Number(l.strength).toFixed(2)}`, action: () => {
-        const v = window.prompt('Strength (0–2)', String(l.strength));
+      { label: `Strength: ${Number(l.strength).toFixed(2)}`, action: async () => {
+        const v = await askText({
+          title: 'LoRA strength',
+          confirmLabel: 'Set strength',
+          input: { label: 'Strength · 0 to 2', value: l.strength, type: 'number' },
+        });
         if (v == null) return;
         l.strength = Math.max(0, Math.min(2, Number(v) || 0));
         krea2ManagedLoraChanged(l);
@@ -5301,17 +5438,66 @@ Object.entries(generationResetControls).forEach(([id, key]) => {
 $('#stepsInput').addEventListener('input', renderKrea2Mode);
 
 /* ---- LoRA presets (stored server-side, shared across devices) ---- */
-$('#loraSaveBtn').addEventListener('click', async () => {
-  const loras = curLoras().filter((l) => l.name);
+let presetSaveLoras = [];
+let presetSaveThumbnail = '';
+
+function closeLoraPresetSaveSheet() {
+  $('#loraPresetSaveSheet').classList.remove('show');
+  presetSaveLoras = [];
+  presetSaveThumbnail = '';
+}
+
+function openLoraPresetSaveSheet() {
+  presetSaveLoras = curLoras().filter((l) => l.name);
+  if (!presetSaveLoras.length) return toast('Add at least one LoRA first', true);
+  presetSaveThumbnail = presetSaveLoras[0].name;
+  $('#loraPresetName').value = '';
+  $('#loraPresetSaveError').hidden = true;
+  const choices = $('#loraPresetThumbChoices');
+  choices.innerHTML = '';
+  presetSaveLoras.forEach((lora, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'lora-preset-thumb-choice' + (index === 0 ? ' active' : '');
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', String(index === 0));
+    button.innerHTML = `${loraThumbHtml(lora.name, 'preset-thumb')}<span>${escapeHtml(prettyLora(lora.name))}</span>`;
+    button.addEventListener('click', () => {
+      presetSaveThumbnail = lora.name;
+      [...choices.children].forEach((item) => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-checked', String(active));
+      });
+    });
+    choices.appendChild(button);
+  });
+  $('#loraPresetSaveSheet').classList.add('show');
+  setTimeout(() => $('#loraPresetName').focus(), 80);
+}
+
+$('#loraSaveBtn').addEventListener('click', openLoraPresetSaveSheet);
+$('#loraPresetSaveClose').addEventListener('click', closeLoraPresetSaveSheet);
+$('#loraPresetSaveSheet').addEventListener('click', (event) => {
+  if (event.target === $('#loraPresetSaveSheet')) closeLoraPresetSaveSheet();
+});
+$('#loraPresetSaveForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const loras = presetSaveLoras;
   if (!loras.length) return toast('Add at least one LoRA first', true);
-  const name = window.prompt('Preset name');
-  if (!name) return;
+  const name = $('#loraPresetName').value.trim();
+  if (!name) {
+    $('#loraPresetSaveError').textContent = 'Enter a preset name.';
+    $('#loraPresetSaveError').hidden = false;
+    return;
+  }
   try {
     await api('/api/lorapresets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, loras: loras.map((l) => ({ name: l.name, strength: l.strength, triggerPhrase: loraTriggerPhrase(l) })) }),
+      body: JSON.stringify({ name, thumbnailLora: presetSaveThumbnail, loras: loras.map((l) => ({ name: l.name, strength: l.strength, triggerPhrase: loraTriggerPhrase(l) })) }),
     });
+    closeLoraPresetSaveSheet();
     toast(`Preset “${name.trim()}” saved`);
   } catch (e) { toast(e.message, true); }
 });
@@ -5324,12 +5510,15 @@ async function renderLoraPresets() {
     list.innerHTML = '<div class="queue-empty">No presets yet — build a LoRA stack and tap 💾 Save preset.</div>';
     return;
   }
+  list.className = 'lora-preset-list';
   for (const pr of presets) {
     const row = document.createElement('div');
-    row.className = 'queue-row q-click';
-    const lb = document.createElement('span');
-    lb.className = 'q-label';
-    lb.textContent = `${pr.name} — ${pr.loras.map((l) => prettyLora(l.name)).join(', ')}`;
+    row.className = 'lora-preset-card';
+    row.insertAdjacentHTML('afterbegin', loraThumbHtml(pr.thumbnailLora || pr.loras[0]?.name, 'preset-thumb'));
+    const lb = document.createElement('button');
+    lb.type = 'button';
+    lb.className = 'lora-preset-apply';
+    lb.innerHTML = `<b>${escapeHtml(pr.name)}</b><small>${escapeHtml(pr.loras.map((l) => prettyLora(l.name)).join(', '))}</small>`;
     lb.addEventListener('click', () => {
       const arr = curLoras();
       arr.splice(0, arr.length, ...pr.loras.map((l) => {
@@ -5348,7 +5537,7 @@ async function renderLoraPresets() {
     x.textContent = '✕';
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!window.confirm(`Delete preset “${pr.name}”?`)) return;
+      if (!await askConfirm({ title: `Delete “${pr.name}”?`, message: 'The LoRAs themselves will not be removed.', confirmLabel: 'Delete preset', danger: true })) return;
       try {
         await api('/api/lorapresets/' + pr.id, { method: 'DELETE' });
         renderLoraPresets();
@@ -5807,7 +5996,7 @@ function renderFaceGrid() {
     name.className = 'face-name';
     name.textContent = face.name;
     name.addEventListener('click', async () => {
-      const next = window.prompt('Rename this face', face.name);
+      const next = await askText({ title: 'Rename face', confirmLabel: 'Rename', input: { label: 'Face name', value: face.name, maxLength: 40 } });
       if (!next || next.trim() === face.name) return;
       try {
         const r = await api('/api/faces/' + face.id, {
@@ -5828,7 +6017,7 @@ function renderFaceGrid() {
     del.textContent = '🗑';
     del.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!window.confirm(`Delete "${face.name}" from the library?`)) return;
+      if (!await askConfirm({ title: `Delete ${face.name}?`, message: 'This removes the saved Face ID reference.', confirmLabel: 'Delete face', danger: true })) return;
       try {
         const r = await api('/api/faces/' + face.id, { method: 'DELETE' });
         faceLibrary = r.faces || [];
@@ -5860,7 +6049,9 @@ async function useFace(face) {
 $('#faceUploadBtn').addEventListener('click', () => {
   pickUpload('image/*', async (f) => {
     const suggested = (f.label || 'Face').replace(/\.[^.]+$/, '').slice(0, 40);
-    const name = (window.prompt('Name this face', suggested) || suggested).trim() || 'Face';
+    const chosen = await askText({ title: 'Name this face', confirmLabel: 'Save face', input: { label: 'Face name', value: suggested, maxLength: 40 } });
+    if (chosen == null) return;
+    const name = chosen.trim() || 'Face';
     try {
       const r = await api('/api/faces', {
         method: 'POST',
@@ -6714,7 +6905,12 @@ function renderQueue(q) {
     x.textContent = '✕';
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!window.confirm(j.run ? 'Stop this running job?' : 'Remove this job from the queue?')) return;
+      if (!await askConfirm({
+        title: j.run ? 'Stop this job?' : 'Remove queued job?',
+        message: j.run ? 'The current generation will be interrupted.' : 'This generation will not run.',
+        confirmLabel: j.run ? 'Stop job' : 'Remove job',
+        danger: true,
+      })) return;
       try {
         await api('/api/queue/cancel', {
           method: 'POST',
@@ -6772,7 +6968,7 @@ $('#queueBtn').addEventListener('click', async () => {
 });
 
 $('#queueResetBtn').addEventListener('click', async () => {
-  if (!window.confirm('Hard reset ComfyUI? This stops the active job, clears queued jobs, and unloads model memory.')) return;
+  if (!await askConfirm({ title: 'Hard reset ComfyUI?', message: 'This stops the active job, clears queued jobs, and unloads model memory.', confirmLabel: 'Hard reset', danger: true })) return;
   const btn = $('#queueResetBtn');
   btn.disabled = true;
   try {
@@ -6790,7 +6986,7 @@ $('#queueResetBtn').addEventListener('click', async () => {
 $('#queueClearHistoryBtn').addEventListener('click', async () => {
   const btn = $('#queueClearHistoryBtn');
   if (btn.disabled) return;
-  if (!window.confirm('Clear recent queue history? Gallery items will not be deleted.')) return;
+  if (!await askConfirm({ title: 'Clear queue history?', message: 'Gallery items will not be deleted.', confirmLabel: 'Clear history' })) return;
   btn.disabled = true;
   try {
     const result = await api('/api/queue/history/clear', { method: 'POST' });
@@ -6975,8 +7171,13 @@ async function refreshGallery(soft) {
 function updatePrivacyButton() {
   const btn = $('#privacyBtn');
   if (!btn) return;
-  btn.textContent = state.privateUnlocked ? 'Hide locked' : 'Locked';
   btn.classList.toggle('unlocked', state.privateUnlocked);
+  const label = state.privateUnlocked ? 'Hide locked folders' : 'Show locked folders';
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+  btn.innerHTML = state.privateUnlocked
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M9 10V7a4 4 0 0 1 7.5-2"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>';
 }
 
 async function unlockPrivateGallery() {
@@ -7042,12 +7243,16 @@ function renderFolders() {
   const row = $('#folderRow');
   row.innerHTML = '';
   const chips = [{ id: 'all', name: 'All' }, ...state.folders];
+  const active = chips.find((folder) => folder.id === state.activeFolder) || chips[0];
+  $('#folderPickerLabel').textContent = active.name;
   for (const f of chips) {
     const btn = document.createElement('button');
     btn.className = 'folder-chip' + (state.activeFolder === f.id ? ' active' : '');
-    btn.textContent = f.name;
+    btn.type = 'button';
+    btn.setAttribute('role', 'option');
+    btn.setAttribute('aria-selected', String(state.activeFolder === f.id));
+    btn.innerHTML = `<span>${escapeHtml(f.name)}</span>${f.locked ? '<svg viewBox="0 0 24 24" aria-label="Locked"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' : ''}`;
     btn.classList.toggle('locked', !!f.locked);
-    if (f.locked && !state.privateUnlocked) btn.textContent = `🔒 ${f.name}`;
     btn.addEventListener('click', async () => {
       if (f.locked && !state.privateUnlocked) {
         // Contents are hidden until unlocked — prompt for the gallery PIN
@@ -7055,6 +7260,7 @@ function renderFolders() {
         if (!state.privateUnlocked) return;
       }
       state.activeFolder = f.id;
+      closeFolderPicker();
       renderFolders();
       renderGrid();
     });
@@ -7066,17 +7272,37 @@ function renderFolders() {
     }
     row.appendChild(btn);
   }
-  const add = document.createElement('button');
-  add.className = 'folder-chip';
-  add.textContent = '＋ Folder';
-  add.addEventListener('click', async () => {
-    const name = window.prompt('Folder name');
-    if (!name) return;
-    try { await api('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }); refreshGallery(); }
-    catch (e) { toast(e.message, true); }
-  });
-  row.appendChild(add);
 }
+
+function closeFolderPicker() {
+  $('.folder-picker')?.classList.remove('open');
+  $('#folderPickerTrigger')?.setAttribute('aria-expanded', 'false');
+  $('#folderRow')?.setAttribute('aria-hidden', 'true');
+  if ($('#folderRow')) $('#folderRow').inert = true;
+}
+
+$('#folderPickerTrigger')?.addEventListener('click', () => {
+  const picker = $('.folder-picker');
+  const open = !picker.classList.contains('open');
+  closeFolderPicker();
+  if (open) {
+    picker.classList.add('open');
+    $('#folderPickerTrigger').setAttribute('aria-expanded', 'true');
+    $('#folderRow').setAttribute('aria-hidden', 'false');
+    $('#folderRow').inert = false;
+  }
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('.folder-picker')) closeFolderPicker();
+});
+$('#folderAddBtn')?.addEventListener('click', async () => {
+  const name = await askText({ title: 'Create folder', confirmLabel: 'Create folder', input: { label: 'Folder name', maxLength: 60 } });
+  if (name == null) return;
+  try {
+    await api('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    refreshGallery();
+  } catch (e) { toast(e.message, true); }
+});
 
 $('#privacyBtn')?.addEventListener('click', async () => {
   try {
@@ -7138,14 +7364,21 @@ async function mergeFolder(f) {
     if (!state.privateUnlocked) return;
   }
   const others = state.folders.filter((x) => x.id !== f.id);
-  const names = ['none (All)', ...others.map((x) => x.name)];
-  const pick = window.prompt(`Merge "${f.name}" into which folder?\n${names.join(', ')}`, names[1] || 'none (All)');
-  if (!pick) return;
-  const target = pick.trim().toLowerCase() === 'none (all)' || pick.trim().toLowerCase() === 'none'
-    ? null
-    : others.find((x) => x.name.toLowerCase() === pick.trim().toLowerCase());
-  if (target === undefined) return toast('No folder with that name', true);
-  if (!window.confirm(`Move everything from "${f.name}" ${target ? `into "${target.name}"` : 'out of folders'} and remove "${f.name}"?`)) return;
+  const targetId = await openAppDialog({
+    title: `Merge ${f.name}`,
+    message: 'Choose where its gallery items should move.',
+    confirmLabel: 'Choose destination',
+    defaultChoice: 'all',
+    choices: [{ value: 'all', label: 'All', detail: 'Remove the folder without assigning another' }, ...others.map((folder) => ({ value: folder.id, label: folder.name, detail: folder.locked ? 'Locked folder' : '' }))],
+  });
+  if (targetId == null) return;
+  const target = targetId === 'all' ? null : others.find((folder) => folder.id === targetId);
+  if (!await askConfirm({
+    title: `Merge ${f.name}?`,
+    message: `Move everything ${target ? `into ${target.name}` : 'to All'} and remove the original folder.`,
+    confirmLabel: 'Merge folder',
+    danger: true,
+  })) return;
   try {
     const r = await api(`/api/folders/${f.id}/merge`, {
       method: 'POST',
@@ -7163,7 +7396,7 @@ async function deleteFolder(f) {
     await unlockPrivateGallery();
     if (!state.privateUnlocked) return;
   }
-  if (!window.confirm(`Delete folder "${f.name}"? Images inside are kept (moved to All).`)) return;
+  if (!await askConfirm({ title: `Delete ${f.name}?`, message: 'Images inside are kept and moved to All.', confirmLabel: 'Delete folder', danger: true })) return;
   await api('/api/folders/' + f.id, { method: 'DELETE' });
   if (state.activeFolder === f.id) state.activeFolder = 'all';
   refreshGallery();
@@ -8600,7 +8833,12 @@ $('#selMove').addEventListener('click', () => {
 $('#selDelete').addEventListener('click', async () => {
   const ids = [...state.selected];
   if (!ids.length) return;
-  if (!window.confirm(`Delete ${ids.length} generation${ids.length > 1 ? 's' : ''}? This can't be undone.`)) return;
+  if (!await askConfirm({
+    title: `Delete ${ids.length} generation${ids.length > 1 ? 's' : ''}?`,
+    message: 'This cannot be undone.',
+    confirmLabel: 'Delete selection',
+    danger: true,
+  })) return;
   try {
     await Promise.all(ids.map((id) => api('/api/item/' + id, { method: 'DELETE' })));
     exitSelect();
@@ -9209,7 +9447,7 @@ function openLightbox(id, mediaSel) {
       const msg = lastOfStandalone
         ? 'Delete this video? It\'s the only one on this entry, so the whole gallery item goes with it.'
         : 'Delete this video? The image stays.';
-      if (!window.confirm(msg)) return;
+      if (!await askConfirm({ title: 'Delete video?', message: msg.replace(/^Delete this video\?\s*/, ''), confirmLabel: 'Delete video', danger: true })) return;
       if (lastOfStandalone) {
         await api('/api/item/' + it.id, { method: 'DELETE' });
         closeLightbox();
@@ -9248,7 +9486,12 @@ function openLightbox(id, mediaSel) {
     }
     mk('🗑 Delete', 'danger', async () => {
       const n = videos.length;
-      if (!window.confirm(n ? `Delete this image and its ${n} video${n > 1 ? 's' : ''}?` : 'Delete this image?')) return;
+      if (!await askConfirm({
+        title: 'Delete image?',
+        message: n ? `Its ${n} attached video${n > 1 ? 's' : ''} will also be deleted.` : 'This cannot be undone.',
+        confirmLabel: 'Delete image',
+        danger: true,
+      })) return;
       await api('/api/item/' + it.id, { method: 'DELETE' });
       closeLightbox();
       refreshGallery();
@@ -9314,8 +9557,7 @@ function openAnimateSheet(it, selVideo) {
   state.animAudio = null;
   stopPreview();
   endFrameRefresh.animEnd();
-  $('#animAudioChip').classList.remove('active');
-  $('#animAudioChip').textContent = '🎵 Audio';
+  setAudioChipVisual($('#animAudioChip'), false);
   $('#animAudioTrim').hidden = true;
   $('#animateSheet').classList.add('show');
 }
@@ -9325,7 +9567,13 @@ $('#vidFree').addEventListener('input', updateVideoTuningSummary);
 $('#animEnhance').addEventListener('click', () => $('#animEnhance').classList.toggle('active'));
 $$('#mediaFilter button').forEach((b) => b.addEventListener('click', () => {
   state.mediaFilter = b.dataset.f;
-  $$('#mediaFilter button').forEach((x) => x.classList.toggle('active', x === b));
+  const buttons = $$('#mediaFilter button');
+  buttons.forEach((x) => {
+    const active = x === b;
+    x.classList.toggle('active', active);
+    x.setAttribute('aria-pressed', String(active));
+  });
+  $('#mediaFilter').style.setProperty('--filter-index', String(buttons.indexOf(b)));
   renderGrid();
 }));
 $('#likesFilter').addEventListener('click', () => {
@@ -10688,7 +10936,7 @@ function openMoveSheet(target) {
   for (const f of all) {
     const b = document.createElement('button');
     b.className = 'chip' + (currentFolder !== undefined && currentFolder === f.id ? ' active' : '');
-    b.textContent = f.locked ? `🔒 ${f.name}` : f.name;
+    b.innerHTML = `${f.locked ? '<svg viewBox="0 0 24 24" width="14" height="14" aria-label="Locked"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>' : ''}<span>${escapeHtml(f.name)}</span>`;
     b.addEventListener('click', async () => {
       try {
         await Promise.all(ids.map((id) => api(`/api/item/${id}/move`, {

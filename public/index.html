@@ -831,7 +831,8 @@
   </div>
   <div class="sr-only" id="gallerySearchStatus" aria-live="polite"></div>
   <div class="gallery-top">
-    <div class="size-seg" id="mediaFilter">
+    <div class="size-seg media-filter" id="mediaFilter">
+      <span class="media-filter-indicator" aria-hidden="true"></span>
       <button data-f="all" class="active">All</button>
       <button data-f="images">Images</button>
       <button data-f="videos">Videos</button>
@@ -846,9 +847,21 @@
       <button data-sort="old">Oldest</button>
       <button data-sort="az">A–Z</button>
     </div>
-    <button class="privacy-btn" id="privacyBtn" type="button">Locked</button>
   </div>
-  <div class="folder-row" id="folderRow"></div>
+  <div class="folder-picker">
+    <button class="folder-picker-trigger" id="folderPickerTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="folderRow">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l1.8 2H20.5v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg>
+      <span id="folderPickerLabel">All</span>
+      <svg class="folder-picker-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+    </button>
+    <button class="folder-picker-icon" id="folderAddBtn" type="button" aria-label="Create folder" title="Create folder">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l1.8 2H20.5v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5ZM12 11v6m-3-3h6"/></svg>
+    </button>
+    <button class="folder-picker-icon privacy-btn" id="privacyBtn" type="button" aria-label="Show locked folders" title="Show locked folders">
+      <svg class="privacy-lock-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+    </button>
+    <div class="folder-row" id="folderRow" role="listbox" aria-label="Gallery folders" aria-hidden="true" inert></div>
+  </div>
   <div class="grid" id="galleryGrid"></div>
   <div class="gallery-empty hidden" id="galleryEmpty">Nothing here yet</div>
   <div class="gallery-date-scrubber" id="galleryDateScrubber" role="slider" tabindex="0"
@@ -1144,6 +1157,42 @@
     <div class="settings-note">Tap a preset to apply it to the current tab's LoRA list. Presets are shared across all your devices.</div>
     <div id="loraPresetList"></div>
   </div>
+</div>
+
+<!-- save LoRA preset -->
+<div class="sheet" id="loraPresetSaveSheet">
+  <form class="sheet-panel lora-preset-save-panel" id="loraPresetSaveForm">
+    <h3 class="sheet-title">Save LoRA preset <button id="loraPresetSaveClose" type="button" aria-label="Close">✕</button></h3>
+    <p class="private-access-copy">Name this LoRA combination and choose one of its LoRAs as the preset thumbnail.</p>
+    <div class="field">
+      <label for="loraPresetName">Preset name</label>
+      <input id="loraPresetName" type="text" maxlength="40" autocomplete="off" placeholder="Preset name" />
+    </div>
+    <div class="field">
+      <label>Thumbnail</label>
+      <div class="lora-preset-thumb-choices" id="loraPresetThumbChoices" role="radiogroup" aria-label="Preset thumbnail"></div>
+    </div>
+    <p class="app-dialog-error" id="loraPresetSaveError" role="alert" hidden></p>
+    <button class="sheet-cta" type="submit">Save preset</button>
+  </form>
+</div>
+
+<!-- shared app-native prompt and confirmation dialog -->
+<div class="sheet" id="appDialogSheet">
+  <form class="sheet-panel app-dialog-panel" id="appDialogForm" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+    <h3 class="sheet-title"><span id="appDialogTitle">Continue?</span><button id="appDialogClose" type="button" aria-label="Close">✕</button></h3>
+    <p class="app-dialog-copy" id="appDialogCopy" hidden></p>
+    <div class="field" id="appDialogField" hidden>
+      <label for="appDialogInput" id="appDialogLabel">Value</label>
+      <input id="appDialogInput" type="text" autocomplete="off" />
+    </div>
+    <div class="app-dialog-choices" id="appDialogChoices" role="listbox" hidden></div>
+    <p class="app-dialog-error" id="appDialogError" role="alert" hidden></p>
+    <div class="app-dialog-actions">
+      <button class="sheet-cta ghost" id="appDialogCancel" type="button">Cancel</button>
+      <button class="sheet-cta" id="appDialogConfirm" type="submit">Continue</button>
+    </div>
+  </form>
 </div>
 
 <!-- locked-folder access -->
