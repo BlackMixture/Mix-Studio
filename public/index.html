@@ -830,7 +830,7 @@
     <button id="gallerySearchClear" type="button" aria-label="Clear library search" hidden>✕</button>
   </div>
   <div class="sr-only" id="gallerySearchStatus" aria-live="polite"></div>
-  <div class="gallery-top">
+  <div class="gallery-top library-toolbar">
     <div class="size-seg media-filter" id="mediaFilter">
       <span class="media-filter-indicator" aria-hidden="true"></span>
       <button data-f="all" class="active">All</button>
@@ -841,12 +841,18 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Zm0-2.83 6.07-6.08a3.15 3.15 0 0 0-4.46-4.46L12 8.74l-1.61-1.61a3.15 3.15 0 0 0-4.46 4.46L12 17.67Z"/></svg>
       <span>Likes</span>
     </button>
-    <div class="size-seg sort-filter" id="sortSeg">
-      <span class="sort-filter-indicator" aria-hidden="true"></span>
-      <button data-sort="new" class="active">Newest</button>
-      <button data-sort="active">Active</button>
-      <button data-sort="old">Oldest</button>
-      <button data-sort="az">A–Z</button>
+    <div class="gallery-sort" id="gallerySort">
+      <button class="gallery-sort-trigger" id="gallerySortTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="sortSeg">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14m0 0-3-3m3 3 3-3M16 19V5m0 0-3 3m3-3 3 3"/></svg>
+        <span id="gallerySortLabel">Newest</span>
+        <svg class="gallery-sort-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6H6Z"/></svg>
+      </button>
+      <div class="gallery-sort-menu" id="sortSeg" role="listbox" aria-label="Sort gallery" aria-hidden="true" inert>
+        <button type="button" role="option" aria-selected="true" data-sort="new" class="active"><span>Newest</span><i>✓</i></button>
+        <button type="button" role="option" aria-selected="false" data-sort="active"><span>Active</span><i>✓</i></button>
+        <button type="button" role="option" aria-selected="false" data-sort="old"><span>Oldest</span><i>✓</i></button>
+        <button type="button" role="option" aria-selected="false" data-sort="az"><span>A–Z</span><i>✓</i></button>
+      </div>
     </div>
   </div>
   <div class="folder-picker">

@@ -60,7 +60,8 @@ test('SeedVR2 attention uses an app-styled accessible picker instead of native s
   assert.match(html, /id="setSvAttn" type="hidden" value="sdpa"/);
   assert.match(html, /id="svAttnTrigger"[^>]+aria-haspopup="listbox"[^>]+aria-expanded="false"/);
   assert.match(html, /id="svAttnList" role="listbox"[^>]+aria-hidden="true" inert/);
-  assert.equal((html.match(/role="option"/g) || []).length, 5);
+  const attentionList = html.match(/id="svAttnList"[\s\S]*?<\/div>/)?.[0] || '';
+  assert.equal((attentionList.match(/role="option"/g) || []).length, 5);
   assert.match(css, /\.settings-choice-list \{[\s\S]*max-height: 0/);
   assert.match(css, /\.settings-choice\.open \.settings-choice-list \{[\s\S]*max-height: 350px/);
   assert.match(app, /function setSvAttnValue\(value\)/);

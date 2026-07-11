@@ -18,6 +18,8 @@ test('text entry and confirmations use a shared in-app dialog', () => {
   assert.match(app, /async function askConfirm\(options = \{\}\)/);
   assert.doesNotMatch(app, /window\.prompt|window\.confirm/);
   assert.match(css, /\.app-dialog-panel,[\s\S]*\.lora-preset-save-panel/);
+  assert.match(css, /\.app-dialog-panel,[\s\S]*\.private-access-panel,[\s\S]*\.folder-actions-panel \{ background: #000; \}/);
+  assert.match(css, /\.app-dialog-actions \.sheet-cta,[\s\S]*background: linear-gradient\(#000, #000\)/);
 });
 
 test('LoRA presets can choose and retain a stack thumbnail', () => {
@@ -33,9 +35,10 @@ test('Library filters animate and folders use a compact icon-led picker', () => 
   assert.match(html, /id="mediaFilter"[\s\S]*media-filter-indicator/);
   assert.match(css, /\.media-filter \.media-filter-indicator[\s\S]*transition: transform 260ms/);
   assert.match(app, /--filter-index/);
-  assert.match(html, /id="sortSeg"[\s\S]*sort-filter-indicator/);
-  assert.match(css, /\.sort-filter \.sort-filter-indicator[\s\S]*transition: transform 260ms/);
-  assert.match(app, /--sort-index/);
+  assert.match(html, /id="gallerySortTrigger"[\s\S]*id="sortSeg"[^>]*role="listbox"/);
+  assert.match(css, /\.gallery-sort-menu \{[\s\S]*transform-origin: top right/);
+  assert.match(app, /function closeGallerySort\(\)/);
+  assert.match(app, /gallerySortLabel'\)\.textContent/);
   assert.match(html, /id="folderPickerTrigger"[\s\S]*id="folderAddBtn"[\s\S]*id="privacyBtn"/);
   assert.match(app, /function closeFolderPicker\(\)/);
   assert.match(app, /f\.locked \? '<svg/);

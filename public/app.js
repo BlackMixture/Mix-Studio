@@ -9584,6 +9584,22 @@ $('#likesFilter').addEventListener('click', () => {
 $('#lbImg').addEventListener('click', handleLightboxTap);
 $('#lbVideo').addEventListener('click', handleLightboxTap);
 state.sortMode = 'new';
+function closeGallerySort() {
+  $('#gallerySort').classList.remove('open');
+  $('#gallerySortTrigger').setAttribute('aria-expanded', 'false');
+  $('#sortSeg').setAttribute('aria-hidden', 'true');
+  $('#sortSeg').inert = true;
+}
+$('#gallerySortTrigger').addEventListener('click', () => {
+  const open = !$('#gallerySort').classList.contains('open');
+  closeGallerySort();
+  if (open) {
+    $('#gallerySort').classList.add('open');
+    $('#gallerySortTrigger').setAttribute('aria-expanded', 'true');
+    $('#sortSeg').setAttribute('aria-hidden', 'false');
+    $('#sortSeg').inert = false;
+  }
+});
 $$('#sortSeg button').forEach((b) => b.addEventListener('click', () => {
   state.sortMode = b.dataset.sort;
   const buttons = $$('#sortSeg button');
@@ -9591,10 +9607,15 @@ $$('#sortSeg button').forEach((b) => b.addEventListener('click', () => {
     const active = x === b;
     x.classList.toggle('active', active);
     x.setAttribute('aria-pressed', String(active));
+    x.setAttribute('aria-selected', String(active));
   });
-  $('#sortSeg').style.setProperty('--sort-index', String(buttons.indexOf(b)));
+  $('#gallerySortLabel').textContent = b.textContent.replace('✓', '').trim();
+  closeGallerySort();
   renderGrid();
 }));
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('#gallerySort')) closeGallerySort();
+});
 $('#animUsePrompt').addEventListener('click', () => {
   const it = state.animateTarget;
   if (!it) return;
