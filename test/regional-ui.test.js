@@ -41,7 +41,7 @@ test('Region mode moves the shared prompt below the stage as the global prompt',
   assert.match(indexHtml, /id="promptPanel"/);
   assert.match(indexHtml, /id="promptLabel"/);
   assert.match(appJs, /promptSlot\.appendChild\(promptPanel\)/);
-  assert.match(appJs, /textContent = isRegion \? 'Global prompt' : 'Prompt'/);
+  assert.match(appJs, /textContent = isRegion \? 'Global prompt' : \(scailInputFirst \? 'Creative direction · optional' : 'Prompt'\)/);
 });
 
 test('selecting a region expands auto-saved settings and holding cycles overlaps', () => {

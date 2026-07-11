@@ -43,7 +43,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /mix-studio-mobile\.png/);
   assert.match(page, /id="mobile-first"/);
   assert.match(page, /tailscale\.com\/download/);
-  assert.match(page, /Your GPU/);
+  assert.match(page, /Your studio/);
+  assert.doesNotMatch(page, /—/);
   assert.match(workflow, /cp install\.bat _site\/install\.bat/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);

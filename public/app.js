@@ -1244,9 +1244,11 @@ function updateVideoPanels() {
   } else if (!isRegion && promptPanel.parentElement !== $('#view-create')) {
     $('#view-create').insertBefore(promptPanel, regionWorkspace);
   }
-  $('#promptLabel').textContent = isRegion ? 'Global prompt' : 'Prompt';
+  const scailInputFirst = isVideo && state.vidEngine === 'scail';
+  promptPanel.classList.toggle('scail-input-first', scailInputFirst);
+  $('#promptLabel').textContent = isRegion ? 'Global prompt' : (scailInputFirst ? 'Creative direction · optional' : 'Prompt');
   $('#promptComposer').dataset.placeholder = isVideo
-    ? (state.vidEngine === 'ltx-edit' ? 'Describe the edit…' : (state.vidEngine === 'scail' ? 'Optional motion direction…' : 'Describe the motion…'))
+    ? (state.vidEngine === 'ltx-edit' ? 'Describe the edit…' : (state.vidEngine === 'scail' ? 'Optional — add style or motion direction…' : 'Describe the motion…'))
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
       : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
@@ -5443,9 +5445,10 @@ $('#denoiseInput').addEventListener('input', () => {
 function renderVidAttach() {
   const has = !!state.vidRef;
   const editAnything = state.vidEngine === 'ltx-edit';
+  const scail = state.vidEngine === 'scail';
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
-  $('#vidMotionPromptBtn').hidden = editAnything || !has;
+  $('#vidMotionPromptBtn').hidden = editAnything || scail || !has;
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
@@ -5671,6 +5674,10 @@ function renderVidDrive() {
   $('#vidDriveTitle').textContent = editAnything ? 'Source video' : 'Motion video';
   $('#vidDriveSub').textContent = editAnything ? 'Required · video to edit' : 'Required · drives movement';
   $('#vidDriveFilledTitle').textContent = editAnything ? 'Source video' : 'Motion video';
+  $('#vidInputsHint').textContent = scail ? 'Motion video + reference image' : 'Tap to add · hold frames to move';
+  $('#vidAttachTitle').textContent = scail ? 'Reference image' : 'First frame';
+  $('#vidAttachFilledTitle').textContent = scail ? 'Reference image' : 'First frame';
+  $('#vidAttachImg').alt = scail ? 'Reference image preview' : 'First frame preview';
   $('#vidAttachSub').textContent = scail
     ? 'required · the person to re-animate'
     : 'optional · image → video';

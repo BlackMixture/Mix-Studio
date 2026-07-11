@@ -16,6 +16,8 @@ test('Video frame and media inputs use visual source cards', () => {
     assert.match(html, new RegExp(`class="media-input-card[^"]*" id="${id}"`));
   }
   assert.match(css, /\.media-input-card \{[\s\S]*min-height: 132px/);
+  assert.match(css, /\.video-input-grid \.media-input-card,[\s\S]*aspect-ratio: 4 \/ 3/);
+  assert.match(css, /\.video-input-grid \.media-input-filled\.expanded \{[\s\S]*aspect-ratio: auto/);
   assert.match(css, /\.video-input-grid \.media-input-filled/);
   assert.match(html, /class="audio-input-icon"[^>]*preserveAspectRatio="xMidYMid meet"/);
   assert.match(css, /\.media-input-art > \.audio-input-icon \{[\s\S]*min-width: 32px;[\s\S]*min-height: 32px;/);
@@ -123,9 +125,21 @@ test('Video prompt tools stay hidden and structured audio labels survive state c
 test('SCAIL accepts a driving video without a typed motion prompt', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(app, /const promptOptional = state\.view === 'video' && state\.vidEngine === 'scail';/);
-  assert.match(app, /'Optional motion direction…'/);
+  assert.match(app, /'Optional — add style or motion direction…'/);
   assert.match(server, /if \(!suppliedMotionPrompt && engine !== 'scail'\)/);
   assert.match(server, /const motionPrompt = suppliedMotionPrompt \|\| 'preserve the movement from the driving video';/);
+});
+
+test('SCAIL leads with motion and reference inputs while retaining optional text conditioning', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(app, /promptPanel\.classList\.toggle\('scail-input-first', scailInputFirst\)/);
+  assert.match(app, /scailInputFirst \? 'Creative direction · optional' : 'Prompt'/);
+  assert.match(app, /#vidAttachTitle'\)\.textContent = scail \? 'Reference image' : 'First frame'/);
+  assert.match(css, /#promptPanel\.scail-input-first > #vidAttachRow \{[\s\S]*order: 0/);
+  assert.match(css, /#promptPanel\.scail-input-first #vidDriveBtn,[\s\S]*order: 0/);
+  assert.match(css, /#promptPanel\.scail-input-first #vidAttachBtn,[\s\S]*order: 1/);
+  assert.match(css, /\.video-input-grid \.media-input-card,[\s\S]*aspect-ratio: 4 \/ 3/);
+  assert.match(server, /graph\.pos = \{ class_type: 'CLIPTextEncode', inputs: \{ clip: \['clip', 0\], text: opts\.prompt \} \}/);
 });
 
 test('A start-frame action can ask the vision model for a fitting motion prompt', () => {

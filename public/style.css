@@ -856,6 +856,25 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .enhance-hint { font-size: 11.5px; color: var(--muted-2); margin: 8px 2px 0; font-weight: 600; }
 .attach-zone { margin-top: 10px; }
+#promptPanel.scail-input-first {
+  display: flex;
+  flex-direction: column;
+}
+#promptPanel.scail-input-first > * { order: 3; }
+#promptPanel.scail-input-first > #vidAttachRow {
+  order: 0;
+  margin-top: 0;
+}
+#promptPanel.scail-input-first > .panel-label {
+  order: 1;
+  margin-top: 20px;
+}
+#promptPanel.scail-input-first > .prompt-box { order: 2; }
+#promptPanel.scail-input-first .prompt-composer { min-height: 74px; }
+#promptPanel.scail-input-first #vidDriveBtn,
+#promptPanel.scail-input-first #vidDriveThumb { order: 0; }
+#promptPanel.scail-input-first #vidAttachBtn,
+#promptPanel.scail-input-first #vidAttachThumb { order: 1; }
 .prompt-tools[hidden],
 .krea-model-switch[hidden],
 .create-image-guide[hidden],
@@ -1140,6 +1159,14 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.video-input-grid .media-input-card,
+.video-input-grid .media-input-filled {
+  aspect-ratio: 4 / 3;
+}
+.video-input-grid .media-input-card .media-input-art {
+  min-height: 0;
+  flex: 1;
+}
 .video-input-extras { display: contents; }
 .video-input-extras[hidden],
 .video-input-grid > [hidden],
@@ -1229,7 +1256,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .video-input-grid .media-input-filled > img,
 .video-input-grid .media-input-filled > video {
   width: 100%;
-  height: 132px;
+  height: 100%;
   display: block;
   object-fit: cover;
   border-radius: 0;
@@ -1256,7 +1283,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   pointer-events: none;
 }
 .video-input-grid .media-input-filled .attach-prompt.is-loading svg { animation: rot 0.8s linear infinite; }
-.video-input-grid .media-input-filled.expanded { grid-column: 1 / -1; }
+.video-input-grid .media-input-filled.expanded {
+  grid-column: 1 / -1;
+  aspect-ratio: auto;
+}
 .video-frame-slot.media-input-filled::before {
   content: "⠿";
   position: absolute;

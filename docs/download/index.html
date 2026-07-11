@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#000000" />
   <meta name="description" content="Run local AI generation on your Windows desktop and create from a mobile-first interface over Tailscale." />
-  <title>Mix Studio — Local AI creation for ComfyUI</title>
+  <title>Mix Studio | Local AI creation for ComfyUI</title>
   <link rel="icon" href="./modatory-logo.svg" type="image/svg+xml" />
   <style>
     :root {
@@ -66,12 +66,12 @@
     .download:hover, .download:focus-visible { transform: translateY(-2px); box-shadow: 0 18px 58px rgba(46,67,255,.3); }
     .download svg { width: 19px; height: 19px; }
     .requirements { color: var(--muted); font-size: 12px; font-weight: 700; }
-    .hero-visual { position: relative; padding: 1px; border-radius: 28px; background: linear-gradient(125deg,rgba(66,133,244,.72),rgba(234,67,53,.2) 38%,rgba(118,87,255,.68)); box-shadow: 0 34px 100px rgba(10,21,74,.36); transform: rotate(1deg); }
+    .hero-visual { position: relative; padding: 1px; border-radius: 28px; background: linear-gradient(125deg,rgba(66,133,244,.72),rgba(234,67,53,.2) 38%,rgba(118,87,255,.68)); box-shadow: 0 34px 100px rgba(10,21,74,.36); }
     .window { overflow: hidden; border-radius: 27px; background: #050608; }
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
     .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
     .window img { width: 100%; aspect-ratio: 1.095 / 1; object-fit: cover; object-position: top center; }
-    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 32px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); transform: rotate(-4deg); z-index: 2; }
+    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 32px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; }
     .phone-preview img { width: 100%; aspect-ratio: .462 / 1; object-fit: cover; object-position: top center; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
     .proof-item { padding: 26px 24px; }
@@ -98,15 +98,11 @@
     .feature-icon svg { width: 21px; height: 21px; }
     .feature h3 { margin: 34px 0 8px; font-size: 17px; }
     .feature p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-    .showcase { display: grid; grid-template-columns: 1.05fr .95fr; gap: 14px; }
+    .showcase { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
     .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
     .shot-image { position: relative; overflow: hidden; background: #030405; }
-    .shot:first-child .shot-image { aspect-ratio: 1.25 / 1; }
-    .shot:not(:first-child) .shot-image { aspect-ratio: 1.55 / 1; }
+    .shot-image { aspect-ratio: 1.095 / 1; }
     .shot-image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
-    .shot:first-child { grid-row: span 2; display: flex; flex-direction: column; }
-    .shot:first-child .shot-image { flex: 1; }
-    .shot:first-child .shot-image img { object-position: top center; }
     .shot-copy { padding: 22px 24px 24px; border-top: 1px solid var(--line); }
     .shot-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
     .shot-copy h3 { margin: 8px 0 5px; font-size: 19px; }
@@ -132,7 +128,7 @@
     footer div { display: flex; gap: 22px; }
     footer a { text-decoration: none; }
     footer a:hover, footer a:focus-visible { color: var(--ink); }
-    @media (max-width: 900px) {
+    @media (max-width: 1040px) {
       .hero { grid-template-columns: 1fr; gap: 52px; padding-top: 62px; }
       .hero-copy { max-width: 700px; }
       .hero-visual { width: min(100%,700px); margin-bottom: 58px; transform: none; }
@@ -164,8 +160,7 @@
       .section { padding: 86px 0; }
       .feature-grid, .showcase { grid-template-columns: 1fr; }
       .feature { min-height: 0; }
-      .shot:first-child { grid-row: auto; display: block; }
-      .shot:first-child .shot-image, .shot:not(:first-child) .shot-image { aspect-ratio: 1.1 / 1; }
+      .shot-image { aspect-ratio: 1.1 / 1; }
       .quick { padding: 86px 0; }
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       footer { flex-direction: column; }
@@ -191,9 +186,9 @@
     <main id="top">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Desktop powered · Phone first · Private access</p>
-          <h1>Your GPU.<br />In your pocket.</h1>
-          <p class="lede">Run ComfyUI on your Windows desktop, then create from a mobile-first interface on your phone—at home or away—through your private Tailscale network.</p>
+          <p class="eyebrow">Windows · NVIDIA · Local generation</p>
+          <h1>Your studio.<br />On your machine.</h1>
+          <p class="lede">A focused workspace for creating images, making precise edits, generating video, and organizing everything your local ComfyUI can produce.</p>
           <div class="actions">
             <a class="download" href="./install.bat" download="install.bat">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
@@ -209,8 +204,8 @@
       </section>
 
       <section class="proof" aria-label="Product principles">
-        <div class="proof-item"><strong>Desktop GPU power</strong><span>Your Windows machine runs ComfyUI, models, and every generation.</span></div>
-        <div class="proof-item"><strong>Private Tailscale access</strong><span>Reach the studio from your phone without exposing it to the public internet.</span></div>
+        <div class="proof-item"><strong>Optimized from the start</strong><span>Streamlined model choices and practical settings help you generate with less setup.</span></div>
+        <div class="proof-item"><strong>Create from anywhere</strong><span>Use the same studio from your phone at home, on the couch, or away from your desk.</span></div>
         <div class="proof-item"><strong>Designed for touch</strong><span>Prompt, edit, queue, review, and reuse work from a phone-sized interface.</span></div>
       </section>
 
@@ -219,7 +214,7 @@
         <div class="control-flow" aria-label="Desktop to phone connection flow">
           <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 4h18v13H3V4Zm2 2v9h14V6H5Zm3 13h8v2H8v-2Z"/></svg></div><strong>Windows desktop</strong><span>ComfyUI, models, storage, and GPU stay on the machine.</span></div>
           <div class="flow-arrow" aria-hidden="true">→</div>
-          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a6 6 0 0 1 5.2 9H21v2h-5.3A6 6 0 0 1 7 14H3v-2h3.8A6 6 0 0 1 12 3Zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-9 12h18v2H3v-2Z"/></svg></div><strong>Private Tailscale network</strong><span>Both devices sign in to the same tailnet; no public port forwarding.</span></div>
+          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a6 6 0 0 1 5.2 9H21v2h-5.3A6 6 0 0 1 7 14H3v-2h3.8A6 6 0 0 1 12 3Zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-9 12h18v2H3v-2Z"/></svg></div><strong>Your studio stays within reach</strong><span>A secure connection keeps the desktop available to your phone.</span></div>
           <div class="flow-arrow" aria-hidden="true">→</div>
           <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h10V4H7Zm4 13h2v2h-2v-2Z"/></svg></div><strong>Your phone</strong><span>Open the Mix Studio URL, add it to the home screen, and create anywhere.</span></div>
         </div>
