@@ -1156,6 +1156,11 @@ function loadForm() {
 
 const primaryTabButtons = $$('#primaryTabs .tab');
 const createTabButtons = $$('#createTabs .tab');
+const desktopWorkspaceQuery = window.matchMedia('(min-width: 1180px)');
+
+function desktopWorkspaceActive() {
+  return desktopWorkspaceQuery.matches;
+}
 
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
@@ -1176,6 +1181,13 @@ function syncNavigation() {
 }
 
 function setView(view, opts = {}) {
+  if (view === 'gallery' && desktopWorkspaceActive()) {
+    exitSelect();
+    refreshGallery(true);
+    const search = $('#gallerySearch');
+    if (search && !$('#lightbox').classList.contains('show')) search.focus({ preventScroll: true });
+    return;
+  }
   const prev = state.view;
   if (prev !== view) captureGenerationTuning(generationTuningMode(prev));
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
@@ -1266,6 +1278,7 @@ function updateVideoPanels() {
   renderEditModelSummary();
   renderEditSequence();
   regionWorkspace.hidden = !isRegion;
+  if (!isRegion) setRegionResolutionExpanded(false);
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
   renderKrea2Mode();
@@ -1276,7 +1289,7 @@ function updateVideoPanels() {
   renderEditAspects();
   renderEditUpscale();
   renderKreaMaskTools();
-  $('#aspectRow').closest('.panel').hidden = (isVideo && !!state.vidRef) || state.view === 'edit';
+  $('#aspectRow').closest('.panel').hidden = isRegion || (isVideo && !!state.vidRef) || state.view === 'edit';
   $('#seedInput').closest('.panel').hidden = isVideo;
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   renderLoras();
@@ -1769,6 +1782,7 @@ $('#createImageInfluence').addEventListener('input', (event) => {
 const REGION_COLORS = ['#46b4e6', '#e68246', '#82e646', '#e646b4', '#e6e646', '#46e6c8'];
 let regionDrag = null;
 let regionSettingsOpen = false;
+let regionLoraExpanded = false;
 let regionClickBlockedUntil = 0;
 let kreaMaskDrawing = false;
 let kreaMaskLast = null;
@@ -1846,6 +1860,24 @@ function regionLoraOptions(selected) {
   return state.metaLoras.filter((name) => name === selected || allowed.has(loraCategory(name)));
 }
 
+function setRegionLoraExpanded(open) {
+  const expanded = open === true;
+  regionLoraExpanded = expanded;
+  const disclosure = $('#regionLoraDisclosure');
+  const body = $('#regionLoraBody');
+  disclosure.classList.toggle('expanded', expanded);
+  $('#regionLoraHeader').setAttribute('aria-expanded', String(expanded));
+  body.inert = !expanded;
+  body.setAttribute('aria-hidden', String(!expanded));
+}
+
+function syncRegionLoraDisclosure(region) {
+  const hasLora = !!(region && region.lora && region.lora !== 'None');
+  $('#regionLoraSummary').textContent = hasLora ? prettyLora(region.lora) : 'None selected';
+  $('#regionLoraDisclosure').style.setProperty('--region-card-color', region?.color || '#46b4e6');
+  setRegionLoraExpanded(regionLoraExpanded);
+}
+
 function syncRegionSettings(focusPrompt) {
   const settings = $('#regionSettings');
   const region = selectedRegion();
@@ -1899,6 +1931,7 @@ function selectRegionUnderneath(clientX, clientY, currentRegion) {
 
 function openRegionLoraPicker(region) {
   if (!region) return;
+  setRegionLoraExpanded(true);
   const regionId = region.id;
   openLoraPicker((name) => {
     const target = state.regions.find((item) => item.id === regionId);
@@ -2047,6 +2080,74 @@ function renderRegionLoraCard(region) {
   card.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
+function setRegionResolutionExpanded(open) {
+  const expanded = open === true;
+  const picker = $('.region-resolution-picker');
+  const menu = $('#regionResolutionMenu');
+  if (!picker || !menu) return;
+  picker.classList.toggle('expanded', expanded);
+  $('#regionResolutionBtn').setAttribute('aria-expanded', String(expanded));
+  menu.inert = !expanded;
+  menu.setAttribute('aria-hidden', String(!expanded));
+}
+
+function renderRegionResolutionPicker() {
+  const summary = $('#regionResolutionSummary');
+  if (!summary) return;
+  summary.textContent = state.customDims
+    ? `Custom · ${state.width} × ${state.height}`
+    : `${state.aspect} · ${state.width} × ${state.height}`;
+  const icon = $('#regionResolutionIcon');
+  const ratio = (state.width || 1) / (state.height || 1);
+  const base = 14;
+  icon.style.width = `${ratio >= 1 ? base : Math.max(7, Math.round(base * ratio))}px`;
+  icon.style.height = `${ratio >= 1 ? Math.max(7, Math.round(base / ratio)) : base}px`;
+
+  const aspectMenu = $('#regionAspectMenu');
+  aspectMenu.innerHTML = '';
+  ASPECTS.forEach((aspect) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'region-aspect-option' + (!state.customDims && state.aspect === aspect.label ? ' active' : '');
+    const maxSide = 18;
+    const width = aspect.ar >= 1 ? maxSide : Math.max(7, Math.round(maxSide * aspect.ar));
+    const height = aspect.ar >= 1 ? Math.max(7, Math.round(maxSide / aspect.ar)) : maxSide;
+    button.innerHTML = `<span class="ar-box" style="width:${width}px;height:${height}px"></span><b>${aspect.label}</b>`;
+    button.addEventListener('click', () => {
+      state.aspect = aspect.label;
+      state.createMatchSource = false;
+      state.customDims = false;
+      computeDims();
+      renderAspects();
+      renderDims();
+      saveForm();
+      setRegionResolutionExpanded(false);
+    });
+    aspectMenu.appendChild(button);
+  });
+
+  const sizeMenu = $('#regionSizeMenu');
+  sizeMenu.innerHTML = '';
+  [{ value: 0.75, label: 'S' }, { value: 1, label: 'M' }, { value: 1.75, label: 'L' }].forEach((size) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = Number(state.mp) === size.value && !state.customDims ? 'active' : '';
+    button.textContent = size.label;
+    button.setAttribute('aria-label', `${size.label} resolution`);
+    button.addEventListener('click', () => {
+      state.mp = size.value;
+      state.createMatchSource = false;
+      state.customDims = false;
+      computeDims();
+      renderAspects();
+      renderDims();
+      saveForm();
+      setRegionResolutionExpanded(false);
+    });
+    sizeMenu.appendChild(button);
+  });
+}
+
 function syncRegionStageAspect() {
   const stage = $('#regionStage');
   if (!stage) return;
@@ -2098,12 +2199,17 @@ function renderRegionEditor() {
   $('#regionStrengthInput').disabled = !hasRegion;
   $('#regionRefBtn').disabled = !hasRegion;
   $('#regionRefClear').disabled = !hasRegion || !region.refImageName;
-  if (!region) return;
+  $('#regionLoraHeader').disabled = !hasRegion;
+  if (!region) {
+    syncRegionLoraDisclosure(null);
+    return;
+  }
 
   $('#regionDescInput').value = region.description || '';
   const hasLora = region.lora && region.lora !== 'None';
   $('#regionStrengthField').hidden = !hasLora;
   region.strength = normalizeRegionStrength(region.strength);
+  syncRegionLoraDisclosure(region);
   renderRegionLoraCard(region);
   $('#regionStrengthInput').value = String(region.strength);
   $('#regionStrengthVal').textContent = region.strength.toFixed(2);
@@ -2830,6 +2936,18 @@ $('#regionRefClear').addEventListener('click', () => {
 $('#regionSettingsClose').addEventListener('click', () => {
   regionSettingsOpen = false;
   syncRegionSettings(false);
+});
+$('#regionLoraHeader').addEventListener('click', () => {
+  setRegionLoraExpanded($('#regionLoraHeader').getAttribute('aria-expanded') !== 'true');
+});
+$('#regionResolutionBtn').addEventListener('click', () => {
+  setRegionResolutionExpanded($('#regionResolutionBtn').getAttribute('aria-expanded') !== 'true');
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('.region-resolution-picker')) setRegionResolutionExpanded(false);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') setRegionResolutionExpanded(false);
 });
 
 $('#kreaMaskBtn').addEventListener('click', openKreaMaskPainter);
@@ -3915,6 +4033,7 @@ function renderDims() {
   }
   $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp && !state.customDims));
   syncRegionStageAspect();
+  renderRegionResolutionPicker();
 }
 
 function renderEditAspects() {
@@ -6922,6 +7041,109 @@ function latestGalleryVideo(item) {
     return Number(video.createdAt || 0) >= Number(newest.createdAt || 0) ? video : newest;
   }, null);
 }
+
+function latestDesktopStageItem() {
+  return state.items.reduce((latest, item) => {
+    if (!latest) return item;
+    return itemActivity(item) >= itemActivity(latest) ? item : latest;
+  }, null);
+}
+
+function setDesktopStageMedia({ image = '', video = '', poster = '' } = {}) {
+  const img = $('#desktopStageImg');
+  const vid = $('#desktopStageVideo');
+  const empty = $('#desktopStageEmpty');
+  if (!img || !vid || !empty) return;
+  try { vid.pause(); } catch { /* noop */ }
+  vid.hidden = true;
+  img.hidden = true;
+  empty.hidden = !!(image || video);
+  if (video) {
+    vid.poster = poster || '';
+    if (vid.dataset.src !== video) {
+      vid.dataset.src = video;
+      vid.src = video;
+      vid.load();
+    }
+    vid.hidden = false;
+    if (desktopWorkspaceActive() && state.mediaPreferences.videoPreviews
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      vid.play().catch(() => { /* autoplay is an enhancement */ });
+    }
+  } else {
+    vid.removeAttribute('src');
+    vid.dataset.src = '';
+    if (image) {
+      img.src = image;
+      img.hidden = false;
+    }
+  }
+}
+
+function renderDesktopStage(item = latestDesktopStageItem()) {
+  const open = $('#desktopStageOpen');
+  if (!open) return;
+  const status = $('#desktopStageStatus');
+  const progress = $('#desktopStageProgress');
+  status.classList.remove('working');
+  progress.hidden = true;
+  progress.querySelector('i').style.width = '0%';
+  if (!item) {
+    open.disabled = true;
+    open.dataset.itemId = '';
+    open.dataset.media = '';
+    setDesktopStageMedia();
+    $('#desktopStageTitle').textContent = 'Ready to create';
+    status.textContent = 'Ready';
+    $('#desktopStagePrompt').textContent = 'Choose a mode and describe what you want to make.';
+    $('#desktopStageModel').textContent = 'Mix Studio';
+    $('#desktopStageDims').textContent = 'Desktop workspace';
+    return;
+  }
+  const latestVideo = latestGalleryVideo(item);
+  const imageFile = item.upscaled || item.file;
+  const image = imageFile ? '/images/' + imageFile : '';
+  open.disabled = false;
+  open.dataset.itemId = item.id;
+  open.dataset.media = latestVideo ? latestVideo.id : 'image';
+  setDesktopStageMedia({
+    image,
+    video: latestVideo ? '/videos/' + latestVideo.file : '',
+    poster: image,
+  });
+  $('#desktopStageTitle').textContent = latestVideo ? 'Latest video' : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation');
+  status.textContent = 'Latest output';
+  $('#desktopStagePrompt').textContent = item.prompt || item.refinedPrompt || 'Untitled generation';
+  $('#desktopStageModel').textContent = latestVideo
+    ? videoEngineLabel(latestVideo.info && latestVideo.info.engine)
+    : (galleryImageModelLabel(item) || (item.mode === 'composite' ? 'Composite' : 'Image'));
+  $('#desktopStageDims').textContent = item.width && item.height
+    ? `${item.width} × ${item.height}`
+    : new Date(itemActivity(item) || Date.now()).toLocaleDateString();
+}
+
+function renderDesktopStageGenerating(statusText = 'Working…') {
+  const open = $('#desktopStageOpen');
+  if (!open) return;
+  open.disabled = true;
+  open.dataset.itemId = '';
+  open.dataset.media = '';
+  setDesktopStageMedia();
+  $('#desktopStageTitle').textContent = 'Creating new output';
+  $('#desktopStageStatus').textContent = 'Working';
+  $('#desktopStageStatus').classList.add('working');
+  $('#desktopStagePrompt').textContent = promptDraft() || 'Your generation is in progress.';
+  $('#desktopStageModel').textContent = state.view === 'video' ? videoEngineLabel(state.vidEngine) : (state.view === 'edit' ? editEngineLabel(state.editEngine) : 'Krea 2');
+  $('#desktopStageDims').textContent = statusText;
+  $('#desktopStageProgress').hidden = false;
+  $('#desktopStageProgress').querySelector('i').style.width = '0%';
+}
+
+$('#desktopStageOpen').addEventListener('click', () => {
+  const open = $('#desktopStageOpen');
+  if (!open.dataset.itemId) return;
+  openLightbox(open.dataset.itemId, open.dataset.media || 'image');
+});
 
 function librarySearchText(it) {
   const folder = state.folders.find((entry) => entry.id === it.folder);

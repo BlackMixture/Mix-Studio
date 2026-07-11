@@ -31,7 +31,7 @@ test('create prompt tools expose an inline regional bounding-box editor', () => 
 test('region canvas follows resolution aspect changes without rebuilding its boxes', () => {
   const stageCss = styleCss.match(/\.region-stage \{([\s\S]*?)\n\}/)?.[1] || '';
   assert.match(appJs, /function syncRegionStageAspect\(\)/);
-  assert.match(appJs, /function renderDims\(\)[\s\S]*?syncRegionStageAspect\(\);\s*\}/);
+  assert.match(appJs, /function renderDims\(\)[\s\S]*?syncRegionStageAspect\(\);[\s\S]*?renderRegionResolutionPicker\(\);\s*\}/);
   assert.match(appJs, /function renderRegionEditor\(\)[\s\S]*?syncRegionStageAspect\(\);/);
   assert.match(appJs, /stage\.style\.aspectRatio = `\$\{arW\} \/ \$\{arH\}`/);
   assert.doesNotMatch(stageCss, /max-height/);
@@ -54,14 +54,36 @@ test('selecting a region expands auto-saved settings and holding cycles overlaps
 
 test('selected-region inspector appears before the canvas with visual asset inputs', () => {
   const settingsAt = indexHtml.indexOf('id="regionSettings"');
+  const toolbarAt = indexHtml.indexOf('class="region-toolbar"');
   const stageAt = indexHtml.indexOf('id="regionStage"');
-  assert.ok(settingsAt > -1 && settingsAt < stageAt);
+  assert.ok(settingsAt > -1 && settingsAt < toolbarAt && toolbarAt < stageAt);
   assert.match(indexHtml, /class="lora-grid region-lora-slot" id="regionLoraSlot"/);
   assert.match(indexHtml, /id="regionRefBtn"[\s\S]*class="region-ref-preview" id="regionRefPreview" hidden/);
   assert.match(indexHtml, /id="regionRefPreviewImg"/);
   assert.match(indexHtml, /id="regionRefClear"[^>]*aria-label="Remove region reference image"/);
   assert.match(styleCss, /\.region-ref-preview \{/);
   assert.match(appJs, /\$\('#regionStrengthField'\)\.hidden = !hasLora/);
+});
+
+test('region canvas toolbar keeps actions beside an anchored resolution picker', () => {
+  assert.match(indexHtml, /class="region-toolbar"[\s\S]*id="regionAddBtn"[\s\S]*id="regionDeleteBtn"[\s\S]*id="regionResolutionBtn"/);
+  assert.match(indexHtml, /id="regionResolutionMenu"[^>]*aria-hidden="true" inert/);
+  assert.match(indexHtml, /id="regionAspectMenu"/);
+  assert.match(indexHtml, /id="regionSizeMenu"/);
+  assert.match(appJs, /function renderRegionResolutionPicker\(\)/);
+  assert.match(appJs, /closest\('\.panel'\)\.hidden = isRegion \|\|/);
+  assert.match(appJs, /setRegionResolutionExpanded\(false\)/);
+  assert.match(appJs, /renderRegionResolutionPicker\(\);/);
+  assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*position: absolute/);
+});
+
+test('region LoRA settings use an accessible animated disclosure', () => {
+  assert.match(indexHtml, /id="regionLoraHeader"[^>]*aria-expanded="false"[^>]*aria-controls="regionLoraBody"/);
+  assert.match(indexHtml, /id="regionLoraBody" aria-hidden="true" inert/);
+  assert.match(appJs, /function setRegionLoraExpanded\(open\)/);
+  assert.match(appJs, /regionLoraHeader'\)\.addEventListener\('click'/);
+  assert.match(styleCss, /\.region-lora-body \{[\s\S]*grid-template-rows: 0fr/);
+  assert.match(styleCss, /\.region-lora-disclosure\.expanded \.region-lora-body \{ grid-template-rows: 1fr; \}/);
 });
 
 test('region LoRA uses the shared card language and selected region color', () => {

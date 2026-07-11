@@ -132,6 +132,7 @@
 </div>
 
 <!-- ============ CREATE / EDIT (shared markup, JS re-parents) ============ -->
+<div class="studio-workspace">
 <main class="view active" id="view-create">
   <section class="panel video-model-panel edit-model-panel" id="editModelPanel" hidden>
     <button class="video-model-header" id="editModelHeader" type="button" aria-expanded="false" aria-controls="editModelBody">
@@ -445,16 +446,6 @@
   </section>
 
   <section class="panel region-workspace" id="regionWorkspace" hidden>
-    <div class="region-toolbar" aria-label="Region tools">
-      <button class="chip" id="regionAddBtn" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
-        Add box
-      </button>
-      <button class="chip" id="regionDeleteBtn" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 9h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Z"/></svg>
-        Delete
-      </button>
-    </div>
     <div class="region-settings" id="regionSettings" aria-hidden="true" inert>
       <div class="region-settings-inner">
         <div class="region-settings-head">
@@ -474,13 +465,20 @@
             <label>Region prompt</label>
             <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
           </div>
-          <div class="field">
-            <label>Region LoRA</label>
-            <div class="lora-grid region-lora-slot" id="regionLoraSlot"></div>
-          </div>
-          <div class="field" id="regionStrengthField" hidden>
-            <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
-            <div class="range-field"><input id="regionStrengthInput" type="range" min="0" max="2" step="0.05" value="1" /></div>
+          <div class="field field-span region-lora-disclosure" id="regionLoraDisclosure">
+            <button class="region-lora-header" id="regionLoraHeader" type="button" aria-expanded="false" aria-controls="regionLoraBody">
+              <span><b>Region LoRA</b><small id="regionLoraSummary">None selected</small></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+            </button>
+            <div class="region-lora-body" id="regionLoraBody" aria-hidden="true" inert>
+              <div class="region-lora-body-inner">
+                <div class="lora-grid region-lora-slot" id="regionLoraSlot"></div>
+                <div class="field" id="regionStrengthField" hidden>
+                  <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
+                  <div class="range-field"><input id="regionStrengthInput" type="range" min="0" max="2" step="0.05" value="1" /></div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="field field-span">
             <label>Reference image</label>
@@ -499,6 +497,32 @@
               </div>
             </div>
             <input id="regionRefInput" type="file" accept="image/*" hidden />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="region-toolbar" aria-label="Region canvas tools">
+      <div class="region-toolbar-actions">
+        <button class="chip" id="regionAddBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+          Add box
+        </button>
+        <button class="chip" id="regionDeleteBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 9h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Z"/></svg>
+          Delete
+        </button>
+      </div>
+      <div class="region-resolution-picker">
+        <button class="region-resolution-trigger" id="regionResolutionBtn" type="button" aria-expanded="false" aria-controls="regionResolutionMenu">
+          <span class="region-resolution-icon" id="regionResolutionIcon" aria-hidden="true"></span>
+          <span id="regionResolutionSummary">1:1 · 1024 × 1024</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+        </button>
+        <div class="region-resolution-menu" id="regionResolutionMenu" role="dialog" aria-label="Region canvas resolution" aria-hidden="true" inert>
+          <div class="region-resolution-menu-inner">
+            <span class="region-resolution-menu-label">Canvas resolution</span>
+            <div class="region-aspect-menu" id="regionAspectMenu"></div>
+            <div class="region-size-menu" id="regionSizeMenu"></div>
           </div>
         </div>
       </div>
@@ -727,6 +751,53 @@
   </section>
 </main>
 
+<section class="desktop-stage" id="desktopStage" aria-label="Generation stage">
+  <div class="desktop-stage-shell">
+    <header class="desktop-stage-head">
+      <div>
+        <span class="desktop-stage-kicker">Generation</span>
+        <h1 id="desktopStageTitle">Ready to create</h1>
+      </div>
+      <span class="desktop-stage-status" id="desktopStageStatus">Ready</span>
+    </header>
+    <button class="desktop-stage-media" id="desktopStageOpen" type="button" aria-label="Open latest generation" disabled>
+      <img id="desktopStageImg" alt="Latest generation" hidden />
+      <video id="desktopStageVideo" muted loop playsinline hidden></video>
+      <span class="desktop-stage-empty" id="desktopStageEmpty">
+        <span class="desktop-stage-orb" aria-hidden="true"></span>
+        <strong>Your next generation appears here</strong>
+        <small>Build on the left. Recent work stays within reach on the right.</small>
+      </span>
+      <span class="desktop-stage-progress" id="desktopStageProgress" hidden><i></i></span>
+    </button>
+    <footer class="desktop-stage-meta">
+      <p id="desktopStagePrompt">Choose a mode and describe what you want to make.</p>
+      <div>
+        <span id="desktopStageModel">Mix Studio</span>
+        <span id="desktopStageDims">Desktop workspace</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- generate dock -->
+  <div class="generate-dock" id="genDock">
+    <div class="generate-inner">
+      <div class="live-preview" id="livePreview">
+        <img id="livePreviewImg" alt="" />
+        <div class="live-info">
+          <span id="liveStatusText">Working…</span>
+          <span id="livePct"></span>
+        </div>
+        <button class="live-x" id="liveDismiss" aria-label="Dismiss">✕</button>
+      </div>
+      <button class="btn-generate" id="generateBtn">
+        <span class="fill" id="genFill"></span>
+        <span class="lbl" id="genLbl">Generate</span>
+      </button>
+    </div>
+  </div>
+</section>
+
 <main class="view" id="view-gallery">
   <div class="library-search">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 4a6.5 6.5 0 1 0 4.04 11.59L19.95 21 21 19.95l-5.41-5.41A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
@@ -765,23 +836,6 @@
     </span>
   </div>
 </main>
-
-<!-- generate dock -->
-<div class="generate-dock" id="genDock">
-  <div class="generate-inner">
-    <div class="live-preview" id="livePreview">
-      <img id="livePreviewImg" alt="" />
-      <div class="live-info">
-        <span id="liveStatusText">Working…</span>
-        <span id="livePct"></span>
-      </div>
-      <button class="live-x" id="liveDismiss" aria-label="Dismiss">✕</button>
-    </div>
-    <button class="btn-generate" id="generateBtn">
-      <span class="fill" id="genFill"></span>
-      <span class="lbl" id="genLbl">Generate</span>
-    </button>
-  </div>
 </div>
 
 <!-- lightbox -->
