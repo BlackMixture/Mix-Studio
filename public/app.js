@@ -5453,24 +5453,41 @@ async function sendVideoAsDrive(it, v) {
   } catch (e) { toast(e.message, true); }
 }
 
+async function galleryItemEditReference(item) {
+  const blob = await (await fetch('/images/' + item.file)).blob();
+  const buf = await blob.arrayBuffer();
+  const res = await api('/api/upload', {
+    method: 'POST',
+    headers: { 'x-filename': encodeURIComponent(item.file) },
+    body: buf,
+  });
+  return {
+    name: res.name, url: '/images/' + item.file, srcItemId: item.id,
+    w: item.width || 0, h: item.height || 0,
+  };
+}
+
 async function useAsRef(item) {
   try {
-    const blob = await (await fetch('/images/' + item.file)).blob();
-    const buf = await blob.arrayBuffer();
-    const res = await api('/api/upload', {
-      method: 'POST',
-      headers: { 'x-filename': encodeURIComponent(item.file) },
-      body: buf,
-    });
     const slot = state.refs.findIndex((r) => !r);
-    state.refs[slot === -1 ? 0 : slot] = {
-      name: res.name, url: '/images/' + item.file, srcItemId: item.id,
-      w: item.width || 0, h: item.height || 0,
-    };
+    state.refs[slot === -1 ? 0 : slot] = await galleryItemEditReference(item);
     renderRefs();
     closeLightbox();
     setView('edit');
     toast('Added as reference image');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function continueEditingResult(item) {
+  try {
+    toast('Loading edit result…');
+    const nextReference = await galleryItemEditReference(item);
+    clearKreaMask(true);
+    state.refs[0] = nextReference;
+    renderRefs();
+    closeLightbox();
+    setView('edit');
+    toast('Edit result is now the source image');
   } catch (e) { toast(e.message, true); }
 }
 
@@ -5486,6 +5503,7 @@ $('#seedDice').addEventListener('click', () => {
 });
 let livePreviewSwipe = null;
 let livePreviewDismissTimer = null;
+let lightboxContinueEditId = null;
 
 function resetLivePreviewMotion() {
   clearTimeout(livePreviewDismissTimer);
@@ -6271,6 +6289,9 @@ $('#generateBtn').addEventListener('click', async () => {
 function setGenerating(on, statusText) {
   if (on) {
     resetLivePreviewMotion();
+    lightboxContinueEditId = null;
+    $('#livePreviewImg').onclick = null;
+    $('#liveStatusText').onclick = null;
     renderDesktopStageGenerating(statusText || 'Working…');
     $('#livePreview').classList.add('show');
     $('#livePreviewImg').removeAttribute('src');
@@ -6716,10 +6737,16 @@ function connectEvents() {
       state.activeJobs.delete(d.jobId);
       setGenerating(false);
       if (d.items && d.items.length) {
-        $('#livePreviewImg').src = '/images/' + d.items[0].file;
+        const completedItem = d.items[0];
+        $('#livePreviewImg').src = '/images/' + completedItem.file;
         $('#liveStatusText').textContent = 'Done — tap to view';
         $('#livePct').textContent = '';
-        const open = () => { refreshGallery().then(() => openLightbox(d.items[0].id)); };
+        const open = () => {
+          refreshGallery().then(() => {
+            lightboxContinueEditId = completedItem.mode === 'edit' ? completedItem.id : null;
+            openLightbox(completedItem.id);
+          });
+        };
         $('#livePreviewImg').onclick = open;
         $('#liveStatusText').onclick = open;
         toast(d.sequenceComplete ? '✓ Sequential edits complete' : '✓ Generated');
@@ -8886,6 +8913,8 @@ function openLightbox(id, mediaSel) {
   const sourceReference = !selVideo && !selComposite && it.sourceFile
     && (it.mode === 'edit' || it.mode === 't2i');
   const isEditSource = sourceReference && it.mode === 'edit';
+  const canContinueCompletedEdit = lightboxContinueEditId === it.id
+    && it.mode === 'edit' && !selVideo && !selComposite;
   const imageSaveItems = [];
   if (!selVideo && !selComposite) {
     if (it.upscaled) {
@@ -8925,10 +8954,16 @@ function openLightbox(id, mediaSel) {
     }
   }
 
+  if (canContinueCompletedEdit) {
+    mk(`${actionIconMarkup('edit')}<span>Continue editing</span>`, 'primary continue-edit-action', () => continueEditingResult(it), {
+      ariaLabel: 'Continue editing with this result',
+      title: 'Replace the current Edit source with this result',
+    });
+  }
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
   } else if (it.mode !== 'composite') {
-    mk(videos.length ? '🎬 Animate again' : '🎬 Animate', 'primary', () => openAnimateRouteSheet(it));
+    mk(videos.length ? '🎬 Animate again' : '🎬 Animate', canContinueCompletedEdit ? '' : 'primary', () => openAnimateRouteSheet(it));
   }
   if (!selComposite) {
     const liked = selVideo ? !!selVideo.liked : !!it.liked;
@@ -9103,6 +9138,7 @@ function closeLightbox(fromPop) {
   vid.load();
   state.currentItem = null;
   state.currentMedia = null;
+  lightboxContinueEditId = null;
   unlockScroll();
   if (!fromPop && window.history.state && window.history.state.lb) {
     try { history.back(); } catch { /* noop */ }

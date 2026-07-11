@@ -3837,6 +3837,13 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   background: linear-gradient(#12151d, #12151d) padding-box, var(--gemini) border-box;
   border-color: transparent;
 }
+.action-btn.continue-edit-action {
+  min-height: 42px;
+  border-color: rgba(151,124,255,0.72);
+  background: linear-gradient(115deg, rgba(125,91,255,0.24), rgba(56,132,255,0.16));
+  box-shadow: 0 0 22px rgba(109,85,255,0.2);
+}
+.action-btn.continue-edit-action .action-glyph { width: 17px; height: 17px; }
 .action-btn.danger { color: #ff9f97; border-color: rgba(234,67,53,0.4); }
 .action-btn.icon-only {
   width: 42px;

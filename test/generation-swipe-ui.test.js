@@ -35,3 +35,12 @@ test('sampler previews are scoped to their active ComfyUI prompt when metadata i
   assert.match(app, /!d\.jobId \|\| state\.activeJobs\.has\(d\.jobId\)/);
   assert.match(server, /supports_preview_metadata: true/);
 });
+
+test('a completed edit opened from progress can directly replace the Edit source', () => {
+  assert.match(app, /lightboxContinueEditId = completedItem\.mode === 'edit' \? completedItem\.id : null/);
+  assert.match(app, /const canContinueCompletedEdit = lightboxContinueEditId === it\.id/);
+  assert.match(app, /<span>Continue editing<\/span>/);
+  assert.match(app, /async function continueEditingResult\(item\)[\s\S]*clearKreaMask\(true\);[\s\S]*state\.refs\[0\] = nextReference/);
+  assert.match(app, /Edit result is now the source image/);
+  assert.match(css, /\.action-btn\.continue-edit-action \{[\s\S]*border-color: rgba\(151,124,255,0\.72\)/);
+});
