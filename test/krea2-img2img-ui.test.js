@@ -23,6 +23,7 @@ test('Create Image exposes its optional image guide as an animated prompt-tool d
   assert.match(html, /id="createImageGuideImg"/);
   assert.match(html, /id="createImageGuideRemove"/);
   assert.match(html, /id="createImageGuideModes"[\s\S]*data-guide-mode="image"[\s\S]*data-guide-mode="depth"/);
+  assert.match(html, /id="createImageGuideHint"/);
   assert.match(html, /id="createImageInfluence"[^>]*min="0"[^>]*max="100"[^>]*step="5"/);
   assert.match(css, /\.create-image-guide-empty/);
   assert.match(css, /\.create-image-guide\.expanded \{ grid-template-rows: 1fr; \}/);
@@ -37,7 +38,7 @@ test('Create Image uploads, persists, and submits the guide with inverse denoise
   assert.match(app, /function createDenoiseFromInfluence\(influence = state\.createInfluence\)/);
   assert.match(app, /1 - normalized \* 0\.95/);
   assert.match(app, /function pickCreateImageGuide\(\)/);
-  assert.match(app, /imageName: createImageGuide \? createImageGuide\.name : undefined/);
+  assert.match(app, /imageName: createImageGuideName/);
   assert.match(app, /createImageGuide && state\.createGuideMode !== 'depth' \? createDenoiseFromInfluence\(\) : 1/);
   assert.match(app, /imageGuideMode: createImageGuide \? state\.createGuideMode : undefined/);
   assert.match(app, /depthStrength: createImageGuide && state\.createGuideMode === 'depth'/);
@@ -47,11 +48,20 @@ test('Create Image uploads, persists, and submits the guide with inverse denoise
 
 test('Resolution can match an uploaded image guide and reports the derived dimensions', () => {
   assert.match(app, /createMatchSource: false/);
-  assert.match(app, /function matchedCreateOutputDimensions\(ref = state\.createRef\)/);
-  assert.match(app, /function applyCreateMatchedDimensions\(\)/);
+  assert.match(app, /createMatchNative: false/);
+  assert.match(app, /function generationSafeCreateDimensions\(ref = state\.createRef, megapixels = 1\)/);
+  assert.match(app, /Math\.max\(0\.5, Math\.min\(2, Number\(megapixels\) \|\| 1\)\) \* 1e6/);
+  assert.match(app, /if \(maxSide > 2048\)/);
+  assert.match(app, /function nativeCreateOutputDimensions\(ref = state\.createRef\)/);
+  assert.match(app, /function matchedCreateOutputDimensions\(ref = state\.createRef, native = state\.createMatchNative\)/);
+  assert.match(app, /function applyCreateMatchedDimensions\(options = \{\}\)/);
+  assert.match(app, /function prepareCreateImageGuideAsset\(asset\)/);
+  assert.match(app, /safeName: response\.name, safeW: safe\.w, safeH: safe\.h/);
   assert.match(app, /source\.className = 'aspect-chip create-match-aspect'/);
-  assert.match(app, /Match image · \$\{state\.width\} × \$\{state\.height\}/);
-  assert.match(app, /state\.createMatchSource = false;\s*state\.customDims = false;/);
+  assert.match(app, /\$\{state\.createMatchNative \? 'Native image' : 'Match image'\} · \$\{state\.width\} × \$\{state\.height\}/);
+  assert.match(app, /Native image/);
+  assert.match(app, /Depth control · matched to source aspect/);
+  assert.match(app, /state\.createMatchSource = false;\s*state\.createMatchNative = false;\s*state\.customDims = false;/);
 });
 
 test('Krea 2 generation routes image guides through the encoded latent builder', () => {

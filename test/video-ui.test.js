@@ -27,7 +27,7 @@ test('Video frame and media inputs use visual source cards', () => {
 
 test('Video trim and frame actions use one minimalist SVG icon language', () => {
   assert.match(html, /id="vidDriveTrimChip"[\s\S]*<svg[\s\S]*<span>Trim<\/span>/);
-  assert.match(html, /id="vidDriveFrameChip"[\s\S]*<svg[\s\S]*<span>First frame → Edit<\/span>/);
+  assert.match(html, /id="vidDriveFrameChip"[\s\S]*<svg[\s\S]*<span>Use first frame<\/span>/);
   assert.match(html, /id="driveTrimPlay"[^>]*aria-label="Play preview"[\s\S]*<svg/);
   assert.match(html, /id="vidTrimPlay"[^>]*aria-label="Play preview"[\s\S]*<svg/);
   assert.match(html, /id="animTrimPlay"[^>]*aria-label="Play preview"[\s\S]*<svg/);
@@ -35,6 +35,16 @@ test('Video trim and frame actions use one minimalist SVG icon language', () => 
   assert.match(app, /playing \? TRIM_PAUSE_ICON : TRIM_PLAY_ICON/);
   assert.doesNotMatch(app, /\.textContent = '⏹'/);
   assert.match(css, /\.trim-play \{[\s\S]*background: #090a0d;[\s\S]*color: #fff/);
+});
+
+test('SCAIL motion video first frames route to Edit, image guidance, or depth guidance', () => {
+  assert.match(app, /async function extractDriveFirstFrame\(\)/);
+  assert.match(app, /trimStart:?[\s\S]*motion_first_frame\.png/);
+  assert.match(app, /async function useDriveFirstFrame\(destination\)/);
+  assert.match(app, /label: 'Edit image'[\s\S]*useDriveFirstFrame\('edit'\)/);
+  assert.match(app, /label: 'Image guide'[\s\S]*useDriveFirstFrame\('image'\)/);
+  assert.match(app, /label: 'Depth guide'[\s\S]*useDriveFirstFrame\('depth'\)/);
+  assert.match(app, /setCreateImageGuideAsset\(frame, destination === 'depth' \? 'depth' : 'image'\)/);
 });
 
 test('Video inputs keep start and end frames together, followed by Face ID and audio', () => {

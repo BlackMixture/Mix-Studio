@@ -50,6 +50,7 @@ const state = {
   createImageGuideOpen: false,
   createGuideMode: 'image',  // image-to-image pixels or depth-only structure control
   createMatchSource: false,
+  createMatchNative: false,
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
   createDepthStrength: 100,  // 5-200; maps to Control LoRA strength 0.05-2.0
   createDepthPreview: null,  // { name, url } — cached DA3 map for the current guide image
@@ -810,6 +811,7 @@ function actionIconMarkup(icon) {
     original: '<path d="M12 4a8 8 0 1 0 7.7 10.2l-1.9-.6A6 6 0 1 1 12 6v4l5-5-5-5v4Zm-1 4h2v5l3.4 2-1 1.7-4.4-2.6V8Z"/>',
     motion: '<path d="M4 7h8V5l4 3-4 3V9H4V7Zm16 8H12v-2l-4 3 4 3v-2h8v-2Z"/>',
     'first-frame': '<path d="M5 5h15v14H5V5Zm2 2v10h11V7H7Zm-5 4h2v2H2v-2Zm7 4 2.7-3.2 2 2.1 1.5-1.8L17 15H9Z"/>',
+    depth: '<path d="M12 3 3 8l9 5 9-5-9-5Zm-7.4 8.2L12 15l7.4-3.8L21 12l-9 5-9-5 1.6-.8Zm0 4L12 19l7.4-3.8L21 16l-9 5-9-5 1.6-.8Z"/>',
     'last-frame': '<path d="M4 5h15v14H4V5Zm2 2v10h11V7H6Zm14 4h2v2h-2v-2ZM8 15l2.7-3.2 2 2.1 1.5-1.8L17 15H8Z"/>',
     save: '<path d="M5 3h12l3 3v15H4V3h1Zm1 2v14h12V6.8L16.2 5H6Zm2 0h6v5H8V5Zm1 10h6v4H9v-4Z"/>',
     documentation: '<path d="M5 3h10l4 4v14H5V3Zm2 2v14h10V8h-3V5H7Zm2 6h6v2H9v-2Zm0 4h6v2H9v-2Z"/>',
@@ -1136,10 +1138,12 @@ function saveForm() {
       createMode: state.createMode,
       createRef: state.createRef ? {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
+        safeName: state.createRef.safeName, safeW: state.createRef.safeW, safeH: state.createRef.safeH,
       } : null,
       createImageGuideOpen: state.createImageGuideOpen,
       createGuideMode: state.createGuideMode,
       createMatchSource: state.createMatchSource,
+      createMatchNative: state.createMatchNative,
       createInfluence: state.createInfluence,
       createDepthStrength: state.createDepthStrength,
       krea2Turbo: state.krea2Turbo,
@@ -1243,10 +1247,14 @@ function loadForm() {
       w: Number(f.createRef.w) || 0,
       h: Number(f.createRef.h) || 0,
       label: String(f.createRef.label || 'Source image'),
+      safeName: String(f.createRef.safeName || ''),
+      safeW: Number(f.createRef.safeW) || 0,
+      safeH: Number(f.createRef.safeH) || 0,
     } : null;
     state.createImageGuideOpen = f.createImageGuideOpen === true;
     state.createGuideMode = f.createGuideMode === 'depth' ? 'depth' : 'image';
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
+    state.createMatchNative = f.createMatchNative === true && state.createMatchSource;
     const savedDepthStrength = Number(f.createDepthStrength);
     state.createDepthStrength = Number.isFinite(savedDepthStrength)
       ? Math.max(5, Math.min(200, savedDepthStrength)) : 100;
@@ -1816,7 +1824,30 @@ function createInfluenceFromDenoise(denoise) {
   return Math.round(((1 - value) / 0.95) * 20) * 5;
 }
 
-function matchedCreateOutputDimensions(ref = state.createRef) {
+function generationSafeCreateDimensions(ref = state.createRef, megapixels = 1) {
+  const sourceWidth = Number(ref?.w);
+  const sourceHeight = Number(ref?.h);
+  if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight) || sourceWidth < 1 || sourceHeight < 1) return null;
+  const ratio = sourceWidth / sourceHeight;
+  const pixels = Math.max(0.5, Math.min(2, Number(megapixels) || 1)) * 1e6;
+  let rawWidth = Math.sqrt(pixels * ratio);
+  let rawHeight = Math.sqrt(pixels / ratio);
+  const maxSide = Math.max(rawWidth, rawHeight);
+  if (maxSide > 2048) {
+    const scale = 2048 / maxSide;
+    rawWidth *= scale;
+    rawHeight *= scale;
+  }
+  const widthFirst = { w: round32(rawWidth), h: round32(round32(rawWidth) / ratio) };
+  const heightFirst = { w: round32(round32(rawHeight) * ratio), h: round32(rawHeight) };
+  const score = (candidate) => (
+    Math.abs((candidate.w / candidate.h) - ratio) / ratio
+    + Math.abs((candidate.w * candidate.h) - pixels) / pixels * 0.05
+  );
+  return score(widthFirst) <= score(heightFirst) ? widthFirst : heightFirst;
+}
+
+function nativeCreateOutputDimensions(ref = state.createRef) {
   const sourceWidth = Number(ref?.w);
   const sourceHeight = Number(ref?.h);
   if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight) || sourceWidth < 1 || sourceHeight < 1) return null;
@@ -1827,14 +1858,84 @@ function matchedCreateOutputDimensions(ref = state.createRef) {
   };
 }
 
-function applyCreateMatchedDimensions() {
-  const matched = matchedCreateOutputDimensions();
+function matchedCreateOutputDimensions(ref = state.createRef, native = state.createMatchNative) {
+  return native ? nativeCreateOutputDimensions(ref) : generationSafeCreateDimensions(ref);
+}
+
+function createGuideInput(ref = state.createRef) {
+  if (!ref) return null;
+  const optimized = state.createMatchSource && !state.createMatchNative && ref.safeName;
+  return {
+    name: optimized ? ref.safeName : ref.name,
+    w: optimized ? (ref.safeW || ref.w) : ref.w,
+    h: optimized ? (ref.safeH || ref.h) : ref.h,
+  };
+}
+
+function applyCreateMatchedDimensions(options = {}) {
+  const nextNative = options.native === true;
+  if (state.createMatchNative !== nextNative) clearCreateDepthPreview();
+  state.createMatchNative = nextNative;
+  const matched = matchedCreateOutputDimensions(state.createRef, state.createMatchNative);
   if (!matched) return false;
   state.createMatchSource = true;
   state.customDims = true;
   state.width = matched.w;
   state.height = matched.h;
   return true;
+}
+
+async function resizedCreateGuideBlob(asset, dimensions) {
+  const image = new Image();
+  image.decoding = 'async';
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Could not resize the image guide'));
+    image.src = asset.url;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = dimensions.w;
+  canvas.height = dimensions.h;
+  const context = canvas.getContext('2d');
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => canvas.toBlob(
+    (blob) => blob ? resolve(blob) : reject(new Error('Could not resize the image guide')),
+    'image/png',
+  ));
+}
+
+async function prepareCreateImageGuideAsset(asset) {
+  if (!asset) return null;
+  const safe = generationSafeCreateDimensions(asset);
+  if (!safe) return asset;
+  const sourcePixels = Number(asset.w) * Number(asset.h);
+  const safePixels = safe.w * safe.h;
+  if (sourcePixels <= safePixels * 1.12 && Math.max(asset.w, asset.h) <= 2048) {
+    return Object.assign({}, asset, { safeName: asset.name, safeW: asset.w, safeH: asset.h });
+  }
+  toast(`Optimizing guide to ${safe.w} × ${safe.h}…`);
+  const blob = await resizedCreateGuideBlob(asset, safe);
+  const response = await api('/api/upload', {
+    method: 'POST',
+    headers: { 'x-filename': encodeURIComponent(`image_guide_${safe.w}x${safe.h}.png`) },
+    body: await blob.arrayBuffer(),
+  });
+  return Object.assign({}, asset, { safeName: response.name, safeW: safe.w, safeH: safe.h });
+}
+
+async function setCreateImageGuideAsset(asset, mode = 'image') {
+  state.createRef = await prepareCreateImageGuideAsset(asset);
+  clearCreateDepthPreview();
+  state.createGuideMode = mode === 'depth' ? 'depth' : 'image';
+  state.createImageGuideOpen = true;
+  applyCreateMatchedDimensions();
+  setView('create', { createMode: 'image' });
+  renderCreateImageGuide();
+  renderAspects();
+  renderDims();
+  saveForm();
 }
 
 function renderCreateImageGuide() {
@@ -1858,6 +1959,9 @@ function renderCreateImageGuide() {
   $('#createImageGuideAdd').hidden = hasImage;
   $('#createImageGuideFilled').hidden = !hasImage;
   const depthMode = state.createGuideMode === 'depth';
+  $('#createImageGuideHint').textContent = depthMode
+    ? 'Depth control · matched to source aspect'
+    : 'Image to image · matched to source aspect';
   const influence = depthMode
     ? Math.max(5, Math.min(200, Number(state.createDepthStrength) || 100))
     : Math.max(0, Math.min(100, Number(state.createInfluence) || 0));
@@ -1886,7 +1990,7 @@ function renderCreateImageGuide() {
   }
   const previewBtn = $('#createDepthPreviewBtn');
   const cachedDepth = hasImage && state.createDepthPreview
-    && state.createDepthPreview.name === state.createRef.name ? state.createDepthPreview : null;
+    && state.createDepthPreview.name === createGuideInput().name ? state.createDepthPreview : null;
   const showingDepth = depthMode && state.createDepthPreviewShown && !!cachedDepth;
   if (previewBtn) {
     previewBtn.hidden = !(depthMode && hasImage);
@@ -1916,15 +2020,13 @@ function clearCreateDepthPreview() {
 }
 
 function pickCreateImageGuide() {
-  pickUpload('image/*', (file) => {
-    state.createRef = file;
-    clearCreateDepthPreview();
-    if (state.createMatchSource) applyCreateMatchedDimensions();
-    renderCreateImageGuide();
-    renderAspects();
-    renderDims();
-    saveForm();
-    toast('Image guide added');
+  pickUpload('image/*', async (file) => {
+    try {
+      await setCreateImageGuideAsset(file, state.createGuideMode);
+      toast('Image guide added at a generation-safe size');
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
 }
 
@@ -1944,7 +2046,7 @@ $('#createImageGuideModes').addEventListener('click', (event) => {
 });
 $('#createDepthPreviewBtn').addEventListener('click', async () => {
   if (!state.createRef) return;
-  const cached = state.createDepthPreview && state.createDepthPreview.name === state.createRef.name;
+  const cached = state.createDepthPreview && state.createDepthPreview.name === createGuideInput().name;
   if (cached) {
     state.createDepthPreviewShown = !state.createDepthPreviewShown;
     renderCreateImageGuide();
@@ -1958,9 +2060,9 @@ $('#createDepthPreviewBtn').addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        imageName: state.createRef.name,
-        width: state.createRef.w || 0,
-        height: state.createRef.h || 0,
+        imageName: createGuideInput().name,
+        width: createGuideInput().w || 0,
+        height: createGuideInput().h || 0,
       }),
     });
     if (!response.ok) {
@@ -1969,7 +2071,7 @@ $('#createDepthPreviewBtn').addEventListener('click', async () => {
     }
     const blob = await response.blob();
     clearCreateDepthPreview();
-    state.createDepthPreview = { name: state.createRef.name, url: URL.createObjectURL(blob) };
+    state.createDepthPreview = { name: createGuideInput().name, url: URL.createObjectURL(blob) };
     state.createDepthPreviewShown = true;
   } catch (error) {
     toast(error.message, true);
@@ -1980,6 +2082,7 @@ $('#createDepthPreviewBtn').addEventListener('click', async () => {
 $('#createImageGuideRemove').addEventListener('click', () => {
   state.createRef = null;
   state.createMatchSource = false;
+  state.createMatchNative = false;
   clearCreateDepthPreview();
   renderCreateImageGuide();
   renderAspects();
@@ -2339,6 +2442,7 @@ function renderRegionResolutionPicker() {
     button.addEventListener('click', () => {
       state.aspect = aspect.label;
       state.createMatchSource = false;
+      state.createMatchNative = false;
       state.customDims = false;
       computeDims();
       renderAspects();
@@ -2360,6 +2464,7 @@ function renderRegionResolutionPicker() {
     button.addEventListener('click', () => {
       state.mp = size.value;
       state.createMatchSource = false;
+      state.createMatchNative = false;
       state.customDims = false;
       computeDims();
       renderAspects();
@@ -4205,19 +4310,20 @@ $('#cameraApply').addEventListener('click', applyCameraPrompt);
 function renderAspects() {
   const row = $('#aspectRow');
   row.innerHTML = '';
-  const matched = state.view === 'create' && state.createMode === 'image'
-    ? matchedCreateOutputDimensions()
+  const safeMatch = state.view === 'create' && state.createMode === 'image'
+    ? matchedCreateOutputDimensions(state.createRef, false)
     : null;
-  if (matched) {
+  const nativeMatch = safeMatch ? matchedCreateOutputDimensions(state.createRef, true) : null;
+  if (safeMatch) {
     const source = document.createElement('button');
     source.type = 'button';
-    source.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && state.customDims ? ' active' : '');
-    source.setAttribute('aria-label', `Match source image at ${matched.w} by ${matched.h}`);
-    const ratio = matched.w / matched.h;
+    source.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && !state.createMatchNative && state.customDims ? ' active' : '');
+    source.setAttribute('aria-label', `Match image aspect at a generation-safe ${safeMatch.w} by ${safeMatch.h}`);
+    const ratio = safeMatch.w / safeMatch.h;
     const maxSide = 22;
     const w = ratio >= 1 ? maxSide : Math.max(7, Math.round(maxSide * ratio));
     const h = ratio >= 1 ? Math.max(7, Math.round(maxSide / ratio)) : maxSide;
-    source.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Match image<small>${matched.w} × ${matched.h}</small>`;
+    source.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Match image<small>${safeMatch.w} × ${safeMatch.h}</small>`;
     source.addEventListener('click', () => {
       applyCreateMatchedDimensions();
       renderAspects();
@@ -4225,6 +4331,19 @@ function renderAspects() {
       saveForm();
     });
     row.appendChild(source);
+
+    const native = document.createElement('button');
+    native.type = 'button';
+    native.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && state.createMatchNative && state.customDims ? ' active' : '');
+    native.setAttribute('aria-label', `Use native image size at ${nativeMatch.w} by ${nativeMatch.h}`);
+    native.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Native<small>${nativeMatch.w} × ${nativeMatch.h}</small>`;
+    native.addEventListener('click', () => {
+      applyCreateMatchedDimensions({ native: true });
+      renderAspects();
+      renderDims();
+      saveForm();
+    });
+    row.appendChild(native);
   }
   for (const a of ASPECTS) {
     const btn = document.createElement('button');
@@ -4236,6 +4355,7 @@ function renderAspects() {
     btn.addEventListener('click', () => {
       state.aspect = a.label;
       state.createMatchSource = false;
+      state.createMatchNative = false;
       state.customDims = false;
       computeDims();
       renderAspects();
@@ -4249,7 +4369,7 @@ function renderDims() {
   $('#wInput').value = state.width;
   $('#hInput').value = state.height;
   $('#resSummary').textContent = state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
-    ? `Match image · ${state.width} × ${state.height}`
+    ? `${state.createMatchNative ? 'Native image' : 'Match image'} · ${state.width} × ${state.height}`
     : (state.customDims
       ? `custom · ${state.width} × ${state.height}`
       : `${state.aspect} · ${state.width} × ${state.height}`);
@@ -4436,6 +4556,7 @@ for (const id of ['#editWInput', '#editHInput']) {
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
   state.mp = Number(b.dataset.mp);
   state.createMatchSource = false;
+  state.createMatchNative = false;
   state.customDims = false;
   computeDims();
   renderAspects();
@@ -4445,6 +4566,7 @@ $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
 for (const id of ['#wInput', '#hInput']) {
   $(id).addEventListener('change', () => {
     state.createMatchSource = false;
+    state.createMatchNative = false;
     state.customDims = true;
     state.width = round32(Number($('#wInput').value) || 1024);
     state.height = round32(Number($('#hInput').value) || 1024);
@@ -6323,37 +6445,76 @@ $('#driveTrimPlay').addEventListener('click', () => {
   }
 });
 
-/* Extract the first frame of the (trimmed) motion video -> Edit tab ref */
-$('#vidDriveFrameChip').addEventListener('click', async () => {
+/* Extract the first frame of the trimmed motion video once, then route it to
+   Edit, image-to-image, or depth guidance without asking for another upload. */
+async function extractDriveFirstFrame() {
   const d = state.vidDrive;
-  if (!d) return;
+  if (!d) throw new Error('Add a motion video first');
+  const trimStart = Number(d.trimStart) || 0;
+  if (d.firstFrame && Math.abs(Number(d.firstFrame.trimStart) - trimStart) < 0.001) return d.firstFrame;
+  toast('Extracting first frame…');
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.src = d.url;
+  await new Promise((resolve, reject) => {
+    video.onloadedmetadata = resolve;
+    video.onerror = () => reject(new Error('Could not read the video'));
+  });
+  const time = Math.max(0, Math.min(trimStart + 0.001, (video.duration || 1) - 0.05));
+  await new Promise((resolve) => { video.onseeked = resolve; video.currentTime = time; });
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth || 1;
+  canvas.height = video.videoHeight || 1;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const blob = await new Promise((resolve, reject) => canvas.toBlob(
+    (value) => value ? resolve(value) : reject(new Error('Frame capture failed')),
+    'image/png',
+  ));
+  const response = await api('/api/upload', {
+    method: 'POST',
+    headers: { 'x-filename': encodeURIComponent('motion_first_frame.png') },
+    body: await blob.arrayBuffer(),
+  });
+  if (d.firstFrame?.url) try { URL.revokeObjectURL(d.firstFrame.url); } catch { /* noop */ }
+  d.firstFrame = {
+    name: response.name,
+    url: URL.createObjectURL(blob),
+    w: canvas.width,
+    h: canvas.height,
+    label: 'Motion video first frame',
+    trimStart,
+  };
+  return d.firstFrame;
+}
+
+async function useDriveFirstFrame(destination) {
   try {
-    toast('Extracting frame…');
-    const v = document.createElement('video');
-    v.muted = true;
-    v.playsInline = true;
-    v.preload = 'auto';
-    v.src = d.url;
-    await new Promise((ok, bad) => { v.onloadedmetadata = ok; v.onerror = () => bad(new Error('Could not read the video')); });
-    const t = Math.max(0, Math.min((d.trimStart || 0) + 0.001, (v.duration || 1) - 0.05));
-    await new Promise((ok) => { v.onseeked = ok; v.currentTime = t; });
-    const c = document.createElement('canvas');
-    c.width = v.videoWidth || 1;
-    c.height = v.videoHeight || 1;
-    c.getContext('2d').drawImage(v, 0, 0);
-    const blob = await new Promise((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error('Frame capture failed'))), 'image/png'));
-    const buf = await blob.arrayBuffer();
-    const res = await api('/api/upload', {
-      method: 'POST',
-      headers: { 'x-filename': encodeURIComponent('drive_frame.png') },
-      body: buf,
-    });
-    const slot = state.refs.findIndex((r) => !r);
-    state.refs[slot === -1 ? 0 : slot] = { name: res.name, url: URL.createObjectURL(blob) };
-    renderRefs();
-    setView('edit');
-    toast('First frame added to the Edit tab as a reference');
-  } catch (e) { toast(e.message, true); }
+    const frame = await extractDriveFirstFrame();
+    if (destination === 'edit') {
+      const slot = state.refs.findIndex((ref) => !ref);
+      state.refs[slot === -1 ? 0 : slot] = Object.assign({}, frame);
+      renderRefs();
+      setView('edit');
+      toast('First frame added to Edit');
+      return;
+    }
+    await setCreateImageGuideAsset(frame, destination === 'depth' ? 'depth' : 'image');
+    toast(destination === 'depth'
+      ? 'First frame added as a depth guide'
+      : 'First frame added as an image guide');
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+$('#vidDriveFrameChip').addEventListener('click', () => {
+  openActionMenu($('#vidDriveFrameChip'), [
+    { label: 'Edit image', detail: 'Add as an Edit reference', icon: 'edit', tone: 'edit', action: () => useDriveFirstFrame('edit') },
+    { label: 'Image guide', detail: 'Start an image-to-image generation', icon: 'first-frame', tone: 'reuse', action: () => useDriveFirstFrame('image') },
+    { label: 'Depth guide', detail: 'Preserve camera and scene structure', icon: 'depth', tone: 'reuse', action: () => useDriveFirstFrame('depth') },
+  ], { menuTitle: 'Use first frame', tone: 'image' });
 });
 $('#vidQuality').addEventListener('click', () => $('#vidQuality').classList.toggle('active'));
 $('#animQuality').addEventListener('click', () => $('#animQuality').classList.toggle('active'));
@@ -6500,6 +6661,7 @@ $('#generateBtn').addEventListener('click', async () => {
     return toast('Sequential edits need at least two sentences', true);
   }
   const createImageGuide = mode === 't2i' && state.createMode === 'image' ? state.createRef : null;
+  const createImageGuideName = createImageGuide ? createGuideInput(createImageGuide).name : undefined;
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
   let maskImageName = '';
@@ -6549,7 +6711,7 @@ $('#generateBtn').addEventListener('click', async () => {
     refImages: mode === 'edit'
       ? state.refs.slice(0, state.editEngine === 'krea2' ? 1 : 3).filter(Boolean).map((r) => r.name)
       : [],
-    imageName: createImageGuide ? createImageGuide.name : undefined,
+    imageName: createImageGuideName,
     imageGuideMode: createImageGuide ? state.createGuideMode : undefined,
     depthStrength: createImageGuide && state.createGuideMode === 'depth'
       ? Number((state.createDepthStrength / 100).toFixed(2)) : undefined,
@@ -10170,6 +10332,7 @@ async function reuseItem(it, useEnhanced) {
   if (!restoringEdit) {
     state.createRef = null;
     state.createMatchSource = false;
+    state.createMatchNative = false;
     state.createGuideMode = it.imageGuideMode === 'depth' ? 'depth' : 'image';
     state.createInfluence = createInfluenceFromDenoise(it.denoise);
     state.createDepthStrength = Math.max(5, Math.min(200, Math.round((Number(it.depthStrength) || 1) * 100)));
