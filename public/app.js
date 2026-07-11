@@ -8611,21 +8611,112 @@ document.addEventListener('visibilitychange', () => {
 
 let galleryTap = null;
 let lightboxTap = null;
+let lightboxVideoTap = null;
+let lightboxVideoPointer = null;
+let suppressLightboxVideoClick = false;
 let lightboxSwipeSuppressTap = false;
+let likeAnimationDataPromise = null;
+let likeAnimationRuntimePromise = null;
 
-function playLikeBurst(target, mode = 'like') {
-  if (!target) return;
-  const burst = target.id === 'lightboxLikeBurst'
-    ? target : document.createElement('div');
-  burst.className = 'like-burst';
-  burst.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/></svg>';
-  if (burst !== target) target.appendChild(burst);
+function loadLikeAnimationData() {
+  if (!likeAnimationDataPromise) {
+    likeAnimationDataPromise = fetch('/like.json')
+      .then((response) => response.ok ? response.json() : null)
+      .catch(() => null);
+  }
+  return likeAnimationDataPromise;
+}
+
+function loadLikeAnimationRuntime() {
+  if (window.lottie) return Promise.resolve(window.lottie);
+  if (!likeAnimationRuntimePromise) {
+    likeAnimationRuntimePromise = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = '/lottie_light.min.js';
+      script.async = true;
+      script.onload = () => resolve(window.lottie || null);
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+  }
+  return likeAnimationRuntimePromise;
+}
+
+function warmLikeAnimation() {
+  loadLikeAnimationData();
+  loadLikeAnimationRuntime();
+}
+if ('requestIdleCallback' in window) window.requestIdleCallback(warmLikeAnimation, { timeout: 3000 });
+else setTimeout(warmLikeAnimation, 1200);
+
+function cloneLikeAnimationData(data) {
+  if (!data) return null;
+  return typeof structuredClone === 'function'
+    ? structuredClone(data)
+    : JSON.parse(JSON.stringify(data));
+}
+
+function playCssLikeBurst(burst, target, mode) {
+  burst.innerHTML = `<span class="like-burst-ring"></span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/></svg>
+    <span class="like-burst-particle" style="--x:0px;--y:-76px;--delay:0ms"></span>
+    <span class="like-burst-particle" style="--x:54px;--y:-54px;--delay:18ms"></span>
+    <span class="like-burst-particle" style="--x:76px;--y:0px;--delay:36ms"></span>
+    <span class="like-burst-particle" style="--x:54px;--y:54px;--delay:54ms"></span>
+    <span class="like-burst-particle" style="--x:0px;--y:76px;--delay:72ms"></span>
+    <span class="like-burst-particle" style="--x:-54px;--y:54px;--delay:90ms"></span>
+    <span class="like-burst-particle" style="--x:-76px;--y:0px;--delay:108ms"></span>
+    <span class="like-burst-particle" style="--x:-54px;--y:-54px;--delay:126ms"></span>`;
   burst.classList.remove('pop', 'unlike');
   requestAnimationFrame(() => burst.classList.add(mode === 'like' ? 'pop' : 'unlike'));
   setTimeout(() => {
     burst.classList.remove('pop', 'unlike');
     if (burst !== target) burst.remove();
-  }, mode === 'like' ? 760 : 580);
+  }, mode === 'like' ? 900 : 580);
+}
+
+function playLikeBurst(target, mode = 'like') {
+  if (!target) return;
+  const burst = target.id === 'lightboxLikeBurst'
+    ? target : document.createElement('div');
+  if (burst._lottieAnimation) {
+    burst._lottieAnimation.destroy();
+    burst._lottieAnimation = null;
+  }
+  burst.className = 'like-burst';
+  if (burst !== target) target.appendChild(burst);
+  if (mode !== 'like') {
+    playCssLikeBurst(burst, target, mode);
+    return;
+  }
+  burst.innerHTML = '<div class="like-burst-lottie" aria-hidden="true"></div>';
+  const host = burst.firstElementChild;
+  Promise.all([loadLikeAnimationRuntime(), loadLikeAnimationData()]).then(([lottie, data]) => {
+    if (!lottie || !data || !host.isConnected) {
+      if (host.isConnected) playCssLikeBurst(burst, target, mode);
+      return;
+    }
+    const animation = lottie.loadAnimation({
+      container: host,
+      renderer: 'svg',
+      loop: false,
+      autoplay: true,
+      animationData: cloneLikeAnimationData(data),
+      rendererSettings: { progressiveLoad: true },
+    });
+    burst._lottieAnimation = animation;
+    burst.classList.add('lottie-playing');
+    const finish = () => {
+      if (burst._lottieAnimation !== animation) return;
+      animation.destroy();
+      burst._lottieAnimation = null;
+      burst.classList.remove('lottie-playing');
+      if (burst !== target) burst.remove();
+      else burst.innerHTML = '';
+    };
+    animation.addEventListener('complete', finish);
+    setTimeout(finish, 1200);
+  });
 }
 
 function syncLightboxLikeButton(liked, label) {
@@ -8651,7 +8742,7 @@ async function setItemLiked(item, liked, burstTarget) {
   playLikeBurst(burstTarget, liked ? 'like' : 'unlike');
   // Leave the original card mounted until the heart motion has painted.
   // Rendering immediately used to remove the grid burst before it was visible.
-  setTimeout(renderGrid, liked ? 720 : 520);
+  setTimeout(renderGrid, liked ? 860 : 520);
   try {
     const updated = await Promise.all(targets.map((target) => api(`/api/item/${target.id}/like`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ liked }),
@@ -8681,7 +8772,8 @@ async function setVideoLiked(item, video, liked, burstTarget) {
       body: JSON.stringify({ liked }),
     });
     Object.assign(item, updated);
-    if (state.currentItem && state.currentItem.id === item.id) openLightbox(item.id, video.id);
+    // Keep the focused player and its current playback position intact. The
+    // action heart is already synchronized optimistically above.
   } catch (error) {
     video.liked = previous;
     syncLightboxLikeButton(previous, previous ? 'Unlike video' : 'Like video');
@@ -8689,7 +8781,7 @@ async function setVideoLiked(item, video, liked, burstTarget) {
   } finally {
     video._likePending = false;
   }
-  setTimeout(renderGrid, liked ? 720 : 520);
+  setTimeout(renderGrid, liked ? 860 : 520);
 }
 
 function toggleItemLike(item, burstTarget) {
@@ -8738,12 +8830,49 @@ function handleLightboxTap() {
   }, 320);
 }
 
-function syncLightboxVideoPlaybackUi() {
-  const video = $('#lbVideo');
-  const play = $('#lbVideoPlay');
-  const visible = !video.hidden && video.paused;
-  play.hidden = !visible;
-  play.setAttribute('aria-label', video.ended ? 'Replay video' : 'Play video');
+function lightboxVideoTapUsesControls(event) {
+  const rect = $('#lbVideo').getBoundingClientRect();
+  return event.clientY >= rect.bottom - 76;
+}
+
+function handleLightboxVideoPointerDown(event) {
+  if (!event.isPrimary || lightboxVideoTapUsesControls(event)) {
+    lightboxVideoPointer = null;
+    return;
+  }
+  lightboxVideoPointer = {
+    id: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    time: performance.now(),
+  };
+}
+
+function handleLightboxVideoPointerUp(event) {
+  const start = lightboxVideoPointer;
+  lightboxVideoPointer = null;
+  if (!start || start.id !== event.pointerId || lightboxSwipeSuppressTap || lightboxVideoTapUsesControls(event)) return;
+  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 18
+    || performance.now() - start.time > 420) return;
+  const item = state.currentItem;
+  const video = item && state.currentMedia && state.currentMedia.type === 'video'
+    ? (item.videos || []).find((entry) => entry.id === state.currentMedia.id)
+    : null;
+  if (!video) return;
+  const now = performance.now();
+  const repeated = lightboxVideoTap
+    && lightboxVideoTap.itemId === item.id
+    && lightboxVideoTap.videoId === video.id
+    && now - lightboxVideoTap.time < 330
+    && Math.hypot(event.clientX - lightboxVideoTap.x, event.clientY - lightboxVideoTap.y) < 42;
+  if (repeated) {
+    lightboxVideoTap = null;
+    suppressLightboxVideoClick = true;
+    event.preventDefault();
+    setVideoLiked(item, video, !video.liked, $('#lightboxLikeBurst'));
+    return;
+  }
+  lightboxVideoTap = { itemId: item.id, videoId: video.id, time: now, x: event.clientX, y: event.clientY };
 }
 
 function updateLibrarySearch() {
@@ -9200,11 +9329,9 @@ function openLightbox(id, mediaSel) {
     vid.src = '/videos/' + selVideo.file;
     vid.poster = '/images/' + it.file;
     vid.load();
-    syncLightboxVideoPlaybackUi();
   } else {
     try { vid.pause(); } catch { /* noop */ }
     vid.hidden = true;
-    $('#lbVideoPlay').hidden = true;
     vid.removeAttribute('src');
     $('#lbImg').hidden = false;
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
@@ -9637,17 +9764,15 @@ $('#likesFilter').addEventListener('click', () => {
   renderGrid();
 });
 $('#lbImg').addEventListener('click', handleLightboxTap);
-$('#lbVideoPlay').addEventListener('pointerdown', (event) => event.stopPropagation());
-$('#lbVideoPlay').addEventListener('click', (event) => {
-  event.stopPropagation();
-  const video = $('#lbVideo');
-  if (video.ended) video.currentTime = 0;
-  video.play().catch(() => syncLightboxVideoPlaybackUi());
-});
-$('#lbVideo').addEventListener('play', syncLightboxVideoPlaybackUi);
-$('#lbVideo').addEventListener('pause', syncLightboxVideoPlaybackUi);
-$('#lbVideo').addEventListener('ended', syncLightboxVideoPlaybackUi);
-$('#lbVideo').addEventListener('loadedmetadata', syncLightboxVideoPlaybackUi);
+$('#lbVideo').addEventListener('pointerdown', handleLightboxVideoPointerDown);
+$('#lbVideo').addEventListener('pointerup', handleLightboxVideoPointerUp);
+$('#lbVideo').addEventListener('pointercancel', () => { lightboxVideoPointer = null; });
+$('#lbVideo').addEventListener('click', (event) => {
+  if (!suppressLightboxVideoClick) return;
+  suppressLightboxVideoClick = false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
 state.sortMode = 'new';
 function closeGallerySort() {
   $('#gallerySort').classList.remove('open');

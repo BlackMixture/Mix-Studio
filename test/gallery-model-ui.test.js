@@ -50,15 +50,13 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(css, /\.card \.gallery-card-video/);
 });
 
-test('focused videos expose native controls and an immediate single-tap play affordance', () => {
+test('focused videos leave playback entirely to native controls', () => {
   assert.match(html, /id="lbVideo" controls playsinline loop/);
-  assert.match(html, /id="lbVideoPlay"[^>]*aria-label="Play video"/);
+  assert.doesNotMatch(html, /id="lbVideoPlay"/);
   assert.match(app, /vid\.controls = true/);
   assert.match(app, /vid\.preload = 'metadata'/);
-  assert.match(app, /function syncLightboxVideoPlaybackUi\(\)/);
-  assert.match(app, /\$\('#lbVideoPlay'\)\.addEventListener\('click'/);
   assert.doesNotMatch(app, /\$\('#lbVideo'\)\.addEventListener\('click', handleLightboxTap\)/);
-  assert.match(css, /\.lightbox-video-play \{/);
+  assert.doesNotMatch(css, /\.lightbox-video-play/);
 });
 
 test('gallery performance controls can disable video previews and build an idle compressed cache', () => {
