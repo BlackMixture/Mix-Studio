@@ -212,6 +212,12 @@ test('image-to-image generations retain their reference for hold-preview and a g
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(app, /it\.mode === 'edit' \|\| it\.mode === 't2i'/);
   assert.match(app, /Hold: reference/);
+  assert.match(html, /id="lbReferenceImg"/);
+  assert.match(app, /referencePreview\.decode\?\.\(\)/);
+  assert.match(app, /hb\.classList\.add\('pressed'\)/);
+  assert.match(app, /hb\.setAttribute\('aria-pressed', 'true'\)/);
+  assert.match(css, /\.lightbox-reference-preview\.active \{ opacity: 1; \}/);
+  assert.match(css, /\.action-btn\.hold-preview-action\.pressed/);
   assert.match(app, /Save reference \+ generation/);
   assert.match(app, /saveImageComposite\(it, isEditSource \? 'before-after' : 'reference-generation'\)/);
   assert.match(app, /function existingImageComposite\(item, type\)/);
@@ -274,7 +280,8 @@ test('gallery media supports profile-scoped likes by double tap and a likes-only
   assert.match(app, /script\.src = '\/lottie_light\.min\.js'/);
   assert.match(app, /window\.requestIdleCallback\(warmLikeAnimation/);
   assert.match(app, /const animation = lottie\.loadAnimation/);
-  assert.match(app, /animationData: cloneLikeAnimationData\(data\)/);
+  assert.match(app, /animationData: whiteLikeAnimationData\(data\)/);
+  assert.match(app, /return recolorStaticLottie\(data, \[1, 1, 1, 1\], \[1, 1, 1, 1\]\)/);
   assert.match(app, /function setItemLiked\(item, liked, burstTarget\)/);
   assert.match(app, /playLikeBurst\(burstTarget, liked \? 'like' : 'unlike'\)/);
   assert.match(app, /setTimeout\(renderGrid, liked \? 860 : 520\)/);

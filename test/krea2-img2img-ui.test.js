@@ -49,7 +49,7 @@ test('Create Image uploads, persists, and submits the guide with inverse denoise
 test('Resolution can match an uploaded image guide and reports the derived dimensions', () => {
   assert.match(app, /createMatchSource: false/);
   assert.match(app, /createMatchNative: false/);
-  assert.match(app, /function generationSafeCreateDimensions\(ref = state\.createRef, megapixels = 1\)/);
+  assert.match(app, /function generationSafeCreateDimensions\(ref = state\.createRef, megapixels = state\.mp\)/);
   assert.match(app, /Math\.max\(0\.5, Math\.min\(2, Number\(megapixels\) \|\| 1\)\) \* 1e6/);
   assert.match(app, /if \(maxSide > 2048\)/);
   assert.match(app, /function nativeCreateOutputDimensions\(ref = state\.createRef\)/);
@@ -58,10 +58,15 @@ test('Resolution can match an uploaded image guide and reports the derived dimen
   assert.match(app, /function prepareCreateImageGuideAsset\(asset\)/);
   assert.match(app, /safeName: response\.name, safeW: safe\.w, safeH: safe\.h/);
   assert.match(app, /source\.className = 'aspect-chip create-match-aspect'/);
-  assert.match(app, /\$\{state\.createMatchNative \? 'Native image' : 'Match image'\} · \$\{state\.width\} × \$\{state\.height\}/);
+  assert.match(app, /function derivedAspectLabel\(width, height\)/);
+  assert.match(app, /function createSizeLabel\(megapixels = state\.mp\)/);
+  assert.match(app, /state\.createMatchNative \? 'Native image' : `Match image \$\{createSizeLabel\(\)\}`/);
   assert.match(app, /Native image/);
   assert.match(app, /Depth control · matched to source aspect/);
   assert.match(app, /state\.createMatchSource = false;\s*state\.createMatchNative = false;\s*state\.customDims = false;/);
+  assert.match(app, /const keepImageMatch = state\.createMatchSource && !!state\.createRef/);
+  assert.match(app, /if \(keepImageMatch\) \{\s*applyCreateMatchedDimensions\(\)/);
+  assert.match(app, /generationSafeCreateDimensions\(asset, 1\.75\)/);
 });
 
 test('Krea 2 generation routes image guides through the encoded latent builder', () => {

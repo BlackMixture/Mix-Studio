@@ -1824,7 +1824,7 @@ function createInfluenceFromDenoise(denoise) {
   return Math.round(((1 - value) / 0.95) * 20) * 5;
 }
 
-function generationSafeCreateDimensions(ref = state.createRef, megapixels = 1) {
+function generationSafeCreateDimensions(ref = state.createRef, megapixels = state.mp) {
   const sourceWidth = Number(ref?.w);
   const sourceHeight = Number(ref?.h);
   if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight) || sourceWidth < 1 || sourceHeight < 1) return null;
@@ -1845,6 +1845,29 @@ function generationSafeCreateDimensions(ref = state.createRef, megapixels = 1) {
     + Math.abs((candidate.w * candidate.h) - pixels) / pixels * 0.05
   );
   return score(widthFirst) <= score(heightFirst) ? widthFirst : heightFirst;
+}
+
+function derivedAspectLabel(width, height) {
+  const ratio = Number(width) / Number(height);
+  if (!Number.isFinite(ratio) || ratio <= 0) return 'Custom';
+  const standard = ASPECTS.reduce((best, aspect) => {
+    const error = Math.abs(aspect.ar - ratio) / ratio;
+    return !best || error < best.error ? { label: aspect.label, error } : best;
+  }, null);
+  if (standard && standard.error <= 0.025) return standard.label;
+  let best = { w: Math.max(1, Math.round(ratio)), h: 1, error: Infinity };
+  for (let denominator = 1; denominator <= 20; denominator += 1) {
+    const numerator = Math.max(1, Math.round(ratio * denominator));
+    const error = Math.abs((numerator / denominator) - ratio);
+    if (error < best.error) best = { w: numerator, h: denominator, error };
+  }
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const divisor = gcd(best.w, best.h);
+  return `${best.w / divisor}:${best.h / divisor}`;
+}
+
+function createSizeLabel(megapixels = state.mp) {
+  return Number(megapixels) === 0.75 ? 'S' : (Number(megapixels) === 1.75 ? 'L' : 'M');
 }
 
 function nativeCreateOutputDimensions(ref = state.createRef) {
@@ -1882,6 +1905,7 @@ function applyCreateMatchedDimensions(options = {}) {
   state.customDims = true;
   state.width = matched.w;
   state.height = matched.h;
+  state.aspect = derivedAspectLabel(state.createRef.w, state.createRef.h);
   return true;
 }
 
@@ -1908,7 +1932,9 @@ async function resizedCreateGuideBlob(asset, dimensions) {
 
 async function prepareCreateImageGuideAsset(asset) {
   if (!asset) return null;
-  const safe = generationSafeCreateDimensions(asset);
+  // Keep one optimized copy large enough for every S/M/L output. The active
+  // generation still uses the user's selected size.
+  const safe = generationSafeCreateDimensions(asset, 1.75);
   if (!safe) return asset;
   const sourcePixels = Number(asset.w) * Number(asset.h);
   const safePixels = safe.w * safe.h;
@@ -4323,7 +4349,8 @@ function renderAspects() {
     const maxSide = 22;
     const w = ratio >= 1 ? maxSide : Math.max(7, Math.round(maxSide * ratio));
     const h = ratio >= 1 ? Math.max(7, Math.round(maxSide / ratio)) : maxSide;
-    source.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Match image<small>${safeMatch.w} × ${safeMatch.h}</small>`;
+    const derivedAspect = derivedAspectLabel(state.createRef.w, state.createRef.h);
+    source.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Match image<small>${derivedAspect} · ${createSizeLabel()} · ${safeMatch.w} × ${safeMatch.h}</small>`;
     source.addEventListener('click', () => {
       applyCreateMatchedDimensions();
       renderAspects();
@@ -4336,7 +4363,7 @@ function renderAspects() {
     native.type = 'button';
     native.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && state.createMatchNative && state.customDims ? ' active' : '');
     native.setAttribute('aria-label', `Use native image size at ${nativeMatch.w} by ${nativeMatch.h}`);
-    native.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Native<small>${nativeMatch.w} × ${nativeMatch.h}</small>`;
+    native.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Native<small>${derivedAspect} · ${nativeMatch.w} × ${nativeMatch.h}</small>`;
     native.addEventListener('click', () => {
       applyCreateMatchedDimensions({ native: true });
       renderAspects();
@@ -4369,7 +4396,7 @@ function renderDims() {
   $('#wInput').value = state.width;
   $('#hInput').value = state.height;
   $('#resSummary').textContent = state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
-    ? `${state.createMatchNative ? 'Native image' : 'Match image'} · ${state.width} × ${state.height}`
+    ? `${state.aspect} · ${state.createMatchNative ? 'Native image' : `Match image ${createSizeLabel()}`} · ${state.width} × ${state.height}`
     : (state.customDims
       ? `custom · ${state.width} × ${state.height}`
       : `${state.aspect} · ${state.width} × ${state.height}`);
@@ -4383,7 +4410,8 @@ function renderDims() {
     icon.style.width = `${w}px`;
     icon.style.height = `${h}px`;
   }
-  $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp && !state.customDims));
+  $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp
+    && (!state.customDims || (state.createMatchSource && !state.createMatchNative))));
   syncRegionStageAspect();
   renderRegionResolutionPicker();
 }
@@ -4554,11 +4582,16 @@ for (const id of ['#editWInput', '#editHInput']) {
   });
 }
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
+  const keepImageMatch = state.createMatchSource && !!state.createRef;
   state.mp = Number(b.dataset.mp);
-  state.createMatchSource = false;
-  state.createMatchNative = false;
-  state.customDims = false;
-  computeDims();
+  if (keepImageMatch) {
+    applyCreateMatchedDimensions();
+  } else {
+    state.createMatchSource = false;
+    state.createMatchNative = false;
+    state.customDims = false;
+    computeDims();
+  }
   renderAspects();
   renderDims();
   saveForm();
@@ -5988,7 +6021,11 @@ $('#livePreview').addEventListener('pointerup', (event) => {
   }
 });
 $('#livePreview').addEventListener('pointercancel', settleLivePreviewSwipe);
-$('#livePreviewImg').addEventListener('error', () => $('#livePreviewImg').removeAttribute('src'));
+$('#livePreviewImg').addEventListener('error', () => {
+  $('#livePreviewImg').removeAttribute('src');
+  $('#livePreviewImg').hidden = true;
+  if (state.activeJobs.size) startLivePreviewSimulation();
+});
 $('#denoiseInput').addEventListener('input', () => {
   $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
 });
@@ -6765,7 +6802,7 @@ function setGenerating(on, statusText) {
     $('#liveStatusText').onclick = null;
     renderDesktopStageGenerating(statusText || 'Working…');
     $('#livePreview').classList.add('show');
-    $('#livePreviewImg').removeAttribute('src');
+    startLivePreviewSimulation(state.view === 'video' ? 'video' : 'image');
     $('#liveStatusText').innerHTML = `<span class="spin"></span> ${statusText || 'Working…'}`;
     $('#livePct').textContent = '';
     $('#genFill').style.width = '0%';
@@ -7190,7 +7227,8 @@ function connectEvents() {
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);
     if (state.activeJobs.size && (!d.jobId || state.activeJobs.has(d.jobId))) {
-      $('#livePreviewImg').src = d.dataUrl;
+      // The compact progress card uses a stable simulation; real sampler
+      // frames remain useful in the larger desktop stage.
       setDesktopStageMedia({ image: d.dataUrl });
     }
   });
@@ -7200,7 +7238,6 @@ function connectEvents() {
       state.activeJobs.delete(d.jobId);
       state.activeJobs.add(d.nextJobId);
       setGenerating(true, `Sequential edit ${d.nextStep} of ${d.total}…`);
-      if (d.items && d.items[0]) $('#livePreviewImg').src = '/images/' + d.items[0].file;
     }
     toast(`Step ${d.completedStep} complete · running ${d.nextStep} of ${d.total}`);
     refreshGallery(true);
@@ -7214,7 +7251,7 @@ function connectEvents() {
       setGenerating(false);
       if (d.items && d.items.length) {
         const completedItem = d.items[0];
-        $('#livePreviewImg').src = '/images/' + completedItem.file;
+        showLivePreviewImage('/images/' + completedItem.file);
         $('#liveStatusText').textContent = 'Done — tap to view';
         $('#livePct').textContent = '';
         const open = () => {
@@ -7246,7 +7283,7 @@ function connectEvents() {
       state.activeJobs.delete(d.jobId);
       setGenerating(false);
     }
-    $('#livePreviewImg').src = '/images/' + d.composite.file;
+    showLivePreviewImage('/images/' + d.composite.file);
     $('#liveStatusText').textContent = `${d.composite.label || 'Composite'} saved — tap to view`;
     $('#livePct').textContent = '';
     const open = () => {
@@ -7270,7 +7307,7 @@ function connectEvents() {
       // Video-tab job: show result in the dock thumbnail
       state.activeJobs.delete(d.jobId);
       setGenerating(false);
-      $('#livePreviewImg').src = '/images/' + d.item.file;
+      showLivePreviewImage('/images/' + d.item.file);
       $('#liveStatusText').textContent = 'Video ready — tap to view';
       $('#livePct').textContent = '';
       const open = () => { refreshGallery().then(() => openLightbox(d.item.id, newest)); };
@@ -7299,6 +7336,7 @@ function connectEvents() {
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
       setGenerating(false);
+      if (!state.activeJobs.size) stopLivePreviewSimulation();
     }
     renderGrid();
     if (d.items && d.items.length) refreshGallery(true);
@@ -8807,6 +8845,8 @@ function loadLikeAnimationRuntime() {
 function warmLikeAnimation() {
   loadLikeAnimationData();
   loadLikeAnimationRuntime();
+  loadProgressAnimationData('image');
+  loadProgressAnimationData('video');
 }
 if ('requestIdleCallback' in window) window.requestIdleCallback(warmLikeAnimation, { timeout: 3000 });
 else setTimeout(warmLikeAnimation, 1200);
@@ -8816,6 +8856,84 @@ function cloneLikeAnimationData(data) {
   return typeof structuredClone === 'function'
     ? structuredClone(data)
     : JSON.parse(JSON.stringify(data));
+}
+
+function recolorStaticLottie(data, darkColor, lightColor) {
+  const cloned = cloneLikeAnimationData(data);
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (value.c && value.c.k && Array.isArray(value.c.k)
+      && value.c.k.length >= 3 && value.c.k.slice(0, 3).every(Number.isFinite)) {
+      const luminance = (value.c.k[0] + value.c.k[1] + value.c.k[2]) / 3;
+      value.c.k = (luminance < 0.5 ? darkColor : lightColor).slice();
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(cloned);
+  return cloned;
+}
+
+function whiteLikeAnimationData(data) {
+  return recolorStaticLottie(data, [1, 1, 1, 1], [1, 1, 1, 1]);
+}
+
+const progressAnimationData = new Map();
+let livePreviewAnimation = null;
+let livePreviewAnimationToken = 0;
+
+function loadProgressAnimationData(kind) {
+  if (!progressAnimationData.has(kind)) {
+    const path = kind === 'video' ? '/progress-video.json' : '/progress-image.json';
+    progressAnimationData.set(kind, fetch(path)
+      .then((response) => response.ok ? response.json() : null)
+      .catch(() => null));
+  }
+  return progressAnimationData.get(kind);
+}
+
+function stopLivePreviewSimulation() {
+  livePreviewAnimationToken += 1;
+  if (livePreviewAnimation) livePreviewAnimation.destroy();
+  livePreviewAnimation = null;
+  const host = $('#livePreviewLottie');
+  if (host) {
+    host.replaceChildren();
+    host.hidden = true;
+  }
+}
+
+async function startLivePreviewSimulation(kind = state.view === 'video' ? 'video' : 'image') {
+  const token = ++livePreviewAnimationToken;
+  if (livePreviewAnimation) livePreviewAnimation.destroy();
+  livePreviewAnimation = null;
+  const host = $('#livePreviewLottie');
+  const image = $('#livePreviewImg');
+  image.hidden = true;
+  image.removeAttribute('src');
+  host.hidden = false;
+  host.dataset.kind = kind;
+  host.replaceChildren();
+  const [lottie, data] = await Promise.all([loadLikeAnimationRuntime(), loadProgressAnimationData(kind)]);
+  if (token !== livePreviewAnimationToken || !lottie || !data || !host.isConnected) return;
+  const dark = kind === 'video' ? [0.62, 0.35, 1, 1] : [0.25, 0.62, 1, 1];
+  const light = kind === 'video' ? [1, 0.32, 0.45, 1] : [0.83, 0.94, 1, 1];
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  livePreviewAnimation = lottie.loadAnimation({
+    container: host,
+    renderer: 'svg',
+    loop: !reduced,
+    autoplay: !reduced,
+    animationData: recolorStaticLottie(data, dark, light),
+    rendererSettings: { progressiveLoad: true },
+  });
+  if (reduced) livePreviewAnimation.goToAndStop(0, true);
+}
+
+function showLivePreviewImage(source) {
+  stopLivePreviewSimulation();
+  const image = $('#livePreviewImg');
+  image.hidden = false;
+  image.src = source;
 }
 
 function playCssLikeBurst(burst, target, mode) {
@@ -8863,7 +8981,7 @@ function playLikeBurst(target, mode = 'like') {
       renderer: 'svg',
       loop: false,
       autoplay: true,
-      animationData: cloneLikeAnimationData(data),
+      animationData: whiteLikeAnimationData(data),
       rendererSettings: { progressiveLoad: true },
     });
     burst._lottieAnimation = animation;
@@ -9483,6 +9601,10 @@ function openLightbox(id, mediaSel) {
   $('#lightbox').classList.add('show');
 
   const vid = $('#lbVideo');
+  const referencePreview = $('#lbReferenceImg');
+  referencePreview.classList.remove('active');
+  referencePreview.hidden = true;
+  referencePreview.removeAttribute('src');
   if (selVideo) {
     $('#lbImg').hidden = true;
     vid.hidden = false;
@@ -9685,11 +9807,29 @@ function openLightbox(id, mediaSel) {
   }
   // Reference-backed generations: hold to flash the retained source image.
   if (sourceReference) {
-    const hb = mk(isEditSource ? '👁 Hold: original' : '👁 Hold: reference', '', () => {});
+    referencePreview.src = '/images/' + it.sourceFile;
+    referencePreview.hidden = false;
+    referencePreview.decode?.().catch(() => { /* decoding continues when held */ });
+    const holdLabel = isEditSource ? 'Hold: original' : 'Hold: reference';
+    const hb = mk(`${actionIconMarkup('original')}<span>${holdLabel}</span>`, 'hold-preview-action', () => {}, {
+      ariaLabel: holdLabel,
+      title: holdLabel,
+    });
+    hb.setAttribute('aria-pressed', 'false');
     hb.style.userSelect = 'none';
     hb.style.webkitUserSelect = 'none';
-    const show = (e) => { e.preventDefault(); $('#lbImg').src = '/images/' + it.sourceFile; };
-    const hide = () => { $('#lbImg').src = '/images/' + (it.upscaled || it.file); };
+    const show = (event) => {
+      event.preventDefault();
+      hb.classList.add('pressed');
+      hb.setAttribute('aria-pressed', 'true');
+      referencePreview.classList.add('active');
+      try { hb.setPointerCapture(event.pointerId); } catch { /* noop */ }
+    };
+    const hide = () => {
+      hb.classList.remove('pressed');
+      hb.setAttribute('aria-pressed', 'false');
+      referencePreview.classList.remove('active');
+    };
     hb.addEventListener('pointerdown', show);
     hb.addEventListener('pointerup', hide);
     hb.addEventListener('pointercancel', hide);
@@ -9850,6 +9990,9 @@ function closeLightbox(fromPop) {
   try { vid.pause(); } catch { /* noop */ }
   vid.removeAttribute('src');
   vid.load();
+  $('#lbReferenceImg').classList.remove('active');
+  $('#lbReferenceImg').hidden = true;
+  $('#lbReferenceImg').removeAttribute('src');
   state.currentItem = null;
   state.currentMedia = null;
   lightboxContinueEditId = null;

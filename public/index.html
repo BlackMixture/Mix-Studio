@@ -807,7 +807,10 @@
   <div class="generate-dock" id="genDock">
     <div class="generate-inner">
       <div class="live-preview" id="livePreview">
-        <img id="livePreviewImg" alt="" />
+        <div class="live-preview-media" id="livePreviewMedia">
+          <div class="live-preview-lottie" id="livePreviewLottie" aria-hidden="true"></div>
+          <img id="livePreviewImg" alt="" hidden />
+        </div>
         <div class="live-info">
           <span id="liveStatusText">Working…</span>
           <span id="livePct"></span>
@@ -891,6 +894,7 @@
   <div class="lightbox-img-wrap">
     <img id="lbImg" alt="" />
     <video id="lbVideo" controls playsinline loop hidden></video>
+    <img class="lightbox-reference-preview" id="lbReferenceImg" alt="Reference image preview" hidden />
     <img class="lightbox-swipe-preview" id="lbSwipePreview" alt="" aria-hidden="true" hidden />
     <div class="like-burst" id="lightboxLikeBurst" aria-hidden="true"></div>
     <button class="lb-float-btn" id="lbCompareBtn" hidden>⇋ Compare</button>

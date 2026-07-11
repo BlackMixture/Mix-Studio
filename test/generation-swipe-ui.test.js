@@ -24,11 +24,15 @@ test('swiping only hides progress and a new generation restores it', () => {
   assert.match(app, /function setGenerating\(on, statusText\) \{[\s\S]*if \(on\) \{\s*resetLivePreviewMotion\(\)/);
 });
 
-test('a simulated generation texture replaces blank previews and yields to real images', () => {
-  assert.match(css, /\.live-preview img:not\(\[src\]\) \{\s*animation: livePreviewSim/);
-  assert.match(css, /@keyframes livePreviewSim/);
-  assert.match(css, /prefers-reduced-motion: reduce/);
-  assert.match(app, /livePreviewImg'\)\.addEventListener\('error',[^\n]*removeAttribute\('src'\)/);
+test('image and video generations use stable Lottie simulations before yielding to real outputs', () => {
+  assert.match(app, /function startLivePreviewSimulation\(kind = state\.view === 'video' \? 'video' : 'image'\)/);
+  assert.match(app, /kind === 'video' \? '\/progress-video\.json' : '\/progress-image\.json'/);
+  assert.match(app, /loop: !reduced/);
+  assert.match(app, /function showLivePreviewImage\(source\)/);
+  assert.match(app, /startLivePreviewSimulation\(state\.view === 'video' \? 'video' : 'image'\)/);
+  assert.doesNotMatch(app, /\$\('#livePreviewImg'\)\.src = d\.dataUrl/);
+  assert.match(css, /\.live-preview-lottie\[data-kind="image"\]/);
+  assert.match(css, /\.live-preview-lottie\[data-kind="video"\]/);
 });
 
 test('sampler previews are scoped to their active ComfyUI prompt when metadata is available', () => {
