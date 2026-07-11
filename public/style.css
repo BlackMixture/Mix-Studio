@@ -1290,6 +1290,21 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   grid-column: 1 / -1;
   aspect-ratio: auto;
 }
+@media (max-width: 360px) {
+  .video-input-grid .media-input-card,
+  .video-input-grid .media-input-filled {
+    min-height: 0;
+  }
+  .video-input-grid .media-input-card {
+    gap: 5px;
+    padding: 8px;
+  }
+  .video-input-grid .media-input-copy b { font-size: 11.5px; }
+  .video-input-grid .media-input-copy small,
+  .video-input-grid .media-input-filled .attach-info span { display: none; }
+  .video-input-grid .media-input-art > svg { width: 24px; height: 24px; }
+  .video-input-grid .media-input-art > i { right: 6px; bottom: 5px; width: 18px; height: 18px; }
+}
 .video-frame-slot.media-input-filled::before {
   content: "⠿";
   position: absolute;

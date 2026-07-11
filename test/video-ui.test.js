@@ -18,6 +18,7 @@ test('Video frame and media inputs use visual source cards', () => {
   assert.match(css, /\.media-input-card \{[\s\S]*min-height: 132px/);
   assert.match(css, /\.video-input-grid \.media-input-card,[\s\S]*aspect-ratio: 4 \/ 3/);
   assert.match(css, /\.video-input-grid \.media-input-filled\.expanded \{[\s\S]*aspect-ratio: auto/);
+  assert.match(css, /@media \(max-width: 360px\) \{[\s\S]*\.video-input-grid \.media-input-card,[\s\S]*min-height: 0/);
   assert.match(css, /\.video-input-grid \.media-input-filled/);
   assert.match(html, /class="audio-input-icon"[^>]*preserveAspectRatio="xMidYMid meet"/);
   assert.match(css, /\.media-input-art > \.audio-input-icon \{[\s\S]*min-width: 32px;[\s\S]*min-height: 32px;/);

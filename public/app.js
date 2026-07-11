@@ -6257,8 +6257,8 @@ $('#generateBtn').addEventListener('click', async () => {
 
 function setGenerating(on, statusText) {
   if (on) {
-    renderDesktopStageGenerating(statusText || 'Working…');
     resetLivePreviewMotion();
+    renderDesktopStageGenerating(statusText || 'Working…');
     $('#livePreview').classList.add('show');
     $('#livePreviewImg').removeAttribute('src');
     $('#liveStatusText').innerHTML = `<span class="spin"></span> ${statusText || 'Working…'}`;
