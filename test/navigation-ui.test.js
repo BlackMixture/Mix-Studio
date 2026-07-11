@@ -220,7 +220,7 @@ test('image-to-image generations retain their reference for hold-preview and a g
   assert.match(server, /Reference \+ generation/);
   assert.match(server, /sourceFiles: Array\.isArray\(info\.sourceFiles\)/);
   assert.match(server, /existing: true, item: root, composite: existing/);
-  assert.match(server, /\['before-after', 'reference-generation'\]\.includes\(info\.type\)/);
+  assert.match(server, /\['before-after', 'reference-generation', 'depth-map'\]\.includes\(info\.type\)/);
 });
 
 test('gallery saves directly when only one image is available and is grouped by date', () => {

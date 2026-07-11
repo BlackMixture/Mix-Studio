@@ -326,6 +326,10 @@
             <button type="button" data-guide-mode="image" aria-pressed="true">Image</button>
             <button type="button" data-guide-mode="depth" aria-pressed="false">Depth</button>
           </div>
+          <button class="create-depth-preview-btn" id="createDepthPreviewBtn" type="button" hidden>
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20V2Z"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <span id="createDepthPreviewLbl">Preview depth map</span>
+          </button>
           <label class="create-image-influence" for="createImageInfluence">
             <span><b id="createImageInfluenceTitle">Image influence</b><small id="createImageInfluenceHint">Higher stays closer to the source</small></span>
             <output id="createImageInfluenceVal" for="createImageInfluence">55%</output>

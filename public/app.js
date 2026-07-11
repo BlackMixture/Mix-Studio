@@ -52,6 +52,8 @@ const state = {
   createMatchSource: false,
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
   createDepthStrength: 100,  // 5-200; maps to Control LoRA strength 0.05-2.0
+  createDepthPreview: null,  // { name, url } — cached DA3 map for the current guide image
+  createDepthPreviewShown: false,
   krea2Turbo: true,          // merged Turbo checkpoint vs Raw checkpoint
   krea2RawTurboLora: null,   // managed Raw-mode Turbo LoRA, preserved while hidden
   regions: [],
@@ -1753,17 +1755,41 @@ function renderCreateImageGuide() {
     scale.children[0].textContent = depthMode ? 'Looser' : 'Freer';
     scale.children[1].textContent = depthMode ? 'Stricter' : 'Closer';
   }
+  const previewBtn = $('#createDepthPreviewBtn');
+  const cachedDepth = hasImage && state.createDepthPreview
+    && state.createDepthPreview.name === state.createRef.name ? state.createDepthPreview : null;
+  const showingDepth = depthMode && state.createDepthPreviewShown && !!cachedDepth;
+  if (previewBtn) {
+    previewBtn.hidden = !(depthMode && hasImage);
+    previewBtn.classList.toggle('showing-depth', showingDepth);
+    if (!previewBtn.disabled) {
+      $('#createDepthPreviewLbl').textContent = showingDepth ? 'Show source image'
+        : (cachedDepth ? 'Show depth map' : 'Preview depth map');
+    }
+  }
   if (!hasImage) return;
-  $('#createImageGuideImg').src = state.createRef.url;
-  $('#createImageGuideName').textContent = state.createRef.label || 'Source image';
-  $('#createImageGuideDims').textContent = state.createRef.w && state.createRef.h
-    ? `${state.createRef.w} × ${state.createRef.h} · tap to replace`
-    : 'Tap to replace';
+  $('#createImageGuideImg').src = showingDepth ? cachedDepth.url : state.createRef.url;
+  $('#createImageGuideName').textContent = showingDepth ? 'Depth map'
+    : (state.createRef.label || 'Source image');
+  $('#createImageGuideDims').textContent = showingDepth
+    ? 'What the generation will follow'
+    : (state.createRef.w && state.createRef.h
+      ? `${state.createRef.w} × ${state.createRef.h} · tap to replace`
+      : 'Tap to replace');
+}
+
+function clearCreateDepthPreview() {
+  if (state.createDepthPreview && state.createDepthPreview.url) {
+    try { URL.revokeObjectURL(state.createDepthPreview.url); } catch { /* noop */ }
+  }
+  state.createDepthPreview = null;
+  state.createDepthPreviewShown = false;
 }
 
 function pickCreateImageGuide() {
   pickUpload('image/*', (file) => {
     state.createRef = file;
+    clearCreateDepthPreview();
     if (state.createMatchSource) applyCreateMatchedDimensions();
     renderCreateImageGuide();
     renderAspects();
@@ -1787,9 +1813,45 @@ $('#createImageGuideModes').addEventListener('click', (event) => {
   renderCreateImageGuide();
   saveForm();
 });
+$('#createDepthPreviewBtn').addEventListener('click', async () => {
+  if (!state.createRef) return;
+  const cached = state.createDepthPreview && state.createDepthPreview.name === state.createRef.name;
+  if (cached) {
+    state.createDepthPreviewShown = !state.createDepthPreviewShown;
+    renderCreateImageGuide();
+    return;
+  }
+  const btn = $('#createDepthPreviewBtn');
+  btn.disabled = true;
+  $('#createDepthPreviewLbl').textContent = 'Rendering depth map…';
+  try {
+    const response = await fetch('/api/depth-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageName: state.createRef.name,
+        width: state.createRef.w || 0,
+        height: state.createRef.h || 0,
+      }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Depth preview failed');
+    }
+    const blob = await response.blob();
+    clearCreateDepthPreview();
+    state.createDepthPreview = { name: state.createRef.name, url: URL.createObjectURL(blob) };
+    state.createDepthPreviewShown = true;
+  } catch (error) {
+    toast(error.message, true);
+  }
+  btn.disabled = false;
+  renderCreateImageGuide();
+});
 $('#createImageGuideRemove').addEventListener('click', () => {
   state.createRef = null;
   state.createMatchSource = false;
+  clearCreateDepthPreview();
   renderCreateImageGuide();
   renderAspects();
   renderDims();
@@ -6802,7 +6864,7 @@ function connectEvents() {
       setGenerating(false);
     }
     $('#livePreviewImg').src = '/images/' + d.composite.file;
-    $('#liveStatusText').textContent = 'Before + after saved — tap to view';
+    $('#liveStatusText').textContent = `${d.composite.label || 'Composite'} saved — tap to view`;
     $('#livePct').textContent = '';
     const open = () => {
       refreshGallery(true).then(() => {
@@ -6814,7 +6876,7 @@ function connectEvents() {
     $('#liveStatusText').onclick = open;
     refreshGallery(true).then(open);
     queueRefreshSoon();
-    toast('✓ Before + after saved');
+    toast(`✓ ${d.composite.label || 'Composite'} saved`);
   });
   es.addEventListener('videoDone', (ev) => {
     const d = JSON.parse(ev.data);
@@ -8732,7 +8794,7 @@ window.addEventListener('popstate', () => {
 });
 
 function existingImageComposite(item, type) {
-  if (!item || !['before-after', 'reference-generation'].includes(type) || !item.sourceFile) return null;
+  if (!item || !['before-after', 'reference-generation', 'depth-map'].includes(type) || !item.sourceFile) return null;
   const currentSources = [item.sourceFile, item.upscaled || item.file];
   return (Array.isArray(item.composites) ? item.composites : []).find((composite) => {
     if (!composite || composite.type !== type) return false;
@@ -8749,7 +8811,8 @@ function existingImageComposite(item, type) {
 async function saveImageComposite(item, type) {
   try {
     const label = type === 'before-after' ? 'before + after'
-      : (type === 'reference-generation' ? 'reference + generation' : 'camera-angle');
+      : (type === 'reference-generation' ? 'reference + generation'
+        : (type === 'depth-map' ? 'source + depth + generation' : 'camera-angle'));
     const existing = existingImageComposite(item, type);
     if (existing) {
       downloadComposite(item, existing);
@@ -8981,6 +9044,14 @@ function openLightbox(id, mediaSel) {
         detail: isEditSource ? 'Original and edited image' : 'Reference and generated image',
         icon: 'composite',
         action: () => saveImageComposite(it, isEditSource ? 'before-after' : 'reference-generation'),
+      });
+    }
+    if (!selVideo && !selComposite && it.mode === 't2i' && it.imageGuideMode === 'depth' && it.sourceFile) {
+      imageSaveItems.push({
+        label: 'Save depth composite',
+        detail: 'Source, depth map, and generation',
+        icon: 'composite',
+        action: () => saveImageComposite(it, 'depth-map'),
       });
     }
   }
@@ -10445,7 +10516,8 @@ function downloadItem(it, variant) {
 function downloadComposite(it, composite) {
   const a = document.createElement('a');
   a.href = '/images/' + composite.file;
-  const suffix = composite.type === 'reference-generation' ? '_reference_generation' : '_before_after';
+  const suffix = composite.type === 'reference-generation' ? '_reference_generation'
+    : (composite.type === 'depth-map' ? '_depth_composite' : '_before_after');
   a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
   a.click();
 }

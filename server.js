@@ -52,7 +52,7 @@ const {
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
-const { buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
+const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
@@ -1161,14 +1161,15 @@ async function completeJob(pid) {
     // Source/result composites belong to the generation they document.
     // Keeping them on that item makes the gallery read as one coherent
     // generation rather than a second, disconnected card.
-    if (['before-after', 'reference-generation'].includes(info.type) && info.sourceItemId) {
+    if (['before-after', 'reference-generation', 'depth-map'].includes(info.type) && info.sourceItemId) {
       const parent = db.items.find((it) => it.id === info.sourceItemId && it.profileId === job.profileId);
       if (!parent) return;
       const composite = {
         id,
         file: fname,
         type: info.type,
-        label: info.label || (info.type === 'reference-generation' ? 'Reference + generation' : 'Before + after'),
+        label: info.label || (info.type === 'reference-generation' ? 'Reference + generation'
+          : (info.type === 'depth-map' ? 'Source + depth + generation' : 'Before + after')),
         createdAt: Date.now(),
         width: dims.w || info.width || parent.width || 1024,
         height: dims.h || info.height || parent.height || 1024,
@@ -2010,6 +2011,59 @@ async function buildImageContactSheet(imageNames) {
   }
   graph.save = { class_type: 'SaveImage', inputs: { images: output, filename_prefix: 'KreaStudio/contact_sheet' } };
   return filterInputs(graph);
+}
+
+/* Source | depth map | generation, stitched left to right. The depth map is
+ * recomputed from the saved source so the strip always documents exactly what
+ * guided the generation. */
+async function buildDepthComposite(imageNames, dims = {}) {
+  const [sourceName, resultName] = Array.isArray(imageNames) ? imageNames.filter(Boolean) : [];
+  if (!sourceName || !resultName) throw new Error('A depth composite needs the source and the result');
+  // Analyze at the generation's dimensions — DA3 degrades on native multi-MP
+  // sources, and this reproduces exactly the map that guided the generation.
+  const depth = buildDepthMapNodes({
+    imageName: sourceName,
+    depthModel: settings.depthAnythingV3Model,
+    width: clampInt(dims.width, 64, 4096, 1024),
+    height: clampInt(dims.height, 64, 4096, 1024),
+  });
+  const graph = Object.assign({}, depth.nodes, {
+    result: { class_type: 'LoadImage', inputs: { image: resultName } },
+  });
+  graph.stitch_depth = await nodeFromOrdered(
+    'ImageStitch',
+    ['right', true, 8, 'black'],
+    { image1: depth.scaledSource, image2: depth.image }
+  );
+  graph.stitch_result = await nodeFromOrdered(
+    'ImageStitch',
+    ['right', true, 8, 'black'],
+    { image1: ['stitch_depth', 0], image2: ['result', 0] }
+  );
+  graph.save = { class_type: 'SaveImage', inputs: { images: ['stitch_result', 0], filename_prefix: 'KreaStudio/depth_composite' } };
+  return filterInputs(graph);
+}
+
+/* Synchronously wait for a queued ComfyUI prompt to produce its first output
+ * image (used by short helper jobs like the depth-map preview). */
+async function waitForComfyImage(pid, timeoutMs = 3 * 60 * 1000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    let entry;
+    try {
+      const history = await (await comfyFetch(`/history/${pid}`)).json();
+      entry = history && history[pid];
+    } catch { continue; }
+    if (!entry) continue;
+    if (entry.status && entry.status.status_str === 'error') {
+      const messages = JSON.stringify(entry.status.messages || []).slice(0, 300);
+      throw new Error(`ComfyUI failed: ${messages}`);
+    }
+    const files = findOutputFiles(entry.outputs || {}, /\.(png|jpg|jpeg|webp)$/i);
+    if (files.length) return downloadOutput(files[0]);
+  }
+  throw new Error('Timed out waiting for ComfyUI');
 }
 
 function normalizePostUpscale(value) {
@@ -4232,13 +4286,36 @@ async function handleApi(req, res, url) {
     return json(res, 200, { jobId: pid });
   }
 
+  // Fast DA3 pass over an uploaded guide image so the user can inspect the
+  // structure a depth-guided generation will follow. Returns the PNG directly.
+  if (route === '/api/depth-preview' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const imageName = String(body.imageName || '').trim();
+    if (!imageName) return json(res, 400, { error: 'Upload a source image first' });
+    try {
+      const graph = await filterInputs(buildDepthPreviewGraph({
+        imageName,
+        depthModel: settings.depthAnythingV3Model,
+        width: body.width ? clampInt(body.width, 64, 4096, 1024) : 0,
+        height: body.height ? clampInt(body.height, 64, 4096, 1024) : 0,
+      }));
+      const pid = await queuePrompt(graph);
+      const buf = await waitForComfyImage(pid);
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+      return res.end(buf);
+    } catch (error) {
+      return json(res, 502, { error: `Could not build the depth map: ${error.message}` });
+    }
+  }
+
   // Static image composites: a grouped Qwen multi-angle contact strip, an
-  // edit's original/result, or an image-to-image reference/result pair.
+  // edit's original/result, an image-to-image reference/result pair, or a
+  // source/depth-map/result strip for depth-guided generations.
   if (route === '/api/image-composite' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const type = body.type === 'selection'
       ? 'selection'
-      : (['before-after', 'reference-generation'].includes(body.type) ? body.type : 'angles');
+      : (['before-after', 'reference-generation', 'depth-map'].includes(body.type) ? body.type : 'angles');
     let root;
     let sources;
     let label;
@@ -4271,6 +4348,12 @@ async function handleApi(req, res, url) {
       }
       sources = [root.sourceFile, root.upscaled || root.file];
       label = 'Reference + generation';
+    } else if (type === 'depth-map') {
+      if (root.mode !== 't2i' || root.imageGuideMode !== 'depth' || !root.sourceFile) {
+        return json(res, 400, { error: 'This generation was not depth guided or no longer has its saved source image' });
+      }
+      sources = [root.sourceFile, root.upscaled || root.file];
+      label = 'Source + depth + generation';
     } else if (type === 'angles') {
       if (!root.angleGroupId) return json(res, 400, { error: 'This image is not part of a multi-angle set' });
       const set = db.items
@@ -4280,7 +4363,7 @@ async function handleApi(req, res, url) {
       sources = set.map((item) => item.upscaled || item.file);
       label = `${set.length} camera angles`;
     }
-    if (['before-after', 'reference-generation'].includes(type)) {
+    if (['before-after', 'reference-generation', 'depth-map'].includes(type)) {
       const existing = (Array.isArray(root.composites) ? root.composites : []).find((composite) => {
         if (!composite || composite.type !== type) return false;
         if (Array.isArray(composite.sourceFiles)) {
@@ -4310,7 +4393,9 @@ async function handleApi(req, res, url) {
     }
     const graph = type === 'selection'
       ? await buildImageContactSheet(comfyNames)
-      : await buildImageComposite(comfyNames);
+      : (type === 'depth-map'
+        ? await buildDepthComposite(comfyNames, { width: root.width, height: root.height })
+        : await buildImageComposite(comfyNames));
     const pid = await queuePrompt(graph);
     trackJob(pid, {
       kind: 'imageComposite', profileId: req.profile.id, graph,
