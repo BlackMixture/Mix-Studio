@@ -45,6 +45,10 @@ const state = {
   editLorasByEngine: {},     // remembered independently for each edit model
   loraTriggers: {},          // profile-local trigger phrase by LoRA filename
   editEngine: 'klein4',
+  editEngineOrder: ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'],
+  editEngineDefault: 'klein4',
+  videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
+  videoEngineDefault: 'ltx',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   createRef: null,           // optional Krea 2 image-to-image source
   createImageGuideOpen: false,
@@ -155,13 +159,26 @@ const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref' };
 const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
+const VIDEO_ENGINES = Object.keys(VIDEO_FEATURES);
+
+function normalizeEngineOrder(order, engines) {
+  const valid = Array.isArray(order) ? order.filter((engine) => engines.includes(engine)) : [];
+  return [...new Set(valid.concat(engines))];
+}
+
+function promoteEngineDefault(order, preferred, engines) {
+  const normalized = normalizeEngineOrder(order, engines);
+  if (!engines.includes(preferred)) return normalized;
+  return [preferred, ...normalized.filter((engine) => engine !== preferred)];
+}
 
 function featureEnabled(key) { return state.features[key] !== false; }
-function enabledEditEngines() { return EDIT_ENGINES.filter((engine) => featureEnabled(EDIT_FEATURES[engine])); }
-function enabledVideoEngines() { return Object.keys(VIDEO_FEATURES).filter((engine) => featureEnabled(VIDEO_FEATURES[engine])); }
+function enabledEditEngines() { return normalizeEngineOrder(state.editEngineOrder, EDIT_ENGINES).filter((engine) => featureEnabled(EDIT_FEATURES[engine])); }
+function enabledVideoEngines() { return normalizeEngineOrder(state.videoEngineOrder, VIDEO_ENGINES).filter((engine) => featureEnabled(VIDEO_FEATURES[engine])); }
 function supportsCurrentEditAngles() { return state.view === 'edit' && ANGLE_EDIT_ENGINES.has(state.editEngine); }
 
 function renderFeatureVisibility() {
+  applySavedEngineOrders();
   const editEngines = enabledEditEngines();
   const videoEngines = enabledVideoEngines();
   const hasEdit = editEngines.length > 0;
@@ -1133,7 +1150,9 @@ function saveForm() {
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, editLorasByEngine: state.editLorasByEngine, prompts: state.prompts,
       loraTriggers: state.loraTriggers,
-      editEngine: state.editEngine, vidScailMode: state.vidScailMode,
+      editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
+      editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
+      videoEngineOrder: state.videoEngineOrder, videoEngineDefault: state.videoEngineDefault,
       cameraSettings: state.cameraSettings,
       createMode: state.createMode,
       createRef: state.createRef ? {
@@ -1218,7 +1237,16 @@ function loadForm() {
       const phrase = normalizeLoraTriggerPhrase(lora && lora.triggerPhrase);
       if (lora && lora.name && phrase && !state.loraTriggers[lora.name]) state.loraTriggers[lora.name] = phrase;
     });
-    state.editEngine = editEngineId(f.editEngine);
+    const editDefault = EDIT_ENGINES.includes(f.editEngineDefault)
+      ? f.editEngineDefault : editEngineId(f.editEngine);
+    state.editEngineOrder = promoteEngineDefault(f.editEngineOrder, editDefault, EDIT_ENGINES);
+    state.editEngineDefault = state.editEngineOrder[0];
+    state.editEngine = state.editEngineDefault;
+    const videoDefault = VIDEO_ENGINES.includes(f.videoEngineDefault)
+      ? f.videoEngineDefault : (VIDEO_ENGINES.includes(f.vidEngine) ? f.vidEngine : 'ltx');
+    state.videoEngineOrder = promoteEngineDefault(f.videoEngineOrder, videoDefault, VIDEO_ENGINES);
+    state.videoEngineDefault = state.videoEngineOrder[0];
+    state.vidEngine = state.videoEngineDefault;
     state.editLorasByEngine = {};
     if (f.editLorasByEngine && typeof f.editLorasByEngine === 'object') {
       EDIT_ENGINES.forEach((engine) => {
@@ -6556,6 +6584,252 @@ $('#vidDriveFrameChip').addEventListener('click', () => {
 $('#vidQuality').addEventListener('click', () => $('#vidQuality').classList.toggle('active'));
 $('#animQuality').addEventListener('click', () => $('#animQuality').classList.toggle('active'));
 
+const MODEL_ORDER_CONFIG = {
+  editEngineRow: {
+    orderKey: 'editEngineOrder',
+    defaultKey: 'editEngineDefault',
+    engines: EDIT_ENGINES,
+    features: EDIT_FEATURES,
+    kind: 'Edit',
+  },
+  vidEngineRow: {
+    orderKey: 'videoEngineOrder',
+    defaultKey: 'videoEngineDefault',
+    engines: VIDEO_ENGINES,
+    features: VIDEO_FEATURES,
+    kind: 'Video',
+  },
+};
+let modelOrderDrag = null;
+
+function modelOrderButtons(rowId, visibleOnly = false) {
+  return $$(`#${rowId} .chip[data-engine]`).filter((button) => !visibleOnly || !button.hidden);
+}
+
+function firstEnabledModel(config) {
+  return normalizeEngineOrder(state[config.orderKey], config.engines)
+    .find((engine) => featureEnabled(config.features[engine]));
+}
+
+function syncModelOrderDefault(rowId) {
+  const config = MODEL_ORDER_CONFIG[rowId];
+  if (!config) return;
+  const fallback = firstEnabledModel(config) || state[config.orderKey][0];
+  modelOrderButtons(rowId).forEach((button) => {
+    const isDefault = button.dataset.engine === fallback;
+    button.classList.toggle('model-default', isDefault);
+    const label = button.textContent.trim();
+    button.setAttribute('aria-label', isDefault ? `${label}, default model` : label);
+    button.setAttribute('aria-roledescription', 'draggable model');
+    button.title = isDefault ? `${label} · default for the next session` : 'Hold and drag to reorder';
+  });
+}
+
+function applyEngineOrder(rowId, order) {
+  const row = $(`#${rowId}`);
+  const config = MODEL_ORDER_CONFIG[rowId];
+  if (!row || !config) return;
+  const buttons = new Map(modelOrderButtons(rowId).map((button) => [button.dataset.engine, button]));
+  const fragment = document.createDocumentFragment();
+  normalizeEngineOrder(order, config.engines).forEach((engine) => {
+    const button = buttons.get(engine);
+    if (button) fragment.appendChild(button);
+  });
+  row.appendChild(fragment);
+  syncModelOrderDefault(rowId);
+}
+
+function applySavedEngineOrders() {
+  if (modelOrderDrag) return;
+  applyEngineOrder('editEngineRow', state.editEngineOrder);
+  applyEngineOrder('vidEngineRow', state.videoEngineOrder);
+}
+
+function animateModelOrderLayout(row, mutate) {
+  const before = new Map(modelOrderButtons(row.id).map((button) => [button, button.getBoundingClientRect()]));
+  mutate();
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  modelOrderButtons(row.id).forEach((button) => {
+    const prior = before.get(button);
+    const next = button.getBoundingClientRect();
+    if (!prior || (!Math.round(prior.left - next.left) && !Math.round(prior.top - next.top))) return;
+    button.animate([
+      { transform: `translate3d(${prior.left - next.left}px, ${prior.top - next.top}px, 0)` },
+      { transform: 'translate3d(0, 0, 0)' },
+    ], { duration: 230, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  });
+}
+
+function preventModelOrderTouchScroll(event) {
+  if (!modelOrderDrag || !modelOrderDrag.active) return;
+  if (event.cancelable) event.preventDefault();
+  window.scrollTo(0, modelOrderDrag.scrollY);
+}
+
+function beginModelOrderDrag(gesture) {
+  if (!gesture || modelOrderDrag !== gesture || gesture.active) return;
+  gesture.active = true;
+  gesture.scrollY = window.scrollY;
+  gesture.button.classList.add('model-order-source');
+  gesture.row.classList.add('model-order-active');
+  document.body.classList.add('model-order-dragging');
+  document.addEventListener('touchmove', preventModelOrderTouchScroll, { passive: false, capture: true });
+  const rect = gesture.button.getBoundingClientRect();
+  const ghost = gesture.button.cloneNode(true);
+  ghost.classList.remove('model-order-source');
+  ghost.classList.add('model-order-ghost');
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.transform = 'translate3d(0,0,0) scale(1.04)';
+  document.body.appendChild(ghost);
+  gesture.ghost = ghost;
+  const buttons = modelOrderButtons(gesture.row.id, true);
+  gesture.slots = buttons.map((button) => {
+    const slot = button.getBoundingClientRect();
+    return { x: slot.left + slot.width / 2, y: slot.top + slot.height / 2 };
+  });
+  gesture.slotIndex = buttons.indexOf(gesture.button);
+  navigator.vibrate?.(8);
+}
+
+function cleanupModelOrderDrag(gesture) {
+  if (!gesture || modelOrderDrag !== gesture) return;
+  clearTimeout(gesture.timer);
+  document.removeEventListener('touchmove', preventModelOrderTouchScroll, true);
+  document.body.classList.remove('model-order-dragging');
+  gesture.row.classList.remove('model-order-active');
+  gesture.button.classList.remove('model-order-source');
+  gesture.ghost?.remove();
+  try { gesture.button.releasePointerCapture(gesture.pointerId); } catch { /* noop */ }
+  modelOrderDrag = null;
+}
+
+function modelOrderSlotIndex(slots, clientX, clientY, currentIndex, hysteresis = 14) {
+  if (!Array.isArray(slots) || !slots.length) return currentIndex;
+  const distances = slots.map((slot) => Math.hypot(clientX - slot.x, clientY - slot.y));
+  const candidate = distances.indexOf(Math.min(...distances));
+  if (candidate === currentIndex || currentIndex < 0 || !slots[currentIndex]) return candidate;
+  return distances[candidate] + hysteresis < distances[currentIndex] ? candidate : currentIndex;
+}
+
+function updateModelOrderDrag(gesture, event) {
+  if (!gesture.active) return;
+  if (event.cancelable) event.preventDefault();
+  window.scrollTo(0, gesture.scrollY);
+  if (gesture.ghost) {
+    gesture.ghost.style.transform = `translate3d(${event.clientX - gesture.startX}px, ${event.clientY - gesture.startY}px, 0) scale(1.04)`;
+  }
+  const targetIndex = modelOrderSlotIndex(gesture.slots, event.clientX, event.clientY, gesture.slotIndex);
+  if (targetIndex === gesture.slotIndex || targetIndex < 0) return;
+  animateModelOrderLayout(gesture.row, () => {
+    const remaining = modelOrderButtons(gesture.row.id, true).filter((button) => button !== gesture.button);
+    const anchor = remaining[targetIndex];
+    if (anchor) gesture.row.insertBefore(gesture.button, anchor);
+    else gesture.row.appendChild(gesture.button);
+  });
+  gesture.slotIndex = targetIndex;
+}
+
+function persistModelOrder(rowId, announce = true) {
+  const config = MODEL_ORDER_CONFIG[rowId];
+  if (!config) return;
+  const visible = modelOrderButtons(rowId, true).map((button) => button.dataset.engine);
+  const hidden = modelOrderButtons(rowId).filter((button) => button.hidden).map((button) => button.dataset.engine);
+  state[config.orderKey] = normalizeEngineOrder([...visible, ...hidden], config.engines);
+  state[config.defaultKey] = state[config.orderKey][0];
+  syncModelOrderDefault(rowId);
+  saveForm();
+  if (announce) {
+    const first = $(`#${rowId} .chip[data-engine="${state[config.defaultKey]}"]`);
+    toast(`${config.kind} default for next session: ${first?.textContent.trim() || state[config.defaultKey]}`);
+  }
+}
+
+function finishModelOrderDrag(gesture) {
+  if (!gesture || modelOrderDrag !== gesture) return;
+  if (!gesture.active) {
+    cleanupModelOrderDrag(gesture);
+    return;
+  }
+  const order = modelOrderButtons(gesture.row.id).map((button) => button.dataset.engine);
+  const changed = order.join('|') !== gesture.originalOrder.join('|');
+  gesture.row.dataset.modelDragSuppress = 'true';
+  setTimeout(() => gesture.row.removeAttribute('data-model-drag-suppress'), 0);
+  cleanupModelOrderDrag(gesture);
+  if (changed) persistModelOrder(gesture.row.id);
+  else syncModelOrderDefault(gesture.row.id);
+}
+
+function cancelModelOrderDrag(gesture) {
+  if (!gesture || modelOrderDrag !== gesture) return;
+  const wasActive = gesture.active;
+  cleanupModelOrderDrag(gesture);
+  if (wasActive) applyEngineOrder(gesture.row.id, gesture.originalOrder);
+}
+
+function moveModelWithKeyboard(rowId, button, direction) {
+  const row = $(`#${rowId}`);
+  const buttons = modelOrderButtons(rowId, true);
+  const index = buttons.indexOf(button);
+  const target = buttons[index + direction];
+  if (!row || index === -1 || !target) return;
+  animateModelOrderLayout(row, () => {
+    if (direction < 0) target.before(button);
+    else target.after(button);
+  });
+  persistModelOrder(rowId);
+  button.focus();
+}
+
+function wireModelOrder(rowId) {
+  const row = $(`#${rowId}`);
+  if (!row) return;
+  row.addEventListener('pointerdown', (event) => {
+    const button = event.target.closest('.chip[data-engine]');
+    if (!button || button.hidden || (event.button !== undefined && event.button !== 0) || modelOrderDrag) return;
+    const gesture = {
+      row,
+      button,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollY: window.scrollY,
+      originalOrder: modelOrderButtons(rowId).map((item) => item.dataset.engine),
+      active: false,
+      slots: [],
+      slotIndex: -1,
+      ghost: null,
+    };
+    gesture.timer = setTimeout(() => beginModelOrderDrag(gesture), 260);
+    modelOrderDrag = gesture;
+    try { button.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  });
+  row.addEventListener('pointermove', (event) => {
+    const gesture = modelOrderDrag;
+    if (!gesture || gesture.row !== row || event.pointerId !== gesture.pointerId) return;
+    if (!gesture.active && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 8) {
+      cancelModelOrderDrag(gesture);
+      return;
+    }
+    updateModelOrderDrag(gesture, event);
+  });
+  row.addEventListener('pointerup', (event) => {
+    const gesture = modelOrderDrag;
+    if (gesture && gesture.row === row && event.pointerId === gesture.pointerId) finishModelOrderDrag(gesture);
+  });
+  row.addEventListener('pointercancel', () => cancelModelOrderDrag(modelOrderDrag));
+  row.addEventListener('keydown', (event) => {
+    if (!event.shiftKey || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    const button = event.target.closest('.chip[data-engine]');
+    if (!button) return;
+    event.preventDefault();
+    moveModelWithKeyboard(rowId, button, ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1);
+  });
+  syncModelOrderDefault(rowId);
+}
+
 state.vidEngine = 'ltx';
 state.animEngine = 'ltx';
 function markEngineRow(rowId, engine) {
@@ -6563,6 +6837,7 @@ function markEngineRow(rowId, engine) {
 }
 function wireEngineRow(rowId, noteWork) {
   $$(`#${rowId} .chip[data-engine]`).forEach((c) => c.addEventListener('click', () => {
+    if ($(`#${rowId}`).dataset.modelDragSuppress === 'true') return;
     $$(`#${rowId} .chip[data-engine]`).forEach((x) => x.classList.toggle('active', x === c));
     noteWork(c.dataset.engine);
   }));
@@ -6592,6 +6867,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   renderVidDrive();
   renderVidFace();
   updateVideoPanels();
+  saveForm();
   setTimeout(() => setVideoModelExpanded(false), 120);
 });
 wireEngineRow('animEngineRow', (engine) => {
@@ -6615,6 +6891,8 @@ wireEngineRow('editEngineRow', (engine) => {
   renderLoras();
   saveForm();
 });
+wireModelOrder('vidEngineRow');
+wireModelOrder('editEngineRow');
 $('#editComposite').addEventListener('click', () => {
   const button = $('#editComposite');
   button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
@@ -12055,9 +12333,11 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
 });
 
 loadForm();
+applySavedEngineOrders();
 loadMediaPreferences();
 restoreGenerationTuning('create');
 markEngineRow('editEngineRow', state.editEngine);
+markEngineRow('vidEngineRow', state.vidEngine);
 updatePromptClear();
 computeDims();
 renderEnhance();
