@@ -35,7 +35,7 @@ docs/superpowers/plans/   old planning docs (gitignored)
 | Qwen edit | `buildEditQwen` | 2511 + Lightning LoRA, source-encoded latent |
 | Krea2 inpaint | `lib/regional-workflows.buildKrea2InpaintGraph` | **soft inpaint**: `VAEEncode` + `SetLatentNoiseMask` (see gotchas) |
 | LTX 2.3 | `buildAnimate` | two-stage: base sigmas + ×2 latent upsample refine |
-| LTX Face ID | `buildAnimateFaceId` | single-stage 24 fps, BFS `LTXIdentityOverlapConditioning`, FaceID LoRA @1.0 over distilled-1.1 @0.6 |
+| LTX Face ID | `buildAnimateFaceId` | single-stage 24 fps, BFS `LTXIdentityOverlapConditioning`, FaceID LoRA @1.0 over distilled-1.1 @0.6; `opts.audioName` → `audioLatentNodes` freezes a voice recording into the audio latent (LoadAudio → LTXVAudioVAEEncode → SetLatentNoiseMask 0.0) for identity-locked lipsync |
 | 10Eros | `buildAnimateEros` | Echo DMD sampler, sigma presets in `EROS_SIGMA_PRESETS` |
 | Wan 2.2 | `buildAnimateWan` | dual KSamplerAdvanced handoff, 16 fps 4n+1 frames |
 | SCAIL 2 | `buildAnimateScail` (+ chunk/infinity variants in `lib/video-workflows`) | SAM3 tracks driving video + ref, WanSCAILToVideo |

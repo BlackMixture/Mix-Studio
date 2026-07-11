@@ -82,7 +82,7 @@ The owner can also choose **Restart app** from the same menu. It checks both Mix
 
 **Video** — five engines with per-engine contextual controls:
 - **LTX 2.3**: two-stage, 25 fps, generates audio, t2v/i2v, end frames, audio-driven with waveform trimming, motion freedom
-- **LTX Face ID**: reference-to-video identity preservation (Best-FaceID + BFS overlap node), 24 fps, named face library
+- **LTX Face ID**: reference-to-video identity preservation (Best-FaceID + BFS overlap node), 24 fps, named face library, **your-own-voice lipsync** — attach a recording and it is frozen into the audio latent (`SetLatentNoiseMask 0.0`) so the joint AV denoise syncs the lips to it; leave audio off and the model invents a voice from a scripted line in the prompt
 - **10Eros DMD**: Echo sampler, reference conditioning, sigma presets
 - **Wan 2.2**: 14B dual-expert i2v, 4-step or full quality
 - **SCAIL 2**: motion transfer from a driving video (SAM3 tracking), trim UI, first-frame→Edit, chunked/Infinity long-video modes

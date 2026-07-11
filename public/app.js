@@ -1748,7 +1748,12 @@ function renderCreateImageGuide() {
   $('#createImageInfluence').max = depthMode ? '200' : '100';
   $('#createImageInfluence').setAttribute('aria-label', depthMode ? 'Depth strength' : 'Image influence');
   $('#createImageInfluence').value = String(influence);
-  $('#createImageInfluence').style.setProperty('--influence', influence + '%');
+  // The track fill must follow the thumb, not the raw value: depth strength
+  // spans 5-200, so 100% sits mid-track.
+  const fillMin = depthMode ? 5 : 0;
+  const fillMax = depthMode ? 200 : 100;
+  const fillPct = ((influence - fillMin) / (fillMax - fillMin)) * 100;
+  $('#createImageInfluence').style.setProperty('--influence', fillPct + '%');
   $('#createImageInfluenceVal').textContent = influence + '%';
   const scale = $('.create-image-influence-scale');
   if (scale) {
@@ -3502,6 +3507,8 @@ function setAudioChipVisual(chip, active) {
   } else {
     chip.textContent = active ? 'Audio added' : 'Audio';
   }
+  // Face ID mode rewrites the video audio chip with lipsync copy.
+  if (chip && chip.id === 'vidAudioChip' && typeof renderVidFace === 'function') renderVidFace();
 }
 window.addEventListener('resize', () => {
   Object.values(waveRedraw).forEach((fn) => fn());
@@ -5717,6 +5724,22 @@ function renderVidFace() {
   $('#vidFpsRow').hidden = !(ltxFamily || wanOrScail);
   $('#vidFreeField').hidden = wanOrScail || ltxEdit || faceMode;
   renderVideoFpsChoices();
+  // Face ID + audio = frozen-audio lipsync: the joint AV denoise conforms the
+  // face to the locked recording. Make the audio chip say so.
+  const audioTitle = $('#vidAudioChip [data-audio-title]');
+  const audioDetail = $('#vidAudioChip [data-audio-detail]');
+  if (audioTitle && audioDetail) {
+    const hasAudio = !!state.vidAudio;
+    if (faceMode) {
+      audioTitle.textContent = hasAudio ? 'Voice locked · lipsync' : 'Your voice';
+      audioDetail.textContent = hasAudio
+        ? 'Lips will follow this recording'
+        : 'Optional · lipsync to a recording';
+    } else {
+      audioTitle.textContent = hasAudio ? 'Audio added' : 'Audio';
+      audioDetail.textContent = hasAudio ? 'Tap to remove or replace' : 'Optional soundtrack';
+    }
+  }
   if (ltxFamily) {
     $('#vidLtxGenerationRow').hidden = false;
     $('#vidLtxPlaybackRow').hidden = false;
@@ -5730,7 +5753,9 @@ function renderVidFace() {
   }
   const labels = { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
   const notes = {
-    ltx: faceMode ? 'Face ID · 24 fps' : '25 fps · audio',
+    ltx: faceMode
+      ? (state.vidAudio ? 'Face ID · lipsync to your voice' : 'Face ID · 24 fps · voice optional')
+      : '25 fps · audio',
     'ltx-edit': 'guide video · exact prompt',
     eros: '24 fps · image required',
     wan: '16 fps · image required',
