@@ -7942,38 +7942,81 @@ function useCachedGalleryImage(target, source, property = 'src') {
 }
 
 let galleryPreviewObserver = null;
+let galleryPreviewActive = null;
+let galleryPreviewSettleTimer = null;
+let galleryPreviewScrollTimer = null;
 function galleryPreviewMotionAllowed() {
   return document.visibilityState === 'visible'
     && state.mediaPreferences.videoPreviews
     && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
+function pauseGalleryPreview(video, unloadDelay = 2800) {
+  if (!video) return;
+  video.pause();
+  clearTimeout(video._previewUnloadTimer);
+  video._previewUnloadTimer = setTimeout(() => {
+    if (video === galleryPreviewActive || !video.isConnected || video.dataset.loaded !== 'true') return;
+    const rect = video.getBoundingClientRect();
+    if (rect.bottom > 0 && rect.top < window.innerHeight) return;
+    try { video.currentTime = 0; } catch { /* noop */ }
+    video.removeAttribute('src');
+    video.dataset.loaded = 'false';
+    video.load();
+  }, unloadDelay);
+}
+function playGalleryPreview(video) {
+  if (!video || !galleryPreviewMotionAllowed()) return;
+  clearTimeout(video._previewUnloadTimer);
+  if (video.dataset.loaded !== 'true' && video.dataset.src) {
+    video.src = video.dataset.src;
+    video.dataset.loaded = 'true';
+  }
+  video.play().catch(() => { /* autoplay may be blocked */ });
+}
+function settleGalleryPreviewPlayback() {
+  galleryPreviewSettleTimer = null;
+  if (!galleryPreviewMotionAllowed() || state.view !== 'gallery') return;
+  const center = window.innerHeight / 2;
+  const candidates = $$('.gallery-card-video').filter((video) => {
+    const rect = video.getBoundingClientRect();
+    return rect.bottom > window.innerHeight * 0.16 && rect.top < window.innerHeight * 0.84;
+  });
+  const next = candidates.sort((a, b) => {
+    const ar = a.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    return Math.abs(ar.top + ar.height / 2 - center) - Math.abs(br.top + br.height / 2 - center);
+  })[0] || null;
+  if (galleryPreviewActive && galleryPreviewActive !== next) pauseGalleryPreview(galleryPreviewActive);
+  galleryPreviewActive = next;
+  playGalleryPreview(next);
+}
+function scheduleGalleryPreviewPlayback(delay = 140) {
+  clearTimeout(galleryPreviewSettleTimer);
+  galleryPreviewSettleTimer = setTimeout(settleGalleryPreviewPlayback, delay);
+}
 function ensureGalleryPreviewObserver() {
   if (galleryPreviewObserver || !('IntersectionObserver' in window)) return;
-  galleryPreviewObserver = new IntersectionObserver((entries) => {
-    entries.forEach(({ target, isIntersecting }) => {
-      if (isIntersecting && galleryPreviewMotionAllowed()) {
-        if (target.dataset.loaded !== 'true' && target.dataset.src) {
-          target.src = target.dataset.src;
-          target.dataset.loaded = 'true';
-        }
-        target.play().catch(() => { /* autoplay may be blocked */ });
-      } else {
-        target.pause();
-        try { target.currentTime = 0; } catch { /* noop */ }
-        if (target.dataset.loaded === 'true') {
-          target.removeAttribute('src');
-          target.dataset.loaded = 'false';
-          target.load();
-        }
-      }
-    });
-  }, { root: null, rootMargin: '-24% 0px -24% 0px', threshold: 0.05 });
+  galleryPreviewObserver = new IntersectionObserver(() => scheduleGalleryPreviewPlayback(), {
+    root: null,
+    rootMargin: '-16% 0px -16% 0px',
+    threshold: [0, 0.25, 0.5, 0.75],
+  });
 }
 function resetGalleryPreviewObservation() {
   if (!galleryPreviewObserver) return;
+  clearTimeout(galleryPreviewSettleTimer);
   galleryPreviewObserver.disconnect();
+  if (galleryPreviewActive && !galleryPreviewActive.isConnected) galleryPreviewActive = null;
   $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
+  scheduleGalleryPreviewPlayback(180);
 }
+
+window.addEventListener('scroll', () => {
+  if (state.view !== 'gallery' || !galleryPreviewMotionAllowed()) return;
+  clearTimeout(galleryPreviewScrollTimer);
+  if (galleryPreviewActive) pauseGalleryPreview(galleryPreviewActive, 3600);
+  galleryPreviewScrollTimer = setTimeout(() => scheduleGalleryPreviewPlayback(0), 150);
+}, { passive: true });
 
 const galleryDateScrub = {
   active: false,
@@ -8695,6 +8738,14 @@ function handleLightboxTap() {
   }, 320);
 }
 
+function syncLightboxVideoPlaybackUi() {
+  const video = $('#lbVideo');
+  const play = $('#lbVideoPlay');
+  const visible = !video.hidden && video.paused;
+  play.hidden = !visible;
+  play.setAttribute('aria-label', video.ended ? 'Replay video' : 'Play video');
+}
+
 function updateLibrarySearch() {
   state.libraryQuery = $('#gallerySearch').value;
   $('#gallerySearchClear').hidden = !state.libraryQuery;
@@ -9144,12 +9195,16 @@ function openLightbox(id, mediaSel) {
   if (selVideo) {
     $('#lbImg').hidden = true;
     vid.hidden = false;
+    vid.controls = true;
+    vid.preload = 'metadata';
     vid.src = '/videos/' + selVideo.file;
     vid.poster = '/images/' + it.file;
     vid.load();
+    syncLightboxVideoPlaybackUi();
   } else {
     try { vid.pause(); } catch { /* noop */ }
     vid.hidden = true;
+    $('#lbVideoPlay').hidden = true;
     vid.removeAttribute('src');
     $('#lbImg').hidden = false;
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
@@ -9582,7 +9637,17 @@ $('#likesFilter').addEventListener('click', () => {
   renderGrid();
 });
 $('#lbImg').addEventListener('click', handleLightboxTap);
-$('#lbVideo').addEventListener('click', handleLightboxTap);
+$('#lbVideoPlay').addEventListener('pointerdown', (event) => event.stopPropagation());
+$('#lbVideoPlay').addEventListener('click', (event) => {
+  event.stopPropagation();
+  const video = $('#lbVideo');
+  if (video.ended) video.currentTime = 0;
+  video.play().catch(() => syncLightboxVideoPlaybackUi());
+});
+$('#lbVideo').addEventListener('play', syncLightboxVideoPlaybackUi);
+$('#lbVideo').addEventListener('pause', syncLightboxVideoPlaybackUi);
+$('#lbVideo').addEventListener('ended', syncLightboxVideoPlaybackUi);
+$('#lbVideo').addEventListener('loadedmetadata', syncLightboxVideoPlaybackUi);
 state.sortMode = 'new';
 function closeGallerySort() {
   $('#gallerySort').classList.remove('open');

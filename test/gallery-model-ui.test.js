@@ -39,12 +39,26 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /className = 'gallery-card-video'/);
   assert.match(app, /preview\.preload = 'none'/);
   assert.match(app, /preview\.dataset\.src = '\/videos\/' \+ latestVideo\.file/);
-  assert.match(app, /target\.dataset\.loaded !== 'true'/);
-  assert.match(app, /rootMargin: '-24% 0px -24% 0px'/);
+  assert.match(app, /video\.dataset\.loaded !== 'true'/);
+  assert.match(app, /function settleGalleryPreviewPlayback\(\)/);
+  assert.match(app, /galleryPreviewActive = next/);
+  assert.match(app, /setTimeout\(\(\) => scheduleGalleryPreviewPlayback\(0\), 150\)/);
+  assert.match(app, /rootMargin: '-16% 0px -16% 0px'/);
   assert.match(app, /generation-count-badge/);
   assert.match(app, /grouped/);
   assert.match(css, /\.card \.badge\.attached-composite-badge[\s\S]*bottom: 8px/);
   assert.match(css, /\.card \.gallery-card-video/);
+});
+
+test('focused videos expose native controls and an immediate single-tap play affordance', () => {
+  assert.match(html, /id="lbVideo" controls playsinline loop/);
+  assert.match(html, /id="lbVideoPlay"[^>]*aria-label="Play video"/);
+  assert.match(app, /vid\.controls = true/);
+  assert.match(app, /vid\.preload = 'metadata'/);
+  assert.match(app, /function syncLightboxVideoPlaybackUi\(\)/);
+  assert.match(app, /\$\('#lbVideoPlay'\)\.addEventListener\('click'/);
+  assert.doesNotMatch(app, /\$\('#lbVideo'\)\.addEventListener\('click', handleLightboxTap\)/);
+  assert.match(css, /\.lightbox-video-play \{/);
 });
 
 test('gallery performance controls can disable video previews and build an idle compressed cache', () => {

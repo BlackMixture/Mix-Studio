@@ -3846,6 +3846,30 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .lightbox-swipe-preview { will-change: transform, opacity; }
 #lbImg,
 #lbVideo { z-index: 2; }
+.lightbox-video-play {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(0,0,0,.72);
+  box-shadow: 0 12px 34px rgba(0,0,0,.38);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 160ms ease, opacity 160ms ease, background 160ms ease;
+}
+.lightbox-video-play:hover { background: rgba(0,0,0,.88); }
+.lightbox-video-play:active { transform: translate(-50%, -50%) scale(.94); }
+.lightbox-video-play svg { width: 30px; height: 30px; fill: currentColor; transform: translateX(2px); }
+.lightbox-video-play[hidden] { display: none; }
+.lightbox-img-wrap.is-swiping .lightbox-video-play { opacity: 0; pointer-events: none; }
 .lightbox-swipe-preview {
   z-index: 1;
   pointer-events: none;
