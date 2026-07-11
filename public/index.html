@@ -322,8 +322,12 @@
             <span><b id="createImageGuideName">Source image</b><small id="createImageGuideDims"></small></span>
           </button>
           <button class="create-image-guide-remove" id="createImageGuideRemove" type="button" aria-label="Remove source image">✕</button>
+          <div class="create-image-guide-modes" id="createImageGuideModes" role="group" aria-label="Image guide mode">
+            <button type="button" data-guide-mode="image" aria-pressed="true">Image</button>
+            <button type="button" data-guide-mode="depth" aria-pressed="false">Depth</button>
+          </div>
           <label class="create-image-influence" for="createImageInfluence">
-            <span><b>Image influence</b><small>Higher stays closer to the source</small></span>
+            <span><b id="createImageInfluenceTitle">Image influence</b><small id="createImageInfluenceHint">Higher stays closer to the source</small></span>
             <output id="createImageInfluenceVal" for="createImageInfluence">55%</output>
           </label>
           <input class="create-image-influence-range" id="createImageInfluence" type="range" min="0" max="100" step="5" value="55" aria-label="Image influence" />
@@ -1439,6 +1443,8 @@
             <div class="field"><label>Turbo UNET</label><input id="setUnet" type="text" /></div>
             <div class="field"><label>Raw UNET</label><input id="setKrea2RawUnet" type="text" /></div>
             <div class="field"><label>Turbo LoRA for Raw</label><input id="setKrea2TurboLora" type="text" /></div>
+            <div class="field"><label>Depth Control LoRA</label><input id="setKrea2DepthLora" type="text" /></div>
+            <div class="field"><label>Depth Anything V3 model</label><input id="setDepthAnythingV3Model" type="text" /></div>
             <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
             <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
           </div>

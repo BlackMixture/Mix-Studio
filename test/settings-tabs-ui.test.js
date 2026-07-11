@@ -24,7 +24,7 @@ test('advanced settings are split into four accessible side tabs', () => {
 
 test('model settings retain one field each and follow logical pipeline groups', () => {
   const ids = [
-    'setComfy', 'galleryPasswordInput', 'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setClip', 'setVae',
+    'setComfy', 'galleryPasswordInput', 'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
     'setKlein4Unet', 'setKlein9Unet', 'setQeUnet', 'setDit', 'setSvVae',
     'setLtxCkpt', 'setWanHigh', 'setErosCkpt', 'setScailUnet', 'setSvAttn', 'setSysPrompt',
   ];

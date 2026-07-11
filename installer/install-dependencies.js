@@ -22,7 +22,7 @@ function argument(name) {
 }
 
 const FEATURE_COMPONENTS = Object.freeze({
-  'core.image': ['image'],
+  'core.image': ['image', 'krea2depth'],
   'edit.klein4': ['klein4'],
   'edit.klein9': ['klein9', 'smartmask'],
   'edit.qwen': ['qwen', 'smartmask'],

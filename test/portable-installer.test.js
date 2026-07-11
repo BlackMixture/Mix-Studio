@@ -94,7 +94,7 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   assert.deepEqual(dependencyCli.selectedComponents(
     { features: [{ id: 'core.image', required: true }, { id: 'video.wan' }, { id: 'video.scail' }] },
     { 'video.wan': true, 'video.scail': true },
-  ), ['image', 'wan', 'scail', 'scailinfinity']);
+  ), ['image', 'krea2depth', 'wan', 'scail', 'scailinfinity']);
 });
 
 test('portable installer requires Git for safe in-app updates and Node 22', () => {

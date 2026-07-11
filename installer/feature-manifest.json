@@ -8,8 +8,8 @@
       "id": "core.image",
       "label": "Image generation",
       "required": true,
-      "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "qwen3-vl", "qwen-image-vae"],
-      "nodes": ["core", "TextGenerate"]
+      "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae"],
+      "nodes": ["core", "TextGenerate", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3"]
     },
     {
       "id": "edit.klein4",

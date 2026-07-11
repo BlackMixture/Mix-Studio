@@ -29,6 +29,7 @@ docs/superpowers/plans/   old planning docs (gitignored)
 | Engine | Builder | Notes |
 |---|---|---|
 | Krea2 t2i | `buildT2I` | euler/beta, 12 steps, cfg 1 |
+| Krea2 depth guide | `lib/krea2-workflows.buildKrea2DepthControl` | DA3 Large V2-style depth → Krea2 Control LoRA; opt-in from Create image guide |
 | Regional t2i | `lib/regional-workflows.buildRegionalT2IGraph` | Ideogram4PromptBuilderKJ (bboxes from slot 2!) + Krea2RegionalMultiLoRAV3 |
 | Klein edit | `buildEdit` | ReferenceLatent chains, Flux2Scheduler, 4 steps |
 | Qwen edit | `buildEditQwen` | 2511 + Lightning LoRA, source-encoded latent |

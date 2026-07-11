@@ -48,8 +48,10 @@ const state = {
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   createRef: null,           // optional Krea 2 image-to-image source
   createImageGuideOpen: false,
+  createGuideMode: 'image',  // image-to-image pixels or depth-only structure control
   createMatchSource: false,
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
+  createDepthStrength: 100,  // 5-200; maps to Control LoRA strength 0.05-2.0
   krea2Turbo: true,          // merged Turbo checkpoint vs Raw checkpoint
   krea2RawTurboLora: null,   // managed Raw-mode Turbo LoRA, preserved while hidden
   regions: [],
@@ -1010,8 +1012,10 @@ function saveForm() {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
       } : null,
       createImageGuideOpen: state.createImageGuideOpen,
+      createGuideMode: state.createGuideMode,
       createMatchSource: state.createMatchSource,
       createInfluence: state.createInfluence,
+      createDepthStrength: state.createDepthStrength,
       krea2Turbo: state.krea2Turbo,
       krea2RawTurboLora: state.krea2RawTurboLora,
       regions: state.regions,
@@ -1115,7 +1119,11 @@ function loadForm() {
       label: String(f.createRef.label || 'Source image'),
     } : null;
     state.createImageGuideOpen = f.createImageGuideOpen === true;
+    state.createGuideMode = f.createGuideMode === 'depth' ? 'depth' : 'image';
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
+    const savedDepthStrength = Number(f.createDepthStrength);
+    state.createDepthStrength = Number.isFinite(savedDepthStrength)
+      ? Math.max(5, Math.min(200, savedDepthStrength)) : 100;
     state.generationTuning = {
       create: normalizeGenerationTuning('create', f.generationTuning && f.generationTuning.create),
       edit: normalizeGenerationTuning('edit', f.generationTuning && f.generationTuning.edit),
@@ -1723,10 +1731,28 @@ function renderCreateImageGuide() {
   section.setAttribute('aria-hidden', String(!open));
   $('#createImageGuideAdd').hidden = hasImage;
   $('#createImageGuideFilled').hidden = !hasImage;
-  const influence = Math.max(0, Math.min(100, Number(state.createInfluence) || 0));
+  const depthMode = state.createGuideMode === 'depth';
+  const influence = depthMode
+    ? Math.max(5, Math.min(200, Number(state.createDepthStrength) || 100))
+    : Math.max(0, Math.min(100, Number(state.createInfluence) || 0));
+  $$('#createImageGuideModes [data-guide-mode]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.guideMode === state.createGuideMode));
+  });
+  $('#createImageInfluenceTitle').textContent = depthMode ? 'Depth strength' : 'Image influence';
+  $('#createImageInfluenceHint').textContent = depthMode
+    ? 'Preserves perspective and 3D structure'
+    : 'Higher stays closer to the source';
+  $('#createImageInfluence').min = depthMode ? '5' : '0';
+  $('#createImageInfluence').max = depthMode ? '200' : '100';
+  $('#createImageInfluence').setAttribute('aria-label', depthMode ? 'Depth strength' : 'Image influence');
   $('#createImageInfluence').value = String(influence);
   $('#createImageInfluence').style.setProperty('--influence', influence + '%');
   $('#createImageInfluenceVal').textContent = influence + '%';
+  const scale = $('.create-image-influence-scale');
+  if (scale) {
+    scale.children[0].textContent = depthMode ? 'Looser' : 'Freer';
+    scale.children[1].textContent = depthMode ? 'Stricter' : 'Closer';
+  }
   if (!hasImage) return;
   $('#createImageGuideImg').src = state.createRef.url;
   $('#createImageGuideName').textContent = state.createRef.label || 'Source image';
@@ -1754,6 +1780,13 @@ $('#createImageGuideToggle').addEventListener('click', () => {
 });
 $('#createImageGuideAdd').addEventListener('click', pickCreateImageGuide);
 $('#createImageGuideChange').addEventListener('click', pickCreateImageGuide);
+$('#createImageGuideModes').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-guide-mode]');
+  if (!button) return;
+  state.createGuideMode = button.dataset.guideMode === 'depth' ? 'depth' : 'image';
+  renderCreateImageGuide();
+  saveForm();
+});
 $('#createImageGuideRemove').addEventListener('click', () => {
   state.createRef = null;
   state.createMatchSource = false;
@@ -1764,7 +1797,8 @@ $('#createImageGuideRemove').addEventListener('click', () => {
   toast('Image guide removed');
 });
 $('#createImageInfluence').addEventListener('input', (event) => {
-  state.createInfluence = Number(event.target.value);
+  if (state.createGuideMode === 'depth') state.createDepthStrength = Number(event.target.value);
+  else state.createInfluence = Number(event.target.value);
   renderCreateImageGuide();
   saveForm();
 });
@@ -6231,13 +6265,16 @@ $('#generateBtn').addEventListener('click', async () => {
     cfg: Number($('#cfgInput').value) || 1,
     batch: sequenceSteps.length ? 1 : (Number($('#batchInput').value) || 1),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)
-      : (createImageGuide ? createDenoiseFromInfluence() : 1),
+      : (createImageGuide && state.createGuideMode !== 'depth' ? createDenoiseFromInfluence() : 1),
     seed: seedRaw === '' ? undefined : Number(seedRaw),
     loras: mode === 'edit' ? state.editLoras : state.loras,
     refImages: mode === 'edit'
       ? state.refs.slice(0, state.editEngine === 'krea2' ? 1 : 3).filter(Boolean).map((r) => r.name)
       : [],
     imageName: createImageGuide ? createImageGuide.name : undefined,
+    imageGuideMode: createImageGuide ? state.createGuideMode : undefined,
+    depthStrength: createImageGuide && state.createGuideMode === 'depth'
+      ? Number((state.createDepthStrength / 100).toFixed(2)) : undefined,
     regions: activeRegionsForRequest(),
     maskImageName,
     editMaskMode: localizedEdit ? (state.kreaMaskKind || state.kreaMaskTool) : undefined,
@@ -9572,7 +9609,9 @@ async function reuseItem(it, useEnhanced) {
   if (!restoringEdit) {
     state.createRef = null;
     state.createMatchSource = false;
+    state.createGuideMode = it.imageGuideMode === 'depth' ? 'depth' : 'image';
     state.createInfluence = createInfluenceFromDenoise(it.denoise);
+    state.createDepthStrength = Math.max(5, Math.min(200, Math.round((Number(it.depthStrength) || 1) * 100)));
     state.krea2Turbo = it.krea2Turbo !== false;
     const savedRawTurboLora = it.krea2RawTurboLora || (!state.krea2Turbo
       ? (Array.isArray(it.loras) ? it.loras.find((lora) => assetNameKey(lora && lora.name) === assetNameKey(krea2TurboLoraName())) : null)
@@ -10731,6 +10770,8 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setUnet').value = s.unet;
     $('#setKrea2RawUnet').value = s.krea2RawUnet || '';
     $('#setKrea2TurboLora').value = s.krea2TurboLora || '';
+    $('#setKrea2DepthLora').value = s.krea2DepthLora || '';
+    $('#setDepthAnythingV3Model').value = s.depthAnythingV3Model || '';
     $('#setClip').value = s.clip;
     $('#setVae').value = s.vae;
     $('#setKlein4Unet').value = s.klein4Unet || s.kleinUnet || '';
@@ -10790,6 +10831,8 @@ $('#settingsSave').addEventListener('click', async () => {
           unet: $('#setUnet').value,
         krea2RawUnet: $('#setKrea2RawUnet').value,
         krea2TurboLora: $('#setKrea2TurboLora').value,
+        krea2DepthLora: $('#setKrea2DepthLora').value,
+        depthAnythingV3Model: $('#setDepthAnythingV3Model').value,
         clip: $('#setClip').value,
         vae: $('#setVae').value,
         kleinUnet: $('#setKlein4Unet').value,

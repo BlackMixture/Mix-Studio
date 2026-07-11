@@ -23,14 +23,20 @@ const {
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2depth', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Depth', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
   assert.ok(availableComponents().includes('smartmask'));
+  assert.equal(MODEL_ASSETS.krea2Depth[0][1], 'loras');
+  assert.match(MODEL_ASSETS.krea2Depth[0][2], /Patil\/Krea-2-depth-controlnet/);
+  assert.equal(MODEL_ASSETS.krea2Depth[1][1], 'depthanything3');
+  assert.match(MODEL_ASSETS.krea2Depth[1][2], /depth-anything\/DA3-LARGE-1\.1/);
+  assert.equal(NODE_PACKS.krea2Control.folder, 'comfyui-krea2-controlnet');
+  assert.equal(NODE_PACKS.depthAnything3.folder, 'ComfyUI-DepthAnythingV3');
 });
 
 test('dependency paths stay inside ComfyUI model folders and trusted repos compare safely', () => {
@@ -50,7 +56,7 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /qwenedit: \['qwen'\]/);
   assert.match(server, /klein: \['klein4', 'klein9'\]/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /downloadTotal/);
-  assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /settings\[settingKey\] \|\| sourceName/);
+  assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /settings\[settingKey\] \|\| defaultFilename \|\| sourceName/);
 });
 
 test('ComfyUI restart is owner-only, queue-safe, and reports reconnect state', () => {

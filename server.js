@@ -52,7 +52,7 @@ const {
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
-const { buildKrea2LatentInput } = require('./lib/krea2-workflows');
+const { buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
@@ -151,6 +151,8 @@ const DEFAULT_SETTINGS = {
   unet: 'krea2_turbo_fp8_scaled.safetensors',
   krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
   krea2TurboLora: 'krea2_turbo_lora_rank_64_bf16.safetensors',
+  krea2DepthLora: 'depth-control-lora.safetensors',
+  depthAnythingV3Model: 'da3_large.safetensors',
   clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
   clipType: 'krea2',
   vae: 'qwen_image_vae.safetensors',
@@ -637,6 +639,11 @@ function configuredModelsStatus(info) {
       raw: modelStatus(info, 'UNETLoader', 'unet_name', settings.krea2RawUnet),
       turboLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.krea2TurboLora, loraList),
     },
+    krea2Depth: {
+      label: 'Krea 2 Depth',
+      lora: modelStatus(info, 'Krea2ControlLoRALoader', 'lora_name', settings.krea2DepthLora, loraList),
+      depthModel: modelStatus(info, 'DownloadAndLoadDepthAnythingV3Model', 'model', settings.depthAnythingV3Model),
+    },
     klein4: {
       label: 'Flux Klein 4B',
       unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein4Unet),
@@ -724,11 +731,12 @@ function missingDependencyComponentIds(missing, models) {
     klein: ['klein4', 'klein9'],
     qwenedit: ['qwen'],
     krea2inpaint: ['image'],
+    krea2depth: ['krea2depth'],
   };
   for (const [group, classes] of Object.entries(missing || {})) {
     if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
   }
-  const modelToComponent = { krea2: 'image', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -1231,6 +1239,8 @@ async function completeJob(pid) {
       mode: job.params.mode,
       krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
       krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
+      imageGuideMode: job.params.mode === 't2i' && job.params.imageName ? job.params.imageGuideMode : undefined,
+      depthStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'depth' ? job.params.depthStrength : undefined,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       qwenQuality: job.params.mode === 'edit' && job.params.editEngine === 'qwen'
         ? normalizeQwenEditQuality(job.params.qwenQuality) : undefined,
@@ -1537,13 +1547,28 @@ function baseLoaders(graph, params = {}) {
 async function buildT2I(p) {
   const graph = {};
   baseLoaders(graph, p);
-  const { model, clip } = buildLoraChain(graph, p.loras);
+  let { model, clip } = buildLoraChain(graph, p.loras);
 
   const textSource = p.enhancedText || p.prompt;
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip, text: textSource } };
   graph.neg = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos', 0] } };
-  const latentInput = buildKrea2LatentInput(p);
+  const depthGuide = p.imageGuideMode === 'depth' && !!p.imageName;
+  const latentInput = buildKrea2LatentInput(Object.assign({}, p, { imageName: depthGuide ? '' : p.imageName }));
   Object.assign(graph, latentInput.nodes);
+  if (depthGuide) {
+    const depth = buildKrea2DepthControl({
+      imageName: p.imageName,
+      loraName: settings.krea2DepthLora,
+      depthModel: settings.depthAnythingV3Model,
+      strength: p.depthStrength,
+      latent: latentInput.latent,
+      model,
+      width: p.width,
+      height: p.height,
+    });
+    Object.assign(graph, depth.nodes);
+    model = depth.model;
+  }
   graph.sampler = {
     class_type: 'KSampler',
     inputs: {
@@ -3269,6 +3294,8 @@ const REQUIRED_CLASSES = {
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
+  krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',
+    'Krea2ControlLoRALoader', 'Krea2ControlImageEncode', 'Krea2ControlApply'],
   smartmask: SAM3_MASK_CLASSES,
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
   ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
@@ -3531,6 +3558,8 @@ async function handleApi(req, res, url) {
         krea2: {
           rawUnet: settings.krea2RawUnet,
           turboLora: settings.krea2TurboLora,
+          depthLora: settings.krea2DepthLora,
+          depthModel: settings.depthAnythingV3Model,
         },
         features: settings.features,
         queue: jobs.size,
@@ -3737,7 +3766,11 @@ async function handleApi(req, res, url) {
           on: p.krea2RawTurboLora.on !== false,
         };
     p.imageName = p.mode === 'edit' ? '' : String(p.imageName || '').trim();
-    p.denoise = clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : (p.imageName ? 0.45 : 1));
+    p.imageGuideMode = p.imageName && p.imageGuideMode === 'depth' ? 'depth' : 'image';
+    p.depthStrength = p.imageGuideMode === 'depth' ? clampNum(p.depthStrength, 0.05, 2, 1) : undefined;
+    p.denoise = p.imageGuideMode === 'depth'
+      ? 1
+      : clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : (p.imageName ? 0.45 : 1));
     p.editAspectOverride = p.editAspectOverride === true;
     p.postUpscale = p.mode === 'edit' || p.mode === 't2i' ? normalizePostUpscale(p.postUpscale) : undefined;
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
