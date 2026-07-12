@@ -6251,9 +6251,21 @@ body.sheet-open {
 
 /* ---------------- desktop studio workspace ---------------- */
 @media (min-width: 1180px) {
-  html,
-  body { height: 100%; overflow: hidden; }
-  body { padding-bottom: 0; }
+  html {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    padding-bottom: 0;
+  }
   body::before {
     inset: 58px 0 0;
     height: auto;
@@ -6344,9 +6356,39 @@ body.sheet-open {
   #view-gallery .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   #view-gallery .gallery-date-divider { margin-top: 8px; }
   #view-gallery .card { border-radius: 13px; }
-  #view-gallery .card[draggable="true"] { cursor: grab; }
-  #view-gallery .card[draggable="true"]:active { cursor: grabbing; }
+  #view-gallery .card.desktop-drag-source { cursor: grab; touch-action: pan-y; }
+  #view-gallery .card.desktop-drag-source:active { cursor: grabbing; }
   #view-gallery .card.is-dragging { opacity: .34; transform: scale(.96); }
+  .desktop-gallery-drag-ghost {
+    position: fixed;
+    z-index: 260;
+    top: 0;
+    left: 0;
+    width: 82px;
+    height: 82px;
+    overflow: hidden;
+    pointer-events: none;
+    border: 1px solid rgba(255,255,255,.42);
+    border-radius: 16px;
+    background-color: #08090d;
+    background-position: center;
+    background-size: cover;
+    box-shadow: 0 16px 42px rgba(0,0,0,.58), 0 0 0 3px rgba(var(--mode-rgb),.2);
+    opacity: .94;
+    will-change: transform;
+  }
+  .desktop-gallery-drag-ghost span {
+    position: absolute;
+    inset: auto 5px 5px;
+    padding: 4px 5px;
+    border-radius: 7px;
+    background: rgba(0,0,0,.82);
+    color: #fff;
+    font-size: 7px;
+    font-weight: 850;
+    letter-spacing: .03em;
+    text-align: center;
+  }
   #view-gallery .card.desktop-active:not(.selected) {
     border-color: rgba(var(--mode-rgb),.72);
     box-shadow: 0 0 0 1px rgba(var(--mode-rgb),.24), 0 10px 28px rgba(0,0,0,.32);

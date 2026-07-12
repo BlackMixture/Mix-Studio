@@ -951,13 +951,17 @@ function syncSheetScrollLock() {
   const anySheetOpen = $$('.sheet').some((sheet) => sheet.classList.contains('show')) || $('#appDrawer').classList.contains('show');
   const locked = document.body.classList.contains('sheet-open');
   if (anySheetOpen && !locked) {
-    sheetScrollY = window.scrollY || document.documentElement.scrollTop || 0;
-    document.body.style.top = `-${sheetScrollY}px`;
+    sheetScrollY = desktopWorkspaceActive() ? 0 : (window.scrollY || document.documentElement.scrollTop || 0);
+    document.body.style.top = desktopWorkspaceActive() ? '0px' : `-${sheetScrollY}px`;
     document.body.classList.add('sheet-open');
   } else if (!anySheetOpen && locked) {
     document.body.classList.remove('sheet-open');
-    document.body.style.top = '';
-    window.scrollTo(0, sheetScrollY);
+    if (document.body.classList.contains('modal-open')) {
+      document.body.style.top = desktopWorkspaceActive() ? '0px' : `-${savedScrollY}px`;
+    } else {
+      document.body.style.top = '';
+      window.scrollTo(0, desktopWorkspaceActive() ? 0 : sheetScrollY);
+    }
   }
 }
 
@@ -1369,6 +1373,14 @@ const desktopWorkspaceQuery = window.matchMedia('(min-width: 1180px)');
 function desktopWorkspaceActive() {
   return desktopWorkspaceQuery.matches;
 }
+
+function pinDesktopViewport() {
+  if (!desktopWorkspaceActive() || (!window.scrollX && !window.scrollY)) return;
+  window.scrollTo(0, 0);
+}
+
+window.addEventListener('scroll', pinDesktopViewport, { passive: true });
+desktopWorkspaceQuery.addEventListener('change', () => requestAnimationFrame(pinDesktopViewport));
 
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
@@ -9216,7 +9228,8 @@ function runGallerySelectionAutoScroll() {
   if (!gallerySelectionDrag.active) return;
   const speed = gallerySelectionScrollSpeed(gallerySelectionDrag.y);
   if (speed) {
-    window.scrollBy(0, speed);
+    if (desktopWorkspaceActive()) $('#view-gallery').scrollTop += speed;
+    else window.scrollBy(0, speed);
     selectGalleryCardAtPoint(gallerySelectionDrag.x, gallerySelectionDrag.y);
   }
   gallerySelectionDrag.frame = requestAnimationFrame(runGallerySelectionAutoScroll);
@@ -9304,6 +9317,7 @@ function renderGrid() {
       preview.loop = true;
       preview.playsInline = true;
       preview.preload = 'none';
+      preview.draggable = false;
       const posterSource = galleryImageSource(it);
       preview.poster = posterSource;
       useCachedGalleryImage(preview, posterSource, 'poster');
@@ -9316,6 +9330,7 @@ function renderGrid() {
     } else {
       const img = document.createElement('img');
       img.loading = 'lazy';
+      img.draggable = false;
       const source = galleryImageSource(it);
       img.src = source;
       useCachedGalleryImage(img, source);
@@ -9384,7 +9399,8 @@ function renderGrid() {
     card.dataset.id = it.id;
     card.dataset.groupItemIds = entry.items.map((groupItem) => groupItem.id).join(',');
     card.dataset.media = latestVideo ? latestVideo.id : 'image';
-    card.draggable = desktopWorkspaceActive();
+    card.draggable = false;
+    card.classList.toggle('desktop-drag-source', desktopWorkspaceActive());
     if (state.selected.has(it.id)) card.classList.add('selected');
 
     // long-press -> multi-select mode; tap -> toggle (in select mode) or open
@@ -9393,13 +9409,18 @@ function renderGrid() {
     let startXY = [0, 0];
     let lastXY = [0, 0];
     let pointerId = null;
+    let desktopPointerCandidate = null;
     card.addEventListener('pointerdown', (e) => {
       lpFired = false;
       pointerId = e.pointerId;
       startXY = [e.clientX, e.clientY];
       lastXY = startXY;
+      desktopPointerCandidate = desktopWorkspaceActive() && !state.selectMode && (e.button == null || e.button === 0)
+        ? { item: it, media: card.dataset.media || 'image', card, pointerId: e.pointerId, active: false }
+        : null;
       clearTimeout(lpTimer);
       lpTimer = setTimeout(() => {
+        desktopPointerCandidate = null;
         lpFired = true;
         if (navigator.vibrate) navigator.vibrate(12);
         if (!state.selectMode) enterSelectWith(it.id);
@@ -9409,6 +9430,21 @@ function renderGrid() {
     });
     card.addEventListener('pointermove', (e) => {
       lastXY = [e.clientX, e.clientY];
+      if (desktopPointerCandidate && desktopPointerCandidate.pointerId === e.pointerId) {
+        const dx = e.clientX - startXY[0];
+        const dy = e.clientY - startXY[1];
+        if (!desktopPointerCandidate.active && dx < -10 && Math.abs(dx) > Math.abs(dy) * 0.65) {
+          clearTimeout(lpTimer);
+          lpFired = true;
+          desktopPointerCandidate.active = true;
+          beginDesktopGalleryPointerDrag(desktopPointerCandidate, e);
+        }
+        if (desktopPointerCandidate.active) {
+          e.preventDefault();
+          updateDesktopGalleryPointerDrag(e);
+          return;
+        }
+      }
       // After the hold engages, dragging across tiles sweeps them into the
       // selection (Google-Photos style).
       if (lpFired && state.selectMode) {
@@ -9422,18 +9458,24 @@ function renderGrid() {
     card.addEventListener('touchmove', (e) => {
       if (lpFired && state.selectMode) e.preventDefault();
     }, { passive: false });
-    card.addEventListener('pointerup', (event) => { clearTimeout(lpTimer); stopGallerySelectionDrag(event); });
-    card.addEventListener('pointercancel', (event) => { clearTimeout(lpTimer); stopGallerySelectionDrag(event); });
-    card.addEventListener('contextmenu', (e) => e.preventDefault());
-    card.addEventListener('dragstart', (event) => {
-      if (!desktopWorkspaceActive() || state.selectMode) {
-        event.preventDefault();
+    card.addEventListener('pointerup', (event) => {
+      clearTimeout(lpTimer);
+      if (desktopPointerCandidate && desktopPointerCandidate.active) {
+        finishDesktopGalleryPointerDrag(event, true);
+        desktopPointerCandidate = null;
         return;
       }
-      clearTimeout(lpTimer);
-      beginDesktopGalleryDrag(it, card.dataset.media || 'image', card, event);
+      desktopPointerCandidate = null;
+      stopGallerySelectionDrag(event);
     });
-    card.addEventListener('dragend', endDesktopGalleryDrag);
+    card.addEventListener('pointercancel', (event) => {
+      clearTimeout(lpTimer);
+      if (desktopPointerCandidate && desktopPointerCandidate.active) finishDesktopGalleryPointerDrag(event, false);
+      desktopPointerCandidate = null;
+      stopGallerySelectionDrag(event);
+    });
+    card.addEventListener('contextmenu', (e) => e.preventDefault());
+    card.addEventListener('dragstart', (event) => event.preventDefault());
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
@@ -9510,6 +9552,7 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
   if (!drag) return [];
   return $$(DESKTOP_GALLERY_DROP_SELECTOR).filter((target) => {
     if (!target.getClientRects().length) return false;
+    if (target.closest('[inert], [aria-hidden="true"]')) return false;
     if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
     if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
     return true;
@@ -9520,15 +9563,55 @@ function clearDesktopGalleryDropTargets() {
   $$('.gallery-drop-ready, .gallery-drop-active').forEach((target) => target.classList.remove('gallery-drop-ready', 'gallery-drop-active'));
 }
 
-function beginDesktopGalleryDrag(item, media, card, event) {
+function activateDesktopGalleryDrag(item, media, card) {
   const video = (item.videos || []).find((entry) => entry.id === media) || null;
   desktopGalleryDrag = { item, media, video, card };
   card.classList.add('is-dragging');
   document.body.classList.add('desktop-gallery-dragging');
   desktopGalleryDropTargets().forEach((target) => target.classList.add('gallery-drop-ready'));
-  event.dataTransfer.effectAllowed = 'copy';
-  event.dataTransfer.setData('application/x-mix-studio-gallery', JSON.stringify({ itemId: item.id, media }));
-  event.dataTransfer.setData('text/plain', item.prompt || 'Gallery generation');
+}
+
+let desktopGalleryPointerDrag = null;
+
+function beginDesktopGalleryPointerDrag(candidate, event) {
+  activateDesktopGalleryDrag(candidate.item, candidate.media, candidate.card);
+  const ghost = document.createElement('div');
+  ghost.className = 'desktop-gallery-drag-ghost';
+  const preview = candidate.card.querySelector('img');
+  if (preview && preview.src) ghost.style.backgroundImage = `url("${preview.src.replace(/"/g, '%22')}")`;
+  ghost.innerHTML = '<span>Drop into an input</span>';
+  document.body.appendChild(ghost);
+  desktopGalleryPointerDrag = { pointerId: event.pointerId, card: candidate.card, ghost, target: null };
+  try { candidate.card.setPointerCapture(event.pointerId); } catch { /* pointer capture is an enhancement */ }
+}
+
+function updateDesktopGalleryPointerDrag(event) {
+  const pointer = desktopGalleryPointerDrag;
+  if (!pointer || pointer.pointerId !== event.pointerId) return;
+  pointer.ghost.style.transform = `translate3d(${event.clientX + 14}px, ${event.clientY + 14}px, 0)`;
+  const target = desktopGalleryDropTarget(document.elementFromPoint(event.clientX, event.clientY));
+  const allowed = target && desktopGalleryDropTargets().includes(target) ? target : null;
+  if (pointer.target !== allowed) {
+    if (pointer.target) pointer.target.classList.remove('gallery-drop-active');
+    pointer.target = allowed;
+    if (allowed) allowed.classList.add('gallery-drop-active');
+  }
+}
+
+async function finishDesktopGalleryPointerDrag(event, shouldDrop) {
+  const pointer = desktopGalleryPointerDrag;
+  const drag = desktopGalleryDrag;
+  if (!pointer || pointer.pointerId !== event.pointerId) return;
+  const target = shouldDrop ? pointer.target : null;
+  try { pointer.card.releasePointerCapture(event.pointerId); } catch { /* noop */ }
+  pointer.ghost.remove();
+  desktopGalleryPointerDrag = null;
+  endDesktopGalleryDrag();
+  if (!target || !drag) return;
+  target.classList.add('gallery-drop-received');
+  setTimeout(() => target.classList.remove('gallery-drop-received'), 520);
+  try { await applyDesktopGalleryDrop(target, drag); }
+  catch (error) { toast(error.message, true); }
 }
 
 function endDesktopGalleryDrag() {
@@ -10326,10 +10409,10 @@ $('#selectBar').addEventListener('pointercancel', finishSelectBarSwipe);
 let savedScrollY = 0;
 function lockScroll() {
   if (document.body.classList.contains('modal-open')) return;
-  savedScrollY = window.scrollY;
+  savedScrollY = desktopWorkspaceActive() ? 0 : window.scrollY;
   document.body.classList.add('modal-open');
   document.body.style.position = 'fixed';
-  document.body.style.top = `-${savedScrollY}px`;
+  document.body.style.top = desktopWorkspaceActive() ? '0px' : `-${savedScrollY}px`;
   document.body.style.left = '0';
   document.body.style.right = '0';
 }
@@ -10337,10 +10420,14 @@ function unlockScroll() {
   if (!document.body.classList.contains('modal-open')) return;
   document.body.classList.remove('modal-open');
   document.body.style.position = '';
-  document.body.style.top = '';
   document.body.style.left = '';
   document.body.style.right = '';
-  window.scrollTo(0, savedScrollY);
+  if (document.body.classList.contains('sheet-open')) {
+    document.body.style.top = desktopWorkspaceActive() ? '0px' : `-${sheetScrollY}px`;
+  } else {
+    document.body.style.top = '';
+    window.scrollTo(0, desktopWorkspaceActive() ? 0 : savedScrollY);
+  }
 }
 window.addEventListener('popstate', () => {
   if ($('#compare').classList.contains('show')) { $('#compare').classList.remove('show'); return; }

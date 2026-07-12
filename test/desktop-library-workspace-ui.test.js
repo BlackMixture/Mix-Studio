@@ -33,8 +33,14 @@ test('desktop navigation and focused viewer align to the three-column workspace'
 });
 
 test('desktop gallery items drag onto compatible generation inputs', () => {
-  assert.match(app, /card\.draggable = desktopWorkspaceActive\(\)/);
-  assert.match(app, /function beginDesktopGalleryDrag\(item, media, card, event\)/);
+  assert.match(app, /card\.classList\.toggle\('desktop-drag-source', desktopWorkspaceActive\(\)\)/);
+  assert.match(app, /preview\.draggable = false/);
+  assert.match(app, /img\.draggable = false/);
+  assert.match(app, /card\.addEventListener\('dragstart', \(event\) => event\.preventDefault\(\)\)/);
+  assert.match(app, /function beginDesktopGalleryPointerDrag\(candidate, event\)/);
+  assert.match(app, /function updateDesktopGalleryPointerDrag\(event\)/);
+  assert.match(app, /function finishDesktopGalleryPointerDrag\(event, shouldDrop\)/);
+  assert.match(app, /dx < -10 && Math\.abs\(dx\) > Math\.abs\(dy\) \* 0\.65/);
   assert.match(app, /function applyDesktopGalleryDrop\(target, drag\)/);
   assert.match(app, /#createImageGuideAdd/);
   assert.match(app, /\.ref-slot/);
@@ -43,6 +49,7 @@ test('desktop gallery items drag onto compatible generation inputs', () => {
   assert.match(app, /sendVideoAsDrive\(item, video, \{ preserveEngine: true \}\)/);
   assert.match(css, /\.gallery-drop-ready/);
   assert.match(css, /\.gallery-drop-active/);
+  assert.match(css, /\.desktop-gallery-drag-ghost/);
 });
 
 test('desktop empty stage avoids redundant layout instructions', () => {
@@ -89,4 +96,14 @@ test('desktop image action opens the full destination menu', () => {
 test('desktop focused information rail uses a true black surface', () => {
   assert.match(css, /#lightbox\.show \{[\s\S]*background: #000;/);
   assert.match(css, /#lightbox #lbActions \{[\s\S]*background: #000;/);
+});
+
+test('desktop viewport stays pinned while each workspace column owns scrolling', () => {
+  assert.match(css, /@media \(min-width: 1180px\) \{[\s\S]*?body \{[\s\S]*?position: fixed !important;[\s\S]*?inset: 0 !important;[\s\S]*?height: 100dvh;[\s\S]*?overflow: hidden;/);
+  assert.match(css, /\.studio-workspace > \.view \{[\s\S]*?overflow-y: auto;[\s\S]*?overscroll-behavior: contain;/);
+  assert.match(app, /function pinDesktopViewport\(\)/);
+  assert.match(app, /window\.addEventListener\('scroll', pinDesktopViewport/);
+  assert.match(app, /if \(desktopWorkspaceActive\(\)\) \$\('#view-gallery'\)\.scrollTop \+= speed/);
+  assert.match(app, /sheetScrollY = desktopWorkspaceActive\(\) \? 0/);
+  assert.match(app, /savedScrollY = desktopWorkspaceActive\(\) \? 0/);
 });
