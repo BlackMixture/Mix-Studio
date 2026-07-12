@@ -1745,14 +1745,19 @@ async function prepareOutpaintParams(p, refNames, info) {
     p.editOutpaintFinalPadding = plan.finalPadding;
     p.editOutpaintEffectiveScale = Math.round(plan.effectiveScale * 100);
     p.editOutpaintCanvasLimited = plan.limited;
-    // Native preservation must remain deterministic. SeedVR2 is a creative
-    // detail pass, so use it only when the user explicitly enabled Upscale.
-    p.editOutpaintRefine = plan.needsRefine && refine.ready && !!p.postUpscale;
+    // Keep diffusion inside the edit model's supported working canvas. When
+    // Native Preserve requests a larger final image, SeedVR2 enlarges the
+    // generated canvas first and the untouched source is composited last.
+    // Never silently stretch a large outpaint with ordinary interpolation.
+    if (plan.needsRefine && !refine.ready) {
+      throw new Error('Large Native Preserve needs SeedVR2. Install the Upscale dependencies or reduce the source size / final canvas.');
+    }
+    p.editOutpaintRefine = plan.needsRefine;
     p.editOutpaintRefineProfile = p.postUpscale?.profile || 'balanced';
     p.editOutpaintRefineNoise = p.postUpscale?.noise || 'low';
     p.seedVr2Models = refine.models;
-    // Preserve is completed inside the outpaint graph after the optional
-    // tiled detail pass. A later whole-image upscale would resample the native
+    // Preserve is completed inside the outpaint graph after the automatic
+    // detail upscale. A later whole-image upscale would resample the native
     // source and defeat non-destructive preservation.
     p.postUpscale = undefined;
     return plan.workingPadding;

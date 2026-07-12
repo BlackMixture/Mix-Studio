@@ -158,6 +158,10 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.outpaint_refine.class_type, 'SeedVR2VideoUpscaler');
   assert.equal(graph.outpaint_refine.inputs.seed, 202373335);
   assert.equal(graph.outpaint_refine_vae.inputs.decode_tiled, true);
+  assert.deepEqual(graph.final_scale.inputs.image, ['outpaint_refine', 0]);
+  assert.deepEqual(graph.color_match_final.inputs.image_target, ['final_scale', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.destination, ['color_match_final', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.source, ['source', 0]);
 
   const adjusted = buildKrea2OutpaintGraph({
     settings: {

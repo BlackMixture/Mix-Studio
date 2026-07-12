@@ -73,7 +73,12 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /Native preserve/);
   assert.match(css, /\.edit-outpaint-source img \{[^}]*object-fit: contain/);
   assert.match(css, /\.ref-slot img \{[^}]*object-fit: contain/);
-  assert.match(server, /p\.editOutpaintRefine = plan\.needsRefine && refine\.ready && !!p\.postUpscale/);
+  assert.match(server, /if \(plan\.needsRefine && !refine\.ready\)/);
+  assert.match(server, /p\.editOutpaintRefine = plan\.needsRefine/);
+  assert.match(server, /Large Native Preserve needs SeedVR2/);
+  assert.doesNotMatch(server, /p\.editOutpaintRefine = plan\.needsRefine && refine\.ready && !!p\.postUpscale/);
+  assert.match(app, /refineNeeded: nativePreserve && finalWidth \* finalHeight > 2_000_000/);
+  assert.match(app, /SeedVR2 detail upscale/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
   assert.match(app, /return editOutpaintActive\(\)[\s\S]{0,100}OUTPAINT_EDIT_ENGINES/);
   assert.match(server, /p\.editEngine === 'krea2ref' && p\.editOutpaint/);

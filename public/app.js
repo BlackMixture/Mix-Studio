@@ -5824,6 +5824,7 @@ function editOutpaintGeometry() {
     finalWidth,
     finalHeight,
     limited,
+    refineNeeded: nativePreserve && finalWidth * finalHeight > 2_000_000,
     sourceWidthPercent: Math.max(8, Math.min(100, sourceWidthPercent)),
     sourceHeightPercent: Math.max(8, Math.min(100, sourceHeightPercent)),
   };
@@ -5930,7 +5931,7 @@ function renderEditOutpaint() {
   $('#editOutpaintOutputValue').textContent = hasPreviewGeometry ? `${geometry.finalWidth} × ${geometry.finalHeight}` : '—';
   $('#editOutpaintOutputNote').textContent = !geometry.ref ? 'Add a source image to calculate the canvas.'
     : (geometry.nativePreserve
-      ? `${geometry.ref.w} × ${geometry.ref.h} ${hasEditMask() ? 'masked subject' : 'source'} retained${geometry.limited ? ' · canvas limit applied' : (state.editUpscaleEnabled ? ' · tiled detail pass enabled' : '')}`
+      ? `${geometry.ref.w} × ${geometry.ref.h} ${hasEditMask() ? 'masked subject' : 'source'} retained${geometry.limited ? ' · canvas limit applied' : (geometry.refineNeeded ? ' · SeedVR2 detail upscale' : '')}`
       : 'The source and generated canvas use the selected working resolution.');
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
     : (!geometry.valid ? 'Reduce Source on canvas or choose a different ratio to add space.'
