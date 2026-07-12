@@ -81,23 +81,37 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   top: 0;
   z-index: 30;
 }
-.brand { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.brand { display: inline-flex; align-items: center; min-width: 0; }
 .side-menu-trigger {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+}
+.side-menu-icon {
   position: relative;
-  width: 36px; height: 36px; display: grid; place-items: center;
-  flex: 0 0 36px; padding: 0; color: var(--ink);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
   border-radius: 12px;
   background: linear-gradient(#0b0d12, #0b0d12) padding-box, var(--gemini) border-box;
   border: 2px solid transparent;
   box-shadow: 0 0 22px rgba(66,87,255,0.18);
   transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
 }
-.side-menu-trigger:hover,
-.side-menu-trigger[aria-expanded="true"] {
+.side-menu-trigger:hover .side-menu-icon,
+.side-menu-trigger[aria-expanded="true"] .side-menu-icon {
   transform: translateY(-1px);
   box-shadow: 0 0 28px rgba(66,87,255,0.28);
 }
-.side-menu-trigger:active { transform: scale(0.94); }
+.side-menu-trigger:active .side-menu-icon { transform: scale(0.94); }
 .side-menu-trigger:focus-visible {
   outline: 2px solid rgba(116,147,255,0.9);
   outline-offset: 3px;
@@ -471,7 +485,7 @@ html:-webkit-full-screen { background: #000; }
   transition: transform 260ms var(--ease);
 }
 @media (max-width: 760px) {
-  .side-menu-trigger {
+  .side-menu-icon {
     width: 44px;
     height: 44px;
     flex-basis: 44px;
@@ -493,7 +507,8 @@ html:-webkit-full-screen { background: #000; }
 @media (max-width: 420px) {
   .topbar { gap: 8px; padding-left: 10px; padding-right: 10px; }
   .brand { gap: 8px; }
-  .side-menu-trigger { width: 40px; height: 40px; flex-basis: 40px; border-radius: 14px; }
+  .side-menu-trigger { gap: 8px; }
+  .side-menu-icon { width: 40px; height: 40px; flex-basis: 40px; border-radius: 14px; }
   .brand-wordmark { width: 118px; flex-basis: 118px; }
   .topbar-actions { gap: 6px; }
 }
