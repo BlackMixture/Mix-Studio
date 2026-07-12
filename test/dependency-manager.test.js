@@ -42,6 +42,10 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(NODE_PACKS.depthAnything3.folder, 'ComfyUI-DepthAnythingV3');
   assert.equal(NODE_PACKS.krea2Edit.folder, 'comfyui-krea2edit');
   assert.match(MODEL_ASSETS.krea2Outpaint[0][2], /conradlocke\/krea2-identity-edit/);
+  assert.equal(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[1], 'loras');
+  assert.match(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[2], /f2k_4B_consist_20260314\.safetensors/);
+  assert.equal(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[1], 'loras');
+  assert.match(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[2], /f2k_9B_lcs_consist_20260415\.safetensors/);
 });
 
 test('dependency paths stay inside ComfyUI model folders and trusted repos compare safely', () => {
@@ -174,6 +178,8 @@ test('node installs preserve unrelated ComfyUI packages and make a repair explic
 
 test('model readiness accepts ComfyUI DynamicCombo option lists', () => {
   assert.match(server, /spec\[0\] === 'COMBO' && Array\.isArray\(spec\[1\]\?\.options\)/);
+  assert.match(server, /consistencyLora: modelStatus\(info, 'LoraLoaderModelOnly', 'lora_name', settings\.klein4ConsistencyLora/);
+  assert.match(server, /consistencyLora: modelStatus\(info, 'LoraLoaderModelOnly', 'lora_name', settings\.klein9ConsistencyLora/);
 });
 
 test('node installs constrain the existing environment instead of replacing runtime packages', () => {

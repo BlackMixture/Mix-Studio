@@ -4279,6 +4279,8 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   font-weight: 800;
   scroll-snap-align: start;
 }
+.select-actions .action-btn[hidden],
+.selection-console-more-actions .action-btn[hidden] { display: none; }
 .select-actions .action-btn b,
 .selection-console-more-actions .action-btn b { color: currentColor; font-size: 17px; line-height: 1; }
 .select-actions .action-btn:active,

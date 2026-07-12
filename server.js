@@ -191,8 +191,12 @@ const DEFAULT_SETTINGS = {
   kleinClip: 'qwen_3_4b.safetensors',
   klein4Unet: 'flux-2-klein-4b.safetensors',
   klein4Clip: 'qwen_3_4b.safetensors',
+  klein4ConsistencyLora: 'f2k_4B_consist_20260314.safetensors',
+  klein4ConsistencyTrigger: 'transform the image to realistic photograph. add realistic details to the corrupted image. restore high frequence details from the corrupted image.',
   klein9Unet: 'flux-2-klein-9b-fp8.safetensors',
   klein9Clip: 'qwen_3_8b_fp8mixed.safetensors',
+  klein9ConsistencyLora: 'f2k_9B_lcs_consist_20260415.safetensors',
+  klein9ConsistencyTrigger: 'restore image details',
   kleinVae: 'flux2-vae.safetensors',
   qwenEditUnet: 'qwen_image_edit_2511_bf16.safetensors',
   qwenEditClip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
@@ -713,12 +717,14 @@ function configuredModelsStatus(info) {
       unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein4Unet),
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.klein4Clip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
+      consistencyLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.klein4ConsistencyLora, loraList),
     },
     klein9: {
       label: 'Flux Klein 9B',
       unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein9Unet),
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.klein9Clip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
+      consistencyLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.klein9ConsistencyLora, loraList),
     },
     qwen: {
       label: 'Qwen Edit',
@@ -1817,6 +1823,17 @@ async function buildEditKleinOutpaint(p, refNames) {
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Klein outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const consistencyLora = p.editEngine === 'klein9'
+    ? settings.klein9ConsistencyLora
+    : settings.klein4ConsistencyLora;
+  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
+    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
+    : comboList(info, 'LoraLoader', 'lora_name');
+  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  if (consistencyLora && !loraList.some((name) => assetKey(name) === assetKey(consistencyLora))) {
+    const label = p.editEngine === 'klein9' ? 'Klein 9B' : 'Klein 4B';
+    throw new Error(`${label} outpaint needs its Consistence Edit LoRA in ComfyUI loras: ${consistencyLora}`);
   }
   const klein = kleinConfigForEngine(p.editEngine);
   return filterInputs(buildKleinOutpaintGraph(Object.assign({}, p, {

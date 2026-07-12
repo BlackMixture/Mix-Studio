@@ -79,6 +79,7 @@ test('ungroup appears only for a user-created group with multiple live items and
   assert.match(app, /selUngroup'\)\.hidden = selectedUngroupableGenerationGroupIds\(\)\.size === 0/);
   assert.match(html, /id="selMove"[\s\S]*id="selUngroup"[\s\S]*id="selDelete"/);
   assert.match(app, /\['selSave', 'selGroup', 'selComposite', 'selMove', 'selUngroup', 'selDelete'\]/);
+  assert.match(css, /\.select-actions \.action-btn\[hidden\],[\s\S]*\.selection-console-more-actions \.action-btn\[hidden\] \{ display: none; \}/);
 });
 
 test('selected images can create a grid contact sheet', () => {

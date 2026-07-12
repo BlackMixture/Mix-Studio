@@ -14895,8 +14895,12 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setVae').value = s.vae;
     $('#setKlein4Unet').value = s.klein4Unet || s.kleinUnet || '';
     $('#setKlein4Clip').value = s.klein4Clip || s.kleinClip || '';
+    $('#setKlein4ConsistencyLora').value = s.klein4ConsistencyLora || '';
+    $('#setKlein4ConsistencyTrigger').value = s.klein4ConsistencyTrigger || '';
     $('#setKlein9Unet').value = s.klein9Unet || '';
     $('#setKlein9Clip').value = s.klein9Clip || '';
+    $('#setKlein9ConsistencyLora').value = s.klein9ConsistencyLora || '';
+    $('#setKlein9ConsistencyTrigger').value = s.klein9ConsistencyTrigger || '';
     $('#setKleinVae').value = s.kleinVae || '';
     $('#setQeUnet').value = s.qwenEditUnet || '';
     $('#setQeClip').value = s.qwenEditClip || '';
@@ -14960,8 +14964,12 @@ $('#settingsSave').addEventListener('click', async () => {
         kleinClip: $('#setKlein4Clip').value,
         klein4Unet: $('#setKlein4Unet').value,
         klein4Clip: $('#setKlein4Clip').value,
+        klein4ConsistencyLora: $('#setKlein4ConsistencyLora').value,
+        klein4ConsistencyTrigger: $('#setKlein4ConsistencyTrigger').value,
         klein9Unet: $('#setKlein9Unet').value,
         klein9Clip: $('#setKlein9Clip').value,
+        klein9ConsistencyLora: $('#setKlein9ConsistencyLora').value,
+        klein9ConsistencyTrigger: $('#setKlein9ConsistencyTrigger').value,
         kleinVae: $('#setKleinVae').value,
         qwenEditUnet: $('#setQeUnet').value,
         qwenEditClip: $('#setQeClip').value,
