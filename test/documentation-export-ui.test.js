@@ -78,14 +78,19 @@ test('documentation builder has responsive preview and adjustment controls', () 
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.documentation-preview/);
 });
 
-test('focused videos can export a start-frame generation record followed by the result', () => {
+test('focused videos can export source, generation details, and result in one persistent view', () => {
   assert.match(app, /label: 'Documentation video'/);
   assert.match(app, /action: \(\) => saveDocumentationVideo\(it, selVideo\)/);
   assert.match(html, /id="documentationVideoSheet"/);
   assert.match(html, /id="documentationVideoCanvas"/);
   assert.match(app, /function documentationVideoDetails\(item, video\)/);
-  assert.match(app, /function drawDocumentationVideoIntro\(ctx, canvas, startFrame, item, video\)/);
-  assert.match(app, /function drawDocumentationVideoResult\(ctx, canvas, video\)/);
+  assert.match(html, /Start frame, generation details, and the complete result stay together in one view/);
+  assert.match(app, /const boardRatio = portrait \? ratio \/ 1\.32 : ratio \+ \.52/);
+  assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height\)/);
+  assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, startFrame, item, video, resultMedia\)/);
+  assert.match(app, /drawDocumentationVideoMedia\(ctx, resultMedia, layout\.result, 'FINAL RESULT'/);
+  assert.match(app, /drawDocumentationVideoMedia\(ctx, startFrame, layout\.source, 'START FRAME'/);
+  assert.doesNotMatch(app, /const introMs =/);
   assert.match(app, /canvas\.captureStream\(30\)/);
   assert.match(app, /new MediaRecorder\(stream/);
   assert.match(app, /mirrorExportFile\(blob, filename\)/);

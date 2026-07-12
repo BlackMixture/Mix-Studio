@@ -40,8 +40,11 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /preview\.preload = 'none'/);
   assert.match(app, /preview\.dataset\.src = '\/videos\/' \+ latestVideo\.file/);
   assert.match(app, /video\.dataset\.loaded !== 'true'/);
+  assert.match(app, /let galleryPreviewActive = new Set\(\)/);
+  assert.match(app, /function centeredGalleryPreviewRow\(candidates, center\)/);
   assert.match(app, /function settleGalleryPreviewPlayback\(\)/);
-  assert.match(app, /galleryPreviewActive = next/);
+  assert.match(app, /const next = new Set\(centeredGalleryPreviewRow\(candidates, center\)\)/);
+  assert.match(app, /galleryPreviewActive\.forEach\(playGalleryPreview\)/);
   assert.match(app, /setTimeout\(\(\) => scheduleGalleryPreviewPlayback\(0\), 150\)/);
   assert.match(app, /rootMargin: '-16% 0px -16% 0px'/);
   assert.match(app, /generation-count-badge/);

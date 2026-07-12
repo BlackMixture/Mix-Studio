@@ -8798,7 +8798,7 @@ function useCachedGalleryImage(target, source, property = 'src') {
 }
 
 let galleryPreviewObserver = null;
-let galleryPreviewActive = null;
+let galleryPreviewActive = new Set();
 let galleryPreviewSettleTimer = null;
 let galleryPreviewScrollTimer = null;
 function galleryPreviewMotionAllowed() {
@@ -8811,7 +8811,7 @@ function pauseGalleryPreview(video, unloadDelay = 2800) {
   video.pause();
   clearTimeout(video._previewUnloadTimer);
   video._previewUnloadTimer = setTimeout(() => {
-    if (video === galleryPreviewActive || !video.isConnected || video.dataset.loaded !== 'true') return;
+    if (galleryPreviewActive.has(video) || !video.isConnected || video.dataset.loaded !== 'true') return;
     const rect = video.getBoundingClientRect();
     if (rect.bottom > 0 && rect.top < window.innerHeight) return;
     try { video.currentTime = 0; } catch { /* noop */ }
@@ -8829,6 +8829,37 @@ function playGalleryPreview(video) {
   }
   video.play().catch(() => { /* autoplay may be blocked */ });
 }
+function centeredGalleryPreviewRow(candidates, center) {
+  const rows = [];
+  candidates
+    .map((video) => {
+      const rect = video.getBoundingClientRect();
+      return { video, rect, middle: rect.top + rect.height / 2 };
+    })
+    .sort((a, b) => a.middle - b.middle)
+    .forEach((entry) => {
+      const row = rows[rows.length - 1];
+      const tolerance = row ? Math.max(12, Math.min(row.height, entry.rect.height) * .24) : 0;
+      if (!row || Math.abs(entry.middle - row.middle) > tolerance) {
+        rows.push({ videos: [entry.video], middle: entry.middle, height: entry.rect.height });
+        return;
+      }
+      const count = row.videos.length;
+      row.videos.push(entry.video);
+      row.middle = (row.middle * count + entry.middle) / (count + 1);
+      row.height = (row.height * count + entry.rect.height) / (count + 1);
+    });
+  if (!rows.length) return [];
+  const best = rows.reduce((nearest, row) => (
+    Math.abs(row.middle - center) < Math.abs(nearest.middle - center) ? row : nearest
+  ));
+  const current = rows.find((row) => row.videos.some((video) => galleryPreviewActive.has(video)));
+  if (current) {
+    const hysteresis = Math.max(18, current.height * .12);
+    if (Math.abs(current.middle - center) <= Math.abs(best.middle - center) + hysteresis) return current.videos;
+  }
+  return best.videos;
+}
 function settleGalleryPreviewPlayback() {
   galleryPreviewSettleTimer = null;
   if (!galleryPreviewMotionAllowed() || state.view !== 'gallery') return;
@@ -8837,14 +8868,12 @@ function settleGalleryPreviewPlayback() {
     const rect = video.getBoundingClientRect();
     return rect.bottom > window.innerHeight * 0.16 && rect.top < window.innerHeight * 0.84;
   });
-  const next = candidates.sort((a, b) => {
-    const ar = a.getBoundingClientRect();
-    const br = b.getBoundingClientRect();
-    return Math.abs(ar.top + ar.height / 2 - center) - Math.abs(br.top + br.height / 2 - center);
-  })[0] || null;
-  if (galleryPreviewActive && galleryPreviewActive !== next) pauseGalleryPreview(galleryPreviewActive);
+  const next = new Set(centeredGalleryPreviewRow(candidates, center));
+  galleryPreviewActive.forEach((video) => {
+    if (!next.has(video)) pauseGalleryPreview(video);
+  });
   galleryPreviewActive = next;
-  playGalleryPreview(next);
+  galleryPreviewActive.forEach(playGalleryPreview);
 }
 function scheduleGalleryPreviewPlayback(delay = 140) {
   clearTimeout(galleryPreviewSettleTimer);
@@ -8862,7 +8891,7 @@ function resetGalleryPreviewObservation() {
   if (!galleryPreviewObserver) return;
   clearTimeout(galleryPreviewSettleTimer);
   galleryPreviewObserver.disconnect();
-  if (galleryPreviewActive && !galleryPreviewActive.isConnected) galleryPreviewActive = null;
+  galleryPreviewActive = new Set([...galleryPreviewActive].filter((video) => video.isConnected));
   $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
   scheduleGalleryPreviewPlayback(180);
 }
@@ -8870,7 +8899,7 @@ function resetGalleryPreviewObservation() {
 window.addEventListener('scroll', () => {
   if (state.view !== 'gallery' || !galleryPreviewMotionAllowed()) return;
   clearTimeout(galleryPreviewScrollTimer);
-  if (galleryPreviewActive) pauseGalleryPreview(galleryPreviewActive, 3600);
+  galleryPreviewActive.forEach((video) => pauseGalleryPreview(video, 3600));
   galleryPreviewScrollTimer = setTimeout(() => scheduleGalleryPreviewPlayback(0), 150);
 }, { passive: true });
 
@@ -10863,7 +10892,7 @@ function openLightbox(id, mediaSel) {
         a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_v' + (videos.indexOf(selVideo) + 1) + '.mp4';
         a.click();
       } },
-      { label: 'Documentation video', detail: 'Start frame + settings + result', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
+      { label: 'Documentation video', detail: 'Source + settings + result together', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
     ];
     mkMenu('Save', '', videoSaveItems, { icon: 'save', ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
     mk('🗑 Delete video', 'danger', async () => {
@@ -12259,9 +12288,11 @@ function documentationVideoMimeType() {
 function documentationVideoDimensions(width, height) {
   const ratio = Math.max(.25, Math.min(4, (Number(width) || 16) / (Number(height) || 9)));
   const even = (value) => Math.max(2, Math.round(value / 2) * 2);
-  return ratio >= 1
-    ? { width: 1280, height: even(1280 / ratio) }
-    : { width: even(1280 * ratio), height: 1280 };
+  const portrait = ratio < (1 / 1.08);
+  const boardRatio = portrait ? ratio / 1.32 : ratio + .52;
+  return boardRatio >= 1
+    ? { width: 1280, height: even(1280 / boardRatio) }
+    : { width: even(1280 * boardRatio), height: 1280 };
 }
 
 function drawContainedMedia(ctx, media, x, y, width, height) {
@@ -12292,91 +12323,118 @@ function documentationVideoDetails(item, video) {
   return { prompt, facts };
 }
 
-function drawDocumentationVideoIntro(ctx, canvas, startFrame, item, video) {
-  const { width, height } = canvas;
-  const portrait = height > width * 1.08;
-  const pad = Math.round(Math.min(width, height) * .055);
-  const gap = Math.round(pad * .72);
-  const details = documentationVideoDetails(item, video);
-  ctx.fillStyle = '#050506';
-  ctx.fillRect(0, 0, width, height);
-
-  let imageBox;
-  let copyX;
-  let copyY;
-  let copyWidth;
+function documentationVideoLayout(width, height, mediaRatio = width / height) {
+  const safeMediaRatio = Math.max(.25, Math.min(4, Number(mediaRatio) || width / height));
+  const portrait = safeMediaRatio < (1 / 1.08);
+  const pad = Math.max(18, Math.round(Math.min(width, height) * .04));
+  const gap = Math.max(12, Math.round(pad * .62));
   if (portrait) {
-    imageBox = { x: pad, y: pad, width: width - pad * 2, height: Math.round(height * .48) };
-    copyX = pad;
-    copyY = imageBox.y + imageBox.height + gap;
-    copyWidth = width - pad * 2;
-  } else {
-    imageBox = { x: pad, y: pad, width: Math.round(width * .47), height: height - pad * 2 };
-    copyX = imageBox.x + imageBox.width + gap;
-    copyY = pad;
-    copyWidth = width - copyX - pad;
+    const lowerWidth = width - pad * 2;
+    const resultHeight = Math.min(
+      lowerWidth / safeMediaRatio,
+      height - pad * 2 - gap - Math.round(height * .24),
+    );
+    const lowerY = pad + resultHeight + gap;
+    const lowerHeight = height - pad - lowerY;
+    const sourceWidth = Math.round((lowerWidth - gap) * .34);
+    return {
+      result: { x: pad, y: pad, width: lowerWidth, height: resultHeight },
+      source: { x: pad, y: lowerY, width: sourceWidth, height: lowerHeight },
+      details: { x: pad + sourceWidth + gap, y: lowerY, width: lowerWidth - sourceWidth - gap, height: lowerHeight },
+    };
   }
-  ctx.fillStyle = '#0b0c10';
-  ctx.fillRect(imageBox.x, imageBox.y, imageBox.width, imageBox.height);
-  drawContainedMedia(ctx, startFrame, imageBox.x, imageBox.y, imageBox.width, imageBox.height);
-  ctx.strokeStyle = 'rgba(255,255,255,.16)';
-  ctx.lineWidth = Math.max(1, width / 1000);
-  ctx.strokeRect(imageBox.x + .5, imageBox.y + .5, imageBox.width - 1, imageBox.height - 1);
+  const innerHeight = height - pad * 2;
+  const resultWidth = Math.min(
+    innerHeight * safeMediaRatio,
+    width - pad * 2 - gap - Math.round(width * .23),
+  );
+  const railWidth = width - pad * 2 - gap - resultWidth;
+  const sourceHeight = Math.round(innerHeight * .36);
+  return {
+    result: { x: pad, y: pad, width: resultWidth, height: innerHeight },
+    source: { x: pad + resultWidth + gap, y: pad, width: railWidth, height: sourceHeight },
+    details: {
+      x: pad + resultWidth + gap,
+      y: pad + sourceHeight + gap,
+      width: railWidth,
+      height: innerHeight - sourceHeight - gap,
+    },
+  };
+}
 
-  const scale = Math.max(.72, Math.min(1.35, copyWidth / 520));
-  const labelSize = Math.round(13 * scale);
-  const titleSize = Math.round(29 * scale);
-  const promptSize = Math.round(20 * scale);
-  const factSize = Math.round(14 * scale);
+function drawDocumentationVideoMedia(ctx, media, box, label, accent) {
+  ctx.fillStyle = '#08090c';
+  ctx.fillRect(box.x, box.y, box.width, box.height);
+  drawContainedMedia(ctx, media, box.x, box.y, box.width, box.height);
+  ctx.strokeStyle = 'rgba(255,255,255,.16)';
+  ctx.lineWidth = Math.max(1, Math.min(box.width, box.height) / 420);
+  ctx.strokeRect(box.x + .5, box.y + .5, box.width - 1, box.height - 1);
+
+  const fontSize = Math.max(9, Math.round(Math.min(box.width, box.height) * .045));
+  setDocumentationMonoFont(ctx, 750, fontSize);
+  const labelWidth = ctx.measureText(label).width;
+  const inset = Math.max(8, Math.round(fontSize * .72));
+  const boxHeight = Math.round(fontSize * 2.05);
+  ctx.fillStyle = 'rgba(0,0,0,.78)';
+  ctx.fillRect(box.x + inset, box.y + inset, labelWidth + inset * 2.2, boxHeight);
+  ctx.fillStyle = accent;
+  ctx.fillRect(box.x + inset * 1.55, box.y + inset + fontSize * .83, Math.max(2, fontSize * .18), Math.max(2, fontSize * .18));
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'top';
+  ctx.fillText(label, box.x + inset * 2.15, box.y + inset + fontSize * .48);
+}
+
+function drawDocumentationVideoDetails(ctx, box, item, video) {
+  const details = documentationVideoDetails(item, video);
+  const density = Math.max(.62, Math.min(1.35, box.width / 390, box.height / 340));
+  const labelSize = Math.max(8, Math.round(11 * density));
+  const promptSize = Math.max(11, Math.round(17 * density));
+  const factSize = Math.max(9, Math.round(12 * density));
+  const inset = Math.max(4, Math.round(4 * density));
+  const contentWidth = box.width - inset * 2;
+  let copyY = box.y + inset;
+
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#ea4335';
-  ctx.fillRect(copyX, copyY, Math.max(30, Math.round(copyWidth * .12)), Math.max(2, Math.round(3 * scale)));
-  copyY += Math.round(18 * scale);
+  ctx.fillRect(box.x + inset, copyY, Math.max(28, Math.round(contentWidth * .14)), Math.max(2, Math.round(3 * density)));
+  copyY += Math.round(16 * density);
   ctx.fillStyle = 'rgba(255,255,255,.55)';
   setDocumentationMonoFont(ctx, 700, labelSize);
-  ctx.fillText('GENERATION RECORD', copyX, copyY);
-  copyY += Math.round(labelSize * 2.1);
-  ctx.fillStyle = '#fff';
-  setDocumentationFont(ctx, 750, titleSize);
-  ctx.fillText('Start frame → final result', copyX, copyY);
-  copyY += Math.round(titleSize * 1.55);
+  ctx.fillText('GENERATION RECORD', box.x + inset, copyY);
+  copyY += Math.round(labelSize * 2.05);
   ctx.fillStyle = 'rgba(255,255,255,.48)';
   setDocumentationMonoFont(ctx, 650, labelSize);
-  ctx.fillText('PROMPT', copyX, copyY);
+  ctx.fillText('PROMPT', box.x + inset, copyY);
   copyY += Math.round(labelSize * 1.65);
   ctx.fillStyle = 'rgba(255,255,255,.92)';
   setDocumentationFont(ctx, 500, promptSize);
-  const promptLines = wrapCanvasText(ctx, details.prompt, copyWidth, portrait ? 5 : 6);
-  copyY = drawDocumentationLines(ctx, promptLines, copyX, copyY, Math.round(promptSize * 1.38));
-  copyY += Math.round(22 * scale);
-  const factGap = Math.round(9 * scale);
+  const availablePromptHeight = Math.max(promptSize * 1.4, box.y + box.height - copyY - details.facts.length * factSize * 1.9);
+  const promptLines = wrapCanvasText(ctx, details.prompt, contentWidth, Math.max(2, Math.min(5, Math.floor(availablePromptHeight / (promptSize * 1.35)))));
+  copyY = drawDocumentationLines(ctx, promptLines, box.x + inset, copyY, Math.round(promptSize * 1.35));
+  copyY += Math.round(13 * density);
+  const factGap = Math.round(7 * density);
   details.facts.forEach(([label, value]) => {
-    if (copyY > height - pad - factSize * 1.5) return;
+    if (copyY > box.y + box.height - factSize * 1.45) return;
     ctx.fillStyle = 'rgba(255,255,255,.42)';
     setDocumentationMonoFont(ctx, 650, factSize * .8);
-    ctx.fillText(String(label).toUpperCase(), copyX, copyY);
+    ctx.fillText(String(label).toUpperCase(), box.x + inset, copyY);
     ctx.fillStyle = 'rgba(255,255,255,.82)';
     setDocumentationFont(ctx, 600, factSize);
-    const valueX = copyX + Math.min(copyWidth * .3, Math.round(118 * scale));
-    ctx.fillText(truncateCanvasText(ctx, value, copyX + copyWidth - valueX), valueX, copyY - 1);
+    const valueX = box.x + inset + Math.min(contentWidth * .31, Math.round(94 * density));
+    ctx.fillText(truncateCanvasText(ctx, value, box.x + box.width - inset - valueX), valueX, copyY - 1);
     copyY += Math.round(factSize * 1.35) + factGap;
   });
 }
 
-function drawDocumentationVideoResult(ctx, canvas, video) {
-  ctx.fillStyle = '#000';
+function drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, resultMedia) {
+  ctx.fillStyle = '#050506';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawContainedMedia(ctx, video, 0, 0, canvas.width, canvas.height);
-  const pad = Math.round(Math.min(canvas.width, canvas.height) * .035);
-  const fontSize = Math.max(11, Math.round(Math.min(canvas.width, canvas.height) * .022));
-  setDocumentationMonoFont(ctx, 700, fontSize);
-  const label = 'FINAL RESULT';
-  const boxWidth = ctx.measureText(label).width + pad * .9;
-  const boxHeight = fontSize * 2.05;
-  ctx.fillStyle = 'rgba(0,0,0,.66)';
-  ctx.fillRect(pad, pad, boxWidth, boxHeight);
-  ctx.fillStyle = '#fff';
-  ctx.fillText(label, pad * 1.45, pad + fontSize * .48);
+  const mediaWidth = resultMedia.videoWidth || resultMedia.naturalWidth || resultMedia.width || canvas.width;
+  const mediaHeight = resultMedia.videoHeight || resultMedia.naturalHeight || resultMedia.height || canvas.height;
+  const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight);
+  drawDocumentationVideoMedia(ctx, resultMedia, layout.result, 'FINAL RESULT', '#ea4335');
+  drawDocumentationVideoMedia(ctx, startFrame, layout.source, 'START FRAME', '#4285f4');
+  drawDocumentationVideoDetails(ctx, layout.details, item, video);
 }
 
 function updateDocumentationVideoProgress(progress, label) {
@@ -12419,7 +12477,7 @@ async function saveDocumentationVideo(item, video) {
   $('#documentationVideoCancel').textContent = 'Cancel';
   $('#documentationVideoSheet').classList.add('show');
   syncSheetScrollLock();
-  updateDocumentationVideoProgress(0, 'Preparing start frame and video…');
+  updateDocumentationVideoProgress(0, 'Preparing combined documentation view…');
 
   try {
     const startFrame = await loadDocumentationOriginal(item);
@@ -12430,7 +12488,7 @@ async function saveDocumentationVideo(item, video) {
     result.playsInline = true;
     result.src = '/videos/' + video.file;
     await new Promise((resolve, reject) => {
-      result.onloadedmetadata = resolve;
+      result.onloadeddata = resolve;
       result.onerror = () => reject(new Error('Could not load the result video'));
       result.load();
     });
@@ -12440,7 +12498,7 @@ async function saveDocumentationVideo(item, video) {
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
     const ctx = canvas.getContext('2d');
-    drawDocumentationVideoIntro(ctx, canvas, startFrame, item, video);
+    drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, result);
 
     const stream = canvas.captureStream(30);
     run.stream = stream;
@@ -12454,29 +12512,16 @@ async function saveDocumentationVideo(item, video) {
     });
     recorder.start(500);
 
-    const introMs = 2800;
     const savedInfo = video.info || {};
     const savedSeconds = savedInfo.frames && savedInfo.fps ? savedInfo.frames / savedInfo.fps : 0;
     const resultSeconds = Number.isFinite(result.duration) && result.duration > 0 ? result.duration : savedSeconds;
     const durationMs = Math.max(500, Math.min(300_000, resultSeconds * 1000 || 5000));
-    const totalMs = introMs + durationMs;
-    const startedAt = performance.now();
-    let resultStarted = false;
+    result.currentTime = 0;
+    await result.play();
     while (!run.cancelled && documentationVideoRun === run) {
-      const elapsed = performance.now() - startedAt;
-      if (elapsed < introMs) {
-        drawDocumentationVideoIntro(ctx, canvas, startFrame, item, video);
-        updateDocumentationVideoProgress(elapsed / totalMs, 'Recording generation details…');
-      } else {
-        if (!resultStarted) {
-          resultStarted = true;
-          result.currentTime = 0;
-          await result.play();
-        }
-        drawDocumentationVideoResult(ctx, canvas, result);
-        updateDocumentationVideoProgress(Math.min(1, (introMs + result.currentTime * 1000) / totalMs), 'Recording final result…');
-        if (result.ended || result.currentTime >= result.duration - .04) break;
-      }
+      drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, result);
+      updateDocumentationVideoProgress(Math.min(1, result.currentTime * 1000 / durationMs), 'Recording combined documentation view…');
+      if (result.ended || result.currentTime >= result.duration - .04) break;
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
     if (recorder.state !== 'inactive') recorder.stop();
