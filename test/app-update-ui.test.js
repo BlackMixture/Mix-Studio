@@ -72,6 +72,11 @@ test('drawer Create subnavigation expands and collapses with accessible motion',
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.app-drawer-create-modes/);
 });
 
+test('drawer selections use black borders against the drawer canvas', () => {
+  assert.match(css, /\.app-drawer-nav-item\.active \{[^}]*border-color: #000;/);
+  assert.match(css, /\.app-drawer-create-item\.active \{[^}]*border-color: #000;/);
+});
+
 test('the update flow pulls safely and waits for a conditional restart', () => {
   assert.match(server, /route === '\/api\/update'/);
   assert.match(server, /updateFromGit\(ROOT\)/);

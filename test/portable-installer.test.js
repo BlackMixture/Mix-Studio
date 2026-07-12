@@ -26,6 +26,9 @@ test('standalone installer downloads the official Git checkout before opening se
   assert.match(launcher, /%USERPROFILE%\\Mix Studio/);
   assert.match(launcher, /if exist "%~dp0installer\\install-ui\.ps1" goto run_setup/i);
   assert.match(launcher, /target folder already exists but is not a Mix Studio Git checkout/i);
+  assert.match(launcher, /prepare_existing_target/);
+  assert.match(launcher, /Preserving gallery data left by an earlier uninstall/);
+  assert.match(launcher, /LOCALAPPDATA%\\Mix Studio\\data/);
 });
 
 test('GitHub Pages publishes the canonical installer from a branded download page', () => {
@@ -33,12 +36,16 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
   const localLogo = fs.readFileSync(path.join(root, 'docs', 'download', 'modatory-logo.svg'), 'utf8');
   const localWordmark = fs.readFileSync(path.join(root, 'docs', 'download', 'mix-studio-wordmark.svg'), 'utf8');
+  const localSources = [...page.matchAll(/\ssrc="\.\/([^"?#]+)"/g)].map((match) => match[1]);
   assert.match(page, /Download for Windows/);
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
   assert.match(page, /Guided ComfyUI setup/);
   assert.match(page, /modatory-logo\.svg/);
   assert.equal(localLogo, fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8'));
   assert.equal(localWordmark, fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark-white-on-black.svg'), 'utf8'));
+  for (const source of localSources) {
+    assert.ok(fs.existsSync(path.join(root, 'docs', 'download', source)), `download page asset exists: ${source}`);
+  }
   assert.match(page, /id="features"/);
   assert.match(page, /id="quick-start"/);
   assert.match(page, /mix-studio-create\.png/);

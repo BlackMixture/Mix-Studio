@@ -33,9 +33,13 @@ if not defined GIT_EXE goto git_install_failed
 if exist "%MIX_STUDIO_HOME%\.git\" goto launch_downloaded
 if exist "%MIX_STUDIO_HOME%\" (
   dir /b "%MIX_STUDIO_HOME%" 2>nul | findstr . >nul
-  if not errorlevel 1 goto target_in_use
+  if errorlevel 1 goto download_mix_studio
+  call :prepare_existing_target
+  if errorlevel 2 goto preserved_data_in_use
+  if errorlevel 1 goto target_in_use
 )
 
+:download_mix_studio
 echo Downloading Mix Studio...
 "%GIT_EXE%" clone --branch main --single-branch "%MIX_STUDIO_REPO%" "%MIX_STUDIO_HOME%"
 if errorlevel 1 goto clone_failed
@@ -54,6 +58,17 @@ exit /b 0
 if exist "%ProgramFiles%\Git\cmd\git.exe" set "GIT_EXE=%ProgramFiles%\Git\cmd\git.exe"
 if not defined GIT_EXE if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" set "GIT_EXE=%LOCALAPPDATA%\Programs\Git\cmd\git.exe"
 if not defined GIT_EXE if exist "%ProgramFiles(x86)%\Git\cmd\git.exe" set "GIT_EXE=%ProgramFiles(x86)%\Git\cmd\git.exe"
+exit /b 0
+
+:prepare_existing_target
+if not exist "%MIX_STUDIO_HOME%\data\" exit /b 1
+for /f "delims=" %%F in ('dir /b /a "%MIX_STUDIO_HOME%" 2^>nul') do if /I not "%%F"=="data" exit /b 1
+if exist "%LOCALAPPDATA%\Mix Studio\data\" exit /b 2
+echo Preserving gallery data left by an earlier uninstall...
+if not exist "%LOCALAPPDATA%\Mix Studio\" mkdir "%LOCALAPPDATA%\Mix Studio" >nul 2>nul
+move "%MIX_STUDIO_HOME%\data" "%LOCALAPPDATA%\Mix Studio\data" >nul
+if errorlevel 1 exit /b 2
+rmdir "%MIX_STUDIO_HOME%" >nul 2>nul
 exit /b 0
 
 :git_required
@@ -75,6 +90,15 @@ echo.
 echo The target folder already exists but is not a Mix Studio Git checkout:
 echo %MIX_STUDIO_HOME%
 echo Move or rename that folder, then run this file again. Nothing was overwritten.
+pause
+exit /b 1
+
+:preserved_data_in_use
+echo.
+echo Mix Studio found both an old data-only checkout and an existing preserved data folder.
+echo Nothing was overwritten. Move or rename one of these folders, then run this file again:
+echo %MIX_STUDIO_HOME%\data
+echo %LOCALAPPDATA%\Mix Studio\data
 pause
 exit /b 1
 

@@ -269,7 +269,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .app-drawer-nav-item:not(.app-drawer-nav-create) { grid-template-columns: 32px minmax(0, 1fr); }
 .app-drawer-nav-item:active { transform: scale(.985); }
-.app-drawer-nav-item.active { color: #fff; border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.055); }
+.app-drawer-nav-item.active { color: #fff; border-color: #000; background: rgba(255,255,255,.055); }
 
 .sheet-panel.workspaces-panel { max-width: 520px; background: #000; }
 .icon-label-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
@@ -356,7 +356,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   font-weight: 760;
 }
 .app-drawer-create-item > span { width: 14px; color: var(--muted-2); text-align: center; }
-.app-drawer-create-item.active { color: #fff; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.045); }
+.app-drawer-create-item.active { color: #fff; border-color: #000; background: rgba(255,255,255,.045); }
 .app-drawer-create-item.active > span { color: #fff; }
 @media (prefers-reduced-motion: reduce) {
   .app-drawer-create-modes,
