@@ -1599,6 +1599,24 @@
 
         <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
           <div class="settings-pane-head"><h4>System</h4><p>Runtime performance and prompt enhancement.</p></div>
+          <div class="settings-group hardware-group">
+            <div class="hardware-group-head">
+              <h5>Hardware</h5>
+              <button class="hardware-refresh" id="hardwareRefresh" type="button" aria-label="Refresh hardware information" title="Refresh hardware information">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.2-2.1L20 10M4 14l2.7 3.1A7 7 0 0 0 17.9 15"/></svg>
+              </button>
+            </div>
+            <div class="hardware-list" id="hardwareList" role="status" aria-live="polite" aria-busy="true">
+              <div class="hardware-row"><span class="hardware-label">GPU</span><span class="hardware-copy"><strong id="hardwareGpu">Checking…</strong><small id="hardwareGpuDetail"></small></span></div>
+              <div class="hardware-row"><span class="hardware-label">CPU</span><span class="hardware-copy"><strong id="hardwareCpu">Checking…</strong><small id="hardwareCpuDetail"></small></span></div>
+              <div class="hardware-row"><span class="hardware-label">Memory</span><span class="hardware-copy"><strong id="hardwareMemory">Checking…</strong><small id="hardwareMemoryDetail"></small></span></div>
+              <div class="hardware-row"><span class="hardware-label">OS</span><span class="hardware-copy"><strong id="hardwareOs">Checking…</strong><small id="hardwareOsDetail"></small></span></div>
+              <div class="hardware-row hardware-disk-row">
+                <span class="hardware-label">Storage</span>
+                <span class="hardware-copy"><strong id="hardwareDisk">Checking…</strong><small id="hardwareDiskDetail"></small><span class="hardware-meter" aria-hidden="true"><i id="hardwareDiskFill"></i></span></span>
+              </div>
+            </div>
+          </div>
           <div class="settings-group">
             <h5>Gallery performance</h5>
             <button class="settings-media-toggle" id="setVideoPreviews" type="button" role="switch" aria-checked="true">

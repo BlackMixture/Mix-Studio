@@ -91,6 +91,7 @@ const { decodePreviewPayload } = require('./lib/preview-payload');
 const { selectionAssetRefs, selectionSummary } = require('./lib/selection-summary');
 const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
+const { hardwareInfo } = require('./lib/hardware-info');
 const {
   PROFILE_COOKIE,
   hashPin,
@@ -3569,6 +3570,13 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/settings' && req.method === 'GET') return json(res, 200, settings);
+  if (route === '/api/hardware' && req.method === 'GET') {
+    try {
+      return json(res, 200, await hardwareInfo({ exportPath: DATA }));
+    } catch (error) {
+      return json(res, 500, { error: String(error.message || error) });
+    }
+  }
   if (route === '/api/settings' && req.method === 'POST') {
     const body = await readJsonBody(req);
     for (const key of Object.keys(DEFAULT_SETTINGS)) {

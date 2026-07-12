@@ -11863,6 +11863,97 @@ document.addEventListener('pointerdown', (event) => {
 });
 setSvAttnValue('sdpa');
 
+let hardwareInfoCache = null;
+let hardwareInfoPromise = null;
+
+function formatHardwareBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const power = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const amount = bytes / (1024 ** power);
+  const display = Number.isInteger(amount) ? String(amount)
+    : (amount >= 100 || power === 0 ? String(Math.round(amount)) : amount.toFixed(amount >= 10 ? 1 : 2));
+  return `${display} ${units[power]}`;
+}
+
+function setHardwareRow(valueId, detailId, value, detail = '') {
+  $(`#${valueId}`).textContent = value || 'Unavailable';
+  $(`#${detailId}`).textContent = detail;
+}
+
+function renderHardwareInfo(info) {
+  const gpuDevices = Array.isArray(info?.gpu?.devices) ? info.gpu.devices : [];
+  const gpu = gpuDevices[0];
+  const gpuDetail = gpu ? [
+    gpu.memoryBytes ? `${formatHardwareBytes(gpu.memoryBytes)} ${gpu.memoryKind === 'unified' ? 'unified memory' : 'VRAM'}` : '',
+    gpu.driver ? `driver ${gpu.driver}` : '',
+    gpuDevices.length > 1 ? `+${gpuDevices.length - 1} more` : '',
+  ].filter(Boolean).join(' · ') : 'No NVIDIA GPU reported by the system';
+  setHardwareRow('hardwareGpu', 'hardwareGpuDetail', gpu?.name || 'Unavailable', gpuDetail);
+
+  const cores = Number(info?.cpu?.logicalCores) || 0;
+  setHardwareRow('hardwareCpu', 'hardwareCpuDetail', info?.cpu?.name, cores ? `${cores} logical cores` : '');
+
+  const totalMemory = formatHardwareBytes(info?.memory?.totalBytes);
+  const freeMemory = formatHardwareBytes(info?.memory?.freeBytes);
+  setHardwareRow('hardwareMemory', 'hardwareMemoryDetail', totalMemory || 'Unavailable', freeMemory ? `${freeMemory} currently available` : '');
+
+  const osDetails = [info?.os?.version, info?.os?.arch].filter(Boolean).join(' · ');
+  setHardwareRow('hardwareOs', 'hardwareOsDetail', info?.os?.name, osDetails);
+
+  const diskFree = Number(info?.disk?.freeBytes);
+  const diskTotal = Number(info?.disk?.totalBytes);
+  const freeLabel = formatHardwareBytes(diskFree);
+  const totalLabel = formatHardwareBytes(diskTotal);
+  const freePercent = diskTotal > 0 && diskFree >= 0 ? Math.max(0, Math.min(100, (diskFree / diskTotal) * 100)) : 0;
+  setHardwareRow(
+    'hardwareDisk',
+    'hardwareDiskDetail',
+    freeLabel ? `${freeLabel} free` : 'Unavailable',
+    [totalLabel ? `of ${totalLabel}` : '', info?.disk?.root ? `${info.disk.root} · Mix Studio export drive` : ''].filter(Boolean).join(' · '),
+  );
+  $('#hardwareDiskFill').style.width = `${freePercent}%`;
+  $('#hardwareList').setAttribute('aria-busy', 'false');
+}
+
+async function loadHardwareInfo(force = false) {
+  if (hardwareInfoCache && !force) {
+    renderHardwareInfo(hardwareInfoCache);
+    return hardwareInfoCache;
+  }
+  if (hardwareInfoPromise && !force) return hardwareInfoPromise;
+  const list = $('#hardwareList');
+  const refresh = $('#hardwareRefresh');
+  list.classList.add('loading');
+  list.setAttribute('aria-busy', 'true');
+  refresh.classList.add('loading');
+  refresh.disabled = true;
+  hardwareInfoPromise = api('/api/hardware').then((info) => {
+    hardwareInfoCache = info;
+    renderHardwareInfo(info);
+    return info;
+  }).catch((error) => {
+    for (const [valueId, detailId] of [
+      ['hardwareGpu', 'hardwareGpuDetail'],
+      ['hardwareCpu', 'hardwareCpuDetail'],
+      ['hardwareMemory', 'hardwareMemoryDetail'],
+      ['hardwareOs', 'hardwareOsDetail'],
+      ['hardwareDisk', 'hardwareDiskDetail'],
+    ]) setHardwareRow(valueId, detailId, 'Unavailable', 'Could not read system information');
+    list.setAttribute('aria-busy', 'false');
+    throw error;
+  }).finally(() => {
+    hardwareInfoPromise = null;
+    list.classList.remove('loading');
+    refresh.classList.remove('loading');
+    refresh.disabled = false;
+  });
+  return hardwareInfoPromise;
+}
+
+$('#hardwareRefresh').addEventListener('click', () => loadHardwareInfo(true).catch(() => toast('Hardware information is unavailable', true)));
+
 let settingsActiveTab = 'general';
 const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions', 'system'];
 
@@ -11884,6 +11975,7 @@ function setSettingsTab(name, focus = false) {
   });
   const content = $('.settings-content');
   if (content) content.scrollTop = 0;
+  if (name === 'system') loadHardwareInfo().catch(() => { /* rendered inline */ });
 }
 
 $$('[data-settings-tab]').forEach((tab) => {

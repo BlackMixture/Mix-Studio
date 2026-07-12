@@ -5474,6 +5474,82 @@ body.sheet-open {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.hardware-group-head {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hardware-group-head h5 { margin: 0; }
+.hardware-refresh {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.hardware-refresh svg { width: 15px; height: 15px; }
+.hardware-refresh:focus-visible { outline: 2px solid rgba(169,102,255,.72); outline-offset: 2px; }
+.hardware-refresh.loading svg { animation: hardwareSpin .8s linear infinite; }
+@keyframes hardwareSpin { to { transform: rotate(360deg); } }
+.hardware-list {
+  margin-top: 8px;
+  border-top: 1px solid rgba(226,232,255,.08);
+  transition: opacity 160ms ease;
+}
+.hardware-list.loading { opacity: .55; }
+.hardware-row {
+  min-width: 0;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(226,232,255,.075);
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.hardware-label {
+  padding-top: 2px;
+  color: rgba(200,173,255,.72);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.hardware-copy { min-width: 0; display: grid; gap: 3px; }
+.hardware-copy strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+.hardware-copy small {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.hardware-meter {
+  height: 3px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+.hardware-meter i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7f68ff, #40b7ff);
+  transition: width 320ms var(--ease);
+}
 .settings-media-toggle {
   width: 100%;
   min-height: 58px;
@@ -5736,7 +5812,9 @@ body.sheet-open {
 }
 @media (prefers-reduced-motion: reduce) {
   .settings-choice-trigger svg,
-  .settings-choice-list { transition-duration: 1ms; }
+  .settings-choice-list,
+  .hardware-meter i { transition-duration: 1ms; }
+  .hardware-refresh.loading svg { animation: none; }
 }
 .info-btn {
   width: 20px;
