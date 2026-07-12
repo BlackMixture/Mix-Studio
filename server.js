@@ -93,6 +93,11 @@ const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const {
+  normalizeExportDirectory,
+  validateExportDirectory,
+  copyToExportDirectory,
+} = require('./lib/export-location');
+const {
   PROFILE_COOKIE,
   hashPin,
   verifyPin,
@@ -197,6 +202,7 @@ const DEFAULT_SETTINGS = {
   scailSam: 'sam3.1_multiplex_fp16.safetensors',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
+  exportDir: '',
   // Existing installs default every optional workflow on. The installer writes
   // explicit choices only for a brand-new machine.
   features: DEFAULT_FEATURES,
@@ -220,6 +226,7 @@ function normalizeSettings(s) {
   if (!s.kleinUnet) s.kleinUnet = s.klein4Unet;
   if (!s.kleinClip) s.kleinClip = s.klein4Clip;
   s.galleryPassword = galleryPassword(s);
+  try { s.exportDir = normalizeExportDirectory(s.exportDir); } catch { s.exportDir = ''; }
   s.features = normalizeFeatures(s.features);
   return s;
 }
@@ -3569,17 +3576,34 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  if (route === '/api/settings' && req.method === 'GET') return json(res, 200, settings);
+  if (route === '/api/settings' && req.method === 'GET') {
+    return json(res, 200, settings);
+  }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {
-      return json(res, 200, await hardwareInfo({ exportPath: DATA }));
+      return json(res, 200, await hardwareInfo({ exportPath: settings.exportDir || DATA }));
     } catch (error) {
       return json(res, 500, { error: String(error.message || error) });
+    }
+  }
+  if (route === '/api/export-location' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can change the default save folder' });
+    const body = await readJsonBody(req);
+    try {
+      const directory = String(body.directory || '').trim()
+        ? await validateExportDirectory(body.directory)
+        : '';
+      settings.exportDir = directory;
+      saveJsonSync(SETTINGS_FILE, settings);
+      return json(res, 200, { ok: true, directory, configured: Boolean(directory) });
+    } catch (error) {
+      return json(res, 400, { error: String(error.message || error) });
     }
   }
   if (route === '/api/settings' && req.method === 'POST') {
     const body = await readJsonBody(req);
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
+      if (key === 'exportDir') continue;
       if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
     }
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
@@ -4723,6 +4747,77 @@ async function handleApi(req, res, url) {
       if (!res.destroyed) res.destroy(error);
     }
     return;
+  }
+
+  if (route === '/api/export' && req.method === 'POST') {
+    if (!settings.exportDir) return json(res, 409, { error: 'Choose a default save folder in Advanced Settings first' });
+    const body = await readJsonBody(req);
+    const unlocked = isPrivateUnlocked(req);
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const byId = new Map(visible.map((item) => [item.id, item]));
+    const requestedIds = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))].slice(0, 250);
+    const assets = [];
+    if (requestedIds.length) {
+      const items = requestedIds.map((id) => byId.get(id)).filter(Boolean);
+      if (items.length !== requestedIds.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+      for (const [index, item] of items.entries()) {
+        const file = item.upscaled || item.file;
+        if (file) assets.push({ item, file, base: IMAGES, suffix: item.upscaled ? '_upscaled' : '_original', fallback: `generation-${index + 1}` });
+      }
+    } else {
+      const item = byId.get(String(body.id || ''));
+      if (!item) return json(res, 404, { error: 'Generation not found' });
+      if (body.asset === 'video') {
+        const video = (Array.isArray(item.videos) ? item.videos : []).find((entry) => entry.id === body.videoId);
+        if (!video?.file) return json(res, 404, { error: 'Video not found' });
+        assets.push({ item, file: video.file, base: VIDEOS, suffix: `_video_${Math.max(1, item.videos.indexOf(video) + 1)}` });
+      } else if (body.asset === 'composite') {
+        const composite = (Array.isArray(item.composites) ? item.composites : []).find((entry) => entry.id === body.compositeId);
+        if (!composite?.file) return json(res, 404, { error: 'Composite not found' });
+        assets.push({ item, file: composite.file, base: IMAGES, suffix: `_${String(composite.type || 'composite').replace(/[^a-z0-9]+/gi, '_')}` });
+      } else {
+        const useOriginal = body.variant === 'original';
+        const useUpscaled = body.variant === 'upscaled' || (!useOriginal && item.upscaled);
+        const file = useUpscaled ? item.upscaled : item.file;
+        if (!file) return json(res, 404, { error: 'Image not found' });
+        assets.push({ item, file, base: IMAGES, suffix: useUpscaled ? '_upscaled' : '_original' });
+      }
+    }
+    const saved = [];
+    try {
+      for (const [index, asset] of assets.entries()) {
+        const source = path.resolve(asset.base, asset.file);
+        if (source !== asset.base && !source.startsWith(asset.base + path.sep)) throw new Error('Invalid saved asset path');
+        await fsp.access(source);
+        const extension = path.extname(asset.file) || (asset.base === VIDEOS ? '.mp4' : '.png');
+        const stem = String(asset.item.prompt || asset.fallback || `mix-studio-${index + 1}`)
+          .slice(0, 64).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || `mix-studio-${index + 1}`;
+        const target = await copyToExportDirectory(source, settings.exportDir, `${stem}${asset.suffix}${extension}`);
+        saved.push(path.basename(target));
+      }
+      return json(res, 200, { ok: true, count: saved.length, files: saved, directory: settings.exportDir });
+    } catch (error) {
+      return json(res, 500, { error: `Could not save to the default folder: ${error.message}` });
+    }
+  }
+
+  if (route === '/api/export-file' && req.method === 'POST') {
+    if (!settings.exportDir) return json(res, 409, { error: 'Choose a default save folder in Advanced Settings first' });
+    try {
+      const buffer = await readBody(req, 64 * 1024 * 1024);
+      if (!buffer.length) return json(res, 400, { error: 'No file received' });
+      const requestedName = decodeURIComponent(String(req.headers['x-filename'] || 'mix-studio-export.png'));
+      const temporary = path.join(DATA, `.export-${crypto.randomUUID()}.tmp`);
+      await fsp.writeFile(temporary, buffer);
+      try {
+        const target = await copyToExportDirectory(temporary, settings.exportDir, requestedName);
+        return json(res, 200, { ok: true, count: 1, files: [path.basename(target)], directory: settings.exportDir });
+      } finally {
+        await fsp.unlink(temporary).catch(() => {});
+      }
+    } catch (error) {
+      return json(res, 500, { error: `Could not save to the default folder: ${error.message}` });
+    }
   }
 
   if (route === '/api/items/group' && req.method === 'POST') {

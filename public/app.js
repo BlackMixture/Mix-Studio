@@ -9532,6 +9532,7 @@ $('#selSave').addEventListener('click', () => {
     toast('Saving photo…');
     return;
   }
+  mirrorGalleryExport({ ids: items.map((item) => item.id) });
   const a = document.createElement('a');
   a.href = `/api/items/download?ids=${encodeURIComponent(items.map((item) => item.id).join(','))}`;
   a.download = 'mix-studio-selection.zip';
@@ -10199,6 +10200,7 @@ function openLightbox(id, mediaSel) {
     }
     if (processItems.length) mkMenu('Process', '', processItems, { icon: 'process', ariaLabel: 'Process video', menuTitle: 'Process video', tone: 'video' });
     mk('↓ Save video', '', () => {
+      mirrorGalleryExport({ id: it.id, asset: 'video', videoId: selVideo.id });
       const a = document.createElement('a');
       a.href = '/videos/' + selVideo.file;
       a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_v' + (videos.indexOf(selVideo) + 1) + '.mp4';
@@ -11086,6 +11088,7 @@ async function downloadRegionMap(it) {
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_regions.png';
+      mirrorExportFile(blob, link.download);
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }, 'image/png');
@@ -11535,6 +11538,7 @@ function saveDocumentationImage() {
     const stem = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '');
     link.href = URL.createObjectURL(blob);
     link.download = `${stem || 'mix_studio'}_documentation_${layout}${layout === 'contact' ? '_' + theme : ''}.png`;
+    mirrorExportFile(blob, link.download);
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     toast('Documentation image saved');
@@ -11585,6 +11589,7 @@ function downloadItem(it, variant) {
   const suffix = useUpscaled ? '_upscaled' : '_original';
   a.href = '/images/' + (useUpscaled ? it.upscaled : it.file);
   a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
+  mirrorGalleryExport({ id: it.id, asset: 'image', variant });
   a.click();
 }
 function downloadComposite(it, composite) {
@@ -11593,6 +11598,7 @@ function downloadComposite(it, composite) {
   const suffix = composite.type === 'reference-generation' ? '_reference_generation'
     : (composite.type === 'depth-map' ? '_depth_composite' : '_before_after');
   a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
+  mirrorGalleryExport({ id: it.id, asset: 'composite', compositeId: composite.id });
   a.click();
 }
 function escapeHtml(s) {
@@ -11865,6 +11871,86 @@ setSvAttnValue('sdpa');
 
 let hardwareInfoCache = null;
 let hardwareInfoPromise = null;
+let defaultExportDirectory = '';
+
+function renderExportLocation(directory = defaultExportDirectory) {
+  defaultExportDirectory = String(directory || '');
+  const input = $('#exportDirectory');
+  input.value = defaultExportDirectory;
+  input.disabled = !state.profileIsOwner;
+  $('#exportDirectoryApply').hidden = !state.profileIsOwner;
+  $('#exportDirectoryClear').hidden = !state.profileIsOwner || !defaultExportDirectory;
+  $('#exportDirectoryStatus').textContent = defaultExportDirectory
+    ? `${state.profileIsOwner ? 'Copies are saved to' : 'Owner save folder'} · ${defaultExportDirectory}`
+    : (state.profileIsOwner ? 'Browser downloads only' : 'No computer-side save folder configured');
+  $('#exportLocationControl').classList.toggle('configured', Boolean(defaultExportDirectory));
+}
+
+async function mirrorGalleryExport(payload) {
+  if (!defaultExportDirectory) return null;
+  try {
+    const result = await api('/api/export', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    toast(result.count > 1 ? `${result.count} copies saved to the default folder` : 'Copy saved to the default folder');
+    return result;
+  } catch (error) {
+    toast(`Device download started, but the folder copy failed: ${error.message}`, true);
+    return null;
+  }
+}
+
+async function mirrorExportFile(blob, filename) {
+  if (!defaultExportDirectory || !blob) return null;
+  try {
+    const result = await api('/api/export-file', {
+      method: 'POST', headers: { 'x-filename': encodeURIComponent(filename) }, body: blob,
+    });
+    toast('Copy saved to the default folder');
+    return result;
+  } catch (error) {
+    toast(`Device download started, but the folder copy failed: ${error.message}`, true);
+    return null;
+  }
+}
+
+$('#exportDirectoryApply').addEventListener('click', async () => {
+  const button = $('#exportDirectoryApply');
+  button.disabled = true;
+  try {
+    const result = await api('/api/export-location', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directory: $('#exportDirectory').value }),
+    });
+    renderExportLocation(result.directory);
+    hardwareInfoCache = null;
+    await loadHardwareInfo(true);
+    toast('Default save folder updated');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#exportDirectoryClear').addEventListener('click', async () => {
+  try {
+    await api('/api/export-location', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ directory: '' }),
+    });
+    renderExportLocation('');
+    hardwareInfoCache = null;
+    await loadHardwareInfo(true);
+    toast('Using browser downloads only');
+  } catch (error) { toast(error.message, true); }
+});
+
+$('#exportDirectory').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    $('#exportDirectoryApply').click();
+  }
+});
 
 function formatHardwareBytes(value) {
   const bytes = Number(value);
@@ -12049,6 +12135,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setScailPusaLora').value = s.scailPusaLora || '';
     $('#setScailCv').value = s.scailClipVision || '';
     $('#setScailSam').value = s.scailSam || '';
+    renderExportLocation(s.exportDir || '');
   } catch { /* noop */ }
   setMediaPreferenceControl('setVideoPreviews', state.mediaPreferences.videoPreviews);
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);

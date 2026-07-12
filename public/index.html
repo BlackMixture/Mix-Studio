@@ -1616,6 +1616,18 @@
                 <span class="hardware-copy"><strong id="hardwareDisk">Checking…</strong><small id="hardwareDiskDetail"></small><span class="hardware-meter" aria-hidden="true"><i id="hardwareDiskFill"></i></span></span>
               </div>
             </div>
+            <div class="export-location" id="exportLocationControl">
+              <div class="export-location-heading">
+                <span class="export-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
+                <span><strong>Default save folder</strong><small>Save a computer-side copy while keeping normal device downloads.</small></span>
+              </div>
+              <div class="export-location-editor">
+                <input id="exportDirectory" type="text" autocomplete="off" spellcheck="false" placeholder="D:\Mix Studio Exports" aria-label="Default save folder path" />
+                <button id="exportDirectoryApply" type="button">Apply</button>
+                <button id="exportDirectoryClear" type="button" aria-label="Clear default save folder" title="Use browser downloads only">×</button>
+              </div>
+              <p class="export-location-status" id="exportDirectoryStatus" role="status" aria-live="polite">Browser downloads only</p>
+            </div>
           </div>
           <div class="settings-group">
             <h5>Gallery performance</h5>

@@ -5550,6 +5550,87 @@ body.sheet-open {
   background: linear-gradient(90deg, #7f68ff, #40b7ff);
   transition: width 320ms var(--ease);
 }
+.export-location {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid rgba(226,232,255,.09);
+  border-radius: 15px;
+  background: #000;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.export-location.configured {
+  border-color: rgba(117,153,255,.26);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+.export-location-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.export-location-heading > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.export-location-heading strong { color: var(--ink); font-size: 12.5px; line-height: 1.3; }
+.export-location-heading small { color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+.export-location-icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 10px;
+  background: rgba(116,137,206,.1);
+  color: #9fb4e8;
+  display: grid;
+  place-items: center;
+}
+.export-location-icon svg { width: 16px; height: 16px; }
+.export-location-editor {
+  min-width: 0;
+  margin-top: 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 7px;
+}
+.export-location-editor input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid rgba(226,232,255,.12);
+  border-radius: 11px;
+  background: #000;
+  color: var(--ink);
+  font: 650 11.5px/1.2 inherit;
+  outline: none;
+}
+.export-location-editor input:focus { border-color: rgba(91,169,255,.7); box-shadow: 0 0 0 3px rgba(54,135,255,.1); }
+.export-location-editor input:disabled { opacity: .72; }
+.export-location-editor button {
+  min-width: 58px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(226,232,255,.12);
+  border-radius: 11px;
+  background: #0a0d14;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 850;
+}
+.export-location-editor #exportDirectoryClear { min-width: 40px; padding: 0; color: var(--muted); font-size: 18px; }
+.export-location-editor button:focus-visible { outline: 2px solid rgba(91,169,255,.7); outline-offset: 2px; }
+.export-location-editor button:disabled { opacity: .5; }
+.export-location-status {
+  margin: 8px 1px 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 430px) {
+  .export-location-editor { grid-template-columns: minmax(0, 1fr) 56px 40px; }
+  .export-location-editor input { font-size: 10.5px; }
+}
 .settings-media-toggle {
   width: 100%;
   min-height: 58px;

@@ -82,7 +82,7 @@ test('reports the integrated Apple Silicon GPU with unified memory', async () =>
 
 test('Advanced Settings presents hardware as one minimal System readout', () => {
   assert.match(server, /route === '\/api\/hardware'/);
-  assert.match(server, /hardwareInfo\(\{ exportPath: DATA \}\)/);
+  assert.match(server, /hardwareInfo\(\{ exportPath: settings\.exportDir \|\| DATA \}\)/);
   assert.match(html, /class="settings-group hardware-group"/);
   for (const id of ['hardwareGpu', 'hardwareCpu', 'hardwareMemory', 'hardwareOs', 'hardwareDisk']) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -93,4 +93,6 @@ test('Advanced Settings presents hardware as one minimal System readout', () => 
   assert.match(app, /if \(name === 'system'\) loadHardwareInfo\(\)/);
   assert.match(css, /\.hardware-row \{[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\)/);
   assert.match(css, /\.hardware-meter i \{[\s\S]*linear-gradient/);
+  assert.match(html, /id="exportDirectory"/);
+  assert.match(app, /api\('\/api\/export-location'/);
 });
