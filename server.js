@@ -1337,6 +1337,8 @@ async function completeJob(pid) {
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       editOutpaint: job.params.mode === 'edit' && job.params.editOutpaint ? {
         position: normalizeOutpaintPosition(job.params.editOutpaintPosition),
+        offsetX: job.params.editOutpaintOffsetX,
+        offsetY: job.params.editOutpaintOffsetY,
         scale: job.params.editOutpaintScale,
         effectiveScale: job.params.editOutpaintEffectiveScale,
         axis: job.params.editOutpaintAxis,
@@ -1716,6 +1718,8 @@ async function prepareOutpaintParams(p, refNames, info) {
       targetWidth: p.width,
       targetHeight: p.height,
       position: p.editOutpaintPosition,
+      offsetX: p.editOutpaintOffsetX,
+      offsetY: p.editOutpaintOffsetY,
       scale: p.editOutpaintScale / 100,
     });
     const refine = outpaintRefineReadiness(info || {});
@@ -1754,6 +1758,8 @@ async function prepareOutpaintParams(p, refNames, info) {
     targetWidth: p.width,
     targetHeight: p.height,
     position: p.editOutpaintPosition,
+    offsetX: p.editOutpaintOffsetX,
+    offsetY: p.editOutpaintOffsetY,
     scale: p.editOutpaintScale / 100,
   });
   const padding = layout.padding;
@@ -4119,6 +4125,12 @@ async function handleApi(req, res, url) {
     p.prompt = String(p.prompt || '').trim();
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
     p.editOutpaintScale = p.editOutpaint ? clampInt(p.editOutpaintScale, 45, 100, 100) : undefined;
+    const hasOutpaintOffsetX = p.editOutpaintOffsetX !== null && p.editOutpaintOffsetX !== undefined && p.editOutpaintOffsetX !== '';
+    const hasOutpaintOffsetY = p.editOutpaintOffsetY !== null && p.editOutpaintOffsetY !== undefined && p.editOutpaintOffsetY !== '';
+    const outpaintOffsetX = Number(p.editOutpaintOffsetX);
+    const outpaintOffsetY = Number(p.editOutpaintOffsetY);
+    p.editOutpaintOffsetX = p.editOutpaint && hasOutpaintOffsetX && Number.isFinite(outpaintOffsetX) ? clampNum(outpaintOffsetX, 0, 1, .5) : undefined;
+    p.editOutpaintOffsetY = p.editOutpaint && hasOutpaintOffsetY && Number.isFinite(outpaintOffsetY) ? clampNum(outpaintOffsetY, 0, 1, .5) : undefined;
     if (!p.prompt && p.editOutpaint) {
       p.prompt = 'Extend the image naturally into the empty canvas, preserving the original image and continuing its scene, lighting, perspective, and details.';
     }

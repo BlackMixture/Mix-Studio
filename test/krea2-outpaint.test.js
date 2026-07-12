@@ -32,6 +32,17 @@ test('outpaint can resize and position the source inside the output canvas', () 
   });
 });
 
+test('outpaint supports free two-axis source placement', () => {
+  assert.deepEqual(calculateOutpaintLayout({
+    sourceWidth: 800, sourceHeight: 1200, targetWidth: 1344, targetHeight: 768,
+    position: 'center', offsetX: .25, offsetY: .75, scale: .75,
+  }), {
+    sourceWidth: 384,
+    sourceHeight: 576,
+    padding: { left: 240, top: 144, right: 720, bottom: 48, axis: 'horizontal', position: 'center' },
+  });
+});
+
 test('outpaint generation stays at or below the recommended two megapixels', () => {
   const dimensions = normalizeOutpaintDimensions(4000, 3000);
   assert.ok(dimensions.width * dimensions.height <= 2_000_000);
@@ -55,6 +66,18 @@ test('native preserve keeps a 1000px square source and creates a true 2000px can
   });
   assert.equal(plan.effectiveScale, .5);
   assert.equal(plan.needsRefine, true);
+});
+
+test('native preserve keeps free placement registered at working and final sizes', () => {
+  const plan = calculateNativeOutpaintPlan({
+    sourceWidth: 1000, sourceHeight: 1000, targetWidth: 1024, targetHeight: 1024,
+    position: 'center', offsetX: .2, offsetY: .8, scale: .5,
+  });
+  assert.deepEqual(plan.finalPadding, {
+    left: 200, top: 800, right: 800, bottom: 200, axis: 'horizontal', position: 'center',
+  });
+  assert.equal(plan.workingPadding.left, 141);
+  assert.equal(plan.workingPadding.top, 563);
 });
 
 test('native preserve rounds the final canvas safely at 100 percent', () => {

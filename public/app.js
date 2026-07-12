@@ -26,6 +26,8 @@ const state = {
   editHeight: 1024,
   editOutpaint: false,
   editOutpaintPosition: 'center',
+  editOutpaintOffsetX: null,
+  editOutpaintOffsetY: null,
   editOutpaintScale: 100,
   editRefSlots: 1,
   editUpscaleEnabled: false,
@@ -1233,6 +1235,8 @@ function saveForm() {
       editWidth: state.editWidth, editHeight: state.editHeight,
       editOutpaint: state.editOutpaint,
       editOutpaintPosition: state.editOutpaintPosition,
+      editOutpaintOffsetX: state.editOutpaintOffsetX,
+      editOutpaintOffsetY: state.editOutpaintOffsetY,
       editOutpaintScale: state.editOutpaintScale,
       editUpscaleEnabled: state.editUpscaleEnabled,
       editUpscaleResolution: state.editUpscaleResolution,
@@ -1266,6 +1270,8 @@ function loadForm() {
     state.editHeight = round32(Number(f.editHeight) || 1024);
     state.editOutpaint = f.editOutpaint === true;
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(f.editOutpaintPosition) ? f.editOutpaintPosition : 'center';
+    state.editOutpaintOffsetX = optionalUnitOffset(f.editOutpaintOffsetX);
+    state.editOutpaintOffsetY = optionalUnitOffset(f.editOutpaintOffsetY);
     state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(f.editOutpaintScale) || 100)));
     state.editUpscaleEnabled = f.editUpscaleEnabled === true;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
@@ -1538,6 +1544,8 @@ function updateVideoPanels() {
 /* Shared source picker: every generation media dropzone can accept either a
    fresh device file or an existing image/video from the current gallery. */
 let assetPickerState = null;
+let resetAssetPickerSwipeVisuals = () => {};
+let animateAssetPickerNavigation = () => {};
 
 function assetPickerKind(accept) {
   return String(accept || '').toLowerCase().startsWith('video') ? 'video' : 'image';
@@ -1547,26 +1555,32 @@ function previousGenerationAssets(accept) {
   const kind = assetPickerKind(accept);
   const assets = [];
   for (const item of state.items || []) {
+    const folder = (state.folders || []).find((entry) => entry.id === item.folder);
     if (kind === 'video') {
       for (const video of Array.isArray(item.videos) ? item.videos : []) {
         if (!video || !video.file) continue;
         const engine = videoEngineLabel(video.info && video.info.engine);
         const createdAt = Number(video.createdAt || item.createdAt || 0);
         assets.push({
-          kind, file: video.file, itemId: item.id,
+          key: `${item.id}:video:${video.id || video.file}`,
+          kind, file: video.file, itemId: item.id, videoId: video.id,
           label: video.info?.motionPrompt || item.prompt || 'Previous video',
           detail: `${engine} · ${new Date(createdAt || Date.now()).toLocaleDateString()}`,
-          poster: item.file, activity: createdAt || itemActivity(item),
+          poster: item.file, activity: createdAt || itemActivity(item), createdAt,
+          folder: item.folder || null, folderName: folder?.name || '',
+          liked: video.liked === true || item.liked === true,
         });
       }
     } else if (item.file) {
       const model = galleryImageModelLabel(item);
       const createdAt = Number(item.createdAt || 0);
       assets.push({
+        key: `${item.id}:image:${item.upscaled || item.file}`,
         kind, file: item.upscaled || item.file, itemId: item.id,
         label: item.prompt || 'Previous image',
         detail: `${model || 'Image'} · ${new Date(item.createdAt || Date.now()).toLocaleDateString()}`,
-        activity: createdAt || itemActivity(item),
+        activity: createdAt || itemActivity(item), createdAt,
+        folder: item.folder || null, folderName: folder?.name || '', liked: item.liked === true,
       });
     }
   }
@@ -1585,8 +1599,90 @@ function assetPickerMediaUrl(asset) {
 function assetMatchesQuery(asset, query) {
   const terms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return true;
-  const haystack = `${asset.label || ''} ${asset.detail || ''} ${asset.file || ''}`.toLowerCase();
+  const haystack = `${asset.label || ''} ${asset.detail || ''} ${asset.file || ''} ${asset.folderName || ''}`.toLowerCase();
   return terms.every((term) => haystack.includes(term));
+}
+
+function assetPickerVisibleAssets() {
+  if (!assetPickerState) return [];
+  let assets = previousGenerationAssets(assetPickerState.accept).filter((asset) => {
+    if (!assetMatchesQuery(asset, assetPickerState.query)) return false;
+    if (assetPickerState.folder !== 'all' && asset.folder !== assetPickerState.folder) return false;
+    if (assetPickerState.likes && !asset.liked) return false;
+    return true;
+  });
+  if (assetPickerState.sort === 'old') assets.sort((a, b) => a.createdAt - b.createdAt);
+  else if (assetPickerState.sort === 'az') assets.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+  else if (assetPickerState.sort === 'active') assets.sort((a, b) => b.activity - a.activity);
+  else assets.sort((a, b) => b.createdAt - a.createdAt);
+  assetPickerState.assets = assets;
+  return assets;
+}
+
+function closeAssetPickerMenus(except = null) {
+  ['folder', 'sort'].forEach((name) => {
+    if (name === except) return;
+    const trigger = $(`#assetPicker${name[0].toUpperCase() + name.slice(1)}Trigger`);
+    const menu = $(`#assetPicker${name[0].toUpperCase() + name.slice(1)}Menu`);
+    if (!trigger || !menu) return;
+    trigger.setAttribute('aria-expanded', 'false');
+    menu.hidden = true;
+    menu.inert = true;
+  });
+}
+
+function renderAssetPickerFilters() {
+  if (!assetPickerState) return;
+  const folder = (state.folders || []).find((entry) => entry.id === assetPickerState.folder);
+  if (assetPickerState.folder !== 'all' && !folder) assetPickerState.folder = 'all';
+  $('#assetPickerFolderLabel').textContent = folder?.name || 'All folders';
+  $('#assetPickerLikes').setAttribute('aria-pressed', String(assetPickerState.likes));
+  const sortLabels = { new: 'Newest', active: 'Active', old: 'Oldest', az: 'A–Z' };
+  $('#assetPickerSortLabel').textContent = sortLabels[assetPickerState.sort] || 'Newest';
+  $$('#assetPickerSortMenu [data-asset-sort]').forEach((button) => {
+    const active = button.dataset.assetSort === assetPickerState.sort;
+    button.setAttribute('aria-selected', String(active));
+  });
+
+  const menu = $('#assetPickerFolderMenu');
+  menu.replaceChildren();
+  [{ id: 'all', name: 'All folders' }, ...(state.folders || [])].forEach((entry) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', String(assetPickerState.folder === entry.id));
+    const folderIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    folderIcon.setAttribute('viewBox', '0 0 24 24');
+    folderIcon.setAttribute('aria-hidden', 'true');
+    folderIcon.innerHTML = '<path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>';
+    const label = document.createElement('span');
+    label.textContent = entry.name;
+    button.append(folderIcon, label);
+    if (entry.locked) {
+      const lock = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      lock.classList.add('asset-picker-menu-check');
+      lock.setAttribute('viewBox', '0 0 24 24');
+      lock.setAttribute('aria-label', 'Locked');
+      lock.innerHTML = '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>';
+      button.appendChild(lock);
+    } else if (assetPickerState.folder === entry.id) {
+      const check = document.createElement('span');
+      check.className = 'asset-picker-menu-check';
+      check.textContent = '✓';
+      button.appendChild(check);
+    }
+    button.addEventListener('click', async () => {
+      if (entry.locked && !state.privateUnlocked) {
+        const unlocked = await unlockPrivateGallery();
+        if (!unlocked || !assetPickerState) return;
+      }
+      assetPickerState.folder = entry.id;
+      closeAssetPickerMenus();
+      renderAssetPickerFilters();
+      renderAssetPickerList();
+    });
+    menu.appendChild(button);
+  });
 }
 
 function renderAssetPickerList() {
@@ -1595,13 +1691,14 @@ function renderAssetPickerList() {
   const count = $('#assetPickerCount');
   if (!list || !gallery || !assetPickerState) return;
   const allAssets = previousGenerationAssets(assetPickerState.accept);
-  const assets = allAssets.filter((asset) => assetMatchesQuery(asset, assetPickerState.query));
+  const assets = assetPickerVisibleAssets();
   list.replaceChildren();
-  count.textContent = assetPickerState.query
+  const filtered = assetPickerState.query || assetPickerState.folder !== 'all' || assetPickerState.likes;
+  count.textContent = filtered
     ? `${assets.length} of ${allAssets.length}`
     : `${allAssets.length} available`;
   if (!assets.length) {
-    list.innerHTML = `<div class="asset-picker-empty">${allAssets.length ? 'No generations match that search.' : `No previous ${assetPickerKind(assetPickerState.accept)} generations yet.`}</div>`;
+    list.innerHTML = `<div class="asset-picker-empty">${allAssets.length ? 'No generations match these filters.' : `No previous ${assetPickerKind(assetPickerState.accept)} generations yet.`}</div>`;
     return;
   }
   assets.forEach((asset) => {
@@ -1642,51 +1739,67 @@ function renderAssetPickerList() {
 
 function openAssetPickerPreview(asset) {
   if (!assetPickerState || !asset) return;
-  assetPickerState.preview = asset;
+  const canonical = (assetPickerState.assets || []).find((entry) => entry.key === asset.key) || asset;
+  assetPickerState.preview = canonical;
   const panel = $('#assetPickerSheet .asset-picker-panel');
-  const media = $('#assetPickerPreviewMedia');
+  const current = $('#assetPickerPreviewCurrent');
+  resetAssetPickerSwipeVisuals();
   panel.scrollTop = 0;
   panel.classList.add('previewing');
   $('#assetPickerGallery').hidden = true;
   $('#assetPickerPreview').hidden = false;
-  media.replaceChildren();
-  if (asset.kind === 'video') {
+  current.replaceChildren();
+  if (canonical.kind === 'video') {
     const video = document.createElement('video');
-    video.src = assetPickerMediaUrl(asset);
-    video.poster = assetPickerImageUrl(asset);
+    video.src = assetPickerMediaUrl(canonical);
+    video.poster = assetPickerImageUrl(canonical);
     video.controls = true;
     video.playsInline = true;
     video.preload = 'metadata';
-    media.appendChild(video);
+    current.appendChild(video);
   } else {
     const img = document.createElement('img');
-    img.src = assetPickerMediaUrl(asset);
-    img.alt = asset.label || 'Previous generation preview';
-    media.appendChild(img);
+    img.src = assetPickerMediaUrl(canonical);
+    img.alt = canonical.label || 'Previous generation preview';
+    current.appendChild(img);
   }
-  $('#assetPickerPreviewDetail').textContent = asset.detail || '';
-  $('#assetPickerPreviewPrompt').textContent = asset.label || '';
-  $('#assetPickerPreviewUse').textContent = asset.kind === 'video' ? 'Use video' : 'Use image';
+  const index = Math.max(0, (assetPickerState.assets || []).findIndex((entry) => entry.key === canonical.key));
+  const total = (assetPickerState.assets || []).length;
+  $('#assetPickerPreviewPosition').textContent = total ? `${index + 1} / ${total}` : '';
+  $('#assetPickerPreviewPrevious').disabled = index <= 0;
+  $('#assetPickerPreviewNext').disabled = index < 0 || index >= total - 1;
+  $('#assetPickerPreviewDetail').textContent = canonical.detail || '';
+  $('#assetPickerPreviewPrompt').textContent = canonical.label || '';
+  $('#assetPickerPreviewUse').textContent = canonical.kind === 'video' ? 'Use video' : 'Use image';
 }
 
 function closeAssetPickerPreview() {
   if (!assetPickerState) return;
   assetPickerState.preview = null;
+  resetAssetPickerSwipeVisuals();
   $('#assetPickerSheet .asset-picker-panel').classList.remove('previewing');
   $('#assetPickerPreview').hidden = true;
-  $('#assetPickerPreviewMedia').replaceChildren();
+  $('#assetPickerPreviewCurrent').replaceChildren();
   $('#assetPickerGallery').hidden = false;
 }
 
 function openAssetPicker(accept, callback, title) {
-  assetPickerState = { accept, callback, query: '', preview: null };
+  const folder = state.activeFolder === 'all' || (state.folders || []).some((entry) => entry.id === state.activeFolder)
+    ? state.activeFolder : 'all';
+  assetPickerState = {
+    accept, callback, query: '', preview: null, assets: [], folder,
+    likes: state.likesOnly === true,
+    sort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
+  };
   const picker = assetPickerState;
   const panel = $('#assetPickerSheet .asset-picker-panel');
   panel.classList.remove('browsing', 'previewing');
   $('#assetPickerSearch').value = '';
   $('#assetPickerSearchClear').hidden = true;
   $('#assetPickerPreview').hidden = true;
-  $('#assetPickerPreviewMedia').replaceChildren();
+  $('#assetPickerPreviewCurrent').replaceChildren();
+  closeAssetPickerMenus();
+  renderAssetPickerFilters();
   $('#assetPickerTitle').textContent = title || (assetPickerKind(accept) === 'video' ? 'Choose a video source' : 'Choose an image source');
   $('#assetPickerCopy').textContent = assetPickerKind(accept) === 'video'
     ? 'Use a video from your device or select one from your gallery.'
@@ -1703,9 +1816,11 @@ function openAssetPicker(accept, callback, title) {
 }
 
 function closeAssetPicker() {
+  resetAssetPickerSwipeVisuals();
+  closeAssetPickerMenus();
   $('#assetPickerSheet').classList.remove('show');
   $('#assetPickerSheet .asset-picker-panel').classList.remove('browsing', 'previewing');
-  $('#assetPickerPreviewMedia').replaceChildren();
+  $('#assetPickerPreviewCurrent').replaceChildren();
   assetPickerState = null;
   syncSheetScrollLock();
 }
@@ -1790,11 +1905,12 @@ $('#assetPickerPrevious').addEventListener('click', () => {
 });
 $('#assetPickerBrowseBack').addEventListener('click', () => {
   if (!assetPickerState) return;
+  resetAssetPickerSwipeVisuals();
   assetPickerState.preview = null;
   $('#assetPickerSheet .asset-picker-panel').classList.remove('browsing', 'previewing');
   $('#assetPickerGallery').hidden = true;
   $('#assetPickerPreview').hidden = true;
-  $('#assetPickerPreviewMedia').replaceChildren();
+  $('#assetPickerPreviewCurrent').replaceChildren();
 });
 $('#assetPickerSearch').addEventListener('input', (event) => {
   if (!assetPickerState) return;
@@ -1811,12 +1927,210 @@ $('#assetPickerSearchClear').addEventListener('click', () => {
   $('#assetPickerSearch').focus();
 });
 $('#assetPickerPreviewBack').addEventListener('click', closeAssetPickerPreview);
+$('#assetPickerFolderTrigger').addEventListener('click', () => {
+  if (!assetPickerState) return;
+  const trigger = $('#assetPickerFolderTrigger');
+  const menu = $('#assetPickerFolderMenu');
+  const open = trigger.getAttribute('aria-expanded') !== 'true';
+  closeAssetPickerMenus(open ? 'folder' : null);
+  trigger.setAttribute('aria-expanded', String(open));
+  menu.hidden = !open;
+  menu.inert = !open;
+});
+$('#assetPickerSortTrigger').addEventListener('click', () => {
+  if (!assetPickerState) return;
+  const trigger = $('#assetPickerSortTrigger');
+  const menu = $('#assetPickerSortMenu');
+  const open = trigger.getAttribute('aria-expanded') !== 'true';
+  closeAssetPickerMenus(open ? 'sort' : null);
+  trigger.setAttribute('aria-expanded', String(open));
+  menu.hidden = !open;
+  menu.inert = !open;
+});
+$('#assetPickerLikes').addEventListener('click', () => {
+  if (!assetPickerState) return;
+  assetPickerState.likes = !assetPickerState.likes;
+  closeAssetPickerMenus();
+  renderAssetPickerFilters();
+  renderAssetPickerList();
+});
+$$('#assetPickerSortMenu [data-asset-sort]').forEach((button) => button.addEventListener('click', () => {
+  if (!assetPickerState) return;
+  assetPickerState.sort = button.dataset.assetSort;
+  closeAssetPickerMenus();
+  renderAssetPickerFilters();
+  renderAssetPickerList();
+}));
+$('#assetPickerPreviewPrevious').addEventListener('click', () => animateAssetPickerNavigation(-1));
+$('#assetPickerPreviewNext').addEventListener('click', () => animateAssetPickerNavigation(1));
 $('#assetPickerPreviewUse').addEventListener('click', () => {
   if (assetPickerState?.preview) usePreviousGeneration(assetPickerState.preview);
 });
 $('#assetPickerSheet').addEventListener('click', (event) => {
   if (event.target === $('#assetPickerSheet') || event.target.closest('[data-close]')) closeAssetPicker();
 });
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('.asset-picker-dropdown')) closeAssetPickerMenus();
+});
+
+/* Match the focused gallery's push/pull gesture while keeping native video
+   controls available. The next asset is owned as soon as a swipe commits, so
+   rapid follow-up swipes keep advancing even while media is decoding. */
+(() => {
+  const wrap = $('#assetPickerPreviewMedia');
+  const current = $('#assetPickerPreviewCurrent');
+  const neighbor = $('#assetPickerPreviewNeighbor');
+  let swipe = null;
+  let animationToken = 0;
+  let pendingAsset = null;
+
+  function adjacentAsset(direction) {
+    if (!assetPickerState?.preview) return null;
+    const assets = assetPickerState.assets || [];
+    const index = assets.findIndex((entry) => entry.key === assetPickerState.preview.key);
+    return index >= 0 ? assets[index + direction] || null : null;
+  }
+
+  function clearVisuals() {
+    animationToken += 1;
+    [current, neighbor].forEach((element) => {
+      element.getAnimations().forEach((animation) => animation.cancel());
+      element.style.transform = '';
+      element.style.opacity = '';
+    });
+    neighbor.hidden = true;
+    neighbor.removeAttribute('src');
+    wrap.classList.remove('is-swiping', 'is-settling');
+    swipe = null;
+    pendingAsset = null;
+  }
+  resetAssetPickerSwipeVisuals = clearVisuals;
+
+  function setNeighbor(direction) {
+    if (!swipe || swipe.direction === direction) return;
+    swipe.direction = direction;
+    swipe.neighbor = adjacentAsset(direction);
+    const src = swipe.neighbor && assetPickerImageUrl(swipe.neighbor);
+    if (!src) {
+      neighbor.hidden = true;
+      neighbor.removeAttribute('src');
+      return;
+    }
+    neighbor.src = src;
+    neighbor.hidden = false;
+  }
+
+  function renderSwipe(rawDx) {
+    if (!swipe) return;
+    const width = Math.max(1, wrap.clientWidth);
+    const direction = rawDx < 0 ? 1 : -1;
+    setNeighbor(direction);
+    const dx = swipe.neighbor ? rawDx : rawDx * .22;
+    const progress = Math.min(1, Math.abs(dx) / width);
+    const side = direction > 0 ? width : -width;
+    swipe.dx = dx;
+    current.style.transform = `translate3d(${dx}px,0,0) scale(${1 - progress * .018})`;
+    current.style.opacity = String(1 - progress * .22);
+    if (swipe.neighbor && !neighbor.hidden) {
+      neighbor.style.transform = `translate3d(${side + dx}px,0,0) scale(${.985 + progress * .015})`;
+      neighbor.style.opacity = String(.46 + progress * .54);
+    }
+    wrap.classList.add('is-swiping');
+  }
+
+  function finishSwipe(commit) {
+    if (!swipe) return;
+    const currentSwipe = swipe;
+    const width = Math.max(1, wrap.clientWidth);
+    const side = currentSwipe.direction > 0 ? width : -width;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const duration = reduced ? 1 : (commit ? 210 : 255);
+    const easing = commit ? 'cubic-bezier(.2,.78,.22,1)' : 'cubic-bezier(.18,.82,.22,1)';
+    const token = ++animationToken;
+    if (commit && currentSwipe.neighbor) pendingAsset = currentSwipe.neighbor;
+    wrap.classList.add('is-settling');
+    const animations = [current.animate([
+      { transform: current.style.transform || 'translate3d(0,0,0)', opacity: current.style.opacity || 1 },
+      { transform: `translate3d(${commit ? -side : 0}px,0,0) scale(${commit ? .98 : 1})`, opacity: commit ? .18 : 1 },
+    ], { duration, easing, fill: 'forwards' })];
+    if (currentSwipe.neighbor && !neighbor.hidden) {
+      animations.push(neighbor.animate([
+        { transform: neighbor.style.transform, opacity: neighbor.style.opacity || .46 },
+        { transform: `translate3d(${commit ? 0 : side}px,0,0) scale(${commit ? 1 : .985})`, opacity: commit ? 1 : .46 },
+      ], { duration, easing, fill: 'forwards' }));
+    }
+    Promise.all(animations.map((animation) => animation.finished.catch(() => null))).then(() => {
+      if (token !== animationToken) return;
+      const next = commit ? currentSwipe.neighbor : null;
+      clearVisuals();
+      if (next) openAssetPickerPreview(next);
+    });
+  }
+
+  function beginSwipe(x, y) {
+    const now = performance.now();
+    swipe = { x0: x, y0: y, t0: now, lastX: x, lastTime: now, velocityX: 0, dx: 0, direction: 0, neighbor: null, locked: false };
+  }
+
+  animateAssetPickerNavigation = (direction) => {
+    if (!assetPickerState?.preview || !adjacentAsset(direction)) return;
+    clearVisuals();
+    beginSwipe(0, 0);
+    renderSwipe((direction > 0 ? -1 : 1) * Math.max(90, wrap.clientWidth * .32));
+    finishSwipe(true);
+  };
+
+  wrap.addEventListener('touchstart', (event) => {
+    if (event.touches.length !== 1 || !assetPickerState?.preview) return;
+    if (event.target.tagName === 'VIDEO') {
+      const rect = event.target.getBoundingClientRect();
+      if (event.touches[0].clientY > rect.bottom - 72) return;
+    }
+    if (pendingAsset) openAssetPickerPreview(pendingAsset);
+    else clearVisuals();
+    const touch = event.touches[0];
+    beginSwipe(touch.clientX, touch.clientY);
+  }, { passive: true });
+  wrap.addEventListener('touchmove', (event) => {
+    if (!swipe || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - swipe.x0;
+    const dy = touch.clientY - swipe.y0;
+    if (!swipe.locked) {
+      if (Math.hypot(dx, dy) < 8) return;
+      if (Math.abs(dy) > Math.abs(dx) * .82) {
+        clearVisuals();
+        return;
+      }
+      swipe.locked = true;
+    }
+    event.preventDefault();
+    const now = performance.now();
+    const elapsed = Math.max(1, now - swipe.lastTime);
+    swipe.velocityX = (touch.clientX - swipe.lastX) / elapsed;
+    swipe.lastX = touch.clientX;
+    swipe.lastTime = now;
+    renderSwipe(dx);
+  }, { passive: false });
+  wrap.addEventListener('touchend', (event) => {
+    if (!swipe) return;
+    const touch = event.changedTouches[0];
+    const rawDx = touch.clientX - swipe.x0;
+    if (!swipe.locked) return clearVisuals();
+    renderSwipe(rawDx);
+    const velocity = Math.abs(swipe.velocityX) > .05
+      ? swipe.velocityX
+      : rawDx / Math.max(1, performance.now() - swipe.t0);
+    const commit = !!swipe.neighbor && (Math.abs(rawDx) >= wrap.clientWidth * .2 || Math.abs(velocity) >= .48);
+    finishSwipe(commit);
+  }, { passive: true });
+  wrap.addEventListener('touchcancel', () => finishSwipe(false), { passive: true });
+  wrap.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    animateAssetPickerNavigation(event.key === 'ArrowRight' ? 1 : -1);
+  });
+})();
 
 function createDenoiseFromInfluence(influence = state.createInfluence) {
   const normalized = Math.max(0, Math.min(100, Number(influence) || 0)) / 100;
@@ -4600,6 +4914,12 @@ function matchedEditOutputDimensions(ref) {
   };
 }
 
+function optionalUnitOffset(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : null;
+}
+
 function editOutpaintGeometry() {
   const ref = state.refs[0];
   const sourceWidth = Number(ref?.w);
@@ -4614,6 +4934,11 @@ function editOutpaintGeometry() {
   const ratioDiffers = Math.abs(Math.log(targetRatio / sourceRatio)) >= .012;
   const scale = Math.max(.45, Math.min(1, Number(state.editOutpaintScale) / 100 || 1));
   const axis = targetRatio >= sourceRatio ? 'horizontal' : 'vertical';
+  const legacyOffset = state.editOutpaintPosition === 'start' ? 0 : (state.editOutpaintPosition === 'end' ? 1 : .5);
+  const savedOffsetX = optionalUnitOffset(state.editOutpaintOffsetX);
+  const savedOffsetY = optionalUnitOffset(state.editOutpaintOffsetY);
+  const offsetX = savedOffsetX ?? (axis === 'horizontal' ? legacyOffset : .5);
+  const offsetY = savedOffsetY ?? (axis === 'vertical' ? legacyOffset : .5);
   const nativePreserve = $('#editComposite')?.getAttribute('aria-pressed') === 'true';
   let finalWidth = targetWidth;
   let finalHeight = targetHeight;
@@ -4643,6 +4968,8 @@ function editOutpaintGeometry() {
     sourceRatio,
     targetRatio,
     axis,
+    offsetX,
+    offsetY,
     nativePreserve,
     finalWidth,
     finalHeight,
@@ -4674,10 +5001,29 @@ function applyEditOutpaintAspect(label) {
   state.editHeight = round32(Math.sqrt(1e6 / aspect.ar));
 }
 
-function editOutpaintPlacementLabel(axis, position = state.editOutpaintPosition) {
-  return axis === 'vertical'
-    ? ({ start: 'Top', center: 'Center', end: 'Bottom' }[position] || 'Center')
-    : ({ start: 'Left', center: 'Center', end: 'Right' }[position] || 'Center');
+function syncEditOutpaintPlacement(geometry = editOutpaintGeometry()) {
+  const source = $('#editOutpaintSource');
+  if (!source) return;
+  const offsetX = Number.isFinite(geometry.offsetX) ? geometry.offsetX : .5;
+  const offsetY = Number.isFinite(geometry.offsetY) ? geometry.offsetY : .5;
+  source.style.left = `${(100 - geometry.sourceWidthPercent) * offsetX}%`;
+  source.style.top = `${(100 - geometry.sourceHeightPercent) * offsetY}%`;
+  source.setAttribute('aria-valuenow', String(Math.round((geometry.axis === 'horizontal' ? offsetX : offsetY) * 100)));
+  source.setAttribute('aria-valuetext', `${Math.round(offsetX * 100)}% across, ${Math.round(offsetY * 100)}% down`);
+
+  const labels = geometry.axis === 'vertical' ? ['Top', 'Center', 'Bottom'] : ['Left', 'Center', 'Right'];
+  const primaryOffset = geometry.axis === 'horizontal' ? offsetX : offsetY;
+  const secondaryOffset = geometry.axis === 'horizontal' ? offsetY : offsetX;
+  $$('#editOutpaintPosition button').forEach((button, index) => {
+    button.textContent = labels[index];
+    const expected = index / 2;
+    button.classList.toggle('active', Math.abs(primaryOffset - expected) < .01 && Math.abs(secondaryOffset - .5) < .01);
+  });
+  const freePlacement = Math.abs(secondaryOffset - .5) >= .01
+    || ![0, .5, 1].some((value) => Math.abs(primaryOffset - value) < .01);
+  $('#editOutpaintPlacementLabel').textContent = freePlacement
+    ? 'Free placement'
+    : (geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement');
 }
 
 function renderEditOutpaint() {
@@ -4710,11 +5056,7 @@ function renderEditOutpaint() {
     : 'min(210px, 100%)';
   source.style.width = `${geometry.sourceWidthPercent}%`;
   source.style.height = `${geometry.sourceHeightPercent}%`;
-  const primaryPercent = geometry.axis === 'horizontal' ? geometry.sourceWidthPercent : geometry.sourceHeightPercent;
-  const primaryOffset = state.editOutpaintPosition === 'start' ? 0
-    : (state.editOutpaintPosition === 'end' ? 100 - primaryPercent : (100 - primaryPercent) / 2);
-  source.style.left = geometry.axis === 'horizontal' ? `${primaryOffset}%` : `${(100 - geometry.sourceWidthPercent) / 2}%`;
-  source.style.top = geometry.axis === 'vertical' ? `${primaryOffset}%` : `${(100 - geometry.sourceHeightPercent) / 2}%`;
+  syncEditOutpaintPlacement(geometry);
   image.hidden = true;
   if (geometry.ref) {
     const sourceUrl = geometry.ref.displayUrl || geometry.ref.url || '';
@@ -4732,12 +5074,6 @@ function renderEditOutpaint() {
     }
   }
 
-  const labels = geometry.axis === 'vertical' ? ['Top', 'Center', 'Bottom'] : ['Left', 'Center', 'Right'];
-  $$('#editOutpaintPosition button').forEach((button, index) => {
-    button.textContent = labels[index];
-    button.classList.toggle('active', button.dataset.outpaintPosition === state.editOutpaintPosition);
-  });
-  $('#editOutpaintPlacementLabel').textContent = geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement';
   $('#editOutpaintScale').value = String(state.editOutpaintScale);
   $('#editOutpaintScaleValue').textContent = `${state.editOutpaintScale}%`;
   $('#editOutpaintOutputValue').textContent = hasPreviewGeometry ? `${geometry.finalWidth} × ${geometry.finalHeight}` : '—';
@@ -4748,8 +5084,8 @@ function renderEditOutpaint() {
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
     : (!geometry.valid ? 'Reduce Source on canvas or choose a different ratio to add space.'
       : (geometry.nativePreserve
-        ? `The source remains at native resolution; only the surrounding canvas is generated.`
-        : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`));
+        ? `Drag the source to position it. It stays at native resolution while the surrounding canvas is generated.`
+        : `Drag the source to position it on the ${state.editWidth} × ${state.editHeight} canvas.`));
 }
 
 $('#editOutpaintToggle').addEventListener('click', () => {
@@ -4774,9 +5110,82 @@ $('#editOutpaintPosition').addEventListener('click', (event) => {
   if (!button) return;
   state.editOutpaintPosition = ['start', 'center', 'end'].includes(button.dataset.outpaintPosition)
     ? button.dataset.outpaintPosition : 'center';
+  const offset = state.editOutpaintPosition === 'start' ? 0 : (state.editOutpaintPosition === 'end' ? 1 : .5);
+  const geometry = editOutpaintGeometry();
+  state.editOutpaintOffsetX = geometry.axis === 'horizontal' ? offset : .5;
+  state.editOutpaintOffsetY = geometry.axis === 'vertical' ? offset : .5;
   renderEditOutpaint();
   saveForm();
 });
+
+(() => {
+  const source = $('#editOutpaintSource');
+  const preview = $('#editOutpaintPreview');
+  let drag = null;
+
+  function updatePosition(clientX, clientY) {
+    if (!drag) return;
+    const previewRect = preview.getBoundingClientRect();
+    const sourceRect = source.getBoundingClientRect();
+    const availableX = Math.max(0, previewRect.width - sourceRect.width);
+    const availableY = Math.max(0, previewRect.height - sourceRect.height);
+    const left = Math.max(0, Math.min(availableX, clientX - previewRect.left - drag.grabX));
+    const top = Math.max(0, Math.min(availableY, clientY - previewRect.top - drag.grabY));
+    state.editOutpaintOffsetX = availableX > .5 ? left / availableX : .5;
+    state.editOutpaintOffsetY = availableY > .5 ? top / availableY : .5;
+    const geometry = editOutpaintGeometry();
+    const primary = geometry.axis === 'horizontal' ? geometry.offsetX : geometry.offsetY;
+    state.editOutpaintPosition = primary < .25 ? 'start' : (primary > .75 ? 'end' : 'center');
+    syncEditOutpaintPlacement(geometry);
+  }
+
+  source.addEventListener('pointerdown', (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const geometry = editOutpaintGeometry();
+    if (!editOutpaintActive() || !geometry.valid || !geometry.ref) return;
+    const sourceRect = source.getBoundingClientRect();
+    drag = {
+      pointerId: event.pointerId,
+      grabX: event.clientX - sourceRect.left,
+      grabY: event.clientY - sourceRect.top,
+    };
+    source.classList.add('dragging');
+    source.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  source.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    updatePosition(event.clientX, event.clientY);
+    event.preventDefault();
+  });
+  const finishDrag = (event) => {
+    if (!drag || (event.pointerId !== undefined && event.pointerId !== drag.pointerId)) return;
+    drag = null;
+    source.classList.remove('dragging');
+    saveForm();
+  };
+  source.addEventListener('pointerup', finishDrag);
+  source.addEventListener('pointercancel', finishDrag);
+  source.addEventListener('lostpointercapture', finishDrag);
+  source.addEventListener('keydown', (event) => {
+    if (!editOutpaintActive()) return;
+    const step = event.shiftKey ? .1 : .025;
+    let handled = true;
+    if (event.key === 'ArrowLeft') state.editOutpaintOffsetX = Math.max(0, (editOutpaintGeometry().offsetX || 0) - step);
+    else if (event.key === 'ArrowRight') state.editOutpaintOffsetX = Math.min(1, editOutpaintGeometry().offsetX + step);
+    else if (event.key === 'ArrowUp') state.editOutpaintOffsetY = Math.max(0, (editOutpaintGeometry().offsetY || 0) - step);
+    else if (event.key === 'ArrowDown') state.editOutpaintOffsetY = Math.min(1, editOutpaintGeometry().offsetY + step);
+    else if (event.key === 'Home') {
+      state.editOutpaintOffsetX = .5;
+      state.editOutpaintOffsetY = .5;
+      state.editOutpaintPosition = 'center';
+    } else handled = false;
+    if (!handled) return;
+    event.preventDefault();
+    syncEditOutpaintPlacement(editOutpaintGeometry());
+    saveForm();
+  });
+})();
 
 $('#editOutpaintScale').addEventListener('input', (event) => {
   state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(event.target.value) || 100)));
@@ -7452,6 +7861,8 @@ $('#generateBtn').addEventListener('click', async () => {
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
+    editOutpaintOffsetX: outpaintActive ? editOutpaintGeometry().offsetX : undefined,
+    editOutpaintOffsetY: outpaintActive ? editOutpaintGeometry().offsetY : undefined,
     editOutpaintScale: outpaintActive ? state.editOutpaintScale : undefined,
     editOutpaintSourceWidth: outpaintActive && state.refs[0] ? state.refs[0].w : undefined,
     editOutpaintSourceHeight: outpaintActive && state.refs[0] ? state.refs[0].h : undefined,
@@ -8734,7 +9145,7 @@ function activeDesktopStageMedia() {
 
 const DESKTOP_INPUT_STATE_KEYS = [
   'createMode', 'enhance', 'aspect', 'mp', 'width', 'height', 'customDims',
-  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintScale',
+  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
@@ -12060,6 +12471,8 @@ async function reuseItem(it, useEnhanced) {
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(it.editOutpaint?.position)
       ? it.editOutpaint.position
       : 'center';
+    state.editOutpaintOffsetX = optionalUnitOffset(it.editOutpaint?.offsetX);
+    state.editOutpaintOffsetY = optionalUnitOffset(it.editOutpaint?.offsetY);
     state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(it.editOutpaint?.scale) || 100)));
     state.editRefSlots = Math.max(1, Math.min(3, (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
     if (state.editEngine === 'qwen') {

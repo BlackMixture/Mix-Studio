@@ -222,7 +222,7 @@
         <div class="edit-outpaint-body-inner">
           <div class="edit-outpaint-preview-wrap">
             <div class="edit-outpaint-preview" id="editOutpaintPreview" aria-label="Outpaint canvas preview">
-              <div class="edit-outpaint-source" id="editOutpaintSource"><img id="editOutpaintPreviewImage" alt="" /></div>
+              <div class="edit-outpaint-source" id="editOutpaintSource" role="slider" tabindex="0" aria-label="Source image position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Centered"><img id="editOutpaintPreviewImage" alt="" /></div>
             </div>
             <small id="editOutpaintHint">Choose a different Resolution ratio to add canvas.</small>
           </div>
@@ -1863,11 +1863,48 @@
         <input id="assetPickerSearch" type="search" placeholder="Search prompts, models, or dates" autocomplete="off" />
         <button id="assetPickerSearchClear" type="button" aria-label="Clear search" hidden>✕</button>
       </label>
+      <div class="asset-picker-toolbar" aria-label="Previous generation filters">
+        <div class="asset-picker-dropdown" id="assetPickerFolderDropdown">
+          <button class="asset-picker-tool asset-picker-folder-trigger" id="assetPickerFolderTrigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>
+            <span id="assetPickerFolderLabel">All folders</span>
+            <svg class="asset-picker-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+          </button>
+          <div class="asset-picker-menu asset-picker-folder-menu" id="assetPickerFolderMenu" role="listbox" aria-label="Gallery folder" hidden></div>
+        </div>
+        <button class="asset-picker-tool asset-picker-likes" id="assetPickerLikes" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.1-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.9-7 10-7 10Z"/></svg>
+          <span>Likes</span>
+        </button>
+        <div class="asset-picker-dropdown asset-picker-sort-dropdown" id="assetPickerSortDropdown">
+          <button class="asset-picker-tool asset-picker-sort-trigger" id="assetPickerSortTrigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14m0 0-3-3m3 3 3-3M13 7h7M13 12h5M13 17h3"/></svg>
+            <span id="assetPickerSortLabel">Newest</span>
+            <svg class="asset-picker-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+          </button>
+          <div class="asset-picker-menu asset-picker-sort-menu" id="assetPickerSortMenu" role="listbox" aria-label="Sort previous generations" hidden>
+            <button type="button" role="option" data-asset-sort="new">Newest</button>
+            <button type="button" role="option" data-asset-sort="active">Active</button>
+            <button type="button" role="option" data-asset-sort="old">Oldest</button>
+            <button type="button" role="option" data-asset-sort="az">A–Z</button>
+          </div>
+        </div>
+      </div>
       <div class="asset-picker-list" id="assetPickerList"></div>
     </div>
     <div class="asset-picker-preview" id="assetPickerPreview" hidden>
       <button class="asset-picker-preview-back" id="assetPickerPreviewBack" type="button">‹ Back to generations</button>
-      <div class="asset-picker-preview-media" id="assetPickerPreviewMedia"></div>
+      <div class="asset-picker-preview-media" id="assetPickerPreviewMedia" tabindex="0" aria-label="Generation preview. Swipe or use arrow keys for adjacent items.">
+        <div class="asset-picker-preview-current" id="assetPickerPreviewCurrent"></div>
+        <img class="asset-picker-preview-neighbor" id="assetPickerPreviewNeighbor" alt="" hidden />
+        <button class="asset-picker-preview-nav previous" id="assetPickerPreviewPrevious" type="button" aria-label="Previous generation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+        </button>
+        <button class="asset-picker-preview-nav next" id="assetPickerPreviewNext" type="button" aria-label="Next generation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+        </button>
+        <output class="asset-picker-preview-position" id="assetPickerPreviewPosition" aria-live="polite"></output>
+      </div>
       <div class="asset-picker-preview-copy">
         <b id="assetPickerPreviewDetail"></b>
         <p id="assetPickerPreviewPrompt"></p>

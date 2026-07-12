@@ -15,6 +15,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(html, /id="editOutpaintControl"/);
   assert.match(html, /id="editOutpaintToggle"[^>]*role="switch"/);
   assert.match(html, /id="editOutpaintPreview"/);
+  assert.match(html, /id="editOutpaintSource"[^>]*role="slider"/);
   assert.match(html, /id="editOutpaintScale"[^>]*type="range"/);
   assert.match(html, /id="editOutpaintOutputValue"/);
   assert.match(html, /data-outpaint-position="start"/);
@@ -24,7 +25,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(css, /@media \(max-width: 420px\)[\s\S]*\.edit-outpaint-body-inner/);
   assert.match(app, /function editOutpaintGeometry\(\)/);
   assert.match(app, /32_000_000/);
-  assert.match(app, /The source remains at native resolution/);
+  assert.match(app, /It stays at native resolution/);
   assert.match(app, /100% · no added canvas/);
   assert.match(app, /function renderEditOutpaint\(\)/);
   assert.match(app, /const OUTPAINT_EDIT_ENGINES = new Set\(EDIT_ENGINES\)/);
@@ -34,10 +35,13 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
 test('outpaint state persists and is restored from completed gallery items', () => {
   assert.match(app, /editOutpaint: state\.editOutpaint/);
   assert.match(app, /editOutpaintPosition: state\.editOutpaintPosition/);
+  assert.match(app, /editOutpaintOffsetX: state\.editOutpaintOffsetX/);
+  assert.match(app, /editOutpaintOffsetY: state\.editOutpaintOffsetY/);
   assert.match(app, /editOutpaintScale: state\.editOutpaintScale/);
   assert.match(app, /state\.editOutpaint = f\.editOutpaint === true/);
   assert.match(app, /state\.editOutpaint = OUTPAINT_EDIT_ENGINES\.has\(state\.editEngine\) && !!it\.editOutpaint/);
   assert.match(app, /it\.editOutpaint\?\.position/);
+  assert.match(app, /it\.editOutpaint\?\.offsetX/);
   assert.match(server, /editOutpaint: job\.params\.mode === 'edit' && job\.params\.editOutpaint/);
   assert.match(server, /editOutpaintFinalWidth/);
   assert.match(server, /editOutpaintRefine/);
@@ -47,6 +51,9 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /const promptOptional = [^;]*\|\| outpaintActive/);
   assert.match(app, /editOutpaint: outpaintActive \|\| undefined/);
   assert.match(app, /editOutpaintPosition: outpaintActive \? state\.editOutpaintPosition/);
+  assert.match(app, /editOutpaintOffsetX: outpaintActive \? editOutpaintGeometry\(\)\.offsetX/);
+  assert.match(app, /source\.addEventListener\('pointerdown'/);
+  assert.match(app, /source\.setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /editOutpaintScale: outpaintActive \? state\.editOutpaintScale/);
   assert.match(app, /!\$\('#editComposite'\)\.hidden && \$\('#editComposite'\)\.getAttribute\('aria-pressed'\) === 'true'/);
   assert.match(app, /preserve\.hidden = active \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
