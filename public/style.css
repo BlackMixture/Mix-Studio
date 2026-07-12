@@ -1365,6 +1365,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.video-input-grid #vidMotionPromptLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .video-input-grid .frame-prompt-action.is-loading { opacity: .72; pointer-events: none; }
 .video-input-grid .frame-prompt-action.is-loading svg { animation: rot .8s linear infinite; }
 .video-input-grid .media-input-filled.expanded {
@@ -1385,7 +1390,11 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .video-input-grid .media-input-filled .attach-info span { display: none; }
   .video-input-grid .media-input-art > svg { width: 24px; height: 24px; }
   .video-input-grid .media-input-art > i { right: 6px; bottom: 5px; width: 18px; height: 18px; }
-  .video-input-grid .frame-prompt-action { gap: 4px; padding-inline: 7px; font-size: 8.5px; }
+  .video-input-grid .frame-prompt-action { right: 44px; gap: 3px; padding-inline: 5px; font-size: 8px; }
+  .video-input-grid .frame-prompt-action svg { width: 14px; height: 14px; }
+  .video-input-grid #vidMotionPromptLabel { font-size: 0; text-overflow: clip; }
+  .video-input-grid #vidMotionPromptLabel::after { content: "Motion"; font-size: 8px; }
+  .video-input-grid .frame-prompt-action.is-loading #vidMotionPromptLabel::after { content: "Reading…"; }
 }
 .video-frame-slot.media-input-filled::before {
   content: "⠿";
