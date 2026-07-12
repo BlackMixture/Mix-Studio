@@ -35,7 +35,7 @@ test('Edit exposes SAM3, brush, and bounding-box area selection for supported en
 test('localized edit requests upload their mask automatically and preserve source-matched output', () => {
   assert.match(app, /supportsCurrentEditMask\(\) && hasEditMask\(\)/);
   assert.match(app, /editAspectOverride: mode === 'edit' && state\.editAspectOverride && !localizedEdit/);
-  assert.match(app, /editMaskMode: localizedEdit \? \(state\.kreaMaskKind \|\| state\.kreaMaskTool\)/);
+  assert.match(app, /editMaskMode: localizedEdit \|\| preserveMask \? \(state\.kreaMaskKind \|\| state\.kreaMaskTool\)/);
   assert.match(app, /Edit area is active — changes stay inside the mask/);
   assert.match(html, /id="kreaMaskApply">Done/);
 });
@@ -54,11 +54,11 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(app, /const current = \(image\.data\[i\] \* image\.data\[i \+ 3\]\) \/ 255/);
   assert.match(app, /function renderMaskOverlay\(\)/);
   assert.match(app, /function beginMaskGesture\(event\)/);
-  assert.match(app, /Brush Size \$\{state\.kreaBrush\} px · Brush Pressure/);
+  assert.match(app, /Brush size \$\{state\.kreaBrush\} px/);
   assert.match(app, /function setSmartMaskLoading\(message\)/);
   assert.match(app, /Still loading SAM3 — first use can take a few minutes/);
   assert.match(app, /d\.kind === 'smartMask' && smartMaskRunning/);
-  assert.match(app, /ctx\.globalCompositeOperation = 'destination-out'/);
+  assert.match(app, /ctx\.globalCompositeOperation = editOutpaintActive\(\) \? 'destination-in' : 'destination-out'/);
   assert.match(app, /ref\.displayUrl = cutout\.toDataURL\('image\/png'\)/);
   assert.match(app, /function scheduleMaskedRefPreview\(\)/);
   assert.match(app, /scheduleMaskedRefPreview\(\);/);

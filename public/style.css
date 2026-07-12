@@ -270,6 +270,43 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .app-drawer-nav-item:not(.app-drawer-nav-create) { grid-template-columns: 32px minmax(0, 1fr); }
 .app-drawer-nav-item:active { transform: scale(.985); }
 .app-drawer-nav-item.active { color: #fff; border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.055); }
+
+.workspaces-panel { max-width: 520px; }
+.workspace-autosave-note {
+  margin: 0 0 14px;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 3px 9px;
+  color: var(--ink-soft);
+}
+.workspace-autosave-note > span { grid-row: 1 / 3; padding-top: 2px; color: #34a853; font-size: 10px; }
+.workspace-autosave-note strong { font-size: 13px; }
+.workspace-autosave-note small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.saved-workspace-list { display: grid; gap: 8px; margin-top: 14px; }
+.saved-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255,255,255,.025);
+}
+.saved-workspace-copy { min-width: 0; display: grid; gap: 3px; }
+.saved-workspace-copy strong { overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.saved-workspace-copy small { color: var(--muted-2); font-size: 10px; }
+.saved-workspace-actions { display: flex; gap: 6px; }
+.saved-workspace-actions button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--ink-soft); font-size: 10.5px; font-weight: 850; }
+.saved-workspace-actions .delete { width: 34px; padding: 0; color: #ffaaa4; }
+.workspace-empty { margin: 14px 0 0; color: var(--muted-2); font-size: 11px; text-align: center; }
+.workspace-reset { margin-top: 16px; color: var(--muted); }
+@media (max-width: 520px) {
+  .saved-workspace { align-items: start; grid-template-columns: 1fr; }
+  .saved-workspace-actions { width: 100%; }
+  .saved-workspace-actions button:first-child { flex: 1; }
+}
 .app-drawer-nav-icon {
   width: 32px;
   height: 32px;

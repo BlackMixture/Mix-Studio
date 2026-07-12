@@ -18,6 +18,8 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(html, /id="editOutpaintSource"[^>]*role="slider"/);
   assert.match(html, /id="editOutpaintScale"[^>]*type="range"/);
   assert.match(html, /id="editOutpaintOutputValue"/);
+  assert.match(html, /id="editOutpaintAdvanced"/);
+  assert.match(html, /id="editOutpaintFeather"[^>]*max="25"/);
   assert.match(html, /data-outpaint-position="start"/);
   assert.match(html, /data-outpaint-position="center"/);
   assert.match(html, /data-outpaint-position="end"/);
@@ -38,10 +40,12 @@ test('outpaint state persists and is restored from completed gallery items', () 
   assert.match(app, /editOutpaintOffsetX: state\.editOutpaintOffsetX/);
   assert.match(app, /editOutpaintOffsetY: state\.editOutpaintOffsetY/);
   assert.match(app, /editOutpaintScale: state\.editOutpaintScale/);
+  assert.match(app, /editOutpaintFeather: state\.editOutpaintFeather/);
   assert.match(app, /state\.editOutpaint = f\.editOutpaint === true/);
   assert.match(app, /state\.editOutpaint = OUTPAINT_EDIT_ENGINES\.has\(state\.editEngine\) && !!it\.editOutpaint/);
   assert.match(app, /it\.editOutpaint\?\.position/);
   assert.match(app, /it\.editOutpaint\?\.offsetX/);
+  assert.match(app, /it\.editOutpaint\?\.feather/);
   assert.match(server, /editOutpaint: job\.params\.mode === 'edit' && job\.params\.editOutpaint/);
   assert.match(server, /editOutpaintFinalWidth/);
   assert.match(server, /editOutpaintRefine/);
@@ -55,23 +59,35 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /source\.addEventListener\('pointerdown'/);
   assert.match(app, /source\.setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /editOutpaintScale: outpaintActive \? state\.editOutpaintScale/);
-  assert.match(app, /!\$\('#editComposite'\)\.hidden && \$\('#editComposite'\)\.getAttribute\('aria-pressed'\) === 'true'/);
-  assert.match(app, /preserve\.hidden = active \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
+  assert.match(app, /editOutpaintFeather: outpaintActive \? state\.editOutpaintFeather/);
+  assert.match(app, /const nativePreserve = mode === 'edit'[\s\S]{0,140}\$\('#editComposite'\)\.getAttribute\('aria-pressed'\) === 'true'/);
+  assert.match(app, /preserve\.hidden = localizedActive \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
   assert.match(app, /state\.editSequential = false;\s*\$\('#editComposite'\)\.setAttribute\('aria-pressed', 'true'\)/);
   assert.match(app, /Native preserve/);
   assert.match(css, /\.edit-outpaint-source img \{[^}]*object-fit: contain/);
   assert.match(css, /\.ref-slot img \{[^}]*object-fit: contain/);
   assert.match(server, /p\.editOutpaintRefine = plan\.needsRefine && refine\.ready && !!p\.postUpscale/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
-  assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);
-  assert.match(app, /state\.view === 'edit' && !editOutpaintActive\(\) && EDIT_MASK_ENGINES/);
+  assert.match(app, /return editOutpaintActive\(\)[\s\S]{0,100}OUTPAINT_EDIT_ENGINES/);
   assert.match(server, /p\.editEngine === 'krea2ref' && p\.editOutpaint/);
   assert.match(server, /p\.editOutpaint && p\.editEngine === 'qwen'/);
   assert.match(server, /p\.editOutpaint && \(p\.editEngine === 'klein4' \|\| p\.editEngine === 'klein9'\)/);
   assert.match(server, /p\.editOutpaint && p\.editEngine === 'krea2'/);
   assert.match(server, /Outpaint and sequential edits must be generated separately/);
-  assert.match(server, /Outpaint and localized edit areas must be generated separately/);
+  assert.doesNotMatch(server, /Outpaint and localized edit areas must be generated separately/);
+  assert.match(server, /p\.maskImageName && !p\.editOutpaint && !supportsEditMask/);
+  assert.match(server, /p\.maskImageName && !p\.editOutpaint\) p\.editAspectOverride = false/);
   assert.match(server, /if \(p\.editAspectOverride && !p\.editOutpaint\) p\.composite = false/);
+});
+
+test('outpaint masks preserve an organic subject with synchronized feather controls', () => {
+  assert.match(app, /Outpaint preserve area/);
+  assert.match(app, /Only the preserve mask stays at native resolution/);
+  assert.match(app, /editOutpaintActive\(\) \? 'destination-in' : 'destination-out'/);
+  assert.match(app, /const preserveMask = outpaintActive && !!maskImageName/);
+  assert.match(app, /editMaskMode: localizedEdit \|\| preserveMask/);
+  assert.match(app, /Math\.min\(384, Math\.round\(Math\.min\(out\.width, out\.height\)/);
+  assert.match(server, /preserveMask: !!job\.params\.maskImageName/);
 });
 
 test('sampling appears only when Edit offers a sampling choice', () => {

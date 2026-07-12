@@ -1195,10 +1195,45 @@ function saveMediaPreferences(next) {
   if (!state.mediaPreferences.previewCache) stopPreviewCacheWarmup();
 }
 
+const WORKSPACE_ASSET_FIELDS = [
+  'name', 'w', 'h', 'label', 'safeName', 'safeW', 'safeH', 'srcItemId',
+  'faceId', 'hasAudio', 'dur', 'trimStart', 'trimEnd', 'duration',
+];
+
+function serializeWorkspaceAsset(asset) {
+  if (!asset || !asset.name) return null;
+  return Object.fromEntries(WORKSPACE_ASSET_FIELDS
+    .filter((key) => asset[key] !== undefined && asset[key] !== null)
+    .map((key) => [key, asset[key]]));
+}
+
+function restoreWorkspaceAsset(asset) {
+  if (!asset || !asset.name) return null;
+  return Object.assign({}, asset, { url: '/api/input?name=' + encodeURIComponent(asset.name) });
+}
+
+function serializeWorkspaceAudio(audio) {
+  if (!audio || !audio.uploadedName) return null;
+  return {
+    name: audio.uploadedName,
+    label: audio.label || 'audio',
+    duration: Number(audio.duration) || 0,
+    trimStart: Number(audio.trimStart) || 0,
+    trimEnd: Number(audio.trimEnd) || Number(audio.duration) || 0,
+  };
+}
+
+let persistedWorkspaceAudio = null;
+let persistedWorkspaceVideoControls = null;
+
 function saveForm() {
   try {
     rememberEditLoras();
+    if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
+    captureGenerationTuning(generationTuningMode());
     localStorage.setItem(formKey(), JSON.stringify({
+      workspaceVersion: 2,
+      activeView: ['create', 'edit', 'video'].includes(state.view) ? state.view : 'create',
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, editLorasByEngine: state.editLorasByEngine, prompts: state.prompts,
       loraTriggers: state.loraTriggers,
@@ -1209,8 +1244,20 @@ function saveForm() {
       createMode: state.createMode,
       createRef: state.createRef ? {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
-        safeName: state.createRef.safeName, safeW: state.createRef.safeW, safeH: state.createRef.safeH,
+        safeName: state.createRef.safeName, safeW: state.createRef.safeW, safeH: state.createRef.safeH, srcItemId: state.createRef.srcItemId,
       } : null,
+      refs: state.refs.map(serializeWorkspaceAsset),
+      vidRef: serializeWorkspaceAsset(state.vidRef),
+      vidEnd: serializeWorkspaceAsset(state.vidEnd),
+      vidDrive: serializeWorkspaceAsset(state.vidDrive),
+      vidFace: serializeWorkspaceAsset(state.vidFace),
+      vidAudio: serializeWorkspaceAudio(state.vidAudio),
+      vidSigma: state.vidSigma,
+      vidSmooth: state.vidSmooth,
+      videoDuration: $('#vidDur').value,
+      videoMotionFreedom: $('#vidFree').value,
+      videoFourK: $('#vid4k').classList.contains('active'),
+      videoQuality: $('#vidQuality').classList.contains('active'),
       createImageGuideOpen: state.createImageGuideOpen,
       createGuideMode: state.createGuideMode,
       createMatchSource: state.createMatchSource,
@@ -1219,7 +1266,9 @@ function saveForm() {
       createDepthStrength: state.createDepthStrength,
       krea2Turbo: state.krea2Turbo,
       krea2RawTurboLora: state.krea2RawTurboLora,
-      regions: state.regions,
+      regions: state.regions.map((region) => Object.assign({}, region, {
+        refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
+      })),
       kreaBrush: state.kreaBrush,
       kreaMaskTool: state.kreaMaskTool,
       kreaMaskFeather: state.kreaMaskFeather,
@@ -1263,6 +1312,7 @@ function loadForm() {
   try {
     const f = JSON.parse(localStorage.getItem(formKey()) || localStorage.getItem('ks-form') || 'null');
     if (!f) return;
+    state.view = ['create', 'edit', 'video'].includes(f.activeView) ? f.activeView : 'create';
     state.enhance = f.enhance !== false;
     state.aspect = f.aspect || '1:1';
     state.mp = f.mp || 1;
@@ -1307,12 +1357,12 @@ function loadForm() {
       ? f.editEngineDefault : editEngineId(f.editEngine);
     state.editEngineOrder = promoteEngineDefault(f.editEngineOrder, editDefault, EDIT_ENGINES);
     state.editEngineDefault = state.editEngineOrder[0];
-    state.editEngine = state.editEngineDefault;
+    state.editEngine = EDIT_ENGINES.includes(f.editEngine) ? f.editEngine : state.editEngineDefault;
     const videoDefault = VIDEO_ENGINES.includes(f.videoEngineDefault)
       ? f.videoEngineDefault : (VIDEO_ENGINES.includes(f.vidEngine) ? f.vidEngine : 'ltx');
     state.videoEngineOrder = promoteEngineDefault(f.videoEngineOrder, videoDefault, VIDEO_ENGINES);
     state.videoEngineDefault = state.videoEngineOrder[0];
-    state.vidEngine = state.videoEngineDefault;
+    state.vidEngine = VIDEO_ENGINES.includes(f.vidEngine) ? f.vidEngine : state.videoEngineDefault;
     state.editLorasByEngine = {};
     if (f.editLorasByEngine && typeof f.editLorasByEngine === 'object') {
       EDIT_ENGINES.forEach((engine) => {
@@ -1344,7 +1394,25 @@ function loadForm() {
       safeName: String(f.createRef.safeName || ''),
       safeW: Number(f.createRef.safeW) || 0,
       safeH: Number(f.createRef.safeH) || 0,
+      srcItemId: f.createRef.srcItemId || undefined,
     } : null;
+    state.refs = Array.isArray(f.refs)
+      ? [0, 1, 2].map((index) => restoreWorkspaceAsset(f.refs[index]))
+      : [null, null, null];
+    state.editRefSlots = Math.max(1, state.refs.reduce((count, ref, index) => ref ? Math.max(count, index + 1) : count, 1));
+    state.vidRef = restoreWorkspaceAsset(f.vidRef);
+    state.vidEnd = restoreWorkspaceAsset(f.vidEnd);
+    state.vidDrive = restoreWorkspaceAsset(f.vidDrive);
+    state.vidFace = restoreWorkspaceAsset(f.vidFace);
+    persistedWorkspaceAudio = f.vidAudio && f.vidAudio.name ? f.vidAudio : null;
+    state.vidSigma = f.vidSigma || state.vidSigma;
+    state.vidSmooth = [1, 2, 3].includes(Number(f.vidSmooth)) ? Number(f.vidSmooth) : state.vidSmooth;
+    persistedWorkspaceVideoControls = {
+      duration: f.videoDuration,
+      motionFreedom: f.videoMotionFreedom,
+      fourK: f.videoFourK === true,
+      quality: f.videoQuality === true,
+    };
     state.createImageGuideOpen = f.createImageGuideOpen === true;
     state.createGuideMode = f.createGuideMode === 'depth' ? 'depth' : 'image';
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
@@ -1358,7 +1426,9 @@ function loadForm() {
       video: normalizeGenerationTuning('video', f.generationTuning && f.generationTuning.video),
     };
     state.kreaMaskTool = ['smart', 'brush', 'box'].includes(f.kreaMaskTool) ? f.kreaMaskTool : 'smart';
-    state.regions = Array.isArray(f.regions) ? f.regions : [];
+    state.regions = Array.isArray(f.regions) ? f.regions.map((region) => Object.assign({}, region, {
+      refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
+    })) : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     state.kreaMaskFeather = Math.max(0, Math.min(64, Number(f.kreaMaskFeather) || 8));
     state.editMaskInfluence = Math.max(25, Math.min(100, Math.round(Number(f.editMaskInfluence) || 78)));
@@ -1387,6 +1457,113 @@ function loadForm() {
     if (f.prompt) setPromptDraft(f.prompt);
   } catch { /* noop */ }
 }
+
+function workspaceLibraryKey() {
+  return 'ks-workspaces-' + (localStorage.getItem('ks-profile-id') || 'default');
+}
+
+function savedWorkspaces() {
+  try {
+    const entries = JSON.parse(localStorage.getItem(workspaceLibraryKey()) || '[]');
+    return Array.isArray(entries) ? entries.filter((entry) => entry && entry.id && entry.snapshot).slice(0, 30) : [];
+  } catch { return []; }
+}
+
+function writeSavedWorkspaces(entries) {
+  localStorage.setItem(workspaceLibraryKey(), JSON.stringify(entries.slice(0, 30)));
+}
+
+function workspaceModeLabel(snapshot) {
+  if (snapshot.activeView === 'edit') return 'Edit';
+  if (snapshot.activeView === 'video') return 'Video';
+  return snapshot.createMode === 'region' ? 'Region' : 'Create Image';
+}
+
+function renderSavedWorkspaces() {
+  const list = $('#savedWorkspaceList');
+  const entries = savedWorkspaces();
+  list.innerHTML = '';
+  $('#savedWorkspaceEmpty').hidden = !!entries.length;
+  entries.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'saved-workspace';
+    const copy = document.createElement('span');
+    copy.className = 'saved-workspace-copy';
+    const name = document.createElement('strong');
+    name.textContent = entry.name;
+    const detail = document.createElement('small');
+    detail.textContent = `${workspaceModeLabel(entry.snapshot)} · ${new Date(entry.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+    copy.append(name, detail);
+    const actions = document.createElement('span');
+    actions.className = 'saved-workspace-actions';
+    const load = document.createElement('button');
+    load.type = 'button';
+    load.textContent = 'Load';
+    load.addEventListener('click', () => {
+      localStorage.setItem(formKey(), JSON.stringify(entry.snapshot));
+      location.reload();
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'delete';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', `Delete ${entry.name}`);
+    del.addEventListener('click', async () => {
+      if (!await askConfirm({ title: `Delete ${entry.name}?`, message: 'The current autosaved workspace is not affected.', confirmLabel: 'Delete', danger: true })) return;
+      writeSavedWorkspaces(savedWorkspaces().filter((candidate) => candidate.id !== entry.id));
+      renderSavedWorkspaces();
+    });
+    actions.append(load, del);
+    row.append(copy, actions);
+    list.appendChild(row);
+  });
+}
+
+function openWorkspaces() {
+  saveForm();
+  renderSavedWorkspaces();
+  closeAppDrawer();
+  $('#workspacesSheet').classList.add('show');
+}
+
+$('#workspacesBtn').addEventListener('click', openWorkspaces);
+$('#workspaceSaveCurrent').addEventListener('click', async () => {
+  saveForm();
+  const snapshot = JSON.parse(localStorage.getItem(formKey()) || 'null');
+  if (!snapshot) return;
+  const proposed = await askText({
+    title: 'Save workspace',
+    message: 'Save this complete generation setup for later.',
+    confirmLabel: 'Save workspace',
+    input: { label: 'Workspace name', placeholder: 'Campaign, character, scene…', maxLength: 60 },
+  });
+  const name = String(proposed || '').trim();
+  if (!name) return;
+  const entries = savedWorkspaces();
+  const existing = entries.find((entry) => entry.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  if (existing && !await askConfirm({ title: `Replace ${existing.name}?`, message: 'Update this saved workspace with the current setup.', confirmLabel: 'Replace' })) return;
+  const entry = existing || { id: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`), name };
+  entry.name = name;
+  entry.snapshot = snapshot;
+  entry.updatedAt = Date.now();
+  writeSavedWorkspaces([entry, ...entries.filter((candidate) => candidate.id !== entry.id)]);
+  renderSavedWorkspaces();
+  toast(`Saved workspace “${name}”`);
+});
+
+$('#workspaceReset').addEventListener('click', async () => {
+  if (!await askConfirm({
+    title: 'Reset current workspace?',
+    message: 'Clear all prompts, LoRAs, reference media, and generation settings. Named workspaces will remain available.',
+    confirmLabel: 'Reset workspace',
+    danger: true,
+  })) return;
+  localStorage.removeItem(formKey());
+  localStorage.removeItem('ks-form');
+  location.reload();
+});
+
+window.addEventListener('pagehide', saveForm);
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
@@ -1481,8 +1658,8 @@ function genLabel() {
   if (activeCount) {
     return `➕ Add to Queue · ${activeCount} active`;
   }
-  if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Inpaint';
   if (editOutpaintActive()) return 'Generate Outpaint';
+  if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Inpaint';
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
@@ -3363,7 +3540,7 @@ function processedMaskCanvas() {
   ctx.fillRect(0, 0, out.width, out.height);
   ctx.save();
   const feather = editOutpaintActive()
-    ? Math.round(Math.min(out.width, out.height) * Math.max(0, Math.min(25, Number(state.editOutpaintFeather) || 0)) / 100)
+    ? Math.min(384, Math.round(Math.min(out.width, out.height) * Math.max(0, Math.min(25, Number(state.editOutpaintFeather) || 0)) / 100))
     : Math.max(0, Math.min(64, Number(state.kreaMaskFeather) || 0));
   if (feather) ctx.filter = `blur(${feather}px)`;
   ctx.drawImage(source, 0, 0);
@@ -3468,7 +3645,7 @@ function renderMaskAdjustments() {
   $('#kreaMaskFeather').max = String(featherMax);
   $('#kreaMaskFeather').step = String(featherStep);
   $('#kreaMaskFeather').value = String(featherValue);
-  $('#kreaMaskPreviewLabel').textContent = outpaint ? 'Preview preserved subject' : 'Preview cutout';
+  $('#kreaMaskPreviewLabel').textContent = outpaint ? 'Preview subject' : 'Preview cutout';
   $('#kreaMaskInvert').classList.remove('active');
   $('#kreaMaskInvert').setAttribute('aria-pressed', 'false');
   $('#kreaMaskPreviewToggle').classList.toggle('active', state.kreaMaskPreviewCutout);
@@ -3937,6 +4114,7 @@ function wireEndFrame(prefix, stateKey) {
     state[stateKey] = null;
     refresh();
     toast('Last frame removed');
+    saveForm();
   });
   endFrameRefresh[stateKey] = refresh;
 }
@@ -4190,7 +4368,7 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
     try { wrap.setPointerCapture(e.pointerId); } catch { /* noop */ }
   });
   wrap.addEventListener('pointermove', (e) => { if (mode) applyDrag(timeAt(e.clientX)); });
-  wrap.addEventListener('pointerup', () => { mode = null; });
+  wrap.addEventListener('pointerup', () => { mode = null; saveForm(); });
   wrap.addEventListener('pointercancel', () => { mode = null; });
 
   play.addEventListener('click', () => {
@@ -4223,6 +4401,7 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
       state[stateKey] = null;
       setAudioChipVisual(chip, false);
       box.hidden = true;
+      saveForm();
       return;
     }
     const input = document.createElement('input');
@@ -4235,18 +4414,26 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
         const raw = await file.arrayBuffer();
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
         const buffer = await audioCtx.decodeAudioData(raw.slice(0));
+        let uploadedName = null;
+        try {
+          const uploaded = await api('/api/upload', {
+            method: 'POST', headers: { 'x-filename': encodeURIComponent(file.name) }, body: raw,
+          });
+          uploadedName = uploaded.name;
+        } catch { /* audio remains usable for this session, but cannot survive a reload */ }
         state[stateKey] = {
           raw, buffer,
           duration: buffer.duration,
           trimStart: 0,
           trimEnd: buffer.duration,
-          uploadedName: null,
-          uploadedKey: null,
+          uploadedName,
+          uploadedKey: uploadedName ? `0.00-${buffer.duration.toFixed(2)}` : null,
           label: file.name,
         };
         setAudioChipVisual(chip, true);
         box.hidden = false;
         requestAnimationFrame(() => { drawWave(); layout(); });
+        saveForm();
       } catch (e) { toast('Could not read audio: ' + e.message, true); }
     });
     input.click();
@@ -4270,6 +4457,43 @@ window.addEventListener('resize', () => {
 });
 wireAudioChip('vid', 'vidAudio', 'vidDur', 'vidDurVal');
 wireAudioChip('anim', 'animAudio', 'animDur', 'animDurVal');
+
+async function restorePersistedWorkspaceMedia() {
+  const saved = persistedWorkspaceAudio;
+  persistedWorkspaceAudio = null;
+  if (!saved || !saved.name) return;
+  try {
+    const response = await fetch('/api/input?name=' + encodeURIComponent(saved.name));
+    if (!response.ok) throw new Error('saved audio is unavailable');
+    const raw = await response.arrayBuffer();
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const buffer = await audioCtx.decodeAudioData(raw.slice(0));
+    state.vidAudio = {
+      raw,
+      buffer,
+      duration: buffer.duration,
+      trimStart: Math.max(0, Math.min(buffer.duration, Number(saved.trimStart) || 0)),
+      trimEnd: Math.max(0, Math.min(buffer.duration, Number(saved.trimEnd) || buffer.duration)),
+      uploadedName: saved.name,
+      uploadedKey: `${(Number(saved.trimStart) || 0).toFixed(2)}-${(Number(saved.trimEnd) || buffer.duration).toFixed(2)}`,
+      label: saved.label || 'audio',
+    };
+    setAudioChipVisual($('#vidAudioChip'), true);
+    $('#vidAudioTrim').hidden = false;
+    requestAnimationFrame(() => { if (waveRedraw.vidAudio) waveRedraw.vidAudio(); });
+  } catch { toast('A saved workspace audio file is no longer available', true); }
+}
+
+function restorePersistedWorkspaceControls() {
+  const controls = persistedWorkspaceVideoControls;
+  persistedWorkspaceVideoControls = null;
+  if (!controls) return;
+  if (controls.duration != null) $('#vidDur').value = controls.duration;
+  if (controls.motionFreedom != null) $('#vidFree').value = controls.motionFreedom;
+  $('#vid4k').classList.toggle('active', controls.fourK);
+  $('#vidQuality').classList.toggle('active', controls.quality);
+  updateVideoPanels();
+}
 
 state.vidSigma = 'dmd';
 state.animSigma = 'dmd';
@@ -5118,7 +5342,7 @@ function renderEditOutpaint() {
   const preview = $('#editOutpaintPreview');
   const source = $('#editOutpaintSource');
   const image = $('#editOutpaintPreviewImage');
-  source.classList.toggle('preserve-masked', enabled && hasEditMask());
+  source.classList.toggle('preserve-masked', enabled && geometry.nativePreserve && hasEditMask());
   const hasPreviewGeometry = !!geometry.ref && geometry.finalWidth > 0 && geometry.finalHeight > 0;
   const previewRatio = hasPreviewGeometry ? geometry.finalWidth / geometry.finalHeight : 16 / 9;
   preview.style.aspectRatio = hasPreviewGeometry ? `${geometry.finalWidth} / ${geometry.finalHeight}` : '16 / 9';
@@ -5150,12 +5374,14 @@ function renderEditOutpaint() {
   $('#editOutpaintOutputValue').textContent = hasPreviewGeometry ? `${geometry.finalWidth} × ${geometry.finalHeight}` : '—';
   $('#editOutpaintOutputNote').textContent = !geometry.ref ? 'Add a source image to calculate the canvas.'
     : (geometry.nativePreserve
-      ? `${geometry.ref.w} × ${geometry.ref.h} source retained${geometry.limited ? ' · canvas limit applied' : (state.editUpscaleEnabled ? ' · tiled detail pass enabled' : '')}`
+      ? `${geometry.ref.w} × ${geometry.ref.h} ${hasEditMask() ? 'masked subject' : 'source'} retained${geometry.limited ? ' · canvas limit applied' : (state.editUpscaleEnabled ? ' · tiled detail pass enabled' : '')}`
       : 'The source and generated canvas use the selected working resolution.');
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
     : (!geometry.valid ? 'Reduce Source on canvas or choose a different ratio to add space.'
       : (geometry.nativePreserve
-        ? `Drag the source to position it. It stays at native resolution while the surrounding canvas is generated.`
+        ? (hasEditMask()
+          ? 'Drag the subject to position it. Only the preserve mask stays at native resolution.'
+          : 'Drag the source to position it. It stays at native resolution while the surrounding canvas is generated.')
         : `Drag the source to position it on the ${state.editWidth} × ${state.editHeight} canvas.`));
   renderEditOutpaintAdvanced();
 }
@@ -5167,9 +5393,12 @@ $('#editOutpaintToggle').addEventListener('click', () => {
   if (enabling) {
     state.editSequential = false;
     $('#editComposite').setAttribute('aria-pressed', 'true');
-    clearKreaMask(true);
     if (state.qwenAnglesMode) closeQwenAngles();
     if (!editOutpaintGeometry().valid) applyEditOutpaintAspect(defaultEditOutpaintAspect(state.refs[0]));
+  }
+  if (hasEditMask()) {
+    state.kreaMaskDirty = true;
+    updateMaskedRefPreview();
   }
   renderRefs();
   renderEditSequence();
@@ -6640,6 +6869,7 @@ function pickRef(idx) {
     state.refs[idx] = file;
     if (idx === 0) clearKreaMask(true);
     renderRefs();
+    saveForm();
   }, `Choose reference image ${idx + 1}`);
 }
 
@@ -7132,6 +7362,7 @@ $('#vidAttachX').addEventListener('click', () => {
   state.vidRef = null;
   renderVidAttach();
   updateVideoPanels();
+  saveForm();
 });
 async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
   if (!state.vidRef || state.vidEngine === 'ltx-edit') return;
@@ -7185,6 +7416,7 @@ function pickVidRef() {
     renderVidAttach();
     updateVideoPanels();
     maybeCreateAutomaticMotionPrompt();
+    saveForm();
   }, 'Choose first frame');
 }
 $('#vidDur').addEventListener('input', updateVideoTuningSummary);
@@ -7237,6 +7469,7 @@ $('#vidDriveBtn').addEventListener('click', () => {
       driveLayout();
     };
     renderVidDrive();
+    saveForm();
   });
 });
 $('#vidDriveX').addEventListener('click', () => {
@@ -7244,6 +7477,7 @@ $('#vidDriveX').addEventListener('click', () => {
   $('#vidDriveVideo').removeAttribute('src');
   $('#vidDriveTrimChip').classList.remove('active');
   renderVidDrive();
+  saveForm();
 });
 
 /* Trim: filmstrip + draggable selection; applied losslessly on the server
@@ -7792,6 +8026,7 @@ $('#editComposite').addEventListener('click', () => {
   const button = $('#editComposite');
   button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
   renderEditOutpaint();
+  renderKreaMaskTools();
   saveForm();
 });
 $('#generateBtn').addEventListener('click', async () => {
@@ -7903,13 +8138,19 @@ $('#generateBtn').addEventListener('click', async () => {
   const createImageGuideName = createImageGuide ? createGuideInput(createImageGuide).name : undefined;
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
+  const nativePreserve = mode === 'edit'
+    && !$('#editComposite').hidden
+    && $('#editComposite').getAttribute('aria-pressed') === 'true';
   let maskImageName = '';
-  if (mode === 'edit' && supportsCurrentEditMask() && hasEditMask()) {
-    if (!state.refs[0]) return toast('A localized edit needs a source image in reference slot 1', true);
+  if (mode === 'edit' && supportsCurrentEditMask() && hasEditMask() && (!outpaintActive || nativePreserve)) {
+    if (!state.refs[0]) return toast(outpaintActive
+      ? 'A preserve mask needs a source image in reference slot 1'
+      : 'A localized edit needs a source image in reference slot 1', true);
     try { maskImageName = await ensureKreaMaskUploaded(); }
     catch (e) { return toast(e.message, true); }
   }
-  const localizedEdit = !!maskImageName;
+  const preserveMask = outpaintActive && !!maskImageName;
+  const localizedEdit = !outpaintActive && !!maskImageName;
   const upscaleFinish = mode === 'edit' ? {
     enabled: state.editUpscaleEnabled,
     resolution: state.editUpscaleResolution,
@@ -7927,15 +8168,14 @@ $('#generateBtn').addEventListener('click', async () => {
     qwenQuality: mode === 'edit' && state.editEngine === 'qwen' ? state.qwenQuality : undefined,
     krea2Turbo: !krea2Raw,
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
-    composite: mode === 'edit'
-      ? (!$('#editComposite').hidden && $('#editComposite').getAttribute('aria-pressed') === 'true')
-      : undefined,
+    composite: mode === 'edit' ? nativePreserve : undefined,
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
     editOutpaintOffsetX: outpaintActive ? editOutpaintGeometry().offsetX : undefined,
     editOutpaintOffsetY: outpaintActive ? editOutpaintGeometry().offsetY : undefined,
     editOutpaintScale: outpaintActive ? state.editOutpaintScale : undefined,
+    editOutpaintFeather: outpaintActive ? state.editOutpaintFeather : undefined,
     editOutpaintSourceWidth: outpaintActive && state.refs[0] ? state.refs[0].w : undefined,
     editOutpaintSourceHeight: outpaintActive && state.refs[0] ? state.refs[0].h : undefined,
     editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
@@ -7965,7 +8205,7 @@ $('#generateBtn').addEventListener('click', async () => {
       ? Number((state.createDepthStrength / 100).toFixed(2)) : undefined,
     regions: activeRegionsForRequest(),
     maskImageName,
-    editMaskMode: localizedEdit ? (state.kreaMaskKind || state.kreaMaskTool) : undefined,
+    editMaskMode: localizedEdit || preserveMask ? (state.kreaMaskKind || state.kreaMaskTool) : undefined,
     editMaskFeather: localizedEdit ? state.kreaMaskFeather : undefined,
     editMaskInvert: localizedEdit ? state.kreaMaskInvert : undefined,
     maskInfluence: localizedEdit ? state.editMaskInfluence : undefined,
@@ -9217,7 +9457,7 @@ function activeDesktopStageMedia() {
 
 const DESKTOP_INPUT_STATE_KEYS = [
   'createMode', 'enhance', 'aspect', 'mp', 'width', 'height', 'customDims',
-  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale',
+  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
@@ -12498,7 +12738,7 @@ async function restoreCreateImageGuide(item) {
 async function restoreKreaMask(item) {
   const isCurrent = typeof arguments[1] === 'function' ? arguments[1] : () => true;
   clearKreaMask(true);
-  if (!item.maskImageName || !EDIT_MASK_ENGINES.has(state.editEngine)) return false;
+  if (!item.maskImageName || (!state.editOutpaint && !EDIT_MASK_ENGINES.has(state.editEngine))) return false;
   try {
     const response = await fetch('/api/input?name=' + encodeURIComponent(item.maskImageName));
     if (!response.ok) throw new Error('missing mask');
@@ -12512,7 +12752,12 @@ async function restoreKreaMask(item) {
     state.kreaMaskDirty = false;
     state.kreaMaskKind = ['smart', 'box', 'brush'].includes(item.editMaskMode) ? item.editMaskMode : 'brush';
     state.kreaMaskTool = state.kreaMaskKind;
-    state.kreaMaskFeather = Math.max(0, Math.min(64, Number(item.editMaskFeather) || 0));
+    if (state.editOutpaint) {
+      state.editOutpaintFeather = Number.isFinite(Number(item.editOutpaint?.feather))
+        ? Math.max(0, Math.min(25, Math.round(Number(item.editOutpaint.feather)))) : 12;
+    } else {
+      state.kreaMaskFeather = Math.max(0, Math.min(64, Number(item.editMaskFeather) || 0));
+    }
     state.editMaskInfluence = Math.max(25, Math.min(100, Math.round(Number(item.editMaskInfluence) || 78)));
     state.editMaskExpand = Math.max(6, Math.min(32, Math.round(Number(item.editMaskExpand) || 14)));
     // Saved mask files already contain their final (possibly inverted) pixels.
@@ -12582,6 +12827,8 @@ async function reuseItem(it, useEnhanced) {
     state.editOutpaintOffsetX = optionalUnitOffset(it.editOutpaint?.offsetX);
     state.editOutpaintOffsetY = optionalUnitOffset(it.editOutpaint?.offsetY);
     state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(it.editOutpaint?.scale) || 100)));
+    state.editOutpaintFeather = Number.isFinite(Number(it.editOutpaint?.feather))
+      ? Math.max(0, Math.min(25, Math.round(Number(it.editOutpaint.feather)))) : 12;
     state.editRefSlots = Math.max(1, Math.min(3, (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
     if (state.editEngine === 'qwen') {
       state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)
@@ -14956,9 +15203,10 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
 });
 
 loadForm();
+setPromptDraft(state.prompts[state.view] || '');
 applySavedEngineOrders();
 loadMediaPreferences();
-restoreGenerationTuning('create');
+restoreGenerationTuning(generationTuningMode(state.view));
 markEngineRow('editEngineRow', state.editEngine);
 markEngineRow('vidEngineRow', state.vidEngine);
 updatePromptClear();
@@ -14968,7 +15216,9 @@ renderAspects();
 renderDims();
 renderLoras();
 renderRefs();
-setView('create');
+setView(state.view, state.view === 'create' ? { createMode: state.createMode } : {});
+restorePersistedWorkspaceControls();
+restorePersistedWorkspaceMedia();
 connectEvents();
 loadMeta();
 refreshGallery(true);

@@ -1340,6 +1340,8 @@ async function completeJob(pid) {
         offsetX: job.params.editOutpaintOffsetX,
         offsetY: job.params.editOutpaintOffsetY,
         scale: job.params.editOutpaintScale,
+        feather: job.params.editOutpaintFeather,
+        preserveMask: !!job.params.maskImageName,
         effectiveScale: job.params.editOutpaintEffectiveScale,
         axis: job.params.editOutpaintAxis,
         padding: job.params.editOutpaintPadding,
@@ -1353,10 +1355,10 @@ async function completeJob(pid) {
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
       editMaskMode: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskMode : undefined,
-      editMaskFeather: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskFeather : undefined,
-      editMaskInvert: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskInvert : undefined,
-      editMaskInfluence: job.params.mode === 'edit' && job.params.maskImageName ? job.params.maskInfluence : undefined,
-      editMaskExpand: job.params.mode === 'edit' && job.params.maskImageName ? job.params.maskExpand : undefined,
+      editMaskFeather: job.params.mode === 'edit' && job.params.maskImageName && !job.params.editOutpaint ? job.params.editMaskFeather : undefined,
+      editMaskInvert: job.params.mode === 'edit' && job.params.maskImageName && !job.params.editOutpaint ? job.params.editMaskInvert : undefined,
+      editMaskInfluence: job.params.mode === 'edit' && job.params.maskImageName && !job.params.editOutpaint ? job.params.maskInfluence : undefined,
+      editMaskExpand: job.params.mode === 'edit' && job.params.maskImageName && !job.params.editOutpaint ? job.params.maskExpand : undefined,
       postUpscale: job.params.postUpscale && sequenceFinal ? job.params.postUpscale : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
@@ -1770,12 +1772,21 @@ async function prepareOutpaintParams(p, refNames, info) {
   return padding;
 }
 
+function appendOutpaintFinishRequirements(requiredNodes, p) {
+  if (p.composite) {
+    requiredNodes.push('ImageCompositeMasked');
+    if (p.maskImageName) requiredNodes.push('ImageToMask');
+    else requiredNodes.push('SolidMask', 'FeatherMask');
+  }
+  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
+  return requiredNodes;
+}
+
 async function buildEditKrea2Outpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
-  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
+  appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
@@ -1800,8 +1811,8 @@ async function buildEditKleinOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
-  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
+  if (p.maskImageName) requiredNodes.push('ImageToMask', 'MaskToImage', 'InvertMask');
+  appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
@@ -1821,8 +1832,8 @@ async function buildEditQwenOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
-  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
+  if (p.maskImageName) requiredNodes.push('ImageToMask', 'MaskToImage', 'InvertMask');
+  appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
@@ -1840,8 +1851,8 @@ async function buildEditKrea2MaskedOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
-  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
+  if (p.maskImageName) requiredNodes.push('InvertMask', 'MaskComposite');
+  appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
@@ -3608,8 +3619,8 @@ const REQUIRED_CLASSES = {
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
-  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'SolidMask', 'FeatherMask'],
-  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'SolidMask', 'FeatherMask'],
+  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'ImageToMask', 'MaskToImage', 'InvertMask', 'MaskComposite', 'SolidMask', 'FeatherMask'],
+  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'ImageToMask', 'MaskToImage', 'InvertMask', 'SolidMask', 'FeatherMask'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',
@@ -4125,6 +4136,7 @@ async function handleApi(req, res, url) {
     p.prompt = String(p.prompt || '').trim();
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
     p.editOutpaintScale = p.editOutpaint ? clampInt(p.editOutpaintScale, 45, 100, 100) : undefined;
+    p.editOutpaintFeather = p.editOutpaint ? clampInt(p.editOutpaintFeather, 0, 25, 12) : undefined;
     const hasOutpaintOffsetX = p.editOutpaintOffsetX !== null && p.editOutpaintOffsetX !== undefined && p.editOutpaintOffsetX !== '';
     const hasOutpaintOffsetY = p.editOutpaintOffsetY !== null && p.editOutpaintOffsetY !== undefined && p.editOutpaintOffsetY !== '';
     const outpaintOffsetX = Number(p.editOutpaintOffsetX);
@@ -4230,21 +4242,18 @@ async function handleApi(req, res, url) {
       if (p.editOutpaint && !refNames.length) {
         return json(res, 400, { error: 'Outpaint needs a source image in reference slot 1' });
       }
-      if (p.editOutpaint && p.maskImageName) {
-        return json(res, 400, { error: 'Outpaint and localized edit areas must be generated separately' });
-      }
       if (p.editOutpaint && !p.editAspectOverride) {
         return json(res, 400, { error: 'Choose a Resolution ratio that extends beyond the source image' });
       }
       p.editOutpaintPosition = p.editOutpaint ? normalizeOutpaintPosition(p.editOutpaintPosition) : undefined;
-      if (p.maskImageName && !supportsEditMask(p.editEngine)) {
+      if (p.maskImageName && !p.editOutpaint && !supportsEditMask(p.editEngine)) {
         return json(res, 400, { error: 'Edit areas are available with Klein 4B, Klein 9B, Qwen Edit, and Krea2 only' });
       }
       if (p.maskImageName && !refNames.length) {
         return json(res, 400, { error: 'An edit area needs a source image in reference slot 1' });
       }
-      if (p.maskImageName) p.editAspectOverride = false;
-      if (p.maskImageName) p.denoise = maskInfluenceDenoise(p.maskInfluence);
+      if (p.maskImageName && !p.editOutpaint) p.editAspectOverride = false;
+      if (p.maskImageName && !p.editOutpaint) p.denoise = maskInfluenceDenoise(p.maskInfluence);
       if (p.editEngine === 'krea2') {
         if (p.editOutpaint) {
           p.steps = 8; p.cfg = 1; p.denoise = null;

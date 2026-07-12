@@ -23,8 +23,8 @@ test('Model orders and defaults persist in profile-scoped form state', () => {
   assert.match(app, /videoEngineOrder: state\.videoEngineOrder, videoEngineDefault: state\.videoEngineDefault/);
   assert.match(app, /state\.editEngineOrder = promoteEngineDefault\(f\.editEngineOrder, editDefault, EDIT_ENGINES\)/);
   assert.match(app, /state\.videoEngineOrder = promoteEngineDefault\(f\.videoEngineOrder, videoDefault, VIDEO_ENGINES\)/);
-  assert.match(app, /state\.editEngine = state\.editEngineDefault/);
-  assert.match(app, /state\.vidEngine = state\.videoEngineDefault/);
+  assert.match(app, /state\.editEngine = EDIT_ENGINES\.includes\(f\.editEngine\) \? f\.editEngine : state\.editEngineDefault/);
+  assert.match(app, /state\.vidEngine = VIDEO_ENGINES\.includes\(f\.vidEngine\) \? f\.vidEngine : state\.videoEngineDefault/);
 });
 
 test('Hold-and-drag model ordering reflows smoothly and locks touch scrolling only after activation', () => {

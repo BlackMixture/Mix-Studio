@@ -27,6 +27,7 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
     editOutpaintFinalSourceWidth: 1200,
     editOutpaintFinalSourceHeight: 800,
     editOutpaintFinalPadding: { left: 300, top: 112, right: 300, bottom: 112 },
+    editOutpaintFeather: 5,
     composite: true,
     prompt: 'Continue the windows and wall.',
     seed: 7,
@@ -45,6 +46,8 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
   assert.equal(graph.color_match_final.inputs.method, 'hm-mvgd-hm');
   assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
   assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
+  assert.equal(graph.native_keep_feather.inputs.left, 40);
+  assert.equal(graph.native_keep_feather.inputs.top, 40);
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.preserve_source.inputs.source, ['source', 0]);
   assert.equal(graph.preserve_source.inputs.x, 300);
@@ -52,6 +55,36 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
   assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_feather', 0]);
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
   assert.match(graph.positive_text.inputs.text, /Remove the green area/);
+});
+
+test('outpaint can preserve an organic subject mask instead of the source rectangle', () => {
+  const graph = buildKleinOutpaintGraph({
+    settings: { kleinVae: 'flux2-vae.safetensors' },
+    unetName: 'flux-2-klein-9b.safetensors',
+    clipName: 'qwen_3_8b.safetensors',
+    imageName: 'source.png',
+    maskImageName: 'subject-mask.png',
+    width: 1344,
+    height: 768,
+    padding,
+    editOutpaintSourceWidth: 900,
+    editOutpaintSourceHeight: 768,
+    editOutpaintFinalWidth: 1800,
+    editOutpaintFinalHeight: 1024,
+    editOutpaintFinalSourceWidth: 1200,
+    editOutpaintFinalSourceHeight: 800,
+    editOutpaintFinalPadding: { left: 300, top: 112, right: 300, bottom: 112 },
+    composite: true,
+    prompt: 'Continue the scene.',
+  });
+  assert.equal(graph.native_keep_mask_load.class_type, 'LoadImage');
+  assert.equal(graph.native_keep_mask_load.inputs.image, 'subject-mask.png');
+  assert.equal(graph.native_keep_mask.class_type, 'ImageToMask');
+  assert.equal(graph.native_keep_feather, undefined);
+  assert.equal(graph.outpaint_regenerate_mask.class_type, 'InvertMask');
+  assert.equal(graph.subject_source.class_type, 'DrawMaskOnImage');
+  assert.deepEqual(graph.padded.inputs.image, ['subject_source', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
 });
 
 test('Qwen outpaint sends the padded green canvas through native edit conditioning', () => {
@@ -118,6 +151,37 @@ test('Krea2 outpaint uses the padded mask as latent noise and preserves the sour
   assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
+});
+
+test('Krea2 outpaint regenerates the original background outside an organic preserve mask', () => {
+  const graph = buildKrea2MaskedOutpaintGraph({
+    settings: {
+      unet: 'krea2-turbo.safetensors',
+      clip: 'qwen3vl.safetensors',
+      clipType: 'krea2',
+      vae: 'qwen-vae.safetensors',
+    },
+    imageName: 'source.png',
+    maskImageName: 'subject-mask.png',
+    width: 1140,
+    height: 768,
+    padding,
+    editOutpaintSourceWidth: 900,
+    editOutpaintSourceHeight: 768,
+    editOutpaintFinalWidth: 1800,
+    editOutpaintFinalHeight: 1024,
+    editOutpaintFinalSourceWidth: 1200,
+    editOutpaintFinalSourceHeight: 800,
+    editOutpaintFinalPadding: { left: 300, top: 112, right: 300, bottom: 112 },
+    composite: true,
+    prompt: 'Continue the room.',
+    seed: 10,
+  });
+  assert.equal(graph.regenerate_background_mask.class_type, 'InvertMask');
+  assert.equal(graph.combined_outpaint_mask.class_type, 'MaskComposite');
+  assert.equal(graph.combined_outpaint_mask.inputs.operation, 'add');
+  assert.deepEqual(graph.masked_latent.inputs.mask, ['combined_outpaint_mask', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
 });
 
 test('outpaint can skip the exact-source composite when Preserve is off', () => {
