@@ -615,7 +615,7 @@ function renderGateTiles() {
   gateProfiles.forEach((p, i) => {
     const tile = document.createElement('button');
     tile.className = 'profile-tile';
-    tile.innerHTML = `${avatarHtml(p, 'tile-img', i)}<span class="tile-name">${escapeHtml(p.name)}${p.hasPin ? ' 🔒' : ''}</span>`;
+    tile.innerHTML = `${avatarHtml(p, 'tile-img', i)}<span class="tile-name">${escapeHtml(p.name)}${p.hasPin ? ' · PIN' : ''}</span>`;
     tile.addEventListener('click', () => loginProfile(p));
     list.appendChild(tile);
   });
@@ -688,9 +688,9 @@ function renderProfileChip() {
 $('#profileBtn').addEventListener('click', () => {
   const isOwner = state.profile && state.profileIsOwner;
   openActionMenu($('#profileBtn'), [
-    { label: '✎ Edit profile', action: openProfileEdit },
-    isOwner ? { label: '👥 Manage profiles', action: openProfileManage } : null,
-    { label: '⇄ Switch profile', action: switchProfile },
+    { label: 'Edit profile', icon: 'profile', action: openProfileEdit },
+    isOwner ? { label: 'Manage profiles', icon: 'users', action: openProfileManage } : null,
+    { label: 'Switch profile', icon: 'switch', action: switchProfile },
   ]);
 });
 
@@ -792,7 +792,7 @@ async function openProfileManage() {
     (r.profiles || []).forEach((p, i) => {
       const row = document.createElement('div');
       row.className = 'pm-row';
-      row.innerHTML = `${avatarHtml(p, 'pm-avatar', i)}<b>${escapeHtml(p.name)}${p.hasPin ? ' 🔒' : ''} · ${p.itemCount}</b>`;
+      row.innerHTML = `${avatarHtml(p, 'pm-avatar', i)}<b>${escapeHtml(p.name)}${p.hasPin ? ' · PIN' : ''} · ${p.itemCount}</b>`;
       if (p.hasPin) {
         const clear = document.createElement('button');
         clear.className = 'chip';
@@ -813,7 +813,8 @@ async function openProfileManage() {
       if (p.id !== state.profile.id) {
         const del = document.createElement('button');
         del.className = 'chip';
-        del.textContent = '🗑';
+        del.innerHTML = actionIconMarkup('delete');
+        del.setAttribute('aria-label', `Delete ${p.name}`);
         del.addEventListener('click', async () => {
           const typed = await askText({
             title: `Delete ${p.name}?`,
@@ -882,6 +883,13 @@ function actionIconMarkup(icon) {
     documentation: '<path d="M5 3h10l4 4v14H5V3Zm2 2v14h10V8h-3V5H7Zm2 6h6v2H9v-2Zm0 4h6v2H9v-2Z"/>',
     composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
     process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
+    delete: '<path d="M7 7h10l-.7 13H7.7L7 7Zm2 2 .45 9h5.1L15 9H9Zm1-5h4l1 1h4v2H5V5h4l1-1Z"/>',
+    profile: '<path d="M12 3a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm0 9c4.4 0 8 2.2 8 5v2H4v-2c0-2.8 3.6-5 8-5Zm0 2c-3.5 0-6 1.6-6 3h12c0-1.4-2.5-3-6-3Z"/>',
+    users: '<path d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 1a3 3 0 1 1 0 6v-2a1 1 0 1 0 0-2V7ZM9 14c4 0 7 2 7 5v2H2v-2c0-3 3-5 7-5Zm0 2c-3 0-5 1.3-5 3h10c0-1.7-2-3-5-3Zm7-1c3.5 0 6 1.7 6 4.5V21h-4v-2h1.8c-.3-1.1-1.7-1.8-3.8-2V15Z"/>',
+    switch: '<path d="m15 4 5 4-5 4V9H5V7h10V4Zm-6 8v3h10v2H9v3l-5-4 5-4Z"/>',
+    image: '<path d="M4 4h16v16H4V4Zm2 2v12h12V6H6Zm2 9 3-4 2.4 2.7 1.8-2.1L18 15H8Zm7-7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/>',
+    eye: '<path d="M12 5c5.2 0 9 5.3 9 7s-3.8 7-9 7-9-5.3-9-7 3.8-7 9-7Zm0 2c-3.8 0-6.7 3.7-7 5 .3 1.3 3.2 5 7 5s6.7-3.7 7-5c-.3-1.3-3.2-5-7-5Zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>',
+    enhance: '<path d="m12 2 1.2 4.1L17 8l-3.8 1.9L12 14l-1.2-4.1L7 8l3.8-1.9L12 2Zm6 10 .8 2.7L21 16l-2.2 1.3L18 20l-.8-2.7L15 16l2.2-1.3L18 12ZM6 13l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3Z"/>',
     heart: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/>',
     'heart-fill': '<path d="M12 21 3.9 12.9A5.6 5.6 0 0 1 12 5.15a5.6 5.6 0 0 1 8.1 7.75L12 21Z"/>',
   };
@@ -6088,7 +6096,7 @@ function wireLoraCard(card, l, idx, arr) {
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     openActionMenu(menuBtn, [
-      { label: '🖼 Set thumbnail', action: () => setLoraThumb(l.name) },
+      { label: 'Set thumbnail', icon: 'image', action: () => setLoraThumb(l.name) },
       { label: loraTriggerPhrase(l) ? `Trigger: ${loraTriggerPhrase(l)}` : 'Add trigger phrase', action: async () => {
         const value = await askText({
           title: 'LoRA trigger phrase',
@@ -6700,7 +6708,7 @@ async function renderLoraPresets() {
   let presets = [];
   try { presets = (await api('/api/lorapresets')).presets; } catch (e) { toast(e.message, true); }
   if (!presets.length) {
-    list.innerHTML = '<div class="queue-empty">No presets yet — build a LoRA stack and tap 💾 Save preset.</div>';
+    list.innerHTML = '<div class="queue-empty">No presets yet — build a LoRA stack and choose Save preset.</div>';
     return;
   }
   list.className = 'lora-preset-list';
@@ -7304,7 +7312,8 @@ function renderFaceGrid() {
     });
     const del = document.createElement('button');
     del.className = 'face-del';
-    del.textContent = '🗑';
+    del.innerHTML = actionIconMarkup('delete');
+    del.setAttribute('aria-label', `Delete ${face.name}`);
     del.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!await askConfirm({ title: `Delete ${face.name}?`, message: 'This removes the saved Face ID reference.', confirmLabel: 'Delete face', danger: true })) return;
@@ -11971,12 +11980,12 @@ function openLightbox(id, mediaSel) {
     const info = selVideo.info || {};
     const model = videoEngineLabel(info.engine);
     meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
-    meta.push(`<b>🎬 Motion:</b> ${escapeHtml(info.motionPrompt || '')}`);
-    if (info.refinedMotionPrompt) meta.push(`<b>✨ Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
+    meta.push(`<b>Motion:</b> ${escapeHtml(info.motionPrompt || '')}`);
+    if (info.refinedMotionPrompt) meta.push(`<b>Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
-      const flags = [info.composite && '⿻ side-by-side', info.faceId && '🪪 Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `⏫ RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && '🎵 audio-driven', info.preservedAudio && '🎵 audio kept', info.endFrame && '🏁 end frame', info.motionVideo && !info.composite && '🎥 motion transfer'].filter(Boolean).join(' · ');
+      const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     }
@@ -11988,7 +11997,7 @@ function openLightbox(id, mediaSel) {
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
     if (angleItems.length > 1) meta.push(`<b>Camera variation set:</b> ${angleViewLabel(it)} · ${angleItems.length} exports`);
-    if (it.refinedPrompt) meta.push(`<b>✨ Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
+    if (it.refinedPrompt) meta.push(`<b>Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
     if (it.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(it.durationMs)}`);
     if (it.loras && it.loras.length) meta.push('<b>LoRAs:</b> ' + it.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
@@ -12095,7 +12104,7 @@ function openLightbox(id, mediaSel) {
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
   } else if (it.mode !== 'composite') {
-    mk(videos.length ? '🎬 Animate again' : '🎬 Animate', canContinueCompletedEdit ? '' : 'primary', () => openAnimateRouteSheet(it));
+    mk(`${actionIconMarkup('video')}<span>${videos.length ? 'Animate again' : 'Animate'}</span>`, canContinueCompletedEdit ? '' : 'primary', () => openAnimateRouteSheet(it));
   }
   if (!selComposite) {
     const liked = selVideo ? !!selVideo.liked : !!it.liked;
@@ -12162,7 +12171,7 @@ function openLightbox(id, mediaSel) {
   // Region-prompted images: hold to overlay the color-coded boxes.
   // The annotated export lives in the Save menu with the other files.
   if (!selVideo && !selComposite && Array.isArray(it.regions) && it.regions.length) {
-    const rb = mk('⬚ Hold: regions', '', () => {});
+    const rb = mk(`${actionIconMarkup('composite')}<span>Hold: regions</span>`, '', () => {});
     rb.style.userSelect = 'none';
     rb.style.webkitUserSelect = 'none';
     const showR = async (e) => {
@@ -12190,7 +12199,8 @@ function openLightbox(id, mediaSel) {
     if (vinfo.driveVideoName && !vinfo.composite) {
       let showingInput = false;
       let inputUrl = null;
-      const btn = mk('🎥 Motion input', '', async () => {
+      const motionButtonMarkup = (result) => `${actionIconMarkup(result ? 'video' : 'motion')}<span>${result ? 'Result video' : 'Motion input'}</span>`;
+      const btn = mk(motionButtonMarkup(false), '', async () => {
         const lv = $('#lbVideo');
         try {
           if (!showingInput) {
@@ -12203,17 +12213,17 @@ function openLightbox(id, mediaSel) {
             lv.src = inputUrl;
             lv.play().catch(() => {});
             showingInput = true;
-            btn.textContent = '▶ Result video';
+            btn.innerHTML = motionButtonMarkup(true);
             $('#lbTitle').textContent = 'Motion input';
           } else {
             lv.src = '/videos/' + selVideo.file;
             lv.play().catch(() => {});
             showingInput = false;
-            btn.textContent = '🎥 Motion input';
+            btn.innerHTML = motionButtonMarkup(false);
             $('#lbTitle').textContent = `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`;
           }
         } catch (e) {
-          btn.textContent = '🎥 Motion input';
+          btn.innerHTML = motionButtonMarkup(false);
           toast(e.message, true);
         }
       });
@@ -12253,7 +12263,7 @@ function openLightbox(id, mediaSel) {
       { label: 'Documentation video', detail: 'Source + settings + result together', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
     ];
     mkMenu('Save', '', videoSaveItems, { icon: 'save', ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
-    mk('🗑 Delete video', 'danger', async () => {
+    mk(`${actionIconMarkup('delete')}<span>Delete video</span>`, 'danger', async () => {
       const lastOfStandalone = it.mode === 'video' && videos.length === 1;
       const msg = lastOfStandalone
         ? 'Delete this video? It\'s the only one on this entry, so the whole gallery item goes with it.'
@@ -12290,7 +12300,7 @@ function openLightbox(id, mediaSel) {
     } else if (imageSaveItems.length === 1) {
       mk('↓ Save', '', imageSaveItems[0].action);
     }
-    mk('🗑 Delete', 'danger', async () => {
+    mk(`${actionIconMarkup('delete')}<span>Delete</span>`, 'danger', async () => {
       const n = videos.length;
       if (!await askConfirm({
         title: 'Delete image?',
@@ -12454,7 +12464,7 @@ $('#animAuto').addEventListener('click', async () => {
     $('#animPrompt').value = r.prompt;
   } catch (e) { toast(e.message, true); }
   btn.disabled = false;
-  btn.textContent = '👁 Auto from image';
+  btn.innerHTML = `${actionIconMarkup('eye')}<span>Auto from image</span>`;
 });
 $('#anim4k').addEventListener('click', () => $('#anim4k').classList.toggle('active'));
 $('#animateGo').addEventListener('click', async () => {
@@ -12490,7 +12500,7 @@ $('#animateGo').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    toast('🎬 Video queued — LTX 2.3');
+    toast('Video queued — LTX 2.3');
   } catch (e) {
     state.animating.delete(it.id);
     renderGrid();
@@ -12931,7 +12941,7 @@ async function reuseItem(it, useEnhanced) {
   if (missing.length) {
     toast(`Settings loaded — couldn't restore: ${[...new Set(missing)].join(', ')} (re-add manually)`);
   } else if (useEnhanced) {
-    toast('Enhanced prompt loaded — ✨ enhance turned off');
+    toast('Enhanced prompt loaded — prompt enhance turned off');
   } else {
     toast('Settings, inputs, prompt, and LoRAs loaded');
   }

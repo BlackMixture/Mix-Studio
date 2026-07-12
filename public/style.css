@@ -271,7 +271,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .app-drawer-nav-item:active { transform: scale(.985); }
 .app-drawer-nav-item.active { color: #fff; border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.055); }
 
-.workspaces-panel { max-width: 520px; }
+.sheet-panel.workspaces-panel { max-width: 520px; background: #000; }
+.icon-label-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.icon-label-btn .action-glyph { width: 16px; height: 16px; flex: 0 0 16px; }
 .workspace-autosave-note {
   margin: 0 0 14px;
   display: grid;

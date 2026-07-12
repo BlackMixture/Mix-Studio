@@ -33,10 +33,18 @@ test('named workspaces can be saved, loaded, replaced, and deleted per profile',
   assert.match(app, /function renderSavedWorkspaces\(\)/);
   assert.match(app, /localStorage\.setItem\(formKey\(\), JSON\.stringify\(entry\.snapshot\)\)/);
   assert.match(css, /\.saved-workspace/);
+  assert.match(css, /\.sheet-panel\.workspaces-panel \{[^}]*background: #000/);
 });
 
 test('reset clears only the current autosave and keeps named workspaces', () => {
   assert.match(app, /Reset current workspace\?/);
   assert.match(app, /localStorage\.removeItem\(formKey\(\)\)/);
   assert.doesNotMatch(app, /removeItem\(workspaceLibraryKey\(\)\)/);
+});
+
+test('interactive controls use the shared SVG language instead of emoji icons', () => {
+  assert.doesNotMatch(app + html, /[\u{1F300}-\u{1FAFF}]|✨/u);
+  assert.match(app, /motionButtonMarkup = \(result\) => `\$\{actionIconMarkup\(result \? 'video' : 'motion'\)\}/);
+  assert.match(app, /actionIconMarkup\('delete'\)/);
+  assert.match(html, /id="seedDice"[\s\S]*?<svg/);
 });

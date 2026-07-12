@@ -787,7 +787,7 @@
               <label>Seed</label>
               <div class="seed-wrap">
                 <input id="seedInput" type="text" inputmode="numeric" placeholder="Random" />
-                <button class="icon-btn" id="seedDice" title="Random seed">🎲</button>
+                <button class="icon-btn" id="seedDice" title="Random seed" aria-label="Random seed"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="16" cy="8" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="8" cy="16" r="1.25" fill="currentColor"/><circle cx="16" cy="16" r="1.25" fill="currentColor"/></svg></button>
               </div>
             </div>
             <div class="field" id="advancedStepsField">
@@ -1391,7 +1391,7 @@
 
     <div class="info-block">
       <h4>LTX 2.3 <span>25 fps · generates audio · text or image</span></h4>
-      <p>The all-rounder. Two-stage generation (base + ×2 latent upscale) with Gemma prompt enhancement, straight from the Black Mixture workflow. The only engine that does <b>text-to-video</b> — no image needed. Fast (~1–3 min). Attach a <b>🪪 Face ID</b> reference (with no source image) and the Best-FaceID LoRA re-creates that person performing your prompt — describe the scene in <i>ref_t2v</i> style: action, setting, framing; ✨ enhance automatically weaves the person's looks into the caption. Runs at 25 fps (24 fps in Face ID mode); choose RIFE for smoother 2× or 3× playback.</p>
+      <p>The all-rounder. Two-stage generation (base + ×2 latent upscale) with Gemma prompt enhancement, straight from the Black Mixture workflow. The only engine that does <b>text-to-video</b> — no image needed. Fast (~1–3 min). Attach a <b>Face ID</b> reference (with no source image) and the Best-FaceID LoRA re-creates that person performing your prompt — describe the scene in <i>ref_t2v</i> style: action, setting, framing; prompt enhance automatically weaves the person's looks into the caption. Runs at 25 fps (24 fps in Face ID mode); choose RIFE for smoother 2× or 3× playback.</p>
       <p class="info-opts">Supports: motion freedom · end frame · audio-driven · Face ID · LoRAs · RTX 4K</p>
     </div>
 
@@ -1447,12 +1447,12 @@
     <h3 class="sheet-title">Edit Profile <button data-close>✕</button></h3>
     <div class="profile-edit-head">
       <div class="profile-avatar-lg" id="peAvatar"></div>
-      <button class="chip" id="peChangePhoto">📷 Change photo</button>
+      <button class="chip icon-label-btn" id="peChangePhoto"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h4l1.4-2h5.2L16 7h4v12H4V7Zm2 2v8h12V9h-3.1l-1.4-2h-3L9.1 9H6Zm6 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg><span>Change photo</span></button>
     </div>
     <div class="field"><label>Name</label><input id="peName" type="text" maxlength="30" /></div>
     <div class="field"><label>PIN — leave empty for no PIN</label><input id="pePin" type="password" inputmode="numeric" placeholder="••••" maxlength="12" /></div>
     <button class="sheet-cta" id="peSave">Save changes</button>
-    <button class="action-btn danger" id="peDelete" style="width:100%; margin-top:10px">🗑 Delete this profile and all its content</button>
+    <button class="action-btn danger" id="peDelete" style="width:100%; margin-top:10px"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7h10l-.7 13H7.7L7 7Zm2 2 .45 9h5.1L15 9H9Zm1-5h4l1 1h4v2H5V5h4l1-1Z"/></svg><span>Delete this profile and all its content</span></button>
   </div>
 </div>
 
@@ -1477,7 +1477,7 @@
 <!-- Face ID library sheet -->
 <div class="sheet" id="faceSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">🪪 Face ID Library <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Face ID Library <button data-close>✕</button></h3>
     <div class="face-hint">Tap a face to use it. Tap the name to rename. Clean, frontal, well-lit close-ups give the strongest identity.</div>
     <div class="face-grid" id="faceGrid"></div>
     <div class="face-empty" id="faceEmpty" hidden>No saved faces yet — upload one below.</div>
@@ -1558,7 +1558,7 @@
     </div>
     <div class="field"><label>Options</label></div>
     <div class="chip-row">
-      <button class="chip active" id="animEnhance">✨ Enhance motion prompt</button>
+      <button class="chip active icon-label-btn" id="animEnhance"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2 1.2 4.1L17 8l-3.8 1.9L12 14l-1.2-4.1L7 8l3.8-1.9L12 2Zm6 10 .8 2.7L21 16l-2.2 1.3L18 20l-.8-2.7L15 16l2.2-1.3L18 12Z"/></svg><span>Enhance motion prompt</span></button>
       <button class="chip" id="anim4k">RTX 4K pass</button>
       <button class="chip" id="animQuality" hidden>Full quality · 20 steps</button>
     </div>
@@ -1582,7 +1582,7 @@
 <div class="sheet" id="reuseSheet">
   <div class="sheet-panel">
     <h3 class="sheet-title">Reuse settings <button data-close>✕</button></h3>
-    <div class="settings-note">This image was made with ✨ prompt enhance. Which prompt should go in the form?</div>
+    <div class="settings-note">This image was made with prompt enhance. Which prompt should go in the form?</div>
     <button class="sheet-cta" id="reuseEnhanced">Use enhanced prompt — skip re-enhancing</button>
     <button class="sheet-cta ghost" id="reuseOriginal">Use original prompt — enhance again</button>
   </div>
