@@ -1,0 +1,85 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {
+  buildKleinOutpaintGraph,
+  buildQwenOutpaintGraph,
+  buildKrea2MaskedOutpaintGraph,
+  greenOutpaintPrompt,
+} = require('../lib/edit-outpaint-workflows');
+
+const padding = { left: 120, top: 0, right: 120, bottom: 0 };
+
+test('Klein outpaint follows the official green-canvas ReferenceLatent workflow', () => {
+  const graph = buildKleinOutpaintGraph({
+    settings: { kleinVae: 'flux2-vae.safetensors' },
+    unetName: 'flux-2-klein-9b.safetensors',
+    clipName: 'qwen_3_8b.safetensors',
+    imageName: 'source.png',
+    width: 1344,
+    height: 768,
+    padding,
+    prompt: 'Continue the windows and wall.',
+    seed: 7,
+    batch: 1,
+  });
+  assert.equal(graph.padded.class_type, 'ImagePadForOutpaint');
+  assert.equal(graph.green_canvas.class_type, 'DrawMaskOnImage');
+  assert.equal(graph.green_canvas.inputs.color, '0, 255, 0');
+  assert.equal(graph.positive.class_type, 'ReferenceLatent');
+  assert.equal(graph.scheduler.class_type, 'Flux2Scheduler');
+  assert.equal(graph.scheduler.inputs.steps, 4);
+  assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.match(graph.positive_text.inputs.text, /Remove the green area/);
+});
+
+test('Qwen outpaint sends the padded green canvas through native edit conditioning', () => {
+  const graph = buildQwenOutpaintGraph({
+    settings: {
+      qwenEditUnet: 'qwen-edit.safetensors',
+      qwenEditClip: 'qwen-clip.safetensors',
+      qwenEditLora: 'lightning.safetensors',
+      vae: 'qwen-vae.safetensors',
+    },
+    preset: { steps: 4, cfg: 1, lightning: true },
+    imageName: 'source.png',
+    width: 1344,
+    height: 768,
+    padding,
+    prompt: '',
+    seed: 8,
+  });
+  assert.equal(graph.green_canvas.class_type, 'DrawMaskOnImage');
+  assert.equal(graph.positive_encode.class_type, 'TextEncodeQwenImageEditPlus');
+  assert.deepEqual(graph.positive_encode.inputs.image1, ['outpaint_source', 0]);
+  assert.equal(graph.sampler.inputs.steps, 4);
+  assert.equal(graph.color_match.class_type, 'ColorMatch');
+});
+
+test('Krea2 outpaint uses the padded mask as latent noise and preserves the source area', () => {
+  const graph = buildKrea2MaskedOutpaintGraph({
+    settings: {
+      unet: 'krea2-turbo.safetensors',
+      clip: 'qwen3vl.safetensors',
+      clipType: 'krea2',
+      vae: 'qwen-vae.safetensors',
+    },
+    imageName: 'source.png',
+    width: 1344,
+    height: 768,
+    padding,
+    prompt: 'Continue the room.',
+    seed: 9,
+  });
+  assert.equal(graph.padded.class_type, 'ImagePadForOutpaint');
+  assert.equal(graph.scaled_mask.class_type, 'ImageToMask');
+  assert.equal(graph.masked_latent.class_type, 'SetLatentNoiseMask');
+  assert.equal(graph.sampler.inputs.steps, 8);
+  assert.equal(graph.composite.class_type, 'ImageCompositeMasked');
+});
+
+test('green outpaint prompt retains optional creative direction', () => {
+  assert.match(greenOutpaintPrompt('Add a continuation of the forest.'), /forest/);
+  assert.match(greenOutpaintPrompt(''), /Remove the green area/);
+});

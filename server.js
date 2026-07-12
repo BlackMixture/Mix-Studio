@@ -4056,11 +4056,14 @@ async function handleApi(req, res, url) {
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }
+      if (p.editOutpaint && !refNames.length) {
+        return json(res, 400, { error: 'Outpaint needs a source image in reference slot 1' });
+      }
       if (p.editOutpaint && p.maskImageName) {
         return json(res, 400, { error: 'Outpaint and localized edit areas must be generated separately' });
       }
       if (p.editOutpaint && !p.editAspectOverride) {
-        return json(res, 400, { error: 'Choose an Output ratio that extends beyond the source image' });
+        return json(res, 400, { error: 'Choose a Resolution ratio that extends beyond the source image' });
       }
       p.editOutpaintPosition = p.editOutpaint ? normalizeOutpaintPosition(p.editOutpaintPosition) : undefined;
       if (p.maskImageName && !supportsEditMask(p.editEngine)) {

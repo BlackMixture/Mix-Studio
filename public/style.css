@@ -2547,6 +2547,23 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 
 /* ---------------- reference images (edit) ---------------- */
 .ref-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ref-row[data-slots="1"] { grid-template-columns: minmax(0, 152px); }
+.ref-row[data-slots="2"] { grid-template-columns: repeat(2, minmax(0, 152px)); }
+.edit-inputs-label { min-height: 30px; }
+.edit-reference-add {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255,255,255,.025);
+  color: var(--muted);
+}
+.edit-reference-add[hidden] { display: none; }
+.edit-reference-add svg { width: 16px; height: 16px; }
+.edit-reference-add:active { transform: scale(.94); }
 .ref-slot {
   aspect-ratio: 1;
   border-radius: var(--radius-md);
@@ -4033,6 +4050,38 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   display: grid;
   place-items: center;
 }
+.edit-prompt-slot { margin-top: 14px; }
+.edit-prompt-slot #promptPanel {
+  margin: 0 0 14px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.edit-prompt-slot #promptPanel .panel-label { margin-inline: 2px; }
+.edit-sampling-row {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0 14px;
+}
+.edit-sampling-summary {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255,255,255,.018);
+}
+.edit-sampling-summary[hidden] { display: none; }
+.edit-sampling-summary b { color: var(--ink-soft); font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.edit-sampling-summary small { color: var(--muted-2); font-size: 10px; font-weight: 700; }
+.edit-sampling-row .qwen-quality-control { flex: 1; margin: 0; }
+.edit-sampling-row .preserve-icon { flex: 0 0 42px; width: 42px; height: 42px; }
 .select-bar-grabber span { width: 34px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.22); transition: width 160ms var(--ease), background 160ms var(--ease); }
 .select-bar-grabber:active span { width: 42px; background: rgba(255,255,255,0.46); }
 .select-bar.is-expanded .select-bar-grabber span { width: 42px; background: rgba(255,255,255,0.46); }

@@ -26,6 +26,7 @@ const state = {
   editHeight: 1024,
   editOutpaint: false,
   editOutpaintPosition: 'center',
+  editRefSlots: 1,
   editUpscaleEnabled: false,
   editUpscaleResolution: 2160,
   editUpscaleProfile: 'sharp',
@@ -1231,6 +1232,7 @@ function saveForm() {
       editWidth: state.editWidth, editHeight: state.editHeight,
       editOutpaint: state.editOutpaint,
       editOutpaintPosition: state.editOutpaintPosition,
+      editRefSlots: state.editRefSlots,
       editUpscaleEnabled: state.editUpscaleEnabled,
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
@@ -1263,6 +1265,7 @@ function loadForm() {
     state.editHeight = round32(Number(f.editHeight) || 1024);
     state.editOutpaint = f.editOutpaint === true;
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(f.editOutpaintPosition) ? f.editOutpaintPosition : 'center';
+    state.editRefSlots = Math.max(1, Math.min(3, Math.round(Number(f.editRefSlots) || 1)));
     state.editUpscaleEnabled = f.editUpscaleEnabled === true;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
@@ -1479,8 +1482,11 @@ function updateVideoPanels() {
   const promptPanel = $('#promptPanel');
   const regionWorkspace = $('#regionWorkspace');
   const promptSlot = $('#regionGlobalPromptSlot');
-  if (isRegion && promptPanel.parentElement !== promptSlot) {
-    promptSlot.appendChild(promptPanel);
+  const editPromptSlot = $('#editPromptSlot');
+  if (isRegion) {
+    if (promptPanel.parentElement !== promptSlot) promptSlot.appendChild(promptPanel);
+  } else if (isEdit) {
+    if (promptPanel.parentElement !== editPromptSlot) editPromptSlot.appendChild(promptPanel);
   } else if (!isRegion && promptPanel.parentElement !== $('#view-create')) {
     $('#view-create').insertBefore(promptPanel, regionWorkspace);
   }
@@ -1513,7 +1519,7 @@ function updateVideoPanels() {
   $('#createPromptTools').hidden = state.view !== 'create';
   renderKrea2Mode();
   renderCreateImageGuide();
-  const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
+  const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2' && !editOutpaintActive();
   $('#denoiseField').hidden = !kreaEdit;
   syncEditAreaChrome();
   renderEditAspects();
@@ -2814,8 +2820,8 @@ function syncEditAreaChrome() {
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#kreaMaskTools').hidden = !supported;
-  $('#editComposite').hidden = kreaEdit || kreaRef || active;
-  $('#editAspectControl').hidden = state.view !== 'edit' || kreaEdit || active;
+  $('#editComposite').hidden = kreaEdit || kreaRef || active || editOutpaintActive();
+  $('#editAspectControl').hidden = state.view !== 'edit' || (kreaEdit && !editOutpaintActive()) || active;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || active;
 }
 
@@ -3945,6 +3951,12 @@ function renderQwenQuality() {
   const cfg = $('#cfgInput');
   const wasLocked = steps.dataset.qwenLocked === 'true';
   control.hidden = !active;
+  const summary = $('#editSamplingSummary');
+  summary.hidden = active;
+  if (!active) {
+    const count = (state.editEngine === 'krea2' || state.editEngine === 'krea2ref') ? 8 : 4;
+    $('#editSamplingSummaryText').textContent = `${count} steps · CFG 1`;
+  }
   if (active) {
     const quality = state.qwenQuality === 'fast' ? 'fast' : 'quality';
     const preset = quality === 'fast' ? { steps: 4, cfg: 1 } : { steps: 20, cfg: 4 };
@@ -4641,7 +4653,7 @@ function renderEditOutpaint() {
   const summary = $('#editOutpaintSummary');
   summary.textContent = !enabled ? 'Extend beyond the frame'
     : (!geometry.ref ? 'Add a source image'
-      : (geometry.valid ? `${state.editAspect} · ${editOutpaintPlacementLabel(geometry.axis)}` : 'Choose a different Output ratio'));
+      : (geometry.valid ? `${state.editAspect} · ${editOutpaintPlacementLabel(geometry.axis)}` : 'Choose a different Resolution ratio'));
 
   const preview = $('#editOutpaintPreview');
   const source = $('#editOutpaintSource');
@@ -4677,7 +4689,7 @@ function renderEditOutpaint() {
   });
   $('#editOutpaintPlacementLabel').textContent = geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement';
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
-    : (!geometry.valid ? 'Choose a wider or taller Output ratio to add canvas.'
+    : (!geometry.valid ? 'Choose a wider or taller Resolution ratio to add canvas.'
       : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`);
 }
 
@@ -4724,9 +4736,9 @@ function positionUpscaleFinish() {
   control.hidden = !(isEdit || isCreate);
   control.classList.toggle('is-create', isCreate);
   if (isEdit) {
-    const refRow = $('#refRow');
-    if (control.parentElement !== $('#refPanel') || control.nextElementSibling !== refRow) {
-      $('#refPanel').insertBefore(control, refRow);
+    const outpaint = $('#editOutpaintControl');
+    if (control.parentElement !== $('#refPanel') || control.previousElementSibling !== outpaint) {
+      outpaint.after(control);
     }
   } else if (isCreate) {
     const turboPanel = $('#kreaModelPanel');
@@ -5961,10 +5973,16 @@ $('#loraPresetsBtn').addEventListener('click', () => {
 function renderRefs() {
   const row = $('#refRow');
   row.innerHTML = '';
-  // Krea2 inpaint uses a single source image — hide the unused slots
+  // Begin with one source image. Multi-reference engines reveal additional
+  // slots only when requested, keeping this flow aligned with Create.
   const kreaEdit = state.editEngine === 'krea2';
   const maxSlots = kreaEdit || (OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint) ? 1 : state.refs.length;
-  state.refs.slice(0, maxSlots).forEach((ref, idx) => {
+  const populatedSlots = state.refs.reduce((highest, ref, index) => ref ? Math.max(highest, index + 1) : highest, 1);
+  const requestedSlots = Math.max(1, Math.min(3, Math.round(Number(state.editRefSlots) || 1)));
+  const visibleSlots = Math.max(1, Math.min(maxSlots, Math.max(requestedSlots, populatedSlots)));
+  state.editRefSlots = visibleSlots;
+  row.dataset.slots = String(visibleSlots);
+  state.refs.slice(0, visibleSlots).forEach((ref, idx) => {
     const slot = document.createElement('div');
     slot.className = 'ref-slot' + (ref ? ' filled' : '');
     slot.dataset.refIndex = String(idx);
@@ -5982,6 +6000,7 @@ function renderRefs() {
         e.stopPropagation();
         state.refs[idx] = null;
         if (idx === 0) clearKreaMask(true);
+        while (state.editRefSlots > 1 && !state.refs[state.editRefSlots - 1]) state.editRefSlots -= 1;
         renderRefs();
       });
       slot.append(img, x);
@@ -5992,9 +6011,19 @@ function renderRefs() {
     }
     row.appendChild(slot);
   });
+  const add = $('#addEditReference');
+  if (add) add.hidden = visibleSlots >= maxSlots;
   if (state.view === 'edit') renderEditAspects();
   renderPromptComposer();
 }
+
+$('#addEditReference').addEventListener('click', () => {
+  const maxSlots = state.editEngine === 'krea2' || editOutpaintActive() ? 1 : state.refs.length;
+  if (state.editRefSlots >= maxSlots) return;
+  state.editRefSlots += 1;
+  renderRefs();
+  saveForm();
+});
 
 let refReorder = null;
 function clearRefReorder() {
@@ -7182,7 +7211,7 @@ $('#generateBtn').addEventListener('click', async () => {
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
   if (outpaintActive && !state.refs[0]) return toast('Outpaint needs a source image in reference slot 1', true);
-  if (outpaintActive && !editOutpaintGeometry().valid) return toast('Choose an Output ratio that adds canvas beyond the source image', true);
+  if (outpaintActive && !editOutpaintGeometry().valid) return toast('Choose a Resolution ratio that adds canvas beyond the source image', true);
 
   if (state.view === 'video') {
     const ltxEdit = state.vidEngine === 'ltx-edit';
@@ -8689,6 +8718,7 @@ function resetActiveGenerationForm() {
     switchEditEngine(enabledEditEngines()[0] || state.editEngineDefault || 'klein4');
     markEngineRow('editEngineRow', state.editEngine);
     state.refs = [null, null, null];
+    state.editRefSlots = 1;
     state.editLoras = [];
     state.editLorasByEngine[state.editEngine] = state.editLoras;
     state.editAspectOverride = false;
@@ -11875,6 +11905,7 @@ async function reuseItem(it, useEnhanced) {
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(it.editOutpaint?.position)
       ? it.editOutpaint.position
       : 'center';
+    state.editRefSlots = Math.max(1, Math.min(3, (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
     if (state.editEngine === 'qwen') {
       state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)
         ? 'fast' : 'quality';
