@@ -6526,6 +6526,23 @@ body.sheet-open {
 .dependency-manager-actions { grid-template-columns: repeat(2, minmax(0,1fr)); }
 .dependency-manager-actions .dependency-install,
 .dependency-manager-actions .dependency-cancel { grid-column: 1 / -1; }
+.dependency-restart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.dependency-restart::before {
+  content: "↻";
+  font-size: 16px;
+  line-height: 1;
+}
+.dependency-restart.needed {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--mode-color) 55%, var(--line));
+  background: color-mix(in srgb, var(--mode-color) 13%, transparent);
+  color: var(--ink);
+}
 @media (max-width: 420px) { .dependency-manager-actions { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   .dependency-card-actions { grid-template-columns: 1fr; }

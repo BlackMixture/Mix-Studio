@@ -1137,8 +1137,8 @@ $('#appRestartBtn').addEventListener('click', async () => {
   appRestartRunning = true;
   button.disabled = true;
   button.classList.add('busy');
-  label.textContent = 'Restarting Mix Studioâ€¦';
-  setAppUpdateStatus('Checking both queues, then restarting Mix Studioâ€¦');
+  label.textContent = 'Restarting Mix Studio…';
+  setAppUpdateStatus('Checking both queues, then restarting Mix Studio…');
   try {
     await api('/api/app/restart', { method: 'POST' });
     await waitForAppRestart();
@@ -14112,7 +14112,10 @@ function renderDependencyManager() {
     status.textContent = 'Every enabled Mix Studio model and node group is ready.';
   } else if (installState.restartRequired) {
     badge.textContent = 'Restart needed';
-    status.textContent = 'The downloads are finished. Restart ComfyUI, then Check again to load the new nodes and models.';
+    const restartInfo = dependency.restart || {};
+    status.textContent = restartInfo.canRestart
+      ? 'The downloads are finished. Restart ComfyUI to load the new nodes and models.'
+      : `The downloads are finished. ${restartInfo.reason || 'Restart ComfyUI on the generation desktop, then Check again.'}`;
   } else if (!state.profileIsOwner) {
     badge.textContent = 'Owner only';
     status.textContent = `${missing.length} missing component${missing.length === 1 ? '' : 's'} can be installed by the owner profile.`;
@@ -14133,7 +14136,10 @@ function renderDependencyManager() {
   repair.textContent = 'Repair selected';
   repair.disabled = busy || !selectedCount || !dependency.canInstall || !state.profileIsOwner;
   const restartInfo = dependency.restart || {};
-  restart.hidden = busy || !state.profileIsOwner || !restartInfo.canRestart;
+  restart.hidden = !state.profileIsOwner;
+  restart.disabled = busy || !restartInfo.canRestart;
+  restart.classList.toggle('needed', !!installState.restartRequired && !busy);
+  restart.textContent = installState.state === 'restarting' ? 'Restarting ComfyUI…' : 'Restart ComfyUI';
   restart.title = restartInfo.canRestart ? 'Stops and starts the configured Windows ComfyUI instance when queues are idle' : (restartInfo.reason || 'Restart unavailable');
 }
 
@@ -14308,6 +14314,11 @@ $('#dependencyCancelInstall').addEventListener('click', async () => {
 });
 
 $('#dependencyRestartComfy').addEventListener('click', async () => {
+  if (!await askConfirm({
+    title: 'Restart ComfyUI?',
+    message: 'Mix Studio will wait for an idle queue, restart ComfyUI, and reconnect automatically.',
+    confirmLabel: 'Restart ComfyUI',
+  })) return;
   try {
     const result = await api('/api/comfy/restart', { method: 'POST' });
     if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;

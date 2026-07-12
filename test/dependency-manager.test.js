@@ -151,9 +151,13 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(app, /formatDependencyBytes/);
   assert.match(app, /selectedDependencyIds/);
   assert.match(app, /\/api\/dependencies\/cancel/);
+  assert.match(app, /restart\.hidden = !state\.profileIsOwner/);
+  assert.match(app, /restart\.disabled = busy \|\| !restartInfo\.canRestart/);
+  assert.match(app, /Restart ComfyUI\?/);
   assert.match(css, /\.dependency-progress/);
   assert.match(css, /\.dependency-option\.selected/);
   assert.match(css, /\.dependency-cancel/);
+  assert.match(css, /\.dependency-restart\.needed/);
   assert.match(css, /@keyframes dependencyProgress/);
 });
 

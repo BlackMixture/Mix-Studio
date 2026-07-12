@@ -70,4 +70,6 @@ test('owner can restart Mix Studio safely from the app drawer', () => {
   assert.doesNotMatch(html, /restartBrandGradient/);
   assert.match(app, /api\/app\/restart/);
   assert.match(app, /waitForAppRestart\(\)/);
+  assert.match(app, /Restarting Mix Studio…/);
+  assert.doesNotMatch(app, /Mix Studioâ/);
 });
