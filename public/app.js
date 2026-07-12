@@ -999,6 +999,15 @@ let appRestartRunning = false;
 let appDrawerCreateExpanded = true;
 const standaloneDisplayQuery = window.matchMedia('(display-mode: standalone)');
 
+function syncAppDrawerScrollFades() {
+  const body = $('#appDrawer .app-drawer-body');
+  const region = $('#appDrawer .app-drawer-scroll-region');
+  if (!body || !region) return;
+  const remaining = body.scrollHeight - body.clientHeight - body.scrollTop;
+  region.classList.toggle('can-scroll-up', body.scrollTop > 2);
+  region.classList.toggle('can-scroll-down', remaining > 2);
+}
+
 function activeFullscreenElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
 }
@@ -1062,6 +1071,7 @@ function renderAppDrawerNavigation() {
   $$('[data-drawer-view]').forEach((button) => {
     button.classList.toggle('active', button.dataset.drawerView === state.view);
   });
+  requestAnimationFrame(syncAppDrawerScrollFades);
 }
 
 function openAppDrawer() {
@@ -1072,6 +1082,7 @@ function openAppDrawer() {
   $('#appDrawer').setAttribute('aria-hidden', 'false');
   $('#appMenuBtn').setAttribute('aria-expanded', 'true');
   syncSheetScrollLock();
+  requestAnimationFrame(syncAppDrawerScrollFades);
   setTimeout(() => $('#appDrawerClose').focus(), 80);
 }
 
@@ -1136,6 +1147,15 @@ async function waitForAppRestart() {
 $('#appMenuBtn').addEventListener('click', openAppDrawer);
 $('#appDrawerClose').addEventListener('click', closeAppDrawer);
 $('#appDrawerBackdrop').addEventListener('click', closeAppDrawer);
+$('#appDrawer .app-drawer-body').addEventListener('scroll', syncAppDrawerScrollFades, { passive: true });
+window.addEventListener('resize', syncAppDrawerScrollFades);
+new MutationObserver(() => requestAnimationFrame(syncAppDrawerScrollFades)).observe($('#appDrawer .app-drawer-body'), {
+  subtree: true,
+  childList: true,
+  characterData: true,
+  attributes: true,
+  attributeFilter: ['class', 'hidden', 'aria-hidden'],
+});
 $('#fullscreenBtn').addEventListener('click', async () => {
   closeAppDrawer();
   try {

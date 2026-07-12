@@ -63,6 +63,19 @@ test('app drawer mirrors primary navigation and Create submodes', () => {
   assert.match(css, /\.app-drawer-nav-item\.active/);
 });
 
+test('app drawer hides native scrollbars and uses edge fades as scroll affordances', () => {
+  const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
+  assert.doesNotMatch(drawer, /<h3>Navigate<\/h3>/);
+  assert.match(drawer, /class="app-drawer-scroll-region"[\s\S]*app-drawer-scroll-fade-top[\s\S]*app-drawer-scroll-fade-bottom/);
+  assert.match(css, /\.app-drawer-body \{[\s\S]*scrollbar-width: none/);
+  assert.match(css, /\.app-drawer-body::-webkit-scrollbar \{ display: none/);
+  assert.match(css, /\.app-drawer-scroll-fade-bottom \{[\s\S]*linear-gradient\(to top, #000/);
+  assert.match(app, /function syncAppDrawerScrollFades\(\)/);
+  assert.match(app, /classList\.toggle\('can-scroll-up', body\.scrollTop > 2\)/);
+  assert.match(app, /classList\.toggle\('can-scroll-down', remaining > 2\)/);
+  assert.match(app, /app-drawer-body'\)\.addEventListener\('scroll', syncAppDrawerScrollFades/);
+});
+
 test('drawer Create subnavigation expands and collapses with accessible motion', () => {
   assert.match(app, /modes\.classList\.toggle\('is-collapsed', !expanded\)/);
   assert.match(app, /modes\.setAttribute\('aria-hidden', String\(!expanded\)\)/);

@@ -194,7 +194,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   height: 100dvh;
   max-height: 100dvh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
   background: #000;
@@ -229,15 +229,40 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   background: rgba(255,255,255,0.03);
   color: var(--ink-soft);
 }
+.app-drawer-scroll-region { position: relative; min-height: 0; overflow: hidden; }
 .app-drawer-body {
+  height: 100%;
   min-height: 0;
   display: grid;
   gap: 16px;
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: 4px;
+  padding: 4px 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.app-drawer-body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.app-drawer-scroll-fade {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  height: 46px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.app-drawer-scroll-fade-top {
+  top: 0;
+  background: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.78) 38%, rgba(0,0,0,0) 100%);
+}
+.app-drawer-scroll-fade-bottom {
+  bottom: 0;
+  background: linear-gradient(to top, #000 0%, rgba(0,0,0,.78) 38%, rgba(0,0,0,0) 100%);
+}
+.app-drawer-scroll-region.can-scroll-up .app-drawer-scroll-fade-top,
+.app-drawer-scroll-region.can-scroll-down .app-drawer-scroll-fade-bottom { opacity: 1; }
 .app-drawer-nav,
 .app-drawer-settings { display: grid; gap: 8px; }
 .app-drawer-nav h3,
@@ -249,7 +274,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   letter-spacing: 0.15em;
   text-transform: uppercase;
 }
-.app-drawer-nav { padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.app-drawer-nav { padding: 2px 0 14px; border-bottom: 1px solid var(--line); }
 .app-drawer-nav-item {
   width: 100%;
   min-height: 48px;
