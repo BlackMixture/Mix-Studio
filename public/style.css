@@ -7603,6 +7603,18 @@ body.sheet-open {
   animation: sheetUp 240ms var(--ease);
 }
 .toast.error { border-color: rgba(234,67,53,0.55); color: #ffd3cf; }
+.toast.upload-progress {
+  width: min(92vw, 360px);
+  display: grid;
+  gap: 9px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+.upload-progress > span { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.upload-progress b { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.upload-progress small { flex: 0 0 auto; color: var(--muted); font-size: 10px; font-weight: 750; }
+.upload-progress > i { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
+.upload-progress > i > i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--mode-color); transition: width 120ms linear; }
 
 .spin {
   width: 15px; height: 15px;

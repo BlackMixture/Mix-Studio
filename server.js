@@ -70,7 +70,13 @@ const {
   buildQwenOutpaintGraph,
   buildKrea2MaskedOutpaintGraph,
 } = require('./lib/edit-outpaint-workflows');
-const { detectAudioStream } = require('./lib/media-inspection');
+const { detectAudioStreamFile } = require('./lib/media-inspection');
+const {
+  MAX_INPUT_BYTES,
+  inputAssetPath,
+  receiveInputFile,
+  multipartFileUpload,
+} = require('./lib/input-assets');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
 const { normalizeEditAngle, supportsEditAngles, editAnglePrompt } = require('./lib/edit-angle');
@@ -139,10 +145,12 @@ const RUNTIME = resolveRuntimeConfig(ROOT);
 const DATA = RUNTIME.dataDir;
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
+const INPUTS = path.join(DATA, 'inputs');
 const PORT = Number(process.env.PORT || 3300);
 
 fs.mkdirSync(IMAGES, { recursive: true });
 fs.mkdirSync(VIDEOS, { recursive: true });
+fs.mkdirSync(INPUTS, { recursive: true });
 const FACES = path.join(DATA, 'faces');
 fs.mkdirSync(FACES, { recursive: true });
 const AVATARS = path.join(DATA, 'avatars');
@@ -968,6 +976,21 @@ async function uploadToComfy(buffer, filename) {
   });
   const json = await res.json();
   return (json.subfolder ? json.subfolder + '/' : '') + json.name;
+}
+
+async function uploadFileToComfy(file, filename) {
+  const upload = await multipartFileUpload(file, filename);
+  const res = await comfyFetch('/upload/image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${upload.boundary}`,
+      'Content-Length': String(upload.contentLength),
+    },
+    body: upload.body,
+    duplex: 'half',
+  });
+  const result = await res.json();
+  return (result.subfolder ? result.subfolder + '/' : '') + result.name;
 }
 
 async function queuePrompt(graph, options = {}) {
@@ -3967,6 +3990,11 @@ async function handleApi(req, res, url) {
   if (route === '/api/input' && req.method === 'GET') {
     const name = String(url.searchParams.get('name') || '');
     if (!name) return json(res, 400, { error: 'name required' });
+    const local = inputAssetPath(INPUTS, name);
+    try {
+      await fsp.access(local);
+      return serveFile(res, local, req.headers.range);
+    } catch { /* older inputs fall back to ComfyUI */ }
     const parts = name.split('/');
     const fn = parts.pop();
     const sub = parts.join('/');
@@ -3992,11 +4020,31 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/upload' && req.method === 'POST') {
-    const buf = await readBody(req, 512 * 1024 * 1024); // motion videos can be large
     const orig = decodeURIComponent(req.headers['x-filename'] || 'ref.png').replace(/[^\w.\-]+/g, '_');
-    const name = `ks_${Date.now()}_${orig}`;
-    const comfyName = await uploadToComfy(buf, name);
-    return json(res, 200, { name: comfyName, hasAudio: detectAudioStream(buf, orig) === true });
+    const contentLength = Number(req.headers['content-length']);
+    if (Number.isFinite(contentLength) && contentLength > MAX_INPUT_BYTES) {
+      req.resume();
+      return json(res, 413, { error: 'This file is larger than the 2 GB input limit.' });
+    }
+    const name = `ks_${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${orig}`;
+    const temporary = path.join(INPUTS, `.upload-${crypto.randomBytes(10).toString('hex')}.tmp`);
+    try {
+      await receiveInputFile(req, temporary, MAX_INPUT_BYTES);
+      const [comfyName, hasAudio] = await Promise.all([
+        uploadFileToComfy(temporary, name),
+        detectAudioStreamFile(temporary, orig),
+      ]);
+      const durable = inputAssetPath(INPUTS, comfyName);
+      await fsp.unlink(durable).catch(() => {});
+      await fsp.rename(temporary, durable);
+      return json(res, 200, { name: comfyName, hasAudio: hasAudio === true, durable: true });
+    } catch (error) {
+      await fsp.unlink(temporary).catch(() => {});
+      if (error && error.code === 'INPUT_TOO_LARGE') {
+        return json(res, 413, { error: 'This file is larger than the 2 GB input limit.' });
+      }
+      throw error;
+    }
   }
 
   if (route === '/api/dependencies/status' && req.method === 'GET') {

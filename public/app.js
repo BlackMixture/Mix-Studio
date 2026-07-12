@@ -2152,6 +2152,65 @@ function closeAssetPicker() {
   syncSheetScrollLock();
 }
 
+const MAX_INPUT_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+function formatUploadBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  if (value >= 1024 ** 2) return `${Math.round(value / 1024 ** 2)} MB`;
+  return `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+
+function uploadInputAsset(blob, filename) {
+  if (blob.size > MAX_INPUT_UPLOAD_BYTES) {
+    return Promise.reject(new Error('This file is larger than the 2 GB input limit. Trim or compress it before uploading.'));
+  }
+  const status = document.createElement('div');
+  status.className = 'toast upload-progress';
+  const copy = document.createElement('span');
+  const label = document.createElement('b');
+  const detail = document.createElement('small');
+  const track = document.createElement('i');
+  const fill = document.createElement('i');
+  label.textContent = `Uploading ${filename || 'input'}`;
+  detail.textContent = `0% · ${formatUploadBytes(blob.size)}`;
+  copy.append(label, detail);
+  track.appendChild(fill);
+  status.append(copy, track);
+  $('#toastZone').appendChild(status);
+
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/upload');
+    request.setRequestHeader('x-filename', encodeURIComponent(filename || 'input.bin'));
+    request.upload.addEventListener('progress', (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      detail.textContent = `${percent}% · ${formatUploadBytes(event.total)}`;
+      fill.style.width = `${percent}%`;
+    });
+    request.addEventListener('load', () => {
+      const data = (() => { try { return JSON.parse(request.responseText || '{}'); } catch { return {}; } })();
+      if (request.status < 200 || request.status >= 300) {
+        if (request.status === 401 && data.code === 'auth') showProfileGate();
+        status.remove();
+        reject(new Error(data.error || `Upload failed (${request.status})`));
+        return;
+      }
+      label.textContent = 'Input saved';
+      detail.textContent = 'Available after refresh';
+      fill.style.width = '100%';
+      setTimeout(() => status.remove(), 1200);
+      resolve(data);
+    });
+    request.addEventListener('error', () => {
+      status.remove();
+      reject(new Error('Upload was interrupted. Check the connection and try again.'));
+    });
+    request.send(blob);
+  });
+}
+
 function pickDeviceUpload(accept, cb) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -2160,13 +2219,7 @@ function pickDeviceUpload(accept, cb) {
     const file = input.files && input.files[0];
     if (!file) return;
     try {
-      toast('Uploading…');
-      const buf = await file.arrayBuffer();
-      const res = await api('/api/upload', {
-        method: 'POST',
-        headers: { 'x-filename': encodeURIComponent(file.name || 'file.bin') },
-        body: buf,
-      });
+      const res = await uploadInputAsset(file, file.name || 'file.bin');
       const url = URL.createObjectURL(file);
       let dims = { w: 0, h: 0 };
       if (accept.startsWith('image')) {
@@ -2192,12 +2245,7 @@ async function usePreviousGeneration(asset) {
     const response = await fetch(path + encodeURIComponent(asset.file));
     if (!response.ok) throw new Error('That generation is no longer available');
     const blob = await response.blob();
-    const buf = await blob.arrayBuffer();
-    const res = await api('/api/upload', {
-      method: 'POST',
-      headers: { 'x-filename': encodeURIComponent(asset.file) },
-      body: buf,
-    });
+    const res = await uploadInputAsset(blob, asset.file);
     const url = URL.createObjectURL(blob);
     const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
     closeAssetPicker();

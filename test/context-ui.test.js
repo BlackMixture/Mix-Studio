@@ -80,4 +80,9 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(appJs, /function pickRef\(idx\) \{[\s\S]*pickUpload\('image\/\*'/);
   assert.match(appJs, /function pickVidRef\(\) \{[\s\S]*pickUpload\('image\/\*'/);
   assert.match(appJs, /pickUpload\('video\/\*'/);
+  assert.match(appJs, /MAX_INPUT_UPLOAD_BYTES = 2 \* 1024 \* 1024 \* 1024/);
+  assert.match(appJs, /function uploadInputAsset\(blob, filename\)/);
+  assert.match(appJs, /request\.upload\.addEventListener\('progress'/);
+  assert.match(appJs, /detail\.textContent = 'Available after refresh'/);
+  assert.match(appJs, /const res = await uploadInputAsset\(file, file\.name \|\| 'file\.bin'\)/);
 });

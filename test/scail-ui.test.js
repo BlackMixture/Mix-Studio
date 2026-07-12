@@ -34,7 +34,8 @@ test('SCAIL only extracts driving audio when the uploaded video contains an audi
   assert.match(appJs, /driveHasAudio: state\.vidEngine === 'scail'/);
   assert.match(serverJs, /driveAudio: engine === 'scail' && body\.driveHasAudio === true/);
   assert.match(serverJs, /drivenAudio: engine === 'scail' \? opts\.driveAudio === true/);
-  assert.match(serverJs, /hasAudio: detectAudioStream\(buf, orig\) === true/);
+  assert.match(serverJs, /detectAudioStreamFile\(temporary, orig\)/);
+  assert.match(serverJs, /hasAudio: hasAudio === true/);
 });
 
 test('SCAIL Infinity uses and reports the Pusa LoRA dependency', () => {

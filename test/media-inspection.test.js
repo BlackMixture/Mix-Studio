@@ -2,7 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { detectAudioStream, mp4HasAudio, webmHasAudio } = require('../lib/media-inspection');
+const fs = require('node:fs').promises;
+const os = require('node:os');
+const path = require('node:path');
+const { detectAudioStream, detectAudioStreamFile, mp4HasAudio, webmHasAudio } = require('../lib/media-inspection');
 
 function mp4Handler(type) {
   return Buffer.concat([
@@ -30,4 +33,12 @@ test('detects common WebM audio tracks and treats unknown containers conservativ
 test('standalone audio uploads are always marked as containing audio', () => {
   assert.equal(detectAudioStream(Buffer.from('RIFF'), 'track.wav'), true);
   assert.equal(detectAudioStream(Buffer.from('ID3'), 'track.mp3'), true);
+});
+
+test('large media files can be inspected for audio without buffering the whole file', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'mix-audio-scan-'));
+  const file = path.join(directory, 'clip.mp4');
+  await fs.writeFile(file, Buffer.concat([Buffer.alloc(128 * 1024), mp4Handler('soun')]));
+  assert.equal(await detectAudioStreamFile(file, 'clip.mp4'), true);
+  await fs.rm(directory, { recursive: true, force: true });
 });
