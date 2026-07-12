@@ -19,6 +19,8 @@ const {
   cleanRelative,
   downloadAsset,
   filterProtectedRuntimeRequirements,
+  installNodePack,
+  looksLikeCustomNodeFolder,
   modelIsRegistered,
   requirementsArgs,
   sameRepo,
@@ -55,6 +57,47 @@ test('dependency paths stay inside ComfyUI model folders and trusted repos compa
   assert.equal(sameRepo('https://github.com/example/other.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), false);
   assert.equal(modelIsRegistered('krea2_turbo_fp8_scaled.safetensors', new Set(['Krea2_Turbo_FP8_Scaled.safetensors'])), true);
   assert.equal(modelIsRegistered('Wan2.1\\model.safetensors', new Set(['wan2.1/model.safetensors'])), true);
+});
+
+test('a valid manually installed custom-node folder is reused without requiring Git metadata', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-unmanaged-node-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.kjnodes.folder);
+  const reports = [];
+  const commands = [];
+  try {
+    fs.mkdirSync(nodePath, { recursive: true });
+    fs.writeFileSync(path.join(nodePath, '__init__.py'), '# manually installed KJNodes fixture\n');
+    assert.equal(looksLikeCustomNodeFolder(nodePath), true);
+    await installNodePack(NODE_PACKS.kjnodes, {
+      customNodesPath,
+      basePath: rootDir,
+      pythonPath: 'python',
+    }, (phase, message, detail) => reports.push({ phase, message, detail }), {
+      run: async (...args) => { commands.push(args); return ''; },
+    });
+    assert.equal(commands.length, 0);
+    assert.equal(reports[0].phase, 'existing-node');
+    assert.equal(reports[0].detail.unmanaged, true);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('an empty non-Git folder is still rejected as a possible name collision', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-invalid-node-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.kjnodes.folder);
+  try {
+    fs.mkdirSync(nodePath, { recursive: true });
+    assert.equal(looksLikeCustomNodeFolder(nodePath), false);
+    await assert.rejects(
+      installNodePack(NODE_PACKS.kjnodes, { customNodesPath, basePath: rootDir, pythonPath: 'python' }, () => {}),
+      /does not look like a valid custom-node installation/
+    );
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test('registered ComfyUI models are reused even when they live outside the configured model root', async () => {
