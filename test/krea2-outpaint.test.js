@@ -53,6 +53,7 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
     padding: { left: 0, top: 0, right: 220, bottom: 0 },
     editOutpaintSourceWidth: 576,
     editOutpaintSourceHeight: 768,
+    composite: true,
     prompt: 'Continue the room naturally into the new space.',
     seed: 42,
     batch: 2,
@@ -73,4 +74,7 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.sampler.inputs.cfg, 1);
   assert.equal(graph.sampler.inputs.scheduler, 'simple');
   assert.equal(graph.latent.inputs.batch_size, 2);
+  assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
+  assert.deepEqual(graph.preserve_source.inputs.source, ['resized_source', 0]);
+  assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
 });

@@ -42,6 +42,9 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /editOutpaint: outpaintActive \|\| undefined/);
   assert.match(app, /editOutpaintPosition: outpaintActive \? state\.editOutpaintPosition/);
   assert.match(app, /editOutpaintScale: outpaintActive \? state\.editOutpaintScale/);
+  assert.match(app, /!\$\('#editComposite'\)\.hidden && \$\('#editComposite'\)\.getAttribute\('aria-pressed'\) === 'true'/);
+  assert.match(app, /preserve\.hidden = active \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
+  assert.match(app, /state\.editSequential = false;\s*\$\('#editComposite'\)\.setAttribute\('aria-pressed', 'true'\)/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
   assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);
   assert.match(app, /state\.view === 'edit' && !editOutpaintActive\(\) && EDIT_MASK_ENGINES/);
@@ -51,6 +54,15 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(server, /p\.editOutpaint && p\.editEngine === 'krea2'/);
   assert.match(server, /Outpaint and sequential edits must be generated separately/);
   assert.match(server, /Outpaint and localized edit areas must be generated separately/);
+  assert.match(server, /if \(p\.editAspectOverride && !p\.editOutpaint\) p\.composite = false/);
+});
+
+test('sampling appears only when Edit offers a sampling choice', () => {
+  assert.doesNotMatch(html, /id="editSamplingSummary"/);
+  assert.match(app, /const samplingChoice = state\.view === 'edit' && state\.editEngine === 'qwen'/);
+  assert.match(app, /row\.hidden = !samplingChoice && !preserveChoice/);
+  assert.match(css, /\.edit-sampling-row\.preserve-only \{ justify-content: flex-end/);
+  assert.match(html, /class="preserve-text">Preserve<\/span>/);
 });
 
 test('Edit follows model, expandable inputs, edit area, prompt, Resolution, and sampling order', () => {

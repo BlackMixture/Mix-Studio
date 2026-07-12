@@ -1661,7 +1661,9 @@ async function prepareOutpaintParams(p, refNames) {
 
 async function buildEditKrea2Outpaint(p, refNames) {
   const info = await getObjectInfo();
-  const missingNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint']
+  const requiredNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint'];
+  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Krea 2 outpaint needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
@@ -1684,7 +1686,9 @@ async function buildEditKrea2Outpaint(p, refNames) {
 
 async function buildEditKleinOutpaint(p, refNames) {
   const info = await getObjectInfo();
-  const missingNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch']
+  const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
+  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Klein outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
@@ -1702,7 +1706,9 @@ async function buildEditKleinOutpaint(p, refNames) {
 
 async function buildEditQwenOutpaint(p, refNames) {
   const info = await getObjectInfo();
-  const missingNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch']
+  const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
+  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Qwen outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
@@ -1718,7 +1724,9 @@ async function buildEditQwenOutpaint(p, refNames) {
 
 async function buildEditKrea2MaskedOutpaint(p, refNames) {
   const info = await getObjectInfo();
-  const missingNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask', 'ImageCompositeMasked']
+  const requiredNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask'];
+  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Krea2 outpaint needs the masked-canvas nodes installed: ${missingNodes.join(', ')}`);
@@ -4100,8 +4108,7 @@ async function handleApi(req, res, url) {
       // Pixel compositing needs identical source/output dimensions. A custom
       // output ratio intentionally changes the canvas, so retain the edit
       // itself but skip the incompatible preservation pass.
-      if (p.editAspectOverride) p.composite = false;
-      if (p.editOutpaint) p.composite = false;
+      if (p.editAspectOverride && !p.editOutpaint) p.composite = false;
     }
     const { pid } = await queueGenerationJob(p, req.profile.id, refNames, refined);
     return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });

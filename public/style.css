@@ -2076,21 +2076,25 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 }
 .lora-card .lc-menu {
   position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 24px;
-  height: 24px;
+  z-index: 3;
+  top: 4px;
+  right: 4px;
+  width: 34px;
+  height: 34px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(0,0,0,0.55);
   color: #fff;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
+.lora-card .lc-menu:focus-visible { outline: 2px solid rgba(255,255,255,.82); outline-offset: -2px; }
 .lora-card .lc-trigger-badge {
   position: absolute;
-  top: 32px;
-  right: 5px;
+  top: 42px;
+  right: 7px;
   display: grid;
   place-items: center;
   width: 20px;
@@ -4077,21 +4081,13 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   gap: 9px;
   margin: 10px 0 14px;
 }
-.edit-sampling-summary {
-  min-width: 0;
-  flex: 1;
-  display: grid;
-  gap: 2px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: rgba(255,255,255,.018);
-}
-.edit-sampling-summary[hidden] { display: none; }
-.edit-sampling-summary b { color: var(--ink-soft); font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
-.edit-sampling-summary small { color: var(--muted-2); font-size: 10px; font-weight: 700; }
+.edit-sampling-row[hidden] { display: none; }
+.edit-sampling-row.preserve-only { justify-content: flex-end; min-height: 36px; margin: 4px 0 10px; }
 .edit-sampling-row .qwen-quality-control { flex: 1; margin: 0; }
 .edit-sampling-row .preserve-icon { flex: 0 0 42px; width: 42px; height: 42px; }
+.preserve-text { display: none; }
+.edit-sampling-row.preserve-only .preserve-icon { width: auto; height: 36px; flex-basis: auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 11px; border-radius: 10px; }
+.edit-sampling-row.preserve-only .preserve-text { display: inline; font-size: 10.5px; font-weight: 850; white-space: nowrap; }
 .select-bar-grabber span { width: 34px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.22); transition: width 160ms var(--ease), background 160ms var(--ease); }
 .select-bar-grabber:active span { width: 42px; background: rgba(255,255,255,0.46); }
 .select-bar.is-expanded .select-bar-grabber span { width: 42px; background: rgba(255,255,255,0.46); }

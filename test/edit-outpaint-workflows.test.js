@@ -22,6 +22,7 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
     padding,
     editOutpaintSourceWidth: 900,
     editOutpaintSourceHeight: 768,
+    composite: true,
     prompt: 'Continue the windows and wall.',
     seed: 7,
     batch: 1,
@@ -34,6 +35,10 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
   assert.equal(graph.scheduler.class_type, 'Flux2Scheduler');
   assert.equal(graph.scheduler.inputs.steps, 4);
   assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
+  assert.deepEqual(graph.preserve_source.inputs.source, ['resized_source', 0]);
+  assert.equal(graph.preserve_source.inputs.x, 120);
+  assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
   assert.match(graph.positive_text.inputs.text, /Remove the green area/);
 });
 
@@ -52,6 +57,7 @@ test('Qwen outpaint sends the padded green canvas through native edit conditioni
     padding,
     editOutpaintSourceWidth: 900,
     editOutpaintSourceHeight: 768,
+    composite: true,
     prompt: '',
     seed: 8,
   });
@@ -60,6 +66,8 @@ test('Qwen outpaint sends the padded green canvas through native edit conditioni
   assert.deepEqual(graph.positive_encode.inputs.image1, ['outpaint_source', 0]);
   assert.equal(graph.sampler.inputs.steps, 4);
   assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
+  assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
 });
 
 test('Krea2 outpaint uses the padded mask as latent noise and preserves the source area', () => {
@@ -74,6 +82,7 @@ test('Krea2 outpaint uses the padded mask as latent noise and preserves the sour
     width: 1344,
     height: 768,
     padding,
+    composite: true,
     prompt: 'Continue the room.',
     seed: 9,
   });
@@ -82,6 +91,22 @@ test('Krea2 outpaint uses the padded mask as latent noise and preserves the sour
   assert.equal(graph.masked_latent.class_type, 'SetLatentNoiseMask');
   assert.equal(graph.sampler.inputs.steps, 8);
   assert.equal(graph.composite.class_type, 'ImageCompositeMasked');
+  assert.deepEqual(graph.save.inputs.images, ['composite', 0]);
+});
+
+test('outpaint can skip the exact-source composite when Preserve is off', () => {
+  const graph = buildKleinOutpaintGraph({
+    settings: { kleinVae: 'flux2-vae.safetensors' },
+    unetName: 'flux-2-klein-4b.safetensors',
+    clipName: 'qwen_3_4b.safetensors',
+    imageName: 'source.png',
+    width: 1344,
+    height: 768,
+    padding,
+    prompt: 'Continue the image.',
+  });
+  assert.equal(graph.preserve_source, undefined);
+  assert.deepEqual(graph.save.inputs.images, ['color_match', 0]);
 });
 
 test('green outpaint prompt retains optional creative direction', () => {

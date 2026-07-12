@@ -47,6 +47,15 @@ test('gallery Use menus are icon-led and show concise image destinations', () =>
   assert.match(appJs, /menuTitle: 'Use video'/);
 });
 
+test('using a gallery image in Edit asks whether to replace or add an input', () => {
+  assert.match(appJs, /async function useAsRef\(item\)/);
+  assert.match(appJs, /title: 'Use image in Edit'/);
+  assert.match(appJs, /value: `replace-\$\{index\}`/);
+  assert.match(appJs, /value: `add-\$\{emptyIndex\}`/);
+  assert.match(appJs, /state\.refs\[targetIndex\] = reference/);
+  assert.match(appJs, /state\.editRefSlots = Math\.max\(1, Math\.min\(capacity/);
+});
+
 test('upscale selections use a restrained neutral state instead of colored outlines', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
   const activeState = css.match(/#upscaleSheet \.chip\.active,[\s\S]*?\.edit-upscale-row \.chip\.active \{[\s\S]*?\n\}/)?.[0] || '';

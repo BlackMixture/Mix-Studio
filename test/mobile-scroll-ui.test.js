@@ -18,6 +18,9 @@ test('LoRA cards scroll immediately and reserve vertical strength changes for ho
   assert.match(app, /const distance = Math\.abs\(e\.clientY - startY\)[\s\S]*?distance > 8[\s\S]*?window\.scrollBy\(0, lastY - e\.clientY\)/);
   assert.match(app, /holdTimer = setTimeout\(\(\) => \{[\s\S]*?\}, 300\);[\s\S]*?card\.setPointerCapture\(pointerId\)/);
   assert.match(html, /hold and slide up or down to adjust strength/);
+  assert.match(app, /\['pointerdown', 'pointerup', 'pointercancel'\][\s\S]*menuBtn\.addEventListener\(type, \(event\) => event\.stopPropagation\(\)\)/);
+  assert.match(app, /if \(e\.target\.closest\('\.lc-menu'\)\) return/);
+  assert.match(css, /\.lora-card \.lc-menu \{[\s\S]*width: 34px;[\s\S]*height: 34px;[\s\S]*touch-action: manipulation;/);
 });
 
 test('regional canvas retains vertical page scrolling while region boxes stay direct-manipulation', () => {

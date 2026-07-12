@@ -2821,9 +2821,15 @@ function syncEditAreaChrome() {
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#kreaMaskTools').hidden = !supported;
-  $('#editComposite').hidden = kreaEdit || kreaRef || active || editOutpaintActive();
+  const outpaint = editOutpaintActive();
+  const preserve = $('#editComposite');
+  preserve.hidden = active || (!outpaint && (kreaEdit || kreaRef));
+  const preserveLabel = outpaint ? 'Preserve original image pixels' : 'Preserve unchanged areas';
+  preserve.setAttribute('aria-label', preserveLabel);
+  preserve.title = preserveLabel;
   $('#editAspectControl').hidden = state.view !== 'edit' || (kreaEdit && !editOutpaintActive()) || active;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || active;
+  syncEditSamplingRow();
 }
 
 function renderKreaMaskTools() {
@@ -3952,12 +3958,7 @@ function renderQwenQuality() {
   const cfg = $('#cfgInput');
   const wasLocked = steps.dataset.qwenLocked === 'true';
   control.hidden = !active;
-  const summary = $('#editSamplingSummary');
-  summary.hidden = active;
-  if (!active) {
-    const count = (state.editEngine === 'krea2' || state.editEngine === 'krea2ref') ? 8 : 4;
-    $('#editSamplingSummaryText').textContent = `${count} steps · CFG 1`;
-  }
+  syncEditSamplingRow();
   if (active) {
     const quality = state.qwenQuality === 'fast' ? 'fast' : 'quality';
     const preset = quality === 'fast' ? { steps: 4, cfg: 1 } : { steps: 20, cfg: 4 };
@@ -3984,6 +3985,15 @@ function renderQwenQuality() {
     cfg.title = 'Double-tap to reset to your default';
     if (wasLocked && state.view === 'edit') restoreGenerationTuning('edit');
   }
+}
+
+function syncEditSamplingRow() {
+  const row = $('#editSamplingRow');
+  if (!row) return;
+  const samplingChoice = state.view === 'edit' && state.editEngine === 'qwen';
+  const preserveChoice = state.view === 'edit' && !$('#editComposite').hidden;
+  row.hidden = !samplingChoice && !preserveChoice;
+  row.classList.toggle('preserve-only', !samplingChoice && preserveChoice);
 }
 
 $('#qwenQualityControl').addEventListener('click', (event) => {
@@ -4709,6 +4719,7 @@ $('#editOutpaintToggle').addEventListener('click', () => {
   state.editOutpaint = enabling;
   if (enabling) {
     state.editSequential = false;
+    $('#editComposite').setAttribute('aria-pressed', 'true');
     clearKreaMask(true);
     if (state.qwenAnglesMode) closeQwenAngles();
     if (!editOutpaintGeometry().valid) applyEditOutpaintAspect(defaultEditOutpaintAspect(state.refs[0]));
@@ -5294,7 +5305,7 @@ function renderLoras() {
     card.style.setProperty('--lora-color', loraTriggerColor(l.name));
     card.innerHTML = `${loraThumbHtml(l.name, 'lc-thumb')}`
       + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
-      + `<button class="lc-menu" aria-label="LoRA options">⋯</button>`
+      + `<button class="lc-menu" type="button" aria-label="LoRA options" aria-haspopup="menu" aria-expanded="false">⋯</button>`
       + (trigger ? `<span class="lc-trigger-badge" title="Trigger phrase: ${escapeHtml(trigger)}" aria-label="Has trigger phrase">✦</span>` : '')
       + `<span class="lc-name" title="${escapeHtml(prettyLora(l.name))}">${escapeHtml(prettyLora(l.name))}</span>`
       + `<span class="lc-adjust"></span>`;
@@ -5322,6 +5333,9 @@ function renderLoras() {
    strength. The ⋯ menu handles thumbnail + remove. */
 function wireLoraCard(card, l, idx, arr) {
   const menuBtn = card.querySelector('.lc-menu');
+  ['pointerdown', 'pointerup', 'pointercancel'].forEach((type) => {
+    menuBtn.addEventListener(type, (event) => event.stopPropagation());
+  });
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     openActionMenu(menuBtn, [
@@ -5378,7 +5392,7 @@ function wireLoraCard(card, l, idx, arr) {
   const adjustEl = card.querySelector('.lc-adjust');
 
   card.addEventListener('pointerdown', (e) => {
-    if (e.target === menuBtn) return;
+    if (e.target.closest('.lc-menu')) return;
     moved = false;
     adjusting = false;
     startY = e.clientY;
@@ -6218,12 +6232,47 @@ async function galleryItemEditReference(item) {
 
 async function useAsRef(item) {
   try {
-    const slot = state.refs.findIndex((r) => !r);
-    state.refs[slot === -1 ? 0 : slot] = await galleryItemEditReference(item);
+    const capacity = state.editEngine === 'krea2' || editOutpaintActive() ? 1 : state.refs.length;
+    const occupied = state.refs.slice(0, capacity)
+      .map((reference, index) => ({ reference, index }))
+      .filter(({ reference }) => reference);
+    let targetIndex = 0;
+    let replacing = false;
+    if (occupied.length) {
+      const emptyIndex = state.refs.slice(0, capacity).findIndex((reference) => !reference);
+      const choices = occupied.map(({ index }) => ({
+        value: `replace-${index}`,
+        label: `Replace input ${index + 1}`,
+        detail: index === 0 ? 'Replace the current source image' : `Replace reference ${index + 1}`,
+      }));
+      if (emptyIndex >= 0) choices.push({
+        value: `add-${emptyIndex}`,
+        label: `Add as input ${emptyIndex + 1}`,
+        detail: 'Keep the current Edit inputs',
+      });
+      const defaultChoice = emptyIndex >= 0 ? `add-${emptyIndex}` : choices[0].value;
+      const choice = await openAppDialog({
+        title: 'Use image in Edit',
+        message: 'Choose whether to replace an existing input or add another reference.',
+        confirmLabel: 'Use image',
+        defaultChoice,
+        choices,
+      });
+      if (choice == null) return;
+      const match = /^(replace|add)-(\d+)$/.exec(String(choice));
+      if (!match) return;
+      replacing = match[1] === 'replace';
+      targetIndex = Math.max(0, Math.min(capacity - 1, Number(match[2]) || 0));
+    }
+    const reference = await galleryItemEditReference(item);
+    if (targetIndex === 0) clearKreaMask(true);
+    state.refs[targetIndex] = reference;
+    state.editRefSlots = Math.max(1, Math.min(capacity, Math.max(state.editRefSlots, targetIndex + 1)));
     renderRefs();
     closeLightbox();
     setView('edit');
-    toast('Added as reference image');
+    saveForm();
+    toast(replacing ? `Replaced input ${targetIndex + 1}` : `Added as input ${targetIndex + 1}`);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -7357,7 +7406,7 @@ $('#generateBtn').addEventListener('click', async () => {
     krea2Turbo: !krea2Raw,
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit'
-      ? (!outpaintActive && $('#editComposite').getAttribute('aria-pressed') === 'true')
+      ? (!$('#editComposite').hidden && $('#editComposite').getAttribute('aria-pressed') === 'true')
       : undefined,
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     editOutpaint: outpaintActive || undefined,

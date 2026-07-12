@@ -32,7 +32,7 @@ test('Edit model summary and disclosure stay synchronized with selection', () =>
   assert.doesNotMatch(editHandler, /setEditModelExpanded\(false\)/);
 });
 
-test('Preserve unchanged sits beside sampling instead of model choices', () => {
+test('Preserve remains beside contextual Edit controls instead of model choices', () => {
   assert.match(html, /id="editSamplingRow"[\s\S]*?id="editComposite"/);
   const modelBody = html.slice(html.indexOf('id="editModelBody"'), html.indexOf('id="refPanel"'));
   assert.doesNotMatch(modelBody, /id="editComposite"/);

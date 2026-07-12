@@ -136,7 +136,7 @@ test('Edit keeps source-matched dimensions by default and exposes a custom outpu
   assert.match(app, /editAspectOverride: false/);
   assert.match(app, /editAspectOverride: mode === 'edit' && state\.editAspectOverride/);
   assert.match(server, /if \(!p\.editAspectOverride\) try/);
-  assert.match(server, /if \(p\.editAspectOverride\) p\.composite = false/);
+  assert.match(server, /if \(p\.editAspectOverride && !p\.editOutpaint\) p\.composite = false/);
 });
 
 test('Matching an edit image reports its derived one-megapixel output dimensions', () => {
