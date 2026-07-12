@@ -31,7 +31,7 @@ test('Qwen Edit exposes and persists a contextual sampling selector', () => {
 
 test('Qwen Edit server applies the selected preset and only loads Lightning in fast mode', () => {
   assert.match(server, /const preset = qwenEditPreset\(p\.qwenQuality\)/);
-  assert.match(server, /if \(preset\.lightning\) \{/);
+  assert.match(server, /if \(preset\.lightning && \(!lightningOverride \|\| lightningOverride\.on !== false\)\) \{/);
   assert.match(server, /steps: preset\.steps, cfg: preset\.cfg/);
   assert.match(server, /p\.qwenQuality = normalizeQwenEditQuality\(p\.qwenQuality\)/);
 });

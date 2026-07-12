@@ -31,7 +31,7 @@ test('Raw mode manages the Turbo LoRA without overwriting user sampling values',
   assert.doesNotMatch(app, /turboLora\.on \? 12 : 52/);
   assert.doesNotMatch(app, /turboLora\.on \? 1 : 3\.5/);
   assert.match(app, /function detachKrea2RawTurboLora\(\)/);
-  assert.match(app, /krea2ManagedLoraChanged\(l\)/);
+  assert.match(app, /managedLoraChanged\(l\)/);
   assert.match(app, /const steps = Number\(\$\('#stepsInput'\)\.value\)/);
   assert.match(app, /krea2Turbo: !krea2Raw/);
   assert.match(app, /krea2RawTurboLora: krea2Raw \? state\.krea2RawTurboLora : undefined/);

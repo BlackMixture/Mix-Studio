@@ -372,6 +372,9 @@
             <img id="createImageGuideImg" alt="Image guide preview" />
             <span><b id="createImageGuideName">Source image</b><small id="createImageGuideDims"></small></span>
           </button>
+          <button class="input-crop-action" id="createImageGuideCrop" type="button" aria-label="Crop source image" title="Crop source image">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg>
+          </button>
           <button class="create-image-guide-remove" id="createImageGuideRemove" type="button" aria-label="Remove source image">✕</button>
           <div class="create-image-guide-modes" id="createImageGuideModes" role="group" aria-label="Image guide mode">
             <button type="button" data-guide-mode="image" aria-pressed="true">Image</button>
@@ -420,6 +423,7 @@
             <b id="vidAttachFilledTitle">First frame</b>
             <span id="vidAttachDims"></span>
           </div>
+          <button class="input-crop-action" id="vidAttachCrop" type="button" aria-label="Crop first frame" title="Crop first frame"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg></button>
           <button class="attach-x" id="vidAttachX" aria-label="Remove image">✕</button>
         </div>
         <button class="media-input-card" id="vidDriveBtn" type="button" hidden>
@@ -454,6 +458,7 @@
               <b>Last frame</b>
               <span>Video lands on this image</span>
             </div>
+            <button class="input-crop-action" id="vidEndCrop" type="button" aria-label="Crop last frame" title="Crop last frame"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg></button>
             <button class="attach-x" id="vidEndX" aria-label="Remove last frame">✕</button>
           </div>
           <button class="chip video-swap-action" id="vidSwap" type="button" hidden>
@@ -473,6 +478,7 @@
               <b>Face ID</b>
               <span id="vidFaceLabel">Identity reference</span>
             </div>
+            <button class="input-crop-action" id="vidFaceCrop" type="button" aria-label="Crop Face ID image" title="Crop Face ID image"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg></button>
             <button class="attach-x attach-expand" id="vidFaceSwap" aria-label="Choose another face">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h12m0 0-3-3m3 3-3 3M19 16H7m0 0 3-3m-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
@@ -576,6 +582,7 @@
               <div class="region-ref-preview" id="regionRefPreview" hidden>
                 <img id="regionRefPreviewImg" alt="Region reference preview" />
                 <span class="region-asset-copy"><b>Reference image</b><small id="regionRefLabel">None</small></span>
+                <button class="input-crop-action" id="regionRefCrop" type="button" aria-label="Crop region reference" title="Crop region reference"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg></button>
                 <button id="regionRefClear" type="button" aria-label="Remove region reference image">✕</button>
               </div>
             </div>
@@ -808,24 +815,6 @@
               <div class="range-field">
                 <input id="denoiseInput" type="range" min="0.1" max="1" step="0.05" value="0.4" />
                 <span class="range-val" id="denoiseVal">0.40</span>
-              </div>
-            </div>
-            <div class="edit-mask-advanced field-span" id="editOutpaintAdvanced" hidden>
-              <div class="edit-mask-advanced-head">
-                <span>Native preserve</span>
-                <small id="editOutpaintAdvancedNote">Full source boundary</small>
-              </div>
-              <div class="edit-mask-advanced-grid">
-                <label class="edit-mask-advanced-control" for="editOutpaintFeather">
-                  <span><b>Preserve feather</b><small>Softens the boundary between native pixels and the generated canvas</small></span>
-                  <output id="editOutpaintFeatherVal" for="editOutpaintFeather">12%</output>
-                  <input id="editOutpaintFeather" type="range" min="0" max="25" step="1" value="12" aria-label="Outpaint preserve feather" />
-                </label>
-                <label class="edit-mask-advanced-control" for="editOutpaintMaskOffset">
-                  <span><b>Mask offset</b><small>Expands or contracts the native preserve edge</small></span>
-                  <output id="editOutpaintMaskOffsetVal" for="editOutpaintMaskOffset">0%</output>
-                  <input id="editOutpaintMaskOffset" type="range" min="-15" max="15" step="1" value="0" aria-label="Outpaint preserve mask offset" />
-                </label>
               </div>
             </div>
             <div class="edit-mask-advanced field-span" id="editMaskAdvanced" hidden>
@@ -1544,6 +1533,7 @@
         <b>End frame</b>
         <span>the video will land on this image</span>
       </div>
+      <button class="input-crop-action" id="animEndCrop" type="button" aria-label="Crop end frame" title="Crop end frame"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg></button>
       <button class="attach-x" id="animEndX" aria-label="Remove end frame">✕</button>
     </div>
     <div class="audio-trim" id="animAudioTrim" hidden>
@@ -1959,6 +1949,32 @@
         <p id="assetPickerPreviewPrompt"></p>
       </div>
       <button class="sheet-cta asset-picker-preview-use" id="assetPickerPreviewUse" type="button">Use image</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet image-crop-sheet" id="imageCropSheet">
+  <div class="sheet-panel image-crop-panel" role="dialog" aria-modal="true" aria-labelledby="imageCropTitle">
+    <h3 class="sheet-title"><span id="imageCropTitle">Crop input image</span><button data-close aria-label="Close crop editor">✕</button></h3>
+    <p class="image-crop-copy">Drag the image to reframe it. The original remains available.</p>
+    <div class="image-crop-stage" id="imageCropStage" tabindex="0" aria-label="Crop preview. Drag the image to position it.">
+      <img id="imageCropImage" alt="Input image crop preview" />
+      <div class="image-crop-shade" aria-hidden="true"></div>
+      <div class="image-crop-frame" id="imageCropFrame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="image-crop-aspects" id="imageCropAspects" role="group" aria-label="Crop aspect ratio">
+      <button type="button" data-crop-aspect="source" aria-pressed="true">Source</button>
+      <button type="button" data-crop-aspect="1:1" aria-pressed="false">1:1</button>
+      <button type="button" data-crop-aspect="4:3" aria-pressed="false">4:3</button>
+      <button type="button" data-crop-aspect="3:4" aria-pressed="false">3:4</button>
+      <button type="button" data-crop-aspect="16:9" aria-pressed="false">16:9</button>
+      <button type="button" data-crop-aspect="9:16" aria-pressed="false">9:16</button>
+    </div>
+    <label class="image-crop-zoom" for="imageCropZoom"><span>Zoom</span><output id="imageCropZoomVal" for="imageCropZoom">100%</output></label>
+    <input id="imageCropZoom" type="range" min="100" max="300" step="1" value="100" />
+    <div class="image-crop-actions">
+      <button type="button" id="imageCropRestore" hidden>Restore original</button>
+      <button class="sheet-cta" type="button" id="imageCropApply">Apply crop</button>
     </div>
   </div>
 </div>

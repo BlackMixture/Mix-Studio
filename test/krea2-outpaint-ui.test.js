@@ -18,9 +18,11 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(html, /id="editOutpaintSource"[^>]*role="slider"/);
   assert.match(html, /id="editOutpaintScale"[^>]*type="range"/);
   assert.match(html, /id="editOutpaintOutputValue"/);
-  assert.match(html, /id="editOutpaintAdvanced"/);
-  assert.match(html, /id="editOutpaintFeather"[^>]*max="25"/);
-  assert.match(html, /id="editOutpaintMaskOffset"[^>]*min="-15"[^>]*max="15"/);
+  assert.doesNotMatch(html, /id="editOutpaintAdvanced"/);
+  assert.doesNotMatch(html, /id="editOutpaintFeather"/);
+  assert.doesNotMatch(html, /id="editOutpaintMaskOffset"/);
+  assert.match(html, /id="kreaMaskFeather"[^>]*max="64"/);
+  assert.match(html, /id="kreaMaskOffset"[^>]*min="-15"[^>]*max="15"/);
   assert.match(html, /data-outpaint-position="start"/);
   assert.match(html, /data-outpaint-position="center"/);
   assert.match(html, /data-outpaint-position="end"/);

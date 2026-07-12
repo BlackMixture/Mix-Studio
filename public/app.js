@@ -53,6 +53,8 @@ const state = {
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
   editLoras: [],             // {name, strength, on} - Edit tab (Klein/Qwen)
   editLorasByEngine: {},     // remembered independently for each edit model
+  kleinOutpaintConsistencyLoras: {}, // managed per-model LoRA settings, shown only during Klein outpaint
+  editAutomaticLoras: {},    // managed Qwen/Krea workflow LoRAs, shown while their workflow is active
   loraTriggers: {},          // profile-local trigger phrase by LoRA filename
   editEngine: 'klein4',
   editEngineOrder: ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'],
@@ -1212,14 +1214,26 @@ const WORKSPACE_ASSET_FIELDS = [
 
 function serializeWorkspaceAsset(asset) {
   if (!asset || !asset.name) return null;
-  return Object.fromEntries(WORKSPACE_ASSET_FIELDS
+  const serialized = Object.fromEntries(WORKSPACE_ASSET_FIELDS
     .filter((key) => asset[key] !== undefined && asset[key] !== null)
     .map((key) => [key, asset[key]]));
+  if (asset.cropOriginal && asset.cropOriginal.name) {
+    serialized.cropOriginal = Object.fromEntries(WORKSPACE_ASSET_FIELDS
+      .filter((key) => asset.cropOriginal[key] !== undefined && asset.cropOriginal[key] !== null)
+      .map((key) => [key, asset.cropOriginal[key]]));
+  }
+  return serialized;
 }
 
 function restoreWorkspaceAsset(asset) {
   if (!asset || !asset.name) return null;
-  return Object.assign({}, asset, { url: '/api/input?name=' + encodeURIComponent(asset.name) });
+  const restored = Object.assign({}, asset, { url: '/api/input?name=' + encodeURIComponent(asset.name) });
+  if (asset.cropOriginal && asset.cropOriginal.name) {
+    restored.cropOriginal = Object.assign({}, asset.cropOriginal, {
+      url: '/api/input?name=' + encodeURIComponent(asset.cropOriginal.name),
+    });
+  }
+  return restored;
 }
 
 function serializeWorkspaceAudio(audio) {
@@ -1246,6 +1260,8 @@ function saveForm() {
       activeView: ['create', 'edit', 'video'].includes(state.view) ? state.view : 'create',
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, editLorasByEngine: state.editLorasByEngine, prompts: state.prompts,
+      kleinOutpaintConsistencyLoras: state.kleinOutpaintConsistencyLoras,
+      editAutomaticLoras: state.editAutomaticLoras,
       loraTriggers: state.loraTriggers,
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
@@ -1278,6 +1294,7 @@ function saveForm() {
       krea2RawTurboLora: state.krea2RawTurboLora,
       regions: state.regions.map((region) => Object.assign({}, region, {
         refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
+        refAsset: serializeWorkspaceAsset(region.refAsset),
       })),
       kreaBrush: state.kreaBrush,
       kreaMaskTool: state.kreaMaskTool,
@@ -1388,6 +1405,51 @@ function loadForm() {
     }
     state.editLoras = state.editLorasByEngine[state.editEngine] || [];
     state.editLorasByEngine[state.editEngine] = state.editLoras;
+    state.editAutomaticLoras = {};
+    if (f.editAutomaticLoras && typeof f.editAutomaticLoras === 'object') {
+      Object.entries(f.editAutomaticLoras).forEach(([key, saved]) => {
+        if (!saved || !saved.name) return;
+        state.editAutomaticLoras[key] = {
+          name: String(saved.name),
+          strength: Math.max(0, Math.min(2, Number(saved.strength) || 1)),
+          on: saved.on !== false,
+          managed: 'edit-workflow-auto',
+          managedKey: key,
+        };
+      });
+    }
+    EDIT_ENGINES.forEach((engine) => {
+      const stack = state.editLorasByEngine[engine];
+      if (!Array.isArray(stack)) return;
+      stack.filter((item) => item && item.managed === 'edit-workflow-auto').forEach((item) => {
+        if (item.managedKey && !state.editAutomaticLoras[item.managedKey]) state.editAutomaticLoras[item.managedKey] = item;
+      });
+      state.editLorasByEngine[engine] = stack.filter((item) => item && item.managed !== 'edit-workflow-auto');
+    });
+    state.kleinOutpaintConsistencyLoras = {};
+    if (f.kleinOutpaintConsistencyLoras && typeof f.kleinOutpaintConsistencyLoras === 'object') {
+      ['klein4', 'klein9'].forEach((engine) => {
+        const saved = f.kleinOutpaintConsistencyLoras[engine];
+        if (!saved || !saved.name) return;
+        state.kleinOutpaintConsistencyLoras[engine] = {
+          name: String(saved.name),
+          strength: Math.max(0, Math.min(2, Number(saved.strength) || 0.6)),
+          on: saved.on !== false,
+          managed: 'klein-outpaint-consistency',
+        };
+      });
+    }
+    ['klein4', 'klein9'].forEach((engine) => {
+      const stack = state.editLorasByEngine[engine];
+      if (!Array.isArray(stack)) return;
+      const legacy = stack.find((item) => item && item.managed === 'klein-outpaint-consistency');
+      if (legacy && legacy.name && !state.kleinOutpaintConsistencyLoras[engine]) {
+        state.kleinOutpaintConsistencyLoras[engine] = legacy;
+      }
+      state.editLorasByEngine[engine] = stack.filter((item) => item && item.managed !== 'klein-outpaint-consistency');
+    });
+    state.editLoras = state.editLorasByEngine[state.editEngine] || [];
+    state.editLorasByEngine[state.editEngine] = state.editLoras;
     state.createMode = ['image', 'region', 'video'].includes(f.createMode) ? f.createMode : 'image';
     const savedCreateInfluence = Number(f.createInfluence);
     state.createInfluence = Number.isFinite(savedCreateInfluence)
@@ -1442,6 +1504,7 @@ function loadForm() {
     state.kreaMaskTool = ['smart', 'brush', 'box'].includes(f.kreaMaskTool) ? f.kreaMaskTool : 'smart';
     state.regions = Array.isArray(f.regions) ? f.regions.map((region) => Object.assign({}, region, {
       refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
+      refAsset: restoreWorkspaceAsset(region.refAsset),
     })) : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     state.kreaMaskFeather = Math.max(0, Math.min(64, Number(f.kreaMaskFeather) || 8));
@@ -2085,6 +2148,235 @@ function pickUpload(accept, cb, title) {
   openAssetPicker(accept, (asset) => cb(asset), title);
 }
 
+const IMAGE_CROP_RATIOS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '16:9': 16 / 9, '9:16': 9 / 16 };
+let inputCropState = null;
+
+function imageAssetSnapshot(asset) {
+  if (!asset || !asset.name) return null;
+  return Object.assign({}, Object.fromEntries(WORKSPACE_ASSET_FIELDS
+    .filter((key) => asset[key] !== undefined && asset[key] !== null)
+    .map((key) => [key, asset[key]])), {
+    url: asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`,
+  });
+}
+
+function originalImageAsset(asset) {
+  return asset && asset.cropOriginal && asset.cropOriginal.name
+    ? Object.assign({}, asset.cropOriginal, {
+        url: asset.cropOriginal.url || `/api/input?name=${encodeURIComponent(asset.cropOriginal.name)}`,
+      })
+    : imageAssetSnapshot(asset);
+}
+
+function cropAspectRatio() {
+  const crop = inputCropState;
+  if (!crop) return 1;
+  if (crop.aspect !== 'source') return IMAGE_CROP_RATIOS[crop.aspect] || 1;
+  return crop.naturalWidth > 0 && crop.naturalHeight > 0 ? crop.naturalWidth / crop.naturalHeight : 1;
+}
+
+function layoutInputCrop() {
+  const crop = inputCropState;
+  const stage = $('#imageCropStage');
+  const image = $('#imageCropImage');
+  const frame = $('#imageCropFrame');
+  if (!crop || !stage || !image || !crop.naturalWidth || !crop.naturalHeight) return;
+  const stageWidth = stage.clientWidth;
+  const stageHeight = stage.clientHeight;
+  if (!stageWidth || !stageHeight) return;
+  const ratio = cropAspectRatio();
+  const availableWidth = Math.max(80, stageWidth - 44);
+  const availableHeight = Math.max(80, stageHeight - 44);
+  let frameWidth = availableWidth;
+  let frameHeight = frameWidth / ratio;
+  if (frameHeight > availableHeight) {
+    frameHeight = availableHeight;
+    frameWidth = frameHeight * ratio;
+  }
+  const frameLeft = (stageWidth - frameWidth) / 2;
+  const frameTop = (stageHeight - frameHeight) / 2;
+  const baseScale = Math.max(frameWidth / crop.naturalWidth, frameHeight / crop.naturalHeight);
+  const scale = baseScale * crop.zoom;
+  const imageWidth = crop.naturalWidth * scale;
+  const imageHeight = crop.naturalHeight * scale;
+  const maxOffsetX = Math.max(0, (imageWidth - frameWidth) / 2);
+  const maxOffsetY = Math.max(0, (imageHeight - frameHeight) / 2);
+  crop.offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, crop.offsetX));
+  crop.offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, crop.offsetY));
+  const imageLeft = (stageWidth - imageWidth) / 2 + crop.offsetX;
+  const imageTop = (stageHeight - imageHeight) / 2 + crop.offsetY;
+  Object.assign(crop, {
+    stageWidth, stageHeight, frameWidth, frameHeight, frameLeft, frameTop,
+    baseScale, scale, imageLeft, imageTop,
+  });
+  frame.style.left = `${frameLeft}px`;
+  frame.style.top = `${frameTop}px`;
+  frame.style.width = `${frameWidth}px`;
+  frame.style.height = `${frameHeight}px`;
+  frame.style.setProperty('--crop-frame-width', `${frameWidth}px`);
+  frame.style.setProperty('--crop-frame-height', `${frameHeight}px`);
+  image.style.left = `${imageLeft}px`;
+  image.style.top = `${imageTop}px`;
+  image.style.width = `${imageWidth}px`;
+  image.style.height = `${imageHeight}px`;
+}
+
+function openInputImageCrop(asset, onApply, title = 'Crop input image') {
+  if (!asset || !asset.name || typeof onApply !== 'function') return;
+  inputCropState = {
+    asset,
+    original: originalImageAsset(asset),
+    onApply,
+    aspect: 'source',
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    naturalWidth: Number(asset.w) || 0,
+    naturalHeight: Number(asset.h) || 0,
+    drag: null,
+  };
+  $('#imageCropTitle').textContent = title;
+  $('#imageCropRestore').hidden = !(asset.cropOriginal && asset.cropOriginal.name);
+  $('#imageCropZoom').value = '100';
+  $('#imageCropZoomVal').textContent = '100%';
+  $$('#imageCropAspects [data-crop-aspect]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.cropAspect === 'source'));
+  });
+  const image = $('#imageCropImage');
+  image.onload = () => {
+    if (!inputCropState) return;
+    inputCropState.naturalWidth = image.naturalWidth;
+    inputCropState.naturalHeight = image.naturalHeight;
+    requestAnimationFrame(layoutInputCrop);
+  };
+  image.onerror = () => toast('Could not load this input image for cropping', true);
+  image.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
+  $('#imageCropSheet').classList.add('show');
+  syncSheetScrollLock();
+  requestAnimationFrame(layoutInputCrop);
+}
+
+function closeInputImageCrop() {
+  $('#imageCropSheet').classList.remove('show');
+  inputCropState = null;
+  syncSheetScrollLock();
+}
+
+async function applyInputImageCrop() {
+  const crop = inputCropState;
+  const image = $('#imageCropImage');
+  if (!crop || !crop.scale || !image.naturalWidth) return;
+  const sourceX = Math.max(0, (crop.frameLeft - crop.imageLeft) / crop.scale);
+  const sourceY = Math.max(0, (crop.frameTop - crop.imageTop) / crop.scale);
+  const sourceWidth = Math.min(crop.naturalWidth - sourceX, crop.frameWidth / crop.scale);
+  const sourceHeight = Math.min(crop.naturalHeight - sourceY, crop.frameHeight / crop.scale);
+  const outputWidth = Math.max(64, Math.round(sourceWidth));
+  const outputHeight = Math.max(64, Math.round(sourceHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  canvas.getContext('2d').drawImage(
+    image, sourceX, sourceY, sourceWidth, sourceHeight,
+    0, 0, outputWidth, outputHeight,
+  );
+  const applyButton = $('#imageCropApply');
+  applyButton.disabled = true;
+  applyButton.textContent = 'Applying…';
+  try {
+    const blob = await new Promise((resolve, reject) => canvas.toBlob(
+      (value) => value ? resolve(value) : reject(new Error('Could not create the crop')),
+      'image/png',
+    ));
+    const response = await api('/api/upload', {
+      method: 'POST',
+      headers: { 'x-filename': encodeURIComponent(`crop_${outputWidth}x${outputHeight}.png`) },
+      body: await blob.arrayBuffer(),
+    });
+    const next = Object.assign({}, crop.asset, {
+      name: response.name,
+      url: URL.createObjectURL(blob),
+      w: outputWidth,
+      h: outputHeight,
+      label: `${crop.original.label || crop.asset.label || 'Input image'} · crop`,
+      safeName: response.name,
+      safeW: outputWidth,
+      safeH: outputHeight,
+      cropOriginal: crop.original,
+    });
+    delete next.displayUrl;
+    await crop.onApply(next);
+    closeInputImageCrop();
+    toast(`Crop applied · ${outputWidth} × ${outputHeight}`);
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    applyButton.disabled = false;
+    applyButton.textContent = 'Apply crop';
+  }
+}
+
+$('#imageCropAspects').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-crop-aspect]');
+  if (!button || !inputCropState) return;
+  inputCropState.aspect = button.dataset.cropAspect;
+  inputCropState.zoom = 1;
+  inputCropState.offsetX = 0;
+  inputCropState.offsetY = 0;
+  $('#imageCropZoom').value = '100';
+  $('#imageCropZoomVal').textContent = '100%';
+  $$('#imageCropAspects [data-crop-aspect]').forEach((item) => {
+    item.setAttribute('aria-pressed', String(item === button));
+  });
+  layoutInputCrop();
+});
+$('#imageCropZoom').addEventListener('input', () => {
+  if (!inputCropState) return;
+  inputCropState.zoom = Math.max(1, Math.min(3, Number($('#imageCropZoom').value) / 100 || 1));
+  $('#imageCropZoomVal').textContent = `${Math.round(inputCropState.zoom * 100)}%`;
+  layoutInputCrop();
+});
+$('#imageCropStage').addEventListener('pointerdown', (event) => {
+  if (!inputCropState || event.button !== 0) return;
+  inputCropState.drag = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    offsetX: inputCropState.offsetX,
+    offsetY: inputCropState.offsetY,
+  };
+  try { $('#imageCropStage').setPointerCapture(event.pointerId); } catch { /* noop */ }
+});
+$('#imageCropStage').addEventListener('pointermove', (event) => {
+  const drag = inputCropState && inputCropState.drag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  inputCropState.offsetX = drag.offsetX + event.clientX - drag.x;
+  inputCropState.offsetY = drag.offsetY + event.clientY - drag.y;
+  layoutInputCrop();
+}, { passive: false });
+['pointerup', 'pointercancel'].forEach((type) => $('#imageCropStage').addEventListener(type, (event) => {
+  if (inputCropState && inputCropState.drag && inputCropState.drag.pointerId === event.pointerId) inputCropState.drag = null;
+}));
+$('#imageCropStage').addEventListener('keydown', (event) => {
+  if (!inputCropState || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  event.preventDefault();
+  inputCropState.offsetX += event.key === 'ArrowLeft' ? -8 : (event.key === 'ArrowRight' ? 8 : 0);
+  inputCropState.offsetY += event.key === 'ArrowUp' ? -8 : (event.key === 'ArrowDown' ? 8 : 0);
+  layoutInputCrop();
+});
+$('#imageCropApply').addEventListener('click', applyInputImageCrop);
+$('#imageCropRestore').addEventListener('click', async () => {
+  const crop = inputCropState;
+  if (!crop || !crop.asset.cropOriginal) return;
+  await crop.onApply(originalImageAsset(crop.asset));
+  closeInputImageCrop();
+  toast('Original input restored');
+});
+$('#imageCropSheet [data-close]').addEventListener('click', () => { inputCropState = null; });
+window.addEventListener('resize', () => {
+  if (inputCropState && $('#imageCropSheet').classList.contains('show')) requestAnimationFrame(layoutInputCrop);
+});
+
 $('#assetPickerUpload').addEventListener('click', () => {
   const picker = assetPickerState;
   if (!picker) return;
@@ -2334,6 +2626,14 @@ function createDenoiseFromInfluence(influence = state.createInfluence) {
 }
 
 const DEFAULT_KREA2_TURBO_LORA = 'krea2_turbo_lora_rank_64_bf16.safetensors';
+const DEFAULT_KLEIN_OUTPAINT_LORAS = {
+  klein4: 'f2k_4B_consist_20260314.safetensors',
+  klein9: 'f2k_9B_lcs_consist_20260415.safetensors',
+};
+const DEFAULT_EDIT_AUTOMATIC_LORAS = {
+  'krea2-outpaint': 'krea2_identity_edit_v1_1_r128.safetensors',
+  'qwen-lightning': 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+};
 
 function assetNameKey(name) {
   return String(name || '').replace(/\\/g, '/').toLowerCase();
@@ -2407,6 +2707,124 @@ function krea2ManagedLoraChanged(lora) {
   if (!lora || lora.managed !== 'krea2-raw-turbo') return;
   state.krea2RawTurboLora = lora;
   renderKrea2Mode();
+}
+
+function kleinOutpaintConsistencySpec(engine = state.editEngine) {
+  if (engine !== 'klein4' && engine !== 'klein9') return null;
+  const status = lastMeta && lastMeta.models && lastMeta.models[engine]
+    && lastMeta.models[engine].consistencyLora;
+  return {
+    name: (status && status.name) || DEFAULT_KLEIN_OUTPAINT_LORAS[engine],
+    installed: !status || status.ok !== false,
+  };
+}
+
+function detachKleinOutpaintConsistencyLora(engine, stack) {
+  if (!Array.isArray(stack)) return;
+  const managed = stack.find((item) => item && item.managed === 'klein-outpaint-consistency');
+  if (managed && managed.name) state.kleinOutpaintConsistencyLoras[engine] = managed;
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    if (stack[index] && stack[index].managed === 'klein-outpaint-consistency') stack.splice(index, 1);
+  }
+}
+
+function syncKleinOutpaintConsistencyLora() {
+  state.kleinOutpaintConsistencyLoras ||= {};
+  const activeEngine = state.view === 'edit' && state.editOutpaint
+    && (state.editEngine === 'klein4' || state.editEngine === 'klein9') ? state.editEngine : '';
+  ['klein4', 'klein9'].forEach((engine) => {
+    const stack = engine === state.editEngine ? state.editLoras : state.editLorasByEngine[engine];
+    if (engine !== activeEngine) detachKleinOutpaintConsistencyLora(engine, stack);
+  });
+  if (!activeEngine) return null;
+  const spec = kleinOutpaintConsistencySpec(activeEngine);
+  const stack = state.editLoras;
+  const key = assetNameKey(spec.name);
+  let managed = stack.find((item) => item && assetNameKey(item.name) === key)
+    || state.kleinOutpaintConsistencyLoras[activeEngine];
+  if (!managed || assetNameKey(managed.name) !== key) {
+    managed = { name: spec.name, strength: 0.6, on: true };
+  }
+  managed.name = spec.name;
+  managed.strength = Math.max(0, Math.min(2, Number(managed.strength) || 0.6));
+  if (typeof managed.on !== 'boolean') managed.on = true;
+  managed.managed = 'klein-outpaint-consistency';
+  managed.missing = !spec.installed;
+  state.kleinOutpaintConsistencyLoras[activeEngine] = managed;
+  const others = stack.filter((item) => item && item !== managed
+    && item.managed !== 'klein-outpaint-consistency' && assetNameKey(item.name) !== key);
+  stack.splice(0, stack.length, managed, ...others);
+  state.editLorasByEngine[activeEngine] = stack;
+  return managed;
+}
+
+function activeEditAutomaticLoraSpec() {
+  if (state.view !== 'edit') return null;
+  if (state.editEngine === 'krea2' && state.editOutpaint) {
+    const status = lastMeta?.models?.krea2Outpaint?.lora;
+    return {
+      key: 'krea2-outpaint',
+      name: status?.name || DEFAULT_EDIT_AUTOMATIC_LORAS['krea2-outpaint'],
+      strength: 1,
+      installed: !status || status.ok !== false,
+    };
+  }
+  if (state.editEngine === 'qwen' && state.qwenQuality === 'fast') {
+    const status = lastMeta?.models?.qwen?.lora;
+    return {
+      key: 'qwen-lightning',
+      name: status?.name || DEFAULT_EDIT_AUTOMATIC_LORAS['qwen-lightning'],
+      strength: 1,
+      installed: !status || status.ok !== false,
+    };
+  }
+  return null;
+}
+
+function syncEditAutomaticLora() {
+  state.editAutomaticLoras ||= {};
+  const active = activeEditAutomaticLoraSpec();
+  EDIT_ENGINES.forEach((engine) => {
+    const stack = engine === state.editEngine ? state.editLoras : state.editLorasByEngine[engine];
+    if (!Array.isArray(stack)) return;
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      const item = stack[index];
+      if (!item || item.managed !== 'edit-workflow-auto') continue;
+      if (item.managedKey) state.editAutomaticLoras[item.managedKey] = item;
+      stack.splice(index, 1);
+    }
+  });
+  if (!active) return null;
+  const stack = state.editLoras;
+  const key = assetNameKey(active.name);
+  let managed = stack.find((item) => item && assetNameKey(item.name) === key)
+    || state.editAutomaticLoras[active.key];
+  if (!managed || assetNameKey(managed.name) !== key) {
+    managed = { name: active.name, strength: active.strength, on: true };
+  }
+  managed.name = active.name;
+  managed.strength = Math.max(0, Math.min(2, Number(managed.strength) || active.strength));
+  if (typeof managed.on !== 'boolean') managed.on = true;
+  managed.managed = 'edit-workflow-auto';
+  managed.managedKey = active.key;
+  managed.missing = !active.installed;
+  state.editAutomaticLoras[active.key] = managed;
+  const others = stack.filter((item) => item && item !== managed
+    && item.managed !== 'edit-workflow-auto' && assetNameKey(item.name) !== key);
+  stack.splice(0, stack.length, managed, ...others);
+  state.editLorasByEngine[state.editEngine] = stack;
+  return managed;
+}
+
+function managedLoraChanged(lora) {
+  krea2ManagedLoraChanged(lora);
+  if (!lora) return;
+  if (lora.managed === 'klein-outpaint-consistency' && (state.editEngine === 'klein4' || state.editEngine === 'klein9')) {
+    state.kleinOutpaintConsistencyLoras[state.editEngine] = lora;
+  }
+  if (lora.managed === 'edit-workflow-auto' && lora.managedKey) {
+    state.editAutomaticLoras[lora.managedKey] = lora;
+  }
 }
 
 $('#kreaTurboToggle').addEventListener('click', () => {
@@ -2677,6 +3095,18 @@ $('#createImageGuideToggle').addEventListener('click', () => {
 });
 $('#createImageGuideAdd').addEventListener('click', pickCreateImageGuide);
 $('#createImageGuideChange').addEventListener('click', pickCreateImageGuide);
+$('#createImageGuideCrop').addEventListener('click', () => {
+  if (!state.createRef) return;
+  openInputImageCrop(state.createRef, async (next) => {
+    state.createRef = await prepareCreateImageGuideAsset(next);
+    clearCreateDepthPreview();
+    applyCreateMatchedDimensions();
+    renderCreateImageGuide();
+    renderAspects();
+    renderDims();
+    saveForm();
+  }, 'Crop image guide');
+});
 $('#createImageGuideModes').addEventListener('click', (event) => {
   const button = event.target.closest('[data-guide-mode]');
   if (!button) return;
@@ -3294,6 +3724,7 @@ function setRegionReference(asset) {
   if (!region || !asset) return;
   region.refImageName = asset.name;
   region.refUrl = asset.url;
+  region.refAsset = asset;
   renderRegionEditor();
   saveForm();
   toast('Region reference added');
@@ -3374,7 +3805,6 @@ function renderKreaMaskTools() {
   $('#kreaMaskBtn').classList.toggle('active', hasMask);
   syncEditAreaChrome();
   renderEditMaskAdvanced();
-  renderEditOutpaintAdvanced();
   $('#genLbl').textContent = genLabel();
 }
 
@@ -3392,21 +3822,6 @@ function renderEditMaskAdvanced() {
   $('#editMaskInfluenceVal').textContent = `${influence}%`;
   $('#editMaskExpand').value = String(expand);
   $('#editMaskExpandVal').textContent = `${expand} px`;
-}
-
-function renderEditOutpaintAdvanced() {
-  const panel = $('#editOutpaintAdvanced');
-  if (!panel) return;
-  const visible = editOutpaintActive();
-  panel.hidden = !visible;
-  if (!visible) return;
-  state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number(state.editOutpaintFeather) || 0)));
-  state.editOutpaintMaskOffset = Math.max(-15, Math.min(15, Math.round(Number(state.editOutpaintMaskOffset) || 0)));
-  $('#editOutpaintFeather').value = String(state.editOutpaintFeather);
-  $('#editOutpaintFeatherVal').textContent = `${state.editOutpaintFeather}%`;
-  $('#editOutpaintMaskOffset').value = String(state.editOutpaintMaskOffset);
-  $('#editOutpaintMaskOffsetVal').textContent = `${state.editOutpaintMaskOffset > 0 ? '+' : ''}${state.editOutpaintMaskOffset}%`;
-  $('#editOutpaintAdvancedNote').textContent = hasEditMask() ? 'Subject composite · full image guides generation' : 'Full source boundary';
 }
 
 function renderKreaMaskMode() {
@@ -3958,7 +4373,6 @@ function setMaskGestureValues(brush, feather, { announce = false } = {}) {
   const live = $('#kreaMaskGestureLive');
   const activeFeather = editOutpaintActive() ? `${state.editOutpaintFeather}% preserve feather` : `${state.kreaMaskFeather} feather`;
   if (announce && live) live.textContent = `Brush size ${state.kreaBrush} px · ${activeFeather}`;
-  renderEditOutpaintAdvanced();
 }
 
 function finishMaskGesture() {
@@ -4061,8 +4475,19 @@ $('#regionRefClear').addEventListener('click', () => {
   if (!region) return;
   region.refImageName = '';
   region.refUrl = '';
+  region.refAsset = null;
   renderRegionEditor();
   saveForm();
+});
+$('#regionRefCrop').addEventListener('click', () => {
+  const region = selectedRegion();
+  if (!region || !region.refImageName) return;
+  const asset = region.refAsset || {
+    name: region.refImageName,
+    url: region.refUrl || `/api/input?name=${encodeURIComponent(region.refImageName)}`,
+    label: 'Region reference',
+  };
+  openInputImageCrop(asset, (next) => setRegionReference(next), 'Crop region reference');
 });
 $('#regionSettingsClose').addEventListener('click', () => {
   regionSettingsOpen = false;
@@ -4156,33 +4581,11 @@ $('#kreaMaskFeather').addEventListener('input', () => {
   renderMaskOverlay();
   refreshMaskCutoutPreview();
   scheduleMaskedRefPreview();
-  renderEditOutpaintAdvanced();
   saveForm();
 });
 $('#kreaMaskOffset').addEventListener('input', () => {
   state.editOutpaintMaskOffset = Math.max(-15, Math.min(15, Math.round(Number($('#kreaMaskOffset').value) || 0)));
   state.kreaMaskDirty = hasEditMask();
-  renderMaskAdjustments();
-  renderMaskOverlay();
-  refreshMaskCutoutPreview();
-  scheduleMaskedRefPreview();
-  renderEditOutpaintAdvanced();
-  saveForm();
-});
-$('#editOutpaintFeather').addEventListener('input', () => {
-  state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number($('#editOutpaintFeather').value) || 0)));
-  if (editOutpaintActive() && hasEditMask()) state.kreaMaskDirty = true;
-  renderEditOutpaintAdvanced();
-  renderMaskAdjustments();
-  renderMaskOverlay();
-  refreshMaskCutoutPreview();
-  scheduleMaskedRefPreview();
-  saveForm();
-});
-$('#editOutpaintMaskOffset').addEventListener('input', () => {
-  state.editOutpaintMaskOffset = Math.max(-15, Math.min(15, Math.round(Number($('#editOutpaintMaskOffset').value) || 0)));
-  if (editOutpaintActive() && hasEditMask()) state.kreaMaskDirty = true;
-  renderEditOutpaintAdvanced();
   renderMaskAdjustments();
   renderMaskOverlay();
   refreshMaskCutoutPreview();
@@ -4241,6 +4644,7 @@ function wireEndFrame(prefix, stateKey) {
   const thumb = $('#' + prefix + 'EndThumb');
   const img = $('#' + prefix + 'EndImg');
   const x = $('#' + prefix + 'EndX');
+  const crop = $('#' + prefix + 'EndCrop');
   const refresh = () => {
     const has = !!state[stateKey];
     chip.hidden = has;
@@ -4256,6 +4660,16 @@ function wireEndFrame(prefix, stateKey) {
     refresh();
     toast('Last frame removed');
     saveForm();
+  });
+  if (crop) crop.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const asset = state[stateKey];
+    if (!asset) return;
+    openInputImageCrop(asset, (next) => {
+      state[stateKey] = next;
+      refresh();
+      saveForm();
+    }, 'Crop end frame');
   });
   endFrameRefresh[stateKey] = refresh;
 }
@@ -4301,7 +4715,7 @@ function clearVideoFrameDrag() {
 
 function wireVideoFrameDrag(slot, role) {
   slot.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('.attach-x')) return;
+    if (event.target.closest('.attach-x, .input-crop-action')) return;
     clearVideoFrameDrag();
     const drag = {
       pointerId: event.pointerId,
@@ -4753,6 +5167,7 @@ $('#qwenQualityControl').addEventListener('click', (event) => {
   state.qwenQuality = button.dataset.qwenQuality === 'fast' ? 'fast' : 'quality';
   renderQwenQuality();
   renderEditModelSummary();
+  renderLoras();
   saveForm();
 });
 
@@ -5524,7 +5939,6 @@ function renderEditOutpaint() {
           ? 'Drag the subject to position it. Only the preserve mask stays at native resolution.'
           : 'Drag the source to position it. It stays at native resolution while the surrounding canvas is generated.')
         : `Drag the source to position it on the ${state.editWidth} × ${state.editHeight} canvas.`));
-  renderEditOutpaintAdvanced();
 }
 
 $('#editOutpaintToggle').addEventListener('click', () => {
@@ -6184,6 +6598,8 @@ function loraThumbHtml(name, cls) {
 }
 
 function renderLoras() {
+  syncKleinOutpaintConsistencyLora();
+  syncEditAutomaticLora();
   const arr = curLoras();
   const list = $('#loraList');
   list.innerHTML = '';
@@ -6191,12 +6607,15 @@ function renderLoras() {
     if (!l.name) { arr.splice(idx, 1); return; } // legacy empty rows
     const card = document.createElement('div');
     const trigger = loraTriggerPhrase(l);
-    card.className = 'lora-card' + (l.on ? ' on' : '') + (trigger ? ' has-trigger' : '');
+    const managedConsistency = l.managed === 'klein-outpaint-consistency' || l.managed === 'edit-workflow-auto';
+    card.className = 'lora-card' + (l.on ? ' on' : '') + (trigger ? ' has-trigger' : '')
+      + (managedConsistency ? ' managed-consistency' : '') + (l.missing ? ' missing' : '');
     card.style.setProperty('--lora-color', loraTriggerColor(l.name));
     card.innerHTML = `${loraThumbHtml(l.name, 'lc-thumb')}`
       + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
       + `<button class="lc-menu" type="button" aria-label="LoRA options" aria-haspopup="menu" aria-expanded="false">⋯</button>`
       + (trigger ? `<span class="lc-trigger-badge" title="Trigger phrase: ${escapeHtml(trigger)}" aria-label="Has trigger phrase">✦</span>` : '')
+      + (managedConsistency ? '<span class="lc-auto-badge" title="Applied automatically for Klein outpaint">Auto</span>' : '')
       + `<span class="lc-name" title="${escapeHtml(prettyLora(l.name))}">${escapeHtml(prettyLora(l.name))}</span>`
       + `<span class="lc-adjust"></span>`;
     wireLoraCard(card, l, idx, arr);
@@ -6253,15 +6672,16 @@ function wireLoraCard(card, l, idx, arr) {
         });
         if (v == null) return;
         l.strength = Math.max(0, Math.min(2, Number(v) || 0));
-        krea2ManagedLoraChanged(l);
+        managedLoraChanged(l);
         renderLoras();
         saveForm();
       } },
-      { label: l.managed === 'krea2-raw-turbo' ? 'Turn off Turbo LoRA' : 'Remove from stack', danger: true, action: () => {
+      { label: l.managed === 'krea2-raw-turbo' ? 'Turn off Turbo LoRA'
+        : ((l.managed === 'klein-outpaint-consistency' || l.managed === 'edit-workflow-auto') ? 'Turn off automatic LoRA' : 'Remove from stack'), danger: true, action: () => {
         demoteLoraTriggerInPrompt(l);
-        if (l.managed === 'krea2-raw-turbo') {
+        if (l.managed === 'krea2-raw-turbo' || l.managed === 'klein-outpaint-consistency' || l.managed === 'edit-workflow-auto') {
           l.on = false;
-          krea2ManagedLoraChanged(l);
+          managedLoraChanged(l);
         } else {
           arr.splice(idx, 1);
         }
@@ -6323,7 +6743,7 @@ function wireLoraCard(card, l, idx, arr) {
     if (adjusting) {
       card.classList.remove('adjusting');
       adjusting = false;
-      krea2ManagedLoraChanged(l);
+      managedLoraChanged(l);
       saveForm();
       renderLoras(); // refresh badge formatting
       window.scrollTo(0, sy);
@@ -6332,7 +6752,7 @@ function wireLoraCard(card, l, idx, arr) {
       l.on = !l.on;
       if (!wasOn && l.on) ensureLoraTriggerInPrompt(l);
       else if (wasOn && !l.on) demoteLoraTriggerInPrompt(l);
-      krea2ManagedLoraChanged(l);
+      managedLoraChanged(l);
       renderLoras();
       window.scrollTo(0, sy);
       saveForm();
@@ -6345,7 +6765,7 @@ function wireLoraCard(card, l, idx, arr) {
       const sy = window.scrollY;
       card.classList.remove('adjusting');
       adjusting = false;
-      krea2ManagedLoraChanged(l);
+      managedLoraChanged(l);
       saveForm();
       renderLoras();
       window.scrollTo(0, sy);
@@ -6914,6 +7334,22 @@ function renderRefs() {
       const img = document.createElement('img');
       img.src = (idx === 0 && ref.displayUrl) || ref.url;
       slot.appendChild(img);
+      const crop = document.createElement('button');
+      crop.className = 'input-crop-action';
+      crop.type = 'button';
+      crop.setAttribute('aria-label', `Crop input image ${idx + 1}`);
+      crop.title = `Crop input image ${idx + 1}`;
+      crop.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg>';
+      crop.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openInputImageCrop(ref, (next) => {
+          if (idx === 0) clearKreaMask(true);
+          state.refs[idx] = next;
+          renderRefs();
+          saveForm();
+        }, `Crop input image ${idx + 1}`);
+      });
+      slot.appendChild(crop);
       wireRefReorder(slot, idx, maxSlots);
     } else {
       slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');
@@ -6968,7 +7404,7 @@ function clearRefReorder() {
 function wireRefReorder(slot, index, maxSlots) {
   if (maxSlots < 2) return;
   slot.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('.ref-x')) return;
+    if (event.target.closest('.ref-x, .input-crop-action')) return;
     clearRefReorder();
     const drag = { pointerId: event.pointerId, from: index, active: false, target: index, timer: null };
     refReorder = drag;
@@ -7397,6 +7833,15 @@ function renderVideoFpsChoices() {
 $('#vidFaceChip').addEventListener('click', () => openFaceSheet());
 $('#vidFaceSwap').addEventListener('click', () => openFaceSheet());
 $('#vidFaceImg').addEventListener('click', () => openFaceSheet());
+$('#vidFaceCrop').addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (!state.vidFace) return;
+  openInputImageCrop(state.vidFace, (next) => {
+    state.vidFace = next;
+    renderVidAttach();
+    saveForm();
+  }, 'Crop Face ID image');
+});
 $('#vidFaceX').addEventListener('click', () => {
   state.vidFace = null;
   renderVidAttach();
@@ -7500,6 +7945,16 @@ $('#faceUploadBtn').addEventListener('click', () => {
   });
 });
 $('#vidAttachBtn').addEventListener('click', () => pickVidRef());
+$('#vidAttachCrop').addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (!state.vidRef) return;
+  openInputImageCrop(state.vidRef, (next) => {
+    state.vidRef = next;
+    renderVidAttach();
+    updateVideoPanels();
+    saveForm();
+  }, state.vidEngine === 'scail' ? 'Crop reference image' : 'Crop first frame');
+});
 $('#vidAttachX').addEventListener('click', () => {
   state.vidRef = null;
   renderVidAttach();

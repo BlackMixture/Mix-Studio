@@ -158,6 +158,30 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.outpaint_refine.class_type, 'SeedVR2VideoUpscaler');
   assert.equal(graph.outpaint_refine.inputs.seed, 202373335);
   assert.equal(graph.outpaint_refine_vae.inputs.decode_tiled, true);
+
+  const adjusted = buildKrea2OutpaintGraph({
+    settings: {
+      unet: 'krea2_turbo.safetensors', clip: 'qwen3vl.safetensors', clipType: 'krea2',
+      vae: 'qwen_image_vae.safetensors', krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+    },
+    imageName: 'source.png', width: 1344, height: 768,
+    padding: { left: 0, top: 0, right: 220, bottom: 0 },
+    loras: [{ name: 'krea2_identity_edit_v1_1_r128.safetensors', strength: 0.55, on: true }],
+  });
+  assert.equal(adjusted.identity_lora.inputs.strength_model, 0.55);
+  assert.equal(adjusted.user_lora_1, undefined);
+
+  const disabled = buildKrea2OutpaintGraph({
+    settings: {
+      unet: 'krea2_turbo.safetensors', clip: 'qwen3vl.safetensors', clipType: 'krea2',
+      vae: 'qwen_image_vae.safetensors', krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+    },
+    imageName: 'source.png', width: 1344, height: 768,
+    padding: { left: 0, top: 0, right: 220, bottom: 0 },
+    loras: [{ name: 'krea2_identity_edit_v1_1_r128.safetensors', strength: 1, on: false }],
+  });
+  assert.equal(disabled.identity_lora, undefined);
+  assert.deepEqual(disabled.model_patch.inputs.model, ['unet', 0]);
   assert.equal(graph.final_scale.inputs.width, 2400);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
   assert.equal(graph.color_match_final.inputs.method, 'hm-mvgd-hm');

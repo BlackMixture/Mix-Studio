@@ -1803,7 +1803,10 @@ async function buildEditKrea2Outpaint(p, refNames) {
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
     : comboList(info, 'LoraLoader', 'lora_name');
   const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
-  if (!loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
+  const identityOverride = (Array.isArray(p.loras) ? p.loras : [])
+    .find((lora) => assetKey(lora && lora.name) === assetKey(settings.krea2OutpaintLora));
+  const identityEnabled = !identityOverride || identityOverride.on !== false;
+  if (identityEnabled && !loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
     throw new Error(`Krea 2 outpaint needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
   }
   return filterInputs(buildKrea2OutpaintGraph(Object.assign({}, p, {
@@ -1827,11 +1830,14 @@ async function buildEditKleinOutpaint(p, refNames) {
   const consistencyLora = p.editEngine === 'klein9'
     ? settings.klein9ConsistencyLora
     : settings.klein4ConsistencyLora;
+  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  const consistencyOverride = (Array.isArray(p.loras) ? p.loras : [])
+    .find((lora) => assetKey(lora && lora.name) === assetKey(consistencyLora));
+  const consistencyEnabled = !consistencyOverride || consistencyOverride.on !== false;
   const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
     : comboList(info, 'LoraLoader', 'lora_name');
-  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
-  if (consistencyLora && !loraList.some((name) => assetKey(name) === assetKey(consistencyLora))) {
+  if (consistencyEnabled && consistencyLora && !loraList.some((name) => assetKey(name) === assetKey(consistencyLora))) {
     const label = p.editEngine === 'klein9' ? 'Klein 9B' : 'Klein 4B';
     throw new Error(`${label} outpaint needs its Consistence Edit LoRA in ComfyUI loras: ${consistencyLora}`);
   }
@@ -1949,10 +1955,17 @@ async function buildEditQwen(p, refNames) {
   const preset = qwenEditPreset(p.qwenQuality);
   graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.qwenEditUnet, weight_dtype: 'default' } };
   let qwenBaseModel = ['unet', 0];
-  if (preset.lightning) {
+  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  const lightningOverride = (Array.isArray(p.loras) ? p.loras : [])
+    .find((lora) => assetKey(lora && lora.name) === assetKey(settings.qwenEditLora));
+  if (preset.lightning && (!lightningOverride || lightningOverride.on !== false)) {
     graph.lightning = {
       class_type: 'LoraLoaderModelOnly',
-      inputs: { model: qwenBaseModel, lora_name: settings.qwenEditLora, strength_model: 1 },
+      inputs: {
+        model: qwenBaseModel,
+        lora_name: settings.qwenEditLora,
+        strength_model: lightningOverride ? clampNum(lightningOverride.strength, 0, 2, 1) : 1,
+      },
     };
     qwenBaseModel = ['lightning', 0];
   }
@@ -1963,7 +1976,9 @@ async function buildEditQwen(p, refNames) {
     };
     qwenBaseModel = ['angle_lora', 0];
   }
-  const qModel = chainModelLoras(graph, qwenBaseModel, p.loras, 'qlora');
+  const userLoras = (Array.isArray(p.loras) ? p.loras : [])
+    .filter((lora) => assetKey(lora && lora.name) !== assetKey(settings.qwenEditLora));
+  const qModel = chainModelLoras(graph, qwenBaseModel, userLoras, 'qlora');
   graph.ms = { class_type: 'ModelSamplingAuraFlow', inputs: { model: qModel, shift: 3.1 } };
   graph.cfgnorm = { class_type: 'CFGNorm', inputs: { model: ['ms', 0], strength: 1 } };
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.qwenEditClip, type: 'qwen_image', device: 'default' } };

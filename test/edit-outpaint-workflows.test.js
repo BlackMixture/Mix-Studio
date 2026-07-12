@@ -46,7 +46,7 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
   assert.equal(graph.positive.class_type, 'ReferenceLatent');
   assert.equal(graph.klein_outpaint_consistency.class_type, 'LoraLoaderModelOnly');
   assert.equal(graph.klein_outpaint_consistency.inputs.lora_name, 'f2k_9B_lcs_consist_20260415.safetensors');
-  assert.equal(graph.klein_outpaint_consistency.inputs.strength_model, 0.6);
+  assert.equal(graph.klein_outpaint_consistency.inputs.strength_model, 1);
   assert.deepEqual(graph.guider.inputs.model, ['klein_outpaint_consistency', 0]);
   assert.equal(graph.klein_outpaint_lora_1, undefined);
   assert.equal(graph.scheduler.class_type, 'Flux2Scheduler');
@@ -91,6 +91,36 @@ test('Klein 4B outpaint uses its matching consistency LoRA and documented trigge
   assert.equal(graph.klein_outpaint_consistency.inputs.lora_name, 'f2k_4B_consist_20260314.safetensors');
   assert.equal(graph.klein_outpaint_consistency.inputs.strength_model, 0.6);
   assert.match(graph.positive_text.inputs.text, /transform the image to realistic photograph/);
+});
+
+test('Klein outpaint consistency LoRA can be adjusted or disabled from the visible LoRA stack', () => {
+  const base = {
+    settings: {
+      kleinVae: 'flux2-vae.safetensors',
+      klein9ConsistencyLora: 'consistency.safetensors',
+      klein9ConsistencyTrigger: 'restore image details',
+    },
+    editEngine: 'klein9',
+    unetName: 'flux-2-klein-9b.safetensors',
+    clipName: 'qwen_3_8b.safetensors',
+    imageName: 'source.png',
+    width: 1344,
+    height: 768,
+    padding,
+    prompt: 'Continue the room.',
+  };
+  const adjusted = buildKleinOutpaintGraph(Object.assign({}, base, {
+    loras: [{ name: 'consistency.safetensors', strength: 0.35, on: true }],
+  }));
+  assert.equal(adjusted.klein_outpaint_consistency.inputs.strength_model, 0.35);
+  assert.match(adjusted.positive_text.inputs.text, /restore image details/);
+
+  const disabled = buildKleinOutpaintGraph(Object.assign({}, base, {
+    loras: [{ name: 'consistency.safetensors', strength: 0.35, on: false }],
+  }));
+  assert.equal(disabled.klein_outpaint_consistency, undefined);
+  assert.deepEqual(disabled.guider.inputs.model, ['unet', 0]);
+  assert.doesNotMatch(disabled.positive_text.inputs.text, /restore image details/);
 });
 
 test('outpaint can preserve an organic subject mask instead of the source rectangle', () => {
@@ -151,10 +181,33 @@ test('Qwen outpaint sends the padded green canvas through native edit conditioni
   assert.equal(graph.positive_encode.class_type, 'TextEncodeQwenImageEditPlus');
   assert.deepEqual(graph.positive_encode.inputs.image1, ['outpaint_source', 0]);
   assert.equal(graph.sampler.inputs.steps, 4);
+  assert.equal(graph.lightning.inputs.strength_model, 1);
   assert.equal(graph.color_match, undefined);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
+
+  const adjusted = buildQwenOutpaintGraph({
+    settings: {
+      qwenEditUnet: 'qwen-edit.safetensors', qwenEditClip: 'qwen-clip.safetensors',
+      qwenEditLora: 'lightning.safetensors', vae: 'qwen-vae.safetensors',
+    },
+    preset: { steps: 4, cfg: 1, lightning: true }, imageName: 'source.png',
+    width: 1344, height: 768, padding, prompt: '',
+    loras: [{ name: 'lightning.safetensors', strength: 0.45, on: true }],
+  });
+  assert.equal(adjusted.lightning.inputs.strength_model, 0.45);
+  assert.equal(adjusted.qwen_outpaint_lora_1, undefined);
+  const disabled = buildQwenOutpaintGraph({
+    settings: {
+      qwenEditUnet: 'qwen-edit.safetensors', qwenEditClip: 'qwen-clip.safetensors',
+      qwenEditLora: 'lightning.safetensors', vae: 'qwen-vae.safetensors',
+    },
+    preset: { steps: 4, cfg: 1, lightning: true }, imageName: 'source.png',
+    width: 1344, height: 768, padding, prompt: '',
+    loras: [{ name: 'lightning.safetensors', strength: 1, on: false }],
+  });
+  assert.equal(disabled.lightning, undefined);
 });
 
 test('Krea2 outpaint uses the padded mask as latent noise and preserves the source area', () => {
