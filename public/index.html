@@ -1314,14 +1314,18 @@
   <div class="gate-inner">
     <h2 class="gate-title">Who's creating?</h2>
     <div class="profile-tiles" id="profileList"></div>
-    <div class="profile-new" id="profileNewForm" hidden>
-      <input id="newProfileName" type="text" placeholder="Profile name" maxlength="30" />
-      <input id="newProfilePin" type="password" inputmode="numeric" placeholder="PIN (optional)" maxlength="12" />
-      <div class="chip-row" style="justify-content:center">
-        <button class="sheet-cta" id="newProfileBtn">Create profile</button>
-        <button class="chip" id="newProfileCancel">Cancel</button>
-      </div>
-    </div>
+  </div>
+  <div class="profile-new" id="profileNewForm" hidden>
+    <form class="profile-new-card" id="profileCreateForm" role="dialog" aria-modal="true" aria-labelledby="profileCreateTitle">
+      <div class="profile-new-head"><h3 id="profileCreateTitle">Add profile</h3><button id="newProfileCancel" type="button" aria-label="Close add profile">✕</button></div>
+      <p>Create a separate workspace on this Mix Studio.</p>
+      <label for="newProfileName">Profile name</label>
+      <input id="newProfileName" type="text" autocomplete="name" placeholder="Name" maxlength="30" />
+      <label for="newProfilePin">PIN <small>Optional</small></label>
+      <input id="newProfilePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Leave empty for no PIN" maxlength="12" />
+      <p class="profile-new-error" id="newProfileError" role="alert" hidden></p>
+      <button class="sheet-cta" id="newProfileBtn" type="submit">Create profile</button>
+    </form>
   </div>
 </div>
 

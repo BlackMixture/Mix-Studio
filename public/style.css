@@ -2193,16 +2193,60 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .tile-grad-2 { background: linear-gradient(135deg, #46b4e6, #4655e6); }
 .tile-grad-3 { background: linear-gradient(135deg, #38b26a, #46e6c8); }
 .tile-grad-4 { background: linear-gradient(135deg, #e6b446, #e67846); }
-.profile-new { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 0 auto; }
-.profile-new input {
-  background: rgba(0,0,0,0.4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--ink-soft);
-  padding: 12px 14px;
-  font-size: 15px;
-  text-align: center;
+.profile-new {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 18px;
+  background: rgba(0,0,0,.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
 }
+.profile-new[hidden] { display: none; }
+.profile-new-card {
+  width: min(390px, 100%);
+  padding: 18px;
+  border: 1px solid rgba(226,232,255,.14);
+  border-radius: 20px;
+  background: #000;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.profile-new-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile-new-head h3 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 900; }
+.profile-new-head button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #090b11;
+  color: var(--muted);
+  font-size: 17px;
+}
+.profile-new-card > p { margin: 0 0 7px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.profile-new-card label { margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.profile-new-card label small { color: var(--muted-2); font-size: inherit; font-weight: 750; }
+.profile-new-card input {
+  width: 100%;
+  min-width: 0;
+  height: 45px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #06070a;
+  color: var(--ink-soft);
+  font-size: 15px;
+  outline: none;
+}
+.profile-new-card input:focus { border-color: rgba(116,159,255,.68); box-shadow: 0 0 0 3px rgba(76,131,255,.1); }
+.profile-new-card .sheet-cta { margin-top: 8px; }
+.profile-new-error { margin: 2px 0 0 !important; color: #ff9f97 !important; font-size: 11px !important; font-weight: 750; }
+.sheet.over-profile-gate { z-index: 210; }
 .profile-edit-head { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
 .profile-avatar-lg {
   width: 84px;

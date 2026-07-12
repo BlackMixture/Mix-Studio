@@ -453,7 +453,9 @@ let appDialogOptions = null;
 let appDialogChoice = null;
 
 function closeAppDialog(value = null) {
-  $('#appDialogSheet').classList.remove('show');
+  const sheet = $('#appDialogSheet');
+  if (sheet.contains(document.activeElement)) document.activeElement.blur();
+  sheet.classList.remove('show', 'over-profile-gate');
   const resolve = appDialogResolver;
   appDialogResolver = null;
   appDialogOptions = null;
@@ -512,6 +514,7 @@ function openAppDialog(options = {}) {
     list.appendChild(button);
   });
 
+  $('#appDialogSheet').classList.toggle('over-profile-gate', profileGateOpen);
   $('#appDialogSheet').classList.add('show');
   setTimeout(() => {
     if (inputOptions) $('#appDialogInput').focus();
@@ -571,7 +574,24 @@ async function showProfileGate() {
     const r = await fetch('/api/profiles').then((x) => x.json());
     gateProfiles = r.profiles || [];
   } catch { gateProfiles = []; }
+  closeProfileCreate();
   renderGateTiles();
+}
+
+function closeProfileCreate() {
+  const layer = $('#profileNewForm');
+  if (layer.contains(document.activeElement)) document.activeElement.blur();
+  layer.hidden = true;
+  $('#newProfileError').hidden = true;
+  $('#newProfileError').textContent = '';
+}
+
+function openProfileCreate() {
+  $('#newProfileName').value = '';
+  $('#newProfilePin').value = '';
+  $('#newProfileError').hidden = true;
+  $('#profileNewForm').hidden = false;
+  requestAnimationFrame(() => $('#newProfileName').focus({ preventScroll: true }));
 }
 
 function renderGateTiles() {
@@ -587,14 +607,12 @@ function renderGateTiles() {
   const add = document.createElement('button');
   add.className = 'profile-tile add';
   add.innerHTML = '<span class="tile-img">＋</span><span class="tile-name">Add profile</span>';
-  add.addEventListener('click', () => {
-    $('#profileNewForm').hidden = false;
-    $('#newProfileName').focus();
-  });
+  add.addEventListener('click', openProfileCreate);
   list.appendChild(add);
 }
 
 async function loginProfile(p) {
+  closeProfileCreate();
   let pin = '';
   if (p.hasPin) {
     pin = await askText({
@@ -616,10 +634,20 @@ async function loginProfile(p) {
   } catch (e) { toast(e.message, true); }
 }
 
-$('#newProfileCancel').addEventListener('click', () => { $('#profileNewForm').hidden = true; });
-$('#newProfileBtn').addEventListener('click', async () => {
+$('#newProfileCancel').addEventListener('click', closeProfileCreate);
+$('#profileNewForm').addEventListener('click', (event) => {
+  if (event.target === $('#profileNewForm')) closeProfileCreate();
+});
+$('#profileCreateForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
   const name = $('#newProfileName').value.trim();
-  if (!name) return toast('Give the profile a name', true);
+  if (!name) {
+    $('#newProfileError').textContent = 'Give the profile a name.';
+    $('#newProfileError').hidden = false;
+    $('#newProfileName').focus();
+    return;
+  }
+  $('#newProfileError').hidden = true;
   try {
     const r = await api('/api/profiles', {
       method: 'POST',
@@ -628,7 +656,10 @@ $('#newProfileBtn').addEventListener('click', async () => {
     });
     localStorage.setItem('ks-profile-id', r.profile.id);
     location.reload();
-  } catch (e) { toast(e.message, true); }
+  } catch (e) {
+    $('#newProfileError').textContent = e.message;
+    $('#newProfileError').hidden = false;
+  }
 });
 
 function renderProfileChip() {
