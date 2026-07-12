@@ -979,7 +979,10 @@
 <!-- lightbox -->
 <div class="overlay" id="lightbox">
   <div class="overlay-top">
-    <span class="overlay-title" id="lbTitle">Image</span>
+    <label class="generation-name-field" for="lbTitle" title="Rename generation">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
+      <input class="overlay-title generation-name-input" id="lbTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Generation name" />
+    </label>
     <button class="icon-btn" id="lbClose">✕</button>
   </div>
   <div class="lightbox-img-wrap">

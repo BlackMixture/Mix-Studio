@@ -42,6 +42,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /id="features"/);
   assert.match(page, /id="quick-start"/);
   assert.match(page, /mix-studio-create\.png/);
+  assert.match(page, /mix-studio-edit\.png/);
   assert.match(page, /mix-studio-region\.png/);
   assert.match(page, /mix-studio-video\.png/);
   assert.match(page, /mix-studio-mobile\.png/);
@@ -58,7 +59,9 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.doesNotMatch(page, /—/);
   assert.match(workflow, /cp install\.bat _site\/install\.bat/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-edit\.png _site\/mix-studio-edit\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);
+  assert.match(workflow, /cp -R docs\/download\/media _site\/media/);
   assert.match(workflow, /actions\/configure-pages@v5/);
   assert.match(workflow, /actions\/upload-pages-artifact@v4/);
   assert.match(workflow, /actions\/deploy-pages@v4/);
@@ -108,14 +111,21 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   assert.match(engine, /SignatureStatus\]::Valid/);
   assert.match(engine, /Install-ComfyDesktop/);
   assert.match(engine, /\[switch\]\$InstallDependencies/);
-  assert.match(image.label, /depth guidance/i);
+  assert.match(image.label, /depth/i);
+  assert.match(image.label, /SeedVR2/i);
+  assert.ok(image.models.includes('seedvr2-7b'));
+  assert.ok(image.nodes.includes('ComfyUI-SeedVR2_VideoUpscaler'));
   assert.match(ltx.label, /Face ID/);
   assert.ok(ltx.models.includes('ltx-face-id'));
   assert.ok(ltx.nodes.includes('BFS Nodes'));
   assert.deepEqual(dependencyCli.selectedComponents(
     { features: [{ id: 'core.image', required: true }, { id: 'video.ltx' }, { id: 'video.wan' }, { id: 'video.scail' }] },
     { 'video.ltx': true, 'video.wan': true, 'video.scail': true },
-  ), ['image', 'krea2depth', 'video', 'faceid', 'wan', 'scail', 'scailinfinity']);
+  ), ['image', 'krea2depth', 'upscale', 'video', 'faceid', 'wan', 'scail', 'scailinfinity']);
+  assert.deepEqual(dependencyCli.selectedComponents(
+    { features: [{ id: 'core.image', required: true }, { id: 'edit.klein4' }, { id: 'edit.klein9' }, { id: 'edit.qwen' }, { id: 'edit.krea2' }, { id: 'edit.krea2ref' }] },
+    { 'edit.klein4': true, 'edit.klein9': true, 'edit.qwen': true, 'edit.krea2': true, 'edit.krea2ref': true },
+  ), ['image', 'krea2depth', 'upscale', 'klein4', 'editoutpaint', 'klein9', 'smartmask', 'qwen', 'regional', 'krea2ref', 'krea2outpaint']);
 });
 
 test('portable installer requires Git for safe in-app updates and Node 22', () => {
@@ -144,6 +154,7 @@ test('portable installer validates direct engine input and keeps unique backups'
 test('portable checkout has a conservative uninstaller entry point', () => {
   const launcher = fs.readFileSync(path.join(root, 'uninstall.bat'), 'utf8');
   const uninstaller = fs.readFileSync(path.join(root, 'installer', 'uninstall.ps1'), 'utf8');
+  const engine = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
   assert.match(launcher, /installer\\uninstall\.ps1/i);
   assert.match(launcher, /ExecutionPolicy Bypass/i);
   assert.match(uninstaller, /Assert-SafeInstallRoot/);
@@ -151,6 +162,11 @@ test('portable checkout has a conservative uninstaller entry point', () => {
   assert.match(uninstaller, /ComfyUI.*Node\.js.*never removed/i);
   assert.match(uninstaller, /-RemoveData/);
   assert.match(uninstaller, /Type DELETE to continue/);
-  assert.match(uninstaller, /Where-Object \{ `\$_.FullName -ne `\$Data \}/);
+  assert.match(uninstaller, /Preserve-DataOutsideCheckout/);
+  assert.match(uninstaller, /LOCALAPPDATA.*Mix Studio\\data/);
+  assert.match(uninstaller, /mirrored export files are never removed/i);
+  assert.match(uninstaller, /Copy-Item -LiteralPath \$InstallFile -Destination \$PreservedInstall/);
   assert.match(uninstaller, /Start-Process -FilePath \$PowerShell/);
+  assert.match(engine, /PreservedDataDir/);
+  assert.match(engine, /Reusing preserved profiles, settings, and gallery data/);
 });

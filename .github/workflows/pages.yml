@@ -45,9 +45,11 @@ jobs:
           cp public/modatory-logo.svg _site/modatory-logo.svg
           cp public/mix-studio-wordmark-white-on-black.svg _site/mix-studio-wordmark.svg
           cp docs/download/mix-studio-create.png _site/mix-studio-create.png
+          cp docs/download/mix-studio-edit.png _site/mix-studio-edit.png
           cp docs/download/mix-studio-region.png _site/mix-studio-region.png
           cp docs/download/mix-studio-video.png _site/mix-studio-video.png
           cp docs/download/mix-studio-mobile.png _site/mix-studio-mobile.png
+          cp -R docs/download/media _site/media
           touch _site/.nojekyll
 
       - name: Upload Pages artifact

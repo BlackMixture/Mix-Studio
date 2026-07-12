@@ -10287,7 +10287,7 @@ $('#desktopStageSave').addEventListener('click', () => {
   mirrorGalleryExport({ id: item.id, asset: 'video', videoId: video.id });
   const link = document.createElement('a');
   link.href = '/videos/' + video.file;
-  link.download = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_') + '.mp4';
+  link.download = generationDownloadStem(item, 'mix_studio') + '.mp4';
   link.click();
 });
 $('#desktopStageEdit').addEventListener('click', () => {
@@ -10303,6 +10303,90 @@ $('#desktopStageUpscale').addEventListener('click', () => {
   if (item) openUpscaleSheet(item);
 });
 
+function generationMediaFilename(item, media = null) {
+  if (media && media.file) return String(media.file);
+  return String((item && (item.upscaled || item.file)) || 'untitled-generation');
+}
+
+function generationDisplayName(item, media = null) {
+  return String((item && item.name) || generationMediaFilename(item, media));
+}
+
+function generationDownloadStem(item, fallback = 'generation') {
+  const raw = String((item && item.name) || (item && item.prompt) || fallback).trim();
+  return raw
+    .replace(/\.[a-z0-9]{1,8}$/i, '')
+    .slice(0, 64)
+    .replace(/[^\w]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || fallback;
+}
+
+function setGenerationNameInput(item, media = null) {
+  const input = $('#lbTitle');
+  const fallback = generationMediaFilename(item, media);
+  const display = generationDisplayName(item, media);
+  input.value = display;
+  input.dataset.itemId = item.id;
+  input.dataset.fallback = fallback;
+  input.dataset.initialValue = display;
+  input.disabled = false;
+  input.setAttribute('aria-label', item.name ? `Rename ${item.name}` : `Name ${fallback}`);
+}
+
+async function saveGenerationNameInput(input) {
+  const item = state.items.find((entry) => entry.id === input.dataset.itemId);
+  if (!item) return;
+  const initialValue = String(input.dataset.initialValue || '');
+  const typed = input.value.replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (typed === initialValue) return;
+  const fallback = String(input.dataset.fallback || generationMediaFilename(item));
+  const editToken = `${item.id}\u0000${fallback}\u0000${initialValue}`;
+  const nextName = typed === fallback ? '' : typed;
+  input.classList.add('saving');
+  input.setAttribute('aria-busy', 'true');
+  try {
+    const updated = await api('/api/item/' + encodeURIComponent(item.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: nextName }),
+    });
+    Object.assign(item, updated);
+    if (state.currentItem && state.currentItem.id === item.id) Object.assign(state.currentItem, updated);
+    const currentToken = `${input.dataset.itemId}\u0000${input.dataset.fallback}\u0000${input.dataset.initialValue}`;
+    if (currentToken === editToken && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed) {
+      const display = generationDisplayName(item, { file: fallback });
+      input.value = display;
+      input.dataset.initialValue = display;
+    }
+    renderGrid();
+  } catch (error) {
+    const currentToken = `${input.dataset.itemId}\u0000${input.dataset.fallback}\u0000${input.dataset.initialValue}`;
+    if (currentToken === editToken && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed) {
+      input.value = initialValue;
+    }
+    toast(error.message, true);
+  } finally {
+    input.classList.remove('saving');
+    input.removeAttribute('aria-busy');
+  }
+}
+
+$('#lbTitle').addEventListener('focus', (event) => {
+  requestAnimationFrame(() => event.target.select());
+});
+$('#lbTitle').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.currentTarget.blur();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    event.currentTarget.value = event.currentTarget.dataset.initialValue || '';
+    event.currentTarget.blur();
+  }
+});
+$('#lbTitle').addEventListener('blur', (event) => saveGenerationNameInput(event.currentTarget));
+
 function librarySearchText(it) {
   const folder = state.folders.find((entry) => entry.id === it.folder);
   const loras = (it.loras || []).map((lora) => lora && lora.name).filter(Boolean);
@@ -10312,6 +10396,7 @@ function librarySearchText(it) {
     return [info.engine, info.motionPrompt, info.refinedMotionPrompt];
   }).filter(Boolean);
   return [
+    it.name,
     it.prompt,
     it.refinedPrompt,
     it.mode,
@@ -10357,7 +10442,7 @@ function visibleItems() {
     }
   }
   if (state.sortMode === 'old') arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  else if (state.sortMode === 'az') arr.sort((a, b) => (a.prompt || '').localeCompare(b.prompt || ''));
+  else if (state.sortMode === 'az') arr.sort((a, b) => (a.name || a.file || a.prompt || '').localeCompare(b.name || b.file || b.prompt || ''));
   else if (state.sortMode === 'active') arr.sort((a, b) => itemActivity(b) - itemActivity(a));
   else arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return arr;
@@ -12529,13 +12614,13 @@ function openLightbox(id, mediaSel) {
     $('#lbImg').hidden = false;
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
   }
-  let lightboxTitle = it.upscaled ? 'Upscaled'
-    : (it.mode === 'edit' ? 'Edit' : (it.mode === 'video' ? 'Video Poster' : 'Generation'));
-  if (generationItems.length > 1) lightboxTitle = `Generation ${generationIndex + 1} of ${generationItems.length}`;
-  if (angleItems.length > 1) lightboxTitle = `${angleViewLabel(it)} · Variation ${angleIndex + 1} of ${angleItems.length}`;
-  if (selComposite) lightboxTitle = selComposite.label || 'Before + after';
-  if (selVideo) lightboxTitle = `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`;
-  $('#lbTitle').textContent = lightboxTitle;
+  setGenerationNameInput(it, selVideo || selComposite || null);
+  const focusedPosition = angleItems.length > 1
+    ? `${angleViewLabel(it)} · Variation ${angleIndex + 1} of ${angleItems.length}`
+    : (generationItems.length > 1
+      ? `Generation ${generationIndex + 1} of ${generationItems.length}`
+      : 'Rename generation');
+  $('#lbTitle').title = focusedPosition;
   $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
 
   // media switcher keeps attached composites with the image they describe.
@@ -12813,13 +12898,11 @@ function openLightbox(id, mediaSel) {
             lv.play().catch(() => {});
             showingInput = true;
             btn.innerHTML = motionButtonMarkup(true);
-            $('#lbTitle').textContent = 'Motion input';
           } else {
             lv.src = '/videos/' + selVideo.file;
             lv.play().catch(() => {});
             showingInput = false;
             btn.innerHTML = motionButtonMarkup(false);
-            $('#lbTitle').textContent = `Video ${videos.indexOf(selVideo) + 1} of ${videos.length}`;
           }
         } catch (e) {
           btn.innerHTML = motionButtonMarkup(false);
@@ -12856,7 +12939,7 @@ function openLightbox(id, mediaSel) {
         mirrorGalleryExport({ id: it.id, asset: 'video', videoId: selVideo.id });
         const a = document.createElement('a');
         a.href = '/videos/' + selVideo.file;
-        a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_v' + (videos.indexOf(selVideo) + 1) + '.mp4';
+        a.download = generationDownloadStem(it, 'kreastudio') + '_v' + (videos.indexOf(selVideo) + 1) + '.mp4';
         a.click();
       } },
       { label: 'Documentation video', detail: 'Source + settings + result together', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
@@ -13810,7 +13893,7 @@ async function downloadRegionMap(it) {
       if (!blob) return toast('Export failed', true);
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_regions.png';
+      link.download = generationDownloadStem(it, 'kreastudio') + '_regions.png';
       mirrorExportFile(blob, link.download);
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
@@ -14258,7 +14341,7 @@ function saveDocumentationImage() {
   canvas.toBlob((blob) => {
     if (!blob) return toast('Documentation export failed', true);
     const link = document.createElement('a');
-    const stem = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '');
+    const stem = generationDownloadStem(item, 'mix_studio');
     link.href = URL.createObjectURL(blob);
     link.download = `${stem || 'mix_studio'}_documentation_${layout}${layout === 'contact' ? '_' + theme : ''}.png`;
     mirrorExportFile(blob, link.download);
@@ -14525,7 +14608,7 @@ async function saveDocumentationVideo(item, video) {
     if (run.cancelled || documentationVideoRun !== run) return;
     documentationVideoRun = null;
     const extension = blob.type === 'video/mp4' ? 'mp4' : 'webm';
-    const stem = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '') || 'mix_studio';
+    const stem = generationDownloadStem(item, 'mix_studio');
     const filename = `${stem}_documentation.${extension}`;
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -14591,7 +14674,7 @@ function downloadItem(it, variant) {
   const useUpscaled = variant === 'upscaled' || (variant !== 'original' && it.upscaled);
   const suffix = useUpscaled ? '_upscaled' : '_original';
   a.href = '/images/' + (useUpscaled ? it.upscaled : it.file);
-  a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
+  a.download = generationDownloadStem(it, 'kreastudio') + suffix + '.png';
   mirrorGalleryExport({ id: it.id, asset: 'image', variant });
   a.click();
 }
@@ -14600,7 +14683,7 @@ function downloadComposite(it, composite) {
   a.href = '/images/' + composite.file;
   const suffix = composite.type === 'reference-generation' ? '_reference_generation'
     : (composite.type === 'depth-map' ? '_depth_composite' : '_before_after');
-  a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + suffix + '.png';
+  a.download = generationDownloadStem(it, 'kreastudio') + suffix + '.png';
   mirrorGalleryExport({ id: it.id, asset: 'composite', compositeId: composite.id });
   a.click();
 }

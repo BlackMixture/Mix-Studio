@@ -16,8 +16,13 @@ trap {
 }
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$SettingsFile = Join-Path $Root 'data\settings.json'
+$LocalDataDir = Join-Path $Root 'data'
+$PreservedDataDir = Join-Path $env:LOCALAPPDATA 'Mix Studio\data'
+$PreservedInstallFile = Join-Path $env:LOCALAPPDATA 'Mix Studio\install.json'
+$DataDir = if ((Test-Path $LocalDataDir) -or -not (Test-Path $PreservedDataDir)) { $LocalDataDir } else { $PreservedDataDir }
+$SettingsFile = Join-Path $DataDir 'settings.json'
 $InstallFile = Join-Path $Root 'install.json'
+$ExistingInstallFile = if (Test-Path $InstallFile) { $InstallFile } elseif (Test-Path $PreservedInstallFile) { $PreservedInstallFile } else { $InstallFile }
 $ManifestFile = Join-Path $PSScriptRoot 'feature-manifest.json'
 $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
 
@@ -272,7 +277,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
 
           <Grid x:Name="PageFeatures" Visibility="Collapsed">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <StackPanel><TextBlock Text="Choose your workflows" FontSize="30" FontWeight="Bold"/><TextBlock Text="Core image generation includes a curated Krea 2 workflow with optimized defaults. Add the edit and video families you want; existing files are skipped." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,18" TextWrapping="Wrap"/></StackPanel>
+            <StackPanel><TextBlock Text="Choose your workflows" FontSize="30" FontWeight="Bold"/><TextBlock Text="Core image generation includes Krea 2, depth guidance, and SeedVR2 with optimized defaults. Each Edit family includes its matching outpaint tools; existing files are skipped." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,18" TextWrapping="Wrap"/></StackPanel>
             <StackPanel Grid.Row="1">
               <ToggleButton x:Name="DownloadModelsToggle" Style="{StaticResource FeatureToggle}" IsChecked="True">
                 <StackPanel><TextBlock Text="Download curated models and custom nodes" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="Install the dependencies selected for Mix Studio's tested workflows after ComfyUI is ready." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
@@ -562,7 +567,7 @@ function Test-ComfyConnection {
 
 # Restore current machine values without modifying anything.
 $Settings = Read-JsonSafe $SettingsFile
-$Install = Read-JsonSafe $InstallFile
+$Install = Read-JsonSafe $ExistingInstallFile
 $ComfyConfig = Property-Or $Install 'comfy' ([pscustomobject]@{})
 (Ui 'ComfyUrlBox').Text = [string](Property-Or $Settings 'comfyUrl' 'http://127.0.0.1:8188')
 (Ui 'ComfyPathBox').Text = [string](Property-Or $ComfyConfig 'path' '')
@@ -573,7 +578,7 @@ $HasExistingComfy = -not [string]::IsNullOrWhiteSpace((Ui 'ComfyPathBox').Text)
 
 $SavedFeatures = Property-Or $Settings 'features' ([pscustomobject]@{})
 $HasSavedFeatureSelection = @($SavedFeatures.PSObject.Properties).Count -gt 0
-$ConfiguredBefore = Test-Path $InstallFile
+$ConfiguredBefore = Test-Path $ExistingInstallFile
 (Ui 'DownloadModelsToggle').IsChecked = -not $ConfiguredBefore
 if (Test-Path $ManifestFile) {
   $Manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json

@@ -22,12 +22,12 @@ function argument(name) {
 }
 
 const FEATURE_COMPONENTS = Object.freeze({
-  'core.image': ['image', 'krea2depth'],
-  'edit.klein4': ['klein4'],
-  'edit.klein9': ['klein9', 'smartmask'],
-  'edit.qwen': ['qwen', 'smartmask'],
-  'edit.krea2': ['regional', 'smartmask'],
-  'edit.krea2ref': ['krea2ref'],
+  'core.image': ['image', 'krea2depth', 'upscale'],
+  'edit.klein4': ['klein4', 'editoutpaint'],
+  'edit.klein9': ['klein9', 'smartmask', 'editoutpaint'],
+  'edit.qwen': ['qwen', 'smartmask', 'editoutpaint'],
+  'edit.krea2': ['regional', 'smartmask', 'editoutpaint'],
+  'edit.krea2ref': ['krea2ref', 'krea2outpaint'],
   'video.ltx': ['video', 'faceid'],
   'video.ltxEdit': ['videoedit'],
   'video.eros': ['eros'],
@@ -47,7 +47,8 @@ function selectedComponents(manifest, selection) {
 
 async function main() {
   const install = readJson(path.join(root, 'install.json'));
-  const settings = readJson(path.join(root, 'data', 'settings.json'));
+  const dataDir = path.resolve(root, String(install.dataDir || 'data'));
+  const settings = readJson(path.join(dataDir, 'settings.json'));
   const manifest = readJson(path.join(__dirname, 'feature-manifest.json'));
   const selection = readJson(argument('--features'));
   const components = selectedComponents(manifest, selection);
@@ -55,7 +56,7 @@ async function main() {
 
   const comfy = install.comfy || {};
   const runtime = {
-    dataDir: path.join(root, 'data'),
+    dataDir,
     comfy: {
       path: String(comfy.path || ''),
       modelsPath: String(comfy.modelsPath || ''),

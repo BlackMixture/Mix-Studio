@@ -4428,9 +4428,59 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .overlay.show { display: flex; }
 .overlay-top {
   display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
   padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top));
 }
 .overlay-title { font-weight: 900; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.generation-name-field {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-2);
+}
+.generation-name-field > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .62;
+  transition: color 150ms var(--ease), opacity 150ms var(--ease);
+}
+.generation-name-input {
+  width: min(100%, 38rem);
+  min-width: 0;
+  height: 34px;
+  padding: 5px 7px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  outline: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 900;
+  letter-spacing: .015em;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+}
+.generation-name-field:hover > svg,
+.generation-name-field:focus-within > svg { color: var(--ink-soft); opacity: 1; }
+.generation-name-field:hover .generation-name-input { border-color: rgba(255,255,255,.1); }
+.generation-name-input:focus {
+  border-color: rgba(var(--mode-rgb),.48);
+  background: rgba(255,255,255,.045);
+  color: #fff;
+}
+.generation-name-input.saving { opacity: .58; }
 .lightbox-img-wrap { flex: 1 1 0; min-height: 0; position: relative; overflow: hidden; }
 .lightbox-img-wrap img,
 .lightbox-img-wrap video {
@@ -7387,7 +7437,7 @@ body.sheet-open {
     padding: 22px 20px 15px;
     border-bottom: 1px solid rgba(255,255,255,.065);
   }
-  #lightbox .overlay-title { color: var(--ink-soft); font-size: 13px; letter-spacing: .08em; }
+  #lightbox .overlay-title { color: var(--ink-soft); font-size: 13px; letter-spacing: .015em; }
   #lightbox .lb-media {
     grid-column: 2;
     grid-row: 2;

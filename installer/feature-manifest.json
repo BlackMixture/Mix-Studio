@@ -6,45 +6,45 @@
   "features": [
     {
       "id": "core.image",
-      "label": "Image generation + depth guidance",
+      "label": "Image generation + depth + SeedVR2",
       "required": true,
-      "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae"],
-      "nodes": ["core", "TextGenerate", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3"]
+      "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae", "seedvr2-7b", "seedvr2-vae"],
+      "nodes": ["core", "TextGenerate", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3", "ComfyUI-SeedVR2_VideoUpscaler"]
     },
     {
       "id": "edit.klein4",
-      "label": "Klein 4B Edit",
+      "label": "Klein 4B Edit + Outpaint",
       "default": false,
-      "models": ["flux-2-klein-4b", "qwen-3-4b", "flux2-vae"],
-      "nodes": ["Flux2Scheduler", "ReferenceLatent"]
+      "models": ["flux-2-klein-4b", "qwen-3-4b", "flux2-vae", "klein-4b-consistency-lora"],
+      "nodes": ["Flux2Scheduler", "ReferenceLatent", "KJNodes outpaint"]
     },
     {
       "id": "edit.klein9",
-      "label": "Klein 9B Edit",
+      "label": "Klein 9B Edit + Outpaint",
       "default": false,
-      "models": ["flux-2-klein-9b", "qwen-3-8b", "flux2-vae", "sam3"],
-      "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3"]
+      "models": ["flux-2-klein-9b", "qwen-3-8b", "flux2-vae", "klein-9b-consistency-lora", "sam3"],
+      "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3", "KJNodes outpaint"]
     },
     {
       "id": "edit.qwen",
-      "label": "Qwen Edit + multi-angle",
+      "label": "Qwen Edit + Outpaint + multi-angle",
       "default": false,
       "models": ["qwen-image-edit-2511", "qwen-image-edit-lightning", "qwen-image-edit-multi-angle", "sam3"],
-      "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod", "ComfyUI-SAM3"]
+      "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod", "ComfyUI-SAM3", "KJNodes outpaint"]
     },
     {
       "id": "edit.krea2",
-      "label": "Krea 2 Inpaint + Regions",
+      "label": "Krea 2 Inpaint + Outpaint + Regions",
       "default": true,
       "models": ["krea2", "sam3"],
-      "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ", "ComfyUI-SAM3"]
+      "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ", "ComfyUI-SAM3", "KJNodes outpaint"]
     },
     {
       "id": "edit.krea2ref",
-      "label": "Krea 2 Edit",
+      "label": "Krea 2 Edit + Identity Outpaint",
       "default": true,
-      "models": ["krea2"],
-      "nodes": ["Krea2EditRebalance"]
+      "models": ["krea2", "krea2-identity-edit-lora"],
+      "nodes": ["Krea2EditRebalance", "comfyui-krea2edit", "KJNodes outpaint"]
     },
     {
       "id": "video.ltx",

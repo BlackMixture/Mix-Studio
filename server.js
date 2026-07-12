@@ -119,6 +119,10 @@ const {
   copyToExportDirectory,
 } = require('./lib/export-location');
 const {
+  normalizeGenerationName,
+  generationFileStem,
+} = require('./lib/generation-name');
+const {
   PROFILE_COOKIE,
   hashPin,
   verifyPin,
@@ -5115,10 +5119,7 @@ async function handleApi(req, res, url) {
       }
       try { await fsp.access(full); } catch { return json(res, 404, { error: 'A selected image file is unavailable' }); }
       const ext = path.extname(file) || '.png';
-      const base = String(item.prompt || `generation-${index + 1}`)
-        .slice(0, 48)
-        .replace(/[^a-z0-9]+/gi, '-')
-        .replace(/^-|-$/g, '') || `generation-${index + 1}`;
+      const base = generationFileStem(item, `generation-${index + 1}`).replace(/_/g, '-');
       let name = `${base}${ext}`;
       let duplicate = 2;
       while (usedNames.has(name.toLowerCase())) name = `${base}-${duplicate++}${ext}`;
@@ -5179,8 +5180,7 @@ async function handleApi(req, res, url) {
         if (source !== asset.base && !source.startsWith(asset.base + path.sep)) throw new Error('Invalid saved asset path');
         await fsp.access(source);
         const extension = path.extname(asset.file) || (asset.base === VIDEOS ? '.mp4' : '.png');
-        const stem = String(asset.item.prompt || asset.fallback || `mix-studio-${index + 1}`)
-          .slice(0, 64).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || `mix-studio-${index + 1}`;
+        const stem = generationFileStem(asset.item, asset.fallback || `mix-studio-${index + 1}`);
         const target = await copyToExportDirectory(source, settings.exportDir, `${stem}${asset.suffix}${extension}`);
         saved.push(path.basename(target));
       }
@@ -5497,6 +5497,17 @@ async function handleApi(req, res, url) {
   if (itemRoute) {
     const item = db.items.find((it) => it.id === itemRoute[1] && it.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });
+    if (!itemRoute[2] && req.method === 'PATCH') {
+      const body = await readJsonBody(req);
+      if (!Object.prototype.hasOwnProperty.call(body, 'name')) {
+        return json(res, 400, { error: 'Generation name is required' });
+      }
+      const name = normalizeGenerationName(body.name);
+      if (name) item.name = name;
+      else delete item.name;
+      saveDb();
+      return json(res, 200, item);
+    }
     if (itemRoute[2] === 'move' && req.method === 'POST') {
       const body = await readJsonBody(req);
       const targetFolder = body.folder || null;

@@ -13,8 +13,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $InstallFile = Join-Path $Root 'install.json'
-$DataDir = Join-Path $Root 'data'
+$LocalDataDir = Join-Path $Root 'data'
+$PreservedDataDir = Join-Path $env:LOCALAPPDATA 'Mix Studio\data'
+$PreservedInstallFile = Join-Path $env:LOCALAPPDATA 'Mix Studio\install.json'
+$DataDir = if ((Test-Path $LocalDataDir) -or -not (Test-Path $PreservedDataDir)) { $LocalDataDir } else { $PreservedDataDir }
 $SettingsFile = Join-Path $DataDir 'settings.json'
+$ExistingInstallFile = if (Test-Path $InstallFile) { $InstallFile } elseif (Test-Path $PreservedInstallFile) { $PreservedInstallFile } else { $InstallFile }
 $FeatureManifest = Join-Path $PSScriptRoot 'feature-manifest.json'
 $DependencyInstaller = Join-Path $PSScriptRoot 'install-dependencies.js'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -211,8 +215,12 @@ if ($NodeMajor -lt 22) {
 Write-Host "Node.js $NodeVersion" -ForegroundColor Green
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+$UsingPreservedData = [IO.Path]::GetFullPath($DataDir).TrimEnd('\') -ne [IO.Path]::GetFullPath($LocalDataDir).TrimEnd('\')
+if ($UsingPreservedData) {
+  Write-Host "Reusing preserved profiles, settings, and gallery data from $DataDir" -ForegroundColor Green
+}
 $Settings = Read-JsonObject $SettingsFile
-$ExistingInstall = Read-JsonObject $InstallFile
+$ExistingInstall = Read-JsonObject $ExistingInstallFile
 $ExistingComfy = Existing-PropertyValue $ExistingInstall 'comfy' ([pscustomobject]@{})
 
 Write-Step 'Connecting your ComfyUI installation'
@@ -280,7 +288,7 @@ $InstallConfig = [pscustomobject]@{
   schemaVersion = 1
   appId = 'mix-studio'
   installMode = 'portable'
-  dataDir = 'data'
+  dataDir = if ($UsingPreservedData) { $DataDir } else { 'data' }
   createdAt = [string](Existing-PropertyValue $ExistingInstall 'createdAt' ([DateTime]::UtcNow.ToString('o')))
   updatedAt = [DateTime]::UtcNow.ToString('o')
   update = [pscustomobject]@{
@@ -306,6 +314,9 @@ Backup-File $SettingsFile $Timestamp
 Backup-File $InstallFile $Timestamp
 Write-JsonAtomic $SettingsFile $Settings
 Write-JsonAtomic $InstallFile $InstallConfig
+if ($ExistingInstallFile -eq $PreservedInstallFile -and (Test-Path $PreservedInstallFile)) {
+  Remove-Item $PreservedInstallFile -Force -ErrorAction SilentlyContinue
+}
 Write-Host 'Saved install.json and merged settings without replacing gallery data.' -ForegroundColor Green
 
 if ($InstallDependencies) {
