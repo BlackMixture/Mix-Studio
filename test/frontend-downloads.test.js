@@ -40,8 +40,10 @@ test('gallery Use menus are icon-led and show concise image destinations', () =>
   assert.match(appJs, /ariaLabel: 'Use image'/);
   assert.match(appJs, /label: 'First frame', detail: 'Start a video here', icon: 'first-frame'/);
   assert.match(appJs, /label: 'Last frame', detail: 'End a video here', icon: 'last-frame'/);
-  assert.match(appJs, /label: 'Edit', detail: 'Image editor', icon: 'edit'/);
-  assert.match(appJs, /label: 'Reuse', detail: 'Generation settings', icon: 'reuse'/);
+  assert.match(appJs, /label: 'Edit', detail: 'Use as an Edit reference', icon: 'edit'/);
+  assert.match(appJs, /label: 'Image guide', detail: 'Start an image-to-image generation'/);
+  assert.match(appJs, /label: 'Depth guide', detail: 'Preserve camera and scene structure'/);
+  assert.match(appJs, /label: 'Reuse', detail: 'Load generation settings', icon: 'reuse'/);
   assert.match(appJs, /menuTitle: 'Use video'/);
 });
 

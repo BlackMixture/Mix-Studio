@@ -62,6 +62,30 @@ test('selected desktop results expose compact actions and can be unloaded safely
   assert.match(css, /\.desktop-stage-actions button/);
 });
 
+test('grouped desktop results expose a synchronized media picker', () => {
+  assert.match(html, /id="desktopStagePicker"[^>]*Choose a result from this gallery group/);
+  assert.match(app, /function desktopStageChoices\(item\)/);
+  assert.match(app, /function renderDesktopStagePicker\(item, media = 'image'\)/);
+  assert.match(app, /angleGroupItems\(item\)/);
+  assert.match(app, /generationGroupItems\(item\)/);
+  assert.match(app, /selectDesktopLibraryItem\(choice\.item, choice\.media\)/);
+  assert.match(app, /card\.dataset\.groupItemIds = entry\.items\.map/);
+  assert.match(app, /groupedIds\.includes\(state\.desktopItemId\)/);
+  assert.match(css, /\.desktop-stage-picker \{/);
+  assert.match(css, /\.desktop-stage-choice\.active \{/);
+});
+
+test('desktop image action opens the full destination menu', () => {
+  assert.match(html, /id="desktopStageEdit"[^>]*aria-label="Choose how to use selected image"[^>]*aria-haspopup="menu"/);
+  assert.match(app, /function galleryImageDestinationActions\(item/);
+  assert.match(app, /function useGalleryItemAsGuide\(item, mode = 'image'\)/);
+  assert.match(app, /openActionMenu\(\$\('#desktopStageEdit'\), galleryImageDestinationActions\(item\)/);
+  assert.match(app, /label: 'Image guide'[^\n]*useGalleryItemAsGuide\(item, 'image'\)/);
+  assert.match(app, /label: 'Depth guide'[^\n]*useGalleryItemAsGuide\(item, 'depth'\)/);
+  assert.match(app, /label: 'First frame'[^\n]*sendToVideoTab\(item, 'start'\)/);
+  assert.match(app, /label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
+});
+
 test('desktop focused information rail uses a true black surface', () => {
   assert.match(css, /#lightbox\.show \{[\s\S]*background: #000;/);
   assert.match(css, /#lightbox #lbActions \{[\s\S]*background: #000;/);

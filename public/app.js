@@ -5990,6 +5990,27 @@ async function useAsRef(item) {
   } catch (e) { toast(e.message, true); }
 }
 
+async function useGalleryItemAsGuide(item, mode = 'image') {
+  try {
+    await setCreateImageGuideAsset(await galleryItemEditReference(item), mode);
+    closeLightbox();
+    state.createMode = 'image';
+    setView('image');
+    toast(mode === 'depth' ? 'Added as a depth guide' : 'Added as an image guide');
+  } catch (error) { toast(error.message, true); }
+}
+
+function galleryImageDestinationActions(item, { includeReuse = true } = {}) {
+  return [
+    { label: 'Edit', detail: 'Use as an Edit reference', icon: 'edit', tone: 'edit', action: () => useAsRef(item) },
+    { label: 'Image guide', detail: 'Start an image-to-image generation', icon: 'first-frame', tone: 'reuse', action: () => useGalleryItemAsGuide(item, 'image') },
+    { label: 'Depth guide', detail: 'Preserve camera and scene structure', icon: 'depth', tone: 'reuse', action: () => useGalleryItemAsGuide(item, 'depth') },
+    { label: 'First frame', detail: 'Start a video here', icon: 'first-frame', tone: 'video', action: () => sendToVideoTab(item, 'start') },
+    { label: 'Last frame', detail: 'End a video here', icon: 'last-frame', tone: 'video', action: () => sendToVideoTab(item, 'end') },
+    includeReuse ? { label: 'Reuse', detail: 'Load generation settings', icon: 'reuse', tone: 'reuse', action: () => reuseItem(item) } : null,
+  ].filter(Boolean);
+}
+
 async function continueEditingResult(item) {
   try {
     toast('Loading edit result…');
@@ -8041,12 +8062,86 @@ function desktopStageSelection() {
 
 function syncDesktopGallerySelection() {
   $$('#galleryGrid .card').forEach((card) => {
+    const groupedIds = (card.dataset.groupItemIds || '').split(',').filter(Boolean);
+    const itemMatches = card.dataset.id === state.desktopItemId || groupedIds.includes(state.desktopItemId);
+    const mediaMatches = groupedIds.length > 1
+      || (card.dataset.media || 'image') === (state.desktopMediaId || 'image');
     const active = desktopWorkspaceActive()
-      && card.dataset.id === state.desktopItemId
-      && (card.dataset.media || 'image') === (state.desktopMediaId || 'image');
+      && itemMatches
+      && mediaMatches;
     card.classList.toggle('desktop-active', active);
     if (active) card.setAttribute('aria-current', 'true');
     else card.removeAttribute('aria-current');
+  });
+}
+
+function desktopStageChoices(item) {
+  if (!item) return [];
+  const angles = angleGroupItems(item);
+  const generations = generationGroupItems(item);
+  const group = angles.length > 1 ? angles : (generations.length > 1 ? generations : [item]);
+  const grouped = group.length > 1;
+  const choices = [];
+  group.forEach((groupItem, groupIndex) => {
+    const imageFile = groupItem.upscaled || groupItem.file;
+    if (imageFile) {
+      choices.push({
+        item: groupItem,
+        media: 'image',
+        src: '/images/' + imageFile,
+        label: angles.length > 1
+          ? angleViewLabel(groupItem)
+          : (grouped ? `Generation ${groupIndex + 1}` : 'Image'),
+        badge: angles.length > 1 ? angleViewGlyph(groupItem) : (grouped ? String(groupIndex + 1) : ''),
+        video: false,
+      });
+    }
+    (groupItem.videos || []).forEach((video, videoIndex) => {
+      choices.push({
+        item: groupItem,
+        media: video.id,
+        src: imageFile ? '/images/' + imageFile : '',
+        label: grouped ? `Generation ${groupIndex + 1}, video ${videoIndex + 1}` : `Video ${videoIndex + 1}`,
+        badge: 'play',
+        video: true,
+      });
+    });
+  });
+  return choices;
+}
+
+function renderDesktopStagePicker(item, media = 'image') {
+  const picker = $('#desktopStagePicker');
+  if (!picker) return;
+  const choices = desktopStageChoices(item);
+  picker.innerHTML = '';
+  picker.hidden = choices.length < 2;
+  if (choices.length < 2) return;
+  choices.forEach((choice) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'desktop-stage-choice';
+    const active = choice.item.id === item.id && choice.media === (media || 'image');
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-label', choice.label);
+    button.setAttribute('aria-pressed', String(active));
+    button.title = choice.label;
+    if (choice.src) {
+      const image = document.createElement('img');
+      image.src = choice.src;
+      image.alt = '';
+      image.loading = 'eager';
+      button.appendChild(image);
+    }
+    const badge = document.createElement('span');
+    badge.className = 'desktop-stage-choice-badge';
+    badge.setAttribute('aria-hidden', 'true');
+    badge.innerHTML = choice.video
+      ? '<svg viewBox="0 0 20 20"><path d="m7.5 5.5 6 4.5-6 4.5Z"/></svg>'
+      : escapeHtml(choice.badge);
+    button.appendChild(badge);
+    button.addEventListener('click', () => selectDesktopLibraryItem(choice.item, choice.media));
+    picker.appendChild(button);
   });
 }
 
@@ -8077,6 +8172,7 @@ function renderDesktopStage(item, mediaSel) {
     $('#desktopStagePrompt').textContent = 'Choose a mode and describe what you want to make.';
     $('#desktopStageModel').textContent = 'Mix Studio';
     $('#desktopStageDims').textContent = 'Desktop workspace';
+    renderDesktopStagePicker();
     renderDesktopStageActions();
     return;
   }
@@ -8097,9 +8193,17 @@ function renderDesktopStage(item, mediaSel) {
     video: selectedVideo ? '/videos/' + selectedVideo.file : '',
     poster: image,
   });
+  const angleItems = angleGroupItems(item);
+  const generationItems = generationGroupItems(item);
+  const groupItems = angleItems.length > 1 ? angleItems : generationItems;
+  const groupIndex = groupItems.findIndex((entry) => entry.id === item.id);
   $('#desktopStageTitle').textContent = selectedVideo
     ? (resolved.selected ? 'Selected video' : 'Latest video')
-    : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'));
+    : (angleItems.length > 1
+      ? `${angleViewLabel(item)} · ${groupIndex + 1} of ${groupItems.length}`
+      : (generationItems.length > 1
+        ? `Generation ${groupIndex + 1} of ${groupItems.length}`
+        : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'))));
   status.hidden = resolved.selected;
   status.textContent = resolved.selected ? '' : 'Latest output';
   $('#desktopStagePrompt').textContent = item.prompt || item.refinedPrompt || 'Untitled generation';
@@ -8109,6 +8213,7 @@ function renderDesktopStage(item, mediaSel) {
   $('#desktopStageDims').textContent = item.width && item.height
     ? `${item.width} × ${item.height}`
     : new Date(itemActivity(item) || Date.now()).toLocaleDateString();
+  renderDesktopStagePicker(item, selectedVideo ? selectedVideo.id : 'image');
   renderDesktopStageActions(item, selectedVideo, resolved.selected);
 }
 
@@ -8132,6 +8237,7 @@ function renderDesktopStageGenerating(statusText = 'Working…') {
   $('#desktopStagePrompt').textContent = promptDraft() || 'Your generation is in progress.';
   $('#desktopStageModel').textContent = state.view === 'video' ? videoEngineLabel(state.vidEngine) : (state.view === 'edit' ? editEngineLabel(state.editEngine) : 'Krea 2');
   $('#desktopStageDims').textContent = statusText;
+  renderDesktopStagePicker();
   $('#desktopStageProgress').hidden = false;
   $('#desktopStageProgress').querySelector('i').style.width = '0%';
 }
@@ -8268,7 +8374,11 @@ $('#desktopStageSave').addEventListener('click', () => {
 });
 $('#desktopStageEdit').addEventListener('click', () => {
   const { item } = activeDesktopStageMedia();
-  if (item) useAsRef(item);
+  if (!item) return;
+  openActionMenu($('#desktopStageEdit'), galleryImageDestinationActions(item), {
+    menuTitle: 'Use image',
+    tone: 'image',
+  });
 });
 $('#desktopStageUpscale').addEventListener('click', () => {
   const { item } = activeDesktopStageMedia();
@@ -9272,6 +9382,7 @@ function renderGrid() {
       card.appendChild(ov);
     }
     card.dataset.id = it.id;
+    card.dataset.groupItemIds = entry.items.map((groupItem) => groupItem.id).join(',');
     card.dataset.media = latestVideo ? latestVideo.id : 'image';
     card.draggable = desktopWorkspaceActive();
     if (state.selected.has(it.id)) card.classList.add('selected');
@@ -10677,12 +10788,7 @@ function openLightbox(id, mediaSel) {
     } else {
       mk(it.upscaled ? '⇪ Re-upscale' : '⇪ Upscale', '', () => openUpscaleSheet(it));
     }
-    const imageUseItems = [
-      { label: 'First frame', detail: 'Start a video here', icon: 'first-frame', tone: 'video', action: () => sendToVideoTab(it, 'start') },
-      { label: 'Last frame', detail: 'End a video here', icon: 'last-frame', tone: 'video', action: () => sendToVideoTab(it, 'end') },
-      { label: 'Edit', detail: 'Image editor', icon: 'edit', tone: 'edit', action: () => useAsRef(it) },
-      { label: 'Reuse', detail: 'Generation settings', icon: 'reuse', tone: 'reuse', action: () => reuseItem(it) },
-    ];
+    const imageUseItems = galleryImageDestinationActions(it);
     if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
       imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId) });
     }

@@ -803,6 +803,7 @@
       </span>
       <span class="desktop-stage-progress" id="desktopStageProgress" hidden><i></i></span>
     </button>
+    <nav class="desktop-stage-picker" id="desktopStagePicker" aria-label="Choose a result from this gallery group" hidden></nav>
     <footer class="desktop-stage-meta">
       <p id="desktopStagePrompt">Choose a mode and describe what you want to make.</p>
       <div>
@@ -838,7 +839,7 @@
           <button id="desktopStageSave" type="button" aria-label="Save selected result" title="Save">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2"/></svg>
           </button>
-          <button id="desktopStageEdit" type="button" aria-label="Use selected image in Edit" title="Edit">
+          <button id="desktopStageEdit" type="button" aria-label="Choose how to use selected image" title="Use image" aria-haspopup="menu" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1"/></svg>
           </button>
           <button id="desktopStageUpscale" type="button" aria-label="Upscale selected image" title="Upscale">

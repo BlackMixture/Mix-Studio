@@ -195,8 +195,8 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
   assert.match(app, /if \(role === 'end'\) state\.vidEnd = frame/);
   assert.match(app, /else state\.vidRef = frame/);
   assert.match(app, /openAnimateRouteSheet\(it\)/);
-  assert.match(app, /label: 'First frame'[\s\S]*sendToVideoTab\(it, 'start'\)/);
-  assert.match(app, /label: 'Last frame'[\s\S]*sendToVideoTab\(it, 'end'\)/);
+  assert.match(app, /function galleryImageDestinationActions\(item[\s\S]*label: 'First frame'[^\n]*sendToVideoTab\(item, 'start'\)/);
+  assert.match(app, /function galleryImageDestinationActions\(item[\s\S]*label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
   assert.match(app, /const endEngine = \['ltx', 'eros'\]\.find/);
   assert.match(html, /id="animateRouteStart"[\s\S]*<b>First frame<\/b>/);
   assert.match(html, /id="animateRouteEnd"[\s\S]*<b>Last frame<\/b>/);
