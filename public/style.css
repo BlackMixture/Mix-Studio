@@ -4802,9 +4802,8 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .edit-mask-tool-button.active,
 .edit-mask-tool-button[aria-pressed="true"],
 .edit-mask-erase.active { border-color: rgba(255,255,255,.38); color: #fff; background: #101010; }
-.edit-mask-adjustments { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.edit-mask-adjustments { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
 .edit-mask-adjustments .field { min-width: 0; }
-.edit-mask-adjustments .field-span { grid-column: 1 / -1; }
 .edit-mask-adjustments .field > label { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .edit-mask-adjustments .field > label span { color: #fff; font-variant-numeric: tabular-nums; }
 .edit-mask-adjustments .range-field { padding: 6px 0 2px; }
@@ -4848,7 +4847,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 #kreaMaskErase[hidden] { display: none; }
 @media (max-width: 420px) {
   .edit-area-mode .chip { padding-inline: 8px; }
-  .edit-mask-adjustments { grid-template-columns: 1fr; gap: 0; }
+  .edit-mask-adjustments { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
   .smart-mask-hint { align-items: flex-start; }
 }
 
