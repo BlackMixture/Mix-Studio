@@ -1651,7 +1651,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .video-model-body-inner,
 .video-timing-body-inner { min-height: 0; overflow: hidden; }
-.video-model-body-inner { padding: 0 12px 12px; }
+.video-model-body-inner { padding: 0 12px; }
+.video-model-panel.expanded .video-model-body-inner { padding-bottom: 12px; }
 .video-model-body-inner .video-choice-grid { margin: 0; }
 .model-order-hint {
   margin: 0 2px 8px;
