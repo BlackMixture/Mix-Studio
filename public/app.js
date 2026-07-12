@@ -11632,29 +11632,267 @@ function escapeHtml(s) {
 /* Compare                                                             */
 /* ------------------------------------------------------------------ */
 
+const compareState = {
+  split: 50,
+  zoom: 1,
+  x: 0,
+  y: 0,
+  mode: 'reveal',
+};
+
+function compareFitSize() {
+  const stage = $('#cmpStage');
+  const image = $('#cmpB');
+  const rect = stage.getBoundingClientRect();
+  const naturalWidth = image.naturalWidth || rect.width || 1;
+  const naturalHeight = image.naturalHeight || rect.height || 1;
+  const scale = Math.min(rect.width / naturalWidth, rect.height / naturalHeight);
+  return {
+    stageWidth: rect.width,
+    stageHeight: rect.height,
+    width: naturalWidth * scale,
+    height: naturalHeight * scale,
+    naturalWidth,
+    naturalHeight,
+  };
+}
+
+function clampComparePan() {
+  const fit = compareFitSize();
+  const maxX = Math.max(0, (fit.width * compareState.zoom - fit.stageWidth) / 2);
+  const maxY = Math.max(0, (fit.height * compareState.zoom - fit.stageHeight) / 2);
+  compareState.x = Math.max(-maxX, Math.min(maxX, compareState.x));
+  compareState.y = Math.max(-maxY, Math.min(maxY, compareState.y));
+}
+
+function renderCompareTransform() {
+  clampComparePan();
+  const transform = `translate3d(${compareState.x}px, ${compareState.y}px, 0) scale(${compareState.zoom})`;
+  $('#cmpA').style.transform = transform;
+  $('#cmpB').style.transform = transform;
+  $('#cmpZoomValue').textContent = `${Math.round(compareState.zoom * 100)}%`;
+  $('#cmpZoomOut').disabled = compareState.zoom <= 1.001;
+  $('#cmpZoomIn').disabled = compareState.zoom >= 5.999;
+  $('#cmpStage').classList.toggle('is-zoomed', compareState.zoom > 1.001);
+}
+
+function setCompare(pct) {
+  compareState.split = Math.max(0, Math.min(100, pct));
+  $('#cmpBMask').style.clipPath = `inset(0 0 0 ${compareState.split}%)`;
+  $('#cmpDivider').style.left = compareState.split + '%';
+  $('#cmpRevealValue').textContent = `${Math.round(compareState.split)}% reveal`;
+}
+
+function setCompareMode(mode) {
+  compareState.mode = mode === 'pan' ? 'pan' : 'reveal';
+  const reveal = compareState.mode === 'reveal';
+  $('#cmpRevealMode').classList.toggle('active', reveal);
+  $('#cmpMoveMode').classList.toggle('active', !reveal);
+  $('#cmpRevealMode').setAttribute('aria-pressed', String(reveal));
+  $('#cmpMoveMode').setAttribute('aria-pressed', String(!reveal));
+  $('#cmpStage').classList.toggle('mode-pan', !reveal);
+  $('#cmpHint').textContent = reveal
+    ? 'Drag the divider · pinch or scroll to zoom'
+    : (compareState.zoom > 1 ? 'Drag to inspect · pinch or scroll to zoom' : 'Zoom in, then drag to inspect details');
+}
+
+function setCompareZoom(value, clientX, clientY) {
+  const next = Math.max(1, Math.min(6, Number(value) || 1));
+  const previous = compareState.zoom;
+  if (Math.abs(next - previous) < 0.001) return;
+  const rect = $('#cmpStage').getBoundingClientRect();
+  const anchorX = Number.isFinite(clientX) ? clientX - rect.left - rect.width / 2 : 0;
+  const anchorY = Number.isFinite(clientY) ? clientY - rect.top - rect.height / 2 : 0;
+  const ratio = next / previous;
+  compareState.x = anchorX - (anchorX - compareState.x) * ratio;
+  compareState.y = anchorY - (anchorY - compareState.y) * ratio;
+  compareState.zoom = next;
+  renderCompareTransform();
+  setCompareMode(compareState.mode);
+}
+
+function fitCompare() {
+  compareState.zoom = 1;
+  compareState.x = 0;
+  compareState.y = 0;
+  renderCompareTransform();
+  setCompareMode(compareState.mode);
+}
+
+function actualSizeCompare() {
+  const fit = compareFitSize();
+  const pixelZoom = fit.width ? fit.naturalWidth / fit.width : 1;
+  setCompareZoom(Math.max(1, Math.min(6, pixelZoom)));
+  if (compareState.zoom > 1) setCompareMode('pan');
+}
+
+function updateCompareDimensions() {
+  const original = $('#cmpA');
+  const upscaled = $('#cmpB');
+  const left = original.naturalWidth ? `${original.naturalWidth} × ${original.naturalHeight}` : 'Original';
+  const right = upscaled.naturalWidth ? `${upscaled.naturalWidth} × ${upscaled.naturalHeight}` : 'Upscaled';
+  $('#cmpDimensions').textContent = `${left} → ${right}`;
+  renderCompareTransform();
+}
+
 function openCompare(it) {
-  $('#compare').classList.add('show');
+  compareState.split = 50;
+  compareState.zoom = 1;
+  compareState.x = 0;
+  compareState.y = 0;
   $('#cmpA').src = '/images/' + it.file;
   $('#cmpB').src = '/images/' + it.upscaled;
+  $('#compare').classList.add('show');
   setCompare(50);
+  setCompareMode('reveal');
+  renderCompareTransform();
   try { history.pushState({ cmp: 1 }, ''); } catch { /* noop */ }
 }
-function setCompare(pct) {
-  pct = Math.max(0, Math.min(100, pct));
-  $('#cmpB').style.clipPath = `inset(0 0 0 ${pct}%)`;
-  $('#cmpDivider').style.left = pct + '%';
-}
+
 (() => {
   const stage = $('#cmpStage');
-  let dragging = false;
-  const move = (x) => {
-    const r = stage.getBoundingClientRect();
-    setCompare(((x - r.left) / r.width) * 100);
-  };
-  stage.addEventListener('pointerdown', (e) => { dragging = true; stage.setPointerCapture(e.pointerId); move(e.clientX); });
-  stage.addEventListener('pointermove', (e) => { if (dragging) move(e.clientX); });
-  stage.addEventListener('pointerup', () => { dragging = false; });
+  const pointers = new Map();
+  let gesture = null;
+  let lastTouchTap = null;
+  let ignoreDoubleClickUntil = 0;
+
+  const pointerCenter = (values) => ({
+    x: values.reduce((sum, point) => sum + point.x, 0) / values.length,
+    y: values.reduce((sum, point) => sum + point.y, 0) / values.length,
+  });
+  const pointerDistance = (values) => Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y);
+
+  function beginSingle(point) {
+    gesture = {
+      kind: compareState.mode,
+      startX: point.x,
+      startY: point.y,
+      panX: compareState.x,
+      panY: compareState.y,
+    };
+  }
+
+  function beginPinch() {
+    const values = [...pointers.values()].slice(0, 2);
+    const rect = stage.getBoundingClientRect();
+    const center = pointerCenter(values);
+    gesture = {
+      kind: 'pinch',
+      distance: Math.max(1, pointerDistance(values)),
+      zoom: compareState.zoom,
+      panX: compareState.x,
+      panY: compareState.y,
+      anchorX: center.x - rect.left - rect.width / 2,
+      anchorY: center.y - rect.top - rect.height / 2,
+    };
+  }
+
+  stage.addEventListener('pointerdown', (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    stage.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, downX: event.clientX, downY: event.clientY, at: performance.now(), type: event.pointerType });
+    stage.classList.add('interacting');
+    if (pointers.size === 1) {
+      beginSingle([...pointers.values()][0]);
+      if (compareState.mode === 'reveal') {
+        const rect = stage.getBoundingClientRect();
+        setCompare(((event.clientX - rect.left) / rect.width) * 100);
+      }
+    } else if (pointers.size === 2) beginPinch();
+  });
+
+  stage.addEventListener('pointermove', (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    event.preventDefault();
+    const previous = pointers.get(event.pointerId);
+    pointers.set(event.pointerId, Object.assign({}, previous, { x: event.clientX, y: event.clientY }));
+    if (pointers.size >= 2 && gesture?.kind === 'pinch') {
+      const values = [...pointers.values()].slice(0, 2);
+      const center = pointerCenter(values);
+      const rect = stage.getBoundingClientRect();
+      const nextZoom = Math.max(1, Math.min(6, gesture.zoom * (pointerDistance(values) / gesture.distance)));
+      const currentX = center.x - rect.left - rect.width / 2;
+      const currentY = center.y - rect.top - rect.height / 2;
+      const localX = (gesture.anchorX - gesture.panX) / gesture.zoom;
+      const localY = (gesture.anchorY - gesture.panY) / gesture.zoom;
+      compareState.zoom = nextZoom;
+      compareState.x = currentX - localX * nextZoom;
+      compareState.y = currentY - localY * nextZoom;
+      renderCompareTransform();
+      return;
+    }
+    if (pointers.size !== 1 || !gesture) return;
+    if (gesture.kind === 'pan') {
+      compareState.x = gesture.panX + event.clientX - gesture.startX;
+      compareState.y = gesture.panY + event.clientY - gesture.startY;
+      renderCompareTransform();
+    } else {
+      const rect = stage.getBoundingClientRect();
+      setCompare(((event.clientX - rect.left) / rect.width) * 100);
+    }
+  });
+
+  function endPointer(event) {
+    const point = pointers.get(event.pointerId);
+    pointers.delete(event.pointerId);
+    if (point && point.type === 'touch' && performance.now() - point.at < 280
+      && Math.hypot(event.clientX - point.downX, event.clientY - point.downY) < 10) {
+      const now = performance.now();
+      if (lastTouchTap && now - lastTouchTap.at < 330 && Math.hypot(event.clientX - lastTouchTap.x, event.clientY - lastTouchTap.y) < 28) {
+        setCompareZoom(compareState.zoom > 1.15 ? 1 : 2, event.clientX, event.clientY);
+        ignoreDoubleClickUntil = now + 500;
+        lastTouchTap = null;
+      } else lastTouchTap = { at: now, x: event.clientX, y: event.clientY };
+    }
+    if (pointers.size === 1) beginSingle([...pointers.values()][0]);
+    else if (!pointers.size) {
+      gesture = null;
+      stage.classList.remove('interacting');
+    }
+  }
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+
+  stage.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    setCompareZoom(compareState.zoom * (event.deltaY < 0 ? 1.16 : 0.86), event.clientX, event.clientY);
+  }, { passive: false });
+  stage.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    if (performance.now() < ignoreDoubleClickUntil) return;
+    setCompareZoom(compareState.zoom > 1.15 ? 1 : 2, event.clientX, event.clientY);
+  });
+  stage.addEventListener('keydown', (event) => {
+    const key = event.key;
+    if (['+', '=', '-', '_', '0', '1', 'f', 'F', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) event.preventDefault();
+    if (key === '+' || key === '=') setCompareZoom(compareState.zoom * 1.25);
+    else if (key === '-' || key === '_') setCompareZoom(compareState.zoom / 1.25);
+    else if (key === '0' || key === 'f' || key === 'F') fitCompare();
+    else if (key === '1') actualSizeCompare();
+    else if (compareState.mode === 'reveal' && key === 'ArrowLeft') setCompare(compareState.split - 2);
+    else if (compareState.mode === 'reveal' && key === 'ArrowRight') setCompare(compareState.split + 2);
+    else if (compareState.mode === 'pan' && key.startsWith('Arrow')) {
+      if (key === 'ArrowLeft') compareState.x -= 28;
+      if (key === 'ArrowRight') compareState.x += 28;
+      if (key === 'ArrowUp') compareState.y -= 28;
+      if (key === 'ArrowDown') compareState.y += 28;
+      renderCompareTransform();
+    }
+  });
 })();
+
+$('#cmpA').addEventListener('load', updateCompareDimensions);
+$('#cmpB').addEventListener('load', updateCompareDimensions);
+$('#cmpRevealMode').addEventListener('click', () => setCompareMode('reveal'));
+$('#cmpMoveMode').addEventListener('click', () => setCompareMode('pan'));
+$('#cmpZoomOut').addEventListener('click', () => setCompareZoom(compareState.zoom / 1.35));
+$('#cmpZoomIn').addEventListener('click', () => setCompareZoom(compareState.zoom * 1.35));
+$('#cmpFit').addEventListener('click', fitCompare);
+$('#cmpActual').addEventListener('click', actualSizeCompare);
+window.addEventListener('resize', () => {
+  if ($('#compare').classList.contains('show')) renderCompareTransform();
+});
 $('#cmpClose').addEventListener('click', () => {
   $('#compare').classList.remove('show');
   if (window.history.state && window.history.state.cmp) {

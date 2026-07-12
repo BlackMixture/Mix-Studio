@@ -961,18 +961,40 @@
 
 <!-- compare -->
 <div class="overlay" id="compare">
-  <div class="overlay-top">
-    <span class="overlay-title">Original ↔ Upscaled</span>
-    <button class="icon-btn" id="cmpClose">✕</button>
+  <div class="overlay-top compare-top">
+    <span class="compare-heading"><strong>Detail comparison</strong><small id="cmpDimensions">Original ↔ Upscaled</small></span>
+    <button class="icon-btn" id="cmpClose" aria-label="Close comparison">✕</button>
   </div>
-  <div class="compare-stage" id="cmpStage">
+  <div class="compare-stage" id="cmpStage" tabindex="0" role="application" aria-label="Original and upscaled image comparison. Drag in Reveal mode. Pan in Move mode. Pinch or scroll to zoom.">
     <img class="img-a" id="cmpA" alt="original" />
-    <img class="img-b" id="cmpB" alt="upscaled" />
+    <div class="compare-upscaled-mask" id="cmpBMask"><img class="img-b" id="cmpB" alt="upscaled" /></div>
     <div class="compare-divider" id="cmpDivider"></div>
     <span class="compare-tag a">Original</span>
     <span class="compare-tag b">Upscaled</span>
   </div>
-  <div class="action-row"></div>
+  <div class="compare-console">
+    <div class="compare-console-row">
+      <div class="compare-mode" role="group" aria-label="Comparison gesture">
+        <button class="active" id="cmpRevealMode" type="button" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 4v16M8 8 4 12l4 4m8-8 4 4-4 4"/></svg><span>Reveal</span>
+        </button>
+        <button id="cmpMoveMode" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m12 3 3 3-3 3M12 3v6m9 3-3-3-3 3m6 0h-6m-3 9-3-3 3-3m0 6v-6M3 12l3 3 3-3m-6 0h6"/></svg><span>Move</span>
+        </button>
+      </div>
+      <div class="compare-zoom" role="group" aria-label="Magnification">
+        <button id="cmpZoomOut" type="button" aria-label="Zoom out">−</button>
+        <output id="cmpZoomValue" aria-live="polite">100%</output>
+        <button id="cmpZoomIn" type="button" aria-label="Zoom in">+</button>
+        <button class="compare-text-btn" id="cmpActual" type="button">1:1</button>
+        <button class="compare-text-btn" id="cmpFit" type="button">Fit</button>
+      </div>
+    </div>
+    <div class="compare-console-meta">
+      <span id="cmpHint">Drag the divider · pinch or scroll to zoom</span>
+      <span id="cmpRevealValue">50% reveal</span>
+    </div>
+  </div>
 </div>
 
 <!-- gallery image → video route -->
