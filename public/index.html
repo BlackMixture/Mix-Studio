@@ -1352,7 +1352,7 @@
 <!-- move-to-folder sheet -->
 <div class="sheet" id="moveSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Move to folder <button data-close>✕</button></h3>
+    <h3 class="sheet-title"><span id="moveSheetTitle">Move to folder</span><button data-close>✕</button></h3>
     <div class="chip-row" id="moveChips"></div>
     <div class="field">
       <label>New folder</label>
@@ -1823,6 +1823,7 @@
     <div class="select-actions" aria-label="Selection actions">
       <button class="action-btn" id="selSave" type="button"><b>↓</b><span>Save</span></button>
       <button class="action-btn" id="selGroup" type="button"><b>◫</b><span>Group</span></button>
+      <button class="action-btn" id="selUngroup" type="button" hidden><b>⊘</b><span>Ungroup</span></button>
       <button class="action-btn" id="selComposite" type="button"><b>▦</b><span>Composite</span></button>
       <button class="action-btn" id="selMove" type="button"><b>▤</b><span>Move</span></button>
       <button class="action-btn danger" id="selDelete" type="button"><b>⌫</b><span>Delete</span></button>

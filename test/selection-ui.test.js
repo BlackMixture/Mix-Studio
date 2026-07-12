@@ -33,8 +33,8 @@ test('hold-and-drag selection auto-scrolls near the visible gallery edges', () =
   assert.match(css, /body\.gallery-select-dragging \{/);
 });
 
-test('selection bar exposes save, group, composite, move, delete, and swipe-up insights', () => {
-  for (const id of ['selSave', 'selGroup', 'selComposite', 'selMove', 'selDelete', 'selInsightsHandle']) {
+test('selection bar exposes save, group, ungroup, composite, move, delete, and swipe-up insights', () => {
+  for (const id of ['selSave', 'selGroup', 'selUngroup', 'selComposite', 'selMove', 'selDelete', 'selInsightsHandle']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(html, /id="selectionConsoleDetails"/);
@@ -44,6 +44,7 @@ test('selection bar exposes save, group, composite, move, delete, and swipe-up i
   assert.match(app, /function dockSelectionConsole\(\)/);
   assert.match(app, /function scheduleSelectionInsightsRefresh\(delay = 120\)/);
   assert.match(app, /function populateSelectionExpandedActions\(\)/);
+  assert.match(app, /filter\(\(button\) => button && !button\.hidden\)/);
   assert.match(app, /buttons\.slice\(visible\)\.forEach\(\(button\) => more\.appendChild\(button\)\)/);
   assert.match(app, /function restoreSelectionActions\(\)/);
   assert.match(app, /classList\.contains\('is-expanded'\)\) scheduleSelectionInsightsRefresh\(\)/);
@@ -58,10 +59,17 @@ test('selection bar exposes save, group, composite, move, delete, and swipe-up i
   assert.match(css, /\.selection-insights-grid section \{[\s\S]*background: transparent/);
   assert.match(app, /\/api\/items\/selection-stats/);
   assert.match(app, /\/api\/items\/group/);
+  assert.match(app, /\/api\/items\/ungroup/);
+  assert.match(app, /\/api\/items\/move/);
+  assert.match(app, /function expandedGallerySelection/);
+  assert.match(html, /id="moveSheetTitle"/);
+  assert.match(app, /Move \$\{includedItems\.length\} generations/);
   assert.match(app, /\/api\/items\/download\?ids=/);
   assert.match(app, /mix-studio-selection\.zip/);
   assert.match(server, /route === '\/api\/items\/selection-stats'/);
   assert.match(server, /route === '\/api\/items\/group'/);
+  assert.match(server, /route === '\/api\/items\/ungroup'/);
+  assert.match(server, /route === '\/api\/items\/move'/);
   assert.match(server, /route === '\/api\/items\/download'/);
 });
 
@@ -78,4 +86,5 @@ test('arbitrary generation groups collapse into one gallery entry and remain bro
   assert.match(app, /function generationGroupItems\(item\)/);
   assert.match(app, /Generation \$\{generationIndex \+ 1\} of \$\{generationItems\.length\}/);
   assert.match(server, /item\.generationGroupId = generationGroupId/);
+  assert.match(server, /delete item\.generationGroupId/);
 });

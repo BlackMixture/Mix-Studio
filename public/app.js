@@ -11142,6 +11142,20 @@ function selectedGalleryItems() {
   return state.items.filter((item) => state.selected.has(item.id));
 }
 
+function selectedGenerationGroupIds() {
+  return new Set(selectedGalleryItems().map((item) => item.generationGroupId).filter(Boolean));
+}
+
+function expandedGallerySelection(ids = [...state.selected]) {
+  const selectedIds = new Set(ids);
+  const selectedItems = state.items.filter((item) => selectedIds.has(item.id));
+  const generationGroups = new Set(selectedItems.map((item) => item.generationGroupId).filter(Boolean));
+  const angleGroups = new Set(selectedItems.map((item) => item.angleGroupId).filter(Boolean));
+  return state.items.filter((item) => selectedIds.has(item.id)
+    || (item.generationGroupId && generationGroups.has(item.generationGroupId))
+    || (item.angleGroupId && angleGroups.has(item.angleGroupId)));
+}
+
 function syncSelectionVisuals() {
   $$('#galleryGrid .card').forEach((card) => card.classList.toggle('selected', state.selected.has(card.dataset.id)));
   $$('#galleryGrid .gallery-date-divider').forEach((divider) => {
@@ -11190,8 +11204,12 @@ function exitSelect() {
 }
 function updateSelectBar() {
   $('#selectBar').hidden = false;
-  $('#selCount').textContent = `${state.selected.size} selected`;
+  const included = expandedGallerySelection();
+  $('#selCount').textContent = included.length > state.selected.size
+    ? `${state.selected.size} selected · ${included.length} generations included`
+    : `${state.selected.size} selected`;
   $('#selGroup').disabled = state.selected.size < 2;
+  $('#selUngroup').hidden = selectedGenerationGroupIds().size === 0;
   $('#selComposite').disabled = state.selected.size < 2;
   syncSelectionVisuals();
   if ($('#selectBar').classList.contains('is-expanded')) scheduleSelectionInsightsRefresh();
@@ -11222,6 +11240,19 @@ $('#selGroup').addEventListener('click', async () => {
     exitSelect();
     await refreshGallery();
     toast(`Grouped ${ids.length} generations`);
+  } catch (error) { toast(error.message, true); }
+});
+$('#selUngroup').addEventListener('click', async () => {
+  const ids = [...state.selected];
+  const groupCount = selectedGenerationGroupIds().size;
+  if (!ids.length || !groupCount) return;
+  try {
+    const result = await api('/api/items/ungroup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+    });
+    exitSelect();
+    await refreshGallery();
+    toast(`Ungrouped ${result.items} generation${result.items === 1 ? '' : 's'}`);
   } catch (error) { toast(error.message, true); }
 });
 $('#selComposite').addEventListener('click', async () => {
@@ -11315,7 +11346,7 @@ function scheduleSelectionInsightsRefresh(delay = 120) {
   }, delay);
 }
 
-const selectionActionIds = ['selSave', 'selGroup', 'selComposite', 'selMove', 'selDelete'];
+const selectionActionIds = ['selSave', 'selGroup', 'selUngroup', 'selComposite', 'selMove', 'selDelete'];
 
 function restoreSelectionActions() {
   const row = $('.select-actions');
@@ -11334,7 +11365,7 @@ function populateSelectionExpandedActions() {
   const more = $('#selectionConsoleMoreActions');
   if (!row || !more) return;
   restoreSelectionActions();
-  const buttons = selectionActionIds.map((id) => $('#' + id)).filter(Boolean);
+  const buttons = selectionActionIds.map((id) => $('#' + id)).filter((button) => button && !button.hidden);
   const gap = parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap) || 0;
   let used = 0;
   let visible = 0;
@@ -13989,8 +14020,12 @@ function openMoveSheet(target) {
   // target: a single item object (from the lightbox) or an array of ids (multi-select)
   const multi = Array.isArray(target);
   const ids = multi ? target : [target.id];
+  const includedItems = multi ? expandedGallerySelection(ids) : [target];
   const currentFolder = multi ? undefined : (target.folder || null);
   state.moveTarget = target;
+  $('#moveSheetTitle').textContent = includedItems.length > 1
+    ? `Move ${includedItems.length} generations`
+    : 'Move to folder';
   const chips = $('#moveChips');
   chips.innerHTML = '';
   const all = [{ id: null, name: 'No folder' }, ...state.folders];
@@ -14000,15 +14035,20 @@ function openMoveSheet(target) {
     b.innerHTML = `${f.locked ? '<svg viewBox="0 0 24 24" width="14" height="14" aria-label="Locked"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>' : ''}<span>${escapeHtml(f.name)}</span>`;
     b.addEventListener('click', async () => {
       try {
-        await Promise.all(ids.map((id) => api(`/api/item/${id}/move`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder: f.id }),
-        })));
+        const result = multi
+          ? await api('/api/items/move', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids, folder: f.id, includeGroups: true }),
+          })
+          : await api(`/api/item/${ids[0]}/move`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder: f.id }),
+          });
         $('#moveSheet').classList.remove('show');
         if (multi) exitSelect();
         await refreshGallery();
-        const what = ids.length > 1 ? `${ids.length} images` : 'Image';
+        const moved = multi ? Number(result.moved || includedItems.length) : 1;
+        const what = moved > 1 ? `${moved} generations` : 'Generation';
         toast(f.id ? `${what} moved to ${f.name}` : `${what} removed from folder`);
       } catch (e) { toast(e.message, true); }
     });

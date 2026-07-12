@@ -5179,6 +5179,63 @@ async function handleApi(req, res, url) {
     return json(res, 200, { generationGroupId, items });
   }
 
+  if (route === '/api/items/ungroup' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))].slice(0, 100);
+    if (!ids.length) return json(res, 400, { error: 'Choose a grouped generation' });
+    const unlocked = isPrivateUnlocked(req);
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const byId = new Map(visible.map((item) => [item.id, item]));
+    const requested = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (requested.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const groupIds = new Set(requested.map((item) => item.generationGroupId).filter(Boolean));
+    if (!groupIds.size) return json(res, 409, { error: 'The selected generations are not grouped' });
+    let changed = 0;
+    for (const item of db.items) {
+      if (item.profileId === req.profile.id && groupIds.has(item.generationGroupId)) {
+        delete item.generationGroupId;
+        changed += 1;
+      }
+    }
+    saveDb();
+    return json(res, 200, { ok: true, groups: groupIds.size, items: changed });
+  }
+
+  if (route === '/api/items/move' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))].slice(0, 250);
+    if (!ids.length) return json(res, 400, { error: 'Choose at least one generation to move' });
+    const unlocked = isPrivateUnlocked(req);
+    const targetFolder = body.folder || null;
+    const allowed = canMoveToFolder(db, targetFolder, unlocked);
+    if (!allowed.ok) {
+      return json(res, allowed.reason === 'missing' ? 404 : 401, {
+        error: allowed.reason === 'missing' ? 'Folder not found' : 'Unlock the gallery first',
+      });
+    }
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const byId = new Map(visible.map((item) => [item.id, item]));
+    const requested = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (requested.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const generationGroups = new Set(requested.map((item) => item.generationGroupId).filter(Boolean));
+    const angleGroups = new Set(requested.map((item) => item.angleGroupId).filter(Boolean));
+    const selectedIds = new Set(ids);
+    const items = db.items.filter((item) => item.profileId === req.profile.id && (
+      selectedIds.has(item.id)
+      || (body.includeGroups === true && item.generationGroupId && generationGroups.has(item.generationGroupId))
+      || (body.includeGroups === true && item.angleGroupId && angleGroups.has(item.angleGroupId))
+    ));
+    const lockedFolders = new Set(db.folders
+      .filter((folder) => folder.profileId === req.profile.id && folder.locked)
+      .map((folder) => folder.id));
+    if (!unlocked && items.some((item) => item.folder !== targetFolder && lockedFolders.has(item.folder))) {
+      return json(res, 401, { error: 'Unlock the gallery before moving a group out of a locked folder' });
+    }
+    items.forEach((item) => { item.folder = targetFolder; });
+    saveDb();
+    return json(res, 200, { ok: true, moved: items.length, items: items.map((item) => item.id) });
+  }
+
   const ownPreferences = () => db.userPreferences.find((entry) => entry.profileId === req.profile.id) || null;
   if (route === '/api/preferences' && req.method === 'GET') {
     const prefs = ownPreferences();
