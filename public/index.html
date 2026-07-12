@@ -803,6 +803,19 @@
                 <span class="range-val" id="denoiseVal">0.40</span>
               </div>
             </div>
+            <div class="edit-mask-advanced field-span" id="editOutpaintAdvanced" hidden>
+              <div class="edit-mask-advanced-head">
+                <span>Native preserve</span>
+                <small id="editOutpaintAdvancedNote">Full source boundary</small>
+              </div>
+              <div class="edit-mask-advanced-grid single">
+                <label class="edit-mask-advanced-control" for="editOutpaintFeather">
+                  <span><b>Preserve feather</b><small>Softens the boundary between native pixels and the generated canvas</small></span>
+                  <output id="editOutpaintFeatherVal" for="editOutpaintFeather">12%</output>
+                  <input id="editOutpaintFeather" type="range" min="0" max="25" step="1" value="12" aria-label="Outpaint preserve feather" />
+                </label>
+              </div>
+            </div>
             <div class="edit-mask-advanced field-span" id="editMaskAdvanced" hidden>
               <div class="edit-mask-advanced-head">
                 <span>Localized edit</span>
@@ -1194,7 +1207,7 @@
     <div class="edit-mask-toolbar">
       <button class="edit-mask-tool-button" id="kreaMaskPreviewToggle" type="button" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5c5.5 0 9.5 5.6 9.7 5.9l.4.6-.4.6C21.5 12.4 17.5 18 12 18S2.5 12.4 2.3 12.1l-.4-.6.4-.6C2.5 10.6 6.5 5 12 5Zm0 2c-3.5 0-6.4 3.1-7.6 4.5C5.6 12.9 8.5 16 12 16s6.4-3.1 7.6-4.5C18.4 10.1 15.5 7 12 7Zm0 1.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>
-        Preview cutout
+        <span id="kreaMaskPreviewLabel">Preview cutout</span>
       </button>
       <button class="edit-mask-tool-button" id="kreaMaskInvert" type="button" aria-pressed="false" title="Invert the current mask">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18V3Zm-2 2.3v13.4A7 7 0 0 1 10 5.3Z"/></svg>
@@ -1211,7 +1224,7 @@
         <div class="range-field"><input id="kreaBrushInput" type="range" min="12" max="160" step="4" value="48" /></div>
       </div>
       <div class="field">
-        <label>Feather <span id="kreaMaskFeatherVal">8</span></label>
+        <label><span id="kreaMaskFeatherLabel">Feather</span> <span id="kreaMaskFeatherVal">8</span></label>
         <div class="range-field"><input id="kreaMaskFeather" type="range" min="0" max="64" step="2" value="8" /></div>
       </div>
     </div>

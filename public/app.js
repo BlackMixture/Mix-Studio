@@ -29,6 +29,7 @@ const state = {
   editOutpaintOffsetX: null,
   editOutpaintOffsetY: null,
   editOutpaintScale: 100,
+  editOutpaintFeather: 12,
   editRefSlots: 1,
   editUpscaleEnabled: false,
   editUpscaleResolution: 2160,
@@ -1238,6 +1239,7 @@ function saveForm() {
       editOutpaintOffsetX: state.editOutpaintOffsetX,
       editOutpaintOffsetY: state.editOutpaintOffsetY,
       editOutpaintScale: state.editOutpaintScale,
+      editOutpaintFeather: state.editOutpaintFeather,
       editUpscaleEnabled: state.editUpscaleEnabled,
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
@@ -1273,6 +1275,8 @@ function loadForm() {
     state.editOutpaintOffsetX = optionalUnitOffset(f.editOutpaintOffsetX);
     state.editOutpaintOffsetY = optionalUnitOffset(f.editOutpaintOffsetY);
     state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(f.editOutpaintScale) || 100)));
+    state.editOutpaintFeather = Number.isFinite(Number(f.editOutpaintFeather))
+      ? Math.max(0, Math.min(25, Math.round(Number(f.editOutpaintFeather)))) : 12;
     state.editUpscaleEnabled = f.editUpscaleEnabled === true;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
@@ -3122,7 +3126,10 @@ function clearKreaMask(silent) {
 }
 
 function supportsCurrentEditMask() {
-  return state.view === 'edit' && !editOutpaintActive() && EDIT_MASK_ENGINES.has(state.editEngine);
+  if (state.view !== 'edit') return false;
+  return editOutpaintActive()
+    ? OUTPAINT_EDIT_ENGINES.has(state.editEngine)
+    : EDIT_MASK_ENGINES.has(state.editEngine);
 }
 
 function hasEditMask() {
@@ -3136,14 +3143,15 @@ function syncEditAreaChrome() {
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
   $('#kreaMaskTools').hidden = !supported;
   const outpaint = editOutpaintActive();
+  const localizedActive = active && !outpaint;
   const preserve = $('#editComposite');
-  preserve.hidden = active || (!outpaint && (kreaEdit || kreaRef));
+  preserve.hidden = localizedActive || (!outpaint && (kreaEdit || kreaRef));
   const preserveLabel = outpaint ? 'Keep the source at native resolution and blend the generated border' : 'Preserve unchanged areas';
   preserve.setAttribute('aria-label', preserveLabel);
   preserve.title = preserveLabel;
   const preserveText = preserve.querySelector('.preserve-text');
   if (preserveText) preserveText.textContent = outpaint ? 'Native preserve' : 'Preserve';
-  $('#editAspectControl').hidden = state.view !== 'edit' || (kreaEdit && !editOutpaintActive()) || active;
+  $('#editAspectControl').hidden = state.view !== 'edit' || (kreaEdit && !editOutpaintActive()) || localizedActive;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || active;
   syncEditSamplingRow();
 }
@@ -3152,22 +3160,28 @@ function renderKreaMaskTools() {
   const tools = $('#kreaMaskTools');
   if (!tools) return;
   const hasMask = hasEditMask();
-  const isInpaint = state.editEngine === 'krea2';
+  const outpaint = editOutpaintActive();
+  const isInpaint = !outpaint && state.editEngine === 'krea2';
   const kind = state.kreaMaskKind === 'box' ? 'Box selected'
     : (state.kreaMaskKind === 'smart' ? 'Smart mask selected' : 'Mask selected');
-  $('#kreaMaskLabel').textContent = isInpaint ? 'Inpaint area' : 'Edit area';
-  $('#kreaMaskStatus').textContent = hasMask ? (isInpaint ? `Inpaint · ${kind.toLowerCase()}` : kind) : (isInpaint ? 'Whole image · no inpaint' : 'Whole image');
+  $('#kreaMaskLabel').textContent = outpaint ? 'Preserve area' : (isInpaint ? 'Inpaint area' : 'Edit area');
+  $('#kreaMaskStatus').textContent = outpaint
+    ? (hasMask ? `${kind} · subject only` : 'Full source')
+    : (hasMask ? (isInpaint ? `Inpaint · ${kind.toLowerCase()}` : kind) : (isInpaint ? 'Whole image · no inpaint' : 'Whole image'));
   $('#kreaMaskClear').hidden = !hasMask;
+  $('#kreaMaskClear').setAttribute('aria-label', outpaint ? 'Clear preserve area' : 'Clear edit area');
+  $('#kreaMaskClear').title = outpaint ? 'Clear preserve area' : 'Clear edit area';
   $('#kreaMaskBtn').classList.toggle('active', hasMask);
   syncEditAreaChrome();
   renderEditMaskAdvanced();
+  renderEditOutpaintAdvanced();
   $('#genLbl').textContent = genLabel();
 }
 
 function renderEditMaskAdvanced() {
   const panel = $('#editMaskAdvanced');
   if (!panel) return;
-  const visible = supportsCurrentEditMask() && hasEditMask();
+  const visible = supportsCurrentEditMask() && !editOutpaintActive() && hasEditMask();
   panel.hidden = !visible;
   if (!visible) return;
   const influence = Math.max(25, Math.min(100, Math.round(Number(state.editMaskInfluence) || 78)));
@@ -3178,6 +3192,18 @@ function renderEditMaskAdvanced() {
   $('#editMaskInfluenceVal').textContent = `${influence}%`;
   $('#editMaskExpand').value = String(expand);
   $('#editMaskExpandVal').textContent = `${expand} px`;
+}
+
+function renderEditOutpaintAdvanced() {
+  const panel = $('#editOutpaintAdvanced');
+  if (!panel) return;
+  const visible = editOutpaintActive();
+  panel.hidden = !visible;
+  if (!visible) return;
+  state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number(state.editOutpaintFeather) || 0)));
+  $('#editOutpaintFeather').value = String(state.editOutpaintFeather);
+  $('#editOutpaintFeatherVal').textContent = `${state.editOutpaintFeather}%`;
+  $('#editOutpaintAdvancedNote').textContent = hasEditMask() ? 'Subject mask active' : 'Full source boundary';
 }
 
 function renderKreaMaskMode() {
@@ -3229,6 +3255,7 @@ function setupMaskCanvasFromImage() {
 function openKreaMaskPainter() {
   const ref = state.refs[0];
   if (!ref) return toast('Add a source image in reference slot 1 before selecting an edit area', true);
+  const outpaint = editOutpaintActive();
   if (state.qwenAnglesMode || selectedQwenAngleViews().length) {
     state.qwenAnglesMode = false;
     state.qwenAngles = [];
@@ -3237,14 +3264,22 @@ function openKreaMaskPainter() {
     renderQwenAngleTool();
     renderQwenAngleMode();
   }
-  state.editAspectOverride = false;
-  renderEditAspects();
+  if (!outpaint) {
+    state.editAspectOverride = false;
+    renderEditAspects();
+  } else {
+    $('#editComposite').setAttribute('aria-pressed', 'true');
+    renderEditOutpaint();
+  }
   $('#kreaMaskBase').src = ref.url;
   $('#kreaMaskBase').onload = setupMaskCanvasFromImage;
   if ($('#kreaMaskBase').complete) setupMaskCanvasFromImage();
-  $('#kreaMaskTitle').textContent = state.editEngine === 'krea2'
-    ? 'Krea 2 inpaint area'
-    : `${editEngineLabel(state.editEngine)} edit area`;
+  $('#kreaMaskTitle').textContent = outpaint
+    ? 'Outpaint preserve area'
+    : (state.editEngine === 'krea2' ? 'Krea 2 inpaint area' : `${editEngineLabel(state.editEngine)} edit area`);
+  $('#kreaMaskPrompt').placeholder = outpaint ? 'Preserve a person, product, foreground…' : 'Mask a person, jacket, sky…';
+  $('.edit-area-mode').setAttribute('aria-label', outpaint ? 'Preserve area selection tool' : 'Edit area selection tool');
+  $('#kreaMaskApply').textContent = outpaint ? 'Use preserve mask' : 'Done';
   $('#kreaMaskPrompt').value = '';
   $('#kreaBrushInput').value = String(state.kreaBrush);
   $('#kreaBrushVal').textContent = String(state.kreaBrush);
@@ -3327,7 +3362,9 @@ function processedMaskCanvas() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, out.width, out.height);
   ctx.save();
-  const feather = Math.max(0, Math.min(64, Number(state.kreaMaskFeather) || 0));
+  const feather = editOutpaintActive()
+    ? Math.round(Math.min(out.width, out.height) * Math.max(0, Math.min(25, Number(state.editOutpaintFeather) || 0)) / 100)
+    : Math.max(0, Math.min(64, Number(state.kreaMaskFeather) || 0));
   if (feather) ctx.filter = `blur(${feather}px)`;
   ctx.drawImage(source, 0, 0);
   ctx.restore();
@@ -3404,7 +3441,7 @@ function refreshMaskCutoutPreview() {
   const ctx = cutout.getContext('2d');
   ctx.clearRect(0, 0, cutout.width, cutout.height);
   ctx.drawImage(base, 0, 0, cutout.width, cutout.height);
-  ctx.globalCompositeOperation = 'destination-out';
+  ctx.globalCompositeOperation = editOutpaintActive() ? 'destination-in' : 'destination-out';
   ctx.drawImage(maskAlphaCanvas(mask), 0, 0);
   ctx.globalCompositeOperation = 'source-over';
 }
@@ -3419,10 +3456,19 @@ function scheduleMaskedRefPreview() {
 }
 
 function renderMaskAdjustments() {
+  const outpaint = editOutpaintActive();
+  const featherValue = outpaint ? state.editOutpaintFeather : state.kreaMaskFeather;
+  const featherMax = outpaint ? 25 : 64;
+  const featherStep = outpaint ? 1 : 2;
+  const featherSuffix = outpaint ? '%' : '';
   $('#kreaBrushInput').value = String(state.kreaBrush);
   $('#kreaBrushVal').textContent = String(state.kreaBrush);
-  $('#kreaMaskFeatherVal').textContent = String(state.kreaMaskFeather);
-  $('#kreaMaskFeather').value = String(state.kreaMaskFeather);
+  $('#kreaMaskFeatherLabel').textContent = outpaint ? 'Preserve feather' : 'Feather';
+  $('#kreaMaskFeatherVal').textContent = `${featherValue}${featherSuffix}`;
+  $('#kreaMaskFeather').max = String(featherMax);
+  $('#kreaMaskFeather').step = String(featherStep);
+  $('#kreaMaskFeather').value = String(featherValue);
+  $('#kreaMaskPreviewLabel').textContent = outpaint ? 'Preview preserved subject' : 'Preview cutout';
   $('#kreaMaskInvert').classList.remove('active');
   $('#kreaMaskInvert').setAttribute('aria-pressed', 'false');
   $('#kreaMaskPreviewToggle').classList.toggle('active', state.kreaMaskPreviewCutout);
@@ -3434,8 +3480,11 @@ function renderMaskAdjustments() {
   if (gesture && preview && values) {
     const diameter = Math.round(20 + (state.kreaBrush / 160) * 50);
     preview.style.setProperty('--brush-diameter', `${diameter}px`);
-    preview.style.setProperty('--brush-feather', `${Math.round(3 + (state.kreaMaskFeather / 64) * 15)}px`);
-    values.textContent = `${state.kreaBrush} px · Soft ${state.kreaMaskFeather}`;
+    preview.style.setProperty('--brush-feather', `${Math.round(3 + (featherValue / featherMax) * 15)}px`);
+    values.textContent = `${state.kreaBrush} px · ${outpaint ? `Blend ${featherValue}%` : `Soft ${featherValue}`}`;
+    gesture.setAttribute('aria-label', outpaint
+      ? 'Hold and drag to adjust brush size and preserve feather'
+      : 'Hold and drag to adjust brush size and feathering');
   }
 }
 
@@ -3604,14 +3653,17 @@ async function ensureKreaMaskUploaded() {
 
 function setMaskGestureValues(brush, feather, { announce = false } = {}) {
   state.kreaBrush = Math.max(12, Math.min(160, Math.round(Number(brush) / 4) * 4 || 48));
-  state.kreaMaskFeather = Math.max(0, Math.min(64, Math.round(Number(feather) || 0)));
+  if (editOutpaintActive()) state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number(feather) || 0)));
+  else state.kreaMaskFeather = Math.max(0, Math.min(64, Math.round(Number(feather) || 0)));
   if (hasEditMask()) state.kreaMaskDirty = true;
   renderMaskAdjustments();
   renderMaskOverlay();
   refreshMaskCutoutPreview();
   scheduleMaskedRefPreview();
   const live = $('#kreaMaskGestureLive');
-  if (announce && live) live.textContent = `Brush Size ${state.kreaBrush} px · Brush Pressure ${state.kreaMaskFeather}`;
+  const activeFeather = editOutpaintActive() ? `${state.editOutpaintFeather}% preserve feather` : `${state.kreaMaskFeather} feather`;
+  if (announce && live) live.textContent = `Brush size ${state.kreaBrush} px · ${activeFeather}`;
+  renderEditOutpaintAdvanced();
 }
 
 function finishMaskGesture() {
@@ -3634,7 +3686,7 @@ function beginMaskGesture(event) {
     x: event.clientX,
     y: event.clientY,
     brush: state.kreaBrush,
-    feather: state.kreaMaskFeather,
+    feather: editOutpaintActive() ? state.editOutpaintFeather : state.kreaMaskFeather,
     active: false,
     timer: null,
   };
@@ -3644,7 +3696,9 @@ function beginMaskGesture(event) {
     if (kreaMaskGesture !== start) return;
     start.active = true;
     control.classList.add('is-adjusting');
-    $('#kreaMaskGestureLive').textContent = `Brush Size ${state.kreaBrush} px · Brush Pressure ${state.kreaMaskFeather}`;
+    $('#kreaMaskGestureLive').textContent = editOutpaintActive()
+      ? `Brush size ${state.kreaBrush} px · ${state.editOutpaintFeather}% preserve feather`
+      : `Brush size ${state.kreaBrush} px · ${state.kreaMaskFeather} feather`;
     if (navigator.vibrate) navigator.vibrate(10);
   }, 180);
 }
@@ -3659,7 +3713,7 @@ function moveMaskGesture(event) {
     return;
   }
   event.preventDefault();
-  setMaskGestureValues(current.brush + dy, current.feather + dx / 2, { announce: true });
+  setMaskGestureValues(current.brush + dy, current.feather + dx / (editOutpaintActive() ? 8 : 2), { announce: true });
 }
 
 function keyboardMaskGesture(event) {
@@ -3667,7 +3721,9 @@ function keyboardMaskGesture(event) {
   if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
   event.preventDefault();
   const brush = state.kreaBrush + (key === 'ArrowUp' ? 4 : key === 'ArrowDown' ? -4 : 0);
-  const feather = state.kreaMaskFeather + (key === 'ArrowRight' ? 2 : key === 'ArrowLeft' ? -2 : 0);
+  const featherStep = editOutpaintActive() ? 1 : 2;
+  const feather = (editOutpaintActive() ? state.editOutpaintFeather : state.kreaMaskFeather)
+    + (key === 'ArrowRight' ? featherStep : key === 'ArrowLeft' ? -featherStep : 0);
   setMaskGestureValues(brush, feather, { announce: true });
   saveForm();
 }
@@ -3798,8 +3854,20 @@ $('#kreaMaskErase').addEventListener('click', () => {
   $('#kreaMaskErase').classList.toggle('active', state.kreaMaskErase);
 });
 $('#kreaMaskFeather').addEventListener('input', () => {
-  state.kreaMaskFeather = Number($('#kreaMaskFeather').value) || 0;
+  if (editOutpaintActive()) state.editOutpaintFeather = Math.max(0, Math.min(25, Number($('#kreaMaskFeather').value) || 0));
+  else state.kreaMaskFeather = Math.max(0, Math.min(64, Number($('#kreaMaskFeather').value) || 0));
   state.kreaMaskDirty = hasEditMask();
+  renderMaskAdjustments();
+  renderMaskOverlay();
+  refreshMaskCutoutPreview();
+  scheduleMaskedRefPreview();
+  renderEditOutpaintAdvanced();
+  saveForm();
+});
+$('#editOutpaintFeather').addEventListener('input', () => {
+  state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number($('#editOutpaintFeather').value) || 0)));
+  if (editOutpaintActive() && hasEditMask()) state.kreaMaskDirty = true;
+  renderEditOutpaintAdvanced();
   renderMaskAdjustments();
   renderMaskOverlay();
   refreshMaskCutoutPreview();
@@ -3831,7 +3899,9 @@ $('#kreaMaskApply').addEventListener('click', async () => {
     updateMaskedRefPreview();
     $('#kreaMaskSheet').classList.remove('show');
     renderKreaMaskTools();
-    toast(hasEditMask() ? 'Edit area is active — changes stay inside the mask' : 'No edit area selected');
+    toast(editOutpaintActive()
+      ? (hasEditMask() ? 'Preserve area active — only the masked subject stays native' : 'Full source preserve remains active')
+      : (hasEditMask() ? 'Edit area is active — changes stay inside the mask' : 'No edit area selected'));
   } catch (e) { toast(e.message, true); }
 });
 
@@ -5048,6 +5118,7 @@ function renderEditOutpaint() {
   const preview = $('#editOutpaintPreview');
   const source = $('#editOutpaintSource');
   const image = $('#editOutpaintPreviewImage');
+  source.classList.toggle('preserve-masked', enabled && hasEditMask());
   const hasPreviewGeometry = !!geometry.ref && geometry.finalWidth > 0 && geometry.finalHeight > 0;
   const previewRatio = hasPreviewGeometry ? geometry.finalWidth / geometry.finalHeight : 16 / 9;
   preview.style.aspectRatio = hasPreviewGeometry ? `${geometry.finalWidth} / ${geometry.finalHeight}` : '16 / 9';
@@ -5086,6 +5157,7 @@ function renderEditOutpaint() {
       : (geometry.nativePreserve
         ? `Drag the source to position it. It stays at native resolution while the surrounding canvas is generated.`
         : `Drag the source to position it on the ${state.editWidth} × ${state.editHeight} canvas.`));
+  renderEditOutpaintAdvanced();
 }
 
 $('#editOutpaintToggle').addEventListener('click', () => {
@@ -11589,6 +11661,8 @@ function openLightbox(id, mediaSel) {
 
   const vid = $('#lbVideo');
   const referencePreview = $('#lbReferenceImg');
+  const referenceWrap = referencePreview.parentElement;
+  referenceWrap.classList.remove('reference-preview-active');
   referencePreview.classList.remove('active');
   referencePreview.hidden = true;
   referencePreview.removeAttribute('src');
@@ -11809,12 +11883,14 @@ function openLightbox(id, mediaSel) {
       event.preventDefault();
       hb.classList.add('pressed');
       hb.setAttribute('aria-pressed', 'true');
+      referenceWrap.classList.add('reference-preview-active');
       referencePreview.classList.add('active');
       try { hb.setPointerCapture(event.pointerId); } catch { /* noop */ }
     };
     const hide = () => {
       hb.classList.remove('pressed');
       hb.setAttribute('aria-pressed', 'false');
+      referenceWrap.classList.remove('reference-preview-active');
       referencePreview.classList.remove('active');
     };
     hb.addEventListener('pointerdown', show);
@@ -11978,6 +12054,7 @@ function closeLightbox(fromPop) {
   vid.removeAttribute('src');
   vid.load();
   $('#lbReferenceImg').classList.remove('active');
+  $('.lightbox-img-wrap').classList.remove('reference-preview-active');
   $('#lbReferenceImg').hidden = true;
   $('#lbReferenceImg').removeAttribute('src');
   state.currentItem = null;
