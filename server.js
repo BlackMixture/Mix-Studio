@@ -1695,7 +1695,18 @@ function outpaintRefineReadiness(info) {
 }
 
 async function prepareOutpaintParams(p, refNames, info) {
-  const source = await comfyInputImageDimensions(refNames[0]);
+  const encodedSource = await comfyInputImageDimensions(refNames[0]);
+  const displayWidth = clampInt(p.editOutpaintSourceWidth, 1, 32768, encodedSource.w);
+  const displayHeight = clampInt(p.editOutpaintSourceHeight, 1, 32768, encodedSource.h);
+  // Browsers and ComfyUI both apply JPEG EXIF rotation, while the lightweight
+  // server dimension reader sees the encoded pixel matrix. Accept only an
+  // exact or swapped client pair so phone portrait sources use display-space
+  // dimensions without trusting arbitrary geometry from the request.
+  const displayMatchesEncoded = displayWidth === encodedSource.w && displayHeight === encodedSource.h;
+  const displayMatchesRotated = displayWidth === encodedSource.h && displayHeight === encodedSource.w;
+  const source = displayMatchesEncoded || displayMatchesRotated
+    ? { w: displayWidth, h: displayHeight }
+    : encodedSource;
   p.editOutpaintPosition = normalizeOutpaintPosition(p.editOutpaintPosition);
   p.editOutpaintScale = clampInt(p.editOutpaintScale, 45, 100, 100);
   if (p.composite === true) {
@@ -1755,7 +1766,7 @@ async function buildEditKrea2Outpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
   if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -1781,7 +1792,7 @@ async function buildEditKleinOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
   if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -1802,7 +1813,7 @@ async function buildEditQwenOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
   if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -1821,7 +1832,7 @@ async function buildEditKrea2MaskedOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'SolidMask', 'FeatherMask');
   if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -3589,8 +3600,8 @@ const REQUIRED_CLASSES = {
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
-  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'InvertMask'],
-  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'InvertMask'],
+  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'SolidMask', 'FeatherMask'],
+  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'SolidMask', 'FeatherMask'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',

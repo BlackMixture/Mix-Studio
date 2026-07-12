@@ -42,11 +42,13 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
   assert.equal(graph.color_match.class_type, 'ColorMatch');
   assert.equal(graph.final_scale.inputs.width, 1800);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
-  assert.equal(graph.native_keep_mask.class_type, 'InvertMask');
+  assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
+  assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
-  assert.deepEqual(graph.preserve_source.inputs.source, ['native_padded', 0]);
-  assert.equal(graph.native_padded.inputs.left, 300);
-  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.source, ['source', 0]);
+  assert.equal(graph.preserve_source.inputs.x, 300);
+  assert.equal(graph.preserve_source.inputs.y, 112);
+  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_feather', 0]);
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
   assert.match(graph.positive_text.inputs.text, /Remove the green area/);
 });
@@ -111,7 +113,8 @@ test('Krea2 outpaint uses the padded mask as latent noise and preserves the sour
   assert.equal(graph.masked_latent.class_type, 'SetLatentNoiseMask');
   assert.equal(graph.sampler.inputs.steps, 8);
   assert.equal(graph.color_match.class_type, 'ColorMatch');
-  assert.equal(graph.native_keep_mask.class_type, 'InvertMask');
+  assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
+  assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
 });

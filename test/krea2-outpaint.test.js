@@ -57,6 +57,21 @@ test('native preserve keeps a 1000px square source and creates a true 2000px can
   assert.equal(plan.needsRefine, true);
 });
 
+test('native preserve keeps asymmetric working placement registered to the final source', () => {
+  const plan = calculateNativeOutpaintPlan({
+    sourceWidth: 1001, sourceHeight: 667, targetWidth: 1600, targetHeight: 900,
+    position: 'end', scale: .55,
+  });
+  const scaleX = plan.finalWidth / plan.workingWidth;
+  const scaleY = plan.finalHeight / plan.workingHeight;
+  assert.ok(Math.abs(plan.workingSourceWidth * scaleX - plan.finalSourceWidth) <= scaleX);
+  assert.ok(Math.abs(plan.workingSourceHeight * scaleY - plan.finalSourceHeight) <= scaleY);
+  assert.ok(Math.abs(plan.workingPadding.left * scaleX - plan.finalPadding.left) <= scaleX);
+  assert.ok(Math.abs(plan.workingPadding.top * scaleY - plan.finalPadding.top) <= scaleY);
+  assert.equal(plan.workingPadding.right, 0);
+  assert.equal(plan.finalPadding.right, 0);
+});
+
 test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   const graph = buildKrea2OutpaintGraph({
     settings: {
@@ -85,7 +100,7 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
     seedVr2Models: ['seedvr2.safetensors'],
     composite: true,
     prompt: 'Continue the room naturally into the new space.',
-    seed: 42,
+    seed: 34003458455767,
     batch: 2,
     loras: [{ name: 'style.safetensors', strength: 0.7, on: true }],
   });
@@ -106,14 +121,18 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.latent.inputs.batch_size, 2);
   assert.equal(graph.color_match.class_type, 'ColorMatch');
   assert.equal(graph.outpaint_refine.class_type, 'SeedVR2VideoUpscaler');
+  assert.equal(graph.outpaint_refine.inputs.seed, 202373335);
   assert.equal(graph.outpaint_refine_vae.inputs.decode_tiled, true);
   assert.equal(graph.final_scale.inputs.width, 2400);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
-  assert.deepEqual(graph.native_padded.inputs.image, ['source', 0]);
-  assert.equal(graph.native_padded.inputs.left, 600);
-  assert.equal(graph.native_keep_mask.class_type, 'InvertMask');
+  assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
+  assert.equal(graph.native_keep_mask.inputs.width, 1200);
+  assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
+  assert.equal(graph.native_keep_feather.inputs.left, 20);
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
-  assert.deepEqual(graph.preserve_source.inputs.source, ['native_padded', 0]);
-  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.source, ['source', 0]);
+  assert.equal(graph.preserve_source.inputs.x, 600);
+  assert.equal(graph.preserve_source.inputs.y, 280);
+  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_feather', 0]);
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
 });

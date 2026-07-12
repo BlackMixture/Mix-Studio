@@ -7452,6 +7452,8 @@ $('#generateBtn').addEventListener('click', async () => {
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
     editOutpaintScale: outpaintActive ? state.editOutpaintScale : undefined,
+    editOutpaintSourceWidth: outpaintActive && state.refs[0] ? state.refs[0].w : undefined,
+    editOutpaintSourceHeight: outpaintActive && state.refs[0] ? state.refs[0].h : undefined,
     editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
     enhance: state.enhance && mode === 't2i',
     width: mode === 'edit' && state.editAspectOverride && !localizedEdit ? state.editWidth : state.width,
