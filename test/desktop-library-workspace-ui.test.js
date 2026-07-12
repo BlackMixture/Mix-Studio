@@ -73,6 +73,7 @@ test('selected desktop results expose compact actions and can be unloaded safely
 
 test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(html, /id="desktopStagePicker"[^>]*Choose a result from this gallery group/);
+  assert.match(html, /desktop-stage-head-actions[\s\S]*desktopStageStatus[\s\S]*desktopStagePicker[\s\S]*desktopStageInfo/);
   assert.match(app, /function desktopStageChoices\(item\)/);
   assert.match(app, /function renderDesktopStagePicker\(item, media = 'image'\)/);
   assert.match(app, /angleGroupItems\(item\)/);
@@ -81,6 +82,8 @@ test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(app, /card\.dataset\.groupItemIds = entry\.items\.map/);
   assert.match(app, /groupedIds\.includes\(state\.desktopItemId\)/);
   assert.match(css, /\.desktop-stage-picker \{/);
+  assert.match(css, /\.desktop-stage-head-actions \{[\s\S]*max-width: min\(62%, 430px\)/);
+  assert.match(css, /\.desktop-stage-choice \{[\s\S]*width: 34px;[\s\S]*height: 34px;/);
   assert.match(css, /\.desktop-stage-choice\.active \{/);
 });
 

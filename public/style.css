@@ -6506,7 +6506,16 @@ body.sheet-open {
     justify-content: space-between;
     gap: 16px;
   }
-  .desktop-stage-head-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+  .desktop-stage-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+  .desktop-stage-head-actions {
+    min-width: 0;
+    max-width: min(62%, 430px);
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
   .desktop-stage-info {
     width: 32px;
     height: 32px;
@@ -6640,13 +6649,14 @@ body.sheet-open {
   }
   .desktop-stage-picker {
     min-width: 0;
-    max-width: 100%;
+    max-width: min(32vw, 330px);
+    flex: 0 1 auto;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 7px;
+    justify-content: flex-end;
+    gap: 5px;
     overflow-x: auto;
-    padding: 1px 2px 2px;
+    padding: 2px 3px;
     scrollbar-width: none;
     overscroll-behavior-inline: contain;
   }
@@ -6654,13 +6664,13 @@ body.sheet-open {
   .desktop-stage-picker[hidden] { display: none; }
   .desktop-stage-choice {
     position: relative;
-    flex: 0 0 48px;
-    width: 48px;
-    height: 48px;
-    padding: 3px;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    padding: 2px;
     overflow: hidden;
     border: 1px solid rgba(255,255,255,.13);
-    border-radius: 13px;
+    border-radius: 10px;
     background: #08090c;
     color: rgba(232,237,255,.78);
     box-shadow: 0 5px 18px rgba(0,0,0,.22);
@@ -6668,8 +6678,8 @@ body.sheet-open {
   }
   .desktop-stage-choice:hover { border-color: rgba(255,255,255,.34); transform: translateY(-1px); }
   .desktop-stage-choice.active {
-    width: 58px;
-    flex-basis: 58px;
+    width: 42px;
+    flex-basis: 42px;
     border-color: rgba(255,255,255,.72);
     background: #111318;
     box-shadow: 0 0 0 2px rgba(var(--mode-rgb),.28), 0 7px 22px rgba(0,0,0,.3);
@@ -6680,30 +6690,30 @@ body.sheet-open {
     height: 100%;
     display: block;
     object-fit: cover;
-    border-radius: 9px;
+    border-radius: 7px;
     opacity: .7;
   }
   .desktop-stage-choice.active img { opacity: 1; }
   .desktop-stage-choice-badge {
     position: absolute;
-    right: 5px;
-    bottom: 5px;
-    min-width: 18px;
-    height: 18px;
+    right: 3px;
+    bottom: 3px;
+    min-width: 14px;
+    height: 14px;
     display: grid;
     place-items: center;
-    padding: 0 4px;
+    padding: 0 3px;
     border: 1px solid rgba(255,255,255,.24);
     border-radius: 999px;
     background: rgba(0,0,0,.82);
     color: #fff;
-    font-size: 9px;
+    font-size: 7px;
     font-weight: 900;
     line-height: 1;
     box-shadow: 0 2px 7px rgba(0,0,0,.45);
   }
   .desktop-stage-choice-badge:empty { display: none; }
-  .desktop-stage-choice-badge svg { width: 11px; height: 11px; fill: currentColor; }
+  .desktop-stage-choice-badge svg { width: 9px; height: 9px; fill: currentColor; }
   .desktop-stage-meta { min-width: 0; }
   .desktop-stage-meta p {
     margin: 0 0 8px;
