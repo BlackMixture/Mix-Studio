@@ -53,6 +53,7 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /state\.editSequential = false;\s*\$\('#editComposite'\)\.setAttribute\('aria-pressed', 'true'\)/);
   assert.match(app, /Native preserve/);
   assert.match(css, /\.edit-outpaint-source img \{[^}]*object-fit: contain/);
+  assert.match(css, /\.ref-slot img \{[^}]*object-fit: contain/);
   assert.match(server, /p\.editOutpaintRefine = plan\.needsRefine && refine\.ready && !!p\.postUpscale/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
   assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);

@@ -2587,7 +2587,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   overflow: hidden;
   transition: border-color 180ms var(--ease);
 }
-.ref-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ref-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #050609; }
 .ref-slot .ref-x {
   position: absolute; top: 6px; right: 6px;
   width: 26px; height: 26px; border-radius: 50%;

@@ -57,15 +57,15 @@ test('native preserve keeps a 1000px square source and creates a true 2000px can
   assert.equal(plan.needsRefine, true);
 });
 
-test('native preserve keeps exact source dimensions at 100 percent', () => {
+test('native preserve rounds the final canvas safely at 100 percent', () => {
   const plan = calculateNativeOutpaintPlan({
     sourceWidth: 1000, sourceHeight: 1000, targetWidth: 1024, targetHeight: 1024,
     position: 'center', scale: 1,
   });
-  assert.equal(plan.finalWidth, 1000);
-  assert.equal(plan.finalHeight, 1000);
+  assert.equal(plan.finalWidth, 1008);
+  assert.equal(plan.finalHeight, 1008);
   assert.deepEqual(plan.finalPadding, {
-    left: 0, top: 0, right: 0, bottom: 0, axis: 'horizontal', position: 'center',
+    left: 4, top: 4, right: 4, bottom: 4, axis: 'horizontal', position: 'center',
   });
 });
 
@@ -142,7 +142,7 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
   assert.equal(graph.native_keep_mask.inputs.width, 1200);
   assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
-  assert.equal(graph.native_keep_feather.inputs.left, 48);
+  assert.equal(graph.native_keep_feather.inputs.left, 96);
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.preserve_source.inputs.source, ['source', 0]);
   assert.equal(graph.preserve_source.inputs.x, 600);

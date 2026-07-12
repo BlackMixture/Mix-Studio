@@ -4620,16 +4620,16 @@ function editOutpaintGeometry() {
   let limited = false;
   if (nativePreserve) {
     if (axis === 'horizontal') {
-      finalHeight = Math.max(sourceHeight, Math.ceil(sourceHeight / scale));
-      finalWidth = Math.max(sourceWidth, Math.ceil(finalHeight * targetRatio));
+      finalHeight = Math.max(256, Math.ceil((sourceHeight / scale) / 16) * 16);
+      finalWidth = Math.max(256, Math.ceil((finalHeight * targetRatio) / 16) * 16);
     } else {
-      finalWidth = Math.max(sourceWidth, Math.ceil(sourceWidth / scale));
-      finalHeight = Math.max(sourceHeight, Math.ceil(finalWidth / targetRatio));
+      finalWidth = Math.max(256, Math.ceil((sourceWidth / scale) / 16) * 16);
+      finalHeight = Math.max(256, Math.ceil((finalWidth / targetRatio) / 16) * 16);
     }
     if (finalWidth * finalHeight > 32_000_000) {
       const shrink = Math.sqrt(32_000_000 / (finalWidth * finalHeight));
-      finalWidth = Math.max(sourceWidth, Math.floor(finalWidth * shrink));
-      finalHeight = Math.max(sourceHeight, Math.floor(finalHeight * shrink));
+      finalWidth = Math.max(256, Math.floor((finalWidth * shrink) / 16) * 16);
+      finalHeight = Math.max(256, Math.floor((finalHeight * shrink) / 16) * 16);
       limited = true;
     }
   }
