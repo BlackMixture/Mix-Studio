@@ -112,3 +112,10 @@ test('desktop viewport stays pinned while each workspace column owns scrolling',
   assert.match(app, /sheetScrollY = desktopWorkspaceActive\(\) \? 0/);
   assert.match(app, /savedScrollY = desktopWorkspaceActive\(\) \? 0/);
 });
+
+test('desktop Library rail keeps Likes and Sort inside the narrow right column', () => {
+  assert.match(css, /#view-gallery \.library-toolbar \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 38px 38px;/);
+  assert.match(css, /#view-gallery \.gallery-sort-trigger \{[\s\S]*?width: 38px;[\s\S]*?min-width: 38px;/);
+  assert.match(css, /#view-gallery \.gallery-sort-trigger > span,[\s\S]*?#view-gallery \.gallery-sort-chevron \{ display: none; \}/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.gallery-sort-trigger \{[\s\S]*?min-width: 106px;/);
+});

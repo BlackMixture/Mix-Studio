@@ -7019,7 +7019,37 @@ body.sheet-open {
     gap: 6px;
     padding-bottom: 9px;
   }
-  #view-gallery .gallery-top .size-seg { max-width: 100%; }
+  #view-gallery .library-toolbar {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 38px 38px;
+  }
+  #view-gallery .gallery-top .size-seg {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  #view-gallery .media-filter button { min-width: 0; padding-inline: 5px; }
+  #view-gallery .likes-filter {
+    width: 38px;
+    height: 38px;
+    justify-content: center;
+    padding: 0;
+  }
+  #view-gallery .likes-filter span { display: none; }
+  #view-gallery .gallery-sort { width: 38px; min-width: 0; }
+  #view-gallery .gallery-sort-trigger {
+    width: 38px;
+    min-width: 38px;
+    grid-template-columns: 1fr;
+    place-items: center;
+    gap: 0;
+    padding: 0;
+  }
+  #view-gallery .gallery-sort-trigger > span,
+  #view-gallery .gallery-sort-chevron { display: none; }
   #view-gallery .folder-row { padding: 7px; }
   #view-gallery .folder-chip { padding: 7px 12px; font-size: 11px; }
   #view-gallery .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -7111,6 +7141,34 @@ body.sheet-open {
     padding: 18px 22px 46px;
   }
   body.desktop-library-expanded #view-gallery::before { content: "Library"; }
+  body.desktop-library-expanded #view-gallery .library-toolbar {
+    width: auto;
+    display: flex;
+  }
+  body.desktop-library-expanded #view-gallery .gallery-top .size-seg {
+    width: auto;
+    display: inline-flex;
+  }
+  body.desktop-library-expanded #view-gallery .media-filter button { min-width: 72px; padding-inline: 14px; }
+  body.desktop-library-expanded #view-gallery .likes-filter {
+    width: auto;
+    height: auto;
+    justify-content: flex-start;
+    padding: 8px 12px;
+  }
+  body.desktop-library-expanded #view-gallery .likes-filter span { display: inline; }
+  body.desktop-library-expanded #view-gallery .gallery-sort { width: auto; }
+  body.desktop-library-expanded #view-gallery .gallery-sort-trigger {
+    width: auto;
+    min-width: 106px;
+    grid-template-columns: 15px minmax(0, 1fr) 14px;
+    place-items: initial;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+  }
+  body.desktop-library-expanded #view-gallery .gallery-sort-trigger > span,
+  body.desktop-library-expanded #view-gallery .gallery-sort-chevron { display: block; }
   body.desktop-library-expanded #view-gallery #sortSeg { display: flex; }
   body.desktop-library-expanded #view-gallery .grid {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
