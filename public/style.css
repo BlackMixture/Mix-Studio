@@ -375,23 +375,6 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .app-update-status.good { color: #8cd9a4; }
 .app-update-status.bad { color: #ffaaa3; }
-.app-drawer-version {
-  display: grid;
-  gap: 3px;
-  padding: 13px 14px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: #000;
-}
-.app-drawer-version span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-.app-drawer-version strong { font-size: 16px; font-weight: 800; }
-.app-drawer-version small { color: var(--muted); font-size: 11px; }
 .topbar,
 .tabs-wrap,
 .view,
@@ -6174,6 +6157,33 @@ body.sheet-open {
   align-items: center;
   gap: 12px;
   text-align: left;
+}
+.settings-update-info {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #000;
+}
+.settings-update-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted-2);
+}
+.settings-update-icon svg { width: 17px; height: 17px; }
+.settings-update-copy { min-width: 0; display: grid; gap: 2px; }
+.settings-update-copy small { color: var(--muted-2); font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.settings-update-copy strong { color: var(--ink); font-size: 13px; font-weight: 850; }
+.settings-update-requirement { color: var(--muted); font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+@media (max-width: 430px) {
+  .settings-update-info { grid-template-columns: 34px minmax(0, 1fr); }
+  .settings-update-requirement { grid-column: 2; margin-top: -7px; white-space: normal; }
 }
 .settings-media-toggle:focus-visible,
 .settings-cache-clear:focus-visible {

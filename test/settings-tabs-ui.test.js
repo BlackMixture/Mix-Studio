@@ -20,6 +20,10 @@ test('advanced settings are split into four accessible side tabs', () => {
   assert.match(html, /id="settingsPaneImage"[^>]+data-settings-pane="image" hidden>/);
   assert.match(html, /id="settingsPaneVideo"[^>]+data-settings-pane="video" hidden>/);
   assert.match(html, /id="settingsPaneSystem"[^>]+data-settings-pane="system" hidden>/);
+  const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
+  const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<\/section>/)?.[1] || '';
+  assert.doesNotMatch(drawer, /Update channel/);
+  assert.match(systemPane, /settings-update-info[\s\S]*Update channel[\s\S]*main[\s\S]*Owner · idle queue/);
 });
 
 test('model settings retain one field each and follow logical pipeline groups', () => {
