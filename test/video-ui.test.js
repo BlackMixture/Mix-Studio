@@ -174,9 +174,9 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(app, /api\('\/api\/motionprompt'/);
   assert.match(app, /state\.prompts\.video = res\.prompt/);
   assert.match(app, /label\.textContent = 'Reading frame'/);
-  assert.match(css, /\.video-input-grid \.frame-prompt-action \{/);
-  assert.match(css, /#vidMotionPromptLabel::after \{ content: "Motion"/);
-  assert.match(css, /\.frame-prompt-action\.is-loading #vidMotionPromptLabel::after \{ content: "Reading…"/);
+  assert.match(css, /\.video-inputs-head \.frame-prompt-action \{/);
+  assert.match(app, /const canSuggestMotion = !editAnything && !scail && has/);
+  assert.match(app, /#vidInputsHint'\)\.hidden = canSuggestMotion/);
   assert.match(server, /body\.imageName/);
   assert.match(server, /suggestMotionPrompt\(comfyName/);
   assert.match(server, /if \(!prompt\) \{[\s\S]*suggestMotionPrompt/);

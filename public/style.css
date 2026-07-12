@@ -1195,7 +1195,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   gap: 12px;
   margin: 14px 2px 8px;
 }
-.video-inputs-head span,
+.video-inputs-head > span,
 .video-option-label {
   color: var(--muted);
   font-size: 10px;
@@ -1204,6 +1204,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   text-transform: uppercase;
 }
 .video-inputs-head small { color: var(--muted-2); font-size: 10.5px; font-weight: 650; }
+.video-inputs-head-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; }
 .video-input-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1331,13 +1332,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .video-input-grid .media-input-filled .attach-expand { right: 48px; }
 .video-input-grid .media-input-filled .attach-x svg,
 .attach-thumb .attach-x svg { width: 16px; height: 16px; display: block; }
-.video-input-grid .frame-prompt-action {
-  position: absolute;
-  z-index: 3;
-  top: 8px;
-  right: 48px;
+.video-inputs-head .frame-prompt-action {
+  position: static;
+  flex: 0 0 auto;
   min-height: 32px;
-  max-width: calc(100% - 58px);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1353,9 +1351,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   white-space: nowrap;
   transition: border-color 160ms var(--ease), background 160ms var(--ease), transform 160ms var(--ease), opacity 160ms var(--ease);
 }
-.video-input-grid .frame-prompt-action:hover { border-color: rgba(255,255,255,.42); background: rgba(12,14,19,.94); transform: translateY(-1px); }
-.video-input-grid .frame-prompt-action:focus-visible { outline: 2px solid rgba(var(--mode-rgb),.8); outline-offset: 2px; }
-.video-input-grid .frame-prompt-action svg {
+.video-inputs-head .frame-prompt-action:hover { border-color: rgba(255,255,255,.42); background: rgba(12,14,19,.94); transform: translateY(-1px); }
+.video-inputs-head .frame-prompt-action:focus-visible { outline: 2px solid rgba(var(--mode-rgb),.8); outline-offset: 2px; }
+.video-inputs-head .frame-prompt-action svg {
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
@@ -1365,13 +1363,13 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.video-input-grid #vidMotionPromptLabel {
+.video-inputs-head #vidMotionPromptLabel {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.video-input-grid .frame-prompt-action.is-loading { opacity: .72; pointer-events: none; }
-.video-input-grid .frame-prompt-action.is-loading svg { animation: rot .8s linear infinite; }
+.video-inputs-head .frame-prompt-action.is-loading { opacity: .72; pointer-events: none; }
+.video-inputs-head .frame-prompt-action.is-loading svg { animation: rot .8s linear infinite; }
 .video-input-grid .media-input-filled.expanded {
   grid-column: 1 / -1;
   aspect-ratio: auto;
@@ -1390,11 +1388,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .video-input-grid .media-input-filled .attach-info span { display: none; }
   .video-input-grid .media-input-art > svg { width: 24px; height: 24px; }
   .video-input-grid .media-input-art > i { right: 6px; bottom: 5px; width: 18px; height: 18px; }
-  .video-input-grid .frame-prompt-action { right: 44px; gap: 3px; padding-inline: 5px; font-size: 8px; }
-  .video-input-grid .frame-prompt-action svg { width: 14px; height: 14px; }
-  .video-input-grid #vidMotionPromptLabel { font-size: 0; text-overflow: clip; }
-  .video-input-grid #vidMotionPromptLabel::after { content: "Motion"; font-size: 8px; }
-  .video-input-grid .frame-prompt-action.is-loading #vidMotionPromptLabel::after { content: "Reading…"; }
+  .video-inputs-head .frame-prompt-action { gap: 5px; padding-inline: 8px; font-size: 9px; }
+  .video-inputs-head .frame-prompt-action svg { width: 15px; height: 15px; }
 }
 .video-frame-slot.media-input-filled::before {
   content: "⠿";

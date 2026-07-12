@@ -6139,9 +6139,11 @@ function renderVidAttach() {
   const has = !!state.vidRef;
   const editAnything = state.vidEngine === 'ltx-edit';
   const scail = state.vidEngine === 'scail';
+  const canSuggestMotion = !editAnything && !scail && has;
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
-  $('#vidMotionPromptBtn').hidden = editAnything || scail || !has;
+  $('#vidMotionPromptBtn').hidden = !canSuggestMotion;
+  $('#vidInputsHint').hidden = canSuggestMotion;
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
@@ -9783,10 +9785,9 @@ function whiteLikeAnimationData(data) {
   return recolorStaticLottie(data, [1, 1, 1, 1], [1, 1, 1, 1]);
 }
 
-function videoProgressAnimationData(data) {
+function outlinedProgressAnimationData(data, outline) {
   const cloned = cloneLikeAnimationData(data);
-  const outline = [234 / 255, 67 / 255, 53 / 255, 1];
-  const face = [1, 1, 1, 1];
+  const face = [0, 0, 0, 1];
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
     if ((value.ty === 'st' || value.ty === 'fl') && value.c?.k && Array.isArray(value.c.k)) {
@@ -9796,6 +9797,14 @@ function videoProgressAnimationData(data) {
   };
   visit(cloned);
   return cloned;
+}
+
+function imageProgressAnimationData(data) {
+  return outlinedProgressAnimationData(data, [66 / 255, 133 / 255, 244 / 255, 1]);
+}
+
+function videoProgressAnimationData(data) {
+  return outlinedProgressAnimationData(data, [234 / 255, 67 / 255, 53 / 255, 1]);
 }
 
 const progressAnimationData = new Map();
@@ -9838,15 +9847,13 @@ async function startLivePreviewSimulation(kind = state.view === 'video' ? 'video
   host.replaceChildren();
   const [lottie, data] = await Promise.all([loadLikeAnimationRuntime(), loadProgressAnimationData(kind)]);
   if (token !== livePreviewAnimationToken || !lottie || !data || !host.isConnected) return;
-  const dark = [0.25, 0.62, 1, 1];
-  const light = [0.83, 0.94, 1, 1];
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   livePreviewAnimation = lottie.loadAnimation({
     container: host,
     renderer: 'svg',
     loop: !reduced,
     autoplay: !reduced,
-    animationData: kind === 'video' ? videoProgressAnimationData(data) : recolorStaticLottie(data, dark, light),
+    animationData: kind === 'video' ? videoProgressAnimationData(data) : imageProgressAnimationData(data),
     rendererSettings: { progressiveLoad: true },
   });
   if (reduced) livePreviewAnimation.goToAndStop(0, true);

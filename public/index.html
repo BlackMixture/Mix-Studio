@@ -344,7 +344,13 @@
     <div class="attach-zone" id="vidAttachRow" hidden>
       <div class="video-inputs-head">
         <span>Inputs</span>
-        <small id="vidInputsHint">Tap to add · hold frames to move</small>
+        <div class="video-inputs-head-actions">
+          <small id="vidInputsHint">Tap to add · hold frames to move</small>
+          <button class="frame-prompt-action" id="vidMotionPromptBtn" aria-label="Create a motion prompt from this first frame" title="Create a motion prompt from this first frame" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c3.2-5 7.6-6.8 13-5M15 6l3 4-4 3M6 5v3M4.5 6.5h3M8.5 2.8l1.2 2.1M3.3 10.2l2.2.8"/></svg>
+            <span id="vidMotionPromptLabel">Motion prompt</span>
+          </button>
+        </div>
       </div>
       <div class="video-input-grid">
         <button class="media-input-card video-frame-slot" id="vidAttachBtn" type="button" data-frame-role="start">
@@ -360,10 +366,6 @@
             <b id="vidAttachFilledTitle">First frame</b>
             <span id="vidAttachDims"></span>
           </div>
-          <button class="frame-prompt-action" id="vidMotionPromptBtn" aria-label="Create a motion prompt from this first frame" title="Create a motion prompt from this first frame" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c3.2-5 7.6-6.8 13-5M15 6l3 4-4 3M6 5v3M4.5 6.5h3M8.5 2.8l1.2 2.1M3.3 10.2l2.2.8"/></svg>
-            <span id="vidMotionPromptLabel">Motion prompt</span>
-          </button>
           <button class="attach-x" id="vidAttachX" aria-label="Remove image">✕</button>
         </div>
         <button class="media-input-card" id="vidDriveBtn" type="button" hidden>

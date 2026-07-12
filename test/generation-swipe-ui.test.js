@@ -28,9 +28,12 @@ test('image and video generations use stable Lottie simulations before yielding 
   assert.match(app, /function startLivePreviewSimulation\(kind = state\.view === 'video' \? 'video' : 'image'\)/);
   assert.match(app, /const path = '\/progress-image\.json'/);
   assert.doesNotMatch(app, /progress-video\.json/);
+  assert.match(app, /function outlinedProgressAnimationData\(data, outline\)/);
+  assert.match(app, /const face = \[0, 0, 0, 1\]/);
+  assert.match(app, /function imageProgressAnimationData\(data\)/);
   assert.match(app, /function videoProgressAnimationData\(data\)/);
   assert.match(app, /value\.ty === 'st' \? outline : face/);
-  assert.match(app, /kind === 'video' \? videoProgressAnimationData\(data\)/);
+  assert.match(app, /kind === 'video' \? videoProgressAnimationData\(data\) : imageProgressAnimationData\(data\)/);
   assert.match(css, /live-preview-lottie\[data-kind="video"\] svg[\s\S]*rgba\(234,67,53,\.24\)/);
   assert.match(app, /loop: !reduced/);
   assert.match(app, /function showLivePreviewImage\(source\)/);
