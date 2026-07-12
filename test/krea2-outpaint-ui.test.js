@@ -25,6 +25,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(app, /function editOutpaintGeometry\(\)/);
   assert.match(app, /32_000_000/);
   assert.match(app, /The source remains at native resolution/);
+  assert.match(app, /100% · no added canvas/);
   assert.match(app, /function renderEditOutpaint\(\)/);
   assert.match(app, /const OUTPAINT_EDIT_ENGINES = new Set\(EDIT_ENGINES\)/);
   assert.match(app, /Generate Outpaint/);
@@ -51,6 +52,8 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /preserve\.hidden = active \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
   assert.match(app, /state\.editSequential = false;\s*\$\('#editComposite'\)\.setAttribute\('aria-pressed', 'true'\)/);
   assert.match(app, /Native preserve/);
+  assert.match(css, /\.edit-outpaint-source img \{[^}]*object-fit: contain/);
+  assert.match(server, /p\.editOutpaintRefine = plan\.needsRefine && refine\.ready && !!p\.postUpscale/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
   assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);
   assert.match(app, /state\.view === 'edit' && !editOutpaintActive\(\) && EDIT_MASK_ENGINES/);

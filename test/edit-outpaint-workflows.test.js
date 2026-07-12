@@ -39,9 +39,10 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
   assert.equal(graph.positive.class_type, 'ReferenceLatent');
   assert.equal(graph.scheduler.class_type, 'Flux2Scheduler');
   assert.equal(graph.scheduler.inputs.steps, 4);
-  assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.color_match, undefined);
   assert.equal(graph.final_scale.inputs.width, 1800);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
+  assert.equal(graph.color_match_final.inputs.method, 'hm-mvgd-hm');
   assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
   assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
@@ -81,7 +82,7 @@ test('Qwen outpaint sends the padded green canvas through native edit conditioni
   assert.equal(graph.positive_encode.class_type, 'TextEncodeQwenImageEditPlus');
   assert.deepEqual(graph.positive_encode.inputs.image1, ['outpaint_source', 0]);
   assert.equal(graph.sampler.inputs.steps, 4);
-  assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.color_match, undefined);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
@@ -112,7 +113,7 @@ test('Krea2 outpaint uses the padded mask as latent noise and preserves the sour
   assert.equal(graph.scaled_mask.class_type, 'ImageToMask');
   assert.equal(graph.masked_latent.class_type, 'SetLatentNoiseMask');
   assert.equal(graph.sampler.inputs.steps, 8);
-  assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.color_match, undefined);
   assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
   assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');

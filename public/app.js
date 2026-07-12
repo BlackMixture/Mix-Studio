@@ -4620,16 +4620,16 @@ function editOutpaintGeometry() {
   let limited = false;
   if (nativePreserve) {
     if (axis === 'horizontal') {
-      finalHeight = Math.max(256, Math.ceil((sourceHeight / scale) / 16) * 16);
-      finalWidth = Math.max(256, Math.ceil((finalHeight * targetRatio) / 16) * 16);
+      finalHeight = Math.max(sourceHeight, Math.ceil(sourceHeight / scale));
+      finalWidth = Math.max(sourceWidth, Math.ceil(finalHeight * targetRatio));
     } else {
-      finalWidth = Math.max(256, Math.ceil((sourceWidth / scale) / 16) * 16);
-      finalHeight = Math.max(256, Math.ceil((finalWidth / targetRatio) / 16) * 16);
+      finalWidth = Math.max(sourceWidth, Math.ceil(sourceWidth / scale));
+      finalHeight = Math.max(sourceHeight, Math.ceil(finalWidth / targetRatio));
     }
     if (finalWidth * finalHeight > 32_000_000) {
       const shrink = Math.sqrt(32_000_000 / (finalWidth * finalHeight));
-      finalWidth = Math.max(256, Math.floor((finalWidth * shrink) / 16) * 16);
-      finalHeight = Math.max(256, Math.floor((finalHeight * shrink) / 16) * 16);
+      finalWidth = Math.max(sourceWidth, Math.floor(finalWidth * shrink));
+      finalHeight = Math.max(sourceHeight, Math.floor(finalHeight * shrink));
       limited = true;
     }
   }
@@ -4697,13 +4697,14 @@ function renderEditOutpaint() {
   const summary = $('#editOutpaintSummary');
   summary.textContent = !enabled ? 'Extend beyond the frame'
     : (!geometry.ref ? 'Add a source image'
-      : (geometry.valid ? `${state.editOutpaintScale}% · ${geometry.finalWidth} × ${geometry.finalHeight}` : 'Choose a different Resolution ratio'));
+      : (geometry.valid ? `${state.editOutpaintScale}% · ${geometry.finalWidth} × ${geometry.finalHeight}` : '100% · no added canvas'));
 
   const preview = $('#editOutpaintPreview');
   const source = $('#editOutpaintSource');
   const image = $('#editOutpaintPreviewImage');
-  const previewRatio = geometry.valid ? geometry.finalWidth / geometry.finalHeight : 16 / 9;
-  preview.style.aspectRatio = geometry.valid ? `${geometry.finalWidth} / ${geometry.finalHeight}` : '16 / 9';
+  const hasPreviewGeometry = !!geometry.ref && geometry.finalWidth > 0 && geometry.finalHeight > 0;
+  const previewRatio = hasPreviewGeometry ? geometry.finalWidth / geometry.finalHeight : 16 / 9;
+  preview.style.aspectRatio = hasPreviewGeometry ? `${geometry.finalWidth} / ${geometry.finalHeight}` : '16 / 9';
   preview.style.width = previewRatio < 1
     ? `min(${Math.round(210 * previewRatio)}px, ${(previewRatio * 100).toFixed(2)}%)`
     : 'min(210px, 100%)';
@@ -4739,13 +4740,13 @@ function renderEditOutpaint() {
   $('#editOutpaintPlacementLabel').textContent = geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement';
   $('#editOutpaintScale').value = String(state.editOutpaintScale);
   $('#editOutpaintScaleValue').textContent = `${state.editOutpaintScale}%`;
-  $('#editOutpaintOutputValue').textContent = geometry.valid ? `${geometry.finalWidth} × ${geometry.finalHeight}` : '—';
+  $('#editOutpaintOutputValue').textContent = hasPreviewGeometry ? `${geometry.finalWidth} × ${geometry.finalHeight}` : '—';
   $('#editOutpaintOutputNote').textContent = !geometry.ref ? 'Add a source image to calculate the canvas.'
     : (geometry.nativePreserve
-      ? `${geometry.ref.w} × ${geometry.ref.h} source retained${geometry.limited ? ' · canvas limit applied' : ' · tiled detail pass when available'}`
+      ? `${geometry.ref.w} × ${geometry.ref.h} source retained${geometry.limited ? ' · canvas limit applied' : (state.editUpscaleEnabled ? ' · tiled detail pass enabled' : '')}`
       : 'The source and generated canvas use the selected working resolution.');
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
-    : (!geometry.valid ? 'Choose a wider or taller Resolution ratio to add canvas.'
+    : (!geometry.valid ? 'Reduce Source on canvas or choose a different ratio to add space.'
       : (geometry.nativePreserve
         ? `The source remains at native resolution; only the surrounding canvas is generated.`
         : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`));
@@ -7327,7 +7328,7 @@ $('#generateBtn').addEventListener('click', async () => {
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
   if (outpaintActive && !state.refs[0]) return toast('Outpaint needs a source image in reference slot 1', true);
-  if (outpaintActive && !editOutpaintGeometry().valid) return toast('Choose a Resolution ratio that adds canvas beyond the source image', true);
+  if (outpaintActive && !editOutpaintGeometry().valid) return toast('Reduce Source on canvas below 100%, or choose a different Resolution ratio', true);
 
   if (state.view === 'video') {
     const ltxEdit = state.vidEngine === 'ltx-edit';

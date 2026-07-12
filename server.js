@@ -1732,7 +1732,9 @@ async function prepareOutpaintParams(p, refNames, info) {
     p.editOutpaintFinalPadding = plan.finalPadding;
     p.editOutpaintEffectiveScale = Math.round(plan.effectiveScale * 100);
     p.editOutpaintCanvasLimited = plan.limited;
-    p.editOutpaintRefine = plan.needsRefine && refine.ready;
+    // Native preservation must remain deterministic. SeedVR2 is a creative
+    // detail pass, so use it only when the user explicitly enabled Upscale.
+    p.editOutpaintRefine = plan.needsRefine && refine.ready && !!p.postUpscale;
     p.editOutpaintRefineProfile = p.postUpscale?.profile || 'balanced';
     p.editOutpaintRefineNoise = p.postUpscale?.noise || 'low';
     p.seedVr2Models = refine.models;

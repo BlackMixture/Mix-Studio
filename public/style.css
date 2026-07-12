@@ -2792,7 +2792,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   box-shadow: 0 0 0 1px rgba(106,128,235,.14), 0 0 16px rgba(86,108,220,.13);
   transition: left 220ms var(--ease), top 220ms var(--ease), width 220ms var(--ease), height 220ms var(--ease);
 }
-.edit-outpaint-source img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.edit-outpaint-source img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .edit-outpaint-preview-wrap > small { color: var(--muted-2); font-size: 9.5px; font-weight: 650; line-height: 1.35; }
 .edit-outpaint-placement { min-width: 0; display: grid; gap: 7px; }
 .edit-outpaint-placement > span { color: var(--muted-2); font-size: 9.5px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }

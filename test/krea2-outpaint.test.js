@@ -57,6 +57,18 @@ test('native preserve keeps a 1000px square source and creates a true 2000px can
   assert.equal(plan.needsRefine, true);
 });
 
+test('native preserve keeps exact source dimensions at 100 percent', () => {
+  const plan = calculateNativeOutpaintPlan({
+    sourceWidth: 1000, sourceHeight: 1000, targetWidth: 1024, targetHeight: 1024,
+    position: 'center', scale: 1,
+  });
+  assert.equal(plan.finalWidth, 1000);
+  assert.equal(plan.finalHeight, 1000);
+  assert.deepEqual(plan.finalPadding, {
+    left: 0, top: 0, right: 0, bottom: 0, axis: 'horizontal', position: 'center',
+  });
+});
+
 test('native preserve keeps asymmetric working placement registered to the final source', () => {
   const plan = calculateNativeOutpaintPlan({
     sourceWidth: 1001, sourceHeight: 667, targetWidth: 1600, targetHeight: 900,
@@ -119,16 +131,18 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.sampler.inputs.cfg, 1);
   assert.equal(graph.sampler.inputs.scheduler, 'simple');
   assert.equal(graph.latent.inputs.batch_size, 2);
-  assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.color_match, undefined);
   assert.equal(graph.outpaint_refine.class_type, 'SeedVR2VideoUpscaler');
   assert.equal(graph.outpaint_refine.inputs.seed, 202373335);
   assert.equal(graph.outpaint_refine_vae.inputs.decode_tiled, true);
   assert.equal(graph.final_scale.inputs.width, 2400);
   assert.equal(graph.color_match_final.class_type, 'ColorMatch');
+  assert.equal(graph.color_match_final.inputs.method, 'hm-mvgd-hm');
+  assert.equal(graph.color_match_final.inputs.strength, .82);
   assert.equal(graph.native_keep_mask.class_type, 'SolidMask');
   assert.equal(graph.native_keep_mask.inputs.width, 1200);
   assert.equal(graph.native_keep_feather.class_type, 'FeatherMask');
-  assert.equal(graph.native_keep_feather.inputs.left, 20);
+  assert.equal(graph.native_keep_feather.inputs.left, 48);
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
   assert.deepEqual(graph.preserve_source.inputs.source, ['source', 0]);
   assert.equal(graph.preserve_source.inputs.x, 600);
