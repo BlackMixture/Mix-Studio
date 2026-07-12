@@ -81,9 +81,9 @@ test('outpaint can preserve an organic subject mask instead of the source rectan
   assert.equal(graph.native_keep_mask_load.inputs.image, 'subject-mask.png');
   assert.equal(graph.native_keep_mask.class_type, 'ImageToMask');
   assert.equal(graph.native_keep_feather, undefined);
-  assert.equal(graph.outpaint_regenerate_mask.class_type, 'InvertMask');
-  assert.equal(graph.subject_source.class_type, 'DrawMaskOnImage');
-  assert.deepEqual(graph.padded.inputs.image, ['subject_source', 0]);
+  assert.equal(graph.outpaint_regenerate_mask, undefined);
+  assert.equal(graph.subject_source, undefined);
+  assert.deepEqual(graph.padded.inputs.image, ['resized_source', 0]);
   assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
 });
 
@@ -153,7 +153,7 @@ test('Krea2 outpaint uses the padded mask as latent noise and preserves the sour
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
 });
 
-test('Krea2 outpaint regenerates the original background outside an organic preserve mask', () => {
+test('Krea2 outpaint keeps the full source as context while compositing only an organic preserve mask', () => {
   const graph = buildKrea2MaskedOutpaintGraph({
     settings: {
       unet: 'krea2-turbo.safetensors',
@@ -177,10 +177,10 @@ test('Krea2 outpaint regenerates the original background outside an organic pres
     prompt: 'Continue the room.',
     seed: 10,
   });
-  assert.equal(graph.regenerate_background_mask.class_type, 'InvertMask');
-  assert.equal(graph.combined_outpaint_mask.class_type, 'MaskComposite');
-  assert.equal(graph.combined_outpaint_mask.inputs.operation, 'add');
-  assert.deepEqual(graph.masked_latent.inputs.mask, ['combined_outpaint_mask', 0]);
+  assert.equal(graph.regenerate_background_mask, undefined);
+  assert.equal(graph.combined_outpaint_mask, undefined);
+  assert.deepEqual(graph.masked_latent.inputs.mask, ['scaled_mask', 0]);
+  assert.deepEqual(graph.padded.inputs.image, ['resized_source', 0]);
   assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
 });
 

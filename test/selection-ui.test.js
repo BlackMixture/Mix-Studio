@@ -73,6 +73,14 @@ test('selection bar exposes save, group, ungroup, composite, move, delete, and s
   assert.match(server, /route === '\/api\/items\/download'/);
 });
 
+test('ungroup appears only for a user-created group with multiple live items and sits beside delete', () => {
+  assert.match(app, /function selectedUngroupableGenerationGroupIds\(\)/);
+  assert.match(app, /\(groupSizes\.get\(groupId\) \|\| 0\) > 1/);
+  assert.match(app, /selUngroup'\)\.hidden = selectedUngroupableGenerationGroupIds\(\)\.size === 0/);
+  assert.match(html, /id="selMove"[\s\S]*id="selUngroup"[\s\S]*id="selDelete"/);
+  assert.match(app, /\['selSave', 'selGroup', 'selComposite', 'selMove', 'selUngroup', 'selDelete'\]/);
+});
+
 test('selected images can create a grid contact sheet', () => {
   assert.match(app, /type: 'selection', ids/);
   assert.match(server, /async function buildImageContactSheet\(imageNames\)/);

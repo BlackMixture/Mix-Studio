@@ -30,6 +30,7 @@ const state = {
   editOutpaintOffsetY: null,
   editOutpaintScale: 100,
   editOutpaintFeather: 12,
+  editOutpaintMaskOffset: 0,
   editRefSlots: 1,
   editUpscaleEnabled: false,
   editUpscaleResolution: 2160,
@@ -87,6 +88,7 @@ const state = {
   kreaMaskPointForeground: true,
   kreaMaskPointDeleteMode: false,
   kreaMaskPreviewCutout: false,
+  kreaMaskViewMode: 'dim',
   vidRef: null,              // {name, url, w, h} - Video tab source image
   vidAutoMotionPrompt: false,
   motionPromptRequestsPending: 0,
@@ -1283,6 +1285,7 @@ function saveForm() {
       editMaskInfluence: state.editMaskInfluence,
       editMaskExpand: state.editMaskExpand,
       kreaMaskInvert: state.kreaMaskInvert,
+      kreaMaskViewMode: state.kreaMaskViewMode,
       scailModeVersion: 2,
       vidAutoMotionPrompt: state.vidAutoMotionPrompt,
       vidScailStableTracking: state.vidScailStableTracking,
@@ -1297,6 +1300,7 @@ function saveForm() {
       editOutpaintOffsetY: state.editOutpaintOffsetY,
       editOutpaintScale: state.editOutpaintScale,
       editOutpaintFeather: state.editOutpaintFeather,
+      editOutpaintMaskOffset: state.editOutpaintMaskOffset,
       editUpscaleEnabled: state.editUpscaleEnabled,
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
@@ -1335,6 +1339,8 @@ function loadForm() {
     state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(f.editOutpaintScale) || 100)));
     state.editOutpaintFeather = Number.isFinite(Number(f.editOutpaintFeather))
       ? Math.max(0, Math.min(25, Math.round(Number(f.editOutpaintFeather)))) : 12;
+    state.editOutpaintMaskOffset = Number.isFinite(Number(f.editOutpaintMaskOffset))
+      ? Math.max(-15, Math.min(15, Math.round(Number(f.editOutpaintMaskOffset)))) : 0;
     state.editUpscaleEnabled = f.editUpscaleEnabled === true;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
@@ -1439,6 +1445,7 @@ function loadForm() {
     })) : [];
     state.kreaBrush = Number(f.kreaBrush) || 48;
     state.kreaMaskFeather = Math.max(0, Math.min(64, Number(f.kreaMaskFeather) || 8));
+    state.kreaMaskViewMode = ['dim', 'color'].includes(f.kreaMaskViewMode) ? f.kreaMaskViewMode : 'dim';
     state.editMaskInfluence = Math.max(25, Math.min(100, Math.round(Number(f.editMaskInfluence) || 78)));
     state.editMaskExpand = Math.max(6, Math.min(32, Math.round(Number(f.editMaskExpand) || 14)));
     // Older form state treated inversion as an export-time toggle. The mask
@@ -2744,6 +2751,13 @@ let kreaMaskLast = null;
 let kreaMaskBoxStart = null;
 let kreaMaskGesture = null;
 let smartMaskPointDrag = null;
+let kreaMaskPixelRevision = 0;
+let processedMaskCache = { key: '', canvas: null };
+
+function invalidateProcessedMask() {
+  kreaMaskPixelRevision += 1;
+  processedMaskCache = { key: '', canvas: null };
+}
 
 function clamp01(v, fallback) {
   const n = Number(v);
@@ -3286,6 +3300,7 @@ function setRegionReference(asset) {
 }
 
 function clearKreaMask(silent) {
+  invalidateProcessedMask();
   state.kreaMask = null;
   state.kreaMaskPreview = null;
   state.kreaMaskDirty = false;
@@ -3351,7 +3366,7 @@ function renderKreaMaskTools() {
     : (state.kreaMaskKind === 'smart' ? 'Smart mask selected' : 'Mask selected');
   $('#kreaMaskLabel').textContent = outpaint ? 'Preserve area' : (isInpaint ? 'Inpaint area' : 'Edit area');
   $('#kreaMaskStatus').textContent = outpaint
-    ? (hasMask ? `${kind} · subject only` : 'Full source')
+    ? (hasMask ? `${kind} · subject preserved` : 'Full source')
     : (hasMask ? (isInpaint ? `Inpaint · ${kind.toLowerCase()}` : kind) : (isInpaint ? 'Whole image · no inpaint' : 'Whole image'));
   $('#kreaMaskClear').hidden = !hasMask;
   $('#kreaMaskClear').setAttribute('aria-label', outpaint ? 'Clear preserve area' : 'Clear edit area');
@@ -3386,9 +3401,12 @@ function renderEditOutpaintAdvanced() {
   panel.hidden = !visible;
   if (!visible) return;
   state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number(state.editOutpaintFeather) || 0)));
+  state.editOutpaintMaskOffset = Math.max(-15, Math.min(15, Math.round(Number(state.editOutpaintMaskOffset) || 0)));
   $('#editOutpaintFeather').value = String(state.editOutpaintFeather);
   $('#editOutpaintFeatherVal').textContent = `${state.editOutpaintFeather}%`;
-  $('#editOutpaintAdvancedNote').textContent = hasEditMask() ? 'Subject mask active' : 'Full source boundary';
+  $('#editOutpaintMaskOffset').value = String(state.editOutpaintMaskOffset);
+  $('#editOutpaintMaskOffsetVal').textContent = `${state.editOutpaintMaskOffset > 0 ? '+' : ''}${state.editOutpaintMaskOffset}%`;
+  $('#editOutpaintAdvancedNote').textContent = hasEditMask() ? 'Subject composite · full image guides generation' : 'Full source boundary';
 }
 
 function renderKreaMaskMode() {
@@ -3420,12 +3438,14 @@ function setupMaskCanvasFromImage() {
   overlay.height = h;
   cutout.width = w;
   cutout.height = h;
+  invalidateProcessedMask();
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, w, h);
   if (state.kreaMaskPreview) {
     const im = new Image();
     im.onload = () => {
       ctx.drawImage(im, 0, 0, w, h);
+      invalidateProcessedMask();
       renderMaskOverlay();
       refreshMaskCutoutPreview();
     };
@@ -3531,28 +3551,97 @@ function drawKreaMask(e) {
   state.kreaMaskDirty = true;
   state.kreaMaskPreview = canvas.toDataURL('image/png');
   state.kreaMaskInvert = false;
+  invalidateProcessedMask();
   renderMaskOverlay();
   refreshMaskCutoutPreview();
   scheduleMaskedRefPreview();
   renderKreaMaskTools();
 }
 
+function maskExtremaPass(source, output, lineCount, lineLength, lineStride, itemStride, radius, expand) {
+  const queueLength = lineLength + radius * 2 + 2;
+  const queueIndexes = new Int32Array(queueLength);
+  const queueValues = new Uint8ClampedArray(queueLength);
+  for (let line = 0; line < lineCount; line += 1) {
+    let head = 0;
+    let tail = 0;
+    const lineStart = line * lineStride;
+    for (let cursor = -radius; cursor < lineLength + radius; cursor += 1) {
+      const value = cursor >= 0 && cursor < lineLength
+        ? source[lineStart + cursor * itemStride]
+        : 0;
+      const oldest = cursor - radius * 2;
+      while (head < tail && queueIndexes[head] < oldest) head += 1;
+      while (head < tail && (expand
+        ? queueValues[tail - 1] <= value
+        : queueValues[tail - 1] >= value)) tail -= 1;
+      queueIndexes[tail] = cursor;
+      queueValues[tail] = value;
+      tail += 1;
+      const destination = cursor - radius;
+      if (destination >= 0 && destination < lineLength) {
+        output[lineStart + destination * itemStride] = queueValues[head];
+      }
+    }
+  }
+}
+
+function offsetMaskValues(values, width, height, radius, expand) {
+  if (!radius) return values;
+  const horizontal = new Uint8ClampedArray(values.length);
+  const output = new Uint8ClampedArray(values.length);
+  maskExtremaPass(values, horizontal, height, width, width, 1, radius, expand);
+  maskExtremaPass(horizontal, output, width, height, 1, width, radius, expand);
+  return output;
+}
+
 function processedMaskCanvas() {
   const source = $('#kreaMaskCanvas');
   if (!source || !source.width || !source.height) return null;
+  const outpaint = editOutpaintActive();
+  const offset = outpaint ? Math.max(-15, Math.min(15, Math.round(Number(state.editOutpaintMaskOffset) || 0))) : 0;
+  const feather = outpaint
+    ? Math.min(384, Math.round(Math.min(source.width, source.height) * Math.max(0, Math.min(25, Number(state.editOutpaintFeather) || 0)) / 100))
+    : Math.max(0, Math.min(64, Number(state.kreaMaskFeather) || 0));
+  const cacheKey = `${kreaMaskPixelRevision}:${source.width}x${source.height}:${outpaint ? 'outpaint' : 'edit'}:${offset}:${feather}`;
+  if (processedMaskCache.key === cacheKey && processedMaskCache.canvas) return processedMaskCache.canvas;
+
+  const sourceContext = source.getContext('2d', { willReadFrequently: true });
+  const sourceImage = sourceContext.getImageData(0, 0, source.width, source.height);
+  let values = new Uint8ClampedArray(source.width * source.height);
+  for (let pixel = 0, dataIndex = 0; pixel < values.length; pixel += 1, dataIndex += 4) {
+    values[pixel] = Math.round((sourceImage.data[dataIndex] * sourceImage.data[dataIndex + 3]) / 255);
+  }
+  const offsetRadius = offset
+    ? Math.min(1024, Math.round(Math.min(source.width, source.height) * Math.abs(offset) / 100))
+    : 0;
+  if (offsetRadius) values = offsetMaskValues(values, source.width, source.height, offsetRadius, offset > 0);
+
+  const normalized = document.createElement('canvas');
+  normalized.width = source.width;
+  normalized.height = source.height;
+  const normalizedContext = normalized.getContext('2d');
+  const normalizedImage = normalizedContext.createImageData(source.width, source.height);
+  for (let pixel = 0, dataIndex = 0; pixel < values.length; pixel += 1, dataIndex += 4) {
+    const value = values[pixel];
+    normalizedImage.data[dataIndex] = value;
+    normalizedImage.data[dataIndex + 1] = value;
+    normalizedImage.data[dataIndex + 2] = value;
+    normalizedImage.data[dataIndex + 3] = 255;
+  }
+  normalizedContext.putImageData(normalizedImage, 0, 0);
+
   const out = document.createElement('canvas');
   out.width = source.width;
   out.height = source.height;
-  const ctx = out.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.save();
-  const feather = editOutpaintActive()
-    ? Math.min(384, Math.round(Math.min(out.width, out.height) * Math.max(0, Math.min(25, Number(state.editOutpaintFeather) || 0)) / 100))
-    : Math.max(0, Math.min(64, Number(state.kreaMaskFeather) || 0));
-  if (feather) ctx.filter = `blur(${feather}px)`;
-  ctx.drawImage(source, 0, 0);
-  ctx.restore();
+  const context = out.getContext('2d');
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, out.width, out.height);
+  context.save();
+  if (feather) context.filter = `blur(${feather}px)`;
+  context.drawImage(normalized, 0, 0);
+  context.restore();
+  processedMaskCache = { key: cacheKey, canvas: out };
   return out;
 }
 
@@ -3566,7 +3655,19 @@ function renderMaskOverlay() {
   }
   const ctx = overlay.getContext('2d');
   ctx.clearRect(0, 0, overlay.width, overlay.height);
-  ctx.drawImage(mask, 0, 0);
+  const alpha = maskAlphaCanvas(mask);
+  if (state.kreaMaskViewMode === 'color') {
+    ctx.fillStyle = 'rgba(255, 102, 93, .48)';
+    ctx.fillRect(0, 0, overlay.width, overlay.height);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(alpha, 0, 0);
+  } else {
+    ctx.fillStyle = 'rgba(0, 0, 0, .68)';
+    ctx.fillRect(0, 0, overlay.width, overlay.height);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.drawImage(alpha, 0, 0);
+  }
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 function invertKreaMask() {
@@ -3586,6 +3687,7 @@ function invertKreaMask() {
     image.data[i + 3] = 255;
   }
   ctx.putImageData(image, 0, 0);
+  invalidateProcessedMask();
   state.kreaMaskPreview = canvas.toDataURL('image/png');
   state.kreaMaskDirty = true;
   state.kreaMaskInvert = false;
@@ -3653,12 +3755,19 @@ function renderMaskAdjustments() {
   $('#kreaMaskFeather').max = String(featherMax);
   $('#kreaMaskFeather').step = String(featherStep);
   $('#kreaMaskFeather').value = String(featherValue);
-  $('#kreaMaskPreviewLabel').textContent = outpaint ? 'Preview subject' : 'Preview cutout';
+  const offset = Math.max(-15, Math.min(15, Math.round(Number(state.editOutpaintMaskOffset) || 0)));
+  $('#kreaMaskOffsetField').hidden = !outpaint;
+  $('#kreaMaskOffset').value = String(offset);
+  $('#kreaMaskOffsetVal').textContent = `${offset > 0 ? '+' : ''}${offset}%`;
   $('#kreaMaskInvert').classList.remove('active');
   $('#kreaMaskInvert').setAttribute('aria-pressed', 'false');
-  $('#kreaMaskPreviewToggle').classList.toggle('active', state.kreaMaskPreviewCutout);
-  $('#kreaMaskPreviewToggle').setAttribute('aria-pressed', String(state.kreaMaskPreviewCutout));
-  $('#kreaMaskStage').classList.toggle('preview-cutout', state.kreaMaskPreviewCutout);
+  $('#kreaMaskStage').classList.remove('preview-cutout');
+  $('#kreaMaskStage').dataset.maskView = state.kreaMaskViewMode;
+  $$('#kreaMaskViewMode [data-mask-view]').forEach((button) => {
+    const active = button.dataset.maskView === state.kreaMaskViewMode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   const gesture = $('#kreaMaskGesture');
   const preview = $('#kreaMaskBrushPreview');
   const values = $('#kreaMaskGestureValues');
@@ -3798,6 +3907,7 @@ async function runSmartMask({ prompt = '', point = null } = {}) {
       ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     });
     ctx.globalCompositeOperation = 'source-over';
+    invalidateProcessedMask();
     state.kreaMaskPreview = canvas.toDataURL('image/png');
     state.kreaMaskDirty = true;
     state.kreaMaskInvert = false;
@@ -4049,8 +4159,28 @@ $('#kreaMaskFeather').addEventListener('input', () => {
   renderEditOutpaintAdvanced();
   saveForm();
 });
+$('#kreaMaskOffset').addEventListener('input', () => {
+  state.editOutpaintMaskOffset = Math.max(-15, Math.min(15, Math.round(Number($('#kreaMaskOffset').value) || 0)));
+  state.kreaMaskDirty = hasEditMask();
+  renderMaskAdjustments();
+  renderMaskOverlay();
+  refreshMaskCutoutPreview();
+  scheduleMaskedRefPreview();
+  renderEditOutpaintAdvanced();
+  saveForm();
+});
 $('#editOutpaintFeather').addEventListener('input', () => {
   state.editOutpaintFeather = Math.max(0, Math.min(25, Math.round(Number($('#editOutpaintFeather').value) || 0)));
+  if (editOutpaintActive() && hasEditMask()) state.kreaMaskDirty = true;
+  renderEditOutpaintAdvanced();
+  renderMaskAdjustments();
+  renderMaskOverlay();
+  refreshMaskCutoutPreview();
+  scheduleMaskedRefPreview();
+  saveForm();
+});
+$('#editOutpaintMaskOffset').addEventListener('input', () => {
+  state.editOutpaintMaskOffset = Math.max(-15, Math.min(15, Math.round(Number($('#editOutpaintMaskOffset').value) || 0)));
   if (editOutpaintActive() && hasEditMask()) state.kreaMaskDirty = true;
   renderEditOutpaintAdvanced();
   renderMaskAdjustments();
@@ -4072,11 +4202,14 @@ $('#editMaskExpand').addEventListener('input', () => {
 $('#kreaMaskInvert').addEventListener('click', () => {
   invertKreaMask();
 });
-$('#kreaMaskPreviewToggle').addEventListener('click', () => {
-  if (!hasEditMask()) return toast('Create a mask before previewing it', true);
-  state.kreaMaskPreviewCutout = !state.kreaMaskPreviewCutout;
-  refreshMaskCutoutPreview();
+$('#kreaMaskViewMode').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-mask-view]');
+  if (!button) return;
+  state.kreaMaskViewMode = button.dataset.maskView === 'color' ? 'color' : 'dim';
+  state.kreaMaskPreviewCutout = false;
   renderMaskAdjustments();
+  renderMaskOverlay();
+  saveForm();
 });
 $('#kreaMaskReset').addEventListener('click', () => clearKreaMask());
 $('#kreaMaskApply').addEventListener('click', async () => {
@@ -8185,6 +8318,7 @@ $('#generateBtn').addEventListener('click', async () => {
     editOutpaintOffsetY: outpaintActive ? editOutpaintGeometry().offsetY : undefined,
     editOutpaintScale: outpaintActive ? state.editOutpaintScale : undefined,
     editOutpaintFeather: outpaintActive ? state.editOutpaintFeather : undefined,
+    editOutpaintMaskOffset: outpaintActive ? state.editOutpaintMaskOffset : undefined,
     editOutpaintSourceWidth: outpaintActive && state.refs[0] ? state.refs[0].w : undefined,
     editOutpaintSourceHeight: outpaintActive && state.refs[0] ? state.refs[0].h : undefined,
     editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
@@ -9466,7 +9600,7 @@ function activeDesktopStageMedia() {
 
 const DESKTOP_INPUT_STATE_KEYS = [
   'createMode', 'enhance', 'aspect', 'mp', 'width', 'height', 'customDims',
-  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather',
+  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather', 'editOutpaintMaskOffset',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
@@ -9475,7 +9609,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'createInfluence', 'createDepthStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
   'regions', 'activeRegionId', 'kreaMask', 'kreaMaskPreview', 'kreaMaskDirty', 'kreaMaskErase', 'kreaMaskTool', 'kreaMaskKind',
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
-  'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout',
+  'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
   'vidScailMode', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'generationTuning',
@@ -11463,8 +11597,17 @@ function selectedGalleryItems() {
   return state.items.filter((item) => state.selected.has(item.id));
 }
 
-function selectedGenerationGroupIds() {
-  return new Set(selectedGalleryItems().map((item) => item.generationGroupId).filter(Boolean));
+function selectedUngroupableGenerationGroupIds() {
+  const selectedGroupIds = new Set(selectedGalleryItems()
+    .map((item) => item.generationGroupId)
+    .filter(Boolean));
+  if (!selectedGroupIds.size) return selectedGroupIds;
+  const groupSizes = new Map();
+  state.items.forEach((item) => {
+    if (!selectedGroupIds.has(item.generationGroupId)) return;
+    groupSizes.set(item.generationGroupId, (groupSizes.get(item.generationGroupId) || 0) + 1);
+  });
+  return new Set([...selectedGroupIds].filter((groupId) => (groupSizes.get(groupId) || 0) > 1));
 }
 
 function expandedGallerySelection(ids = [...state.selected]) {
@@ -11530,7 +11673,7 @@ function updateSelectBar() {
     ? `${state.selected.size} selected · ${included.length} generations included`
     : `${state.selected.size} selected`;
   $('#selGroup').disabled = state.selected.size < 2;
-  $('#selUngroup').hidden = selectedGenerationGroupIds().size === 0;
+  $('#selUngroup').hidden = selectedUngroupableGenerationGroupIds().size === 0;
   $('#selComposite').disabled = state.selected.size < 2;
   syncSelectionVisuals();
   if ($('#selectBar').classList.contains('is-expanded')) scheduleSelectionInsightsRefresh();
@@ -11565,7 +11708,7 @@ $('#selGroup').addEventListener('click', async () => {
 });
 $('#selUngroup').addEventListener('click', async () => {
   const ids = [...state.selected];
-  const groupCount = selectedGenerationGroupIds().size;
+  const groupCount = selectedUngroupableGenerationGroupIds().size;
   if (!ids.length || !groupCount) return;
   try {
     const result = await api('/api/items/ungroup', {
@@ -11667,7 +11810,7 @@ function scheduleSelectionInsightsRefresh(delay = 120) {
   }, delay);
 }
 
-const selectionActionIds = ['selSave', 'selGroup', 'selUngroup', 'selComposite', 'selMove', 'selDelete'];
+const selectionActionIds = ['selSave', 'selGroup', 'selComposite', 'selMove', 'selUngroup', 'selDelete'];
 
 function restoreSelectionActions() {
   const row = $('.select-actions');
@@ -12784,6 +12927,8 @@ async function restoreKreaMask(item) {
     if (state.editOutpaint) {
       state.editOutpaintFeather = Number.isFinite(Number(item.editOutpaint?.feather))
         ? Math.max(0, Math.min(25, Math.round(Number(item.editOutpaint.feather)))) : 12;
+      state.editOutpaintMaskOffset = Number.isFinite(Number(item.editOutpaint?.maskOffset))
+        ? Math.max(-15, Math.min(15, Math.round(Number(item.editOutpaint.maskOffset)))) : 0;
     } else {
       state.kreaMaskFeather = Math.max(0, Math.min(64, Number(item.editMaskFeather) || 0));
     }
@@ -12858,6 +13003,8 @@ async function reuseItem(it, useEnhanced) {
     state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(it.editOutpaint?.scale) || 100)));
     state.editOutpaintFeather = Number.isFinite(Number(it.editOutpaint?.feather))
       ? Math.max(0, Math.min(25, Math.round(Number(it.editOutpaint.feather)))) : 12;
+    state.editOutpaintMaskOffset = Number.isFinite(Number(it.editOutpaint?.maskOffset))
+      ? Math.max(-15, Math.min(15, Math.round(Number(it.editOutpaint.maskOffset)))) : 0;
     state.editRefSlots = Math.max(1, Math.min(3, (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
     if (state.editEngine === 'qwen') {
       state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)

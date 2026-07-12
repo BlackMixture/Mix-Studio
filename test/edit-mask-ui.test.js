@@ -42,14 +42,18 @@ test('localized edit requests upload their mask automatically and preserve sourc
 
 test('mask refinements visibly apply feathering and invert the current pixels', () => {
   assert.match(html, /id="kreaMaskFeather"/);
+  assert.match(html, /id="kreaMaskOffset"[^>]*min="-15"[^>]*max="15"/);
   assert.match(html, /id="kreaMaskInvert"/);
-  assert.match(html, /id="kreaMaskPreviewToggle"/);
+  assert.match(html, /id="kreaMaskViewMode"/);
+  assert.match(html, /data-mask-view="dim"/);
+  assert.match(html, /data-mask-view="color"/);
+  assert.doesNotMatch(html, /id="kreaMaskPreviewToggle"/);
   assert.match(html, /id="kreaMaskCutoutCanvas"/);
   assert.match(html, /id="kreaMaskOverlayCanvas"/);
   assert.match(html, /id="kreaMaskGesture"/);
   assert.match(html, /id="editMaskInfluence"/);
   assert.match(html, /id="editMaskExpand"/);
-  assert.match(app, /ctx\.filter = `blur\(\$\{feather\}px\)`/);
+  assert.match(app, /context\.filter = `blur\(\$\{feather\}px\)`/);
   assert.match(app, /function invertKreaMask\(\)/);
   assert.match(app, /const current = \(image\.data\[i\] \* image\.data\[i \+ 3\]\) \/ 255/);
   assert.match(app, /function renderMaskOverlay\(\)/);
@@ -62,6 +66,9 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(app, /ref\.displayUrl = cutout\.toDataURL\('image\/png'\)/);
   assert.match(app, /function scheduleMaskedRefPreview\(\)/);
   assert.match(app, /scheduleMaskedRefPreview\(\);/);
+  assert.match(app, /state\.kreaMaskViewMode === 'color'/);
+  assert.match(app, /rgba\(0, 0, 0, \.68\)/);
+  assert.match(app, /rgba\(255, 102, 93, \.48\)/);
   assert.match(app, /maskInfluence: localizedEdit \? state\.editMaskInfluence/);
   assert.match(app, /maskExpand: localizedEdit \? state\.editMaskExpand/);
   assert.doesNotMatch(app, /red tint/);

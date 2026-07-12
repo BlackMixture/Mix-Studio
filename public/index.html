@@ -815,11 +815,16 @@
                 <span>Native preserve</span>
                 <small id="editOutpaintAdvancedNote">Full source boundary</small>
               </div>
-              <div class="edit-mask-advanced-grid single">
+              <div class="edit-mask-advanced-grid">
                 <label class="edit-mask-advanced-control" for="editOutpaintFeather">
                   <span><b>Preserve feather</b><small>Softens the boundary between native pixels and the generated canvas</small></span>
                   <output id="editOutpaintFeatherVal" for="editOutpaintFeather">12%</output>
                   <input id="editOutpaintFeather" type="range" min="0" max="25" step="1" value="12" aria-label="Outpaint preserve feather" />
+                </label>
+                <label class="edit-mask-advanced-control" for="editOutpaintMaskOffset">
+                  <span><b>Mask offset</b><small>Expands or contracts the native preserve edge</small></span>
+                  <output id="editOutpaintMaskOffsetVal" for="editOutpaintMaskOffset">0%</output>
+                  <input id="editOutpaintMaskOffset" type="range" min="-15" max="15" step="1" value="0" aria-label="Outpaint preserve mask offset" />
                 </label>
               </div>
             </div>
@@ -1211,11 +1216,14 @@
       <div class="smart-mask-points" id="kreaMaskPoints"></div>
       <div class="smart-mask-loading" id="kreaMaskLoading" hidden><span></span><b id="kreaMaskLoadingText">Finding selection</b></div>
     </div>
+    <div class="mask-view-switch" id="kreaMaskViewMode" role="group" aria-label="Mask viewing style">
+      <span>View</span>
+      <div>
+        <button class="active" type="button" data-mask-view="dim" aria-pressed="true">Dim outside</button>
+        <button type="button" data-mask-view="color" aria-pressed="false"><i aria-hidden="true"></i> Color selection</button>
+      </div>
+    </div>
     <div class="edit-mask-toolbar">
-      <button class="edit-mask-tool-button" id="kreaMaskPreviewToggle" type="button" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5c5.5 0 9.5 5.6 9.7 5.9l.4.6-.4.6C21.5 12.4 17.5 18 12 18S2.5 12.4 2.3 12.1l-.4-.6.4-.6C2.5 10.6 6.5 5 12 5Zm0 2c-3.5 0-6.4 3.1-7.6 4.5C5.6 12.9 8.5 16 12 16s6.4-3.1 7.6-4.5C18.4 10.1 15.5 7 12 7Zm0 1.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>
-        <span id="kreaMaskPreviewLabel">Preview cutout</span>
-      </button>
       <button class="edit-mask-tool-button" id="kreaMaskInvert" type="button" aria-pressed="false" title="Invert the current mask">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18V3Zm-2 2.3v13.4A7 7 0 0 1 10 5.3Z"/></svg>
         Invert mask
@@ -1233,6 +1241,10 @@
       <div class="field">
         <label><span id="kreaMaskFeatherLabel">Feather</span> <span id="kreaMaskFeatherVal">8</span></label>
         <div class="range-field"><input id="kreaMaskFeather" type="range" min="0" max="64" step="2" value="8" /></div>
+      </div>
+      <div class="field field-span" id="kreaMaskOffsetField" hidden>
+        <label>Mask offset <span id="kreaMaskOffsetVal">0%</span></label>
+        <div class="range-field"><input id="kreaMaskOffset" type="range" min="-15" max="15" step="1" value="0" aria-label="Preserve mask offset" /></div>
       </div>
     </div>
     <button class="mask-gesture-control" id="kreaMaskGesture" type="button" aria-label="Hold and drag to adjust brush size and feathering">
@@ -1855,9 +1867,9 @@
     <div class="select-actions" aria-label="Selection actions">
       <button class="action-btn" id="selSave" type="button"><b>↓</b><span>Save</span></button>
       <button class="action-btn" id="selGroup" type="button"><b>◫</b><span>Group</span></button>
-      <button class="action-btn" id="selUngroup" type="button" hidden><b>⊘</b><span>Ungroup</span></button>
       <button class="action-btn" id="selComposite" type="button"><b>▦</b><span>Composite</span></button>
       <button class="action-btn" id="selMove" type="button"><b>▤</b><span>Move</span></button>
+      <button class="action-btn" id="selUngroup" type="button" hidden><b>⊘</b><span>Ungroup</span></button>
       <button class="action-btn danger" id="selDelete" type="button"><b>⌫</b><span>Delete</span></button>
     </div>
   </div>

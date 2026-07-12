@@ -4749,7 +4749,40 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .smart-mask-point-mode #kreaMaskPointDelete { width: 30px; justify-content: center; padding: 0; }
 .smart-mask-point-mode #kreaMaskPointDelete svg { width: 14px; height: 14px; }
 .smart-mask-point-mode #kreaMaskPointDelete.active { background: rgba(255,102,93,.16); color: #ffaba5; }
-.edit-mask-toolbar { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 10px 0; }
+.mask-view-switch {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 4px 4px 4px 11px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 12px;
+  background: #050505;
+}
+.mask-view-switch > span { color: var(--muted-2); font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.mask-view-switch > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px; padding: 3px; border-radius: 9px; background: #0a0a0a; }
+.mask-view-switch button {
+  min-width: 0;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 850;
+  white-space: nowrap;
+  transition: background .2s var(--ease), color .2s ease, transform .2s var(--ease);
+}
+.mask-view-switch button.active { background: #181818; color: #fff; transform: translateZ(0); }
+.mask-view-switch button i { width: 7px; height: 7px; border-radius: 50%; background: #ff665d; box-shadow: 0 0 0 3px rgba(255,102,93,.12); }
+.edit-mask-toolbar { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin: 8px 0 10px; }
 .edit-mask-tool-button,
 .edit-mask-erase {
   min-height: 38px;
@@ -4771,6 +4804,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .edit-mask-erase.active { border-color: rgba(255,255,255,.38); color: #fff; background: #101010; }
 .edit-mask-adjustments { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .edit-mask-adjustments .field { min-width: 0; }
+.edit-mask-adjustments .field-span { grid-column: 1 / -1; }
 .edit-mask-adjustments .field > label { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .edit-mask-adjustments .field > label span { color: #fff; font-variant-numeric: tabular-nums; }
 .edit-mask-adjustments .range-field { padding: 6px 0 2px; }
@@ -5290,7 +5324,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   opacity: 0;
   touch-action: none;
 }
-.krea-mask-overlay { pointer-events: none; mix-blend-mode: screen; opacity: .72; }
+.krea-mask-overlay { pointer-events: none; }
 .mask-stage.preview-cutout #kreaMaskBase,
 .mask-stage.preview-cutout .krea-mask-canvas,
 .mask-stage.preview-cutout .krea-mask-overlay { visibility: hidden; }

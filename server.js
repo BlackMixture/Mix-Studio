@@ -1341,6 +1341,7 @@ async function completeJob(pid) {
         offsetY: job.params.editOutpaintOffsetY,
         scale: job.params.editOutpaintScale,
         feather: job.params.editOutpaintFeather,
+        maskOffset: job.params.editOutpaintMaskOffset,
         preserveMask: !!job.params.maskImageName,
         effectiveScale: job.params.editOutpaintEffectiveScale,
         axis: job.params.editOutpaintAxis,
@@ -1811,7 +1812,6 @@ async function buildEditKleinOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.maskImageName) requiredNodes.push('ImageToMask', 'MaskToImage', 'InvertMask');
   appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -1832,7 +1832,6 @@ async function buildEditQwenOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.maskImageName) requiredNodes.push('ImageToMask', 'MaskToImage', 'InvertMask');
   appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -1851,7 +1850,6 @@ async function buildEditKrea2MaskedOutpaint(p, refNames) {
   const info = await getObjectInfo();
   const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask', 'ColorMatch'];
-  if (p.maskImageName) requiredNodes.push('InvertMask', 'MaskComposite');
   appendOutpaintFinishRequirements(requiredNodes, p);
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
@@ -3619,8 +3617,8 @@ const REQUIRED_CLASSES = {
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
-  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'ImageToMask', 'MaskToImage', 'InvertMask', 'MaskComposite', 'SolidMask', 'FeatherMask'],
-  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'ImageToMask', 'MaskToImage', 'InvertMask', 'SolidMask', 'FeatherMask'],
+  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'ImageToMask', 'SolidMask', 'FeatherMask'],
+  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'ImageToMask', 'SolidMask', 'FeatherMask'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',
@@ -4137,6 +4135,7 @@ async function handleApi(req, res, url) {
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
     p.editOutpaintScale = p.editOutpaint ? clampInt(p.editOutpaintScale, 45, 100, 100) : undefined;
     p.editOutpaintFeather = p.editOutpaint ? clampInt(p.editOutpaintFeather, 0, 25, 12) : undefined;
+    p.editOutpaintMaskOffset = p.editOutpaint ? clampInt(p.editOutpaintMaskOffset, -15, 15, 0) : undefined;
     const hasOutpaintOffsetX = p.editOutpaintOffsetX !== null && p.editOutpaintOffsetX !== undefined && p.editOutpaintOffsetX !== '';
     const hasOutpaintOffsetY = p.editOutpaintOffsetY !== null && p.editOutpaintOffsetY !== undefined && p.editOutpaintOffsetY !== '';
     const outpaintOffsetX = Number(p.editOutpaintOffsetX);
