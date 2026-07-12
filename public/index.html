@@ -60,9 +60,18 @@
           <span>Create</span><svg class="app-drawer-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
         </button>
         <div class="app-drawer-create-modes" id="drawerCreateModes">
-          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="image"><span aria-hidden="true">▧</span>Image</button>
-          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="region"><span aria-hidden="true">⌗</span>Region</button>
-          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="video" data-feature-view="video"><span aria-hidden="true">▹</span>Video</button>
+          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="image">
+            <span class="app-drawer-create-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h16v14H4V5Zm2 2v10h12V7H6Zm2 8 2.8-3 2.1 2.1 1.7-1.8L17 15H8Zm1-6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg></span>
+            <span>Image</span>
+          </button>
+          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="region">
+            <span class="app-drawer-create-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 3h6v2H6v4H4V3Zm10 0h6v6h-2V5h-4V3ZM4 15h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg></span>
+            <span>Region</span>
+          </button>
+          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="video" data-feature-view="video">
+            <span class="app-drawer-create-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 4h14v16H5V4Zm2 2v12h10V6H7Zm3 2.5 5 3.5-5 3.5v-7Z"/></svg></span>
+            <span>Video</span>
+          </button>
         </div>
         <button class="app-drawer-nav-item" type="button" data-drawer-view="edit" data-feature-view="edit">
           <span class="app-drawer-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1l-2.8-2.8Z"/></svg></span>

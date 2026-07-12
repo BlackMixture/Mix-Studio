@@ -80,9 +80,17 @@ test('drawer Create subnavigation expands and collapses with accessible motion',
   assert.match(app, /modes\.classList\.toggle\('is-collapsed', !expanded\)/);
   assert.match(app, /modes\.setAttribute\('aria-hidden', String\(!expanded\)\)/);
   assert.match(app, /modes\.inert = !expanded/);
-  assert.match(css, /\.app-drawer-create-modes \{[\s\S]*max-height: 120px;[\s\S]*transition: max-height 220ms/);
+  assert.match(css, /\.app-drawer-create-modes \{[\s\S]*max-height: 164px;[\s\S]*transition: max-height 220ms/);
   assert.match(css, /\.app-drawer-create-modes\.is-collapsed \{[\s\S]*max-height: 0;[\s\S]*opacity: 0;/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.app-drawer-create-modes/);
+});
+
+test('drawer Create subnavigation matches the primary navigation scale', () => {
+  const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
+  assert.match(drawer, /data-drawer-create-mode="image"[\s\S]*class="app-drawer-create-icon"[^>]*>[\s\S]*<svg/);
+  assert.match(css, /\.app-drawer-create-item \{[\s\S]*min-height: 48px;[\s\S]*grid-template-columns: 32px minmax\(0, 1fr\);[\s\S]*font-size: 14px;[\s\S]*font-weight: 800;/);
+  assert.match(css, /\.app-drawer-create-icon \{[\s\S]*width: 32px;[\s\S]*height: 32px;/);
+  assert.match(css, /\.app-drawer-create-icon svg \{ width: 17px; height: 17px; \}/);
 });
 
 test('drawer selections use black borders against the drawer canvas', () => {
