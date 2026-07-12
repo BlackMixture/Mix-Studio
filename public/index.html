@@ -208,9 +208,16 @@
       <div class="edit-aspect-body" id="editAspectBody" aria-hidden="true" inert>
         <div class="edit-aspect-body-inner">
           <div class="aspect-row edit-aspect-row" id="editAspectRow"></div>
-          <div class="res-dims edit-res-dims">
-            <input id="editWInput" type="number" inputmode="numeric" step="16" min="64" max="4096" aria-label="Custom output width" /> ×
-            <input id="editHInput" type="number" inputmode="numeric" step="16" min="64" max="4096" aria-label="Custom output height" />
+          <div class="res-meta edit-res-meta">
+            <div class="size-seg" id="editSizeSeg" role="group" aria-label="Edit output size">
+              <button type="button" data-edit-mp="0.75">S</button>
+              <button type="button" data-edit-mp="1" class="active">M</button>
+              <button type="button" data-edit-mp="1.75">L</button>
+            </div>
+            <div class="res-dims edit-res-dims">
+              <input id="editWInput" type="number" inputmode="numeric" step="16" min="64" max="4096" aria-label="Custom output width" /> ×
+              <input id="editHInput" type="number" inputmode="numeric" step="16" min="64" max="4096" aria-label="Custom output height" />
+            </div>
           </div>
         </div>
       </div>

@@ -40,6 +40,8 @@ test('reset clears only the current autosave and keeps named workspaces', () => 
   assert.match(app, /Reset current workspace\?/);
   assert.match(app, /localStorage\.removeItem\(formKey\(\)\)/);
   assert.doesNotMatch(app, /removeItem\(workspaceLibraryKey\(\)\)/);
+  assert.match(css, /#appDialogSheet \{ z-index: 220; \}/);
+  assert.match(app, /if \(!inputOptions && !choices\.length\) \$\('#appDialogConfirm'\)\.focus\(\)/);
 });
 
 test('interactive controls use the shared SVG language instead of emoji icons', () => {

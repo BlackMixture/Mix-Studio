@@ -133,18 +133,23 @@ test('Edit keeps source-matched dimensions by default and exposes a custom outpu
   assert.match(html, /id="editAspectToggle"[^>]*aria-controls="editAspectBody"/);
   assert.match(html, /id="editAspectSummary">Match first image/);
   assert.match(html, /id="editWInput"/);
+  assert.match(html, /id="editSizeSeg"[\s\S]*data-edit-mp="0\.75"[\s\S]*data-edit-mp="1"[\s\S]*data-edit-mp="1\.75"/);
   assert.match(app, /editAspectOverride: false/);
+  assert.match(app, /editMp: 1/);
+  assert.match(app, /function dimensionsForMegapixels\(ratio, megapixels\)/);
+  assert.match(app, /#editSizeSeg button[\s\S]*state\.editMp = megapixels;[\s\S]*state\.editAspectOverride = true/);
+  assert.match(css, /\.edit-res-meta \{ margin-top: 10px; \}/);
   assert.match(app, /editAspectOverride: mode === 'edit' && state\.editAspectOverride/);
   assert.match(server, /if \(!p\.editAspectOverride\) try/);
   assert.match(server, /if \(p\.editAspectOverride && !p\.editOutpaint\) p\.composite = false/);
 });
 
-test('Matching an edit image reports its derived one-megapixel output dimensions', () => {
+test('Matching an edit image reports its medium output dimensions', () => {
   const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
   assert.doesNotMatch(html, /id="refCount"/);
-  assert.match(app, /function matchedEditOutputDimensions\(ref\)/);
-  assert.match(app, /Match image · \$\{matched\.w\} × \$\{matched\.h\}/);
-  assert.match(app, /Math\.sqrt\(1e6 \* ratio\)/);
+  assert.match(app, /function matchedEditOutputDimensions\(ref, megapixels = 1\)/);
+  assert.match(app, /Match image · M · \$\{matched\.w\} × \$\{matched\.h\}/);
+  assert.match(app, /dimensionsForMegapixels\(ratio, megapixels\)/);
 });
 
 test('Use settings rehydrates every saved edit input instead of asking for manual re-upload', () => {

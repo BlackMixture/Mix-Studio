@@ -22,6 +22,7 @@ const state = {
   customDims: false,
   editAspectOverride: false,
   editAspect: '1:1',
+  editMp: 1,
   editWidth: 1024,
   editHeight: 1024,
   editOutpaint: false,
@@ -150,6 +151,7 @@ const ASPECTS = [
   { label: '16:9', ar: 16 / 9 },
   { label: '21:9', ar: 21 / 9 },
 ];
+const RESOLUTION_SIZE_OPTIONS = [0.75, 1, 1.75];
 
 const QWEN_ANGLE_VIEWS = [
   { id: 'front-left', label: 'Front left' },
@@ -538,6 +540,7 @@ function openAppDialog(options = {}) {
   setTimeout(() => {
     if (inputOptions) $('#appDialogInput').focus();
     else list.querySelector('.app-dialog-choice')?.focus();
+    if (!inputOptions && !choices.length) $('#appDialogConfirm').focus();
   }, 80);
   return new Promise((resolve) => { appDialogResolver = resolve; });
 }
@@ -1372,7 +1375,7 @@ function saveForm() {
       vidScailChunkOverlap: state.vidScailChunkOverlap,
       customDims: state.customDims, width: state.width, height: state.height,
       editAspectOverride: state.editAspectOverride, editAspect: state.editAspect,
-      editWidth: state.editWidth, editHeight: state.editHeight,
+      editMp: state.editMp, editWidth: state.editWidth, editHeight: state.editHeight,
       editOutpaint: state.editOutpaint,
       editOutpaintPosition: state.editOutpaintPosition,
       editOutpaintOffsetX: state.editOutpaintOffsetX,
@@ -1411,6 +1414,9 @@ function loadForm() {
     state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
     state.editWidth = round32(Number(f.editWidth) || 1024);
     state.editHeight = round32(Number(f.editHeight) || 1024);
+    state.editMp = state.editAspectOverride
+      ? normalizeResolutionMegapixels(f.editMp, nearestResolutionMegapixels(state.editWidth, state.editHeight))
+      : 1;
     state.editOutpaint = f.editOutpaint === true;
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(f.editOutpaintPosition) ? f.editOutpaintPosition : 'center';
     state.editOutpaintOffsetX = optionalUnitOffset(f.editOutpaintOffsetX);
@@ -2962,6 +2968,33 @@ function derivedAspectLabel(width, height) {
 
 function createSizeLabel(megapixels = state.mp) {
   return Number(megapixels) === 0.75 ? 'S' : (Number(megapixels) === 1.75 ? 'L' : 'M');
+}
+
+function normalizeResolutionMegapixels(value, fallback = 1) {
+  const number = Number(value);
+  return RESOLUTION_SIZE_OPTIONS.includes(number) ? number : fallback;
+}
+
+function nearestResolutionMegapixels(width, height) {
+  const megapixels = Math.max(0, Number(width) * Number(height)) / 1e6;
+  return RESOLUTION_SIZE_OPTIONS.reduce((best, option) => (
+    Math.abs(option - megapixels) < Math.abs(best - megapixels) ? option : best
+  ), 1);
+}
+
+function dimensionsForMegapixels(ratio, megapixels) {
+  const safeRatio = Math.max(0.1, Math.min(10, Number(ratio) || 1));
+  const pixels = normalizeResolutionMegapixels(megapixels) * 1e6;
+  return {
+    w: round32(Math.sqrt(pixels * safeRatio)),
+    h: round32(Math.sqrt(pixels / safeRatio)),
+  };
+}
+
+function editResolutionSizeLabel(width = state.editWidth, height = state.editHeight) {
+  const megapixels = Math.max(0, Number(width) * Number(height)) / 1e6;
+  const nearest = nearestResolutionMegapixels(width, height);
+  return Math.abs(megapixels - nearest) <= 0.08 ? createSizeLabel(nearest) : '';
 }
 
 function nativeCreateOutputDimensions(ref = state.createRef) {
@@ -5769,9 +5802,10 @@ function renderEditAspects() {
   if (!control) return;
   const override = state.editAspectOverride;
   const matched = matchedEditOutputDimensions(state.refs[0]);
+  const sizeLabel = override ? editResolutionSizeLabel() : 'M';
   $('#editAspectSummary').textContent = override
-    ? `${state.editAspect} · ${state.editWidth} × ${state.editHeight}`
-    : (matched ? `Match image · ${matched.w} × ${matched.h}` : 'Match first image');
+    ? `${state.editAspect}${sizeLabel ? ` · ${sizeLabel}` : ''} · ${state.editWidth} × ${state.editHeight}`
+    : (matched ? `Match image · M · ${matched.w} × ${matched.h}` : 'Match first image');
   $('#editWInput').value = state.editWidth;
   $('#editHInput').value = state.editHeight;
   const row = $('#editAspectRow');
@@ -5781,10 +5815,12 @@ function renderEditAspects() {
   source.className = 'aspect-chip edit-aspect-source' + (!override ? ' active' : '');
   source.innerHTML = `<span class="ar-box edit-source-box"></span>Match image${matched ? `<small>${matched.w} × ${matched.h}</small>` : ''}`;
   source.addEventListener('click', () => {
+    state.editMp = 1;
     state.editAspectOverride = false;
-    if (matched) {
-      state.editWidth = matched.w;
-      state.editHeight = matched.h;
+    const nextMatched = matchedEditOutputDimensions(state.refs[0]);
+    if (nextMatched) {
+      state.editWidth = nextMatched.w;
+      state.editHeight = nextMatched.h;
     }
     renderEditAspects();
     saveForm();
@@ -5801,29 +5837,28 @@ function renderEditAspects() {
     btn.addEventListener('click', () => {
       state.editAspectOverride = true;
       state.editAspect = a.label;
-      const px = state.mp * 1e6;
-      state.editWidth = round32(Math.sqrt(px * a.ar));
-      state.editHeight = round32(Math.sqrt(px / a.ar));
+      const dimensions = dimensionsForMegapixels(a.ar, state.editMp);
+      state.editWidth = dimensions.w;
+      state.editHeight = dimensions.h;
       renderEditAspects();
       saveForm();
     });
     row.appendChild(btn);
   });
+  const selectedSize = override ? editResolutionSizeLabel() : 'M';
+  $$('#editSizeSeg button').forEach((button) => button.classList.toggle('active', button.textContent === selectedSize));
   const body = $('#editAspectBody');
   $('#editAspectToggle').classList.toggle('custom', override);
   body.classList.toggle('expanded', $('#editAspectToggle').getAttribute('aria-expanded') === 'true');
   renderEditOutpaint();
 }
 
-function matchedEditOutputDimensions(ref) {
+function matchedEditOutputDimensions(ref, megapixels = 1) {
   const width = Number(ref?.w);
   const height = Number(ref?.h);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) return null;
   const ratio = width / height;
-  return {
-    w: round32(Math.sqrt(1e6 * ratio)),
-    h: round32(Math.sqrt(1e6 / ratio)),
-  };
+  return dimensionsForMegapixels(ratio, megapixels);
 }
 
 function optionalUnitOffset(value) {
@@ -6211,11 +6246,29 @@ for (const id of ['#editWInput', '#editHInput']) {
     state.editAspectOverride = true;
     state.editWidth = round32(Number($('#editWInput').value) || 1024);
     state.editHeight = round32(Number($('#editHInput').value) || 1024);
+    state.editMp = state.editAspectOverride
+      ? nearestResolutionMegapixels(state.editWidth, state.editHeight)
+      : 1;
     state.editAspect = 'custom';
     renderEditAspects();
     saveForm();
   });
 }
+$$('#editSizeSeg button').forEach((button) => button.addEventListener('click', () => {
+  const megapixels = normalizeResolutionMegapixels(button.dataset.editMp);
+  const source = state.refs[0];
+  const ratio = state.editAspectOverride
+    ? state.editWidth / Math.max(1, state.editHeight)
+    : (Number(source?.w) / Math.max(1, Number(source?.h)) || 1);
+  const dimensions = dimensionsForMegapixels(ratio, megapixels);
+  state.editMp = megapixels;
+  state.editAspectOverride = true;
+  state.editAspect = derivedAspectLabel(dimensions.w, dimensions.h);
+  state.editWidth = dimensions.w;
+  state.editHeight = dimensions.h;
+  renderEditAspects();
+  saveForm();
+}));
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
   const keepImageMatch = state.createMatchSource && !!state.createRef;
   state.mp = Number(b.dataset.mp);
@@ -10118,7 +10171,7 @@ function activeDesktopStageMedia() {
 
 const DESKTOP_INPUT_STATE_KEYS = [
   'createMode', 'enhance', 'aspect', 'mp', 'width', 'height', 'customDims',
-  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather', 'editOutpaintMaskOffset',
+  'editAspectOverride', 'editAspect', 'editMp', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather', 'editOutpaintMaskOffset',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
@@ -13637,6 +13690,9 @@ async function reuseItem(it, useEnhanced) {
     state.editAspectOverride = it.editAspectOverride === true;
     state.editWidth = it.width || 1024;
     state.editHeight = it.height || 1024;
+    state.editMp = state.editAspectOverride
+      ? nearestResolutionMegapixels(state.editWidth, state.editHeight)
+      : 1;
     state.editAspect = restoredEditAspect(state.editWidth, state.editHeight);
     state.editUpscaleEnabled = !!it.postUpscale;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(it.postUpscale?.resolution)) ? Number(it.postUpscale.resolution) : 2160;

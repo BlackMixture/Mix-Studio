@@ -3042,7 +3042,8 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .edit-aspect-row .aspect-chip { min-width: 68px; }
 .edit-aspect-source { min-width: 84px !important; }
 .edit-source-box { width: 24px; height: 16px; border-style: dashed !important; }
-.edit-res-dims { margin-top: 10px; justify-content: flex-end; }
+.edit-res-meta { margin-top: 10px; }
+.edit-res-dims { margin-top: 0; justify-content: flex-end; }
 
 .prompt-mention-panel { width: min(470px, calc(100vw - 24px)); }
 .prompt-mention-copy { margin: -4px 0 14px; color: var(--muted); font-size: 12px; line-height: 1.45; }
@@ -6023,6 +6024,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   display: none; align-items: flex-end; justify-content: center;
   overscroll-behavior: contain;
 }
+#appDialogSheet { z-index: 220; }
 .sheet.show { display: flex; }
 body.sheet-open {
   position: fixed;
