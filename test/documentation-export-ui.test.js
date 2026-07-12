@@ -64,7 +64,7 @@ test('region documentation uses the annotated region map as its figure', () => {
 });
 
 test('export uses a restrained research-record treatment without branding', () => {
-  assert.doesNotMatch(app, /GENERATION DOCUMENTATION|MIX STUDIO/);
+  assert.doesNotMatch(app, /GENERATION DOCUMENTATION|GENERATION RECORD|MIX STUDIO/);
   assert.match(app, /setDocumentationMonoFont/);
   assert.doesNotMatch(app, /accent\.addColorStop|createLinearGradient\(0, imageHeight/);
   assert.match(css, /\.documentation-preview \{[\s\S]*background: #111216/);
@@ -88,8 +88,12 @@ test('focused videos can export source, generation details, and result in one pe
   assert.match(app, /const boardRatio = portrait \? ratio \/ 1\.32 : ratio \+ \.52/);
   assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height\)/);
   assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, startFrame, item, video, resultMedia\)/);
-  assert.match(app, /drawDocumentationVideoMedia\(ctx, resultMedia, layout\.result, 'FINAL RESULT'/);
-  assert.match(app, /drawDocumentationVideoMedia\(ctx, startFrame, layout\.source, 'START FRAME'/);
+  assert.match(app, /drawDocumentationVideoMedia\(ctx, resultMedia, layout\.result, 'Final Result', '#ea4335', \{ quiet: true \}\)/);
+  assert.match(app, /drawDocumentationVideoMedia\(ctx, startFrame, layout\.source, 'Start Frame'/);
+  assert.match(app, /function drawDocumentationVideoMedia[\s\S]*setDocumentationFont\(ctx, quiet \? 650 : 700, fontSize\)/);
+  assert.match(app, /quiet[\s\S]*Math\.min\(12, Math\.round\(scaledFontSize \* \.78\)\)/);
+  assert.match(app, /quiet \? 'rgba\(0,0,0,\.62\)'/);
+  assert.doesNotMatch(app, /'FINAL RESULT'|'START FRAME'/);
   assert.doesNotMatch(app, /const introMs =/);
   assert.match(app, /canvas\.captureStream\(30\)/);
   assert.match(app, /new MediaRecorder\(stream/);

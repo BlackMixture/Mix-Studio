@@ -14093,7 +14093,7 @@ function selectedDocumentationMetadata() {
 }
 
 function setDocumentationFont(ctx, weight, size) {
-  ctx.font = `${weight} ${Math.max(9, Math.round(size))}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  ctx.font = `${weight} ${Math.max(9, Math.round(size))}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 }
 
 function setDocumentationMonoFont(ctx, weight, size) {
@@ -14523,7 +14523,7 @@ function documentationVideoLayout(width, height, mediaRatio = width / height) {
   };
 }
 
-function drawDocumentationVideoMedia(ctx, media, box, label, accent) {
+function drawDocumentationVideoMedia(ctx, media, box, label, accent, { quiet = false } = {}) {
   ctx.fillStyle = '#08090c';
   ctx.fillRect(box.x, box.y, box.width, box.height);
   drawContainedMedia(ctx, media, box.x, box.y, box.width, box.height);
@@ -14531,18 +14531,22 @@ function drawDocumentationVideoMedia(ctx, media, box, label, accent) {
   ctx.lineWidth = Math.max(1, Math.min(box.width, box.height) / 420);
   ctx.strokeRect(box.x + .5, box.y + .5, box.width - 1, box.height - 1);
 
-  const fontSize = Math.max(9, Math.round(Math.min(box.width, box.height) * .045));
-  setDocumentationMonoFont(ctx, 750, fontSize);
+  const scaledFontSize = Math.round(Math.min(box.width, box.height) * .045);
+  const fontSize = quiet
+    ? Math.max(9, Math.min(12, Math.round(scaledFontSize * .78)))
+    : Math.max(9, Math.min(14, scaledFontSize));
+  setDocumentationFont(ctx, quiet ? 650 : 700, fontSize);
   const labelWidth = ctx.measureText(label).width;
-  const inset = Math.max(8, Math.round(fontSize * .72));
-  const boxHeight = Math.round(fontSize * 2.05);
-  ctx.fillStyle = 'rgba(0,0,0,.78)';
-  ctx.fillRect(box.x + inset, box.y + inset, labelWidth + inset * 2.2, boxHeight);
+  const inset = Math.max(quiet ? 6 : 8, Math.round(fontSize * (quiet ? .58 : .72)));
+  const badgeHeight = Math.round(fontSize * (quiet ? 1.72 : 1.9));
+  const badgeWidth = labelWidth + inset * (quiet ? 2.05 : 2.35);
+  ctx.fillStyle = quiet ? 'rgba(0,0,0,.62)' : 'rgba(0,0,0,.74)';
+  ctx.fillRect(box.x + inset, box.y + inset, badgeWidth, badgeHeight);
   ctx.fillStyle = accent;
-  ctx.fillRect(box.x + inset * 1.55, box.y + inset + fontSize * .83, Math.max(2, fontSize * .18), Math.max(2, fontSize * .18));
-  ctx.fillStyle = '#fff';
+  ctx.fillRect(box.x + inset * 1.45, box.y + inset + badgeHeight * .29, Math.max(2, fontSize * .15), badgeHeight * .42);
+  ctx.fillStyle = quiet ? 'rgba(255,255,255,.86)' : '#fff';
   ctx.textBaseline = 'top';
-  ctx.fillText(label, box.x + inset * 2.15, box.y + inset + fontSize * .48);
+  ctx.fillText(label, box.x + inset * 2.05, box.y + inset + (badgeHeight - fontSize) * .42);
 }
 
 function drawDocumentationVideoDetails(ctx, box, item, video) {
@@ -14556,13 +14560,6 @@ function drawDocumentationVideoDetails(ctx, box, item, video) {
   let copyY = box.y + inset;
 
   ctx.textBaseline = 'top';
-  ctx.fillStyle = '#ea4335';
-  ctx.fillRect(box.x + inset, copyY, Math.max(28, Math.round(contentWidth * .14)), Math.max(2, Math.round(3 * density)));
-  copyY += Math.round(16 * density);
-  ctx.fillStyle = 'rgba(255,255,255,.55)';
-  setDocumentationMonoFont(ctx, 700, labelSize);
-  ctx.fillText('GENERATION RECORD', box.x + inset, copyY);
-  copyY += Math.round(labelSize * 2.05);
   ctx.fillStyle = 'rgba(255,255,255,.48)';
   setDocumentationMonoFont(ctx, 650, labelSize);
   ctx.fillText('PROMPT', box.x + inset, copyY);
@@ -14593,8 +14590,8 @@ function drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, resul
   const mediaWidth = resultMedia.videoWidth || resultMedia.naturalWidth || resultMedia.width || canvas.width;
   const mediaHeight = resultMedia.videoHeight || resultMedia.naturalHeight || resultMedia.height || canvas.height;
   const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight);
-  drawDocumentationVideoMedia(ctx, resultMedia, layout.result, 'FINAL RESULT', '#ea4335');
-  drawDocumentationVideoMedia(ctx, startFrame, layout.source, 'START FRAME', '#4285f4');
+  drawDocumentationVideoMedia(ctx, resultMedia, layout.result, 'Final Result', '#ea4335', { quiet: true });
+  drawDocumentationVideoMedia(ctx, startFrame, layout.source, 'Start Frame', '#4285f4');
   drawDocumentationVideoDetails(ctx, layout.details, item, video);
 }
 
