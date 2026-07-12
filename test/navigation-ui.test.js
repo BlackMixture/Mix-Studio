@@ -227,6 +227,9 @@ test('image-to-image generations retain their reference for hold-preview and a g
   assert.match(html, /id="lbReferenceImg"/);
   assert.match(app, /referenceWrap\.classList\.add\('reference-preview-active'\)/);
   assert.match(app, /referenceWrap\.classList\.remove\('reference-preview-active'\)/);
+  assert.match(app, /await referencePreview\.decode/);
+  assert.match(app, /setTimeout\(\(\) => \{[\s\S]*referenceWrap\.classList\.add\('reference-preview-active'\)[\s\S]*\}, 145\)/);
+  assert.match(app, /requestAnimationFrame\(\(\) => \{[\s\S]*referencePreview\.classList\.remove\('active'\)/);
   assert.match(css, /\.lightbox-img-wrap\.reference-preview-active #lbImg \{ visibility: hidden; \}/);
   assert.match(app, /referencePreview\.decode\?\.\(\)/);
   assert.match(app, /hb\.classList\.add\('pressed'\)/);

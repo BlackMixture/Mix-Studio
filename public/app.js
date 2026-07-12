@@ -12119,19 +12119,38 @@ function openLightbox(id, mediaSel) {
     hb.setAttribute('aria-pressed', 'false');
     hb.style.userSelect = 'none';
     hb.style.webkitUserSelect = 'none';
-    const show = (event) => {
+    let referenceFadeToken = 0;
+    let referenceSuppressTimer = null;
+    const show = async (event) => {
       event.preventDefault();
+      const token = ++referenceFadeToken;
+      clearTimeout(referenceSuppressTimer);
       hb.classList.add('pressed');
       hb.setAttribute('aria-pressed', 'true');
-      referenceWrap.classList.add('reference-preview-active');
+      // Keep the result underneath during the crossfade. Once the reference
+      // is fully opaque, suppress it to prevent a preserved-outpaint edge seam.
+      referenceWrap.classList.remove('reference-preview-active');
+      try { await referencePreview.decode?.(); } catch { /* use the loaded frame when available */ }
+      if (token !== referenceFadeToken || !hb.classList.contains('pressed')) return;
       referencePreview.classList.add('active');
+      referenceSuppressTimer = setTimeout(() => {
+        if (token === referenceFadeToken && referencePreview.classList.contains('active')) {
+          referenceWrap.classList.add('reference-preview-active');
+        }
+      }, 145);
       try { hb.setPointerCapture(event.pointerId); } catch { /* noop */ }
     };
     const hide = () => {
+      const token = ++referenceFadeToken;
+      clearTimeout(referenceSuppressTimer);
       hb.classList.remove('pressed');
       hb.setAttribute('aria-pressed', 'false');
+      // Restore the result first so the reference fades directly back to it,
+      // never through the black viewer background.
       referenceWrap.classList.remove('reference-preview-active');
-      referencePreview.classList.remove('active');
+      requestAnimationFrame(() => {
+        if (token === referenceFadeToken) referencePreview.classList.remove('active');
+      });
     };
     hb.addEventListener('pointerdown', show);
     hb.addEventListener('pointerup', hide);
