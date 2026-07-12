@@ -3061,7 +3061,14 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .live-preview-media img { object-fit: cover; }
 .live-preview-lottie svg { display: block; width: 100% !important; height: 100% !important; }
 .live-preview-lottie[data-kind="image"] { filter: drop-shadow(0 0 9px rgba(63,153,255,.22)); }
-.live-preview-lottie[data-kind="video"] { filter: drop-shadow(0 0 9px rgba(180,92,255,.24)); }
+.live-preview-lottie[data-kind="video"] {
+  background: #070707;
+}
+.live-preview-lottie[data-kind="video"] svg {
+  filter:
+    drop-shadow(0 0 5px rgba(234,67,53,.24))
+    drop-shadow(0 0 11px rgba(234,67,53,.1));
+}
 .live-info {
   flex: 1;
   min-width: 0;

@@ -9216,8 +9216,8 @@ async function startLivePreviewSimulation(kind = state.view === 'video' ? 'video
   host.replaceChildren();
   const [lottie, data] = await Promise.all([loadLikeAnimationRuntime(), loadProgressAnimationData(kind)]);
   if (token !== livePreviewAnimationToken || !lottie || !data || !host.isConnected) return;
-  const dark = kind === 'video' ? [0.62, 0.35, 1, 1] : [0.25, 0.62, 1, 1];
-  const light = kind === 'video' ? [1, 0.32, 0.45, 1] : [0.83, 0.94, 1, 1];
+  const dark = kind === 'video' ? [1, 1, 1, 1] : [0.25, 0.62, 1, 1];
+  const light = kind === 'video' ? [1, 1, 1, 1] : [0.83, 0.94, 1, 1];
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   livePreviewAnimation = lottie.loadAnimation({
     container: host,
