@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 
 const root = path.join(__dirname, '..');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
@@ -16,7 +17,9 @@ const {
   NODE_PACKS,
   availableComponents,
   cleanRelative,
+  downloadAsset,
   filterProtectedRuntimeRequirements,
+  modelIsRegistered,
   requirementsArgs,
   sameRepo,
 } = require('../lib/dependency-installer');
@@ -46,11 +49,70 @@ test('dependency paths stay inside ComfyUI model folders and trusted repos compa
   assert.throws(() => cleanRelative('../outside.safetensors'));
   assert.equal(sameRepo('git@github.com:PozzettiAndrea/ComfyUI-SAM3.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), true);
   assert.equal(sameRepo('https://github.com/example/other.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), false);
+  assert.equal(modelIsRegistered('krea2_turbo_fp8_scaled.safetensors', new Set(['Krea2_Turbo_FP8_Scaled.safetensors'])), true);
+  assert.equal(modelIsRegistered('Wan2.1\\model.safetensors', new Set(['wan2.1/model.safetensors'])), true);
+});
+
+test('registered ComfyUI models are reused even when they live outside the configured model root', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-dependency-reuse-'));
+  let fetched = false;
+  try {
+    const result = await downloadAsset(
+      ['unet', 'diffusion_models', 'https://example.test/Krea2_turbo_fp8_scaled.safetensors'],
+      rootDir,
+      { unet: 'krea2_turbo_fp8_scaled.safetensors' },
+      () => {},
+      {
+        availableModelNames: ['Krea2_turbo_fp8_scaled.safetensors'],
+        fetch: async () => { fetched = true; throw new Error('should not fetch'); },
+      }
+    );
+    assert.equal(result.skipped, true);
+    assert.equal(result.registered, true);
+    assert.equal(fetched, false);
+    assert.equal(fs.existsSync(result.destination), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('cancelling a model transfer removes its partial file and never installs it', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-dependency-cancel-'));
+  const controller = new AbortController();
+  try {
+    const promise = downloadAsset(
+      ['unet', 'diffusion_models', 'https://example.test/model.safetensors'],
+      rootDir,
+      { unet: 'model.safetensors' },
+      () => {},
+      {
+        signal: controller.signal,
+        fetch: async () => ({
+          ok: true,
+          headers: { get: () => '16' },
+          body: { getReader: () => ({
+            read: async () => {
+              controller.abort();
+              return { done: false, value: new Uint8Array([1, 2, 3, 4]) };
+            },
+          }) },
+        }),
+      }
+    );
+    await assert.rejects(promise, (error) => error.code === 'dependency_cancelled');
+    const destination = path.join(rootDir, 'diffusion_models', 'model.safetensors');
+    assert.equal(fs.existsSync(destination), false);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part`), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test('dependency routes run asynchronously and publish progress instead of holding the browser request open', () => {
   assert.match(server, /route === '\/api\/dependencies\/status'/);
   assert.match(server, /route === '\/api\/dependencies\/install'/);
+  assert.match(server, /route === '\/api\/dependencies\/cancel'/);
+  assert.match(server, /dependencyInstallController\.abort\(\)/);
   assert.match(server, /return json\(res, 202, \{ ok: true, install: dependencyInstallState \}\)/);
   assert.match(server, /updateDependencyInstallState\(/);
   assert.match(server, /broadcast\('dependencyInstall'/);
@@ -78,14 +140,20 @@ test('ComfyUI restart is owner-only, queue-safe, and reports reconnect state', (
 test('Settings presents a compact dependency manager with progress and restart controls', () => {
   assert.match(html, /id="dependencyManagerCard"/);
   assert.match(html, /id="dependencyInstallMissing"/);
+  assert.match(html, /id="dependencyCancelInstall"/);
+  assert.match(html, /id="dependencyToggleAll"/);
   assert.match(html, /id="dependencyRepairMissing"/);
   assert.match(html, /id="dependencyRestartComfy"/);
   assert.match(html, /id="dependencyProgress"/);
   assert.match(app, /function renderDependencyManager\(\)/);
   assert.match(app, /function scheduleDependencyPoll\(\)/);
-  assert.match(app, /Repair missing tools/);
+  assert.match(app, /Repair selected/);
   assert.match(app, /formatDependencyBytes/);
+  assert.match(app, /selectedDependencyIds/);
+  assert.match(app, /\/api\/dependencies\/cancel/);
   assert.match(css, /\.dependency-progress/);
+  assert.match(css, /\.dependency-option\.selected/);
+  assert.match(css, /\.dependency-cancel/);
   assert.match(css, /@keyframes dependencyProgress/);
 });
 

@@ -1609,9 +1609,14 @@
               <p id="dependencyManagerStatus">Checking every configured model and node…</p>
             </div>
             <div class="dependency-progress" id="dependencyProgress" hidden><span id="dependencyProgressFill"></span></div>
+            <div class="dependency-selection-head" id="dependencySelectionHead" hidden>
+              <span>Choose downloads</span>
+              <button id="dependencyToggleAll" type="button">Clear</button>
+            </div>
             <div class="dependency-missing-list" id="dependencyMissingList"></div>
             <div class="dependency-card-actions dependency-manager-actions">
               <button class="dependency-install" id="dependencyInstallMissing" type="button">Install missing</button>
+              <button class="dependency-cancel" id="dependencyCancelInstall" type="button" hidden>Cancel download</button>
               <button class="dependency-check" id="dependencyRepairMissing" type="button">Repair missing tools</button>
               <button class="dependency-check" id="dependencyRestartComfy" type="button">Restart ComfyUI</button>
               <button class="dependency-check" id="dependencyCheckAll" type="button">Check again</button>

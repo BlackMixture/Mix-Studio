@@ -7911,38 +7911,73 @@ $('#queueClearHistoryBtn').addEventListener('click', async () => {
 /* SSE events                                                          */
 /* ------------------------------------------------------------------ */
 
+function generationPhaseText(d) {
+  if (!(d && d.isSampling && d.phaseCount > 1)) return '';
+  return `Stage ${d.phaseIndex} of ${d.phaseCount} · ${d.phaseLabel || 'Video pass'}`;
+}
+
+function renderGenerationProgress(d) {
+  const localPct = Number.isFinite(Number(d.localPercent))
+    ? Number(d.localPercent)
+    : (d.max ? Math.round((d.value / d.max) * 100) : 0);
+  const pct = Number.isFinite(Number(d.overallPercent)) ? Number(d.overallPercent) : localPct;
+  const remainingMs = progressEta.update({
+    jobId: d.jobId,
+    value: d.value,
+    max: d.max,
+    nodeId: d.nodeId,
+  });
+  const etaText = remainingMs == null ? '' : ProgressEta.formatEtaRemaining(remainingMs);
+  const phaseText = generationPhaseText(d);
+  state.queueProgress[d.jobId] = pct;
+  const st = document.querySelector(`.q-state[data-job-id="${d.jobId}"]`);
+  if (st) {
+    st.textContent = pct + '%';
+    st.title = phaseText ? `${phaseText} · ${localPct}% through this pass` : '';
+  }
+  if (!state.activeJobs.has(d.jobId) && !isUpscaleJob(d.jobId)) return;
+  $('#genFill').style.width = pct + '%';
+  if (phaseText) $('#liveStatusText').innerHTML = `<span class="spin"></span> ${phaseText}`;
+  $('#livePct').textContent = phaseText
+    ? `${pct}% overall · ${localPct}% pass${etaText ? ` · ${etaText}` : ''}`
+    : `${pct}%${etaText ? ` · ${etaText}` : ''}`;
+  $('#livePct').title = etaText ? `Estimated completion ${etaText}` : '';
+  $('#desktopStageProgress').hidden = false;
+  $('#desktopStageProgress').querySelector('i').style.width = pct + '%';
+  $('#desktopStageStatus').textContent = phaseText
+    ? `${phaseText} · ${pct}% overall`
+    : pct
+      ? `Working · ${pct}%${etaText ? ` · ${etaText}` : ''}`
+      : 'Working';
+}
+
+function renderGenerationStatus(d) {
+  const phaseText = generationPhaseText(d);
+  if (d.kind === 'smartMask' && smartMaskRunning) setSmartMaskLoading(d.text || 'Finding selection…');
+  if (state.activeJobs.has(d.jobId) || d.jobId === 'pre') {
+    $('#liveStatusText').innerHTML = `<span class="spin"></span> ${phaseText || d.text}`;
+    $('#desktopStageDims').textContent = phaseText || d.text || 'Working…';
+    $('#desktopStageStatus').textContent = phaseText || d.text || 'Working…';
+    if (d.isSampling === false) {
+      $('#livePct').textContent = '';
+      $('#livePct').title = '';
+      $('#desktopStageProgress').hidden = true;
+      const st = document.querySelector(`.q-state[data-job-id="${d.jobId}"]`);
+      if (st) {
+        st.textContent = /Decoding|Encoding|Saving|Upsampling|RTX/.test(d.text || '') ? 'Finalizing' : String(d.text || 'Working').replace(/\.{3}$/, '');
+        st.title = d.text || '';
+      }
+    }
+  }
+}
+
 function connectEvents() {
   const es = new EventSource('/api/events');
   es.addEventListener('progress', (ev) => {
-    const d = JSON.parse(ev.data);
-    const pct = d.max ? Math.round((d.value / d.max) * 100) : 0;
-    const remainingMs = progressEta.update({
-      jobId: d.jobId,
-      value: d.value,
-      max: d.max,
-      nodeId: d.nodeId,
-    });
-    const etaText = remainingMs == null ? '' : ProgressEta.formatEtaRemaining(remainingMs);
-    state.queueProgress[d.jobId] = pct;
-    const st = document.querySelector(`.q-state[data-job-id="${d.jobId}"]`);
-    if (st) st.textContent = pct + '%';
-    if (!state.activeJobs.has(d.jobId) && !isUpscaleJob(d.jobId)) return;
-    $('#genFill').style.width = pct + '%';
-    $('#livePct').textContent = `${pct}%${etaText ? ` · ${etaText}` : ''}`;
-    $('#livePct').title = etaText ? `Estimated completion ${etaText}` : '';
-    $('#desktopStageProgress').hidden = false;
-    $('#desktopStageProgress').querySelector('i').style.width = pct + '%';
-    $('#desktopStageStatus').textContent = pct
-      ? `Working · ${pct}%${etaText ? ` · ${etaText}` : ''}`
-      : 'Working';
+    renderGenerationProgress(JSON.parse(ev.data));
   });
   es.addEventListener('status', (ev) => {
-    const d = JSON.parse(ev.data);
-    if (d.kind === 'smartMask' && smartMaskRunning) setSmartMaskLoading(d.text || 'Finding selection…');
-    if (state.activeJobs.has(d.jobId) || d.jobId === 'pre') {
-      $('#liveStatusText').innerHTML = `<span class="spin"></span> ${d.text}`;
-      $('#desktopStageDims').textContent = d.text || 'Working…';
-    }
+    renderGenerationStatus(JSON.parse(ev.data));
   });
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);
@@ -13981,6 +14016,8 @@ let lastMeta = null;
 let sam3InstallBusy = false;
 let sam3InstallResult = null;
 let dependencyPollTimer = null;
+let dependencySelectionKey = '';
+let dependencySelectedComponents = new Set();
 
 function formatDependencyBytes(value) {
   const bytes = Number(value || 0);
@@ -13996,6 +14033,23 @@ function dependencyMissingLabels() {
   return ((dependency && dependency.missingComponents) || []).map((id) => ({ id, label: labels.get(id) || id }));
 }
 
+function syncDependencySelection(missing) {
+  const ids = missing.map((entry) => entry.id);
+  const key = [...ids].sort().join('|');
+  if (key !== dependencySelectionKey) {
+    dependencySelectionKey = key;
+    dependencySelectedComponents = new Set(ids);
+  } else {
+    dependencySelectedComponents = new Set([...dependencySelectedComponents].filter((id) => ids.includes(id)));
+  }
+  return dependencySelectedComponents;
+}
+
+function selectedDependencyIds() {
+  const missingIds = new Set(dependencyMissingLabels().map((entry) => entry.id));
+  return [...dependencySelectedComponents].filter((id) => missingIds.has(id));
+}
+
 function renderDependencyManager() {
   const card = $('#dependencyManagerCard');
   if (!card) return;
@@ -14007,16 +14061,25 @@ function renderDependencyManager() {
   const progress = $('#dependencyProgress');
   const fill = $('#dependencyProgressFill');
   const list = $('#dependencyMissingList');
+  const selectionHead = $('#dependencySelectionHead');
+  const toggleAll = $('#dependencyToggleAll');
   const install = $('#dependencyInstallMissing');
+  const cancel = $('#dependencyCancelInstall');
   const repair = $('#dependencyRepairMissing');
   const restart = $('#dependencyRestartComfy');
   const check = $('#dependencyCheckAll');
-  const busy = installState.state === 'running' || installState.state === 'restarting';
+  const selected = syncDependencySelection(missing);
+  const selectedCount = selected.size;
+  const busy = ['running', 'cancelling', 'restarting'].includes(installState.state);
+  const cancellable = installState.state === 'running' || installState.state === 'cancelling';
   const ready = !!lastMeta?.ok && !missing.length && !busy;
   card.classList.toggle('ready', ready);
   card.classList.toggle('installing', busy);
-  list.innerHTML = missing.map((entry) => `<span class="bad" title="${escapeHtml(entry.label)}">${escapeHtml(entry.label)}</span>`).join('');
+  list.innerHTML = missing.map((entry) => `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(entry.label)}"${busy || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}</button>`).join('');
+  selectionHead.hidden = !missing.length || busy || !state.profileIsOwner;
+  toggleAll.textContent = selectedCount === missing.length ? 'Clear' : 'Select all';
   install.disabled = busy;
+  cancel.disabled = installState.state === 'cancelling';
   repair.disabled = busy;
   restart.disabled = busy;
   check.disabled = busy;
@@ -14029,15 +14092,18 @@ function renderDependencyManager() {
     fill.style.width = '0';
   }
 
-  if (!lastMeta?.ok) {
-    badge.textContent = 'Offline';
-    status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
-  } else if (busy) {
-    badge.textContent = installState.state === 'restarting' ? 'Restarting' : 'Installing';
+  if (busy) {
+    badge.textContent = installState.state === 'restarting' ? 'Restarting' : (installState.state === 'cancelling' ? 'Cancelling' : 'Installing');
     const transfer = installState.phase === 'downloading-model' && installState.downloaded
       ? ` ${formatDependencyBytes(installState.downloaded)}${installState.downloadTotal ? ` / ${formatDependencyBytes(installState.downloadTotal)}` : ''}`
       : '';
     status.textContent = `${installState.message || 'Working…'}${transfer}`;
+  } else if (installState.state === 'cancelled') {
+    badge.textContent = 'Cancelled';
+    status.textContent = installState.message || 'The dependency operation was cancelled safely.';
+  } else if (!lastMeta?.ok) {
+    badge.textContent = 'Offline';
+    status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
   } else if (installState.state === 'error') {
     badge.textContent = 'Needs attention';
     status.textContent = installState.error || installState.message || 'The last dependency operation did not finish.';
@@ -14055,24 +14121,26 @@ function renderDependencyManager() {
     status.textContent = dependency.reason || 'Run install.bat and select the existing ComfyUI folder to enable downloads.';
   } else {
     badge.textContent = 'Missing';
-    status.textContent = `${missing.length} component${missing.length === 1 ? '' : 's'} need${missing.length === 1 ? 's' : ''} attention. Install only those missing pieces.`;
+    status.textContent = `${missing.length} component${missing.length === 1 ? '' : 's'} need${missing.length === 1 ? 's' : ''} attention. Choose the workflows you want to add.`;
   }
 
-  install.hidden = ready || !state.profileIsOwner;
-  repair.hidden = ready || !state.profileIsOwner;
-  install.textContent = busy ? 'Installing…' : `Install ${missing.length || 'missing'}`;
-  install.disabled = busy || !missing.length || !dependency.canInstall || !state.profileIsOwner;
-  repair.textContent = busy ? 'Repairing…' : 'Repair missing tools';
-  repair.disabled = busy || !missing.length || !dependency.canInstall || !state.profileIsOwner;
+  cancel.hidden = !cancellable || !state.profileIsOwner;
+  cancel.textContent = installState.state === 'cancelling' ? 'Cancelling…' : 'Cancel download';
+  install.hidden = ready || !state.profileIsOwner || busy;
+  repair.hidden = ready || !state.profileIsOwner || busy;
+  install.textContent = `Install selected${selectedCount ? ` (${selectedCount})` : ''}`;
+  install.disabled = busy || !selectedCount || !dependency.canInstall || !state.profileIsOwner;
+  repair.textContent = 'Repair selected';
+  repair.disabled = busy || !selectedCount || !dependency.canInstall || !state.profileIsOwner;
   const restartInfo = dependency.restart || {};
-  restart.hidden = !state.profileIsOwner || !restartInfo.canRestart;
+  restart.hidden = busy || !state.profileIsOwner || !restartInfo.canRestart;
   restart.title = restartInfo.canRestart ? 'Stops and starts the configured Windows ComfyUI instance when queues are idle' : (restartInfo.reason || 'Restart unavailable');
 }
 
 function scheduleDependencyPoll() {
   clearTimeout(dependencyPollTimer);
   const install = lastMeta && lastMeta.dependencies && lastMeta.dependencies.install;
-  if (!install || !['running', 'restarting'].includes(install.state)) return;
+  if (!install || !['running', 'cancelling', 'restarting'].includes(install.state)) return;
   dependencyPollTimer = setTimeout(async () => {
     try {
       const status = await api('/api/dependencies/status');
@@ -14186,8 +14254,25 @@ $('#sam3DependencyCheck').addEventListener('click', async () => {
   renderSam3Dependency();
 });
 
+$('#dependencyMissingList').addEventListener('click', (event) => {
+  const option = event.target.closest('[data-component]');
+  if (!option || option.disabled) return;
+  const id = option.dataset.component;
+  if (dependencySelectedComponents.has(id)) dependencySelectedComponents.delete(id);
+  else dependencySelectedComponents.add(id);
+  renderDependencyManager();
+});
+
+$('#dependencyToggleAll').addEventListener('click', () => {
+  const missing = dependencyMissingLabels();
+  dependencySelectedComponents = dependencySelectedComponents.size === missing.length
+    ? new Set()
+    : new Set(missing.map((entry) => entry.id));
+  renderDependencyManager();
+});
+
 $('#dependencyInstallMissing').addEventListener('click', async () => {
-  const components = dependencyMissingLabels().map((entry) => entry.id);
+  const components = selectedDependencyIds();
   if (!components.length) return;
   try {
     const result = await api('/api/dependencies/install', {
@@ -14200,7 +14285,7 @@ $('#dependencyInstallMissing').addEventListener('click', async () => {
 });
 
 $('#dependencyRepairMissing').addEventListener('click', async () => {
-  const components = dependencyMissingLabels().map((entry) => entry.id);
+  const components = selectedDependencyIds();
   if (!components.length) return;
   try {
     const result = await api('/api/dependencies/install', {
@@ -14208,6 +14293,16 @@ $('#dependencyRepairMissing').addEventListener('click', async () => {
     });
     if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
     renderDependencyManager();
+    scheduleDependencyPoll();
+  } catch (error) { toast(error.message, true); }
+});
+
+$('#dependencyCancelInstall').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/dependencies/cancel', { method: 'POST' });
+    if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
+    renderDependencyManager();
+    renderSam3Dependency();
     scheduleDependencyPoll();
   } catch (error) { toast(error.message, true); }
 });

@@ -102,7 +102,11 @@ const {
   hasActiveRegions,
   normalizeRegions,
 } = require('./lib/regional-workflows');
-const { nodeLabelForJob } = require('./lib/progress-labels');
+const {
+  nodeLabelForJob,
+  progressDetailsForJob,
+  progressPhaseForJob,
+} = require('./lib/progress-labels');
 const { decodePreviewPayload } = require('./lib/preview-payload');
 const { selectionAssetRefs, selectionSummary } = require('./lib/selection-summary');
 const { streamStoredZip } = require('./lib/zip-stream');
@@ -474,6 +478,7 @@ const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
 const jobs = new Map(); // promptId -> job
 const queueHealthState = { lowGpuSince: null };
 let dependencyInstallRunning = false;
+let dependencyInstallController = null;
 let comfyRestartRunning = false;
 let dependencyInstallState = {
   state: 'idle',
@@ -489,6 +494,23 @@ let dependencyInstallState = {
 function updateDependencyInstallState(patch) {
   dependencyInstallState = Object.assign({}, dependencyInstallState, patch, { updatedAt: Date.now() });
   broadcast('dependencyInstall', dependencyInstallState);
+}
+
+function registeredModelNames(info) {
+  const names = new Set();
+  for (const cls of Object.values(info || {})) {
+    const inputs = cls?.input || {};
+    for (const group of [inputs.required, inputs.optional]) {
+      for (const spec of Object.values(group || {})) {
+        if (!Array.isArray(spec)) continue;
+        const choices = Array.isArray(spec[0])
+          ? spec[0]
+          : (spec[0] === 'COMBO' && Array.isArray(spec[1]?.options) ? spec[1].options : []);
+        for (const choice of choices) if (typeof choice === 'string') names.add(choice);
+      }
+    }
+  }
+  return names;
 }
 
 async function assertDesktopIsIdle() {
@@ -1001,12 +1023,27 @@ function handleWsMessage(msg) {
   const d = msg.data || {};
   const pid = d.prompt_id;
   if (msg.type === 'progress' && pid && jobs.has(pid)) {
-    broadcast('progress', { jobId: pid, value: d.value, max: d.max, nodeId: d.node ?? null, itemId: jobs.get(pid).itemId || null });
+    const job = jobs.get(pid);
+    const phase = progressDetailsForJob(job, d.node ?? null, d.value, d.max);
+    broadcast('progress', {
+      jobId: pid,
+      value: d.value,
+      max: d.max,
+      nodeId: d.node ?? null,
+      itemId: job.itemId || null,
+      ...phase,
+    });
   } else if (msg.type === 'executing' && pid && jobs.has(pid)) {
     const job = jobs.get(pid);
     if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();
     if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
-    else broadcast('status', { jobId: pid, kind: job.kind, text: nodeLabel(pid, d.node), itemId: job.itemId || null });
+    else broadcast('status', {
+      jobId: pid,
+      kind: job.kind,
+      text: nodeLabel(pid, d.node),
+      itemId: job.itemId || null,
+      ...progressPhaseForJob(job, d.node),
+    });
   } else if (msg.type === 'execution_error' && pid && jobs.has(pid)) {
     failJob(pid, (d.exception_message || 'execution error') + (d.node_type ? ` (${d.node_type})` : ''));
   } else if (msg.type === 'execution_interrupted' && pid && jobs.has(pid)) {
@@ -3838,6 +3875,18 @@ async function handleApi(req, res, url) {
     return json(res, 200, dependencyInstallState);
   }
 
+  if (route === '/api/dependencies/cancel' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can cancel desktop dependency installs' });
+    if (!dependencyInstallRunning || !dependencyInstallController) {
+      return json(res, 409, { error: 'No dependency installation is running.' });
+    }
+    if (!dependencyInstallController.signal.aborted) {
+      updateDependencyInstallState({ state: 'cancelling', phase: 'cancelling', message: 'Stopping the dependency installer safely…', error: null });
+      dependencyInstallController.abort();
+    }
+    return json(res, 202, { ok: true, install: dependencyInstallState });
+  }
+
   if (route === '/api/comfy/restart' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restart ComfyUI' });
     if (dependencyInstallRunning || comfyRestartRunning) return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
@@ -3880,6 +3929,10 @@ async function handleApi(req, res, url) {
     } catch (error) {
       return json(res, 409, { error: String(error.message || error) });
     }
+    let availableModelNames = [];
+    try { availableModelNames = [...registeredModelNames(await getObjectInfo())]; } catch { /* ComfyUI may be stopped during installation. */ }
+    const installController = new AbortController();
+    dependencyInstallController = installController;
     dependencyInstallRunning = true;
     updateDependencyInstallState({
       state: 'running', phase: 'queued', message: 'Starting dependency installation…',
@@ -3891,15 +3944,22 @@ async function handleApi(req, res, url) {
           runtime: RUNTIME,
           settings,
           components,
-          options: { repair },
-          report: (phase, message, detail) => updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {})),
+          options: { repair, signal: installController.signal, availableModelNames },
+          report: (phase, message, detail) => {
+            if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
+          },
         });
         objectInfoCache = null;
         updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null });
       } catch (error) {
-        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Dependency installation stopped.', error: String(error.message || error) });
+        if (installController.signal.aborted || error?.code === 'dependency_cancelled' || error?.name === 'AbortError') {
+          updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Dependency installation cancelled. Finished files were kept; partial downloads were removed.', error: null });
+        } else {
+          updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Dependency installation stopped.', error: String(error.message || error) });
+        }
       } finally {
         dependencyInstallRunning = false;
+        if (dependencyInstallController === installController) dependencyInstallController = null;
       }
     })();
     return json(res, 202, { ok: true, install: dependencyInstallState });
@@ -3911,19 +3971,31 @@ async function handleApi(req, res, url) {
     try {
       await assertDesktopIsIdle();
     } catch (error) { return json(res, 409, { error: String(error.message || error) }); }
+    const installController = new AbortController();
+    dependencyInstallController = installController;
     dependencyInstallRunning = true;
     updateDependencyInstallState({ state: 'running', phase: 'queued', message: 'Starting the safe Smart Mask installation…', components: ['smartmask'], repair: false, completed: 0, total: 0, restartRequired: false, error: null });
     (async () => {
       try {
         const result = await installComponents({
           runtime: RUNTIME, settings, components: ['smartmask'],
-          report: (phase, message, detail) => updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {})),
+          options: { signal: installController.signal },
+          report: (phase, message, detail) => {
+            if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
+          },
         });
         objectInfoCache = null;
         updateDependencyInstallState({ state: 'complete', phase: 'complete', message: 'Smart Mask tools installed safely. Restart ComfyUI, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null });
       } catch (error) {
-        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Smart Mask installation stopped.', error: String(error.message || error) });
-      } finally { dependencyInstallRunning = false; }
+        if (installController.signal.aborted || error?.code === 'dependency_cancelled' || error?.name === 'AbortError') {
+          updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Smart Mask installation cancelled safely.', error: null });
+        } else {
+          updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Smart Mask installation stopped.', error: String(error.message || error) });
+        }
+      } finally {
+        dependencyInstallRunning = false;
+        if (dependencyInstallController === installController) dependencyInstallController = null;
+      }
     })();
     return json(res, 202, { ok: true, install: dependencyInstallState });
   }

@@ -44,4 +44,9 @@ test('progress events expose sampler identity and render ETA beside percent', ()
   assert.match(appJs, /progressEta\.update/);
   assert.match(appJs, /Estimated completion/);
   assert.match(appJs, /progressEta\.clear\(d\.jobId\)/);
+  assert.match(serverJs, /progressDetailsForJob/);
+  assert.match(appJs, /Stage \$\{d\.phaseIndex\} of \$\{d\.phaseCount\}/);
+  assert.match(appJs, /d\.overallPercent/);
+  assert.match(appJs, /% overall/);
+  assert.match(appJs, /d\.isSampling === false/);
 });
