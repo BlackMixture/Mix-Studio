@@ -52,6 +52,10 @@ const {
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
+const {
+  ENHANCE_TAIL,
+  promptEnhanceParts,
+} = require('./lib/prompt-enhance');
 const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
@@ -140,7 +144,7 @@ Think step by step about the request before writing the answer:
 Then output a single expanded prompt paragraph.
 
 Follow these rules strictly:
-1. **Faithfulness First:** Preserve all original subjects, actions, colors, and spatial relationships. Do not add new objects, props, characters, or animals unless the user clearly implies them.
+1. **Faithfulness First:** When the user supplies a concrete scene, preserve all original subjects, actions, colors, and spatial relationships. When the user instead supplies an abstract concept or asks you to invent an image, creatively resolve it into one specific visual scene and add the details needed to express that idea.
 2. **Practical T2I Structure:** Write a prompt that a text-to-image model can parse cleanly. Group subjects with their own attributes and actions. Use grounded phrasing for poses, interactions, and spatial layout.
 3. **Style Planning Stays Internal:** Use your internal reasoning to choose style, medium, framing, and lighting. Do not emit planning tags or wrappers in the visible answer body.
 4. **Text Rendering:** If the user requests visible text, quotes, labels, or typography, specify the exact text clearly and wrap requested words in quotes.
@@ -1349,8 +1353,6 @@ setInterval(async () => {
 /* output in Node, then feed the clean text to the image job.          */
 /* ------------------------------------------------------------------ */
 
-const ENHANCE_TAIL = '\n\nReturn your answer in exactly this format: <final_prompt>the expanded prompt paragraph</final_prompt> - with no text after the closing tag.';
-
 function cleanEnhancedText(raw, fallback) {
   if (!raw) return fallback;
   let t = String(raw).trim();
@@ -1461,10 +1463,11 @@ function enhancePrompt(p) {
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
+      const enhance = promptEnhanceParts(settings.systemPrompt, p.prompt);
       graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
       graph.concat = {
         class_type: 'StringConcatenate',
-        inputs: { string_a: settings.systemPrompt, string_b: p.prompt + ENHANCE_TAIL, delimiter: ' ' },
+        inputs: { string_a: enhance.instruction, string_b: enhance.userInput, delimiter: '\n' },
       };
       graph.refine = {
         class_type: 'TextGenerate',
