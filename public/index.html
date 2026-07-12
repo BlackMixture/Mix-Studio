@@ -789,6 +789,9 @@
         <button class="desktop-stage-info" id="desktopStageInfo" type="button" aria-label="View generation details" title="View generation details" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 10.8v5.2M12 7.7h.01"/></svg>
         </button>
+        <button class="desktop-stage-info desktop-stage-clear" id="desktopStageClear" type="button" aria-label="Unload result and clear generation settings" title="Unload result and clear generation settings" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+        </button>
       </div>
     </header>
     <button class="desktop-stage-media" id="desktopStageOpen" type="button" aria-label="Open latest generation" disabled>
@@ -797,7 +800,6 @@
       <span class="desktop-stage-empty" id="desktopStageEmpty">
         <span class="desktop-stage-orb" aria-hidden="true"></span>
         <strong>Your next generation appears here</strong>
-        <small>Build on the left. Recent work stays within reach on the right.</small>
       </span>
       <span class="desktop-stage-progress" id="desktopStageProgress" hidden><i></i></span>
     </button>
@@ -824,10 +826,26 @@
         </div>
         <button class="live-x" id="liveDismiss" aria-label="Dismiss">✕</button>
       </div>
-      <button class="btn-generate" id="generateBtn">
-        <span class="fill" id="genFill"></span>
-        <span class="lbl" id="genLbl">Generate</span>
-      </button>
+      <div class="desktop-generate-row">
+        <button class="btn-generate" id="generateBtn">
+          <span class="fill" id="genFill"></span>
+          <span class="lbl" id="genLbl">Generate</span>
+        </button>
+        <div class="desktop-stage-actions" id="desktopStageActions" aria-label="Selected result actions" hidden>
+          <button id="desktopStageLike" type="button" aria-label="Like selected result" title="Like">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Z"/></svg>
+          </button>
+          <button id="desktopStageSave" type="button" aria-label="Save selected result" title="Save">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2"/></svg>
+          </button>
+          <button id="desktopStageEdit" type="button" aria-label="Use selected image in Edit" title="Edit">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1"/></svg>
+          </button>
+          <button id="desktopStageUpscale" type="button" aria-label="Upscale selected image" title="Upscale">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4M8 8l-4-4m12 4 4-4M8 16l-4 4m12-4 4 4"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -961,6 +979,23 @@
       </div>
     </div>
     <button class="sheet-cta documentation-save" id="documentationSave" type="button">Save PNG</button>
+  </div>
+</div>
+
+<!-- documentation video export -->
+<div class="sheet" id="documentationVideoSheet">
+  <div class="sheet-panel documentation-video-panel" role="dialog" aria-modal="true" aria-labelledby="documentationVideoTitle">
+    <h3 class="sheet-title" id="documentationVideoTitle">Documentation video <button id="documentationVideoClose" type="button" aria-label="Cancel documentation video">✕</button></h3>
+    <p class="documentation-intro">Start frame and recorded generation details, followed by the complete result.</p>
+    <div class="documentation-video-preview">
+      <canvas id="documentationVideoCanvas" width="960" height="540" aria-label="Documentation video preview"></canvas>
+    </div>
+    <div class="documentation-video-status" role="status" aria-live="polite">
+      <span id="documentationVideoStatus">Preparing media…</span>
+      <output id="documentationVideoPercent">0%</output>
+    </div>
+    <div class="documentation-video-progress" aria-hidden="true"><i id="documentationVideoProgress"></i></div>
+    <button class="sheet-cta ghost" id="documentationVideoCancel" type="button">Cancel</button>
   </div>
 </div>
 

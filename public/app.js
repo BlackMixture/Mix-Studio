@@ -117,6 +117,7 @@ const state = {
   desktopMediaId: 'image',
   desktopReuseToken: 0,
   desktopSettingsReady: false,
+  desktopStageDismissed: false,
   upscaleTarget: null,
   moveTarget: null,
   selectMode: false,
@@ -5926,6 +5927,7 @@ $('#animateRouteEnd').addEventListener('click', () => {
 
 /* Send a generated video to the Video tab as the SCAIL 2 motion input */
 async function sendVideoAsDrive(it, v) {
+  const options = arguments[2] || {};
   try {
     toast('Loading video…');
     const blob = await (await fetch('/videos/' + v.file)).blob();
@@ -5951,11 +5953,15 @@ async function sendVideoAsDrive(it, v) {
     };
     closeLightbox();
     setView('video');
-    const chip = $('#vidEngineRow .chip[data-engine="scail"]');
-    if (chip) chip.click();
+    if (!options.preserveEngine || !['scail', 'ltx-edit'].includes(state.vidEngine)) {
+      const chip = $('#vidEngineRow .chip[data-engine="scail"]');
+      if (chip) chip.click();
+    }
     renderVidDrive();
     updateVideoPanels();
-    toast('Motion video loaded — add a source image and generate with SCAIL 2');
+    toast(state.vidEngine === 'ltx-edit'
+      ? 'Source video loaded for LTX Edit'
+      : 'Motion video loaded — add a source image and generate with SCAIL 2');
   } catch (e) { toast(e.message, true); }
 }
 
@@ -8018,6 +8024,7 @@ function setDesktopStageMedia({ image = '', video = '', poster = '' } = {}) {
 }
 
 function desktopStageSelection() {
+  if (state.desktopStageDismissed) return { item: null, media: null, selected: false };
   const selected = state.desktopItemId && state.items.find((item) => item.id === state.desktopItemId);
   if (!selected) {
     state.desktopItemId = null;
@@ -8051,12 +8058,15 @@ function renderDesktopStage(item, mediaSel) {
   const status = $('#desktopStageStatus');
   const progress = $('#desktopStageProgress');
   const info = $('#desktopStageInfo');
+  const clear = $('#desktopStageClear');
   status.classList.remove('working');
+  status.hidden = false;
   progress.hidden = true;
   progress.querySelector('i').style.width = '0%';
   if (!item) {
     open.disabled = true;
     info.disabled = true;
+    clear.hidden = true;
     open.dataset.itemId = '';
     open.dataset.media = '';
     info.dataset.itemId = '';
@@ -8067,6 +8077,7 @@ function renderDesktopStage(item, mediaSel) {
     $('#desktopStagePrompt').textContent = 'Choose a mode and describe what you want to make.';
     $('#desktopStageModel').textContent = 'Mix Studio';
     $('#desktopStageDims').textContent = 'Desktop workspace';
+    renderDesktopStageActions();
     return;
   }
   const latestVideo = latestGalleryVideo(item);
@@ -8076,6 +8087,7 @@ function renderDesktopStage(item, mediaSel) {
   const image = imageFile ? '/images/' + imageFile : '';
   open.disabled = false;
   info.disabled = false;
+  clear.hidden = !resolved.selected;
   open.dataset.itemId = item.id;
   open.dataset.media = selectedVideo ? selectedVideo.id : 'image';
   info.dataset.itemId = item.id;
@@ -8088,9 +8100,8 @@ function renderDesktopStage(item, mediaSel) {
   $('#desktopStageTitle').textContent = selectedVideo
     ? (resolved.selected ? 'Selected video' : 'Latest video')
     : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'));
-  status.textContent = resolved.selected
-    ? (state.desktopSettingsReady ? 'Settings loaded' : 'Loading settings')
-    : 'Latest output';
+  status.hidden = resolved.selected;
+  status.textContent = resolved.selected ? '' : 'Latest output';
   $('#desktopStagePrompt').textContent = item.prompt || item.refinedPrompt || 'Untitled generation';
   $('#desktopStageModel').textContent = selectedVideo
     ? videoEngineLabel(selectedVideo.info && selectedVideo.info.engine)
@@ -8098,17 +8109,22 @@ function renderDesktopStage(item, mediaSel) {
   $('#desktopStageDims').textContent = item.width && item.height
     ? `${item.width} × ${item.height}`
     : new Date(itemActivity(item) || Date.now()).toLocaleDateString();
+  renderDesktopStageActions(item, selectedVideo, resolved.selected);
 }
 
 function renderDesktopStageGenerating(statusText = 'Working…') {
   const open = $('#desktopStageOpen');
   if (!open) return;
+  state.desktopStageDismissed = false;
   open.disabled = true;
   $('#desktopStageInfo').disabled = true;
   open.dataset.itemId = '';
   open.dataset.media = '';
   $('#desktopStageInfo').dataset.itemId = '';
   $('#desktopStageInfo').dataset.media = '';
+  $('#desktopStageClear').hidden = true;
+  $('#desktopStageStatus').hidden = false;
+  renderDesktopStageActions();
   setDesktopStageMedia();
   $('#desktopStageTitle').textContent = 'Creating new output';
   $('#desktopStageStatus').textContent = 'Working';
@@ -8130,6 +8146,133 @@ $('#desktopStageInfo').addEventListener('click', () => {
   const info = $('#desktopStageInfo');
   if (!info.dataset.itemId) return;
   openLightbox(info.dataset.itemId, info.dataset.media || 'image');
+});
+
+function renderDesktopStageActions(item, video, selected = false) {
+  const actions = $('#desktopStageActions');
+  if (!actions) return;
+  actions.hidden = !selected || !item;
+  if (!selected || !item) return;
+  const liked = video ? !!video.liked : !!item.liked;
+  const like = $('#desktopStageLike');
+  like.classList.toggle('liked', liked);
+  like.setAttribute('aria-pressed', String(liked));
+  like.setAttribute('aria-label', video ? (liked ? 'Unlike selected video' : 'Like selected video') : (liked ? 'Unlike selected image' : 'Like selected image'));
+  $('#desktopStageSave').setAttribute('aria-label', video ? 'Save selected video' : 'Save selected image');
+  $('#desktopStageEdit').hidden = !!video || item.mode === 'composite';
+  $('#desktopStageUpscale').hidden = !!video || item.mode === 'composite';
+}
+
+function activeDesktopStageMedia() {
+  const item = state.desktopItemId && state.items.find((entry) => entry.id === state.desktopItemId);
+  if (!item) return { item: null, video: null };
+  return { item, video: (item.videos || []).find((entry) => entry.id === state.desktopMediaId) || null };
+}
+
+function resetActiveGenerationForm() {
+  const mode = state.view;
+  if (mode === 'edit') {
+    switchEditEngine(enabledEditEngines()[0] || state.editEngineDefault || 'klein4');
+    markEngineRow('editEngineRow', state.editEngine);
+    state.refs = [null, null, null];
+    state.editLoras = [];
+    state.editLorasByEngine[state.editEngine] = state.editLoras;
+    state.editAspectOverride = false;
+    state.editUpscaleEnabled = false;
+    state.qwenAngles = [];
+    state.qwenAngleElevations = [];
+    state.qwenAngleDistances = [];
+    clearKreaMask(true);
+    state.generationTuning.edit = defaultGenerationTuning('edit');
+    renderRefs();
+    renderEditModelSummary();
+    renderEditUpscale();
+    renderQwenAngleTool();
+  } else if (mode === 'video') {
+    state.vidRef = null;
+    state.vidEnd = null;
+    state.vidDrive = null;
+    state.vidFace = null;
+    if (state.vidAudio) stopPreview();
+    state.vidAudio = null;
+    state.videoLoras = [];
+    state.vidEngine = enabledVideoEngines()[0] || state.videoEngineDefault || 'ltx';
+    $('#vidDriveVideo').removeAttribute('src');
+    $('#vidDriveTrimChip').classList.remove('active');
+    setAudioChipVisual($('#vidAudioChip'), false);
+    $('#vidAudioTrim').hidden = true;
+    $('#vidDur').value = state.userDefaults.video.duration;
+    $('#vidFree').value = state.userDefaults.video.motionFreedom;
+    markEngineRow('vidEngineRow', state.vidEngine);
+    renderVidAttach();
+    renderVidDrive();
+    if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
+    updateVideoPanels();
+  } else {
+    state.loras = [];
+    state.regions = [];
+    state.activeRegionId = null;
+    state.createRef = null;
+    state.createMatchSource = false;
+    state.createMatchNative = false;
+    state.createGuideMode = 'image';
+    state.createUpscaleEnabled = false;
+    state.customDims = false;
+    state.aspect = '1:1';
+    state.mp = 1;
+    state.krea2Turbo = true;
+    state.generationTuning.create = defaultGenerationTuning('create');
+    state.createMode = 'image';
+    syncNavigation();
+    renderCreateImageGuide();
+  }
+  if (Object.prototype.hasOwnProperty.call(state.prompts, mode)) state.prompts[mode] = '';
+  setPromptDraft('');
+  updatePromptClear();
+  restoreGenerationTuning(generationTuningMode(mode));
+  renderEnhance();
+  renderAspects();
+  renderDims();
+  renderLoras();
+  saveForm();
+}
+
+function clearDesktopStageSelection() {
+  state.desktopReuseToken += 1;
+  state.desktopItemId = null;
+  state.desktopMediaId = 'image';
+  state.desktopSettingsReady = false;
+  state.desktopStageDismissed = true;
+  resetActiveGenerationForm();
+  renderDesktopStage();
+  syncDesktopGallerySelection();
+}
+
+$('#desktopStageClear').addEventListener('click', clearDesktopStageSelection);
+$('#desktopStageLike').addEventListener('click', () => {
+  const { item, video } = activeDesktopStageMedia();
+  if (!item) return;
+  if (video) setVideoLiked(item, video, !video.liked);
+  else toggleItemLike(item);
+  setTimeout(() => renderDesktopStage(item, video ? video.id : 'image'), 0);
+});
+$('#desktopStageSave').addEventListener('click', () => {
+  const { item, video } = activeDesktopStageMedia();
+  if (!item) return;
+  if (!video) return downloadItem(item, 'current');
+  mirrorGalleryExport({ id: item.id, asset: 'video', videoId: video.id });
+  const link = document.createElement('a');
+  link.href = '/videos/' + video.file;
+  link.download = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_') + '.mp4';
+  link.click();
+});
+$('#desktopStageEdit').addEventListener('click', () => {
+  const { item } = activeDesktopStageMedia();
+  if (item) useAsRef(item);
+});
+$('#desktopStageUpscale').addEventListener('click', () => {
+  const { item } = activeDesktopStageMedia();
+  if (item) openUpscaleSheet(item);
 });
 
 function librarySearchText(it) {
@@ -9130,6 +9273,7 @@ function renderGrid() {
     }
     card.dataset.id = it.id;
     card.dataset.media = latestVideo ? latestVideo.id : 'image';
+    card.draggable = desktopWorkspaceActive();
     if (state.selected.has(it.id)) card.classList.add('selected');
 
     // long-press -> multi-select mode; tap -> toggle (in select mode) or open
@@ -9170,6 +9314,15 @@ function renderGrid() {
     card.addEventListener('pointerup', (event) => { clearTimeout(lpTimer); stopGallerySelectionDrag(event); });
     card.addEventListener('pointercancel', (event) => { clearTimeout(lpTimer); stopGallerySelectionDrag(event); });
     card.addEventListener('contextmenu', (e) => e.preventDefault());
+    card.addEventListener('dragstart', (event) => {
+      if (!desktopWorkspaceActive() || state.selectMode) {
+        event.preventDefault();
+        return;
+      }
+      clearTimeout(lpTimer);
+      beginDesktopGalleryDrag(it, card.dataset.media || 'image', card, event);
+    });
+    card.addEventListener('dragend', endDesktopGalleryDrag);
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
@@ -9187,6 +9340,7 @@ function renderGrid() {
 
 async function selectDesktopLibraryItem(item, media = 'image') {
   const video = (item.videos || []).find((entry) => entry.id === media) || null;
+  state.desktopStageDismissed = false;
   state.desktopItemId = item.id;
   state.desktopMediaId = video ? video.id : 'image';
   state.desktopSettingsReady = false;
@@ -9200,7 +9354,6 @@ async function selectDesktopLibraryItem(item, media = 'image') {
       state.desktopSettingsReady = true;
       renderDesktopStage(item, state.desktopMediaId);
       syncDesktopGallerySelection();
-      toast(`${video ? 'Video' : (item.mode === 'edit' ? 'Edit' : 'Image')} settings loaded`);
     }
   } catch (error) {
     if (state.desktopReuseToken === token) toast(error.message, true);
@@ -9225,6 +9378,126 @@ function handleDesktopGalleryTap(item, card) {
   };
   selectDesktopLibraryItem(item, card.dataset.media || 'image');
 }
+
+let desktopGalleryDrag = null;
+const DESKTOP_GALLERY_DROP_SELECTOR = [
+  '.ref-slot',
+  '#createImageGuideAdd', '#createImageGuideFilled',
+  '#regionRefBtn', '#regionRefPreview',
+  '#vidAttachBtn', '#vidAttachThumb',
+  '#vidEndChip', '#vidEndThumb',
+  '#vidFaceChip', '#vidFaceThumb',
+  '#vidDriveBtn', '#vidDriveThumb',
+].join(',');
+
+function desktopGalleryDropTarget(node) {
+  const target = node && node.closest ? node.closest(DESKTOP_GALLERY_DROP_SELECTOR) : null;
+  return target && target.getClientRects().length ? target : null;
+}
+
+function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
+  if (!drag) return [];
+  return $$(DESKTOP_GALLERY_DROP_SELECTOR).filter((target) => {
+    if (!target.getClientRects().length) return false;
+    if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
+    if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
+    return true;
+  });
+}
+
+function clearDesktopGalleryDropTargets() {
+  $$('.gallery-drop-ready, .gallery-drop-active').forEach((target) => target.classList.remove('gallery-drop-ready', 'gallery-drop-active'));
+}
+
+function beginDesktopGalleryDrag(item, media, card, event) {
+  const video = (item.videos || []).find((entry) => entry.id === media) || null;
+  desktopGalleryDrag = { item, media, video, card };
+  card.classList.add('is-dragging');
+  document.body.classList.add('desktop-gallery-dragging');
+  desktopGalleryDropTargets().forEach((target) => target.classList.add('gallery-drop-ready'));
+  event.dataTransfer.effectAllowed = 'copy';
+  event.dataTransfer.setData('application/x-mix-studio-gallery', JSON.stringify({ itemId: item.id, media }));
+  event.dataTransfer.setData('text/plain', item.prompt || 'Gallery generation');
+}
+
+function endDesktopGalleryDrag() {
+  if (desktopGalleryDrag && desktopGalleryDrag.card) desktopGalleryDrag.card.classList.remove('is-dragging');
+  desktopGalleryDrag = null;
+  document.body.classList.remove('desktop-gallery-dragging');
+  clearDesktopGalleryDropTargets();
+}
+
+async function applyDesktopGalleryDrop(target, drag) {
+  const { item, video } = drag;
+  if (target.matches('.ref-slot')) {
+    const index = Number(target.dataset.refIndex);
+    if (!Number.isInteger(index)) return;
+    const reference = await galleryItemEditReference(item);
+    if (index === 0) clearKreaMask(true);
+    state.refs[index] = reference;
+    renderRefs();
+    saveForm();
+    toast(`Added to reference ${index + 1}`);
+    return;
+  }
+  if (target.matches('#createImageGuideAdd, #createImageGuideFilled')) {
+    await setCreateImageGuideAsset(await galleryItemEditReference(item), state.createGuideMode);
+    toast('Gallery image added as the image guide');
+    return;
+  }
+  if (target.matches('#regionRefBtn, #regionRefPreview')) {
+    setRegionReference(await galleryItemEditReference(item));
+    return;
+  }
+  if (target.matches('#vidAttachBtn, #vidAttachThumb')) {
+    await sendToVideoTab(item, 'start');
+    return;
+  }
+  if (target.matches('#vidEndChip, #vidEndThumb')) {
+    await sendToVideoTab(item, 'end');
+    return;
+  }
+  if (target.matches('#vidFaceChip, #vidFaceThumb')) {
+    const reference = await galleryItemEditReference(item);
+    state.vidFace = Object.assign(reference, { label: 'from gallery' });
+    state.vidRef = null;
+    renderVidAttach();
+    updateVideoPanels();
+    saveForm();
+    toast('Gallery image added as the Face ID reference');
+    return;
+  }
+  if (target.matches('#vidDriveBtn, #vidDriveThumb') && video) {
+    await sendVideoAsDrive(item, video, { preserveEngine: true });
+  }
+}
+
+$('#view-create').addEventListener('dragover', (event) => {
+  if (!desktopGalleryDrag) return;
+  const target = desktopGalleryDropTarget(event.target);
+  const allowed = target && desktopGalleryDropTargets().includes(target);
+  clearDesktopGalleryDropTargets();
+  desktopGalleryDropTargets().forEach((entry) => entry.classList.add('gallery-drop-ready'));
+  if (!allowed) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  target.classList.add('gallery-drop-active');
+});
+$('#view-create').addEventListener('dragleave', (event) => {
+  const target = desktopGalleryDropTarget(event.target);
+  if (target && !target.contains(event.relatedTarget)) target.classList.remove('gallery-drop-active');
+});
+$('#view-create').addEventListener('drop', async (event) => {
+  const drag = desktopGalleryDrag;
+  const target = desktopGalleryDropTarget(event.target);
+  if (!drag || !target || !desktopGalleryDropTargets(drag).includes(target)) return;
+  event.preventDefault();
+  endDesktopGalleryDrag();
+  target.classList.add('gallery-drop-received');
+  setTimeout(() => target.classList.remove('gallery-drop-received'), 520);
+  try { await applyDesktopGalleryDrop(target, drag); }
+  catch (error) { toast(error.message, true); }
+});
 
 document.addEventListener('visibilitychange', () => {
   const previews = $$('.gallery-card-video');
@@ -9327,7 +9600,9 @@ let livePreviewAnimationToken = 0;
 
 function loadProgressAnimationData(kind) {
   if (!progressAnimationData.has(kind)) {
-    const path = kind === 'video' ? '/progress-video.json' : '/progress-image.json';
+    // Image and video jobs share one motion language. Video uses the same
+    // geometry with a red outline treatment applied at render time.
+    const path = '/progress-image.json';
     progressAnimationData.set(kind, fetch(path)
       .then((response) => response.ok ? response.json() : null)
       .catch(() => null));
@@ -10365,13 +10640,17 @@ function openLightbox(id, mediaSel) {
       } });
     }
     if (processItems.length) mkMenu('Process', '', processItems, { icon: 'process', ariaLabel: 'Process video', menuTitle: 'Process video', tone: 'video' });
-    mk('↓ Save video', '', () => {
-      mirrorGalleryExport({ id: it.id, asset: 'video', videoId: selVideo.id });
-      const a = document.createElement('a');
-      a.href = '/videos/' + selVideo.file;
-      a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_v' + (videos.indexOf(selVideo) + 1) + '.mp4';
-      a.click();
-    });
+    const videoSaveItems = [
+      { label: 'Save video', detail: 'Original result', icon: 'save', action: () => {
+        mirrorGalleryExport({ id: it.id, asset: 'video', videoId: selVideo.id });
+        const a = document.createElement('a');
+        a.href = '/videos/' + selVideo.file;
+        a.download = (it.prompt || 'kreastudio').slice(0, 40).replace(/[^\w]+/g, '_') + '_v' + (videos.indexOf(selVideo) + 1) + '.mp4';
+        a.click();
+      } },
+      { label: 'Documentation video', detail: 'Start frame + settings + result', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
+    ];
+    mkMenu('Save', '', videoSaveItems, { icon: 'save', ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
     mk('🗑 Delete video', 'danger', async () => {
       const lastOfStandalone = it.mode === 'video' && videos.length === 1;
       const msg = lastOfStandalone
@@ -11754,6 +12033,270 @@ function saveDocumentationImage() {
     toast('Documentation image saved');
   }, 'image/png');
 }
+
+let documentationVideoRun = null;
+
+function documentationVideoMimeType() {
+  if (!window.MediaRecorder) return '';
+  return [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4;codecs=avc1.42E01E',
+  ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function documentationVideoDimensions(width, height) {
+  const ratio = Math.max(.25, Math.min(4, (Number(width) || 16) / (Number(height) || 9)));
+  const even = (value) => Math.max(2, Math.round(value / 2) * 2);
+  return ratio >= 1
+    ? { width: 1280, height: even(1280 / ratio) }
+    : { width: even(1280 * ratio), height: 1280 };
+}
+
+function drawContainedMedia(ctx, media, x, y, width, height) {
+  const sourceWidth = media.videoWidth || media.naturalWidth || media.width || width;
+  const sourceHeight = media.videoHeight || media.naturalHeight || media.height || height;
+  const scale = Math.min(width / sourceWidth, height / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  ctx.drawImage(media, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
+function documentationVideoDetails(item, video) {
+  const info = video.info || {};
+  const prompt = info.refinedMotionPrompt || info.motionPrompt || item.refinedPrompt || item.prompt || 'Untitled generation';
+  const width = info.width || info.srcWidth || item.width;
+  const height = info.height || info.srcHeight || item.height;
+  const seconds = info.frames && info.fps ? info.frames / info.fps : null;
+  const facts = [
+    ['Model', videoEngineLabel(info.engine)],
+    ['Size', width && height ? `${width} × ${height}` : ''],
+    ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
+    ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
+    ['Generated in', info.durationMs ? formatDuration(info.durationMs) : ''],
+  ].filter(([, value]) => hasDocumentationValue(value));
+  if (Array.isArray(info.loras) && info.loras.length) {
+    facts.push(['LoRAs', info.loras.map((lora) => `${prettyLora(lora.name)}${hasDocumentationValue(lora.strength) ? ` ${Number(lora.strength).toFixed(2)}` : ''}`).join(', ')]);
+  }
+  return { prompt, facts };
+}
+
+function drawDocumentationVideoIntro(ctx, canvas, startFrame, item, video) {
+  const { width, height } = canvas;
+  const portrait = height > width * 1.08;
+  const pad = Math.round(Math.min(width, height) * .055);
+  const gap = Math.round(pad * .72);
+  const details = documentationVideoDetails(item, video);
+  ctx.fillStyle = '#050506';
+  ctx.fillRect(0, 0, width, height);
+
+  let imageBox;
+  let copyX;
+  let copyY;
+  let copyWidth;
+  if (portrait) {
+    imageBox = { x: pad, y: pad, width: width - pad * 2, height: Math.round(height * .48) };
+    copyX = pad;
+    copyY = imageBox.y + imageBox.height + gap;
+    copyWidth = width - pad * 2;
+  } else {
+    imageBox = { x: pad, y: pad, width: Math.round(width * .47), height: height - pad * 2 };
+    copyX = imageBox.x + imageBox.width + gap;
+    copyY = pad;
+    copyWidth = width - copyX - pad;
+  }
+  ctx.fillStyle = '#0b0c10';
+  ctx.fillRect(imageBox.x, imageBox.y, imageBox.width, imageBox.height);
+  drawContainedMedia(ctx, startFrame, imageBox.x, imageBox.y, imageBox.width, imageBox.height);
+  ctx.strokeStyle = 'rgba(255,255,255,.16)';
+  ctx.lineWidth = Math.max(1, width / 1000);
+  ctx.strokeRect(imageBox.x + .5, imageBox.y + .5, imageBox.width - 1, imageBox.height - 1);
+
+  const scale = Math.max(.72, Math.min(1.35, copyWidth / 520));
+  const labelSize = Math.round(13 * scale);
+  const titleSize = Math.round(29 * scale);
+  const promptSize = Math.round(20 * scale);
+  const factSize = Math.round(14 * scale);
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ea4335';
+  ctx.fillRect(copyX, copyY, Math.max(30, Math.round(copyWidth * .12)), Math.max(2, Math.round(3 * scale)));
+  copyY += Math.round(18 * scale);
+  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  setDocumentationMonoFont(ctx, 700, labelSize);
+  ctx.fillText('GENERATION RECORD', copyX, copyY);
+  copyY += Math.round(labelSize * 2.1);
+  ctx.fillStyle = '#fff';
+  setDocumentationFont(ctx, 750, titleSize);
+  ctx.fillText('Start frame → final result', copyX, copyY);
+  copyY += Math.round(titleSize * 1.55);
+  ctx.fillStyle = 'rgba(255,255,255,.48)';
+  setDocumentationMonoFont(ctx, 650, labelSize);
+  ctx.fillText('PROMPT', copyX, copyY);
+  copyY += Math.round(labelSize * 1.65);
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  setDocumentationFont(ctx, 500, promptSize);
+  const promptLines = wrapCanvasText(ctx, details.prompt, copyWidth, portrait ? 5 : 6);
+  copyY = drawDocumentationLines(ctx, promptLines, copyX, copyY, Math.round(promptSize * 1.38));
+  copyY += Math.round(22 * scale);
+  const factGap = Math.round(9 * scale);
+  details.facts.forEach(([label, value]) => {
+    if (copyY > height - pad - factSize * 1.5) return;
+    ctx.fillStyle = 'rgba(255,255,255,.42)';
+    setDocumentationMonoFont(ctx, 650, factSize * .8);
+    ctx.fillText(String(label).toUpperCase(), copyX, copyY);
+    ctx.fillStyle = 'rgba(255,255,255,.82)';
+    setDocumentationFont(ctx, 600, factSize);
+    const valueX = copyX + Math.min(copyWidth * .3, Math.round(118 * scale));
+    ctx.fillText(truncateCanvasText(ctx, value, copyX + copyWidth - valueX), valueX, copyY - 1);
+    copyY += Math.round(factSize * 1.35) + factGap;
+  });
+}
+
+function drawDocumentationVideoResult(ctx, canvas, video) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawContainedMedia(ctx, video, 0, 0, canvas.width, canvas.height);
+  const pad = Math.round(Math.min(canvas.width, canvas.height) * .035);
+  const fontSize = Math.max(11, Math.round(Math.min(canvas.width, canvas.height) * .022));
+  setDocumentationMonoFont(ctx, 700, fontSize);
+  const label = 'FINAL RESULT';
+  const boxWidth = ctx.measureText(label).width + pad * .9;
+  const boxHeight = fontSize * 2.05;
+  ctx.fillStyle = 'rgba(0,0,0,.66)';
+  ctx.fillRect(pad, pad, boxWidth, boxHeight);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(label, pad * 1.45, pad + fontSize * .48);
+}
+
+function updateDocumentationVideoProgress(progress, label) {
+  const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
+  $('#documentationVideoProgress').style.width = `${percent}%`;
+  $('#documentationVideoPercent').textContent = `${percent}%`;
+  if (label) $('#documentationVideoStatus').textContent = label;
+}
+
+function cleanupDocumentationVideoRun(run) {
+  if (!run) return;
+  try { run.video && run.video.pause(); } catch { /* noop */ }
+  (run.stream && run.stream.getTracks ? run.stream.getTracks() : []).forEach((track) => track.stop());
+  if (run.video) run.video.removeAttribute('src');
+}
+
+function closeDocumentationVideoExport() {
+  const run = documentationVideoRun;
+  if (run) {
+    run.cancelled = true;
+    if (run.recorder && run.recorder.state !== 'inactive') run.recorder.stop();
+    cleanupDocumentationVideoRun(run);
+  }
+  documentationVideoRun = null;
+  $('#documentationVideoSheet').classList.remove('show');
+  syncSheetScrollLock();
+}
+
+async function saveDocumentationVideo(item, video) {
+  const mimeType = documentationVideoMimeType();
+  const canvas = $('#documentationVideoCanvas');
+  if (!mimeType || !canvas.captureStream) {
+    toast('Documentation video export is not supported by this browser', true);
+    return;
+  }
+  closeActionMenu();
+  closeDocumentationVideoExport();
+  const run = { cancelled: false, recorder: null, stream: null, video: null };
+  documentationVideoRun = run;
+  $('#documentationVideoCancel').textContent = 'Cancel';
+  $('#documentationVideoSheet').classList.add('show');
+  syncSheetScrollLock();
+  updateDocumentationVideoProgress(0, 'Preparing start frame and video…');
+
+  try {
+    const startFrame = await loadDocumentationOriginal(item);
+    if (run.cancelled || documentationVideoRun !== run) return;
+    const result = document.createElement('video');
+    result.preload = 'auto';
+    result.muted = true;
+    result.playsInline = true;
+    result.src = '/videos/' + video.file;
+    await new Promise((resolve, reject) => {
+      result.onloadedmetadata = resolve;
+      result.onerror = () => reject(new Error('Could not load the result video'));
+      result.load();
+    });
+    if (run.cancelled || documentationVideoRun !== run) return;
+    run.video = result;
+    const dimensions = documentationVideoDimensions(result.videoWidth, result.videoHeight);
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+    const ctx = canvas.getContext('2d');
+    drawDocumentationVideoIntro(ctx, canvas, startFrame, item, video);
+
+    const stream = canvas.captureStream(30);
+    run.stream = stream;
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
+    run.recorder = recorder;
+    const recorded = new Promise((resolve, reject) => {
+      recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error('The browser could not record the documentation video'));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
+    });
+    recorder.start(500);
+
+    const introMs = 2800;
+    const savedInfo = video.info || {};
+    const savedSeconds = savedInfo.frames && savedInfo.fps ? savedInfo.frames / savedInfo.fps : 0;
+    const resultSeconds = Number.isFinite(result.duration) && result.duration > 0 ? result.duration : savedSeconds;
+    const durationMs = Math.max(500, Math.min(300_000, resultSeconds * 1000 || 5000));
+    const totalMs = introMs + durationMs;
+    const startedAt = performance.now();
+    let resultStarted = false;
+    while (!run.cancelled && documentationVideoRun === run) {
+      const elapsed = performance.now() - startedAt;
+      if (elapsed < introMs) {
+        drawDocumentationVideoIntro(ctx, canvas, startFrame, item, video);
+        updateDocumentationVideoProgress(elapsed / totalMs, 'Recording generation details…');
+      } else {
+        if (!resultStarted) {
+          resultStarted = true;
+          result.currentTime = 0;
+          await result.play();
+        }
+        drawDocumentationVideoResult(ctx, canvas, result);
+        updateDocumentationVideoProgress(Math.min(1, (introMs + result.currentTime * 1000) / totalMs), 'Recording final result…');
+        if (result.ended || result.currentTime >= result.duration - .04) break;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    if (recorder.state !== 'inactive') recorder.stop();
+    const blob = await recorded;
+    cleanupDocumentationVideoRun(run);
+    if (run.cancelled || documentationVideoRun !== run) return;
+    documentationVideoRun = null;
+    const extension = blob.type === 'video/mp4' ? 'mp4' : 'webm';
+    const stem = (item.prompt || 'mix_studio').slice(0, 40).replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '') || 'mix_studio';
+    const filename = `${stem}_documentation.${extension}`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    mirrorExportFile(blob, filename);
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 3000);
+    updateDocumentationVideoProgress(1, 'Documentation video saved');
+    $('#documentationVideoCancel').textContent = 'Close';
+    toast('Documentation video saved');
+  } catch (error) {
+    cleanupDocumentationVideoRun(run);
+    if (documentationVideoRun === run) documentationVideoRun = null;
+    updateDocumentationVideoProgress(0, 'Could not build the documentation video');
+    $('#documentationVideoCancel').textContent = 'Close';
+    toast(error.message, true);
+  }
+}
+
+$('#documentationVideoClose').addEventListener('click', closeDocumentationVideoExport);
+$('#documentationVideoCancel').addEventListener('click', closeDocumentationVideoExport);
 
 $('#documentationLayout').addEventListener('click', (event) => {
   const button = event.target.closest('[data-doc-layout]');

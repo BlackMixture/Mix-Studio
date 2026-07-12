@@ -26,7 +26,8 @@ test('swiping only hides progress and a new generation restores it', () => {
 
 test('image and video generations use stable Lottie simulations before yielding to real outputs', () => {
   assert.match(app, /function startLivePreviewSimulation\(kind = state\.view === 'video' \? 'video' : 'image'\)/);
-  assert.match(app, /kind === 'video' \? '\/progress-video\.json' : '\/progress-image\.json'/);
+  assert.match(app, /const path = '\/progress-image\.json'/);
+  assert.doesNotMatch(app, /progress-video\.json/);
   assert.match(app, /function videoProgressAnimationData\(data\)/);
   assert.match(app, /value\.ty === 'st' \? outline : face/);
   assert.match(app, /kind === 'video' \? videoProgressAnimationData\(data\)/);

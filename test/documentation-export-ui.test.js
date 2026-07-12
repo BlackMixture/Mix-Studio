@@ -77,3 +77,17 @@ test('documentation builder has responsive preview and adjustment controls', () 
   assert.match(css, /\.documentation-builder/);
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.documentation-preview/);
 });
+
+test('focused videos can export a start-frame generation record followed by the result', () => {
+  assert.match(app, /label: 'Documentation video'/);
+  assert.match(app, /action: \(\) => saveDocumentationVideo\(it, selVideo\)/);
+  assert.match(html, /id="documentationVideoSheet"/);
+  assert.match(html, /id="documentationVideoCanvas"/);
+  assert.match(app, /function documentationVideoDetails\(item, video\)/);
+  assert.match(app, /function drawDocumentationVideoIntro\(ctx, canvas, startFrame, item, video\)/);
+  assert.match(app, /function drawDocumentationVideoResult\(ctx, canvas, video\)/);
+  assert.match(app, /canvas\.captureStream\(30\)/);
+  assert.match(app, /new MediaRecorder\(stream/);
+  assert.match(app, /mirrorExportFile\(blob, filename\)/);
+  assert.match(css, /\.documentation-video-preview/);
+});

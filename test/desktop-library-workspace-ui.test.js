@@ -31,3 +31,38 @@ test('desktop navigation and focused viewer align to the three-column workspace'
   assert.match(css, /#lightbox \.lightbox-meta \{[\s\S]*grid-column: 2;/);
   assert.match(css, /#lightbox #lbActions \{[\s\S]*grid-column: 2;/);
 });
+
+test('desktop gallery items drag onto compatible generation inputs', () => {
+  assert.match(app, /card\.draggable = desktopWorkspaceActive\(\)/);
+  assert.match(app, /function beginDesktopGalleryDrag\(item, media, card, event\)/);
+  assert.match(app, /function applyDesktopGalleryDrop\(target, drag\)/);
+  assert.match(app, /#createImageGuideAdd/);
+  assert.match(app, /\.ref-slot/);
+  assert.match(app, /#vidAttachBtn/);
+  assert.match(app, /#vidDriveBtn/);
+  assert.match(app, /sendVideoAsDrive\(item, video, \{ preserveEngine: true \}\)/);
+  assert.match(css, /\.gallery-drop-ready/);
+  assert.match(css, /\.gallery-drop-active/);
+});
+
+test('desktop empty stage avoids redundant layout instructions', () => {
+  assert.doesNotMatch(html, /Build on the left\. Recent work stays within reach on the right\./);
+});
+
+test('selected desktop results expose compact actions and can be unloaded safely', () => {
+  assert.match(html, /id="desktopStageClear"[^>]*Unload result and clear generation settings/);
+  assert.match(html, /id="desktopStageActions"/);
+  assert.match(html, /id="desktopStageLike"/);
+  assert.match(html, /id="desktopStageSave"/);
+  assert.match(app, /function clearDesktopStageSelection\(\)/);
+  assert.match(app, /function resetActiveGenerationForm\(\)/);
+  assert.match(app, /state\.desktopStageDismissed = true/);
+  assert.doesNotMatch(app, /Image settings loaded/);
+  assert.match(css, /\.desktop-generate-row \{ display: flex;/);
+  assert.match(css, /\.desktop-stage-actions button/);
+});
+
+test('desktop focused information rail uses a true black surface', () => {
+  assert.match(css, /#lightbox\.show \{[\s\S]*background: #000;/);
+  assert.match(css, /#lightbox #lbActions \{[\s\S]*background: #000;/);
+});
