@@ -970,7 +970,7 @@ function handleWsMessage(msg) {
   const d = msg.data || {};
   const pid = d.prompt_id;
   if (msg.type === 'progress' && pid && jobs.has(pid)) {
-    broadcast('progress', { jobId: pid, value: d.value, max: d.max, itemId: jobs.get(pid).itemId || null });
+    broadcast('progress', { jobId: pid, value: d.value, max: d.max, nodeId: d.node ?? null, itemId: jobs.get(pid).itemId || null });
   } else if (msg.type === 'executing' && pid && jobs.has(pid)) {
     const job = jobs.get(pid);
     if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();

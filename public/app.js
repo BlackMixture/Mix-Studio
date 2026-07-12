@@ -4,6 +4,8 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const CameraSettings = window.KreaCameraSettings;
+const ProgressEta = window.KreaProgressEta;
+const progressEta = ProgressEta.createProgressEtaTracker();
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -7083,11 +7085,14 @@ function setGenerating(on, statusText) {
     startLivePreviewSimulation(state.view === 'video' ? 'video' : 'image');
     $('#liveStatusText').innerHTML = `<span class="spin"></span> ${statusText || 'Working…'}`;
     $('#livePct').textContent = '';
+    $('#livePct').title = '';
     $('#genFill').style.width = '0%';
   } else {
     if (!state.activeJobs.size) {
       $('#genFill').style.width = '0%';
       $('#liveStatusText').textContent = 'Done';
+      $('#livePct').textContent = '';
+      $('#livePct').title = '';
       renderDesktopStage();
     }
     $('#genLbl').textContent = genLabel();
@@ -7313,6 +7318,7 @@ function applyQueueJobMapping(mapping) {
       state.queueProgress[newId] = state.queueProgress[oldId];
       delete state.queueProgress[oldId];
     }
+    progressEta.move(oldId, newId);
     const composite = state.compositeJobs.get(oldId);
     if (composite) {
       state.compositeJobs.delete(oldId);
@@ -7451,6 +7457,7 @@ $('#queueResetBtn').addEventListener('click', async () => {
   try {
     const res = await api('/api/queue/reset', { method: 'POST' });
     state.queueProgress = {};
+    progressEta.reset();
     toast(`Hard reset complete${res.clearedJobs ? ` - ${res.clearedJobs} tracked job${res.clearedJobs === 1 ? '' : 's'} cleared` : ''}`);
     await refreshQueue();
   } catch (e) {
@@ -7484,15 +7491,25 @@ function connectEvents() {
   es.addEventListener('progress', (ev) => {
     const d = JSON.parse(ev.data);
     const pct = d.max ? Math.round((d.value / d.max) * 100) : 0;
+    const remainingMs = progressEta.update({
+      jobId: d.jobId,
+      value: d.value,
+      max: d.max,
+      nodeId: d.nodeId,
+    });
+    const etaText = remainingMs == null ? '' : ProgressEta.formatEtaRemaining(remainingMs);
     state.queueProgress[d.jobId] = pct;
     const st = document.querySelector(`.q-state[data-job-id="${d.jobId}"]`);
     if (st) st.textContent = pct + '%';
     if (!state.activeJobs.has(d.jobId) && !isUpscaleJob(d.jobId)) return;
     $('#genFill').style.width = pct + '%';
-    $('#livePct').textContent = pct + '%';
+    $('#livePct').textContent = `${pct}%${etaText ? ` · ${etaText}` : ''}`;
+    $('#livePct').title = etaText ? `Estimated completion ${etaText}` : '';
     $('#desktopStageProgress').hidden = false;
     $('#desktopStageProgress').querySelector('i').style.width = pct + '%';
-    $('#desktopStageStatus').textContent = pct ? `Working · ${pct}%` : 'Working';
+    $('#desktopStageStatus').textContent = pct
+      ? `Working · ${pct}%${etaText ? ` · ${etaText}` : ''}`
+      : 'Working';
   });
   es.addEventListener('status', (ev) => {
     const d = JSON.parse(ev.data);
@@ -7515,6 +7532,7 @@ function connectEvents() {
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
       state.activeJobs.add(d.nextJobId);
+      progressEta.clear(d.jobId);
       setGenerating(true, `Sequential edit ${d.nextStep} of ${d.total}…`);
     }
     toast(`Step ${d.completedStep} complete · running ${d.nextStep} of ${d.total}`);
@@ -7523,6 +7541,7 @@ function connectEvents() {
   });
   es.addEventListener('jobDone', (ev) => {
     const d = JSON.parse(ev.data);
+    progressEta.clear(d.jobId);
     const compositeJob = state.compositeJobs.get(d.jobId);
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
@@ -7556,6 +7575,7 @@ function connectEvents() {
   });
   es.addEventListener('imageCompositeDone', (ev) => {
     const d = JSON.parse(ev.data);
+    progressEta.clear(d.jobId);
     state.compositeJobs.delete(d.jobId);
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
@@ -7578,6 +7598,7 @@ function connectEvents() {
   });
   es.addEventListener('videoDone', (ev) => {
     const d = JSON.parse(ev.data);
+    progressEta.clear(d.jobId);
     state.animating.delete(d.item.id);
     const vids = d.item.videos || [];
     const newest = vids.length ? vids[vids.length - 1].id : 'image';
@@ -7602,6 +7623,7 @@ function connectEvents() {
   });
   es.addEventListener('upscaleDone', (ev) => {
     const d = JSON.parse(ev.data);
+    progressEta.clear(d.jobId);
     state.upscaling.delete(d.item.id);
     toast('✓ Upscaled');
     refreshGallery(true).then(() => {
@@ -7610,6 +7632,7 @@ function connectEvents() {
   });
   es.addEventListener('jobError', (ev) => {
     const d = JSON.parse(ev.data);
+    progressEta.clear(d.jobId);
     if (d.itemId) { state.upscaling.delete(d.itemId); state.animating.delete(d.itemId); }
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);

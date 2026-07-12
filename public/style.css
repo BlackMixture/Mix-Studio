@@ -3077,6 +3077,8 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   overflow: hidden;
   white-space: nowrap;
 }
+#liveStatusText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#livePct { flex: 0 0 auto; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .live-x {
   flex: 0 0 auto;
   border: 0;
