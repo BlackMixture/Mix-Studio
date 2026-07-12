@@ -22,7 +22,8 @@ test('Edit exposes a minimalist sequential-mode icon with state-aware tooltips',
 test('Sequential mode is available only for the four supported edit engines', () => {
   assert.match(app, /new Set\(\['klein4', 'klein9', 'qwen', 'krea2ref'\]\)/);
   assert.match(app, /const engineSupported = SEQUENTIAL_EDIT_ENGINES\.has\(state\.editEngine\)/);
-  assert.match(app, /if \(inEdit && !engineSupported\) state\.editSequential = false/);
+  assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);
+  assert.match(app, /if \(inEdit && \(!engineSupported \|\| editOutpaintActive\(\)\)\) state\.editSequential = false/);
   assert.match(server, /Sequential edits are available with Klein 4B, Klein 9B, Qwen Edit, and Krea 2 Edit only/);
 });
 

@@ -189,6 +189,30 @@
         </div>
       </div>
     </div>
+    <div class="edit-outpaint-control" id="editOutpaintControl" hidden>
+      <div class="edit-outpaint-head">
+        <span class="edit-outpaint-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h7v2H5v5H3V3Zm11 0h7v7h-2V5h-5V3ZM3 14h2v5h5v2H3v-7Zm16 0h2v7h-7v-2h5v-5ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg><span><b>Outpaint</b><small id="editOutpaintSummary">Extend beyond the frame</small></span></span>
+        <button class="edit-outpaint-toggle" id="editOutpaintToggle" type="button" role="switch" aria-checked="false" aria-label="Enable Krea 2 outpaint"><span aria-hidden="true"></span></button>
+      </div>
+      <div class="edit-outpaint-body" id="editOutpaintBody" aria-hidden="true" inert>
+        <div class="edit-outpaint-body-inner">
+          <div class="edit-outpaint-preview-wrap">
+            <div class="edit-outpaint-preview" id="editOutpaintPreview" aria-label="Outpaint canvas preview">
+              <div class="edit-outpaint-source" id="editOutpaintSource"><img id="editOutpaintPreviewImage" alt="" /></div>
+            </div>
+            <small id="editOutpaintHint">Choose a different Output ratio to add canvas.</small>
+          </div>
+          <div class="edit-outpaint-placement">
+            <span id="editOutpaintPlacementLabel">Placement</span>
+            <div class="edit-outpaint-position" id="editOutpaintPosition" role="group" aria-label="Original image placement">
+              <button type="button" data-outpaint-position="start">Left</button>
+              <button type="button" data-outpaint-position="center" class="active">Center</button>
+              <button type="button" data-outpaint-position="end">Right</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="edit-upscale-control" id="editUpscaleControl">
       <div class="edit-upscale-head">
         <button class="edit-upscale-details" id="editUpscaleDetails" type="button" aria-expanded="false" aria-controls="editUpscaleBody">
@@ -1580,6 +1604,7 @@
             <div class="field"><label>Raw UNET</label><input id="setKrea2RawUnet" type="text" /></div>
             <div class="field"><label>Turbo LoRA for Raw</label><input id="setKrea2TurboLora" type="text" /></div>
             <div class="field"><label>Depth Control LoRA</label><input id="setKrea2DepthLora" type="text" /></div>
+            <div class="field"><label>Outpaint Identity LoRA</label><input id="setKrea2OutpaintLora" type="text" /></div>
             <div class="field"><label>Depth Anything V3 model</label><input id="setDepthAnythingV3Model" type="text" /></div>
             <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
             <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>

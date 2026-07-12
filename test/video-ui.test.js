@@ -148,7 +148,7 @@ test('Video prompt tools stay hidden and structured audio labels survive state c
 
 test('SCAIL accepts a driving video without a typed motion prompt', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(app, /const promptOptional = state\.view === 'video' && state\.vidEngine === 'scail';/);
+  assert.match(app, /const promptOptional = \(state\.view === 'video' && state\.vidEngine === 'scail'\) \|\| outpaintActive;/);
   assert.match(app, /'Optional — add style or motion direction…'/);
   assert.match(server, /if \(!suppliedMotionPrompt && engine !== 'scail'\)/);
   assert.match(server, /const motionPrompt = suppliedMotionPrompt \|\| 'preserve the movement from the driving video';/);

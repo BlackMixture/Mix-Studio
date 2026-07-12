@@ -23,10 +23,10 @@ const {
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2depth', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2depth', 'krea2outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Depth', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -37,6 +37,8 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.krea2Depth[1][2], /depth-anything\/DA3-LARGE-1\.1/);
   assert.equal(NODE_PACKS.krea2Control.folder, 'comfyui-krea2-controlnet');
   assert.equal(NODE_PACKS.depthAnything3.folder, 'ComfyUI-DepthAnythingV3');
+  assert.equal(NODE_PACKS.krea2Edit.folder, 'comfyui-krea2edit');
+  assert.match(MODEL_ASSETS.krea2Outpaint[0][2], /conradlocke\/krea2-identity-edit/);
 });
 
 test('dependency paths stay inside ComfyUI model folders and trusted repos compare safely', () => {

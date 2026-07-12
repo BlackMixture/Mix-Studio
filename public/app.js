@@ -24,6 +24,8 @@ const state = {
   editAspect: '1:1',
   editWidth: 1024,
   editHeight: 1024,
+  editOutpaint: false,
+  editOutpaintPosition: 'center',
   editUpscaleEnabled: false,
   editUpscaleResolution: 2160,
   editUpscaleProfile: 'sharp',
@@ -1223,6 +1225,8 @@ function saveForm() {
       customDims: state.customDims, width: state.width, height: state.height,
       editAspectOverride: state.editAspectOverride, editAspect: state.editAspect,
       editWidth: state.editWidth, editHeight: state.editHeight,
+      editOutpaint: state.editOutpaint,
+      editOutpaintPosition: state.editOutpaintPosition,
       editUpscaleEnabled: state.editUpscaleEnabled,
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
@@ -1253,6 +1257,8 @@ function loadForm() {
     state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
     state.editWidth = round32(Number(f.editWidth) || 1024);
     state.editHeight = round32(Number(f.editHeight) || 1024);
+    state.editOutpaint = f.editOutpaint === true;
+    state.editOutpaintPosition = ['start', 'center', 'end'].includes(f.editOutpaintPosition) ? f.editOutpaintPosition : 'center';
     state.editUpscaleEnabled = f.editUpscaleEnabled === true;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
@@ -1455,6 +1461,7 @@ function genLabel() {
     return `➕ Add to Queue · ${state.activeJobs.size} running`;
   }
   if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Inpaint';
+  if (editOutpaintActive()) return 'Generate Outpaint';
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
@@ -1477,7 +1484,9 @@ function updateVideoPanels() {
     ? (state.vidEngine === 'ltx-edit' ? 'Describe the edit…' : (state.vidEngine === 'scail' ? 'Optional — add style or motion direction…' : 'Describe the motion…'))
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
-      : (state.view === 'edit' ? 'Describe the change…' : 'Describe your image…'));
+      : (state.view === 'edit'
+        ? (editOutpaintActive() ? 'Optional — describe what should continue beyond the frame…' : 'Describe the change…')
+        : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidModelPanel').hidden = !isVideo;
   $('#editModelPanel').hidden = !isEdit;
@@ -2782,7 +2791,7 @@ function clearKreaMask(silent) {
 }
 
 function supportsCurrentEditMask() {
-  return state.view === 'edit' && EDIT_MASK_ENGINES.has(state.editEngine);
+  return state.view === 'edit' && !editOutpaintActive() && EDIT_MASK_ENGINES.has(state.editEngine);
 }
 
 function hasEditMask() {
@@ -4138,8 +4147,8 @@ function renderEditSequence() {
   if (!button) return;
   const inEdit = state.view === 'edit';
   const engineSupported = SEQUENTIAL_EDIT_ENGINES.has(state.editEngine);
-  const supported = inEdit && engineSupported;
-  if (inEdit && !engineSupported) state.editSequential = false;
+  const supported = inEdit && engineSupported && !editOutpaintActive();
+  if (inEdit && (!engineSupported || editOutpaintActive())) state.editSequential = false;
   button.hidden = !supported;
   button.setAttribute('aria-pressed', String(supported && state.editSequential));
   const steps = supported && state.editSequential ? sequentialEditPrompts() : [];
@@ -4154,7 +4163,7 @@ function renderEditSequence() {
 }
 
 $('#editSequenceBtn').addEventListener('click', () => {
-  if (!SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)) return;
+  if (!SEQUENTIAL_EDIT_ENGINES.has(state.editEngine) || editOutpaintActive()) return;
   state.editSequential = !state.editSequential;
   if (state.editSequential && state.qwenAnglesMode) closeQwenAngles();
   renderEditSequence();
@@ -4542,6 +4551,7 @@ function renderEditAspects() {
   const body = $('#editAspectBody');
   $('#editAspectToggle').classList.toggle('custom', override);
   body.classList.toggle('expanded', $('#editAspectToggle').getAttribute('aria-expanded') === 'true');
+  renderEditOutpaint();
 }
 
 function matchedEditOutputDimensions(ref) {
@@ -4554,6 +4564,136 @@ function matchedEditOutputDimensions(ref) {
     h: round32(Math.sqrt(1e6 / ratio)),
   };
 }
+
+function editOutpaintGeometry() {
+  const ref = state.refs[0];
+  const sourceWidth = Number(ref?.w);
+  const sourceHeight = Number(ref?.h);
+  const targetWidth = Number(state.editWidth);
+  const targetHeight = Number(state.editHeight);
+  if (!sourceWidth || !sourceHeight || !targetWidth || !targetHeight || !state.editAspectOverride) {
+    return { valid: false, ref, axis: 'horizontal', sourcePercent: 100 };
+  }
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  if (Math.abs(Math.log(targetRatio / sourceRatio)) < .012) {
+    return { valid: false, ref, sourceRatio, targetRatio, axis: 'horizontal', sourcePercent: 100 };
+  }
+  const axis = targetRatio > sourceRatio ? 'horizontal' : 'vertical';
+  const sourcePercent = axis === 'horizontal'
+    ? Math.max(8, Math.min(100, sourceRatio / targetRatio * 100))
+    : Math.max(8, Math.min(100, targetRatio / sourceRatio * 100));
+  return { valid: true, ref, sourceRatio, targetRatio, axis, sourcePercent };
+}
+
+function editOutpaintActive() {
+  return state.view === 'edit' && state.editEngine === 'krea2ref' && state.editOutpaint;
+}
+
+function defaultEditOutpaintAspect(ref) {
+  const ratio = Number(ref?.w) / Number(ref?.h);
+  if (!Number.isFinite(ratio) || ratio <= 0) return '16:9';
+  if (ratio >= 2.05) return '16:9';
+  if (ratio >= 1.55) return '21:9';
+  if (ratio >= 1) return '16:9';
+  if (ratio <= .62) return '2:3';
+  return '9:16';
+}
+
+function applyEditOutpaintAspect(label) {
+  const aspect = ASPECTS.find((entry) => entry.label === label) || ASPECTS.find((entry) => entry.label === '16:9');
+  state.editAspectOverride = true;
+  state.editAspect = aspect.label;
+  state.editWidth = round32(Math.sqrt(1e6 * aspect.ar));
+  state.editHeight = round32(Math.sqrt(1e6 / aspect.ar));
+}
+
+function editOutpaintPlacementLabel(axis, position = state.editOutpaintPosition) {
+  return axis === 'vertical'
+    ? ({ start: 'Top', center: 'Center', end: 'Bottom' }[position] || 'Center')
+    : ({ start: 'Left', center: 'Center', end: 'Right' }[position] || 'Center');
+}
+
+function renderEditOutpaint() {
+  const control = $('#editOutpaintControl');
+  if (!control) return;
+  const available = state.view === 'edit' && state.editEngine === 'krea2ref';
+  const enabled = available && state.editOutpaint;
+  const geometry = editOutpaintGeometry();
+  control.hidden = !available;
+  control.classList.toggle('is-enabled', enabled);
+  const toggle = $('#editOutpaintToggle');
+  toggle.setAttribute('aria-checked', String(enabled));
+  const body = $('#editOutpaintBody');
+  body.classList.toggle('expanded', enabled);
+  body.setAttribute('aria-hidden', String(!enabled));
+  body.inert = !enabled;
+  const summary = $('#editOutpaintSummary');
+  summary.textContent = !enabled ? 'Extend beyond the frame'
+    : (!geometry.ref ? 'Add a source image'
+      : (geometry.valid ? `${state.editAspect} · ${editOutpaintPlacementLabel(geometry.axis)}` : 'Choose a different Output ratio'));
+
+  const preview = $('#editOutpaintPreview');
+  const source = $('#editOutpaintSource');
+  const image = $('#editOutpaintPreviewImage');
+  preview.style.aspectRatio = geometry.valid ? `${state.editWidth} / ${state.editHeight}` : '16 / 9';
+  source.style.width = geometry.axis === 'horizontal' ? `${geometry.sourcePercent}%` : '100%';
+  source.style.height = geometry.axis === 'vertical' ? `${geometry.sourcePercent}%` : '100%';
+  const offset = state.editOutpaintPosition === 'start' ? 0
+    : (state.editOutpaintPosition === 'end' ? 100 - geometry.sourcePercent : (100 - geometry.sourcePercent) / 2);
+  source.style.left = geometry.axis === 'horizontal' ? `${offset}%` : '0';
+  source.style.top = geometry.axis === 'vertical' ? `${offset}%` : '0';
+  image.hidden = true;
+  if (geometry.ref) {
+    const sourceUrl = geometry.ref.displayUrl || geometry.ref.url || '';
+    image.onload = () => {
+      image.hidden = false;
+      if (geometry.ref.w && geometry.ref.h) return;
+      geometry.ref.w = image.naturalWidth;
+      geometry.ref.h = image.naturalHeight;
+      renderEditAspects();
+    };
+    if (sourceUrl) {
+      const absoluteUrl = new URL(sourceUrl, location.href).href;
+      if (image.src !== absoluteUrl) image.src = sourceUrl;
+      else if (image.complete && image.naturalWidth) image.onload();
+    }
+  }
+
+  const labels = geometry.axis === 'vertical' ? ['Top', 'Center', 'Bottom'] : ['Left', 'Center', 'Right'];
+  $$('#editOutpaintPosition button').forEach((button, index) => {
+    button.textContent = labels[index];
+    button.classList.toggle('active', button.dataset.outpaintPosition === state.editOutpaintPosition);
+  });
+  $('#editOutpaintPlacementLabel').textContent = geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement';
+  $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
+    : (!geometry.valid ? 'Choose a wider or taller Output ratio to add canvas.'
+      : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`);
+}
+
+$('#editOutpaintToggle').addEventListener('click', () => {
+  const enabling = !state.editOutpaint;
+  if (enabling && !state.refs[0]) return toast('Add a source image before enabling outpaint', true);
+  state.editOutpaint = enabling;
+  if (enabling) {
+    state.editSequential = false;
+    clearKreaMask(true);
+    if (!editOutpaintGeometry().valid) applyEditOutpaintAspect(defaultEditOutpaintAspect(state.refs[0]));
+  }
+  renderRefs();
+  renderEditSequence();
+  updateVideoPanels();
+  saveForm();
+});
+
+$('#editOutpaintPosition').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-outpaint-position]');
+  if (!button) return;
+  state.editOutpaintPosition = ['start', 'center', 'end'].includes(button.dataset.outpaintPosition)
+    ? button.dataset.outpaintPosition : 'center';
+  renderEditOutpaint();
+  saveForm();
+});
 
 function upscaleFinishSettings() {
   const prefix = state.view === 'edit' ? 'edit' : 'create';
@@ -5372,7 +5512,7 @@ function renderEditModelSummary() {
     klein9: '9B · higher fidelity',
     qwen: state.qwenQuality === 'fast' ? 'multi-reference · fast' : 'multi-reference · quality',
     krea2: 'inpaint · one reference',
-    krea2ref: 'reference-guided · 8 steps',
+    krea2ref: editOutpaintActive() ? 'outpaint · 8 steps' : 'reference-guided · 8 steps',
   };
   $('#editEngineSelected').textContent = labels[state.editEngine] || labels.klein4;
   $('#editEngineNote').textContent = notes[state.editEngine] || notes.klein4;
@@ -5794,7 +5934,7 @@ function renderRefs() {
   row.innerHTML = '';
   // Krea2 inpaint uses a single source image — hide the unused slots
   const kreaEdit = state.editEngine === 'krea2';
-  const maxSlots = kreaEdit ? 1 : state.refs.length;
+  const maxSlots = kreaEdit || (state.editEngine === 'krea2ref' && state.editOutpaint) ? 1 : state.refs.length;
   state.refs.slice(0, maxSlots).forEach((ref, idx) => {
     const slot = document.createElement('div');
     slot.className = 'ref-slot' + (ref ? ' filled' : '');
@@ -6980,12 +7120,15 @@ $('#editComposite').addEventListener('click', () => {
 });
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
+  const outpaintActive = state.view === 'edit' && state.editEngine === 'krea2ref' && state.editOutpaint;
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
   const qwenAngleExports = supportsCurrentEditAngles() && !state.editSequential && !hasEditMask()
     ? selectedQwenAngleViews() : [];
-  const promptOptional = state.view === 'video' && state.vidEngine === 'scail';
+  const promptOptional = (state.view === 'video' && state.vidEngine === 'scail') || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
+  if (outpaintActive && !state.refs[0]) return toast('Outpaint needs a source image in reference slot 1', true);
+  if (outpaintActive && !editOutpaintGeometry().valid) return toast('Choose an Output ratio that adds canvas beyond the source image', true);
 
   if (state.view === 'video') {
     const ltxEdit = state.vidEngine === 'ltx-edit';
@@ -7050,7 +7193,7 @@ $('#generateBtn').addEventListener('click', async () => {
   }
 
   const mode = state.view === 'edit' ? 'edit' : 't2i';
-  const sequenceSteps = mode === 'edit' && state.editSequential && SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)
+  const sequenceSteps = mode === 'edit' && !outpaintActive && state.editSequential && SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)
     ? sequentialEditPrompts(prompt)
     : [];
   if (state.editSequential && sequenceSteps.length < 2) {
@@ -7084,8 +7227,12 @@ $('#generateBtn').addEventListener('click', async () => {
     qwenQuality: mode === 'edit' && state.editEngine === 'qwen' ? state.qwenQuality : undefined,
     krea2Turbo: !krea2Raw,
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
-    composite: mode === 'edit' ? $('#editComposite').getAttribute('aria-pressed') === 'true' : undefined,
+    composite: mode === 'edit'
+      ? (!outpaintActive && $('#editComposite').getAttribute('aria-pressed') === 'true')
+      : undefined,
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
+    editOutpaint: outpaintActive || undefined,
+    editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
     editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
     enhance: state.enhance && mode === 't2i',
     width: mode === 'edit' && state.editAspectOverride && !localizedEdit ? state.editWidth : state.width,
@@ -7105,7 +7252,7 @@ $('#generateBtn').addEventListener('click', async () => {
     seed: seedRaw === '' ? undefined : Number(seedRaw),
     loras: mode === 'edit' ? state.editLoras : state.loras,
     refImages: mode === 'edit'
-      ? state.refs.slice(0, state.editEngine === 'krea2' ? 1 : 3).filter(Boolean).map((r) => r.name)
+      ? state.refs.slice(0, state.editEngine === 'krea2' || outpaintActive ? 1 : 3).filter(Boolean).map((r) => r.name)
       : [],
     imageName: createImageGuideName,
     imageGuideMode: createImageGuide ? state.createGuideMode : undefined,
@@ -11475,6 +11622,10 @@ async function reuseItem(it, useEnhanced) {
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
   if (restoringEdit) {
     switchEditEngine(restoredEditEngine(it.editEngine));
+    state.editOutpaint = state.editEngine === 'krea2ref' && !!it.editOutpaint;
+    state.editOutpaintPosition = ['start', 'center', 'end'].includes(it.editOutpaint?.position)
+      ? it.editOutpaint.position
+      : 'center';
     if (state.editEngine === 'qwen') {
       state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)
         ? 'fast' : 'quality';
@@ -13341,6 +13492,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setKrea2RawUnet').value = s.krea2RawUnet || '';
     $('#setKrea2TurboLora').value = s.krea2TurboLora || '';
     $('#setKrea2DepthLora').value = s.krea2DepthLora || '';
+    $('#setKrea2OutpaintLora').value = s.krea2OutpaintLora || '';
     $('#setDepthAnythingV3Model').value = s.depthAnythingV3Model || '';
     $('#setClip').value = s.clip;
     $('#setVae').value = s.vae;
@@ -13403,6 +13555,7 @@ $('#settingsSave').addEventListener('click', async () => {
         krea2RawUnet: $('#setKrea2RawUnet').value,
         krea2TurboLora: $('#setKrea2TurboLora').value,
         krea2DepthLora: $('#setKrea2DepthLora').value,
+        krea2OutpaintLora: $('#setKrea2OutpaintLora').value,
         depthAnythingV3Model: $('#setDepthAnythingV3Model').value,
         clip: $('#setClip').value,
         vae: $('#setVae').value,
@@ -13716,7 +13869,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Outpaint nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

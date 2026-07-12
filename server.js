@@ -58,6 +58,12 @@ const {
   promptEnhanceParts,
 } = require('./lib/prompt-enhance');
 const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
+const {
+  buildKrea2OutpaintGraph,
+  calculateOutpaintPadding,
+  normalizeOutpaintDimensions,
+  normalizeOutpaintPosition,
+} = require('./lib/krea2-outpaint');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
@@ -163,6 +169,7 @@ const DEFAULT_SETTINGS = {
   krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
   krea2TurboLora: 'krea2_turbo_lora_rank_64_bf16.safetensors',
   krea2DepthLora: 'depth-control-lora.safetensors',
+  krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
   depthAnythingV3Model: 'da3_large.safetensors',
   clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
   clipType: 'krea2',
@@ -657,6 +664,10 @@ function configuredModelsStatus(info) {
       lora: modelStatus(info, 'Krea2ControlLoRALoader', 'lora_name', settings.krea2DepthLora, loraList),
       depthModel: modelStatus(info, 'DownloadAndLoadDepthAnythingV3Model', 'model', settings.depthAnythingV3Model),
     },
+    krea2Outpaint: {
+      label: 'Krea 2 Outpaint',
+      lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.krea2OutpaintLora, loraList),
+    },
     klein4: {
       label: 'Flux Klein 4B',
       unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein4Unet),
@@ -730,6 +741,7 @@ function missingDependencyComponentIds(missing, models) {
   const nodeToComponent = {
     regional: ['regional'],
     krea2ref: ['krea2ref'],
+    krea2outpaint: ['krea2outpaint'],
     smartmask: ['smartmask'],
     upscale: ['upscale'],
     ultimateupscale: ['ultimateupscale'],
@@ -749,7 +761,7 @@ function missingDependencyComponentIds(missing, models) {
   for (const [group, classes] of Object.entries(missing || {})) {
     if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
   }
-  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -1267,6 +1279,11 @@ async function completeJob(pid) {
       anglePrompt: job.params.anglePrompt || undefined,
       angleGroupId: job.params.angleGroupId || undefined,
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
+      editOutpaint: job.params.mode === 'edit' && job.params.editOutpaint ? {
+        position: normalizeOutpaintPosition(job.params.editOutpaintPosition),
+        axis: job.params.editOutpaintAxis,
+        padding: job.params.editOutpaintPadding,
+      } : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
       editMaskMode: job.params.mode === 'edit' && job.params.maskImageName ? job.params.editMaskMode : undefined,
@@ -1588,6 +1605,52 @@ async function buildKrea2Inpaint(p, refNames) {
   })));
 }
 
+async function comfyInputImageDimensions(imageName) {
+  const parts = String(imageName || '').split('/');
+  const filename = parts.pop();
+  const subfolder = parts.join('/');
+  const response = await comfyFetch(`/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=input`);
+  const dimensions = imageDims(Buffer.from(await response.arrayBuffer()));
+  if (!dimensions || !dimensions.w || !dimensions.h) throw new Error('Could not read source image dimensions');
+  return dimensions;
+}
+
+async function buildEditKrea2Outpaint(p, refNames) {
+  const info = await getObjectInfo();
+  const missingNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint']
+    .filter((className) => !info[className]);
+  if (missingNodes.length) {
+    throw new Error(`Krea 2 outpaint needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
+    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
+    : comboList(info, 'LoraLoader', 'lora_name');
+  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  if (!loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
+    throw new Error(`Krea 2 outpaint needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
+  }
+  const source = await comfyInputImageDimensions(refNames[0]);
+  const dimensions = normalizeOutpaintDimensions(p.width, p.height);
+  p.width = dimensions.width;
+  p.height = dimensions.height;
+  p.editOutpaintPosition = normalizeOutpaintPosition(p.editOutpaintPosition);
+  const padding = calculateOutpaintPadding({
+    sourceWidth: source.w,
+    sourceHeight: source.h,
+    targetWidth: p.width,
+    targetHeight: p.height,
+    position: p.editOutpaintPosition,
+  });
+  p.editOutpaintAxis = padding.axis;
+  p.editOutpaintPadding = padding;
+  return filterInputs(buildKrea2OutpaintGraph(Object.assign({}, p, {
+    settings,
+    imageName: refNames[0],
+    padding,
+    groundingPx: 768,
+  })));
+}
+
 /* Edit (Krea2 Ref): the nova452 Conditioning-Rebalance technique — the
  * instruction and up to 4 reference images are fused by Krea2EditRebalance
  * into a single conditioning (IP-Adapter-like identity/composition
@@ -1836,6 +1899,7 @@ async function buildEdit(p, refNames) {
 async function buildGenerationGraph(p, refNames) {
   if (p.mode === 'edit') {
     if (p.editEngine === 'qwen') return buildEditQwen(p, refNames);
+    if (p.editEngine === 'krea2ref' && p.editOutpaint) return buildEditKrea2Outpaint(p, refNames);
     if (p.editEngine === 'krea2ref') return buildEditKrea2Ref(p, refNames);
     if (p.editEngine === 'krea2' && p.maskImageName) return buildKrea2Inpaint(p, refNames);
     if (p.editEngine === 'krea2') return hasActiveRegions(p.regions) ? buildRegionalT2I(p) : buildT2I(p);
@@ -3338,6 +3402,7 @@ const REQUIRED_CLASSES = {
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
+  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',
@@ -3630,6 +3695,7 @@ async function handleApi(req, res, url) {
           turboLora: settings.krea2TurboLora,
           depthLora: settings.krea2DepthLora,
           depthModel: settings.depthAnythingV3Model,
+          outpaintLora: settings.krea2OutpaintLora,
         },
         features: settings.features,
         queue: jobs.size,
@@ -3815,6 +3881,10 @@ async function handleApi(req, res, url) {
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
+    p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
+    if (!p.prompt && p.editOutpaint) {
+      p.prompt = 'Extend the image naturally into the empty canvas, preserving the original image and continuing its scene, lighting, perspective, and details.';
+    }
     p.qwenAngle = normalizeEditAngle(p.qwenAngle);
     p.angleGroupId = p.qwenAngle && /^[a-z0-9_-]{8,96}$/i.test(String(p.angleGroupId || ''))
       ? String(p.angleGroupId) : undefined;
@@ -3824,6 +3894,7 @@ async function handleApi(req, res, url) {
     if (!p.prompt && !p.qwenAngle && !hasActiveRegions(p.regions)) return json(res, 400, { error: 'Prompt is empty' });
     p.width = clampInt(p.width, 64, 4096, 1024);
     p.height = clampInt(p.height, 64, 4096, 1024);
+    if (p.editOutpaint) Object.assign(p, normalizeOutpaintDimensions(p.width, p.height));
     p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
     p.steps = clampInt(p.steps, 1, 100, p.mode === 't2i' && p.krea2Turbo ? 8 : 12);
     p.batch = clampInt(p.batch, 1, 8, 1);
@@ -3871,6 +3942,12 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: 'This edit model was not installed on this machine.' });
       }
       const sequenceRequested = !!p.editSequence;
+      if (p.editOutpaint && p.editEngine !== 'krea2ref') {
+        return json(res, 400, { error: 'Outpaint is available with Krea 2 Edit only' });
+      }
+      if (p.editOutpaint && sequenceRequested) {
+        return json(res, 400, { error: 'Outpaint and sequential edits must be generated separately' });
+      }
       if (sequenceRequested && !supportsSequentialEdit(p.editEngine)) {
         return json(res, 400, { error: 'Sequential edits are available with Klein 4B, Klein 9B, Qwen Edit, and Krea 2 Edit only' });
       }
@@ -3891,6 +3968,9 @@ async function handleApi(req, res, url) {
       if (p.qwenAngle && p.maskImageName) {
         return json(res, 400, { error: 'Use either a camera angle or a localized edit area for a single run' });
       }
+      if (p.editOutpaint && p.qwenAngle) {
+        return json(res, 400, { error: 'Outpaint and camera variations must be generated separately' });
+      }
       if (p.qwenAngle) {
         p.anglePrompt = editAnglePrompt(p.editEngine, p.qwenAngle, p.prompt);
         if (p.editEngine === 'qwen') p.qwenAnglePrompt = p.anglePrompt;
@@ -3901,6 +3981,13 @@ async function handleApi(req, res, url) {
       if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }
+      if (p.editOutpaint && p.maskImageName) {
+        return json(res, 400, { error: 'Outpaint and localized edit areas must be generated separately' });
+      }
+      if (p.editOutpaint && !p.editAspectOverride) {
+        return json(res, 400, { error: 'Choose an Output ratio that extends beyond the source image' });
+      }
+      p.editOutpaintPosition = p.editOutpaint ? normalizeOutpaintPosition(p.editOutpaintPosition) : undefined;
       if (p.maskImageName && !supportsEditMask(p.editEngine)) {
         return json(res, 400, { error: 'Edit areas are available with Klein 4B, Klein 9B, Qwen Edit, and Krea2 only' });
       }
@@ -3926,6 +4013,7 @@ async function handleApi(req, res, url) {
       // output ratio intentionally changes the canvas, so retain the edit
       // itself but skip the incompatible preservation pass.
       if (p.editAspectOverride) p.composite = false;
+      if (p.editOutpaint) p.composite = false;
     }
     const { pid } = await queueGenerationJob(p, req.profile.id, refNames, refined);
     return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });
