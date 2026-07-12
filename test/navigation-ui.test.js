@@ -145,7 +145,7 @@ test('Use settings rehydrates every saved edit input instead of asking for manua
   assert.match(app, /state\.regions = restoringEdit \? state\.regions : restoredRegions/);
   assert.match(app, /state\.editAspectOverride = it\.editAspectOverride === true/);
   assert.match(app, /state\.qwenAngles = angle && QWEN_ANGLE_IDS\.has\(angle\.view\) \? \[angle\.view\] : \[\]/);
-  assert.match(app, /restoreKreaMask\(it\)/);
+  assert.match(app, /restoreKreaMask\(it(?:,\s*\(\) => reuseRequestCurrent\(options\))?\)/);
   assert.match(server, /editAspectOverride: job\.params\.mode === 'edit'/);
   assert.match(server, /maskImageName: job\.params\.mode === 'edit'/);
   assert.match(server, /batch: job\.params\.batch/);

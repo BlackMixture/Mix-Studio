@@ -113,6 +113,10 @@ const state = {
   animateRouteTarget: null,
   currentItem: null,
   currentMedia: null,
+  desktopItemId: null,
+  desktopMediaId: 'image',
+  desktopReuseToken: 0,
+  desktopSettingsReady: false,
   upscaleTarget: null,
   moveTarget: null,
   selectMode: false,
@@ -8013,18 +8017,50 @@ function setDesktopStageMedia({ image = '', video = '', poster = '' } = {}) {
   }
 }
 
-function renderDesktopStage(item = latestDesktopStageItem()) {
+function desktopStageSelection() {
+  const selected = state.desktopItemId && state.items.find((item) => item.id === state.desktopItemId);
+  if (!selected) {
+    state.desktopItemId = null;
+    state.desktopMediaId = 'image';
+    state.desktopSettingsReady = false;
+    return { item: latestDesktopStageItem(), media: null, selected: false };
+  }
+  const media = (selected.videos || []).some((video) => video.id === state.desktopMediaId)
+    ? state.desktopMediaId
+    : 'image';
+  state.desktopMediaId = media;
+  return { item: selected, media, selected: true };
+}
+
+function syncDesktopGallerySelection() {
+  $$('#galleryGrid .card').forEach((card) => {
+    const active = desktopWorkspaceActive()
+      && card.dataset.id === state.desktopItemId
+      && (card.dataset.media || 'image') === (state.desktopMediaId || 'image');
+    card.classList.toggle('desktop-active', active);
+    if (active) card.setAttribute('aria-current', 'true');
+    else card.removeAttribute('aria-current');
+  });
+}
+
+function renderDesktopStage(item, mediaSel) {
   const open = $('#desktopStageOpen');
   if (!open) return;
+  const resolved = item ? { item, media: mediaSel || 'image', selected: !!state.desktopItemId } : desktopStageSelection();
+  item = resolved.item;
   const status = $('#desktopStageStatus');
   const progress = $('#desktopStageProgress');
+  const info = $('#desktopStageInfo');
   status.classList.remove('working');
   progress.hidden = true;
   progress.querySelector('i').style.width = '0%';
   if (!item) {
     open.disabled = true;
+    info.disabled = true;
     open.dataset.itemId = '';
     open.dataset.media = '';
+    info.dataset.itemId = '';
+    info.dataset.media = '';
     setDesktopStageMedia();
     $('#desktopStageTitle').textContent = 'Ready to create';
     status.textContent = 'Ready';
@@ -8034,21 +8070,30 @@ function renderDesktopStage(item = latestDesktopStageItem()) {
     return;
   }
   const latestVideo = latestGalleryVideo(item);
+  const selectedVideo = (item.videos || []).find((video) => video.id === resolved.media)
+    || (resolved.media == null ? latestVideo : null);
   const imageFile = item.upscaled || item.file;
   const image = imageFile ? '/images/' + imageFile : '';
   open.disabled = false;
+  info.disabled = false;
   open.dataset.itemId = item.id;
-  open.dataset.media = latestVideo ? latestVideo.id : 'image';
+  open.dataset.media = selectedVideo ? selectedVideo.id : 'image';
+  info.dataset.itemId = item.id;
+  info.dataset.media = selectedVideo ? selectedVideo.id : 'image';
   setDesktopStageMedia({
     image,
-    video: latestVideo ? '/videos/' + latestVideo.file : '',
+    video: selectedVideo ? '/videos/' + selectedVideo.file : '',
     poster: image,
   });
-  $('#desktopStageTitle').textContent = latestVideo ? 'Latest video' : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation');
-  status.textContent = 'Latest output';
+  $('#desktopStageTitle').textContent = selectedVideo
+    ? (resolved.selected ? 'Selected video' : 'Latest video')
+    : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'));
+  status.textContent = resolved.selected
+    ? (state.desktopSettingsReady ? 'Settings loaded' : 'Loading settings')
+    : 'Latest output';
   $('#desktopStagePrompt').textContent = item.prompt || item.refinedPrompt || 'Untitled generation';
-  $('#desktopStageModel').textContent = latestVideo
-    ? videoEngineLabel(latestVideo.info && latestVideo.info.engine)
+  $('#desktopStageModel').textContent = selectedVideo
+    ? videoEngineLabel(selectedVideo.info && selectedVideo.info.engine)
     : (galleryImageModelLabel(item) || (item.mode === 'composite' ? 'Composite' : 'Image'));
   $('#desktopStageDims').textContent = item.width && item.height
     ? `${item.width} × ${item.height}`
@@ -8059,8 +8104,11 @@ function renderDesktopStageGenerating(statusText = 'Working…') {
   const open = $('#desktopStageOpen');
   if (!open) return;
   open.disabled = true;
+  $('#desktopStageInfo').disabled = true;
   open.dataset.itemId = '';
   open.dataset.media = '';
+  $('#desktopStageInfo').dataset.itemId = '';
+  $('#desktopStageInfo').dataset.media = '';
   setDesktopStageMedia();
   $('#desktopStageTitle').textContent = 'Creating new output';
   $('#desktopStageStatus').textContent = 'Working';
@@ -8076,6 +8124,12 @@ $('#desktopStageOpen').addEventListener('click', () => {
   const open = $('#desktopStageOpen');
   if (!open.dataset.itemId) return;
   openLightbox(open.dataset.itemId, open.dataset.media || 'image');
+});
+
+$('#desktopStageInfo').addEventListener('click', () => {
+  const info = $('#desktopStageInfo');
+  if (!info.dataset.itemId) return;
+  openLightbox(info.dataset.itemId, info.dataset.media || 'image');
 });
 
 function librarySearchText(it) {
@@ -9119,14 +9173,57 @@ function renderGrid() {
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
+      else if (desktopWorkspaceActive() && state.view !== 'gallery') handleDesktopGalleryTap(it, card);
       else handleGalleryTap(it, card);
     });
     grid.appendChild(card);
   }
   resetGalleryPreviewObservation();
   syncSelectionVisuals();
+  syncDesktopGallerySelection();
   syncGalleryDateScrubber();
   if (state.mediaPreferences.previewCache) schedulePreviewCacheWarmup(items);
+}
+
+async function selectDesktopLibraryItem(item, media = 'image') {
+  const video = (item.videos || []).find((entry) => entry.id === media) || null;
+  state.desktopItemId = item.id;
+  state.desktopMediaId = video ? video.id : 'image';
+  state.desktopSettingsReady = false;
+  const token = ++state.desktopReuseToken;
+  renderDesktopStage(item, state.desktopMediaId);
+  syncDesktopGallerySelection();
+  try {
+    if (video) await reuseVideo(item, video, { desktopToken: token, silent: true });
+    else await reuseItem(item, false, { desktopToken: token, silent: true });
+    if (state.desktopReuseToken === token) {
+      state.desktopSettingsReady = true;
+      renderDesktopStage(item, state.desktopMediaId);
+      syncDesktopGallerySelection();
+      toast(`${video ? 'Video' : (item.mode === 'edit' ? 'Edit' : 'Image')} settings loaded`);
+    }
+  } catch (error) {
+    if (state.desktopReuseToken === token) toast(error.message, true);
+  }
+}
+
+function handleDesktopGalleryTap(item, card) {
+  const now = Date.now();
+  if (galleryTap && galleryTap.itemId === item.id && now - galleryTap.time < 300) {
+    clearTimeout(galleryTap.timer);
+    galleryTap = null;
+    toggleItemLike(item, card);
+    return;
+  }
+  if (galleryTap) clearTimeout(galleryTap.timer);
+  galleryTap = {
+    itemId: item.id,
+    time: now,
+    timer: setTimeout(() => {
+      if (galleryTap && galleryTap.itemId === item.id) galleryTap = null;
+    }, 320),
+  };
+  selectDesktopLibraryItem(item, card.dataset.media || 'image');
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -10746,12 +10843,14 @@ async function restoreEditReference(name, item, index) {
 }
 
 async function restoreEditReferences(item) {
+  const isCurrent = typeof arguments[1] === 'function' ? arguments[1] : () => true;
   const names = Array.isArray(item.refImages) ? item.refImages.filter(Boolean).slice(0, 3) : [];
   const refs = [null, null, null];
   const missing = [];
   for (let index = 0; index < names.length; index += 1) {
     try {
       refs[index] = await restoreEditReference(names[index], item, index);
+      if (!isCurrent()) return [];
     } catch {
       missing.push(`reference image ${index + 1}`);
     }
@@ -10760,11 +10859,12 @@ async function restoreEditReferences(item) {
   if (!refs[0] && item.sourceFile) {
     try {
       refs[0] = await restoreEditReference('', item, 0);
+      if (!isCurrent()) return [];
     } catch {
       missing.push('reference image 1');
     }
   }
-  state.refs = refs;
+  if (isCurrent()) state.refs = refs;
   return [...new Set(missing)];
 }
 
@@ -10778,12 +10878,17 @@ async function restoreCreateImageGuide(item) {
 }
 
 async function restoreKreaMask(item) {
+  const isCurrent = typeof arguments[1] === 'function' ? arguments[1] : () => true;
   clearKreaMask(true);
   if (!item.maskImageName || !EDIT_MASK_ENGINES.has(state.editEngine)) return false;
   try {
     const response = await fetch('/api/input?name=' + encodeURIComponent(item.maskImageName));
     if (!response.ok) throw new Error('missing mask');
     const url = URL.createObjectURL(await response.blob());
+    if (!isCurrent()) {
+      URL.revokeObjectURL(url);
+      return false;
+    }
     state.kreaMask = { name: item.maskImageName, url };
     state.kreaMaskPreview = url;
     state.kreaMaskDirty = false;
@@ -10800,7 +10905,12 @@ async function restoreKreaMask(item) {
   }
 }
 
+function reuseRequestCurrent(options = {}) {
+  return !options.desktopToken || state.desktopReuseToken === options.desktopToken;
+}
+
 async function reuseItem(it, useEnhanced) {
+  const options = arguments[2] || {};
   // Enhanced generations: ask whether to reuse the enhanced text directly
   // (skips re-running the LLM) or the original prompt with enhance on.
   if (useEnhanced === undefined && it.enhance && it.refinedPrompt) {
@@ -10810,11 +10920,12 @@ async function reuseItem(it, useEnhanced) {
   }
   const targetView = it.mode === 'edit' ? 'edit' : 'create';
   const restoringEdit = targetView === 'edit';
+  const restoredPrompt = useEnhanced ? (it.refinedPrompt || it.prompt || '') : (it.prompt || '');
   const restoredRegions = Array.isArray(it.regions) ? it.regions.map((region) => Object.assign({}, region, {
     refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
   })) : [];
 
-  state.prompts[targetView] = useEnhanced ? (it.refinedPrompt || it.prompt || '') : (it.prompt || '');
+  state.prompts[targetView] = restoredPrompt;
   state.enhance = useEnhanced ? false : !!it.enhance;
   state.customDims = true;
   state.width = it.width || 1024;
@@ -10889,19 +11000,32 @@ async function reuseItem(it, useEnhanced) {
 
   closeLightbox();
   setView(restoringEdit ? 'edit' : 'create', restoringEdit ? {} : { createMode: restoredRegions.length ? 'region' : 'image' });
+  // setView preserves the outgoing draft. When reusing within the same mode,
+  // re-apply the saved prompt after that preservation step so it cannot be
+  // overwritten by the prior text in the composer.
+  state.prompts[targetView] = restoredPrompt;
+  setPromptDraft(restoredPrompt);
+  updatePromptClear();
   let missing = [];
   if (restoringEdit) {
-    toast('Restoring settings and reference images…');
-    missing = await restoreEditReferences(it);
-    if (it.maskImageName && !(await restoreKreaMask(it))) missing.push('inpaint mask');
+    if (!options.silent) toast('Restoring settings and reference images…');
+    missing = await restoreEditReferences(it, () => reuseRequestCurrent(options));
+    if (!reuseRequestCurrent(options)) return;
+    if (it.maskImageName && !(await restoreKreaMask(it, () => reuseRequestCurrent(options)))) missing.push('inpaint mask');
+    if (!reuseRequestCurrent(options)) return;
     renderRefs();
   } else if (restoredRegions.length) {
     renderRegionEditor();
   } else if ((Array.isArray(it.refImages) && it.refImages.some(Boolean)) || it.sourceFile) {
-    toast('Restoring settings and image guide…');
-    try { state.createRef = await restoreCreateImageGuide(it); }
+    if (!options.silent) toast('Restoring settings and image guide…');
+    try {
+      const restoredGuide = await restoreCreateImageGuide(it);
+      if (!reuseRequestCurrent(options)) return;
+      state.createRef = restoredGuide;
+    }
     catch { missing.push('image guide'); }
   }
+  if (!reuseRequestCurrent(options)) return;
   renderEnhance();
   renderAspects();
   renderDims();
@@ -10911,6 +11035,7 @@ async function reuseItem(it, useEnhanced) {
   renderCreateImageGuide();
   saveForm();
 
+  if (options.silent) return;
   if (missing.length) {
     toast(`Settings loaded — couldn't restore: ${[...new Set(missing)].join(', ')} (re-add manually)`);
   } else if (useEnhanced) {
@@ -10924,6 +11049,7 @@ async function reuseItem(it, useEnhanced) {
    input asset (source image, audio, end frame, motion video) in the
    Video tab. Assets are pulled back from ComfyUI's input dir. */
 async function reuseVideo(it, v) {
+  const options = arguments[2] || {};
   const info = v.info || {};
   const engine = ['wan', 'eros', 'scail'].includes(info.engine) ? info.engine : 'ltx';
   closeLightbox();
@@ -10986,16 +11112,19 @@ async function reuseVideo(it, v) {
       if (it.mode !== 'video') {
         // grouped under a real image item -> reuse the item image (keeps grouping)
         const blob = await (await fetch('/images/' + it.file)).blob();
+        if (!reuseRequestCurrent(options)) return;
         const buf = await blob.arrayBuffer();
         const res = await api('/api/upload', {
           method: 'POST',
           headers: { 'x-filename': encodeURIComponent(it.file) },
           body: buf,
         });
+        if (!reuseRequestCurrent(options)) return;
         state.vidRef = { name: res.name, url: '/images/' + it.file, w: info.srcWidth || it.width || 1024, h: info.srcHeight || it.height || 1024, srcItemId: it.id };
       } else if (info.imageName) {
         // standalone item: the true source still sits in ComfyUI's input dir
         const blob = await inputBlob(info.imageName);
+        if (!reuseRequestCurrent(options)) return;
         state.vidRef = { name: info.imageName, url: URL.createObjectURL(blob), w: info.srcWidth || 1024, h: info.srcHeight || 1024, srcItemId: it.id };
       } else {
         missing.push('source image');
@@ -11013,8 +11142,10 @@ async function reuseVideo(it, v) {
   if (info.audioName) {
     try {
       const raw = await (await inputBlob(info.audioName)).arrayBuffer();
+      if (!reuseRequestCurrent(options)) return;
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const buffer = await audioCtx.decodeAudioData(raw.slice(0));
+      if (!reuseRequestCurrent(options)) return;
       state.vidAudio = {
         raw, buffer,
         duration: buffer.duration,
@@ -11034,6 +11165,7 @@ async function reuseVideo(it, v) {
   if (info.endImageName) {
     try {
       const blob = await inputBlob(info.endImageName);
+      if (!reuseRequestCurrent(options)) return;
       state.vidEnd = { name: info.endImageName, url: URL.createObjectURL(blob) };
     } catch { missing.push('end frame'); }
   }
@@ -11043,6 +11175,7 @@ async function reuseVideo(it, v) {
   if (engine === 'ltx' && info.faceImageName) {
     try {
       const blob = await inputBlob(info.faceImageName);
+      if (!reuseRequestCurrent(options)) return;
       state.vidFace = { name: info.faceImageName, url: URL.createObjectURL(blob) };
     } catch { missing.push('face reference'); }
   }
@@ -11051,6 +11184,7 @@ async function reuseVideo(it, v) {
   if (engine === 'scail' && info.driveVideoName) {
     try {
       const blob = await inputBlob(info.driveVideoName);
+      if (!reuseRequestCurrent(options)) return;
       const urlObj = URL.createObjectURL(blob);
       const d = { name: info.driveVideoName, url: urlObj, label: 'reused motion video', hasAudio: info.driveHasAudio === true };
       state.vidDrive = d;
@@ -11059,6 +11193,10 @@ async function reuseVideo(it, v) {
       probe.preload = 'metadata';
       probe.src = urlObj;
       probe.onloadedmetadata = () => {
+        if (!reuseRequestCurrent(options)) {
+          URL.revokeObjectURL(urlObj);
+          return;
+        }
         d.dur = probe.duration || 0;
         const s = Math.min(info.driveStartSeconds || 0, d.dur);
         d.trimStart = s;
@@ -11068,13 +11206,16 @@ async function reuseVideo(it, v) {
     } catch { missing.push('motion video'); }
   }
 
+  if (!reuseRequestCurrent(options)) return;
   renderLoras();
   renderVidAttach();
   updateVideoPanels();
   saveForm();
-  toast(missing.length
-    ? `Settings loaded — couldn't restore: ${missing.join(', ')} (re-add manually)`
-    : 'Video settings + inputs loaded in the Video tab');
+  if (!options.silent) {
+    toast(missing.length
+      ? `Settings loaded — couldn't restore: ${missing.join(', ')} (re-add manually)`
+      : 'Video settings + inputs loaded in the Video tab');
+  }
 }
 
 $('#reuseEnhanced').addEventListener('click', () => {
