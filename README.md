@@ -4,6 +4,59 @@ Mobile-first local AI studio built around curated image and video models, workfl
 
 > Working on this codebase (human or AI agent)? **Read `AGENTS.md` first.**
 
+## Showcase
+
+Everything below was generated locally in Mix Studio — most of it from a phone. More examples (including autoplaying video) on the **[showcase & download page](https://blackmixture.github.io/Mix-Studio/)**.
+
+### Edit — describe the change, keep the scene
+
+Multi-model editing (Flux 2 Klein 4B/9B, Qwen Image Edit 2511, Krea 2): one sentence in, the rest of the photo stays put.
+
+| “Make the man an old black man with a gold chain and a hat” | “Make the rose into a gun” |
+| --- | --- |
+| ![Aging edit, scene preserved](docs/download/media/edit-aging.jpg) | ![Rose to revolver edit](docs/download/media/edit-rose-gun.jpg) |
+
+| “Make this a 3D render. Wireframe draft view.” | Mask inpainting — paint the face, only the face changes |
+| --- | --- |
+| ![Photo to wireframe render](docs/download/media/edit-wireframe.jpg) | ![Inpainted face swap via character LoRA](docs/download/media/inpaint-face.jpg) |
+
+### Outpaint — extend the canvas
+
+A square generation continued into a seamless 21:9 interior.
+
+![Outpainted cabin, square to widescreen](docs/download/media/outpaint-wide.jpg)
+
+### Regional prompting — draw boxes, direct the scene
+
+Each box carries its own prompt (and optionally its own LoRA and reference image). No general prompt required.
+
+| The boxes | The generation |
+| --- | --- |
+| ![Region boxes with prompts](docs/download/media/region-map.jpg) | ![Resulting street scene](docs/download/media/region-result.jpg) |
+
+### Depth guide — new image, same 3D structure
+
+Depth Anything V3 extracts the structure of a source image; a Krea 2 Control LoRA locks the generation to it. Source → depth map → result:
+
+![Cozy cabin re-imagined as snowed-in via depth control](docs/download/media/depth-cabin.jpg)
+
+![Selfie re-imagined as masked soldier via depth control](docs/download/media/depth-soldier.jpg)
+
+### Reference-guided generation
+
+One reference image steers composition and mood for an entirely new subject.
+
+![Monk on wave reference producing shark in wave](docs/download/media/reference-shark.jpg)
+
+### Video
+
+Click to play — or see them looping on the [showcase page](https://blackmixture.github.io/Mix-Studio/).
+
+| | |
+| --- | --- |
+| [**SCAIL 2 motion transfer** — a phone clip of a hand becomes a fantasy world, motion intact](docs/download/media/scail-hand-fantasy.mp4) | [**SCAIL 2** — dog-walk clip re-rendered as a mech walking a robot dog](docs/download/media/scail-mech-dog.mp4) |
+| [**Face ID lipsync** — one selfie + one voice recording = identity-locked talking video (LTX 2.3)](docs/download/media/lipsync-talking.mp4) | [**LTX 2.3 image-to-video** — a still generation brought to life with audio](docs/download/media/ltx-shark.mp4) |
+
 ## Portable Windows install
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
