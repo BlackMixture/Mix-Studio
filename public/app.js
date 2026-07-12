@@ -26,6 +26,7 @@ const state = {
   editHeight: 1024,
   editOutpaint: false,
   editOutpaintPosition: 'center',
+  editOutpaintScale: 100,
   editRefSlots: 1,
   editUpscaleEnabled: false,
   editUpscaleResolution: 2160,
@@ -1232,7 +1233,7 @@ function saveForm() {
       editWidth: state.editWidth, editHeight: state.editHeight,
       editOutpaint: state.editOutpaint,
       editOutpaintPosition: state.editOutpaintPosition,
-      editRefSlots: state.editRefSlots,
+      editOutpaintScale: state.editOutpaintScale,
       editUpscaleEnabled: state.editUpscaleEnabled,
       editUpscaleResolution: state.editUpscaleResolution,
       editUpscaleProfile: state.editUpscaleProfile,
@@ -1265,7 +1266,7 @@ function loadForm() {
     state.editHeight = round32(Number(f.editHeight) || 1024);
     state.editOutpaint = f.editOutpaint === true;
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(f.editOutpaintPosition) ? f.editOutpaintPosition : 'center';
-    state.editRefSlots = Math.max(1, Math.min(3, Math.round(Number(f.editRefSlots) || 1)));
+    state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(f.editOutpaintScale) || 100)));
     state.editUpscaleEnabled = f.editUpscaleEnabled === true;
     state.editUpscaleResolution = [1440, 2160, 3840].includes(Number(f.editUpscaleResolution)) ? Number(f.editUpscaleResolution) : 2160;
     state.editUpscaleProfile = f.editUpscaleProfile === 'balanced' ? 'balanced' : 'sharp';
@@ -4594,18 +4595,24 @@ function editOutpaintGeometry() {
   const targetWidth = Number(state.editWidth);
   const targetHeight = Number(state.editHeight);
   if (!sourceWidth || !sourceHeight || !targetWidth || !targetHeight || !state.editAspectOverride) {
-    return { valid: false, ref, axis: 'horizontal', sourcePercent: 100 };
+    return { valid: false, ref, axis: 'horizontal', sourceWidthPercent: 100, sourceHeightPercent: 100 };
   }
   const sourceRatio = sourceWidth / sourceHeight;
   const targetRatio = targetWidth / targetHeight;
-  if (Math.abs(Math.log(targetRatio / sourceRatio)) < .012) {
-    return { valid: false, ref, sourceRatio, targetRatio, axis: 'horizontal', sourcePercent: 100 };
-  }
-  const axis = targetRatio > sourceRatio ? 'horizontal' : 'vertical';
-  const sourcePercent = axis === 'horizontal'
-    ? Math.max(8, Math.min(100, sourceRatio / targetRatio * 100))
-    : Math.max(8, Math.min(100, targetRatio / sourceRatio * 100));
-  return { valid: true, ref, sourceRatio, targetRatio, axis, sourcePercent };
+  const ratioDiffers = Math.abs(Math.log(targetRatio / sourceRatio)) >= .012;
+  const scale = Math.max(.45, Math.min(1, Number(state.editOutpaintScale) / 100 || 1));
+  const axis = targetRatio >= sourceRatio ? 'horizontal' : 'vertical';
+  const fitWidth = axis === 'horizontal' ? sourceRatio / targetRatio * 100 : 100;
+  const fitHeight = axis === 'vertical' ? targetRatio / sourceRatio * 100 : 100;
+  return {
+    valid: ratioDiffers || scale < .999,
+    ref,
+    sourceRatio,
+    targetRatio,
+    axis,
+    sourceWidthPercent: Math.max(8, Math.min(100, fitWidth * scale)),
+    sourceHeightPercent: Math.max(8, Math.min(100, fitHeight * scale)),
+  };
 }
 
 function editOutpaintActive() {
@@ -4653,18 +4660,19 @@ function renderEditOutpaint() {
   const summary = $('#editOutpaintSummary');
   summary.textContent = !enabled ? 'Extend beyond the frame'
     : (!geometry.ref ? 'Add a source image'
-      : (geometry.valid ? `${state.editAspect} · ${editOutpaintPlacementLabel(geometry.axis)}` : 'Choose a different Resolution ratio'));
+      : (geometry.valid ? `${state.editAspect} · ${state.editOutpaintScale}% · ${editOutpaintPlacementLabel(geometry.axis)}` : 'Choose a different Resolution ratio'));
 
   const preview = $('#editOutpaintPreview');
   const source = $('#editOutpaintSource');
   const image = $('#editOutpaintPreviewImage');
   preview.style.aspectRatio = geometry.valid ? `${state.editWidth} / ${state.editHeight}` : '16 / 9';
-  source.style.width = geometry.axis === 'horizontal' ? `${geometry.sourcePercent}%` : '100%';
-  source.style.height = geometry.axis === 'vertical' ? `${geometry.sourcePercent}%` : '100%';
-  const offset = state.editOutpaintPosition === 'start' ? 0
-    : (state.editOutpaintPosition === 'end' ? 100 - geometry.sourcePercent : (100 - geometry.sourcePercent) / 2);
-  source.style.left = geometry.axis === 'horizontal' ? `${offset}%` : '0';
-  source.style.top = geometry.axis === 'vertical' ? `${offset}%` : '0';
+  source.style.width = `${geometry.sourceWidthPercent}%`;
+  source.style.height = `${geometry.sourceHeightPercent}%`;
+  const primaryPercent = geometry.axis === 'horizontal' ? geometry.sourceWidthPercent : geometry.sourceHeightPercent;
+  const primaryOffset = state.editOutpaintPosition === 'start' ? 0
+    : (state.editOutpaintPosition === 'end' ? 100 - primaryPercent : (100 - primaryPercent) / 2);
+  source.style.left = geometry.axis === 'horizontal' ? `${primaryOffset}%` : `${(100 - geometry.sourceWidthPercent) / 2}%`;
+  source.style.top = geometry.axis === 'vertical' ? `${primaryOffset}%` : `${(100 - geometry.sourceHeightPercent) / 2}%`;
   image.hidden = true;
   if (geometry.ref) {
     const sourceUrl = geometry.ref.displayUrl || geometry.ref.url || '';
@@ -4688,6 +4696,8 @@ function renderEditOutpaint() {
     button.classList.toggle('active', button.dataset.outpaintPosition === state.editOutpaintPosition);
   });
   $('#editOutpaintPlacementLabel').textContent = geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement';
+  $('#editOutpaintScale').value = String(state.editOutpaintScale);
+  $('#editOutpaintScaleValue').textContent = `${state.editOutpaintScale}%`;
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
     : (!geometry.valid ? 'Choose a wider or taller Resolution ratio to add canvas.'
       : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`);
@@ -4717,6 +4727,12 @@ $('#editOutpaintPosition').addEventListener('click', (event) => {
   renderEditOutpaint();
   saveForm();
 });
+
+$('#editOutpaintScale').addEventListener('input', (event) => {
+  state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(event.target.value) || 100)));
+  renderEditOutpaint();
+});
+$('#editOutpaintScale').addEventListener('change', saveForm);
 
 function upscaleFinishSettings() {
   const prefix = state.view === 'edit' ? 'edit' : 'create';
@@ -5993,21 +6009,32 @@ function renderRefs() {
     if (ref) {
       const img = document.createElement('img');
       img.src = (idx === 0 && ref.displayUrl) || ref.url;
-      const x = document.createElement('button');
-      x.className = 'ref-x';
-      x.textContent = '✕';
-      x.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.refs[idx] = null;
-        if (idx === 0) clearKreaMask(true);
-        while (state.editRefSlots > 1 && !state.refs[state.editRefSlots - 1]) state.editRefSlots -= 1;
-        renderRefs();
-      });
-      slot.append(img, x);
+      slot.appendChild(img);
       wireRefReorder(slot, idx, maxSlots);
     } else {
       slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');
       slot.addEventListener('click', () => pickRef(idx));
+    }
+    if (ref || idx > 0) {
+      const remove = document.createElement('button');
+      remove.className = 'ref-x';
+      remove.type = 'button';
+      remove.textContent = '✕';
+      remove.setAttribute('aria-label', idx ? `Remove input image slot ${idx + 1}` : 'Clear input image');
+      remove.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (idx === 0) {
+          state.refs[0] = null;
+          clearKreaMask(true);
+        } else {
+          state.refs.splice(idx, 1);
+          state.refs.push(null);
+          state.editRefSlots = Math.max(1, state.editRefSlots - 1);
+        }
+        renderRefs();
+        saveForm();
+      });
+      slot.appendChild(remove);
     }
     row.appendChild(slot);
   });
@@ -7335,6 +7362,7 @@ $('#generateBtn').addEventListener('click', async () => {
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
+    editOutpaintScale: outpaintActive ? state.editOutpaintScale : undefined,
     editSequence: sequenceSteps.length ? { prompts: sequenceSteps } : undefined,
     enhance: state.enhance && mode === 't2i',
     width: mode === 'edit' && state.editAspectOverride && !localizedEdit ? state.editWidth : state.width,
@@ -8579,7 +8607,7 @@ function activeDesktopStageMedia() {
 
 const DESKTOP_INPUT_STATE_KEYS = [
   'createMode', 'enhance', 'aspect', 'mp', 'width', 'height', 'customDims',
-  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition',
+  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintScale',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
@@ -11905,6 +11933,7 @@ async function reuseItem(it, useEnhanced) {
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(it.editOutpaint?.position)
       ? it.editOutpaint.position
       : 'center';
+    state.editOutpaintScale = Math.max(45, Math.min(100, Math.round(Number(it.editOutpaint?.scale) || 100)));
     state.editRefSlots = Math.max(1, Math.min(3, (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
     if (state.editEngine === 'qwen') {
       state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)

@@ -60,7 +60,7 @@ const {
 const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const {
   buildKrea2OutpaintGraph,
-  calculateOutpaintPadding,
+  calculateOutpaintLayout,
   normalizeOutpaintDimensions,
   normalizeOutpaintPosition,
 } = require('./lib/krea2-outpaint');
@@ -1299,6 +1299,7 @@ async function completeJob(pid) {
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       editOutpaint: job.params.mode === 'edit' && job.params.editOutpaint ? {
         position: normalizeOutpaintPosition(job.params.editOutpaintPosition),
+        scale: job.params.editOutpaintScale,
         axis: job.params.editOutpaintAxis,
         padding: job.params.editOutpaintPadding,
       } : undefined,
@@ -1641,13 +1642,18 @@ async function prepareOutpaintParams(p, refNames) {
   p.width = dimensions.width;
   p.height = dimensions.height;
   p.editOutpaintPosition = normalizeOutpaintPosition(p.editOutpaintPosition);
-  const padding = calculateOutpaintPadding({
+  p.editOutpaintScale = clampInt(p.editOutpaintScale, 45, 100, 100);
+  const layout = calculateOutpaintLayout({
     sourceWidth: source.w,
     sourceHeight: source.h,
     targetWidth: p.width,
     targetHeight: p.height,
     position: p.editOutpaintPosition,
+    scale: p.editOutpaintScale / 100,
   });
+  const padding = layout.padding;
+  p.editOutpaintSourceWidth = layout.sourceWidth;
+  p.editOutpaintSourceHeight = layout.sourceHeight;
   p.editOutpaintAxis = padding.axis;
   p.editOutpaintPadding = padding;
   return padding;
@@ -3960,6 +3966,7 @@ async function handleApi(req, res, url) {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
+    p.editOutpaintScale = p.editOutpaint ? clampInt(p.editOutpaintScale, 45, 100, 100) : undefined;
     if (!p.prompt && p.editOutpaint) {
       p.prompt = 'Extend the image naturally into the empty canvas, preserving the original image and continuing its scene, lighting, perspective, and details.';
     }

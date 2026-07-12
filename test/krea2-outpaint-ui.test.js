@@ -15,6 +15,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(html, /id="editOutpaintControl"/);
   assert.match(html, /id="editOutpaintToggle"[^>]*role="switch"/);
   assert.match(html, /id="editOutpaintPreview"/);
+  assert.match(html, /id="editOutpaintScale"[^>]*type="range"/);
   assert.match(html, /data-outpaint-position="start"/);
   assert.match(html, /data-outpaint-position="center"/);
   assert.match(html, /data-outpaint-position="end"/);
@@ -29,6 +30,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
 test('outpaint state persists and is restored from completed gallery items', () => {
   assert.match(app, /editOutpaint: state\.editOutpaint/);
   assert.match(app, /editOutpaintPosition: state\.editOutpaintPosition/);
+  assert.match(app, /editOutpaintScale: state\.editOutpaintScale/);
   assert.match(app, /state\.editOutpaint = f\.editOutpaint === true/);
   assert.match(app, /state\.editOutpaint = OUTPAINT_EDIT_ENGINES\.has\(state\.editEngine\) && !!it\.editOutpaint/);
   assert.match(app, /it\.editOutpaint\?\.position/);
@@ -39,6 +41,7 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /const promptOptional = [^;]*\|\| outpaintActive/);
   assert.match(app, /editOutpaint: outpaintActive \|\| undefined/);
   assert.match(app, /editOutpaintPosition: outpaintActive \? state\.editOutpaintPosition/);
+  assert.match(app, /editOutpaintScale: outpaintActive \? state\.editOutpaintScale/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
   assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);
   assert.match(app, /state\.view === 'edit' && !editOutpaintActive\(\) && EDIT_MASK_ENGINES/);
@@ -60,6 +63,10 @@ test('Edit follows model, expandable inputs, edit area, prompt, Resolution, and 
   assert.match(html, /<span>Resolution<\/span>/);
   assert.match(app, /editRefSlots: 1/);
   assert.match(app, /state\.editRefSlots \+= 1/);
-  assert.match(css, /\.ref-row\[data-slots="1"\]/);
+  assert.match(app, /state\.refs\.splice\(idx, 1\)/);
+  assert.match(app, /state\.editRefSlots = Math\.max\(1, state\.editRefSlots - 1\)/);
+  assert.doesNotMatch(app, /editRefSlots: state\.editRefSlots/);
+  assert.match(css, /\.ref-row\[data-slots="1"\] \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(css, /\.ref-row\[data-slots="1"\] \.ref-slot \{ aspect-ratio: 16 \/ 9; \}/);
   assert.match(css, /\.edit-prompt-slot #promptPanel/);
 });

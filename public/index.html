@@ -154,8 +154,10 @@
   <section class="panel video-model-panel edit-model-panel" id="editModelPanel" hidden>
     <button class="video-model-header" id="editModelHeader" type="button" aria-expanded="false" aria-controls="editModelBody">
       <span class="video-model-kicker">Model</span>
-      <span class="video-model-selected" id="editEngineSelected">Klein 4B</span>
-      <span class="video-model-note" id="editEngineNote">4B · fast edits</span>
+      <span class="edit-model-current">
+        <span class="video-model-selected" id="editEngineSelected">Klein 4B</span>
+        <span class="video-model-note" id="editEngineNote">4B · fast edits</span>
+      </span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
     </button>
     <div class="video-model-body" id="editModelBody" aria-hidden="true" inert>
@@ -230,6 +232,8 @@
             <small id="editOutpaintHint">Choose a different Resolution ratio to add canvas.</small>
           </div>
           <div class="edit-outpaint-placement">
+            <div class="edit-outpaint-size-head"><span>Image size</span><strong id="editOutpaintScaleValue">100%</strong></div>
+            <input class="edit-outpaint-scale" id="editOutpaintScale" type="range" min="45" max="100" step="5" value="100" aria-label="Source image size in outpaint canvas" />
             <span id="editOutpaintPlacementLabel">Placement</span>
             <div class="edit-outpaint-position" id="editOutpaintPosition" role="group" aria-label="Original image placement">
               <button type="button" data-outpaint-position="start">Left</button>

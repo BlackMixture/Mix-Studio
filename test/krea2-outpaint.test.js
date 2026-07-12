@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildKrea2OutpaintGraph,
+  calculateOutpaintLayout,
   calculateOutpaintPadding,
   normalizeOutpaintDimensions,
 } = require('../lib/krea2-outpaint');
@@ -18,6 +19,16 @@ test('outpaint padding expands the correct axis and respects source placement', 
   assert.throws(() => calculateOutpaintPadding({
     sourceWidth: 1200, sourceHeight: 800, targetWidth: 3, targetHeight: 2,
   }), /adds canvas/);
+});
+
+test('outpaint can resize and position the source inside the output canvas', () => {
+  assert.deepEqual(calculateOutpaintLayout({
+    sourceWidth: 800, sourceHeight: 1200, targetWidth: 1344, targetHeight: 768, position: 'end', scale: .75,
+  }), {
+    sourceWidth: 384,
+    sourceHeight: 576,
+    padding: { left: 960, top: 96, right: 0, bottom: 96, axis: 'horizontal', position: 'end' },
+  });
 });
 
 test('outpaint generation stays at or below the recommended two megapixels', () => {
@@ -40,6 +51,8 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
     width: 1344,
     height: 768,
     padding: { left: 0, top: 0, right: 220, bottom: 0 },
+    editOutpaintSourceWidth: 576,
+    editOutpaintSourceHeight: 768,
     prompt: 'Continue the room naturally into the new space.',
     seed: 42,
     batch: 2,
@@ -49,6 +62,8 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.identity_lora.inputs.strength_model, 1);
   assert.equal(graph.padded.class_type, 'ImagePadForOutpaint');
   assert.equal(graph.padded.inputs.right, 220);
+  assert.deepEqual(graph.padded.inputs.image, ['resized_source', 0]);
+  assert.equal(graph.resized_source.inputs.width, 576);
   assert.deepEqual(graph.source_latent.inputs.pixels, ['scaled_source', 0]);
   assert.deepEqual(graph.positive.inputs.image, ['source', 0]);
   assert.equal(graph.positive.inputs.grounding_px, 768);

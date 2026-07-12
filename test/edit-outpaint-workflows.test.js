@@ -20,11 +20,14 @@ test('Klein outpaint follows the official green-canvas ReferenceLatent workflow'
     width: 1344,
     height: 768,
     padding,
+    editOutpaintSourceWidth: 900,
+    editOutpaintSourceHeight: 768,
     prompt: 'Continue the windows and wall.',
     seed: 7,
     batch: 1,
   });
   assert.equal(graph.padded.class_type, 'ImagePadForOutpaint');
+  assert.deepEqual(graph.padded.inputs.image, ['resized_source', 0]);
   assert.equal(graph.green_canvas.class_type, 'DrawMaskOnImage');
   assert.equal(graph.green_canvas.inputs.color, '0, 255, 0');
   assert.equal(graph.positive.class_type, 'ReferenceLatent');
@@ -47,6 +50,8 @@ test('Qwen outpaint sends the padded green canvas through native edit conditioni
     width: 1344,
     height: 768,
     padding,
+    editOutpaintSourceWidth: 900,
+    editOutpaintSourceHeight: 768,
     prompt: '',
     seed: 8,
   });
