@@ -994,6 +994,54 @@ function syncSheetScrollLock() {
 let appUpdateRunning = false;
 let appRestartRunning = false;
 let appDrawerCreateExpanded = true;
+const standaloneDisplayQuery = window.matchMedia('(display-mode: standalone)');
+
+function activeFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function runningStandalone() {
+  return standaloneDisplayQuery.matches || window.navigator.standalone === true;
+}
+
+function syncFullscreenControl() {
+  const button = $('#fullscreenBtn');
+  if (!button) return;
+  const fullscreen = !!activeFullscreenElement();
+  const standalone = runningStandalone();
+  button.setAttribute('aria-pressed', String(fullscreen || standalone));
+  button.querySelector('.app-drawer-label').textContent = fullscreen
+    ? 'Exit full screen'
+    : (standalone ? 'Full screen active' : 'Full screen');
+  button.querySelector('small').textContent = fullscreen
+    ? 'Restore window'
+    : (standalone ? 'Standalone app' : 'Hide browser controls');
+}
+
+async function toggleFullscreen() {
+  const current = activeFullscreenElement();
+  if (current) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) await exit.call(document);
+    return;
+  }
+  if (runningStandalone()) {
+    toast('Mix Studio is already running full screen');
+    return;
+  }
+  const target = document.documentElement;
+  const request = target.requestFullscreen || target.webkitRequestFullscreen;
+  if (!request) {
+    toast('Full screen is unavailable here. Add Mix Studio to your Home Screen instead.', true);
+    return;
+  }
+  try {
+    await request.call(target, { navigationUI: 'hide' });
+  } catch (error) {
+    if (error instanceof TypeError) await request.call(target);
+    else throw error;
+  }
+}
 
 function renderAppDrawerNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
@@ -1085,6 +1133,20 @@ async function waitForAppRestart() {
 $('#appMenuBtn').addEventListener('click', openAppDrawer);
 $('#appDrawerClose').addEventListener('click', closeAppDrawer);
 $('#appDrawerBackdrop').addEventListener('click', closeAppDrawer);
+$('#fullscreenBtn').addEventListener('click', async () => {
+  closeAppDrawer();
+  try {
+    await toggleFullscreen();
+  } catch {
+    toast('Could not enter full screen in this browser', true);
+  } finally {
+    syncFullscreenControl();
+  }
+});
+document.addEventListener('fullscreenchange', syncFullscreenControl);
+document.addEventListener('webkitfullscreenchange', syncFullscreenControl);
+standaloneDisplayQuery.addEventListener?.('change', syncFullscreenControl);
+syncFullscreenControl();
 $('#drawerCreateBtn').addEventListener('click', () => {
   const createActive = state.view === 'create' || state.view === 'video';
   if (!createActive) {
@@ -12660,29 +12722,36 @@ function openLightbox(id, mediaSel) {
   }
 
   const meta = [];
+  const metaCopyValues = [];
+  const copyableMeta = (label, value) => {
+    const text = value == null ? '' : String(value);
+    if (!text) return `<b>${escapeHtml(label)}:</b> —`;
+    const index = metaCopyValues.push({ label, text }) - 1;
+    return `<button class="lightbox-meta-copy" type="button" data-copy-meta="${index}" aria-label="Copy ${escapeHtml(label.toLowerCase())}"><b>${escapeHtml(label)}:</b><span>${escapeHtml(text)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>`;
+  };
   if (selVideo) {
     const info = selVideo.info || {};
     const model = videoEngineLabel(info.engine);
     meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
-    meta.push(`<b>Motion:</b> ${escapeHtml(info.motionPrompt || '')}`);
-    if (info.refinedMotionPrompt) meta.push(`<b>Enhanced motion:</b> ${escapeHtml(info.refinedMotionPrompt)}`);
+    meta.push(copyableMeta('Motion', info.motionPrompt || ''));
+    if (info.refinedMotionPrompt) meta.push(copyableMeta('Enhanced motion', info.refinedMotionPrompt));
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
       const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
-      meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; <b>Seed:</b> ${info.seed ?? '—'}`);
+      meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; ${copyableMeta('Seed', info.seed)}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
-    }
+    } else if (info.seed != null) meta.push(copyableMeta('Seed', info.seed));
   } else {
     const model = galleryImageModelLabel(it);
     if (model) meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
     if (it.editEngine === 'qwen') meta.push(`<b>Sampling:</b> ${it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4) ? 'Fast' : 'Quality'}`);
-    meta.push(`<b>Prompt:</b> ${escapeHtml(it.prompt || '')}`);
+    meta.push(copyableMeta('Prompt', it.prompt || ''));
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
     if (angleItems.length > 1) meta.push(`<b>Camera variation set:</b> ${angleViewLabel(it)} · ${angleItems.length} exports`);
-    if (it.refinedPrompt) meta.push(`<b>Enhanced:</b> ${escapeHtml(it.refinedPrompt)}`);
-    meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; <b>Seed:</b> ${it.seed} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
+    if (it.refinedPrompt) meta.push(copyableMeta('Enhanced', it.refinedPrompt));
+    meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; ${copyableMeta('Seed', it.seed)} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
     if (it.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(it.durationMs)}`);
     if (it.loras && it.loras.length) meta.push('<b>LoRAs:</b> ' + it.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     if (it.upscaleInfo) {
@@ -12700,6 +12769,20 @@ function openLightbox(id, mediaSel) {
     }
   }
   $('#lbMeta').innerHTML = meta.join('<br>');
+  $$('#lbMeta [data-copy-meta]').forEach((button) => button.addEventListener('click', async () => {
+    const copy = metaCopyValues[Number(button.dataset.copyMeta)];
+    if (!copy) return;
+    try {
+      await copyTextToClipboard(copy.text);
+      button.classList.remove('copied');
+      void button.offsetWidth;
+      button.classList.add('copied');
+      toast(`${copy.label} copied`);
+      setTimeout(() => button.classList.remove('copied'), 900);
+    } catch {
+      toast(`Could not copy ${copy.label.toLowerCase()}`, true);
+    }
+  }));
 
   const actions = $('#lbActions');
   actions.innerHTML = '';
@@ -14689,6 +14772,29 @@ function downloadComposite(it, composite) {
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text == null ? '' : text);
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch { /* local HTTP and embedded browsers may require the fallback */ }
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.readOnly = true;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('Clipboard unavailable');
 }
 
 /* ------------------------------------------------------------------ */

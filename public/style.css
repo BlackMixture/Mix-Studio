@@ -401,10 +401,23 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   color: var(--ink);
   background: rgba(255,255,255,0.08);
 }
+.fullscreen-action-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fullscreen-exit-icon { display: none; }
+#fullscreenBtn[aria-pressed="true"] .app-drawer-action-icon { color: #fff; background: rgba(255,255,255,.08); }
+#fullscreenBtn[aria-pressed="true"] .fullscreen-enter-icon { display: none; }
+#fullscreenBtn[aria-pressed="true"] .fullscreen-exit-icon { display: block; }
 .app-drawer-label { flex: 1 1 auto; font-size: 14px; font-weight: 750; }
 .app-drawer-action small { color: var(--muted); font-size: 11px; font-weight: 700; }
 .app-drawer-action.busy svg { animation: updateSpin 900ms linear infinite; }
 @keyframes updateSpin { to { transform: rotate(360deg); } }
+html:fullscreen,
+html:-webkit-full-screen { background: #000; }
 .app-update-status {
   min-height: 32px;
   margin: 2px 13px 0 57px;
@@ -4671,6 +4684,44 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   max-height: 20vh; overflow-y: auto;
 }
 .lightbox-meta b { color: var(--ink-soft); }
+.lightbox-meta-copy {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: -2px -5px;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  vertical-align: top;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease), background 150ms var(--ease), transform 150ms var(--ease);
+}
+.lightbox-meta-copy > span { min-width: 0; overflow-wrap: anywhere; }
+.lightbox-meta-copy svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  margin-top: .28em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .42;
+  transition: opacity 150ms var(--ease), transform 180ms var(--ease);
+}
+.lightbox-meta-copy:hover,
+.lightbox-meta-copy:focus-visible { color: var(--ink-soft); border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.04); outline: 0; }
+.lightbox-meta-copy:hover svg,
+.lightbox-meta-copy:focus-visible svg { opacity: .9; }
+.lightbox-meta-copy:active { transform: scale(.99); }
+.lightbox-meta-copy.copied { color: #fff; border-color: rgba(var(--mode-rgb),.34); background: rgba(var(--mode-rgb),.09); }
+.lightbox-meta-copy.copied svg { opacity: 1; transform: scale(1.12); }
 .action-row {
   display: flex; gap: 8px; overflow-x: auto;
   padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
