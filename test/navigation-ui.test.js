@@ -26,6 +26,18 @@ test('desktop Library navigation expands the gallery into the full workspace', (
   assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(220px, 1fr\)\)/);
 });
 
+test('desktop inputs provide reversible setup history and completed outputs take focus', () => {
+  assert.match(html, /id="desktopInputsBack"[^>]*aria-label="Restore previous generation settings"/);
+  assert.match(html, /id="desktopInputsForward"[^>]*aria-label="Restore next generation settings"/);
+  assert.match(app, /function captureDesktopInputSetup\(\)/);
+  assert.match(app, /function restoreDesktopInputSetup\(snapshot\)/);
+  assert.match(app, /checkpointDesktopInputSetup\(\);[\s\S]*selectDesktopLibraryItem/);
+  assert.match(app, /function focusCompletedDesktopOutput\(itemId, media = 'image'\)/);
+  assert.match(app, /focusCompletedDesktopOutput\(d\.items\[0\]\.id, 'image'\)/);
+  assert.match(app, /focusCompletedDesktopOutput\(d\.item\.id, newest\)/);
+  assert.match(css, /\.desktop-input-history button/);
+});
+
 test('regional prompts only submit from the Region create mode', () => {
   assert.match(app, /if \(state\.createMode !== 'region'\) return \[\]/);
   assert.match(app, /setCreateMode\('region', true\)/);

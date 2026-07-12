@@ -83,6 +83,8 @@ const state = {
   kreaMaskPointDeleteMode: false,
   kreaMaskPreviewCutout: false,
   vidRef: null,              // {name, url, w, h} - Video tab source image
+  vidAutoMotionPrompt: false,
+  motionPromptRequestsPending: 0,
   folders: [],
   items: [],
   privateUnlocked: false,
@@ -104,7 +106,7 @@ const state = {
     video: { duration: 5, motionFreedom: 35 },
     seed: { mode: 'random', value: 0 },
   },
-  generationTuning: { create: null, edit: null },
+  generationTuning: { create: null, edit: null, video: null },
   cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
   showAllLoras: false,
   activeJobs: new Set(),
@@ -163,6 +165,7 @@ const QWEN_ANGLE_DISTANCES = [
   { id: 'wide shot', label: 'Wide' },
 ];
 const EDIT_ENGINES = ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'];
+const OUTPAINT_EDIT_ENGINES = new Set(EDIT_ENGINES);
 const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
@@ -1219,6 +1222,7 @@ function saveForm() {
       editMaskExpand: state.editMaskExpand,
       kreaMaskInvert: state.kreaMaskInvert,
       scailModeVersion: 2,
+      vidAutoMotionPrompt: state.vidAutoMotionPrompt,
       vidScailStableTracking: state.vidScailStableTracking,
       vidScailChunkFrames: state.vidScailChunkFrames,
       vidScailChunkOverlap: state.vidScailChunkOverlap,
@@ -1337,6 +1341,7 @@ function loadForm() {
     state.generationTuning = {
       create: normalizeGenerationTuning('create', f.generationTuning && f.generationTuning.create),
       edit: normalizeGenerationTuning('edit', f.generationTuning && f.generationTuning.edit),
+      video: normalizeGenerationTuning('video', f.generationTuning && f.generationTuning.video),
     };
     state.kreaMaskTool = ['smart', 'brush', 'box'].includes(f.kreaMaskTool) ? f.kreaMaskTool : 'smart';
     state.regions = Array.isArray(f.regions) ? f.regions : [];
@@ -1354,6 +1359,7 @@ function loadForm() {
       ? f.vidScailMode
       : (f.vidScailMode === 'direct' ? 'direct' : 'infinity');
     state.vidScailStableTracking = f.vidScailStableTracking !== false;
+    state.vidAutoMotionPrompt = f.vidAutoMotionPrompt === true;
     if ([41, 61, 81].includes(Number(f.vidScailChunkFrames))) state.vidScailChunkFrames = Number(f.vidScailChunkFrames);
     if ([5, 9, 13, 17].includes(Number(f.vidScailChunkOverlap))) state.vidScailChunkOverlap = Number(f.vidScailChunkOverlap);
     if (f.prompts && typeof f.prompts === 'object') {
@@ -1457,8 +1463,9 @@ createTabButtons.forEach((button) => button.addEventListener('click', () => {
 }));
 
 function genLabel() {
-  if (state.activeJobs.size) {
-    return `➕ Add to Queue · ${state.activeJobs.size} running`;
+  const activeCount = state.activeJobs.size + state.motionPromptRequestsPending;
+  if (activeCount) {
+    return `➕ Add to Queue · ${activeCount} active`;
   }
   if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Inpaint';
   if (editOutpaintActive()) return 'Generate Outpaint';
@@ -1513,7 +1520,10 @@ function updateVideoPanels() {
   renderEditUpscale();
   renderKreaMaskTools();
   $('#aspectRow').closest('.panel').hidden = isRegion || (isVideo && !!state.vidRef) || state.view === 'edit';
-  $('#seedInput').closest('.panel').hidden = isVideo;
+  $('#seedInput').closest('.panel').hidden = false;
+  $('#advancedStepsField').hidden = isVideo;
+  $('#advancedCfgField').hidden = isVideo;
+  $('#videoAdvancedNote').hidden = !isVideo;
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   renderLoras();
 }
@@ -4587,7 +4597,7 @@ function editOutpaintGeometry() {
 }
 
 function editOutpaintActive() {
-  return state.view === 'edit' && state.editEngine === 'krea2ref' && state.editOutpaint;
+  return state.view === 'edit' && OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint;
 }
 
 function defaultEditOutpaintAspect(ref) {
@@ -4617,7 +4627,7 @@ function editOutpaintPlacementLabel(axis, position = state.editOutpaintPosition)
 function renderEditOutpaint() {
   const control = $('#editOutpaintControl');
   if (!control) return;
-  const available = state.view === 'edit' && state.editEngine === 'krea2ref';
+  const available = state.view === 'edit' && OUTPAINT_EDIT_ENGINES.has(state.editEngine);
   const enabled = available && state.editOutpaint;
   const geometry = editOutpaintGeometry();
   control.hidden = !available;
@@ -4678,6 +4688,7 @@ $('#editOutpaintToggle').addEventListener('click', () => {
   if (enabling) {
     state.editSequential = false;
     clearKreaMask(true);
+    if (state.qwenAnglesMode) closeQwenAngles();
     if (!editOutpaintGeometry().valid) applyEditOutpaintAspect(defaultEditOutpaintAspect(state.refs[0]));
   }
   renderRefs();
@@ -4990,10 +5001,20 @@ function generationDefaultsFromControls() {
 function generationTuningMode(view = state.view) {
   if (view === 'create') return 'create';
   if (view === 'edit') return 'edit';
+  if (view === 'video') return 'video';
   return null;
 }
 
 function defaultGenerationTuning(mode) {
+  if (mode === 'video') {
+    return {
+      steps: 1,
+      cfg: 1,
+      batch: 1,
+      denoise: undefined,
+      seed: state.userDefaults.seed.mode === 'fixed' ? String(state.userDefaults.seed.value) : '',
+    };
+  }
   const defaults = state.userDefaults[mode] || state.userDefaults.create;
   return {
     steps: Number(defaults.steps),
@@ -5507,12 +5528,20 @@ function renderEditModelSummary() {
     krea2: 'Krea2',
     krea2ref: 'Krea 2 Edit',
   };
-  const notes = {
+  const outpaintSteps = state.editEngine === 'qwen' ? (state.qwenQuality === 'fast' ? 4 : 20)
+    : ((state.editEngine === 'krea2' || state.editEngine === 'krea2ref') ? 8 : 4);
+  const notes = editOutpaintActive() ? {
+    klein4: `outpaint · ${outpaintSteps} steps`,
+    klein9: `outpaint · ${outpaintSteps} steps`,
+    qwen: `outpaint · ${outpaintSteps} steps`,
+    krea2: `outpaint · ${outpaintSteps} steps`,
+    krea2ref: `outpaint · ${outpaintSteps} steps`,
+  } : {
     klein4: '4B · fast edits',
     klein9: '9B · higher fidelity',
     qwen: state.qwenQuality === 'fast' ? 'multi-reference · fast' : 'multi-reference · quality',
     krea2: 'inpaint · one reference',
-    krea2ref: editOutpaintActive() ? 'outpaint · 8 steps' : 'reference-guided · 8 steps',
+    krea2ref: 'reference-guided · 8 steps',
   };
   $('#editEngineSelected').textContent = labels[state.editEngine] || labels.klein4;
   $('#editEngineNote').textContent = notes[state.editEngine] || notes.klein4;
@@ -5934,7 +5963,7 @@ function renderRefs() {
   row.innerHTML = '';
   // Krea2 inpaint uses a single source image — hide the unused slots
   const kreaEdit = state.editEngine === 'krea2';
-  const maxSlots = kreaEdit || (state.editEngine === 'krea2ref' && state.editOutpaint) ? 1 : state.refs.length;
+  const maxSlots = kreaEdit || (OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint) ? 1 : state.refs.length;
   state.refs.slice(0, maxSlots).forEach((ref, idx) => {
     const slot = document.createElement('div');
     slot.className = 'ref-slot' + (ref ? ' filled' : '');
@@ -6282,8 +6311,9 @@ function renderVidAttach() {
   const canSuggestMotion = !editAnything && !scail && has;
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
-  $('#vidMotionPromptBtn').hidden = !canSuggestMotion;
-  $('#vidInputsHint').hidden = canSuggestMotion;
+  $('#vidMotionPromptRow').hidden = !canSuggestMotion;
+  $('#vidInputsHint').hidden = false;
+  $('#vidAutoMotionToggle').setAttribute('aria-checked', String(state.vidAutoMotionPrompt));
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
@@ -6478,7 +6508,7 @@ $('#vidAttachX').addEventListener('click', () => {
   renderVidAttach();
   updateVideoPanels();
 });
-$('#vidMotionPromptBtn').addEventListener('click', async () => {
+async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
   if (!state.vidRef || state.vidEngine === 'ltx-edit') return;
   const btn = $('#vidMotionPromptBtn');
   const label = $('#vidMotionPromptLabel');
@@ -6486,7 +6516,7 @@ $('#vidMotionPromptBtn').addEventListener('click', async () => {
   btn.classList.add('is-loading');
   label.textContent = 'Reading frame';
   try {
-    toast('Reading the start frame…');
+    if (!automatic) toast('Reading the start frame…');
     const res = await api('/api/motionprompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6497,7 +6527,7 @@ $('#vidMotionPromptBtn').addEventListener('click', async () => {
     setPromptDraft(res.prompt);
     updatePromptClear();
     saveForm();
-    toast('Motion prompt created from the start frame');
+    toast(automatic ? 'Motion prompt added automatically' : 'Motion prompt created from the start frame');
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -6505,12 +6535,31 @@ $('#vidMotionPromptBtn').addEventListener('click', async () => {
     btn.classList.remove('is-loading');
     label.textContent = 'Motion prompt';
   }
+}
+async function maybeCreateAutomaticMotionPrompt() {
+  if (!state.vidAutoMotionPrompt || !state.vidRef || promptDraft().trim()
+    || state.activeJobs.size || state.motionPromptRequestsPending) return;
+  try {
+    const queue = await refreshQueue();
+    if ((queue.running || []).length || (queue.pending || []).length) return;
+  } catch { return; }
+  if (state.vidAutoMotionPrompt && state.vidRef && !promptDraft().trim()) {
+    createMotionPromptFromFirstFrame({ automatic: true });
+  }
+}
+$('#vidMotionPromptBtn').addEventListener('click', () => createMotionPromptFromFirstFrame());
+$('#vidAutoMotionToggle').addEventListener('click', () => {
+  state.vidAutoMotionPrompt = !state.vidAutoMotionPrompt;
+  renderVidAttach();
+  saveForm();
+  if (state.vidAutoMotionPrompt) maybeCreateAutomaticMotionPrompt();
 });
 function pickVidRef() {
   pickUpload('image/*', (file) => {
     state.vidRef = file;
     renderVidAttach();
     updateVideoPanels();
+    maybeCreateAutomaticMotionPrompt();
   }, 'Choose first frame');
 }
 $('#vidDur').addEventListener('input', updateVideoTuningSummary);
@@ -7120,11 +7169,16 @@ $('#editComposite').addEventListener('click', () => {
 });
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
-  const outpaintActive = state.view === 'edit' && state.editEngine === 'krea2ref' && state.editOutpaint;
+  const outpaintActive = state.view === 'edit' && OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint;
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
   const qwenAngleExports = supportsCurrentEditAngles() && !state.editSequential && !hasEditMask()
     ? selectedQwenAngleViews() : [];
-  const promptOptional = (state.view === 'video' && state.vidEngine === 'scail') || outpaintActive;
+  const autoMotionPrompt = state.view === 'video'
+    && state.vidAutoMotionPrompt
+    && !!state.vidRef
+    && !['ltx-edit', 'scail'].includes(state.vidEngine)
+    && !prompt;
+  const promptOptional = (state.view === 'video' && (state.vidEngine === 'scail' || autoMotionPrompt)) || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
   if (outpaintActive && !state.refs[0]) return toast('Outpaint needs a source image in reference slot 1', true);
@@ -7147,8 +7201,12 @@ $('#generateBtn').addEventListener('click', async () => {
       try { vidAudioName = await ensureAudioUploaded(state.vidAudio); }
       catch (e) { return toast('Audio upload failed: ' + e.message, true); }
     }
+    const seedRaw = $('#seedInput').value.trim();
+    const baseSeed = seedRaw === '' ? undefined : Number(seedRaw);
+    const batch = Math.max(1, Math.min(8, Number($('#batchInput').value) || 1));
     const body = {
       prompt,
+      autoMotionPrompt,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
@@ -7174,17 +7232,32 @@ $('#generateBtn').addEventListener('click', async () => {
       imageName: state.vidRef ? state.vidRef.name : undefined,
       width: ltxEdit && state.vidDrive ? (state.vidDrive.w || state.width) : (state.vidRef ? state.vidRef.w : state.width),
       height: ltxEdit && state.vidDrive ? (state.vidDrive.h || state.height) : (state.vidRef ? state.vidRef.h : state.height),
+      seed: baseSeed,
     };
     try {
       setGenerating(true, 'Queued…');
-      const res = await api('/api/animate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      state.activeJobs.add(res.jobId);
+      state.motionPromptRequestsPending += autoMotionPrompt ? batch : 0;
+      $('#genLbl').textContent = genLabel();
+      const requests = Array.from({ length: batch }, (_, index) => Object.assign({}, body, {
+        seed: baseSeed == null ? undefined : baseSeed + index,
+      }));
+      const results = await Promise.all(requests.map(async (request) => {
+        try {
+          const result = await api('/api/animate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+          });
+          state.activeJobs.add(result.jobId);
+          return result;
+        } finally {
+          if (request.autoMotionPrompt) state.motionPromptRequestsPending = Math.max(0, state.motionPromptRequestsPending - 1);
+          $('#genLbl').textContent = genLabel();
+        }
+      }));
       $('#genLbl').textContent = genLabel();
       queueRefreshSoon();
+      if (results.length > 1) toast(`${results.length} videos queued`);
     } catch (e) {
       setGenerating(false);
       toast(e.message, true);
@@ -7314,7 +7387,7 @@ function setGenerating(on, statusText) {
     $('#livePct').title = '';
     $('#genFill').style.width = '0%';
   } else {
-    if (!state.activeJobs.size) {
+    if (!state.activeJobs.size && !state.motionPromptRequestsPending) {
       $('#genFill').style.width = '0%';
       $('#liveStatusText').textContent = 'Done';
       $('#livePct').textContent = '';
@@ -7569,6 +7642,26 @@ async function submitQueueReorder(order) {
   }
 }
 
+function queueThumbnail(entry) {
+  const thumb = document.createElement('span');
+  const video = entry.kind === 'video';
+  thumb.className = 'q-thumb' + (video ? ' video' : '') + (entry.kind === 'error' ? ' error' : '');
+  thumb.setAttribute('aria-hidden', 'true');
+  if (entry.thumbnail) {
+    const image = document.createElement('img');
+    image.src = entry.thumbnail;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.addEventListener('error', () => image.remove());
+    thumb.appendChild(image);
+  }
+  const icon = video
+    ? '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="12" height="14" rx="2"/><path d="m15.5 10 5-3v10l-5-3Z"/></svg>'
+    : '<svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="m5.5 17 4.5-5 3 3 2-2.5 3.5 4.5M8 8.5h.01"/></svg>';
+  thumb.insertAdjacentHTML('beforeend', icon);
+  return thumb;
+}
+
 function renderQueue(q) {
   renderQueueHealth(q.health);
   if (queueDrag) return;
@@ -7635,10 +7728,10 @@ function renderQueue(q) {
       handle.className = 'q-handle';
       handle.textContent = '⋮⋮';
       handle.setAttribute('aria-hidden', 'true');
-      row.append(handle, st, lb, x);
+      row.append(handle, queueThumbnail(j), st, lb, x);
       attachQueueDrag(row, j);
     } else {
-      row.append(st, lb, x);
+      row.append(queueThumbnail(j), st, lb, x);
     }
     list.appendChild(row);
   }
@@ -7659,7 +7752,7 @@ function renderQueue(q) {
       lb.className = 'q-label';
       lb.textContent = (e.kind === 'error' ? '⚠ ' : '') + e.label;
       if (e.durationMs) lb.textContent += ` - ${formatDuration(e.durationMs)}`;
-      row.append(st, lb);
+      row.append(queueThumbnail(e), st, lb);
       if (e.itemId) row.addEventListener('click', () => openFromQueue(e.itemId, e.videoId));
       list.appendChild(row);
     }
@@ -7789,6 +7882,7 @@ function connectEvents() {
       }
     }
     refreshGallery(true).then(() => {
+      if (d.items && d.items[0]) focusCompletedDesktopOutput(d.items[0].id, 'image');
       // Angle composites remain standalone gallery items. Take the person
       // straight to the saved result instead of leaving the result buried.
       if (compositeJob && d.items && d.items[0]) {
@@ -7818,7 +7912,10 @@ function connectEvents() {
     };
     $('#livePreviewImg').onclick = open;
     $('#liveStatusText').onclick = open;
-    refreshGallery(true).then(open);
+    refreshGallery(true).then(() => {
+      focusCompletedDesktopOutput(d.item.id, 'image');
+      open();
+    });
     queueRefreshSoon();
     toast(`✓ ${d.composite.label || 'Composite'} saved`);
   });
@@ -7841,6 +7938,7 @@ function connectEvents() {
     }
     toast('✓ Video ready');
     refreshGallery(true).then(() => {
+      focusCompletedDesktopOutput(d.item.id, newest);
       if (state.currentItem && state.currentItem.id === d.item.id) {
         openLightbox(d.item.id, newest);
       }
@@ -8177,6 +8275,17 @@ function latestDesktopStageItem() {
   }, null);
 }
 
+function focusCompletedDesktopOutput(itemId, media = 'image') {
+  state.desktopReuseToken += 1;
+  state.desktopItemId = null;
+  state.desktopMediaId = 'image';
+  state.desktopSettingsReady = false;
+  state.desktopStageDismissed = false;
+  const item = state.items.find((entry) => entry.id === itemId) || null;
+  renderDesktopStage(item || undefined, item ? media : undefined);
+  syncDesktopGallerySelection();
+}
+
 function setDesktopStageMedia({ image = '', video = '', poster = '' } = {}) {
   const img = $('#desktopStageImg');
   const vid = $('#desktopStageVideo');
@@ -8439,6 +8548,141 @@ function activeDesktopStageMedia() {
   return { item, video: (item.videos || []).find((entry) => entry.id === state.desktopMediaId) || null };
 }
 
+const DESKTOP_INPUT_STATE_KEYS = [
+  'createMode', 'enhance', 'aspect', 'mp', 'width', 'height', 'customDims',
+  'editAspectOverride', 'editAspect', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition',
+  'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
+  'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
+  'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
+  'prompts', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs',
+  'createRef', 'createImageGuideOpen', 'createGuideMode', 'createMatchSource', 'createMatchNative',
+  'createInfluence', 'createDepthStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
+  'regions', 'activeRegionId', 'kreaMask', 'kreaMaskPreview', 'kreaMaskDirty', 'kreaMaskErase', 'kreaMaskTool', 'kreaMaskKind',
+  'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
+  'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout',
+  'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
+  'vidScailMode', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
+  'generationTuning',
+];
+const desktopInputHistory = { entries: [], index: -1, restoring: false };
+
+function cloneGenerationSetup(value) {
+  try { return structuredClone(value); }
+  catch {
+    if (Array.isArray(value)) return value.map(cloneGenerationSetup);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneGenerationSetup(item)]));
+    return value;
+  }
+}
+
+function captureDesktopInputSetup() {
+  if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
+  captureGenerationTuning(generationTuningMode());
+  const values = {};
+  DESKTOP_INPUT_STATE_KEYS.forEach((key) => { values[key] = cloneGenerationSetup(state[key]); });
+  return {
+    view: ['create', 'edit', 'video'].includes(state.view) ? state.view : 'create',
+    values,
+    controls: {
+      seed: $('#seedInput').value,
+      steps: $('#stepsInput').value,
+      cfg: $('#cfgInput').value,
+      batch: $('#batchInput').value,
+      denoise: $('#denoiseInput').value,
+      duration: $('#vidDur').value,
+      motionFreedom: $('#vidFree').value,
+      fourK: $('#vid4k').classList.contains('active'),
+      quality: $('#vidQuality').classList.contains('active'),
+    },
+  };
+}
+
+function updateDesktopInputHistoryButtons() {
+  const back = $('#desktopInputsBack');
+  const forward = $('#desktopInputsForward');
+  if (!back || !forward) return;
+  back.disabled = desktopInputHistory.index <= 0;
+  forward.disabled = desktopInputHistory.index < 0 || desktopInputHistory.index >= desktopInputHistory.entries.length - 1;
+}
+
+function checkpointDesktopInputSetup() {
+  if (desktopInputHistory.restoring) return;
+  const snapshot = captureDesktopInputSetup();
+  if (desktopInputHistory.index < 0) {
+    desktopInputHistory.entries = [snapshot];
+    desktopInputHistory.index = 0;
+  } else {
+    desktopInputHistory.entries[desktopInputHistory.index] = snapshot;
+    desktopInputHistory.entries.splice(desktopInputHistory.index + 1);
+  }
+  updateDesktopInputHistoryButtons();
+}
+
+function appendDesktopInputSetup() {
+  if (desktopInputHistory.restoring) return;
+  desktopInputHistory.entries.splice(desktopInputHistory.index + 1);
+  desktopInputHistory.entries.push(captureDesktopInputSetup());
+  desktopInputHistory.index = desktopInputHistory.entries.length - 1;
+  if (desktopInputHistory.entries.length > 20) {
+    desktopInputHistory.entries.shift();
+    desktopInputHistory.index -= 1;
+  }
+  updateDesktopInputHistoryButtons();
+}
+
+function restoreDesktopInputSetup(snapshot) {
+  if (!snapshot) return;
+  desktopInputHistory.restoring = true;
+  state.desktopReuseToken += 1;
+  setView(snapshot.view, snapshot.view === 'create' ? { createMode: snapshot.values.createMode } : {});
+  Object.entries(cloneGenerationSetup(snapshot.values)).forEach(([key, value]) => { state[key] = value; });
+  const controls = snapshot.controls || {};
+  $('#seedInput').value = controls.seed ?? '';
+  $('#stepsInput').value = controls.steps ?? 1;
+  $('#cfgInput').value = controls.cfg ?? 1;
+  $('#batchInput').value = controls.batch ?? 1;
+  $('#denoiseInput').value = controls.denoise ?? .4;
+  $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
+  $('#vidDur').value = controls.duration ?? state.userDefaults.video.duration;
+  $('#vidFree').value = controls.motionFreedom ?? state.userDefaults.video.motionFreedom;
+  $('#vid4k').classList.toggle('active', controls.fourK === true);
+  $('#vidQuality').classList.toggle('active', controls.quality === true);
+  setPromptDraft(state.prompts[state.view] || '');
+  markEngineRow('editEngineRow', state.editEngine);
+  markEngineRow('vidEngineRow', state.vidEngine);
+  syncNavigation();
+  updatePromptClear();
+  updateVideoPanels();
+  renderRefs();
+  renderEnhance();
+  renderAspects();
+  renderDims();
+  renderLoras();
+  renderEditUpscale();
+  renderQwenAngleTool();
+  renderCreateImageGuide();
+  renderVidAttach();
+  renderVidDrive();
+  renderScailChunkControls();
+  if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
+  saveForm();
+  desktopInputHistory.restoring = false;
+  updateDesktopInputHistoryButtons();
+}
+
+function moveDesktopInputHistory(direction) {
+  if (desktopInputHistory.index >= 0 && !desktopInputHistory.restoring) {
+    desktopInputHistory.entries[desktopInputHistory.index] = captureDesktopInputSetup();
+  }
+  const next = desktopInputHistory.index + direction;
+  if (next < 0 || next >= desktopInputHistory.entries.length) return;
+  desktopInputHistory.index = next;
+  restoreDesktopInputSetup(desktopInputHistory.entries[next]);
+}
+
+$('#desktopInputsBack').addEventListener('click', () => moveDesktopInputHistory(-1));
+$('#desktopInputsForward').addEventListener('click', () => moveDesktopInputHistory(1));
+
 function resetActiveGenerationForm() {
   const mode = state.view;
   if (mode === 'edit') {
@@ -8473,6 +8717,7 @@ function resetActiveGenerationForm() {
     $('#vidAudioTrim').hidden = true;
     $('#vidDur').value = state.userDefaults.video.duration;
     $('#vidFree').value = state.userDefaults.video.motionFreedom;
+    state.generationTuning.video = defaultGenerationTuning('video');
     markEngineRow('vidEngineRow', state.vidEngine);
     renderVidAttach();
     renderVidDrive();
@@ -8508,12 +8753,14 @@ function resetActiveGenerationForm() {
 }
 
 function clearDesktopStageSelection() {
+  checkpointDesktopInputSetup();
   state.desktopReuseToken += 1;
   state.desktopItemId = null;
   state.desktopMediaId = 'image';
   state.desktopSettingsReady = false;
   state.desktopStageDismissed = true;
   resetActiveGenerationForm();
+  appendDesktopInputSetup();
   renderDesktopStage();
   syncDesktopGallerySelection();
 }
@@ -9680,6 +9927,7 @@ function renderGrid() {
 }
 
 async function selectDesktopLibraryItem(item, media = 'image') {
+  checkpointDesktopInputSetup();
   const video = (item.videos || []).find((entry) => entry.id === media) || null;
   state.desktopStageDismissed = false;
   state.desktopItemId = item.id;
@@ -9693,6 +9941,7 @@ async function selectDesktopLibraryItem(item, media = 'image') {
     else await reuseItem(item, false, { desktopToken: token, silent: true });
     if (state.desktopReuseToken === token) {
       state.desktopSettingsReady = true;
+      appendDesktopInputSetup();
       renderDesktopStage(item, state.desktopMediaId);
       syncDesktopGallerySelection();
     }
@@ -11622,7 +11871,7 @@ async function reuseItem(it, useEnhanced) {
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
   if (restoringEdit) {
     switchEditEngine(restoredEditEngine(it.editEngine));
-    state.editOutpaint = state.editEngine === 'krea2ref' && !!it.editOutpaint;
+    state.editOutpaint = OUTPAINT_EDIT_ENGINES.has(state.editEngine) && !!it.editOutpaint;
     state.editOutpaintPosition = ['start', 'center', 'end'].includes(it.editOutpaint?.position)
       ? it.editOutpaint.position
       : 'center';
@@ -11753,6 +12002,14 @@ async function reuseVideo(it, v) {
   // Prompt + toggles
   state.prompts.video = info.motionPrompt || '';
   setPromptDraft(state.prompts.video);
+  $('#seedInput').value = info.seed !== undefined && info.seed !== null ? String(info.seed) : '';
+  $('#batchInput').value = 1;
+  state.generationTuning.video = normalizeGenerationTuning('video', {
+    seed: $('#seedInput').value,
+    batch: 1,
+    steps: 1,
+    cfg: 1,
+  });
   state.enhance = !!info.enhance;
   renderEnhance();
   $('#vid4k').classList.toggle('active', !!info.fourK);
@@ -13869,7 +14126,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Outpaint nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Outpaint nodes', editoutpaint: 'Klein / Qwen outpaint nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

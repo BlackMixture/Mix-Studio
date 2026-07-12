@@ -72,6 +72,16 @@ test('queue sheet renders health and durations', () => {
   assert.match(appJs, /durationMs/);
 });
 
+test('queue jobs and history expose visual thumbnails without leaking other profiles', () => {
+  assert.match(serverJs, /function jobThumbnail\(job\)/);
+  assert.match(serverJs, /thumbnail: jobThumbnail\(job\)/);
+  assert.match(serverJs, /itemId: null, videoId: null, thumbnail: null/);
+  assert.match(appJs, /function queueThumbnail\(entry\)/);
+  assert.match(appJs, /row\.append\(handle, queueThumbnail\(j\), st, lb, x\)/);
+  assert.match(appJs, /row\.append\(queueThumbnail\(e\), st, lb\)/);
+  assert.match(styleCss, /\.q-thumb \{[\s\S]*width: 48px;[\s\S]*height: 48px;/);
+});
+
 test('queue sheet supports clearing history, gallery navigation, and drag reordering', () => {
   assert.match(indexHtml, /id="queueClearHistoryBtn"/);
   assert.match(indexHtml, /id="queueReorderHint"/);

@@ -23,7 +23,7 @@ const {
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2depth', 'krea2outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2depth', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
   for (const group of ['image', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {

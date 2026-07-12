@@ -148,10 +148,10 @@ test('Video prompt tools stay hidden and structured audio labels survive state c
 
 test('SCAIL accepts a driving video without a typed motion prompt', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(app, /const promptOptional = \(state\.view === 'video' && state\.vidEngine === 'scail'\) \|\| outpaintActive;/);
+  assert.match(app, /state\.vidEngine === 'scail' \|\| autoMotionPrompt/);
   assert.match(app, /'Optional — add style or motion direction…'/);
-  assert.match(server, /if \(!suppliedMotionPrompt && engine !== 'scail'\)/);
-  assert.match(server, /const motionPrompt = suppliedMotionPrompt \|\| 'preserve the movement from the driving video';/);
+  assert.match(server, /if \(!suppliedMotionPrompt && engine !== 'scail' && !autoMotionRequested\)/);
+  assert.match(server, /let motionPrompt = suppliedMotionPrompt \|\| 'preserve the movement from the driving video';/);
 });
 
 test('SCAIL leads with motion and reference inputs while retaining optional text conditioning', () => {
@@ -174,12 +174,32 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(app, /api\('\/api\/motionprompt'/);
   assert.match(app, /state\.prompts\.video = res\.prompt/);
   assert.match(app, /label\.textContent = 'Reading frame'/);
-  assert.match(css, /\.video-inputs-head \.frame-prompt-action \{/);
+  assert.match(css, /\.motion-prompt-row \.frame-prompt-action \{/);
   assert.match(app, /const canSuggestMotion = !editAnything && !scail && has/);
-  assert.match(app, /#vidInputsHint'\)\.hidden = canSuggestMotion/);
+  assert.match(app, /#vidMotionPromptRow'\)\.hidden = !canSuggestMotion/);
   assert.match(server, /body\.imageName/);
   assert.match(server, /suggestMotionPrompt\(comfyName/);
   assert.match(server, /if \(!prompt\) \{[\s\S]*suggestMotionPrompt/);
+});
+
+test('automatic motion prompting can queue video work without waiting for prompt text', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="vidAutoMotionToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
+  assert.match(app, /vidAutoMotionPrompt: false/);
+  assert.match(app, /autoMotionPrompt,[\s\S]*Promise\.all\(requests\.map/);
+  assert.match(app, /function maybeCreateAutomaticMotionPrompt\(\)/);
+  assert.match(server, /autoMotionRequested && !suppliedMotionPrompt/);
+  assert.match(server, /suggestMotionPrompt\(comfyName, seed, req\.profile\.id\)/);
+});
+
+test('Video exposes advanced seed and batch controls while model sampling stays explicit', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="videoAdvancedNote"[^>]*>Steps and CFG follow the selected video model/);
+  assert.match(app, /#seedInput'\)\.closest\('\.panel'\)\.hidden = false/);
+  assert.match(app, /#advancedStepsField'\)\.hidden = isVideo/);
+  assert.match(app, /if \(view === 'video'\) return 'video'/);
+  assert.match(app, /const batch = Math\.max\(1, Math\.min\(8, Number\(\$\('#batchInput'\)\.value\)/);
+  assert.match(server, /Number\.isSafeInteger\(requestedSeed\)/);
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {

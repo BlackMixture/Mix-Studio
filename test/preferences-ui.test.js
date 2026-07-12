@@ -48,7 +48,7 @@ test('saved defaults are applied to image, edit, and video controls', () => {
 test('image sampling values persist by mode and expose quick default controls', () => {
   assert.match(html, /id="advDefaultsBtn"/);
   assert.match(html, /Double-tap any value to reset it/);
-  assert.match(app, /generationTuning: \{ create: null, edit: null \}/);
+  assert.match(app, /generationTuning: \{ create: null, edit: null, video: null \}/);
   assert.match(app, /generationTuning: state\.generationTuning/);
   assert.match(app, /function captureGenerationTuning/);
   assert.match(app, /function resetGenerationControl/);

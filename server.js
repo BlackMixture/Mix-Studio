@@ -64,6 +64,11 @@ const {
   normalizeOutpaintDimensions,
   normalizeOutpaintPosition,
 } = require('./lib/krea2-outpaint');
+const {
+  buildKleinOutpaintGraph,
+  buildQwenOutpaintGraph,
+  buildKrea2MaskedOutpaintGraph,
+} = require('./lib/edit-outpaint-workflows');
 const { detectAudioStream } = require('./lib/media-inspection');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
@@ -530,6 +535,17 @@ function queueEntryCreatedAt(entry) {
   return Number.isFinite(t) && t > 0 ? t : null;
 }
 
+function jobThumbnail(job) {
+  if (!job) return null;
+  const linkedId = job.itemId || (job.params && job.params.sourceItemId);
+  const linked = linkedId && db.items.find((item) => item.id === linkedId && (!job.profileId || item.profileId === job.profileId));
+  if (linked && linked.file) return '/images/' + encodeURIComponent(linked.upscaled || linked.file);
+  const inputName = job.thumbnailName || (job.kind === 'video'
+    ? job.videoInfo && job.videoInfo.imageName
+    : job.params && (job.params.imageName || (Array.isArray(job.params.refImages) && job.params.refImages[0])));
+  return inputName ? '/api/input?name=' + encodeURIComponent(String(inputName)) : null;
+}
+
 function describeQueueEntry(entry, running) {
   const now = Date.now();
   const pid = entry[1];
@@ -541,6 +557,7 @@ function describeQueueEntry(entry, running) {
     jobId: pid,
     kind: job ? job.kind : 'external',
     itemId: job ? (job.itemId || null) : null,
+    thumbnail: jobThumbnail(job),
     label: jobLabel(job),
     queuedAt,
     startedAt,
@@ -742,6 +759,7 @@ function missingDependencyComponentIds(missing, models) {
     regional: ['regional'],
     krea2ref: ['krea2ref'],
     krea2outpaint: ['krea2outpaint'],
+    editoutpaint: ['editoutpaint'],
     smartmask: ['smartmask'],
     upscale: ['upscale'],
     ultimateupscale: ['ultimateupscale'],
@@ -1092,7 +1110,7 @@ async function completeJob(pid) {
     if (out && Array.isArray(out.text) && out.text.length) textOut = String(out.text[0]);
   }
 
-  if (job.kind === 'enhance') {
+  if (job.kind === 'enhance' || job.kind === 'motionPrompt') {
     if (textOut === null) { job.reject(new Error('Prompt enhance produced no text')); return; }
     job.resolve(textOut);
     return;
@@ -1394,7 +1412,7 @@ function textGenInputs(seed, maxLength) {
 const MOTION_INSTRUCTION = `Look at the provided image. Write a motion prompt for an image-to-video model: one short paragraph (under 70 words) describing how this exact scene should come alive - subject movement, secondary motion, camera movement (only if it helps the shot), and ambient sound. Use present-progressive verbs. Do not re-describe static appearance; focus on plausible motion that fits the scene.`;
 
 /** Vision pass: Qwen3-VL looks at the image and suggests a motion prompt. */
-function suggestMotionPrompt(comfyImageName, seed) {
+function suggestMotionPrompt(comfyImageName, seed, profileId) {
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
@@ -1415,7 +1433,9 @@ function suggestMotionPrompt(comfyImageName, seed) {
         reject(new Error('Motion prompt timed out (3 min)'));
       }, 180000);
       trackJob(pid, {
-        kind: 'enhance',
+        kind: 'motionPrompt',
+        profileId,
+        thumbnailName: comfyImageName,
         graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
         reject: (e) => { clearTimeout(timer); reject(e); },
@@ -1615,20 +1635,7 @@ async function comfyInputImageDimensions(imageName) {
   return dimensions;
 }
 
-async function buildEditKrea2Outpaint(p, refNames) {
-  const info = await getObjectInfo();
-  const missingNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint']
-    .filter((className) => !info[className]);
-  if (missingNodes.length) {
-    throw new Error(`Krea 2 outpaint needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
-  }
-  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
-    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
-    : comboList(info, 'LoraLoader', 'lora_name');
-  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
-  if (!loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
-    throw new Error(`Krea 2 outpaint needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
-  }
+async function prepareOutpaintParams(p, refNames) {
   const source = await comfyInputImageDimensions(refNames[0]);
   const dimensions = normalizeOutpaintDimensions(p.width, p.height);
   p.width = dimensions.width;
@@ -1643,11 +1650,78 @@ async function buildEditKrea2Outpaint(p, refNames) {
   });
   p.editOutpaintAxis = padding.axis;
   p.editOutpaintPadding = padding;
+  return padding;
+}
+
+async function buildEditKrea2Outpaint(p, refNames) {
+  const info = await getObjectInfo();
+  const missingNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint']
+    .filter((className) => !info[className]);
+  if (missingNodes.length) {
+    throw new Error(`Krea 2 outpaint needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
+    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
+    : comboList(info, 'LoraLoader', 'lora_name');
+  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  if (!loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
+    throw new Error(`Krea 2 outpaint needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
+  }
+  const padding = await prepareOutpaintParams(p, refNames);
   return filterInputs(buildKrea2OutpaintGraph(Object.assign({}, p, {
     settings,
     imageName: refNames[0],
     padding,
     groundingPx: 768,
+  })));
+}
+
+async function buildEditKleinOutpaint(p, refNames) {
+  const info = await getObjectInfo();
+  const missingNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch']
+    .filter((className) => !info[className]);
+  if (missingNodes.length) {
+    throw new Error(`Klein outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const padding = await prepareOutpaintParams(p, refNames);
+  const klein = kleinConfigForEngine(p.editEngine);
+  return filterInputs(buildKleinOutpaintGraph(Object.assign({}, p, {
+    settings,
+    imageName: refNames[0],
+    padding,
+    unetName: klein.unet,
+    clipName: klein.clip,
+  })));
+}
+
+async function buildEditQwenOutpaint(p, refNames) {
+  const info = await getObjectInfo();
+  const missingNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch']
+    .filter((className) => !info[className]);
+  if (missingNodes.length) {
+    throw new Error(`Qwen outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const padding = await prepareOutpaintParams(p, refNames);
+  return filterInputs(buildQwenOutpaintGraph(Object.assign({}, p, {
+    settings,
+    imageName: refNames[0],
+    padding,
+    preset: qwenEditPreset(p.qwenQuality),
+  })));
+}
+
+async function buildEditKrea2MaskedOutpaint(p, refNames) {
+  const info = await getObjectInfo();
+  const missingNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask', 'ImageCompositeMasked']
+    .filter((className) => !info[className]);
+  if (missingNodes.length) {
+    throw new Error(`Krea2 outpaint needs the masked-canvas nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const padding = await prepareOutpaintParams(p, refNames);
+  return filterInputs(buildKrea2MaskedOutpaintGraph(Object.assign({}, p, {
+    settings,
+    imageName: refNames[0],
+    padding,
   })));
 }
 
@@ -1898,6 +1972,9 @@ async function buildEdit(p, refNames) {
 
 async function buildGenerationGraph(p, refNames) {
   if (p.mode === 'edit') {
+    if (p.editOutpaint && p.editEngine === 'qwen') return buildEditQwenOutpaint(p, refNames);
+    if (p.editOutpaint && (p.editEngine === 'klein4' || p.editEngine === 'klein9')) return buildEditKleinOutpaint(p, refNames);
+    if (p.editOutpaint && p.editEngine === 'krea2') return buildEditKrea2MaskedOutpaint(p, refNames);
     if (p.editEngine === 'qwen') return buildEditQwen(p, refNames);
     if (p.editEngine === 'krea2ref' && p.editOutpaint) return buildEditKrea2Outpaint(p, refNames);
     if (p.editEngine === 'krea2ref') return buildEditKrea2Ref(p, refNames);
@@ -3403,6 +3480,7 @@ const REQUIRED_CLASSES = {
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
   krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint'],
+  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',
@@ -3942,9 +4020,6 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: 'This edit model was not installed on this machine.' });
       }
       const sequenceRequested = !!p.editSequence;
-      if (p.editOutpaint && p.editEngine !== 'krea2ref') {
-        return json(res, 400, { error: 'Outpaint is available with Krea 2 Edit only' });
-      }
       if (p.editOutpaint && sequenceRequested) {
         return json(res, 400, { error: 'Outpaint and sequential edits must be generated separately' });
       }
@@ -3997,6 +4072,9 @@ async function handleApi(req, res, url) {
       if (p.maskImageName) p.editAspectOverride = false;
       if (p.maskImageName) p.denoise = maskInfluenceDenoise(p.maskInfluence);
       if (p.editEngine === 'krea2') {
+        if (p.editOutpaint) {
+          p.steps = 8; p.cfg = 1; p.denoise = null;
+        }
         if (p.maskImageName && !refNames.length) {
           return json(res, 400, { error: 'Krea2 inpaint needs a source image' });
         }
@@ -4076,11 +4154,12 @@ async function handleApi(req, res, url) {
     if (settings.features[VIDEO_FEATURES[engine]] === false) {
       return json(res, 400, { error: 'This video model was not installed on this machine.' });
     }
-    const suppliedMotionPrompt = String(body.prompt || '').trim();
+    let suppliedMotionPrompt = String(body.prompt || '').trim();
+    const autoMotionRequested = body.autoMotionPrompt === true;
     // SCAIL follows its driving clip, so a motion sentence is an optional
     // creative nudge rather than a prerequisite for a faithful transfer.
-    if (!suppliedMotionPrompt && engine !== 'scail') return json(res, 400, { error: 'Describe the motion first' });
-    const motionPrompt = suppliedMotionPrompt || 'preserve the movement from the driving video';
+    if (!suppliedMotionPrompt && engine !== 'scail' && !autoMotionRequested) return json(res, 400, { error: 'Describe the motion first' });
+    let motionPrompt = suppliedMotionPrompt || 'preserve the movement from the driving video';
     const isLtxEdit = engine === 'ltx-edit';
     let item = body.id ? db.items.find((it) => it.id === body.id && it.profileId === req.profile.id) : null;
     if (body.id && !item) return json(res, 404, { error: 'Image not found' });
@@ -4120,6 +4199,9 @@ async function handleApi(req, res, url) {
     if (engine !== 'ltx' && bypass) {
       const label = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[engine];
       return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
+    }
+    if (autoMotionRequested && bypass) {
+      return json(res, 400, { error: 'Automatic motion prompts need a first-frame image.' });
     }
     const faceImageName = engine === 'ltx' && body.faceImageName ? String(body.faceImageName) : null;
     const driveVideoName = (engine === 'scail' || isLtxEdit) && body.driveVideoName ? String(body.driveVideoName) : null;
@@ -4180,13 +4262,23 @@ async function handleApi(req, res, url) {
       ({ W, H } = videoDims(srcW, srcH));
     }
 
-    const seed = Math.floor(Math.random() * 2 ** 48);
+    const requestedSeed = Number(body.seed);
+    const seed = Number.isSafeInteger(requestedSeed) && requestedSeed >= 0
+      ? requestedSeed
+      : Math.floor(Math.random() * 2 ** 48);
     // Edit Anything expects concise, literal editing instructions. Its author
     // specifically advises against the LTX prompt rewriter for this workflow.
     const enhance = isLtxEdit ? false : body.enhance !== false;
+    let autoGeneratedMotion = false;
+    if (autoMotionRequested && !suppliedMotionPrompt) {
+      const suggested = await suggestMotionPrompt(comfyName, seed, req.profile.id);
+      suppliedMotionPrompt = cleanEnhancedText(suggested, 'subtle natural movement with a steady camera');
+      motionPrompt = suppliedMotionPrompt;
+      autoGeneratedMotion = true;
+    }
     let prompt = motionPrompt;
     let wanRefined = null;
-    if ((engine === 'wan' || engine === 'scail') && enhance && suppliedMotionPrompt) {
+    if ((engine === 'wan' || engine === 'scail') && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
       // Wan/SCAIL have no in-graph enhancer: run a Qwen3-VL vision pass first
       const raw = await wanEnhance(comfyName, motionPrompt, seed);
       wanRefined = cleanEnhancedText(raw, motionPrompt);
@@ -4530,10 +4622,10 @@ async function handleApi(req, res, url) {
       comfyName = String(body.imageName);
     }
     if (!comfyName) return json(res, 400, { error: 'Attach a start frame first' });
-    let raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+    let raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id);
     let prompt = cleanEnhancedText(raw, '');
     if (!prompt) {
-      raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+      raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id);
       prompt = cleanEnhancedText(raw, '');
     }
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable text' });
@@ -4621,7 +4713,7 @@ async function handleApi(req, res, url) {
           const who = db.profiles.find((p) => p.id === job.profileId);
           return Object.assign({}, row, {
             label: `${who ? who.name : 'Another profile'}'s job`,
-            itemId: null, videoId: null,
+            itemId: null, videoId: null, thumbnail: null,
           });
         }
         return row;
@@ -4639,7 +4731,10 @@ async function handleApi(req, res, url) {
         running,
         pending,
         health: await queueHealth(running, pending),
-        history: db.history.filter((h) => h.profileId === req.profile.id).slice(0, 20),
+        history: db.history.filter((h) => h.profileId === req.profile.id).slice(0, 20).map((entry) => {
+          const item = entry.itemId && db.items.find((candidate) => candidate.id === entry.itemId && candidate.profileId === req.profile.id);
+          return Object.assign({}, entry, { thumbnail: item && item.file ? '/images/' + encodeURIComponent(item.upscaled || item.file) : null });
+        }),
       });
     } catch (e) {
       return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [] });
@@ -5171,6 +5266,7 @@ function jobLabel(job) {
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);
   if (job.kind === 'enhance') return 'Prompt enhance';
+  if (job.kind === 'motionPrompt') return 'Motion prompt from first frame';
   if (job.kind === 'smartMask') return 'SAM3 smart selection';
   return job.kind;
 }
