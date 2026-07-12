@@ -16,12 +16,15 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(html, /id="editOutpaintToggle"[^>]*role="switch"/);
   assert.match(html, /id="editOutpaintPreview"/);
   assert.match(html, /id="editOutpaintScale"[^>]*type="range"/);
+  assert.match(html, /id="editOutpaintOutputValue"/);
   assert.match(html, /data-outpaint-position="start"/);
   assert.match(html, /data-outpaint-position="center"/);
   assert.match(html, /data-outpaint-position="end"/);
   assert.match(css, /\.edit-outpaint-body-inner/);
   assert.match(css, /@media \(max-width: 420px\)[\s\S]*\.edit-outpaint-body-inner/);
   assert.match(app, /function editOutpaintGeometry\(\)/);
+  assert.match(app, /32_000_000/);
+  assert.match(app, /The source remains at native resolution/);
   assert.match(app, /function renderEditOutpaint\(\)/);
   assert.match(app, /const OUTPAINT_EDIT_ENGINES = new Set\(EDIT_ENGINES\)/);
   assert.match(app, /Generate Outpaint/);
@@ -35,6 +38,8 @@ test('outpaint state persists and is restored from completed gallery items', () 
   assert.match(app, /state\.editOutpaint = OUTPAINT_EDIT_ENGINES\.has\(state\.editEngine\) && !!it\.editOutpaint/);
   assert.match(app, /it\.editOutpaint\?\.position/);
   assert.match(server, /editOutpaint: job\.params\.mode === 'edit' && job\.params\.editOutpaint/);
+  assert.match(server, /editOutpaintFinalWidth/);
+  assert.match(server, /editOutpaintRefine/);
 });
 
 test('outpaint requests use one source, custom output dimensions, and incompatible edit tools are disabled', () => {
@@ -45,6 +50,7 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /!\$\('#editComposite'\)\.hidden && \$\('#editComposite'\)\.getAttribute\('aria-pressed'\) === 'true'/);
   assert.match(app, /preserve\.hidden = active \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
   assert.match(app, /state\.editSequential = false;\s*\$\('#editComposite'\)\.setAttribute\('aria-pressed', 'true'\)/);
+  assert.match(app, /Native preserve/);
   assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
   assert.match(app, /const supported = inEdit && engineSupported && !editOutpaintActive\(\)/);
   assert.match(app, /state\.view === 'edit' && !editOutpaintActive\(\) && EDIT_MASK_ENGINES/);

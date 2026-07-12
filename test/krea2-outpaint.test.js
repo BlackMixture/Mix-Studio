@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildKrea2OutpaintGraph,
+  calculateNativeOutpaintPlan,
   calculateOutpaintLayout,
   calculateOutpaintPadding,
   normalizeOutpaintDimensions,
@@ -38,6 +39,24 @@ test('outpaint generation stays at or below the recommended two megapixels', () 
   assert.equal(dimensions.height % 16, 0);
 });
 
+test('native preserve keeps a 1000px square source and creates a true 2000px canvas at 50 percent', () => {
+  const plan = calculateNativeOutpaintPlan({
+    sourceWidth: 1000, sourceHeight: 1000, targetWidth: 1024, targetHeight: 1024,
+    position: 'center', scale: .5,
+  });
+  assert.equal(plan.workingWidth, 1408);
+  assert.equal(plan.workingHeight, 1408);
+  assert.equal(plan.workingSourceWidth, 704);
+  assert.equal(plan.workingSourceHeight, 704);
+  assert.equal(plan.finalWidth, 2000);
+  assert.equal(plan.finalHeight, 2000);
+  assert.deepEqual(plan.finalPadding, {
+    left: 500, top: 500, right: 500, bottom: 500, axis: 'horizontal', position: 'center',
+  });
+  assert.equal(plan.effectiveScale, .5);
+  assert.equal(plan.needsRefine, true);
+});
+
 test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   const graph = buildKrea2OutpaintGraph({
     settings: {
@@ -46,6 +65,8 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
       clipType: 'krea2',
       vae: 'qwen_image_vae.safetensors',
       krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+      seedvr2Dit: 'seedvr2.safetensors',
+      seedvr2Vae: 'seedvr2-vae.safetensors',
     },
     imageName: 'source.png',
     width: 1344,
@@ -53,6 +74,15 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
     padding: { left: 0, top: 0, right: 220, bottom: 0 },
     editOutpaintSourceWidth: 576,
     editOutpaintSourceHeight: 768,
+    editOutpaintFinalWidth: 2400,
+    editOutpaintFinalHeight: 1360,
+    editOutpaintFinalSourceWidth: 1200,
+    editOutpaintFinalSourceHeight: 800,
+    editOutpaintFinalPadding: { left: 600, top: 280, right: 600, bottom: 280 },
+    editOutpaintRefine: true,
+    editOutpaintRefineProfile: 'balanced',
+    editOutpaintRefineNoise: 'low',
+    seedVr2Models: ['seedvr2.safetensors'],
     composite: true,
     prompt: 'Continue the room naturally into the new space.',
     seed: 42,
@@ -74,7 +104,16 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.sampler.inputs.cfg, 1);
   assert.equal(graph.sampler.inputs.scheduler, 'simple');
   assert.equal(graph.latent.inputs.batch_size, 2);
+  assert.equal(graph.color_match.class_type, 'ColorMatch');
+  assert.equal(graph.outpaint_refine.class_type, 'SeedVR2VideoUpscaler');
+  assert.equal(graph.outpaint_refine_vae.inputs.decode_tiled, true);
+  assert.equal(graph.final_scale.inputs.width, 2400);
+  assert.equal(graph.color_match_final.class_type, 'ColorMatch');
+  assert.deepEqual(graph.native_padded.inputs.image, ['source', 0]);
+  assert.equal(graph.native_padded.inputs.left, 600);
+  assert.equal(graph.native_keep_mask.class_type, 'InvertMask');
   assert.equal(graph.preserve_source.class_type, 'ImageCompositeMasked');
-  assert.deepEqual(graph.preserve_source.inputs.source, ['resized_source', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.source, ['native_padded', 0]);
+  assert.deepEqual(graph.preserve_source.inputs.mask, ['native_keep_mask', 0]);
   assert.deepEqual(graph.save.inputs.images, ['preserve_source', 0]);
 });

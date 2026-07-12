@@ -2824,9 +2824,11 @@ function syncEditAreaChrome() {
   const outpaint = editOutpaintActive();
   const preserve = $('#editComposite');
   preserve.hidden = active || (!outpaint && (kreaEdit || kreaRef));
-  const preserveLabel = outpaint ? 'Preserve original image pixels' : 'Preserve unchanged areas';
+  const preserveLabel = outpaint ? 'Keep the source at native resolution and blend the generated border' : 'Preserve unchanged areas';
   preserve.setAttribute('aria-label', preserveLabel);
   preserve.title = preserveLabel;
+  const preserveText = preserve.querySelector('.preserve-text');
+  if (preserveText) preserveText.textContent = outpaint ? 'Native preserve' : 'Preserve';
   $('#editAspectControl').hidden = state.view !== 'edit' || (kreaEdit && !editOutpaintActive()) || active;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || active;
   syncEditSamplingRow();
@@ -4612,16 +4614,41 @@ function editOutpaintGeometry() {
   const ratioDiffers = Math.abs(Math.log(targetRatio / sourceRatio)) >= .012;
   const scale = Math.max(.45, Math.min(1, Number(state.editOutpaintScale) / 100 || 1));
   const axis = targetRatio >= sourceRatio ? 'horizontal' : 'vertical';
+  const nativePreserve = $('#editComposite')?.getAttribute('aria-pressed') === 'true';
+  let finalWidth = targetWidth;
+  let finalHeight = targetHeight;
+  let limited = false;
+  if (nativePreserve) {
+    if (axis === 'horizontal') {
+      finalHeight = Math.max(256, Math.ceil((sourceHeight / scale) / 16) * 16);
+      finalWidth = Math.max(256, Math.ceil((finalHeight * targetRatio) / 16) * 16);
+    } else {
+      finalWidth = Math.max(256, Math.ceil((sourceWidth / scale) / 16) * 16);
+      finalHeight = Math.max(256, Math.ceil((finalWidth / targetRatio) / 16) * 16);
+    }
+    if (finalWidth * finalHeight > 32_000_000) {
+      const shrink = Math.sqrt(32_000_000 / (finalWidth * finalHeight));
+      finalWidth = Math.max(256, Math.floor((finalWidth * shrink) / 16) * 16);
+      finalHeight = Math.max(256, Math.floor((finalHeight * shrink) / 16) * 16);
+      limited = true;
+    }
+  }
   const fitWidth = axis === 'horizontal' ? sourceRatio / targetRatio * 100 : 100;
   const fitHeight = axis === 'vertical' ? targetRatio / sourceRatio * 100 : 100;
+  const sourceWidthPercent = nativePreserve ? sourceWidth / finalWidth * 100 : fitWidth * scale;
+  const sourceHeightPercent = nativePreserve ? sourceHeight / finalHeight * 100 : fitHeight * scale;
   return {
     valid: ratioDiffers || scale < .999,
     ref,
     sourceRatio,
     targetRatio,
     axis,
-    sourceWidthPercent: Math.max(8, Math.min(100, fitWidth * scale)),
-    sourceHeightPercent: Math.max(8, Math.min(100, fitHeight * scale)),
+    nativePreserve,
+    finalWidth,
+    finalHeight,
+    limited,
+    sourceWidthPercent: Math.max(8, Math.min(100, sourceWidthPercent)),
+    sourceHeightPercent: Math.max(8, Math.min(100, sourceHeightPercent)),
   };
 }
 
@@ -4670,12 +4697,16 @@ function renderEditOutpaint() {
   const summary = $('#editOutpaintSummary');
   summary.textContent = !enabled ? 'Extend beyond the frame'
     : (!geometry.ref ? 'Add a source image'
-      : (geometry.valid ? `${state.editAspect} · ${state.editOutpaintScale}% · ${editOutpaintPlacementLabel(geometry.axis)}` : 'Choose a different Resolution ratio'));
+      : (geometry.valid ? `${state.editOutpaintScale}% · ${geometry.finalWidth} × ${geometry.finalHeight}` : 'Choose a different Resolution ratio'));
 
   const preview = $('#editOutpaintPreview');
   const source = $('#editOutpaintSource');
   const image = $('#editOutpaintPreviewImage');
-  preview.style.aspectRatio = geometry.valid ? `${state.editWidth} / ${state.editHeight}` : '16 / 9';
+  const previewRatio = geometry.valid ? geometry.finalWidth / geometry.finalHeight : 16 / 9;
+  preview.style.aspectRatio = geometry.valid ? `${geometry.finalWidth} / ${geometry.finalHeight}` : '16 / 9';
+  preview.style.width = previewRatio < 1
+    ? `min(${Math.round(210 * previewRatio)}px, ${(previewRatio * 100).toFixed(2)}%)`
+    : 'min(210px, 100%)';
   source.style.width = `${geometry.sourceWidthPercent}%`;
   source.style.height = `${geometry.sourceHeightPercent}%`;
   const primaryPercent = geometry.axis === 'horizontal' ? geometry.sourceWidthPercent : geometry.sourceHeightPercent;
@@ -4708,9 +4739,16 @@ function renderEditOutpaint() {
   $('#editOutpaintPlacementLabel').textContent = geometry.axis === 'vertical' ? 'Vertical placement' : 'Horizontal placement';
   $('#editOutpaintScale').value = String(state.editOutpaintScale);
   $('#editOutpaintScaleValue').textContent = `${state.editOutpaintScale}%`;
+  $('#editOutpaintOutputValue').textContent = geometry.valid ? `${geometry.finalWidth} × ${geometry.finalHeight}` : '—';
+  $('#editOutpaintOutputNote').textContent = !geometry.ref ? 'Add a source image to calculate the canvas.'
+    : (geometry.nativePreserve
+      ? `${geometry.ref.w} × ${geometry.ref.h} source retained${geometry.limited ? ' · canvas limit applied' : ' · tiled detail pass when available'}`
+      : 'The source and generated canvas use the selected working resolution.');
   $('#editOutpaintHint').textContent = !geometry.ref ? 'Add the image you want to extend.'
     : (!geometry.valid ? 'Choose a wider or taller Resolution ratio to add canvas.'
-      : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`);
+      : (geometry.nativePreserve
+        ? `The source remains at native resolution; only the surrounding canvas is generated.`
+        : `${geometry.axis === 'horizontal' ? 'Wider' : 'Taller'} canvas · ${state.editWidth} × ${state.editHeight} · original ${editOutpaintPlacementLabel(geometry.axis).toLowerCase()}`));
 }
 
 $('#editOutpaintToggle').addEventListener('click', () => {
@@ -7271,6 +7309,8 @@ wireModelOrder('editEngineRow');
 $('#editComposite').addEventListener('click', () => {
   const button = $('#editComposite');
   button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+  renderEditOutpaint();
+  saveForm();
 });
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();

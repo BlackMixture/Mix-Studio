@@ -60,6 +60,7 @@ const {
 const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const {
   buildKrea2OutpaintGraph,
+  calculateNativeOutpaintPlan,
   calculateOutpaintLayout,
   normalizeOutpaintDimensions,
   normalizeOutpaintPosition,
@@ -1337,8 +1338,15 @@ async function completeJob(pid) {
       editOutpaint: job.params.mode === 'edit' && job.params.editOutpaint ? {
         position: normalizeOutpaintPosition(job.params.editOutpaintPosition),
         scale: job.params.editOutpaintScale,
+        effectiveScale: job.params.editOutpaintEffectiveScale,
         axis: job.params.editOutpaintAxis,
         padding: job.params.editOutpaintPadding,
+        finalPadding: job.params.editOutpaintFinalPadding,
+        finalWidth: job.params.editOutpaintFinalWidth,
+        finalHeight: job.params.editOutpaintFinalHeight,
+        nativePreserve: job.params.composite === true,
+        tiledRefine: job.params.editOutpaintRefine === true,
+        canvasLimited: job.params.editOutpaintCanvasLimited === true,
       } : undefined,
       composite: job.params.mode === 'edit' ? !!job.params.composite : undefined,
       maskImageName: job.params.mode === 'edit' ? (job.params.maskImageName || undefined) : undefined,
@@ -1673,13 +1681,60 @@ async function comfyInputImageDimensions(imageName) {
   return dimensions;
 }
 
-async function prepareOutpaintParams(p, refNames) {
+function outpaintRefineReadiness(info) {
+  const required = ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'];
+  const models = installedSeedVr2Models(seedVr2ModelDirs());
+  const key = (value) => String(value || '').replace(/\\/g, '/').toLowerCase();
+  const vaeModels = comboList(info, 'SeedVR2LoadVAEModel', 'model');
+  return {
+    ready: required.every((className) => !!info[className])
+      && models.some((name) => key(name) === key(settings.seedvr2Dit))
+      && vaeModels.some((name) => key(name) === key(settings.seedvr2Vae)),
+    models,
+  };
+}
+
+async function prepareOutpaintParams(p, refNames, info) {
   const source = await comfyInputImageDimensions(refNames[0]);
+  p.editOutpaintPosition = normalizeOutpaintPosition(p.editOutpaintPosition);
+  p.editOutpaintScale = clampInt(p.editOutpaintScale, 45, 100, 100);
+  if (p.composite === true) {
+    const plan = calculateNativeOutpaintPlan({
+      sourceWidth: source.w,
+      sourceHeight: source.h,
+      targetWidth: p.width,
+      targetHeight: p.height,
+      position: p.editOutpaintPosition,
+      scale: p.editOutpaintScale / 100,
+    });
+    const refine = outpaintRefineReadiness(info || {});
+    p.width = plan.workingWidth;
+    p.height = plan.workingHeight;
+    p.editOutpaintSourceWidth = plan.workingSourceWidth;
+    p.editOutpaintSourceHeight = plan.workingSourceHeight;
+    p.editOutpaintAxis = plan.axis;
+    p.editOutpaintPadding = plan.workingPadding;
+    p.editOutpaintFinalWidth = plan.finalWidth;
+    p.editOutpaintFinalHeight = plan.finalHeight;
+    p.editOutpaintFinalSourceWidth = plan.finalSourceWidth;
+    p.editOutpaintFinalSourceHeight = plan.finalSourceHeight;
+    p.editOutpaintFinalPadding = plan.finalPadding;
+    p.editOutpaintEffectiveScale = Math.round(plan.effectiveScale * 100);
+    p.editOutpaintCanvasLimited = plan.limited;
+    p.editOutpaintRefine = plan.needsRefine && refine.ready;
+    p.editOutpaintRefineProfile = p.postUpscale?.profile || 'balanced';
+    p.editOutpaintRefineNoise = p.postUpscale?.noise || 'low';
+    p.seedVr2Models = refine.models;
+    // Preserve is completed inside the outpaint graph after the optional
+    // tiled detail pass. A later whole-image upscale would resample the native
+    // source and defeat non-destructive preservation.
+    p.postUpscale = undefined;
+    return plan.workingPadding;
+  }
+
   const dimensions = normalizeOutpaintDimensions(p.width, p.height);
   p.width = dimensions.width;
   p.height = dimensions.height;
-  p.editOutpaintPosition = normalizeOutpaintPosition(p.editOutpaintPosition);
-  p.editOutpaintScale = clampInt(p.editOutpaintScale, 45, 100, 100);
   const layout = calculateOutpaintLayout({
     sourceWidth: source.w,
     sourceHeight: source.h,
@@ -1698,8 +1753,10 @@ async function prepareOutpaintParams(p, refNames) {
 
 async function buildEditKrea2Outpaint(p, refNames) {
   const info = await getObjectInfo();
-  const requiredNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  const padding = await prepareOutpaintParams(p, refNames, info);
+  const requiredNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch'];
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
@@ -1712,7 +1769,6 @@ async function buildEditKrea2Outpaint(p, refNames) {
   if (!loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
     throw new Error(`Krea 2 outpaint needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
   }
-  const padding = await prepareOutpaintParams(p, refNames);
   return filterInputs(buildKrea2OutpaintGraph(Object.assign({}, p, {
     settings,
     imageName: refNames[0],
@@ -1723,14 +1779,15 @@ async function buildEditKrea2Outpaint(p, refNames) {
 
 async function buildEditKleinOutpaint(p, refNames) {
   const info = await getObjectInfo();
+  const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Klein outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
   }
-  const padding = await prepareOutpaintParams(p, refNames);
   const klein = kleinConfigForEngine(p.editEngine);
   return filterInputs(buildKleinOutpaintGraph(Object.assign({}, p, {
     settings,
@@ -1743,14 +1800,15 @@ async function buildEditKleinOutpaint(p, refNames) {
 
 async function buildEditQwenOutpaint(p, refNames) {
   const info = await getObjectInfo();
+  const padding = await prepareOutpaintParams(p, refNames, info);
   const requiredNodes = ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Qwen outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
   }
-  const padding = await prepareOutpaintParams(p, refNames);
   return filterInputs(buildQwenOutpaintGraph(Object.assign({}, p, {
     settings,
     imageName: refNames[0],
@@ -1761,14 +1819,15 @@ async function buildEditQwenOutpaint(p, refNames) {
 
 async function buildEditKrea2MaskedOutpaint(p, refNames) {
   const info = await getObjectInfo();
-  const requiredNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask'];
-  if (p.composite) requiredNodes.push('ImageCompositeMasked');
+  const padding = await prepareOutpaintParams(p, refNames, info);
+  const requiredNodes = ['ImagePadForOutpaint', 'MaskToImage', 'ImageToMask', 'SetLatentNoiseMask', 'ColorMatch'];
+  if (p.composite) requiredNodes.push('ImageCompositeMasked', 'InvertMask');
+  if (p.editOutpaintRefine) requiredNodes.push('SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler');
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
     throw new Error(`Krea2 outpaint needs the masked-canvas nodes installed: ${missingNodes.join(', ')}`);
   }
-  const padding = await prepareOutpaintParams(p, refNames);
   return filterInputs(buildKrea2MaskedOutpaintGraph(Object.assign({}, p, {
     settings,
     imageName: refNames[0],
@@ -3530,8 +3589,8 @@ const REQUIRED_CLASSES = {
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
   krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
-  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint'],
-  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch'],
+  krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'InvertMask'],
+  editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'InvertMask'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',

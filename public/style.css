@@ -2771,9 +2771,9 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .edit-outpaint-preview-wrap { min-width: 0; display: grid; gap: 5px; }
 .edit-outpaint-preview {
   position: relative;
-  width: 100%;
+  width: min(210px,100%);
   min-height: 70px;
-  max-height: 128px;
+  justify-self: center;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.13);
   border-radius: 10px;
@@ -2798,13 +2798,17 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .edit-outpaint-size-head { display: flex; align-items: center; justify-content: space-between; color: var(--muted-2); font-size: 9.5px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .edit-outpaint-size-head strong { color: #dce4ff; font-size: 10.5px; letter-spacing: 0; }
 .edit-outpaint-scale { width: 100%; height: 18px; margin: -2px 0 2px; accent-color: #a8b9ff; cursor: ew-resize; }
+.edit-outpaint-output { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 8px; padding: 7px 0 2px; border-top: 1px solid rgba(255,255,255,.08); }
+.edit-outpaint-output > span { color: var(--muted-2); font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.edit-outpaint-output > strong { color: #e4e9fb; font-size: 10.5px; font-weight: 850; }
+.edit-outpaint-output > small { grid-column: 1 / -1; color: var(--muted-2); font-size: 9px; font-weight: 650; line-height: 1.35; }
 .edit-outpaint-position { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: #050609; }
 .edit-outpaint-position button { min-width: 0; min-height: 32px; padding: 4px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; font-weight: 850; transition: color 160ms var(--ease), background 180ms var(--ease), transform 140ms var(--ease); }
 .edit-outpaint-position button:active { transform: scale(.96); }
 .edit-outpaint-position button.active { color: #f4f6ff; background: rgba(132,151,235,.18); }
 @media (max-width: 420px) {
   .edit-outpaint-body-inner { grid-template-columns: 1fr; gap: 9px; }
-  .edit-outpaint-preview { width: min(210px,100%); max-height: 118px; }
+  .edit-outpaint-preview { width: min(210px,100%); }
 }
 .edit-upscale-control { margin: -2px 0 14px; }
 .edit-upscale-control.is-create { margin-inline: 16px; }
