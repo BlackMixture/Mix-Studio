@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   CREATIVE_RESOLUTION_INSTRUCTION,
   ENHANCE_TAIL,
+  cleanGeneratedPrompt,
   promptEnhanceParts,
 } = require('../lib/prompt-enhance');
 
@@ -32,5 +33,15 @@ test('prompt enhancement clearly separates instructions from user input', () => 
     parts.userInput,
     `<user_input>\nmake an image of the happiest day on earth\n</user_input>${ENHANCE_TAIL}`
   );
-  assert.match(parts.userInput, /<final_prompt>the final prompt paragraph<\/final_prompt>/);
+  assert.match(parts.userInput, /<final_prompt> XML element containing the finished prompt/);
+  assert.doesNotMatch(parts.userInput, /the final prompt paragraph/i);
+});
+
+test('generated prompt cleanup rejects copied placeholder text', () => {
+  assert.equal(cleanGeneratedPrompt('<final_prompt>the final prompt paragraph</final_prompt>', ''), '');
+  assert.equal(cleanGeneratedPrompt('<final_prompt>Write the actual prompt here</final_prompt>', ''), '');
+  assert.equal(
+    cleanGeneratedPrompt('<think>planning</think><final_prompt>The camera slowly pushes toward the subject while fabric moves in the breeze.</final_prompt>', ''),
+    'The camera slowly pushes toward the subject while fabric moves in the breeze.'
+  );
 });

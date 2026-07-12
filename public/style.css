@@ -1331,11 +1331,42 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .video-input-grid .media-input-filled .attach-expand { right: 48px; }
 .video-input-grid .media-input-filled .attach-x svg,
 .attach-thumb .attach-x svg { width: 16px; height: 16px; display: block; }
-.video-input-grid .media-input-filled .attach-prompt.is-loading {
-  opacity: 0.64;
-  pointer-events: none;
+.video-input-grid .frame-prompt-action {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 48px;
+  min-height: 32px;
+  max-width: calc(100% - 58px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 10px;
+  background: rgba(0,0,0,.8);
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(0,0,0,.34);
+  font-size: 9.5px;
+  font-weight: 850;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  transition: border-color 160ms var(--ease), background 160ms var(--ease), transform 160ms var(--ease), opacity 160ms var(--ease);
 }
-.video-input-grid .media-input-filled .attach-prompt.is-loading svg { animation: rot 0.8s linear infinite; }
+.video-input-grid .frame-prompt-action:hover { border-color: rgba(255,255,255,.42); background: rgba(12,14,19,.94); transform: translateY(-1px); }
+.video-input-grid .frame-prompt-action:focus-visible { outline: 2px solid rgba(var(--mode-rgb),.8); outline-offset: 2px; }
+.video-input-grid .frame-prompt-action svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.video-input-grid .frame-prompt-action.is-loading { opacity: .72; pointer-events: none; }
+.video-input-grid .frame-prompt-action.is-loading svg { animation: rot .8s linear infinite; }
 .video-input-grid .media-input-filled.expanded {
   grid-column: 1 / -1;
   aspect-ratio: auto;
@@ -1354,6 +1385,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .video-input-grid .media-input-filled .attach-info span { display: none; }
   .video-input-grid .media-input-art > svg { width: 24px; height: 24px; }
   .video-input-grid .media-input-art > i { right: 6px; bottom: 5px; width: 18px; height: 18px; }
+  .video-input-grid .frame-prompt-action { gap: 4px; padding-inline: 7px; font-size: 8.5px; }
 }
 .video-frame-slot.media-input-filled::before {
   content: "⠿";

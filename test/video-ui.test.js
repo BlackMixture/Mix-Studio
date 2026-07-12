@@ -168,12 +168,16 @@ test('SCAIL leads with motion and reference inputs while retaining optional text
 
 test('A start-frame action can ask the vision model for a fitting motion prompt', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(html, /id="vidMotionPromptBtn"[^>]*aria-label="Create a motion prompt from this image"/);
+  assert.match(html, /class="frame-prompt-action"[^>]*id="vidMotionPromptBtn"[^>]*aria-label="Create a motion prompt from this first frame"/);
+  assert.match(html, /id="vidMotionPromptLabel">Motion prompt/);
   assert.match(app, /#vidMotionPromptBtn'\)\.addEventListener\('click'/);
   assert.match(app, /api\('\/api\/motionprompt'/);
   assert.match(app, /state\.prompts\.video = res\.prompt/);
+  assert.match(app, /label\.textContent = 'Reading frame'/);
+  assert.match(css, /\.video-input-grid \.frame-prompt-action \{/);
   assert.match(server, /body\.imageName/);
   assert.match(server, /suggestMotionPrompt\(comfyName/);
+  assert.match(server, /if \(!prompt\) \{[\s\S]*suggestMotionPrompt/);
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {

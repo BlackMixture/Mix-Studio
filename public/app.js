@@ -6339,8 +6339,10 @@ $('#vidAttachX').addEventListener('click', () => {
 $('#vidMotionPromptBtn').addEventListener('click', async () => {
   if (!state.vidRef || state.vidEngine === 'ltx-edit') return;
   const btn = $('#vidMotionPromptBtn');
+  const label = $('#vidMotionPromptLabel');
   btn.disabled = true;
   btn.classList.add('is-loading');
+  label.textContent = 'Reading frame';
   try {
     toast('Reading the start frame…');
     const res = await api('/api/motionprompt', {
@@ -6359,6 +6361,7 @@ $('#vidMotionPromptBtn').addEventListener('click', async () => {
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-loading');
+    label.textContent = 'Motion prompt';
   }
 });
 function pickVidRef() {
@@ -9420,7 +9423,7 @@ function renderGrid() {
         : null;
       clearTimeout(lpTimer);
       lpTimer = setTimeout(() => {
-        desktopPointerCandidate = null;
+        if (desktopPointerCandidate) desktopPointerCandidate.selectionStarted = true;
         lpFired = true;
         if (navigator.vibrate) navigator.vibrate(12);
         if (!state.selectMode) enterSelectWith(it.id);
@@ -9433,9 +9436,16 @@ function renderGrid() {
       if (desktopPointerCandidate && desktopPointerCandidate.pointerId === e.pointerId) {
         const dx = e.clientX - startXY[0];
         const dy = e.clientY - startXY[1];
-        if (!desktopPointerCandidate.active && dx < -10 && Math.abs(dx) > Math.abs(dy) * 0.65) {
+        const galleryLeft = $('#view-gallery').getBoundingClientRect().left;
+        const movedOutAfterHold = desktopPointerCandidate.selectionStarted && e.clientX < galleryLeft - 6;
+        const movedOutImmediately = !desktopPointerCandidate.selectionStarted && dx < -10 && Math.abs(dx) > Math.abs(dy) * 0.65;
+        if (!desktopPointerCandidate.active && (movedOutImmediately || movedOutAfterHold)) {
           clearTimeout(lpTimer);
           lpFired = true;
+          if (desktopPointerCandidate.selectionStarted) {
+            stopGallerySelectionDrag(e);
+            exitSelect();
+          }
           desktopPointerCandidate.active = true;
           beginDesktopGalleryPointerDrag(desktopPointerCandidate, e);
         }

@@ -54,6 +54,7 @@ const {
 const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
 const {
   ENHANCE_TAIL,
+  cleanGeneratedPrompt,
   promptEnhanceParts,
 } = require('./lib/prompt-enhance');
 const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
@@ -1354,27 +1355,7 @@ setInterval(async () => {
 /* ------------------------------------------------------------------ */
 
 function cleanEnhancedText(raw, fallback) {
-  if (!raw) return fallback;
-  let t = String(raw).trim();
-  // 1) remove explicit thinking blocks
-  t = t.replace(/<think>[\s\S]*?<\/think>/gi, ' ').replace(/<\/?think>/gi, ' ').trim();
-  // 2) sentinel extraction (tolerate a missing closing tag)
-  const m = t.match(/<final_prompt>\s*([\s\S]*?)\s*(?:<\/final_prompt>|$)/i);
-  if (m && m[1].trim().length >= 10) {
-    t = m[1].trim();
-  } else {
-    // 3) heuristic: planning usually precedes the answer - keep the last
-    //    substantial paragraph if there are several
-    const paras = t.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
-    if (paras.length > 1) {
-      const last = paras[paras.length - 1];
-      if (last.length >= 40) t = last;
-    }
-  }
-  // 4) strip label prefixes, wrapping quotes, markdown bold
-  t = t.replace(/^(?:final|expanded|enhanced|refined)?\s*prompt\s*[:\-]\s*/i, '');
-  t = t.replace(/\*\*/g, '').replace(/^["'`]+/, '').replace(/["'`]+$/, '').trim();
-  return t.length >= 10 ? t : fallback;
+  return cleanGeneratedPrompt(raw, fallback);
 }
 
 function textGenInputs(seed, maxLength) {
@@ -4461,8 +4442,12 @@ async function handleApi(req, res, url) {
       comfyName = String(body.imageName);
     }
     if (!comfyName) return json(res, 400, { error: 'Attach a start frame first' });
-    const raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
-    const prompt = cleanEnhancedText(raw, '');
+    let raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+    let prompt = cleanEnhancedText(raw, '');
+    if (!prompt) {
+      raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+      prompt = cleanEnhancedText(raw, '');
+    }
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable text' });
     return json(res, 200, { prompt });
   }
