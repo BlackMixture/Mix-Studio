@@ -1,6 +1,6 @@
 # Mix Studio
 
-Minimalist, mobile-first web app for driving a local **ComfyUI** install — image and video generation in the Modatory design language. Generations run on the Windows desktop; you drive it from your phone (same Wi-Fi or Tailscale). Zero dependencies: one Node.js server, vanilla JS frontend, no build step.
+Mobile-first local AI studio built around curated image and video models, workflow-tested settings, and the Modatory design language. Generations run through **ComfyUI** on the Windows desktop; you drive the optimized workflows from your phone on the same Wi-Fi or through Tailscale. Zero app dependencies: one Node.js server, vanilla JS frontend, no build step.
 
 > Working on this codebase (human or AI agent)? **Read `AGENTS.md` first.**
 
@@ -8,7 +8,7 @@ Minimalist, mobile-first web app for driving a local **ComfyUI** install — ima
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
 
-The downloadable bootstrap installs Git through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, and opens the setup wizard. Setup can install Node.js, launch the signed official ComfyUI Desktop installer, detect its initialized environment, and download the reviewed models and custom nodes selected by the user. Existing ComfyUI installations and completed model files are reused.
+The downloadable bootstrap installs Git through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, and opens the setup wizard. Setup can install Node.js, launch the signed official ComfyUI Desktop installer, detect its initialized environment, and download the curated models and custom nodes used by Mix Studio's optimized workflows. Existing ComfyUI installations and completed model files are reused.
 
 ### One-file download
 
@@ -27,7 +27,7 @@ The wizard separates ComfyUI, feature selection, and review into explicit steps.
 
 3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI, model families, review, and installation.
 4. Choose **Install ComfyUI Desktop** or **Use existing ComfyUI**. New installations use the signed official NVIDIA desktop installer and are detected after initialization.
-5. Choose the Edit and Video families for this machine and whether setup should download their reviewed models and custom nodes. Some selections can add tens of gigabytes.
+5. Choose the Edit and Video families for this machine and whether setup should download their curated models and custom nodes. Mix Studio supplies the workflow-tested defaults; some selections can add tens of gigabytes.
 6. Review the plan, finish setup, and launch Mix Studio.
 
 The visual installer delegates all writes to a separate non-interactive install engine. That engine writes ignored, machine-specific configuration to `install.json` and merges the ComfyUI URL and feature choices into `data/settings.json`. If settings already exist, it creates a timestamped backup first. It never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
@@ -76,7 +76,7 @@ The owner can also choose **Restart app** from the same menu. It checks both Mix
 
 **Profiles** — Netflix-style profile picker with avatars and optional PINs. Every profile has its own gallery, folders, history, LoRA presets, Face ID library, and form state. The first profile owns profile management. Signed-cookie sessions; rolling db backups (boot + every 30 min).
 
-**Create (text-to-image)** — Krea 2 Turbo by default, with a Raw checkpoint switch (Raw starts with the Turbo LoRA at 0.6/12 steps and can fall back to full 52-step CFG sampling); optional image-to-image guidance with either pixel influence or **Depth Anything V3 structural control**; ✨ prompt enhance via Qwen3-VL; collapsible resolution selector with live aspect glyph; camera-settings helper; image→prompt vision tool; **regional prompting**: draw boxes on an aspect-true canvas, per-region prompt/LoRA/reference, no general prompt required, gallery hold-preview + color-coded annotated PNG export.
+**Create (text-to-image)** — Krea 2 Turbo by default, with a Raw checkpoint switch (Raw starts with the Turbo LoRA at 0.6/12 steps and can fall back to full 52-step CFG sampling); optional image-to-image guidance with either pixel influence or **Depth Anything V3 structural control**; generation-safe or native source-size matching; ✨ prompt enhance via Qwen3-VL; collapsible resolution selector with live aspect glyph; camera-settings helper; image→prompt vision tool; **regional prompting**: draw boxes on an aspect-true canvas, per-region prompt/LoRA/reference, no general prompt required, gallery hold-preview + color-coded annotated PNG export.
 
 **Edit** — Flux 2 Klein 4B/9B multi-reference editing (numbered slots: "the jacket from image 2"), Qwen Image Edit 2511 with Fast/Quality sampling, camera variations for Qwen and Klein, sequential sentence-by-sentence edits, **Krea2 mask inpainting** (paint the mask, denoise = change strength, mask preview on the slot), Krea 2 reference editing, KleinEditComposite preserve-unchanged, hold-to-compare original.
 
@@ -90,9 +90,11 @@ The owner can also choose **Restart app** from the same menu. It checks both Mix
 
 **LoRAs** — card grid shared by every tab: tap to toggle, hold-and-slide to adjust strength, thumbnails, searchable picker (also used for region LoRAs), server-stored presets.
 
-**Gallery** — folders with PIN-locked privates (items can be dropped in without unlocking; viewing requires the PIN), folder merge, date scrubber, search, long-press + drag-sweep multi-select, selection insights, ZIP/group/composite actions, shareable documentation PNGs, searchable gallery source picker, optional browser preview cache, full-page swipe viewer, videos grouped under their source image, queue viewer with per-profile history and GPU health.
+**Gallery** — folders with PIN-locked privates (items can be dropped in without unlocking; viewing requires the PIN), folder merge, animated sort and date controls, search, long-press + drag-sweep multi-select, selection insights, ZIP/group/composite actions, shareable documentation PNGs, searchable gallery source picker, optional browser preview cache, improved inline video playback, full-page swipe viewer, videos grouped under their source image, queue viewer with per-profile history and GPU health, and optional mirroring to a desktop export folder.
 
-**Upscale** — SeedVR2 (selectable attention backend) and Ultimate SD Upscale, with a before/after compare slider.
+**Upscale** — SeedVR2 (selectable attention backend) and Ultimate SD Upscale, with a before/after detail viewer that supports reveal, pan, pinch or wheel zoom, 1:1, and fit controls.
+
+**Responsive workflow feedback** — animated image and video previews keep the stage active while ComfyUI works, with progress labels and ETA estimates. System settings report GPU, CPU, memory, OS, and storage status without leaving the app.
 
 **Remote maintenance** — the owner can update or safely restart the desktop app from a phone. Updates require a clean checkout; updates and manual restarts both wait for idle Mix Studio and ComfyUI queues.
 

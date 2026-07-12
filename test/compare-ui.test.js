@@ -25,4 +25,6 @@ test('upscale comparison supports synchronized zoom, pan, reveal, and image dime
   assert.match(css, /\.compare-upscaled-mask \{[\s\S]*clip-path: inset\(0 0 0 50%\)/);
   assert.match(css, /\.compare-stage\.mode-pan \{ cursor: grab; \}/);
   assert.match(css, /\.compare-console \{[\s\S]*background: #000/);
+  assert.match(html, /id="cmpDivider"><span[^>]*><svg[\s\S]*M5 12h14/);
+  assert.match(css, /\.compare-divider \{[\s\S]*width: 1px/);
 });

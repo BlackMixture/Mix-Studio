@@ -31,10 +31,14 @@ test('standalone installer downloads the official Git checkout before opening se
 test('GitHub Pages publishes the canonical installer from a branded download page', () => {
   const page = fs.readFileSync(path.join(root, 'docs', 'download', 'index.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
+  const localLogo = fs.readFileSync(path.join(root, 'docs', 'download', 'modatory-logo.svg'), 'utf8');
+  const localWordmark = fs.readFileSync(path.join(root, 'docs', 'download', 'mix-studio-wordmark.svg'), 'utf8');
   assert.match(page, /Download for Windows/);
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
   assert.match(page, /Guided ComfyUI setup/);
   assert.match(page, /modatory-logo\.svg/);
+  assert.equal(localLogo, fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8'));
+  assert.equal(localWordmark, fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark-white-on-black.svg'), 'utf8'));
   assert.match(page, /id="features"/);
   assert.match(page, /id="quick-start"/);
   assert.match(page, /mix-studio-create\.png/);
@@ -45,7 +49,10 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /depth guidance/);
   assert.match(page, /Continue Edit/);
   assert.match(page, /audio for lipsync/);
-  assert.match(page, /live generation progress/);
+  assert.match(page, /Leading models\. Optimized settings\./);
+  assert.match(page, /workflow-tested defaults/);
+  assert.match(page, /animated progress with ETA/);
+  assert.match(page, /reveal, zoom, and pan/);
   assert.match(page, /tailscale\.com\/download/);
   assert.match(page, /Your studio/);
   assert.doesNotMatch(page, /—/);
@@ -70,6 +77,9 @@ test('portable installer opens a branded WPF wizard instead of a terminal questi
   assert.match(ui, /PageReview/);
   assert.match(ui, /PageComplete/);
   assert.match(ui, /DoubleAnimation/);
+  assert.match(ui, /Build your optimized local studio/);
+  assert.match(ui, /Curated models/);
+  assert.match(ui, /workflow-tested settings/);
 });
 
 test('visual wizard delegates writes to the non-interactive safe install engine', () => {

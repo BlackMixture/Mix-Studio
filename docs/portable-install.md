@@ -2,7 +2,7 @@
 
 Mix Studio uses a portable Git checkout on Windows. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
 
-The guided bootstrap supports both a clean Windows machine and an existing ComfyUI environment. It can launch the signed official ComfyUI Desktop installer, detect the initialized environment, and install only the reviewed model and custom-node groups selected from `installer/feature-manifest.json`.
+The guided bootstrap supports both a clean Windows machine and an existing ComfyUI environment. It can launch the signed official ComfyUI Desktop installer, detect the initialized environment, and install the curated model and custom-node groups used by Mix Studio's workflow-tested defaults from `installer/feature-manifest.json`.
 
 ## New machine
 
@@ -11,7 +11,7 @@ The guided bootstrap supports both a clean Windows machine and an existing Comfy
 3. The native setup wizard opens automatically and uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the Mix Studio web interface.
 4. Let setup install Node.js LTS with `winget` if Node 22+ is not already available, then rerun `%USERPROFILE%\Mix Studio\install.bat` after PATH refreshes.
 5. Choose whether to install official ComfyUI Desktop or reuse an existing environment. Complete ComfyUI's NVIDIA and storage-location screens if it is new.
-6. Enable the desired Edit and Video families, then leave dependency downloads enabled to install their reviewed models and custom nodes. The image-focused starter set includes Krea 2 depth guidance. Selecting LTX also installs its Face ID models and supporting nodes. Optional video and advanced edit families can each add tens of gigabytes.
+6. Enable the desired Edit and Video families, then leave dependency downloads enabled to install their curated models and custom nodes. The optimized image starter set includes Krea 2 depth guidance. Selecting LTX also installs its Face ID models and supporting nodes. Optional video and advanced edit families can each add tens of gigabytes.
 7. Double-click `start.bat` inside the Mix Studio folder.
 
 ## Phone-first access with Tailscale

@@ -225,15 +225,15 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
         <Grid x:Name="PageHost" ClipToBounds="True">
           <Grid x:Name="PageWelcome">
             <StackPanel VerticalAlignment="Center" MaxWidth="610">
-              <TextBlock Text="Build your local studio" FontSize="34" FontWeight="Bold"/>
-              <TextBlock Text="Set up a complete local studio, or connect Mix Studio to the ComfyUI and models already on your machine." TextWrapping="Wrap" FontSize="16" Foreground="{StaticResource Soft}" Margin="0,12,0,28" LineHeight="24"/>
+              <TextBlock Text="Build your optimized local studio" FontSize="34" FontWeight="Bold"/>
+              <TextBlock Text="Mix Studio pairs leading local models with workflow-tested settings, or connects those same optimized workflows to the ComfyUI already on your machine." TextWrapping="Wrap" FontSize="16" Foreground="{StaticResource Soft}" Margin="0,12,0,28" LineHeight="24"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
                   <StackPanel><TextBlock Text="↻" FontSize="22" Foreground="#7EA2FF"/><TextBlock Text="Updates and restarts" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Pull new versions or restart from the app menu when both queues are idle." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
                 </Border>
                 <Border Grid.Column="2" Background="#07090D" BorderBrush="#232936" BorderThickness="1" CornerRadius="16" Padding="18">
-                  <StackPanel><TextBlock Text="◇" FontSize="22" Foreground="#A88CFF"/><TextBlock Text="Guided dependencies" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Choose model families and let setup place approved models and nodes correctly." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
+                  <StackPanel><TextBlock Text="◇" FontSize="22" Foreground="#A88CFF"/><TextBlock Text="Curated models" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,0"/><TextBlock Text="Choose the results you want. Setup places the models and nodes behind Mix Studio's optimized workflows." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" LineHeight="18"/></StackPanel>
                 </Border>
               </Grid>
               <Border Background="#05070A" BorderBrush="#202530" BorderThickness="1" CornerRadius="15" Padding="17" Margin="0,18,0,0">
@@ -272,10 +272,10 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
 
           <Grid x:Name="PageFeatures" Visibility="Collapsed">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <StackPanel><TextBlock Text="Choose your tools" FontSize="30" FontWeight="Bold"/><TextBlock Text="Core image generation is always included. Optional video and advanced edit families can each add tens of gigabytes; existing files are skipped." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,18" TextWrapping="Wrap"/></StackPanel>
+            <StackPanel><TextBlock Text="Choose your workflows" FontSize="30" FontWeight="Bold"/><TextBlock Text="Core image generation includes a curated Krea 2 workflow with optimized defaults. Add the edit and video families you want; existing files are skipped." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,18" TextWrapping="Wrap"/></StackPanel>
             <StackPanel Grid.Row="1">
               <ToggleButton x:Name="DownloadModelsToggle" Style="{StaticResource FeatureToggle}" IsChecked="True">
-                <StackPanel><TextBlock Text="Download models and custom nodes" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="Install reviewed dependencies for the selected tools after ComfyUI is ready." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
+                <StackPanel><TextBlock Text="Download curated models and custom nodes" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="Install the dependencies selected for Mix Studio's tested workflows after ComfyUI is ready." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
               </ToggleButton>
               <TextBlock Text="HUGGING FACE TOKEN · OPTIONAL" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="Bold" Margin="2,4,0,6"/>
               <PasswordBox x:Name="HfTokenBox" Margin="0,0,0,5"/>
@@ -287,7 +287,7 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           <Grid x:Name="PageReview" Visibility="Collapsed">
             <StackPanel MaxWidth="650" VerticalAlignment="Center">
               <TextBlock Text="Ready to set up" FontSize="30" FontWeight="Bold"/>
-              <TextBlock Text="Review the connection and feature choices before anything is written." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,24"/>
+              <TextBlock Text="Review the ComfyUI connection and curated workflows before anything is written." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,24"/>
               <Border Background="#05070A" BorderBrush="#232936" BorderThickness="1" CornerRadius="17" Padding="20">
                 <StackPanel>
                   <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="ComfyUI" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewUrl" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
@@ -442,7 +442,7 @@ function Update-Review {
   $Enabled = @()
   foreach ($Id in $FeatureToggles.Keys) { if ($FeatureToggles[$Id].IsChecked) { $Enabled += $FeatureLabels[$Id] } }
   (Ui 'ReviewFeatures').Text = if ($Enabled.Count) { $Enabled -join ', ' } else { 'Core image generation only' }
-  (Ui 'ReviewDownloads').Text = if ((Ui 'DownloadModelsToggle').IsChecked) { 'Download missing approved models and custom nodes' } else { 'Configure features without downloading dependencies' }
+  (Ui 'ReviewDownloads').Text = if ((Ui 'DownloadModelsToggle').IsChecked) { 'Download missing curated models and custom nodes' } else { 'Configure workflows without downloading dependencies' }
 }
 
 function Write-FeatureSelection {

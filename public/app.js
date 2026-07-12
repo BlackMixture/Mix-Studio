@@ -9178,6 +9178,21 @@ function whiteLikeAnimationData(data) {
   return recolorStaticLottie(data, [1, 1, 1, 1], [1, 1, 1, 1]);
 }
 
+function videoProgressAnimationData(data) {
+  const cloned = cloneLikeAnimationData(data);
+  const outline = [234 / 255, 67 / 255, 53 / 255, 1];
+  const face = [1, 1, 1, 1];
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if ((value.ty === 'st' || value.ty === 'fl') && value.c?.k && Array.isArray(value.c.k)) {
+      value.c.k = (value.ty === 'st' ? outline : face).slice();
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(cloned);
+  return cloned;
+}
+
 const progressAnimationData = new Map();
 let livePreviewAnimation = null;
 let livePreviewAnimationToken = 0;
@@ -9216,15 +9231,15 @@ async function startLivePreviewSimulation(kind = state.view === 'video' ? 'video
   host.replaceChildren();
   const [lottie, data] = await Promise.all([loadLikeAnimationRuntime(), loadProgressAnimationData(kind)]);
   if (token !== livePreviewAnimationToken || !lottie || !data || !host.isConnected) return;
-  const dark = kind === 'video' ? [1, 1, 1, 1] : [0.25, 0.62, 1, 1];
-  const light = kind === 'video' ? [1, 1, 1, 1] : [0.83, 0.94, 1, 1];
+  const dark = [0.25, 0.62, 1, 1];
+  const light = [0.83, 0.94, 1, 1];
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   livePreviewAnimation = lottie.loadAnimation({
     container: host,
     renderer: 'svg',
     loop: !reduced,
     autoplay: !reduced,
-    animationData: recolorStaticLottie(data, dark, light),
+    animationData: kind === 'video' ? videoProgressAnimationData(data) : recolorStaticLottie(data, dark, light),
     rendererSettings: { progressiveLoad: true },
   });
   if (reduced) livePreviewAnimation.goToAndStop(0, true);

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": "Mix Studio",
   "target": "windows-nvidia",
-  "notes": "The guided installer downloads only selected reviewed model and node groups. Fresh installs default to the image-focused starter set; existing saved selections are preserved.",
+  "notes": "The guided installer downloads curated model and node groups used by Mix Studio's workflow-tested settings. Fresh installs default to the optimized image starter set; existing saved selections are preserved.",
   "features": [
     {
       "id": "core.image",
