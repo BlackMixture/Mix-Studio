@@ -24,6 +24,8 @@ test('gallery cards identify create, edit, and video generation models', () => {
 
 test('focused gallery metadata always exposes the selected media model', () => {
   assert.match(app, /const model = videoEngineLabel\(info\.engine\);[\s\S]*<b>Model:<\/b>/);
+  assert.match(app, /const recordedVideoWidth = Math\.round\(Number\(info\.width\)\)/);
+  assert.match(app, /if \(videoWidth > 0 && videoHeight > 0\) meta\.push\(`<b>Size:<\/b> \$\{videoWidth\}×\$\{videoHeight\}`\)/);
   assert.match(app, /const model = galleryImageModelLabel\(it\);[\s\S]*<b>Model:<\/b>/);
   assert.match(app, /<b>Playback:<\/b>/);
 });

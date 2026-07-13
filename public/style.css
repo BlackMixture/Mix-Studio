@@ -1898,27 +1898,6 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .video-option-group { margin-top: 14px; }
 .video-option-group[hidden] { display: none; }
 .video-option-label { flex: 0 0 100%; margin: 0 2px 1px; }
-.video-fixed-setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  min-height: 46px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(140,155,190,0.13);
-  border-radius: var(--radius-sm);
-  background: rgba(255,255,255,0.018);
-}
-.video-fixed-setting[hidden] { display: none; }
-.video-fixed-setting .video-option-label { flex: 0 0 auto; margin: 0; }
-.video-fixed-value {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  text-align: right;
-}
 .chip-row.video-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .video-choice-grid .chip { justify-content: center; }
 .video-number-setting {

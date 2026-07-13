@@ -8087,17 +8087,6 @@ function renderVidFace() {
       audioDetail.textContent = hasAudio ? 'Tap to remove or replace' : 'Optional soundtrack';
     }
   }
-  if (ltxFamily) {
-    $('#vidLtxGenerationRow').hidden = false;
-    $('#vidLtxPlaybackRow').hidden = false;
-    $('#vidLtxGeneration').textContent = ltxEdit
-      ? 'Video-guided · Edit Anything'
-      : (faceMode ? 'Single-stage · Face ID' : 'Two-stage · base + refine');
-    const nativeFps = faceMode ? 24 : 25;
-    $('#vidLtxPlayback').textContent = state.vidSmooth > 1
-      ? `${nativeFps * state.vidSmooth} fps · RIFE ${state.vidSmooth}×`
-      : `${nativeFps} fps · native`;
-  }
   const labels = { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
   const notes = {
     ltx: faceMode
@@ -8870,8 +8859,6 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = !(ltxFamily || wan || scail);
   $('#vidScailModeRow').hidden = !scail;
-  $('#vidLtxGenerationRow').hidden = !ltxFamily;
-  $('#vidLtxPlaybackRow').hidden = !ltxFamily;
   $('#vidExtras').hidden = wan || scail || ltxEdit;
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
@@ -13084,6 +13071,13 @@ function openLightbox(id, mediaSel) {
     const info = selVideo.info || {};
     const model = videoEngineLabel(info.engine);
     meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
+    const recordedVideoWidth = Math.round(Number(info.width));
+    const recordedVideoHeight = Math.round(Number(info.height));
+    const fallbackVideoWidth = Math.round(Number(it.width));
+    const fallbackVideoHeight = Math.round(Number(it.height));
+    const videoWidth = recordedVideoWidth > 0 && recordedVideoHeight > 0 ? recordedVideoWidth : fallbackVideoWidth;
+    const videoHeight = recordedVideoWidth > 0 && recordedVideoHeight > 0 ? recordedVideoHeight : fallbackVideoHeight;
+    if (videoWidth > 0 && videoHeight > 0) meta.push(`<b>Size:</b> ${videoWidth}×${videoHeight}`);
     meta.push(copyableMeta('Motion', info.motionPrompt || ''));
     if (info.refinedMotionPrompt) meta.push(copyableMeta('Enhanced motion', info.refinedMotionPrompt));
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);

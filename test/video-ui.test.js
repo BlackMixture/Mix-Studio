@@ -81,7 +81,7 @@ test('Secondary video controls remain behind an animated accessible disclosure',
 
 test('Duration is the first video control and Motion Freedom is a separate setting', () => {
   assert.doesNotMatch(html, /id="vidTiming(?:Header|Body|Panel)"/);
-  assert.ok(html.indexOf('id="vidDurationField"') < html.indexOf('id="vidLtxGenerationRow"'));
+  assert.ok(html.indexOf('id="vidDurationField"') < html.indexOf('id="vidSigmaRow"'));
   assert.ok(html.indexOf('id="vidFreeField"') > html.indexOf('id="vidScailAdvancedRow"'));
   assert.match(html, /class="video-number-setting video-duration-primary" id="vidDurationField"/);
   assert.match(html, /class="video-number-setting video-motion-setting" id="vidFreeField"/);
@@ -126,11 +126,10 @@ test('LTX 2.3 exposes its supported 20-second duration without raising other mod
   assert.match(server, /seconds: opts\.seconds/);
 });
 
-test('LTX settings identify their native pipeline and optional RIFE playback', () => {
-  assert.match(html, /id="vidLtxGeneration"[^>]*>Two-stage · base \+ refine</);
-  assert.match(html, /id="vidLtxPlayback"[^>]*>25 fps · native</);
+test('LTX settings avoid duplicate pipeline and playback summaries', () => {
+  assert.doesNotMatch(html, /id="vidLtx(?:Generation|Playback)/);
+  assert.doesNotMatch(app, /vidLtx(?:Generation|Playback)/);
   assert.match(app, /const ltxFamily = engine === 'ltx' \|\| ltxEdit/);
-  assert.match(app, /faceMode \? 'Single-stage · Face ID' : 'Two-stage · base \+ refine'/);
   assert.match(app, /function renderVideoFpsChoices\(\)/);
   assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : 16/);
   assert.match(app, /\$\('#vidFpsRow'\)\.hidden = !\(ltxFamily \|\| wanOrScail\)/);
