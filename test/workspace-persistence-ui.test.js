@@ -20,15 +20,15 @@ test('current workspace autosave retains active mode, LoRAs, prompts, and durabl
   assert.match(app, /restoreWorkspaceAsset/);
   assert.match(app, /window\.addEventListener\('pagehide', saveForm\)/);
   assert.match(app, /setView\(state\.view/);
-  assert.match(app, /loadForm\(\);\nsyncGallerySortControl\(\);\nsetPromptDraft\(state\.prompts\[state\.view\] \|\| ''\);/);
+  assert.match(app, /loadForm\(\);\r?\nsyncGallerySortControl\(\);\r?\nsetPromptDraft\(state\.prompts\[state\.view\] \|\| ''\);/);
 });
 
 test('gallery sorting persists in current and named workspace snapshots', () => {
   assert.match(app, /gallerySort: \['new', 'active', 'old', 'az'\]\.includes\(state\.sortMode\) \? state\.sortMode : 'new'/);
   assert.match(app, /state\.sortMode = \['new', 'active', 'old', 'az'\]\.includes\(f\.gallerySort\) \? f\.gallerySort : 'new'/);
   assert.match(app, /function syncGallerySortControl\(\)/);
-  assert.match(app, /loadForm\(\);\nsyncGallerySortControl\(\);/);
-  assert.match(app, /state\.sortMode = b\.dataset\.sort;\n  syncGallerySortControl\(\);\n  saveForm\(\);/);
+  assert.match(app, /loadForm\(\);\r?\nsyncGallerySortControl\(\);/);
+  assert.match(app, /state\.sortMode = b\.dataset\.sort;\r?\n  syncGallerySortControl\(\);\r?\n  saveForm\(\);/);
 });
 
 test('named workspaces can be saved, loaded, replaced, and deleted per profile', () => {
