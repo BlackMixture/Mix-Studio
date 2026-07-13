@@ -119,7 +119,7 @@ const state = {
   },
   generationTuning: { create: null, edit: null, video: null },
   cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
-  showAllLoras: false,
+  showAllLoras: true,
   activeJobs: new Set(),
   activeJobSequences: new Map(), // prompt id -> sequential edit id
   compositeJobs: new Map(), // prompt id -> parent item + composite type
@@ -5492,8 +5492,13 @@ $('#qwenAnglesToggleAll').addEventListener('click', () => {
 
 function renderEnhance() {
   const btn = $('#enhanceBtn');
+  const frameAwareVideo = state.view === 'video' && !!state.vidRef
+    && !['ltx-edit'].includes(state.vidEngine);
   btn.classList.toggle('on', state.enhance);
-  btn.title = state.enhance ? 'Prompt enhance: on' : 'Prompt enhance: off';
+  btn.title = state.enhance
+    ? (frameAwareVideo ? 'Enhance with start frame + prompt: on' : 'Prompt enhance: on')
+    : 'Prompt enhance: off';
+  btn.setAttribute('aria-label', btn.title);
 }
 $('#enhanceBtn').addEventListener('click', () => {
   state.enhance = !state.enhance;
@@ -6776,7 +6781,13 @@ function renderLoraCompatibility() {
   warn.classList.toggle('hidden', bad.length === 0);
   warn.textContent = bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : '';
   const allBtn = $('#loraAllBtn');
-  if (allBtn) allBtn.classList.toggle('active', state.showAllLoras);
+  if (allBtn) {
+    const filtering = !state.showAllLoras;
+    allBtn.classList.toggle('active', filtering);
+    allBtn.setAttribute('aria-pressed', String(filtering));
+    allBtn.title = filtering ? 'Show all LoRAs' : 'Filter to compatible LoRAs';
+    allBtn.setAttribute('aria-label', allBtn.title);
+  }
 }
 
 function loraThumbHtml(name, cls) {
@@ -7967,13 +7978,33 @@ function renderVidAttach() {
   $('#vidAttachThumb').hidden = editAnything || !has;
   $('#vidMotionPromptRow').hidden = !canSuggestMotion;
   $('#vidInputsHint').hidden = false;
-  $('#vidAutoMotionToggle').setAttribute('aria-checked', String(state.vidAutoMotionPrompt));
+  syncVideoAutoMotionUi();
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
   }
   if (typeof updateSwapChip === 'function') updateSwapChip();
   renderVidFace();
+}
+
+function syncVideoAutoMotionUi() {
+  const armed = state.vidAutoMotionPrompt && !!state.vidRef
+    && !['ltx-edit', 'scail'].includes(state.vidEngine);
+  const toggle = $('#vidAutoMotionToggle');
+  const action = $('#vidMotionPromptBtn');
+  const label = $('#vidMotionPromptLabel');
+  toggle.setAttribute('aria-checked', String(state.vidAutoMotionPrompt));
+  toggle.setAttribute('aria-label', state.vidAutoMotionPrompt
+    ? 'Automatic motion prompting on'
+    : 'Automatic motion prompting off');
+  action.classList.toggle('auto-armed', armed);
+  action.setAttribute('aria-label', armed
+    ? 'Automatic motion prompting is armed for the next generation'
+    : 'Create a motion prompt from this first frame');
+  action.title = armed
+    ? 'Auto armed — the start frame and your prompt will be combined when you generate'
+    : 'Create a motion prompt from this first frame';
+  if (!action.classList.contains('is-loading')) label.textContent = armed ? 'Auto motion armed' : 'Motion prompt';
 }
 
 /* LTX Face ID: a reference face whose identity drives a text-to-video gen */
@@ -8195,7 +8226,7 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
     const res = await api('/api/motionprompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageName: state.vidRef.name }),
+      body: JSON.stringify({ imageName: state.vidRef.name, prompt: promptDraft().trim() }),
     });
     if (!res.prompt) throw new Error('Vision model returned no usable motion prompt');
     state.prompts.video = res.prompt;
@@ -8208,7 +8239,7 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-loading');
-    label.textContent = 'Motion prompt';
+    syncVideoAutoMotionUi();
   }
 }
 async function maybeCreateAutomaticMotionPrompt() {
@@ -8855,8 +8886,7 @@ $('#generateBtn').addEventListener('click', async () => {
   const autoMotionPrompt = state.view === 'video'
     && state.vidAutoMotionPrompt
     && !!state.vidRef
-    && !['ltx-edit', 'scail'].includes(state.vidEngine)
-    && !prompt;
+    && !['ltx-edit', 'scail'].includes(state.vidEngine);
   const promptOptional = (state.view === 'video' && (state.vidEngine === 'scail' || autoMotionPrompt)) || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);

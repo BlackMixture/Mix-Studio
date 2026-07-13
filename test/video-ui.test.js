@@ -183,6 +183,7 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(html, /id="vidMotionPromptLabel">Motion prompt/);
   assert.match(app, /#vidMotionPromptBtn'\)\.addEventListener\('click'/);
   assert.match(app, /api\('\/api\/motionprompt'/);
+  assert.match(app, /imageName: state\.vidRef\.name, prompt: promptDraft\(\)\.trim\(\)/);
   assert.match(app, /state\.prompts\.video = res\.prompt/);
   assert.match(app, /label\.textContent = 'Reading frame'/);
   assert.match(css, /\.motion-prompt-row \.frame-prompt-action \{/);
@@ -199,8 +200,19 @@ test('automatic motion prompting can queue video work without waiting for prompt
   assert.match(app, /vidAutoMotionPrompt: false/);
   assert.match(app, /autoMotionPrompt,[\s\S]*Promise\.all\(requests\.map/);
   assert.match(app, /function maybeCreateAutomaticMotionPrompt\(\)/);
-  assert.match(server, /autoMotionRequested && !suppliedMotionPrompt/);
-  assert.match(server, /suggestMotionPrompt\(comfyName, seed, req\.profile\.id\)/);
+  assert.match(app, /classList\.toggle\('auto-armed', armed\)/);
+  assert.match(app, /'Auto motion armed'/);
+  assert.match(server, /if \(autoMotionRequested\)/);
+  assert.match(server, /suggestMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt\)/);
+});
+
+test('video prompt enhancement combines the first frame with the initial motion idea', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(server, /function suggestMotionPrompt\(comfyImageName, seed, profileId, userPrompt = ''\)/);
+  assert.match(server, /Preserve its intent and use the image to make it more specific and visually grounded/);
+  assert.match(server, /const frameAwareEnhance = !bypass && !faceImageName && !isLtxEdit/);
+  assert.match(server, /frameAwareEnhance && enhance && suppliedMotionPrompt/);
+  assert.match(server, /enhance: isLtxLike \? enhance && !wanRefined : false/);
 });
 
 test('Video exposes advanced seed and batch controls while model sampling stays explicit', () => {

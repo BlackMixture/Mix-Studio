@@ -1468,6 +1468,13 @@ html:-webkit-full-screen { background: #000; }
 }
 .motion-prompt-row .frame-prompt-action:hover { border-color: rgba(255,255,255,.42); background: rgba(12,14,19,.94); transform: translateY(-1px); }
 .motion-prompt-row .frame-prompt-action:focus-visible { outline: 2px solid rgba(var(--mode-rgb),.8); outline-offset: 2px; }
+.motion-prompt-row .frame-prompt-action.auto-armed {
+  border-color: rgba(var(--mode-rgb),.72);
+  background: linear-gradient(135deg, rgba(var(--mode-rgb),.2), rgba(var(--mode-rgb),.07));
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(var(--mode-rgb),.12), 0 7px 22px rgba(var(--mode-rgb),.2);
+}
+.motion-prompt-row .frame-prompt-action.auto-armed svg { color: rgb(var(--mode-rgb)); }
 .motion-prompt-row .frame-prompt-action svg {
   width: 17px;
   height: 17px;
