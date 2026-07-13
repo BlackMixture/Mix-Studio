@@ -1110,7 +1110,10 @@ function failJob(pid, message) {
   const job = jobs.get(pid);
   const durationMs = job ? jobDurationMs(job) : undefined;
   jobs.delete(pid);
-  if (job && (job.kind === 'enhance' || job.kind === 'smartMask')) { job.reject(new Error(message)); return; }
+  if (job && (job.kind === 'enhance' || job.kind === 'motionPrompt' || job.kind === 'smartMask')) {
+    job.reject(new Error(message));
+    return;
+  }
   if (job && job.kind === 'upscale' && job.itemId) {
     const item = db.items.find((entry) => entry.id === job.itemId);
     if (item && item.upscalePending) {
@@ -1171,8 +1174,12 @@ async function completeJob(pid) {
     job.resolve({ dataUrl: dataUrls[0], dataUrls });
     return;
   }
+  // ComfyUI removes a prompt from /queue before Mix Studio has downloaded
+  // and saved its outputs. Keep the tracked job authoritative during that
+  // finalization window so a resumed browser does not clear it too early.
+  if (job.completing) return;
+  job.completing = true;
   const durationMs = jobDurationMs(job);
-  jobs.delete(pid);
   const res = await comfyFetch(`/history/${pid}`);
   const hist = (await res.json())[pid];
   if (!hist) return failJob(pid, 'No history entry from ComfyUI');
@@ -1185,7 +1192,8 @@ async function completeJob(pid) {
   }
 
   if (job.kind === 'enhance' || job.kind === 'motionPrompt') {
-    if (textOut === null) { job.reject(new Error('Prompt enhance produced no text')); return; }
+    if (textOut === null) return failJob(pid, 'Prompt enhance produced no text');
+    jobs.delete(pid);
     job.resolve(textOut);
     return;
   }
@@ -1197,7 +1205,7 @@ async function completeJob(pid) {
     let item;
     if (job.itemId) {
       item = db.items.find((it) => it.id === job.itemId);
-      if (!item) return;
+      if (!item) return failJob(pid, 'Gallery item no longer exists');
     } else {
       // standalone video (Video tab): create a gallery item with a poster frame
       const id = uid();
@@ -1245,6 +1253,7 @@ async function completeJob(pid) {
       kind: 'video', profileId: job.profileId, itemId: item.id, videoId: entry.id, durationMs,
       label: `${videoActionLabel} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
     });
+    jobs.delete(pid);
     broadcast('videoDone', { jobId: pid, item });
     return;
   }
@@ -1255,7 +1264,7 @@ async function completeJob(pid) {
   if (job.kind === 'upscale') {
     const buf = await downloadOutput(files[0]);
     const item = db.items.find((it) => it.id === job.itemId);
-    if (!item) return;
+    if (!item) return failJob(pid, 'Gallery item no longer exists');
     const fname = `${item.id}_up.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
     item.upscaled = fname;
@@ -1264,6 +1273,7 @@ async function completeJob(pid) {
     item.upscaleDurationMs = durationMs;
     saveDb();
     pushHistory({ kind: 'upscale', profileId: job.profileId, itemId: item.id, durationMs, label: `Upscaled: ${(item.prompt || '').slice(0, 60)}` });
+    jobs.delete(pid);
     broadcast('upscaleDone', { jobId: pid, item });
     return;
   }
@@ -1280,7 +1290,7 @@ async function completeJob(pid) {
     // generation rather than a second, disconnected card.
     if (['before-after', 'reference-generation', 'depth-map'].includes(info.type) && info.sourceItemId) {
       const parent = db.items.find((it) => it.id === info.sourceItemId && it.profileId === job.profileId);
-      if (!parent) return;
+      if (!parent) return failJob(pid, 'Composite source item no longer exists');
       const composite = {
         id,
         file: fname,
@@ -1296,6 +1306,7 @@ async function completeJob(pid) {
       parent.composites = (Array.isArray(parent.composites) ? parent.composites : []).concat([composite]);
       saveDb();
       pushHistory({ kind: 'composite', profileId: job.profileId, itemId: parent.id, durationMs, label: `${composite.label}: ${(parent.prompt || '').slice(0, 60)}` });
+      jobs.delete(pid);
       broadcast('imageCompositeDone', { jobId: pid, item: parent, composite });
       return;
     }
@@ -1323,6 +1334,7 @@ async function completeJob(pid) {
     db.items.unshift(item);
     saveDb();
     pushHistory({ kind: 'composite', profileId: job.profileId, itemId: item.id, durationMs, label: `${info.label || 'Image composite'}: ${(item.prompt || '').slice(0, 60)}` });
+    jobs.delete(pid);
     broadcast('jobDone', { jobId: pid, items: [item] });
     return;
   }
@@ -1440,6 +1452,7 @@ async function completeJob(pid) {
   if (editSequence && !sequenceFinal) {
     try {
       const next = await queueNextSequentialEdit(job, created[0]);
+      jobs.delete(pid);
       broadcast('sequenceStep', {
         jobId: pid,
         nextJobId: next.pid,
@@ -1449,11 +1462,13 @@ async function completeJob(pid) {
         total: editSequence.total,
       });
     } catch (error) {
+      jobs.delete(pid);
       const message = `Sequential edit stopped after step ${editSequence.index + 1}: ${error.message}`;
       pushHistory({ kind: 'error', profileId: job.profileId, itemId: created[0] && created[0].id, label: message.slice(0, 120) });
       broadcast('jobError', { jobId: pid, kind: 'gen', itemId: created[0] && created[0].id, items: created, message, durationMs });
     }
   } else {
+    jobs.delete(pid);
     broadcast('jobDone', { jobId: pid, items: created, sequenceComplete: !!editSequence });
   }
 }
@@ -1467,7 +1482,10 @@ setInterval(async () => {
       const hist = (await (await comfyFetch(`/history/${pid}`)).json())[pid];
       if (hist && hist.status && hist.status.completed) await completeJob(pid);
       else if (hist && hist.status && hist.status.status_str === 'error') failJob(pid, 'Execution error (see ComfyUI console)');
-    } catch { /* comfy offline; retry */ }
+    } catch (error) {
+      if (jobs.get(pid)?.completing) failJob(pid, error.message || 'Could not finalize ComfyUI output');
+      // Otherwise ComfyUI is temporarily offline; retry on the next poll.
+    }
   }
 }, 2500);
 
@@ -4367,7 +4385,12 @@ async function handleApi(req, res, url) {
       if (p.editAspectOverride && !p.editOutpaint) p.composite = false;
     }
     const { pid } = await queueGenerationJob(p, req.profile.id, refNames, refined);
-    return json(res, 200, { jobId: pid, seed: p.seed, refinedPrompt: refined });
+    return json(res, 200, {
+      jobId: pid,
+      seed: p.seed,
+      refinedPrompt: refined,
+      sequenceId: p.editSequence ? p.editSequence.id : undefined,
+    });
   }
 
   if (route === '/api/upscale' && req.method === 'POST') {
@@ -4983,27 +5006,50 @@ async function handleApi(req, res, url) {
       // Other profiles' jobs stay visible (shared GPU) but get redacted labels
       const sanitize = (row) => {
         const job = jobs.get(row.jobId);
+        const owned = !!job && job.profileId === req.profile.id;
         if (job && job.profileId && job.profileId !== req.profile.id) {
           const who = db.profiles.find((p) => p.id === job.profileId);
           return Object.assign({}, row, {
             label: `${who ? who.name : 'Another profile'}'s job`,
             itemId: null, videoId: null, thumbnail: null,
+            owned: false,
           });
         }
-        return row;
+        return Object.assign({}, row, {
+          owned,
+          sequenceId: owned && job.params && job.params.editSequence
+            ? job.params.editSequence.id : undefined,
+        });
       };
       const markReorderable = (row) => {
         const job = jobs.get(row.jobId);
         return Object.assign(row, {
-          reorderable: !!job && job.profileId === req.profile.id && !!job.graph,
+          reorderable: !!job && !job.completing && job.profileId === req.profile.id && !!job.graph,
         });
       };
       const running = (q.queue_running || []).map((entry) => markReorderable(sanitize(describeQueueEntry(entry, true))));
       const pending = (q.queue_pending || []).map((entry) => markReorderable(sanitize(describeQueueEntry(entry, false))));
+      const queuedIds = new Set([...running, ...pending].map((row) => row.jobId));
+      const now = Date.now();
+      const finalizing = [...jobs.entries()]
+        .filter(([jobId, job]) => job.completing && !queuedIds.has(jobId))
+        .map(([jobId, job]) => markReorderable(sanitize({
+          jobId,
+          kind: job.kind,
+          itemId: job.itemId || null,
+          thumbnail: jobThumbnail(job),
+          label: jobLabel(job),
+          queuedAt: job.enqueuedAt || now,
+          startedAt: job.startedAt || job.enqueuedAt || now,
+          elapsedMs: jobDurationMs(job, now),
+          durationMs: jobDurationMs(job, now),
+          finalizing: true,
+        })));
       return json(res, 200, {
         ok: true,
         running,
         pending,
+        finalizing,
         health: await queueHealth(running, pending),
         history: db.history.filter((h) => h.profileId === req.profile.id).slice(0, 20).map((entry) => {
           const item = entry.itemId && db.items.find((candidate) => candidate.id === entry.itemId && candidate.profileId === req.profile.id);
@@ -5011,7 +5057,7 @@ async function handleApi(req, res, url) {
         }),
       });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [] });
+      return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [], finalizing: [] });
     }
   }
 

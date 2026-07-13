@@ -5,6 +5,7 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const CameraSettings = window.KreaCameraSettings;
 const ProgressEta = window.KreaProgressEta;
+const JobReconciliation = window.KreaJobReconciliation;
 const progressEta = ProgressEta.createProgressEtaTracker();
 
 /* ------------------------------------------------------------------ */
@@ -120,9 +121,11 @@ const state = {
   cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
   showAllLoras: false,
   activeJobs: new Set(),
+  activeJobSequences: new Map(), // prompt id -> sequential edit id
   compositeJobs: new Map(), // prompt id -> parent item + composite type
   upscaling: new Set(),      // item ids
   animating: new Set(),      // item ids
+  pendingGalleryRequests: new Set(), // kind:item while its queue POST is in flight
   animateTarget: null,
   animateRouteTarget: null,
   currentItem: null,
@@ -9050,6 +9053,7 @@ $('#generateBtn').addEventListener('click', async () => {
       });
       jobIds.push(res.jobId);
       state.activeJobs.add(res.jobId);
+      if (res.sequenceId) state.activeJobSequences.set(res.jobId, res.sequenceId);
     }
     $('#genLbl').textContent = genLabel();
     queueRefreshSoon();
@@ -9095,7 +9099,8 @@ let queueDrag = null;
 
 async function refreshQueue() {
   const q = await api('/api/queue');
-  const total = (q.running || []).length + (q.pending || []).length;
+  reconcileGenerationState(q);
+  const total = (q.running || []).length + (q.pending || []).length + (q.finalizing || []).length;
   $('#queueCount').hidden = total === 0;
   $('#queueCount').textContent = String(total);
   if ($('#queueSheet').classList.contains('show')) renderQueue(q);
@@ -9300,6 +9305,10 @@ function applyQueueJobMapping(mapping) {
       state.activeJobs.delete(oldId);
       state.activeJobs.add(newId);
     }
+    if (state.activeJobSequences.has(oldId)) {
+      state.activeJobSequences.set(newId, state.activeJobSequences.get(oldId));
+      state.activeJobSequences.delete(oldId);
+    }
     if (state.queueProgress[oldId] != null) {
       state.queueProgress[newId] = state.queueProgress[oldId];
       delete state.queueProgress[oldId];
@@ -9311,6 +9320,73 @@ function applyQueueJobMapping(mapping) {
       state.compositeJobs.set(newId, composite);
     }
   }
+}
+
+function reconcileGenerationState(queue) {
+  if (!JobReconciliation) return false;
+  const plan = JobReconciliation.buildJobReconciliation(queue, {
+    activeJobIds: [...state.activeJobs],
+    activeJobSequences: state.activeJobSequences,
+    compositeJobIds: [...state.compositeJobs.keys()],
+    animatingItemIds: [...state.animating],
+    upscalingItemIds: [...state.upscaling],
+  });
+  if (!plan.authoritative) return false;
+
+  let changed = false;
+  for (const migration of plan.migrations) {
+    applyQueueJobMapping({ [migration.oldJobId]: migration.newJobId });
+    changed = true;
+  }
+  for (const jobId of plan.staleJobIds) {
+    state.activeJobs.delete(jobId);
+    state.activeJobSequences.delete(jobId);
+    delete state.queueProgress[jobId];
+    progressEta.clear(jobId);
+    changed = true;
+  }
+  for (const jobId of plan.staleCompositeJobIds) {
+    state.compositeJobs.delete(jobId);
+    changed = true;
+  }
+  for (const itemId of plan.staleAnimatingItemIds) {
+    if (state.pendingGalleryRequests.has(`animate:${itemId}`)) continue;
+    state.animating.delete(itemId);
+    changed = true;
+  }
+  for (const itemId of plan.staleUpscalingItemIds) {
+    if (state.pendingGalleryRequests.has(`upscale:${itemId}`)) continue;
+    state.upscaling.delete(itemId);
+    changed = true;
+  }
+  if (!changed) return false;
+
+  if (!state.activeJobs.size && !state.motionPromptRequestsPending) {
+    stopLivePreviewSimulation();
+    setGenerating(false);
+    $('#liveStatusText').textContent = 'Finished — check Library';
+    $('#livePct').textContent = '';
+    $('#livePct').title = '';
+  } else {
+    $('#genLbl').textContent = genLabel();
+  }
+  renderGrid();
+  refreshGallery(true).catch(() => { /* noop */ });
+  return true;
+}
+
+let generationResumePromise = null;
+let generationResumeAt = 0;
+function reconcileGenerationAfterResume() {
+  if (document.hidden) return Promise.resolve();
+  if (generationResumePromise) return generationResumePromise;
+  const now = Date.now();
+  if (now - generationResumeAt < 500) return Promise.resolve();
+  generationResumeAt = now;
+  generationResumePromise = refreshQueue()
+    .catch(() => { /* keep local state when the server is unavailable */ })
+    .finally(() => { generationResumePromise = null; });
+  return generationResumePromise;
 }
 
 async function submitQueueReorder(order) {
@@ -9356,6 +9432,7 @@ function renderQueue(q) {
   list.innerHTML = '';
   const rows = [
     ...(q.running || []).map((j) => ({ ...j, run: true })),
+    ...(q.finalizing || []).map((j) => ({ ...j, run: true, finalizing: true })),
     ...(q.pending || []).map((j) => ({ ...j, run: false })),
   ];
   if (!rows.length) {
@@ -9376,7 +9453,7 @@ function renderQueue(q) {
     st.dataset.jobId = j.jobId;
     const pct = state.queueProgress[j.jobId];
     const elapsed = j.elapsedMs != null ? formatDuration(j.elapsedMs) : '';
-    st.textContent = j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued';
+    st.textContent = j.finalizing ? 'Finalizing' : (j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued');
     const lb = document.createElement('span');
     lb.className = 'q-label';
     lb.textContent = elapsed ? `${j.label} - ${elapsed}` : j.label;
@@ -9392,6 +9469,7 @@ function renderQueue(q) {
     const x = document.createElement('button');
     x.className = 'q-cancel';
     x.textContent = '✕';
+    x.hidden = !!j.finalizing;
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!await askConfirm({
@@ -9554,6 +9632,7 @@ function renderGenerationStatus(d) {
 
 function connectEvents() {
   const es = new EventSource('/api/events');
+  es.onopen = () => { reconcileGenerationAfterResume(); };
   es.addEventListener('progress', (ev) => {
     renderGenerationProgress(JSON.parse(ev.data));
   });
@@ -9571,9 +9650,7 @@ function connectEvents() {
   es.addEventListener('sequenceStep', (ev) => {
     const d = JSON.parse(ev.data);
     if (state.activeJobs.has(d.jobId)) {
-      state.activeJobs.delete(d.jobId);
-      state.activeJobs.add(d.nextJobId);
-      progressEta.clear(d.jobId);
+      applyQueueJobMapping({ [d.jobId]: d.nextJobId });
       setGenerating(true, `Sequential edit ${d.nextStep} of ${d.total}…`);
     }
     toast(`Step ${d.completedStep} complete · running ${d.nextStep} of ${d.total}`);
@@ -9583,6 +9660,8 @@ function connectEvents() {
   es.addEventListener('jobDone', (ev) => {
     const d = JSON.parse(ev.data);
     progressEta.clear(d.jobId);
+    delete state.queueProgress[d.jobId];
+    state.activeJobSequences.delete(d.jobId);
     const compositeJob = state.compositeJobs.get(d.jobId);
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
@@ -9618,6 +9697,8 @@ function connectEvents() {
   es.addEventListener('imageCompositeDone', (ev) => {
     const d = JSON.parse(ev.data);
     progressEta.clear(d.jobId);
+    delete state.queueProgress[d.jobId];
+    state.activeJobSequences.delete(d.jobId);
     state.compositeJobs.delete(d.jobId);
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
@@ -9644,6 +9725,8 @@ function connectEvents() {
   es.addEventListener('videoDone', (ev) => {
     const d = JSON.parse(ev.data);
     progressEta.clear(d.jobId);
+    delete state.queueProgress[d.jobId];
+    state.activeJobSequences.delete(d.jobId);
     state.animating.delete(d.item.id);
     const vids = d.item.videos || [];
     const newest = vids.length ? vids[vids.length - 1].id : 'image';
@@ -9670,6 +9753,7 @@ function connectEvents() {
   es.addEventListener('upscaleDone', (ev) => {
     const d = JSON.parse(ev.data);
     progressEta.clear(d.jobId);
+    delete state.queueProgress[d.jobId];
     state.upscaling.delete(d.item.id);
     toast('✓ Upscaled');
     refreshGallery(true).then(() => {
@@ -9679,6 +9763,8 @@ function connectEvents() {
   es.addEventListener('jobError', (ev) => {
     const d = JSON.parse(ev.data);
     progressEta.clear(d.jobId);
+    delete state.queueProgress[d.jobId];
+    state.activeJobSequences.delete(d.jobId);
     if (d.itemId) { state.upscaling.delete(d.itemId); state.animating.delete(d.itemId); }
     if (state.activeJobs.has(d.jobId)) {
       state.activeJobs.delete(d.jobId);
@@ -9688,6 +9774,20 @@ function connectEvents() {
     renderGrid();
     if (d.items && d.items.length) refreshGallery(true);
     toast('Error: ' + d.message, true);
+    queueRefreshSoon();
+  });
+  es.addEventListener('queueReset', () => {
+    state.activeJobs.clear();
+    state.activeJobSequences.clear();
+    state.compositeJobs.clear();
+    state.animating.clear();
+    state.upscaling.clear();
+    state.queueProgress = {};
+    progressEta.reset();
+    stopLivePreviewSimulation();
+    setGenerating(false);
+    renderGrid();
+    refreshGallery(true).catch(() => { /* noop */ });
     queueRefreshSoon();
   });
   es.onerror = () => { /* browser auto-reconnects */ };
@@ -11947,8 +12047,12 @@ document.addEventListener('visibilitychange', () => {
     });
   } else {
     resetGalleryPreviewObservation();
+    reconcileGenerationAfterResume();
   }
 });
+window.addEventListener('pageshow', () => { reconcileGenerationAfterResume(); });
+window.addEventListener('focus', () => { reconcileGenerationAfterResume(); });
+window.addEventListener('online', () => { reconcileGenerationAfterResume(); });
 
 let galleryTap = null;
 let lightboxTap = null;
@@ -13258,9 +13362,11 @@ async function processVideo(it, video, kind) {
   if (!it || !video) return;
   const route = kind === 'upscale' ? '/api/video/upscale' : '/api/video/interpolate';
   const label = kind === 'upscale' ? 'Video upscale queued' : 'Frame interpolation queued';
+  const requestKey = `animate:${it.id}`;
   try {
     setGenerating(true, 'Queued…');
     state.animating.add(it.id);
+    state.pendingGalleryRequests.add(requestKey);
     const res = await api(route, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -13280,6 +13386,8 @@ async function processVideo(it, video, kind) {
     state.animating.delete(it.id);
     setGenerating(false);
     toast(e.message, true);
+  } finally {
+    state.pendingGalleryRequests.delete(requestKey);
   }
 }
 
@@ -13411,8 +13519,10 @@ $('#animateGo').addEventListener('click', async () => {
     endImageName: state.animEnd ? state.animEnd.name : undefined,
   };
   $('#animateSheet').classList.remove('show');
+  const requestKey = `animate:${it.id}`;
   try {
     state.animating.add(it.id);
+    state.pendingGalleryRequests.add(requestKey);
     renderGrid();
     if (state.currentItem && state.currentItem.id === it.id) openLightbox(it.id);
     await api('/api/animate', {
@@ -13425,6 +13535,8 @@ $('#animateGo').addEventListener('click', async () => {
     state.animating.delete(it.id);
     renderGrid();
     toast(e.message, true);
+  } finally {
+    state.pendingGalleryRequests.delete(requestKey);
   }
 });
 $('#lbClose').addEventListener('click', closeLightbox);
@@ -14623,16 +14735,119 @@ function drawContainedMedia(ctx, media, x, y, width, height) {
   ctx.drawImage(media, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
-function documentationVideoDetails(item, video) {
+function documentationVideoInputSpecs(item, video) {
+  const info = video.info || {};
+  const engine = info.engine || 'ltx';
+  if (info.composite) return [];
+
+  const inputUrl = (name) => `/api/input?name=${encodeURIComponent(String(name))}`;
+  const gallerySource = item && item.mode !== 'video' && item.file
+    ? `/images/${encodeURIComponent(item.file)}` : '';
+  const specs = [];
+  const addImage = (label, name, accent, fallbackSrc = '') => {
+    if (!name && !fallbackSrc) return;
+    specs.push({ type: 'image', label, accent, src: name ? inputUrl(name) : fallbackSrc, fallbackSrc: name ? fallbackSrc : '' });
+  };
+  const addVideo = (label, name, accent, startAt = 0, duration = 0, src = '') => {
+    if (!name && !src) return;
+    specs.push({
+      type: 'video', label, accent, src: name ? inputUrl(name) : src,
+      startAt: Math.max(0, Number(startAt) || 0),
+      duration: Math.max(0, Number(duration) || 0),
+    });
+  };
+
+  if (info.processed && info.parentVideoId) {
+    const parent = (item.videos || []).find((entry) => entry.id === info.parentVideoId);
+    if (parent && parent.file) addVideo('Source Video', '', '#00bcd4', 0, 0, `/videos/${encodeURIComponent(parent.file)}`);
+    return specs;
+  }
+
+  if (engine === 'ltx-edit') {
+    addVideo('Source Video', info.driveVideoName, '#00bcd4', info.driveStartSeconds, info.driveDurSeconds);
+    return specs;
+  }
+
+  if (info.faceImageName) {
+    addImage('Face Reference', info.faceImageName, '#a970ff');
+  } else if (!info.t2v) {
+    addImage(engine === 'scail' ? 'Reference Image' : 'Start Frame', info.imageName, engine === 'scail' ? '#34a853' : '#4285f4', gallerySource);
+  }
+
+  if (info.endImageName) addImage('Last Frame', info.endImageName, '#fbbc04');
+  if (info.driveVideoName) {
+    addVideo(engine === 'scail' ? 'Motion Video' : 'Source Video', info.driveVideoName, '#00bcd4', info.driveStartSeconds, info.driveDurSeconds);
+  }
+  return specs;
+}
+
+function loadDocumentationMedia(spec, src = spec.src) {
+  if (spec.type === 'video') {
+    const media = document.createElement('video');
+    media.preload = 'auto';
+    media.muted = true;
+    media.playsInline = true;
+    media.src = src;
+    return new Promise((resolve, reject) => {
+      media.onloadeddata = () => resolve(media);
+      media.onerror = () => reject(new Error(`Could not load ${spec.label.toLowerCase()}`));
+      media.load();
+    });
+  }
+  const media = new Image();
+  media.decoding = 'async';
+  return new Promise((resolve, reject) => {
+    media.onload = () => resolve(media);
+    media.onerror = () => reject(new Error(`Could not load ${spec.label.toLowerCase()}`));
+    media.src = src;
+  });
+}
+
+async function loadDocumentationVideoInputs(item, video) {
+  const specs = documentationVideoInputSpecs(item, video);
+  const loaded = await Promise.all(specs.map(async (spec) => {
+    try {
+      return Object.assign({}, spec, { media: await loadDocumentationMedia(spec) });
+    } catch {
+      if (!spec.fallbackSrc) return null;
+      try { return Object.assign({}, spec, { media: await loadDocumentationMedia(spec, spec.fallbackSrc), src: spec.fallbackSrc }); }
+      catch { return null; }
+    }
+  }));
+  return loaded.filter(Boolean);
+}
+
+function documentationVideoDetails(item, video, inputMedia = [], resultMedia = null) {
   const info = video.info || {};
   const prompt = info.refinedMotionPrompt || info.motionPrompt || item.refinedPrompt || item.prompt || 'Untitled generation';
   const width = info.width || info.srcWidth || item.width;
   const height = info.height || info.srcHeight || item.height;
-  const seconds = info.frames && info.fps ? info.frames / info.fps : null;
+  const measuredSeconds = resultMedia && Number(resultMedia.duration);
+  const seconds = Number.isFinite(measuredSeconds) && measuredSeconds > 0
+    ? measuredSeconds : (info.frames && info.fps ? info.frames / info.fps : null);
+  const inputSummary = inputMedia.length
+    ? inputMedia.map((input) => input.label).join(', ')
+    : (info.t2v ? 'Text only' : (info.composite ? 'Side-by-side comparison' : ''));
+  const options = [
+    info.faceId && 'Face ID',
+    info.audioName && 'Audio input',
+    info.driveHasAudio && 'Source audio',
+    info.endFrame && 'Last-frame guidance',
+    info.motionVideo && 'Motion transfer',
+    info.smooth > 1 && `RIFE ${info.smooth}×`,
+    info.fourK && 'RTX 4K',
+    info.engine === 'wan' && info.fast && '4-step',
+    info.sigmaPreset && `Sigmas: ${info.sigmaPreset}`,
+    info.engine === 'scail' && info.scailMode && `SCAIL ${info.scailMode}`,
+    info.processed === 'upscale' && 'Video upscale',
+    info.processed === 'interpolate' && 'Frame interpolation',
+  ].filter(Boolean).join(', ');
   const facts = [
     ['Model', videoEngineLabel(info.engine)],
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
+    ['Inputs', inputSummary],
+    ['Options', options],
     ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
     ['Generated in', info.durationMs ? formatDuration(info.durationMs) : ''],
   ].filter(([, value]) => hasDocumentationValue(value));
@@ -14642,11 +14857,24 @@ function documentationVideoDetails(item, video) {
   return { prompt, facts };
 }
 
-function documentationVideoLayout(width, height, mediaRatio = width / height) {
+function documentationVideoInputBoxes(area, count, gap) {
+  if (!count || !area.width || !area.height) return [];
+  const itemGap = count > 1 ? Math.max(6, Math.round(gap * .58)) : 0;
+  const itemHeight = (area.height - itemGap * (count - 1)) / count;
+  return Array.from({ length: count }, (_, index) => ({
+    x: area.x,
+    y: area.y + index * (itemHeight + itemGap),
+    width: area.width,
+    height: itemHeight,
+  }));
+}
+
+function documentationVideoLayout(width, height, mediaRatio = width / height, inputCount = 1) {
   const safeMediaRatio = Math.max(.25, Math.min(4, Number(mediaRatio) || width / height));
   const portrait = safeMediaRatio < (1 / 1.08);
   const pad = Math.max(18, Math.round(Math.min(width, height) * .04));
   const gap = Math.max(12, Math.round(pad * .62));
+  const sourceCount = Math.max(0, Math.round(Number(inputCount) || 0));
   if (portrait) {
     const lowerWidth = width - pad * 2;
     const resultHeight = Math.min(
@@ -14655,11 +14883,14 @@ function documentationVideoLayout(width, height, mediaRatio = width / height) {
     );
     const lowerY = pad + resultHeight + gap;
     const lowerHeight = height - pad - lowerY;
-    const sourceWidth = Math.round((lowerWidth - gap) * .34);
+    const sourceWidth = sourceCount ? Math.round((lowerWidth - gap) * .34) : 0;
+    const sourceArea = { x: pad, y: lowerY, width: sourceWidth, height: lowerHeight };
     return {
       result: { x: pad, y: pad, width: lowerWidth, height: resultHeight },
-      source: { x: pad, y: lowerY, width: sourceWidth, height: lowerHeight },
-      details: { x: pad + sourceWidth + gap, y: lowerY, width: lowerWidth - sourceWidth - gap, height: lowerHeight },
+      inputs: documentationVideoInputBoxes(sourceArea, sourceCount, gap),
+      details: sourceCount
+        ? { x: pad + sourceWidth + gap, y: lowerY, width: lowerWidth - sourceWidth - gap, height: lowerHeight }
+        : { x: pad, y: lowerY, width: lowerWidth, height: lowerHeight },
     };
   }
   const innerHeight = height - pad * 2;
@@ -14668,15 +14899,16 @@ function documentationVideoLayout(width, height, mediaRatio = width / height) {
     width - pad * 2 - gap - Math.round(width * .23),
   );
   const railWidth = width - pad * 2 - gap - resultWidth;
-  const sourceHeight = Math.round(innerHeight * .36);
+  const sourceHeight = sourceCount ? Math.round(innerHeight * (sourceCount > 1 ? .48 : .36)) : 0;
+  const sourceArea = { x: pad + resultWidth + gap, y: pad, width: railWidth, height: sourceHeight };
   return {
     result: { x: pad, y: pad, width: resultWidth, height: innerHeight },
-    source: { x: pad + resultWidth + gap, y: pad, width: railWidth, height: sourceHeight },
+    inputs: documentationVideoInputBoxes(sourceArea, sourceCount, gap),
     details: {
       x: pad + resultWidth + gap,
-      y: pad + sourceHeight + gap,
+      y: sourceCount ? pad + sourceHeight + gap : pad,
       width: railWidth,
-      height: innerHeight - sourceHeight - gap,
+      height: sourceCount ? innerHeight - sourceHeight - gap : innerHeight,
     },
   };
 }
@@ -14707,8 +14939,8 @@ function drawDocumentationVideoMedia(ctx, media, box, label, accent, { quiet = f
   ctx.fillText(label, box.x + inset * 2.05, box.y + inset + (badgeHeight - fontSize) * .42);
 }
 
-function drawDocumentationVideoDetails(ctx, box, item, video) {
-  const details = documentationVideoDetails(item, video);
+function drawDocumentationVideoDetails(ctx, box, item, video, inputMedia, resultMedia) {
+  const details = documentationVideoDetails(item, video, inputMedia, resultMedia);
   const density = Math.max(.62, Math.min(1.35, box.width / 390, box.height / 340));
   const labelSize = Math.max(8, Math.round(11 * density));
   const promptSize = Math.max(11, Math.round(17 * density));
@@ -14742,15 +14974,29 @@ function drawDocumentationVideoDetails(ctx, box, item, video) {
   });
 }
 
-function drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, resultMedia) {
+function syncDocumentationVideoInputs(inputMedia, resultTime) {
+  inputMedia.forEach((input) => {
+    if (input.type !== 'video' || !input.media || !Number.isFinite(input.media.duration)) return;
+    const endAt = input.duration > 0 ? input.startAt + input.duration : input.media.duration;
+    const desired = Math.max(0, Math.min(input.startAt + Math.max(0, resultTime || 0), Math.max(0, endAt - .04)));
+    if (Math.abs(input.media.currentTime - desired) > .28) {
+      try { input.media.currentTime = desired; } catch { /* keep the nearest decoded frame */ }
+    }
+  });
+}
+
+function drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, resultMedia) {
   ctx.fillStyle = '#050506';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const mediaWidth = resultMedia.videoWidth || resultMedia.naturalWidth || resultMedia.width || canvas.width;
   const mediaHeight = resultMedia.videoHeight || resultMedia.naturalHeight || resultMedia.height || canvas.height;
-  const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight);
+  const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight, inputMedia.length);
   drawDocumentationVideoMedia(ctx, resultMedia, layout.result, 'Final Result', '#ea4335', { quiet: true });
-  drawDocumentationVideoMedia(ctx, startFrame, layout.source, 'Start Frame', '#4285f4');
-  drawDocumentationVideoDetails(ctx, layout.details, item, video);
+  inputMedia.forEach((input, index) => {
+    const box = layout.inputs[index];
+    if (box) drawDocumentationVideoMedia(ctx, input.media, box, input.label, input.accent);
+  });
+  drawDocumentationVideoDetails(ctx, layout.details, item, video, inputMedia, resultMedia);
 }
 
 function updateDocumentationVideoProgress(progress, label) {
@@ -14760,10 +15006,39 @@ function updateDocumentationVideoProgress(progress, label) {
   if (label) $('#documentationVideoStatus').textContent = label;
 }
 
+async function prepareDocumentationVideoInputs(inputMedia) {
+  await Promise.all(inputMedia.filter((input) => input.type === 'video').map(async (input) => {
+    const media = input.media;
+    const target = Math.max(0, Math.min(input.startAt || 0, Math.max(0, (Number(media.duration) || 0) - .04)));
+    if (target <= .01) return;
+    await new Promise((resolve) => {
+      const done = () => { media.removeEventListener('seeked', done); resolve(); };
+      media.addEventListener('seeked', done, { once: true });
+      try { media.currentTime = target; } catch { done(); return; }
+      setTimeout(done, 1200);
+    });
+  }));
+}
+
+function documentationResultAudioStream(result) {
+  const capture = result.captureStream || result.mozCaptureStream;
+  if (typeof capture !== 'function') return null;
+  try {
+    const stream = capture.call(result);
+    return stream && stream.getAudioTracks().length ? stream : null;
+  } catch { return null; }
+}
+
 function cleanupDocumentationVideoRun(run) {
   if (!run) return;
   try { run.video && run.video.pause(); } catch { /* noop */ }
+  (run.inputs || []).forEach((input) => {
+    if (input.type !== 'video' || !input.media) return;
+    try { input.media.pause(); } catch { /* noop */ }
+    input.media.removeAttribute('src');
+  });
   (run.stream && run.stream.getTracks ? run.stream.getTracks() : []).forEach((track) => track.stop());
+  (run.resultStream && run.resultStream.getTracks ? run.resultStream.getTracks() : []).forEach((track) => track.stop());
   if (run.video) run.video.removeAttribute('src');
 }
 
@@ -14788,7 +15063,7 @@ async function saveDocumentationVideo(item, video) {
   }
   closeActionMenu();
   closeDocumentationVideoExport();
-  const run = { cancelled: false, recorder: null, stream: null, video: null };
+  const run = { cancelled: false, recorder: null, stream: null, resultStream: null, video: null, inputs: [] };
   documentationVideoRun = run;
   $('#documentationVideoCancel').textContent = 'Cancel';
   $('#documentationVideoSheet').classList.add('show');
@@ -14796,7 +15071,8 @@ async function saveDocumentationVideo(item, video) {
   updateDocumentationVideoProgress(0, 'Preparing combined documentation view…');
 
   try {
-    const startFrame = await loadDocumentationOriginal(item);
+    const inputMedia = await loadDocumentationVideoInputs(item, video);
+    run.inputs = inputMedia;
     if (run.cancelled || documentationVideoRun !== run) return;
     const result = document.createElement('video');
     result.preload = 'auto';
@@ -14814,9 +15090,24 @@ async function saveDocumentationVideo(item, video) {
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
     const ctx = canvas.getContext('2d');
-    drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, result);
+    await prepareDocumentationVideoInputs(inputMedia);
+    syncDocumentationVideoInputs(inputMedia, 0);
+    drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result);
 
-    const stream = canvas.captureStream(30);
+    const savedInfo = video.info || {};
+    const savedSeconds = savedInfo.frames && savedInfo.fps ? savedInfo.frames / savedInfo.fps : 0;
+    const resultSeconds = Number.isFinite(result.duration) && result.duration > 0 ? result.duration : savedSeconds;
+    const durationMs = Math.max(500, Math.min(300_000, resultSeconds * 1000 || 5000));
+    result.currentTime = 0;
+    await Promise.all([
+      result.play(),
+      ...inputMedia.filter((input) => input.type === 'video').map((input) => input.media.play().catch(() => {})),
+    ]);
+    const captureFps = Math.max(16, Math.min(60, Math.round(Number(savedInfo.fps) || 30)));
+    const stream = canvas.captureStream(captureFps);
+    const resultStream = documentationResultAudioStream(result);
+    run.resultStream = resultStream;
+    (resultStream ? resultStream.getAudioTracks() : []).forEach((track) => stream.addTrack(track));
     run.stream = stream;
     const chunks = [];
     const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
@@ -14827,15 +15118,9 @@ async function saveDocumentationVideo(item, video) {
       recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
     });
     recorder.start(500);
-
-    const savedInfo = video.info || {};
-    const savedSeconds = savedInfo.frames && savedInfo.fps ? savedInfo.frames / savedInfo.fps : 0;
-    const resultSeconds = Number.isFinite(result.duration) && result.duration > 0 ? result.duration : savedSeconds;
-    const durationMs = Math.max(500, Math.min(300_000, resultSeconds * 1000 || 5000));
-    result.currentTime = 0;
-    await result.play();
     while (!run.cancelled && documentationVideoRun === run) {
-      drawDocumentationVideoFrame(ctx, canvas, startFrame, item, video, result);
+      syncDocumentationVideoInputs(inputMedia, result.currentTime);
+      drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result);
       updateDocumentationVideoProgress(Math.min(1, result.currentTime * 1000 / durationMs), 'Recording combined documentation view…');
       if (result.ended || result.currentTime >= result.duration - .04) break;
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -15295,8 +15580,10 @@ $('#upscaleGo').addEventListener('click', async () => {
   const noise = $('#upNoiseChips .chip.active').dataset.noise || 'low';
   const prompt = $('#upUltimatePrompt').value.trim();
   $('#upscaleSheet').classList.remove('show');
+  const requestKey = `upscale:${it.id}`;
   try {
     state.upscaling.add(it.id);
+    state.pendingGalleryRequests.add(requestKey);
     renderGrid();
     if (state.currentItem && state.currentItem.id === it.id) openLightbox(it.id);
     await api('/api/upscale', {
@@ -15309,6 +15596,8 @@ $('#upscaleGo').addEventListener('click', async () => {
     state.upscaling.delete(it.id);
     renderGrid();
     toast(e.message, true);
+  } finally {
+    state.pendingGalleryRequests.delete(requestKey);
   }
 });
 

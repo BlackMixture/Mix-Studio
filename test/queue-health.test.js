@@ -63,6 +63,17 @@ test('server queue includes health and job timing fields', () => {
   assert.match(serverJs, /assessQueueHealth/);
   assert.match(serverJs, /durationMs/);
   assert.match(serverJs, /startedAt/);
+  assert.match(serverJs, /finalizing/);
+  assert.match(serverJs, /owned/);
+});
+
+test('browser reconciles generation state after suspension and SSE reconnects', () => {
+  assert.match(indexHtml, /job-reconciliation\.js/);
+  assert.match(appJs, /reconcileGenerationState\(q\)/);
+  assert.match(appJs, /reconcileGenerationAfterResume/);
+  assert.match(appJs, /visibilitychange/);
+  assert.match(appJs, /es\.onopen/);
+  assert.match(appJs, /addEventListener\('queueReset'/);
 });
 
 test('queue sheet renders health and durations', () => {

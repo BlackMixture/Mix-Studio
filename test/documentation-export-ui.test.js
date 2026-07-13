@@ -83,20 +83,44 @@ test('focused videos can export source, generation details, and result in one pe
   assert.match(app, /action: \(\) => saveDocumentationVideo\(it, selVideo\)/);
   assert.match(html, /id="documentationVideoSheet"/);
   assert.match(html, /id="documentationVideoCanvas"/);
-  assert.match(app, /function documentationVideoDetails\(item, video\)/);
-  assert.match(html, /Start frame, generation details, and the complete result stay together in one view/);
+  assert.match(app, /function documentationVideoDetails\(item, video, inputMedia = \[\], resultMedia = null\)/);
+  assert.match(html, /Generation inputs, settings, and the complete result stay together in one view/);
   assert.match(app, /const boardRatio = portrait \? ratio \/ 1\.32 : ratio \+ \.52/);
-  assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height\)/);
-  assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, startFrame, item, video, resultMedia\)/);
+  assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height, inputCount = 1\)/);
+  assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, inputMedia, item, video, resultMedia\)/);
   assert.match(app, /drawDocumentationVideoMedia\(ctx, resultMedia, layout\.result, 'Final Result', '#ea4335', \{ quiet: true \}\)/);
-  assert.match(app, /drawDocumentationVideoMedia\(ctx, startFrame, layout\.source, 'Start Frame'/);
+  assert.match(app, /inputMedia\.forEach\(\(input, index\) => \{[\s\S]*drawDocumentationVideoMedia\(ctx, input\.media, box, input\.label, input\.accent\)/);
   assert.match(app, /function drawDocumentationVideoMedia[\s\S]*setDocumentationFont\(ctx, quiet \? 650 : 700, fontSize\)/);
   assert.match(app, /quiet[\s\S]*Math\.min\(12, Math\.round\(scaledFontSize \* \.78\)\)/);
   assert.match(app, /quiet \? 'rgba\(0,0,0,\.62\)'/);
   assert.doesNotMatch(app, /'FINAL RESULT'|'START FRAME'/);
   assert.doesNotMatch(app, /const introMs =/);
-  assert.match(app, /canvas\.captureStream\(30\)/);
+  assert.match(app, /canvas\.captureStream\(captureFps\)/);
   assert.match(app, /new MediaRecorder\(stream/);
   assert.match(app, /mirrorExportFile\(blob, filename\)/);
   assert.match(css, /\.documentation-video-preview/);
+});
+
+test('documentation videos resolve the real model-specific generation inputs', () => {
+  assert.match(app, /function documentationVideoInputSpecs\(item, video\)/);
+  assert.match(app, /if \(info\.composite\) return \[\];/);
+  assert.match(app, /info\.processed && info\.parentVideoId[\s\S]*addVideo\('Source Video'/);
+  assert.match(app, /engine === 'ltx-edit'[\s\S]*addVideo\('Source Video', info\.driveVideoName/);
+  assert.match(app, /info\.faceImageName[\s\S]*addImage\('Face Reference'/);
+  assert.match(app, /!info\.t2v[\s\S]*engine === 'scail' \? 'Reference Image' : 'Start Frame'/);
+  assert.match(app, /info\.endImageName[\s\S]*addImage\('Last Frame'/);
+  assert.match(app, /engine === 'scail' \? 'Motion Video' : 'Source Video'/);
+  assert.match(app, /item && item\.mode !== 'video' && item\.file[\s\S]*encodeURIComponent\(item\.file\)/);
+  assert.match(app, /Promise\.all\(specs\.map/);
+  assert.match(app, /if \(!spec\.fallbackSrc\) return null/);
+});
+
+test('documentation video recording follows result fps and retains result audio when supported', () => {
+  assert.match(app, /const measuredSeconds = resultMedia && Number\(resultMedia\.duration\)/);
+  assert.match(app, /Math\.max\(16, Math\.min\(60, Math\.round\(Number\(savedInfo\.fps\) \|\| 30\)\)\)/);
+  assert.match(app, /function documentationResultAudioStream\(result\)/);
+  assert.match(app, /resultStream\.getAudioTracks\(\)[\s\S]*stream\.addTrack\(track\)/);
+  assert.match(app, /function syncDocumentationVideoInputs\(inputMedia, resultTime\)/);
+  assert.match(app, /input\.startAt \+ Math\.max\(0, resultTime \|\| 0\)/);
+  assert.match(app, /run\.inputs \|\| \[\][\s\S]*input\.media\.pause\(\)/);
 });
