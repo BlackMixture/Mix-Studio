@@ -5284,6 +5284,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 
 /* ---------------- regional prompting / Krea2 inpaint ---------------- */
 .region-workspace {
+  container: region-workspace / inline-size;
   padding: 16px;
   background:
     radial-gradient(420px 230px at 50% 0%, rgba(var(--mode-rgb), 0.08), transparent 72%),
@@ -5826,6 +5827,35 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .smart-mask-loading { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 9px; background: rgba(0,0,0,.68); color: #fff; font-size: 12px; font-weight: 850; }
 .smart-mask-loading[hidden] { display: none; }
 .smart-mask-loading span { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@container region-workspace (max-width: 340px) {
+  .region-fields {
+    grid-template-columns: minmax(0, 1fr) 50px;
+    gap: 8px;
+    padding-top: 10px;
+  }
+  .region-reference-field .region-asset-picker {
+    justify-content: center;
+    padding: 6px;
+  }
+  .region-reference-field .region-asset-copy { display: none; }
+  .region-reference-field .region-ref-preview > button {
+    top: 3px;
+    right: 3px;
+    width: 22px;
+    height: 22px;
+  }
+  .region-reference-field .region-ref-preview .input-crop-action {
+    top: 25px;
+    right: 3px;
+    width: 22px;
+    height: 22px;
+  }
+  .region-fields .sheet-textarea {
+    min-height: 58px;
+    max-height: 76px;
+  }
+  .region-lora-body-inner { grid-template-columns: 1fr; align-items: stretch; }
+}
 @media (max-width: 640px) {
   .region-workspace { padding: 14px; }
   .region-toolbar { gap: 6px; }
@@ -7360,6 +7390,10 @@ body.sheet-open {
     border-top: 1px solid rgba(255,255,255,0.025);
     background: rgba(226,232,255,0.08);
   }
+  body[data-ui-mode="region"] .tabs-wrap,
+  body[data-ui-mode="region"] .studio-workspace {
+    grid-template-columns: 380px minmax(420px, 1fr) 300px;
+  }
   .studio-workspace > .view {
     display: block;
     width: 100%;
@@ -7373,6 +7407,15 @@ body.sheet-open {
     scrollbar-color: rgba(255,255,255,0.16) transparent;
     scrollbar-width: thin;
     background: rgba(2,3,5,0.96);
+  }
+  #view-create {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  #view-create::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   #view-create { padding: 16px 14px 110px; }
   #view-gallery { padding: 16px 14px 40px; }
@@ -7420,6 +7463,10 @@ body.sheet-open {
     border-radius: 18px;
   }
   #view-create > .panel:not(.res-panel) { padding-inline: 10px; }
+  body[data-ui-mode="region"] .region-toolbar-actions .chip {
+    padding-inline: 12px;
+    white-space: nowrap;
+  }
   #view-create .prompt-composer { min-height: 116px; }
   #view-gallery .library-search {
     position: sticky;

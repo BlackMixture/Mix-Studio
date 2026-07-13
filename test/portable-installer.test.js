@@ -53,6 +53,12 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /mix-studio-region\.png/);
   assert.match(page, /mix-studio-video\.png/);
   assert.match(page, /mix-studio-mobile\.png/);
+  assert.match(page, /mix-studio-profiles-live\.png/);
+  assert.match(page, /live-scail-dance\.mp4/);
+  assert.match(page, /live-scail-portrait\.mp4/);
+  assert.match(page, /live-ltx-bicycle\.mp4/);
+  assert.match(page, /class="focus-window/);
+  assert.doesNotMatch(page, /class="laptop/);
   assert.match(page, /id="mobile-first"/);
   assert.match(page, /depth guidance/);
   assert.match(page, /Continue Edit/);
@@ -71,6 +77,9 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-edit\.png _site\/mix-studio-edit\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-scail\.png _site\/mix-studio-scail\.png/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-library\.png _site\/mix-studio-library\.png/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-profiles-live\.png _site\/mix-studio-profiles-live\.png/);
   assert.match(workflow, /cp -R docs\/download\/media _site\/media/);
   assert.match(workflow, /actions\/configure-pages@v5/);
   assert.match(workflow, /actions\/upload-pages-artifact@v4/);

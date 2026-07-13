@@ -49,6 +49,9 @@ jobs:
           cp docs/download/mix-studio-region.png _site/mix-studio-region.png
           cp docs/download/mix-studio-video.png _site/mix-studio-video.png
           cp docs/download/mix-studio-mobile.png _site/mix-studio-mobile.png
+          cp docs/download/mix-studio-scail.png _site/mix-studio-scail.png
+          cp docs/download/mix-studio-library.png _site/mix-studio-library.png
+          cp docs/download/mix-studio-profiles-live.png _site/mix-studio-profiles-live.png
           cp -R docs/download/media _site/media
           touch _site/.nojekyll
 

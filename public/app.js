@@ -1780,6 +1780,7 @@ window.addEventListener('pagehide', saveForm);
 const primaryTabButtons = $$('#primaryTabs .tab');
 const createTabButtons = $$('#createTabs .tab');
 const desktopWorkspaceQuery = window.matchMedia('(min-width: 1180px)');
+const wideRegionResolutionQuery = window.matchMedia('(min-width: 641px)');
 
 function desktopWorkspaceActive() {
   return desktopWorkspaceQuery.matches;
@@ -1792,6 +1793,12 @@ function pinDesktopViewport() {
 
 window.addEventListener('scroll', pinDesktopViewport, { passive: true });
 desktopWorkspaceQuery.addEventListener('change', () => requestAnimationFrame(pinDesktopViewport));
+wideRegionResolutionQuery.addEventListener('change', () => {
+  if (state.view !== 'create' || state.createMode !== 'region') return;
+  setRegionResolutionExpanded(false);
+  collapseRes(false);
+  updateVideoPanels();
+});
 
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
@@ -1875,6 +1882,7 @@ function updateVideoPanels() {
   const isVideo = state.view === 'video';
   const isEdit = state.view === 'edit';
   const isRegion = state.view === 'create' && state.createMode === 'region';
+  const useSharedRegionResolution = isRegion && wideRegionResolutionQuery.matches;
   if (isVideo) syncVideoDurationLimit();
   const promptPanel = $('#promptPanel');
   const regionWorkspace = $('#regionWorkspace');
@@ -1923,7 +1931,11 @@ function updateVideoPanels() {
   renderEditAspects();
   renderEditUpscale();
   renderKreaMaskTools();
-  $('#aspectRow').closest('.panel').hidden = isRegion || (isVideo && !!state.vidRef) || state.view === 'edit';
+  $('#resPanel').hidden = state.view === 'edit'
+    || (isVideo && !!state.vidRef)
+    || (isRegion && !useSharedRegionResolution);
+  $('.region-resolution-picker').hidden = useSharedRegionResolution;
+  if (useSharedRegionResolution) setRegionResolutionExpanded(false);
   $('#seedInput').closest('.panel').hidden = false;
   $('#advancedStepsField').hidden = isVideo;
   $('#advancedCfgField').hidden = isVideo;

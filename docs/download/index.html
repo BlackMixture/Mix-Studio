@@ -101,15 +101,34 @@
     .showcase { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
     .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
     .shot-image {
-      position: relative; display: grid; place-items: center; overflow: hidden; aspect-ratio: 1.55 / 1;
-      padding: clamp(12px,2.2vw,24px) clamp(15px,4vw,38px) clamp(24px,4.8vw,44px);
-      background: radial-gradient(90% 120% at 50% 108%,rgba(66,133,244,.15),transparent 60%),linear-gradient(180deg,#0b0e15,#040507 76%);
+      --focus-scale: 1; --focus-origin: 50% 50%;
+      position: relative; display: grid; place-items: center; overflow: hidden; aspect-ratio: 1.7 / 1;
+      padding: clamp(10px,1.2vw,14px);
+      background: radial-gradient(90% 130% at 50% 108%,rgba(66,133,244,.14),transparent 60%),linear-gradient(180deg,#0a0d14,#030405 76%);
     }
-    .laptop { position: relative; z-index: 1; width: 100%; padding: 6px 6px 7px; border: 1px solid rgba(220,228,255,.25); border-radius: 14px 14px 5px 5px; background: linear-gradient(180deg,#20242d,#101219); box-shadow: 0 18px 38px rgba(0,0,0,.58),0 0 0 1px rgba(0,0,0,.7); }
-    .laptop::before { content: ""; position: absolute; top: 2px; left: 50%; width: 3px; height: 3px; border-radius: 50%; background: #596171; box-shadow: 0 0 0 1px rgba(0,0,0,.7); transform: translateX(-50%); }
-    .laptop::after { content: ""; position: absolute; left: -4%; bottom: -9px; width: 108%; height: 9px; border: 1px solid rgba(220,228,255,.24); border-radius: 2px 2px 10px 10px; background: linear-gradient(180deg,#2a2e37,#11131a); box-shadow: 0 8px 14px rgba(0,0,0,.5); }
-    .laptop-screen { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border: 1px solid rgba(255,255,255,.08); border-radius: 2px; background: #000; }
-    .laptop-screen img, .laptop-screen video { width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; }
+    .focus-window { position: relative; z-index: 1; width: 100%; overflow: hidden; aspect-ratio: 16 / 9; border: 1px solid rgba(220,228,255,.18); border-radius: 14px; background: #020305; box-shadow: 0 16px 36px rgba(0,0,0,.48),0 0 0 1px rgba(0,0,0,.65); }
+    .focus-window::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(255,255,255,.025); pointer-events: none; }
+    .focus-window > img, .focus-window > video { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center; transform: scale(var(--focus-scale)); transform-origin: var(--focus-origin); }
+    .focus-create { --focus-scale: 1.18; --focus-origin: 34% 54%; }
+    .focus-edit { --focus-scale: 1.22; --focus-origin: 43% 54%; }
+    .focus-region { --focus-scale: 1.27; --focus-origin: 34% 50%; }
+    .focus-video { --focus-scale: 1.22; --focus-origin: 35% 52%; }
+    .focus-scail { --focus-scale: 1.2; --focus-origin: 34% 52%; }
+    .focus-library { --focus-scale: 1.14; --focus-origin: 50% 47%; }
+    .focus-compare { --focus-scale: 1.08; --focus-origin: 50% 50%; }
+    .focus-region-motion { --focus-scale: 1.1; --focus-origin: 37% 50%; }
+    .focus-profiles { --focus-scale: 2.25; --focus-origin: 50% 52%; }
+    .focus-guide { --focus-scale: 1.15; --focus-origin: 50% 48%; }
+    .shot-motion .focus-window > img { animation: focus-drift 11s ease-in-out infinite alternate; }
+    @keyframes focus-drift { from { transform: scale(var(--focus-scale)); } to { transform: scale(calc(var(--focus-scale) + .045)); } }
+    .guide-demo > img { filter: brightness(.42) saturate(.72); }
+    .guide-card { position: absolute; left: 50%; bottom: 7%; z-index: 2; width: min(76%,310px); padding: clamp(9px,1.2vw,13px); border: 1px solid rgba(157,179,247,.26); border-radius: 14px; background: rgba(8,18,34,.94); box-shadow: 0 18px 42px rgba(0,0,0,.5); transform: translateX(-50%); }
+    .guide-card > span { display: block; color: #9db3f7; font-size: clamp(8px,1vw,10px); font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+    .guide-card strong { display: block; margin-top: 5px; font-size: clamp(11px,1.5vw,15px); }
+    .guide-swipe { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 30px; margin-top: 9px; border: 1px solid rgba(157,179,247,.18); border-radius: 10px; color: #aab8d9; font-size: clamp(9px,1.15vw,11px); font-weight: 750; }
+    .guide-swipe i { position: relative; width: 32px; height: 4px; border-radius: 999px; background: #6fa8ff; }
+    .guide-swipe i::after { content: ""; position: absolute; left: 12px; top: -2px; width: 8px; height: 8px; border: 1px solid #a9c7ff; border-radius: 50%; background: #17365f; animation: guide-lift 2.2s ease-in-out infinite; }
+    @keyframes guide-lift { 0%,20% { opacity: .35; transform: translateY(5px); } 58% { opacity: 1; transform: translateY(-5px); } 100% { opacity: 0; transform: translateY(-5px); } }
     .shot-copy { padding: 22px 24px 24px; border-top: 1px solid var(--line); }
     .shot-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
     .shot-copy h3 { margin: 8px 0 5px; font-size: 19px; }
@@ -117,6 +136,8 @@
     .gen-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
     .gen-card { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
     .gen-card video, .gen-card > img { width: 100%; height: auto; display: block; background: #030405; }
+    .gen-card.reel video { aspect-ratio: 8 / 7; object-fit: contain; background: radial-gradient(circle at 50% 35%,#11243a,#030405 70%); }
+    .gen-card.wide video { aspect-ratio: 16 / 9; object-fit: cover; }
     .gen-card.span-2 { grid-column: span 2; }
     .gen-copy { padding: 18px 22px 20px; border-top: 1px solid var(--line); }
     .gen-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
@@ -180,7 +201,7 @@
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       footer { flex-direction: column; }
     }
-    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .download { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .download { transition: none; } .shot-motion .focus-window > img, .guide-swipe i::after { animation: none; } }
   </style>
 </head>
 <body>
@@ -257,9 +278,9 @@
           <p>Every clip and composite below was generated locally through Mix Studio's tuned workflows: edits that keep the scene, motion transfer from phone clips, image animation, and box-directed compositions.</p>
         </div>
         <div class="gen-grid">
-          <article class="gen-card"><video src="./media/scail-hand-fantasy.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · video to video</span><h3>A backyard becomes a fantasy world</h3><p>A phone clip of a hand on the porch, re-rendered as an epic vista; the motion carries over exactly.</p></div></article>
-          <article class="gen-card"><video src="./media/scail-mech-dog.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · motion transfer</span><h3>Dog walk, re-cast as science fiction</h3><p>Same walk, same leash physics, new universe. SAM3 tracks the subjects; the prompt does the rest.</p></div></article>
-          <article class="gen-card"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Stills brought to life with sound</h3><p>A generated image animated into a clip, audio generated in the same pass.</p></div></article>
+          <article class="gen-card reel"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · motion transfer</span><h3>One dance, a new performer</h3><p>A phone clip supplies the movement. SCAIL 2 carries its timing and pose into a newly generated subject.</p></div></article>
+          <article class="gen-card reel"><video src="./media/live-scail-portrait.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · video to video</span><h3>Same performance, new identity</h3><p>The driving clip holds the performance while the subject and visual treatment change around it.</p></div></article>
+          <article class="gen-card wide span-2"><video src="./media/live-ltx-bicycle.mp4" autoplay muted loop playsinline controls></video><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>A still frame becomes a cinematic shot</h3><p>Motion, camera direction, atmosphere, and sound are generated together in one pass.</p></div></article>
           <article class="gen-card span-2"><img src="./media/edit-aging.jpg" alt="Selfie edited into an elderly man with hat and gold chain, background preserved" loading="lazy" /><div class="gen-copy"><span>Edit</span><h3>“Make the man an old black man with a gold chain and a hat”</h3><p>One sentence. The street, shirt, and light stay exactly where they were.</p></div></article>
           <article class="gen-card"><img src="./media/region-map.jpg" alt="Prompt boxes drawn over a street scene" loading="lazy" /><div class="gen-copy"><span>Region prompting · the boxes</span><h3>Draw the layout</h3><p>Each box carries its own prompt, and optionally its own LoRA or reference image.</p></div></article>
           <article class="gen-card"><img src="./media/region-result.jpg" alt="Generated street scene following the drawn regions" loading="lazy" /><div class="gen-copy"><span>Region prompting · the result</span><h3>Get the layout</h3><p>Car on the left, dog in the middle, neon rocket sign on the right, all in a single generation.</p></div></article>
@@ -273,16 +294,16 @@
       <section class="section" aria-labelledby="workspace-title">
         <div class="section-head"><div><p class="section-kicker">The workspace</p><h2 id="workspace-title">Complex workflows, made direct.</h2></div><p>On desktop, inputs, workspace history, animated progress with ETA, and recent work stay visible together. On mobile, the same controls settle into a focused single-column flow.</p></div>
         <div class="showcase">
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-create.png" alt="Create Image desktop workspace in Mix Studio" /></div></div></div><div class="shot-copy"><span>Create</span><h3>Stay in one workspace</h3><p>Build on the left, watch progress in the center, and keep recent generations within reach.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-edit.png" alt="Flux Klein 9B instruction edit workspace in Mix Studio" /></div></div></div><div class="shot-copy"><span>Edit</span><h3>One sentence, surgical changes</h3><p>Instruction edits with Flux 2 Klein: the prompt, edit area, and Expand controls stay beside the result.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-region.png" alt="Three overlapping, color-coded prompt regions arranged on the Mix Studio canvas" /></div></div></div><div class="shot-copy"><span>Region</span><h3>Compose spatially</h3><p>Draw, overlap, and configure prompt areas directly on the output canvas.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-video.png" alt="LTX 2.3 video workspace with end frame and audio waveform attached" /></div></div></div><div class="shot-copy"><span>Video</span><h3>Build motion from the right inputs</h3><p>Frames, identity, lipsync audio, model, and motion controls stay together in one clear flow.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-scail.png" alt="SCAIL 2 motion transfer workspace with driving video and creative direction" loading="lazy" /></div></div></div><div class="shot-copy"><span>Video · SCAIL 2</span><h3>Motion in, new world out</h3><p>A driving video, a reference image, and optional creative direction. The workspace keeps the whole recipe visible.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-library.png" alt="Library grid with model badges, durations, and date sections" loading="lazy" /></div></div></div><div class="shot-copy"><span>Library</span><h3>Every generation, findable</h3><p>Search, folders, likes, and date sections. Videos stay grouped under their source image with model and duration badges.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><video src="./media/ui-compare-demo.mp4" autoplay muted loop playsinline></video></div></div></div><div class="shot-copy"><span>Upscale · Compare</span><h3>Original ↔ upscaled, one divider</h3><p>The detail viewer supports reveal, pan, pinch or wheel zoom, 1:1, and fit.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><video src="./media/ui-region-demo.mp4" autoplay muted loop playsinline></video></div></div></div><div class="shot-copy"><span>Region · in motion</span><h3>Draw, drag, describe</h3><p>Add a box, place it, and give it a prompt. Every region carries its own instructions.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-profiles.png" alt="Profile picker with avatars and PIN badges" loading="lazy" /></div></div></div><div class="shot-copy"><span>Profiles</span><h3>Who&rsquo;s creating?</h3><p>Netflix-style profiles with avatars and optional PINs, with separate galleries, folders, presets, and history for each person.</p></div></article>
-          <article class="shot"><div class="shot-image"><div class="laptop"><div class="laptop-screen"><img src="./mix-studio-dependencies.png" alt="Desktop Dependencies card reporting every node group ready" loading="lazy" /></div></div></div><div class="shot-copy"><span>Setup health</span><h3>Dependencies, kept green</h3><p>Advanced Settings scans every enabled model and node family, and the owner can install anything missing in one click.</p></div></article>
+          <article class="shot"><div class="shot-image focus-create shot-motion"><div class="focus-window"><img src="./mix-studio-create.png" alt="Focused Create Image workspace with controls and generated output" /></div></div><div class="shot-copy"><span>Create</span><h3>Stay in one workspace</h3><p>Build on the left, watch progress in the center, and keep recent generations within reach.</p></div></article>
+          <article class="shot"><div class="shot-image focus-edit shot-motion"><div class="focus-window"><img src="./mix-studio-edit.png" alt="Focused Flux Klein instruction edit and result view" /></div></div><div class="shot-copy"><span>Edit</span><h3>One sentence, surgical changes</h3><p>Instruction edits with Flux 2 Klein: the prompt, edit area, and Expand controls stay beside the result.</p></div></article>
+          <article class="shot"><div class="shot-image focus-region shot-motion"><div class="focus-window"><img src="./mix-studio-region.png" alt="Focused region grid and generated composition in Mix Studio" /></div></div><div class="shot-copy"><span>Region</span><h3>Compose spatially</h3><p>Draw, overlap, and configure prompt areas directly on the output canvas.</p></div></article>
+          <article class="shot"><div class="shot-image focus-video shot-motion"><div class="focus-window"><img src="./mix-studio-video.png" alt="Focused LTX 2.3 inputs and selected video view" /></div></div><div class="shot-copy"><span>Video</span><h3>Build motion from the right inputs</h3><p>Frames, identity, lipsync audio, model, and motion controls stay together in one clear flow.</p></div></article>
+          <article class="shot"><div class="shot-image focus-scail shot-motion"><div class="focus-window"><img src="./mix-studio-scail.png" alt="Focused SCAIL 2 driving video and creative direction controls" loading="lazy" /></div></div><div class="shot-copy"><span>Video · SCAIL 2</span><h3>Motion in, new world out</h3><p>A driving video, a reference image, and optional creative direction stay visible as one recipe.</p></div></article>
+          <article class="shot"><div class="shot-image focus-library shot-motion"><div class="focus-window"><img src="./mix-studio-library.png" alt="Focused library grid of image and video generations" loading="lazy" /></div></div><div class="shot-copy"><span>Library</span><h3>A gallery worth returning to</h3><p>Search, folders, likes, and date sections keep strong image and video generations easy to find.</p></div></article>
+          <article class="shot"><div class="shot-image focus-compare"><div class="focus-window"><video src="./media/ui-compare-demo.mp4" autoplay muted loop playsinline></video></div></div><div class="shot-copy"><span>Upscale · Compare</span><h3>Original ↔ upscaled, one divider</h3><p>The animated detail viewer reveals the difference, then supports pan, zoom, 1:1, and fit.</p></div></article>
+          <article class="shot"><div class="shot-image focus-region-motion"><div class="focus-window"><video src="./media/ui-region-demo.mp4" autoplay muted loop playsinline></video></div></div><div class="shot-copy"><span>Region · in motion</span><h3>Draw, drag, describe</h3><p>Add a box, place it, and give it a prompt. Every region carries its own instructions.</p></div></article>
+          <article class="shot"><div class="shot-image focus-profiles"><div class="focus-window"><img src="./mix-studio-profiles-live.png" alt="Focused live profile picker with avatars and PIN badges" loading="lazy" /></div></div><div class="shot-copy"><span>Profiles</span><h3>Who&rsquo;s creating?</h3><p>Profiles with avatars and optional PINs keep galleries, folders, presets, and history separate for each person.</p></div></article>
+          <article class="shot"><div class="shot-image focus-guide"><div class="focus-window guide-demo"><img src="./mix-studio-library.png" alt="Library view with an in-context gesture guide" loading="lazy" /><div class="guide-card" aria-hidden="true"><span>Gesture tip</span><strong>Reveal selection actions</strong><div class="guide-swipe"><i></i><b>Swipe up on the handle</b></div></div></div></div><div class="shot-copy"><span>Guidance</span><h3>Help appears in context</h3><p>Tooltips and focused walkthroughs explain gestures and controls when they become useful.</p></div></article>
         </div>
       </section>
 

@@ -78,13 +78,16 @@ test('selected-region inspector appears before the canvas with visual asset inpu
   assert.match(appJs, /\$\('#regionStrengthField'\)\.hidden = !hasLora/);
 });
 
-test('region canvas toolbar keeps actions beside an anchored resolution picker', () => {
+test('Region keeps the compact phone picker and reuses Image resolution on wider screens', () => {
   assert.match(indexHtml, /class="region-toolbar"[\s\S]*id="regionAddBtn"[\s\S]*id="regionDeleteBtn"[\s\S]*id="regionResolutionBtn"/);
   assert.match(indexHtml, /id="regionResolutionMenu"[^>]*aria-hidden="true" inert/);
   assert.match(indexHtml, /id="regionAspectMenu"/);
   assert.match(indexHtml, /id="regionSizeMenu"/);
   assert.match(appJs, /function renderRegionResolutionPicker\(\)/);
-  assert.match(appJs, /closest\('\.panel'\)\.hidden = isRegion \|\|/);
+  assert.match(appJs, /const wideRegionResolutionQuery = window\.matchMedia\('\(min-width: 641px\)'\)/);
+  assert.match(appJs, /const useSharedRegionResolution = isRegion && wideRegionResolutionQuery\.matches/);
+  assert.match(appJs, /\$\('#resPanel'\)\.hidden = state\.view === 'edit'[\s\S]*\(isRegion && !useSharedRegionResolution\)/);
+  assert.match(appJs, /\$\('\.region-resolution-picker'\)\.hidden = useSharedRegionResolution/);
   assert.match(appJs, /setRegionResolutionExpanded\(false\)/);
   assert.match(appJs, /renderRegionResolutionPicker\(\);/);
   assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*position: absolute/);
@@ -95,6 +98,15 @@ test('region canvas toolbar keeps actions beside an anchored resolution picker',
   assert.match(styleCss, /\.region-size-menu \{[\s\S]*display: inline-flex;[\s\S]*border-radius: 999px/);
   assert.match(appJs, /const dimensions = dimensionsForMegapixels\(aspect\.ar, state\.mp\);[\s\S]*<small>\$\{dimensions\.w\} × \$\{dimensions\.h\}<\/small>/);
   assert.match(styleCss, /@media \(max-width: 640px\) \{[\s\S]*\.region-resolution-menu \{[\s\S]*position: fixed;[\s\S]*max-height: min\(70dvh, 430px\);[\s\S]*overflow-y: auto/);
+});
+
+test('tablet Region rail is wider, container-aware, and hides only its scrollbar chrome', () => {
+  assert.match(styleCss, /\.region-workspace \{[\s\S]*container: region-workspace \/ inline-size/);
+  assert.match(styleCss, /@container region-workspace \(max-width: 340px\)[\s\S]*\.region-fields \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) 50px/);
+  assert.match(styleCss, /body\[data-ui-mode="region"\] \.tabs-wrap,[\s\S]*body\[data-ui-mode="region"\] \.studio-workspace \{[\s\S]*grid-template-columns: 380px minmax\(420px, 1fr\) 300px/);
+  assert.match(styleCss, /#view-create \{[\s\S]*scrollbar-width: none;[\s\S]*-ms-overflow-style: none/);
+  assert.match(styleCss, /#view-create::\-webkit-scrollbar \{[\s\S]*display: none;[\s\S]*width: 0;[\s\S]*height: 0/);
+  assert.match(styleCss, /body\[data-ui-mode="region"\] \.region-toolbar-actions \.chip \{[\s\S]*white-space: nowrap/);
 });
 
 test('region LoRA settings use an accessible animated disclosure', () => {
