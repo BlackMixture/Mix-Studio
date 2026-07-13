@@ -101,6 +101,7 @@ const state = {
   privateUnlocked: false,
   activeFolder: 'all',
   mediaFilter: 'all',
+  sortMode: 'new',
   likesOnly: false,
   libraryQuery: '',
   mediaPreferences: {
@@ -1382,6 +1383,7 @@ function saveForm() {
     localStorage.setItem(formKey(), JSON.stringify({
       workspaceVersion: 2,
       activeView: ['create', 'edit', 'video'].includes(state.view) ? state.view : 'create',
+      gallerySort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
       loras: state.loras, videoLoras: state.videoLoras, editLoras: state.editLoras, editLorasByEngine: state.editLorasByEngine, prompts: state.prompts,
       kleinOutpaintConsistencyLoras: state.kleinOutpaintConsistencyLoras,
@@ -1466,6 +1468,7 @@ function loadForm() {
     const f = JSON.parse(localStorage.getItem(formKey()) || localStorage.getItem('ks-form') || 'null');
     if (!f) return;
     state.view = ['create', 'edit', 'video'].includes(f.activeView) ? f.activeView : 'create';
+    state.sortMode = ['new', 'active', 'old', 'az'].includes(f.gallerySort) ? f.gallerySort : 'new';
     state.enhance = f.enhance !== false;
     state.aspect = f.aspect || '1:1';
     state.mp = f.mp || 1;
@@ -13503,12 +13506,24 @@ $('#lbVideo').addEventListener('click', (event) => {
   event.preventDefault();
   event.stopImmediatePropagation();
 }, true);
-state.sortMode = 'new';
 function closeGallerySort() {
   $('#gallerySort').classList.remove('open');
   $('#gallerySortTrigger').setAttribute('aria-expanded', 'false');
   $('#sortSeg').setAttribute('aria-hidden', 'true');
   $('#sortSeg').inert = true;
+}
+function syncGallerySortControl() {
+  const mode = ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new';
+  state.sortMode = mode;
+  const buttons = $$('#sortSeg button');
+  const selected = buttons.find((button) => button.dataset.sort === mode) || buttons[0];
+  buttons.forEach((button) => {
+    const active = button === selected;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.setAttribute('aria-selected', String(active));
+  });
+  $('#gallerySortLabel').textContent = selected?.querySelector('span')?.textContent.trim() || 'Newest';
 }
 $('#gallerySortTrigger').addEventListener('click', () => {
   const open = !$('#gallerySort').classList.contains('open');
@@ -13522,14 +13537,8 @@ $('#gallerySortTrigger').addEventListener('click', () => {
 });
 $$('#sortSeg button').forEach((b) => b.addEventListener('click', () => {
   state.sortMode = b.dataset.sort;
-  const buttons = $$('#sortSeg button');
-  buttons.forEach((x) => {
-    const active = x === b;
-    x.classList.toggle('active', active);
-    x.setAttribute('aria-pressed', String(active));
-    x.setAttribute('aria-selected', String(active));
-  });
-  $('#gallerySortLabel').textContent = b.textContent.replace('✓', '').trim();
+  syncGallerySortControl();
+  saveForm();
   closeGallerySort();
   renderGrid();
 }));
@@ -16540,6 +16549,7 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
 });
 
 loadForm();
+syncGallerySortControl();
 setPromptDraft(state.prompts[state.view] || '');
 applySavedEngineOrders();
 loadMediaPreferences();
