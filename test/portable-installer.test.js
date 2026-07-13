@@ -76,7 +76,15 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /scail-hand-fantasy\.mp4/);
   assert.match(page, /scail-wireframe-mech\.mp4/);
   assert.match(page, /ltx-shark\.mp4/);
-  assert.match(page, /depth-soldier\.jpg/);
+  assert.match(page, /create-lion\.jpg/);
+  assert.match(page, /create-mercedes\.jpg/);
+  assert.match(page, /create-corridor\.jpg/);
+  assert.match(page, /create-squid\.jpg/);
+  assert.match(page, /upscale-before\.jpg/);
+  assert.match(page, /upscale-after\.jpg/);
+  assert.match(page, /ltx-ruins\.mp4/);
+  assert.match(page, /edit-aging-motion\.mp4/);
+  assert.match(page, /data-loop-end="2"/);
   assert.match(page, /region-map\.jpg/);
   assert.match(page, /outpaint-source\.jpg/);
   assert.match(page, /class="outpaint-sequence/);
