@@ -37,19 +37,61 @@ test('named workspaces can be saved, loaded, replaced, and deleted per profile',
   assert.match(html, /id="workspaceSaveCurrent"/);
   assert.match(html, /id="workspaceReset"/);
   assert.match(app, /function workspaceLibraryKey\(\)/);
-  assert.match(app, /ks-workspaces-/);
+  assert.match(app, /profileStorageKey\('ks-workspaces'\)/);
   assert.match(app, /function renderSavedWorkspaces\(\)/);
-  assert.match(app, /localStorage\.setItem\(formKey\(\), JSON\.stringify\(entry\.snapshot\)\)/);
+  assert.match(app, /const key = formKey\(\);[\s\S]*localStorage\.setItem\(key, JSON\.stringify\(entry\.snapshot\)\);[\s\S]*reloadWithoutWorkspaceAutosave\(\)/);
   assert.match(css, /\.saved-workspace/);
   assert.match(css, /\.sheet-panel\.workspaces-panel \{[^}]*background: #000/);
 });
 
 test('reset clears only the current autosave and keeps named workspaces', () => {
   assert.match(app, /Reset current workspace\?/);
-  assert.match(app, /localStorage\.removeItem\(formKey\(\)\)/);
+  assert.match(app, /const key = formKey\(\);\r?\n  if \(key\) localStorage\.removeItem\(key\);[\s\S]*reloadWithoutWorkspaceAutosave\(\)/);
   assert.doesNotMatch(app, /removeItem\(workspaceLibraryKey\(\)\)/);
   assert.match(css, /#appDialogSheet \{ z-index: 220; \}/);
   assert.match(app, /if \(!inputOptions && !choices\.length\) \$\('#appDialogConfirm'\)\.focus\(\)/);
+});
+
+test('workspace storage stays bound to the profile that loaded the page', () => {
+  const declaration = app.match(/const workspaceSessionProfileId = localStorage\.getItem\('ks-profile-id'\) \|\| '';/)?.[0];
+  const helpers = app.match(/function profileStorageKey\(prefix, profileId = workspaceSessionProfileId\) \{[\s\S]*?\n\}\n\nfunction formKey\(\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(declaration);
+  assert.ok(helpers);
+
+  const values = new Map([['ks-profile-id', 'owner']]);
+  const localStorage = { getItem: (key) => values.get(key) || null };
+  const storage = Function('localStorage', `${declaration}\n${helpers}\nreturn { formKey, profileStorageKey };`)(localStorage);
+  assert.equal(storage.formKey(), 'ks-form-owner');
+  assert.equal(storage.profileStorageKey('ks-workspaces'), 'ks-workspaces-owner');
+
+  values.set('ks-profile-id', 'new-profile');
+  assert.equal(storage.formKey(), 'ks-form-owner');
+  assert.equal(storage.profileStorageKey('ks-workspaces'), 'ks-workspaces-owner');
+});
+
+test('new profiles start blank instead of loading a global or outgoing workspace', () => {
+  const loadStart = app.indexOf('function loadForm()');
+  const loadEnd = app.indexOf('function workspaceLibraryKey()', loadStart);
+  const loadFormSource = app.slice(loadStart, loadEnd);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart);
+  assert.match(loadFormSource, /const key = formKey\(\);\r?\n  if \(!key\) return;/);
+  assert.match(loadFormSource, /localStorage\.getItem\(key\) \|\| 'null'/);
+  assert.doesNotMatch(loadFormSource, /localStorage\.getItem\('ks-form'\)/);
+  assert.match(app, /localStorage\.removeItem\(profileStorageKey\('ks-form', r\.profile\.id\)\)/);
+  assert.match(app, /localStorage\.removeItem\(profileStorageKey\('ks-workspaces', r\.profile\.id\)\)/);
+  assert.match(app, /prompts: \{ create: '', edit: '', video: '' \}/);
+  assert.match(app, /loras: \[\]/);
+  assert.match(app, /videoLoras: \[\]/);
+  assert.match(app, /editLoras: \[\]/);
+  assert.match(app, /refs: \[null, null, null\]/);
+  assert.match(app, /regions: \[\]/);
+});
+
+test('intentional reloads cannot recreate or overwrite workspace storage on pagehide', () => {
+  assert.match(app, /function saveForm\(\) \{\r?\n  const key = formKey\(\);\r?\n  if \(suppressWorkspaceAutosave \|\| !key\) return;/);
+  assert.match(app, /function reloadWithoutWorkspaceAutosave\(\) \{\r?\n  suppressWorkspaceAutosave = true;\r?\n  location\.reload\(\);\r?\n\}/);
+  assert.match(app, /window\.addEventListener\('pagehide', saveForm\)/);
+  assert.match(app, /window\.addEventListener\('storage',[\s\S]*event\.key !== 'ks-profile-id'[\s\S]*reloadWithoutWorkspaceAutosave\(\)/);
 });
 
 test('interactive controls use the shared SVG language instead of emoji icons', () => {

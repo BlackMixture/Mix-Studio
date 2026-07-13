@@ -7,6 +7,12 @@ const CameraSettings = window.KreaCameraSettings;
 const ProgressEta = window.KreaProgressEta;
 const JobReconciliation = window.KreaJobReconciliation;
 const progressEta = ProgressEta.createProgressEtaTracker();
+// Keep every local workspace write bound to the profile that loaded this
+// document. Profile transitions update localStorage before the old page exits,
+// so consulting the live key during pagehide can otherwise copy one profile's
+// setup into another profile.
+const workspaceSessionProfileId = localStorage.getItem('ks-profile-id') || '';
+let suppressWorkspaceAutosave = false;
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -692,7 +698,7 @@ async function loginProfile(p) {
       body: JSON.stringify({ pin }),
     });
     localStorage.setItem('ks-profile-id', r.profile.id);
-    location.reload();
+    reloadWithoutWorkspaceAutosave();
   } catch (e) { toast(e.message, true); }
 }
 
@@ -716,8 +722,12 @@ $('#profileCreateForm').addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, pin: $('#newProfilePin').value.trim() }),
     });
+    // The server returned a newly created identity, so it must always begin
+    // without an autosave or named workspaces from an earlier browser session.
+    localStorage.removeItem(profileStorageKey('ks-form', r.profile.id));
+    localStorage.removeItem(profileStorageKey('ks-workspaces', r.profile.id));
     localStorage.setItem('ks-profile-id', r.profile.id);
-    location.reload();
+    reloadWithoutWorkspaceAutosave();
   } catch (e) {
     $('#newProfileError').textContent = e.message;
     $('#newProfileError').hidden = false;
@@ -742,9 +752,10 @@ $('#profileBtn').addEventListener('click', () => {
 });
 
 async function switchProfile() {
+  saveForm();
   try { await api('/api/logout', { method: 'POST' }); } catch { /* noop */ }
   localStorage.removeItem('ks-profile-id');
-  location.reload();
+  reloadWithoutWorkspaceAutosave();
 }
 
 /* --- edit own profile: name, PIN, photo, delete --- */
@@ -826,7 +837,7 @@ $('#peDelete').addEventListener('click', async () => {
       body: JSON.stringify({ confirmName: typed }),
     });
     localStorage.removeItem('ks-profile-id');
-    location.reload();
+    reloadWithoutWorkspaceAutosave();
   } catch (e) { toast(e.message, true); }
 });
 
@@ -895,8 +906,9 @@ async function checkAuth() {
     state.profile = me.profile;
     if (localStorage.getItem('ks-profile-id') !== me.profile.id) {
       // Cookie changed (another tab / new sign-in): reload under the right key
+      saveForm();
       localStorage.setItem('ks-profile-id', me.profile.id);
-      location.reload();
+      reloadWithoutWorkspaceAutosave();
       return;
     }
     try {
@@ -912,6 +924,15 @@ async function checkAuth() {
   }
 }
 checkAuth();
+
+window.addEventListener('storage', (event) => {
+  if (event.key !== 'ks-profile-id' || (event.newValue || '') === workspaceSessionProfileId) return;
+  // A different tab changed the shared profile session. Preserve this tab's
+  // setup under its original profile, then reload before it can write or submit
+  // work as the newly active cookie identity.
+  saveForm();
+  reloadWithoutWorkspaceAutosave();
+});
 
 let actionMenuEl = null;
 let actionMenuCleanup = null;
@@ -1301,18 +1322,29 @@ function computeDims() {
 }
 
 /* Form state is per profile (prompts/regions/LoRAs shouldn't leak
-   between accounts). The id is cached so loadForm can run synchronously. */
+   between accounts). The id is captured once so outgoing autosaves cannot be
+   redirected when login changes the live localStorage value before reload. */
+function profileStorageKey(prefix, profileId = workspaceSessionProfileId) {
+  const id = String(profileId || '').trim();
+  return id ? `${prefix}-${id}` : '';
+}
+
 function formKey() {
-  return 'ks-form-' + (localStorage.getItem('ks-profile-id') || 'default');
+  return profileStorageKey('ks-form');
 }
 
 function mediaPreferencesKey() {
-  return 'ks-media-preferences-' + (localStorage.getItem('ks-profile-id') || 'default');
+  return profileStorageKey('ks-media-preferences');
 }
 
 function loadMediaPreferences() {
+  const key = mediaPreferencesKey();
+  if (!key) {
+    state.mediaPreferences = { videoPreviews: true, previewCache: false };
+    return;
+  }
   try {
-    const saved = JSON.parse(localStorage.getItem(mediaPreferencesKey()) || 'null');
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
     state.mediaPreferences = {
       videoPreviews: saved?.videoPreviews !== false,
       previewCache: saved?.previewCache === true,
@@ -1327,7 +1359,10 @@ function saveMediaPreferences(next) {
     videoPreviews: next.videoPreviews !== false,
     previewCache: next.previewCache === true,
   };
-  try { localStorage.setItem(mediaPreferencesKey(), JSON.stringify(state.mediaPreferences)); } catch { /* noop */ }
+  const key = mediaPreferencesKey();
+  if (key) {
+    try { localStorage.setItem(key, JSON.stringify(state.mediaPreferences)); } catch { /* noop */ }
+  }
   if (state.view === 'gallery') renderGrid();
   if (!state.mediaPreferences.previewCache) stopPreviewCacheWarmup();
 }
@@ -1376,11 +1411,13 @@ let persistedWorkspaceAudio = null;
 let persistedWorkspaceVideoControls = null;
 
 function saveForm() {
+  const key = formKey();
+  if (suppressWorkspaceAutosave || !key) return;
   try {
     rememberEditLoras();
     if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
     captureGenerationTuning(generationTuningMode());
-    localStorage.setItem(formKey(), JSON.stringify({
+    localStorage.setItem(key, JSON.stringify({
       workspaceVersion: 2,
       activeView: ['create', 'edit', 'video'].includes(state.view) ? state.view : 'create',
       gallerySort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
@@ -1464,8 +1501,10 @@ function saveForm() {
   } catch { /* noop */ }
 }
 function loadForm() {
+  const key = formKey();
+  if (!key) return;
   try {
-    const f = JSON.parse(localStorage.getItem(formKey()) || localStorage.getItem('ks-form') || 'null');
+    const f = JSON.parse(localStorage.getItem(key) || 'null');
     if (!f) return;
     state.view = ['create', 'edit', 'video'].includes(f.activeView) ? f.activeView : 'create';
     state.sortMode = ['new', 'active', 'old', 'az'].includes(f.gallerySort) ? f.gallerySort : 'new';
@@ -1667,18 +1706,21 @@ function loadForm() {
 }
 
 function workspaceLibraryKey() {
-  return 'ks-workspaces-' + (localStorage.getItem('ks-profile-id') || 'default');
+  return profileStorageKey('ks-workspaces');
 }
 
 function savedWorkspaces() {
+  const key = workspaceLibraryKey();
+  if (!key) return [];
   try {
-    const entries = JSON.parse(localStorage.getItem(workspaceLibraryKey()) || '[]');
+    const entries = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(entries) ? entries.filter((entry) => entry && entry.id && entry.snapshot).slice(0, 30) : [];
   } catch { return []; }
 }
 
 function writeSavedWorkspaces(entries) {
-  localStorage.setItem(workspaceLibraryKey(), JSON.stringify(entries.slice(0, 30)));
+  const key = workspaceLibraryKey();
+  if (key) localStorage.setItem(key, JSON.stringify(entries.slice(0, 30)));
 }
 
 function workspaceModeLabel(snapshot) {
@@ -1708,8 +1750,10 @@ function renderSavedWorkspaces() {
     load.type = 'button';
     load.textContent = 'Load';
     load.addEventListener('click', () => {
-      localStorage.setItem(formKey(), JSON.stringify(entry.snapshot));
-      location.reload();
+      const key = formKey();
+      if (!key) return;
+      localStorage.setItem(key, JSON.stringify(entry.snapshot));
+      reloadWithoutWorkspaceAutosave();
     });
     const del = document.createElement('button');
     del.type = 'button';
@@ -1737,7 +1781,8 @@ function openWorkspaces() {
 $('#workspacesBtn').addEventListener('click', openWorkspaces);
 $('#workspaceSaveCurrent').addEventListener('click', async () => {
   saveForm();
-  const snapshot = JSON.parse(localStorage.getItem(formKey()) || 'null');
+  const key = formKey();
+  const snapshot = key ? JSON.parse(localStorage.getItem(key) || 'null') : null;
   if (!snapshot) return;
   const proposed = await askText({
     title: 'Save workspace',
@@ -1766,12 +1811,18 @@ $('#workspaceReset').addEventListener('click', async () => {
     confirmLabel: 'Reset workspace',
     danger: true,
   })) return;
-  localStorage.removeItem(formKey());
+  const key = formKey();
+  if (key) localStorage.removeItem(key);
   localStorage.removeItem('ks-form');
-  location.reload();
+  reloadWithoutWorkspaceAutosave();
 });
 
 window.addEventListener('pagehide', saveForm);
+
+function reloadWithoutWorkspaceAutosave() {
+  suppressWorkspaceAutosave = true;
+  location.reload();
+}
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
@@ -10974,7 +11025,7 @@ function previewCacheAvailable() {
 }
 
 function previewCacheName() {
-  return PREVIEW_CACHE_PREFIX + (localStorage.getItem('ks-profile-id') || 'default');
+  return PREVIEW_CACHE_PREFIX + (workspaceSessionProfileId || 'anonymous');
 }
 
 function galleryImageSource(item) {
@@ -16112,15 +16163,15 @@ let contextualGuideTimer = null;
 let pendingContextualGuideId = '';
 
 function guidedTourStorageKey() {
-  return `ks-guided-tour-${localStorage.getItem('ks-profile-id') || 'default'}`;
+  return profileStorageKey('ks-guided-tour') || 'ks-guided-tour-anonymous';
 }
 
 function guidedTipsStorageKey() {
-  return `ks-contextual-guides-${localStorage.getItem('ks-profile-id') || 'default'}`;
+  return profileStorageKey('ks-contextual-guides') || 'ks-contextual-guides-anonymous';
 }
 
 function contextualGuideSeenKey(id) {
-  return `ks-context-guide-${localStorage.getItem('ks-profile-id') || 'default'}-${id}`;
+  return `${profileStorageKey('ks-context-guide') || 'ks-context-guide-anonymous'}-${id}`;
 }
 
 function contextualGuidesEnabled() {
