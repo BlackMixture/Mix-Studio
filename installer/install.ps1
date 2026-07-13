@@ -4,6 +4,7 @@ param(
   [string]$ComfyPath,
   [string]$ModelsPath,
   [string]$FeatureConfigFile,
+  [string]$HardwareProfileFile,
   [ValidateSet('existing', 'desktop')]
   [string]$ComfyMode = 'existing',
   [switch]$InstallDependencies,
@@ -21,8 +22,11 @@ $SettingsFile = Join-Path $DataDir 'settings.json'
 $ExistingInstallFile = if (Test-Path $InstallFile) { $InstallFile } elseif (Test-Path $PreservedInstallFile) { $PreservedInstallFile } else { $InstallFile }
 $FeatureManifest = Join-Path $PSScriptRoot 'feature-manifest.json'
 $DependencyInstaller = Join-Path $PSScriptRoot 'install-dependencies.js'
+$HardwareProfileScript = Join-Path $PSScriptRoot 'hardware-profile.ps1'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $OfficialComfyDesktopUrl = 'https://download.comfy.org/windows/nsis/x64'
+if (-not (Test-Path $HardwareProfileScript)) { throw 'The hardware detection helper is missing from this checkout.' }
+. $HardwareProfileScript
 
 function Write-Step([string]$Message) {
   Write-Host "`n==> $Message" -ForegroundColor Cyan
@@ -178,6 +182,14 @@ function Install-ComfyDesktop {
   throw 'ComfyUI Desktop was installed, but initialization was not completed within 30 minutes. Finish its setup, then run install.bat again; the completed installation will be detected.'
 }
 
+$HardwareProfile = if ($HardwareProfileFile) {
+  if (-not (Test-Path $HardwareProfileFile)) { throw "Hardware profile file not found: $HardwareProfileFile" }
+  Read-JsonObject $HardwareProfileFile
+} else {
+  Get-MixStudioHardwareProfile
+}
+$HardwareSummary = Get-MixStudioHardwareSummary $HardwareProfile
+
 Write-Host ''
 Write-Host '  Mix Studio portable setup' -ForegroundColor White
 Write-Host '  Your gallery and settings are preserved. Setup never deletes data.' -ForegroundColor DarkGray
@@ -213,6 +225,13 @@ if ($NodeMajor -lt 22) {
   throw 'Node.js 22+ is required. Install it from https://nodejs.org and run install.bat again.'
 }
 Write-Host "Node.js $NodeVersion" -ForegroundColor Green
+
+Write-Step 'Checking hardware fit'
+Write-Host $HardwareSummary -ForegroundColor Cyan
+$DetectedGpu = Get-MixStudioProperty $HardwareProfile 'gpu' ([pscustomobject]@{})
+if (-not [bool](Get-MixStudioProperty $DetectedGpu 'available' $false)) {
+  Write-Host 'No NVIDIA GPU was detected. Setup will keep optional model families off by default and flag difficult selections.' -ForegroundColor Yellow
+}
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $UsingPreservedData = [IO.Path]::GetFullPath($DataDir).TrimEnd('\') -ne [IO.Path]::GetFullPath($LocalDataDir).TrimEnd('\')
@@ -259,6 +278,7 @@ $RequestedFeatures = if ($FeatureConfigFile) {
   if (-not (Test-Path $FeatureConfigFile)) { throw "Feature selection file not found: $FeatureConfigFile" }
   Read-JsonObject $FeatureConfigFile
 } else { [pscustomobject]@{} }
+$HasExistingFeatureSelection = @($ExistingFeatures.PSObject.Properties).Count -gt 0
 if (Test-Path $FeatureManifest) {
   $Manifest = Get-Content $FeatureManifest -Raw | ConvertFrom-Json
   $LastGroup = ''
@@ -269,10 +289,16 @@ if (Test-Path $FeatureManifest) {
       Write-Host "`n$($Group.ToUpperInvariant())" -ForegroundColor DarkCyan
       $LastGroup = $Group
     }
-    $SavedDefault = [bool](Existing-PropertyValue $ExistingFeatures ([string]$Feature.id) ([bool]$Feature.default))
-    $DefaultEnabled = [bool](Existing-PropertyValue $RequestedFeatures ([string]$Feature.id) $SavedDefault)
+    $FeatureId = [string]$Feature.id
+    $Fit = Get-MixStudioFeatureFit $Feature $HardwareProfile
+    $HasSavedValue = $null -ne $ExistingFeatures.PSObject.Properties[$FeatureId]
+    $HasRequestedValue = $null -ne $RequestedFeatures.PSObject.Properties[$FeatureId]
+    $SavedDefault = if ($HasSavedValue) { [bool]$ExistingFeatures.PSObject.Properties[$FeatureId].Value } elseif ($HasExistingFeatureSelection) { [bool]$Feature.default } else { [bool]$Fit.recommendedDefault }
+    $DefaultEnabled = if ($HasRequestedValue) { [bool]$RequestedFeatures.PSObject.Properties[$FeatureId].Value } else { $SavedDefault }
+    $FitColor = if ($Fit.level -eq 'recommended') { 'Green' } elseif ($Fit.level -eq 'difficult') { 'Red' } else { 'Yellow' }
+    Write-Host "  $($Fit.label): $($Fit.detail)" -ForegroundColor $FitColor
     $Enabled = Read-YesNo "Enable $($Feature.label)?" $DefaultEnabled
-    Set-ObjectProperty $FeatureValues ([string]$Feature.id) $Enabled
+    Set-ObjectProperty $FeatureValues $FeatureId $Enabled
   }
   foreach ($Feature in $Manifest.features) {
     if ($null -eq $Feature.dependsOn) { continue }
@@ -281,6 +307,19 @@ if (Test-Path $FeatureManifest) {
         Set-ObjectProperty $FeatureValues ([string]$Feature.id) $false
       }
     }
+  }
+
+  $SelectedHardwareWarnings = @()
+  foreach ($Feature in $Manifest.features) {
+    $FeatureId = [string]$Feature.id
+    $Selected = $Feature.required -eq $true -or [bool](Existing-PropertyValue $FeatureValues $FeatureId $false)
+    if (-not $Selected) { continue }
+    $Fit = Get-MixStudioFeatureFit $Feature $HardwareProfile
+    if ($Fit.level -in @('limited', 'difficult')) { $SelectedHardwareWarnings += "$($Feature.label): $($Fit.label)" }
+  }
+  if ($SelectedHardwareWarnings.Count) {
+    Write-Host 'Selected hardware warnings:' -ForegroundColor Yellow
+    foreach ($Warning in $SelectedHardwareWarnings) { Write-Host "  $Warning" -ForegroundColor Yellow }
   }
 }
 
@@ -301,6 +340,7 @@ $InstallConfig = [pscustomobject]@{
     modelsPath = $SelectedModels
     url = $SelectedUrl
   }
+  hardware = $HardwareProfile
 }
 
 Set-ObjectProperty $Settings 'comfyUrl' $SelectedUrl

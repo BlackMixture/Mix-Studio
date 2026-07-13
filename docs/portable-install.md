@@ -11,7 +11,7 @@ The guided bootstrap supports both a clean Windows machine and an existing Comfy
 3. The native setup wizard opens automatically and uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the Mix Studio web interface.
 4. Let setup install Node.js LTS with `winget` if Node 22+ is not already available, then rerun `%USERPROFILE%\Mix Studio\install.bat` after PATH refreshes.
 5. Choose whether to install official ComfyUI Desktop or reuse an existing environment. Complete ComfyUI's NVIDIA and storage-location screens if it is new.
-6. Enable the desired Edit and Video families, then leave dependency downloads enabled to install their curated models and custom nodes. The optimized image starter set includes Krea 2 depth guidance and SeedVR2. Each Edit selection includes its matching outpaint tools, and LTX includes Face ID support. Optional video and advanced edit families can each add tens of gigabytes.
+6. Review the detected NVIDIA GPU, VRAM, and system RAM. Setup preselects model families rated for the machine, labels borderline choices that will use system-memory offload, and flags below-minimum workflows as difficult. You may override the recommendation after confirming the warning. Leave dependency downloads enabled to install the selected curated precision variants and custom nodes. The optimized image starter set includes Krea 2 depth guidance and SeedVR2. Each Edit selection includes its matching outpaint tools, and LTX includes Face ID support.
 7. Double-click `start.bat` inside the Mix Studio folder.
 
 ## Phone-first access with Tailscale
@@ -29,7 +29,7 @@ The installer is intentionally idempotent: rerunning it reads existing values, p
 
 ## Files setup creates
 
-- `install.json`: portable-install metadata, Git update channel, and existing ComfyUI/model paths.
+- `install.json`: portable-install metadata, Git update channel, existing ComfyUI/model paths, and the last detected hardware profile used for recommendations.
 - `data/settings.json`: the ComfyUI URL and enabled model families merged with existing app settings.
 - `data/settings.json.backup-<timestamp>`: created before setup updates an existing settings file.
 - `install.json.backup-<timestamp>`: created before setup updates an existing install file.
@@ -38,9 +38,9 @@ All are machine-specific and ignored by Git. The installer does not delete or re
 
 ## Uninstalling
 
-Double-click `uninstall.bat` in the checkout. After confirmation it moves managed profiles, settings, uploads, and generations to `%LOCALAPPDATA%\Mix Studio\data`, preserves the previous ComfyUI connection metadata, and removes the entire checkout. This leaves `%USERPROFILE%\Mix Studio` available for a clean downloader reinstall. Setup automatically reconnects the preserved data and ComfyUI paths. The uninstaller never removes ComfyUI, shared model folders, mirrored exports, arbitrary external data paths, or Node.js.
+Double-click `uninstall.bat` in the checkout. After confirmation it moves managed profiles, settings, uploads, and generations to `%LOCALAPPDATA%\Mix Studio\data`, preserves the previous ComfyUI connection and hardware metadata, and removes the entire checkout. This leaves `%USERPROFILE%\Mix Studio` available for a clean downloader reinstall. Setup automatically reconnects the preserved data and ComfyUI paths, then refreshes the hardware recommendations. The uninstaller never removes ComfyUI, shared model folders, mirrored exports, arbitrary external data paths, or Node.js.
 
-For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout and Mix Studio's managed local or preserved data folder; arbitrary external data, export, and model paths are not touched.
+For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout, Mix Studio's managed local or preserved data folder, and its preserved setup profile. Arbitrary external data, export, ComfyUI, and model paths are not touched.
 
 Browser-installed shortcuts, form state, media preferences, and compressed preview caches are stored independently on each device. Remove or clear them from that browser if a complete device-side cleanup is required.
 

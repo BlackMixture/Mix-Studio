@@ -25,6 +25,9 @@ $InstallFile = Join-Path $Root 'install.json'
 $ExistingInstallFile = if (Test-Path $InstallFile) { $InstallFile } elseif (Test-Path $PreservedInstallFile) { $PreservedInstallFile } else { $InstallFile }
 $ManifestFile = Join-Path $PSScriptRoot 'feature-manifest.json'
 $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
+$HardwareProfileScript = Join-Path $PSScriptRoot 'hardware-profile.ps1'
+if (-not (Test-Path $HardwareProfileScript)) { throw 'The hardware detection helper is missing from this checkout.' }
+. $HardwareProfileScript
 
 [xml]$Xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -276,9 +279,15 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
           </Grid>
 
           <Grid x:Name="PageFeatures" Visibility="Collapsed">
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <StackPanel><TextBlock Text="Choose your workflows" FontSize="30" FontWeight="Bold"/><TextBlock Text="Core image generation includes Krea 2, depth guidance, and SeedVR2 with optimized defaults. Each Edit family includes its matching outpaint tools; existing files are skipped." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,18" TextWrapping="Wrap"/></StackPanel>
-            <StackPanel Grid.Row="1">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Text="Choose your workflows" FontSize="30" FontWeight="Bold"/><TextBlock Text="Setup recommends the curated model variants that best match this machine. You can still choose any workflow after reviewing its hardware guidance." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,15" TextWrapping="Wrap"/></StackPanel>
+            <Border Grid.Row="1" Background="#07100D" BorderBrush="#24382E" BorderThickness="1" CornerRadius="14" Padding="14" Margin="0,0,0,12">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,12,0"><TextBlock x:Name="HardwareTitle" Text="Checking this PC…" FontWeight="SemiBold" FontSize="13"/><TextBlock x:Name="HardwareDetail" Foreground="{StaticResource Muted}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
+                <Button x:Name="UseRecommendedButton" Grid.Column="1" Style="{StaticResource BaseButton}" Content="Use recommendations" Padding="12,8" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            <StackPanel Grid.Row="2">
               <ToggleButton x:Name="DownloadModelsToggle" Style="{StaticResource FeatureToggle}" IsChecked="True">
                 <StackPanel><TextBlock Text="Download curated models and custom nodes" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="Install the dependencies selected for Mix Studio's tested workflows after ComfyUI is ready." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
               </ToggleButton>
@@ -286,11 +295,12 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
               <PasswordBox x:Name="HfTokenBox" Margin="0,0,0,5"/>
               <TextBlock Text="Used only for this setup session. Some providers require accepting their model license first; the token is never saved." Foreground="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" Margin="2,0,0,14"/>
             </StackPanel>
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0"><StackPanel x:Name="FeatureList"/></ScrollViewer>
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0"><StackPanel x:Name="FeatureList"/></ScrollViewer>
           </Grid>
 
           <Grid x:Name="PageReview" Visibility="Collapsed">
-            <StackPanel MaxWidth="650" VerticalAlignment="Center">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+            <StackPanel MaxWidth="650" Margin="0,4,0,4">
               <TextBlock Text="Ready to set up" FontSize="30" FontWeight="Bold"/>
               <TextBlock Text="Review the ComfyUI connection and curated workflows before anything is written." Foreground="{StaticResource Soft}" FontSize="15" Margin="0,9,0,24"/>
               <Border Background="#05070A" BorderBrush="#232936" BorderThickness="1" CornerRadius="17" Padding="20">
@@ -301,13 +311,17 @@ $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
                   <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
                   <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Models" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewModels" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
                   <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
+                  <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="This PC" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewHardware" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
+                  <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
                   <Grid Margin="0,0,0,15"><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Enabled tools" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewFeatures" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
                   <Border Height="1" Background="#1E222C" Margin="0,0,0,15"/>
                   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="Dependencies" Foreground="{StaticResource Muted}"/><TextBlock x:Name="ReviewDownloads" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold"/></Grid>
                 </StackPanel>
               </Border>
+              <Border x:Name="ReviewWarningsBorder" Visibility="Collapsed" Background="#181106" BorderBrush="#6B4B1F" BorderThickness="1" CornerRadius="14" Padding="15" Margin="0,14,0,0"><TextBlock x:Name="ReviewWarnings" Foreground="#F4C66B" TextWrapping="Wrap" LineHeight="18"/></Border>
               <Border Background="#09100C" BorderBrush="#20382A" BorderThickness="1" CornerRadius="14" Padding="15" Margin="0,16,0,0"><TextBlock Text="✓ Existing settings are backed up and merged. Gallery data is never replaced." Foreground="#9FD8AE" TextWrapping="Wrap"/></Border>
             </StackPanel>
+            </ScrollViewer>
           </Grid>
 
           <Grid x:Name="PageProgress" Visibility="Collapsed">
@@ -356,6 +370,10 @@ $Pages = @('PageWelcome', 'PageConnection', 'PageFeatures', 'PageReview', 'PageP
 $CurrentPage = 0
 $FeatureToggles = @{}
 $FeatureLabels = @{}
+$FeatureFits = @{}
+$FeatureDependencies = @{}
+$HardwareProfile = Get-MixStudioHardwareProfile
+$HardwareSummary = Get-MixStudioHardwareSummary $HardwareProfile
 
 function Read-JsonSafe([string]$Path) {
   if (-not (Test-Path $Path)) { return [pscustomobject]@{} }
@@ -439,15 +457,62 @@ function Quote-Argument([string]$Value) {
   return '"' + $Value.Replace('"', '\"') + '"'
 }
 
+function Ensure-FeatureDependencies {
+  foreach ($Id in $FeatureDependencies.Keys) {
+    if (-not $FeatureToggles.ContainsKey($Id) -or -not $FeatureToggles[$Id].IsChecked) { continue }
+    foreach ($Dependency in @($FeatureDependencies[$Id])) {
+      if ($FeatureToggles.ContainsKey([string]$Dependency)) { $FeatureToggles[[string]$Dependency].IsChecked = $true }
+    }
+  }
+}
+
+function Get-SelectedHardwareWarnings([string]$Level = '') {
+  $Warnings = @()
+  foreach ($Id in $FeatureFits.Keys) {
+    $Selected = $Id -eq 'core.image' -or ($FeatureToggles.ContainsKey($Id) -and $FeatureToggles[$Id].IsChecked)
+    $Fit = $FeatureFits[$Id]
+    if (-not $Selected -or ($Level -and $Fit.level -ne $Level) -or (-not $Level -and $Fit.level -notin @('limited', 'difficult'))) { continue }
+    $Label = if ($FeatureLabels.ContainsKey($Id)) { $FeatureLabels[$Id] } else { 'Core image generation' }
+    $Warnings += "${Label}: $($Fit.label). $($Fit.detail)"
+  }
+  return $Warnings
+}
+
+function Apply-HardwareRecommendations {
+  foreach ($Id in $FeatureToggles.Keys) {
+    if ($FeatureFits.ContainsKey($Id)) { $FeatureToggles[$Id].IsChecked = [bool]$FeatureFits[$Id].recommendedDefault }
+  }
+  Ensure-FeatureDependencies
+}
+
+function Write-HardwareProfile {
+  $Path = Join-Path $env:TEMP ("mix-studio-hardware-" + [Guid]::NewGuid().ToString('N') + '.json')
+  [IO.File]::WriteAllText($Path, ($HardwareProfile | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
+  return $Path
+}
+
+function Confirm-HardwareWarnings {
+  $Difficult = @(Get-SelectedHardwareWarnings 'difficult')
+  if (-not $Difficult.Count) { return $true }
+  $Message = "The following selected workflows are rated difficult on this PC and may run very slowly or fail with an out-of-memory error:`n`n" + ($Difficult -join "`n`n") + "`n`nContinue anyway?"
+  $Choice = [System.Windows.MessageBox]::Show($Message, 'Hardware warning', [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
+  return $Choice -eq [System.Windows.MessageBoxResult]::Yes
+}
+
 function Update-Review {
+  Ensure-FeatureDependencies
   (Ui 'ReviewUrl').Text = (Ui 'ComfyUrlBox').Text.Trim()
   (Ui 'ReviewComfyMode').Text = if ((Ui 'InstallComfyOption').IsChecked) { 'Install official ComfyUI Desktop for NVIDIA' } else { 'Reuse the existing ComfyUI environment' }
   $Models = (Ui 'ModelsPathBox').Text.Trim()
   (Ui 'ReviewModels').Text = if ($Models) { $Models } elseif ((Ui 'InstallComfyOption').IsChecked) { 'Use the model folder selected during ComfyUI initialization' } else { 'Use the connected ComfyUI model paths' }
+  (Ui 'ReviewHardware').Text = $HardwareSummary
   $Enabled = @()
   foreach ($Id in $FeatureToggles.Keys) { if ($FeatureToggles[$Id].IsChecked) { $Enabled += $FeatureLabels[$Id] } }
   (Ui 'ReviewFeatures').Text = if ($Enabled.Count) { $Enabled -join ', ' } else { 'Core image generation only' }
   (Ui 'ReviewDownloads').Text = if ((Ui 'DownloadModelsToggle').IsChecked) { 'Download missing curated models and custom nodes' } else { 'Configure workflows without downloading dependencies' }
+  $Warnings = @(Get-SelectedHardwareWarnings)
+  (Ui 'ReviewWarningsBorder').Visibility = if ($Warnings.Count) { 'Visible' } else { 'Collapsed' }
+  (Ui 'ReviewWarnings').Text = if ($Warnings.Count) { 'Hardware guidance' + "`n" + ($Warnings -join "`n") } else { '' }
 }
 
 function Write-FeatureSelection {
@@ -459,9 +524,11 @@ function Write-FeatureSelection {
 }
 
 function Begin-Install {
+  if (-not (Confirm-HardwareWarnings)) { return }
   (Ui 'ProgressDetail').Text = if ((Ui 'InstallComfyOption').IsChecked) { 'Downloading and verifying official ComfyUI Desktop…' } elseif ((Ui 'DownloadModelsToggle').IsChecked) { 'Preparing selected model and custom-node downloads…' } else { 'Saving the portable configuration…' }
   Show-Page 4
   $FeatureFile = Write-FeatureSelection
+  $HardwareFile = Write-HardwareProfile
   $Url = (Ui 'ComfyUrlBox').Text.Trim()
   $Comfy = (Ui 'ComfyPathBox').Text.Trim()
   $Models = (Ui 'ModelsPathBox').Text.Trim()
@@ -473,11 +540,13 @@ function Begin-Install {
     ' -ComfyPath ' + (Quote-Argument $Comfy) +
     ' -ModelsPath ' + (Quote-Argument $Models) +
     ' -FeatureConfigFile ' + (Quote-Argument $FeatureFile) +
+    ' -HardwareProfileFile ' + (Quote-Argument $HardwareFile) +
     ' -ComfyMode ' + (Quote-Argument $ComfyMode)
   if ($InstallDependencies) { $EngineArguments += ' -InstallDependencies' }
   $Work = [pscustomobject]@{
     EngineArguments = $EngineArguments
     FeatureFile = $FeatureFile
+    HardwareFile = $HardwareFile
     HfToken = $Token
   }
 
@@ -508,10 +577,13 @@ function Begin-Install {
       }
       $ErrorOutput = $Process.StandardError.ReadToEnd()
       $Process.WaitForExit()
-      $Event.Result = [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = ($OutputLines -join "`n"); Error = $ErrorOutput; FeatureFile = $WorkItem.FeatureFile }
+      $Event.Result = [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = ($OutputLines -join "`n"); Error = $ErrorOutput; FeatureFile = $WorkItem.FeatureFile; HardwareFile = $WorkItem.HardwareFile }
     } catch {
       if ($WorkItem.FeatureFile -and (Test-Path $WorkItem.FeatureFile)) {
         Remove-Item $WorkItem.FeatureFile -Force -ErrorAction SilentlyContinue
+      }
+      if ($WorkItem.HardwareFile -and (Test-Path $WorkItem.HardwareFile)) {
+        Remove-Item $WorkItem.HardwareFile -Force -ErrorAction SilentlyContinue
       }
       throw
     }
@@ -530,6 +602,9 @@ function Begin-Install {
     $Result = $Event.Result
     if ($Result.FeatureFile -and (Test-Path $Result.FeatureFile)) {
       Remove-Item $Result.FeatureFile -Force -ErrorAction SilentlyContinue
+    }
+    if ($Result.HardwareFile -and (Test-Path $Result.HardwareFile)) {
+      Remove-Item $Result.HardwareFile -Force -ErrorAction SilentlyContinue
     }
     if ($Result.ExitCode -eq 0) {
       Show-Page 5
@@ -584,8 +659,13 @@ if (Test-Path $ManifestFile) {
   $Manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
   $CurrentGroup = ''
   foreach ($Feature in $Manifest.features) {
+    $FeatureId = [string]$Feature.id
+    $Fit = Get-MixStudioFeatureFit $Feature $HardwareProfile
+    $FeatureFits[$FeatureId] = $Fit
+    $FeatureLabels[$FeatureId] = [string]$Feature.label
+    $FeatureDependencies[$FeatureId] = @($Feature.dependsOn)
     if ($Feature.required -eq $true) { continue }
-    $Group = ([string]$Feature.id).Split('.')[0].ToUpperInvariant()
+    $Group = $FeatureId.Split('.')[0].ToUpperInvariant()
     if ($Group -ne $CurrentGroup) {
       $Heading = New-Object Windows.Controls.TextBlock
       $Heading.Text = $Group
@@ -598,26 +678,39 @@ if (Test-Path $ManifestFile) {
     }
     $Toggle = New-Object Windows.Controls.Primitives.ToggleButton
     $Toggle.Style = $Window.Resources['FeatureToggle']
-    $FreshDefault = if ($ConfiguredBefore -and -not $HasSavedFeatureSelection) { $true } else { [bool]$Feature.default }
-    $Toggle.IsChecked = [bool](Property-Or $SavedFeatures ([string]$Feature.id) $FreshDefault)
+    $Toggle.Tag = $FeatureId
+    $FreshDefault = if ($ConfiguredBefore -and -not $HasSavedFeatureSelection) { $true } elseif (-not $ConfiguredBefore -and -not $HasSavedFeatureSelection) { [bool]$Fit.recommendedDefault } else { [bool]$Feature.default }
+    $Toggle.IsChecked = [bool](Property-Or $SavedFeatures $FeatureId $FreshDefault)
     $Copy = New-Object Windows.Controls.StackPanel
     $Title = New-Object Windows.Controls.TextBlock
     $Title.Text = [string]$Feature.label
     $Title.FontWeight = 'SemiBold'
     $Title.FontSize = 14
     $Sub = New-Object Windows.Controls.TextBlock
-    $Sub.Text = if ($Feature.models.Count -eq 1) { '1 model component' } else { "$($Feature.models.Count) model components" }
-    $Sub.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#8E99B7')
-    $Sub.FontSize = 11
+    $Sub.Text = "$($Fit.label) · $($Fit.detail)"
+    $Sub.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString($(switch ($Fit.level) { 'recommended' { '#9FD8AE' } 'limited' { '#F4C66B' } 'difficult' { '#F0A8A8' } default { '#8E99B7' } }))
+    $Sub.FontSize = 10.5
     $Sub.Margin = '0,4,0,0'
+    $Sub.TextWrapping = 'Wrap'
     $Copy.Children.Add($Title) | Out-Null
     $Copy.Children.Add($Sub) | Out-Null
     $Toggle.Content = $Copy
     (Ui 'FeatureList').Children.Add($Toggle) | Out-Null
-    $FeatureToggles[[string]$Feature.id] = $Toggle
-    $FeatureLabels[[string]$Feature.id] = [string]$Feature.label
+    $FeatureToggles[$FeatureId] = $Toggle
+    $Toggle.Add_Checked({
+      param($Sender, $Event)
+      foreach ($Dependency in @($FeatureDependencies[[string]$Sender.Tag])) {
+        if ($FeatureToggles.ContainsKey([string]$Dependency)) { $FeatureToggles[[string]$Dependency].IsChecked = $true }
+      }
+    })
   }
+  Ensure-FeatureDependencies
 }
+
+$CoreFit = $FeatureFits['core.image']
+(Ui 'HardwareTitle').Text = if ($CoreFit -and $CoreFit.level -eq 'difficult') { 'This PC may struggle with the core model' } else { 'Hardware recommendations ready' }
+(Ui 'HardwareDetail').Text = if ($CoreFit) { "$HardwareSummary`nCore image: $($CoreFit.label). $($CoreFit.detail)" } else { $HardwareSummary }
+(Ui 'UseRecommendedButton').Add_Click({ Apply-HardwareRecommendations })
 
 # Prerequisite summary is read-only; the engine performs the authoritative check.
 $HasGitCheckout = Test-Path (Join-Path $Root '.git')

@@ -67,7 +67,7 @@ The downloadable bootstrap installs Git through `winget` when needed, clones the
 
 On Windows, open the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
 
-The wizard separates ComfyUI, feature selection, and review into explicit steps. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
+The wizard separates ComfyUI, feature selection, and review into explicit steps. It reads the NVIDIA GPU and VRAM through `nvidia-smi` with a Windows hardware fallback, checks system RAM, and recommends only model families suited to a fresh machine. Each card identifies the curated precision variant and labels it as recommended, usable with offload, or difficult. Users can override the recommendation, but selected below-minimum workflows require an explicit warning confirmation. Existing feature choices are preserved on rerun. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
 
 ### Manual Git install
 
@@ -80,7 +80,7 @@ The wizard separates ComfyUI, feature selection, and review into explicit steps.
 
 3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI, model families, review, and installation.
 4. Choose **Install ComfyUI Desktop** or **Use existing ComfyUI**. New installations use the signed official NVIDIA desktop installer and are detected after initialization.
-5. Choose the Edit and Video families for this machine and whether setup should download their curated models and custom nodes. Mix Studio supplies the workflow-tested defaults; some selections can add tens of gigabytes.
+5. Review the hardware-based Edit and Video recommendations and whether setup should download their curated models and custom nodes. Mix Studio supplies the workflow-tested variants and defaults; some selections can add tens of gigabytes or rely heavily on system-memory offload.
 6. Review the plan, finish setup, and launch Mix Studio.
 
 The visual installer delegates all writes to a separate non-interactive install engine. That engine writes ignored, machine-specific configuration to `install.json` and merges the ComfyUI URL and feature choices into `data/settings.json`. If settings already exist, it creates a timestamped backup first. It never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
@@ -102,7 +102,7 @@ For new machines, setup downloads ComfyUI Desktop only from the official stable 
 
 You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
 
-To remove Mix Studio, double-click **uninstall.bat**. The uninstaller removes the portable checkout and, by default, moves its managed `data/` folder to `%LOCALAPPDATA%\Mix Studio\data` so the original checkout path is free for a clean reinstall. A later setup automatically reconnects those profiles, settings, and generations along with the previous ComfyUI paths. Use the explicit `-RemoveData` option only when you also want to erase managed local gallery data; it requires typing `DELETE`. ComfyUI, shared models, mirrored export files, arbitrary external data paths, and the system Node.js installation are never removed. Browser-installed shortcuts, local form settings, and compressed preview caches live on each phone or browser and must be cleared there.
+To remove Mix Studio, double-click **uninstall.bat**. The uninstaller removes the portable checkout and, by default, moves its managed `data/` folder to `%LOCALAPPDATA%\Mix Studio\data` so the original checkout path is free for a clean reinstall. A later setup automatically reconnects those profiles, settings, generations, ComfyUI paths, and the last detected hardware profile. Use the explicit `-RemoveData` option only when you also want to erase managed local gallery data and preserved setup metadata; it requires typing `DELETE`. ComfyUI, shared models, mirrored export files, arbitrary external data paths, and the system Node.js installation are never removed. Browser-installed shortcuts, local form settings, and compressed preview caches live on each phone or browser and must be cleared there.
 
 ### Installing missing dependencies
 

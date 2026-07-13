@@ -114,6 +114,7 @@ $PreserveData = -not $RemoveData
 Write-Host ''
 Write-Host '  Mix Studio uninstaller' -ForegroundColor White
 Write-Host '  ComfyUI, shared models, Node.js, and mirrored export files are never removed by this tool.' -ForegroundColor DarkGray
+Write-Host '  Preserved setup and hardware recommendations are kept only when gallery data is kept.' -ForegroundColor DarkGray
 Write-Host '  Browser shortcuts, browser form settings, and preview caches must be removed on each device.' -ForegroundColor DarkGray
 Write-Host "  Application folder: $Root" -ForegroundColor DarkGray
 if (Test-Path -LiteralPath $DataPath) {
@@ -152,6 +153,9 @@ if ($PreserveData) {
     Remove-Item -LiteralPath $DataPath -Recurse -Force
   }
 }
+if (-not $PreserveData -and (Test-Path -LiteralPath $PreservedInstall)) {
+  Remove-Item -LiteralPath $PreservedInstall -Force
+}
 
 Write-Host 'Uninstall is scheduled. Close Mix Studio before the cleanup runs.' -ForegroundColor Yellow
 Start-Cleanup
@@ -159,6 +163,6 @@ if ($PreserveData) {
   Write-Host "Profiles, settings, and gallery media will remain at $KeptData." -ForegroundColor Green
   Write-Host 'A later install automatically reconnects this preserved data.' -ForegroundColor Green
 } else {
-  Write-Host 'The application folder and managed local data will be removed. External data paths remain untouched.' -ForegroundColor Green
+  Write-Host 'The application folder, managed local data, and preserved setup profile will be removed. External data paths remain untouched.' -ForegroundColor Green
 }
 exit 0

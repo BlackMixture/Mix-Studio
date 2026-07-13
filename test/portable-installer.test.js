@@ -59,6 +59,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /audio for lipsync/);
   assert.match(page, /Leading models\. Optimized settings\./);
   assert.match(page, /workflow-tested defaults/);
+  assert.match(page, /detects GPU memory and system RAM/);
+  assert.match(page, /difficult models stay available as an informed opt-in/);
   assert.match(page, /animated progress with ETA/);
   assert.match(page, /reveal, zoom, and pan/);
   assert.match(page, /tailscale\.com\/download/);
@@ -104,6 +106,7 @@ test('visual wizard delegates writes to the non-interactive safe install engine'
 test('guided setup can install official ComfyUI and selected dependencies', () => {
   const ui = fs.readFileSync(path.join(root, 'installer', 'install-ui.ps1'), 'utf8');
   const engine = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
+  const hardware = fs.readFileSync(path.join(root, 'installer', 'hardware-profile.ps1'), 'utf8');
   const dependencyCli = require('../installer/install-dependencies');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
   const ltx = manifest.features.find((feature) => feature.id === 'video.ltx');
@@ -113,6 +116,18 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   assert.match(ui, /DownloadModelsToggle/);
   assert.match(ui, /HfTokenBox/);
   assert.match(ui, /EnvironmentVariables\['HF_TOKEN'\]/);
+  assert.match(ui, /HardwareTitle/);
+  assert.match(ui, /UseRecommendedButton/);
+  assert.match(ui, /ReviewWarningsBorder/);
+  assert.match(ui, /Confirm-HardwareWarnings/);
+  assert.match(engine, /\[string\]\$HardwareProfileFile/);
+  assert.match(engine, /hardware = \$HardwareProfile/);
+  assert.match(hardware, /nvidia-smi\.exe/);
+  assert.match(hardware, /Get-CimInstance Win32_VideoController/);
+  assert.match(hardware, /minimumVramGb/);
+  assert.match(hardware, /recommendedVramGb/);
+  assert.match(hardware, /Can run with offload/);
+  assert.match(hardware, /Difficult on this PC/);
   assert.match(engine, /https:\/\/download\.comfy\.org\/windows\/nsis\/x64/);
   assert.match(engine, /Get-AuthenticodeSignature/);
   assert.match(engine, /SignatureStatus\]::Valid/);
@@ -125,6 +140,13 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   assert.match(ltx.label, /Face ID/);
   assert.ok(ltx.models.includes('ltx-face-id'));
   assert.ok(ltx.nodes.includes('BFS Nodes'));
+  for (const feature of manifest.features) {
+    assert.ok(feature.variant, `${feature.id} identifies its curated model variant`);
+    assert.ok(feature.hardware, `${feature.id} includes hardware guidance`);
+    assert.ok(feature.hardware.minimumVramGb > 0, `${feature.id} has a minimum VRAM value`);
+    assert.ok(feature.hardware.recommendedVramGb >= feature.hardware.minimumVramGb, `${feature.id} has a valid recommended VRAM value`);
+    assert.ok(feature.hardware.recommendedRamGb >= feature.hardware.minimumRamGb, `${feature.id} has a valid recommended RAM value`);
+  }
   assert.deepEqual(dependencyCli.selectedComponents(
     { features: [{ id: 'core.image', required: true }, { id: 'video.ltx' }, { id: 'video.wan' }, { id: 'video.scail' }] },
     { 'video.ltx': true, 'video.wan': true, 'video.scail': true },
@@ -173,6 +195,8 @@ test('portable checkout has a conservative uninstaller entry point', () => {
   assert.match(uninstaller, /LOCALAPPDATA.*Mix Studio\\data/);
   assert.match(uninstaller, /mirrored export files are never removed/i);
   assert.match(uninstaller, /Copy-Item -LiteralPath \$InstallFile -Destination \$PreservedInstall/);
+  assert.match(uninstaller, /Remove-Item -LiteralPath \$PreservedInstall -Force/);
+  assert.match(uninstaller, /preserved setup profile will be removed/i);
   assert.match(uninstaller, /Start-Process -FilePath \$PowerShell/);
   assert.match(engine, /PreservedDataDir/);
   assert.match(engine, /Reusing preserved profiles, settings, and gallery data/);
