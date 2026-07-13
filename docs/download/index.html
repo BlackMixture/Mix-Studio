@@ -40,10 +40,8 @@
     .site-header { display: flex; align-items: center; justify-content: space-between; min-height: 84px; gap: 24px; }
     .brand { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; min-width: 0; text-decoration: none; }
     .brand-mark {
-      flex: 0 0 auto; width: 42px; height: 42px; padding: 7px; border: 2px solid transparent; border-radius: 14px;
-      background: linear-gradient(#0b0d12,#0b0d12) padding-box,
-        linear-gradient(110deg,var(--blue),var(--red) 36%,var(--yellow) 67%,var(--green)) border-box;
-      box-shadow: 0 0 26px rgba(66,87,255,.2);
+      flex: 0 0 auto; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 0;
+      background: transparent; box-shadow: none;
     }
     .brand-wordmark { position: relative; flex: 0 0 150px; width: 150px; height: 30px; overflow: hidden; }
     .brand-wordmark img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
@@ -232,14 +230,17 @@
     .hardware-marker.recommended { left: var(--recommended); }
     .hardware-marker b { position: absolute; top: -16px; color: #a8b4d0; font-size: 8px; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
     .hardware-marker.recommended b { transform: translateX(-100%); }
-    .speed-reference { padding: 28px 30px 32px; border-top: 1px solid var(--line); background: linear-gradient(110deg,rgba(66,133,244,.07),rgba(118,87,255,.035) 48%,transparent 78%); }
-    .speed-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-top: 22px; }
-    .speed-metric { --metric-accent: #76a8ff; position: relative; overflow: hidden; min-width: 0; padding: 16px; border: 1px solid rgba(157,179,247,.12); border-radius: 16px; background: rgba(6,9,15,.7); opacity: .35; transform: translateY(10px); }
+    .speed-reference { padding: 20px 30px 24px; border-top: 1px solid var(--line); background: linear-gradient(110deg,rgba(66,133,244,.07),rgba(118,87,255,.035) 48%,transparent 78%); }
+    .speed-reference-intro .benchmark-card-head span { font-size: 7px; letter-spacing: .11em; }
+    .speed-reference-intro .benchmark-card-head strong { font-size: 8px; }
+    .speed-reference-intro > p { max-width: 380px; font-size: 8px; line-height: 1.35; }
+    .speed-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+    .speed-metric { --metric-accent: #76a8ff; position: relative; overflow: hidden; min-width: 0; padding: 14px 16px; border: 1px solid rgba(157,179,247,.12); border-radius: 16px; background: rgba(6,9,15,.7); opacity: .35; transform: translateY(10px); }
     .speed-metric::before { content: ""; position: absolute; top: 0; right: 14px; left: 14px; height: 2px; border-radius: 999px; background: linear-gradient(90deg,transparent,var(--metric-accent),transparent); opacity: .8; }
     .benchmark-section.is-visible .speed-metric { animation: speed-metric-in 500ms var(--metric-delay,0s) ease forwards; }
-    .speed-metric span { display: block; color: #9db3f7; font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .speed-metric span { display: block; color: #9db3f7; font-size: 7px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
     .speed-metric strong { display: block; margin-top: 8px; font-size: clamp(20px,2.3vw,28px); letter-spacing: -.035em; }
-    .speed-metric small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+    .speed-metric small { display: block; margin-top: 4px; color: var(--muted); font-size: 7px; line-height: 1.35; }
     @keyframes benchmark-rank-in { to { opacity: 1; transform: translateX(0); } }
     @keyframes benchmark-bar-in { to { transform: scaleX(1); } }
     @keyframes speed-metric-in { to { opacity: 1; transform: translateY(0); } }
@@ -284,15 +285,15 @@
     .gen-card.reel video { aspect-ratio: 8 / 7; object-fit: contain; background: radial-gradient(circle at 50% 35%,#11243a,#030405 70%); }
     .gen-card.wide video { aspect-ratio: 16 / 9; object-fit: cover; }
     .gen-card.span-2 { grid-column: span 2; }
-    .ltx-reel { position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: radial-gradient(circle at 50% 35%,#14253b,#020305 72%); }
-    .ltx-reel video { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 1; transition: opacity 220ms ease; }
-    .ltx-reel.is-switching video { opacity: 0; }
-    .ltx-reel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 62%,rgba(1,3,7,.86)); pointer-events: none; }
-    .ltx-reel-tabs { position: absolute; right: 14px; bottom: 13px; left: 14px; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-padding-inline: 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
-    .ltx-reel-tabs::-webkit-scrollbar { display: none; }
-    .ltx-reel-tabs button { flex: 1 0 132px; min-width: 0; padding: 8px 9px; overflow: hidden; border: 1px solid rgba(220,228,255,.18); border-radius: 10px; background: rgba(5,8,14,.72); color: #9aa8c7; font: inherit; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; scroll-snap-align: center; backdrop-filter: blur(10px); transition: border-color 180ms ease,background 180ms ease,color 180ms ease; }
-    .ltx-reel-tabs button[aria-selected="true"] { border-color: #76a8ff; background: rgba(20,45,80,.88); color: #eef4ff; box-shadow: 0 0 18px rgba(66,133,244,.22); }
-    .ltx-reel-tabs button:focus-visible { outline: 2px solid #76a8ff; outline-offset: 2px; }
+    .video-reel { position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: radial-gradient(circle at 50% 35%,#14253b,#020305 72%); }
+    .video-reel video { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 1; transition: opacity 220ms ease; }
+    .video-reel.is-switching video { opacity: 0; }
+    .video-reel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 62%,rgba(1,3,7,.86)); pointer-events: none; }
+    .video-reel-tabs { position: absolute; right: 14px; bottom: 13px; left: 14px; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-padding-inline: 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+    .video-reel-tabs::-webkit-scrollbar { display: none; }
+    .video-reel-tabs button { flex: 1 0 132px; min-width: 0; padding: 8px 9px; overflow: hidden; border: 1px solid rgba(220,228,255,.18); border-radius: 10px; background: rgba(5,8,14,.72); color: #9aa8c7; font: inherit; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; scroll-snap-align: center; backdrop-filter: blur(10px); transition: border-color 180ms ease,background 180ms ease,color 180ms ease; }
+    .video-reel-tabs button[aria-selected="true"] { border-color: #76a8ff; background: rgba(20,45,80,.88); color: #eef4ff; box-shadow: 0 0 18px rgba(66,133,244,.22); }
+    .video-reel-tabs button:focus-visible { outline: 2px solid #76a8ff; outline-offset: 2px; }
     .region-reveal { position: relative; overflow: hidden; aspect-ratio: 16 / 9; isolation: isolate; background: #020305; }
     .region-reveal-back { position: absolute; inset: -7%; width: 114%; height: 114%; object-fit: cover; filter: blur(22px) brightness(.3) saturate(.8); transform: scale(1.05); }
     .region-canvas { position: relative; z-index: 1; width: auto; height: 100%; aspect-ratio: 1; margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,.72); }
@@ -321,10 +322,24 @@
     .gen-copy h3 { margin: 7px 0 4px; font-size: 17px; }
     .gen-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
     @media (max-width: 680px) { .gen-grid { grid-template-columns: 1fr; } .gen-card.span-2 { grid-column: auto; } }
-    .showcase-compact { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .showcase-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .showcase-compact .shot-image { aspect-ratio: 1.35 / 1; }
     .showcase-compact .shot-copy { padding: 18px 20px 21px; }
     .focus-dependencies { --focus-scale: 1.68; --focus-origin: 50% 51%; }
+    .comfy-reuse { display: grid; place-items: center; padding: 22px; background: radial-gradient(circle at 50% 28%,rgba(242,255,89,.13),transparent 43%),linear-gradient(145deg,#0a0e16,#06080d); }
+    .comfy-reuse-panel { width: min(100%,430px); padding: 18px; border: 1px solid rgba(220,228,255,.14); border-radius: 20px; background: rgba(7,10,16,.88); box-shadow: 0 18px 50px rgba(0,0,0,.32); }
+    .comfy-reuse-brand { display: flex; align-items: center; gap: 12px; }
+    .comfy-reuse-brand img { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 12px; box-shadow: 0 0 24px rgba(242,255,89,.12); }
+    .comfy-reuse-brand div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .comfy-reuse-brand strong { color: var(--ink); font-size: 16px; line-height: 1.1; }
+    .comfy-reuse-brand small { color: var(--muted); font-size: 10px; }
+    .comfy-reuse-status { margin-left: auto; padding: 6px 8px; border: 1px solid rgba(93,214,158,.22); border-radius: 999px; background: rgba(48,160,109,.1); color: #78dfae; font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+    .comfy-reuse-assets { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; margin-top: 16px; }
+    .comfy-reuse-asset { min-width: 0; padding: 11px; border: 1px solid rgba(220,228,255,.1); border-radius: 12px; background: rgba(17,23,35,.72); }
+    .comfy-reuse-asset span { display: block; overflow: hidden; color: var(--soft); font-size: 10px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .comfy-reuse-asset small { display: block; margin-top: 4px; color: #78dfae; font-size: 8px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+    .comfy-reuse-choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: var(--muted); font-size: 9px; }
+    .comfy-reuse-choice b { padding: 7px 10px; border: 1px solid rgba(118,168,255,.26); border-radius: 9px; background: rgba(45,96,170,.12); color: #abc5ff; font-size: 8px; letter-spacing: .04em; }
     .quick { display: grid; grid-template-columns: .8fr 1.2fr; gap: 82px; align-items: start; padding: 112px 0; border-top: 1px solid var(--line); }
     .quick-copy { position: sticky; top: 40px; }
     .quick-copy > p { margin-top: 22px; }
@@ -357,7 +372,6 @@
       .hero-visual { width: min(100%,700px); margin-bottom: 58px; transform: none; }
       .mobile-story { grid-template-columns: 1fr; gap: 42px; }
       .feature-grid { grid-template-columns: repeat(2,1fr); }
-      .showcase-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
       .section-head, .benchmark-head { grid-template-columns: 1fr; gap: 20px; }
       .quick { grid-template-columns: 1fr; gap: 52px; }
       .quick-copy { position: static; }
@@ -396,6 +410,9 @@
       .benchmark-rankings, .hardware-chart, .speed-reference { padding: 24px 20px; }
       .benchmark-card-head, .hardware-chart-intro, .speed-reference-intro { align-items: start; flex-direction: column; }
       .benchmark-card-head strong, .hardware-chart-intro > p, .speed-reference-intro > p { text-align: left; }
+      .speed-reference { padding-block: 18px 20px; }
+      .speed-reference-intro { gap: 8px; }
+      .speed-reference-intro .benchmark-card-head { gap: 5px; }
       .model-rankings { grid-template-columns: 1fr; }
       .model-ranking:nth-child(2) { border-top: 1px solid var(--line); }
       .speed-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -499,7 +516,7 @@
           <article class="feature"><div class="feature-media feature-region"><div class="feature-region-demo" role="img" aria-label="Ocean, island, snow biome, and lava volcano prompt regions appearing over a generated two-biome island before revealing the clean result"><img class="feature-region-back" src="./media/region-island.png" alt="" loading="lazy" /><div class="feature-region-canvas"><img src="./media/region-island.png" alt="" loading="lazy" /><div class="feature-region-box ocean"><span>Ocean</span></div><div class="feature-region-box island"><span>Island</span></div><div class="feature-region-box snow"><span>Snow biome</span></div><div class="feature-region-box volcano"><span>Lava volcano</span></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div></div><div class="feature-copy"><h3>Direct with regions</h3><p>Position the ocean, island, snow biome, and lava volcano independently, then generate one coherent scene.</p></div></article>
           <article class="feature"><div class="feature-media feature-video"><video src="./media/scail-hand-fantasy.mp4" autoplay muted loop playsinline preload="metadata" aria-label="A phone hand movement transferred into a generated fantasy world"></video><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div></div><div class="feature-copy"><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using Face ID, your own lipsync audio, motion transfer, and interpolation.</p></div></article>
           <article class="feature"><div class="feature-media feature-compare"><div class="upscale-demo" role="img" aria-label="Animated zoomed comparison between an original image and its upscaled result"><img class="upscale-before" src="./media/upscale-before.jpg" alt="" loading="lazy" /><div class="upscale-after"><img src="./media/upscale-after.jpg" alt="" loading="lazy" /></div><i class="upscale-divider" aria-hidden="true"></i><span class="upscale-label before">Original</span><span class="upscale-label after">Upscaled</span></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4 1.4L16.6 18H14v2Z"/></svg></div></div><div class="feature-copy"><h3>Finish and compare</h3><p>Upscale with tuned SeedVR2 or Ultimate SD profiles, then reveal, zoom, and pan across details before exporting.</p></div></article>
-          <article class="feature"><div class="feature-media feature-library" role="img" aria-label="A scrolling gallery of image and video generations"><div class="library-reel" aria-hidden="true"><div class="library-track"><div class="library-tile"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/region-result.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline preload="metadata" data-loop-end="2"></video></div><div class="library-tile"><img src="./media/outpaint-wide.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/edit-aging.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-mech-dog.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/reference-shark.jpg" alt="" loading="lazy" /></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div></div><div class="feature-copy"><h3>Keep a usable library</h3><p>Search, sort, like, group, continue editing, document, and mirror exports from the mobile or desktop library.</p></div></article>
+          <article class="feature"><div class="feature-media feature-library" role="img" aria-label="A scrolling gallery of image and video generations"><div class="library-reel" aria-hidden="true"><div class="library-track"><div class="library-tile"><video src="./media/scail-racetrack.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/region-result.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline preload="metadata" data-loop-end="2"></video></div><div class="library-tile"><img src="./media/outpaint-wide.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/edit-aging.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-mech-dog.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/reference-shark.jpg" alt="" loading="lazy" /></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div></div><div class="feature-copy"><h3>Keep a usable library</h3><p>Search, sort, like, group, continue editing, document, and mirror exports from the mobile or desktop library.</p></div></article>
         </div>
       </section>
 
@@ -512,29 +529,29 @@
           <div class="benchmark-rankings">
             <div class="benchmark-card-head"><span>Top model by job</span><strong>Current tuned lineup</strong></div>
             <ol class="model-rankings">
-              <li class="model-ranking" style="--rank-accent:#76a8ff;--rank-delay:.08s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Image creation</span><b>Fast default</b></div><strong>Krea 2 Turbo</strong><p>12 steps · source and depth guidance · regional control</p></div></li>
-              <li class="model-ranking" style="--rank-accent:#b49cff;--rank-delay:.18s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Precision editing</span><b>Instruction fit</b></div><strong>Flux 2 Klein 9B</strong><p>4-step scheduler · up to 3 references · masks and outpaint</p></div></li>
-              <li class="model-ranking" style="--rank-accent:#ff8a7f;--rank-delay:.28s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Cinematic video</span><b>AV pipeline</b></div><strong>LTX 2.3</strong><p>Two-stage refinement · image or text · native audio</p></div></li>
-              <li class="model-ranking" style="--rank-accent:#f7c84a;--rank-delay:.38s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Motion transfer</span><b>Tracking fit</b></div><strong>SCAIL 2</strong><p>6-step workflow · SAM3 tracking · Infinity long clips</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#76a8ff;--rank-delay:.08s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Image Creation</span><b>Fast Default</b></div><strong>Krea 2 Turbo</strong><p>12 Steps · Source and Depth Guidance · Regional Control</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#b49cff;--rank-delay:.18s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Precision Editing</span><b>Instruction Fit</b></div><strong>Flux 2 Klein 9B</strong><p>4-Step Scheduler · Up to 3 References · Masks and Outpaint</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#ff8a7f;--rank-delay:.28s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Cinematic Video</span><b>AV Pipeline</b></div><strong>LTX 2.3</strong><p>Two-Stage Refinement · Image or Text · Native Audio</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#f7c84a;--rank-delay:.38s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Motion Transfer</span><b>Tracking Fit</b></div><strong>SCAIL 2</strong><p>6-Step Workflow · SAM3 Tracking · Infinity Long Clips</p></div></li>
             </ol>
           </div>
           <div class="hardware-chart" role="img" aria-label="VRAM capacity guidance, not generation time: Krea 2 requires 12 GB minimum and recommends 16 GB; Klein 9B, LTX 2.3, and SCAIL 2 require 16 GB minimum and recommend 24 GB">
-            <div class="hardware-chart-intro"><div class="benchmark-card-head"><span>VRAM requirements</span><strong>Minimum to run · recommended headroom</strong></div><p>These values are GPU memory capacity, not generation time. System RAM, output size, and offloading also affect whether a workflow fits.</p></div>
+            <div class="hardware-chart-intro"><div class="benchmark-card-head"><span>VRAM requirements</span><strong>Minimum · Recommended</strong></div><p>VRAM capacity only. RAM, resolution, and offload affect fit.</p></div>
             <div class="hardware-axis"><span></span><div class="hardware-axis-labels"><span>0</span><span>8 GB</span><span>16 GB</span><span>24 GB</span></div></div>
             <div class="hardware-rows">
-              <div class="hardware-row"><div class="hardware-row-label"><strong>Core image</strong><span>Krea 2 + SeedVR2</span></div><div class="hardware-track" style="--minimum:50%;--recommended:66.667%;--bar-delay:.12s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>12 GB</b></i><i class="hardware-marker recommended"><b>16 GB</b></i></div></div>
-              <div class="hardware-row"><div class="hardware-row-label"><strong>Precision edit</strong><span>Flux 2 Klein 9B</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.22s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
-              <div class="hardware-row"><div class="hardware-row-label"><strong>Cinematic video</strong><span>LTX 2.3</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.32s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
-              <div class="hardware-row"><div class="hardware-row-label"><strong>Motion transfer</strong><span>SCAIL 2</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.42s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Core Image</strong><span>Krea 2 + SeedVR2</span></div><div class="hardware-track" style="--minimum:50%;--recommended:66.667%;--bar-delay:.12s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>12 GB</b></i><i class="hardware-marker recommended"><b>16 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Precision Edit</strong><span>Flux 2 Klein 9B</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.22s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Cinematic Video</strong><span>LTX 2.3</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.32s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Motion Transfer</strong><span>SCAIL 2</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.42s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
             </div>
           </div>
           <div class="speed-reference" aria-labelledby="speed-reference-title">
-            <div class="speed-reference-intro"><div class="benchmark-card-head"><span>Measured on RTX PRO 6000 · July 2026</span><strong id="speed-reference-title">Typical Mix Studio timing</strong></div><p>Observed in the current tuned setup. First-load time, resolution, clip duration, model precision, and offloading can change results.</p></div>
+            <div class="speed-reference-intro"><div class="benchmark-card-head"><span>RTX PRO 6000 · Jul 2026</span><strong id="speed-reference-title">Measured Timing</strong></div><p>Warm runs. Resolution, duration, and offload affect speed.</p></div>
             <div class="speed-metrics" role="list" aria-label="Observed Mix Studio generation times on RTX PRO 6000">
-              <div class="speed-metric" role="listitem" style="--metric-accent:#76a8ff;--metric-delay:.12s"><span>Image generation</span><strong>≤ 9 sec</strong><small>Krea 2</small></div>
-              <div class="speed-metric" role="listitem" style="--metric-accent:#b49cff;--metric-delay:.2s"><span>Image editing</span><strong>≈ 5 sec</strong><small>Flux 2 Klein 9B</small></div>
-              <div class="speed-metric" role="listitem" style="--metric-accent:#ff8a7f;--metric-delay:.28s"><span>Short video</span><strong>≈ 1–2 min</strong><small>LTX 2.3 or SCAIL 2</small></div>
-              <div class="speed-metric" role="listitem" style="--metric-accent:#f7c84a;--metric-delay:.36s"><span>Long video</span><strong>≈ 8 min</strong><small>LTX 2.3 or SCAIL 2</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#76a8ff;--metric-delay:.12s"><span>Image</span><strong>≤ 9 sec</strong><small>Krea 2</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#b49cff;--metric-delay:.2s"><span>Edit</span><strong>≈ 5 sec</strong><small>Klein 9B</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#ff8a7f;--metric-delay:.28s"><span>Short Video</span><strong>≈ 1–2 min</strong><small>LTX / SCAIL</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#f7c84a;--metric-delay:.36s"><span>Long Video</span><strong>≈ 8 min</strong><small>LTX / SCAIL</small></div>
             </div>
           </div>
         </div>
@@ -543,12 +560,11 @@
       <section class="section" id="made-in" aria-labelledby="made-in-title">
         <div class="section-head">
           <div><p class="section-kicker">Made in Mix Studio</p><h2 id="made-in-title">Real outputs, straight from the queue.</h2></div>
-          <p>Every clip and composite below was generated locally through Mix Studio's tuned workflows: edits that keep the scene, motion transfer from phone clips, image animation, and box-directed compositions.</p>
+          <p>Every example was generated locally through tuned workflows for precise image edits, motion-preserving video transformations, image animation, and box-directed compositions.</p>
         </div>
         <div class="gen-grid">
-          <article class="gen-card reel"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · motion transfer</span><h3>One dance, a new performer</h3><p>A phone clip supplies the movement. SCAIL 2 carries its timing and pose into a newly generated subject.</p></div></article>
-          <article class="gen-card reel"><video src="./media/live-scail-portrait.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · video to video</span><h3>Same performance, new identity</h3><p>The driving clip holds the performance while the subject and visual treatment change around it.</p></div></article>
-          <article class="gen-card wide span-2"><div class="ltx-reel" data-ltx-reel><video src="./media/ltx-ruins.mp4" autoplay muted playsinline aria-label="Four rotating LTX 2.3 image-to-video examples"></video><div class="ltx-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-ltx-index="0" aria-selected="true">Storm ruins</button><button type="button" data-ltx-index="1" aria-selected="false">Dreamscape portrait</button><button type="button" data-ltx-index="2" aria-selected="false">Interior camera move</button><button type="button" data-ltx-index="3" aria-selected="false">Arena action</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Still frames become cinematic shots</h3><p>Move between atmospheric worlds, stylized portraits, directed camera motion, and high-action sequences, with every clip generated from a single image.</p></div></article>
+          <article class="gen-card wide span-2"><div class="video-reel" data-scail-reel><video src="./media/scail-flower-world.mp4" autoplay muted playsinline aria-label="Three rotating SCAIL 2 video transformation examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose a SCAIL 2 transformation"><button type="button" data-reel-index="0" aria-selected="true">Setting replacement</button><button type="button" data-reel-index="1" aria-selected="false">Object + setting</button><button type="button" data-reel-index="2" aria-selected="false">Animal replacement</button></div></div><div class="gen-copy"><span>SCAIL 2 · directed video editing</span><h3>Change the subject, object, or world</h3><p>Transfer the original motion while preserving timing, camera movement, realistic physics, and scene-aware lighting.</p></div></article>
+          <article class="gen-card wide span-2"><div class="video-reel" data-ltx-reel><video src="./media/ltx-prism-storm.mp4" autoplay muted playsinline aria-label="Six rotating LTX 2.3 image-to-video examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-reel-index="0" aria-selected="true">Prism storm</button><button type="button" data-reel-index="1" aria-selected="false">Character performance</button><button type="button" data-reel-index="2" aria-selected="false">Storm ruins</button><button type="button" data-reel-index="3" aria-selected="false">Dreamscape portrait</button><button type="button" data-reel-index="4" aria-selected="false">Interior camera move</button><button type="button" data-reel-index="5" aria-selected="false">Arena action</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Generate motion, performance, and atmosphere</h3><p>Turn a still image into cinematic motion with directed camera movement, physical detail, lighting, sound, and character performance.</p></div></article>
           <article class="gen-card span-2"><div class="edit-motion-result"><video src="./media/edit-aging-motion.mp4" autoplay muted loop playsinline aria-label="Edited subject brought to life in a finished motion result"></video></div><div class="gen-copy"><span>Edit to motion</span><h3>A precise edit becomes a performance</h3><p>The finished subject carries directly into a moving, talking study.</p></div></article>
           <article class="gen-card span-2"><div class="region-reveal" role="img" aria-label="Four prompt regions appearing over a sea monster scene before fading into the clean generated result"><img class="region-reveal-back" src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-canvas"><img src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-box sky"><span>Sky</span></div><div class="region-box cliff"><span>Cliff</span></div><div class="region-box monster"><span>Sea monster</span></div><div class="region-box car"><span>Car</span></div></div><div class="region-state" aria-hidden="true"><span class="planning">Regions defined</span><span class="result">Generated result</span></div></div><div class="gen-copy"><span>Region prompting · plan to result</span><h3>Define the scene. Generate the composition.</h3><p>Place the sky, cliff, sea monster, and car with visual regions, then generate the complete scene in one pass.</p></div></article>
           <article class="gen-card span-2"><img src="./media/depth-cabin.jpg" alt="Cabin interior, its depth map, and a snow-filled re-imagining" loading="lazy" /><div class="gen-copy"><span>Depth guide</span><h3>New image, same 3D structure</h3><p>Source → Depth Anything V3 map → re-imagined scene. Every armchair and beam stays in place.</p></div></article>
@@ -564,6 +580,7 @@
           <article class="shot"><div class="shot-image focus-profiles"><div class="focus-window"><img src="./mix-studio-profiles-live.png" alt="Focused live profile picker with avatars and PIN badges" loading="lazy" /></div></div><div class="shot-copy"><span>Profiles</span><h3>Who&rsquo;s creating?</h3><p>Optional PINs keep galleries, folders, presets, and history separate for each person.</p></div></article>
           <article class="shot"><div class="shot-image focus-guide"><div class="focus-window guide-demo"><img src="./mix-studio-library.png" alt="Library view with an in-context gesture guide" loading="lazy" /><div class="guide-card" aria-hidden="true"><span>Gesture tip</span><strong>Reveal selection actions</strong><div class="guide-swipe"><i></i><b>Swipe up on the handle</b></div></div></div></div><div class="shot-copy"><span>Guidance</span><h3>Help appears in context</h3><p>Focused tips explain gestures and controls when they become useful.</p></div></article>
           <article class="shot"><div class="shot-image focus-dependencies"><div class="focus-window"><img src="./mix-studio-dependencies.png" alt="Dependency health panel showing installed model and node families" loading="lazy" /></div></div><div class="shot-copy"><span>Setup health</span><h3>Know what is ready</h3><p>Each workflow reports the models and nodes it needs, with setup actions in the same UI.</p></div></article>
+          <article class="shot"><div class="shot-image comfy-reuse" role="img" aria-label="Mix Studio reusing an existing ComfyUI installation and downloaded models"><div class="comfy-reuse-panel"><div class="comfy-reuse-brand"><img src="./comfyui-logo.svg" alt="" loading="lazy" /><div><strong>ComfyUI</strong><small>Your current installation</small></div><span class="comfy-reuse-status">Detected</span></div><div class="comfy-reuse-assets"><div class="comfy-reuse-asset"><span>ComfyUI install</span><small>Ready to connect</small></div><div class="comfy-reuse-asset"><span>Downloaded models</span><small>Ready to reuse</small></div></div><div class="comfy-reuse-choice"><span>Nothing needs to move.</span><b>Choose folders manually</b></div></div></div><div class="shot-copy"><span>Existing setup</span><h3>Use your ComfyUI and models</h3><p>Mix Studio can auto-detect your current ComfyUI install and downloaded models, or you can point to their folders manually.</p></div></article>
         </div>
       </section>
 
@@ -585,7 +602,7 @@
       </section>
     </main>
 
-    <footer><span>Mix Studio · Modatory design language</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
+    <footer><span>Black Mixture &copy; 2026</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
   </div>
   <script>
     const motionObserver = new IntersectionObserver((entries) => {
@@ -609,16 +626,11 @@
       video.addEventListener("loadedmetadata", () => { video.currentTime = start; });
       video.addEventListener("timeupdate", keepInsidePreview);
     }
-    const ltxReel = document.querySelector("[data-ltx-reel]");
-    if (ltxReel) {
-      const video = ltxReel.querySelector("video");
-      const tabs = [...ltxReel.querySelectorAll("[data-ltx-index]")];
-      const clips = [
-        "./media/ltx-ruins.mp4",
-        "./media/ltx-dreamscape.mp4",
-        "./media/ltx-interior.mp4",
-        "./media/ltx-wrestling.mp4"
-      ];
+    const setupVideoReel = (selector, clips) => {
+      const reel = document.querySelector(selector);
+      if (!reel) return;
+      const video = reel.querySelector("video");
+      const tabs = [...reel.querySelectorAll("[data-reel-index]")];
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       let active = 0;
       let visible = false;
@@ -626,7 +638,7 @@
       const selectClip = (next) => {
         if (!Number.isInteger(next) || next < 0 || next >= clips.length || next === active) return;
         active = next;
-        ltxReel.classList.add("is-switching");
+        reel.classList.add("is-switching");
         tabs.forEach((tab, index) => tab.setAttribute("aria-selected", String(index === active)));
         tabs[active]?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "nearest", inline: "center" });
         window.clearTimeout(transitionTimer);
@@ -637,22 +649,35 @@
           const reveal = () => {
             if (revealed) return;
             revealed = true;
-            ltxReel.classList.remove("is-switching");
+            reel.classList.remove("is-switching");
             if (visible) video.play().catch(() => {});
           };
           video.addEventListener("loadeddata", reveal, { once: true });
           window.setTimeout(reveal, 900);
         }, 220);
       };
-      tabs.forEach((tab) => tab.addEventListener("click", () => selectClip(Number(tab.dataset.ltxIndex))));
+      tabs.forEach((tab) => tab.addEventListener("click", () => selectClip(Number(tab.dataset.reelIndex))));
       if (!reducedMotion) video.addEventListener("ended", () => selectClip((active + 1) % clips.length));
       const reelObserver = new IntersectionObserver((entries) => {
         visible = entries[0]?.isIntersecting === true;
         if (visible) video.play().catch(() => {});
         else video.pause();
       }, { rootMargin: "180px 0px", threshold: .01 });
-      reelObserver.observe(ltxReel);
-    }
+      reelObserver.observe(reel);
+    };
+    setupVideoReel("[data-scail-reel]", [
+      "./media/scail-flower-world.mp4",
+      "./media/scail-racetrack.mp4",
+      "./media/scail-animal-replacement.mp4"
+    ]);
+    setupVideoReel("[data-ltx-reel]", [
+      "./media/ltx-prism-storm.mp4",
+      "./media/ltx-character-performance.mp4",
+      "./media/ltx-ruins.mp4",
+      "./media/ltx-dreamscape.mp4",
+      "./media/ltx-interior.mp4",
+      "./media/ltx-wrestling.mp4"
+    ]);
     const benchmarkSection = document.querySelector("[data-benchmark]");
     if (benchmarkSection) {
       const benchmarkObserver = new IntersectionObserver((entries, observer) => {
