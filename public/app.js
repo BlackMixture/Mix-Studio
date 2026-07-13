@@ -12578,6 +12578,7 @@ function toggleSelect(id) {
   else updateSelectBar();
 }
 function exitSelect() {
+  cancelContextualGuide('gallery-selection-details');
   if (!state.selectMode && !state.selected.size) { $('#selectBar').hidden = true; return; }
   state.selectMode = false;
   state.selected = new Set();
@@ -12596,6 +12597,7 @@ function updateSelectBar() {
   $('#selComposite').disabled = state.selected.size < 2;
   syncSelectionVisuals();
   if ($('#selectBar').classList.contains('is-expanded')) scheduleSelectionInsightsRefresh();
+  else scheduleContextualGuide('gallery-selection-details');
 }
 $('#selCancel').addEventListener('click', exitSelect);
 $('#selSave').addEventListener('click', () => {
@@ -12766,6 +12768,7 @@ function populateSelectionExpandedActions() {
 
 function openSelectionInsights() {
   if (!state.selected.size) return;
+  completeContextualGuide('gallery-selection-details');
   const consoleBar = $('#selectBar');
   consoleBar.classList.add('is-expanded');
   consoleBar.classList.remove('is-dragging');
@@ -16019,6 +16022,361 @@ async function loadHardwareInfo(force = false) {
 
 $('#hardwareRefresh').addEventListener('click', () => loadHardwareInfo(true).catch(() => toast('Hardware information is unavailable', true)));
 
+/* ------------------------------------------------------------------ */
+/* Guided UI tutorial                                                  */
+/* ------------------------------------------------------------------ */
+
+const GUIDED_TOUR_STEPS = [
+  {
+    target: '#primaryTabs',
+    title: 'Choose a workspace',
+    copy: 'Create starts new image or video work. Edit changes an existing image. Library keeps every completed generation.',
+    motion: 'tap',
+    demo: 'Tap a workspace to switch tools',
+    scroll: false,
+  },
+  {
+    target: '#createTabs',
+    title: 'Pick a creation method',
+    copy: 'Image builds a full frame, Region gives different parts of the frame their own prompts, and Video creates motion.',
+    motion: 'tap',
+    demo: 'Tap Image, Region, or Video',
+    scroll: false,
+  },
+  {
+    target: '#promptPanel',
+    title: 'Describe the result',
+    copy: 'Write the scene in plain language. Prompt Enhance can turn a short idea into a more detailed generation prompt.',
+    motion: 'type',
+    demo: 'Type a prompt or start with a short idea',
+  },
+  {
+    target: '#createPromptTools',
+    title: 'Add visual direction',
+    copy: 'Use these tools for image-to-prompt, camera choices, regional prompting, or an image guide. They are optional.',
+    motion: 'tap',
+    demo: 'Tap a tool to add more control',
+  },
+  {
+    target: '#resPanel',
+    title: 'Set the output shape',
+    copy: 'Choose the aspect ratio and S, M, or L output size. The dimensions shown here are the dimensions sent to generation.',
+    motion: 'tap',
+    demo: 'Tap Resolution to open the picker',
+  },
+  {
+    target: '#generateBtn',
+    title: 'Generate or add to the queue',
+    copy: 'Tap Generate to start. If another job is active, the same button adds this setup to the queue so you can keep working.',
+    motion: 'press',
+    demo: 'Press once to generate or queue',
+    scroll: false,
+  },
+  {
+    target: '[data-primary-mode="gallery"]',
+    title: 'Return to your Library',
+    copy: 'Library contains every result. Open an item to compare, reuse its settings, move it, group it, or send it into another workflow.',
+    motion: 'tap',
+    demo: 'Tap Library whenever you want your results',
+  },
+];
+
+const CONTEXTUAL_GUIDES = {
+  'gallery-selection-details': {
+    id: 'gallery-selection-details',
+    target: '#selectBar',
+    title: 'Reveal selection actions',
+    copy: 'Drag the selection bar upward to reveal details and the full set of actions.',
+    motion: 'swipe-up',
+    demo: 'Swipe up on the handle',
+  },
+};
+
+let guidedTourIndex = -1;
+let guidedTourTimer = null;
+let guidedTourPositionFrame = null;
+let contextualGuide = null;
+let contextualGuideTimer = null;
+let pendingContextualGuideId = '';
+
+function guidedTourStorageKey() {
+  return `ks-guided-tour-${localStorage.getItem('ks-profile-id') || 'default'}`;
+}
+
+function guidedTipsStorageKey() {
+  return `ks-contextual-guides-${localStorage.getItem('ks-profile-id') || 'default'}`;
+}
+
+function contextualGuideSeenKey(id) {
+  return `ks-context-guide-${localStorage.getItem('ks-profile-id') || 'default'}-${id}`;
+}
+
+function contextualGuidesEnabled() {
+  return localStorage.getItem(guidedTipsStorageKey()) !== 'off';
+}
+
+function renderGuidedTourSetting() {
+  const completed = localStorage.getItem(guidedTourStorageKey()) === 'complete';
+  const tipsEnabled = contextualGuidesEnabled();
+  $('#guidedTourStart').textContent = completed ? 'Replay tutorial' : 'Start tutorial';
+  $('#guidedTourSettingStatus').textContent = completed
+    ? 'Completed · replay the animated walkthrough anytime.'
+    : 'Seven animated tips for the complete workflow.';
+  $('#guidedTipsToggle').setAttribute('aria-checked', String(tipsEnabled));
+}
+
+function guidedTourTarget() {
+  const guide = contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
+  return guide ? $(guide.target) : null;
+}
+
+function positionGuidedTour() {
+  const root = $('#guidedTour');
+  const target = guidedTourTarget();
+  if (root.hidden || !target) return;
+  const rect = target.getBoundingClientRect();
+  const pad = 7;
+  const left = Math.max(4, rect.left - pad);
+  const top = Math.max(4, rect.top - pad);
+  const right = Math.min(window.innerWidth - 4, rect.right + pad);
+  const bottom = Math.min(window.innerHeight - 4, rect.bottom + pad);
+  const spotlight = $('#guidedTourSpotlight');
+  spotlight.style.left = `${left}px`;
+  spotlight.style.top = `${top}px`;
+  spotlight.style.width = `${Math.max(12, right - left)}px`;
+  spotlight.style.height = `${Math.max(12, bottom - top)}px`;
+  const radius = parseFloat(getComputedStyle(target).borderRadius) || 14;
+  spotlight.style.borderRadius = `${Math.min(28, Math.max(10, radius + 5))}px`;
+
+  const card = $('#guidedTourCard');
+  const cardRect = card.getBoundingClientRect();
+  const margin = 12;
+  const gap = 16;
+  const cardLeft = Math.max(margin, Math.min(
+    window.innerWidth - cardRect.width - margin,
+    rect.left + rect.width / 2 - cardRect.width / 2,
+  ));
+  const roomBelow = window.innerHeight - rect.bottom - gap - margin;
+  const roomAbove = rect.top - gap - margin;
+  let cardTop;
+  if (roomBelow >= cardRect.height) cardTop = rect.bottom + gap;
+  else if (roomAbove >= cardRect.height) cardTop = rect.top - cardRect.height - gap;
+  else cardTop = rect.top > window.innerHeight / 2 ? margin : window.innerHeight - cardRect.height - margin;
+  card.style.left = `${cardLeft}px`;
+  card.style.top = `${Math.max(margin, Math.min(cardTop, window.innerHeight - cardRect.height - margin))}px`;
+  root.classList.remove('is-positioning');
+}
+
+function scheduleContextualGuide(id, delay = 560) {
+  const guide = CONTEXTUAL_GUIDES[id];
+  if (!guide || !contextualGuidesEnabled() || localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return;
+  if (contextualGuide || guidedTourIndex >= 0 || !$('#guidedTour').hidden || pendingContextualGuideId === id) return;
+  clearTimeout(contextualGuideTimer);
+  pendingContextualGuideId = id;
+  contextualGuideTimer = setTimeout(() => {
+    pendingContextualGuideId = '';
+    contextualGuideTimer = null;
+    showContextualGuide(id);
+  }, delay);
+}
+
+function showContextualGuide(id) {
+  const guide = CONTEXTUAL_GUIDES[id];
+  const root = $('#guidedTour');
+  const target = guide ? $(guide.target) : null;
+  if (!guide || !contextualGuidesEnabled() || localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return;
+  if (contextualGuide || guidedTourIndex >= 0 || !root.hidden) return;
+  if (id === 'gallery-selection-details' && (document.hidden || gallerySelectionDrag.active)) {
+    if (state.selected.size) scheduleContextualGuide(id, 280);
+    return;
+  }
+  if (!target || target.hidden || !target.getClientRects().length) return;
+  if (id === 'gallery-selection-details' && (!state.selected.size || target.classList.contains('is-expanded'))) return;
+
+  contextualGuide = guide;
+  localStorage.setItem(contextualGuideSeenKey(id), 'seen');
+  clearTimeout(guidedTourTimer);
+  root.hidden = false;
+  root.setAttribute('aria-hidden', 'false');
+  root.classList.add('is-contextual', 'is-positioning');
+  $('#guidedTourCard').setAttribute('aria-modal', 'false');
+  $('#guidedTourStep').textContent = 'Gesture tip';
+  $('#guidedTourTitle').textContent = guide.title;
+  $('#guidedTourCopy').textContent = guide.copy;
+  $('#guidedTourDemo').dataset.motion = guide.motion;
+  $('#guidedTourDemoLabel').textContent = guide.demo;
+  $('#guidedTourDots').replaceChildren();
+  $('#guidedTourDots').hidden = true;
+  $('#guidedTourBack').hidden = true;
+  $('#guidedTourNext').textContent = 'Got it';
+  $('#guidedTourAnnouncement').textContent = `${guide.title}. ${guide.copy}`;
+  guidedTourTimer = setTimeout(positionGuidedTour, 30);
+}
+
+function hideContextualGuide() {
+  if (!contextualGuide) return;
+  clearTimeout(guidedTourTimer);
+  contextualGuide = null;
+  const root = $('#guidedTour');
+  root.hidden = true;
+  root.setAttribute('aria-hidden', 'true');
+  root.classList.remove('is-contextual', 'is-positioning');
+  $('#guidedTourCard').setAttribute('aria-modal', 'true');
+  $('#guidedTourDots').hidden = false;
+  $('#guidedTourBack').hidden = false;
+  $('#guidedTourAnnouncement').textContent = '';
+}
+
+function cancelContextualGuide(id) {
+  if (!id || pendingContextualGuideId === id) {
+    clearTimeout(contextualGuideTimer);
+    contextualGuideTimer = null;
+    pendingContextualGuideId = '';
+  }
+  if (contextualGuide && (!id || contextualGuide.id === id)) hideContextualGuide();
+}
+
+function completeContextualGuide(id) {
+  if (!CONTEXTUAL_GUIDES[id]) return;
+  localStorage.setItem(contextualGuideSeenKey(id), 'seen');
+  cancelContextualGuide(id);
+}
+
+function setContextualGuidesEnabled(enabled) {
+  localStorage.setItem(guidedTipsStorageKey(), enabled ? 'on' : 'off');
+  if (!enabled) cancelContextualGuide();
+  renderGuidedTourSetting();
+}
+
+function renderGuidedTourStep({ focus = true } = {}) {
+  const root = $('#guidedTour');
+  const step = GUIDED_TOUR_STEPS[guidedTourIndex];
+  const target = guidedTourTarget();
+  if (!step || !target) return finishGuidedTour(false);
+  clearTimeout(guidedTourTimer);
+  root.classList.add('is-positioning');
+  $('#guidedTourStep').textContent = `${guidedTourIndex + 1} of ${GUIDED_TOUR_STEPS.length}`;
+  $('#guidedTourTitle').textContent = step.title;
+  $('#guidedTourCopy').textContent = step.copy;
+  $('#guidedTourDemo').dataset.motion = step.motion;
+  $('#guidedTourDemoLabel').textContent = step.demo;
+  $('#guidedTourBack').disabled = guidedTourIndex === 0;
+  $('#guidedTourNext').textContent = guidedTourIndex === GUIDED_TOUR_STEPS.length - 1 ? 'Finish' : 'Next';
+  const dots = $('#guidedTourDots');
+  dots.replaceChildren(...GUIDED_TOUR_STEPS.map((_, index) => {
+    const dot = document.createElement('i');
+    dot.classList.toggle('active', index === guidedTourIndex);
+    return dot;
+  }));
+  if (step.scroll !== false) {
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }
+  const delay = step.scroll === false || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 30 : 320;
+  guidedTourTimer = setTimeout(() => {
+    positionGuidedTour();
+    if (focus) $('#guidedTourCard').focus({ preventScroll: true });
+  }, delay);
+}
+
+function startGuidedTour() {
+  cancelContextualGuide();
+  closeActionMenu();
+  closeAppDrawer();
+  $$('.sheet.show').forEach((sheet) => sheet.classList.remove('show'));
+  syncSheetScrollLock();
+  setCreateMode('image');
+  collapseRes(false);
+  window.scrollTo(0, 0);
+  guidedTourIndex = 0;
+  const root = $('#guidedTour');
+  root.classList.remove('is-contextual');
+  root.hidden = false;
+  root.setAttribute('aria-hidden', 'false');
+  $('#guidedTourCard').setAttribute('aria-modal', 'true');
+  $('#guidedTourDots').hidden = false;
+  $('#guidedTourBack').hidden = false;
+  $('#guidedTourAnnouncement').textContent = '';
+  document.body.classList.add('guided-tour-open');
+  renderGuidedTourStep();
+}
+
+function finishGuidedTour(completed = false) {
+  if (contextualGuide) return hideContextualGuide();
+  clearTimeout(guidedTourTimer);
+  if (completed) localStorage.setItem(guidedTourStorageKey(), 'complete');
+  guidedTourIndex = -1;
+  const root = $('#guidedTour');
+  root.hidden = true;
+  root.setAttribute('aria-hidden', 'true');
+  root.classList.remove('is-contextual', 'is-positioning');
+  document.body.classList.remove('guided-tour-open');
+  renderGuidedTourSetting();
+  $('#appMenuBtn').focus({ preventScroll: true });
+}
+
+function advanceGuidedTour(direction) {
+  if (contextualGuide) return hideContextualGuide();
+  const next = guidedTourIndex + direction;
+  if (next >= GUIDED_TOUR_STEPS.length) return finishGuidedTour(true);
+  if (next < 0) return;
+  guidedTourIndex = next;
+  renderGuidedTourStep({ focus: false });
+}
+
+$('#guidedTourStart').addEventListener('click', startGuidedTour);
+$('#guidedTipsToggle').addEventListener('click', () => {
+  setContextualGuidesEnabled(!contextualGuidesEnabled());
+});
+$('#guidedTourClose').addEventListener('click', () => finishGuidedTour(false));
+$('#guidedTourBack').addEventListener('click', () => advanceGuidedTour(-1));
+$('#guidedTourNext').addEventListener('click', () => advanceGuidedTour(1));
+$('#guidedTour').addEventListener('wheel', (event) => {
+  if (contextualGuide) return;
+  if (!event.target.closest('.guided-tour-card')) event.preventDefault();
+}, { passive: false });
+$('#guidedTour').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    finishGuidedTour(false);
+    return;
+  }
+  if (contextualGuide) return;
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    advanceGuidedTour(1);
+    return;
+  }
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    advanceGuidedTour(-1);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = $$('#guidedTour button:not(:disabled)');
+  if (!focusable.length) return;
+  const current = focusable.indexOf(document.activeElement);
+  const next = event.shiftKey
+    ? (current <= 0 ? focusable.length - 1 : current - 1)
+    : (current >= focusable.length - 1 ? 0 : current + 1);
+  event.preventDefault();
+  focusable[next].focus();
+});
+window.addEventListener('resize', () => {
+  if (!$('#guidedTour').hidden) positionGuidedTour();
+});
+document.addEventListener('scroll', () => {
+  if ($('#guidedTour').hidden || guidedTourPositionFrame) return;
+  guidedTourPositionFrame = requestAnimationFrame(() => {
+    guidedTourPositionFrame = null;
+    positionGuidedTour();
+  });
+}, true);
+renderGuidedTourSetting();
+
 let settingsActiveTab = 'general';
 const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions', 'system'];
 
@@ -16063,6 +16421,7 @@ $$('#defaultSeedMode button').forEach((button) => button.addEventListener('click
 
 $('#settingsBtn').addEventListener('click', async () => {
   closeAppDrawer();
+  renderGuidedTourSetting();
   loadMediaPreferences();
   await loadUserPreferences();
   await refreshLoraContext();
