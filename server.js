@@ -724,7 +724,7 @@ function configuredModelsStatus(info) {
       depthModel: modelStatus(info, 'DownloadAndLoadDepthAnythingV3Model', 'model', settings.depthAnythingV3Model),
     },
     krea2Outpaint: {
-      label: 'Krea 2 Outpaint',
+      label: 'Krea 2 Expand',
       lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.krea2OutpaintLora, loraList),
     },
     klein4: {
@@ -1854,7 +1854,7 @@ async function buildEditKrea2Outpaint(p, refNames) {
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
-    throw new Error(`Krea 2 outpaint needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
+    throw new Error(`Krea 2 Expand needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
   }
   const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
@@ -1864,7 +1864,7 @@ async function buildEditKrea2Outpaint(p, refNames) {
     .find((lora) => assetKey(lora && lora.name) === assetKey(settings.krea2OutpaintLora));
   const identityEnabled = !identityOverride || identityOverride.on !== false;
   if (identityEnabled && !loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
-    throw new Error(`Krea 2 outpaint needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
+    throw new Error(`Krea 2 Expand needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
   }
   return filterInputs(buildKrea2OutpaintGraph(Object.assign({}, p, {
     settings,
@@ -1882,7 +1882,7 @@ async function buildEditKleinOutpaint(p, refNames) {
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
-    throw new Error(`Klein outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
+    throw new Error(`Klein Expand needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
   }
   const consistencyLora = p.editEngine === 'klein9'
     ? settings.klein9ConsistencyLora
@@ -1896,7 +1896,7 @@ async function buildEditKleinOutpaint(p, refNames) {
     : comboList(info, 'LoraLoader', 'lora_name');
   if (consistencyEnabled && consistencyLora && !loraList.some((name) => assetKey(name) === assetKey(consistencyLora))) {
     const label = p.editEngine === 'klein9' ? 'Klein 9B' : 'Klein 4B';
-    throw new Error(`${label} outpaint needs its Consistence Edit LoRA in ComfyUI loras: ${consistencyLora}`);
+    throw new Error(`${label} Expand needs its Consistence Edit LoRA in ComfyUI loras: ${consistencyLora}`);
   }
   const klein = kleinConfigForEngine(p.editEngine);
   return filterInputs(buildKleinOutpaintGraph(Object.assign({}, p, {
@@ -1916,7 +1916,7 @@ async function buildEditQwenOutpaint(p, refNames) {
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
-    throw new Error(`Qwen outpaint needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
+    throw new Error(`Qwen Expand needs the image-extend nodes installed: ${missingNodes.join(', ')}`);
   }
   return filterInputs(buildQwenOutpaintGraph(Object.assign({}, p, {
     settings,
@@ -1934,7 +1934,7 @@ async function buildEditKrea2MaskedOutpaint(p, refNames) {
   const missingNodes = requiredNodes
     .filter((className) => !info[className]);
   if (missingNodes.length) {
-    throw new Error(`Krea2 outpaint needs the masked-canvas nodes installed: ${missingNodes.join(', ')}`);
+    throw new Error(`Krea2 Expand needs the masked-canvas nodes installed: ${missingNodes.join(', ')}`);
   }
   return filterInputs(buildKrea2MaskedOutpaintGraph(Object.assign({}, p, {
     settings,
@@ -4317,7 +4317,7 @@ async function handleApi(req, res, url) {
       }
       const sequenceRequested = !!p.editSequence;
       if (p.editOutpaint && sequenceRequested) {
-        return json(res, 400, { error: 'Outpaint and sequential edits must be generated separately' });
+        return json(res, 400, { error: 'Expand and sequential edits must be generated separately' });
       }
       if (sequenceRequested && !supportsSequentialEdit(p.editEngine)) {
         return json(res, 400, { error: 'Sequential edits are available with Klein 4B, Klein 9B, Qwen Edit, and Krea 2 Edit only' });
@@ -4340,7 +4340,7 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: 'Use either a camera angle or a localized edit area for a single run' });
       }
       if (p.editOutpaint && p.qwenAngle) {
-        return json(res, 400, { error: 'Outpaint and camera variations must be generated separately' });
+        return json(res, 400, { error: 'Expand and camera variations must be generated separately' });
       }
       if (p.qwenAngle) {
         p.anglePrompt = editAnglePrompt(p.editEngine, p.qwenAngle, p.prompt);
@@ -4353,7 +4353,7 @@ async function handleApi(req, res, url) {
         return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
       }
       if (p.editOutpaint && !refNames.length) {
-        return json(res, 400, { error: 'Outpaint needs a source image in reference slot 1' });
+        return json(res, 400, { error: 'Expand needs a source image in reference slot 1' });
       }
       if (p.editOutpaint && !p.editAspectOverride) {
         return json(res, 400, { error: 'Choose a Resolution ratio that extends beyond the source image' });
@@ -4372,7 +4372,7 @@ async function handleApi(req, res, url) {
           p.steps = 8; p.cfg = 1; p.denoise = null;
         }
         if (p.maskImageName && !refNames.length) {
-          return json(res, 400, { error: 'Krea2 inpaint needs a source image' });
+          return json(res, 400, { error: 'Krea2 Fill needs a source image' });
         }
       } else if (p.editEngine === 'krea2ref') {
         p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null; // turbo: 8 steps

@@ -34,7 +34,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(app, /100% · no added canvas/);
   assert.match(app, /function renderEditOutpaint\(\)/);
   assert.match(app, /const OUTPAINT_EDIT_ENGINES = new Set\(EDIT_ENGINES\)/);
-  assert.match(app, /Generate Outpaint/);
+  assert.match(app, /Generate Expand/);
 });
 
 test('outpaint state persists and is restored from completed gallery items', () => {
@@ -85,15 +85,15 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(server, /p\.editOutpaint && p\.editEngine === 'qwen'/);
   assert.match(server, /p\.editOutpaint && \(p\.editEngine === 'klein4' \|\| p\.editEngine === 'klein9'\)/);
   assert.match(server, /p\.editOutpaint && p\.editEngine === 'krea2'/);
-  assert.match(server, /Outpaint and sequential edits must be generated separately/);
-  assert.doesNotMatch(server, /Outpaint and localized edit areas must be generated separately/);
+  assert.match(server, /Expand and sequential edits must be generated separately/);
+  assert.doesNotMatch(server, /Expand and localized edit areas must be generated separately/);
   assert.match(server, /p\.maskImageName && !p\.editOutpaint && !supportsEditMask/);
   assert.match(server, /p\.maskImageName && !p\.editOutpaint\) p\.editAspectOverride = false/);
   assert.match(server, /if \(p\.editAspectOverride && !p\.editOutpaint\) p\.composite = false/);
 });
 
 test('outpaint masks preserve an organic subject with synchronized feather controls', () => {
-  assert.match(app, /Outpaint preserve area/);
+  assert.match(app, /Expand preserve area/);
   assert.match(app, /Only the preserve mask stays at native resolution/);
   assert.match(app, /editOutpaintActive\(\) \? 'destination-in' : 'destination-out'/);
   assert.match(app, /const preserveMask = outpaintActive && !!maskImageName/);

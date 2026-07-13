@@ -79,9 +79,12 @@ test('Secondary video controls remain behind an animated accessible disclosure',
   assert.match(app, /function setVideoOptionsExpanded\(open\)/);
 });
 
-test('Duration and Motion Freedom use discoverable clock-style scrubbers with larger tap-to-open wheels', () => {
-  assert.match(html, /id="vidTimingHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidTimingBody"/);
-  assert.match(html, /id="vidTimingBody" aria-hidden="true" inert/);
+test('Duration is the first video control and Motion Freedom is a separate setting', () => {
+  assert.doesNotMatch(html, /id="vidTiming(?:Header|Body|Panel)"/);
+  assert.ok(html.indexOf('id="vidDurationField"') < html.indexOf('id="vidLtxGenerationRow"'));
+  assert.ok(html.indexOf('id="vidFreeField"') > html.indexOf('id="vidScailAdvancedRow"'));
+  assert.match(html, /class="video-number-setting video-duration-primary" id="vidDurationField"/);
+  assert.match(html, /class="video-number-setting video-motion-setting" id="vidFreeField"/);
   assert.match(html, /id="vidDurScrub"[^>]*role="spinbutton"/);
   assert.match(html, /id="vidDurPrev"/);
   assert.match(html, /id="vidDurNext"/);

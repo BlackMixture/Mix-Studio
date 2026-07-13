@@ -1827,8 +1827,8 @@ function genLabel() {
   if (activeCount) {
     return `➕ Add to Queue · ${activeCount} active`;
   }
-  if (editOutpaintActive()) return 'Generate Outpaint';
-  if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Inpaint';
+  if (editOutpaintActive()) return 'Generate Expand';
+  if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Fill';
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
@@ -3962,10 +3962,10 @@ function renderKreaMaskTools() {
   const isInpaint = !outpaint && state.editEngine === 'krea2';
   const kind = state.kreaMaskKind === 'box' ? 'Box selected'
     : (state.kreaMaskKind === 'smart' ? 'Smart mask selected' : 'Mask selected');
-  $('#kreaMaskLabel').textContent = outpaint ? 'Preserve area' : (isInpaint ? 'Inpaint area' : 'Edit area');
+  $('#kreaMaskLabel').textContent = outpaint ? 'Preserve area' : (isInpaint ? 'Fill area' : 'Edit area');
   $('#kreaMaskStatus').textContent = outpaint
     ? (hasMask ? `${kind} · subject preserved` : 'Full source')
-    : (hasMask ? (isInpaint ? `Inpaint · ${kind.toLowerCase()}` : kind) : (isInpaint ? 'Whole image · no inpaint' : 'Whole image'));
+    : (hasMask ? (isInpaint ? `Fill · ${kind.toLowerCase()}` : kind) : (isInpaint ? 'Whole image · no fill area' : 'Whole image'));
   $('#kreaMaskClear').hidden = !hasMask;
   $('#kreaMaskClear').setAttribute('aria-label', outpaint ? 'Clear preserve area' : 'Clear edit area');
   $('#kreaMaskClear').title = outpaint ? 'Clear preserve area' : 'Clear edit area';
@@ -4062,8 +4062,8 @@ function openKreaMaskPainter() {
   $('#kreaMaskBase').onload = setupMaskCanvasFromImage;
   if ($('#kreaMaskBase').complete) setupMaskCanvasFromImage();
   $('#kreaMaskTitle').textContent = outpaint
-    ? 'Outpaint preserve area'
-    : (state.editEngine === 'krea2' ? 'Krea 2 inpaint area' : `${editEngineLabel(state.editEngine)} edit area`);
+    ? 'Expand preserve area'
+    : (state.editEngine === 'krea2' ? 'Krea 2 fill area' : `${editEngineLabel(state.editEngine)} edit area`);
   $('#kreaMaskPrompt').placeholder = outpaint ? 'Preserve a person, product, foreground…' : 'Mask a person, jacket, sky…';
   $('.edit-area-mode').setAttribute('aria-label', outpaint ? 'Preserve area selection tool' : 'Edit area selection tool');
   $('#kreaMaskApply').textContent = outpaint ? 'Use preserve mask' : 'Done';
@@ -6119,7 +6119,7 @@ function renderEditOutpaint() {
 
 $('#editOutpaintToggle').addEventListener('click', () => {
   const enabling = !state.editOutpaint;
-  if (enabling && !state.refs[0]) return toast('Add a source image before enabling outpaint', true);
+  if (enabling && !state.refs[0]) return toast('Add a source image before enabling Expand', true);
   state.editOutpaint = enabling;
   if (enabling) {
     state.editSequential = false;
@@ -6815,7 +6815,7 @@ function renderLoras() {
       + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
       + `<button class="lc-menu" type="button" aria-label="LoRA options" aria-haspopup="menu" aria-expanded="false">⋯</button>`
       + (trigger ? `<span class="lc-trigger-badge" title="Trigger phrase: ${escapeHtml(trigger)}" aria-label="Has trigger phrase">✦</span>` : '')
-      + (managedConsistency ? '<span class="lc-auto-badge" title="Applied automatically for Klein outpaint">Auto</span>' : '')
+      + (managedConsistency ? '<span class="lc-auto-badge" title="Applied automatically for Klein Expand">Auto</span>' : '')
       + `<span class="lc-name" title="${escapeHtml(prettyLora(l.name))}">${escapeHtml(prettyLora(l.name))}</span>`
       + `<span class="lc-adjust"></span>`;
     wireLoraCard(card, l, idx, arr);
@@ -7083,16 +7083,16 @@ function renderEditModelSummary() {
   const outpaintSteps = state.editEngine === 'qwen' ? (state.qwenQuality === 'fast' ? 4 : 20)
     : ((state.editEngine === 'krea2' || state.editEngine === 'krea2ref') ? 8 : 4);
   const notes = editOutpaintActive() ? {
-    klein4: `outpaint · ${outpaintSteps} steps`,
-    klein9: `outpaint · ${outpaintSteps} steps`,
-    qwen: `outpaint · ${outpaintSteps} steps`,
-    krea2: `outpaint · ${outpaintSteps} steps`,
-    krea2ref: `outpaint · ${outpaintSteps} steps`,
+    klein4: `expand · ${outpaintSteps} steps`,
+    klein9: `expand · ${outpaintSteps} steps`,
+    qwen: `expand · ${outpaintSteps} steps`,
+    krea2: `expand · ${outpaintSteps} steps`,
+    krea2ref: `expand · ${outpaintSteps} steps`,
   } : {
     klein4: '4B · fast edits',
     klein9: '9B · higher fidelity',
     qwen: state.qwenQuality === 'fast' ? 'multi-reference · fast' : 'multi-reference · quality',
-    krea2: 'inpaint · one reference',
+    krea2: 'fill · one reference',
     krea2ref: 'reference-guided · 8 steps',
   };
   $('#editEngineSelected').textContent = labels[state.editEngine] || labels.klein4;
@@ -7160,18 +7160,6 @@ $('#editModelHeader').addEventListener('click', () => {
   setEditModelExpanded(!$('#editModelPanel').classList.contains('expanded'));
 });
 
-function setVideoTimingExpanded(open) {
-  const expand = open === true;
-  const body = $('#vidTimingBody');
-  $('#vidTimingPanel').classList.toggle('expanded', expand);
-  body.inert = !expand;
-  body.setAttribute('aria-hidden', String(!expand));
-  $('#vidTimingHeader').setAttribute('aria-expanded', String(expand));
-}
-$('#vidTimingHeader').addEventListener('click', () => {
-  setVideoTimingExpanded(!$('#vidTimingPanel').classList.contains('expanded'));
-});
-
 function videoDurationMax(engine) {
   if (engine === 'scail') return 60;
   if (engine === 'ltx') return 20;
@@ -7210,7 +7198,6 @@ function updateVideoTuningSummary() {
   const motion = Number($('#vidFree').value) || 0;
   const motionVisible = !$('#vidFreeField').hidden;
   const summary = motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`;
-  $('#vidTimingSummary').textContent = summary;
   $('#vidControlsNote').textContent = summary;
   $('#vidDurVal').textContent = String(duration);
   $('#vidDurPrev').textContent = String(Math.max(Number(durationInput.min) || 1, duration - (Number(durationInput.step) || 1)));
@@ -8890,7 +8877,7 @@ $('#generateBtn').addEventListener('click', async () => {
   const promptOptional = (state.view === 'video' && (state.vidEngine === 'scail' || autoMotionPrompt)) || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
-  if (outpaintActive && !state.refs[0]) return toast('Outpaint needs a source image in reference slot 1', true);
+  if (outpaintActive && !state.refs[0]) return toast('Expand needs a source image in reference slot 1', true);
   if (outpaintActive && !editOutpaintGeometry().valid) return toast('Reduce Source on canvas below 100%, or choose a different Resolution ratio', true);
 
   if (state.view === 'video') {
@@ -13982,7 +13969,7 @@ async function reuseItem(it, useEnhanced) {
     if (!options.silent) toast('Restoring settings and reference images…');
     missing = await restoreEditReferences(it, () => reuseRequestCurrent(options));
     if (!reuseRequestCurrent(options)) return;
-    if (it.maskImageName && !(await restoreKreaMask(it, () => reuseRequestCurrent(options)))) missing.push('inpaint mask');
+    if (it.maskImageName && !(await restoreKreaMask(it, () => reuseRequestCurrent(options)))) missing.push('fill mask');
     if (!reuseRequestCurrent(options)) return;
     renderRefs();
   } else if (restoredRegions.length) {
@@ -16464,7 +16451,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 inpaint nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Outpaint nodes', editoutpaint: 'Klein / Qwen outpaint nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

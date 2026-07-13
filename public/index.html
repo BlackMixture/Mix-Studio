@@ -251,20 +251,20 @@
     </div>
     <div class="edit-outpaint-control" id="editOutpaintControl" hidden>
       <div class="edit-outpaint-head">
-        <span class="edit-outpaint-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h7v2H5v5H3V3Zm11 0h7v7h-2V5h-5V3ZM3 14h2v5h5v2H3v-7Zm16 0h2v7h-7v-2h5v-5ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg><span><b>Outpaint</b><small id="editOutpaintSummary">Extend beyond the frame</small></span></span>
-        <button class="edit-outpaint-toggle" id="editOutpaintToggle" type="button" role="switch" aria-checked="false" aria-label="Enable outpaint"><span aria-hidden="true"></span></button>
+        <span class="edit-outpaint-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h7v2H5v5H3V3Zm11 0h7v7h-2V5h-5V3ZM3 14h2v5h5v2H3v-7Zm16 0h2v7h-7v-2h5v-5ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg><span><b>Expand</b><small id="editOutpaintSummary">Extend beyond the frame</small></span></span>
+        <button class="edit-outpaint-toggle" id="editOutpaintToggle" type="button" role="switch" aria-checked="false" aria-label="Enable Expand"><span aria-hidden="true"></span></button>
       </div>
       <div class="edit-outpaint-body" id="editOutpaintBody" aria-hidden="true" inert>
         <div class="edit-outpaint-body-inner">
           <div class="edit-outpaint-preview-wrap">
-            <div class="edit-outpaint-preview" id="editOutpaintPreview" aria-label="Outpaint canvas preview">
+            <div class="edit-outpaint-preview" id="editOutpaintPreview" aria-label="Expanded canvas preview">
               <div class="edit-outpaint-source" id="editOutpaintSource" role="slider" tabindex="0" aria-label="Source image position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Centered"><img id="editOutpaintPreviewImage" alt="" /></div>
             </div>
             <small id="editOutpaintHint">Choose a different Resolution ratio to add canvas.</small>
           </div>
           <div class="edit-outpaint-placement">
             <div class="edit-outpaint-size-head"><span>Source on canvas</span><strong id="editOutpaintScaleValue">100%</strong></div>
-            <input class="edit-outpaint-scale" id="editOutpaintScale" type="range" min="45" max="100" step="5" value="100" aria-label="Source image size in outpaint canvas" />
+            <input class="edit-outpaint-scale" id="editOutpaintScale" type="range" min="45" max="100" step="5" value="100" aria-label="Source image size in expanded canvas" />
             <div class="edit-outpaint-output"><span>Final canvas</span><strong id="editOutpaintOutputValue">—</strong><small id="editOutpaintOutputNote">Native pixels are retained when Preserve is active.</small></div>
             <span id="editOutpaintPlacementLabel">Placement</span>
             <div class="edit-outpaint-position" id="editOutpaintPosition" role="group" aria-label="Original image placement">
@@ -660,6 +660,14 @@
     </button>
     <div class="video-options-body" id="vidOptsBody" aria-hidden="true" inert>
       <div class="video-options-body-inner">
+        <div class="video-number-setting video-duration-primary" id="vidDurationField">
+          <span><b>Duration</b><small id="vidDurationHint">Video length</small></span>
+          <button class="video-number-scrubber wheel-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="20" aria-valuenow="5">
+            <span class="duration-compact-wheel" aria-hidden="true"><small id="vidDurPrev">4</small><strong id="vidDurVal">5</strong><small id="vidDurNext">6</small></span><em>s</em>
+            <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
+          </button>
+          <input id="vidDur" type="hidden" min="1" max="20" step="1" value="5" />
+        </div>
         <div class="video-fixed-setting" id="vidLtxGenerationRow">
           <span class="video-option-label">Generation</span>
           <span class="video-fixed-value" id="vidLtxGeneration">Two-stage · base + refine</span>
@@ -709,32 +717,13 @@
             </div>
           </div>
         </div>
-        <div class="video-timing-disclosure" id="vidTimingPanel">
-          <button class="video-timing-header" id="vidTimingHeader" type="button" aria-expanded="false" aria-controls="vidTimingBody">
-            <span>Timing</span>
-            <span id="vidTimingSummary">5s · motion 35</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+        <div class="video-number-setting video-motion-setting" id="vidFreeField">
+          <span><b>Motion freedom</b><small>Higher is livelier</small></span>
+          <button class="video-number-scrubber wheel-scrubber" id="vidFreeScrub" type="button" role="spinbutton" aria-label="Motion freedom. Swipe up or down to adjust, or tap to open the motion freedom picker" aria-valuemin="0" aria-valuemax="100" aria-valuenow="35">
+            <span class="duration-compact-wheel" aria-hidden="true"><small id="vidFreePrev">34</small><strong id="vidFreeVal">35</strong><small id="vidFreeNext">36</small></span>
+            <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
           </button>
-          <div class="video-timing-body" id="vidTimingBody" aria-hidden="true" inert>
-            <div class="video-timing-body-inner">
-              <div class="video-number-setting">
-                <span><b>Duration</b><small id="vidDurationHint">Video length</small></span>
-                <button class="video-number-scrubber wheel-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="20" aria-valuenow="5">
-                  <span class="duration-compact-wheel" aria-hidden="true"><small id="vidDurPrev">4</small><strong id="vidDurVal">5</strong><small id="vidDurNext">6</small></span><em>s</em>
-                  <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
-                </button>
-                <input id="vidDur" type="hidden" min="1" max="20" step="1" value="5" />
-              </div>
-              <div class="video-number-setting" id="vidFreeField">
-                <span><b>Motion freedom</b><small>Higher is livelier</small></span>
-                <button class="video-number-scrubber wheel-scrubber" id="vidFreeScrub" type="button" role="spinbutton" aria-label="Motion freedom. Swipe up or down to adjust, or tap to open the motion freedom picker" aria-valuemin="0" aria-valuemax="100" aria-valuenow="35">
-                  <span class="duration-compact-wheel" aria-hidden="true"><small id="vidFreePrev">34</small><strong id="vidFreeVal">35</strong><small id="vidFreeNext">36</small></span>
-                  <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
-                </button>
-                <input id="vidFree" type="hidden" min="0" max="100" step="1" value="35" />
-              </div>
-            </div>
-          </div>
+          <input id="vidFree" type="hidden" min="0" max="100" step="1" value="35" />
         </div>
         <div class="chip-row video-output-row">
           <button class="chip" id="vid4k">RTX 4K pass</button>
@@ -1700,7 +1689,7 @@
             <div class="field"><label>Raw UNET</label><input id="setKrea2RawUnet" type="text" /></div>
             <div class="field"><label>Turbo LoRA for Raw</label><input id="setKrea2TurboLora" type="text" /></div>
             <div class="field"><label>Depth Control LoRA</label><input id="setKrea2DepthLora" type="text" /></div>
-            <div class="field"><label>Outpaint Identity LoRA</label><input id="setKrea2OutpaintLora" type="text" /></div>
+            <div class="field"><label>Expand Identity LoRA</label><input id="setKrea2OutpaintLora" type="text" /></div>
             <div class="field"><label>Depth Anything V3 model</label><input id="setDepthAnythingV3Model" type="text" /></div>
             <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
             <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
@@ -1708,11 +1697,11 @@
           <div class="settings-group"><h5>Flux 2 Klein Edit</h5>
             <div class="field"><label>Klein 4B UNET</label><input id="setKlein4Unet" type="text" /></div>
             <div class="field"><label>Klein 4B text encoder</label><input id="setKlein4Clip" type="text" /></div>
-            <div class="field"><label>Klein 4B outpaint consistency LoRA</label><input id="setKlein4ConsistencyLora" type="text" /></div>
+            <div class="field"><label>Klein 4B Expand consistency LoRA</label><input id="setKlein4ConsistencyLora" type="text" /></div>
             <div class="field"><label>Klein 4B consistency trigger</label><input id="setKlein4ConsistencyTrigger" type="text" /></div>
             <div class="field"><label>Klein 9B UNET</label><input id="setKlein9Unet" type="text" /></div>
             <div class="field"><label>Klein 9B text encoder</label><input id="setKlein9Clip" type="text" /></div>
-            <div class="field"><label>Klein 9B outpaint consistency LoRA</label><input id="setKlein9ConsistencyLora" type="text" /></div>
+            <div class="field"><label>Klein 9B Expand consistency LoRA</label><input id="setKlein9ConsistencyLora" type="text" /></div>
             <div class="field"><label>Klein 9B consistency trigger</label><input id="setKlein9ConsistencyTrigger" type="text" /></div>
             <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
           </div>
