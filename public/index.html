@@ -1364,6 +1364,19 @@
   </form>
 </div>
 
+<!-- scroll-contained details for generation and server errors -->
+<div class="sheet" id="errorDetailSheet">
+  <section class="sheet-panel error-detail-panel" role="dialog" aria-modal="true" aria-labelledby="errorDetailTitle">
+    <h3 class="sheet-title"><span id="errorDetailTitle">Generation error</span><button id="errorDetailClose" type="button" aria-label="Close">✕</button></h3>
+    <p class="error-detail-intro">The process stopped before it could finish.</p>
+    <pre class="error-detail-message" id="errorDetailMessage" tabindex="0"></pre>
+    <div class="error-detail-actions">
+      <button class="sheet-cta ghost" id="errorDetailDismiss" type="button">Close</button>
+      <button class="sheet-cta" id="errorDetailCopy" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v11H8zM5 16H4V5h11v1"/></svg><span>Copy error</span></button>
+    </div>
+  </section>
+</div>
+
 <!-- locked-folder access -->
 <div class="sheet" id="privateUnlockSheet">
   <form class="sheet-panel private-access-panel" id="privateUnlockForm">

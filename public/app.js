@@ -249,12 +249,48 @@ function switchEditEngine(engine) {
 /* ------------------------------------------------------------------ */
 
 function toast(msg, isError) {
+  if (isError && String(msg || '').length > 220) {
+    showErrorDetail(msg);
+    return;
+  }
   const el = document.createElement('div');
   el.className = 'toast' + (isError ? ' error' : '');
   el.textContent = msg;
   $('#toastZone').appendChild(el);
   setTimeout(() => el.remove(), isError ? 6000 : 3200);
 }
+
+let errorDetailText = '';
+
+function closeErrorDetail() {
+  const sheet = $('#errorDetailSheet');
+  if (sheet.contains(document.activeElement)) document.activeElement.blur();
+  sheet.classList.remove('show');
+}
+
+function showErrorDetail(message, title = 'Generation error') {
+  errorDetailText = String(message || 'An unknown error occurred.');
+  $('#errorDetailTitle').textContent = title;
+  $('#errorDetailMessage').textContent = errorDetailText;
+  const copyLabel = $('#errorDetailCopy span');
+  if (copyLabel) copyLabel.textContent = 'Copy error';
+  $('#errorDetailSheet').classList.add('show');
+  setTimeout(() => $('#errorDetailCopy').focus(), 80);
+}
+
+$('#errorDetailClose').addEventListener('click', closeErrorDetail);
+$('#errorDetailDismiss').addEventListener('click', closeErrorDetail);
+$('#errorDetailSheet').addEventListener('click', (event) => {
+  if (event.target === $('#errorDetailSheet')) closeErrorDetail();
+});
+$('#errorDetailCopy').addEventListener('click', async () => {
+  try {
+    await copyTextToClipboard(errorDetailText);
+    $('#errorDetailCopy span').textContent = 'Copied';
+  } catch {
+    $('#errorDetailCopy span').textContent = 'Copy failed';
+  }
+});
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -9801,7 +9837,7 @@ function connectEvents() {
     }
     renderGrid();
     if (d.items && d.items.length) refreshGallery(true);
-    toast('Error: ' + d.message, true);
+    showErrorDetail(d.message, d.kind === 'upscale' || d.operation === 'upscale' ? 'Upscale error' : 'Generation error');
     queueRefreshSoon();
   });
   es.addEventListener('queueReset', () => {

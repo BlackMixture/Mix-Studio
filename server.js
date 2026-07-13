@@ -70,7 +70,7 @@ const {
   buildQwenOutpaintGraph,
   buildKrea2MaskedOutpaintGraph,
 } = require('./lib/edit-outpaint-workflows');
-const { detectAudioStreamFile } = require('./lib/media-inspection');
+const { detectAudioStream, detectAudioStreamFile } = require('./lib/media-inspection');
 const {
   MAX_INPUT_BYTES,
   inputAssetPath,
@@ -1122,7 +1122,14 @@ function failJob(pid, message) {
     }
   }
   pushHistory({ kind: 'error', profileId: job ? job.profileId : undefined, itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
-  broadcast('jobError', { jobId: pid, kind: job ? job.kind : 'gen', itemId: job ? job.itemId : null, message, durationMs });
+  broadcast('jobError', {
+    jobId: pid,
+    kind: job ? job.kind : 'gen',
+    operation: job && job.videoInfo ? job.videoInfo.processed : undefined,
+    itemId: job ? job.itemId : null,
+    message,
+    durationMs,
+  });
 }
 
 function findOutputFiles(outputs, extRe) {
@@ -3590,7 +3597,9 @@ async function buildExistingVideoUpscale(videoName, opts) {
     format: 'None',
   });
   graph.vsr = rtxVideoSuperResolutionNode(['src', 0], opts.scale || 2);
-  graph.video = { class_type: 'CreateVideo', inputs: { images: ['vsr', 0], audio: ['src', 2], fps: opts.fps || 16 } };
+  const videoInputs = { images: ['vsr', 0], fps: opts.fps || 16 };
+  if (opts.hasAudio) videoInputs.audio = ['src', 2];
+  graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
   graph.save = {
     class_type: 'SaveVideo',
     inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video_upscale', format: 'auto', codec: 'auto' },
@@ -3613,7 +3622,9 @@ async function buildExistingVideoInterpolate(videoName, opts) {
     format: 'None',
   });
   const frameSource = await rifeSmooth(graph, ['src', 0], smooth);
-  graph.video = { class_type: 'CreateVideo', inputs: { images: frameSource, audio: ['src', 2], fps: fps * smooth } };
+  const videoInputs = { images: frameSource, fps: fps * smooth };
+  if (opts.hasAudio) videoInputs.audio = ['src', 2];
+  graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
   graph.save = {
     class_type: 'SaveVideo',
     inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video_interp', format: 'auto', codec: 'auto' },
@@ -4686,6 +4697,7 @@ async function handleApi(req, res, url) {
     if (!entry) return json(res, 404, { error: 'Video not found' });
 
     const buf = await fsp.readFile(path.join(VIDEOS, entry.file));
+    const hasAudio = detectAudioStream(buf, entry.file) === true;
     const info = entry.info || {};
     const dims = mp4Dims(buf) || {};
     const baseInfo = Object.assign({}, info, {
@@ -4705,14 +4717,15 @@ async function handleApi(req, res, url) {
     let videoInfo;
     if (route === '/api/video/upscale') {
       const scale = clampNum(body.scale, 1, 4, 2);
-      graph = await buildExistingVideoUpscale(comfyName, { fps, frames, scale });
+      graph = await buildExistingVideoUpscale(comfyName, { fps, frames, scale, hasAudio });
       videoInfo = videoProcessInfo(baseInfo, { kind: 'upscale', scale, parentVideoId: entry.id });
     } else {
       const multiplier = [2, 3, 4].includes(Number(body.multiplier)) ? Number(body.multiplier) : 2;
-      graph = await buildExistingVideoInterpolate(comfyName, { fps, frames, smooth: multiplier });
+      graph = await buildExistingVideoInterpolate(comfyName, { fps, frames, smooth: multiplier, hasAudio });
       videoInfo = videoProcessInfo(baseInfo, { kind: 'interpolate', multiplier, parentVideoId: entry.id });
     }
-    videoInfo.preservedAudio = true;
+    if (hasAudio) videoInfo.preservedAudio = true;
+    else delete videoInfo.preservedAudio;
 
     const pid = await queuePrompt(graph);
     trackJob(pid, { kind: 'video', profileId: req.profile.id, itemId: item.id, graph, videoInfo });

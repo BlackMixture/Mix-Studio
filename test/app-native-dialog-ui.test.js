@@ -22,6 +22,15 @@ test('text entry and confirmations use a shared in-app dialog', () => {
   assert.match(css, /\.app-dialog-actions \.sheet-cta,[\s\S]*background: linear-gradient\(#000, #000\)/);
 });
 
+test('long generation errors use a contained, copyable dialog', () => {
+  assert.match(html, /id="errorDetailSheet"[\s\S]*id="errorDetailMessage"[\s\S]*id="errorDetailCopy"/);
+  assert.match(app, /function showErrorDetail\(message, title = 'Generation error'\)/);
+  assert.match(app, /copyTextToClipboard\(errorDetailText\)/);
+  assert.match(app, /showErrorDetail\(d\.message, d\.kind === 'upscale' \|\| d\.operation === 'upscale' \? 'Upscale error' : 'Generation error'\)/);
+  assert.match(css, /\.error-detail-panel \{[\s\S]*max-height: min\(78dvh, 720px\);[\s\S]*overflow: hidden;/);
+  assert.match(css, /\.error-detail-message \{[\s\S]*overflow: auto;[\s\S]*white-space: pre-wrap;[\s\S]*overflow-wrap: anywhere;/);
+});
+
 test('LoRA presets can choose and retain a stack thumbnail', () => {
   assert.match(html, /id="loraPresetSaveSheet"[\s\S]*id="loraPresetThumbChoices"/);
   assert.match(app, /presetSaveThumbnail = presetSaveLoras\[0\]\.name/);
