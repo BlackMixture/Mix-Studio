@@ -3,6 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  LTX_MAX_SECONDS,
+  ltxDurationSeconds,
+  ltxFramesForSeconds,
   scailDurationSeconds,
   scailFramesForSeconds,
   scailInfinityMaskArgs,
@@ -14,6 +17,16 @@ const {
   scailSegments,
   videoProcessInfo,
 } = require('../lib/video-workflows');
+
+test('LTX 2.3 accepts up to 20 seconds and preserves 8n+1 frame counts', () => {
+  assert.equal(LTX_MAX_SECONDS, 20);
+  assert.equal(ltxDurationSeconds(25), 20);
+  assert.equal(ltxDurationSeconds(0), 1);
+  assert.equal(ltxFramesForSeconds(20, 24), 481);
+  assert.equal(ltxFramesForSeconds(20, 25), 497);
+  assert.equal((ltxFramesForSeconds(20, 25) - 1) % 8, 0);
+  assert.equal(ltxFramesForSeconds(20, 25, 15), 377);
+});
 
 test('scailDurationSeconds clamps to trim length and 60 second app cap', () => {
   assert.equal(scailDurationSeconds(90, 120), 60);

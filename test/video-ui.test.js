@@ -108,6 +108,17 @@ test('Duration and Motion Freedom use discoverable clock-style scrubbers with la
   assert.match(app, /event\.key === 'ArrowUp'/);
 });
 
+test('LTX 2.3 exposes its supported 20-second duration without raising other model limits', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="vidDurScrub"[^>]*aria-valuemax="20"/);
+  assert.match(html, /id="vidDur"[^>]*max="20"/);
+  assert.match(html, /id="animDur"[^>]*max="20"/);
+  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*engine === 'ltx'\) return 20;[\s\S]*return 15;/);
+  assert.match(app, /Math\.min\(Number\(durEl\.max\) \|\| 15, Math\.round\(len\)\)/);
+  assert.match(server, /engine === 'ltx'[\s\S]*ltxDurationSeconds\(seconds\)/);
+  assert.match(server, /seconds: opts\.seconds/);
+});
+
 test('LTX settings identify their native pipeline and optional RIFE playback', () => {
   assert.match(html, /id="vidLtxGeneration"[^>]*>Two-stage · base \+ refine</);
   assert.match(html, /id="vidLtxPlayback"[^>]*>25 fps · native</);

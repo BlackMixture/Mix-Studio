@@ -92,6 +92,9 @@ const {
   maskInfluenceDenoise,
 } = require('./lib/edit-mask');
 const {
+  LTX_MAX_SECONDS,
+  ltxDurationSeconds,
+  ltxFramesForSeconds,
   scailMode,
   normalizeScailChunkOptions,
   scailDurationSeconds,
@@ -4498,12 +4501,14 @@ async function handleApi(req, res, url) {
 
     // Duration: prefer seconds; fall back to legacy frames (25 fps)
     let seconds = Number(body.seconds);
-    if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 377, 121) / 25;
+    if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 505, 121) / 25;
     seconds = engine === 'scail'
       ? scailDurationSeconds(seconds, driveDur)
       : isLtxEdit && driveDur > 0
         ? Math.max(1, Math.min(15, driveDur, seconds))
-        : Math.max(1, Math.min(15, seconds));
+        : engine === 'ltx'
+          ? ltxDurationSeconds(seconds)
+          : Math.max(1, Math.min(15, seconds));
     let frames; let fps; let W; let H;
     if (engine === 'scail') {
       fps = 16;
@@ -4522,13 +4527,11 @@ async function handleApi(req, res, url) {
     } else if (faceImageName) {
       // Face ID reference-to-video: single-stage, 24 fps (workflow spec)
       fps = 24;
-      frames = Math.round(seconds * 24);
-      frames = Math.max(25, Math.min(361, Math.round((frames - 1) / 8) * 8 + 1)); // LTX 8n+1
+      frames = ltxFramesForSeconds(seconds, fps);
       ({ W, H } = faceIdDims(srcW, srcH));
     } else {
       fps = 25;
-      frames = Math.round(seconds * 25);
-      frames = Math.max(25, Math.min(377, Math.round((frames - 1) / 8) * 8 + 1)); // LTX needs 8n+1
+      frames = ltxFramesForSeconds(seconds, fps, isLtxEdit ? 15 : LTX_MAX_SECONDS);
       ({ W, H } = videoDims(srcW, srcH));
     }
 
@@ -4603,6 +4606,7 @@ async function handleApi(req, res, url) {
       kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
       videoInfo: {
         engine,
+        seconds: opts.seconds,
         motionPrompt: suppliedMotionPrompt || (engine === 'scail' ? 'Motion copied from driving video' : motionPrompt),
         enhance: enhance && !!suppliedMotionPrompt,
         frames: opts.frames * smooth, fps: opts.fps * smooth,

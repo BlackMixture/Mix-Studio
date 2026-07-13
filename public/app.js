@@ -1833,6 +1833,7 @@ function updateVideoPanels() {
   const isVideo = state.view === 'video';
   const isEdit = state.view === 'edit';
   const isRegion = state.view === 'create' && state.createMode === 'region';
+  if (isVideo) syncVideoDurationLimit();
   const promptPanel = $('#promptPanel');
   const regionWorkspace = $('#regionWorkspace');
   const promptSlot = $('#regionGlobalPromptSlot');
@@ -5042,7 +5043,7 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
     const len = a.trimEnd - a.trimStart;
     lbl.textContent = `${a.label || 'audio'} · ${fmtT(a.trimStart)} – ${fmtT(a.trimEnd)} · ${len.toFixed(1)}s`;
     const durEl = $('#' + durInputId);
-    durEl.value = Math.max(1, Math.min(15, Math.round(len)));
+    durEl.value = Math.max(1, Math.min(Number(durEl.max) || 15, Math.round(len)));
     $('#' + durValId).textContent = durEl.value;
     durEl.dispatchEvent(new Event('input', { bubbles: true }));
   };
@@ -5210,6 +5211,7 @@ function restorePersistedWorkspaceControls() {
   if (controls.motionFreedom != null) $('#vidFree').value = controls.motionFreedom;
   $('#vid4k').classList.toggle('active', controls.fourK);
   $('#vidQuality').classList.toggle('active', controls.quality);
+  syncVideoDurationLimit();
   updateVideoPanels();
 }
 
@@ -7156,7 +7158,39 @@ $('#vidTimingHeader').addEventListener('click', () => {
   setVideoTimingExpanded(!$('#vidTimingPanel').classList.contains('expanded'));
 });
 
+function videoDurationMax(engine) {
+  if (engine === 'scail') return 60;
+  if (engine === 'ltx') return 20;
+  return 15;
+}
+
+function clampVideoDurationInput(input, engine) {
+  const max = videoDurationMax(engine);
+  const requested = Number(input.value);
+  input.max = String(max);
+  input.value = String(Math.max(1, Math.min(max, Number.isFinite(requested) ? requested : 5)));
+  return max;
+}
+
+function syncVideoDurationLimit() {
+  const durationInput = $('#vidDur');
+  const max = clampVideoDurationInput(durationInput, state.vidEngine);
+  $('#vidDurScrub').setAttribute('aria-valuemax', String(max));
+  const longLtx = state.vidEngine === 'ltx' && Number(durationInput.value) > 15;
+  $('#vidDurationHint').textContent = longLtx ? 'Long clip · slower, higher memory' : 'Video length';
+  $('#durationPickerCopy').textContent = state.vidEngine === 'ltx'
+    ? 'Seconds · up to 20 with LTX 2.3' : 'Seconds';
+}
+
+function syncAnimateDurationLimit() {
+  const input = $('#animDur');
+  clampVideoDurationInput(input, state.animEngine);
+  $('#animDurVal').textContent = input.value;
+  $('#animDurationHint').hidden = !(state.animEngine === 'ltx' && Number(input.value) > 15);
+}
+
 function updateVideoTuningSummary() {
+  syncVideoDurationLimit();
   const durationInput = $('#vidDur');
   const duration = Number(durationInput.value) || 1;
   const motion = Number($('#vidFree').value) || 0;
@@ -7242,6 +7276,7 @@ wireVideoValueWheel('vidDur', 'durationWheel');
 wireVideoValueWheel('vidFree', 'motionWheel');
 
 function openDurationPicker() {
+  syncVideoDurationLimit();
   renderVideoValueWheel('vidDur', 'durationWheel');
   $('#durationPickerSheet').classList.add('show');
   requestAnimationFrame(() => centerVideoValueWheel('durationWheel'));
@@ -8770,10 +8805,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   // send those captions through the creative prompt enhancer.
   $('#enhanceBtn').hidden = ltxEdit;
   renderScailChunkControls();
-  const dur = $('#vidDur');
-  dur.max = scail ? 60 : 15;
-  $('#vidDurScrub').setAttribute('aria-valuemax', dur.max);
-  if (Number(dur.value) > Number(dur.max)) dur.value = dur.max;
+  syncVideoDurationLimit();
   renderVidDrive();
   renderVidFace();
   updateVideoPanels();
@@ -8787,6 +8819,7 @@ wireEngineRow('animEngineRow', (engine) => {
   $('#animQuality').hidden = !wan;
   $('#animSigmaRow').hidden = engine !== 'eros';
   $('#animExtras').hidden = wan;
+  syncAnimateDurationLimit();
 });
 wireEngineRow('editEngineRow', (engine) => {
   captureGenerationTuning('edit');
@@ -13265,9 +13298,10 @@ function openAnimateSheet(it, selVideo) {
   endFrameRefresh.animEnd();
   setAudioChipVisual($('#animAudioChip'), false);
   $('#animAudioTrim').hidden = true;
+  syncAnimateDurationLimit();
   $('#animateSheet').classList.add('show');
 }
-$('#animDur').addEventListener('input', () => { $('#animDurVal').textContent = $('#animDur').value; });
+$('#animDur').addEventListener('input', syncAnimateDurationLimit);
 $('#animFree').addEventListener('input', () => { $('#animFreeVal').textContent = $('#animFree').value; });
 $('#vidFree').addEventListener('input', updateVideoTuningSummary);
 $('#animEnhance').addEventListener('click', () => $('#animEnhance').classList.toggle('active'));
@@ -13895,7 +13929,7 @@ async function reuseVideo(it, v) {
     $('#vidFree').value = info.motionFreedom;
   }
   const dur = $('#vidDur');
-  const secs = info.frames && info.fps ? Math.round(info.frames / info.fps) : 5;
+  const secs = Number(info.seconds) || (info.frames && info.fps ? Math.round(info.frames / info.fps) : 5);
   dur.value = Math.max(1, Math.min(Number(dur.max) || 15, secs));
   updateVideoTuningSummary();
 

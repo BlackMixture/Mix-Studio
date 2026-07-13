@@ -718,12 +718,12 @@
           <div class="video-timing-body" id="vidTimingBody" aria-hidden="true" inert>
             <div class="video-timing-body-inner">
               <div class="video-number-setting">
-                <span><b>Duration</b><small>Video length</small></span>
-                <button class="video-number-scrubber wheel-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="15" aria-valuenow="5">
+                <span><b>Duration</b><small id="vidDurationHint">Video length</small></span>
+                <button class="video-number-scrubber wheel-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="20" aria-valuenow="5">
                   <span class="duration-compact-wheel" aria-hidden="true"><small id="vidDurPrev">4</small><strong id="vidDurVal">5</strong><small id="vidDurNext">6</small></span><em>s</em>
                   <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
                 </button>
-                <input id="vidDur" type="hidden" min="1" max="15" step="1" value="5" />
+                <input id="vidDur" type="hidden" min="1" max="20" step="1" value="5" />
               </div>
               <div class="video-number-setting" id="vidFreeField">
                 <span><b>Motion freedom</b><small>Higher is livelier</small></span>
@@ -1584,7 +1584,8 @@
     </div>
     <div class="field">
       <label>Duration — <span id="animDurVal">5</span>s</label>
-      <div class="range-field"><input id="animDur" type="range" min="1" max="15" step="1" value="5" /></div>
+      <div class="range-field"><input id="animDur" type="range" min="1" max="20" step="1" value="5" /></div>
+      <small class="long-video-note" id="animDurationHint" hidden>Long LTX clips take longer and use more memory.</small>
     </div>
     <div class="field" id="animFreeField">
       <label>Motion freedom — <span id="animFreeVal">35</span> (higher = livelier, lower = closer to image)</label>
@@ -2014,7 +2015,7 @@
 <div class="sheet" id="durationPickerSheet">
   <div class="sheet-panel duration-picker-panel">
     <h3 class="sheet-title">Duration <button data-close aria-label="Close duration picker">✕</button></h3>
-    <p class="duration-picker-copy">Seconds</p>
+    <p class="duration-picker-copy" id="durationPickerCopy">Seconds</p>
     <div class="duration-wheel" id="durationWheel" role="listbox" aria-label="Duration in seconds"></div>
     <button class="sheet-cta" id="durationPickerDone" type="button">Done</button>
   </div>
