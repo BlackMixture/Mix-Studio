@@ -21,6 +21,8 @@ test('normalizes regional boxes for Krea2 prompting', () => {
     {
       id: 'hero',
       description: 'woman in a red velvet jacket',
+      refinedDescription: 'woman in a richly textured crimson velvet jacket',
+      enhance: false,
       x: -0.2,
       y: 0.1,
       w: 1.4,
@@ -41,6 +43,8 @@ test('normalizes regional boxes for Krea2 prompting', () => {
   assert.equal(regions[0].lora, 'Characters/Hero.safetensors');
   assert.equal(regions[0].strength, 1.35);
   assert.equal(regions[0].refImageName, 'hero_ref.png');
+  assert.equal(regions[0].refinedDescription, 'woman in a richly textured crimson velvet jacket');
+  assert.equal(regions[0].enhance, false);
 });
 
 test('builds Fedor v3 regions_json, Ideogram elements JSON, and bbox payloads', () => {
@@ -81,9 +85,18 @@ test('builds Fedor v3 regions_json, Ideogram elements JSON, and bbox payloads', 
   assert.equal(elements[0].desc, 'left subject wearing a blue coat');
   // no spatial language -> a position phrase derived from the box is added
   const injected = JSON.parse(regionalPromptBuilderJson([
-    { description: 'a giant squid', x: 0, y: 0, w: 0.5, h: 1 },
+    {
+      description: 'a giant squid',
+      refinedDescription: 'a colossal bioluminescent squid',
+      x: 0,
+      y: 0,
+      w: 0.5,
+      h: 1,
+    },
     { description: 'an alien spaceship', x: 0.18, y: 0, w: 0.63, h: 0.41 },
   ]));
+  assert.match(injected[0].desc, /^a colossal bioluminescent squid/);
+  assert.doesNotMatch(injected[0].desc, /a giant squid/);
   assert.match(injected[0].desc, /occupying the full left half/);
   assert.match(injected[1].desc, /top center/);
   assert.deepEqual(regionalBboxes(regions, 1024, 768)[0], {
@@ -207,4 +220,12 @@ test('server advertises regional Krea2 and inpaint readiness groups', () => {
   assert.match(serverJs, /Ideogram4PromptBuilderKJ/);
   assert.match(serverJs, /krea2inpaint:\s*\[/);
   assert.match(serverJs, /krea2inpaint:\s*\[[^\]]*'VAEEncode'[^\]]*'SetLatentNoiseMask'/);
+});
+
+test('server enhances enabled region prompts sequentially and stores their refined text', () => {
+  assert.match(serverJs, /function enhanceRegionPrompt\(description, globalPrompt, seed, options = \{\}\)/);
+  assert.match(serverJs, /for \(let index = 0; index < regionInputs\.length; index \+= 1\)/);
+  assert.match(serverJs, /region\.enhance !== false/);
+  assert.match(serverJs, /Enhancing region prompt \$\{completed\} of \$\{regionCount\}/);
+  assert.match(serverJs, /Object\.assign\(\{\}, region, \{ refinedDescription: enhancedRegions\[index\] \}\)/);
 });

@@ -5,9 +5,11 @@ const assert = require('node:assert/strict');
 
 const {
   CREATIVE_RESOLUTION_INSTRUCTION,
+  REGIONAL_PROMPT_INSTRUCTION,
   ENHANCE_TAIL,
   cleanGeneratedPrompt,
   promptEnhanceParts,
+  regionPromptEnhanceParts,
 } = require('../lib/prompt-enhance');
 
 test('creative enhancement resolves abstract requests into visible scenes', () => {
@@ -35,6 +37,23 @@ test('prompt enhancement clearly separates instructions from user input', () => 
   );
   assert.match(parts.userInput, /<final_prompt> XML element containing the finished prompt/);
   assert.doesNotMatch(parts.userInput, /the final prompt paragraph/i);
+});
+
+test('regional enhancement stays inside the selected box and keeps scene context separate', () => {
+  const parts = regionPromptEnhanceParts(
+    "Custom system prompt\n\nUser's Input:",
+    'cinematic fashion editorial in a marble lobby',
+    'woman in a red velvet jacket',
+    { hasReference: true },
+  );
+
+  assert.match(REGIONAL_PROMPT_INSTRUCTION, /only the selected region/i);
+  assert.match(REGIONAL_PROMPT_INSTRUCTION, /Do not repeat the whole composition/i);
+  assert.match(REGIONAL_PROMPT_INSTRUCTION, /Do not invent placement/i);
+  assert.match(parts.instruction, /reference image is attached/i);
+  assert.match(parts.userInput, /<global_scene_context>\ncinematic fashion editorial in a marble lobby\n<\/global_scene_context>/);
+  assert.match(parts.userInput, /<region_input>\nwoman in a red velvet jacket\n<\/region_input>/);
+  assert.ok(parts.userInput.endsWith(ENHANCE_TAIL));
 });
 
 test('generated prompt cleanup rejects copied placeholder text', () => {

@@ -37,28 +37,35 @@ test('region canvas follows resolution aspect changes without rebuilding its box
   assert.doesNotMatch(stageCss, /max-height/);
 });
 
-test('Region mode moves the shared prompt below the stage as the global prompt', () => {
+test('Region mode moves the shared global prompt above the canvas', () => {
   assert.match(indexHtml, /id="promptPanel"/);
   assert.match(indexHtml, /id="promptLabel"/);
   assert.match(appJs, /promptSlot\.appendChild\(promptPanel\)/);
   assert.match(appJs, /textContent = isRegion \? 'Global prompt' : \(scailInputFirst \? 'Creative direction · optional' : 'Prompt'\)/);
   assert.match(appJs, /\$\('#regionsPromptBtn'\)\.hidden = isRegion/);
   assert.match(styleCss, /\.icon-chip\[hidden\] \{ display: none; \}/);
+  assert.ok(indexHtml.indexOf('id="regionGlobalPromptSlot"') < indexHtml.indexOf('class="region-toolbar"'));
 });
 
-test('selecting a region expands auto-saved settings and holding cycles overlaps', () => {
+test('selecting a region expands auto-saved settings and repeated clicks cycle overlaps', () => {
   assert.match(appJs, /function syncRegionSettings\(focusPrompt\)/);
   assert.match(appJs, /function selectRegionUnderneath\(clientX, clientY, currentRegion\)/);
+  assert.match(appJs, /state\.activeRegionId !== region\.id[\s\S]*?selectRegionUnderneath\(event\.clientX, event\.clientY, region\)/);
+  assert.match(appJs, /event\.detail === 0 \|\| settingsClick \|\| !!event\.target\.closest\('\.region-box-resize'\)/);
+  assert.match(appJs, /if \(event\.target\.closest\('\.region-box-settings'\)\) return;/);
   assert.match(appJs, /setTimeout\(\(\) => \{[\s\S]*selectRegionUnderneath[\s\S]*\}, 520\)/);
+  assert.match(appJs, /regionClickBlockedUntil = Date\.now\(\) \+ 400;[\s\S]*selectRegionUnderneath\(drag\.startX/);
+  assert.match(appJs, /state\.activeRegionId = regionDrag\.region\.id;[\s\S]*regionClickBlockedUntil = Date\.now\(\) \+ 250/);
   assert.match(appJs, /regionSettingsOpen = true/);
   assert.match(styleCss, /\.region-settings\.show \{[\s\S]*grid-template-rows: 1fr/);
 });
 
-test('selected-region inspector appears before the canvas with visual asset inputs', () => {
+test('selected-region inspector appears below the canvas with visual asset inputs', () => {
+  const globalAt = indexHtml.indexOf('id="regionGlobalPromptSlot"');
   const settingsAt = indexHtml.indexOf('id="regionSettings"');
   const toolbarAt = indexHtml.indexOf('class="region-toolbar"');
   const stageAt = indexHtml.indexOf('id="regionStage"');
-  assert.ok(settingsAt > -1 && settingsAt < toolbarAt && toolbarAt < stageAt);
+  assert.ok(globalAt > -1 && globalAt < toolbarAt && toolbarAt < stageAt && stageAt < settingsAt);
   assert.match(indexHtml, /class="lora-grid region-lora-slot" id="regionLoraSlot"/);
   assert.match(indexHtml, /class="field region-support-field region-lora-disclosure" id="regionLoraDisclosure"/);
   assert.match(indexHtml, /class="field region-support-field region-reference-field"/);
@@ -132,8 +139,27 @@ test('Region mode automatically submits its configured regions', () => {
   assert.doesNotMatch(appJs, /regionsEnabled/);
   assert.match(appJs, /activeRegionsForRequest/);
   assert.match(appJs, /regions:\s*activeRegionsForRequest\(\)/);
+  assert.match(appJs, /enhance: region\.enhance !== false/);
   assert.match(appJs, /enabled: true/);
   assert.match(appJs, /maskImageName/);
+});
+
+test('each region has an independent generation-time prompt enhance toggle', () => {
+  assert.match(indexHtml, /id="regionEnhanceBtn"[^>]*aria-pressed="true"/);
+  assert.match(indexHtml, /id="regionDescInput"[\s\S]*id="regionEnhanceBtn"/);
+  assert.match(appJs, /description: '',\s*enhance: state\.enhance !== false/);
+  assert.match(appJs, /regionEnhanceButton\.classList\.toggle\('on', enhanceRegion\)/);
+  assert.match(appJs, /regionEnhanceBtn'\)\.addEventListener\('click'/);
+  assert.match(appJs, /region\.enhance = region\.enhance === false/);
+  assert.match(appJs, /delete region\.refinedDescription/);
+  assert.match(appJs, /if \(d\.profileId && state\.profile && d\.profileId !== state\.profile\.id\) return/);
+  assert.match(styleCss, /\.region-prompt-box \{ position: relative; \}/);
+});
+
+test('reusing an enhanced regional generation can restore refined or original region text', () => {
+  assert.match(appJs, /const hasEnhancedRegions = Array\.isArray\(it\.regions\)/);
+  assert.match(appJs, /region\.refinedDescription \|\| region\.description/);
+  assert.match(appJs, /enhance: useEnhanced \? false : region\.enhance !== false/);
 });
 
 test('regional LoRA strength is constrained to the usable zero-to-two range', () => {

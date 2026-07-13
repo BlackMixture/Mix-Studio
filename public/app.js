@@ -3485,6 +3485,7 @@ function createRegion() {
   const region = {
     id: `r${Date.now()}${Math.floor(Math.random() * 1000)}`,
     description: '',
+    enhance: state.enhance !== false,
     x: Math.min(0.62, 0.08 + n * 0.06),
     y: Math.min(0.56, 0.12 + n * 0.05),
     w: 0.34,
@@ -3510,6 +3511,7 @@ function activeRegionsForRequest() {
       return {
         id: region.id,
         description: (region.description || '').trim(),
+        enhance: region.enhance !== false,
         x: region.x,
         y: region.y,
         w: region.w,
@@ -3568,7 +3570,7 @@ function selectRegion(region, focusPrompt) {
   regionSettingsOpen = true;
   renderRegionEditor();
   syncRegionSettings(focusPrompt);
-  if (!wasOpen) {
+  if (!wasOpen || focusPrompt) {
     setTimeout(() => $('#regionSettings').scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'nearest',
@@ -3593,7 +3595,6 @@ function selectRegionUnderneath(clientX, clientY, currentRegion) {
   }
   const currentIndex = hits.findIndex((region) => region.id === currentRegion.id);
   const nextIndex = currentIndex > 0 ? currentIndex - 1 : hits.length - 1;
-  regionClickBlockedUntil = Date.now() + 400;
   selectRegion(hits[nextIndex], false);
   if (navigator.vibrate) navigator.vibrate(12);
 }
@@ -3852,19 +3853,29 @@ function renderRegionEditor() {
     const box = document.createElement('button');
     box.type = 'button';
     box.className = 'region-box' + (region.id === state.activeRegionId ? ' active' : '');
+    box.dataset.regionId = region.id;
     box.style.left = `${region.x * 100}%`;
     box.style.top = `${region.y * 100}%`;
     box.style.width = `${region.w * 100}%`;
     box.style.height = `${region.h * 100}%`;
     box.style.borderColor = region.color || REGION_COLORS[index % REGION_COLORS.length];
     box.setAttribute('aria-label', `Region ${index + 1}. Open region settings.`);
-    box.innerHTML = `<span class="region-box-number" aria-hidden="true">${index + 1}</span><em class="region-box-settings" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm0 8h16v2H4v-2Zm14-9h2v4h-2V6Zm-8 8h2v4h-2v-4Z"/></svg></em><b>${escapeHtml(region.description || 'Region')}</b><i></i>`;
+    box.innerHTML = `<span class="region-box-number" aria-hidden="true">${index + 1}</span><em class="region-box-settings" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm0 8h16v2H4v-2Zm14-9h2v4h-2V6Zm-8 8h2v4h-2v-4Z"/></svg></em><b>${escapeHtml(region.description || 'Region')}</b><i class="region-box-resize"></i>`;
     box.addEventListener('click', (event) => {
       if (Date.now() < regionClickBlockedUntil) return;
-      selectRegion(region, !!event.target.closest('.region-box-settings'));
+      const settingsClick = !!event.target.closest('.region-box-settings');
+      const directSelection = event.detail === 0 || settingsClick || !!event.target.closest('.region-box-resize');
+      if (directSelection || state.activeRegionId !== region.id) {
+        selectRegion(region, settingsClick);
+      } else {
+        selectRegionUnderneath(event.clientX, event.clientY, region);
+      }
     });
-    box.addEventListener('pointerdown', (e) => startRegionDrag(e, region, false));
-    box.querySelector('i').addEventListener('pointerdown', (e) => startRegionDrag(e, region, true));
+    box.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('.region-box-settings')) return;
+      startRegionDrag(event, region, false);
+    });
+    box.querySelector('.region-box-resize').addEventListener('pointerdown', (event) => startRegionDrag(event, region, true));
     stage.appendChild(box);
   });
 
@@ -3872,6 +3883,7 @@ function renderRegionEditor() {
   const hasRegion = !!region;
   $('#regionDeleteBtn').disabled = !hasRegion;
   $('#regionDescInput').disabled = !hasRegion;
+  $('#regionEnhanceBtn').disabled = !hasRegion;
   $('#regionStrengthInput').disabled = !hasRegion;
   $('#regionRefBtn').disabled = !hasRegion;
   $('#regionRefClear').disabled = !hasRegion || !region.refImageName;
@@ -3882,6 +3894,12 @@ function renderRegionEditor() {
   }
 
   $('#regionDescInput').value = region.description || '';
+  const enhanceRegion = region.enhance !== false;
+  const regionEnhanceButton = $('#regionEnhanceBtn');
+  regionEnhanceButton.classList.toggle('on', enhanceRegion);
+  regionEnhanceButton.setAttribute('aria-pressed', String(enhanceRegion));
+  regionEnhanceButton.title = `Enhance this region prompt: ${enhanceRegion ? 'on' : 'off'}`;
+  regionEnhanceButton.setAttribute('aria-label', regionEnhanceButton.title);
   const hasLora = region.lora && region.lora !== 'None';
   $('#regionStrengthField').hidden = !hasLora;
   region.strength = normalizeRegionStrength(region.strength);
@@ -3902,7 +3920,6 @@ function renderRegionEditor() {
 function startRegionDrag(e, region, resize) {
   e.preventDefault();
   e.stopPropagation();
-  state.activeRegionId = region.id;
   const rect = $('#regionStage').getBoundingClientRect();
   const drag = {
     region,
@@ -3925,6 +3942,7 @@ function startRegionDrag(e, region, resize) {
       document.removeEventListener('pointerup', endRegionDrag);
       document.removeEventListener('pointercancel', endRegionDrag);
       regionDrag = null;
+      regionClickBlockedUntil = Date.now() + 400;
       selectRegionUnderneath(drag.startX, drag.startY, region);
     }, 520);
   }
@@ -3942,6 +3960,7 @@ function moveRegionDrag(e) {
   if (!regionDrag.moved) {
     regionDrag.moved = true;
     clearTimeout(regionDrag.holdTimer);
+    state.activeRegionId = regionDrag.region.id;
     regionClickBlockedUntil = Date.now() + 250;
   }
   const r = regionDrag.region;
@@ -4726,8 +4745,16 @@ $('#regionDescInput').addEventListener('input', () => {
   const region = selectedRegion();
   if (!region) return;
   region.description = $('#regionDescInput').value;
+  delete region.refinedDescription;
   const active = $('#regionStage .region-box.active b');
   if (active) active.textContent = region.description || 'Region';
+  saveForm();
+});
+$('#regionEnhanceBtn').addEventListener('click', () => {
+  const region = selectedRegion();
+  if (!region) return;
+  region.enhance = region.enhance === false;
+  renderRegionEditor();
   saveForm();
 });
 $('#regionStrengthInput').addEventListener('input', () => {
@@ -9734,6 +9761,7 @@ function renderGenerationProgress(d) {
 }
 
 function renderGenerationStatus(d) {
+  if (d.profileId && state.profile && d.profileId !== state.profile.id) return;
   const phaseText = generationPhaseText(d);
   if (d.kind === 'smartMask' && smartMaskRunning) setSmartMaskLoading(d.text || 'Finding selection…');
   if (state.activeJobs.has(d.jobId) || d.jobId === 'pre') {
@@ -14003,7 +14031,9 @@ async function reuseItem(it, useEnhanced) {
   const options = arguments[2] || {};
   // Enhanced generations: ask whether to reuse the enhanced text directly
   // (skips re-running the LLM) or the original prompt with enhance on.
-  if (useEnhanced === undefined && it.enhance && it.refinedPrompt) {
+  const hasEnhancedRegions = Array.isArray(it.regions)
+    && it.regions.some((region) => region && region.refinedDescription);
+  if (useEnhanced === undefined && (it.refinedPrompt || hasEnhancedRegions)) {
     state.reuseTarget = it;
     $('#reuseSheet').classList.add('show');
     return;
@@ -14012,6 +14042,11 @@ async function reuseItem(it, useEnhanced) {
   const restoringEdit = targetView === 'edit';
   const restoredPrompt = useEnhanced ? (it.refinedPrompt || it.prompt || '') : (it.prompt || '');
   const restoredRegions = Array.isArray(it.regions) ? it.regions.map((region) => Object.assign({}, region, {
+    description: useEnhanced
+      ? (region.refinedDescription || region.description || '')
+      : (region.description || ''),
+    refinedDescription: undefined,
+    enhance: useEnhanced ? false : region.enhance !== false,
     refUrl: region.refImageName ? `/api/input?name=${encodeURIComponent(region.refImageName)}` : '',
   })) : [];
 

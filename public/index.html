@@ -564,6 +564,36 @@
   </section>
 
   <section class="panel region-workspace" id="regionWorkspace" hidden>
+    <div class="region-global-prompt-slot" id="regionGlobalPromptSlot"></div>
+    <div class="region-toolbar" aria-label="Region canvas tools">
+      <div class="region-toolbar-actions">
+        <button class="chip" id="regionAddBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+          Add box
+        </button>
+        <button class="chip" id="regionDeleteBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 9h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Z"/></svg>
+          Delete
+        </button>
+      </div>
+      <div class="region-resolution-picker">
+        <button class="region-resolution-trigger" id="regionResolutionBtn" type="button" aria-expanded="false" aria-controls="regionResolutionMenu">
+          <span class="region-resolution-icon" id="regionResolutionIcon" aria-hidden="true"></span>
+          <span id="regionResolutionSummary">1:1 · 1024 × 1024</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+        </button>
+        <div class="region-resolution-menu" id="regionResolutionMenu" role="dialog" aria-label="Region canvas resolution" aria-hidden="true" inert>
+          <div class="region-resolution-menu-inner">
+            <span class="region-resolution-menu-label">Canvas resolution</span>
+            <div class="region-aspect-menu" id="regionAspectMenu"></div>
+            <div class="region-size-menu" id="regionSizeMenu"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="region-stage-wrap">
+      <div class="region-stage" id="regionStage" aria-label="Region layout preview. Click an active overlapping region again to cycle layers; holding also cycles."></div>
+    </div>
     <div class="region-settings" id="regionSettings" aria-hidden="true" inert>
       <div class="region-settings-inner">
         <div class="region-settings-head">
@@ -580,8 +610,13 @@
         </div>
         <div class="region-fields">
           <div class="field field-span">
-            <label>Region prompt</label>
-            <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
+            <label for="regionDescInput">Region prompt</label>
+            <div class="region-prompt-box">
+              <textarea id="regionDescInput" class="sheet-textarea" rows="2" placeholder="Describe only what belongs inside the selected box"></textarea>
+              <button class="enhance-btn region-enhance-btn on" id="regionEnhanceBtn" type="button" aria-pressed="true" aria-label="Enhance this region prompt: on" title="Enhance this region prompt: on">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="currentColor" d="M12 2l1.9 5.4L19 9l-5.1 1.6L12 16l-1.9-5.4L5 9l5.1-1.6L12 2Zm7 11 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1 1-2.7ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z"/></svg>
+              </button>
+            </div>
           </div>
           <div class="field region-support-field region-lora-disclosure" id="regionLoraDisclosure">
             <button class="region-lora-header" id="regionLoraHeader" type="button" aria-expanded="false" aria-controls="regionLoraBody">
@@ -619,36 +654,6 @@
         </div>
       </div>
     </div>
-    <div class="region-toolbar" aria-label="Region canvas tools">
-      <div class="region-toolbar-actions">
-        <button class="chip" id="regionAddBtn" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
-          Add box
-        </button>
-        <button class="chip" id="regionDeleteBtn" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 9h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Z"/></svg>
-          Delete
-        </button>
-      </div>
-      <div class="region-resolution-picker">
-        <button class="region-resolution-trigger" id="regionResolutionBtn" type="button" aria-expanded="false" aria-controls="regionResolutionMenu">
-          <span class="region-resolution-icon" id="regionResolutionIcon" aria-hidden="true"></span>
-          <span id="regionResolutionSummary">1:1 · 1024 × 1024</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
-        </button>
-        <div class="region-resolution-menu" id="regionResolutionMenu" role="dialog" aria-label="Region canvas resolution" aria-hidden="true" inert>
-          <div class="region-resolution-menu-inner">
-            <span class="region-resolution-menu-label">Canvas resolution</span>
-            <div class="region-aspect-menu" id="regionAspectMenu"></div>
-            <div class="region-size-menu" id="regionSizeMenu"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="region-stage-wrap">
-      <div class="region-stage" id="regionStage" aria-label="Region layout preview. Hold an overlapping region to select the box underneath."></div>
-    </div>
-    <div class="region-global-prompt-slot" id="regionGlobalPromptSlot"></div>
   </section>
 
   <section class="panel video-options-panel" id="vidOptsPanel" hidden>

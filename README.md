@@ -28,11 +28,9 @@ A square generation continued into a seamless 21:9 interior.
 
 ### Regional prompting — draw boxes, direct the scene
 
-Each box carries its own prompt (and optionally its own LoRA and reference image). No general prompt required.
+Each box carries its own prompt (and optionally its own LoRA and reference image). Here, separate ocean, island, snow-biome, and lava-volcano regions resolve into one coherent generation.
 
-| The boxes | The generation |
-| --- | --- |
-| ![Region boxes with prompts](docs/download/media/region-map.jpg) | ![Resulting street scene](docs/download/media/region-result.jpg) |
+![Two-biome island composed with four regional prompts](docs/download/media/region-island.png)
 
 ### Depth guide — new image, same 3D structure
 

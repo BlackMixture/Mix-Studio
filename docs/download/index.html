@@ -38,17 +38,17 @@
     img { display: block; max-width: 100%; }
     .shell { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
     .site-header { display: flex; align-items: center; justify-content: space-between; min-height: 84px; gap: 24px; }
-    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; text-decoration: none; }
+    .brand { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; min-width: 0; text-decoration: none; }
     .brand-mark {
-      width: 42px; height: 42px; padding: 7px; border: 2px solid transparent; border-radius: 14px;
+      flex: 0 0 auto; width: 42px; height: 42px; padding: 7px; border: 2px solid transparent; border-radius: 14px;
       background: linear-gradient(#0b0d12,#0b0d12) padding-box,
         linear-gradient(110deg,var(--blue),var(--red) 36%,var(--yellow) 67%,var(--green)) border-box;
       box-shadow: 0 0 26px rgba(66,87,255,.2);
     }
-    .brand-wordmark { position: relative; width: 150px; height: 30px; max-width: 42vw; overflow: hidden; }
+    .brand-wordmark { position: relative; flex: 0 0 150px; width: 150px; height: 30px; overflow: hidden; }
     .brand-wordmark img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
-    .header-links { display: flex; align-items: center; gap: 24px; }
-    .header-links a { color: var(--muted); font-size: 13px; font-weight: 750; text-decoration: none; }
+    .header-links { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 24px; }
+    .header-links a { color: var(--muted); font-size: 13px; font-weight: 750; text-decoration: none; white-space: nowrap; }
     .header-links a:hover, .header-links a:focus-visible { color: var(--ink); }
     .hero { display: grid; grid-template-columns: minmax(0,.88fr) minmax(500px,1.12fr); align-items: center; gap: 58px; padding: 82px 0 110px; }
     .eyebrow, .section-kicker { margin: 0 0 18px; color: #9db3f7; font-size: 12px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
@@ -115,7 +115,26 @@
     .feature-media > img, .feature-media > video { width: 100%; height: 100%; display: block; object-fit: cover; transform: scale(var(--media-scale)); transform-origin: var(--media-origin); transition: transform 500ms ease; }
     .feature:hover .feature-media > img, .feature:hover .feature-media > video { transform: scale(calc(var(--media-scale) + .035)); }
     .feature-create { background: #05070b; }
-    .feature-region { --media-scale: 1.02; --media-origin: 50% 50%; }
+    .feature-region { --media-scale: 1.02; --media-origin: 50% 50%; background: radial-gradient(circle at 50% 42%,#15324b,#030405 72%); }
+    .feature-region .feature-icon { right: 14px; left: auto; }
+    .feature-region-demo { position: absolute; inset: 0; isolation: isolate; }
+    .feature-region-back { position: absolute; inset: -10%; width: 120%; height: 120%; object-fit: cover; filter: blur(20px) brightness(.34) saturate(.82); transform: scale(1.04); }
+    .feature-region-canvas { position: absolute; inset-block: 0; left: 50%; z-index: 1; width: auto; height: 100%; aspect-ratio: 1216 / 832; overflow: hidden; box-shadow: 0 0 38px rgba(0,0,0,.58); transform: translateX(-50%); }
+    .feature-region-canvas > img { width: 100%; height: 100%; display: block; object-fit: contain; animation: feature-region-art 12s ease-in-out infinite; }
+    .feature-region-box { --region-color: #76a8ff; position: absolute; z-index: 3; border: 1.5px solid var(--region-color); background: color-mix(in srgb,var(--region-color) 9%,transparent); box-shadow: inset 0 0 18px color-mix(in srgb,var(--region-color) 12%,transparent),0 0 10px color-mix(in srgb,var(--region-color) 24%,transparent); opacity: 0; pointer-events: none; }
+    .feature-region-box span { position: absolute; top: 5px; left: 5px; padding: 3px 5px; border-radius: 5px; background: var(--region-color); color: #07101e; font-size: 7px; font-weight: 900; letter-spacing: .045em; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+    .feature-region-box.ocean { --region-color: #46b4e6; inset: 0; z-index: 1; animation: feature-region-ocean 12s ease-in-out infinite; }
+    .feature-region-box.ocean span { top: auto; bottom: 5px; }
+    .feature-region-box.island { --region-color: #e68246; top: 19.4882%; left: 18.2707%; z-index: 4; width: 60.3255%; height: 59.0972%; background: transparent; animation: feature-region-island 12s ease-in-out infinite; }
+    .feature-region-box.island span { top: auto; bottom: 5px; left: 50%; transform: translateX(-50%); }
+    .feature-region-box.snow { --region-color: #82e646; top: 11.9862%; left: 9.7753%; width: 37.0851%; height: 75.1796%; animation: feature-region-snow 12s ease-in-out infinite; }
+    .feature-region-box.volcano { --region-color: #e646b4; top: 11.2161%; left: 46.7877%; width: 36.8112%; height: 76.0552%; animation: feature-region-volcano 12s ease-in-out infinite; }
+    .feature-region-box.volcano span { right: 5px; left: auto; }
+    @keyframes feature-region-art { 0%,61%,100% { filter: brightness(.58) saturate(.82); } 70%,92% { filter: brightness(1) saturate(1); } }
+    @keyframes feature-region-ocean { 0%,4% { opacity: 0; transform: scale(.99); } 8%,61% { opacity: 1; transform: scale(1); } 70%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes feature-region-island { 0%,12% { opacity: 0; transform: scale(.985); } 16%,61% { opacity: 1; transform: scale(1); } 70%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes feature-region-snow { 0%,20% { opacity: 0; transform: scale(.985); } 24%,61% { opacity: 1; transform: scale(1); } 70%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes feature-region-volcano { 0%,28% { opacity: 0; transform: scale(.985); } 32%,61% { opacity: 1; transform: scale(1); } 70%,100% { opacity: 0; transform: scale(1); } }
     .feature-video { --media-scale: 1.04; --media-origin: 50% 50%; }
     .feature-compare { background: #05070b; }
     .feature-library { background: #05070b; }
@@ -344,6 +363,14 @@
       .quick-copy { position: static; }
       .closing { align-items: start; flex-direction: column; }
     }
+    @media (max-width: 940px) {
+      .site-header, .header-links { gap: 18px; }
+      .header-links a:last-child { font-size: 0; }
+      .header-links a:last-child::after { content: "GitHub"; font-size: 12px; }
+    }
+    @media (max-width: 760px) {
+      .header-links a:nth-child(1), .header-links a:nth-child(4) { display: none; }
+    }
     @media (max-width: 680px) {
       .shell { width: min(100% - 28px, 620px); }
       .site-header { min-height: 72px; }
@@ -381,10 +408,13 @@
       .closing-actions { width: 100%; }
       footer { flex-direction: column; }
     }
+    @media (max-width: 300px) {
+      .site-header, .brand { gap: 8px; }
+    }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       .download, .feature-media > img, .feature-media > video { transition: none; }
-      .shot-motion .focus-window > img, .guide-swipe i::after, .flow-signal::after, .create-tile, .upscale-demo > img, .upscale-after, .upscale-after > img, .upscale-divider, .outpaint-result, .outpaint-source, .outpaint-sequence::before, .outpaint-status span, .library-track, .region-canvas > img, .region-box, .region-state span, .model-ranking, .hardware-segment, .speed-metric { animation: none; }
+      .shot-motion .focus-window > img, .guide-swipe i::after, .flow-signal::after, .create-tile, .upscale-demo > img, .upscale-after, .upscale-after > img, .upscale-divider, .outpaint-result, .outpaint-source, .outpaint-sequence::before, .outpaint-status span, .library-track, .feature-region-canvas > img, .feature-region-box, .region-canvas > img, .region-box, .region-state span, .model-ranking, .hardware-segment, .speed-metric { animation: none; }
       .create-tile { z-index: 1; filter: none; transform: none; }
       .upscale-demo > img, .upscale-after > img { transform: scale(1.36); }
       .upscale-after { clip-path: inset(0 42% 0 0); }
@@ -466,7 +496,7 @@
         <div class="feature-grid">
           <article class="feature"><div class="feature-media feature-create"><div class="create-gallery" role="img" aria-label="Four complete generated examples taking turns expanding from a gallery"><div class="create-tile"><img class="create-back" src="./media/create-lion.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-lion.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img class="create-back" src="./media/create-mercedes.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-mercedes.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img class="create-back" src="./media/create-corridor.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-corridor.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img class="create-back" src="./media/create-squid.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-squid.jpg" alt="" loading="lazy" /></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div></div><div class="feature-copy"><h3>Create images</h3><p>Generate with Krea 2, optimized sampling, source matching, depth guidance, LoRAs, and prompt assistance.</p></div></article>
           <article class="feature"><div class="feature-media feature-outpaint"><div class="outpaint-sequence" role="img" aria-label="Square cabin image expanding into a seamless widescreen outpaint"><img class="outpaint-result" src="./media/outpaint-wide.jpg" alt="" loading="lazy" /><img class="outpaint-source" src="./media/outpaint-source.jpg" alt="" loading="lazy" /><div class="outpaint-status" aria-hidden="true"><span class="original">Original</span><span class="expanded">Expanded</span></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div></div><div class="feature-copy"><h3>Edit and outpaint</h3><p>Edit with references, masks, smart selection, camera variants, and Continue Edit, or expand a source while preserving its detail.</p></div></article>
-          <article class="feature"><div class="feature-media feature-region"><img src="./media/region-map.jpg" alt="Three prompt regions mapped over a street composition" loading="lazy" /><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div></div><div class="feature-copy"><h3>Direct with regions</h3><p>Lay out prompt regions, references, and LoRAs visually for deliberate compositions in a single generation.</p></div></article>
+          <article class="feature"><div class="feature-media feature-region"><div class="feature-region-demo" role="img" aria-label="Ocean, island, snow biome, and lava volcano prompt regions appearing over a generated two-biome island before revealing the clean result"><img class="feature-region-back" src="./media/region-island.png" alt="" loading="lazy" /><div class="feature-region-canvas"><img src="./media/region-island.png" alt="" loading="lazy" /><div class="feature-region-box ocean"><span>Ocean</span></div><div class="feature-region-box island"><span>Island</span></div><div class="feature-region-box snow"><span>Snow biome</span></div><div class="feature-region-box volcano"><span>Lava volcano</span></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div></div><div class="feature-copy"><h3>Direct with regions</h3><p>Position the ocean, island, snow biome, and lava volcano independently, then generate one coherent scene.</p></div></article>
           <article class="feature"><div class="feature-media feature-video"><video src="./media/scail-hand-fantasy.mp4" autoplay muted loop playsinline preload="metadata" aria-label="A phone hand movement transferred into a generated fantasy world"></video><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div></div><div class="feature-copy"><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using Face ID, your own lipsync audio, motion transfer, and interpolation.</p></div></article>
           <article class="feature"><div class="feature-media feature-compare"><div class="upscale-demo" role="img" aria-label="Animated zoomed comparison between an original image and its upscaled result"><img class="upscale-before" src="./media/upscale-before.jpg" alt="" loading="lazy" /><div class="upscale-after"><img src="./media/upscale-after.jpg" alt="" loading="lazy" /></div><i class="upscale-divider" aria-hidden="true"></i><span class="upscale-label before">Original</span><span class="upscale-label after">Upscaled</span></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4 1.4L16.6 18H14v2Z"/></svg></div></div><div class="feature-copy"><h3>Finish and compare</h3><p>Upscale with tuned SeedVR2 or Ultimate SD profiles, then reveal, zoom, and pan across details before exporting.</p></div></article>
           <article class="feature"><div class="feature-media feature-library" role="img" aria-label="A scrolling gallery of image and video generations"><div class="library-reel" aria-hidden="true"><div class="library-track"><div class="library-tile"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/region-result.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline preload="metadata" data-loop-end="2"></video></div><div class="library-tile"><img src="./media/outpaint-wide.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/edit-aging.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-mech-dog.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/reference-shark.jpg" alt="" loading="lazy" /></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div></div><div class="feature-copy"><h3>Keep a usable library</h3><p>Search, sort, like, group, continue editing, document, and mirror exports from the mobile or desktop library.</p></div></article>
@@ -518,7 +548,7 @@
         <div class="gen-grid">
           <article class="gen-card reel"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · motion transfer</span><h3>One dance, a new performer</h3><p>A phone clip supplies the movement. SCAIL 2 carries its timing and pose into a newly generated subject.</p></div></article>
           <article class="gen-card reel"><video src="./media/live-scail-portrait.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · video to video</span><h3>Same performance, new identity</h3><p>The driving clip holds the performance while the subject and visual treatment change around it.</p></div></article>
-          <article class="gen-card wide span-2"><div class="ltx-reel" data-ltx-reel><video src="./media/ltx-ruins.mp4" autoplay muted playsinline aria-label="Five rotating LTX 2.3 image-to-video examples"></video><div class="ltx-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-ltx-index="0" aria-selected="true">Storm ruins</button><button type="button" data-ltx-index="1" aria-selected="false">Dreamscape portrait</button><button type="button" data-ltx-index="2" aria-selected="false">Interior camera move</button><button type="button" data-ltx-index="3" aria-selected="false">Bicycle at dusk</button><button type="button" data-ltx-index="4" aria-selected="false">Shark breach</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Still frames become cinematic shots</h3><p>Move between atmospheric worlds, stylized portraits, directed camera motion, and high-action sequences, with every clip generated from a single image.</p></div></article>
+          <article class="gen-card wide span-2"><div class="ltx-reel" data-ltx-reel><video src="./media/ltx-ruins.mp4" autoplay muted playsinline aria-label="Four rotating LTX 2.3 image-to-video examples"></video><div class="ltx-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-ltx-index="0" aria-selected="true">Storm ruins</button><button type="button" data-ltx-index="1" aria-selected="false">Dreamscape portrait</button><button type="button" data-ltx-index="2" aria-selected="false">Interior camera move</button><button type="button" data-ltx-index="3" aria-selected="false">Arena action</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Still frames become cinematic shots</h3><p>Move between atmospheric worlds, stylized portraits, directed camera motion, and high-action sequences, with every clip generated from a single image.</p></div></article>
           <article class="gen-card span-2"><div class="edit-motion-result"><video src="./media/edit-aging-motion.mp4" autoplay muted loop playsinline aria-label="Edited subject brought to life in a finished motion result"></video></div><div class="gen-copy"><span>Edit to motion</span><h3>A precise edit becomes a performance</h3><p>The finished subject carries directly into a moving, talking study.</p></div></article>
           <article class="gen-card span-2"><div class="region-reveal" role="img" aria-label="Four prompt regions appearing over a sea monster scene before fading into the clean generated result"><img class="region-reveal-back" src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-canvas"><img src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-box sky"><span>Sky</span></div><div class="region-box cliff"><span>Cliff</span></div><div class="region-box monster"><span>Sea monster</span></div><div class="region-box car"><span>Car</span></div></div><div class="region-state" aria-hidden="true"><span class="planning">Regions defined</span><span class="result">Generated result</span></div></div><div class="gen-copy"><span>Region prompting · plan to result</span><h3>Define the scene. Generate the composition.</h3><p>Place the sky, cliff, sea monster, and car with visual regions, then generate the complete scene in one pass.</p></div></article>
           <article class="gen-card span-2"><img src="./media/depth-cabin.jpg" alt="Cabin interior, its depth map, and a snow-filled re-imagining" loading="lazy" /><div class="gen-copy"><span>Depth guide</span><h3>New image, same 3D structure</h3><p>Source → Depth Anything V3 map → re-imagined scene. Every armchair and beam stays in place.</p></div></article>
@@ -587,8 +617,7 @@
         "./media/ltx-ruins.mp4",
         "./media/ltx-dreamscape.mp4",
         "./media/ltx-interior.mp4",
-        "./media/live-ltx-bicycle.mp4",
-        "./media/ltx-shark.mp4"
+        "./media/ltx-wrestling.mp4"
       ];
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       let active = 0;

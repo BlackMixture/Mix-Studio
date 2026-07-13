@@ -5422,7 +5422,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 }
 .region-size-menu button.active { background: #1b2030; color: #fff; }
 .region-stage-wrap { position: relative; }
-.region-global-prompt-slot { margin-top: 12px; }
+.region-global-prompt-slot { margin-bottom: 12px; }
 .region-global-prompt-slot:empty { display: none; }
 .region-global-prompt-slot #promptPanel {
   margin: 0;
@@ -5529,17 +5529,18 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .region-settings {
   display: grid;
   grid-template-rows: 0fr;
-  margin-bottom: 0;
+  margin-top: 0;
   opacity: 0;
   visibility: hidden;
-  transition: grid-template-rows 260ms var(--ease), margin-bottom 260ms var(--ease), opacity 180ms ease, visibility 0s linear 260ms;
+  scroll-margin-block-end: calc(110px + env(safe-area-inset-bottom));
+  transition: grid-template-rows 260ms var(--ease), margin-top 260ms var(--ease), opacity 180ms ease, visibility 0s linear 260ms;
 }
 .region-settings.show {
   grid-template-rows: 1fr;
-  margin-bottom: 12px;
+  margin-top: 12px;
   opacity: 1;
   visibility: visible;
-  transition: grid-template-rows 260ms var(--ease), margin-bottom 260ms var(--ease), opacity 200ms ease 40ms, visibility 0s;
+  transition: grid-template-rows 260ms var(--ease), margin-top 260ms var(--ease), opacity 200ms ease 40ms, visibility 0s;
 }
 .region-settings-inner { min-height: 0; overflow: hidden; }
 .region-settings-head {
@@ -5581,6 +5582,14 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 }
 .region-fields .field { margin-bottom: 0; }
 .region-fields .field[hidden] { display: none; }
+.region-prompt-box { position: relative; }
+.region-prompt-box .sheet-textarea { padding-right: 54px; }
+.region-enhance-btn {
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+}
 .field-span { grid-column: 1 / -1; }
 .region-support-field { min-width: 0; align-self: start; }
 .region-lora-disclosure {

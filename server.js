@@ -56,6 +56,7 @@ const {
   ENHANCE_TAIL,
   cleanGeneratedPrompt,
   promptEnhanceParts,
+  regionPromptEnhanceParts,
 } = require('./lib/prompt-enhance');
 const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
 const {
@@ -1691,19 +1692,21 @@ function suggestImagePrompt(comfyImageName, seed) {
   });
 }
 
-function enhancePrompt(p) {
+function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options = {}) {
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
-      const enhance = promptEnhanceParts(settings.systemPrompt, p.prompt);
       graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      if (options.imageName) graph.img = { class_type: 'LoadImage', inputs: { image: options.imageName } };
       graph.concat = {
         class_type: 'StringConcatenate',
-        inputs: { string_a: enhance.instruction, string_b: enhance.userInput, delimiter: '\n' },
+        inputs: { string_a: parts.instruction, string_b: parts.userInput, delimiter: '\n' },
       };
+      const refineInputs = Object.assign({ clip: ['clip', 0], prompt: ['concat', 0] }, textGenInputs(seed, maxTokens));
+      if (options.imageName) refineInputs.image = ['img', 0];
       graph.refine = {
         class_type: 'TextGenerate',
-        inputs: Object.assign({ clip: ['clip', 0], prompt: ['concat', 0] }, textGenInputs(p.seed, 512)),
+        inputs: refineInputs,
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
       await filterInputs(graph);
@@ -1714,14 +1717,37 @@ function enhancePrompt(p) {
       }, 180000);
       trackJob(pid, {
         kind: 'enhance',
+        profileId: options.profileId,
         graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
       ensureWs();
-      broadcast('status', { jobId: 'pre', text: 'Enhancing prompt...' });
+      if (statusText) broadcast('status', { jobId: 'pre', profileId: options.profileId, text: statusText });
     })().catch(reject);
   });
+}
+
+function enhancePrompt(p, profileId) {
+  return queueTextEnhancement(
+    promptEnhanceParts(settings.systemPrompt, p.prompt),
+    p.seed,
+    'Enhancing global prompt...',
+    512,
+    { profileId },
+  );
+}
+
+function enhanceRegionPrompt(description, globalPrompt, seed, options = {}) {
+  return queueTextEnhancement(
+    regionPromptEnhanceParts(settings.systemPrompt, globalPrompt, description, {
+      hasReference: !!options.imageName,
+    }),
+    seed,
+    options.statusText || '',
+    384,
+    options,
+  );
 }
 
 /** Wan 2.2 enhance: Qwen3-VL sees the image + user's idea, writes the video prompt. */
@@ -4481,10 +4507,40 @@ async function handleApi(req, res, url) {
     p.maskExpand = maskExpand(p.maskExpand);
 
     let refined = null;
-    if (p.enhance && p.mode !== 'edit') {
-      const rawText = await enhancePrompt(p);
-      refined = cleanEnhancedText(rawText, p.prompt);
-      p.enhancedText = refined;
+    if (p.mode !== 'edit') {
+      if (p.prompt) {
+        if (p.enhance) {
+          const rawText = await enhancePrompt(p, req.profile.id);
+          refined = cleanEnhancedText(rawText, p.prompt);
+          p.enhancedText = refined;
+        }
+      }
+      const regionInputs = p.regions.map((region) => ({
+        description: String(region && (region.description || region.desc || region.prompt) || '').trim(),
+        enhance: !region || region.enhance !== false,
+        imageName: String(region && (region.refImageName || region.ref_image || region.refImage) || '').trim(),
+      }));
+      const regionCount = regionInputs.filter((region) => region.description && region.enhance).length;
+      if (regionCount) {
+        const globalContext = refined || p.prompt;
+        const enhancedRegions = Array(regionInputs.length).fill('');
+        let completed = 0;
+        for (let index = 0; index < regionInputs.length; index += 1) {
+          const region = regionInputs[index];
+          if (!region.description || !region.enhance) continue;
+          completed += 1;
+          const seed = (Number(p.seed) + index + 1) % (2 ** 48);
+          const rawText = await enhanceRegionPrompt(region.description, globalContext, seed, {
+            imageName: region.imageName,
+            profileId: req.profile.id,
+            statusText: `Enhancing region prompt ${completed} of ${regionCount}...`,
+          });
+          enhancedRegions[index] = cleanEnhancedText(rawText, region.description);
+        }
+        p.regions = p.regions.map((region, index) => enhancedRegions[index]
+          ? Object.assign({}, region, { refinedDescription: enhancedRegions[index] })
+          : region);
+      }
     }
 
     const refNames = p.mode === 'edit'
