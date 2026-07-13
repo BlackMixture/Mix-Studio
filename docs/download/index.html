@@ -70,7 +70,7 @@
     .window { overflow: hidden; border-radius: 27px; background: #050608; }
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
     .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
-    .window img { width: 100%; aspect-ratio: 1.5 / 1; object-fit: cover; object-position: top center; }
+    .window img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; object-position: center; }
     .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 32px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; }
     .phone-preview img { width: 100%; aspect-ratio: .462 / 1; object-fit: cover; object-position: top center; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
@@ -83,9 +83,10 @@
     .mobile-story-copy > p:last-child { margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
     .control-flow { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; align-items: stretch; }
     .flow-node { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 60%),var(--panel); }
-    .flow-media { position: relative; overflow: hidden; aspect-ratio: 1.45 / 1; border-bottom: 1px solid var(--line); background: #05070b; }
+    .flow-media { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-bottom: 1px solid var(--line); background: #05070b; }
     .flow-media > img { width: 100%; height: 100%; display: block; object-fit: cover; }
-    .flow-desktop > img { transform: scale(1.55); transform-origin: 32% 51%; }
+    .flow-desktop { padding: 7px; background: radial-gradient(circle at 50% 20%,rgba(66,133,244,.12),transparent 58%),#05070b; }
+    .flow-desktop > img { object-fit: contain; border-radius: 9px; }
     .flow-phone > img { object-position: 50% 9%; }
     .flow-link { display: grid; grid-template-columns: 1fr 32px .56fr; gap: 7px; align-items: center; padding: 16px; background: radial-gradient(circle at 50% 50%,rgba(66,133,244,.18),transparent 58%),#070a11; }
     .flow-device { position: relative; overflow: hidden; height: 66%; border: 1px solid rgba(220,228,255,.2); border-radius: 9px; background: #020305; box-shadow: 0 12px 26px rgba(0,0,0,.38); }

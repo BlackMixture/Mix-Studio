@@ -60,7 +60,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /install only that workflow/i);
   assert.match(page, /modatory-logo\.svg/);
   assert.equal(localLogo, fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8'));
-  assert.equal(localWordmark, fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark-white-on-black.svg'), 'utf8'));
+  assert.match(localWordmark, /fill="#ffffff"/);
+  assert.doesNotMatch(localWordmark, /fill="#000000"/);
   for (const source of localSources) {
     assert.ok(fs.existsSync(path.join(root, 'docs', 'download', source)), `download page asset exists: ${source}`);
   }
@@ -100,6 +101,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Your studio/);
   assert.doesNotMatch(page, /—/);
   assert.match(workflow, /cp install\.bat _site\/install\.bat/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-wordmark\.svg _site\/mix-studio-wordmark\.svg/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-edit\.png _site\/mix-studio-edit\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);
