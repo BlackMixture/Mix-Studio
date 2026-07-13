@@ -57,6 +57,32 @@ Click to play — or see them looping on the [showcase page](https://blackmixtur
 | [**SCAIL 2 motion transfer** — a phone clip of a hand becomes a fantasy world, motion intact](docs/download/media/scail-hand-fantasy.mp4) | [**SCAIL 2** — dog-walk clip re-rendered as a mech walking a robot dog](docs/download/media/scail-mech-dog.mp4) |
 | [**Face ID lipsync** — one selfie + one voice recording = identity-locked talking video (LTX 2.3)](docs/download/media/lipsync-talking.mp4) | [**LTX 2.3 image-to-video** — a still generation brought to life with audio](docs/download/media/ltx-shark.mp4) |
 
+## Inside the app
+
+The desktop workspace — the same server drives the phone layout.
+
+| Create — build, watch, and browse in one screen | Region — draw boxes, direct the scene |
+| --- | --- |
+| ![Create workspace with prompt, generation stage, and recent work](docs/download/mix-studio-create.png) | ![Region editor with three color-coded prompt boxes on the canvas](docs/download/mix-studio-region.png) |
+
+| Edit — one sentence in, the scene stays put | Video — LTX 2.3 with end frame and audio attached |
+| --- | --- |
+| ![Edit workspace restoring a Flux Klein 9B signature edit](docs/download/mix-studio-edit.png) | ![LTX 2.3 video workspace with motion prompt, last frame, and audio waveform](docs/download/mix-studio-video.png) |
+
+| SCAIL 2 — motion transfer workspace | Library — search, folders, and grouped videos |
+| --- | --- |
+| ![SCAIL 2 motion-transfer workspace with driving video and creative direction](docs/download/mix-studio-scail.png) | ![Library grid with model and duration badges](docs/download/mix-studio-library.png) |
+
+| Lightbox — the full generation recipe | Compare — original ↔ upscaled reveal |
+| --- | --- |
+| ![Lightbox with outpainted knight and full generation metadata](docs/download/mix-studio-lightbox.png) | ![Detail comparison viewer with reveal divider](docs/download/mix-studio-compare.png) |
+
+| Profiles — who's creating? | Desktop Dependencies — everything green |
+| --- | --- |
+| ![Netflix-style profile picker](docs/download/mix-studio-profiles.png) | ![Desktop Dependencies card reporting every node group ready](docs/download/mix-studio-dependencies.png) |
+
+Short clips of the UI in motion: [region prompting](docs/download/media/ui-region-demo.mp4) · [before/after reveal](docs/download/media/ui-compare-demo.mp4)
+
 ## Portable Windows install
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
