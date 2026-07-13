@@ -12800,7 +12800,7 @@ window.addEventListener('resize', () => {
 });
 
 function selectionConsoleHeight() {
-  return Math.min(290, window.innerHeight * 0.38);
+  return Math.min(360, window.innerHeight * 0.5);
 }
 
 let suppressSelectionConsoleClick = false;

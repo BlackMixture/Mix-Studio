@@ -51,7 +51,10 @@ test('selection bar exposes save, group, ungroup, composite, move, delete, and s
   assert.match(app, /generationTimingComplete === false \? '~' : ''/);
   assert.match(app, /selectBarSwipe\.height > target \* 0\.46/);
   assert.match(css, /\.select-bar\.is-expanded \{[^}]*background: #000/);
+  assert.match(css, /\.select-bar\.is-expanded \{[^}]*--selection-detail-height: min\(360px, 50dvh\)/);
   assert.match(css, /\.select-bar \{[\s\S]*background: #000/);
+  assert.match(css, /\.select-bar\.is-expanded \.selection-console-details \{[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain/);
+  assert.match(app, /return Math\.min\(360, window\.innerHeight \* 0\.5\)/);
   assert.match(css, /\.select-bar\.is-expanded \.select-actions \{ overflow: hidden/);
   assert.match(css, /\.selection-console-more-actions \{[^}]*grid-template-columns: repeat\(3/);
   assert.match(css, /\.select-actions \{[\s\S]*overflow-x: auto/);

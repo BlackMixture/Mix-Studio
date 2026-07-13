@@ -88,6 +88,8 @@ test('region canvas toolbar keeps actions beside an anchored resolution picker',
   assert.match(appJs, /setRegionResolutionExpanded\(false\)/);
   assert.match(appJs, /renderRegionResolutionPicker\(\);/);
   assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*position: absolute/);
+  assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*background: #000/);
+  assert.match(styleCss, /@media \(max-width: 640px\) \{[\s\S]*\.region-resolution-menu \{[\s\S]*position: fixed;[\s\S]*max-height: min\(70dvh, 430px\);[\s\S]*overflow-y: auto/);
 });
 
 test('region LoRA settings use an accessible animated disclosure', () => {

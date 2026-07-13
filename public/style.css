@@ -4440,7 +4440,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   --selection-detail-height: 0px;
   transition: border-color 220ms ease, box-shadow 260ms ease;
 }
-.select-bar.is-expanded { --selection-detail-height: min(290px, 38dvh); background: #000; border-color: rgba(255,255,255,0.15); box-shadow: 0 -28px 80px rgba(0,0,0,0.55); }
+.select-bar.is-expanded { --selection-detail-height: min(360px, 50dvh); background: #000; border-color: rgba(255,255,255,0.15); box-shadow: 0 -28px 80px rgba(0,0,0,0.55); }
 .select-bar-grabber {
   width: 100%;
   height: 14px;
@@ -4488,7 +4488,13 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .select-bar.is-expanded .selection-console-details,
 .select-bar.is-dragging .selection-console-details { opacity: 1; }
 .select-bar.is-dragging .selection-console-details { transition: opacity 120ms ease; }
-.select-bar.is-expanded .selection-console-details { pointer-events: auto; }
+.select-bar.is-expanded .selection-console-details {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  pointer-events: auto;
+}
+.select-bar.is-expanded .selection-console-details::-webkit-scrollbar { display: none; }
 .selection-console-heading { display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding-top: 4px; }
 .selection-console-heading strong { color: var(--ink); font-size: 15px; font-weight: 900; }
 .selection-console-heading button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,255,255,0.035); color: var(--muted); font-size: 16px; }
@@ -5332,7 +5338,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   padding: 10px;
   border: 1px solid var(--line-strong);
   border-radius: 15px;
-  background: #090a0e;
+  background: #000;
   box-shadow: 0 20px 55px rgba(0,0,0,0.58);
   opacity: 0;
   visibility: hidden;
@@ -5793,11 +5799,22 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   .region-toolbar .chip { padding-inline: 9px; }
   .region-resolution-trigger { max-width: 138px; }
   .region-resolution-menu {
+    position: fixed;
     top: auto;
-    bottom: calc(100% + 8px);
-    transform: translateY(6px) scale(0.98);
-    transform-origin: bottom right;
+    right: 12px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    left: 12px;
+    z-index: 45;
+    width: auto;
+    max-height: min(70dvh, 430px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #000;
+    scrollbar-width: none;
+    transform: translateY(12px) scale(0.98);
+    transform-origin: bottom center;
   }
+  .region-resolution-menu::-webkit-scrollbar { display: none; }
   .region-resolution-picker.expanded .region-resolution-menu { transform: translateY(0) scale(1); }
   .region-stage { min-height: 220px; }
   .region-fields {
