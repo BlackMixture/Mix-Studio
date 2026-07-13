@@ -67,7 +67,7 @@ The downloadable bootstrap installs Git through `winget` when needed, clones the
 
 On Windows, open the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
 
-The wizard separates ComfyUI, feature selection, and review into explicit steps. It reads the NVIDIA GPU and VRAM through `nvidia-smi` with a Windows hardware fallback, checks system RAM, and recommends only model families suited to a fresh machine. Each card identifies the curated precision variant and labels it as recommended, usable with offload, or difficult. Users can override the recommendation, but selected below-minimum workflows require an explicit warning confirmation. Existing feature choices are preserved on rerun. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
+The wizard separates ComfyUI, feature selection, and review into explicit steps. It reads the NVIDIA GPU and VRAM through `nvidia-smi` with a Windows hardware fallback, checks system RAM, and recommends only model families suited to a fresh machine. Each card identifies the curated precision variant and labels it as recommended, usable with offload, or difficult. Users can override the recommendation, but selected below-minimum workflows require an explicit warning confirmation. Before downloading, setup queries a running ComfyUI for registered model filenames and inspects common `extra_model_paths.yaml` locations. Matching files are reused regardless of their configured model root, while the visible models-folder field and Browse button remain available as a manual destination override. Existing feature choices are preserved on rerun. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
 
 ### Manual Git install
 
@@ -98,7 +98,7 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 
 ### ComfyUI and shared models
 
-For new machines, setup downloads ComfyUI Desktop only from the official stable Windows endpoint and refuses to run it unless Windows reports a valid Authenticode signature. Existing environments can provide their ComfyUI URL, application folder, and models folder. If the models folder is separate, ensure ComfyUI includes it through `extra_model_paths.yaml`.
+For new machines, setup downloads ComfyUI Desktop only from the official stable Windows endpoint and refuses to run it unless Windows reports a valid Authenticode signature. Existing environments can provide their ComfyUI URL, application folder, and models folder. Setup scans the connected `/object_info` registry and common `extra_model_paths.yaml` files, shows what it found, and skips recognized filenames before downloading. If ComfyUI is stopped or uses an unusual configuration location, point the visible models-folder field at the desired root; no existing file is moved or duplicated.
 
 You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
 

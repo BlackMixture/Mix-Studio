@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { installComponents } = require('../lib/dependency-installer');
+const { discoverModels } = require('./model-discovery');
 
 const root = path.resolve(__dirname, '..');
 
@@ -45,6 +46,23 @@ function selectedComponents(manifest, selection) {
   return [...components];
 }
 
+function combineDiscovery(saved, live) {
+  const names = new Set([
+    ...(Array.isArray(saved?.registeredModelNames) ? saved.registeredModelNames : []),
+    ...(Array.isArray(live?.registeredModelNames) ? live.registeredModelNames : []),
+  ]);
+  const roots = new Set([
+    ...(Array.isArray(saved?.modelRoots) ? saved.modelRoots : []),
+    ...(Array.isArray(live?.modelRoots) ? live.modelRoots : []),
+  ]);
+  return {
+    registeredModelNames: [...names],
+    registeredModelCount: names.size,
+    modelRoots: [...roots],
+    preferredModelsPath: String(saved?.preferredModelsPath || live?.preferredModelsPath || ''),
+  };
+}
+
 async function main() {
   const install = readJson(path.join(root, 'install.json'));
   const dataDir = path.resolve(root, String(install.dataDir || 'data'));
@@ -55,20 +73,31 @@ async function main() {
   if (!components.length) throw new Error('No model or custom-node groups were selected.');
 
   const comfy = install.comfy || {};
+  const savedDiscovery = readJson(argument('--discovery'));
+  const liveDiscovery = await discoverModels({
+    comfyUrl: String(comfy.url || settings.comfyUrl || 'http://127.0.0.1:8188'),
+    comfyPath: String(comfy.path || ''),
+    modelsPath: String(comfy.modelsPath || savedDiscovery.preferredModelsPath || ''),
+  });
+  const discovery = combineDiscovery(savedDiscovery, liveDiscovery);
   const runtime = {
     dataDir,
     comfy: {
       path: String(comfy.path || ''),
-      modelsPath: String(comfy.modelsPath || ''),
+      modelsPath: String(comfy.modelsPath || discovery.preferredModelsPath || ''),
       url: String(comfy.url || settings.comfyUrl || 'http://127.0.0.1:8188'),
     },
   };
 
   process.stdout.write(`Installing ${components.length} selected dependency groups. Existing files will be reused.\n`);
+  if (discovery.registeredModelCount) {
+    process.stdout.write(`ComfyUI already reports ${discovery.registeredModelCount} model files; matching downloads will be skipped.\n`);
+  }
   await installComponents({
     runtime,
     settings,
     components,
+    options: { availableModelNames: discovery.registeredModelNames, availableModelRoots: discovery.modelRoots },
     report(phase, message, detail = {}) {
       const progress = Number.isFinite(detail.completed) && Number.isFinite(detail.total) && detail.total > 0
         ? ` (${detail.completed}/${detail.total})`
@@ -85,4 +114,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { FEATURE_COMPONENTS, selectedComponents };
+module.exports = { FEATURE_COMPONENTS, combineDiscovery, selectedComponents };

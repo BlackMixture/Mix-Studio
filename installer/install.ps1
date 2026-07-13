@@ -22,6 +22,7 @@ $SettingsFile = Join-Path $DataDir 'settings.json'
 $ExistingInstallFile = if (Test-Path $InstallFile) { $InstallFile } elseif (Test-Path $PreservedInstallFile) { $PreservedInstallFile } else { $InstallFile }
 $FeatureManifest = Join-Path $PSScriptRoot 'feature-manifest.json'
 $DependencyInstaller = Join-Path $PSScriptRoot 'install-dependencies.js'
+$ModelDiscoveryScript = Join-Path $PSScriptRoot 'model-discovery.js'
 $HardwareProfileScript = Join-Path $PSScriptRoot 'hardware-profile.ps1'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $OfficialComfyDesktopUrl = 'https://download.comfy.org/windows/nsis/x64'
@@ -267,8 +268,44 @@ $SelectedModels = Read-WithDefault 'Existing models folder (optional)' $DefaultM
 if ($SelectedPath -and -not (Test-Path $SelectedPath)) {
   Write-Host "Warning: ComfyUI folder does not currently exist: $SelectedPath" -ForegroundColor Yellow
 }
+
+Write-Step 'Finding existing models'
+$ModelDiscovery = [pscustomobject]@{
+  schemaVersion = 1
+  detectedAt = [DateTime]::UtcNow.ToString('o')
+  registeredModelNames = @()
+  registeredModelCount = 0
+  modelRoots = @()
+  configFiles = @()
+  preferredModelsPath = $SelectedModels
+  registryError = 'Model discovery did not run.'
+}
+if (Test-Path $ModelDiscoveryScript) {
+  try {
+    $DiscoveryJson = (& node $ModelDiscoveryScript "--comfy-url=$SelectedUrl" "--comfy-path=$SelectedPath" "--models-path=$SelectedModels" 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $DiscoveryJson) { $ModelDiscovery = $DiscoveryJson | ConvertFrom-Json }
+  } catch {
+    Write-Host "Automatic model discovery needs attention: $($_.Exception.Message)" -ForegroundColor Yellow
+  }
+}
+$DiscoveredModelsPath = [string](Existing-PropertyValue $ModelDiscovery 'preferredModelsPath' '')
+if (-not $SelectedModels -and $DiscoveredModelsPath) {
+  $SelectedModels = $DiscoveredModelsPath
+  Write-Host "Using detected models folder: $SelectedModels" -ForegroundColor Green
+}
+$RegisteredModelCount = [int](Existing-PropertyValue $ModelDiscovery 'registeredModelCount' 0)
+$DiscoveredRoots = @(Existing-PropertyValue $ModelDiscovery 'modelRoots' @())
+if ($RegisteredModelCount -gt 0) {
+  Write-Host "ComfyUI reports $RegisteredModelCount existing model files. Matching files will not be downloaded again." -ForegroundColor Green
+}
+if ($DiscoveredRoots.Count) {
+  Write-Host ('Detected model roots: ' + ($DiscoveredRoots -join ', ')) -ForegroundColor DarkGray
+}
+if ((Existing-PropertyValue $ModelDiscovery 'registryError' '') -and -not $RegisteredModelCount) {
+  Write-Host 'ComfyUI is not reporting its model registry yet. Setup will still reuse files found under the selected models folder.' -ForegroundColor Yellow
+}
 if ($SelectedModels -and -not (Test-Path $SelectedModels)) {
-  Write-Host "Warning: models folder does not currently exist: $SelectedModels" -ForegroundColor Yellow
+  Write-Host "Models folder will be created when dependencies are installed: $SelectedModels" -ForegroundColor Yellow
 }
 
 Write-Step 'Choosing optional model families'
@@ -341,6 +378,12 @@ $InstallConfig = [pscustomobject]@{
     url = $SelectedUrl
   }
   hardware = $HardwareProfile
+  modelDiscovery = [pscustomobject]@{
+    detectedAt = [string](Existing-PropertyValue $ModelDiscovery 'detectedAt' ([DateTime]::UtcNow.ToString('o')))
+    registeredModelCount = $RegisteredModelCount
+    modelRoots = $DiscoveredRoots
+    configFiles = @(Existing-PropertyValue $ModelDiscovery 'configFiles' @())
+  }
 }
 
 Set-ObjectProperty $Settings 'comfyUrl' $SelectedUrl
@@ -363,9 +406,15 @@ if ($InstallDependencies) {
   Write-Step 'Installing selected models and custom nodes'
   if (-not (Test-Path $DependencyInstaller)) { throw 'The dependency installer is missing from this checkout.' }
   if (-not $FeatureConfigFile -or -not (Test-Path $FeatureConfigFile)) { throw 'The selected feature list is required for model installation.' }
-  & node $DependencyInstaller --features $FeatureConfigFile
-  if ($LASTEXITCODE -ne 0) {
-    throw 'One or more selected model or custom-node downloads did not finish. Existing files and saved settings were preserved; rerun setup to continue.'
+  $DiscoveryFile = Join-Path $env:TEMP ("mix-studio-models-" + [Guid]::NewGuid().ToString('N') + '.json')
+  try {
+    [IO.File]::WriteAllText($DiscoveryFile, ($ModelDiscovery | ConvertTo-Json -Depth 20), $Utf8NoBom)
+    & node $DependencyInstaller --features $FeatureConfigFile --discovery $DiscoveryFile
+    if ($LASTEXITCODE -ne 0) {
+      throw 'One or more selected model or custom-node downloads did not finish. Existing files and saved settings were preserved; rerun setup to continue.'
+    }
+  } finally {
+    if (Test-Path $DiscoveryFile) { Remove-Item $DiscoveryFile -Force -ErrorAction SilentlyContinue }
   }
 }
 

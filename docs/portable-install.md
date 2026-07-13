@@ -11,7 +11,7 @@ The guided bootstrap supports both a clean Windows machine and an existing Comfy
 3. The native setup wizard opens automatically and uses the same black surfaces, compact cards, spectrum accents, and restrained motion as the Mix Studio web interface.
 4. Let setup install Node.js LTS with `winget` if Node 22+ is not already available, then rerun `%USERPROFILE%\Mix Studio\install.bat` after PATH refreshes.
 5. Choose whether to install official ComfyUI Desktop or reuse an existing environment. Complete ComfyUI's NVIDIA and storage-location screens if it is new.
-6. Review the detected NVIDIA GPU, VRAM, and system RAM. Setup preselects model families rated for the machine, labels borderline choices that will use system-memory offload, and flags below-minimum workflows as difficult. You may override the recommendation after confirming the warning. Leave dependency downloads enabled to install the selected curated precision variants and custom nodes. The optimized image starter set includes Krea 2 depth guidance and SeedVR2. Each Edit selection includes its matching outpaint tools, and LTX includes Face ID support.
+6. Review the detected NVIDIA GPU, VRAM, and system RAM. Setup preselects model families rated for the machine, labels borderline choices that will use system-memory offload, and flags below-minimum workflows as difficult. It also queries a running ComfyUI and common `extra_model_paths.yaml` locations for existing model files. You may keep the detected destination or browse to a models root manually. Leave dependency downloads enabled to install only the missing curated precision variants and custom nodes. The optimized image starter set includes Krea 2 depth guidance and SeedVR2. Each Edit selection includes its matching outpaint tools, and LTX includes Face ID support.
 7. Double-click `start.bat` inside the Mix Studio folder.
 
 ## Phone-first access with Tailscale
@@ -46,7 +46,7 @@ Browser-installed shortcuts, form state, media preferences, and compressed previ
 
 ## Reusing models
 
-Mix Studio sends model filenames to the connected ComfyUI API. Guided downloads are placed under the selected ComfyUI models folder. For a separate shared-model directory, add it to ComfyUI's `extra_model_paths.yaml`; setup does not rewrite an existing path configuration without permission.
+Mix Studio sends model filenames to the connected ComfyUI API. During setup, the installer reads `/object_info` and treats filenames already registered by ComfyUI as reusable even when they live outside the selected root. It also inspects `extra_model_paths.yaml` under the selected ComfyUI installation, its nested `ComfyUI` folder, and the official Desktop configuration location. Guided downloads are placed under the detected or manually selected models folder. Setup never rewrites an existing path configuration or moves existing files.
 
 The optional local models path additionally lets Mix Studio discover LoRA metadata and SeedVR2 files directly. No model is copied merely to satisfy the portable app layout.
 

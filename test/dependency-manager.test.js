@@ -123,6 +123,34 @@ test('registered ComfyUI models are reused even when they live outside the confi
   }
 });
 
+test('models in discovered external roots are reused while ComfyUI is stopped', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-dependency-roots-'));
+  const destinationRoot = path.join(rootDir, 'destination');
+  const sharedRoot = path.join(rootDir, 'shared');
+  const existing = path.join(sharedRoot, 'diffusion_models', 'krea2_turbo_fp8_scaled.safetensors');
+  let fetched = false;
+  try {
+    fs.mkdirSync(path.dirname(existing), { recursive: true });
+    fs.writeFileSync(existing, 'existing model fixture');
+    const result = await downloadAsset(
+      ['unet', 'diffusion_models', 'https://example.test/krea2_turbo_fp8_scaled.safetensors'],
+      destinationRoot,
+      { unet: 'krea2_turbo_fp8_scaled.safetensors' },
+      () => {},
+      {
+        availableModelRoots: [sharedRoot],
+        fetch: async () => { fetched = true; throw new Error('should not fetch'); },
+      }
+    );
+    assert.equal(result.skipped, true);
+    assert.equal(result.externalRoot, true);
+    assert.equal(result.destination, existing);
+    assert.equal(fetched, false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('cancelling a model transfer removes its partial file and never installs it', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-dependency-cancel-'));
   const controller = new AbortController();

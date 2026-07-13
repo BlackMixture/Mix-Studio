@@ -61,6 +61,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /workflow-tested defaults/);
   assert.match(page, /detects GPU memory and system RAM/);
   assert.match(page, /difficult models stay available as an informed opt-in/);
+  assert.match(page, /model files already registered through ComfyUI/);
   assert.match(page, /animated progress with ETA/);
   assert.match(page, /reveal, zoom, and pan/);
   assert.match(page, /tailscale\.com\/download/);
@@ -108,6 +109,7 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   const engine = fs.readFileSync(path.join(root, 'installer', 'install.ps1'), 'utf8');
   const hardware = fs.readFileSync(path.join(root, 'installer', 'hardware-profile.ps1'), 'utf8');
   const dependencyCli = require('../installer/install-dependencies');
+  const discovery = fs.readFileSync(path.join(root, 'installer', 'model-discovery.js'), 'utf8');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
   const ltx = manifest.features.find((feature) => feature.id === 'video.ltx');
   const image = manifest.features.find((feature) => feature.id === 'core.image');
@@ -120,8 +122,16 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
   assert.match(ui, /UseRecommendedButton/);
   assert.match(ui, /ReviewWarningsBorder/);
   assert.match(ui, /Confirm-HardwareWarnings/);
+  assert.match(ui, /DetectModelsButton/);
+  assert.match(ui, /Find-ExistingModels/);
+  assert.match(ui, /extra_model_paths\.yaml/);
   assert.match(engine, /\[string\]\$HardwareProfileFile/);
   assert.match(engine, /hardware = \$HardwareProfile/);
+  assert.match(engine, /Finding existing models/);
+  assert.match(engine, /--discovery \$DiscoveryFile/);
+  assert.match(discovery, /\/object_info/);
+  assert.match(discovery, /extra_model_paths\.yaml/);
+  assert.match(discovery, /registeredModelNames/);
   assert.match(hardware, /nvidia-smi\.exe/);
   assert.match(hardware, /Get-CimInstance Win32_VideoController/);
   assert.match(hardware, /minimumVramGb/);
@@ -155,6 +165,15 @@ test('guided setup can install official ComfyUI and selected dependencies', () =
     { features: [{ id: 'core.image', required: true }, { id: 'edit.klein4' }, { id: 'edit.klein9' }, { id: 'edit.qwen' }, { id: 'edit.krea2' }, { id: 'edit.krea2ref' }] },
     { 'edit.klein4': true, 'edit.klein9': true, 'edit.qwen': true, 'edit.krea2': true, 'edit.krea2ref': true },
   ), ['image', 'krea2depth', 'upscale', 'klein4', 'editoutpaint', 'klein9', 'smartmask', 'qwen', 'regional', 'krea2ref', 'krea2outpaint']);
+  assert.deepEqual(dependencyCli.combineDiscovery(
+    { registeredModelNames: ['a.safetensors'], modelRoots: ['D:/Models'], preferredModelsPath: 'D:/Models' },
+    { registeredModelNames: ['a.safetensors', 'b.safetensors'], modelRoots: ['E:/Models'] },
+  ), {
+    registeredModelNames: ['a.safetensors', 'b.safetensors'],
+    registeredModelCount: 2,
+    modelRoots: ['D:/Models', 'E:/Models'],
+    preferredModelsPath: 'D:/Models',
+  });
 });
 
 test('portable installer requires Git for safe in-app updates and Node 22', () => {

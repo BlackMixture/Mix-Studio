@@ -25,6 +25,7 @@ $InstallFile = Join-Path $Root 'install.json'
 $ExistingInstallFile = if (Test-Path $InstallFile) { $InstallFile } elseif (Test-Path $PreservedInstallFile) { $PreservedInstallFile } else { $InstallFile }
 $ManifestFile = Join-Path $PSScriptRoot 'feature-manifest.json'
 $EngineFile = Join-Path $PSScriptRoot 'install.ps1'
+$ModelDiscoveryScript = Join-Path $PSScriptRoot 'model-discovery.js'
 $HardwareProfileScript = Join-Path $PSScriptRoot 'hardware-profile.ps1'
 if (-not (Test-Path $HardwareProfileScript)) { throw 'The hardware detection helper is missing from this checkout.' }
 . $HardwareProfileScript
@@ -272,8 +273,9 @@ if (-not (Test-Path $HardwareProfileScript)) { throw 'The hardware detection hel
                 <Grid Margin="0,8,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBox x:Name="ComfyPathBox"/><Button x:Name="BrowseComfyButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Browse" Padding="12,10"/></Grid>
                 <TextBlock Text="For a new Desktop install this is detected automatically after initialization." Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,17"/>
                 <TextBlock Text="MODELS FOLDER" Foreground="{StaticResource Muted}" FontSize="11" FontWeight="Bold"/>
-                <Grid Margin="0,8,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBox x:Name="ModelsPathBox"/><Button x:Name="BrowseModelsButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Browse" Padding="12,10"/></Grid>
-                <TextBlock Text="No files are moved or duplicated. ComfyUI must already be configured to see this folder." Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,0"/>
+                <Grid Margin="0,8,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="112"/><ColumnDefinition Width="10"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions><TextBox x:Name="ModelsPathBox"/><Button x:Name="DetectModelsButton" Grid.Column="2" Style="{StaticResource BaseButton}" Content="Detect models" Padding="12,10"/><Button x:Name="BrowseModelsButton" Grid.Column="4" Style="{StaticResource BaseButton}" Content="Browse" Padding="12,10"/></Grid>
+                <TextBlock Text="Setup checks ComfyUI and extra_model_paths.yaml automatically. Browse remains available for a custom or offline models root." Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,8" TextWrapping="Wrap"/>
+                <Border x:Name="ModelDiscoveryStatus" Visibility="Collapsed" Background="#0C1116" BorderBrush="#273342" BorderThickness="1" CornerRadius="12" Padding="13"><TextBlock x:Name="ModelDiscoveryStatusText" TextWrapping="Wrap"/></Border>
               </StackPanel>
             </ScrollViewer>
           </Grid>
@@ -617,6 +619,61 @@ function Begin-Install {
   $Worker.RunWorkerAsync($Work)
 }
 
+function Find-ExistingModels {
+  $Status = Ui 'ModelDiscoveryStatus'
+  $Text = Ui 'ModelDiscoveryStatusText'
+  $Status.Visibility = 'Visible'
+  $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#273342')
+  $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#B8C5DC')
+  $Text.Text = 'Checking ComfyUI and configured model folders…'
+  $Window.Dispatcher.Invoke([action]{}, [Windows.Threading.DispatcherPriority]::Background)
+  $Node = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $Node -or -not (Test-Path $ModelDiscoveryScript)) {
+    $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#6B4B1F')
+    $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#F4C66B')
+    $Text.Text = 'Automatic model scanning will run after Node.js is installed. You can select an existing models folder manually now.'
+    return
+  }
+  try {
+    $Arguments = @(
+      $ModelDiscoveryScript,
+      ('--comfy-url=' + (Ui 'ComfyUrlBox').Text.Trim()),
+      ('--comfy-path=' + (Ui 'ComfyPathBox').Text.Trim()),
+      ('--models-path=' + (Ui 'ModelsPathBox').Text.Trim())
+    )
+    $Json = (& node @Arguments 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $Json) { throw 'The model scan did not return a result.' }
+    $Discovery = $Json | ConvertFrom-Json
+    $Preferred = [string](Property-Or $Discovery 'preferredModelsPath' '')
+    $Current = (Ui 'ModelsPathBox').Text.Trim()
+    if (-not $Current -and $Preferred) { (Ui 'ModelsPathBox').Text = $Preferred }
+    $Count = [int](Property-Or $Discovery 'registeredModelCount' 0)
+    $Roots = @(Property-Or $Discovery 'modelRoots' @())
+    $Configs = @(Property-Or $Discovery 'configFiles' @())
+    $Parts = @()
+    if ($Count -gt 0) { $Parts += "$Count existing model files reported by ComfyUI" }
+    if ($Roots.Count) {
+      $RootLabel = if ($Roots.Count -eq 1) { 'model root' } else { 'model roots' }
+      $Parts += "$($Roots.Count) $RootLabel found"
+    }
+    if ($Configs.Count) { $Parts += "extra_model_paths.yaml detected" }
+    if ($Parts.Count) {
+      $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#315D3C')
+      $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#9FD8AE')
+      $Destination = (Ui 'ModelsPathBox').Text.Trim()
+      $Text.Text = ($Parts -join ' · ') + $(if ($Destination) { ". Missing files will use $Destination." } else { '. Matching registered files will still be skipped.' })
+    } else {
+      $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#6B4B1F')
+      $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#F4C66B')
+      $Text.Text = 'No existing model files were detected yet. Start ComfyUI or browse to its models folder; setup checks again immediately before downloading.'
+    }
+  } catch {
+    $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#704141')
+    $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#F0A8A8')
+    $Text.Text = "Automatic model scanning could not finish. Manual folder selection is still available. $($_.Exception.Message)"
+  }
+}
+
 function Test-ComfyConnection {
   $Status = Ui 'ConnectionStatus'
   $Text = Ui 'ConnectionStatusText'
@@ -632,7 +689,8 @@ function Test-ComfyConnection {
     $Response.Close()
     $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#315D3C')
     $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#9FD8AE')
-    $Text.Text = 'Connected. ComfyUI is ready to answer Mix Studio.'
+    $Text.Text = 'Connected. ComfyUI is ready to answer Mix Studio. Checking its existing models now.'
+    Find-ExistingModels
   } catch {
     $Status.BorderBrush = [Windows.Media.BrushConverter]::new().ConvertFromString('#704141')
     $Text.Foreground = [Windows.Media.BrushConverter]::new().ConvertFromString('#F0A8A8')
@@ -749,6 +807,7 @@ if ($HasGitCheckout -and $GitCommand -and $NodeMajor -ge 22) {
       (Ui 'ConnectionStatusText').Text = 'Enter a full ComfyUI URL beginning with http:// or https://.'
       return
     }
+    Find-ExistingModels
     Show-Page 2
     return
   }
@@ -756,15 +815,17 @@ if ($HasGitCheckout -and $GitCommand -and $NodeMajor -ge 22) {
   if ($CurrentPage -eq 3) { Begin-Install; return }
 })
 (Ui 'TestComfyButton').Add_Click({ Test-ComfyConnection })
+(Ui 'DetectModelsButton').Add_Click({ Find-ExistingModels })
 (Ui 'BrowseComfyButton').Add_Click({
   (Ui 'ExistingComfyOption').IsChecked = $true
   $Chosen = Select-Folder 'Select the existing ComfyUI folder' (Ui 'ComfyPathBox').Text
   (Ui 'ComfyPathBox').Text = $Chosen
-  if ($Chosen -and -not (Ui 'ModelsPathBox').Text.Trim()) { (Ui 'ModelsPathBox').Text = Join-Path $Chosen 'models' }
+  if ($Chosen) { Find-ExistingModels }
 })
 (Ui 'BrowseModelsButton').Add_Click({
   (Ui 'ExistingComfyOption').IsChecked = $true
   (Ui 'ModelsPathBox').Text = Select-Folder 'Select the models folder used by ComfyUI' (Ui 'ModelsPathBox').Text
+  if ((Ui 'ModelsPathBox').Text.Trim()) { Find-ExistingModels }
 })
 (Ui 'RetryButton').Add_Click({ Update-Review; Show-Page 3 })
 (Ui 'LaunchButton').Add_Click({
