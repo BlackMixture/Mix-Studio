@@ -89,6 +89,11 @@ test('region canvas toolbar keeps actions beside an anchored resolution picker',
   assert.match(appJs, /renderRegionResolutionPicker\(\);/);
   assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*position: absolute/);
   assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*background: #000/);
+  assert.match(styleCss, /\.region-aspect-option \.ar-box \{[\s\S]*border: 1\.5px solid currentColor/);
+  assert.match(styleCss, /\.region-aspect-option small \{[\s\S]*font-size: 7\.5px;[\s\S]*white-space: nowrap/);
+  assert.match(styleCss, /\.region-aspect-option\.active \{[\s\S]*var\(--gemini\) border-box/);
+  assert.match(styleCss, /\.region-size-menu \{[\s\S]*display: inline-flex;[\s\S]*border-radius: 999px/);
+  assert.match(appJs, /const dimensions = dimensionsForMegapixels\(aspect\.ar, state\.mp\);[\s\S]*<small>\$\{dimensions\.w\} × \$\{dimensions\.h\}<\/small>/);
   assert.match(styleCss, /@media \(max-width: 640px\) \{[\s\S]*\.region-resolution-menu \{[\s\S]*position: fixed;[\s\S]*max-height: min\(70dvh, 430px\);[\s\S]*overflow-y: auto/);
 });
 

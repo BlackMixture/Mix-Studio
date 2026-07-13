@@ -3719,10 +3719,11 @@ function renderRegionResolutionPicker() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'region-aspect-option' + (!state.customDims && state.aspect === aspect.label ? ' active' : '');
-    const maxSide = 18;
+    const maxSide = 22;
     const width = aspect.ar >= 1 ? maxSide : Math.max(7, Math.round(maxSide * aspect.ar));
     const height = aspect.ar >= 1 ? Math.max(7, Math.round(maxSide / aspect.ar)) : maxSide;
-    button.innerHTML = `<span class="ar-box" style="width:${width}px;height:${height}px"></span><b>${aspect.label}</b>`;
+    const dimensions = dimensionsForMegapixels(aspect.ar, state.mp);
+    button.innerHTML = `<span class="ar-box" style="width:${width}px;height:${height}px"></span><b>${aspect.label}</b><small>${dimensions.w} × ${dimensions.h}</small>`;
     button.addEventListener('click', () => {
       state.aspect = aspect.label;
       state.createMatchSource = false;
