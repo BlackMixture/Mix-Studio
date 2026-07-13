@@ -65,7 +65,10 @@
     }
     .download:hover, .download:focus-visible { transform: translateY(-2px); box-shadow: 0 18px 58px rgba(46,67,255,.3); }
     .download svg { width: 19px; height: 19px; }
-    .requirements { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .download .platform-windows { width: 20px; height: 20px; }
+    .platform-coming { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(10,12,18,.72); color: var(--muted); font-size: 11px; font-weight: 750; white-space: nowrap; }
+    .platform-coming svg { width: 16px; height: 16px; color: var(--soft); }
+    .requirements { display: block; margin-top: 12px; color: var(--muted); font-size: 12px; font-weight: 700; }
     .hero-visual { position: relative; padding: 1px; border-radius: 28px; background: linear-gradient(125deg,rgba(66,133,244,.72),rgba(234,67,53,.2) 38%,rgba(118,87,255,.68)); box-shadow: 0 34px 100px rgba(10,21,74,.36); }
     .window { overflow: hidden; border-radius: 27px; background: #050608; }
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
@@ -116,13 +119,22 @@
     .feature-video { --media-scale: 1.04; --media-origin: 50% 50%; }
     .feature-compare { background: #05070b; }
     .feature-library { background: #05070b; }
-    .create-gallery { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: repeat(2,minmax(0,1fr)); gap: 5px; padding: 6px; background: radial-gradient(circle at 50% 20%,rgba(66,133,244,.15),transparent 62%),#05070b; }
-    .create-tile { position: relative; min-width: 0; overflow: hidden; border: 1px solid rgba(220,228,255,.14); border-radius: 9px; background: #111621; }
-    .create-tile img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 35%; animation: create-gallery-focus 12s ease-in-out infinite; }
-    .create-tile:nth-child(2) img { animation-delay: -9s; }
-    .create-tile:nth-child(3) img { animation-delay: -6s; }
-    .create-tile:nth-child(4) img { animation-delay: -3s; }
-    @keyframes create-gallery-focus { 0%,18%,100% { filter: brightness(1); transform: scale(1.02); } 26%,92% { filter: brightness(.62) saturate(.82); transform: scale(1); } }
+    .create-gallery { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: repeat(2,minmax(0,1fr)); gap: 5px; padding: 6px; isolation: isolate; background: radial-gradient(circle at 50% 20%,rgba(66,133,244,.15),transparent 62%),#05070b; }
+    .create-tile { position: relative; min-width: 0; overflow: hidden; border: 1px solid rgba(220,228,255,.14); border-radius: 9px; background: #111621; box-shadow: 0 12px 28px rgba(0,0,0,.32); transform-origin: var(--tile-origin); animation: create-gallery-stage 20s cubic-bezier(.65,0,.35,1) infinite; }
+    .create-tile:nth-child(1) { --tile-origin: top left; animation-delay: 0s; }
+    .create-tile:nth-child(2) { --tile-origin: top right; animation-delay: -15s; }
+    .create-tile:nth-child(3) { --tile-origin: bottom left; animation-delay: -10s; }
+    .create-tile:nth-child(4) { --tile-origin: bottom right; animation-delay: -5s; }
+    .create-tile img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .create-tile .create-back { object-fit: cover; filter: blur(10px) brightness(.5) saturate(.8); transform: scale(1.12); }
+    .create-tile .create-front { z-index: 1; object-fit: contain; }
+    @keyframes create-gallery-stage {
+      0%,12% { z-index: 8; border-radius: 5px; filter: brightness(1); transform: scale(2.04); }
+      16% { z-index: 8; border-radius: 9px; filter: brightness(1); transform: scale(1); }
+      16.1%,95% { z-index: 1; filter: brightness(.7) saturate(.84); transform: scale(1); }
+      96% { z-index: 8; border-radius: 9px; filter: brightness(1); transform: scale(1); }
+      100% { z-index: 8; border-radius: 5px; filter: brightness(1); transform: scale(2.04); }
+    }
     .upscale-demo { position: absolute; inset: 0; overflow: hidden; background: #05070b; }
     .upscale-demo > img, .upscale-after > img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; display: block; object-fit: cover; object-position: 54% 49%; animation: upscale-zoom 10s ease-in-out infinite; }
     .upscale-after { position: absolute; inset: 0; z-index: 1; overflow: hidden; clip-path: inset(0 34% 0 0); animation: upscale-reveal 10s ease-in-out infinite; }
@@ -163,6 +175,55 @@
     .feature-copy { padding: 20px 24px 24px; }
     .feature h3 { margin: 0 0 8px; font-size: 17px; }
     .feature p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .benchmark-section { padding: 20px 0 120px; }
+    .benchmark-head { display: grid; grid-template-columns: .82fr 1fr; gap: 70px; align-items: end; margin-bottom: 38px; }
+    .benchmark-head h2 { max-width: 640px; margin: 0; font-size: clamp(38px,5vw,60px); line-height: 1.02; letter-spacing: -.048em; }
+    .benchmark-head > p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+    .benchmark-lab { overflow: hidden; display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); border-radius: 30px; background: radial-gradient(80% 100% at 8% 0,rgba(66,133,244,.11),transparent 66%),linear-gradient(145deg,rgba(255,255,255,.025),transparent 54%),#07090d; }
+    .benchmark-rankings { padding: 30px; }
+    .benchmark-card-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+    .benchmark-card-head span { color: #9db3f7; font-size: 10px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    .benchmark-card-head strong { color: var(--soft); font-size: 12px; text-align: right; }
+    .model-rankings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 36px; list-style: none; margin: 22px 0 0; padding: 0; }
+    .model-ranking { --rank-accent: #76a8ff; display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 14px; align-items: start; padding: 16px 0; border-top: 1px solid var(--line); opacity: .35; transform: translateX(14px); }
+    .model-ranking:nth-child(-n+2) { border-top: 0; }
+    .benchmark-section.is-visible .model-ranking { animation: benchmark-rank-in 500ms var(--rank-delay,0s) ease forwards; }
+    .rank-one { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid color-mix(in srgb,var(--rank-accent) 45%,transparent); border-radius: 12px; background: color-mix(in srgb,var(--rank-accent) 10%,#090c12); color: var(--rank-accent); font-size: 11px; font-weight: 900; }
+    .rank-task { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .rank-task span { color: #9db3f7; font-size: 9px; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; }
+    .rank-task b { color: var(--muted); font-size: 9px; font-weight: 750; white-space: nowrap; }
+    .model-ranking strong { display: block; margin-top: 4px; font-size: 15px; }
+    .model-ranking p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .hardware-chart { grid-column: 1 / -1; padding: 28px 30px 32px; border-top: 1px solid var(--line); background: rgba(2,3,5,.32); }
+    .hardware-chart-intro, .speed-reference-intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+    .hardware-chart-intro > p, .speed-reference-intro > p { max-width: 520px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; text-align: right; }
+    .hardware-axis { display: grid; grid-template-columns: 158px minmax(0,1fr); gap: 18px; margin-top: 22px; }
+    .hardware-axis-labels { display: flex; justify-content: space-between; color: #66728f; font-size: 8px; font-weight: 750; }
+    .hardware-rows { display: grid; gap: 18px; margin-top: 8px; }
+    .hardware-row { display: grid; grid-template-columns: 158px minmax(0,1fr); gap: 18px; align-items: center; }
+    .hardware-row-label strong { display: block; font-size: 11px; }
+    .hardware-row-label span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .hardware-track { --minimum: 66.667%; --recommended: 100%; --bar-delay: 0s; position: relative; height: 22px; border-radius: 8px; background: repeating-linear-gradient(90deg,rgba(157,179,247,.08) 0,rgba(157,179,247,.08) 1px,transparent 1px,transparent 33.333%); box-shadow: inset 0 0 0 1px rgba(157,179,247,.09); }
+    .hardware-segment { position: absolute; top: 7px; bottom: 7px; border-radius: 999px; transform: scaleX(0); transform-origin: left; }
+    .hardware-segment.minimum { left: 0; width: var(--minimum); background: linear-gradient(90deg,rgba(66,133,244,.45),#76a8ff); }
+    .hardware-segment.recommended { left: var(--minimum); width: calc(var(--recommended) - var(--minimum)); background: linear-gradient(90deg,#7657ff,#ea4335); }
+    .benchmark-section.is-visible .hardware-segment { animation: benchmark-bar-in 800ms var(--bar-delay) cubic-bezier(.25,.8,.25,1) forwards; }
+    .hardware-marker { position: absolute; top: 3px; bottom: 3px; width: 1px; background: rgba(242,246,255,.76); }
+    .hardware-marker.minimum { left: var(--minimum); }
+    .hardware-marker.recommended { left: var(--recommended); }
+    .hardware-marker b { position: absolute; top: -16px; color: #a8b4d0; font-size: 8px; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
+    .hardware-marker.recommended b { transform: translateX(-100%); }
+    .speed-reference { padding: 28px 30px 32px; border-top: 1px solid var(--line); background: linear-gradient(110deg,rgba(66,133,244,.07),rgba(118,87,255,.035) 48%,transparent 78%); }
+    .speed-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-top: 22px; }
+    .speed-metric { --metric-accent: #76a8ff; position: relative; overflow: hidden; min-width: 0; padding: 16px; border: 1px solid rgba(157,179,247,.12); border-radius: 16px; background: rgba(6,9,15,.7); opacity: .35; transform: translateY(10px); }
+    .speed-metric::before { content: ""; position: absolute; top: 0; right: 14px; left: 14px; height: 2px; border-radius: 999px; background: linear-gradient(90deg,transparent,var(--metric-accent),transparent); opacity: .8; }
+    .benchmark-section.is-visible .speed-metric { animation: speed-metric-in 500ms var(--metric-delay,0s) ease forwards; }
+    .speed-metric span { display: block; color: #9db3f7; font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .speed-metric strong { display: block; margin-top: 8px; font-size: clamp(20px,2.3vw,28px); letter-spacing: -.035em; }
+    .speed-metric small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+    @keyframes benchmark-rank-in { to { opacity: 1; transform: translateX(0); } }
+    @keyframes benchmark-bar-in { to { transform: scaleX(1); } }
+    @keyframes speed-metric-in { to { opacity: 1; transform: translateY(0); } }
     .showcase { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
     .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
     .shot-image {
@@ -204,28 +265,38 @@
     .gen-card.reel video { aspect-ratio: 8 / 7; object-fit: contain; background: radial-gradient(circle at 50% 35%,#11243a,#030405 70%); }
     .gen-card.wide video { aspect-ratio: 16 / 9; object-fit: cover; }
     .gen-card.span-2 { grid-column: span 2; }
-    .generation-journey { position: relative; overflow: hidden; display: grid; grid-template-columns: .8fr .8fr 1.4fr; aspect-ratio: 16 / 9; background: #020305; }
-    .journey-panel { position: relative; min-width: 0; overflow: hidden; border-right: 1px solid rgba(220,228,255,.2); background: #030405; }
-    .journey-panel:last-of-type { border-right: 0; }
-    .journey-panel > img, .journey-panel > video { width: 100%; height: 100%; max-width: none; display: block; object-fit: cover; }
-    .journey-panel.before > img, .journey-panel.after > img { width: 200%; }
-    .journey-panel.before > img { transform: translateX(0); }
-    .journey-panel.after > img { transform: translateX(-50%); }
-    .journey-panel.motion > video { object-fit: contain; object-position: 50% 50%; }
-    .journey-panel::after { content: ""; position: absolute; inset: 0; border: 2px solid rgba(118,168,255,.72); opacity: 0; box-shadow: inset 0 0 34px rgba(66,133,244,.16); pointer-events: none; }
-    .journey-panel.before { animation: journey-first 9s ease-in-out infinite; }
-    .journey-panel.after { animation: journey-second 9s ease-in-out infinite; }
-    .journey-panel.motion { animation: journey-third 9s ease-in-out infinite; }
-    .journey-panel.before::after { animation: journey-first-ring 9s ease-in-out infinite; }
-    .journey-panel.after::after { animation: journey-second-ring 9s ease-in-out infinite; }
-    .journey-panel.motion::after { animation: journey-third-ring 9s ease-in-out infinite; }
-    .journey-label { position: absolute; left: 10px; bottom: 10px; z-index: 2; padding: 6px 8px; border: 1px solid rgba(220,228,255,.16); border-radius: 999px; background: rgba(3,5,9,.74); color: #dce6ff; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; backdrop-filter: blur(8px); }
-    @keyframes journey-first { 0%,25% { filter: brightness(1); } 34%,100% { filter: brightness(.42); } }
-    @keyframes journey-second { 0%,25% { filter: brightness(.42); } 34%,58% { filter: brightness(1); } 67%,100% { filter: brightness(.42); } }
-    @keyframes journey-third { 0%,58% { filter: brightness(.42); } 67%,100% { filter: brightness(1); } }
-    @keyframes journey-first-ring { 0%,25% { opacity: 1; } 34%,100% { opacity: 0; } }
-    @keyframes journey-second-ring { 0%,25% { opacity: 0; } 34%,58% { opacity: 1; } 67%,100% { opacity: 0; } }
-    @keyframes journey-third-ring { 0%,58% { opacity: 0; } 67%,100% { opacity: 1; } }
+    .ltx-reel { position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: radial-gradient(circle at 50% 35%,#14253b,#020305 72%); }
+    .ltx-reel video { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 1; transition: opacity 220ms ease; }
+    .ltx-reel.is-switching video { opacity: 0; }
+    .ltx-reel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 62%,rgba(1,3,7,.86)); pointer-events: none; }
+    .ltx-reel-tabs { position: absolute; right: 14px; bottom: 13px; left: 14px; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-padding-inline: 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+    .ltx-reel-tabs::-webkit-scrollbar { display: none; }
+    .ltx-reel-tabs button { flex: 1 0 132px; min-width: 0; padding: 8px 9px; overflow: hidden; border: 1px solid rgba(220,228,255,.18); border-radius: 10px; background: rgba(5,8,14,.72); color: #9aa8c7; font: inherit; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; scroll-snap-align: center; backdrop-filter: blur(10px); transition: border-color 180ms ease,background 180ms ease,color 180ms ease; }
+    .ltx-reel-tabs button[aria-selected="true"] { border-color: #76a8ff; background: rgba(20,45,80,.88); color: #eef4ff; box-shadow: 0 0 18px rgba(66,133,244,.22); }
+    .ltx-reel-tabs button:focus-visible { outline: 2px solid #76a8ff; outline-offset: 2px; }
+    .region-reveal { position: relative; overflow: hidden; aspect-ratio: 16 / 9; isolation: isolate; background: #020305; }
+    .region-reveal-back { position: absolute; inset: -7%; width: 114%; height: 114%; object-fit: cover; filter: blur(22px) brightness(.3) saturate(.8); transform: scale(1.05); }
+    .region-canvas { position: relative; z-index: 1; width: auto; height: 100%; aspect-ratio: 1; margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,.72); }
+    .region-canvas > img { width: 100%; height: 100%; display: block; object-fit: contain; animation: region-art 12s ease-in-out infinite; }
+    .region-box { --region-color: #76a8ff; position: absolute; z-index: 3; border: 2px solid var(--region-color); background: color-mix(in srgb,var(--region-color) 12%,transparent); box-shadow: inset 0 0 24px color-mix(in srgb,var(--region-color) 13%,transparent),0 0 14px color-mix(in srgb,var(--region-color) 28%,transparent); opacity: 0; pointer-events: none; }
+    .region-box span { position: absolute; top: 6px; left: 6px; padding: 4px 7px; border-radius: 6px; background: var(--region-color); color: #07101e; font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+    .region-box.sky { --region-color: #82e646; top: 0; left: 0; z-index: 2; width: 100%; height: 53.8993%; animation: region-sky 12s ease-in-out infinite; }
+    .region-box.cliff { --region-color: #e68246; top: 54%; left: 0; width: 100%; height: 46%; animation: region-cliff 12s ease-in-out infinite; }
+    .region-box.monster { --region-color: #e646b4; top: 20.668%; left: 0; width: 34%; height: 46%; animation: region-monster 12s ease-in-out infinite; }
+    .region-box.car { --region-color: #46b4e6; top: 36.926%; left: 56.568%; width: 32.235%; height: 25.333%; animation: region-car 12s ease-in-out infinite; }
+    .region-state { position: absolute; right: 14px; bottom: 13px; z-index: 5; min-width: 126px; min-height: 28px; border: 1px solid rgba(220,228,255,.18); border-radius: 999px; background: rgba(4,7,12,.82); color: #dce6ff; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; backdrop-filter: blur(10px); }
+    .region-state span { position: absolute; inset: 0; display: grid; place-items: center; }
+    .region-state .planning { animation: region-planning-state 12s ease-in-out infinite; }
+    .region-state .result { animation: region-result-state 12s ease-in-out infinite; }
+    @keyframes region-art { 0%,59%,100% { filter: brightness(.58) saturate(.82); } 69%,92% { filter: brightness(1) saturate(1); } }
+    @keyframes region-sky { 0%,4% { opacity: 0; transform: scale(.985); } 8%,59% { opacity: 1; transform: scale(1); } 69%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes region-cliff { 0%,11% { opacity: 0; transform: scale(.985); } 15%,59% { opacity: 1; transform: scale(1); } 69%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes region-monster { 0%,18% { opacity: 0; transform: scale(.985); } 22%,59% { opacity: 1; transform: scale(1); } 69%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes region-car { 0%,25% { opacity: 0; transform: scale(.985); } 29%,59% { opacity: 1; transform: scale(1); } 69%,100% { opacity: 0; transform: scale(1); } }
+    @keyframes region-planning-state { 0%,59% { opacity: 1; } 69%,92% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes region-result-state { 0%,59%,100% { opacity: 0; } 69%,92% { opacity: 1; } }
+    .edit-motion-result { position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: radial-gradient(circle at 50% 42%,#11243a,#020305 72%); }
+    .edit-motion-result video { width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; }
     .gen-copy { padding: 18px 22px 20px; border-top: 1px solid var(--line); }
     .gen-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
     .gen-copy h3 { margin: 7px 0 4px; font-size: 17px; }
@@ -254,7 +325,9 @@
     .closing-copy { max-width: 740px; }
     .closing h2 { font-size: clamp(36px,4.5vw,54px); }
     .closing-copy p { margin: 18px 0 0; color: var(--muted); line-height: 1.6; }
+    .closing-actions { position: relative; z-index: 1; flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
     .closing .download { position: relative; z-index: 1; flex: 0 0 auto; }
+    .closing .platform-coming { background: rgba(6,8,13,.6); }
     footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     footer div { display: flex; gap: 22px; }
     footer a { text-decoration: none; }
@@ -266,7 +339,7 @@
       .mobile-story { grid-template-columns: 1fr; gap: 42px; }
       .feature-grid { grid-template-columns: repeat(2,1fr); }
       .showcase-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
-      .section-head { grid-template-columns: 1fr; gap: 20px; }
+      .section-head, .benchmark-head { grid-template-columns: 1fr; gap: 20px; }
       .quick { grid-template-columns: 1fr; gap: 52px; }
       .quick-copy { position: static; }
       .closing { align-items: start; flex-direction: column; }
@@ -280,7 +353,7 @@
       .hero { padding: 56px 0 74px; }
       h1 { font-size: clamp(48px,15.5vw,68px); }
       .actions { align-items: stretch; flex-direction: column; }
-      .download { width: 100%; }
+      .download, .platform-coming { width: 100%; }
       .proof { grid-template-columns: 1fr; }
       .proof-item { padding-inline: 0; }
       .proof-item + .proof-item { border-left: 0; border-top: 1px solid var(--line); }
@@ -291,23 +364,44 @@
       .section { padding: 86px 0; }
       .feature-grid, .showcase, .showcase-compact { grid-template-columns: 1fr; }
       .feature { min-height: 0; }
-      .generation-journey { aspect-ratio: 1.55 / 1; }
+      .benchmark-section { padding: 0 0 86px; }
+      .benchmark-lab { border-radius: 26px; }
+      .benchmark-rankings, .hardware-chart, .speed-reference { padding: 24px 20px; }
+      .benchmark-card-head, .hardware-chart-intro, .speed-reference-intro { align-items: start; flex-direction: column; }
+      .benchmark-card-head strong, .hardware-chart-intro > p, .speed-reference-intro > p { text-align: left; }
+      .model-rankings { grid-template-columns: 1fr; }
+      .model-ranking:nth-child(2) { border-top: 1px solid var(--line); }
+      .speed-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .hardware-axis, .hardware-row { grid-template-columns: 1fr; gap: 8px; }
+      .hardware-axis { margin-top: 24px; }
+      .hardware-axis > span { display: none; }
+      .edit-motion-result { aspect-ratio: 1.2 / 1; }
       .quick { padding: 86px 0; }
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
+      .closing-actions { width: 100%; }
       footer { flex-direction: column; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       .download, .feature-media > img, .feature-media > video { transition: none; }
-      .shot-motion .focus-window > img, .guide-swipe i::after, .flow-signal::after, .create-tile img, .upscale-demo > img, .upscale-after, .upscale-after > img, .upscale-divider, .outpaint-result, .outpaint-source, .outpaint-sequence::before, .outpaint-status span, .library-track, .journey-panel, .journey-panel::after { animation: none; }
-      .create-tile img { filter: none; transform: scale(1.02); }
+      .shot-motion .focus-window > img, .guide-swipe i::after, .flow-signal::after, .create-tile, .upscale-demo > img, .upscale-after, .upscale-after > img, .upscale-divider, .outpaint-result, .outpaint-source, .outpaint-sequence::before, .outpaint-status span, .library-track, .region-canvas > img, .region-box, .region-state span, .model-ranking, .hardware-segment, .speed-metric { animation: none; }
+      .create-tile { z-index: 1; filter: none; transform: none; }
       .upscale-demo > img, .upscale-after > img { transform: scale(1.36); }
       .upscale-after { clip-path: inset(0 42% 0 0); }
       .upscale-divider { left: 58%; }
       .outpaint-result { filter: none; }
       .outpaint-source, .outpaint-sequence::before, .outpaint-status .original { opacity: 0; }
       .outpaint-status .expanded { opacity: 1; }
-      .journey-panel { filter: none; }
+      .region-canvas > img { filter: none; }
+      .region-box { opacity: 0; }
+      .region-state .planning { opacity: 0; }
+      .region-state .result { opacity: 1; }
+      .hardware-segment { transform: scaleX(1); }
+      .model-ranking { opacity: 1; transform: none; }
+      .speed-metric { opacity: 1; transform: none; }
+      .benchmark-section.is-visible .model-ranking,
+      .benchmark-section.is-visible .hardware-segment,
+      .benchmark-section.is-visible .speed-metric { animation: none !important; }
     }
   </style>
 </head>
@@ -321,6 +415,7 @@
       <nav class="header-links" aria-label="Site navigation">
         <a href="#mobile-first">Mobile-first</a>
         <a href="#features">Features</a>
+        <a href="#benchmarks">Benchmarks</a>
         <a href="#made-in">Showcase</a>
         <a href="#quick-start">Quick start</a>
         <a href="https://github.com/BlackMixture/Mix-Studio">View source on GitHub</a>
@@ -335,11 +430,12 @@
           <p class="lede">Leading local models, optimized settings, and a focused workspace for creating images and video without building every ComfyUI workflow yourself.</p>
           <div class="actions">
             <a class="download" href="./install.bat" download="install.bat">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
+              <svg class="platform-icon platform-windows" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.5 4.3 10.6 3v8H2.5V4.3Zm9.2-1.5 9.8-1.4V11h-9.8V2.8ZM2.5 12.2h8.1v8l-8.1-1.1v-6.9Zm9.2 0h9.8v9.7l-9.8-1.4v-8.3Z"/></svg>
               Download for Windows
             </a>
-            <span class="requirements">Windows 10/11 · NVIDIA GPU · Setup continues inside Mix Studio</span>
+            <span class="platform-coming"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.7 13.1c0-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.2-4.2-2.2-1.8-.2-3.5 1-4.4 1s-2.3-1-3.8-1c-2 0-3.8 1.2-4.8 3-2.1 3.6-.5 9 1.5 11.9 1 1.4 2.1 3 3.7 2.9 1.5-.1 2.1-1 3.9-1s2.3 1 3.9 1c1.7 0 2.8-1.4 3.8-2.9 1.2-1.7 1.7-3.4 1.7-3.5-.1 0-3.8-1.5-3.8-5.9ZM13.8 4.6c.9-1.1 1.5-2.6 1.4-4.1-1.3.1-2.9.9-3.8 2-.8.9-1.6 2.4-1.4 3.8 1.5.1 2.9-.7 3.8-1.7Z"/></svg>macOS support coming soon</span>
           </div>
+          <span class="requirements">Windows 10/11 · NVIDIA GPU · Setup continues inside Mix Studio</span>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
           <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.png" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" /></div>
@@ -368,12 +464,49 @@
           <p>Mix Studio starts with carefully selected models and practical, workflow-tested defaults. You get strong results quickly, while advanced controls remain available when you need them.</p>
         </div>
         <div class="feature-grid">
-          <article class="feature"><div class="feature-media feature-create"><div class="create-gallery" role="img" aria-label="A gallery of four generated examples: a knight riding a lion, a classic Mercedes, a cinematic corridor, and a fisherman with a giant squid"><div class="create-tile"><img src="./media/create-lion.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img src="./media/create-mercedes.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img src="./media/create-corridor.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img src="./media/create-squid.jpg" alt="" loading="lazy" /></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div></div><div class="feature-copy"><h3>Create images</h3><p>Generate with Krea 2, optimized sampling, source matching, depth guidance, LoRAs, and prompt assistance.</p></div></article>
+          <article class="feature"><div class="feature-media feature-create"><div class="create-gallery" role="img" aria-label="Four complete generated examples taking turns expanding from a gallery"><div class="create-tile"><img class="create-back" src="./media/create-lion.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-lion.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img class="create-back" src="./media/create-mercedes.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-mercedes.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img class="create-back" src="./media/create-corridor.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-corridor.jpg" alt="" loading="lazy" /></div><div class="create-tile"><img class="create-back" src="./media/create-squid.jpg" alt="" loading="lazy" /><img class="create-front" src="./media/create-squid.jpg" alt="" loading="lazy" /></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div></div><div class="feature-copy"><h3>Create images</h3><p>Generate with Krea 2, optimized sampling, source matching, depth guidance, LoRAs, and prompt assistance.</p></div></article>
           <article class="feature"><div class="feature-media feature-outpaint"><div class="outpaint-sequence" role="img" aria-label="Square cabin image expanding into a seamless widescreen outpaint"><img class="outpaint-result" src="./media/outpaint-wide.jpg" alt="" loading="lazy" /><img class="outpaint-source" src="./media/outpaint-source.jpg" alt="" loading="lazy" /><div class="outpaint-status" aria-hidden="true"><span class="original">Original</span><span class="expanded">Expanded</span></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div></div><div class="feature-copy"><h3>Edit and outpaint</h3><p>Edit with references, masks, smart selection, camera variants, and Continue Edit, or expand a source while preserving its detail.</p></div></article>
           <article class="feature"><div class="feature-media feature-region"><img src="./media/region-map.jpg" alt="Three prompt regions mapped over a street composition" loading="lazy" /><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div></div><div class="feature-copy"><h3>Direct with regions</h3><p>Lay out prompt regions, references, and LoRAs visually for deliberate compositions in a single generation.</p></div></article>
           <article class="feature"><div class="feature-media feature-video"><video src="./media/scail-hand-fantasy.mp4" autoplay muted loop playsinline preload="metadata" aria-label="A phone hand movement transferred into a generated fantasy world"></video><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div></div><div class="feature-copy"><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using Face ID, your own lipsync audio, motion transfer, and interpolation.</p></div></article>
           <article class="feature"><div class="feature-media feature-compare"><div class="upscale-demo" role="img" aria-label="Animated zoomed comparison between an original image and its upscaled result"><img class="upscale-before" src="./media/upscale-before.jpg" alt="" loading="lazy" /><div class="upscale-after"><img src="./media/upscale-after.jpg" alt="" loading="lazy" /></div><i class="upscale-divider" aria-hidden="true"></i><span class="upscale-label before">Original</span><span class="upscale-label after">Upscaled</span></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4 1.4L16.6 18H14v2Z"/></svg></div></div><div class="feature-copy"><h3>Finish and compare</h3><p>Upscale with tuned SeedVR2 or Ultimate SD profiles, then reveal, zoom, and pan across details before exporting.</p></div></article>
           <article class="feature"><div class="feature-media feature-library" role="img" aria-label="A scrolling gallery of image and video generations"><div class="library-reel" aria-hidden="true"><div class="library-track"><div class="library-tile"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/region-result.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline preload="metadata" data-loop-end="2"></video></div><div class="library-tile"><img src="./media/outpaint-wide.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/edit-aging.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-mech-dog.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/reference-shark.jpg" alt="" loading="lazy" /></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div></div><div class="feature-copy"><h3>Keep a usable library</h3><p>Search, sort, like, group, continue editing, document, and mirror exports from the mobile or desktop library.</p></div></article>
+        </div>
+      </section>
+
+      <section class="benchmark-section" id="benchmarks" data-benchmark aria-labelledby="benchmark-title">
+        <div class="benchmark-head">
+          <div><p class="section-kicker">Measured, compared, tuned</p><h2 id="benchmark-title">Benchmarked by workflow. Tuned for the result.</h2></div>
+          <p>There is no single best local model. Mix Studio evaluates each family against the job it needs to do, then balances visual quality, iteration time, control, stability, and hardware fit.</p>
+        </div>
+        <div class="benchmark-lab">
+          <div class="benchmark-rankings">
+            <div class="benchmark-card-head"><span>Top model by job</span><strong>Current tuned lineup</strong></div>
+            <ol class="model-rankings">
+              <li class="model-ranking" style="--rank-accent:#76a8ff;--rank-delay:.08s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Image creation</span><b>Fast default</b></div><strong>Krea 2 Turbo</strong><p>12 steps · source and depth guidance · regional control</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#b49cff;--rank-delay:.18s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Precision editing</span><b>Instruction fit</b></div><strong>Flux 2 Klein 9B</strong><p>4-step scheduler · up to 3 references · masks and outpaint</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#ff8a7f;--rank-delay:.28s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Cinematic video</span><b>AV pipeline</b></div><strong>LTX 2.3</strong><p>Two-stage refinement · image or text · native audio</p></div></li>
+              <li class="model-ranking" style="--rank-accent:#f7c84a;--rank-delay:.38s"><span class="rank-one">#1</span><div><div class="rank-task"><span>Motion transfer</span><b>Tracking fit</b></div><strong>SCAIL 2</strong><p>6-step workflow · SAM3 tracking · Infinity long clips</p></div></li>
+            </ol>
+          </div>
+          <div class="hardware-chart" role="img" aria-label="VRAM capacity guidance, not generation time: Krea 2 requires 12 GB minimum and recommends 16 GB; Klein 9B, LTX 2.3, and SCAIL 2 require 16 GB minimum and recommend 24 GB">
+            <div class="hardware-chart-intro"><div class="benchmark-card-head"><span>VRAM requirements</span><strong>Minimum to run · recommended headroom</strong></div><p>These values are GPU memory capacity, not generation time. System RAM, output size, and offloading also affect whether a workflow fits.</p></div>
+            <div class="hardware-axis"><span></span><div class="hardware-axis-labels"><span>0</span><span>8 GB</span><span>16 GB</span><span>24 GB</span></div></div>
+            <div class="hardware-rows">
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Core image</strong><span>Krea 2 + SeedVR2</span></div><div class="hardware-track" style="--minimum:50%;--recommended:66.667%;--bar-delay:.12s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>12 GB</b></i><i class="hardware-marker recommended"><b>16 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Precision edit</strong><span>Flux 2 Klein 9B</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.22s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Cinematic video</strong><span>LTX 2.3</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.32s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
+              <div class="hardware-row"><div class="hardware-row-label"><strong>Motion transfer</strong><span>SCAIL 2</span></div><div class="hardware-track" style="--minimum:66.667%;--recommended:100%;--bar-delay:.42s"><span class="hardware-segment minimum"></span><span class="hardware-segment recommended"></span><i class="hardware-marker minimum"><b>16 GB</b></i><i class="hardware-marker recommended"><b>24 GB</b></i></div></div>
+            </div>
+          </div>
+          <div class="speed-reference" aria-labelledby="speed-reference-title">
+            <div class="speed-reference-intro"><div class="benchmark-card-head"><span>Measured on RTX PRO 6000 · July 2026</span><strong id="speed-reference-title">Typical Mix Studio timing</strong></div><p>Observed in the current tuned setup. First-load time, resolution, clip duration, model precision, and offloading can change results.</p></div>
+            <div class="speed-metrics" role="list" aria-label="Observed Mix Studio generation times on RTX PRO 6000">
+              <div class="speed-metric" role="listitem" style="--metric-accent:#76a8ff;--metric-delay:.12s"><span>Image generation</span><strong>≤ 9 sec</strong><small>Krea 2</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#b49cff;--metric-delay:.2s"><span>Image editing</span><strong>≈ 5 sec</strong><small>Flux 2 Klein 9B</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#ff8a7f;--metric-delay:.28s"><span>Short video</span><strong>≈ 1–2 min</strong><small>LTX 2.3 or SCAIL 2</small></div>
+              <div class="speed-metric" role="listitem" style="--metric-accent:#f7c84a;--metric-delay:.36s"><span>Long video</span><strong>≈ 8 min</strong><small>LTX 2.3 or SCAIL 2</small></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -385,10 +518,9 @@
         <div class="gen-grid">
           <article class="gen-card reel"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · motion transfer</span><h3>One dance, a new performer</h3><p>A phone clip supplies the movement. SCAIL 2 carries its timing and pose into a newly generated subject.</p></div></article>
           <article class="gen-card reel"><video src="./media/live-scail-portrait.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · video to video</span><h3>Same performance, new identity</h3><p>The driving clip holds the performance while the subject and visual treatment change around it.</p></div></article>
-          <article class="gen-card wide span-2"><video src="./media/ltx-ruins.mp4" autoplay muted loop playsinline controls></video><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>A still frame becomes a cinematic shot</h3><p>Motion, camera direction, atmosphere, and sound are generated together in one pass.</p></div></article>
-          <article class="gen-card span-2"><div class="generation-journey"><div class="journey-panel before"><img src="./media/edit-aging.jpg" alt="Original selfie before the instruction edit" loading="lazy" /><span class="journey-label">01 Original</span></div><div class="journey-panel after"><img src="./media/edit-aging.jpg" alt="Edited elderly subject with hat and gold chain" loading="lazy" /><span class="journey-label">02 Edit</span></div><div class="journey-panel motion"><video src="./media/edit-aging-motion.mp4" autoplay muted loop playsinline aria-label="The original and edited subjects animated side by side"></video><span class="journey-label">03 Animate</span></div></div><div class="gen-copy"><span>Edit to motion</span><h3>One image can become a performance</h3><p>Start with a photo, make a precise instruction edit, then carry the idea into a moving, talking study.</p></div></article>
-          <article class="gen-card"><img src="./media/region-map.jpg" alt="Prompt boxes drawn over a street scene" loading="lazy" /><div class="gen-copy"><span>Region prompting · the boxes</span><h3>Draw the layout</h3><p>Each box carries its own prompt, and optionally its own LoRA or reference image.</p></div></article>
-          <article class="gen-card"><img src="./media/region-result.jpg" alt="Generated street scene following the drawn regions" loading="lazy" /><div class="gen-copy"><span>Region prompting · the result</span><h3>Get the layout</h3><p>Car on the left, dog in the middle, neon rocket sign on the right, all in a single generation.</p></div></article>
+          <article class="gen-card wide span-2"><div class="ltx-reel" data-ltx-reel><video src="./media/ltx-ruins.mp4" autoplay muted playsinline aria-label="Five rotating LTX 2.3 image-to-video examples"></video><div class="ltx-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-ltx-index="0" aria-selected="true">Storm ruins</button><button type="button" data-ltx-index="1" aria-selected="false">Dreamscape portrait</button><button type="button" data-ltx-index="2" aria-selected="false">Interior camera move</button><button type="button" data-ltx-index="3" aria-selected="false">Bicycle at dusk</button><button type="button" data-ltx-index="4" aria-selected="false">Shark breach</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Still frames become cinematic shots</h3><p>Move between atmospheric worlds, stylized portraits, directed camera motion, and high-action sequences, with every clip generated from a single image.</p></div></article>
+          <article class="gen-card span-2"><div class="edit-motion-result"><video src="./media/edit-aging-motion.mp4" autoplay muted loop playsinline aria-label="Edited subject brought to life in a finished motion result"></video></div><div class="gen-copy"><span>Edit to motion</span><h3>A precise edit becomes a performance</h3><p>The finished subject carries directly into a moving, talking study.</p></div></article>
+          <article class="gen-card span-2"><div class="region-reveal" role="img" aria-label="Four prompt regions appearing over a sea monster scene before fading into the clean generated result"><img class="region-reveal-back" src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-canvas"><img src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-box sky"><span>Sky</span></div><div class="region-box cliff"><span>Cliff</span></div><div class="region-box monster"><span>Sea monster</span></div><div class="region-box car"><span>Car</span></div></div><div class="region-state" aria-hidden="true"><span class="planning">Regions defined</span><span class="result">Generated result</span></div></div><div class="gen-copy"><span>Region prompting · plan to result</span><h3>Define the scene. Generate the composition.</h3><p>Place the sky, cliff, sea monster, and car with visual regions, then generate the complete scene in one pass.</p></div></article>
           <article class="gen-card span-2"><img src="./media/depth-cabin.jpg" alt="Cabin interior, its depth map, and a snow-filled re-imagining" loading="lazy" /><div class="gen-copy"><span>Depth guide</span><h3>New image, same 3D structure</h3><p>Source → Depth Anything V3 map → re-imagined scene. Every armchair and beam stays in place.</p></div></article>
           <article class="gen-card"><img src="./media/inpaint-face.jpg" alt="Masked face inpainted to a different person, scene untouched" loading="lazy" /><div class="gen-copy"><span>Inpaint</span><h3>Paint the mask, change only the mask</h3><p>A character LoRA swapped into the masked area while the wave doesn't move a drop.</p></div></article>
           <article class="gen-card reel"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · style transfer</span><h3>From rendered world to wireframe motion</h3><p>The subject and movement stay readable while the entire visual language changes.</p></div></article>
@@ -419,7 +551,7 @@
 
       <section class="closing">
         <div class="closing-copy"><p class="section-kicker">Desktop power, mobile freedom</p><h2>Your GPU stays home.<br />Your studio comes with you.</h2></div>
-        <a class="download" href="./install.bat" download="install.bat"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>Download for Windows</a>
+        <div class="closing-actions"><a class="download" href="./install.bat" download="install.bat"><svg class="platform-icon platform-windows" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.5 4.3 10.6 3v8H2.5V4.3Zm9.2-1.5 9.8-1.4V11h-9.8V2.8ZM2.5 12.2h8.1v8l-8.1-1.1v-6.9Zm9.2 0h9.8v9.7l-9.8-1.4v-8.3Z"/></svg>Download for Windows</a><span class="platform-coming"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.7 13.1c0-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.2-4.2-2.2-1.8-.2-3.5 1-4.4 1s-2.3-1-3.8-1c-2 0-3.8 1.2-4.8 3-2.1 3.6-.5 9 1.5 11.9 1 1.4 2.1 3 3.7 2.9 1.5-.1 2.1-1 3.9-1s2.3 1 3.9 1c1.7 0 2.8-1.4 3.8-2.9 1.2-1.7 1.7-3.4 1.7-3.5-.1 0-3.8-1.5-3.8-5.9ZM13.8 4.6c.9-1.1 1.5-2.6 1.4-4.1-1.3.1-2.9.9-3.8 2-.8.9-1.6 2.4-1.4 3.8 1.5.1 2.9-.7 3.8-1.7Z"/></svg>macOS support coming soon</span></div>
       </section>
     </main>
 
@@ -446,6 +578,60 @@
       };
       video.addEventListener("loadedmetadata", () => { video.currentTime = start; });
       video.addEventListener("timeupdate", keepInsidePreview);
+    }
+    const ltxReel = document.querySelector("[data-ltx-reel]");
+    if (ltxReel) {
+      const video = ltxReel.querySelector("video");
+      const tabs = [...ltxReel.querySelectorAll("[data-ltx-index]")];
+      const clips = [
+        "./media/ltx-ruins.mp4",
+        "./media/ltx-dreamscape.mp4",
+        "./media/ltx-interior.mp4",
+        "./media/live-ltx-bicycle.mp4",
+        "./media/ltx-shark.mp4"
+      ];
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let active = 0;
+      let visible = false;
+      let transitionTimer;
+      const selectClip = (next) => {
+        if (!Number.isInteger(next) || next < 0 || next >= clips.length || next === active) return;
+        active = next;
+        ltxReel.classList.add("is-switching");
+        tabs.forEach((tab, index) => tab.setAttribute("aria-selected", String(index === active)));
+        tabs[active]?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "nearest", inline: "center" });
+        window.clearTimeout(transitionTimer);
+        transitionTimer = window.setTimeout(() => {
+          video.src = clips[active];
+          video.load();
+          let revealed = false;
+          const reveal = () => {
+            if (revealed) return;
+            revealed = true;
+            ltxReel.classList.remove("is-switching");
+            if (visible) video.play().catch(() => {});
+          };
+          video.addEventListener("loadeddata", reveal, { once: true });
+          window.setTimeout(reveal, 900);
+        }, 220);
+      };
+      tabs.forEach((tab) => tab.addEventListener("click", () => selectClip(Number(tab.dataset.ltxIndex))));
+      if (!reducedMotion) video.addEventListener("ended", () => selectClip((active + 1) % clips.length));
+      const reelObserver = new IntersectionObserver((entries) => {
+        visible = entries[0]?.isIntersecting === true;
+        if (visible) video.play().catch(() => {});
+        else video.pause();
+      }, { rootMargin: "180px 0px", threshold: .01 });
+      reelObserver.observe(ltxReel);
+    }
+    const benchmarkSection = document.querySelector("[data-benchmark]");
+    if (benchmarkSection) {
+      const benchmarkObserver = new IntersectionObserver((entries, observer) => {
+        if (!entries[0]?.isIntersecting) return;
+        benchmarkSection.classList.add("is-visible");
+        observer.disconnect();
+      }, { rootMargin: "0px 0px -12%", threshold: .18 });
+      benchmarkObserver.observe(benchmarkSection);
     }
   </script>
 </body>
