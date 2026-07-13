@@ -75,11 +75,21 @@ test('gallery performance controls can disable video previews and build an idle 
   assert.match(app, /MAX_PREVIEW_CACHE_ITEMS = 250/);
 });
 
-test('focused media switchers use restrained active states and expose per-video likes', () => {
-  assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked\)\)/);
+test('focused media switchers separate parent generations from their media', () => {
+  assert.match(app, /makeMediaTier\('lb-media-generations', 'Generations'\)/);
+  assert.match(app, /class="lb-generation-label">Generation/);
+  assert.match(app, /`Generation \$\{generationIndex \+ 1\} media`/);
+  assert.match(app, /lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}/);
+  assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked, 'video'\)\)/);
   assert.match(app, /className = 'chip' \+ /);
+  assert.match(app, /lb-media-kind-icon/);
   assert.match(app, /lb-media-like/);
   assert.match(app, /vid\.load\(\)/);
+  assert.match(css, /\.chip-row\.lb-media \{[\s\S]*display: grid/);
   assert.match(css, /\.lb-media \.chip\.active/);
+  assert.match(css, /\.lb-media-generations \.chip/);
+  assert.match(css, /\.lb-media-generations \.generation-group-chip \{[\s\S]*width: 38px/);
+  assert.match(css, /\.lb-media-assets\.nested::before/);
+  assert.match(css, /\.lb-media-kind-icon/);
   assert.match(css, /\.lb-media-like/);
 });

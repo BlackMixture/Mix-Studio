@@ -13014,37 +13014,62 @@ function openLightbox(id, mediaSel) {
   // media switcher keeps attached composites with the image they describe.
   const mrow = $('#lbMedia');
   mrow.innerHTML = '';
+  const makeMediaTier = (className, label, ariaLabel = label) => {
+    const tier = document.createElement('div');
+    tier.className = `lb-media-tier ${className}`;
+    tier.setAttribute('role', 'group');
+    tier.setAttribute('aria-label', ariaLabel);
+    const tierLabel = document.createElement('span');
+    tierLabel.className = 'lb-media-tier-label';
+    tierLabel.textContent = label;
+    const options = document.createElement('div');
+    options.className = 'lb-media-options';
+    tier.append(tierLabel, options);
+    mrow.appendChild(tier);
+    return options;
+  };
   if (angleItems.length > 1) {
+    const angleOptions = makeMediaTier('lb-media-generations', 'Camera variations');
     angleItems.forEach((angleItem, index) => {
       const button = document.createElement('button');
       button.className = 'chip angle-group-chip' + (angleItem.id === it.id ? ' active' : '');
       button.innerHTML = `<span class="angle-group-glyph" aria-hidden="true">${angleViewGlyph(angleItem)}</span><span>${escapeHtml(angleViewLabel(angleItem))}</span>`;
       button.title = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
       button.addEventListener('click', () => openLightbox(angleItem.id, 'image'));
-      mrow.appendChild(button);
+      angleOptions.appendChild(button);
     });
   }
   if (generationItems.length > 1) {
+    const generationOptions = makeMediaTier('lb-media-generations', 'Generations');
     generationItems.forEach((groupItem, index) => {
       const button = document.createElement('button');
       button.className = 'chip generation-group-chip' + (groupItem.id === it.id ? ' active' : '');
-      button.textContent = `Generation ${index + 1}`;
+      button.innerHTML = `<span class="lb-generation-label">Generation</span><span class="lb-generation-index">${index + 1}</span>`;
       button.title = `Generation ${index + 1} of ${generationItems.length}`;
+      button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openLightbox(groupItem.id, 'image'));
-      mrow.appendChild(button);
+      generationOptions.appendChild(button);
     });
   }
-  if (videos.length || composites.length) {
-    const mkChip = (label, key, liked = false) => {
+  if (generationItems.length > 1 || videos.length || composites.length) {
+    const groupedGeneration = generationItems.length > 1;
+    const mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
+    const mediaOptions = makeMediaTier(`lb-media-assets${groupedGeneration ? ' nested' : ''}`, mediaLabel);
+    const mediaGlyph = (kind) => kind === 'video'
+      ? '<svg viewBox="0 0 20 20"><path d="m7 5 7 5-7 5Z"/></svg>'
+      : (kind === 'composite'
+        ? '<svg viewBox="0 0 20 20"><rect x="3.5" y="5.5" width="10" height="10" rx="2"/><path d="M7 5.5V4a1.5 1.5 0 0 1 1.5-1.5H15A1.5 1.5 0 0 1 16.5 4v7a1.5 1.5 0 0 1-1.5 1.5h-1.5"/></svg>'
+        : '<svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><circle cx="7" cy="8" r="1.5"/><path d="m5 14 4-4 2.5 2 1.5-1.5 2 3.5"/></svg>');
+    const mkChip = (label, key, liked = false, kind = 'image') => {
       const b = document.createElement('button');
       b.className = 'chip' + ((key === 'image' ? (!selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
-      b.innerHTML = `<span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
+      b.innerHTML = `<span class="lb-media-kind-icon" aria-hidden="true">${mediaGlyph(kind)}</span><span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
       b.addEventListener('click', () => openLightbox(id, key));
-      mrow.appendChild(b);
+      mediaOptions.appendChild(b);
     };
     mkChip('Image', 'image', !!it.liked);
-    composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id));
-    videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked));
+    composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id, false, 'composite'));
+    videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked, 'video'));
   }
 
   const meta = [];
