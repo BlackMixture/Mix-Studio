@@ -1979,6 +1979,24 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
+.duration-horizontal-scrubber {
+  min-width: 148px;
+  min-height: 52px;
+  padding: 5px 9px;
+  justify-content: center;
+}
+.duration-horizontal-scrubber .duration-compact-wheel {
+  width: 92px;
+  height: 30px;
+  grid-template-columns: 24px 44px 24px;
+  grid-template-rows: 30px;
+  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,.18), #000 28%, #000 72%, rgba(0,0,0,.18));
+  mask-image: linear-gradient(to right, rgba(0,0,0,.18), #000 28%, #000 72%, rgba(0,0,0,.18));
+}
+.duration-horizontal-scrubber .duration-compact-wheel small,
+.duration-horizontal-scrubber .duration-compact-wheel strong { align-self: center; }
+.duration-horizontal-scrubber .duration-compact-wheel strong { font-size: 19px; }
+.duration-horizontal-scrubber svg { width: 20px; height: 16px; margin-left: 2px; }
 .duration-compact-wheel small {
   color: var(--muted-2);
   font-size: 10px;
@@ -2055,6 +2073,40 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   font-size: 29px;
   font-weight: 900;
   transform: scale(1.04);
+}
+.horizontal-duration-wheel {
+  height: 92px;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  padding: 0 calc(50% - 34px);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
+}
+.horizontal-duration-wheel::before,
+.horizontal-duration-wheel::after {
+  top: 8px;
+  bottom: 8px;
+  width: 0;
+}
+.horizontal-duration-wheel::before {
+  left: calc(50% - 34px);
+  right: auto;
+  border-top: 0;
+  border-left: 1px solid rgba(116,148,255,0.62);
+}
+.horizontal-duration-wheel::after {
+  left: auto;
+  right: calc(50% - 34px);
+  border-bottom: 0;
+  border-right: 1px solid rgba(116,148,255,0.62);
+}
+.horizontal-duration-wheel .duration-wheel-option {
+  flex: 0 0 68px;
+  width: 68px;
+  height: 92px;
 }
 .duration-picker-panel .sheet-cta { margin-top: 14px; }
 .long-video-note {

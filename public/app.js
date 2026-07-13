@@ -7238,7 +7238,11 @@ function renderVideoValueWheel(inputId, wheelId) {
 
 function centerVideoValueWheel(wheelId) {
   const active = $('#' + wheelId + ' .duration-wheel-option.active');
-  if (active) active.scrollIntoView({ block: 'center', behavior: 'auto' });
+  if (!active) return;
+  const horizontal = $('#' + wheelId).classList.contains('horizontal-duration-wheel');
+  active.scrollIntoView(horizontal
+    ? { inline: 'center', block: 'nearest', behavior: 'auto' }
+    : { block: 'center', behavior: 'auto' });
 }
 
 function syncVideoValueWheelFromScroll(inputId, wheelId) {
@@ -7246,10 +7250,15 @@ function syncVideoValueWheelFromScroll(inputId, wheelId) {
   const wheel = $('#' + wheelId);
   const options = $$('#' + wheelId + ' .duration-wheel-option');
   if (!options.length) return;
-  const center = wheel.getBoundingClientRect().top + wheel.clientHeight / 2;
+  const horizontal = wheel.classList.contains('horizontal-duration-wheel');
+  const wheelRect = wheel.getBoundingClientRect();
+  const center = horizontal
+    ? wheelRect.left + wheel.clientWidth / 2
+    : wheelRect.top + wheel.clientHeight / 2;
   const nearest = options.reduce((best, option) => {
     const rect = option.getBoundingClientRect();
-    const distance = Math.abs(rect.top + rect.height / 2 - center);
+    const optionCenter = horizontal ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
+    const distance = Math.abs(optionCenter - center);
     return !best || distance < best.distance ? { option, distance } : best;
   }, null);
   if (!nearest) return;
@@ -7302,18 +7311,19 @@ function setVideoScrubValue(input, value) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function wireVideoScrubber(buttonId, inputId, onTap) {
+function wireVideoScrubber(buttonId, inputId, onTap, { horizontal = false } = {}) {
   const button = $('#' + buttonId);
   const input = $('#' + inputId);
   let drag = null;
   button.addEventListener('pointerdown', (event) => {
-    drag = { id: event.pointerId, y: event.clientY, value: Number(input.value), moved: false };
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, value: Number(input.value), moved: false };
     button.classList.add('adjusting');
     try { button.setPointerCapture(event.pointerId); } catch { /* noop */ }
   });
   button.addEventListener('pointermove', (event) => {
     if (!drag || drag.id !== event.pointerId) return;
-    const delta = Math.round((drag.y - event.clientY) / 10);
+    const distance = horizontal ? drag.x - event.clientX : drag.y - event.clientY;
+    const delta = Math.round(distance / 10);
     if (delta) drag.moved = true;
     setVideoScrubValue(input, drag.value + delta * (Number(input.step) || 1));
     event.preventDefault();
@@ -7328,7 +7338,8 @@ function wireVideoScrubber(buttonId, inputId, onTap) {
   button.addEventListener('pointercancel', finish);
   button.addEventListener('wheel', (event) => {
     event.preventDefault();
-    setVideoScrubValue(input, Number(input.value) + (event.deltaY < 0 ? 1 : -1) * (Number(input.step) || 1));
+    const wheelDelta = horizontal && Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    setVideoScrubValue(input, Number(input.value) + (wheelDelta < 0 ? 1 : -1) * (Number(input.step) || 1));
   }, { passive: false });
   button.addEventListener('keydown', (event) => {
     let next = null;
@@ -7345,7 +7356,7 @@ function wireVideoScrubber(buttonId, inputId, onTap) {
   });
 }
 
-wireVideoScrubber('vidDurScrub', 'vidDur', openDurationPicker);
+wireVideoScrubber('vidDurScrub', 'vidDur', openDurationPicker, { horizontal: true });
 wireVideoScrubber('vidFreeScrub', 'vidFree', openMotionPicker);
 
 function setLorasExpanded(open) {

@@ -662,9 +662,9 @@
       <div class="video-options-body-inner">
         <div class="video-number-setting video-duration-primary" id="vidDurationField">
           <span><b>Duration</b><small id="vidDurationHint">Video length</small></span>
-          <button class="video-number-scrubber wheel-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe up or down to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="20" aria-valuenow="5">
+          <button class="video-number-scrubber wheel-scrubber duration-horizontal-scrubber" id="vidDurScrub" type="button" role="spinbutton" aria-label="Duration in seconds. Swipe left or right to adjust, or tap to open the duration picker" aria-valuemin="1" aria-valuemax="20" aria-valuenow="5">
             <span class="duration-compact-wheel" aria-hidden="true"><small id="vidDurPrev">4</small><strong id="vidDurVal">5</strong><small id="vidDurNext">6</small></span><em>s</em>
-            <svg viewBox="0 0 16 20" aria-hidden="true"><path fill="currentColor" d="m8 2 4 4H4l4-4Zm0 16-4-4h8l-4 4Z"/></svg>
+            <svg viewBox="0 0 20 16" aria-hidden="true"><path fill="currentColor" d="m2 8 4-4v8L2 8Zm16 0-4 4V4l4 4Z"/></svg>
           </button>
           <input id="vidDur" type="hidden" min="1" max="20" step="1" value="5" />
         </div>
@@ -2005,7 +2005,7 @@
   <div class="sheet-panel duration-picker-panel">
     <h3 class="sheet-title">Duration <button data-close aria-label="Close duration picker">✕</button></h3>
     <p class="duration-picker-copy" id="durationPickerCopy">Seconds</p>
-    <div class="duration-wheel" id="durationWheel" role="listbox" aria-label="Duration in seconds"></div>
+    <div class="duration-wheel horizontal-duration-wheel" id="durationWheel" role="listbox" aria-label="Duration in seconds"></div>
     <button class="sheet-cta" id="durationPickerDone" type="button">Done</button>
   </div>
 </div>

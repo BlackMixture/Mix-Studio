@@ -86,10 +86,11 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.match(html, /class="video-number-setting video-duration-primary" id="vidDurationField"/);
   assert.match(html, /class="video-number-setting video-motion-setting" id="vidFreeField"/);
   assert.match(html, /id="vidDurScrub"[^>]*role="spinbutton"/);
+  assert.match(html, /id="vidDurScrub"[^>]*aria-label="Duration in seconds\. Swipe left or right/);
   assert.match(html, /id="vidDurPrev"/);
   assert.match(html, /id="vidDurNext"/);
   assert.match(html, /id="durationPickerSheet"/);
-  assert.match(html, /id="durationWheel"[^>]*role="listbox"/);
+  assert.match(html, /class="duration-wheel horizontal-duration-wheel" id="durationWheel"/);
   assert.match(html, /id="durationPickerDone"/);
   assert.match(html, /id="vidFreeScrub"[^>]*role="spinbutton"/);
   assert.match(html, /id="vidFreePrev"/);
@@ -101,13 +102,16 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.match(css, /\.video-number-scrubber \{[\s\S]*touch-action: none/);
   assert.match(css, /\.duration-compact-wheel \{/);
   assert.match(css, /\.duration-wheel \{[\s\S]*scroll-snap-type: y mandatory/);
-  assert.match(app, /function wireVideoScrubber\(buttonId, inputId, onTap\)/);
+  assert.match(css, /\.horizontal-duration-wheel \{[\s\S]*scroll-snap-type: x mandatory/);
+  assert.match(css, /\.duration-horizontal-scrubber \.duration-compact-wheel \{[\s\S]*mask-image: linear-gradient\(to right/);
+  assert.match(app, /function wireVideoScrubber\(buttonId, inputId, onTap, \{ horizontal = false \} = \{\}\)/);
   assert.match(app, /function renderVideoValueWheel\(inputId, wheelId\)/);
   assert.match(app, /function openDurationPicker\(\)/);
   assert.match(app, /function openMotionPicker\(\)/);
-  assert.match(app, /wireVideoScrubber\('vidDurScrub', 'vidDur', openDurationPicker\)/);
+  assert.match(app, /wireVideoScrubber\('vidDurScrub', 'vidDur', openDurationPicker, \{ horizontal: true \}\)/);
   assert.match(app, /wireVideoScrubber\('vidFreeScrub', 'vidFree', openMotionPicker\)/);
   assert.match(app, /drag\.y - event\.clientY/);
+  assert.match(app, /drag\.x - event\.clientX/);
   assert.match(app, /event\.key === 'ArrowUp'/);
 });
 
