@@ -5724,11 +5724,27 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   .region-resolution-picker.expanded .region-resolution-menu { transform: translateY(0) scale(1); }
   .region-stage { min-height: 220px; }
   .region-fields {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) 50px;
     gap: 8px;
     padding-top: 10px;
   }
-  .region-support-field { grid-column: 1; }
+  .region-reference-field .region-asset-picker {
+    justify-content: center;
+    padding: 6px;
+  }
+  .region-reference-field .region-asset-copy { display: none; }
+  .region-reference-field .region-ref-preview > button {
+    top: 3px;
+    right: 3px;
+    width: 22px;
+    height: 22px;
+  }
+  .region-reference-field .region-ref-preview .input-crop-action {
+    top: 25px;
+    right: 3px;
+    width: 22px;
+    height: 22px;
+  }
   .region-fields .sheet-textarea {
     min-height: 58px;
     max-height: 76px;

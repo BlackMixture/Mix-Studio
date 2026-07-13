@@ -62,6 +62,8 @@ test('selected-region inspector appears before the canvas with visual asset inpu
   assert.match(indexHtml, /class="lora-grid region-lora-slot" id="regionLoraSlot"/);
   assert.match(indexHtml, /class="field region-support-field region-lora-disclosure" id="regionLoraDisclosure"/);
   assert.match(indexHtml, /class="field region-support-field region-reference-field"/);
+  assert.doesNotMatch(indexHtml, /<label>Reference image<\/label>/);
+  assert.match(indexHtml, /id="regionRefBtn"[^>]*aria-label="Add region reference image"/);
   assert.match(indexHtml, /<b>Add image<\/b><small>Guide this region<\/small>/);
   assert.match(indexHtml, /id="regionRefBtn"[\s\S]*class="region-ref-preview" id="regionRefPreview" hidden/);
   assert.match(indexHtml, /id="regionRefPreviewImg"/);
@@ -71,7 +73,8 @@ test('selected-region inspector appears before the canvas with visual asset inpu
   assert.match(styleCss, /\.region-reference-field \.region-ref-preview \{[\s\S]*display: block/);
   assert.match(styleCss, /\.region-reference-field \.region-ref-preview\[hidden\] \{ display: none; \}/);
   assert.match(styleCss, /\.region-fields \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/);
-  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.region-fields \{[\s\S]*grid-template-columns: 1fr/);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.region-fields \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) 50px/);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.region-reference-field \.region-asset-copy \{ display: none; \}/);
   assert.match(appJs, /\$\('#regionStrengthField'\)\.hidden = !hasLora/);
 });
 
