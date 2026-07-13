@@ -9,6 +9,7 @@ const {
   signProfileId,
   parseProfileToken,
   publicProfile,
+  defaultOpenProfile,
   adoptOrphans,
   hasOrphans,
 } = require('../lib/profiles');
@@ -35,6 +36,14 @@ test('publicProfile counts items and hides pin material', () => {
   const pub = publicProfile({ id: 'p1', name: 'Example', pinHash: 'x', pinSalt: 'y', createdAt: 1 }, db);
   assert.deepEqual(pub, { id: 'p1', name: 'Example', hasPin: true, avatar: null, createdAt: 1, itemCount: 2 });
   assert.equal('pinHash' in pub, false);
+});
+
+test('a single profile without a PIN is the default open workspace', () => {
+  const owner = { id: 'owner', name: 'Owner', pinHash: null };
+  assert.equal(defaultOpenProfile({ profiles: [owner] }), owner);
+  assert.equal(defaultOpenProfile({ profiles: [{ ...owner, pinHash: 'hash' }] }), null);
+  assert.equal(defaultOpenProfile({ profiles: [owner, { id: 'other', pinHash: null }] }), null);
+  assert.equal(defaultOpenProfile({ profiles: [] }), null);
 });
 
 test('hasOrphans is false on a fresh db, true when legacy content is unowned', () => {

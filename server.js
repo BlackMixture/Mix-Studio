@@ -123,6 +123,14 @@ const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const {
+  QUICK_SETUP_COMPONENTS,
+  combinedHardwareFit,
+  componentHardwareGuidance,
+  portableSetupConfig,
+  setupHardwareProfile,
+  writePortableSetupConfig,
+} = require('./lib/setup-guide');
+const {
   normalizeExportDirectory,
   validateExportDirectory,
   copyToExportDirectory,
@@ -138,13 +146,15 @@ const {
   signProfileId,
   parseProfileToken,
   publicProfile,
+  defaultOpenProfile,
   adoptOrphans,
   hasOrphans,
 } = require('./lib/profiles');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
-const RUNTIME = resolveRuntimeConfig(ROOT);
+const SETUP_FEATURE_MANIFEST = loadJson(path.join(ROOT, 'installer', 'feature-manifest.json'), { features: [] });
+let RUNTIME = resolveRuntimeConfig(ROOT);
 const DATA = RUNTIME.dataDir;
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
@@ -409,12 +419,11 @@ try {
 if (!db.loraThumbs || typeof db.loraThumbs !== 'object') db.loraThumbs = {};
 if (!Array.isArray(db.profiles)) db.profiles = [];
 {
-  // Migration from the pre-profiles era: if content exists that nobody owns,
-  // create an owner profile and adopt it. Fresh installs (empty db) skip this
-  // and go straight to the create-profile gate in the UI.
-  if (!db.profiles.length && hasOrphans(db)) {
+  // A fresh install opens directly into one local owner workspace. The user
+  // can rename it, add a PIN, or create more profiles later from the app.
+  if (!db.profiles.length) {
     db.profiles.push({ id: uid(), name: 'Owner', pinHash: null, pinSalt: null, createdAt: Date.now() });
-    console.log('[profiles] created default profile "Owner" for existing content');
+    console.log('[profiles] created default open profile "Owner"');
   }
   const adopted = db.profiles.length ? adoptOrphans(db, db.profiles[0].id) : 0;
   if (adopted) {
@@ -441,8 +450,10 @@ setInterval(() => backupDb(''), 30 * 60 * 1000);
 function currentProfile(req) {
   const cookies = parseCookies(req.headers.cookie);
   const id = parseProfileToken(cookies[PROFILE_COOKIE], AUTH_SECRET);
-  if (!id) return null;
-  return db.profiles.find((p) => p.id === id) || null;
+  if (id) return db.profiles.find((p) => p.id === id) || null;
+  const fallback = defaultOpenProfile(db);
+  if (fallback) req.usedDefaultProfile = true;
+  return fallback;
 }
 
 function profileCookie(token, maxAge) {
@@ -500,6 +511,16 @@ const queueHealthState = { lowGpuSince: null };
 let dependencyInstallRunning = false;
 let dependencyInstallController = null;
 let comfyRestartRunning = false;
+let setupHardwareSnapshot = null;
+let setupHardwareAt = 0;
+let comfySetupProcess = null;
+let comfySetupState = {
+  state: 'idle',
+  phase: 'idle',
+  message: 'ComfyUI setup has not started.',
+  error: null,
+  updatedAt: Date.now(),
+};
 let dependencyInstallState = {
   state: 'idle',
   phase: 'idle',
@@ -514,6 +535,83 @@ let dependencyInstallState = {
 function updateDependencyInstallState(patch) {
   dependencyInstallState = Object.assign({}, dependencyInstallState, patch, { updatedAt: Date.now() });
   broadcast('dependencyInstall', dependencyInstallState);
+}
+
+function updateComfySetupState(patch) {
+  comfySetupState = Object.assign({}, comfySetupState, patch, { updatedAt: Date.now() });
+  broadcast('comfySetup', comfySetupState);
+}
+
+async function getSetupHardwareInfo(force = false) {
+  if (!force && setupHardwareSnapshot && Date.now() - setupHardwareAt < 5 * 60 * 1000) return setupHardwareSnapshot;
+  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA });
+  setupHardwareAt = Date.now();
+  return setupHardwareSnapshot;
+}
+
+function applySetupConnection(values) {
+  const config = portableSetupConfig(ROOT, RUNTIME, values);
+  writePortableSetupConfig(ROOT, config);
+  RUNTIME = resolveRuntimeConfig(ROOT);
+  settings.comfyUrl = config.comfy.url;
+  saveJsonSync(SETTINGS_FILE, settings);
+  objectInfoCache = null;
+  objectInfoAt = 0;
+  return config;
+}
+
+function startOfficialComfySetup() {
+  const script = path.join(ROOT, 'installer', 'install-comfy.ps1');
+  if (!fs.existsSync(script)) throw new Error('The official ComfyUI setup helper is missing from this checkout.');
+  const systemRoot = String(process.env.SystemRoot || 'C:\\Windows');
+  const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const resultFile = path.join(DATA, 'comfy-setup-result.json');
+  try { fs.unlinkSync(resultFile); } catch { /* no previous result */ }
+  updateComfySetupState({
+    state: 'running',
+    phase: 'starting',
+    message: 'Preparing the signed official ComfyUI Desktop installer…',
+    error: null,
+  });
+  const child = spawn(powershell, [
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ResultFile', resultFile,
+  ], { cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  comfySetupProcess = child;
+  let stdout = '';
+  let stderr = '';
+  const consumeLines = () => {
+    const lines = stdout.split(/\r?\n/);
+    stdout = lines.pop() || '';
+    for (const line of lines) {
+      try {
+        const update = JSON.parse(line);
+        if (update && update.phase && update.message) {
+          updateComfySetupState({ state: 'running', phase: update.phase, message: update.message, error: null });
+        }
+      } catch { /* non-JSON PowerShell output is retained only for diagnostics */ }
+    }
+  };
+  child.stdout.on('data', (chunk) => { stdout += String(chunk || ''); consumeLines(); });
+  child.stderr.on('data', (chunk) => { stderr = `${stderr}${String(chunk || '')}`.slice(-3000); });
+  child.on('error', (error) => {
+    comfySetupProcess = null;
+    updateComfySetupState({ state: 'error', phase: 'error', message: 'ComfyUI setup could not start.', error: String(error.message || error) });
+  });
+  child.on('close', (code) => {
+    consumeLines();
+    comfySetupProcess = null;
+    try {
+      if (code !== 0) throw new Error(stderr.trim() || `Official ComfyUI setup exited with code ${code}.`);
+      const result = loadJson(resultFile, {});
+      if (!result.path) throw new Error('ComfyUI finished, but its installation folder was not reported.');
+      applySetupConnection({ path: result.path, modelsPath: result.modelsPath, url: result.url });
+      updateComfySetupState({ state: 'complete', phase: 'complete', message: 'ComfyUI Desktop is connected. Mix Studio can install models and nodes now.', error: null });
+    } catch (error) {
+      updateComfySetupState({ state: 'error', phase: 'error', message: 'ComfyUI setup needs attention.', error: String(error.message || error) });
+    } finally {
+      fsp.unlink(resultFile).catch(() => {});
+    }
+  });
 }
 
 function registeredModelNames(info) {
@@ -655,9 +753,9 @@ async function comfyFetch(p, opts) {
 
 let objectInfoCache = null;
 let objectInfoAt = 0;
-async function getObjectInfo(force) {
+async function getObjectInfo(force, fetchOptions) {
   if (!force && objectInfoCache && Date.now() - objectInfoAt < 5 * 60 * 1000) return objectInfoCache;
-  const res = await comfyFetch('/object_info');
+  const res = await comfyFetch('/object_info', fetchOptions);
   objectInfoCache = await res.json();
   objectInfoAt = Date.now();
   return objectInfoCache;
@@ -3749,6 +3847,42 @@ const REQUIRED_CLASSES = {
   scailinfinity: ['WanSCAILInfinity'],
 };
 
+async function setupStatusPayload() {
+  const detected = sam3InstallStatus(RUNTIME);
+  const hardwareInfoValue = await getSetupHardwareInfo();
+  const guidance = componentHardwareGuidance(SETUP_FEATURE_MANIFEST, hardwareInfoValue);
+  let connected = false;
+  let connectionError = '';
+  try {
+    await getObjectInfo(false, { signal: AbortSignal.timeout(4000) });
+    connected = true;
+  } catch (error) {
+    connectionError = String(error.message || error);
+  }
+  return {
+    appReady: true,
+    platform: process.platform,
+    quickComponents: QUICK_SETUP_COMPONENTS,
+    quickFit: combinedHardwareFit(QUICK_SETUP_COMPONENTS, guidance),
+    hardware: setupHardwareProfile(hardwareInfoValue),
+    restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
+    components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label, fit: guidance[id] || null })),
+    comfy: {
+      connected,
+      connectionError,
+      url: settings.comfyUrl,
+      configuredPath: RUNTIME.comfy.path || '',
+      detectedPath: detected.basePath || '',
+      modelsPath: RUNTIME.comfy.modelsPath || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
+      pythonReady: !!detected.pythonPath,
+      canInstallDependencies: detected.canInstall,
+      dependencyReason: detected.reason || '',
+      canInstallOfficial: process.platform === 'win32',
+      install: comfySetupState,
+    },
+  };
+}
+
 async function handleApi(req, res, url) {
   const route = url.pathname;
 
@@ -3758,6 +3892,9 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/me') {
     if (!profile) return json(res, 401, { error: 'Not signed in', code: 'auth' });
+    if (req.usedDefaultProfile) {
+      res.setHeader('Set-Cookie', profileCookie(signProfileId(profile.id, AUTH_SECRET), 60 * 60 * 24 * 365));
+    }
     return json(res, 200, { profile: publicProfile(profile, db) });
   }
   if (route === '/api/profiles' && req.method === 'GET') {
@@ -3944,6 +4081,40 @@ async function handleApi(req, res, url) {
   if (route === '/api/settings' && req.method === 'GET') {
     return json(res, 200, settings);
   }
+  if (route === '/api/setup/status' && req.method === 'GET') {
+    return json(res, 200, await setupStatusPayload());
+  }
+  if (route === '/api/setup/connection' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure the generation desktop' });
+    if (dependencyInstallRunning || comfySetupProcess) return json(res, 409, { error: 'Wait for the current setup operation to finish.' });
+    try {
+      await assertDesktopIsIdle();
+      const body = await readJsonBody(req);
+      const requestedPath = String(body.path || '').trim();
+      applySetupConnection({
+        path: requestedPath,
+        modelsPath: String(body.modelsPath || '').trim() || (requestedPath ? path.join(requestedPath, 'models') : ''),
+        url: body.url || settings.comfyUrl,
+      });
+      updateComfySetupState({ state: 'complete', phase: 'connected', message: 'ComfyUI location saved. Checking models and nodes…', error: null });
+      return json(res, 200, await setupStatusPayload());
+    } catch (error) {
+      return json(res, 400, { error: String(error.message || error) });
+    }
+  }
+  if (route === '/api/setup/comfy/install' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install ComfyUI' });
+    if (process.platform !== 'win32') return json(res, 400, { error: 'Automatic ComfyUI Desktop installation is available on Windows.' });
+    if (comfySetupProcess) return json(res, 409, { error: 'ComfyUI setup is already running.' });
+    if (dependencyInstallRunning || comfyRestartRunning) return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
+    try {
+      await assertDesktopIsIdle();
+      startOfficialComfySetup();
+      return json(res, 202, { ok: true, install: comfySetupState });
+    } catch (error) {
+      return json(res, 500, { error: String(error.message || error) });
+    }
+  }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {
       return json(res, 200, await hardwareInfo({ exportPath: settings.exportDir || DATA }));
@@ -3981,7 +4152,7 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/meta') {
     try {
-      const info = await getObjectInfo(url.searchParams.has('refresh'));
+      const info = await getObjectInfo(url.searchParams.has('refresh'), { signal: AbortSignal.timeout(6000) });
       const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];
       const lorasInfo = await loraMetadataMap(loras, url.searchParams.has('refresh'));
       const missing = {};

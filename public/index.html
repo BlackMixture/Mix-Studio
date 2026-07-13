@@ -1616,6 +1616,67 @@
   </div>
 </div>
 
+<!-- generation setup -->
+<div class="sheet setup-sheet" id="initialSetupSheet">
+  <div class="sheet-panel setup-panel" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+    <h3 class="sheet-title"><span>Generation setup</span><button data-close aria-label="Close generation setup">✕</button></h3>
+    <div class="setup-hero">
+      <span class="setup-kicker">Your workspace is ready</span>
+      <h2 id="setupTitle">Connect the generation engine when you need it.</h2>
+      <p id="setupIntro">Your prompt and settings stay in place. Mix Studio can prepare the missing desktop tools now, or you can choose exactly what to install.</p>
+    </div>
+    <div class="setup-status-grid" aria-live="polite">
+      <div class="setup-status ready"><span>1</span><div><strong>Mix Studio</strong><small>Web app ready</small></div></div>
+      <div class="setup-status" id="setupComfyStatus"><span>2</span><div><strong>ComfyUI</strong><small id="setupComfyStatusCopy">Checking this PC…</small></div></div>
+      <div class="setup-status" id="setupWorkflowStatus"><span>3</span><div><strong>Current workflow</strong><small id="setupWorkflowStatusCopy">Checking models and nodes…</small></div></div>
+    </div>
+    <div class="setup-hardware" id="setupHardwareSummary">
+      <span aria-hidden="true">GPU</span>
+      <div><strong id="setupHardwareCopy">Checking graphics memory and system RAM…</strong><small id="setupHardwareFit">Model recommendations will match this PC.</small></div>
+    </div>
+    <div class="setup-operation" id="setupOperation" hidden>
+      <div><strong id="setupOperationTitle">Working…</strong><span id="setupOperationCopy"></span></div>
+      <div class="dependency-progress"><span id="setupOperationFill"></span></div>
+      <div class="setup-operation-actions">
+        <button id="setupRestartComfy" type="button" hidden>Restart ComfyUI</button>
+        <button id="setupCheckAgain" type="button">Check again</button>
+      </div>
+    </div>
+    <div class="setup-actions">
+      <button class="setup-primary" id="setupQuickStart" type="button"><strong>Quick setup</strong><span>Install ComfyUI if needed, then the recommended image starter.</span></button>
+      <button class="setup-secondary" id="setupCurrentWorkflow" type="button"><strong>Install this workflow</strong><span>Download only the models and nodes required for what you tried to generate.</span></button>
+    </div>
+    <button class="setup-guide-toggle" id="setupGuideToggle" type="button" aria-expanded="false" aria-controls="setupFullGuide">Full setup guide <span>⌄</span></button>
+    <div class="setup-full-guide" id="setupFullGuide" hidden>
+      <section class="setup-step">
+        <header><span>01</span><div><strong>Connect ComfyUI</strong><small>Use an installation already on this PC or install the official Desktop app.</small></div></header>
+        <p class="setup-detected" id="setupDetectedPath">Looking for an existing ComfyUI installation…</p>
+        <div class="setup-inline-actions">
+          <button id="setupUseDetected" type="button">Use detected</button>
+          <button id="setupInstallComfy" type="button">Install official ComfyUI</button>
+        </div>
+        <div class="setup-connection-fields">
+          <label><span>ComfyUI URL</span><input id="setupComfyUrl" type="text" value="http://127.0.0.1:8188" autocomplete="off" spellcheck="false" /></label>
+          <label><span>ComfyUI folder</span><input id="setupComfyPath" type="text" placeholder="C:\Users\you\Documents\ComfyUI" autocomplete="off" spellcheck="false" /></label>
+          <label><span>Models folder</span><input id="setupModelsPath" type="text" placeholder="C:\Users\you\Documents\ComfyUI\models" autocomplete="off" spellcheck="false" /></label>
+        </div>
+        <button class="setup-save-connection" id="setupSaveConnection" type="button">Save connection</button>
+      </section>
+      <section class="setup-step">
+        <header><span>02</span><div><strong>Choose capabilities</strong><small>Anything already installed is reused. Completed downloads are never repeated.</small></div></header>
+        <div class="setup-component-list" id="setupComponentList"></div>
+        <p class="setup-component-empty" id="setupComponentEmpty">Connect and start ComfyUI to scan the models and nodes already available.</p>
+        <button class="setup-install-selected" id="setupInstallSelected" type="button">Install selected</button>
+      </section>
+      <section class="setup-step setup-profile-note">
+        <header><span>03</span><div><strong>Personalize later</strong><small>You are using the open Owner profile. Rename it and add a PIN from the profile menu whenever you are ready.</small></div></header>
+        <button id="setupEditProfile" type="button">Edit Owner profile</button>
+      </section>
+    </div>
+    <p class="setup-footnote">Nothing is downloaded until you choose an install option. Your prompt remains in the workspace if you close this panel.</p>
+  </div>
+</div>
+
 <!-- settings sheet -->
 <div class="sheet" id="settingsSheet">
   <div class="sheet-panel settings-panel">
@@ -1649,7 +1710,7 @@
             <span class="guided-tour-setting-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 4h14v11H9l-4 4V4Zm3 4h8M8 11h5"/></svg>
             </span>
-            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Seven animated tips for the complete workflow.</small></span>
+            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for the complete workflow.</small></span>
             <button id="guidedTourStart" type="button">Start tutorial</button>
             <button class="settings-media-toggle guided-tips-toggle" id="guidedTipsToggle" type="button" role="switch" aria-checked="true">
               <span class="settings-media-toggle-copy"><strong>Contextual gesture tips</strong><small>Show a one-time animation when hidden controls become useful.</small></span>
@@ -1687,6 +1748,7 @@
             </div>
             <div class="dependency-missing-list" id="dependencyMissingList"></div>
             <div class="dependency-card-actions dependency-manager-actions">
+              <button class="dependency-check" id="dependencyOpenSetup" type="button">Open setup guide</button>
               <button class="dependency-install" id="dependencyInstallMissing" type="button">Install missing</button>
               <button class="dependency-cancel" id="dependencyCancelInstall" type="button" hidden>Cancel download</button>
               <button class="dependency-check" id="dependencyRepairMissing" type="button">Repair missing tools</button>

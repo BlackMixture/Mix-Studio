@@ -23,6 +23,8 @@ test('Advanced Settings can replay an accessible guided UI tutorial', () => {
   assert.match(app, /completed \? 'Replay tutorial' : 'Start tutorial'/);
   assert.match(app, /event\.key === 'Escape'/);
   assert.match(app, /event\.key !== 'Tab'/);
+  assert.match(html, /Optional walkthrough for the complete workflow/);
+  assert.equal((app.match(/startGuidedTour\(\)/g) || []).length, 1, 'the tutorial is declared but never started automatically');
 });
 
 test('guided steps cover the main workflow with animated gesture demonstrations', () => {

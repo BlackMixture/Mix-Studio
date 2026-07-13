@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { installComponents } = require('../lib/dependency-installer');
+const { FEATURE_COMPONENTS } = require('../lib/setup-guide');
 const { discoverModels } = require('./model-discovery');
 
 const root = path.resolve(__dirname, '..');
@@ -21,20 +22,6 @@ function argument(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : '';
 }
-
-const FEATURE_COMPONENTS = Object.freeze({
-  'core.image': ['image', 'krea2depth', 'upscale'],
-  'edit.klein4': ['klein4', 'editoutpaint'],
-  'edit.klein9': ['klein9', 'smartmask', 'editoutpaint'],
-  'edit.qwen': ['qwen', 'smartmask', 'editoutpaint'],
-  'edit.krea2': ['regional', 'smartmask', 'editoutpaint'],
-  'edit.krea2ref': ['krea2ref', 'krea2outpaint'],
-  'video.ltx': ['video', 'faceid'],
-  'video.ltxEdit': ['videoedit'],
-  'video.eros': ['eros'],
-  'video.wan': ['wan'],
-  'video.scail': ['scail', 'scailinfinity'],
-});
 
 function selectedComponents(manifest, selection) {
   const components = new Set();

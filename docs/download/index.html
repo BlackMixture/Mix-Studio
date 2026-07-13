@@ -81,22 +81,68 @@
     .mobile-story { display: grid; grid-template-columns: .82fr 1.18fr; gap: 72px; align-items: center; padding: 130px 0 80px; }
     .mobile-story h2 { margin: 0; max-width: 520px; font-size: clamp(38px,5vw,60px); line-height: 1.02; letter-spacing: -.048em; }
     .mobile-story-copy > p:last-child { margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
-    .control-flow { display: grid; grid-template-columns: 1fr 36px 1fr 36px 1fr; align-items: center; }
-    .flow-node { min-height: 190px; padding: 22px 18px; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 60%),var(--panel); }
-    .flow-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: #141927; color: #a9bdf6; }
-    .flow-icon svg { width: 23px; height: 23px; }
-    .flow-node strong { display: block; margin-top: 28px; font-size: 15px; }
+    .control-flow { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; align-items: stretch; }
+    .flow-node { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 60%),var(--panel); }
+    .flow-media { position: relative; overflow: hidden; aspect-ratio: 1.45 / 1; border-bottom: 1px solid var(--line); background: #05070b; }
+    .flow-media > img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .flow-desktop > img { transform: scale(1.55); transform-origin: 32% 51%; }
+    .flow-phone > img { object-position: 50% 9%; }
+    .flow-link { display: grid; grid-template-columns: 1fr 32px .56fr; gap: 7px; align-items: center; padding: 16px; background: radial-gradient(circle at 50% 50%,rgba(66,133,244,.18),transparent 58%),#070a11; }
+    .flow-device { position: relative; overflow: hidden; height: 66%; border: 1px solid rgba(220,228,255,.2); border-radius: 9px; background: #020305; box-shadow: 0 12px 26px rgba(0,0,0,.38); }
+    .flow-device img { width: 100%; height: 100%; object-fit: cover; }
+    .flow-device.desktop img { transform: scale(1.42); transform-origin: 31% 50%; }
+    .flow-device.phone { height: 82%; border-width: 3px; border-radius: 12px; }
+    .flow-device.phone img { object-position: 50% 7%; }
+    .flow-signal { position: relative; height: 2px; overflow: visible; border-radius: 999px; background: rgba(157,179,247,.23); }
+    .flow-signal::after { content: ""; position: absolute; top: -3px; left: 0; width: 8px; height: 8px; border-radius: 50%; background: #76a8ff; box-shadow: 0 0 16px #4285f4; animation: signal-travel 2.2s ease-in-out infinite; }
+    @keyframes signal-travel { 0%,10% { opacity: .25; transform: translateX(0); } 50% { opacity: 1; } 90%,100% { opacity: .25; transform: translateX(24px); } }
+    .flow-copy { padding: 17px 18px 19px; }
+    .flow-node strong { display: block; font-size: 15px; }
     .flow-node span { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-    .flow-arrow { color: #596784; font-size: 21px; text-align: center; }
+    .flow-node a { color: var(--soft); text-underline-offset: 3px; }
     .section { padding: 120px 0; }
     .section-head { display: grid; grid-template-columns: .75fr 1fr; gap: 70px; align-items: end; margin-bottom: 48px; }
     .section-head h2, .quick-copy h2, .closing h2 { margin: 0; font-size: clamp(36px, 5vw, 58px); line-height: 1.02; letter-spacing: -.045em; }
     .section-head p, .quick-copy > p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
     .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
-    .feature { min-height: 210px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 58%),var(--panel); }
-    .feature-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: #131725; color: #a9bdf6; }
+    .feature { min-height: 0; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 58%),var(--panel); }
+    .feature-media { --media-scale: 1; --media-origin: 50% 50%; position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-bottom: 1px solid var(--line); background: #030405; }
+    .feature-media::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 55%,rgba(3,4,5,.3)); pointer-events: none; }
+    .feature-media > img, .feature-media > video { width: 100%; height: 100%; display: block; object-fit: cover; transform: scale(var(--media-scale)); transform-origin: var(--media-origin); transition: transform 500ms ease; }
+    .feature:hover .feature-media > img, .feature:hover .feature-media > video { transform: scale(calc(var(--media-scale) + .035)); }
+    .feature-create { --media-scale: 3.02; --media-origin: 100% 50%; }
+    .feature-region { --media-scale: 1.02; --media-origin: 50% 50%; }
+    .feature-video { --media-scale: 1.04; --media-origin: 50% 50%; }
+    .feature-compare { --media-scale: 1.08; --media-origin: 50% 50%; }
+    .feature-library { background: #05070b; }
+    .outpaint-sequence { position: absolute; inset: 0; overflow: hidden; background: #020305; }
+    .outpaint-sequence.is-wide { position: relative; inset: auto; aspect-ratio: 1600 / 686; }
+    .outpaint-result, .outpaint-source { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; display: block; object-fit: cover; }
+    .outpaint-result { animation: outpaint-result 8s ease-in-out infinite; }
+    .outpaint-source { left: 50%; width: 56.25%; z-index: 1; transform: translateX(-50%); animation: outpaint-source 8s ease-in-out infinite; }
+    .outpaint-sequence.is-wide .outpaint-source { width: 42.875%; }
+    .outpaint-sequence::before { content: ""; position: absolute; inset: 0; z-index: 2; border-inline: 1px solid rgba(157,179,247,.35); pointer-events: none; clip-path: inset(0 21.44%); animation: outpaint-frame 8s ease-in-out infinite; }
+    .outpaint-sequence:not(.is-wide)::before { clip-path: inset(0 21.875%); }
+    .outpaint-status { position: absolute; right: 12px; bottom: 11px; z-index: 3; min-width: 72px; min-height: 26px; padding: 6px 9px; border: 1px solid rgba(220,228,255,.18); border-radius: 999px; background: rgba(4,7,12,.78); color: #dce6ff; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-align: center; text-transform: uppercase; backdrop-filter: blur(8px); }
+    .outpaint-status span { position: absolute; inset: 0; display: grid; place-items: center; }
+    .outpaint-status .expanded { animation: status-expanded 8s ease-in-out infinite; }
+    .outpaint-status .original { animation: status-original 8s ease-in-out infinite; }
+    @keyframes outpaint-result { 0%,24% { filter: brightness(.28) saturate(.75); transform: scale(1.02); } 48%,88% { filter: brightness(1) saturate(1); transform: scale(1); } 100% { filter: brightness(.28) saturate(.75); transform: scale(1.02); } }
+    @keyframes outpaint-source { 0%,28% { opacity: 1; } 48%,88% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes outpaint-frame { 0%,32% { opacity: 1; } 52%,88% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes status-original { 0%,32% { opacity: 1; } 48%,88% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes status-expanded { 0%,32% { opacity: 0; } 48%,88% { opacity: 1; } 100% { opacity: 0; } }
+    .library-reel { position: absolute; inset: 0; overflow: hidden; padding: 7px; background: radial-gradient(circle at 50% 0,rgba(66,133,244,.14),transparent 55%),#05070b; }
+    .library-track { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; animation: library-scroll 16s ease-in-out infinite alternate; }
+    .library-tile { position: relative; overflow: hidden; aspect-ratio: 1.36 / 1; border: 1px solid rgba(220,228,255,.13); border-radius: 10px; background: #111621; }
+    .library-tile img, .library-tile video { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .library-tile::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 -28px 28px -22px rgba(0,0,0,.8); pointer-events: none; }
+    @keyframes library-scroll { 0%,8% { transform: translateY(0); } 92%,100% { transform: translateY(-54%); } }
+    .feature-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(220,228,255,.14); border-radius: 14px; background: rgba(10,17,30,.82); color: #a9bdf6; box-shadow: 0 10px 28px rgba(0,0,0,.32); backdrop-filter: blur(10px); }
+    .feature-media .feature-icon { position: absolute; top: 14px; left: 14px; z-index: 2; }
     .feature-icon svg { width: 21px; height: 21px; }
-    .feature h3 { margin: 34px 0 8px; font-size: 17px; }
+    .feature-copy { padding: 20px 24px 24px; }
+    .feature h3 { margin: 0 0 8px; font-size: 17px; }
     .feature p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
     .showcase { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
     .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
@@ -139,11 +185,37 @@
     .gen-card.reel video { aspect-ratio: 8 / 7; object-fit: contain; background: radial-gradient(circle at 50% 35%,#11243a,#030405 70%); }
     .gen-card.wide video { aspect-ratio: 16 / 9; object-fit: cover; }
     .gen-card.span-2 { grid-column: span 2; }
+    .generation-journey { position: relative; overflow: hidden; display: grid; grid-template-columns: .8fr .8fr 1.4fr; aspect-ratio: 16 / 9; background: #020305; }
+    .journey-panel { position: relative; min-width: 0; overflow: hidden; border-right: 1px solid rgba(220,228,255,.2); background: #030405; }
+    .journey-panel:last-of-type { border-right: 0; }
+    .journey-panel > img, .journey-panel > video { width: 100%; height: 100%; max-width: none; display: block; object-fit: cover; }
+    .journey-panel.before > img, .journey-panel.after > img { width: 200%; }
+    .journey-panel.before > img { transform: translateX(0); }
+    .journey-panel.after > img { transform: translateX(-50%); }
+    .journey-panel.motion > video { object-fit: contain; object-position: 50% 50%; }
+    .journey-panel::after { content: ""; position: absolute; inset: 0; border: 2px solid rgba(118,168,255,.72); opacity: 0; box-shadow: inset 0 0 34px rgba(66,133,244,.16); pointer-events: none; }
+    .journey-panel.before { animation: journey-first 9s ease-in-out infinite; }
+    .journey-panel.after { animation: journey-second 9s ease-in-out infinite; }
+    .journey-panel.motion { animation: journey-third 9s ease-in-out infinite; }
+    .journey-panel.before::after { animation: journey-first-ring 9s ease-in-out infinite; }
+    .journey-panel.after::after { animation: journey-second-ring 9s ease-in-out infinite; }
+    .journey-panel.motion::after { animation: journey-third-ring 9s ease-in-out infinite; }
+    .journey-label { position: absolute; left: 10px; bottom: 10px; z-index: 2; padding: 6px 8px; border: 1px solid rgba(220,228,255,.16); border-radius: 999px; background: rgba(3,5,9,.74); color: #dce6ff; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; backdrop-filter: blur(8px); }
+    @keyframes journey-first { 0%,25% { filter: brightness(1); } 34%,100% { filter: brightness(.42); } }
+    @keyframes journey-second { 0%,25% { filter: brightness(.42); } 34%,58% { filter: brightness(1); } 67%,100% { filter: brightness(.42); } }
+    @keyframes journey-third { 0%,58% { filter: brightness(.42); } 67%,100% { filter: brightness(1); } }
+    @keyframes journey-first-ring { 0%,25% { opacity: 1; } 34%,100% { opacity: 0; } }
+    @keyframes journey-second-ring { 0%,25% { opacity: 0; } 34%,58% { opacity: 1; } 67%,100% { opacity: 0; } }
+    @keyframes journey-third-ring { 0%,58% { opacity: 0; } 67%,100% { opacity: 1; } }
     .gen-copy { padding: 18px 22px 20px; border-top: 1px solid var(--line); }
     .gen-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
     .gen-copy h3 { margin: 7px 0 4px; font-size: 17px; }
     .gen-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
     @media (max-width: 680px) { .gen-grid { grid-template-columns: 1fr; } .gen-card.span-2 { grid-column: auto; } }
+    .showcase-compact { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .showcase-compact .shot-image { aspect-ratio: 1.35 / 1; }
+    .showcase-compact .shot-copy { padding: 18px 20px 21px; }
+    .focus-dependencies { --focus-scale: 1.68; --focus-origin: 50% 51%; }
     .quick { display: grid; grid-template-columns: .8fr 1.2fr; gap: 82px; align-items: start; padding: 112px 0; border-top: 1px solid var(--line); }
     .quick-copy { position: sticky; top: 40px; }
     .quick-copy > p { margin-top: 22px; }
@@ -154,11 +226,14 @@
     .guide-step h3 { margin: 1px 0 7px; font-size: 18px; }
     .guide-step p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
     .guide-step code { color: var(--soft); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .92em; }
-    .notice { margin-top: 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .notice { margin-top: 18px; padding: 0 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .notice summary { padding: 17px 0; color: var(--soft); font-weight: 800; cursor: pointer; }
+    .notice p { margin: 0; padding: 0 0 18px; }
     .notice strong { color: var(--soft); }
     .closing { position: relative; overflow: hidden; display: flex; align-items: end; justify-content: space-between; gap: 40px; margin: 20px 0 100px; padding: 54px; border: 1px solid var(--line); border-radius: 32px; background: linear-gradient(130deg,rgba(66,133,244,.12),rgba(118,87,255,.08) 55%,rgba(234,67,53,.08)),#090b10; }
     .closing::after { content: ""; position: absolute; right: -100px; bottom: -160px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle,rgba(118,87,255,.18),transparent 65%); pointer-events: none; }
-    .closing-copy { max-width: 650px; }
+    .closing-copy { max-width: 740px; }
+    .closing h2 { font-size: clamp(36px,4.5vw,54px); }
     .closing-copy p { margin: 18px 0 0; color: var(--muted); line-height: 1.6; }
     .closing .download { position: relative; z-index: 1; flex: 0 0 auto; }
     footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
@@ -171,6 +246,7 @@
       .hero-visual { width: min(100%,700px); margin-bottom: 58px; transform: none; }
       .mobile-story { grid-template-columns: 1fr; gap: 42px; }
       .feature-grid { grid-template-columns: repeat(2,1fr); }
+      .showcase-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
       .section-head { grid-template-columns: 1fr; gap: 20px; }
       .quick { grid-template-columns: 1fr; gap: 52px; }
       .quick-copy { position: static; }
@@ -192,16 +268,24 @@
       .phone-preview { right: 12px; bottom: -48px; width: 35%; border-width: 5px; border-radius: 23px; }
       .mobile-story { padding: 92px 0 36px; }
       .control-flow { grid-template-columns: 1fr; gap: 12px; }
-      .flow-node { min-height: 0; }
-      .flow-arrow { transform: rotate(90deg); }
+      .flow-media { aspect-ratio: 1.75 / 1; }
       .section { padding: 86px 0; }
-      .feature-grid, .showcase { grid-template-columns: 1fr; }
+      .feature-grid, .showcase, .showcase-compact { grid-template-columns: 1fr; }
       .feature { min-height: 0; }
+      .generation-journey { aspect-ratio: 1.55 / 1; }
       .quick { padding: 86px 0; }
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       footer { flex-direction: column; }
     }
-    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .download { transition: none; } .shot-motion .focus-window > img, .guide-swipe i::after { animation: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .download, .feature-media > img, .feature-media > video { transition: none; }
+      .shot-motion .focus-window > img, .guide-swipe i::after, .flow-signal::after, .outpaint-result, .outpaint-source, .outpaint-sequence::before, .outpaint-status span, .library-track, .journey-panel, .journey-panel::after { animation: none; }
+      .outpaint-result { filter: none; }
+      .outpaint-source, .outpaint-sequence::before, .outpaint-status .original { opacity: 0; }
+      .outpaint-status .expanded { opacity: 1; }
+      .journey-panel { filter: none; }
+    }
   </style>
 </head>
 <body>
@@ -231,7 +315,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
               Download for Windows
             </a>
-            <span class="requirements">Windows 10/11 · NVIDIA GPU · Guided ComfyUI setup</span>
+            <span class="requirements">Windows 10/11 · NVIDIA GPU · Setup continues inside Mix Studio</span>
           </div>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
@@ -249,11 +333,9 @@
       <section class="mobile-story" id="mobile-first">
         <div class="mobile-story-copy"><p class="section-kicker">A different local AI workflow</p><h2>The computer does the work. Your phone runs the studio.</h2><p>Most local generation tools assume you are sitting at the desktop. Mix Studio is designed so the desktop can stay with the GPU while the interface goes wherever you do.</p></div>
         <div class="control-flow" aria-label="Desktop to phone connection flow">
-          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 4h18v13H3V4Zm2 2v9h14V6H5Zm3 13h8v2H8v-2Z"/></svg></div><strong>Windows desktop</strong><span>ComfyUI, models, storage, and GPU stay on the machine.</span></div>
-          <div class="flow-arrow" aria-hidden="true">→</div>
-          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a6 6 0 0 1 5.2 9H21v2h-5.3A6 6 0 0 1 7 14H3v-2h3.8A6 6 0 0 1 12 3Zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-9 12h18v2H3v-2Z"/></svg></div><strong>Your studio stays within reach</strong><span>A secure connection keeps the desktop available to your phone.</span></div>
-          <div class="flow-arrow" aria-hidden="true">→</div>
-          <div class="flow-node"><div class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h10V4H7Zm4 13h2v2h-2v-2Z"/></svg></div><strong>Your phone</strong><span>Open the Mix Studio URL, add it to the home screen, and create anywhere.</span></div>
+          <div class="flow-node"><div class="flow-media flow-desktop"><img src="./mix-studio-create.png" alt="Mix Studio running on a Windows desktop" loading="lazy" /></div><div class="flow-copy"><strong>GPU power stays home</strong><span>ComfyUI, models, storage, and every generation remain on the Windows machine.</span></div></div>
+          <div class="flow-node"><div class="flow-media flow-link" aria-hidden="true"><div class="flow-device desktop"><img src="./mix-studio-create.png" alt="" /></div><i class="flow-signal"></i><div class="flow-device phone"><img src="./mix-studio-mobile.png" alt="" /></div></div><div class="flow-copy"><strong>Your studio stays within reach</strong><span><a href="https://tailscale.com/download">Tailscale</a> connects the same studio without moving the workload.</span></div></div>
+          <div class="flow-node"><div class="flow-media flow-phone"><img src="./mix-studio-mobile.png" alt="Mix Studio's touch-first interface on a phone" loading="lazy" /></div><div class="flow-copy"><strong>Create anywhere</strong><span>Prompt, queue, review, and reuse work from the interface already in your pocket.</span></div></div>
         </div>
       </section>
 
@@ -263,12 +345,12 @@
           <p>Mix Studio starts with carefully selected models and practical, workflow-tested defaults. You get strong results quickly, while advanced controls remain available when you need them.</p>
         </div>
         <div class="feature-grid">
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div><h3>Create images</h3><p>Generate with Krea 2, optimized sampling, native or generation-safe source matching, depth guidance, LoRAs, and prompt assistance.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div><h3>Edit and outpaint</h3><p>Edit with references, masks, smart selection, camera variants, and Continue Edit, or drag the source across a larger canvas while preserving native detail.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div><h3>Direct with regions</h3><p>Lay out multiple prompt regions, references, and LoRAs visually for deliberate compositions in a single generation.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div><h3>Generate video</h3><p>Prioritize your preferred models, then work with LTX, Wan, 10Eros, and SCAIL using Face ID, your own audio for lipsync, motion transfer, and interpolation.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4-1.4L16.6 18H14v2Z"/></svg></div><h3>Finish and compare</h3><p>Upscale with tuned SeedVR2 or Ultimate SD profiles, then reveal, zoom, and pan across details before exporting.</p></article>
-          <article class="feature"><div class="feature-icon"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div><h3>Keep a usable library</h3><p>Search, sort, like, group, continue editing, document, and mirror exports to a desktop folder from the mobile or full desktop library.</p></article>
+          <article class="feature"><div class="feature-media feature-create"><img src="./media/depth-soldier.jpg" alt="Generated masked soldier in a cinematic workshop" loading="lazy" /><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm1 10 4-4.5 3 3 2-2.5 5 4H5Z"/></svg></div></div><div class="feature-copy"><h3>Create images</h3><p>Generate with Krea 2, optimized sampling, source matching, depth guidance, LoRAs, and prompt assistance.</p></div></article>
+          <article class="feature"><div class="feature-media feature-outpaint"><div class="outpaint-sequence" role="img" aria-label="Square cabin image expanding into a seamless widescreen outpaint"><img class="outpaint-result" src="./media/outpaint-wide.jpg" alt="" loading="lazy" /><img class="outpaint-source" src="./media/outpaint-source.jpg" alt="" loading="lazy" /><div class="outpaint-status" aria-hidden="true"><span class="original">Original</span><span class="expanded">Expanded</span></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m4 16 9-9 4 4-9 9H4v-4Zm10.4-10.4 1.9-1.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-1.9 1.9-4-4Z"/></svg></div></div><div class="feature-copy"><h3>Edit and outpaint</h3><p>Edit with references, masks, smart selection, camera variants, and Continue Edit, or expand a source while preserving its detail.</p></div></article>
+          <article class="feature"><div class="feature-media feature-region"><img src="./media/region-map.jpg" alt="Three prompt regions mapped over a street composition" loading="lazy" /><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Z"/></svg></div></div><div class="feature-copy"><h3>Direct with regions</h3><p>Lay out prompt regions, references, and LoRAs visually for deliberate compositions in a single generation.</p></div></article>
+          <article class="feature"><div class="feature-media feature-video"><video src="./media/scail-hand-fantasy.mp4" autoplay muted loop playsinline preload="metadata" aria-label="A phone hand movement transferred into a generated fantasy world"></video><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Z"/></svg></div></div><div class="feature-copy"><h3>Generate video</h3><p>Work with LTX, Wan, 10Eros, and SCAIL using Face ID, your own lipsync audio, motion transfer, and interpolation.</p></div></article>
+          <article class="feature"><div class="feature-media feature-compare"><video src="./media/ui-compare-demo.mp4" autoplay muted loop playsinline preload="metadata" aria-label="Animated comparison between an original image and its upscaled result"></video><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 10V4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4Zm10-6h6v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4ZM4 14h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2H4v-6Zm14 0h2v6h-6v-2h2.6l-3.3-3.3 1.4-1.4L16.6 18H14v2Z"/></svg></div></div><div class="feature-copy"><h3>Finish and compare</h3><p>Upscale with tuned SeedVR2 or Ultimate SD profiles, then reveal, zoom, and pan across details before exporting.</p></div></article>
+          <article class="feature"><div class="feature-media feature-library" role="img" aria-label="A scrolling gallery of image and video generations"><div class="library-reel" aria-hidden="true"><div class="library-track"><div class="library-tile"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/region-result.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/outpaint-wide.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/edit-aging.jpg" alt="" loading="lazy" /></div><div class="library-tile"><video src="./media/scail-mech-dog.mp4" autoplay muted loop playsinline preload="metadata"></video></div><div class="library-tile"><img src="./media/reference-shark.jpg" alt="" loading="lazy" /></div></div></div><div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></div></div><div class="feature-copy"><h3>Keep a usable library</h3><p>Search, sort, like, group, continue editing, document, and mirror exports from the mobile or desktop library.</p></div></article>
         </div>
       </section>
 
@@ -280,54 +362,58 @@
         <div class="gen-grid">
           <article class="gen-card reel"><video src="./media/live-scail-dance.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · motion transfer</span><h3>One dance, a new performer</h3><p>A phone clip supplies the movement. SCAIL 2 carries its timing and pose into a newly generated subject.</p></div></article>
           <article class="gen-card reel"><video src="./media/live-scail-portrait.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · video to video</span><h3>Same performance, new identity</h3><p>The driving clip holds the performance while the subject and visual treatment change around it.</p></div></article>
-          <article class="gen-card wide span-2"><video src="./media/live-ltx-bicycle.mp4" autoplay muted loop playsinline controls></video><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>A still frame becomes a cinematic shot</h3><p>Motion, camera direction, atmosphere, and sound are generated together in one pass.</p></div></article>
-          <article class="gen-card span-2"><img src="./media/edit-aging.jpg" alt="Selfie edited into an elderly man with hat and gold chain, background preserved" loading="lazy" /><div class="gen-copy"><span>Edit</span><h3>“Make the man an old black man with a gold chain and a hat”</h3><p>One sentence. The street, shirt, and light stay exactly where they were.</p></div></article>
+          <article class="gen-card wide span-2"><video src="./media/ltx-shark.mp4" autoplay muted loop playsinline controls></video><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>A still frame becomes a cinematic shot</h3><p>Motion, camera direction, atmosphere, and sound are generated together in one pass.</p></div></article>
+          <article class="gen-card span-2"><div class="generation-journey"><div class="journey-panel before"><img src="./media/edit-aging.jpg" alt="Original selfie before the instruction edit" loading="lazy" /><span class="journey-label">01 Original</span></div><div class="journey-panel after"><img src="./media/edit-aging.jpg" alt="Edited elderly subject with hat and gold chain" loading="lazy" /><span class="journey-label">02 Edit</span></div><div class="journey-panel motion"><video src="./media/live-scail-portrait.mp4" autoplay muted loop playsinline aria-label="Side-by-side identity transformation moving and talking"></video><span class="journey-label">03 Animate</span></div></div><div class="gen-copy"><span>Edit to motion</span><h3>One image can become a performance</h3><p>Start with a photo, make a precise instruction edit, then carry the idea into a moving, talking study.</p></div></article>
           <article class="gen-card"><img src="./media/region-map.jpg" alt="Prompt boxes drawn over a street scene" loading="lazy" /><div class="gen-copy"><span>Region prompting · the boxes</span><h3>Draw the layout</h3><p>Each box carries its own prompt, and optionally its own LoRA or reference image.</p></div></article>
           <article class="gen-card"><img src="./media/region-result.jpg" alt="Generated street scene following the drawn regions" loading="lazy" /><div class="gen-copy"><span>Region prompting · the result</span><h3>Get the layout</h3><p>Car on the left, dog in the middle, neon rocket sign on the right, all in a single generation.</p></div></article>
           <article class="gen-card span-2"><img src="./media/depth-cabin.jpg" alt="Cabin interior, its depth map, and a snow-filled re-imagining" loading="lazy" /><div class="gen-copy"><span>Depth guide</span><h3>New image, same 3D structure</h3><p>Source → Depth Anything V3 map → re-imagined scene. Every armchair and beam stays in place.</p></div></article>
           <article class="gen-card"><img src="./media/inpaint-face.jpg" alt="Masked face inpainted to a different person, scene untouched" loading="lazy" /><div class="gen-copy"><span>Inpaint</span><h3>Paint the mask, change only the mask</h3><p>A character LoRA swapped into the masked area while the wave doesn't move a drop.</p></div></article>
-          <article class="gen-card"><img src="./media/edit-wireframe.jpg" alt="Photo converted to a wireframe 3D draft render" loading="lazy" /><div class="gen-copy"><span>Edit</span><h3>“Make this a 3D render. Wireframe draft view.”</h3><p>Full style transforms hold the composition.</p></div></article>
-          <article class="gen-card span-2"><img src="./media/outpaint-wide.jpg" alt="Square cabin interior outpainted to seamless 21:9 widescreen" loading="lazy" /><div class="gen-copy"><span>Outpaint</span><h3>Square to 21:9, seamlessly</h3><p>The original center is untouched; the new walls, windows, and stove pipe simply continue the room.</p></div></article>
+          <article class="gen-card reel"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · style transfer</span><h3>From rendered world to wireframe motion</h3><p>The subject and movement stay readable while the entire visual language changes.</p></div></article>
+          <article class="gen-card span-2"><div class="outpaint-sequence is-wide" role="img" aria-label="Square cabin original fading into a seamless widescreen outpaint"><img class="outpaint-result" src="./media/outpaint-wide.jpg" alt="" loading="lazy" /><img class="outpaint-source" src="./media/outpaint-source.jpg" alt="" loading="lazy" /><div class="outpaint-status" aria-hidden="true"><span class="original">Original</span><span class="expanded">21:9 canvas</span></div></div><div class="gen-copy"><span>Outpaint</span><h3>Square to 21:9, seamlessly</h3><p>The original center holds while the room expands naturally on both sides.</p></div></article>
         </div>
       </section>
 
       <section class="section" aria-labelledby="workspace-title">
-        <div class="section-head"><div><p class="section-kicker">The workspace</p><h2 id="workspace-title">Complex workflows, made direct.</h2></div><p>On desktop, inputs, workspace history, animated progress with ETA, and recent work stay visible together. On mobile, the same controls settle into a focused single-column flow.</p></div>
-        <div class="showcase">
-          <article class="shot"><div class="shot-image focus-create shot-motion"><div class="focus-window"><img src="./mix-studio-create.png" alt="Focused Create Image workspace with controls and generated output" /></div></div><div class="shot-copy"><span>Create</span><h3>Stay in one workspace</h3><p>Build on the left, watch progress in the center, and keep recent generations within reach.</p></div></article>
-          <article class="shot"><div class="shot-image focus-edit shot-motion"><div class="focus-window"><img src="./mix-studio-edit.png" alt="Focused Flux Klein instruction edit and result view" /></div></div><div class="shot-copy"><span>Edit</span><h3>One sentence, surgical changes</h3><p>Instruction edits with Flux 2 Klein: the prompt, edit area, and Expand controls stay beside the result.</p></div></article>
-          <article class="shot"><div class="shot-image focus-region shot-motion"><div class="focus-window"><img src="./mix-studio-region.png" alt="Focused region grid and generated composition in Mix Studio" /></div></div><div class="shot-copy"><span>Region</span><h3>Compose spatially</h3><p>Draw, overlap, and configure prompt areas directly on the output canvas.</p></div></article>
-          <article class="shot"><div class="shot-image focus-video shot-motion"><div class="focus-window"><img src="./mix-studio-video.png" alt="Focused LTX 2.3 inputs and selected video view" /></div></div><div class="shot-copy"><span>Video</span><h3>Build motion from the right inputs</h3><p>Frames, identity, lipsync audio, model, and motion controls stay together in one clear flow.</p></div></article>
-          <article class="shot"><div class="shot-image focus-scail shot-motion"><div class="focus-window"><img src="./mix-studio-scail.png" alt="Focused SCAIL 2 driving video and creative direction controls" loading="lazy" /></div></div><div class="shot-copy"><span>Video · SCAIL 2</span><h3>Motion in, new world out</h3><p>A driving video, a reference image, and optional creative direction stay visible as one recipe.</p></div></article>
-          <article class="shot"><div class="shot-image focus-library shot-motion"><div class="focus-window"><img src="./mix-studio-library.png" alt="Focused library grid of image and video generations" loading="lazy" /></div></div><div class="shot-copy"><span>Library</span><h3>A gallery worth returning to</h3><p>Search, folders, likes, and date sections keep strong image and video generations easy to find.</p></div></article>
-          <article class="shot"><div class="shot-image focus-compare"><div class="focus-window"><video src="./media/ui-compare-demo.mp4" autoplay muted loop playsinline></video></div></div><div class="shot-copy"><span>Upscale · Compare</span><h3>Original ↔ upscaled, one divider</h3><p>The animated detail viewer reveals the difference, then supports pan, zoom, 1:1, and fit.</p></div></article>
-          <article class="shot"><div class="shot-image focus-region-motion"><div class="focus-window"><video src="./media/ui-region-demo.mp4" autoplay muted loop playsinline></video></div></div><div class="shot-copy"><span>Region · in motion</span><h3>Draw, drag, describe</h3><p>Add a box, place it, and give it a prompt. Every region carries its own instructions.</p></div></article>
-          <article class="shot"><div class="shot-image focus-profiles"><div class="focus-window"><img src="./mix-studio-profiles-live.png" alt="Focused live profile picker with avatars and PIN badges" loading="lazy" /></div></div><div class="shot-copy"><span>Profiles</span><h3>Who&rsquo;s creating?</h3><p>Profiles with avatars and optional PINs keep galleries, folders, presets, and history separate for each person.</p></div></article>
-          <article class="shot"><div class="shot-image focus-guide"><div class="focus-window guide-demo"><img src="./mix-studio-library.png" alt="Library view with an in-context gesture guide" loading="lazy" /><div class="guide-card" aria-hidden="true"><span>Gesture tip</span><strong>Reveal selection actions</strong><div class="guide-swipe"><i></i><b>Swipe up on the handle</b></div></div></div></div><div class="shot-copy"><span>Guidance</span><h3>Help appears in context</h3><p>Tooltips and focused walkthroughs explain gestures and controls when they become useful.</p></div></article>
+        <div class="section-head"><div><p class="section-kicker">Useful when you need it</p><h2 id="workspace-title">The details stay out of the way.</h2></div><p>Profiles, contextual guidance, and dependency checks are close at hand without taking over the creative workspace.</p></div>
+        <div class="showcase showcase-compact">
+          <article class="shot"><div class="shot-image focus-profiles"><div class="focus-window"><img src="./mix-studio-profiles-live.png" alt="Focused live profile picker with avatars and PIN badges" loading="lazy" /></div></div><div class="shot-copy"><span>Profiles</span><h3>Who&rsquo;s creating?</h3><p>Optional PINs keep galleries, folders, presets, and history separate for each person.</p></div></article>
+          <article class="shot"><div class="shot-image focus-guide"><div class="focus-window guide-demo"><img src="./mix-studio-library.png" alt="Library view with an in-context gesture guide" loading="lazy" /><div class="guide-card" aria-hidden="true"><span>Gesture tip</span><strong>Reveal selection actions</strong><div class="guide-swipe"><i></i><b>Swipe up on the handle</b></div></div></div></div><div class="shot-copy"><span>Guidance</span><h3>Help appears in context</h3><p>Focused tips explain gestures and controls when they become useful.</p></div></article>
+          <article class="shot"><div class="shot-image focus-dependencies"><div class="focus-window"><img src="./mix-studio-dependencies.png" alt="Dependency health panel showing installed model and node families" loading="lazy" /></div></div><div class="shot-copy"><span>Setup health</span><h3>Know what is ready</h3><p>Each workflow reports the models and nodes it needs, with setup actions in the same UI.</p></div></article>
         </div>
       </section>
 
       <section class="quick" id="quick-start">
-        <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>Set up once. Create from your phone.</h2><p>The Windows installer prepares the generation machine. Tailscale turns its Mix Studio address into a private studio you can carry.</p></div>
+        <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>Open first. Set up as you create.</h2><p>The installer gets you into Mix Studio before asking you to choose models or workflows.</p></div>
         <div>
           <div class="step-list">
-            <article class="guide-step"><div><h3>Prepare the machine</h3><p>Use Windows 10 or 11 with an NVIDIA GPU, current drivers, and enough SSD space. The wizard detects GPU memory and system RAM, then recommends model families that fit the machine.</p></div></article>
-            <article class="guide-step"><div><h3>Download and run</h3><p>Save <code>install.bat</code> from this page and open it. Windows may ask you to confirm keeping or running an executable script.</p></div></article>
-            <article class="guide-step"><div><h3>Follow the setup window</h3><p>Choose a new official ComfyUI Desktop installation or an existing environment. Borderline workflows show an offload warning, difficult models stay available as an informed opt-in, and model files already registered through ComfyUI are reused. A manual models-folder picker remains available.</p></div></article>
-            <article class="guide-step"><div><h3>Connect both devices</h3><p>Install <a href="https://tailscale.com/download">Tailscale</a> on the Windows desktop and your phone, then sign in to the same private network.</p></div></article>
-            <article class="guide-step"><div><h3>Open Mix Studio on your phone</h3><p>Start Mix Studio on the desktop and open the labeled <code>Tailscale:</code> URL shown in its terminal. Add it to the phone's home screen for an app-like launch.</p></div></article>
+            <article class="guide-step"><div><h3>Run <code>install.bat</code></h3><p>Mix Studio downloads, starts, and opens in your browser with a ready Owner workspace.</p></div></article>
+            <article class="guide-step"><div><h3>Choose setup when you generate</h3><p>Install only that workflow, use Quick setup for the defaults, or open the full guide without losing your prompt.</p></div></article>
+            <article class="guide-step"><div><h3>Carry it to your phone</h3><p>Install <a href="https://tailscale.com/download">Tailscale</a> on both devices, open the private Mix Studio URL, and add it to your home screen.</p></div></article>
           </div>
-          <p class="notice"><strong>Transparent by design.</strong> The bootstrap retrieves the public <a href="https://github.com/BlackMixture/Mix-Studio">BlackMixture/Mix-Studio</a> repository, the signed official ComfyUI Desktop installer, and the curated model or node sources selected in the wizard. Mix Studio applies its optimized workflow settings in the app. Existing settings and hardware choices are preserved, and the included uninstaller leaves ComfyUI and shared models in place.</p>
+          <details class="notice"><summary>What setup checks and installs</summary><p>Hardware-aware setup detects GPU memory and system RAM, reuses models already registered through ComfyUI, supports existing or manually selected ComfyUI folders, and warns before a difficult choice. The bootstrap retrieves the public <a href="https://github.com/BlackMixture/Mix-Studio">Mix Studio repository</a>; ComfyUI, models, and nodes download only after you choose an in-app setup option. The uninstaller leaves shared ComfyUI files and models in place.</p></details>
         </div>
       </section>
 
       <section class="closing">
-        <div class="closing-copy"><p class="section-kicker">Desktop power, mobile freedom</p><h2>Carry your local studio without carrying the workstation.</h2><p>The models are curated and the defaults are tuned. Your phone becomes the focused interface for generating, reviewing, and reusing work wherever your private network reaches.</p></div>
+        <div class="closing-copy"><p class="section-kicker">Desktop power, mobile freedom</p><h2>Your GPU stays home.<br />Your studio comes with you.</h2></div>
         <a class="download" href="./install.bat" download="install.bat"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>Download for Windows</a>
       </section>
     </main>
 
     <footer><span>Mix Studio · Modatory design language</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
   </div>
+  <script>
+    const motionObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const video = entry.target;
+        if (entry.isIntersecting) video.play().catch(() => {});
+        else video.pause();
+      }
+    }, { rootMargin: "180px 0px", threshold: .01 });
+    for (const video of document.querySelectorAll("video[autoplay]")) {
+      video.muted = true;
+      motionObserver.observe(video);
+    }
+  </script>
 </body>
 </html>

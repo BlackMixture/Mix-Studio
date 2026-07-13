@@ -8996,6 +8996,7 @@ $('#generateBtn').addEventListener('click', async () => {
     if (state.vidEngine === 'scail' && !state.vidDrive) {
       return toast('SCAIL 2 needs a motion video — attach the clip whose movement you want to copy', true);
     }
+    if (!(await ensureGenerationSetup())) return;
     let vidAudioName;
     if (state.vidAudio && (state.vidEngine === 'ltx' || state.vidEngine === 'eros')) {
       try { vidAudioName = await ensureAudioUploaded(state.vidAudio); }
@@ -9072,6 +9073,7 @@ $('#generateBtn').addEventListener('click', async () => {
   if (state.editSequential && sequenceSteps.length < 2) {
     return toast('Sequential edits need at least two sentences', true);
   }
+  if (!(await ensureGenerationSetup())) return;
   const createImageGuide = mode === 't2i' && state.createMode === 'image' ? state.createRef : null;
   const createImageGuideName = createImageGuide ? createGuideInput(createImageGuide).name : undefined;
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
@@ -16184,7 +16186,7 @@ function renderGuidedTourSetting() {
   $('#guidedTourStart').textContent = completed ? 'Replay tutorial' : 'Start tutorial';
   $('#guidedTourSettingStatus').textContent = completed
     ? 'Completed · replay the animated walkthrough anytime.'
-    : 'Seven animated tips for the complete workflow.';
+    : 'Optional walkthrough · start it whenever you want.';
   $('#guidedTipsToggle').setAttribute('aria-checked', String(tipsEnabled));
 }
 
@@ -16661,6 +16663,363 @@ function selectedDependencyIds() {
   return [...dependencySelectedComponents].filter((id) => missingIds.has(id));
 }
 
+let setupViewStatus = null;
+let setupDependencyState = null;
+let setupContextComponents = [];
+let setupPendingComponents = [];
+let setupPollTimer = null;
+let setupAutoRestart = false;
+const setupConfirmedDifficultComponents = new Set();
+
+function generationSetupComponents() {
+  const components = new Set();
+  if (state.view === 'video') {
+    const byEngine = { ltx: 'video', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
+    components.add(byEngine[state.vidEngine] || 'video');
+    if (state.vidEngine === 'ltx-edit') components.add('video');
+    if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
+    if (state.vidEngine === 'scail' && state.vidScailMode === 'infinity') components.add('scailinfinity');
+    if ($('#vid4k').classList.contains('active')) components.add('video4k');
+    return [...components];
+  }
+  if (state.view === 'edit') {
+    components.add({ klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', krea2: 'image', krea2ref: 'krea2ref' }[state.editEngine] || 'image');
+    if (state.editOutpaint) components.add(state.editEngine === 'krea2'
+      ? 'krea2outpaint'
+      : (state.editEngine === 'krea2ref' ? 'krea2outpaint' : 'editoutpaint'));
+    if (state.editEngine === 'krea2' && hasEditMask()
+      && (state.kreaMaskKind === 'smart' || state.kreaMaskTool === 'smart')) components.add('smartmask');
+    if (state.editUpscaleEnabled) components.add('upscale');
+    return [...components];
+  }
+  components.add(state.createMode === 'region' ? 'regional' : 'image');
+  if (state.createMode === 'image' && state.createRef && state.createGuideMode === 'depth') components.add('krea2depth');
+  if (state.createUpscaleEnabled) components.add('upscale');
+  return [...components];
+}
+
+function missingSetupComponents(required) {
+  const unique = [...new Set((required || []).filter(Boolean))];
+  if (!lastMeta?.ok) return unique;
+  const missing = new Set(lastMeta?.dependencies?.missingComponents || []);
+  return unique.filter((id) => missing.has(id));
+}
+
+async function ensureGenerationSetup() {
+  const required = generationSetupComponents();
+  if (!lastMeta?.ok) await loadMeta(true);
+  const missing = missingSetupComponents(required);
+  if (lastMeta?.ok && !missing.length) return true;
+  saveForm();
+  await openInitialSetup({
+    components: missing.length ? missing : required,
+    message: lastMeta?.ok
+      ? 'Your prompt is ready. This workflow needs a few models or nodes before it can enter the queue.'
+      : 'Your prompt is ready. Connect ComfyUI, then install only this workflow or use the recommended starter setup.',
+  });
+  return false;
+}
+
+function setSetupGuideExpanded(expanded) {
+  $('#setupGuideToggle').setAttribute('aria-expanded', String(expanded));
+  $('#setupFullGuide').hidden = !expanded;
+}
+
+async function openInitialSetup(options = {}) {
+  setupContextComponents = [...new Set((options.components || []).filter(Boolean))];
+  $('#setupIntro').textContent = options.message
+    || 'Your prompt and settings stay in place. Mix Studio can prepare the missing desktop tools now, or you can choose exactly what to install.';
+  $('#initialSetupSheet').classList.add('show');
+  syncSheetScrollLock();
+  await refreshSetupStatus();
+}
+
+function setupComponentLabelMap() {
+  return new Map(((setupViewStatus && setupViewStatus.components) || []).map((entry) => [entry.id, entry.label]));
+}
+
+function setupComponentFitMap() {
+  return new Map(((setupViewStatus && setupViewStatus.components) || []).map((entry) => [entry.id, entry.fit]));
+}
+
+function setupFitForComponents(components) {
+  const priority = { unknown: 0, difficult: 1, limited: 2, recommended: 3 };
+  return [...new Set(components || [])]
+    .map((id) => setupComponentFitMap().get(id))
+    .filter(Boolean)
+    .reduce((worst, fit) => (!worst || priority[fit.level] < priority[worst.level] ? fit : worst), null);
+}
+
+function renderInitialSetup() {
+  if (!setupViewStatus) return;
+  const comfy = setupViewStatus.comfy || {};
+  const install = comfy.install || {};
+  const dependency = setupDependencyState || lastMeta?.dependencies?.install || { state: 'idle' };
+  const busy = install.state === 'running' || ['running', 'cancelling', 'restarting'].includes(dependency.state);
+  const comfyCard = $('#setupComfyStatus');
+  comfyCard.classList.toggle('ready', !!comfy.connected);
+  comfyCard.classList.toggle('attention', !comfy.connected);
+  $('#setupComfyStatusCopy').textContent = comfy.connected
+    ? 'Connected and responding'
+    : ((comfy.configuredPath || comfy.detectedPath) ? 'Found, waiting for ComfyUI to run' : 'Not connected yet');
+
+  const contextMissing = missingSetupComponents(setupContextComponents);
+  const allMissing = dependencyMissingLabels();
+  const workflowCard = $('#setupWorkflowStatus');
+  const workflowReady = !!comfy.connected && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  workflowCard.classList.toggle('ready', workflowReady);
+  workflowCard.classList.toggle('attention', !workflowReady);
+  $('#setupWorkflowStatusCopy').textContent = setupContextComponents.length
+    ? (workflowReady ? 'Ready to generate' : `${contextMissing.length || setupContextComponents.length} required group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} need attention`)
+    : (comfy.connected ? (allMissing.length ? `${allMissing.length} optional groups available to install` : 'All enabled workflows ready') : 'Scan begins after ComfyUI connects');
+
+  const hardware = setupViewStatus.hardware || {};
+  const quickFit = setupViewStatus.quickFit || {};
+  $('#setupHardwareCopy').textContent = hardware.gpuAvailable
+    ? `${hardware.gpuName || 'NVIDIA GPU'}${hardware.vramGb ? ` · ${hardware.vramGb} GB VRAM` : ' · VRAM unavailable'}${hardware.memoryGb ? ` · ${hardware.memoryGb} GB RAM` : ''}`
+    : 'No NVIDIA GPU detected';
+  $('#setupHardwareFit').textContent = quickFit.label
+    ? `${quickFit.label}. ${quickFit.detail || ''}`
+    : 'Model recommendations will match this PC.';
+  $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
+
+  const pathValue = comfy.configuredPath || comfy.detectedPath || '';
+  const modelsValue = comfy.modelsPath || (pathValue ? `${pathValue.replace(/[\\/]+$/, '')}\\models` : '');
+  if (document.activeElement !== $('#setupComfyUrl')) $('#setupComfyUrl').value = comfy.url || 'http://127.0.0.1:8188';
+  if (document.activeElement !== $('#setupComfyPath') && !$('#setupComfyPath').value) $('#setupComfyPath').value = pathValue;
+  if (document.activeElement !== $('#setupModelsPath') && !$('#setupModelsPath').value) $('#setupModelsPath').value = modelsValue;
+  $('#setupDetectedPath').textContent = comfy.detectedPath
+    ? `Detected on this PC: ${comfy.detectedPath}`
+    : (comfy.configuredPath ? `Configured folder: ${comfy.configuredPath}` : 'No initialized ComfyUI installation was detected yet.');
+  $('#setupUseDetected').disabled = busy || !comfy.detectedPath;
+  $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial;
+  $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Downloads the signed official ComfyUI Desktop installer' : 'Available when Mix Studio is running on Windows';
+  $('#setupSaveConnection').disabled = busy;
+
+  const missing = dependencyMissingLabels();
+  const selected = syncDependencySelection(missing);
+  const fitByComponent = setupComponentFitMap();
+  const list = $('#setupComponentList');
+  list.innerHTML = missing.map((entry) => {
+    const fit = fitByComponent.get(entry.id);
+    return `<button class="setup-component-option${selected.has(entry.id) ? ' selected' : ''}" type="button" data-component="${escapeHtml(entry.id)}" data-fit="${escapeHtml(fit?.level || 'unknown')}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(fit?.detail || entry.label)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(fit?.label || 'Check requirements')}</small></button>`;
+  }).join('');
+  $('#setupComponentEmpty').hidden = !!missing.length;
+  $('#setupInstallSelected').disabled = busy || !selected.size || !comfy.canInstallDependencies;
+
+  const quick = $('#setupQuickStart');
+  const current = $('#setupCurrentWorkflow');
+  const requiredNow = contextMissing.length ? contextMissing : setupContextComponents;
+  const currentFit = setupFitForComponents(requiredNow);
+  quick.querySelector('span').textContent = quickFit.label
+    ? `Install the recommended image starter. ${quickFit.label}.`
+    : 'Install ComfyUI if needed, then the recommended image starter.';
+  if (currentFit) current.querySelector('span').textContent = `Download only what this generation needs. ${currentFit.label}.`;
+  quick.disabled = busy || !state.profileIsOwner;
+  current.hidden = !setupContextComponents.length || workflowReady;
+  current.disabled = busy || !state.profileIsOwner;
+
+  const operation = $('#setupOperation');
+  let operationState = null;
+  if (install.state === 'running' || install.state === 'error') operationState = install;
+  else if (dependency.state && dependency.state !== 'idle') operationState = dependency;
+  operation.hidden = !operationState;
+  if (operationState) {
+    $('#setupOperationTitle').textContent = operationState.state === 'error' ? 'Setup needs attention' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up your desktop');
+    $('#setupOperationCopy').textContent = operationState.error || operationState.message || 'Working…';
+    const total = Number(operationState.total || 0);
+    const completed = Number(operationState.completed || 0);
+    $('#setupOperationFill').style.width = total > 0 ? `${Math.max(3, Math.min(100, (completed / total) * 100))}%` : (operationState.state === 'complete' ? '100%' : '34%');
+  }
+  const restartInfo = setupViewStatus.restart || lastMeta?.dependencies?.restart || {};
+  $('#setupRestartComfy').hidden = !dependency.restartRequired;
+  $('#setupRestartComfy').disabled = busy || !restartInfo.canRestart;
+  $('#setupCheckAgain').disabled = busy;
+}
+
+function scheduleSetupPoll() {
+  clearTimeout(setupPollTimer);
+  if (!$('#initialSetupSheet').classList.contains('show')) return;
+  const comfyBusy = setupViewStatus?.comfy?.install?.state === 'running';
+  const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
+  if (!comfyBusy && !dependencyBusy && !setupPendingComponents.length) return;
+  setupPollTimer = setTimeout(() => refreshSetupStatus(), 1000);
+}
+
+async function refreshSetupStatus() {
+  try {
+    setupViewStatus = await api('/api/setup/status');
+    if (setupViewStatus.comfy?.install?.state === 'error') setupPendingComponents = [];
+    setupDependencyState = await api('/api/dependencies/status').catch(() => setupDependencyState);
+    if (['error', 'cancelled'].includes(setupDependencyState?.state)) setupAutoRestart = false;
+    if (setupViewStatus.comfy?.connected) await loadMeta(true);
+    renderInitialSetup();
+    if (setupPendingComponents.length && setupViewStatus.comfy?.canInstallDependencies
+      && setupViewStatus.comfy?.install?.state !== 'running') {
+      const pending = setupPendingComponents;
+      setupPendingComponents = [];
+      await startSetupDependencies(pending);
+      return;
+    }
+    if (setupAutoRestart && setupDependencyState?.state === 'complete') {
+      if (!setupDependencyState.restartRequired) setupAutoRestart = false;
+      else if ((setupViewStatus.restart || lastMeta?.dependencies?.restart)?.canRestart) {
+        setupAutoRestart = false;
+        const result = await api('/api/comfy/restart', { method: 'POST' });
+        setupDependencyState = result.install;
+        renderInitialSetup();
+        scheduleSetupPoll();
+        return;
+      }
+    }
+  } catch (error) {
+    toast(error.message, true);
+  }
+  scheduleSetupPoll();
+}
+
+async function saveSetupConnection(pathOverride) {
+  const pathValue = String(pathOverride || $('#setupComfyPath').value || '').trim();
+  const result = await api('/api/setup/connection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url: $('#setupComfyUrl').value.trim(),
+      path: pathValue,
+      modelsPath: $('#setupModelsPath').value.trim() || (pathValue ? `${pathValue.replace(/[\\/]+$/, '')}\\models` : ''),
+    }),
+  });
+  setupViewStatus = result;
+  await loadMeta(true);
+  setupDependencyState = await api('/api/dependencies/status').catch(() => setupDependencyState);
+  renderInitialSetup();
+  return result;
+}
+
+async function startOfficialComfyFromSetup() {
+  const result = await api('/api/setup/comfy/install', { method: 'POST' });
+  if (setupViewStatus?.comfy) setupViewStatus.comfy.install = result.install;
+  renderInitialSetup();
+  scheduleSetupPoll();
+}
+
+async function startSetupDependencies(components) {
+  const requested = [...new Set((components || []).filter(Boolean))];
+  if (!requested.length) return false;
+  if (!setupViewStatus) setupViewStatus = await api('/api/setup/status');
+  const labels = setupComponentLabelMap();
+  const difficult = requested.filter((id) => setupComponentFitMap().get(id)?.level === 'difficult'
+    && !setupConfirmedDifficultComponents.has(id));
+  if (difficult.length) {
+    const names = difficult.map((id) => labels.get(id) || id).join(', ');
+    const confirmed = await askConfirm({
+      title: 'This setup may exceed the PC',
+      message: `${names} ${difficult.length === 1 ? 'is' : 'are'} rated difficult on this PC and may run very slowly or fail with an out-of-memory error.`,
+      confirmLabel: 'Install anyway',
+      danger: true,
+    });
+    if (!confirmed) return false;
+    difficult.forEach((id) => setupConfirmedDifficultComponents.add(id));
+  }
+  if (!setupViewStatus.comfy?.canInstallDependencies && setupViewStatus.comfy?.detectedPath) {
+    await saveSetupConnection(setupViewStatus.comfy.detectedPath);
+    setupViewStatus = await api('/api/setup/status');
+  }
+  if (!setupViewStatus.comfy?.canInstallDependencies) {
+    if (setupViewStatus.comfy?.canInstallOfficial) {
+      setupPendingComponents = requested;
+      await startOfficialComfyFromSetup();
+      return true;
+    }
+    setSetupGuideExpanded(true);
+    toast(setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.', true);
+    return false;
+  }
+  const available = new Set((setupViewStatus.components || []).map((entry) => entry.id));
+  const filtered = requested.filter((id) => available.has(id));
+  if (!filtered.length) {
+    toast('No installable components were selected.', true);
+    return false;
+  }
+  const result = await api('/api/dependencies/install', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components: filtered }),
+  });
+  setupDependencyState = result.install;
+  if (lastMeta?.dependencies) lastMeta.dependencies.install = result.install;
+  renderInitialSetup();
+  scheduleSetupPoll();
+  return true;
+}
+
+$('#setupGuideToggle').addEventListener('click', () => {
+  setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');
+});
+$('#setupQuickStart').addEventListener('click', async () => {
+  try {
+    setupAutoRestart = true;
+    const started = await startSetupDependencies(setupViewStatus?.quickComponents || []);
+    if (!started) setupAutoRestart = false;
+  }
+  catch (error) { setupAutoRestart = false; toast(error.message, true); }
+});
+$('#setupCurrentWorkflow').addEventListener('click', async () => {
+  try {
+    setupAutoRestart = false;
+    await startSetupDependencies(missingSetupComponents(setupContextComponents).length ? missingSetupComponents(setupContextComponents) : setupContextComponents);
+  }
+  catch (error) { toast(error.message, true); }
+});
+$('#setupUseDetected').addEventListener('click', async () => {
+  try {
+    const detected = setupViewStatus?.comfy?.detectedPath;
+    if (!detected) return;
+    $('#setupComfyPath').value = detected;
+    $('#setupModelsPath').value = `${detected.replace(/[\\/]+$/, '')}\\models`;
+    await saveSetupConnection(detected);
+  } catch (error) { toast(error.message, true); }
+});
+$('#setupInstallComfy').addEventListener('click', async () => {
+  try { await startOfficialComfyFromSetup(); }
+  catch (error) { toast(error.message, true); }
+});
+$('#setupSaveConnection').addEventListener('click', async () => {
+  try { await saveSetupConnection(); toast('ComfyUI connection saved'); }
+  catch (error) { toast(error.message, true); }
+});
+$('#setupComponentList').addEventListener('click', (event) => {
+  const option = event.target.closest('[data-component]');
+  if (!option || option.disabled) return;
+  const id = option.dataset.component;
+  if (dependencySelectedComponents.has(id)) dependencySelectedComponents.delete(id);
+  else dependencySelectedComponents.add(id);
+  renderInitialSetup();
+});
+$('#setupInstallSelected').addEventListener('click', async () => {
+  try {
+    setupAutoRestart = false;
+    await startSetupDependencies(selectedDependencyIds());
+  }
+  catch (error) { toast(error.message, true); }
+});
+$('#setupRestartComfy').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/comfy/restart', { method: 'POST' });
+    setupDependencyState = result.install;
+    renderInitialSetup();
+    scheduleSetupPoll();
+  } catch (error) { toast(error.message, true); }
+});
+$('#setupCheckAgain').addEventListener('click', refreshSetupStatus);
+$('#setupEditProfile').addEventListener('click', () => {
+  $('#initialSetupSheet').classList.remove('show');
+  syncSheetScrollLock();
+  openProfileEdit();
+});
+$('#dependencyOpenSetup').addEventListener('click', () => {
+  $('#settingsSheet').classList.remove('show');
+  openInitialSetup();
+});
+
 function renderDependencyManager() {
   const card = $('#dependencyManagerCard');
   if (!card) return;
@@ -16732,7 +17091,7 @@ function renderDependencyManager() {
     status.textContent = `${missing.length} missing component${missing.length === 1 ? '' : 's'} can be installed by the owner profile.`;
   } else if (!dependency.canInstall) {
     badge.textContent = 'Setup needed';
-    status.textContent = dependency.reason || 'Run install.bat and select the existing ComfyUI folder to enable downloads.';
+    status.textContent = dependency.reason || 'Open the setup guide to connect or install ComfyUI.';
   } else {
     badge.textContent = 'Missing';
     status.textContent = `${missing.length} component${missing.length === 1 ? '' : 's'} need${missing.length === 1 ? 's' : ''} attention. Choose the workflows you want to add.`;
@@ -16816,7 +17175,7 @@ function renderSam3Dependency() {
   if (!state.profileIsOwner) {
     status.textContent = 'Switch to the owner profile to install the missing SAM3 tools.';
   } else if (!dependency.canInstall) {
-    status.textContent = dependency.reason || 'Run install.bat again and select the existing ComfyUI folder so Mix Studio can find its Python environment.';
+    status.textContent = dependency.reason || 'Open the setup guide so Mix Studio can find the ComfyUI Python environment.';
   } else {
     status.textContent = `${missing.length || 'Some'} SAM3 components are missing. Mix Studio can install the official node pack without changing gallery data.`;
   }
@@ -16999,6 +17358,8 @@ setPromptDraft(state.prompts[state.view] || '');
 applySavedEngineOrders();
 loadMediaPreferences();
 restoreGenerationTuning(generationTuningMode(state.view));
+// First launch goes straight to the workspace. The complete tutorial remains
+// available from Advanced Settings and never starts automatically.
 markEngineRow('editEngineRow', state.editEngine);
 markEngineRow('vidEngineRow', state.vidEngine);
 updatePromptClear();

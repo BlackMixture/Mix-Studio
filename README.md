@@ -87,13 +87,13 @@ Short clips of the UI in motion: [region prompting](docs/download/media/ui-regio
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
 
-The downloadable bootstrap installs Git through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, and opens the setup wizard. Setup can install Node.js, launch the signed official ComfyUI Desktop installer, detect its initialized environment, and download the curated models and custom nodes used by Mix Studio's optimized workflows. Existing ComfyUI installations and completed model files are reused.
+The downloadable bootstrap installs Git and Node.js through `winget` when needed, clones the official repository into `%USERPROFILE%\Mix Studio`, starts the local server, and opens Mix Studio in the browser. A fresh installation enters an open **Owner** workspace immediately. ComfyUI, models, and custom nodes are configured later from the web app, only when a generation needs them. Existing ComfyUI installations and completed model files are reused.
 
 ### One-file download
 
-On Windows, open the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/), save **install.bat**, and run it. The downloader fetches the rest of the application from this repository and then opens the normal branded setup window.
+On Windows, open the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/), save **install.bat**, and run it. The downloader fetches the application, starts it, and opens `http://127.0.0.1:3300/`. There is no separate Mix Studio setup wizard before the workspace appears.
 
-The wizard separates ComfyUI, feature selection, and review into explicit steps. It reads the NVIDIA GPU and VRAM through `nvidia-smi` with a Windows hardware fallback, checks system RAM, and recommends only model families suited to a fresh machine. Each card identifies the curated precision variant and labels it as recommended, usable with offload, or difficult. Users can override the recommendation, but selected below-minimum workflows require an explicit warning confirmation. Before downloading, setup queries a running ComfyUI for registered model filenames and inspects common `extra_model_paths.yaml` locations. Matching files are reused regardless of their configured model root, while the visible models-folder field and Browse button remain available as a manual destination override. Existing feature choices are preserved on rerun. Large model downloads require an enabled download choice and selected family; gated providers may require prior license acceptance and a session-only Hugging Face token.
+When the user first presses Generate, Mix Studio checks the exact workflow they selected. If ComfyUI, models, or nodes are missing, the in-app **Generation setup** panel offers three paths: **Quick setup** installs the recommended image starter, **Install this workflow** downloads only what the current generation requires, and **Full setup guide** exposes ComfyUI detection, manual URL and folder fields, and individual capability groups. The panel reads NVIDIA VRAM and system RAM, identifies the curated precision variant, and labels model families as recommended, usable with offload, or difficult. Below-minimum choices require an explicit warning confirmation. A running ComfyUI is queried for registered model filenames, so matching files are reused even when they live in a shared model root.
 
 ### Manual Git install
 
@@ -104,12 +104,12 @@ The wizard separates ComfyUI, feature selection, and review into explicit steps.
    git clone https://github.com/BlackMixture/Mix-Studio.git
    ```
 
-3. Open the cloned folder and double-click **install.bat**. A Mix Studio-styled setup window walks through prerequisites, ComfyUI, model families, review, and installation.
-4. Choose **Install ComfyUI Desktop** or **Use existing ComfyUI**. New installations use the signed official NVIDIA desktop installer and are detected after initialization.
-5. Review the hardware-based Edit and Video recommendations and whether setup should download their curated models and custom nodes. Mix Studio supplies the workflow-tested variants and defaults; some selections can add tens of gigabytes or rely heavily on system-memory offload.
-6. Review the plan, finish setup, and launch Mix Studio.
+3. Open the cloned folder and double-click **install.bat**. Mix Studio starts and opens directly in the browser.
+4. Enter a prompt and press **Generate**. If the selected workflow is not ready, choose **Quick setup**, install only that workflow, or open the full guide.
+5. In the full guide, choose the detected ComfyUI environment, enter a URL and folders manually, or launch the signed official ComfyUI Desktop installer.
+6. Review the hardware rating before adding larger Edit and Video families. Some selections can add tens of gigabytes or rely heavily on system-memory offload.
 
-The visual installer delegates all writes to a separate non-interactive install engine. That engine writes ignored, machine-specific configuration to `install.json` and merges the ComfyUI URL and feature choices into `data/settings.json`. If settings already exist, it creates a timestamped backup first. It never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
+The bootstrap writes ignored, machine-specific configuration to `install.json`. Changes made in Generation setup update the ComfyUI connection atomically and merge the URL into `data/settings.json`. Setup never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
 
 The console prints two URLs:
 
@@ -124,9 +124,9 @@ If the phone can't connect, allow Node through Windows Defender Firewall (privat
 
 ### ComfyUI and shared models
 
-For new machines, setup downloads ComfyUI Desktop only from the official stable Windows endpoint and refuses to run it unless Windows reports a valid Authenticode signature. Existing environments can provide their ComfyUI URL, application folder, and models folder. Setup scans the connected `/object_info` registry and common `extra_model_paths.yaml` files, shows what it found, and skips recognized filenames before downloading. If ComfyUI is stopped or uses an unusual configuration location, point the visible models-folder field at the desired root; no existing file is moved or duplicated.
+For new machines, the in-app guide downloads ComfyUI Desktop only from the official stable Windows endpoint and refuses to run it unless Windows reports a valid Authenticode signature. Existing environments can provide their ComfyUI URL, application folder, and models folder. Setup scans the connected `/object_info` registry and common `extra_model_paths.yaml` files, shows what it found, and skips recognized filenames before downloading. If ComfyUI is stopped or uses an unusual configuration location, enter the folders manually; no existing file is moved or duplicated.
 
-You can rerun **install.bat** later to change these paths or optional feature families. Existing settings are used as the defaults and backed up before the merged configuration is saved.
+You can reopen **Generation setup** later from **Advanced Settings → General** to change the connection or add optional feature families. Rerunning **install.bat** is safe and simply prepares and starts the existing checkout again.
 
 To remove Mix Studio, double-click **uninstall.bat**. The uninstaller removes the portable checkout and, by default, moves its managed `data/` folder to `%LOCALAPPDATA%\Mix Studio\data` so the original checkout path is free for a clean reinstall. A later setup automatically reconnects those profiles, settings, generations, ComfyUI paths, and the last detected hardware profile. Use the explicit `-RemoveData` option only when you also want to erase managed local gallery data and preserved setup metadata; it requires typing `DELETE`. ComfyUI, shared models, mirrored export files, arbitrary external data paths, and the system Node.js installation are never removed. Browser-installed shortcuts, local form settings, and compressed preview caches live on each phone or browser and must be cleared there.
 

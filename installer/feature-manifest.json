@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": "Mix Studio",
   "target": "windows-nvidia",
-  "notes": "The guided installer detects NVIDIA VRAM and system RAM, recommends curated model families that suit the machine, and preserves existing saved selections. Users may override recommendations after reviewing difficulty warnings.",
+  "notes": "The in-app Generation setup guide detects NVIDIA VRAM and system RAM, recommends curated model families that suit the machine, and reuses existing files. Users may override recommendations after reviewing difficulty warnings.",
   "features": [
     {
       "id": "core.image",
