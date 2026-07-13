@@ -7362,7 +7362,9 @@ function wireVideoScrubber(buttonId, inputId, onTap, { horizontal = false } = {}
   });
   button.addEventListener('pointermove', (event) => {
     if (!drag || drag.id !== event.pointerId) return;
-    const distance = horizontal ? drag.x - event.clientX : drag.y - event.clientY;
+    // Horizontal duration follows the visible number strip: drag toward the
+    // larger values on the right to increase, and left to decrease.
+    const distance = horizontal ? event.clientX - drag.x : drag.y - event.clientY;
     const delta = Math.round(distance / 10);
     if (delta) drag.moved = true;
     setVideoScrubValue(input, drag.value + delta * (Number(input.step) || 1));

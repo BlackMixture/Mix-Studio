@@ -86,7 +86,7 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.match(html, /class="video-number-setting video-duration-primary" id="vidDurationField"/);
   assert.match(html, /class="video-number-setting video-motion-setting" id="vidFreeField"/);
   assert.match(html, /id="vidDurScrub"[^>]*role="spinbutton"/);
-  assert.match(html, /id="vidDurScrub"[^>]*aria-label="Duration in seconds\. Swipe left or right/);
+  assert.match(html, /id="vidDurScrub"[^>]*aria-label="Duration in seconds\. Swipe right to increase or left to decrease/);
   assert.match(html, /id="vidDurPrev"/);
   assert.match(html, /id="vidDurNext"/);
   assert.match(html, /id="durationPickerSheet"/);
@@ -111,7 +111,7 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.match(app, /wireVideoScrubber\('vidDurScrub', 'vidDur', openDurationPicker, \{ horizontal: true \}\)/);
   assert.match(app, /wireVideoScrubber\('vidFreeScrub', 'vidFree', openMotionPicker\)/);
   assert.match(app, /drag\.y - event\.clientY/);
-  assert.match(app, /drag\.x - event\.clientX/);
+  assert.match(app, /event\.clientX - drag\.x/);
   assert.match(app, /event\.key === 'ArrowUp'/);
 });
 
