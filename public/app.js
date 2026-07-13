@@ -1914,6 +1914,7 @@ function updateVideoPanels() {
   if (!isRegion) setRegionResolutionExpanded(false);
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
+  $('#regionsPromptBtn').hidden = isRegion;
   renderKrea2Mode();
   renderCreateImageGuide();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2' && !editOutpaintActive();

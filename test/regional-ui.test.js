@@ -42,6 +42,8 @@ test('Region mode moves the shared prompt below the stage as the global prompt',
   assert.match(indexHtml, /id="promptLabel"/);
   assert.match(appJs, /promptSlot\.appendChild\(promptPanel\)/);
   assert.match(appJs, /textContent = isRegion \? 'Global prompt' : \(scailInputFirst \? 'Creative direction · optional' : 'Prompt'\)/);
+  assert.match(appJs, /\$\('#regionsPromptBtn'\)\.hidden = isRegion/);
+  assert.match(styleCss, /\.icon-chip\[hidden\] \{ display: none; \}/);
 });
 
 test('selecting a region expands auto-saved settings and holding cycles overlaps', () => {
@@ -58,10 +60,18 @@ test('selected-region inspector appears before the canvas with visual asset inpu
   const stageAt = indexHtml.indexOf('id="regionStage"');
   assert.ok(settingsAt > -1 && settingsAt < toolbarAt && toolbarAt < stageAt);
   assert.match(indexHtml, /class="lora-grid region-lora-slot" id="regionLoraSlot"/);
+  assert.match(indexHtml, /class="field region-support-field region-lora-disclosure" id="regionLoraDisclosure"/);
+  assert.match(indexHtml, /class="field region-support-field region-reference-field"/);
+  assert.match(indexHtml, /<b>Add image<\/b><small>Guide this region<\/small>/);
   assert.match(indexHtml, /id="regionRefBtn"[\s\S]*class="region-ref-preview" id="regionRefPreview" hidden/);
   assert.match(indexHtml, /id="regionRefPreviewImg"/);
   assert.match(indexHtml, /id="regionRefClear"[^>]*aria-label="Remove region reference image"/);
   assert.match(styleCss, /\.region-ref-preview \{/);
+  assert.match(styleCss, /\.region-reference-field \.region-asset-picker \{[\s\S]*min-height: 50px/);
+  assert.match(styleCss, /\.region-reference-field \.region-ref-preview \{[\s\S]*display: block/);
+  assert.match(styleCss, /\.region-reference-field \.region-ref-preview\[hidden\] \{ display: none; \}/);
+  assert.match(styleCss, /\.region-fields \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.region-fields \{[\s\S]*grid-template-columns: 1fr/);
   assert.match(appJs, /\$\('#regionStrengthField'\)\.hidden = !hasLora/);
 });
 

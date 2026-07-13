@@ -1634,6 +1634,7 @@ html:-webkit-full-screen { background: #000; }
   padding: 8px 10px;
   line-height: 0;
 }
+.icon-chip[hidden] { display: none; }
 .res-header {
   display: flex;
   align-items: center;
@@ -5463,6 +5464,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .region-fields .field { margin-bottom: 0; }
 .region-fields .field[hidden] { display: none; }
 .field-span { grid-column: 1 / -1; }
+.region-support-field { min-width: 0; align-self: start; }
 .region-lora-disclosure {
   --region-card-color: #46b4e6;
   overflow: hidden;
@@ -5603,6 +5605,19 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 }
 .region-reference-control { min-width: 0; }
 .region-reference-control > [hidden] { display: none; }
+.region-reference-field .region-asset-picker {
+  min-height: 50px;
+  gap: 7px;
+  padding: 6px 7px;
+}
+.region-reference-field .region-asset-icon {
+  width: 36px;
+  height: 36px;
+  flex-basis: 36px;
+}
+.region-reference-field .region-asset-icon svg { width: 18px; height: 18px; }
+.region-reference-field .region-asset-copy b { font-size: 11.5px; }
+.region-reference-field .region-asset-copy small { font-size: 9.5px; }
 .region-ref-preview {
   position: relative;
   min-height: 68px;
@@ -5616,6 +5631,16 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   border-radius: var(--radius-sm);
   background: rgba(var(--mode-rgb), 0.045);
 }
+.region-reference-field .region-ref-preview {
+  min-height: 50px;
+  display: block;
+  padding: 0;
+}
+.region-reference-field .region-ref-preview[hidden] { display: none; }
+.region-reference-field .region-ref-preview img { width: 100%; height: 50px; }
+.region-reference-field .region-ref-preview .region-asset-copy { display: none; }
+.region-reference-field .region-ref-preview > button { top: 5px; right: 5px; width: 26px; height: 26px; }
+.region-reference-field .region-ref-preview .input-crop-action { top: 5px; right: 36px; width: 26px; height: 26px; }
 .region-ref-preview img {
   width: 66px;
   height: 68px;
@@ -5703,6 +5728,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
     gap: 8px;
     padding-top: 10px;
   }
+  .region-support-field { grid-column: 1; }
   .region-fields .sheet-textarea {
     min-height: 58px;
     max-height: 76px;
