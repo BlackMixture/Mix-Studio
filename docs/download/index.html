@@ -100,9 +100,8 @@
     .feature p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
     .showcase { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
     .shot { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #07090d; }
-    .shot-image { position: relative; overflow: hidden; background: #030405; }
-    .shot-image { aspect-ratio: 1.5 / 1; }
-    .shot-image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+    .shot-image { position: relative; display: grid; place-items: center; overflow: hidden; aspect-ratio: 16 / 9; background: #030405; }
+    .shot-image img, .shot-image video { width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; }
     .shot-copy { padding: 22px 24px 24px; border-top: 1px solid var(--line); }
     .shot-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
     .shot-copy h3 { margin: 8px 0 5px; font-size: 19px; }
@@ -169,7 +168,6 @@
       .section { padding: 86px 0; }
       .feature-grid, .showcase { grid-template-columns: 1fr; }
       .feature { min-height: 0; }
-      .shot-image { aspect-ratio: 1.5 / 1; }
       .quick { padding: 86px 0; }
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       footer { flex-direction: column; }
