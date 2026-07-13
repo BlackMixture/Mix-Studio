@@ -72,6 +72,12 @@ test('canMoveToFolder still rejects missing folders', () => {
 test('parseCookies reads cookie pairs safely', () => {
   assert.deepEqual(parseCookies('ks_private=abc; theme=dark'), { ks_private: 'abc', theme: 'dark' });
   assert.deepEqual(parseCookies(''), {});
+  // Cookies ignore ports: other localhost apps (ComfyUI, AI-Toolkit, …) can
+  // plant malformed percent-sequences that must not break the whole request.
+  assert.deepEqual(
+    parseCookies('junk=100%; ks_private=abc'),
+    { junk: '100%', ks_private: 'abc' }
+  );
 });
 
 test('locked folders use app sheets instead of native password and action prompts', () => {
