@@ -1644,7 +1644,18 @@
 
       <div class="settings-content">
         <section class="settings-pane active" id="settingsPaneGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-pane="general">
-          <div class="settings-pane-head"><h4>General</h4><p>Connection, access, and installation health.</p></div>
+          <div class="settings-pane-head"><h4>General</h4><p>Tutorial, connection, access, and installation health.</p></div>
+          <div class="guided-tour-setting">
+            <span class="guided-tour-setting-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 4h14v11H9l-4 4V4Zm3 4h8M8 11h5"/></svg>
+            </span>
+            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Seven animated tips for the complete workflow.</small></span>
+            <button id="guidedTourStart" type="button">Start tutorial</button>
+            <button class="settings-media-toggle guided-tips-toggle" id="guidedTipsToggle" type="button" role="switch" aria-checked="true">
+              <span class="settings-media-toggle-copy"><strong>Contextual gesture tips</strong><small>Show a one-time animation when hidden controls become useful.</small></span>
+              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+            </button>
+          </div>
           <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
           <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
           <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
@@ -2021,6 +2032,35 @@
     <div class="duration-wheel" id="motionWheel" role="listbox" aria-label="Motion freedom"></div>
     <button class="sheet-cta" id="motionPickerDone" type="button">Done</button>
   </div>
+</div>
+
+<div class="guided-tour" id="guidedTour" hidden aria-hidden="true">
+  <div class="guided-tour-spotlight" id="guidedTourSpotlight" aria-hidden="true"></div>
+  <section class="guided-tour-card" id="guidedTourCard" role="dialog" aria-modal="true" aria-labelledby="guidedTourTitle" aria-describedby="guidedTourCopy" tabindex="-1">
+    <div class="guided-tour-card-head">
+      <span class="guided-tour-step" id="guidedTourStep">1 of 7</span>
+      <button class="guided-tour-close" id="guidedTourClose" type="button" aria-label="Close tutorial">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="guided-tour-dots" id="guidedTourDots" aria-hidden="true"></div>
+    <h3 id="guidedTourTitle"></h3>
+    <p id="guidedTourCopy"></p>
+    <div class="guided-tour-demo" id="guidedTourDemo" data-motion="tap" aria-hidden="true">
+      <span class="guided-tour-demo-stage">
+        <span class="guided-tour-demo-button"></span>
+        <span class="guided-tour-demo-lines"><i></i><i></i><i></i></span>
+        <svg class="guided-tour-demo-cursor" viewBox="0 0 24 24"><path d="M6 3v14l4-3 3 6 3-1.5-3-6h5L6 3Z"/></svg>
+        <span class="guided-tour-demo-touch"></span>
+      </span>
+      <span id="guidedTourDemoLabel"></span>
+    </div>
+    <div class="guided-tour-actions">
+      <button class="guided-tour-back" id="guidedTourBack" type="button">Back</button>
+      <button class="guided-tour-next" id="guidedTourNext" type="button">Next</button>
+    </div>
+  </section>
+  <div class="sr-only" id="guidedTourAnnouncement" role="status" aria-live="polite"></div>
 </div>
 
 <div class="toast-zone" id="toastZone"></div>
