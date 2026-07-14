@@ -523,6 +523,7 @@ let comfyRestartRunning = false;
 let setupHardwareSnapshot = null;
 let setupHardwareAt = 0;
 let comfySetupProcess = null;
+let comfySetupCancelRequested = false;
 let comfySetupState = {
   state: 'idle',
   phase: 'idle',
@@ -576,6 +577,7 @@ function startOfficialComfySetup() {
   const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const resultFile = path.join(DATA, 'comfy-setup-result.json');
   try { fs.unlinkSync(resultFile); } catch { /* no previous result */ }
+  comfySetupCancelRequested = false;
   updateComfySetupState({
     state: 'running',
     phase: 'starting',
@@ -604,11 +606,21 @@ function startOfficialComfySetup() {
   child.stderr.on('data', (chunk) => { stderr = `${stderr}${String(chunk || '')}`.slice(-3000); });
   child.on('error', (error) => {
     comfySetupProcess = null;
+    if (comfySetupCancelRequested) {
+      updateComfySetupState({ state: 'cancelled', phase: 'cancelled', message: 'ComfyUI setup was cancelled.', error: null });
+      return;
+    }
     updateComfySetupState({ state: 'error', phase: 'error', message: 'ComfyUI setup could not start.', error: String(error.message || error) });
   });
   child.on('close', (code) => {
     consumeLines();
     comfySetupProcess = null;
+    if (comfySetupCancelRequested) {
+      comfySetupCancelRequested = false;
+      updateComfySetupState({ state: 'cancelled', phase: 'cancelled', message: 'ComfyUI setup was cancelled.', error: null });
+      fsp.unlink(resultFile).catch(() => {});
+      return;
+    }
     try {
       if (code !== 0) throw new Error(stderr.trim() || `Official ComfyUI setup exited with code ${code}.`);
       const result = loadJson(resultFile, {});
@@ -620,6 +632,47 @@ function startOfficialComfySetup() {
     } finally {
       fsp.unlink(resultFile).catch(() => {});
     }
+  });
+}
+
+function stopOfficialComfySetup() {
+  const child = comfySetupProcess;
+  if (!child) return false;
+  comfySetupCancelRequested = true;
+  updateComfySetupState({ state: 'cancelling', phase: 'cancelling', message: 'Stopping ComfyUI setup…', error: null });
+  if (process.platform === 'win32') {
+    execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, (error) => {
+      if (error) {
+        try { child.kill(); } catch { /* process may already be gone */ }
+      }
+    });
+  } else {
+    try { child.kill('SIGTERM'); } catch { /* process may already be gone */ }
+  }
+  return true;
+}
+
+function browseGenerationFolder(kind) {
+  if (process.platform !== 'win32') throw new Error('Folder browsing is available on the Windows generation computer. Enter the location manually here.');
+  const systemRoot = String(process.env.SystemRoot || 'C:\\Windows');
+  const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const description = kind === 'models' ? 'Choose the ComfyUI models folder' : 'Choose the ComfyUI folder';
+  const script = [
+    'Add-Type -AssemblyName System.Windows.Forms',
+    '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog',
+    `$dialog.Description = '${description}'`,
+    '$dialog.ShowNewFolderButton = $false',
+    'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }',
+  ].join('; ');
+  return new Promise((resolve, reject) => {
+    execFile(powershell, ['-NoProfile', '-STA', '-Command', script], {
+      windowsHide: true,
+      timeout: 10 * 60 * 1000,
+      maxBuffer: 64 * 1024,
+    }, (error, stdout) => {
+      if (error) return reject(error);
+      resolve(String(stdout || '').trim());
+    });
   });
 }
 
@@ -4248,6 +4301,18 @@ async function handleApi(req, res, url) {
       return json(res, 400, { error: String(error.message || error) });
     }
   }
+  if (route === '/api/setup/browse' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can choose generation folders' });
+    if (dependencyInstallRunning || comfySetupProcess || comfyRestartRunning) return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
+    try {
+      const body = await readJsonBody(req);
+      const kind = body.kind === 'models' ? 'models' : 'comfy';
+      const directory = await browseGenerationFolder(kind);
+      return json(res, 200, { ok: true, directory, cancelled: !directory });
+    } catch (error) {
+      return json(res, 400, { error: String(error.message || error) });
+    }
+  }
   if (route === '/api/setup/comfy/install' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install ComfyUI' });
     if (process.platform !== 'win32') return json(res, 400, { error: 'Automatic ComfyUI Desktop installation is available on Windows.' });
@@ -4260,6 +4325,12 @@ async function handleApi(req, res, url) {
     } catch (error) {
       return json(res, 500, { error: String(error.message || error) });
     }
+  }
+  if (route === '/api/setup/comfy/cancel' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can stop ComfyUI setup' });
+    if (!comfySetupProcess) return json(res, 409, { error: 'No ComfyUI setup is running.' });
+    stopOfficialComfySetup();
+    return json(res, 202, { ok: true, install: comfySetupState });
   }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {

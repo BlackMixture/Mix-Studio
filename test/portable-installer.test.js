@@ -118,8 +118,11 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /ltx-interior\.mp4/);
   assert.match(page, /ltx-wrestling\.mp4/);
   assert.match(page, /Arena action/);
-  assert.match(page, /Nine rotating LTX 2\.3 image-to-video examples/);
-  assert.match(page, /Four rotating SCAIL 2 video transformation examples/);
+  assert.match(page, /Fourteen rotating SCAIL 2 and LTX 2\.3 video examples/);
+  assert.match(page, /data-video-showcase/);
+  assert.match(page, /data-reel-previous/);
+  assert.match(page, /data-reel-next/);
+  assert.match(page, /ltx-dreamscape\.mp4", previewEnd: 3/);
   assert.doesNotMatch(page, /Shark breach/);
   assert.match(page, /edit-aging-motion\.mp4/);
   assert.match(page, /data-loop-end="2"/);
@@ -128,12 +131,14 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Lava volcano/);
   assert.doesNotMatch(page, /region-map\.jpg/);
   assert.match(page, /region-monster\.jpg/);
-  assert.match(page, /data-ltx-reel/);
+  assert.doesNotMatch(page, /data-ltx-reel/);
+  assert.doesNotMatch(page, /data-scail-reel/);
   assert.match(page, /class="region-reveal"/);
   assert.match(page, /outpaint-source\.jpg/);
   assert.match(page, /class="outpaint-sequence/);
   assert.match(page, /class="library-reel/);
-  assert.match(page, /class="edit-motion-result/);
+  assert.doesNotMatch(page, /class="edit-motion-result/);
+  assert.equal((page.match(/class="gen-card paired-media"/g) || []).length, 2);
   assert.doesNotMatch(page, /01 Original/);
   assert.doesNotMatch(page, /02 Edit/);
   assert.match(page, /class="showcase showcase-compact"/);
@@ -208,17 +213,35 @@ test('minimal bootstrap preserves an uninstalled gallery and opens setup in app'
 test('generation setup lives in the web app and gates only a generation attempt', () => {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const style = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  for (const id of ['initialSetupSheet', 'setupQuickStart', 'setupCurrentWorkflow', 'setupFullGuide', 'setupInstallComfy', 'setupUseDetected', 'setupComfyPath', 'setupModelsPath', 'setupHardwareSummary']) {
+  for (const id of [
+    'initialSetupSheet', 'setupTabConnect', 'setupTabInstall', 'setupTabFinish',
+    'setupPaneConnect', 'setupPaneInstall', 'setupPaneFinish', 'setupQuickStart',
+    'setupCurrentWorkflow', 'setupFullGuide', 'setupInstallComfy', 'setupUseDetected',
+    'setupBrowseComfy', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
+    'setupHardwareSummary', 'setupCancel', 'setupBack', 'setupNext',
+  ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.match(html, /class="setup-tabs" role="tablist"/);
+  assert.equal((html.match(/role="tabpanel"/g) || []).length >= 3, true);
   assert.match(app, /async function ensureGenerationSetup\(\)/);
   assert.match(app, /if \(!\(await ensureGenerationSetup\(\)\)\) return/);
+  assert.match(app, /function setSetupStep\(step/);
+  assert.match(app, /\/api\/setup\/browse/);
+  assert.match(app, /\/api\/setup\/comfy\/cancel/);
+  assert.match(app, /\/api\/dependencies\/cancel/);
   assert.match(app, /askConfirm\(\{[\s\S]{0,360}out-of-memory error/);
   assert.match(app, /setupAutoRestart[\s\S]{0,900}\/api\/comfy\/restart/);
+  assert.match(style, /\.setup-panel \{[\s\S]{0,500}background: #000;/);
+  assert.match(style, /\.setup-stage \{[\s\S]{0,180}overflow-y: auto/);
   assert.match(server, /\/api\/setup\/status/);
   assert.match(server, /\/api\/setup\/connection/);
+  assert.match(server, /\/api\/setup\/browse/);
   assert.match(server, /\/api\/setup\/comfy\/install/);
+  assert.match(server, /\/api\/setup\/comfy\/cancel/);
+  assert.match(server, /taskkill[\s\S]{0,120}'\/T'[\s\S]{0,80}'\/F'/);
   assert.match(server, /Only the owner profile can configure the generation desktop/);
 });
 

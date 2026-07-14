@@ -1652,62 +1652,97 @@
 
 <!-- generation setup -->
 <div class="sheet setup-sheet" id="initialSetupSheet">
-  <div class="sheet-panel setup-panel" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <div class="sheet-panel setup-panel" role="dialog" aria-modal="true" aria-labelledby="setupTitle" data-setup-step="connect">
     <h3 class="sheet-title"><span>Generation setup</span><button data-close aria-label="Close generation setup">✕</button></h3>
-    <div class="setup-hero">
-      <span class="setup-kicker">Your workspace is ready</span>
-      <h2 id="setupTitle">Connect the generation engine when you need it.</h2>
-      <p id="setupIntro">Your prompt and settings stay in place. Mix Studio can prepare the missing desktop tools now, or you can choose exactly what to install.</p>
+    <div class="setup-heading">
+      <span class="setup-kicker">Three short steps</span>
+      <h2 id="setupTitle">Get ready to generate</h2>
+      <p id="setupIntro">Connect ComfyUI, then install only what this generation needs.</p>
     </div>
-    <div class="setup-status-grid" aria-live="polite">
-      <div class="setup-status ready"><span>1</span><div><strong>Mix Studio</strong><small>Web app ready</small></div></div>
-      <div class="setup-status" id="setupComfyStatus"><span>2</span><div><strong>ComfyUI</strong><small id="setupComfyStatusCopy">Checking this PC…</small></div></div>
-      <div class="setup-status" id="setupWorkflowStatus"><span>3</span><div><strong>Current workflow</strong><small id="setupWorkflowStatusCopy">Checking models and nodes…</small></div></div>
-    </div>
-    <div class="setup-hardware" id="setupHardwareSummary">
-      <span aria-hidden="true">GPU</span>
-      <div><strong id="setupHardwareCopy">Checking graphics memory and system RAM…</strong><small id="setupHardwareFit">Model recommendations will match this PC.</small></div>
-    </div>
-    <div class="setup-operation" id="setupOperation" hidden>
-      <div><strong id="setupOperationTitle">Working…</strong><span id="setupOperationCopy"></span></div>
-      <div class="dependency-progress"><span id="setupOperationFill"></span></div>
-      <div class="setup-operation-actions">
-        <button id="setupRestartComfy" type="button" hidden>Restart ComfyUI</button>
-        <button id="setupCheckAgain" type="button">Check again</button>
+    <nav class="setup-tabs" role="tablist" aria-label="Generation setup steps">
+      <button class="active" id="setupTabConnect" type="button" role="tab" aria-selected="true" aria-controls="setupPaneConnect" data-setup-tab="connect">
+        <span class="setup-tab-index">1</span><span class="setup-tab-copy"><strong>Connect</strong><small id="setupTabConnectStatus">Checking…</small></span>
+      </button>
+      <button id="setupTabInstall" type="button" role="tab" aria-selected="false" aria-controls="setupPaneInstall" data-setup-tab="install" tabindex="-1">
+        <span class="setup-tab-index">2</span><span class="setup-tab-copy"><strong>Install</strong><small id="setupTabInstallStatus">Waiting</small></span>
+      </button>
+      <button id="setupTabFinish" type="button" role="tab" aria-selected="false" aria-controls="setupPaneFinish" data-setup-tab="finish" tabindex="-1">
+        <span class="setup-tab-index">3</span><span class="setup-tab-copy"><strong>Finish</strong><small id="setupTabFinishStatus">Not ready</small></span>
+      </button>
+    </nav>
+
+    <div class="setup-stage">
+      <div class="setup-operation" id="setupOperation" aria-live="polite" hidden>
+        <div><strong id="setupOperationTitle">Working…</strong><span id="setupOperationCopy"></span></div>
+        <div class="dependency-progress"><span id="setupOperationFill"></span></div>
+        <div class="setup-operation-actions">
+          <button id="setupRestartComfy" type="button" hidden>Restart ComfyUI</button>
+          <button id="setupCheckAgain" type="button">Check again</button>
+        </div>
       </div>
-    </div>
-    <div class="setup-actions">
-      <button class="setup-primary" id="setupQuickStart" type="button"><strong>Quick setup</strong><span>Install ComfyUI if needed, then the recommended image starter.</span></button>
-      <button class="setup-secondary" id="setupCurrentWorkflow" type="button"><strong>Install this workflow</strong><span>Download only the models and nodes required for what you tried to generate.</span></button>
-    </div>
-    <button class="setup-guide-toggle" id="setupGuideToggle" type="button" aria-expanded="false" aria-controls="setupFullGuide">Full setup guide <span>⌄</span></button>
-    <div class="setup-full-guide" id="setupFullGuide" hidden>
-      <section class="setup-step">
-        <header><span>01</span><div><strong>Connect ComfyUI</strong><small>Use an installation already on this PC or install the official Desktop app.</small></div></header>
-        <p class="setup-detected" id="setupDetectedPath">Looking for an existing ComfyUI installation…</p>
-        <div class="setup-inline-actions">
-          <button id="setupUseDetected" type="button">Use detected</button>
-          <button id="setupInstallComfy" type="button">Install official ComfyUI</button>
+
+      <section class="setup-pane active" id="setupPaneConnect" role="tabpanel" aria-labelledby="setupTabConnect" data-setup-pane="connect">
+        <header class="setup-pane-head"><span>Connection</span><h3>Connect ComfyUI</h3><p>Choose the easiest option for the generation computer.</p></header>
+        <p class="setup-detected" id="setupDetectedPath">Looking for ComfyUI…</p>
+        <div class="setup-choice-list">
+          <button class="setup-choice setup-choice-blue" id="setupUseDetected" type="button">
+            <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/></svg></span>
+            <span><strong>Use detected</strong><small>Connect to the ComfyUI already found.</small></span><i aria-hidden="true">›</i>
+          </button>
+          <button class="setup-choice setup-choice-violet" id="setupBrowseComfy" type="button">
+            <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
+            <span><strong>Browse computer</strong><small>Choose the ComfyUI folder on the generation PC.</small></span><i aria-hidden="true">›</i>
+          </button>
+          <button class="setup-choice setup-choice-red" id="setupInstallComfy" type="button">
+            <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg></span>
+            <span><strong>Install ComfyUI</strong><small>Use the official Windows installer.</small></span><i aria-hidden="true">›</i>
+          </button>
         </div>
-        <div class="setup-connection-fields">
-          <label><span>ComfyUI URL</span><input id="setupComfyUrl" type="text" value="http://127.0.0.1:8188" autocomplete="off" spellcheck="false" /></label>
-          <label><span>ComfyUI folder</span><input id="setupComfyPath" type="text" placeholder="C:\Users\you\Documents\ComfyUI" autocomplete="off" spellcheck="false" /></label>
-          <label><span>Models folder</span><input id="setupModelsPath" type="text" placeholder="C:\Users\you\Documents\ComfyUI\models" autocomplete="off" spellcheck="false" /></label>
+        <button class="setup-disclosure" id="setupGuideToggle" type="button" aria-expanded="false" aria-controls="setupFullGuide"><span>Connection details</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg></button>
+        <div class="setup-full-guide" id="setupFullGuide" hidden>
+          <div class="setup-connection-fields">
+            <label><span>ComfyUI URL</span><input id="setupComfyUrl" type="text" value="http://127.0.0.1:8188" autocomplete="off" spellcheck="false" /></label>
+            <label><span>ComfyUI folder</span><input id="setupComfyPath" type="text" placeholder="C:\ComfyUI" autocomplete="off" spellcheck="false" /></label>
+            <label><span>Models folder</span><span class="setup-input-row"><input id="setupModelsPath" type="text" placeholder="C:\ComfyUI\models" autocomplete="off" spellcheck="false" /><button id="setupBrowseModels" type="button">Browse</button></span></label>
+          </div>
+          <button class="setup-save-connection" id="setupSaveConnection" type="button">Save connection</button>
         </div>
-        <button class="setup-save-connection" id="setupSaveConnection" type="button">Save connection</button>
       </section>
-      <section class="setup-step">
-        <header><span>02</span><div><strong>Choose capabilities</strong><small>Anything already installed is reused. Completed downloads are never repeated.</small></div></header>
-        <div class="setup-component-list" id="setupComponentList"></div>
-        <p class="setup-component-empty" id="setupComponentEmpty">Connect and start ComfyUI to scan the models and nodes already available.</p>
-        <button class="setup-install-selected" id="setupInstallSelected" type="button">Install selected</button>
+
+      <section class="setup-pane" id="setupPaneInstall" role="tabpanel" aria-labelledby="setupTabInstall" data-setup-pane="install" hidden>
+        <header class="setup-pane-head"><span>Downloads</span><h3>Install what you need</h3><p>Existing files are reused automatically.</p></header>
+        <div class="setup-hardware" id="setupHardwareSummary">
+          <span aria-hidden="true">GPU</span>
+          <div><strong id="setupHardwareCopy">Checking this computer…</strong><small id="setupHardwareFit">Checking compatibility…</small></div>
+        </div>
+        <div class="setup-actions">
+          <button class="setup-primary" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
+          <button class="setup-secondary" id="setupCurrentWorkflow" type="button"><strong>Current workflow</strong><span>Install only what this generation needs.</span></button>
+        </div>
+        <button class="setup-disclosure" id="setupCustomToggle" type="button" aria-expanded="false" aria-controls="setupCustomPanel"><span>Choose components</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg></button>
+        <div class="setup-custom-panel" id="setupCustomPanel" hidden>
+          <div class="setup-component-list" id="setupComponentList"></div>
+          <p class="setup-component-empty" id="setupComponentEmpty">Start ComfyUI to scan installed models and nodes.</p>
+          <button class="setup-install-selected" id="setupInstallSelected" type="button">Install selected</button>
+        </div>
       </section>
-      <section class="setup-step setup-profile-note">
-        <header><span>03</span><div><strong>Personalize later</strong><small>You are using the open Owner profile. Rename it and add a PIN from the profile menu whenever you are ready.</small></div></header>
-        <button id="setupEditProfile" type="button">Edit Owner profile</button>
+
+      <section class="setup-pane" id="setupPaneFinish" role="tabpanel" aria-labelledby="setupTabFinish" data-setup-pane="finish" hidden>
+        <header class="setup-pane-head"><span>Review</span><h3>Ready check</h3><p>Both checks should be green before generating.</p></header>
+        <div class="setup-ready-list" aria-live="polite">
+          <div class="setup-status ready"><span aria-hidden="true"></span><div><strong>Mix Studio</strong><small>Ready</small></div></div>
+          <div class="setup-status" id="setupComfyStatus"><span aria-hidden="true"></span><div><strong>ComfyUI</strong><small id="setupComfyStatusCopy">Checking…</small></div></div>
+          <div class="setup-status" id="setupWorkflowStatus"><span aria-hidden="true"></span><div><strong>Current workflow</strong><small id="setupWorkflowStatusCopy">Checking…</small></div></div>
+        </div>
+        <p class="setup-finish-note" id="setupFinishNote">Your prompt is saved while setup is open.</p>
       </section>
     </div>
-    <p class="setup-footnote">Nothing is downloaded until you choose an install option. Your prompt remains in the workspace if you close this panel.</p>
+
+    <footer class="setup-footer">
+      <button class="setup-cancel" id="setupCancel" type="button">Not now</button>
+      <span>Your prompt is saved</span>
+      <div><button class="setup-back" id="setupBack" type="button" hidden>Back</button><button class="setup-next" id="setupNext" type="button">Continue</button></div>
+    </footer>
   </div>
 </div>
 

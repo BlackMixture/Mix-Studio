@@ -289,7 +289,13 @@
     .gen-card.wide .video-reel video { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 1; transition: opacity 220ms ease; }
     .video-reel.is-switching video { opacity: 0; }
     .video-reel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 62%,rgba(1,3,7,.86)); pointer-events: none; }
-    .video-reel-tabs { position: absolute; right: 14px; bottom: 13px; left: 14px; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-padding-inline: 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+    .video-reel-arrow { position: absolute; top: 50%; z-index: 4; width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(220,228,255,.24); border-radius: 50%; background: rgba(4,7,12,.8); color: #eef4ff; cursor: pointer; backdrop-filter: blur(10px); transform: translateY(-50%); transition: border-color 180ms ease,background 180ms ease,transform 180ms ease; }
+    .video-reel-arrow:hover { border-color: #76a8ff; background: rgba(20,45,80,.9); transform: translateY(-50%) scale(1.05); }
+    .video-reel-arrow:focus-visible { outline: 2px solid #76a8ff; outline-offset: 3px; }
+    .video-reel-arrow.previous { left: 14px; }
+    .video-reel-arrow.next { right: 14px; }
+    .video-reel-arrow svg { width: 18px; height: 18px; }
+    .video-reel-tabs { position: absolute; right: 62px; bottom: 13px; left: 62px; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-padding-inline: 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
     .video-reel-tabs::-webkit-scrollbar { display: none; }
     .video-reel-tabs button { flex: 1 0 132px; min-width: 0; padding: 8px 9px; overflow: hidden; border: 1px solid rgba(220,228,255,.18); border-radius: 10px; background: rgba(5,8,14,.72); color: #9aa8c7; font: inherit; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; scroll-snap-align: center; backdrop-filter: blur(10px); transition: border-color 180ms ease,background 180ms ease,color 180ms ease; }
     .video-reel-tabs button[aria-selected="true"] { border-color: #76a8ff; background: rgba(20,45,80,.88); color: #eef4ff; box-shadow: 0 0 18px rgba(66,133,244,.22); }
@@ -315,8 +321,7 @@
     @keyframes region-car { 0%,25% { opacity: 0; transform: scale(.985); } 29%,59% { opacity: 1; transform: scale(1); } 69%,100% { opacity: 0; transform: scale(1); } }
     @keyframes region-planning-state { 0%,59% { opacity: 1; } 69%,92% { opacity: 0; } 100% { opacity: 1; } }
     @keyframes region-result-state { 0%,59%,100% { opacity: 0; } 69%,92% { opacity: 1; } }
-    .edit-motion-result { position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: radial-gradient(circle at 50% 42%,#11243a,#020305 72%); }
-    .edit-motion-result video { width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; }
+    .gen-card.paired-media > img, .gen-card.paired-media > video { width: 100%; aspect-ratio: 1.35 / 1; display: block; object-fit: cover; object-position: center; background: #030405; }
     .gen-copy { padding: 18px 22px 20px; border-top: 1px solid var(--line); }
     .gen-copy span { color: #9db3f7; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
     .gen-copy h3 { margin: 7px 0 4px; font-size: 17px; }
@@ -427,7 +432,10 @@
       .hardware-axis, .hardware-row { grid-template-columns: 1fr; gap: 8px; }
       .hardware-axis { margin-top: 24px; }
       .hardware-axis > span { display: none; }
-      .edit-motion-result { aspect-ratio: 1.2 / 1; }
+      .video-reel-arrow { width: 36px; height: 36px; }
+      .video-reel-arrow.previous { left: 9px; }
+      .video-reel-arrow.next { right: 9px; }
+      .video-reel-tabs { right: 50px; left: 50px; }
       .quick { padding: 86px 0; }
       .faq-list { grid-template-columns: 1fr; }
       .faq-item:nth-child(odd) { border-right: 0; }
@@ -574,13 +582,11 @@
           <p>Every example was generated locally through tuned workflows for precise image edits, motion-preserving video transformations, image animation, and box-directed compositions.</p>
         </div>
         <div class="gen-grid">
-          <article class="gen-card wide span-2"><div class="video-reel" data-scail-reel><video src="./media/scail-flower-world.mp4" autoplay muted playsinline aria-label="Four rotating SCAIL 2 video transformation examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose a SCAIL 2 transformation"><button type="button" data-reel-index="0" aria-selected="true">Setting replacement</button><button type="button" data-reel-index="1" aria-selected="false">Object + setting</button><button type="button" data-reel-index="2" aria-selected="false">Animal replacement</button><button type="button" data-reel-index="3" aria-selected="false">Season + habitat</button></div></div><div class="gen-copy"><span>SCAIL 2 · directed video editing</span><h3>Change the subject, object, or world</h3><p>Transfer the original motion while preserving timing, camera movement, realistic physics, and scene-aware lighting.</p></div></article>
-          <article class="gen-card wide span-2"><div class="video-reel" data-ltx-reel><video src="./media/ltx-prism-storm.mp4" autoplay muted playsinline aria-label="Nine rotating LTX 2.3 image-to-video examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-reel-index="0" aria-selected="true">Prism storm</button><button type="button" data-reel-index="1" aria-selected="false">Character performance</button><button type="button" data-reel-index="2" aria-selected="false">Storm ruins</button><button type="button" data-reel-index="3" aria-selected="false">Dreamscape portrait</button><button type="button" data-reel-index="4" aria-selected="false">Interior camera move</button><button type="button" data-reel-index="5" aria-selected="false">Arena action</button><button type="button" data-reel-index="6" aria-selected="false">Stylized action</button><button type="button" data-reel-index="7" aria-selected="false">Rain-lit portrait</button><button type="button" data-reel-index="8" aria-selected="false">Mech battlefield</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Generate motion, performance, and atmosphere</h3><p>Turn a still image into cinematic motion with directed camera movement, physical detail, lighting, sound, and character performance.</p></div></article>
-          <article class="gen-card span-2"><div class="edit-motion-result"><video src="./media/edit-aging-motion.mp4" autoplay muted loop playsinline aria-label="Edited subject brought to life in a finished motion result"></video></div><div class="gen-copy"><span>Edit to motion</span><h3>A precise edit becomes a performance</h3><p>The finished subject carries directly into a moving, talking study.</p></div></article>
+          <article class="gen-card wide span-2"><div class="video-reel" data-video-showcase><video src="./media/scail-flower-world.mp4" autoplay muted playsinline aria-label="Fourteen rotating SCAIL 2 and LTX 2.3 video examples"></video><button class="video-reel-arrow previous" type="button" data-reel-previous aria-label="Previous video example"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m15.4 5.4-1.4-1.4L6 12l8 8 1.4-1.4L8.8 12l6.6-6.6Z"/></svg></button><button class="video-reel-arrow next" type="button" data-reel-next aria-label="Next video example"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m8.6 18.6 1.4 1.4 8-8-8-8-1.4 1.4 6.6 6.6-6.6 6.6Z"/></svg></button><div class="video-reel-tabs" role="tablist" aria-label="Choose a video example"><button type="button" data-reel-index="0" aria-selected="true">Setting replacement</button><button type="button" data-reel-index="1" aria-selected="false">Object + setting</button><button type="button" data-reel-index="2" aria-selected="false">Animal replacement</button><button type="button" data-reel-index="3" aria-selected="false">Season + habitat</button><button type="button" data-reel-index="4" aria-selected="false">Edit to performance</button><button type="button" data-reel-index="5" aria-selected="false">Prism storm</button><button type="button" data-reel-index="6" aria-selected="false">Character performance</button><button type="button" data-reel-index="7" aria-selected="false">Storm ruins</button><button type="button" data-reel-index="8" aria-selected="false">Dreamscape portrait</button><button type="button" data-reel-index="9" aria-selected="false">Interior camera move</button><button type="button" data-reel-index="10" aria-selected="false">Arena action</button><button type="button" data-reel-index="11" aria-selected="false">Stylized action</button><button type="button" data-reel-index="12" aria-selected="false">Rain-lit portrait</button><button type="button" data-reel-index="13" aria-selected="false">Mech battlefield</button></div></div><div class="gen-copy" data-video-caption aria-live="polite"><span data-reel-kicker>SCAIL 2 · directed video editing</span><h3 data-reel-title>Change the subject, object, or world</h3><p data-reel-description>Transfer the original motion while preserving timing, camera movement, realistic physics, and scene-aware lighting.</p></div></article>
           <article class="gen-card span-2"><div class="region-reveal" role="img" aria-label="Four prompt regions appearing over a sea monster scene before fading into the clean generated result"><img class="region-reveal-back" src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-canvas"><img src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-box sky"><span>Sky</span></div><div class="region-box cliff"><span>Cliff</span></div><div class="region-box monster"><span>Sea monster</span></div><div class="region-box car"><span>Car</span></div></div><div class="region-state" aria-hidden="true"><span class="planning">Regions defined</span><span class="result">Generated result</span></div></div><div class="gen-copy"><span>Region prompting · plan to result</span><h3>Define the scene. Generate the composition.</h3><p>Place the sky, cliff, sea monster, and car with visual regions, then generate the complete scene in one pass.</p></div></article>
           <article class="gen-card span-2"><img src="./media/depth-cabin.jpg" alt="Cabin interior, its depth map, and a snow-filled re-imagining" loading="lazy" /><div class="gen-copy"><span>Depth guide</span><h3>New image, same 3D structure</h3><p>Source → Depth Anything V3 map → re-imagined scene. Every armchair and beam stays in place.</p></div></article>
-          <article class="gen-card"><img src="./media/inpaint-face.jpg" alt="Masked face inpainted to a different person, scene untouched" loading="lazy" /><div class="gen-copy"><span>Inpaint</span><h3>Paint the mask, change only the mask</h3><p>A character LoRA swapped into the masked area while the wave doesn't move a drop.</p></div></article>
-          <article class="gen-card reel"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · style transfer</span><h3>From rendered world to wireframe motion</h3><p>The subject and movement stay readable while the entire visual language changes.</p></div></article>
+          <article class="gen-card paired-media"><img src="./media/inpaint-face.jpg" alt="Masked face inpainted to a different person, scene untouched" loading="lazy" /><div class="gen-copy"><span>Inpaint</span><h3>Paint the mask, change only the mask</h3><p>A character LoRA swapped into the masked area while the wave doesn't move a drop.</p></div></article>
+          <article class="gen-card paired-media"><video src="./media/scail-wireframe-mech.mp4" autoplay muted loop playsinline></video><div class="gen-copy"><span>SCAIL 2 · style transfer</span><h3>From rendered world to wireframe motion</h3><p>The subject and movement stay readable while the entire visual language changes.</p></div></article>
           <article class="gen-card span-2"><div class="outpaint-sequence is-wide" role="img" aria-label="Square cabin original fading into a seamless widescreen outpaint"><img class="outpaint-result" src="./media/outpaint-wide.jpg" alt="" loading="lazy" /><img class="outpaint-source" src="./media/outpaint-source.jpg" alt="" loading="lazy" /><div class="outpaint-status" aria-hidden="true"><span class="original">Original</span><span class="expanded">21:9 canvas</span></div></div><div class="gen-copy"><span>Outpaint</span><h3>Square to 21:9, seamlessly</h3><p>The original center holds while the room expands naturally on both sides.</p></div></article>
         </div>
       </section>
@@ -653,19 +659,32 @@
       if (!reel) return;
       const video = reel.querySelector("video");
       const tabs = [...reel.querySelectorAll("[data-reel-index]")];
+      const previous = reel.querySelector("[data-reel-previous]");
+      const next = reel.querySelector("[data-reel-next]");
+      const caption = reel.closest(".gen-card")?.querySelector("[data-video-caption]");
+      const kicker = caption?.querySelector("[data-reel-kicker]");
+      const title = caption?.querySelector("[data-reel-title]");
+      const description = caption?.querySelector("[data-reel-description]");
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       let active = 0;
       let visible = false;
       let transitionTimer;
+      const updateCaption = (clip) => {
+        if (kicker) kicker.textContent = clip.kicker;
+        if (title) title.textContent = clip.title;
+        if (description) description.textContent = clip.description;
+      };
       const selectClip = (next) => {
         if (!Number.isInteger(next) || next < 0 || next >= clips.length || next === active) return;
         active = next;
+        const clip = clips[active];
         reel.classList.add("is-switching");
         tabs.forEach((tab, index) => tab.setAttribute("aria-selected", String(index === active)));
         tabs[active]?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "nearest", inline: "center" });
+        updateCaption(clip);
         window.clearTimeout(transitionTimer);
         transitionTimer = window.setTimeout(() => {
-          video.src = clips[active];
+          video.src = clip.src;
           video.load();
           let revealed = false;
           const reveal = () => {
@@ -678,8 +697,19 @@
           window.setTimeout(reveal, 900);
         }, 220);
       };
+      const move = (offset) => selectClip((active + offset + clips.length) % clips.length);
       tabs.forEach((tab) => tab.addEventListener("click", () => selectClip(Number(tab.dataset.reelIndex))));
-      if (!reducedMotion) video.addEventListener("ended", () => selectClip((active + 1) % clips.length));
+      previous?.addEventListener("click", () => move(-1));
+      next?.addEventListener("click", () => move(1));
+      video.addEventListener("timeupdate", () => {
+        const previewEnd = clips[active]?.previewEnd;
+        if (!Number.isFinite(previewEnd) || video.currentTime < previewEnd) return;
+        if (reducedMotion) {
+          video.currentTime = 0;
+          if (visible) video.play().catch(() => {});
+        } else move(1);
+      });
+      if (!reducedMotion) video.addEventListener("ended", () => move(1));
       const reelObserver = new IntersectionObserver((entries) => {
         visible = entries[0]?.isIntersecting === true;
         if (visible) video.play().catch(() => {});
@@ -687,22 +717,31 @@
       }, { rootMargin: "180px 0px", threshold: .01 });
       reelObserver.observe(reel);
     };
-    setupVideoReel("[data-scail-reel]", [
-      "./media/scail-flower-world.mp4",
-      "./media/scail-racetrack.mp4",
-      "./media/scail-animal-replacement.mp4",
-      "./media/scail-season-habitat.mp4"
-    ]);
-    setupVideoReel("[data-ltx-reel]", [
-      "./media/ltx-prism-storm.mp4",
-      "./media/ltx-character-performance.mp4",
-      "./media/ltx-ruins.mp4",
-      "./media/ltx-dreamscape.mp4",
-      "./media/ltx-interior.mp4",
-      "./media/ltx-wrestling.mp4",
-      "./media/ltx-stylized-action.mp4",
-      "./media/ltx-rain-portrait.mp4",
-      "./media/ltx-mech-battlefield.mp4"
+    const scailCaption = {
+      kicker: "SCAIL 2 · directed video editing",
+      title: "Change the subject, object, or world",
+      description: "Transfer the original motion while preserving timing, camera movement, realistic physics, and scene-aware lighting."
+    };
+    const ltxCaption = {
+      kicker: "LTX 2.3 · image to video",
+      title: "Generate motion, performance, and atmosphere",
+      description: "Turn a still image into cinematic motion with directed camera movement, physical detail, lighting, sound, and character performance."
+    };
+    setupVideoReel("[data-video-showcase]", [
+      { src: "./media/scail-flower-world.mp4", ...scailCaption },
+      { src: "./media/scail-racetrack.mp4", ...scailCaption },
+      { src: "./media/scail-animal-replacement.mp4", ...scailCaption },
+      { src: "./media/scail-season-habitat.mp4", ...scailCaption },
+      { src: "./media/edit-aging-motion.mp4", kicker: "SCAIL 2 · edit to motion", title: "A precise edit becomes a performance", description: "The finished subject carries directly into a moving, talking study." },
+      { src: "./media/ltx-prism-storm.mp4", ...ltxCaption },
+      { src: "./media/ltx-character-performance.mp4", ...ltxCaption },
+      { src: "./media/ltx-ruins.mp4", ...ltxCaption },
+      { src: "./media/ltx-dreamscape.mp4", previewEnd: 3, ...ltxCaption },
+      { src: "./media/ltx-interior.mp4", ...ltxCaption },
+      { src: "./media/ltx-wrestling.mp4", ...ltxCaption },
+      { src: "./media/ltx-stylized-action.mp4", ...ltxCaption },
+      { src: "./media/ltx-rain-portrait.mp4", ...ltxCaption },
+      { src: "./media/ltx-mech-battlefield.mp4", ...ltxCaption }
     ]);
     const benchmarkSection = document.querySelector("[data-benchmark]");
     if (benchmarkSection) {

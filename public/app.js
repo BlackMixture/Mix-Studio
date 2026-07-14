@@ -16931,7 +16931,10 @@ let setupContextComponents = [];
 let setupPendingComponents = [];
 let setupPollTimer = null;
 let setupAutoRestart = false;
+let setupActiveStep = 'connect';
+let setupStepTouched = false;
 const setupConfirmedDifficultComponents = new Set();
+const SETUP_STEPS = ['connect', 'install', 'finish'];
 
 function generationSetupComponents() {
   const components = new Set();
@@ -16977,8 +16980,8 @@ async function ensureGenerationSetup() {
   await openInitialSetup({
     components: missing.length ? missing : required,
     message: lastMeta?.ok
-      ? 'Your prompt is ready. This workflow needs a few models or nodes before it can enter the queue.'
-      : 'Your prompt is ready. Connect ComfyUI, then install only this workflow or use the recommended starter setup.',
+      ? 'This workflow needs a few desktop tools before it can run.'
+      : 'Connect ComfyUI, then install what this workflow needs.',
   });
   return false;
 }
@@ -16988,11 +16991,78 @@ function setSetupGuideExpanded(expanded) {
   $('#setupFullGuide').hidden = !expanded;
 }
 
+function setSetupCustomExpanded(expanded) {
+  $('#setupCustomToggle').setAttribute('aria-expanded', String(expanded));
+  $('#setupCustomPanel').hidden = !expanded;
+}
+
+function setSetupStep(step, options = {}) {
+  if (!SETUP_STEPS.includes(step)) return;
+  setupActiveStep = step;
+  if (options.user) setupStepTouched = true;
+  $('#initialSetupSheet .setup-panel').dataset.setupStep = step;
+  $$('[data-setup-tab]').forEach((tab) => {
+    const active = tab.dataset.setupTab === step;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+  });
+  $$('[data-setup-pane]').forEach((pane) => {
+    const active = pane.dataset.setupPane === step;
+    pane.classList.toggle('active', active);
+    pane.hidden = !active;
+  });
+  const index = SETUP_STEPS.indexOf(step);
+  $('#setupBack').hidden = index === 0;
+  if (options.focus) $(`[data-setup-tab="${step}"]`)?.focus();
+  renderSetupFooter();
+  $('#initialSetupSheet .setup-stage')?.scrollTo({ top: 0, behavior: options.user ? 'smooth' : 'auto' });
+}
+
+function closeGenerationSetup() {
+  clearTimeout(setupPollTimer);
+  $('#initialSetupSheet').classList.remove('show');
+  syncSheetScrollLock();
+}
+
+function renderSetupFooter() {
+  if (!setupViewStatus) return;
+  const comfy = setupViewStatus.comfy || {};
+  const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
+  const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
+  const busy = officialBusy || dependencyBusy;
+  const cancellable = officialBusy || ['running', 'cancelling'].includes(setupDependencyState?.state);
+  const contextMissing = missingSetupComponents(setupContextComponents);
+  const allMissing = dependencyMissingLabels();
+  const workflowReady = !!comfy.connected && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  const restartRequired = !!setupDependencyState?.restartRequired;
+  const cancel = $('#setupCancel');
+  cancel.textContent = cancellable ? 'Stop setup' : 'Not now';
+  cancel.classList.toggle('stopping', cancellable);
+  cancel.disabled = comfy.install?.state === 'cancelling' || setupDependencyState?.state === 'cancelling';
+  const next = $('#setupNext');
+  if (setupActiveStep === 'connect') {
+    next.textContent = 'Continue';
+    next.disabled = busy || !comfy.connected;
+  } else if (setupActiveStep === 'install') {
+    next.textContent = 'Review';
+    next.disabled = busy || (!workflowReady && !restartRequired);
+  } else {
+    next.textContent = workflowReady ? 'Done' : 'Close';
+    next.disabled = busy;
+  }
+}
+
 async function openInitialSetup(options = {}) {
   setupContextComponents = [...new Set((options.components || []).filter(Boolean))];
+  setupStepTouched = false;
+  setupActiveStep = 'connect';
+  setSetupGuideExpanded(false);
+  setSetupCustomExpanded(false);
   $('#setupIntro').textContent = options.message
-    || 'Your prompt and settings stay in place. Mix Studio can prepare the missing desktop tools now, or you can choose exactly what to install.';
+    || 'Connect ComfyUI, install a workflow, and check that it is ready.';
   $('#initialSetupSheet').classList.add('show');
+  setSetupStep('connect');
   syncSheetScrollLock();
   await refreshSetupStatus();
 }
@@ -17018,32 +17088,44 @@ function renderInitialSetup() {
   const comfy = setupViewStatus.comfy || {};
   const install = comfy.install || {};
   const dependency = setupDependencyState || lastMeta?.dependencies?.install || { state: 'idle' };
-  const busy = install.state === 'running' || ['running', 'cancelling', 'restarting'].includes(dependency.state);
+  const officialBusy = ['running', 'cancelling'].includes(install.state);
+  const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(dependency.state);
+  const busy = officialBusy || dependencyBusy;
   const comfyCard = $('#setupComfyStatus');
   comfyCard.classList.toggle('ready', !!comfy.connected);
   comfyCard.classList.toggle('attention', !comfy.connected);
   $('#setupComfyStatusCopy').textContent = comfy.connected
-    ? 'Connected and responding'
-    : ((comfy.configuredPath || comfy.detectedPath) ? 'Found, waiting for ComfyUI to run' : 'Not connected yet');
+    ? 'Connected'
+    : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed');
 
   const contextMissing = missingSetupComponents(setupContextComponents);
   const allMissing = dependencyMissingLabels();
   const workflowCard = $('#setupWorkflowStatus');
   const workflowReady = !!comfy.connected && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  const restartRequired = !!dependency.restartRequired;
   workflowCard.classList.toggle('ready', workflowReady);
   workflowCard.classList.toggle('attention', !workflowReady);
   $('#setupWorkflowStatusCopy').textContent = setupContextComponents.length
-    ? (workflowReady ? 'Ready to generate' : `${contextMissing.length || setupContextComponents.length} required group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} need attention`)
-    : (comfy.connected ? (allMissing.length ? `${allMissing.length} optional groups available to install` : 'All enabled workflows ready') : 'Scan begins after ComfyUI connects');
+    ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
+    : (comfy.connected ? (allMissing.length ? `${allMissing.length} available` : 'Ready') : 'Waiting for ComfyUI');
+
+  const connectReady = !!comfy.connected;
+  const installReady = workflowReady || restartRequired;
+  $('#setupTabConnectStatus').textContent = connectReady ? 'Connected' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed');
+  $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || allMissing.length || setupContextComponents.length || 1} needed`);
+  $('#setupTabFinishStatus').textContent = workflowReady ? 'Ready' : (restartRequired ? 'Restart' : 'Waiting');
+  $('#setupTabConnect').classList.toggle('complete', connectReady);
+  $('#setupTabInstall').classList.toggle('complete', installReady);
+  $('#setupTabInstall').classList.toggle('working', dependencyBusy);
+  $('#setupTabFinish').classList.toggle('complete', workflowReady);
 
   const hardware = setupViewStatus.hardware || {};
   const quickFit = setupViewStatus.quickFit || {};
   $('#setupHardwareCopy').textContent = hardware.gpuAvailable
     ? `${hardware.gpuName || 'NVIDIA GPU'}${hardware.vramGb ? ` · ${hardware.vramGb} GB VRAM` : ' · VRAM unavailable'}${hardware.memoryGb ? ` · ${hardware.memoryGb} GB RAM` : ''}`
     : 'No NVIDIA GPU detected';
-  $('#setupHardwareFit').textContent = quickFit.label
-    ? `${quickFit.label}. ${quickFit.detail || ''}`
-    : 'Model recommendations will match this PC.';
+  $('#setupHardwareFit').textContent = quickFit.label || 'Compatibility not yet available';
+  $('#setupHardwareSummary').title = quickFit.detail || 'Recommendations match the generation computer.';
   $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
 
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
@@ -17051,13 +17133,21 @@ function renderInitialSetup() {
   if (document.activeElement !== $('#setupComfyUrl')) $('#setupComfyUrl').value = comfy.url || 'http://127.0.0.1:8188';
   if (document.activeElement !== $('#setupComfyPath') && !$('#setupComfyPath').value) $('#setupComfyPath').value = pathValue;
   if (document.activeElement !== $('#setupModelsPath') && !$('#setupModelsPath').value) $('#setupModelsPath').value = modelsValue;
-  $('#setupDetectedPath').textContent = comfy.detectedPath
-    ? `Detected on this PC: ${comfy.detectedPath}`
-    : (comfy.configuredPath ? `Configured folder: ${comfy.configuredPath}` : 'No initialized ComfyUI installation was detected yet.');
-  $('#setupUseDetected').disabled = busy || !comfy.detectedPath;
-  $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial;
+  $('#setupDetectedPath').textContent = comfy.connected
+    ? 'ComfyUI is connected on this computer.'
+    : (comfy.detectedPath ? 'ComfyUI was found on this computer.' : (comfy.configuredPath ? 'A saved ComfyUI connection is available.' : 'ComfyUI has not been connected yet.'));
+  $('#setupUseDetected').disabled = busy || !comfy.detectedPath || !state.profileIsOwner;
+  $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial || !state.profileIsOwner;
   $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Downloads the signed official ComfyUI Desktop installer' : 'Available when Mix Studio is running on Windows';
-  $('#setupSaveConnection').disabled = busy;
+  $('#setupSaveConnection').disabled = busy || !state.profileIsOwner;
+  const canBrowse = setupViewStatus.platform === 'win32' && state.profileIsOwner && !busy;
+  $('#setupBrowseComfy').disabled = !canBrowse;
+  $('#setupBrowseModels').disabled = !canBrowse;
+  const browseTitle = setupViewStatus.platform === 'win32'
+    ? 'Opens a folder picker on the generation computer'
+    : 'Browse opens on the Windows generation computer. Enter the path manually here.';
+  $('#setupBrowseComfy').title = browseTitle;
+  $('#setupBrowseModels').title = browseTitle;
 
   const missing = dependencyMissingLabels();
   const selected = syncDependencySelection(missing);
@@ -17075,20 +17165,21 @@ function renderInitialSetup() {
   const requiredNow = contextMissing.length ? contextMissing : setupContextComponents;
   const currentFit = setupFitForComponents(requiredNow);
   quick.querySelector('span').textContent = quickFit.label
-    ? `Install the recommended image starter. ${quickFit.label}.`
-    : 'Install ComfyUI if needed, then the recommended image starter.';
-  if (currentFit) current.querySelector('span').textContent = `Download only what this generation needs. ${currentFit.label}.`;
+    ? `Image starter · ${quickFit.label}`
+    : 'A useful image starter.';
+  if (currentFit) current.querySelector('span').textContent = `Only this generation · ${currentFit.label}`;
   quick.disabled = busy || !state.profileIsOwner;
   current.hidden = !setupContextComponents.length || workflowReady;
   current.disabled = busy || !state.profileIsOwner;
 
   const operation = $('#setupOperation');
   let operationState = null;
-  if (install.state === 'running' || install.state === 'error') operationState = install;
+  if (['running', 'cancelling', 'error', 'cancelled'].includes(install.state)) operationState = install;
   else if (dependency.state && dependency.state !== 'idle') operationState = dependency;
   operation.hidden = !operationState;
   if (operationState) {
-    $('#setupOperationTitle').textContent = operationState.state === 'error' ? 'Setup needs attention' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up your desktop');
+    $('#setupOperationTitle').textContent = operationState.state === 'error' ? 'Setup needs attention'
+      : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up'));
     $('#setupOperationCopy').textContent = operationState.error || operationState.message || 'Working…';
     const total = Number(operationState.total || 0);
     const completed = Number(operationState.completed || 0);
@@ -17098,12 +17189,25 @@ function renderInitialSetup() {
   $('#setupRestartComfy').hidden = !dependency.restartRequired;
   $('#setupRestartComfy').disabled = busy || !restartInfo.canRestart;
   $('#setupCheckAgain').disabled = busy;
+
+  $('#setupFinishNote').textContent = workflowReady
+    ? 'Ready to generate.'
+    : (restartRequired ? 'Restart ComfyUI, then check again.' : 'Complete the highlighted step first.');
+
+  let recommendedStep = !comfy.connected ? 'connect' : (installReady ? 'finish' : 'install');
+  if (officialBusy) recommendedStep = 'connect';
+  if (dependencyBusy) recommendedStep = 'install';
+  if (!setupStepTouched || (setupActiveStep === 'install' && (workflowReady || restartRequired))) {
+    setSetupStep(recommendedStep);
+  } else {
+    setSetupStep(setupActiveStep);
+  }
 }
 
 function scheduleSetupPoll() {
   clearTimeout(setupPollTimer);
   if (!$('#initialSetupSheet').classList.contains('show')) return;
-  const comfyBusy = setupViewStatus?.comfy?.install?.state === 'running';
+  const comfyBusy = ['running', 'cancelling'].includes(setupViewStatus?.comfy?.install?.state);
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
   if (!comfyBusy && !dependencyBusy && !setupPendingComponents.length) return;
   setupPollTimer = setTimeout(() => refreshSetupStatus(), 1000);
@@ -17112,7 +17216,7 @@ function scheduleSetupPoll() {
 async function refreshSetupStatus() {
   try {
     setupViewStatus = await api('/api/setup/status');
-    if (setupViewStatus.comfy?.install?.state === 'error') setupPendingComponents = [];
+    if (['error', 'cancelled'].includes(setupViewStatus.comfy?.install?.state)) setupPendingComponents = [];
     setupDependencyState = await api('/api/dependencies/status').catch(() => setupDependencyState);
     if (['error', 'cancelled'].includes(setupDependencyState?.state)) setupAutoRestart = false;
     if (setupViewStatus.comfy?.connected) await loadMeta(true);
@@ -17194,6 +17298,7 @@ async function startSetupDependencies(components) {
       await startOfficialComfyFromSetup();
       return true;
     }
+    setSetupStep('connect', { user: true });
     setSetupGuideExpanded(true);
     toast(setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.', true);
     return false;
@@ -17208,6 +17313,7 @@ async function startSetupDependencies(components) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components: filtered }),
   });
   setupDependencyState = result.install;
+  setSetupStep('install', { user: true });
   if (lastMeta?.dependencies) lastMeta.dependencies.install = result.install;
   renderInitialSetup();
   scheduleSetupPoll();
@@ -17216,6 +17322,23 @@ async function startSetupDependencies(components) {
 
 $('#setupGuideToggle').addEventListener('click', () => {
   setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');
+});
+$('#setupCustomToggle').addEventListener('click', () => {
+  setSetupCustomExpanded($('#setupCustomToggle').getAttribute('aria-expanded') !== 'true');
+});
+$$('[data-setup-tab]').forEach((tab) => {
+  tab.addEventListener('click', () => setSetupStep(tab.dataset.setupTab, { user: true }));
+  tab.addEventListener('keydown', (event) => {
+    const current = SETUP_STEPS.indexOf(tab.dataset.setupTab);
+    let next = current;
+    if (event.key === 'ArrowRight') next = (current + 1) % SETUP_STEPS.length;
+    else if (event.key === 'ArrowLeft') next = (current - 1 + SETUP_STEPS.length) % SETUP_STEPS.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = SETUP_STEPS.length - 1;
+    else return;
+    event.preventDefault();
+    setSetupStep(SETUP_STEPS[next], { user: true, focus: true });
+  });
 });
 $('#setupQuickStart').addEventListener('click', async () => {
   try {
@@ -17241,8 +17364,38 @@ $('#setupUseDetected').addEventListener('click', async () => {
     await saveSetupConnection(detected);
   } catch (error) { toast(error.message, true); }
 });
+async function browseSetupDirectory(kind) {
+  const button = kind === 'models' ? $('#setupBrowseModels') : $('#setupBrowseComfy');
+  const previous = button.textContent;
+  button.disabled = true;
+  if (kind === 'models') button.textContent = 'Opening…';
+  try {
+    const result = await api('/api/setup/browse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }),
+    });
+    if (!result.directory) return;
+    setSetupGuideExpanded(true);
+    if (kind === 'models') {
+      $('#setupModelsPath').value = result.directory;
+    } else {
+      $('#setupComfyPath').value = result.directory;
+      $('#setupModelsPath').value = `${result.directory.replace(/[\\/]+$/, '')}\\models`;
+      await saveSetupConnection(result.directory);
+    }
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    if (kind === 'models') button.textContent = previous;
+    renderInitialSetup();
+  }
+}
+$('#setupBrowseComfy').addEventListener('click', () => browseSetupDirectory('comfy'));
+$('#setupBrowseModels').addEventListener('click', () => browseSetupDirectory('models'));
 $('#setupInstallComfy').addEventListener('click', async () => {
-  try { await startOfficialComfyFromSetup(); }
+  try {
+    setSetupStep('connect', { user: true });
+    await startOfficialComfyFromSetup();
+  }
   catch (error) { toast(error.message, true); }
 });
 $('#setupSaveConnection').addEventListener('click', async () => {
@@ -17276,10 +17429,33 @@ $('#setupCheckAgain').addEventListener('click', async () => {
   await loadMeta(true, true);
   await refreshSetupStatus();
 });
-$('#setupEditProfile').addEventListener('click', () => {
-  $('#initialSetupSheet').classList.remove('show');
-  syncSheetScrollLock();
-  openProfileEdit();
+$('#setupBack').addEventListener('click', () => {
+  const index = SETUP_STEPS.indexOf(setupActiveStep);
+  setSetupStep(SETUP_STEPS[Math.max(0, index - 1)], { user: true });
+});
+$('#setupNext').addEventListener('click', () => {
+  const index = SETUP_STEPS.indexOf(setupActiveStep);
+  if (index >= SETUP_STEPS.length - 1) return closeGenerationSetup();
+  setSetupStep(SETUP_STEPS[index + 1], { user: true });
+});
+$('#setupCancel').addEventListener('click', async () => {
+  const officialState = setupViewStatus?.comfy?.install?.state;
+  const dependencyState = setupDependencyState?.state;
+  try {
+    if (officialState === 'running') {
+      const result = await api('/api/setup/comfy/cancel', { method: 'POST' });
+      if (setupViewStatus?.comfy) setupViewStatus.comfy.install = result.install;
+    } else if (dependencyState === 'running') {
+      const result = await api('/api/dependencies/cancel', { method: 'POST' });
+      setupDependencyState = result.install;
+    }
+  } catch (error) {
+    toast(error.message, true);
+    return;
+  }
+  setupPendingComponents = [];
+  setupAutoRestart = false;
+  closeGenerationSetup();
 });
 $('#dependencyOpenSetup').addEventListener('click', () => {
   $('#settingsSheet').classList.remove('show');
