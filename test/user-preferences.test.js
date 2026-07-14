@@ -11,6 +11,11 @@ test('generation defaults are safe and preserve legacy behavior', () => {
   assert.equal(defaults.seed.mode, 'random');
 });
 
+test('video duration defaults preserve supported tenth-second precision', () => {
+  assert.equal(normalizeGenerationDefaults({ video: { duration: 12.44 } }).video.duration, 12.4);
+  assert.equal(normalizeGenerationDefaults({ video: { duration: 12.46 } }).video.duration, 12.5);
+});
+
 test('context overrides adjust suggestions without changing observations', () => {
   const context = { 'Style.safetensors': { uses: 4, defaultStrength: 0.8, phrases: [{ text: 'film still', count: 3 }], suggestion: 'film still' } };
   const merged = mergeContextOverrides(context, { 'Style.safetensors': { defaultStrength: 1.1, suggestion: 'soft studio portrait' } });

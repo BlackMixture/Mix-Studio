@@ -5951,7 +5951,7 @@ async function ensureAudioUploaded(a) {
   return a.uploadedName;
 }
 const waveRedraw = {};
-function wireAudioChip(prefix, stateKey, durInputId, durValId) {
+function wireAudioChip(prefix, stateKey, durInputId) {
   const chip = $('#' + prefix + 'AudioChip');
   const box = $('#' + prefix + 'AudioTrim');
   const lbl = $('#' + prefix + 'TrimLabel');
@@ -6003,7 +6003,6 @@ function wireAudioChip(prefix, stateKey, durInputId, durValId) {
     lbl.textContent = `${a.label || 'audio'} · ${fmtT(a.trimStart)} – ${fmtT(a.trimEnd)} · ${len.toFixed(1)}s`;
     const durEl = $('#' + durInputId);
     durEl.value = Math.max(1, Math.min(Number(durEl.max) || 15, Math.round(len)));
-    $('#' + durValId).textContent = durEl.value;
     durEl.dispatchEvent(new Event('input', { bubbles: true }));
   };
   waveRedraw[stateKey] = () => { drawWave(); layout(); };
@@ -6133,8 +6132,8 @@ function setAudioChipVisual(chip, active) {
 window.addEventListener('resize', () => {
   Object.values(waveRedraw).forEach((fn) => fn());
 });
-wireAudioChip('vid', 'vidAudio', 'vidDur', 'vidDurVal');
-wireAudioChip('anim', 'animAudio', 'animDur', 'animDurVal');
+wireAudioChip('vid', 'vidAudio', 'vidDur');
+wireAudioChip('anim', 'animAudio', 'animDur');
 
 async function restorePersistedWorkspaceMedia() {
   const saved = persistedWorkspaceAudio;
@@ -8621,25 +8620,74 @@ function videoDurationMax(engine) {
 }
 
 function clampVideoDurationInput(input, engine) {
-  const max = videoDurationMax(engine);
+  const min = Number(input.min) || 1;
+  const step = Math.max(0.001, Number(input.step) || 1);
+  const rawMax = videoDurationMax(engine);
+  const maxSteps = Math.max(0, Math.floor(((rawMax - min) / step) + 1e-8));
+  const max = Number((min + maxSteps * step).toFixed(3));
   const requested = Number(input.value);
   input.max = String(max);
-  input.value = String(Math.max(1, Math.min(max, Number.isFinite(requested) ? requested : 5)));
+  const bounded = Math.max(min, Math.min(max, Number.isFinite(requested) ? requested : 5));
+  const snapped = min + Math.round((bounded - min) / step) * step;
+  input.value = String(Number(Math.max(min, Math.min(max, snapped)).toFixed(3)));
   return max;
+}
+
+function formatVideoDuration(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '5';
+  return number.toFixed(1).replace(/\.0$/, '');
+}
+
+function videoDurationTickIncrement(min, max) {
+  const span = max - min;
+  if (span > 30) return 5;
+  if (span > 15) return 2;
+  return 1;
+}
+
+function renderVideoDurationSlider() {
+  const input = $('#vidDur');
+  const min = Number(input.min) || 1;
+  const max = Number(input.max) || 20;
+  const value = Math.max(min, Math.min(max, Number(input.value) || min));
+  const displayValue = formatVideoDuration(value);
+  const progress = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  $('#vidDurationSlider').style.setProperty('--duration-progress', `${progress}%`);
+  const manual = $('#vidDurManual');
+  manual.min = String(min);
+  manual.max = String(max);
+  manual.step = input.step || '0.1';
+  if (document.activeElement !== manual) manual.value = displayValue;
+  $('#vidDurBubble').textContent = displayValue;
+  $('#vidDurMin').textContent = `${formatVideoDuration(min)}s`;
+  $('#vidDurMax').textContent = `${formatVideoDuration(max)}s`;
+  input.setAttribute('aria-valuetext', `${displayValue} second${value === 1 ? '' : 's'}`);
+
+  const increment = videoDurationTickIncrement(min, max);
+  const rangeKey = `${min}:${max}:${increment}`;
+  const ticks = $('#vidDurTicks');
+  if (ticks.dataset.range === rangeKey) return;
+  const values = [];
+  for (let tick = min; tick <= max; tick += increment) values.push(tick);
+  if (values[values.length - 1] !== max) values.push(max);
+  ticks.replaceChildren(...values.map((tick) => {
+    const mark = document.createElement('i');
+    mark.style.left = `${max > min ? ((tick - min) / (max - min)) * 100 : 0}%`;
+    return mark;
+  }));
+  ticks.dataset.range = rangeKey;
 }
 
 function syncVideoDurationLimit() {
   const durationInput = $('#vidDur');
   const max = clampVideoDurationInput(durationInput, state.vidEngine);
-  $('#vidDurScrub').setAttribute('aria-valuemax', String(max));
   const cameraGuided = state.vidEngine === 'ltx' && cameraMotionReferenceSelected();
   const longLtx = state.vidEngine === 'ltx' && Number(durationInput.value) > 15;
   $('#vidDurationHint').textContent = cameraGuided
-    ? `Camera guide · up to ${max}s`
-    : (longLtx ? 'Long clip · slower, higher memory' : 'Video length');
-  $('#durationPickerCopy').textContent = cameraGuided
-    ? `Seconds · camera reference capped at ${max}`
-    : (state.vidEngine === 'ltx' ? 'Seconds · up to 20 with LTX 2.3' : 'Seconds');
+    ? `Camera guide · up to ${formatVideoDuration(max)}s`
+    : (longLtx ? 'Long clip · slower, higher memory' : 'Video length · 0.1s steps');
+  renderVideoDurationSlider();
 }
 
 function syncAnimateDurationLimit() {
@@ -8662,14 +8710,9 @@ function updateVideoTuningSummary() {
     ? `${duration}s · ${scailMode}`
     : (motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`);
   $('#vidControlsNote').textContent = summary;
-  $('#vidDurVal').textContent = String(duration);
-  $('#vidDurPrev').textContent = String(Math.max(Number(durationInput.min) || 1, duration - (Number(durationInput.step) || 1)));
-  $('#vidDurNext').textContent = String(Math.min(Number(durationInput.max) || 15, duration + (Number(durationInput.step) || 1)));
   $('#vidFreeVal').textContent = String(motion);
   $('#vidFreePrev').textContent = String(Math.max(Number($('#vidFree').min) || 0, motion - (Number($('#vidFree').step) || 1)));
   $('#vidFreeNext').textContent = String(Math.min(Number($('#vidFree').max) || 100, motion + (Number($('#vidFree').step) || 1)));
-  $('#vidDurScrub').setAttribute('aria-valuenow', String(duration));
-  $('#vidDurScrub').setAttribute('aria-valuemax', $('#vidDur').max || '15');
   $('#vidFreeScrub').setAttribute('aria-valuenow', String(motion));
 }
 
@@ -8702,10 +8745,7 @@ function renderVideoValueWheel(inputId, wheelId) {
 function centerVideoValueWheel(wheelId) {
   const active = $('#' + wheelId + ' .duration-wheel-option.active');
   if (!active) return;
-  const horizontal = $('#' + wheelId).classList.contains('horizontal-duration-wheel');
-  active.scrollIntoView(horizontal
-    ? { inline: 'center', block: 'nearest', behavior: 'auto' }
-    : { block: 'center', behavior: 'auto' });
+  active.scrollIntoView({ block: 'center', behavior: 'auto' });
 }
 
 function syncVideoValueWheelFromScroll(inputId, wheelId) {
@@ -8713,14 +8753,11 @@ function syncVideoValueWheelFromScroll(inputId, wheelId) {
   const wheel = $('#' + wheelId);
   const options = $$('#' + wheelId + ' .duration-wheel-option');
   if (!options.length) return;
-  const horizontal = wheel.classList.contains('horizontal-duration-wheel');
   const wheelRect = wheel.getBoundingClientRect();
-  const center = horizontal
-    ? wheelRect.left + wheel.clientWidth / 2
-    : wheelRect.top + wheel.clientHeight / 2;
+  const center = wheelRect.top + wheel.clientHeight / 2;
   const nearest = options.reduce((best, option) => {
     const rect = option.getBoundingClientRect();
-    const optionCenter = horizontal ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
+    const optionCenter = rect.top + rect.height / 2;
     const distance = Math.abs(optionCenter - center);
     return !best || distance < best.distance ? { option, distance } : best;
   }, null);
@@ -8745,15 +8782,7 @@ function wireVideoValueWheel(inputId, wheelId) {
   }, { passive: true });
 }
 
-wireVideoValueWheel('vidDur', 'durationWheel');
 wireVideoValueWheel('vidFree', 'motionWheel');
-
-function openDurationPicker() {
-  syncVideoDurationLimit();
-  renderVideoValueWheel('vidDur', 'durationWheel');
-  $('#durationPickerSheet').classList.add('show');
-  requestAnimationFrame(() => centerVideoValueWheel('durationWheel'));
-}
 
 function openMotionPicker() {
   renderVideoValueWheel('vidFree', 'motionWheel');
@@ -8761,7 +8790,6 @@ function openMotionPicker() {
   requestAnimationFrame(() => centerVideoValueWheel('motionWheel'));
 }
 
-$('#durationPickerDone').addEventListener('click', () => $('#durationPickerSheet').classList.remove('show'));
 $('#motionPickerDone').addEventListener('click', () => $('#motionPickerSheet').classList.remove('show'));
 
 function setVideoScrubValue(input, value) {
@@ -8774,7 +8802,7 @@ function setVideoScrubValue(input, value) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function wireVideoScrubber(buttonId, inputId, onTap, { horizontal = false } = {}) {
+function wireVideoScrubber(buttonId, inputId, onTap) {
   const button = $('#' + buttonId);
   const input = $('#' + inputId);
   let drag = null;
@@ -8785,9 +8813,7 @@ function wireVideoScrubber(buttonId, inputId, onTap, { horizontal = false } = {}
   });
   button.addEventListener('pointermove', (event) => {
     if (!drag || drag.id !== event.pointerId) return;
-    // Horizontal duration follows the visible number strip: drag toward the
-    // larger values on the right to increase, and left to decrease.
-    const distance = horizontal ? event.clientX - drag.x : drag.y - event.clientY;
+    const distance = drag.y - event.clientY;
     const delta = Math.round(distance / 10);
     if (delta) drag.moved = true;
     setVideoScrubValue(input, drag.value + delta * (Number(input.step) || 1));
@@ -8803,8 +8829,7 @@ function wireVideoScrubber(buttonId, inputId, onTap, { horizontal = false } = {}
   button.addEventListener('pointercancel', finish);
   button.addEventListener('wheel', (event) => {
     event.preventDefault();
-    const wheelDelta = horizontal && Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-    setVideoScrubValue(input, Number(input.value) + (wheelDelta < 0 ? 1 : -1) * (Number(input.step) || 1));
+    setVideoScrubValue(input, Number(input.value) + (event.deltaY < 0 ? 1 : -1) * (Number(input.step) || 1));
   }, { passive: false });
   button.addEventListener('keydown', (event) => {
     let next = null;
@@ -8821,7 +8846,6 @@ function wireVideoScrubber(buttonId, inputId, onTap, { horizontal = false } = {}
   });
 }
 
-wireVideoScrubber('vidDurScrub', 'vidDur', openDurationPicker, { horizontal: true });
 wireVideoScrubber('vidFreeScrub', 'vidFree', openMotionPicker);
 
 function setLorasExpanded(open) {
@@ -9719,6 +9743,31 @@ function pickVidRef() {
 $('#vidDur').addEventListener('input', () => {
   updateVideoTuningSummary();
   if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
+});
+function syncManualVideoDuration() {
+  const manual = $('#vidDurManual');
+  const duration = $('#vidDur');
+  if (manual.value === '' || !manual.checkValidity() || !Number.isFinite(Number(manual.value))) {
+    renderVideoDurationSlider();
+    return;
+  }
+  duration.value = manual.value;
+  clampVideoDurationInput(duration, state.vidEngine);
+  updateVideoTuningSummary();
+  if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
+}
+$('#vidDurManual').addEventListener('input', syncManualVideoDuration);
+$('#vidDurManual').addEventListener('blur', syncManualVideoDuration);
+$('#vidDurManual').addEventListener('focus', (event) => event.currentTarget.select());
+$('#vidDurManual').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.currentTarget.blur();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    event.currentTarget.value = formatVideoDuration($('#vidDur').value);
+    event.currentTarget.blur();
+  }
 });
 $('#vid4k').addEventListener('click', () => $('#vid4k').classList.toggle('active'));
 

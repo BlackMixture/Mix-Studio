@@ -16,6 +16,7 @@ test('Advanced Settings exposes profile defaults and contextual suggestions', ()
   assert.match(html, /id="defaultCreateCfg"/);
   assert.match(html, /id="defaultEditDenoise"/);
   assert.match(html, /id="defaultVideoMotion"/);
+  assert.match(html, /id="defaultVideoDuration"[^>]*step="0\.1"/);
   assert.match(html, /id="contextPreferenceList"/);
 });
 

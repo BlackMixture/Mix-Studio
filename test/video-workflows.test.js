@@ -31,6 +31,7 @@ test('LTX 2.3 accepts up to 20 seconds and preserves 8n+1 frame counts', () => {
   assert.equal(ltxFramesForSeconds(20, 24), 481);
   assert.equal(ltxFramesForSeconds(20, 25), 497);
   assert.equal((ltxFramesForSeconds(20, 25) - 1) % 8, 0);
+  assert.equal((ltxFramesForSeconds(12.4, 25) - 1) % 8, 0);
   assert.equal(ltxFramesForSeconds(20, 25, 15), 377);
 });
 
@@ -58,6 +59,7 @@ test('SCAIL frame-rate choices default to 16 and preserve 4n+1 frame counts at 1
   assert.equal(scailFramesForSeconds(5), 81);
   assert.equal(scailFramesForSeconds(12), 193);
   assert.equal((scailFramesForSeconds(12) - 1) % 4, 0);
+  assert.equal((scailFramesForSeconds(12.4) - 1) % 4, 0);
   assert.equal(scailFramesForSeconds(5, 24), 121);
   assert.equal(scailFramesForSeconds(12, 24), 289);
   assert.equal((scailFramesForSeconds(12, 24) - 1) % 4, 0);
