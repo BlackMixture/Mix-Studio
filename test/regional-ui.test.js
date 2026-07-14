@@ -88,7 +88,10 @@ test('selected-region inspector appears below the canvas with visual asset input
   assert.match(styleCss, /\.region-settings-inner \{[\s\S]*?linear-gradient\(180deg,[\s\S]*?var\(--selected-region-color\) 18%[\s\S]*?#000 88%/);
   assert.match(styleCss, /\.region-settings-inner \{[\s\S]*?padding: 0 14px;[\s\S]*?border: 0 solid/);
   assert.match(styleCss, /\.region-settings\.show \.region-settings-inner \{ padding-block: 14px; border-width: 1px; \}/);
-  assert.match(styleCss, /\.region-settings-head span \{[\s\S]*?var\(--selected-region-color\) 72%/);
+  assert.match(indexHtml, /id="regionSettingsTitle">Selected Region 1<\/strong>/);
+  assert.doesNotMatch(indexHtml, /<span>Selected region<\/span>/);
+  assert.match(appJs, /#regionSettingsTitle'\)\.textContent = `Selected Region \$\{index \+ 1\}`/);
+  assert.match(styleCss, /\.region-settings-head strong \{[\s\S]*?var\(--selected-region-color\) 72%/);
 });
 
 test('Region keeps the compact phone picker and reuses Image resolution on wider screens', () => {

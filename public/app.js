@@ -2385,7 +2385,7 @@ function animateAssetPickerEntrance(panel, trigger) {
       opacity: 0,
       offset: 1,
     },
-  ], { duration: 480, easing: 'linear', fill: 'both' });
+  ], { duration: 300, easing: 'linear', fill: 'both' });
 
   let finished = false;
   const finish = () => {
@@ -3965,7 +3965,7 @@ function syncRegionSettings(focusPrompt) {
   settings.inert = !open;
   settings.setAttribute('aria-hidden', String(!open));
   if (region) {
-    $('#regionSettingsTitle').textContent = `Region ${index + 1} settings`;
+    $('#regionSettingsTitle').textContent = `Selected Region ${index + 1}`;
   }
   if (open && focusPrompt) setTimeout(() => $('#regionDescInput').focus(), 240);
 }

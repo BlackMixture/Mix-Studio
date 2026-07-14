@@ -102,10 +102,10 @@ test('source picker uses a shared-element morph from the pressed trigger', () =>
   assert.match(appJs, /morph\.innerHTML = trigger\.innerHTML/);
   assert.match(appJs, /trigger\.classList\.add\('asset-picker-trigger-morphing'\)/);
   assert.match(appJs, /left: px\(triggerRect\.left - pop\)[\s\S]*?width: px\(triggerRect\.width \+ pop \* 2\)/);
-  assert.match(appJs, /duration: 480, easing: 'linear'/);
+  assert.match(appJs, /duration: 300, easing: 'linear'/);
   assert.match(appJs, /recentPointerTrigger \|\| focused/);
   assert.match(styleCss, /\.asset-picker-morph \{[\s\S]*?position: fixed;[\s\S]*?will-change: left, top, width, height, border-radius, opacity, box-shadow;/);
-  assert.match(styleCss, /@keyframes assetPickerPanelResolve \{[\s\S]*?0%, 64% \{ opacity: 0; transform: scale\(\.985\); \}/);
+  assert.match(styleCss, /@keyframes assetPickerPanelResolve \{[\s\S]*?0%, 56% \{ opacity: 0; transform: scale\(\.985\); \}/);
   assert.doesNotMatch(styleCss, /@keyframes assetPickerIn/);
 });
 

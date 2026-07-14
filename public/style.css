@@ -3381,7 +3381,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .prompt-mention-option i { color: #9db7ff; font-style: normal; font-size: 18px; }
 .prompt-mention-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 #assetPickerSheet { align-items: center; padding: 12px; }
-#assetPickerSheet.show { animation: assetPickerBackdropIn 380ms ease-out both; }
+#assetPickerSheet.show { animation: assetPickerBackdropIn 220ms ease-out both; }
 #assetPickerSheet .asset-picker-panel {
   width: min(560px, calc(100vw - 24px));
   max-height: min(86dvh, 760px);
@@ -3392,7 +3392,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   animation: none;
 }
 #assetPickerSheet .asset-picker-panel.asset-picker-opening {
-  animation: assetPickerPanelResolve 480ms cubic-bezier(.2,.76,.2,1) both;
+  animation: assetPickerPanelResolve 300ms cubic-bezier(.2,.76,.2,1) both;
   pointer-events: none;
 }
 .asset-picker-morph {
@@ -3407,7 +3407,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   will-change: left, top, width, height, border-radius, opacity, box-shadow;
 }
 .asset-picker-morph > * {
-  animation: assetPickerMorphContentOut 170ms ease-out 35ms both;
+  animation: assetPickerMorphContentOut 100ms ease-out 12ms both;
 }
 .asset-picker-trigger-morphing {
   opacity: 0 !important;
@@ -3417,7 +3417,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   from { background-color: rgba(0,0,0,0); }
 }
 @keyframes assetPickerPanelResolve {
-  0%, 64% { opacity: 0; transform: scale(.985); }
+  0%, 56% { opacity: 0; transform: scale(.985); }
   82% { opacity: 1; transform: scale(1); }
   to { opacity: 1; transform: none; }
 }
@@ -6014,15 +6014,11 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   gap: 12px;
   padding-top: 2px;
 }
-.region-settings-head > div:first-child { display: grid; gap: 2px; }
-.region-settings-head span {
+.region-settings-head strong {
   color: color-mix(in srgb, var(--selected-region-color) 72%, #fff);
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 850;
 }
-.region-settings-head strong { color: var(--ink-soft); font-size: 13px; }
 .region-settings-actions { display: flex; align-items: center; gap: 8px; }
 .region-settings-actions small { color: var(--muted-2); font-size: 10px; font-weight: 800; }
 .region-settings-actions button {
