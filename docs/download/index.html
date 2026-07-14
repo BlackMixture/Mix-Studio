@@ -81,6 +81,7 @@
     .hero-visual.is-desktop-focused .phone-preview { z-index: 5; opacity: .34; filter: blur(1.5px) saturate(.5); transform: translateX(34%) scale(.76); }
     .hero-visual.is-phone-focused .window { opacity: .13; filter: blur(2px) saturate(.45); transform: scale(.96); }
     .hero-visual.is-phone-focused .phone-preview { right: 50%; bottom: 50%; z-index: 4; opacity: 1; filter: none; transform: translate(50%,50%) scale(1.2); box-shadow: 0 36px 90px rgba(0,0,0,.82),0 0 0 1px rgba(220,228,255,.24); }
+    .hero-visual.is-phone-focused .phone-preview.is-holding { filter: brightness(1.08); }
     .hero-visual.is-phone-focused .hero-integrations { opacity: 0; pointer-events: none; }
     .hero-integrations { position: absolute; bottom: -54px; left: 18px; z-index: 3; display: flex; align-items: center; gap: 8px; transition: opacity 240ms ease; }
     .hero-integration { min-height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; border: 0; border-radius: 12px; background: rgba(7,9,14,.9); color: var(--soft); box-shadow: 0 12px 30px rgba(0,0,0,.34); font-size: 10px; font-weight: 800; line-height: 1; backdrop-filter: blur(10px); }
@@ -739,20 +740,28 @@
       for (const preview of previews) {
         let holdTimer = 0;
         let pointerState = null;
-        const clearPress = () => {
+        const stopHoldTimer = () => {
           window.clearTimeout(holdTimer);
           holdTimer = 0;
+        };
+        const clearPress = () => {
+          stopHoldTimer();
           preview.classList.remove("is-holding");
         };
         const releasePreview = () => {
+          const pointerId = pointerState?.id;
           pointerState = null;
           clearPress();
           if (activeFocus === preview.dataset.heroPreview) setHeroFocus("");
+          if (pointerId != null && preview.hasPointerCapture?.(pointerId)) {
+            try { preview.releasePointerCapture(pointerId); } catch { /* pointer already released */ }
+          }
         };
         preview.addEventListener("pointerdown", (event) => {
           if (event.pointerType === "mouse" && event.button !== 0) return;
           releasePreview();
           pointerState = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY, moved: false, held: false };
+          try { preview.setPointerCapture(event.pointerId); } catch { /* pointer capture unavailable */ }
           preview.classList.add("is-holding");
           if (event.pointerType === "mouse") {
             pointerState.held = true;
@@ -762,7 +771,7 @@
               if (!pointerState || pointerState.moved) return;
               pointerState.held = true;
               setHeroFocus(preview.dataset.heroPreview);
-              clearPress();
+              stopHoldTimer();
             }, 320);
           }
         });
@@ -794,7 +803,9 @@
           event.preventDefault();
           releasePreview();
         });
-        preview.addEventListener("blur", releasePreview);
+        preview.addEventListener("blur", () => {
+          if (!pointerState) releasePreview();
+        });
       }
     }
     const setupVideoReel = (selector, clips) => {

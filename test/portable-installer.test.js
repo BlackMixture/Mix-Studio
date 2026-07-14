@@ -110,7 +110,10 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /aria-label="Hold to focus the mobile Mix Studio preview"/);
   assert.match(page, /preview\.addEventListener\("pointerup",[\s\S]*?releasePreview\(\);/);
   assert.match(page, /preview\.addEventListener\("keyup",[\s\S]*?releasePreview\(\);/);
-  assert.match(page, /preview\.addEventListener\("blur", releasePreview\);/);
+  assert.match(page, /preview\.setPointerCapture\(event\.pointerId\)/);
+  assert.match(page, /preview\.hasPointerCapture\?\.\(pointerId\)/);
+  assert.match(page, /phone-preview\.is-holding \{ filter: brightness\(1\.08\); \}/);
+  assert.match(page, /preview\.addEventListener\("blur", \(\) => \{[\s\S]*?if \(!pointerState\) releasePreview\(\);/);
   assert.doesNotMatch(page, /requested && requested !== activeFocus/);
   assert.doesNotMatch(page, /shouldClick/);
   assert.match(page, /mix-studio-profiles-live\.png/);
