@@ -47,12 +47,19 @@ test('saved defaults are applied to image, edit, and video controls', () => {
 
 test('image sampling values persist by mode and expose quick default controls', () => {
   assert.match(html, /id="advDefaultsBtn"/);
+  assert.match(html, /id="advDefaultsSettingsBtn"[^>]+aria-label="Configure generation defaults"/);
+  assert.match(html, /class="adv-defaults-actions"[^>]+role="group"/);
   assert.match(html, /Double-tap any value to reset it/);
   assert.match(app, /generationTuning: \{ create: null, edit: null, video: null \}/);
   assert.match(app, /generationTuning: state\.generationTuning/);
   assert.match(app, /function captureGenerationTuning/);
   assert.match(app, /function resetGenerationControl/);
+  assert.match(app, /function applyCurrentGenerationDefaults\(\)/);
+  assert.match(app, /state\.generationTuning\[mode\] = defaultGenerationTuning\(mode\)/);
+  assert.match(app, /#advDefaultsBtn'\)\.addEventListener\('click', applyCurrentGenerationDefaults\)/);
+  assert.match(app, /#advDefaultsSettingsBtn'\)\.addEventListener\('click',[\s\S]*?setSettingsTab\('defaults'\)/);
   assert.match(app, /control\.addEventListener\('dblclick'/);
-  assert.match(app, /setSettingsTab\('defaults'\)/);
+  assert.match(css, /\.adv-defaults-actions \{[\s\S]*?display: inline-flex;/);
+  assert.match(css, /#advDefaultsSettingsBtn \{[\s\S]*?width: 32px;/);
   assert.match(app, /turboPanel\.after\(control\)/);
 });

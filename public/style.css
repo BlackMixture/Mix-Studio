@@ -3870,8 +3870,14 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   font-size: 10px;
   font-weight: 700;
 }
+.adv-defaults-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
 .adv-defaults-row button {
-  min-height: 28px;
+  min-height: 32px;
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -3882,6 +3888,13 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 }
 .adv-defaults-row button:hover,
 .adv-defaults-row button:focus-visible { border-color: var(--line-strong); color: var(--ink-soft); }
+#advDefaultsSettingsBtn {
+  display: grid;
+  width: 32px;
+  padding: 0;
+  place-items: center;
+}
+#advDefaultsSettingsBtn svg { width: 14px; height: 14px; }
 .adv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 12px; }
 .video-advanced-note { color: var(--muted-2); font-size: 10.5px; font-weight: 650; line-height: 1.45; }
 .scail-fps-field {

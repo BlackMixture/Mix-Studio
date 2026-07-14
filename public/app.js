@@ -7535,6 +7535,22 @@ function applyGenerationDefaults() {
   updateVideoTuningSummary();
 }
 
+function applyCurrentGenerationDefaults() {
+  const mode = generationTuningMode();
+  if (!mode) return;
+  state.generationTuning[mode] = defaultGenerationTuning(mode);
+  restoreGenerationTuning(mode);
+  if (mode === 'edit') renderQwenQuality();
+  if (mode === 'video') {
+    $('#vidDur').value = state.userDefaults.video.duration;
+    $('#vidFree').value = state.userDefaults.video.motionFreedom;
+    updateVideoTuningSummary();
+  }
+  saveForm();
+  const label = mode === 'create' ? 'Image' : `${mode[0].toUpperCase()}${mode.slice(1)}`;
+  toast(`${label} defaults applied`);
+}
+
 async function loadUserPreferences() {
   try {
     const prefs = await api('/api/preferences');
@@ -8412,7 +8428,8 @@ function setAdvancedExpanded(open) {
 $('#advHeader').addEventListener('click', () => {
   setAdvancedExpanded(!$('#advPanel').classList.contains('expanded'));
 });
-$('#advDefaultsBtn').addEventListener('click', () => {
+$('#advDefaultsBtn').addEventListener('click', applyCurrentGenerationDefaults);
+$('#advDefaultsSettingsBtn').addEventListener('click', () => {
   setSettingsTab('defaults');
   $('#settingsBtn').click();
 });

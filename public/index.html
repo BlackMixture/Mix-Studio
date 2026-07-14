@@ -833,7 +833,12 @@
         <div class="adv-body-inner">
           <div class="adv-defaults-row">
             <small>Double-tap any value to reset it</small>
-            <button id="advDefaultsBtn" type="button" title="Edit generation defaults">Defaults</button>
+            <div class="adv-defaults-actions" role="group" aria-label="Generation defaults">
+              <button id="advDefaultsBtn" type="button" title="Apply saved generation defaults" aria-label="Apply saved generation defaults">Defaults</button>
+              <button id="advDefaultsSettingsBtn" type="button" title="Configure generation defaults" aria-label="Configure generation defaults">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m9.3 21-.5-3.1a6 6 0 0 1-1-.57l-2.9 1.2-2.7-4.66 2.4-1.9a6.7 6.7 0 0 1 0-1.14l-2.4-1.9L4.9 4.27l2.9 1.2a6 6 0 0 1 1-.57L9.3 1.8h5.4l.5 3.1a6 6 0 0 1 1 .57l2.9-1.2 2.7 4.66-2.4 1.9c.03.38.03.76 0 1.14l2.4 1.9-2.7 4.66-2.9-1.2a6 6 0 0 1-1 .57l-.5 3.1H9.3Zm2.7-5.6a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"/></svg>
+              </button>
+            </div>
           </div>
           <div class="adv-grid">
             <div class="field field-span">
