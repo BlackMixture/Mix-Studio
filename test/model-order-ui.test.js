@@ -19,9 +19,13 @@ test('Edit and Video model selectors explain that the first reordered model is t
 });
 
 test('Model orders and defaults persist in profile-scoped form state', () => {
+  assert.match(app, /const EDIT_MODEL_ORDER_VERSION = 2;/);
+  assert.match(app, /const DEFAULT_EDIT_ENGINE_ORDER = Object\.freeze\(\['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2'\]\)/);
+  assert.match(app, /editModelOrderVersion: EDIT_MODEL_ORDER_VERSION/);
   assert.match(app, /editEngineOrder: state\.editEngineOrder, editEngineDefault: state\.editEngineDefault/);
   assert.match(app, /videoEngineOrder: state\.videoEngineOrder, videoEngineDefault: state\.videoEngineDefault/);
-  assert.match(app, /state\.editEngineOrder = promoteEngineDefault\(f\.editEngineOrder, editDefault, EDIT_ENGINES\)/);
+  assert.match(app, /const savedEditOrder = currentEditOrder \? f\.editEngineOrder : DEFAULT_EDIT_ENGINE_ORDER/);
+  assert.match(app, /state\.editEngineOrder = promoteEngineDefault\(savedEditOrder, editDefault, EDIT_ENGINES\)/);
   assert.match(app, /state\.videoEngineOrder = promoteEngineDefault\(f\.videoEngineOrder, videoDefault, VIDEO_ENGINES\)/);
   assert.match(app, /state\.editEngine = EDIT_ENGINES\.includes\(f\.editEngine\) \? f\.editEngine : state\.editEngineDefault/);
   assert.match(app, /state\.vidEngine = VIDEO_ENGINES\.includes\(f\.vidEngine\) \? f\.vidEngine : state\.videoEngineDefault/);

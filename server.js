@@ -51,7 +51,7 @@ const {
   ULTIMATE_SD_UPSCALE_MODEL,
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
-const { IMAGE_RECREATION_INSTRUCTION } = require('./lib/image-prompt');
+const { IMAGE_RECREATION_INSTRUCTION, imagePromptRevisionParts } = require('./lib/image-prompt');
 const {
   ENHANCE_TAIL,
   cleanGeneratedPrompt,
@@ -1796,7 +1796,7 @@ function suggestImagePrompt(comfyImageName, seed, profileId) {
         class_type: 'TextGenerate',
         inputs: Object.assign(
           { clip: ['clip', 0], image: ['img', 0], prompt: IMAGE_RECREATION_INSTRUCTION + ENHANCE_TAIL },
-          textGenInputs(seed, 768)
+          textGenInputs(seed, 384)
         ),
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
@@ -1861,6 +1861,18 @@ function enhancePrompt(p, profileId) {
     'Enhancing global prompt...',
     512,
     { profileId },
+  );
+}
+
+function reviseImagePrompt(currentPrompt, changeRequest, seed, options = {}) {
+  const parts = imagePromptRevisionParts(currentPrompt, changeRequest, { hasImage: !!options.imageName });
+  parts.userInput += ENHANCE_TAIL;
+  return queueTextEnhancement(
+    parts,
+    seed,
+    'Revising prompt...',
+    384,
+    options,
   );
 }
 
@@ -5507,6 +5519,23 @@ async function handleApi(req, res, url) {
     const raw = await suggestImagePrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id);
     const prompt = cleanEnhancedText(raw, '');
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable prompt' });
+    return json(res, 200, { prompt });
+  }
+
+  if (route === '/api/prompt/revise' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const currentPrompt = String(body.currentPrompt || '').trim().slice(0, 12000);
+    const changeRequest = String(body.changeRequest || '').trim().slice(0, 1200);
+    const imageName = String(body.imageName || '').trim().slice(0, 500);
+    if (!changeRequest) return json(res, 400, { error: 'Describe what you want to change' });
+    const raw = await reviseImagePrompt(
+      currentPrompt,
+      changeRequest,
+      Math.floor(Math.random() * 2 ** 31),
+      { imageName: imageName || undefined, profileId: req.profile.id },
+    );
+    const prompt = cleanEnhancedText(raw, currentPrompt || changeRequest);
+    if (!prompt) return json(res, 500, { error: 'Prompt assistant returned no usable text' });
     return json(res, 200, { prompt });
   }
 

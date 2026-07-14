@@ -37,7 +37,8 @@ test('Face ID freezes an uploaded voice into the audio latent (identity-locked l
 test('the video UI presents Face ID audio as lipsync and keeps the chip available', () => {
   assert.match(app, /Voice locked · lipsync/);
   assert.match(app, /Lips will follow this recording/);
-  assert.match(app, /Face ID · lipsync to your voice/);
+  assert.match(app, /\$\('#vidEngineSelected'\)\.textContent = definition\.model/);
+  assert.match(app, /`Character Performance · Face ID\$\{state\.vidAudio \? ' \+ voice' : ''\}`/);
   assert.match(app, /audioName: vidAudioName/);
   assert.match(app, /chip\.id === 'vidAudioChip'.*renderVidFace\(\)/);
 });

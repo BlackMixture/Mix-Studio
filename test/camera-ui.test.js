@@ -11,6 +11,13 @@ const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css
 
 test('prompt tools expose the camera settings picker', () => {
   assert.match(indexHtml, /id="cameraPromptBtn"/);
+  const promptBox = indexHtml.slice(indexHtml.indexOf('<div class="prompt-box">'), indexHtml.indexOf('<div class="prompt-intent-hint"'));
+  const createTools = indexHtml.slice(indexHtml.indexOf('id="createPromptTools"'), indexHtml.indexOf('id="videoPromptTools"'));
+  assert.match(promptBox, /class="prompt-camera-btn"[^>]*id="cameraPromptBtn"[^>]*aria-label="Camera framing settings"/);
+  assert.match(promptBox, /M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4/);
+  assert.doesNotMatch(createTools, /id="cameraPromptBtn"/);
+  assert.match(styleCss, /\.prompt-camera-btn\s*\{[^}]*position:\s*absolute[^}]*right:\s*56px/s);
+  assert.match(appJs, /cameraPromptBtn'\)\.hidden = state\.view !== 'create'/);
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="cameraComboGrid"/);
   assert.match(indexHtml, /id="cameraWheelBoard"/);

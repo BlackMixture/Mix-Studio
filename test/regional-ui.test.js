@@ -9,8 +9,10 @@ const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'u
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
 
-test('create prompt tools expose an inline regional bounding-box editor', () => {
-  assert.match(indexHtml, /id="regionsPromptBtn"/);
+test('Region navigation exposes an inline regional bounding-box editor without a duplicate prompt shortcut', () => {
+  assert.match(indexHtml, /data-create-mode="region"/);
+  assert.doesNotMatch(indexHtml, /id="regionsPromptBtn"/);
+  assert.doesNotMatch(appJs, /regionsPromptBtn/);
   assert.match(indexHtml, /id="regionWorkspace"/);
   assert.doesNotMatch(indexHtml, /id="regionSheet"/);
   assert.match(indexHtml, /id="regionStage"/);
@@ -42,7 +44,6 @@ test('Region mode moves the shared global prompt above the canvas', () => {
   assert.match(indexHtml, /id="promptLabel"/);
   assert.match(appJs, /promptSlot\.appendChild\(promptPanel\)/);
   assert.match(appJs, /textContent = isRegion \? 'Global prompt' : \(scailInputFirst \? 'Creative direction · optional' : 'Prompt'\)/);
-  assert.match(appJs, /\$\('#regionsPromptBtn'\)\.hidden = isRegion/);
   assert.match(styleCss, /\.icon-chip\[hidden\] \{ display: none; \}/);
   assert.ok(indexHtml.indexOf('id="regionGlobalPromptSlot"') < indexHtml.indexOf('class="region-toolbar"'));
 });

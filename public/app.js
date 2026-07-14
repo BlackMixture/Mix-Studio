@@ -8,6 +8,8 @@ const CameraMotion = window.KreaCameraMotion;
 const ProgressEta = window.KreaProgressEta;
 const JobReconciliation = window.KreaJobReconciliation;
 const progressEta = ProgressEta.createProgressEtaTracker();
+const EDIT_MODEL_ORDER_VERSION = 2;
+const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2']);
 // Keep every local workspace write bound to the profile that loaded this
 // document. Profile transitions update localStorage before the old page exits,
 // so consulting the live key during pagehide can otherwise copy one profile's
@@ -65,15 +67,19 @@ const state = {
   kleinOutpaintConsistencyLoras: {}, // managed per-model LoRA settings, shown only during Klein outpaint
   editAutomaticLoras: {},    // managed Qwen/Krea workflow LoRAs, shown while their workflow is active
   loraTriggers: {},          // profile-local trigger phrase by LoRA filename
-  editEngine: 'klein4',
-  editEngineOrder: ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'],
-  editEngineDefault: 'klein4',
+  editEngine: 'klein9',
+  editEngineOrder: [...DEFAULT_EDIT_ENGINE_ORDER],
+  editEngineDefault: 'klein9',
   videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
+  promptSourceImage: null,   // image retained as optional context for conversational prompt revision
+  promptAssistantUseSource: true,
+  promptRevisionUndo: null,  // one-step mobile-safe undo for the latest AI revision
   createRef: null,           // optional Krea 2 reference, depth, or style source
   createImageGuideOpen: false,
-  createGuideMode: 'image',  // reference, depth, style, or one-shot image-to-prompt
+  createGuideMode: 'image',  // reference, depth, or style; image-to-prompt is a one-shot action
+  createGuideActive: false,  // whether the stored image is conditioning generation
   createMatchSource: false,
   createMatchNative: false,
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
@@ -190,7 +196,7 @@ const QWEN_ANGLE_DISTANCES = [
   { id: 'medium shot', label: 'Medium' },
   { id: 'wide shot', label: 'Wide' },
 ];
-const EDIT_ENGINES = ['klein4', 'klein9', 'qwen', 'krea2', 'krea2ref'];
+const EDIT_ENGINES = [...DEFAULT_EDIT_ENGINE_ORDER];
 const OUTPAINT_EDIT_ENGINES = new Set(EDIT_ENGINES);
 const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
@@ -240,7 +246,7 @@ function renderFeatureVisibility() {
 }
 
 function editEngineId(engine) {
-  return EDIT_ENGINES.includes(engine) ? engine : 'klein4';
+  return EDIT_ENGINES.includes(engine) ? engine : EDIT_ENGINES[0];
 }
 
 function rememberEditLoras() {
@@ -448,6 +454,7 @@ function syncPromptDraftFromComposer() {
   updatePromptClear();
   renderPromptSuggestions();
   saveForm();
+  schedulePromptIntentHint();
 }
 
 function capturePromptSelection() {
@@ -1439,6 +1446,7 @@ function saveForm() {
       editAutomaticLoras: state.editAutomaticLoras,
       loraTriggers: state.loraTriggers,
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
+      editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
       videoEngineOrder: state.videoEngineOrder, videoEngineDefault: state.videoEngineDefault,
       cameraSettings: state.cameraSettings,
@@ -1450,6 +1458,8 @@ function saveForm() {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
         safeName: state.createRef.safeName, safeW: state.createRef.safeW, safeH: state.createRef.safeH, srcItemId: state.createRef.srcItemId,
       } : null,
+      promptSourceImage: serializeWorkspaceAsset(state.promptSourceImage),
+      promptAssistantUseSource: state.promptAssistantUseSource,
       refs: state.refs.map(serializeWorkspaceAsset),
       vidRef: serializeWorkspaceAsset(state.vidRef),
       vidEnd: serializeWorkspaceAsset(state.vidEnd),
@@ -1464,6 +1474,7 @@ function saveForm() {
       videoQuality: $('#vidQuality').classList.contains('active'),
       createImageGuideOpen: state.createImageGuideOpen,
       createGuideMode: state.createGuideMode,
+      createGuideActive: state.createGuideActive,
       createMatchSource: state.createMatchSource,
       createMatchNative: state.createMatchNative,
       createInfluence: state.createInfluence,
@@ -1570,9 +1581,11 @@ function loadForm() {
       const phrase = normalizeLoraTriggerPhrase(lora && lora.triggerPhrase);
       if (lora && lora.name && phrase && !state.loraTriggers[lora.name]) state.loraTriggers[lora.name] = phrase;
     });
-    const editDefault = EDIT_ENGINES.includes(f.editEngineDefault)
-      ? f.editEngineDefault : editEngineId(f.editEngine);
-    state.editEngineOrder = promoteEngineDefault(f.editEngineOrder, editDefault, EDIT_ENGINES);
+    const currentEditOrder = Number(f.editModelOrderVersion) >= EDIT_MODEL_ORDER_VERSION;
+    const savedEditOrder = currentEditOrder ? f.editEngineOrder : DEFAULT_EDIT_ENGINE_ORDER;
+    const editDefault = currentEditOrder && EDIT_ENGINES.includes(f.editEngineDefault)
+      ? f.editEngineDefault : DEFAULT_EDIT_ENGINE_ORDER[0];
+    state.editEngineOrder = promoteEngineDefault(savedEditOrder, editDefault, EDIT_ENGINES);
     state.editEngineDefault = state.editEngineOrder[0];
     state.editEngine = EDIT_ENGINES.includes(f.editEngine) ? f.editEngine : state.editEngineDefault;
     const videoDefault = VIDEO_ENGINES.includes(f.videoEngineDefault)
@@ -1661,6 +1674,8 @@ function loadForm() {
     state.refs = Array.isArray(f.refs)
       ? [0, 1, 2].map((index) => restoreWorkspaceAsset(f.refs[index]))
       : [null, null, null];
+    state.promptSourceImage = restoreWorkspaceAsset(f.promptSourceImage);
+    state.promptAssistantUseSource = f.promptAssistantUseSource !== false;
     state.editRefSlots = Math.max(1, state.refs.reduce((count, ref, index) => ref ? Math.max(count, index + 1) : count, 1));
     state.vidRef = restoreWorkspaceAsset(f.vidRef);
     state.vidEnd = restoreWorkspaceAsset(f.vidEnd);
@@ -1675,8 +1690,10 @@ function loadForm() {
       fourK: f.videoFourK === true,
       quality: f.videoQuality === true,
     };
-    state.createImageGuideOpen = f.createImageGuideOpen === true;
-    state.createGuideMode = ['image', 'depth', 'style', 'prompt'].includes(f.createGuideMode) ? f.createGuideMode : 'image';
+    state.createImageGuideOpen = f.createImageGuideOpen === true && !!state.createRef;
+    const legacyPromptMode = f.createGuideMode === 'prompt';
+    state.createGuideMode = ['image', 'depth', 'style'].includes(f.createGuideMode) ? f.createGuideMode : 'image';
+    state.createGuideActive = !!state.createRef && !legacyPromptMode && f.createGuideActive !== false;
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
     state.createMatchNative = f.createMatchNative === true && state.createMatchSource;
     const savedDepthStrength = Number(f.createDepthStrength);
@@ -1987,6 +2004,8 @@ function updateVideoPanels() {
   $('#editModelPanel').hidden = !isEdit;
   if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
+  $('#vidScailModeRow').hidden = !(isVideo && state.vidEngine === 'scail');
+  renderScailChunkControls();
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
   if (!supportsCurrentEditAngles()) state.qwenAnglesMode = false;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || hasEditMask();
@@ -1999,9 +2018,9 @@ function updateVideoPanels() {
   if (!isRegion) setRegionResolutionExpanded(false);
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
+  $('#cameraPromptBtn').hidden = state.view !== 'create';
   $('#videoPromptTools').hidden = !isVideo;
   syncCameraMotionTool();
-  $('#regionsPromptBtn').hidden = isRegion;
   renderKrea2Mode();
   renderCreateImageGuide();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2' && !editOutpaintActive();
@@ -2022,11 +2041,13 @@ function updateVideoPanels() {
   $('#videoAdvancedNote').hidden = !isVideo;
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   renderLoras();
+  schedulePromptIntentHint();
 }
 
 /* Shared source picker: every generation media dropzone can accept either a
    fresh device file or an existing image/video from the current gallery. */
 let assetPickerState = null;
+let assetPickerReturnFocus = null;
 let resetAssetPickerSwipeVisuals = () => {};
 let animateAssetPickerNavigation = () => {};
 
@@ -2276,6 +2297,7 @@ function openAssetPicker(accept, callback, title) {
   };
   const picker = assetPickerState;
   const panel = $('#assetPickerSheet .asset-picker-panel');
+  assetPickerReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   panel.classList.remove('browsing', 'previewing');
   $('#assetPickerSearch').value = '';
   $('#assetPickerSearchClear').hidden = true;
@@ -2290,6 +2312,7 @@ function openAssetPicker(accept, callback, title) {
   $('#assetPickerSheet').classList.add('show');
   $('#assetPickerGallery').hidden = true;
   syncSheetScrollLock();
+  requestAnimationFrame(() => $('#assetPickerUpload').focus({ preventScroll: true }));
   if (!state.items.length) {
     refreshGallery(true).then(() => {
       if (assetPickerState !== picker) return;
@@ -2306,6 +2329,8 @@ function closeAssetPicker() {
   $('#assetPickerPreviewCurrent').replaceChildren();
   assetPickerState = null;
   syncSheetScrollLock();
+  if (assetPickerReturnFocus?.isConnected) assetPickerReturnFocus.focus({ preventScroll: true });
+  assetPickerReturnFocus = null;
 }
 
 const MAX_INPUT_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
@@ -3285,10 +3310,14 @@ async function prepareCreateImageGuideAsset(asset) {
   return Object.assign({}, asset, { safeName: response.name, safeW: safe.w, safeH: safe.h });
 }
 
+let teachCreateGuideAfterUpload = false;
+let createGuideTeachingIntentKey = '';
+
 async function setCreateImageGuideAsset(asset, mode = 'image') {
   state.createRef = await prepareCreateImageGuideAsset(asset);
   clearCreateDepthPreview();
   state.createGuideMode = ['image', 'depth', 'style'].includes(mode) ? mode : 'image';
+  state.createGuideActive = true;
   state.createImageGuideOpen = true;
   if (state.createGuideMode === 'style') {
     state.createMatchSource = false;
@@ -3301,6 +3330,13 @@ async function setCreateImageGuideAsset(asset, mode = 'image') {
   renderAspects();
   renderDims();
   saveForm();
+  schedulePromptIntentHint();
+  if (teachCreateGuideAfterUpload) {
+    const intentKey = createGuideTeachingIntentKey;
+    teachCreateGuideAfterUpload = false;
+    createGuideTeachingIntentKey = '';
+    setTimeout(() => showNextContextualGuide('create-guide-choices', intentKey), 180);
+  }
 }
 
 function renderCreateImageGuide() {
@@ -3312,53 +3348,44 @@ function renderCreateImageGuide() {
   if (section.previousElementSibling !== toolbar) toolbar.after(section);
   section.hidden = !visible;
   toggle.hidden = !visible;
-  const mode = ['image', 'depth', 'style', 'prompt'].includes(state.createGuideMode)
+  const mode = ['image', 'depth', 'style'].includes(state.createGuideMode)
     ? state.createGuideMode : 'image';
-  const promptMode = mode === 'prompt';
   const depthMode = mode === 'depth';
   const styleMode = mode === 'style';
   const hasStoredImage = !!state.createRef;
-  const hasActiveImage = hasStoredImage && !promptMode;
+  const hasActiveImage = hasStoredImage && state.createGuideActive;
   const open = visible && state.createImageGuideOpen;
+  toggle.classList.toggle('has-source', hasStoredImage);
   toggle.classList.toggle('has-image', hasActiveImage);
   toggle.classList.toggle('active', open);
   toggle.setAttribute('aria-expanded', String(open));
-  const modeLabel = { image: 'reference', depth: 'depth guide', style: 'style reference', prompt: 'image to prompt' }[mode];
-  toggle.setAttribute('aria-label', hasActiveImage ? `Image tools, ${modeLabel} added` : 'Image tools');
-  toggle.title = hasActiveImage ? `Image tools · ${modeLabel} added` : 'Image tools';
+  const modeLabel = { image: 'reference', depth: 'depth guide', style: 'style reference' }[mode];
+  toggle.setAttribute('aria-label', hasActiveImage
+    ? `Image tools, ${modeLabel} active`
+    : (hasStoredImage ? 'Image tools, image loaded' : 'Add image from device or Library'));
+  toggle.title = hasActiveImage
+    ? `Image tools · ${modeLabel} active`
+    : (hasStoredImage ? 'Image tools · image loaded' : 'Add image · device or Library');
   section.classList.toggle('expanded', open);
   section.inert = !open;
   section.setAttribute('aria-hidden', String(!open));
-  $('#createImageGuideAdd').hidden = hasActiveImage;
-  $('#createImageGuideFilled').hidden = !hasActiveImage;
-  const hints = {
-    image: 'Reference · composition and color',
-    depth: 'Depth · perspective and structure',
-    style: 'Style · low-leakage visual transfer',
-    prompt: 'Describe an image as a prompt',
-  };
-  $('#createImageGuideHint').textContent = hints[mode];
-  const addCopy = {
-    image: ['Add reference image', 'Guide composition, color, and structure'],
-    depth: ['Add depth source', 'Preserve perspective without copying pixels'],
-    style: ['Add style reference', 'Transfer palette, texture, and rendering language'],
-    prompt: ['Choose image to describe', 'Create an editable prompt from any image'],
-  }[mode];
-  $('#createImageGuideAddTitle').textContent = addCopy[0];
-  $('#createImageGuideAddCopy').textContent = addCopy[1];
+  $('#createImageGuideAdd').hidden = hasStoredImage;
+  $('#createImageGuideFilled').hidden = !hasStoredImage;
+  $('#createImageGuideModeLabel').hidden = !hasStoredImage;
+  $('#createImageGuideModes').hidden = !hasStoredImage;
+  $('#createImageToPrompt').hidden = !hasStoredImage;
+  $('#createImageGuideControls').hidden = !hasActiveImage;
+  $('#createImageGuideAddTitle').textContent = 'Choose image';
   const influence = depthMode
     ? Math.max(5, Math.min(200, Number(state.createDepthStrength) || 100))
     : (styleMode
       ? Math.max(0, Math.min(200, Number.isFinite(Number(state.createStyleStrength)) ? Number(state.createStyleStrength) : 100))
       : Math.max(0, Math.min(100, Number(state.createInfluence) || 0)));
   $$('#createImageGuideModes [data-guide-mode]').forEach((button) => {
-    button.setAttribute('aria-pressed', String(button.dataset.guideMode === mode));
+    button.setAttribute('aria-pressed', String(hasActiveImage && button.dataset.guideMode === mode));
   });
   $('#createImageInfluenceTitle').textContent = depthMode ? 'Depth strength'
     : (styleMode ? 'Style strength' : 'Image influence');
-  $('#createImageInfluenceHint').textContent = depthMode
-    ? 'Preserves perspective and 3D structure'
-    : (styleMode ? 'Transfers visual style without copying the subject' : 'Higher stays closer to the source');
   $('#createImageInfluence').min = depthMode ? '5' : '0';
   $('#createImageInfluence').max = depthMode || styleMode ? '200' : '100';
   $('#createImageInfluence').setAttribute('aria-label', depthMode ? 'Depth strength'
@@ -3379,7 +3406,7 @@ function renderCreateImageGuide() {
   const previewBtn = $('#createDepthPreviewBtn');
   const cachedDepth = hasStoredImage && state.createDepthPreview
     && state.createDepthPreview.name === createGuideInput().name ? state.createDepthPreview : null;
-  const showingDepth = depthMode && state.createDepthPreviewShown && !!cachedDepth;
+  const showingDepth = hasActiveImage && depthMode && state.createDepthPreviewShown && !!cachedDepth;
   if (previewBtn) {
     previewBtn.hidden = !(depthMode && hasStoredImage);
     previewBtn.classList.toggle('showing-depth', showingDepth);
@@ -3388,15 +3415,9 @@ function renderCreateImageGuide() {
         : (cachedDepth ? 'Show depth map' : 'Preview depth map');
     }
   }
-  if (!hasActiveImage) return;
+  if (!hasStoredImage) return;
   $('#createImageGuideImg').src = showingDepth ? cachedDepth.url : state.createRef.url;
-  $('#createImageGuideName').textContent = showingDepth ? 'Depth map'
-    : (state.createRef.label || (styleMode ? 'Style reference' : 'Source image'));
-  $('#createImageGuideDims').textContent = showingDepth
-    ? 'What the generation will follow'
-    : (state.createRef.w && state.createRef.h
-      ? `${state.createRef.w} × ${state.createRef.h} · tap to replace`
-      : 'Tap to replace');
+  $('#createImageGuideImg').alt = showingDepth ? 'Depth map preview' : 'Selected source image';
 }
 
 function clearCreateDepthPreview() {
@@ -3407,46 +3428,156 @@ function clearCreateDepthPreview() {
   state.createDepthPreviewShown = false;
 }
 
-async function createPromptFromImageName(imageName) {
+async function createPromptFromImageName(image) {
+  const asset = image && typeof image === 'object' ? image : null;
+  const imageName = asset ? asset.name : String(image || '');
+  checkpointDesktopInputSetup();
   const res = await api('/api/imageprompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imageName }),
   });
   state.prompts.create = res.prompt || '';
+  state.promptSourceImage = asset ? imageAssetSnapshot(asset) : null;
+  state.promptAssistantUseSource = !!state.promptSourceImage;
+  state.promptRevisionUndo = null;
+  state.enhance = false;
   if (state.view !== 'create') setView('create');
   setPromptDraft(state.prompts.create);
   updatePromptClear();
+  renderEnhance();
   state.createImageGuideOpen = false;
   renderCreateImageGuide();
   saveForm();
+  appendDesktopInputSetup();
   $('#promptComposer').focus();
-  toast('Prompt created from image');
+  toast('Prompt created · use Revise to change it');
 }
 
-function pickCreatePromptImage() {
-  pickUpload('image/*', async (file) => {
-    const button = $('#createImageGuideAdd');
-    button.disabled = true;
-    $('#createImageGuideAddTitle').textContent = 'Reading image…';
-    $('#createImageGuideAddCopy').textContent = 'Building an editable prompt';
-    try {
-      await createPromptFromImageName(file.name);
-    } catch (error) {
-      if (!isJobCancellation(error)) toast(error.message, true);
-    } finally {
-      button.disabled = false;
-      renderCreateImageGuide();
-    }
-  }, 'Choose an image to describe');
+function renderPromptAssistantSource() {
+  const source = state.promptSourceImage;
+  const row = $('#promptAssistantSource');
+  row.hidden = !source;
+  if (source) $('#promptAssistantSourceImg').src = source.url || `/api/input?name=${encodeURIComponent(source.name)}`;
+  const toggle = $('#promptAssistantSourceToggle');
+  const enabled = !!source && state.promptAssistantUseSource;
+  toggle.classList.toggle('on', enabled);
+  toggle.setAttribute('aria-pressed', String(enabled));
+  toggle.disabled = !source;
 }
+
+let promptAssistantBusy = false;
+
+function setPromptAssistantBusy(busy, message = '') {
+  promptAssistantBusy = busy;
+  const form = $('#promptAssistantForm');
+  form.setAttribute('aria-busy', String(busy));
+  $('#promptAssistantApply').disabled = busy;
+  $('#promptAssistantInput').disabled = busy;
+  $('#promptAssistantSourceToggle').disabled = busy || !state.promptSourceImage;
+  $$('.prompt-assistant-starters button').forEach((button) => { button.disabled = busy; });
+  const status = $('#promptAssistantStatus');
+  status.hidden = !message;
+  status.textContent = message;
+}
+
+function openPromptAssistant() {
+  const currentPrompt = promptDraft().trim();
+  $('#promptAssistantTitle').textContent = currentPrompt ? 'Revise prompt' : 'Build prompt';
+  $('#promptAssistantApply').textContent = currentPrompt ? 'Revise prompt' : 'Build prompt';
+  if (!promptAssistantBusy) $('#promptAssistantInput').value = '';
+  renderPromptAssistantSource();
+  setPromptAssistantBusy(promptAssistantBusy, promptAssistantBusy ? 'Rewriting the complete prompt…' : '');
+  const undo = state.promptRevisionUndo;
+  $('#promptAssistantUndo').hidden = !(undo && currentPrompt === undo.after);
+  $('#promptAssistantSheet').classList.add('show');
+  syncSheetScrollLock();
+  setTimeout(() => $('#promptAssistantInput').focus(), 80);
+}
+
+function closePromptAssistant() {
+  $('#promptAssistantSheet').classList.remove('show');
+  syncSheetScrollLock();
+}
+
+$('#promptAssistantBtn').addEventListener('click', openPromptAssistant);
+$('#promptAssistantSourceToggle').addEventListener('click', () => {
+  state.promptAssistantUseSource = !state.promptAssistantUseSource;
+  renderPromptAssistantSource();
+  saveForm();
+});
+$$('.prompt-assistant-starters [data-prompt-revision]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const input = $('#promptAssistantInput');
+    input.value = button.dataset.promptRevision || '';
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+});
+$('#promptAssistantUndo').addEventListener('click', () => {
+  const undo = state.promptRevisionUndo;
+  if (!undo || promptDraft().trim() !== undo.after) return;
+  checkpointDesktopInputSetup();
+  state.prompts.create = undo.before;
+  setPromptDraft(undo.before);
+  state.promptRevisionUndo = null;
+  updatePromptClear();
+  saveForm();
+  appendDesktopInputSetup();
+  closePromptAssistant();
+  toast('Prompt revision undone');
+});
+$('#promptAssistantForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (promptAssistantBusy) return;
+  const changeRequest = $('#promptAssistantInput').value.trim();
+  if (!changeRequest) {
+    setPromptAssistantBusy(false, 'Describe what should change.');
+    $('#promptAssistantInput').focus();
+    return;
+  }
+  const before = promptDraft().trim();
+  const source = state.promptAssistantUseSource ? state.promptSourceImage : null;
+  setPromptAssistantBusy(true, before ? 'Rewriting the complete prompt…' : 'Building a generation-ready prompt…');
+  checkpointDesktopInputSetup();
+  try {
+    const result = await api('/api/prompt/revise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        currentPrompt: before,
+        changeRequest,
+        imageName: source && source.name ? source.name : undefined,
+      }),
+    });
+    const revised = String(result.prompt || '').trim();
+    if (!revised) throw new Error('Prompt assistant returned no usable text');
+    if (promptDraft().trim() !== before) {
+      throw new Error('The prompt changed while the revision was running. Review it and try again.');
+    }
+    state.prompts.create = revised;
+    state.promptRevisionUndo = { before, after: revised };
+    state.enhance = false;
+    setPromptDraft(revised);
+    updatePromptClear();
+    renderEnhance();
+    saveForm();
+    appendDesktopInputSetup();
+    setPromptAssistantBusy(false);
+    closePromptAssistant();
+    $('#promptComposer').focus();
+    toast('Prompt revised · Enhance turned off');
+  } catch (error) {
+    setPromptAssistantBusy(false, error.message || 'Could not revise this prompt');
+    if (!isJobCancellation(error)) toast(error.message, true);
+  }
+});
 
 function pickCreateImageGuide() {
-  if (state.createGuideMode === 'prompt') return pickCreatePromptImage();
   pickUpload('image/*', async (file) => {
     try {
       await setCreateImageGuideAsset(file, state.createGuideMode);
-      toast('Image guide added at a generation-safe size');
+      toast('Image ready · choose how to use it');
     } catch (error) {
       toast(error.message, true);
     }
@@ -3454,12 +3585,52 @@ function pickCreateImageGuide() {
 }
 
 $('#createImageGuideToggle').addEventListener('click', () => {
+  if (!state.createRef) {
+    teachCreateGuideAfterUpload = contextualGuide?.id === 'prompt-missing-reference'
+      || (contextualGuidesEnabled() && localStorage.getItem(contextualGuideSeenKey('create-guide-choices')) !== 'seen');
+    createGuideTeachingIntentKey = contextualGuideIntentKey;
+    state.createImageGuideOpen = false;
+    pickCreateImageGuide();
+    return;
+  }
   state.createImageGuideOpen = !state.createImageGuideOpen;
   renderCreateImageGuide();
   saveForm();
+  if (!state.createImageGuideOpen) {
+    cancelContextualGuide('create-guide-choices');
+  }
 });
-$('#createImageGuideAdd').addEventListener('click', pickCreateImageGuide);
+$('#createImageGuideAdd').addEventListener('click', () => {
+  teachCreateGuideAfterUpload = contextualGuidesEnabled()
+    && localStorage.getItem(contextualGuideSeenKey('create-guide-choices')) !== 'seen';
+  createGuideTeachingIntentKey = contextualGuideIntentKey;
+  pickCreateImageGuide();
+});
 $('#createImageGuideChange').addEventListener('click', pickCreateImageGuide);
+$('#createImageToPrompt').addEventListener('click', async () => {
+  if (!state.createRef) return;
+  const button = $('#createImageToPrompt');
+  const label = button.querySelector('b');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  if (label) label.textContent = 'Creating prompt…';
+  try {
+    await createPromptFromImageName(state.createRef);
+    state.createGuideActive = false;
+    state.createMatchSource = false;
+    state.createMatchNative = false;
+    renderCreateImageGuide();
+    renderAspects();
+    renderDims();
+    saveForm();
+  } catch (error) {
+    if (!isJobCancellation(error)) toast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.setAttribute('aria-busy', 'false');
+    if (label) label.textContent = 'Image to prompt';
+  }
+});
 $('#createImageGuideCrop').addEventListener('click', () => {
   if (!state.createRef) return;
   openInputImageCrop(state.createRef, async (next) => {
@@ -3475,14 +3646,16 @@ $('#createImageGuideCrop').addEventListener('click', () => {
 $('#createImageGuideModes').addEventListener('click', (event) => {
   const button = event.target.closest('[data-guide-mode]');
   if (!button) return;
+  const wasActive = state.createGuideActive;
   const previous = state.createGuideMode;
-  state.createGuideMode = ['image', 'depth', 'style', 'prompt'].includes(button.dataset.guideMode)
+  state.createGuideMode = ['image', 'depth', 'style'].includes(button.dataset.guideMode)
     ? button.dataset.guideMode : 'image';
-  if (state.createGuideMode === 'style' || state.createGuideMode === 'prompt') {
+  state.createGuideActive = true;
+  if (state.createGuideMode === 'style') {
     state.createMatchSource = false;
     state.createMatchNative = false;
     clearCreateDepthPreview();
-  } else if ((previous === 'style' || previous === 'prompt') && state.createRef) {
+  } else if ((!wasActive || previous === 'style') && state.createRef) {
     applyCreateMatchedDimensions();
   }
   renderCreateImageGuide();
@@ -3527,6 +3700,8 @@ $('#createDepthPreviewBtn').addEventListener('click', async () => {
 });
 $('#createImageGuideRemove').addEventListener('click', () => {
   state.createRef = null;
+  state.createGuideActive = false;
+  state.createImageGuideOpen = false;
   state.createMatchSource = false;
   state.createMatchNative = false;
   clearCreateDepthPreview();
@@ -3534,6 +3709,7 @@ $('#createImageGuideRemove').addEventListener('click', () => {
   renderAspects();
   renderDims();
   saveForm();
+  schedulePromptIntentHint();
   toast('Image guide removed');
 });
 $('#createImageInfluence').addEventListener('input', (event) => {
@@ -4834,7 +5010,6 @@ function keyboardMaskGesture(event) {
   saveForm();
 }
 
-$('#regionsPromptBtn').addEventListener('click', () => setCreateMode('region', true));
 $('#regionAddBtn').addEventListener('click', () => {
   const region = createRegion();
   selectRegion(region, true);
@@ -5475,7 +5650,7 @@ function renderScailChunkControls() {
   $$('#vidScailModeRow .chip').forEach((x) => {
     x.classList.toggle('active', x.dataset.scailMode === state.vidScailMode);
   });
-  const chunked = state.vidEngine === 'scail' && state.vidScailMode === 'chunked';
+  const chunked = state.view === 'video' && state.vidEngine === 'scail' && state.vidScailMode === 'chunked';
   row.hidden = !chunked;
   $('#vidScailStable').classList.toggle('active', state.vidScailStableTracking !== false);
   $$('#vidScailChunkRow .chip').forEach((x) => {
@@ -5500,6 +5675,7 @@ $$('#vidScailModeRow .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#vidScailModeRow .chip').forEach((x) => x.classList.toggle('active', x === c));
   state.vidScailMode = ['infinity', 'chunked', 'direct'].includes(c.dataset.scailMode) ? c.dataset.scailMode : 'infinity';
   renderScailChunkControls();
+  updateVideoTuningSummary();
   saveForm();
 }));
 $('#vidScailStable').addEventListener('click', () => {
@@ -5526,9 +5702,35 @@ function wireSigmaRow(rowId, key) {
 }
 wireSigmaRow('vidSigmaRow', 'vidSigma');
 wireSigmaRow('animSigmaRow', 'animSigma');
-$('#engineInfoBtn').addEventListener('click', (e) => {
-  e.stopPropagation();
+let engineInfoReturnFocus = null;
+
+function closeEngineInfo({ restoreFocus = true } = {}) {
+  $('#engineInfoSheet').classList.remove('show');
+  syncSheetScrollLock();
+  if (restoreFocus && engineInfoReturnFocus?.isConnected) engineInfoReturnFocus.focus({ preventScroll: true });
+  engineInfoReturnFocus = null;
+}
+
+function openEngineInfo(kind = 'video') {
+  engineInfoReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  renderEngineInfoList(kind);
   $('#engineInfoSheet').classList.add('show');
+  syncSheetScrollLock();
+  requestAnimationFrame(() => {
+    const active = $('#engineInfoList .engine-info-card.active');
+    (active || $('#engineInfoSheet .engine-info-panel')).focus({ preventScroll: true });
+  });
+}
+$('#engineInfoBtn').addEventListener('click', (event) => {
+  event.stopPropagation();
+  openEngineInfo('video');
+});
+$('#editEngineInfoBtn').addEventListener('click', (event) => {
+  event.stopPropagation();
+  openEngineInfo('edit');
+});
+$('#engineInfoSheet').addEventListener('click', (event) => {
+  if (event.target === $('#engineInfoSheet') || event.target.closest('[data-close]')) closeEngineInfo();
 });
 
 /* ------------------------------------------------------------------ */
@@ -5820,6 +6022,7 @@ $('#promptClear').addEventListener('click', () => {
   renderPromptSuggestions();
   $('#promptComposer').focus();
   saveForm();
+  schedulePromptIntentHint(0);
 });
 
 const CAMERA_WHEEL_KEYS = ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso'];
@@ -7637,31 +7840,157 @@ function editEngineLabel(engine) {
   return 'Flux Klein 4B';
 }
 
+const VIDEO_ENGINE_TASKS = {
+  ltx: {
+    task: 'Cinematic Video', model: 'LTX 2.3',
+    detail: 'Text or image + audio',
+    copy: 'Create from a prompt or first frame, with native audio and Face ID.',
+    preview: { type: 'video', src: '/guides/ltx-motorcycle-highway.mp4' },
+  },
+  'ltx-edit': {
+    task: 'Video Editing', model: 'LTX Edit',
+    detail: 'Change an existing clip',
+    copy: 'Transform a source video with one direct instruction.',
+    experimental: true,
+    preview: { type: 'video', src: '/guides/ltx-edit-inpaint.mp4' },
+  },
+  eros: {
+    task: 'Image Animation', model: '10Eros DMD',
+    detail: 'Stays close to the first frame',
+    copy: 'Animate a still while keeping its subject recognizable.',
+    preview: { type: 'motion', tone: 'eros' },
+  },
+  wan: {
+    task: 'Complex Motion', model: 'Wan 2.2',
+    detail: 'Physics + prompt accuracy',
+    copy: 'Best for demanding action, physical motion, and prompt adherence.',
+    preview: { type: 'video', src: '/guides/wan-knight-explosion.mp4' },
+  },
+  scail: {
+    task: 'Motion Transfer', model: 'SCAIL 2',
+    detail: 'Image + motion video',
+    copy: 'Copy movement from a video onto a new subject or world.',
+    preview: { type: 'video', src: '/guides/scail-hand-fantasy.mp4' },
+  },
+};
+
+const EDIT_ENGINE_TASKS = {
+  klein9: {
+    task: 'Precision Editing', model: 'Flux Klein 9B',
+    copy: 'Best detail retention and instruction fit.',
+  },
+  klein4: {
+    task: 'Fast Edits', model: 'Flux Klein 4B',
+    copy: 'Quick object, color, and wardrobe changes.',
+  },
+  qwen: {
+    task: 'Combine Images', model: 'Qwen Edit',
+    copy: 'Combine references and create multi-angle image sets.',
+  },
+  krea2ref: {
+    task: 'Reference Remix', model: 'Krea 2 Edit',
+    copy: 'Rebuild the scene from reference identity and composition.',
+  },
+  krea2: {
+    task: 'Inpaint + Outpaint', model: 'Krea 2',
+    copy: 'Inpaint selected areas or outpaint beyond the frame.',
+  },
+};
+
+function engineTaskDefinition(kind, engine) {
+  return (kind === 'edit' ? EDIT_ENGINE_TASKS : VIDEO_ENGINE_TASKS)[engine] || null;
+}
+
+function createEngineInfoPreview(definition) {
+  const preview = document.createElement('span');
+  preview.className = `engine-info-preview engine-info-preview-${definition.type || 'motion'}`;
+  if (definition.type === 'video') {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const video = document.createElement('video');
+    video.src = definition.src;
+    video.muted = true;
+    video.loop = true;
+    video.autoplay = !reduceMotion;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    preview.appendChild(video);
+    if (!reduceMotion) video.play().catch(() => { /* waits for the next user gesture */ });
+  } else if (definition.type === 'compare') {
+    preview.style.backgroundImage = `url("${definition.src}")`;
+    preview.dataset.panels = String(definition.panels || 2);
+  } else {
+    preview.dataset.tone = definition.tone || 'default';
+    preview.innerHTML = '<i></i><i></i><i></i>';
+  }
+  return preview;
+}
+
+function renderEngineInfoList(kind = 'video') {
+  const editing = kind === 'edit';
+  const definitions = editing ? EDIT_ENGINE_TASKS : VIDEO_ENGINE_TASKS;
+  const order = editing ? state.editEngineOrder : state.videoEngineOrder;
+  const current = editing ? state.editEngine : state.vidEngine;
+  const features = editing ? EDIT_FEATURES : VIDEO_FEATURES;
+  const rowId = editing ? 'editEngineRow' : 'vidEngineRow';
+  $('#engineInfoTitle').textContent = editing ? 'Choose an edit model' : 'Choose a video model';
+  const list = $('#engineInfoList');
+  list.replaceChildren();
+  const normalizedOrder = normalizeEngineOrder(order, Object.keys(definitions));
+  const guideOrder = editing
+    ? normalizedOrder
+    : normalizedOrder.filter((engine) => engine !== 'eros').concat(normalizedOrder.includes('eros') ? ['eros'] : []);
+  guideOrder.forEach((engine) => {
+    if (!featureEnabled(features[engine])) return;
+    const definition = definitions[engine];
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'engine-info-card';
+    button.dataset.engine = engine;
+    button.classList.toggle('active', engine === current);
+    button.setAttribute('aria-pressed', String(engine === current));
+    button.setAttribute('aria-label', `Use ${definition.model}${definition.experimental ? ' (experimental)' : ''} for ${definition.task}`);
+    const hasPreview = !!definition.preview;
+    button.classList.toggle('text-only', !hasPreview);
+    if (hasPreview) button.appendChild(createEngineInfoPreview(definition.preview));
+    const copy = document.createElement('span');
+    copy.className = 'engine-info-card-copy';
+    const titleRow = document.createElement('span');
+    titleRow.className = 'engine-info-card-title';
+    const title = document.createElement('b');
+    title.textContent = definition.model;
+    titleRow.appendChild(title);
+    if (definition.experimental) {
+      const badge = document.createElement('span');
+      badge.className = 'model-status-badge';
+      badge.textContent = 'Experimental';
+      titleRow.appendChild(badge);
+    }
+    const model = document.createElement('small');
+    model.textContent = `${definition.task}${definition.detail ? ` · ${definition.detail}` : ''}`;
+    const description = document.createElement('p');
+    description.textContent = definition.copy;
+    copy.append(titleRow, model, description);
+    const check = document.createElement('i');
+    check.className = 'engine-info-check';
+    check.textContent = engine === current ? '✓' : '›';
+    button.append(copy, check);
+    button.addEventListener('click', () => {
+      const choice = $(`#${rowId} .chip[data-engine="${engine}"]`);
+      if (!choice || choice.hidden || choice.disabled) return;
+      choice.click();
+      closeEngineInfo({ restoreFocus: false });
+      setTimeout(() => $(editing ? '#editModelHeader' : '#vidModelHeader').focus({ preventScroll: true }), 140);
+    });
+    list.appendChild(button);
+  });
+}
+
 function renderEditModelSummary() {
-  const labels = {
-    klein4: 'Klein 4B',
-    klein9: 'Klein 9B',
-    qwen: 'Qwen Edit',
-    krea2: 'Krea2',
-    krea2ref: 'Krea 2 Edit',
-  };
-  const outpaintSteps = state.editEngine === 'qwen' ? (state.qwenQuality === 'fast' ? 4 : 20)
-    : ((state.editEngine === 'krea2' || state.editEngine === 'krea2ref') ? 8 : 4);
-  const notes = editOutpaintActive() ? {
-    klein4: `expand · ${outpaintSteps} steps`,
-    klein9: `expand · ${outpaintSteps} steps`,
-    qwen: `expand · ${outpaintSteps} steps`,
-    krea2: `expand · ${outpaintSteps} steps`,
-    krea2ref: `expand · ${outpaintSteps} steps`,
-  } : {
-    klein4: '4B · fast edits',
-    klein9: '9B · higher fidelity',
-    qwen: state.qwenQuality === 'fast' ? 'multi-reference · fast' : 'multi-reference · quality',
-    krea2: 'fill · one reference',
-    krea2ref: 'reference-guided · 8 steps',
-  };
-  $('#editEngineSelected').textContent = labels[state.editEngine] || labels.klein4;
-  $('#editEngineNote').textContent = notes[state.editEngine] || notes.klein4;
+  const definition = EDIT_ENGINE_TASKS[state.editEngine] || EDIT_ENGINE_TASKS.klein4;
+  const task = editOutpaintActive() ? 'Expand Canvas'
+    : (hasEditMask() ? 'Edit Selected Area' : definition.task);
+  $('#editEngineSelected').textContent = definition.model;
+  $('#editEngineNote').textContent = task;
 }
 $('#addLora').addEventListener('click', () => openLoraPicker());
 $('#loraAllBtn').addEventListener('click', () => {
@@ -7767,7 +8096,12 @@ function updateVideoTuningSummary() {
   const duration = Number(durationInput.value) || 1;
   const motion = Number($('#vidFree').value) || 0;
   const motionVisible = !$('#vidFreeField').hidden;
-  const summary = motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`;
+  const scailMode = state.vidEngine === 'scail'
+    ? `${state.vidScailMode[0].toUpperCase()}${state.vidScailMode.slice(1)}`
+    : '';
+  const summary = scailMode
+    ? `${duration}s · ${scailMode}`
+    : (motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`);
   $('#vidControlsNote').textContent = summary;
   $('#vidDurVal').textContent = String(duration);
   $('#vidDurPrev').textContent = String(Math.max(Number(durationInput.min) || 1, duration - (Number(durationInput.step) || 1)));
@@ -8185,6 +8519,7 @@ function renderRefs() {
   if (add) add.hidden = visibleSlots >= maxSlots;
   if (state.view === 'edit') renderEditAspects();
   renderPromptComposer();
+  schedulePromptIntentHint();
 }
 
 $('#addEditReference').addEventListener('click', () => {
@@ -8547,14 +8882,14 @@ function renderVidAttach() {
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
   $('#vidMotionPromptRow').hidden = !canSuggestMotion;
-  $('#vidInputsHint').hidden = false;
   syncVideoAutoMotionUi();
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
-    $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h} — aspect follows the image`;
+    $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h}`;
   }
   if (typeof updateSwapChip === 'function') updateSwapChip();
   renderVidFace();
+  schedulePromptIntentHint();
 }
 
 function syncVideoAutoMotionUi() {
@@ -8619,18 +8954,12 @@ function renderVidFace() {
       audioDetail.textContent = hasAudio ? 'Tap to remove or replace' : 'Optional soundtrack';
     }
   }
-  const labels = { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' };
-  const notes = {
-    ltx: faceMode
-      ? (state.vidAudio ? 'Face ID · lipsync to your voice' : 'Face ID · 24 fps · voice optional')
-      : '25 fps · audio',
-    'ltx-edit': 'guide video · exact prompt',
-    eros: '24 fps · image required',
-    wan: '16 fps · image required',
-    scail: `${state.vidScailFps} fps${state.vidScailFps === 24 ? ' · experimental' : ''} · motion transfer`,
-  };
-  $('#vidEngineSelected').textContent = labels[state.vidEngine] || labels.ltx;
-  $('#vidEngineNote').textContent = notes[state.vidEngine] || notes.ltx;
+  const definition = VIDEO_ENGINE_TASKS[state.vidEngine] || VIDEO_ENGINE_TASKS.ltx;
+  $('#vidEngineSelected').textContent = definition.model;
+  $('#vidEngineBadge').hidden = !definition.experimental;
+  $('#vidEngineNote').textContent = faceMode
+    ? `Character Performance · Face ID${state.vidAudio ? ' + voice' : ''}`
+    : `${definition.task} · ${definition.detail}`;
   updateVideoTuningSummary();
 }
 
@@ -8851,7 +9180,6 @@ function renderVidDrive() {
   $('#vidDriveTitle').textContent = editAnything ? 'Source video' : 'Motion video';
   $('#vidDriveSub').textContent = editAnything ? 'Required · video to edit' : 'Required · drives movement';
   $('#vidDriveFilledTitle').textContent = editAnything ? 'Source video' : 'Motion video';
-  $('#vidInputsHint').textContent = scail ? 'Motion video + reference image' : 'Tap to add · hold frames to move';
   $('#vidAttachTitle').textContent = scail ? 'Reference image' : 'First frame';
   $('#vidAttachFilledTitle').textContent = scail ? 'Reference image' : 'First frame';
   $('#vidAttachImg').alt = scail ? 'Reference image preview' : 'First frame preview';
@@ -8863,6 +9191,7 @@ function renderVidDrive() {
     if (v.src !== state.vidDrive.url) v.src = state.vidDrive.url;
     driveLayout();
   }
+  schedulePromptIntentHint();
 }
 $('#vidDriveBtn').addEventListener('click', () => {
   pickUpload('video/*', (f) => {
@@ -9173,7 +9502,11 @@ function syncModelOrderDefault(rowId) {
   modelOrderButtons(rowId).forEach((button) => {
     const isDefault = button.dataset.engine === fallback;
     button.classList.toggle('model-default', isDefault);
-    const label = button.textContent.trim();
+    const modelLabel = button.dataset.modelLabel
+      ? `${button.dataset.modelLabel}${button.dataset.experimental === 'true' ? ', experimental' : ''}`
+      : '';
+    const label = [modelLabel, button.dataset.taskLabel].filter(Boolean).join(', ')
+      || button.textContent.trim();
     button.setAttribute('aria-label', isDefault ? `${label}, default model` : label);
     button.setAttribute('aria-roledescription', 'draggable model');
     button.title = isDefault ? `${label} · default for the next session` : 'Hold and drag to reorder';
@@ -9388,12 +9721,20 @@ function wireModelOrder(rowId) {
 state.vidEngine = 'ltx';
 state.animEngine = 'ltx';
 function markEngineRow(rowId, engine) {
-  $$(`#${rowId} .chip[data-engine]`).forEach((x) => x.classList.toggle('active', x.dataset.engine === engine));
+  $$(`#${rowId} .chip[data-engine]`).forEach((button) => {
+    const active = button.dataset.engine === engine;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
 }
 function wireEngineRow(rowId, noteWork) {
   $$(`#${rowId} .chip[data-engine]`).forEach((c) => c.addEventListener('click', () => {
     if ($(`#${rowId}`).dataset.modelDragSuppress === 'true') return;
-    $$(`#${rowId} .chip[data-engine]`).forEach((x) => x.classList.toggle('active', x === c));
+    $$(`#${rowId} .chip[data-engine]`).forEach((button) => {
+      const active = button === c;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
     noteWork(c.dataset.engine);
   }));
 }
@@ -9407,7 +9748,6 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = !(ltxFamily || wan || scail);
-  $('#vidScailModeRow').hidden = !scail;
   $('#vidExtras').hidden = wan || scail || ltxEdit;
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
@@ -9441,6 +9781,7 @@ wireEngineRow('editEngineRow', (engine) => {
   updateVideoPanels();
   renderLoras();
   saveForm();
+  setTimeout(() => setEditModelExpanded(false), 120);
 });
 wireModelOrder('vidEngineRow');
 wireModelOrder('editEngineRow');
@@ -9453,6 +9794,8 @@ $('#editComposite').addEventListener('click', () => {
 });
 $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
+  const promptIntent = currentPromptIntent();
+  if (promptIntent && offerPromptIntentGuide(promptIntent)) return;
   const outpaintActive = state.view === 'edit' && OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint;
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
   const qwenAngleExports = supportsCurrentEditAngles() && !state.editSequential && !hasEditMask()
@@ -9564,7 +9907,7 @@ $('#generateBtn').addEventListener('click', async () => {
     return toast('Sequential edits need at least two sentences', true);
   }
   if (!(await ensureGenerationSetup())) return;
-  const createImageGuide = mode === 't2i' && state.createMode === 'image' && state.createGuideMode !== 'prompt'
+  const createImageGuide = mode === 't2i' && state.createMode === 'image' && state.createGuideActive
     ? state.createRef : null;
   const createImageGuideName = createImageGuide ? createGuideInput(createImageGuide).name : undefined;
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
@@ -11013,8 +11356,8 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
-  'prompts', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs',
-  'createRef', 'createImageGuideOpen', 'createGuideMode', 'createMatchSource', 'createMatchNative',
+  'prompts', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs', 'promptSourceImage', 'promptAssistantUseSource',
+  'createRef', 'createImageGuideOpen', 'createGuideMode', 'createGuideActive', 'createMatchSource', 'createMatchNative',
   'createInfluence', 'createDepthStrength', 'createStyleStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
   'regions', 'activeRegionId', 'kreaMask', 'kreaMaskPreview', 'kreaMaskDirty', 'kreaMaskErase', 'kreaMaskTool', 'kreaMaskKind',
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
@@ -11147,7 +11490,7 @@ $('#desktopInputsForward').addEventListener('click', () => moveDesktopInputHisto
 function resetActiveGenerationForm() {
   const mode = state.view;
   if (mode === 'edit') {
-    switchEditEngine(enabledEditEngines()[0] || state.editEngineDefault || 'klein4');
+    switchEditEngine(enabledEditEngines()[0] || state.editEngineDefault || EDIT_ENGINES[0]);
     markEngineRow('editEngineRow', state.editEngine);
     state.refs = [null, null, null];
     state.editRefSlots = 1;
@@ -11193,7 +11536,12 @@ function resetActiveGenerationForm() {
     state.loras = [];
     state.regions = [];
     state.activeRegionId = null;
+    state.promptSourceImage = null;
+    state.promptAssistantUseSource = true;
+    state.promptRevisionUndo = null;
     state.createRef = null;
+    state.createGuideActive = false;
+    state.createImageGuideOpen = false;
     state.createMatchSource = false;
     state.createMatchNative = false;
     state.createGuideMode = 'image';
@@ -12527,7 +12875,7 @@ function handleDesktopGalleryTap(item, card) {
 let desktopGalleryDrag = null;
 const DESKTOP_GALLERY_DROP_SELECTOR = [
   '.ref-slot',
-  '#createImageGuideAdd', '#createImageGuideFilled',
+  '#createImageGuideToggle', '#createImageGuideAdd', '#createImageGuideFilled',
   '#regionRefBtn', '#regionRefPreview',
   '#vidAttachBtn', '#vidAttachThumb',
   '#vidEndChip', '#vidEndThumb',
@@ -12626,14 +12974,10 @@ async function applyDesktopGalleryDrop(target, drag) {
     toast(`Added to reference ${index + 1}`);
     return;
   }
-  if (target.matches('#createImageGuideAdd, #createImageGuideFilled')) {
+  if (target.matches('#createImageGuideToggle, #createImageGuideAdd, #createImageGuideFilled')) {
     const reference = await galleryItemEditReference(item);
-    if (state.createGuideMode === 'prompt') {
-      await createPromptFromImageName(reference.name);
-    } else {
-      await setCreateImageGuideAsset(reference, state.createGuideMode);
-      toast(state.createGuideMode === 'style' ? 'Gallery image added as the style reference' : 'Gallery image added as the image guide');
-    }
+    await setCreateImageGuideAsset(reference, state.createGuideMode);
+    toast(state.createGuideMode === 'style' ? 'Gallery image added as the style reference' : 'Gallery image added as the image guide');
     return;
   }
   if (target.matches('#regionRefBtn, #regionRefPreview')) {
@@ -14579,6 +14923,7 @@ async function reuseItem(it, useEnhanced) {
   state.regions = restoringEdit ? state.regions : restoredRegions;
   if (!restoringEdit) {
     state.createRef = null;
+    state.createGuideActive = false;
     state.createMatchSource = false;
     state.createMatchNative = false;
     state.createGuideMode = ['image', 'depth', 'style'].includes(it.imageGuideMode) ? it.imageGuideMode : 'image';
@@ -14684,6 +15029,7 @@ async function reuseItem(it, useEnhanced) {
       const restoredGuide = await restoreCreateImageGuide(it);
       if (!reuseRequestCurrent(options)) return;
       state.createRef = restoredGuide;
+      state.createGuideActive = !!restoredGuide;
     }
     catch { missing.push('image guide'); }
   }
@@ -16715,7 +17061,7 @@ const GUIDED_TOUR_STEPS = [
   {
     target: '#createPromptTools',
     title: 'Add visual direction',
-    copy: 'Use these tools for image-to-prompt, camera choices, regional prompting, or an image guide. They are optional.',
+    copy: 'Use these tools for an image guide or image-to-prompt, conversational revisions, and camera choices. They are optional.',
     motion: 'tap',
     demo: 'Tap a tool to add more control',
   },
@@ -16752,14 +17098,452 @@ const CONTEXTUAL_GUIDES = {
     motion: 'swipe-up',
     demo: 'Swipe up on the handle',
   },
+  'prompt-missing-reference': {
+    id: 'prompt-missing-reference',
+    target: '#createImageGuideToggle',
+    kicker: 'Missing input',
+    title: 'Add the image you mean',
+    copy: '“Like this” needs a visual. Open Image tools.',
+    motion: 'tap',
+    demo: 'Tap the highlighted Image tools button',
+    actionLabel: 'Tap Image tools',
+    advanceOn: '#createImageGuideToggle',
+    next: () => state.createRef ? 'create-guide-choices' : '',
+    fallback: '“Like this” needs an image. Open Image tools and add a Reference or Style image.',
+  },
+  'create-guide-choices': {
+    id: 'create-guide-choices',
+    target: '#createImageGuideModes',
+    kicker: 'Image tools',
+    title: 'Choose what the image controls',
+    copy: 'Reference follows the scene. Depth follows its 3D layout. Style follows its visual language.',
+    motion: 'tap',
+    trace: 'choices',
+    demo: 'Tap Reference, Depth, or Style',
+    actionLabel: 'Choose one option',
+    advanceOn: '[data-guide-mode]',
+  },
+  'edit-image-intent': {
+    id: 'edit-image-intent',
+    target: '[data-primary-mode="edit"]',
+    kicker: 'Edit · 1 of 2',
+    title: 'Use Edit for this',
+    copy: 'Tap Edit, then add the image you want to change.',
+    motion: 'tap',
+    demo: 'Tap Edit in the workspace switcher',
+    actionLabel: 'Tap Edit',
+    advanceOn: '[data-primary-mode="edit"]',
+    next: 'edit-source-upload',
+    fallback: 'This sounds like an edit. Open Edit and add the image you want to change.',
+  },
+  'edit-source-upload': {
+    id: 'edit-source-upload',
+    target: '#refRow .ref-slot:first-child',
+    kicker: 'Edit · 2 of 2',
+    title: 'Add the original image',
+    copy: 'Your prompt describes what changes.',
+    media: {
+      type: 'image', src: '/guides/edit-wireframe.jpg',
+      alt: 'A rendered image edited into a wireframe version with the composition preserved',
+      label: 'Source → edited result',
+    },
+    motion: 'tap',
+    demo: 'Tap input 1 and choose the source image',
+    actionLabel: 'Tap input 1',
+    advanceOn: '#refRow .ref-slot:first-child',
+  },
+  'outpaint-intent': {
+    id: 'outpaint-intent',
+    target: '#editOutpaintToggle',
+    kicker: 'Expand · 1 of 3',
+    title: 'Turn on Expand',
+    copy: 'This adds canvas outside the source.',
+    motion: 'tap',
+    demo: 'Tap the highlighted Expand switch',
+    actionLabel: 'Turn on Expand',
+    advanceOn: '#editOutpaintToggle',
+    next: 'outpaint-resolution',
+    fallback: 'To extend beyond the frame, turn on Expand in Edit and choose a wider Resolution.',
+  },
+  'outpaint-resolution': {
+    id: 'outpaint-resolution',
+    target: '#editAspectToggle',
+    kicker: 'Expand · 2 of 3',
+    title: 'Open Resolution',
+    copy: 'The new frame needs a different shape.',
+    motion: 'tap',
+    demo: 'Tap Resolution',
+    actionLabel: 'Tap Resolution',
+    advanceOn: '#editAspectToggle',
+    next: 'outpaint-aspect',
+  },
+  'outpaint-aspect': {
+    id: 'outpaint-aspect',
+    target: '#editAspectRow',
+    kicker: 'Expand · 3 of 3',
+    title: 'Pick a wider shape',
+    copy: 'Choose any aspect wider than the source.',
+    media: {
+      type: 'compare',
+      before: '/guides/outpaint-source.jpg', after: '/guides/outpaint-wide.jpg',
+      beforeAlt: 'Square source image before outpainting', afterAlt: 'Wide result after outpainting',
+      beforeLabel: 'Source', afterLabel: 'Expanded',
+      label: 'Square source → seamless 21:9 result',
+    },
+    motion: 'tap',
+    trace: 'choices',
+    demo: 'Tap a wider aspect ratio',
+    actionLabel: 'Choose a wider shape',
+    advanceOn: '.aspect-chip:not(.edit-aspect-source)',
+  },
+  'inpaint-intent': {
+    id: 'inpaint-intent',
+    target: '#kreaMaskBtn',
+    title: 'Open Edit area',
+    copy: 'Then mark only the part that may change.',
+    media: {
+      type: 'image', src: '/guides/inpaint-face.jpg',
+      alt: 'A character changed inside a fixed scene while the surrounding image remains unchanged',
+      label: 'Paint the area → change only that area',
+    },
+    motion: 'tap',
+    demo: 'Tap Edit area, then mark the subject or object',
+    actionLabel: 'Tap Edit area',
+    advanceOn: '#kreaMaskBtn',
+    fallback: 'To change only one area, open Edit area and mark the part that may change.',
+  },
+  'video-scail-intent': {
+    id: 'video-scail-intent',
+    target: '#vidModelHeader',
+    title: 'Choose SCAIL 2',
+    copy: 'It transfers a driving video’s motion to a reference image.',
+    motion: 'tap',
+    demo: 'Open the Model picker',
+    actionLabel: 'Tap Model',
+    advanceOn: '#vidModelHeader',
+    next: 'video-scail-model',
+    fallback: 'For motion transfer, choose SCAIL 2, then add a source image and driving video.',
+  },
+  'video-scail-model': {
+    id: 'video-scail-model',
+    target: '#vidEngineRow [data-engine="scail"]',
+    title: 'Choose SCAIL 2',
+    copy: 'Select the motion-transfer model.',
+    motion: 'tap',
+    demo: 'Tap SCAIL 2 in the model list',
+    actionLabel: 'Tap SCAIL 2',
+    advanceOn: '#vidEngineRow [data-engine="scail"]',
+    next: 'scail-source-upload',
+  },
+  'scail-source-upload': {
+    id: 'scail-source-upload',
+    target: '#vidAttachBtn',
+    title: 'Add the new subject',
+    copy: 'The reference image receives the movement.',
+    media: {
+      type: 'video', src: '/guides/scail-hand-fantasy.mp4',
+      label: 'Source image supplies the subject',
+    },
+    motion: 'tap',
+    demo: 'Tap Reference image and choose the new subject',
+    actionLabel: 'Tap Reference image',
+    advanceOn: '#vidAttachBtn',
+    fallback: 'SCAIL 2 needs a source image. Add it as the First frame.',
+  },
+  'scail-motion-upload': {
+    id: 'scail-motion-upload',
+    target: '#vidDriveBtn',
+    title: 'Add the movement',
+    copy: 'Choose the performance you want to copy.',
+    media: {
+      type: 'video', src: '/guides/scail-hand-fantasy.mp4',
+      label: 'Motion video supplies the performance',
+    },
+    motion: 'tap',
+    demo: 'Tap Motion video and choose the driving clip',
+    actionLabel: 'Tap Motion video',
+    advanceOn: '#vidDriveBtn',
+    fallback: 'SCAIL 2 needs a motion video. Add the clip whose movement you want to copy.',
+  },
 };
+
+const PROMPT_INTENT_HINTS = {
+  'prompt-missing-reference': {
+    title: 'Add a visual reference',
+    copy: '“Like this” needs an image. Reference keeps composition; Style keeps only the look.',
+  },
+  'edit-image-intent': {
+    title: 'This sounds like an image edit',
+    copy: 'Use Edit and add the source image before describing what should change.',
+  },
+  'outpaint-intent': {
+    title: 'This sounds like an outpaint',
+    copy: 'Turn on Expand to create new image beyond the original frame.',
+  },
+  'inpaint-intent': {
+    title: 'Keep the change local',
+    copy: 'Use Edit area to mark the only part that should change.',
+  },
+  'video-scail-intent': {
+    title: 'This sounds like motion transfer',
+    copy: 'SCAIL 2 copies a driving video’s movement onto a new subject.',
+  },
+  'video-scail-model': {
+    title: 'Choose SCAIL 2',
+    copy: 'This model combines a subject image and a motion video.',
+  },
+  'scail-source-upload': {
+    title: 'SCAIL 2 needs a subject image',
+    copy: 'Add the new character, object, or scene as the Reference image.',
+  },
+  'scail-motion-upload': {
+    title: 'SCAIL 2 needs a motion video',
+    copy: 'Add the clip whose movement you want the subject to follow.',
+  },
+};
+
+function normalizedIntentPrompt() {
+  return promptForGeneration().toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function promptUsesUnattachedVisual(prompt) {
+  return /\b(like|match|matching|similar to|inspired by|based on|same as)\s+(this|that|the)(?:\s+(?:image|photo|picture|reference|style|composition))?\b/.test(prompt)
+    || /\b(use|follow|copy|reference)\s+(this|that|the)\s+(image|photo|picture|reference|style|composition)\b/.test(prompt)
+    || /\b(this|that)\s+(image|photo|picture|reference|style|composition)\b/.test(prompt);
+}
+
+function promptRequestsSourceEdit(prompt) {
+  return /\b(change|replace|remove|erase|edit|modify|transform|turn)\b.{0,38}\b(this|that)\s+(image|photo|picture|person|character|object|subject)\b/.test(prompt)
+    || /\b(in|on)\s+(this|that)\s+(image|photo|picture)\b/.test(prompt);
+}
+
+function promptRequestsOutpaint(prompt) {
+  return /\b(outpaint|extend|expand|widen|wider|panorama|panoramic|beyond the (?:frame|image)|more (?:canvas|scene) (?:around|outside))\b/.test(prompt);
+}
+
+function promptRequestsLocalEdit(prompt) {
+  return /\b(inpaint|mask|masked|change only|only change|edit only|only the|just the|replace just|remove just|this area|selected area)\b/.test(prompt);
+}
+
+function promptRequestsMotionTransfer(prompt) {
+  const hasMotion = /\b(motion|movement|performance|gesture|gestures|dance|dancing|action|acting|pose sequence)\b/.test(prompt);
+  const hasTransfer = /\b(copy|match|transfer|follow|use|apply|drive|driven|same)\b/.test(prompt);
+  return hasMotion && hasTransfer;
+}
+
+function currentPromptIntent() {
+  const prompt = normalizedIntentPrompt();
+  let id = '';
+  const hasCreateVisualGuide = !!(state.createRef && state.createGuideActive);
+  if (state.view === 'create' && state.createMode === 'image' && prompt) {
+    if (promptRequestsSourceEdit(prompt) && !hasCreateVisualGuide) id = 'edit-image-intent';
+    else if (promptUsesUnattachedVisual(prompt) && !hasCreateVisualGuide) id = 'prompt-missing-reference';
+  } else if (state.view === 'edit' && state.refs[0] && prompt) {
+    if (promptRequestsOutpaint(prompt) && OUTPAINT_EDIT_ENGINES.has(state.editEngine) && !state.editOutpaint) id = 'outpaint-intent';
+    else if (promptRequestsLocalEdit(prompt) && supportsCurrentEditMask() && !hasEditMask()) id = 'inpaint-intent';
+  } else if (state.view === 'video') {
+    if (prompt && promptRequestsMotionTransfer(prompt) && state.vidEngine !== 'scail') {
+      id = $('#vidModelHeader').getAttribute('aria-expanded') === 'true' ? 'video-scail-model' : 'video-scail-intent';
+    } else if (state.vidEngine === 'scail' && !state.vidRef) id = 'scail-source-upload';
+    else if (state.vidEngine === 'scail' && !state.vidDrive) id = 'scail-motion-upload';
+  }
+  if (!id) return null;
+  return { id, key: `${id}:${state.view}:${state.createMode || ''}:${prompt}` };
+}
+
+let promptIntentHintTimer = null;
+
+function renderPromptIntentHint() {
+  const hint = $('#promptIntentHint');
+  if (!hint) return;
+  const intent = currentPromptIntent();
+  const copy = intent && PROMPT_INTENT_HINTS[intent.id];
+  const hidden = !intent || !copy || dismissedIntentGuides.has(intent.key) || !!contextualGuide || guidedTourIndex >= 0;
+  hint.hidden = hidden;
+  if (hidden) {
+    delete hint.dataset.guideId;
+    delete hint.dataset.intentKey;
+    return;
+  }
+  hint.dataset.guideId = intent.id;
+  hint.dataset.intentKey = intent.key;
+  $('#promptIntentTitle').textContent = copy.title;
+  $('#promptIntentCopy').textContent = copy.copy;
+}
+
+function schedulePromptIntentHint(delay = 360) {
+  clearTimeout(promptIntentHintTimer);
+  promptIntentHintTimer = setTimeout(renderPromptIntentHint, delay);
+}
+
+function offerPromptIntentGuide(intent, { explicit = false } = {}) {
+  if (!intent || dismissedIntentGuides.has(intent.key)) return false;
+  let guideId = intent.id;
+  if (intent.id === 'prompt-missing-reference' && state.createRef) {
+    state.createImageGuideOpen = true;
+    renderCreateImageGuide();
+    saveForm();
+    guideId = 'create-guide-choices';
+  }
+  const shown = showContextualGuide(guideId, {
+    repeat: true,
+    ignoreEnabled: explicit,
+    intentKey: intent.key,
+  });
+  if (shown) {
+    renderPromptIntentHint();
+    return true;
+  }
+  const guide = CONTEXTUAL_GUIDES[guideId];
+  toast(contextualGuideValue(guide?.fallback) || PROMPT_INTENT_HINTS[intent.id]?.copy || 'Add the missing input before generating.', true);
+  dismissedIntentGuides.add(intent.key);
+  schedulePromptIntentHint();
+  return true;
+}
 
 let guidedTourIndex = -1;
 let guidedTourTimer = null;
 let guidedTourPositionFrame = null;
+let guidedTourTrackFrame = null;
+let guidedTourTrackedTarget = null;
+let guidedTourTrackedRect = '';
 let contextualGuide = null;
 let contextualGuideTimer = null;
+let contextualGuideRetryTimer = null;
 let pendingContextualGuideId = '';
+let contextualGuideIntentKey = '';
+let contextualGuidePreviousFocus = null;
+let guidedTourResizeObserver = null;
+let guidedTourMutationObserver = null;
+const dismissedIntentGuides = new Set();
+
+function contextualGuideValue(value) {
+  return typeof value === 'function' ? value() : value;
+}
+
+function contextualGuideTarget(guide = contextualGuide) {
+  const selector = guide ? contextualGuideValue(guide.target) : '';
+  return selector ? $(selector) : null;
+}
+
+function guidedTourTargetUsable(target) {
+  if (!target || !target.isConnected || target.hidden || target.matches(':disabled')) return false;
+  if (target.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+  const style = getComputedStyle(target);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  const rect = target.getBoundingClientRect();
+  return rect.width > 1 && rect.height > 1 && target.getClientRects().length > 0;
+}
+
+function stopGuidedTourTargetObservation() {
+  if (guidedTourResizeObserver) guidedTourResizeObserver.disconnect();
+  if (guidedTourMutationObserver) guidedTourMutationObserver.disconnect();
+  if (guidedTourTrackFrame) cancelAnimationFrame(guidedTourTrackFrame);
+  guidedTourResizeObserver = null;
+  guidedTourMutationObserver = null;
+  guidedTourTrackFrame = null;
+  guidedTourTrackedTarget = null;
+  guidedTourTrackedRect = '';
+}
+
+function requestGuidedTourPosition() {
+  if ($('#guidedTour').hidden || guidedTourPositionFrame) return;
+  guidedTourPositionFrame = requestAnimationFrame(() => {
+    guidedTourPositionFrame = null;
+    positionGuidedTour();
+  });
+}
+
+function observeGuidedTourTarget(target) {
+  stopGuidedTourTargetObservation();
+  if (!target) return;
+  guidedTourTrackedTarget = target;
+  const track = () => {
+    if ($('#guidedTour').hidden || !guidedTourTrackedTarget) return;
+    if (!guidedTourTargetUsable(guidedTourTrackedTarget)) {
+      requestGuidedTourPosition();
+    } else {
+      const rect = guidedTourTrackedTarget.getBoundingClientRect();
+      const next = `${Math.round(rect.left * 10)}:${Math.round(rect.top * 10)}:${Math.round(rect.width * 10)}:${Math.round(rect.height * 10)}`;
+      if (next !== guidedTourTrackedRect) {
+        guidedTourTrackedRect = next;
+        requestGuidedTourPosition();
+      }
+    }
+    guidedTourTrackFrame = requestAnimationFrame(track);
+  };
+  guidedTourTrackFrame = requestAnimationFrame(track);
+  if (typeof ResizeObserver !== 'undefined') {
+    guidedTourResizeObserver = new ResizeObserver(requestGuidedTourPosition);
+    guidedTourResizeObserver.observe(target);
+    guidedTourResizeObserver.observe($('#guidedTourCard'));
+  }
+  if (typeof MutationObserver !== 'undefined') {
+    guidedTourMutationObserver = new MutationObserver(requestGuidedTourPosition);
+    for (let node = target; node; node = node.parentElement) {
+      guidedTourMutationObserver.observe(node, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden', 'inert', 'aria-hidden'],
+      });
+      if (node === document.body) break;
+    }
+  }
+}
+
+function renderGuidedTourMedia(definition) {
+  const container = $('#guidedTourMedia');
+  const media = contextualGuideValue(definition);
+  container.replaceChildren();
+  container.hidden = !media;
+  container.setAttribute('aria-hidden', String(!media));
+  if (!media) return;
+
+  const makeImage = (src, alt) => {
+    const image = document.createElement('img');
+    image.src = src;
+    image.alt = alt || '';
+    image.loading = 'eager';
+    image.decoding = 'async';
+    return image;
+  };
+
+  if (media.type === 'video') {
+    const video = document.createElement('video');
+    video.src = media.src;
+    video.muted = true;
+    video.loop = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.setAttribute('aria-label', media.alt || media.label || 'Example result');
+    container.appendChild(video);
+    video.play().catch(() => { /* browsers may wait for the next user gesture */ });
+  } else if (media.type === 'compare') {
+    const comparison = document.createElement('span');
+    comparison.className = 'guided-tour-media-compare';
+    [
+      [media.before, media.beforeAlt, media.beforeLabel || 'Before'],
+      [media.after, media.afterAlt, media.afterLabel || 'After'],
+    ].forEach(([src, alt, label]) => {
+      const frame = document.createElement('span');
+      frame.className = 'guided-tour-media-frame';
+      frame.append(makeImage(src, alt));
+      const badge = document.createElement('b');
+      badge.textContent = label;
+      frame.appendChild(badge);
+      comparison.appendChild(frame);
+    });
+    container.appendChild(comparison);
+  } else {
+    container.appendChild(makeImage(media.src, media.alt));
+  }
+
+  if (media.label) {
+    const caption = document.createElement('figcaption');
+    caption.textContent = media.label;
+    container.appendChild(caption);
+  }
+}
 
 function guidedTourStorageKey() {
   return profileStorageKey('ks-guided-tour') || 'ks-guided-tour-anonymous';
@@ -16789,13 +17573,20 @@ function renderGuidedTourSetting() {
 
 function guidedTourTarget() {
   const guide = contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
-  return guide ? $(guide.target) : null;
+  return contextualGuide ? contextualGuideTarget(guide) : (guide ? $(guide.target) : null);
 }
 
 function positionGuidedTour() {
   const root = $('#guidedTour');
   const target = guidedTourTarget();
-  if (root.hidden || !target) return;
+  if (root.hidden) return;
+  if (!guidedTourTargetUsable(target)) {
+    if (contextualGuide) {
+      hideContextualGuide();
+      schedulePromptIntentHint(0);
+    }
+    return;
+  }
   const rect = target.getBoundingClientRect();
   const pad = 7;
   const left = Math.max(4, rect.left - pad);
@@ -16803,6 +17594,7 @@ function positionGuidedTour() {
   const right = Math.min(window.innerWidth - 4, rect.right + pad);
   const bottom = Math.min(window.innerHeight - 4, rect.bottom + pad);
   const spotlight = $('#guidedTourSpotlight');
+  spotlight.dataset.trace = contextualGuide ? (contextualGuide.trace || contextualGuide.motion || 'tap') : '';
   spotlight.style.left = `${left}px`;
   spotlight.style.top = `${top}px`;
   spotlight.style.width = `${Math.max(12, right - left)}px`;
@@ -16814,16 +17606,22 @@ function positionGuidedTour() {
   const cardRect = card.getBoundingClientRect();
   const margin = 12;
   const gap = 16;
-  const cardLeft = Math.max(margin, Math.min(
-    window.innerWidth - cardRect.width - margin,
-    rect.left + rect.width / 2 - cardRect.width / 2,
-  ));
+  let cardLeft;
   const roomBelow = window.innerHeight - rect.bottom - gap - margin;
   const roomAbove = rect.top - gap - margin;
   let cardTop;
-  if (roomBelow >= cardRect.height) cardTop = rect.bottom + gap;
-  else if (roomAbove >= cardRect.height) cardTop = rect.top - cardRect.height - gap;
-  else cardTop = rect.top > window.innerHeight / 2 ? margin : window.innerHeight - cardRect.height - margin;
+  const roomRight = window.innerWidth - rect.right - gap - margin;
+  const roomLeft = rect.left - gap - margin;
+  if (contextualGuide && window.innerWidth >= 900 && (roomRight >= cardRect.width || roomLeft >= cardRect.width)) {
+    cardLeft = roomRight >= cardRect.width ? rect.right + gap : rect.left - cardRect.width - gap;
+    cardTop = rect.top + rect.height / 2 - cardRect.height / 2;
+  } else {
+    cardLeft = rect.left + rect.width / 2 - cardRect.width / 2;
+    if (roomBelow >= cardRect.height) cardTop = rect.bottom + gap;
+    else if (roomAbove >= cardRect.height) cardTop = rect.top - cardRect.height - gap;
+    else cardTop = rect.top > window.innerHeight / 2 ? margin : window.innerHeight - cardRect.height - margin;
+  }
+  cardLeft = Math.max(margin, Math.min(window.innerWidth - cardRect.width - margin, cardLeft));
   card.style.left = `${cardLeft}px`;
   card.style.top = `${Math.max(margin, Math.min(cardTop, window.innerHeight - cardRect.height - margin))}px`;
   root.classList.remove('is-positioning');
@@ -16842,54 +17640,107 @@ function scheduleContextualGuide(id, delay = 560) {
   }, delay);
 }
 
-function showContextualGuide(id) {
+function showContextualGuide(id, { repeat = false, ignoreEnabled = false, intentKey = '' } = {}) {
   const guide = CONTEXTUAL_GUIDES[id];
   const root = $('#guidedTour');
-  const target = guide ? $(guide.target) : null;
-  if (!guide || !contextualGuidesEnabled() || localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return;
-  if (contextualGuide || guidedTourIndex >= 0 || !root.hidden) return;
+  const target = contextualGuideTarget(guide);
+  if (!guide || (!ignoreEnabled && !contextualGuidesEnabled())) return false;
+  if (!repeat && localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return false;
+  if (contextualGuide || guidedTourIndex >= 0 || !root.hidden) return false;
   if (id === 'gallery-selection-details' && (document.hidden || gallerySelectionDrag.active)) {
     if (state.selected.size) scheduleContextualGuide(id, 280);
-    return;
+    return false;
   }
-  if (!target || target.hidden || !target.getClientRects().length) return;
-  if (id === 'gallery-selection-details' && (!state.selected.size || target.classList.contains('is-expanded'))) return;
+  if (!guidedTourTargetUsable(target)) return false;
+  if (id === 'gallery-selection-details' && (!state.selected.size || target.classList.contains('is-expanded'))) return false;
 
   contextualGuide = guide;
-  localStorage.setItem(contextualGuideSeenKey(id), 'seen');
+  contextualGuideIntentKey = intentKey;
+  contextualGuidePreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  clearTimeout(contextualGuideRetryTimer);
+  contextualGuideRetryTimer = null;
+  if (!guide.advanceOn) localStorage.setItem(contextualGuideSeenKey(id), 'seen');
   clearTimeout(guidedTourTimer);
   root.hidden = false;
   root.setAttribute('aria-hidden', 'false');
   root.classList.add('is-contextual', 'is-positioning');
+  root.classList.toggle('requires-action', !!guide.advanceOn);
   $('#guidedTourCard').setAttribute('aria-modal', 'false');
-  $('#guidedTourStep').textContent = 'Gesture tip';
-  $('#guidedTourTitle').textContent = guide.title;
-  $('#guidedTourCopy').textContent = guide.copy;
+  const guideTitle = contextualGuideValue(guide.title);
+  const guideCopy = contextualGuideValue(guide.copy);
+  const actionInstruction = guide.advanceOn
+    ? contextualGuideValue(guide.actionLabel || guide.demo || 'Use the highlighted control')
+    : '';
+  $('#guidedTourStep').textContent = contextualGuideValue(guide.kicker || (guide.advanceOn ? 'Try it now' : 'Gesture tip'));
+  $('#guidedTourTitle').textContent = guideTitle;
+  $('#guidedTourCopy').textContent = guideCopy;
+  renderGuidedTourMedia(guide.media);
   $('#guidedTourDemo').dataset.motion = guide.motion;
-  $('#guidedTourDemoLabel').textContent = guide.demo;
+  $('#guidedTourDemoLabel').textContent = contextualGuideValue(guide.demo);
   $('#guidedTourDots').replaceChildren();
   $('#guidedTourDots').hidden = true;
   $('#guidedTourBack').hidden = true;
-  $('#guidedTourNext').textContent = 'Got it';
-  $('#guidedTourAnnouncement').textContent = `${guide.title}. ${guide.copy}`;
-  guidedTourTimer = setTimeout(positionGuidedTour, 30);
+  const next = $('#guidedTourNext');
+  next.disabled = !!guide.advanceOn;
+  next.textContent = guide.advanceOn ? contextualGuideValue(guide.actionLabel || 'Use the highlighted control') : 'Got it';
+  const announcement = [guideTitle, guideCopy, actionInstruction]
+    .filter(Boolean)
+    .map((part) => part.trim().replace(/[.!?]+$/, ''))
+    .join('. ');
+  $('#guidedTourAnnouncement').textContent = announcement ? `${announcement}.` : '';
+  if (guide.scroll !== false) {
+    target.scrollIntoView({
+      behavior: 'auto',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }
+  observeGuidedTourTarget(target);
+  guidedTourTimer = setTimeout(() => {
+    positionGuidedTour();
+    focusContextualGuideAction(guide);
+  }, 30);
+  return true;
 }
 
-function hideContextualGuide() {
+function hideContextualGuide({ keepSequence = false, restoreFocus = true } = {}) {
   if (!contextualGuide) return;
   clearTimeout(guidedTourTimer);
+  if (!keepSequence) {
+    clearTimeout(contextualGuideRetryTimer);
+    contextualGuideRetryTimer = null;
+  }
+  stopGuidedTourTargetObservation();
   contextualGuide = null;
+  contextualGuideIntentKey = '';
   const root = $('#guidedTour');
   root.hidden = true;
   root.setAttribute('aria-hidden', 'true');
-  root.classList.remove('is-contextual', 'is-positioning');
+  root.classList.remove('is-contextual', 'is-positioning', 'requires-action');
   $('#guidedTourCard').setAttribute('aria-modal', 'true');
   $('#guidedTourDots').hidden = false;
   $('#guidedTourBack').hidden = false;
+  $('#guidedTourNext').disabled = false;
+  renderGuidedTourMedia(null);
   $('#guidedTourAnnouncement').textContent = '';
+  if (!keepSequence && restoreFocus && contextualGuidePreviousFocus?.isConnected) {
+    contextualGuidePreviousFocus.focus({ preventScroll: true });
+  }
+  contextualGuidePreviousFocus = null;
+}
+
+function dismissContextualGuide() {
+  if (!contextualGuide) return;
+  const id = contextualGuide.id;
+  if (contextualGuideIntentKey) dismissedIntentGuides.add(contextualGuideIntentKey);
+  localStorage.setItem(contextualGuideSeenKey(id), 'seen');
+  hideContextualGuide();
+  schedulePromptIntentHint();
 }
 
 function cancelContextualGuide(id) {
+  clearTimeout(contextualGuideRetryTimer);
+  contextualGuideRetryTimer = null;
   if (!id || pendingContextualGuideId === id) {
     clearTimeout(contextualGuideTimer);
     contextualGuideTimer = null;
@@ -16904,10 +17755,105 @@ function completeContextualGuide(id) {
   cancelContextualGuide(id);
 }
 
+function showNextContextualGuide(id, intentKey = '', attempt = 0) {
+  if (!id || attempt > 7) return;
+  if (showContextualGuide(id, { repeat: true, ignoreEnabled: true, intentKey })) return;
+  clearTimeout(contextualGuideRetryTimer);
+  contextualGuideRetryTimer = setTimeout(() => {
+    contextualGuideRetryTimer = null;
+    showNextContextualGuide(id, intentKey, attempt + 1);
+  }, 120);
+}
+
+function contextualGuideActionSatisfied(guide, action) {
+  if (!guide) return false;
+  if (guide.id === 'prompt-missing-reference') return true;
+  if (guide.id === 'create-guide-choices') return state.createGuideMode === action?.dataset?.guideMode;
+  if (guide.id === 'edit-image-intent') return state.view === 'edit';
+  if (guide.id === 'outpaint-intent') return state.editOutpaint;
+  if (guide.id === 'outpaint-resolution') return $('#editAspectToggle').getAttribute('aria-expanded') === 'true';
+  if (guide.id === 'outpaint-aspect') return state.editAspectOverride;
+  if (guide.id === 'video-scail-intent') return $('#vidModelHeader').getAttribute('aria-expanded') === 'true';
+  if (guide.id === 'video-scail-model') return state.vidEngine === 'scail';
+  return true;
+}
+
+function signalContextualGuideTarget() {
+  const root = $('#guidedTour');
+  root.classList.remove('target-needed');
+  requestAnimationFrame(() => root.classList.add('target-needed'));
+  setTimeout(() => root.classList.remove('target-needed'), 360);
+  $('#guidedTourAnnouncement').textContent = 'Use the highlighted control, or close this guide.';
+}
+
+function contextualGuideActionAtPoint(guide, target, clientX, clientY) {
+  const selector = contextualGuideValue(guide.advanceOn);
+  if (!selector) return null;
+  if (target.matches(selector) && !target.disabled) return target;
+  const candidates = contextualGuideActions(guide, target);
+  if (!candidates.length) return null;
+  const direct = candidates.find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  });
+  if (direct) return direct;
+  return candidates.reduce((nearest, candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    const distance = (clientX - (rect.left + rect.width / 2)) ** 2 + (clientY - (rect.top + rect.height / 2)) ** 2;
+    return !nearest || distance < nearest.distance ? { candidate, distance } : nearest;
+  }, null)?.candidate || null;
+}
+
+function contextualGuideActions(guide = contextualGuide, target = contextualGuideTarget(guide)) {
+  const selector = guide ? contextualGuideValue(guide.advanceOn) : '';
+  if (!selector || !target) return [];
+  if (target.matches(selector) && !target.disabled) return [target];
+  return $$(selector).filter((candidate) => target.contains(candidate) && !candidate.disabled);
+}
+
+function focusContextualGuideAction(guide = contextualGuide) {
+  if (!guide?.advanceOn) return;
+  const action = contextualGuideActions(guide)[0];
+  (action || $('#guidedTourClose')).focus({ preventScroll: true });
+}
+
+function advanceContextualGuideFromAction(guide, action) {
+  if (!contextualGuide || contextualGuide !== guide) return;
+  if (!contextualGuideActionSatisfied(guide, action)) {
+    signalContextualGuideTarget();
+    requestGuidedTourPosition();
+    return;
+  }
+  const next = contextualGuideValue(guide.next);
+  const intentKey = contextualGuideIntentKey;
+  localStorage.setItem(contextualGuideSeenKey(guide.id), 'seen');
+  hideContextualGuide({ keepSequence: !!next, restoreFocus: false });
+  schedulePromptIntentHint();
+  if (next) {
+    contextualGuideRetryTimer = setTimeout(() => {
+      contextualGuideRetryTimer = null;
+      showNextContextualGuide(next, intentKey);
+    }, 100);
+  }
+}
+
 function setContextualGuidesEnabled(enabled) {
   localStorage.setItem(guidedTipsStorageKey(), enabled ? 'on' : 'off');
   if (!enabled) cancelContextualGuide();
   renderGuidedTourSetting();
+}
+
+function resetTipsAndGuides() {
+  cancelContextualGuide();
+  localStorage.removeItem(guidedTourStorageKey());
+  localStorage.setItem(guidedTipsStorageKey(), 'on');
+  Object.keys(CONTEXTUAL_GUIDES).forEach((id) => {
+    localStorage.removeItem(contextualGuideSeenKey(id));
+  });
+  dismissedIntentGuides.clear();
+  renderGuidedTourSetting();
+  schedulePromptIntentHint(0);
+  toast('Tips and guides reset. They will appear again as you use the app.');
 }
 
 function renderGuidedTourStep({ focus = true } = {}) {
@@ -16920,9 +17866,11 @@ function renderGuidedTourStep({ focus = true } = {}) {
   $('#guidedTourStep').textContent = `${guidedTourIndex + 1} of ${GUIDED_TOUR_STEPS.length}`;
   $('#guidedTourTitle').textContent = step.title;
   $('#guidedTourCopy').textContent = step.copy;
+  renderGuidedTourMedia(null);
   $('#guidedTourDemo').dataset.motion = step.motion;
   $('#guidedTourDemoLabel').textContent = step.demo;
   $('#guidedTourBack').disabled = guidedTourIndex === 0;
+  $('#guidedTourNext').disabled = false;
   $('#guidedTourNext').textContent = guidedTourIndex === GUIDED_TOUR_STEPS.length - 1 ? 'Finish' : 'Next';
   const dots = $('#guidedTourDots');
   dots.replaceChildren(...GUIDED_TOUR_STEPS.map((_, index) => {
@@ -16956,6 +17904,7 @@ function startGuidedTour() {
   guidedTourIndex = 0;
   const root = $('#guidedTour');
   root.classList.remove('is-contextual');
+  root.classList.remove('requires-action');
   root.hidden = false;
   root.setAttribute('aria-hidden', 'false');
   $('#guidedTourCard').setAttribute('aria-modal', 'true');
@@ -16967,21 +17916,24 @@ function startGuidedTour() {
 }
 
 function finishGuidedTour(completed = false) {
-  if (contextualGuide) return hideContextualGuide();
+  if (contextualGuide) return dismissContextualGuide();
   clearTimeout(guidedTourTimer);
   if (completed) localStorage.setItem(guidedTourStorageKey(), 'complete');
   guidedTourIndex = -1;
   const root = $('#guidedTour');
   root.hidden = true;
   root.setAttribute('aria-hidden', 'true');
-  root.classList.remove('is-contextual', 'is-positioning');
+  root.classList.remove('is-contextual', 'is-positioning', 'requires-action');
   document.body.classList.remove('guided-tour-open');
   renderGuidedTourSetting();
   $('#appMenuBtn').focus({ preventScroll: true });
 }
 
 function advanceGuidedTour(direction) {
-  if (contextualGuide) return hideContextualGuide();
+  if (contextualGuide) {
+    if (contextualGuide.advanceOn) return;
+    return dismissContextualGuide();
+  }
   const next = guidedTourIndex + direction;
   if (next >= GUIDED_TOUR_STEPS.length) return finishGuidedTour(true);
   if (next < 0) return;
@@ -16993,13 +17945,72 @@ $('#guidedTourStart').addEventListener('click', startGuidedTour);
 $('#guidedTipsToggle').addEventListener('click', () => {
   setContextualGuidesEnabled(!contextualGuidesEnabled());
 });
+$('#guidedGuidesReset').addEventListener('click', resetTipsAndGuides);
 $('#guidedTourClose').addEventListener('click', () => finishGuidedTour(false));
 $('#guidedTourBack').addEventListener('click', () => advanceGuidedTour(-1));
 $('#guidedTourNext').addEventListener('click', () => advanceGuidedTour(1));
+$('#promptIntentAction').addEventListener('click', () => {
+  const intent = currentPromptIntent();
+  if (!intent) return renderPromptIntentHint();
+  offerPromptIntentGuide(intent, { explicit: true });
+});
+$('#guidedTourSpotlight').addEventListener('click', (event) => {
+  const guide = contextualGuide;
+  if (!guide || !guide.advanceOn) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const target = contextualGuideTarget(guide);
+  if (!guidedTourTargetUsable(target)) {
+    hideContextualGuide();
+    schedulePromptIntentHint(0);
+    return;
+  }
+  const action = contextualGuideActionAtPoint(guide, target, event.clientX, event.clientY);
+  if (!action) return signalContextualGuideTarget();
+  action.click();
+});
+document.addEventListener('click', (event) => {
+  const guide = contextualGuide;
+  if (!guide || !guide.advanceOn) return;
+  const selector = contextualGuideValue(guide.advanceOn);
+  const action = selector && event.target.closest ? event.target.closest(selector) : null;
+  const target = contextualGuideTarget(guide);
+  if (!action || !target || (action !== target && !target.contains(action))) return;
+  setTimeout(() => advanceContextualGuideFromAction(guide, action), 70);
+});
+$('#guidedTour').addEventListener('click', (event) => {
+  if (!contextualGuide?.advanceOn || event.target.closest('.guided-tour-card, .guided-tour-spotlight')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  signalContextualGuideTarget();
+});
 $('#guidedTour').addEventListener('wheel', (event) => {
-  if (contextualGuide) return;
+  if (contextualGuide) {
+    if (contextualGuide.advanceOn && !event.target.closest('.guided-tour-card')) event.preventDefault();
+    return;
+  }
   if (!event.target.closest('.guided-tour-card')) event.preventDefault();
 }, { passive: false });
+document.addEventListener('keydown', (event) => {
+  const guide = contextualGuide;
+  if (!guide?.advanceOn) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    finishGuidedTour(false);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const allowed = [...contextualGuideActions(guide), $('#guidedTourClose')].filter(Boolean);
+  if (!allowed.length) return;
+  const current = allowed.indexOf(document.activeElement);
+  const next = event.shiftKey
+    ? (current <= 0 ? allowed.length - 1 : current - 1)
+    : (current < 0 || current >= allowed.length - 1 ? 0 : current + 1);
+  event.preventDefault();
+  event.stopPropagation();
+  allowed[next].focus({ preventScroll: true });
+}, true);
 $('#guidedTour').addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -17031,11 +18042,7 @@ window.addEventListener('resize', () => {
   if (!$('#guidedTour').hidden) positionGuidedTour();
 });
 document.addEventListener('scroll', () => {
-  if ($('#guidedTour').hidden || guidedTourPositionFrame) return;
-  guidedTourPositionFrame = requestAnimationFrame(() => {
-    guidedTourPositionFrame = null;
-    positionGuidedTour();
-  });
+  requestGuidedTourPosition();
 }, true);
 renderGuidedTourSetting();
 
@@ -17297,8 +18304,8 @@ function generationSetupComponents() {
     return [...components];
   }
   components.add(state.createMode === 'region' ? 'regional' : 'image');
-  if (state.createMode === 'image' && state.createRef && state.createGuideMode === 'depth') components.add('krea2depth');
-  if (state.createMode === 'image' && state.createRef && state.createGuideMode === 'style') components.add('krea2style');
+  if (state.createMode === 'image' && state.createGuideActive && state.createRef && state.createGuideMode === 'depth') components.add('krea2depth');
+  if (state.createMode === 'image' && state.createGuideActive && state.createRef && state.createGuideMode === 'style') components.add('krea2style');
   if (state.createUpscaleEnabled) components.add('upscale');
   return [...components];
 }

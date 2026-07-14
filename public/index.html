@@ -177,10 +177,10 @@
   </div>
   <section class="panel video-model-panel edit-model-panel" id="editModelPanel" hidden>
     <button class="video-model-header" id="editModelHeader" type="button" aria-expanded="false" aria-controls="editModelBody">
-      <span class="video-model-kicker">Model</span>
-      <span class="edit-model-current">
-        <span class="video-model-selected" id="editEngineSelected">Klein 4B</span>
-        <span class="video-model-note" id="editEngineNote">4B · fast edits</span>
+      <span class="video-model-kicker">Edit model</span>
+      <span class="model-current">
+        <span class="model-current-title"><span class="video-model-selected" id="editEngineSelected">Flux Klein 9B</span></span>
+        <span class="video-model-note" id="editEngineNote">Precision Editing</span>
       </span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
     </button>
@@ -188,12 +188,15 @@
       <div class="video-model-body-inner">
         <div class="model-order-hint" id="editModelOrderHint">Hold and drag to reorder · first is default</div>
         <div class="chip-row video-choice-grid edit-engine-row" id="editEngineRow" aria-label="Edit model" aria-describedby="editModelOrderHint">
-          <button class="chip active" data-engine="klein4" data-feature-engine="edit.klein4">Klein 4B</button>
-          <button class="chip" data-engine="klein9" data-feature-engine="edit.klein9">Klein 9B</button>
-          <button class="chip" data-engine="qwen" data-feature-engine="edit.qwen">Qwen Edit</button>
-          <button class="chip" data-engine="krea2" data-feature-engine="edit.krea2">Krea2</button>
-          <button class="chip" data-engine="krea2ref" data-feature-engine="edit.krea2ref">Krea 2 Edit</button>
+          <button class="chip active" data-engine="klein9" data-feature-engine="edit.klein9" data-task-label="Precision Editing" data-model-label="Flux Klein 9B"><b>Flux Klein 9B</b><small>Precision Editing</small></button>
+          <button class="chip" data-engine="klein4" data-feature-engine="edit.klein4" data-task-label="Fast Edits" data-model-label="Flux Klein 4B"><b>Flux Klein 4B</b><small>Fast Edits</small></button>
+          <button class="chip" data-engine="qwen" data-feature-engine="edit.qwen" data-task-label="Combine Images" data-model-label="Qwen Edit"><b>Qwen Edit</b><small>Combine Images</small></button>
+          <button class="chip" data-engine="krea2ref" data-feature-engine="edit.krea2ref" data-task-label="Reference Remix" data-model-label="Krea 2 Edit"><b>Krea 2 Edit</b><small>Reference Remix</small></button>
+          <button class="chip" data-engine="krea2" data-feature-engine="edit.krea2" data-task-label="Inpaint + Outpaint" data-model-label="Krea 2"><b>Krea 2</b><small>Inpaint + Outpaint</small></button>
         </div>
+        <button class="info-btn video-model-info" id="editEngineInfoBtn" type="button" aria-label="Compare edit models" title="Compare edit models">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 10h2v7h-2v-7Zm0-3h2v2h-2V7Zm1-5a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg>
+        </button>
       </div>
     </div>
   </section>
@@ -299,20 +302,25 @@
 
   <section class="panel video-model-panel" id="vidModelPanel" hidden>
     <button class="video-model-header" id="vidModelHeader" type="button" aria-expanded="false" aria-controls="vidModelBody">
-      <span class="video-model-kicker">Model</span>
-      <span class="video-model-selected" id="vidEngineSelected">LTX 2.3</span>
-      <span class="video-model-note" id="vidEngineNote">25 fps · audio</span>
+      <span class="video-model-kicker">Video model</span>
+      <span class="model-current">
+        <span class="model-current-title">
+          <span class="video-model-selected" id="vidEngineSelected">LTX 2.3</span>
+          <span class="model-status-badge" id="vidEngineBadge" hidden>Experimental</span>
+        </span>
+        <span class="video-model-note" id="vidEngineNote">Cinematic Video · text or image + audio</span>
+      </span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
     </button>
     <div class="video-model-body" id="vidModelBody" aria-hidden="true" inert>
       <div class="video-model-body-inner">
         <div class="model-order-hint" id="videoModelOrderHint">Hold and drag to reorder · first is default</div>
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model" aria-describedby="videoModelOrderHint">
-          <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx">LTX 2.3</button>
-          <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit">LTX Edit</button>
-          <button class="chip" data-engine="eros" data-feature-engine="video.eros">10Eros DMD</button>
-          <button class="chip" data-engine="wan" data-feature-engine="video.wan">Wan 2.2</button>
-          <button class="chip" data-engine="scail" data-feature-engine="video.scail">SCAIL 2</button>
+          <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx" data-task-label="Cinematic Video" data-model-label="LTX 2.3"><b>LTX 2.3</b><small>Cinematic Video</small></button>
+          <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit" data-task-label="Video Editing" data-model-label="LTX Edit" data-experimental="true"><b>LTX Edit <span class="model-status-badge">Experimental</span></b><small>Video Editing</small></button>
+          <button class="chip" data-engine="eros" data-feature-engine="video.eros" data-task-label="Image Animation" data-model-label="10Eros DMD"><b>10Eros DMD</b><small>Image Animation</small></button>
+          <button class="chip" data-engine="wan" data-feature-engine="video.wan" data-task-label="Complex Motion" data-model-label="Wan 2.2"><b>Wan 2.2</b><small>Complex Motion</small></button>
+          <button class="chip" data-engine="scail" data-feature-engine="video.scail" data-task-label="Motion Transfer" data-model-label="SCAIL 2"><b>SCAIL 2</b><small>Motion Transfer</small></button>
         </div>
         <button class="info-btn video-model-info" id="engineInfoBtn" type="button" aria-label="Compare model capabilities" title="Compare model capabilities">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 10h2v7h-2v-7Zm0-3h2v2h-2V7Zm1-5a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg>
@@ -330,6 +338,9 @@
       </div>
       <button class="enhance-btn on" id="enhanceBtn" aria-label="Prompt enhance" title="Prompt enhance (Qwen3-VL)">
         <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 2l1.9 5.4L19 9l-5.1 1.6L12 16l-1.9-5.4L5 9l5.1-1.6L12 2Zm7 11 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1 1-2.7ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z"/></svg>
+      </button>
+      <button class="prompt-camera-btn" id="cameraPromptBtn" type="button" aria-label="Camera framing settings" title="Camera framing settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z"/></svg>
       </button>
       <button class="edit-sequence-btn" id="editSequenceBtn" type="button" aria-label="Sequential edits off" title="Sequential edits off — run the prompt as one edit" aria-pressed="false" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 4h5v5H3V4Zm2 2v1h1V6H5Zm11-2h5v5h-5V4Zm2 2v1h1V6h-1ZM3 15h5v5H3v-5Zm2 2v1h1v-1H5Zm5-11h4v2h-4V6Zm2.6-2.4L16 7l-3.4 3.4-1.4-1.4 2-2-2-2 1.4-1.4ZM10 16h4v2h-4v-2Zm2.6-2.4L16 17l-3.4 3.4-1.4-1.4 2-2-2-2 1.4-1.4Z"/></svg>
@@ -368,15 +379,19 @@
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-.9 11.1a2 2 0 0 1-2 1.9H8.9a2 2 0 0 1-2-1.9L6 9Zm4 2v8h1.5v-8H10Zm3.5 0v8H15v-8h-1.5Z"/></svg>
       </button>
     </div>
+    <div class="prompt-intent-hint" id="promptIntentHint" role="status" hidden>
+      <span class="prompt-intent-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a8 8 0 0 1 5.9 13.4L16 17.3V20H8v-2.7l-1.9-1.9A8 8 0 0 1 12 2Zm0 2a6 6 0 0 0-4.4 10.1l2.4 2.4V18h4v-1.5l2.4-2.4A6 6 0 0 0 12 4Zm-3 17h6v2H9v-2Z"/></svg>
+      </span>
+      <span class="prompt-intent-copy"><b id="promptIntentTitle"></b><small id="promptIntentCopy"></small></span>
+      <button class="prompt-intent-action" id="promptIntentAction" type="button">Show me</button>
+    </div>
     <div class="chip-row prompt-tools" id="createPromptTools">
-      <button class="chip icon-chip" id="cameraPromptBtn" aria-label="Camera settings" title="Camera settings">
-        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8L9 4Zm3 5a4 4 0 1 0 4 4 4 4 0 0 0-4-4Zm0 2a2 2 0 1 1-2 2 2 2 0 0 1 2-2Z"/></svg>
-      </button>
-      <button class="chip icon-chip" id="regionsPromptBtn" aria-label="Regions" title="Region prompting">
-        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M4 4h4v2H6v2H4V4Zm12 0h4v4h-2V6h-2V4ZM4 16h2v2h2v2H4v-4Zm16 0v4h-4v-2h2v-2h2ZM7 9h6v7H7V9Zm2 2v3h2v-3H9Zm6-1h3v5h-3v-5Z"/></svg>
-      </button>
       <button class="chip icon-chip create-image-guide-toggle" id="createImageGuideToggle" type="button" aria-label="Image tools" title="Image tools" aria-expanded="false" aria-controls="createImageGuide">
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 4h12a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8h2v-4a2 2 0 0 1 2-2h8V6H4Zm4 4v8h12v-8H8Zm2 6 2.4-2.8 1.8 2 1.4-1.6 2.4 2.4h-8Zm7-4.8a1.2 1.2 0 1 1-1.2 1.2 1.2 1.2 0 0 1 1.2-1.2Z"/></svg>
+      </button>
+      <button class="chip icon-chip" id="promptAssistantBtn" type="button" aria-label="Revise prompt" title="Revise prompt with local AI" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 3h12a3 3 0 0 1 3 3v3h-2V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2v4l4.8-4H13v2h-1.5L4 23v-6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm14 8 1.05 2.95L22 15l-2.95 1.05L18 19l-1.05-2.95L14 15l2.95-1.05L18 11Zm3-3 .55 1.45L23 10l-1.45.55L21 12l-.55-1.45L19 10l1.45-.55L21 8Z"/></svg>
       </button>
     </div>
     <div class="chip-row prompt-tools video-prompt-tools" id="videoPromptTools" hidden>
@@ -391,36 +406,50 @@
       <div class="create-image-guide-inner">
         <div class="create-image-guide-head">
           <span>Image tools</span>
-          <small id="createImageGuideHint">Optional · image to image</small>
-        </div>
-        <div class="create-image-guide-modes" id="createImageGuideModes" role="group" aria-label="Image tool">
-          <button type="button" data-guide-mode="image" aria-pressed="true">Reference</button>
-          <button type="button" data-guide-mode="depth" aria-pressed="false">Depth</button>
-          <button type="button" data-guide-mode="style" aria-pressed="false">Style</button>
-          <button type="button" data-guide-mode="prompt" aria-pressed="false">To prompt</button>
         </div>
         <button class="create-image-guide-empty" id="createImageGuideAdd" type="button">
           <span class="create-image-guide-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
             <i>+</i>
           </span>
-          <span><b id="createImageGuideAddTitle">Add reference image</b><small id="createImageGuideAddCopy">Guide composition, color, and structure</small></span>
+          <span><b id="createImageGuideAddTitle">Choose image</b></span>
         </button>
         <div class="create-image-guide-filled" id="createImageGuideFilled" hidden>
           <button class="create-image-guide-preview" id="createImageGuideChange" type="button" aria-label="Replace source image">
             <img id="createImageGuideImg" alt="Image guide preview" />
-            <span><b id="createImageGuideName">Source image</b><small id="createImageGuideDims"></small></span>
           </button>
           <button class="input-crop-action" id="createImageGuideCrop" type="button" aria-label="Crop source image" title="Crop source image">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg>
           </button>
           <button class="create-image-guide-remove" id="createImageGuideRemove" type="button" aria-label="Remove source image">✕</button>
+        </div>
+        <span class="create-image-guide-mode-label" id="createImageGuideModeLabel" hidden>Use this image as</span>
+        <div class="create-image-guide-modes" id="createImageGuideModes" role="group" aria-label="How the image should guide the result" hidden>
+          <button type="button" data-guide-mode="image" aria-label="Reference: follow composition and color" aria-pressed="true">
+            <span class="create-guide-mode-thumb"><img src="/guides/reference-shark.jpg" alt="" /></span>
+            <span><b>Reference</b><small>Composition + color</small></span>
+          </button>
+          <button type="button" data-guide-mode="depth" aria-label="Depth: follow three-dimensional layout" aria-pressed="false">
+            <span class="create-guide-mode-thumb"><img src="/guides/depth-cabin.jpg" alt="" /></span>
+            <span><b>Depth</b><small>3D layout</small></span>
+          </button>
+          <button type="button" data-guide-mode="style" aria-label="Style: follow look and texture" aria-pressed="false">
+            <span class="create-guide-mode-thumb"><img src="/guides/edit-wireframe.jpg" alt="" /></span>
+            <span><b>Style</b><small>Look + texture</small></span>
+          </button>
+        </div>
+        <button class="create-image-to-prompt" id="createImageToPrompt" type="button" hidden>
+          <span class="create-image-to-prompt-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h9v2H6v7H4V4Zm7 5h9v11h-9V9Zm2 2v7h5v-7h-5Zm-9 5h5v2H4v-2Zm2.5-6 1.1 2.9L10.5 14l-2.9 1.1L6.5 18l-1.1-2.9L2.5 14l2.9-1.1L6.5 10Z"/></svg></span>
+          <span><b>Image to prompt</b></span>
+          <i aria-hidden="true">›</i>
+        </button>
+        <div class="create-image-guide-controls" id="createImageGuideControls" hidden>
           <button class="create-depth-preview-btn" id="createDepthPreviewBtn" type="button" hidden>
             <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20V2Z"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
             <span id="createDepthPreviewLbl">Preview depth map</span>
           </button>
           <label class="create-image-influence" for="createImageInfluence">
-            <span><b id="createImageInfluenceTitle">Image influence</b><small id="createImageInfluenceHint">Higher stays closer to the source</small></span>
+            <b id="createImageInfluenceTitle">Image influence</b>
             <output id="createImageInfluenceVal" for="createImageInfluence">55%</output>
           </label>
           <input class="create-image-influence-range" id="createImageInfluence" type="range" min="0" max="100" step="5" value="55" aria-label="Image influence" />
@@ -431,9 +460,6 @@
     <div class="attach-zone" id="vidAttachRow" hidden>
       <div class="video-inputs-head">
         <span>Inputs</span>
-        <div class="video-inputs-head-actions">
-          <small id="vidInputsHint">Tap to add · hold frames to move</small>
-        </div>
       </div>
       <div class="motion-prompt-row" id="vidMotionPromptRow" hidden>
         <button class="frame-prompt-action" id="vidMotionPromptBtn" aria-label="Create a motion prompt from this first frame" title="Create a motion prompt from this first frame">
@@ -691,11 +717,11 @@
           <button class="chip" data-smooth="2">32 fps · RIFE</button>
           <button class="chip" data-smooth="3">48 fps · RIFE</button>
         </div>
-        <div class="chip-row video-option-group" id="vidScailModeRow" hidden>
-          <span class="video-option-label">Generation</span>
-          <button class="chip active" data-scail-mode="infinity">Infinity</button>
-          <button class="chip" data-scail-mode="chunked">Chunked</button>
-          <button class="chip" data-scail-mode="direct">Direct</button>
+        <div class="chip-row video-option-group" id="vidScailModeRow" role="group" aria-label="SCAIL generation mode" hidden>
+          <span class="video-option-label">Generation mode</span>
+          <button class="chip active" type="button" data-scail-mode="infinity">Infinity</button>
+          <button class="chip" type="button" data-scail-mode="chunked">Chunked</button>
+          <button class="chip" type="button" data-scail-mode="direct">Direct</button>
         </div>
         <div class="scail-advanced" id="vidScailAdvancedRow" hidden>
           <div class="chip-row compact" id="vidScailStableRow">
@@ -1472,38 +1498,9 @@
 
 <!-- engine info sheet -->
 <div class="sheet" id="engineInfoSheet">
-  <div class="sheet-panel">
-    <h3 class="sheet-title">Video Models <button data-close>✕</button></h3>
-
-    <div class="info-block">
-      <h4>LTX 2.3 <span>25 fps · generates audio · text or image</span></h4>
-      <p>The all-rounder. Two-stage generation (base + ×2 latent upscale) with Gemma prompt enhancement, straight from the Black Mixture workflow. The only engine that does <b>text-to-video</b> — no image needed. Fast (~1–3 min). Attach a <b>Face ID</b> reference (with no source image) and the Best-FaceID LoRA re-creates that person performing your prompt — describe the scene in <i>ref_t2v</i> style: action, setting, framing; prompt enhance automatically weaves the person's looks into the caption. Runs at 25 fps (24 fps in Face ID mode); choose RIFE for smoother 2× or 3× playback.</p>
-      <p class="info-opts">Supports: motion freedom · end frame · audio-driven · Face ID · LoRAs · RTX 4K</p>
-    </div>
-
-    <div class="info-block">
-      <h4>LTX Edit <span>25 fps · guide video required · prompt-led edits</span></h4>
-      <p>Edit Anything runs on LTX 2.3 with the Edit Anything LoRA. Attach the clip you want to change, then write a short, literal instruction such as <i>“Replace the red jacket with a black leather jacket.”</i> The source video guides every frame, so prompt enhancement, first/end-frame controls, Face ID, and audio replacement stay out of the way. RIFE remains available for smoother playback.</p>
-      <p class="info-opts">Supports: source-video edit · trim · LoRAs · RIFE frame rates · RTX 4K</p>
-    </div>
-
-    <div class="info-block">
-      <h4>10Eros DMD <span>24 fps · generates audio · image only</span></h4>
-      <p>The motion specialist. TenStrip's 10Eros finetune of LTX 2.3 with a DMD distilled LoRA, Echo sampler and <b>reference conditioning</b> — motion that stays truer to your image, uncensored, and quick (~8 effective steps). The sigma presets change its character: <b>DMD v1</b> is the balanced default, <b>Model card</b> follows the author's recommendation, <b>V5 mix</b> pushes a sharper upscale pass, <b>Custom</b> uses your schedules from Settings.</p>
-      <p class="info-opts">Supports: motion freedom · sigma presets · end frame · audio-driven · LoRAs · RTX 4K</p>
-    </div>
-
-    <div class="info-block">
-      <h4>Wan 2.2 <span>16 fps · silent · image only</span></h4>
-      <p>The heavyweight. Alibaba's 14B dual-expert model — excellent at complex motion, physics and prompt adherence, but slower and without audio. Runs in fast 4-step lightx2v mode by default; the <b>Full quality</b> toggle switches to 20 steps at cfg 3.5 for maximum fidelity (much slower). Generates at 16 fps — pick <b>32/48 fps · RIFE</b> for smoother playback.</p>
-      <p class="info-opts">Supports: quality toggle · RIFE frame rates · LoRAs · RTX 4K</p>
-    </div>
-
-    <div class="info-block">
-      <h4>SCAIL 2 <span>16 or 24 fps · motion-video audio · image + motion video</span></h4>
-      <p>The motion transfer engine. Attach a source image <b>and</b> a motion video — SAM3 tracks the person in both, and SCAIL-2 (a Wan 2.1 finetune) re-animates your image with the clip's exact movement. Infinity mode uses the SCAIL-2 Infinity node with the Pusa LoRA to handle long clips inside one workflow. Runs 6 steps with lightx2v. Official inference defaults to 16 fps; Advanced offers an experimental 24 fps generation rate with 50% more frames, and RIFE can interpolate further for smoother playback.</p>
-      <p class="info-opts">Supports: motion video audio · Infinity/Chunked/Direct modes · RIFE frame rates · LoRAs · RTX 4K · up to 60s</p>
-    </div>
+  <div class="sheet-panel engine-info-panel" role="dialog" aria-modal="true" aria-labelledby="engineInfoTitle" tabindex="-1">
+    <h3 class="sheet-title"><span id="engineInfoTitle">Choose a video model</span><button data-close aria-label="Close model guide">✕</button></h3>
+    <div class="engine-info-grid" id="engineInfoList"></div>
   </div>
 </div>
 
@@ -1811,6 +1808,10 @@
               <span class="settings-media-toggle-copy"><strong>Contextual gesture tips</strong><small>Show a one-time animation when hidden controls become useful.</small></span>
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>
             </button>
+            <button class="guided-guides-reset" id="guidedGuidesReset" type="button">
+              <span><strong>Reset tips &amp; guides</strong><small>Show all one-time help again.</small></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"/></svg>
+            </button>
           </div>
           <button class="generation-setup-entry" id="dependencyOpenSetup" type="button" data-state="checking" aria-describedby="generationSetupSettingsCopy">
             <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
@@ -2077,8 +2078,36 @@
   </div>
 </div>
 
+<div class="sheet" id="promptAssistantSheet">
+  <form class="sheet-panel prompt-assistant-panel" id="promptAssistantForm" role="dialog" aria-modal="true" aria-labelledby="promptAssistantTitle">
+    <h3 class="sheet-title"><span id="promptAssistantTitle">Revise prompt</span><button data-close type="button" aria-label="Close prompt assistant">✕</button></h3>
+    <p class="prompt-assistant-copy">Say what should change. Mix Studio will rewrite the whole prompt, reconcile related details, and preserve everything else.</p>
+    <div class="prompt-assistant-source" id="promptAssistantSource" hidden>
+      <img id="promptAssistantSourceImg" alt="" />
+      <span><b>Use the source image for context</b><small>Your written request takes priority</small></span>
+      <button class="toggle on" id="promptAssistantSourceToggle" type="button" aria-pressed="true" aria-label="Use source image for context"></button>
+    </div>
+    <div class="prompt-assistant-starters" aria-label="Prompt revision starters">
+      <button type="button" data-prompt-revision="Change the main subject to ">Change subject</button>
+      <button type="button" data-prompt-revision="Change the color palette to ">Change colors</button>
+      <button type="button" data-prompt-revision="Keep the composition and visual style, but create a distinct new subject: ">Remix</button>
+      <button type="button" data-prompt-revision="Shorten this prompt and keep only the visual details that matter most.">Shorten</button>
+    </div>
+    <label class="prompt-assistant-field" for="promptAssistantInput">
+      <span>What should change?</span>
+      <textarea class="sheet-textarea" id="promptAssistantInput" rows="4" maxlength="1200" placeholder="Change the woman to a man in a tailored navy suit, use teal and gold, and keep the lighting and composition."></textarea>
+    </label>
+    <p class="prompt-assistant-status" id="promptAssistantStatus" role="status" hidden></p>
+    <button class="prompt-assistant-undo" id="promptAssistantUndo" type="button" hidden>↶ Undo last revision</button>
+    <div class="prompt-assistant-actions">
+      <button class="sheet-cta ghost" data-close type="button">Cancel</button>
+      <button class="sheet-cta" id="promptAssistantApply" type="submit">Revise prompt</button>
+    </div>
+  </form>
+</div>
+
 <div class="sheet" id="assetPickerSheet">
-  <div class="sheet-panel asset-picker-panel">
+  <div class="sheet-panel asset-picker-panel" role="dialog" aria-modal="true" aria-labelledby="assetPickerTitle" aria-describedby="assetPickerCopy" tabindex="-1">
     <h3 class="sheet-title"><span id="assetPickerTitle">Choose a source</span> <button data-close aria-label="Close source picker">✕</button></h3>
     <p class="asset-picker-copy" id="assetPickerCopy">Use a file from your device or select something from your gallery.</p>
     <div class="asset-picker-actions">
@@ -2209,6 +2238,7 @@
     <div class="guided-tour-dots" id="guidedTourDots" aria-hidden="true"></div>
     <h3 id="guidedTourTitle"></h3>
     <p id="guidedTourCopy"></p>
+    <figure class="guided-tour-media" id="guidedTourMedia" hidden aria-hidden="true"></figure>
     <div class="guided-tour-demo" id="guidedTourDemo" data-motion="tap" aria-hidden="true">
       <span class="guided-tour-demo-stage">
         <span class="guided-tour-demo-button"></span>

@@ -40,8 +40,11 @@ test('SCAIL applies the selected rate to source sampling, generation frames, out
 });
 
 test('SCAIL mode selector exposes Infinity as the preferred long-video path', () => {
-  assert.match(indexHtml, /data-scail-mode="infinity"/);
+  assert.match(indexHtml, /id="vidScailModeRow"[^>]*role="group"[^>]*aria-label="SCAIL generation mode"/);
+  assert.match(indexHtml, /data-scail-mode="infinity"[\s\S]*data-scail-mode="chunked"[\s\S]*data-scail-mode="direct"/);
   assert.match(appJs, /state\.vidScailMode = 'infinity'/);
+  assert.match(appJs, /\$\('#vidScailModeRow'\)\.hidden = !\(isVideo && state\.vidEngine === 'scail'\)/);
+  assert.match(appJs, /const scailMode = state\.vidEngine === 'scail'/);
   assert.match(serverJs, /WanSCAILInfinity/);
 });
 

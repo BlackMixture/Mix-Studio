@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const regexEscape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test('Video frame and media inputs use visual source cards', () => {
   assert.match(html, /class="video-input-grid"/);
@@ -62,6 +63,7 @@ test('Video model selection sits above the prompt and collapses after choosing',
   assert.match(html, /id="vidModelHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidModelBody"/);
   assert.match(html, /id="vidModelBody" aria-hidden="true" inert/);
   assert.match(html, /id="vidEngineSelected">LTX 2\.3</);
+  assert.match(html, /id="vidEngineNote">Cinematic Video · text or image \+ audio</);
   assert.match(html, /id="engineInfoBtn"[^>]*aria-label="Compare model capabilities"/);
   assert.doesNotMatch(html, />Compare model capabilities<\/button>/);
   assert.match(css, /\.video-model-body[\s\S]*grid-template-rows: 0fr/);
@@ -69,6 +71,84 @@ test('Video model selection sits above the prompt and collapses after choosing',
   assert.match(css, /\.info-btn\.video-model-info \{[\s\S]*width: 34px/);
   assert.match(app, /function setVideoModelExpanded\(open\)/);
   assert.match(app, /setTimeout\(\(\) => setVideoModelExpanded\(false\), 120\)/);
+});
+
+test('Video choices lead with model names and keep tasks secondary', () => {
+  const choices = [
+    ['ltx', 'Cinematic Video', 'LTX 2.3'],
+    ['ltx-edit', 'Video Editing', 'LTX Edit'],
+    ['eros', 'Image Animation', '10Eros DMD'],
+    ['wan', 'Complex Motion', 'Wan 2.2'],
+    ['scail', 'Motion Transfer', 'SCAIL 2'],
+  ];
+  for (const [engine, task, model] of choices) {
+    assert.match(html, new RegExp(`data-engine="${engine}"[^>]*data-task-label="${regexEscape(task)}"[^>]*data-model-label="${regexEscape(model)}"[^>]*><b>${regexEscape(model)}(?:\\s*<span class="model-status-badge">Experimental</span>)?</b><small>${regexEscape(task)}</small>`));
+  }
+  assert.match(app, /const VIDEO_ENGINE_TASKS = \{[\s\S]*task: 'Cinematic Video', model: 'LTX 2\.3'[\s\S]*task: 'Motion Transfer', model: 'SCAIL 2'/);
+  assert.match(app, /\$\('#vidEngineSelected'\)\.textContent = definition\.model/);
+  assert.match(app, /\$\('#vidEngineNote'\)\.textContent = faceMode[\s\S]*definition\.task/);
+});
+
+test('Video model guide provides animated previews and selects the chosen model', () => {
+  assert.match(app, /preview: \{ type: 'video', src: '\/guides\/ltx-motorcycle-highway\.mp4' \}/);
+  assert.match(app, /preview: \{ type: 'video', src: '\/guides\/ltx-edit-inpaint\.mp4' \}/);
+  assert.match(app, /preview: \{ type: 'video', src: '\/guides\/wan-knight-explosion\.mp4' \}/);
+  assert.match(app, /preview: \{ type: 'video', src: '\/guides\/scail-hand-fantasy\.mp4' \}/);
+  const ltxPreview = path.join(root, 'public', 'guides', 'ltx-motorcycle-highway.mp4');
+  assert.ok(fs.existsSync(ltxPreview), 'the LTX 2.3 preview video should be present');
+  assert.ok(fs.statSync(ltxPreview).size > 1024, 'the LTX 2.3 preview video should not be empty');
+  const wanPreview = path.join(root, 'public', 'guides', 'wan-knight-explosion.mp4');
+  assert.ok(fs.existsSync(wanPreview), 'the Wan 2.2 preview video should be present');
+  assert.ok(fs.statSync(wanPreview).size > 1024, 'the Wan 2.2 preview video should not be empty');
+  assert.match(app, /function createEngineInfoPreview\(definition\)/);
+  assert.match(app, /video\.muted = true;[\s\S]*video\.loop = true;[\s\S]*video\.playsInline = true/);
+  assert.match(app, /title\.textContent = definition\.model/);
+  assert.match(app, /model\.textContent = `\$\{definition\.task\}/);
+  assert.match(app, /button\.addEventListener\('click',[\s\S]*choice\.click\(\)/);
+  assert.match(css, /\.engine-info-preview-motion i \{[\s\S]*animation: engineMotionPreview/);
+});
+
+test('Video model guide pins 10Eros last without rewriting the saved model order', () => {
+  const start = app.indexOf('function renderEngineInfoList(kind = \'video\')');
+  const end = app.indexOf('\nfunction renderEditModelSummary()', start);
+  const renderGuide = app.slice(start, end);
+
+  assert.ok(start > -1 && end > start, 'renderEngineInfoList should remain inspectable');
+  assert.match(renderGuide, /const normalizedOrder = normalizeEngineOrder\(order, Object\.keys\(definitions\)\);/);
+  assert.match(renderGuide, /const guideOrder = editing\s*\? normalizedOrder\s*:\s*normalizedOrder\.filter\(\(engine\) => engine !== 'eros'\)\.concat\(normalizedOrder\.includes\('eros'\) \? \['eros'\] : \[\]\);/);
+  assert.match(renderGuide, /guideOrder\.forEach\(\(engine\) => \{/);
+  assert.doesNotMatch(renderGuide, /state\.(?:editEngineOrder|videoEngineOrder|editEngineDefault|videoEngineDefault)\s*=/);
+  assert.doesNotMatch(renderGuide, /\b(?:order|normalizedOrder)\.(?:sort|reverse|splice|push|pop|shift|unshift)\(/);
+});
+
+test('Model guide uses true black and gives previews more room at desktop and mobile sizes', () => {
+  const panelRule = css.match(/\.engine-info-panel\s*\{([^}]*)\}/)?.[1] || '';
+  const baseCardRule = css.match(/(?:^|\n)\.engine-info-card\s*\{([^}]*)\}/)?.[1] || '';
+  const mobileCardRule = css.match(/@media \(max-width:\s*560px\)\s*\{[\s\S]*?\.engine-info-card\s*\{([^}]*)\}/)?.[1] || '';
+  const firstColumn = (rule) => Number(rule.match(/grid-template-columns:\s*(\d+)px/)?.[1] || 0);
+
+  assert.match(panelRule, /background(?:-color)?:\s*#(?:000|000000)\s*;/);
+  assert.ok(firstColumn(baseCardRule) >= 160, 'desktop previews should receive at least a 160px column');
+  assert.ok(firstColumn(mobileCardRule) >= 120, 'mobile previews should receive at least a 120px column');
+  assert.ok(firstColumn(mobileCardRule) < firstColumn(baseCardRule), 'the mobile preview column should remain responsive');
+});
+
+test('LTX Edit uses the supplied preview and is consistently marked Experimental', () => {
+  const preview = path.join(root, 'public', 'guides', 'ltx-edit-inpaint.mp4');
+  assert.ok(fs.existsSync(preview), 'the LTX Edit preview video should be present');
+  assert.ok(fs.statSync(preview).size > 1024, 'the LTX Edit preview video should not be empty');
+
+  assert.match(html, /data-engine="ltx-edit"[^>]*data-experimental="true"[^>]*><b>LTX Edit\s*<span class="model-status-badge">Experimental<\/span><\/b><small>Video Editing<\/small>/);
+  assert.match(html, /id="vidEngineBadge" hidden>Experimental<\/span>/);
+  assert.match(app, /'ltx-edit': \{[\s\S]*?experimental: true,[\s\S]*?preview: \{ type: 'video', src: '\/guides\/ltx-edit-inpaint\.mp4' \}/);
+  assert.match(app, /\$\('#vidEngineBadge'\)\.hidden = !definition\.experimental/);
+  assert.match(app, /button\.setAttribute\('aria-label', `Use \$\{definition\.model\}\$\{definition\.experimental \? ' \(experimental\)' : ''\} for \$\{definition\.task\}`\)/);
+  assert.match(app, /if \(definition\.experimental\) \{[\s\S]*?badge\.className = 'model-status-badge';[\s\S]*?badge\.textContent = 'Experimental';/);
+});
+
+test('Video source cards omit redundant aspect and gesture helper copy', () => {
+  assert.doesNotMatch(html, /aspect follows image|tap to add|hold frames to move/i);
+  assert.doesNotMatch(app, /vidInputsHint/);
 });
 
 test('Secondary video controls remain behind an animated accessible disclosure', () => {
@@ -146,7 +226,7 @@ test('LTX requests can pass through the same RIFE interpolation stage as Wan and
 
 test('LTX Edit uses a source-video workflow and forces literal edit prompts', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(html, /data-engine="ltx-edit"[^>]*>LTX Edit/);
+  assert.match(html, /data-engine="ltx-edit"[^>]*data-task-label="Video Editing"[^>]*data-model-label="LTX Edit"[^>]*data-experimental="true"[^>]*><b>LTX Edit\s*<span class="model-status-badge">Experimental<\/span><\/b><small>Video Editing<\/small>/);
   assert.match(html, /id="setLtxEditLora"/);
   assert.match(app, /'Describe the edit…'/);
   assert.match(app, /'Source video'/);

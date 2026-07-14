@@ -40,7 +40,7 @@ test('desktop inputs provide reversible setup history and completed outputs take
 
 test('regional prompts only submit from the Region create mode', () => {
   assert.match(app, /if \(state\.createMode !== 'region'\) return \[\]/);
-  assert.match(app, /setCreateMode\('region', true\)/);
+  assert.match(app, /setCreateMode\(button\.dataset\.createMode, button\.dataset\.createMode === 'region'\)/);
 });
 
 test('nested Create modes use icons instead of color dots', () => {
@@ -124,7 +124,8 @@ test('edit model choices settle into place and Preserve unchanged has its own to
   assert.match(html, /title="Preserve unchanged areas"/);
   assert.match(css, /\.preserve-icon\[aria-pressed="true"\]/);
   assert.match(app, /#editComposite'\)\.addEventListener\('click'/);
-  assert.match(html, /data-engine="krea2ref"[^>]*>Krea 2 Edit/);
+  assert.match(html, /data-engine="krea2ref"[^>]*data-task-label="Reference Remix"[^>]*data-model-label="Krea 2 Edit"[^>]*><b>Krea 2 Edit<\/b><small>Reference Remix<\/small>/);
+  assert.match(html, /data-engine="krea2"[^>]*data-task-label="Inpaint \+ Outpaint"[^>]*data-model-label="Krea 2"[^>]*><b>Krea 2<\/b><small>Inpaint \+ Outpaint<\/small>/);
 });
 
 test('Edit keeps source-matched dimensions by default and exposes a custom output-ratio override', () => {

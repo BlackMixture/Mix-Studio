@@ -14,17 +14,22 @@ const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 test('Create Image consolidates reference, depth, style, and image-to-prompt in one disclosure', () => {
   const prompt = html.indexOf('id="promptComposer"');
   const toggle = html.indexOf('id="createImageGuideToggle"');
+  const camera = html.indexOf('id="cameraPromptBtn"');
   const guide = html.indexOf('id="createImageGuide"');
   const videoInputs = html.indexOf('id="vidAttachRow"');
-  assert.ok(prompt > -1 && prompt < toggle && toggle < guide && guide < videoInputs);
+  assert.ok(prompt > -1 && prompt < camera && camera < toggle && toggle < guide && guide < videoInputs);
   assert.match(html, /id="createImageGuideToggle"[^>]*aria-expanded="false"[^>]*aria-controls="createImageGuide"/);
   assert.match(html, /id="createImageGuideAdd"/);
   assert.match(html, /id="createImageGuideFilled"/);
   assert.match(html, /id="createImageGuideImg"/);
   assert.match(html, /id="createImageGuideRemove"/);
-  assert.match(html, /id="createImageGuideModes"[\s\S]*data-guide-mode="image"[\s\S]*data-guide-mode="depth"[\s\S]*data-guide-mode="style"[\s\S]*data-guide-mode="prompt"/);
+  assert.match(html, /id="createImageGuideModes"[\s\S]*data-guide-mode="image"[\s\S]*data-guide-mode="depth"[\s\S]*data-guide-mode="style"/);
+  assert.doesNotMatch(html, /data-guide-mode="prompt"/);
+  assert.match(html, /id="createImageToPrompt"[^>]*hidden/);
   assert.doesNotMatch(html, /id="imagePromptBtn"/);
-  assert.match(html, /id="createImageGuideHint"/);
+  assert.match(html, /id="createImageGuideModeLabel"[^>]*hidden>Use this image as/);
+  assert.match(html, /id="createImageGuideControls" hidden/);
+  assert.doesNotMatch(html, /Higher stays closer to the source|tap to replace/i);
   assert.match(html, /id="createImageInfluence"[^>]*min="0"[^>]*max="100"[^>]*step="5"/);
   assert.match(css, /\.create-image-guide-empty/);
   assert.match(css, /\.create-image-guide\.expanded \{ grid-template-rows: 1fr; \}/);
@@ -35,11 +40,15 @@ test('Create Image uploads, persists, and submits the guide with inverse denoise
   assert.match(app, /createRef: null/);
   assert.match(app, /createInfluence: 55/);
   assert.match(app, /createGuideMode: 'image'/);
+  assert.match(app, /createGuideActive: false/);
+  assert.match(app, /createGuideActive: state\.createGuideActive/);
   assert.match(app, /createDepthStrength: 100/);
   assert.match(app, /createStyleStrength: 100/);
   assert.match(app, /function createDenoiseFromInfluence\(influence = state\.createInfluence\)/);
   assert.match(app, /1 - normalized \* 0\.95/);
   assert.match(app, /function pickCreateImageGuide\(\)/);
+  assert.match(app, /const createImageGuide = mode === 't2i' && state\.createMode === 'image' && state\.createGuideActive/);
+  assert.match(app, /createPromptFromImageName\(state\.createRef\);[\s\S]{0,120}state\.createGuideActive = false/);
   assert.match(app, /imageName: createImageGuideName/);
   assert.match(app, /createImageGuide && state\.createGuideMode === 'image' \? createDenoiseFromInfluence\(\) : 1/);
   assert.match(app, /imageGuideMode: createImageGuide \? state\.createGuideMode : undefined/);
@@ -65,8 +74,8 @@ test('Resolution can match an uploaded image guide and reports the derived dimen
   assert.match(app, /function createSizeLabel\(megapixels = state\.mp\)/);
   assert.match(app, /state\.createMatchNative \? 'Native image' : `Match image \$\{createSizeLabel\(\)\}`/);
   assert.match(app, /Native image/);
-  assert.match(app, /Depth · perspective and structure/);
-  assert.match(app, /Style · low-leakage visual transfer/);
+  assert.match(html, /aria-label="Depth: follow three-dimensional layout"/);
+  assert.match(html, /aria-label="Style: follow look and texture"/);
   assert.match(app, /state\.createGuideMode === 'image' \|\| state\.createGuideMode === 'depth'/);
   assert.match(app, /state\.createMatchSource = false;\s*state\.createMatchNative = false;\s*state\.customDims = false;/);
   assert.match(app, /const keepImageMatch = state\.createMatchSource && !!state\.createRef/);
@@ -97,7 +106,7 @@ test('Create Image can switch its reference to DA3 depth structure guidance', ()
 
 test('Create Image style reference uses the low-leakage custom node route', () => {
   assert.match(app, /createStyleStrength: 100/);
-  assert.match(app, /Transfers visual style without copying the subject/);
+  assert.match(html, /data-guide-mode="style"[^>]*aria-label="Style: follow look and texture"/);
   assert.match(app, /components\.add\('krea2style'\)/);
   assert.match(server, /buildKrea2StyleReference/);
   assert.match(server, /const styleGuide = p\.imageGuideMode === 'style'/);
