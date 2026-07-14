@@ -49,7 +49,7 @@
     .header-links a { color: var(--muted); font-size: 13px; font-weight: 750; text-decoration: none; white-space: nowrap; }
     .header-links a:hover, .header-links a:focus-visible { color: var(--ink); }
     .hero { display: grid; grid-template-columns: minmax(0,.88fr) minmax(500px,1.12fr); align-items: center; gap: 58px; padding: 82px 0 110px; }
-    .eyebrow, .section-kicker { margin: 0 0 18px; color: #9db3f7; font-size: 12px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    .section-kicker { margin: 0 0 18px; color: #9db3f7; font-size: 12px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
     h1 { margin: 0; font-size: clamp(50px, 6.5vw, 82px); line-height: .96; letter-spacing: -.058em; }
     .lede { max-width: 590px; margin: 26px 0 0; color: var(--soft); font-size: clamp(17px, 2vw, 20px); line-height: 1.55; }
     .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 34px; }
@@ -93,7 +93,7 @@
     .creator-links .creator-youtube { fill: #ff3542; stroke: none; }
     .creator-links .creator-youtube path:last-child { fill: #fff; }
     .creator-links a:hover, .creator-links a:focus-visible { border-color: rgba(157,179,247,.55); background: rgba(66,133,244,.12); color: #fff; transform: translateY(-2px); }
-    .creator-founders { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+    .creator-founders { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; }
     .creator-founder { position: relative; min-width: 0; overflow: hidden; aspect-ratio: .82 / 1; border: 1px solid rgba(255,255,255,.13); border-radius: 20px; background: linear-gradient(160deg,#151920,#050608); }
     .creator-founder img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center top; }
     .creator-founder figcaption { position: absolute; right: 8px; bottom: 8px; left: 8px; padding: 8px 9px; border: 1px solid rgba(255,255,255,.13); border-radius: 11px; background: rgba(3,5,9,.76); color: #fff; font-size: 11px; font-weight: 850; line-height: 1.25; backdrop-filter: blur(9px); }
@@ -514,7 +514,6 @@
     <main id="top">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Windows · NVIDIA · Local generation</p>
           <h1>Your studio.<br />On your machine.</h1>
           <p class="lede">Leading local models, optimized settings, and a mobile-optimized UI for creating images and video without building every ComfyUI workflow yourself.</p>
           <div class="actions">

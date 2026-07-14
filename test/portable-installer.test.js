@@ -58,6 +58,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 2);
   assert.match(page, /macOS support coming soon/);
   assert.match(page, /Setup continues inside Mix Studio/);
+  assert.doesNotMatch(page, /Windows · NVIDIA · Local generation/);
   assert.match(page, /Quick setup/);
   assert.match(page, /install only that workflow/i);
   assert.match(page, /mobile-optimized UI/);
@@ -69,6 +70,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /chriselle-dwarika\.webp/);
   assert.match(page, /Nate Dwarika/);
   assert.match(page, /Chriselle Dwarika/);
+  assert.match(page, /\.creator-founders \{[^}]*gap: 5px;/);
   assert.match(page, /https:\/\/www\.blackmixture\.com\//);
   assert.match(page, /https:\/\/www\.youtube\.com\/@blackmixture/);
   assert.match(page, /https:\/\/www\.instagram\.com\/blackmixture\//);
