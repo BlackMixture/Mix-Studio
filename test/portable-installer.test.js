@@ -88,7 +88,12 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Top model by job/);
   assert.match(page, /VRAM requirements/);
   assert.match(page, /VRAM capacity only/);
-  assert.match(page, /RTX PRO 6000 · Jul 2026/);
+  assert.match(page, /Access leading local models, optimized settings, and a mobile-first UI\./);
+  assert.match(page, /Skip the node wrangling and start generating images and video instantly\./);
+  assert.match(page, /Most local tools chain you to a desk\./);
+  assert.match(page, /full creative control from anywhere\./);
+  assert.match(page, /RTX PRO 6000 Blackwell · 96 GB VRAM · Jul 2026/);
+  assert.match(page, /RTX PRO 6000 Blackwell with 96 GB VRAM/);
   assert.match(page, /Measured Timing/);
   assert.doesNotMatch(page, />12 min</);
   assert.doesNotMatch(page, />16 rec</);
