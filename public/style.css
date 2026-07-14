@@ -4903,20 +4903,6 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   padding: 12px 18px 6px;
   font-size: 12.5px; color: var(--muted); line-height: 1.5;
   max-height: 20vh; overflow-y: auto;
-  scrollbar-width: none;
-}
-.lightbox-meta::-webkit-scrollbar { display: none; width: 0; height: 0; }
-.lightbox-meta.can-scroll-down {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
-}
-.lightbox-meta.can-scroll-up {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 30px, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 30px, #000 100%);
-}
-.lightbox-meta.can-scroll-up.can-scroll-down {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 30px, #000 calc(100% - 30px), transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 30px, #000 calc(100% - 30px), transparent 100%);
 }
 .lightbox-meta b { color: var(--ink-soft); }
 .lightbox-meta-copy {
@@ -4963,18 +4949,6 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   scrollbar-width: none;
 }
 .action-row::-webkit-scrollbar { display: none; }
-.action-row.can-scroll-right {
-  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
-  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
-}
-.action-row.can-scroll-left {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 100%);
-}
-.action-row.can-scroll-left.can-scroll-right {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
-}
 .action-btn {
   flex: 0 0 auto;
   padding: 11px 18px;

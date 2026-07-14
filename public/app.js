@@ -13041,21 +13041,6 @@ function preloadLightboxNeighbors(item) {
   });
 }
 
-function syncLightboxScrollFades() {
-  const meta = $('#lbMeta');
-  const actions = $('#lbActions');
-  if (!meta || !actions) return;
-
-  const metaRemaining = meta.scrollHeight - meta.clientHeight - meta.scrollTop;
-  meta.classList.toggle('can-scroll-up', meta.scrollTop > 2);
-  meta.classList.toggle('can-scroll-down', metaRemaining > 2);
-
-  const actionLeft = Math.max(0, actions.scrollLeft);
-  const actionRemaining = actions.scrollWidth - actions.clientWidth - actionLeft;
-  actions.classList.toggle('can-scroll-left', actionLeft > 2);
-  actions.classList.toggle('can-scroll-right', actionRemaining > 2);
-}
-
 function openLightbox(id, mediaSel) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
@@ -13227,10 +13212,7 @@ function openLightbox(id, mediaSel) {
       }
     }
   }
-  const metaScroller = $('#lbMeta');
-  metaScroller.innerHTML = meta.join('<br>');
-  metaScroller.scrollTop = 0;
-  metaScroller.classList.remove('can-scroll-up', 'can-scroll-down');
+  $('#lbMeta').innerHTML = meta.join('<br>');
   $$('#lbMeta [data-copy-meta]').forEach((button) => button.addEventListener('click', async () => {
     const copy = metaCopyValues[Number(button.dataset.copyMeta)];
     if (!copy) return;
@@ -13248,8 +13230,6 @@ function openLightbox(id, mediaSel) {
 
   const actions = $('#lbActions');
   actions.innerHTML = '';
-  actions.scrollLeft = 0;
-  actions.classList.remove('can-scroll-left', 'can-scroll-right');
   const mk = (label, cls, fn, options = {}) => {
     const b = document.createElement('button');
     b.className = 'action-btn' + (cls ? ' ' + cls : '');
@@ -13542,7 +13522,6 @@ function openLightbox(id, mediaSel) {
       refreshGallery();
     });
   }
-  requestAnimationFrame(syncLightboxScrollFades);
 }
 function closeLightbox(fromPop) {
   closeActionMenu();
@@ -13636,9 +13615,6 @@ $('#likesFilter').addEventListener('click', () => {
   $('#likesFilter').setAttribute('aria-pressed', String(state.likesOnly));
   renderGrid();
 });
-$('#lbMeta').addEventListener('scroll', syncLightboxScrollFades, { passive: true });
-$('#lbActions').addEventListener('scroll', syncLightboxScrollFades, { passive: true });
-window.addEventListener('resize', syncLightboxScrollFades);
 $('#lbImg').addEventListener('click', handleLightboxTap);
 $('#lbVideo').addEventListener('pointerdown', handleLightboxVideoPointerDown);
 $('#lbVideo').addEventListener('pointerup', handleLightboxVideoPointerUp);
