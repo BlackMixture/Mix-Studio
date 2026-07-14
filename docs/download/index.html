@@ -141,7 +141,7 @@
     .section { padding: 120px 0; }
     .section-head { display: grid; grid-template-columns: .75fr 1fr; gap: 70px; align-items: end; margin-bottom: 48px; }
     .section-head h2, .quick-copy h2, .closing h2 { margin: 0; font-size: clamp(36px, 5vw, 58px); line-height: 1.02; letter-spacing: -.045em; }
-    .section-head p, .quick-copy > p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
     .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
     .feature { min-height: 0; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg,rgba(255,255,255,.035),transparent 58%),var(--panel); }
     .feature-media { --media-scale: 1; --media-origin: 50% 50%; position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-bottom: 1px solid var(--line); background: #030405; }
@@ -389,7 +389,9 @@
     .comfy-reuse-choice b { padding: 7px 10px; border: 1px solid rgba(118,168,255,.26); border-radius: 9px; background: rgba(45,96,170,.12); color: #abc5ff; font-size: 8px; letter-spacing: .04em; }
     .quick { display: grid; grid-template-columns: .8fr 1.2fr; gap: 82px; align-items: start; padding: 112px 0; border-top: 1px solid var(--line); }
     .quick-copy { position: sticky; top: 40px; }
-    .quick-copy > p { margin-top: 22px; }
+    .quick-download { width: fit-content; margin-top: 30px; }
+    .setup-details { padding: 0 0 112px; }
+    .setup-details .notice { margin-top: 0; }
     .step-list { counter-reset: guide; }
     .guide-step { counter-increment: guide; display: grid; grid-template-columns: 46px 1fr; gap: 20px; padding: 26px 0; border-top: 1px solid var(--line); }
     .guide-step:first-child { border-top: 0; padding-top: 0; }
@@ -509,6 +511,8 @@
       .video-reel-arrow.next { right: 9px; }
       .video-reel-tabs { right: 50px; left: 50px; }
       .quick { padding: 86px 0; }
+      .quick-download { width: 100%; }
+      .setup-details { padding-bottom: 86px; }
       .faq-list { grid-template-columns: 1fr; }
       .faq-item:nth-child(odd) { border-right: 0; }
       .faq-item:nth-child(n+2) { border-top: 1px solid var(--line); }
@@ -612,6 +616,19 @@
         </div>
       </section>
 
+      <section class="quick" id="quick-start">
+        <div class="quick-copy">
+          <p class="section-kicker">Quick start</p>
+          <h2>Open first. Set up as you create.</h2>
+          <a class="download quick-download" href="./install.bat" download="install.bat"><svg class="platform-icon platform-windows" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.5 4.3 10.6 3v8H2.5V4.3Zm9.2-1.5 9.8-1.4V11h-9.8V2.8ZM2.5 12.2h8.1v8l-8.1-1.1v-6.9Zm9.2 0h9.8v9.7l-9.8-1.4v-8.3Z"/></svg>Download for Windows</a>
+        </div>
+        <div class="step-list">
+          <article class="guide-step"><div><h3>Run <code>install.bat</code></h3><p>Mix Studio downloads, starts, and opens in your browser with a ready Owner workspace.</p></div></article>
+          <article class="guide-step"><div><h3>Choose setup when you generate</h3><p>Install only that workflow, use Quick setup for the defaults, or open the full guide without losing your prompt.</p></div></article>
+          <article class="guide-step"><div><h3>Carry it to your phone</h3><p>Install <a href="https://tailscale.com/download">Tailscale</a> on both devices, open the private Mix Studio URL, and add it to your home screen.</p></div></article>
+        </div>
+      </section>
+
       <section class="section" id="features">
         <div class="section-head">
           <div><p class="section-kicker">Curated for better results</p><h2>Leading models. Optimized settings.</h2></div>
@@ -697,27 +714,19 @@
         </div>
       </section>
 
-      <section class="quick" id="quick-start">
-        <div class="quick-copy"><p class="section-kicker">Quick start</p><h2>Open first. Set up as you create.</h2><p>The installer gets you into Mix Studio before asking you to choose models or workflows.</p></div>
-        <div>
-          <div class="step-list">
-            <article class="guide-step"><div><h3>Run <code>install.bat</code></h3><p>Mix Studio downloads, starts, and opens in your browser with a ready Owner workspace.</p></div></article>
-            <article class="guide-step"><div><h3>Choose setup when you generate</h3><p>Install only that workflow, use Quick setup for the defaults, or open the full guide without losing your prompt.</p></div></article>
-            <article class="guide-step"><div><h3>Carry it to your phone</h3><p>Install <a href="https://tailscale.com/download">Tailscale</a> on both devices, open the private Mix Studio URL, and add it to your home screen.</p></div></article>
-          </div>
-          <details class="notice"><summary>What setup checks and installs</summary><p>Hardware-aware setup detects GPU memory and system RAM, reuses models already registered through ComfyUI, supports existing or manually selected ComfyUI folders, and warns before a difficult choice. The bootstrap retrieves the public <a href="https://github.com/BlackMixture/Mix-Studio">Mix Studio repository</a>; ComfyUI, models, and nodes download only after you choose an in-app setup option. The uninstaller leaves shared ComfyUI files and models in place.</p></details>
-          <section class="faq" aria-labelledby="faq-title">
-            <h3 id="faq-title">Common questions</h3>
-            <dl class="faq-list">
-              <div class="faq-item"><dt>Is Mix Studio free?</dt><dd>Yes. Mix Studio is free to download. Model licenses still apply.</dd></div>
-              <div class="faq-item"><dt>Can I use my ComfyUI install?</dt><dd>Yes. Auto-detect it or choose its folder manually.</dd></div>
-              <div class="faq-item"><dt>Can I reuse downloaded models?</dt><dd>Yes. Registered and manually selected model folders are supported.</dd></div>
-              <div class="faq-item"><dt>What devices can I use?</dt><dd>Run it on Windows, then create from desktop, tablet, or phone.</dd></div>
-              <div class="faq-item"><dt>Does it work away from home?</dt><dd>Yes. Tailscale keeps your studio privately within reach.</dd></div>
-              <div class="faq-item"><dt>Does my work stay local?</dt><dd>Yes. Generations and your gallery remain on your machine.</dd></div>
-            </dl>
-          </section>
-        </div>
+      <section class="setup-details" id="setup-details" aria-label="Setup details and common questions">
+        <details class="notice"><summary>What setup checks and installs</summary><p>Hardware-aware setup detects GPU memory and system RAM, reuses models already registered through ComfyUI, supports existing or manually selected ComfyUI folders, and warns before a difficult choice. The bootstrap retrieves the public <a href="https://github.com/BlackMixture/Mix-Studio">Mix Studio repository</a>; ComfyUI, models, and nodes download only after you choose an in-app setup option. The uninstaller leaves shared ComfyUI files and models in place.</p></details>
+        <section class="faq" aria-labelledby="faq-title">
+          <h3 id="faq-title">Common questions</h3>
+          <dl class="faq-list">
+            <div class="faq-item"><dt>Is Mix Studio free?</dt><dd>Yes. Mix Studio is free to download. Model licenses still apply.</dd></div>
+            <div class="faq-item"><dt>Can I use my ComfyUI install?</dt><dd>Yes. Auto-detect it or choose its folder manually.</dd></div>
+            <div class="faq-item"><dt>Can I reuse downloaded models?</dt><dd>Yes. Registered and manually selected model folders are supported.</dd></div>
+            <div class="faq-item"><dt>What devices can I use?</dt><dd>Run it on Windows, then create from desktop, tablet, or phone.</dd></div>
+            <div class="faq-item"><dt>Does it work away from home?</dt><dd>Yes. Tailscale keeps your studio privately within reach.</dd></div>
+            <div class="faq-item"><dt>Does my work stay local?</dt><dd>Yes. Generations and your gallery remain on your machine.</dd></div>
+          </dl>
+        </section>
       </section>
 
       <section class="closing">

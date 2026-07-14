@@ -188,6 +188,32 @@ All model filenames and the ComfyUI URL are editable in **Settings (gear) → Sa
 
 `data/` is deliberately not in git. Private folders are lightweight UI privacy: locked folders hide their items from gallery responses, but files remain on disk.
 
+## Contribute a Workflow
+
+Mix Studio thrives on community collaboration. If you have spent hours dialing in a killer ComfyUI workflow that produces amazing results, we want to see it! We are always looking for new pipelines to benchmark and potentially include in the next release.
+
+### What We Look For
+
+- **Performance:** The workflow needs to run efficiently. We benchmark everything on our Dell workstation, but we want workflows that scale well for users with 16 GB to 24 GB of VRAM.
+- **Stability:** We prioritize pipelines that deliver consistent results without requiring constant node tweaking.
+- **Practicality:** The best workflows solve a specific creative problem for artists, like clean motion transfer, precise inpainting, or perfect text rendering.
+
+### How to Submit
+
+You can share your custom workflows with the community in two ways:
+
+- **[GitHub Discussions](https://github.com/BlackMixture/Mix-Studio/discussions):** The easiest way to share. Just drop your ComfyUI JSON file in our Discussions tab.
+- **[Pull Requests](https://github.com/BlackMixture/Mix-Studio/pulls):** If you are familiar with the Mix Studio codebase and know exactly how your workflow integrates into the UI, feel free to open a PR directly.
+
+When you submit, please include:
+
+- A brief explanation of what the workflow does and why it is awesome.
+- A list of all required models and custom nodes.
+- Your estimated VRAM requirements and generation times.
+- A few example images or videos of the output.
+
+Let's build the ultimate creative toolkit together!
+
 ## Acknowledgments & Attribution
 
 Mix Studio is built on the incredible work of the open-source AI community. We want to extend our deepest gratitude to the creators and researchers who power these workflows:

@@ -50,6 +50,11 @@ test('standalone installer downloads the official Git checkout before opening th
 test('README credits the sponsored Dell workstation and NVIDIA GPU', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.match(readme, /## Acknowledgments & Attribution/);
+  assert.match(readme, /## Contribute a Workflow/);
+  assert.match(readme, /### What We Look For/);
+  assert.match(readme, /### How to Submit/);
+  assert.match(readme, /github\.com\/BlackMixture\/Mix-Studio\/discussions/);
+  assert.match(readme, /github\.com\/BlackMixture\/Mix-Studio\/pulls/);
   assert.match(readme, /\*\*ComfyUI:\*\* The node-based backbone/);
   assert.match(readme, /Black Forest Labs \(Flux 2\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
   assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD, and Depth Anything V3/);
@@ -65,9 +70,15 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   const localSources = [...page.matchAll(/\ssrc="\.\/([^"?#]+)"/g)].map((match) => match[1]);
   assert.match(page, /Download for Windows/);
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
-  assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 3);
+  assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 4);
   assert.match(page, /macOS support coming soon/);
   assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
+  assert.doesNotMatch(page, /The installer gets you into Mix Studio before asking you to choose models or workflows\./);
+  assert.match(page, /class="download quick-download"/);
+  assert.ok(page.indexOf('id="mobile-first"') < page.indexOf('id="quick-start"'));
+  assert.ok(page.indexOf('id="quick-start"') < page.indexOf('id="features"'));
+  assert.ok(page.indexOf('id="workspace-title"') < page.indexOf('id="setup-details"'));
+  assert.ok(page.indexOf('id="setup-details"') < page.indexOf('class="closing"'));
   assert.doesNotMatch(page, /Windows · NVIDIA · Local generation/);
   assert.match(page, /Quick setup/);
   assert.match(page, /install only that workflow/i);
