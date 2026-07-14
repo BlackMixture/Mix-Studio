@@ -82,6 +82,13 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Krea 2 Turbo/);
   assert.match(page, /Flux 2 Klein 9B/);
   assert.match(page, /id="quick-start"/);
+  assert.match(page, /id="faq-title"/);
+  assert.match(page, /Is Mix Studio free\?/);
+  assert.match(page, /Can I use my ComfyUI install\?/);
+  assert.match(page, /desktop, tablet, or phone/);
+  assert.match(page, /Does my work stay local\?/);
+  assert.doesNotMatch(page, /hardware-marker minimum"><b>16 GB/);
+  assert.doesNotMatch(page, /hardware-marker recommended"><b>16 GB/);
   assert.match(page, /mix-studio-create\.png/);
   assert.match(page, /mix-studio-mobile\.png/);
   assert.match(page, /mix-studio-profiles-live\.png/);
@@ -104,6 +111,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /create-squid\.jpg/);
   assert.match(page, /upscale-before\.jpg/);
   assert.match(page, /upscale-after\.jpg/);
+  assert.match(page, /\.upscale-label \{[^}]*bottom: 12px;/);
+  assert.doesNotMatch(page, /\.upscale-label \{[^}]*top: 12px;/);
   assert.match(page, /ltx-ruins\.mp4/);
   assert.match(page, /ltx-dreamscape\.mp4/);
   assert.match(page, /ltx-interior\.mp4/);

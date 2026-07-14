@@ -98,7 +98,8 @@ test('desktop image action opens the full destination menu', () => {
   assert.match(app, /label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
 });
 
-test('desktop focused information rail uses a true black surface', () => {
+test('focused gallery and desktop information rail use true black surfaces', () => {
+  assert.match(css, /#lightbox \{ background: #000; \}/);
   assert.match(css, /#lightbox\.show \{[\s\S]*background: #000;/);
   assert.match(css, /#lightbox #lbActions \{[\s\S]*background: #000;/);
 });
