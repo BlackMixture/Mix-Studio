@@ -70,7 +70,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /chriselle-dwarika\.webp/);
   assert.match(page, /Nate Dwarika/);
   assert.match(page, /Chriselle Dwarika/);
-  assert.match(page, /\.creator-founders \{[^}]*gap: 2px;[^}]*background: #f3c60c;/);
+  assert.match(page, /\.creator-founders \{[^}]*gap: 0;[^}]*padding: 0;[^}]*background: #f3c60c;/);
   assert.match(page, /https:\/\/www\.blackmixture\.com\//);
   assert.match(page, /https:\/\/www\.youtube\.com\/@blackmixture/);
   assert.match(page, /https:\/\/www\.instagram\.com\/blackmixture\//);
