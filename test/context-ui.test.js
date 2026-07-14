@@ -75,7 +75,6 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(appJs, /assetPickerState\.likes && !asset\.liked/);
   assert.match(appJs, /function openAssetPickerPreview\(asset\)/);
   assert.match(appJs, /function animateAssetPickerEntrance\(panel, trigger\)/);
-  assert.match(appJs, /panel\.style\.setProperty\('--asset-origin-x', originX\)/);
   assert.match(appJs, /animateAssetPickerEntrance\(panel, assetPickerReturnFocus\)/);
   assert.match(appJs, /button\.addEventListener\('click', \(\) => openAssetPickerPreview\(asset\)\)/);
   assert.match(appJs, /assetPickerState\?\.preview\) usePreviousGeneration\(assetPickerState\.preview\)/);
@@ -98,10 +97,16 @@ test('mobile source preview keeps its primary action in the visible panel', () =
   assert.match(styleCss, /\.asset-picker-panel\.previewing \.asset-picker-preview-media \{[\s\S]*?min-height: 0;[\s\S]*?height: auto;/);
 });
 
-test('source picker uses a focused black surface and grows from its trigger', () => {
-  assert.match(styleCss, /#assetPickerSheet \.asset-picker-panel \{[\s\S]*?background: #000;[\s\S]*?transform-origin: var\(--asset-origin-x, 50%\) var\(--asset-origin-y, 50%\);/);
-  assert.match(styleCss, /\.asset-picker-panel\.asset-picker-opening \{[\s\S]*?animation: assetPickerIn 280ms/);
-  assert.match(styleCss, /@keyframes assetPickerIn \{[\s\S]*?transform: scale\(\.56\); filter: blur\(6px\);/);
+test('source picker uses a shared-element morph from the pressed trigger', () => {
+  assert.match(styleCss, /#assetPickerSheet \.asset-picker-panel \{[\s\S]*?background: #000;[\s\S]*?animation: none;/);
+  assert.match(appJs, /morph\.innerHTML = trigger\.innerHTML/);
+  assert.match(appJs, /trigger\.classList\.add\('asset-picker-trigger-morphing'\)/);
+  assert.match(appJs, /left: px\(triggerRect\.left - pop\)[\s\S]*?width: px\(triggerRect\.width \+ pop \* 2\)/);
+  assert.match(appJs, /duration: 480, easing: 'linear'/);
+  assert.match(appJs, /recentPointerTrigger \|\| focused/);
+  assert.match(styleCss, /\.asset-picker-morph \{[\s\S]*?position: fixed;[\s\S]*?will-change: left, top, width, height, border-radius, opacity, box-shadow;/);
+  assert.match(styleCss, /@keyframes assetPickerPanelResolve \{[\s\S]*?0%, 64% \{ opacity: 0; transform: scale\(\.985\); \}/);
+  assert.doesNotMatch(styleCss, /@keyframes assetPickerIn/);
 });
 
 test('mobile create prompt contains long generated text instead of expanding indefinitely', () => {
