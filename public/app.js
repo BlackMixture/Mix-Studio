@@ -17345,7 +17345,7 @@ function mediaPreferenceControlValue(id) {
   return $('#' + id)?.getAttribute('aria-checked') === 'true';
 }
 
-['setVideoPreviews', 'setPreviewCache'].forEach((id) => {
+['setVideoPreviews', 'setPreviewCache', 'setSmartFilenames'].forEach((id) => {
   $('#' + id).addEventListener('click', () => {
     const button = $('#' + id);
     button.setAttribute('aria-checked', String(!mediaPreferenceControlValue(id)));
@@ -18708,6 +18708,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setScailPusaLora').value = s.scailPusaLora || '';
     $('#setScailCv').value = s.scailClipVision || '';
     $('#setScailSam').value = s.scailSam || '';
+    setMediaPreferenceControl('setSmartFilenames', s.smartFilenames !== false);
     renderExportLocation(s.exportDir || '');
   } catch { /* noop */ }
   setMediaPreferenceControl('setVideoPreviews', state.mediaPreferences.videoPreviews);
@@ -18778,6 +18779,7 @@ $('#settingsSave').addEventListener('click', async () => {
             scailPusaLora: $('#setScailPusaLora').value,
             scailClipVision: $('#setScailCv').value,
             scailSam: $('#setScailSam').value,
+            smartFilenames: mediaPreferenceControlValue('setSmartFilenames'),
       }),
     });
     await saveUserPreferences();

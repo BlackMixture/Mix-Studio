@@ -34,3 +34,13 @@ test('saved names participate in library search, sorting, and downloads', () => 
   assert.match(app, /generationDownloadStem\(it, 'kreastudio'\)/);
   assert.match(server, /generationFileStem\(item, `generation-\$\{index \+ 1\}`\)/);
 });
+
+test('Advanced Settings can toggle prompt-based names for new files', () => {
+  assert.match(html, /id="setSmartFilenames"[^>]*role="switch"[^>]*aria-checked="true"/);
+  assert.match(html, /Smart file names[\s\S]*short phrase from the prompt/);
+  assert.match(app, /setMediaPreferenceControl\('setSmartFilenames', s\.smartFilenames !== false\)/);
+  assert.match(app, /smartFilenames: mediaPreferenceControlValue\('setSmartFilenames'\)/);
+  assert.match(server, /smartFilenames: true/);
+  assert.match(server, /smartAssetFilename\(job\.params\.prompt, id, '\.png'/);
+  assert.match(server, /typeof body\.smartFilenames === 'boolean'/);
+});

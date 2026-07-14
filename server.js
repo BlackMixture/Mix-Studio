@@ -157,6 +157,8 @@ const {
 const {
   normalizeGenerationName,
   generationFileStem,
+  smartGenerationName,
+  smartAssetFilename,
 } = require('./lib/generation-name');
 const {
   PROFILE_COOKIE,
@@ -274,6 +276,7 @@ const DEFAULT_SETTINGS = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
   exportDir: '',
+  smartFilenames: true,
   // Existing installs default every optional workflow on. The installer writes
   // explicit choices only for a brand-new machine.
   features: DEFAULT_FEATURES,
@@ -298,6 +301,7 @@ function normalizeSettings(s) {
   if (!s.kleinClip) s.kleinClip = s.klein4Clip;
   s.galleryPassword = galleryPassword(s);
   try { s.exportDir = normalizeExportDirectory(s.exportDir); } catch { s.exportDir = ''; }
+  s.smartFilenames = s.smartFilenames !== false;
   s.features = normalizeFeatures(s.features);
   return s;
 }
@@ -1439,13 +1443,17 @@ async function completeJob(pid) {
     } else {
       // standalone video (Video tab): create a gallery item with a poster frame
       const id = uid();
-      const posterName = `${id}.png`;
+      const videoPrompt = job.videoInfo.motionPrompt || '';
+      const posterName = settings.smartFilenames
+        ? smartAssetFilename(videoPrompt, id, '.png', 'video')
+        : `${id}.png`;
       const posters = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
       const pbuf = posters.length ? await downloadOutput(posters[0]) : BLANK_PNG;
       await fsp.writeFile(path.join(IMAGES, posterName), pbuf);
       item = {
         id,
         file: posterName,
+        name: settings.smartFilenames ? smartGenerationName(videoPrompt, 'Untitled video') : undefined,
         mode: 'video',
         profileId: job.profileId,
         prompt: job.videoInfo.motionPrompt,
@@ -1463,10 +1471,13 @@ async function completeJob(pid) {
       };
       db.items.unshift(item);
     }
-    const fname = `${item.id}_${Date.now()}.mp4`;
+    const videoId = uid();
+    const fname = settings.smartFilenames
+      ? smartAssetFilename(job.videoInfo.motionPrompt, videoId, '.mp4', 'video')
+      : `${item.id}_${Date.now()}.mp4`;
     await fsp.writeFile(path.join(VIDEOS, fname), buf);
     const entry = {
-      id: uid(),
+      id: videoId,
       file: fname,
       createdAt: Date.now(),
       info: Object.assign({}, job.videoInfo, {
@@ -1512,7 +1523,9 @@ async function completeJob(pid) {
     const buf = await downloadOutput(files[0]);
     const info = job.compositeInfo || {};
     const id = uid();
-    const fname = `${id}_composite.png`;
+    const fname = settings.smartFilenames
+      ? smartAssetFilename(info.prompt, id, '.png', 'composite')
+      : `${id}_composite.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
     const dims = pngDims(buf) || {};
     // Source/result composites belong to the generation they document.
@@ -1543,6 +1556,7 @@ async function completeJob(pid) {
     const item = {
       id,
       file: fname,
+      name: settings.smartFilenames ? smartGenerationName(info.prompt, 'Untitled composite') : undefined,
       mode: 'composite',
       compositeInfo: info,
       profileId: job.profileId,
@@ -1575,7 +1589,9 @@ async function completeJob(pid) {
   for (const img of files) {
     const buf = await downloadOutput(img);
     const id = uid();
-    const fname = `${id}.png`;
+    const fname = settings.smartFilenames
+      ? smartAssetFilename(job.params.prompt, id, '.png', job.params.mode === 'edit' ? 'edit' : 'image')
+      : `${id}.png`;
     await fsp.writeFile(path.join(IMAGES, fname), buf);
     // Keep a durable copy of edit and image-to-image sources so gallery
     // reuse still works if ComfyUI's input folder is later cleaned.
@@ -1596,6 +1612,9 @@ async function completeJob(pid) {
     const item = {
       id,
       file: fname,
+      name: settings.smartFilenames
+        ? smartGenerationName(job.params.prompt, job.params.mode === 'edit' ? 'Untitled edit' : 'Untitled image')
+        : undefined,
       mode: job.params.mode,
       krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
       krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
@@ -4430,6 +4449,7 @@ async function handleApi(req, res, url) {
       if (key === 'exportDir') continue;
       if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
     }
+    if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
     settings = normalizeSettings(settings);
     saveJsonSync(SETTINGS_FILE, settings);
