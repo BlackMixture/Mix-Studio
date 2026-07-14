@@ -3754,6 +3754,7 @@ let regionSettingsOpen = false;
 let regionLoraExpanded = false;
 let regionClickBlockedUntil = 0;
 let kreaMaskDrawing = false;
+let kreaMaskDrawingPointerId = null;
 let kreaMaskLast = null;
 let kreaMaskBoxInteraction = null;
 let kreaMaskGesture = null;
@@ -4446,6 +4447,7 @@ function renderKreaMaskMode() {
   $('#kreaMaskStage').classList.toggle('smart-mode', tool === 'smart');
   renderKreaMaskBoxes();
   renderSmartPointMode();
+  renderSmartMaskPoints();
 }
 
 function setupMaskCanvasFromImage() {
@@ -4484,6 +4486,27 @@ function setupMaskCanvasFromImage() {
     renderSmartMaskPoints();
     renderKreaMaskBoxes();
   });
+}
+
+function syncKreaMaskCanvasFromState() {
+  const ref = state.refs[0];
+  const base = $('#kreaMaskBase');
+  const canvas = $('#kreaMaskCanvas');
+  if (!ref || !ref.name || !base || !canvas) {
+    if (canvas?.width && canvas?.height) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    renderKreaMaskTools();
+    return;
+  }
+  const expectedName = ref.name;
+  const sourceUrl = ref.url || `/api/input?name=${encodeURIComponent(ref.name)}`;
+  const apply = () => {
+    if (state.refs[0]?.name !== expectedName) return;
+    setupMaskCanvasFromImage();
+    renderKreaMaskTools();
+  };
+  base.onload = apply;
+  base.src = sourceUrl;
+  if (base.complete && base.naturalWidth) queueMicrotask(apply);
 }
 
 function openKreaMaskPainter() {
@@ -4618,8 +4641,7 @@ function renderKreaMaskBoxes() {
     element.className = `krea-mask-box${active ? ' active' : ''}`;
     element.dataset.maskBoxId = box.id;
     element.tabIndex = 0;
-    element.setAttribute('role', 'button');
-    element.setAttribute('aria-pressed', String(active));
+    element.setAttribute('role', 'group');
     element.setAttribute('aria-label', `Mask box ${index + 1} of ${boxes.length}. Drag to move. Arrow keys move; Shift plus arrow keys resize.`);
     element.style.left = `${box.x * 100}%`;
     element.style.top = `${box.y * 100}%`;
@@ -4632,11 +4654,11 @@ function renderKreaMaskBoxes() {
     number.setAttribute('aria-hidden', 'true');
     element.append(number);
     ['nw', 'ne', 'sw', 'se'].forEach((handle) => {
-      const grip = document.createElement('i');
+      const grip = document.createElement('button');
+      grip.type = 'button';
       grip.className = `krea-mask-box-handle handle-${handle}`;
       grip.dataset.maskBoxHandle = handle;
       grip.tabIndex = active ? 0 : -1;
-      grip.setAttribute('role', 'button');
       grip.setAttribute('aria-label', `Resize ${handle} corner of mask box ${index + 1}`);
       element.append(grip);
     });
@@ -4738,7 +4760,7 @@ function cycleKreaMaskBox(direction) {
 }
 
 function beginKreaMaskBoxCreate(event) {
-  if (state.kreaMaskTool !== 'box') return;
+  if (state.kreaMaskTool !== 'box' || kreaMaskBoxInteraction || kreaMaskDrawing || smartMaskPointDrag) return;
   if (state.kreaMaskBoxes.length >= maskBoxGeometry.MAX_BOXES) {
     toast(`Masks support up to ${maskBoxGeometry.MAX_BOXES} boxes`, true);
     return;
@@ -4781,8 +4803,20 @@ function beginKreaMaskBoxCreate(event) {
   layer.setPointerCapture?.(event.pointerId);
 }
 
+function pointerMaskBoxHandle(event, element) {
+  const rect = element.getBoundingClientRect();
+  if (!rect.width || !rect.height) return '';
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const edgeX = Math.min(22, rect.width * 0.35);
+  const edgeY = Math.min(22, rect.height * 0.35);
+  const horizontal = x <= edgeX ? 'w' : (x >= rect.width - edgeX ? 'e' : '');
+  const vertical = y <= edgeY ? 'n' : (y >= rect.height - edgeY ? 's' : '');
+  return horizontal && vertical ? `${vertical}${horizontal}` : '';
+}
+
 function beginKreaMaskBoxInteraction(event) {
-  if (state.kreaMaskTool !== 'box') return;
+  if (state.kreaMaskTool !== 'box' || kreaMaskBoxInteraction || kreaMaskDrawing || smartMaskPointDrag) return;
   const element = event.target.closest('[data-mask-box-id]');
   if (!element) return;
   const box = state.kreaMaskBoxes.find((item) => item.id === element.dataset.maskBoxId);
@@ -4791,7 +4825,7 @@ function beginKreaMaskBoxInteraction(event) {
   event.stopPropagation();
   cancelSmartMaskRequest();
   state.kreaMaskActiveBoxId = box.id;
-  const handle = event.target.closest('[data-mask-box-handle]')?.dataset.maskBoxHandle || '';
+  const handle = pointerMaskBoxHandle(event, element);
   renderKreaMaskBoxes();
   kreaMaskBoxInteraction = {
     pointerId: event.pointerId,
@@ -4854,6 +4888,22 @@ function finishKreaMaskBoxInteraction(event, cancelled = false) {
     const height = Math.round(active.h * 100);
     announceKreaMaskBox(`Mask box updated. ${width} by ${height} percent.`);
   }
+}
+
+function cancelKreaMaskBoxInteraction() {
+  if (!kreaMaskBoxInteraction) return;
+  finishKreaMaskBoxInteraction({ pointerId: kreaMaskBoxInteraction.pointerId }, true);
+}
+
+function cancelKreaMaskBrushDrawing(pointerId = null) {
+  if (pointerId !== null && kreaMaskDrawingPointerId !== pointerId) return;
+  const canvas = $('#kreaMaskCanvas');
+  if (kreaMaskDrawingPointerId !== null && canvas.hasPointerCapture?.(kreaMaskDrawingPointerId)) {
+    canvas.releasePointerCapture(kreaMaskDrawingPointerId);
+  }
+  kreaMaskDrawing = false;
+  kreaMaskDrawingPointerId = null;
+  kreaMaskLast = null;
 }
 
 function keyboardKreaMaskBox(event) {
@@ -5134,6 +5184,17 @@ function scheduleMaskedRefPreview() {
   });
 }
 
+let maskExpansionPreviewFrame = null;
+function scheduleMaskExpansionPreview() {
+  if (maskExpansionPreviewFrame) return;
+  maskExpansionPreviewFrame = requestAnimationFrame(() => {
+    maskExpansionPreviewFrame = null;
+    renderMaskOverlay();
+    refreshMaskCutoutPreview();
+    scheduleMaskedRefPreview();
+  });
+}
+
 function renderMaskAdjustments() {
   const outpaint = editOutpaintActive();
   const featherValue = outpaint ? state.editOutpaintFeather : state.kreaMaskFeather;
@@ -5187,13 +5248,15 @@ function renderSmartPointMode() {
   $('#kreaMaskPointRemove').setAttribute('aria-pressed', String(!include));
   $('#kreaMaskPointDelete').classList.toggle('active', state.kreaMaskPointDeleteMode);
   $('#kreaMaskPointDelete').setAttribute('aria-pressed', String(state.kreaMaskPointDeleteMode));
-  $('#kreaMaskStage').classList.toggle('delete-points-mode', state.kreaMaskPointDeleteMode);
+  $('#kreaMaskStage').classList.toggle('delete-points-mode', state.kreaMaskTool === 'smart' && state.kreaMaskPointDeleteMode);
 }
 
 function renderSmartMaskPoints() {
   const layer = $('#kreaMaskPoints');
   if (!layer) return;
   layer.innerHTML = '';
+  layer.hidden = state.kreaMaskTool !== 'smart' || state.kreaMaskPreviewCutout;
+  if (layer.hidden) return;
   const content = maskContentRect();
   for (const [index, point] of state.kreaMaskPoints.entries()) {
     const dot = document.createElement('i');
@@ -5209,11 +5272,13 @@ function renderSmartMaskPoints() {
 }
 
 function rerunSmartMaskFromPoints() {
+  if (state.kreaMaskTool !== 'smart') return;
   if (state.kreaMaskPoints.length) runSmartMask();
   else clearKreaMask(true);
 }
 
 function beginSmartMaskPointDrag(event) {
+  if (state.kreaMaskTool !== 'smart' || smartMaskPointDrag) return;
   const dot = event.target.closest('.smart-mask-point');
   if (!dot || smartMaskRunning) return;
   const index = Number(dot.dataset.pointIndex);
@@ -5233,7 +5298,7 @@ function beginSmartMaskPointDrag(event) {
 
 function moveSmartMaskPointDrag(event) {
   const drag = smartMaskPointDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
+  if (!drag || drag.pointerId !== event.pointerId || state.kreaMaskTool !== 'smart') return;
   event.preventDefault();
   const point = state.kreaMaskPoints[drag.index];
   if (!point) return;
@@ -5253,7 +5318,16 @@ function finishSmartMaskPointDrag(event) {
   if (drag.dot?.hasPointerCapture?.(drag.pointerId)) drag.dot.releasePointerCapture(drag.pointerId);
   smartMaskPointDrag = null;
   renderSmartMaskPoints();
-  if (drag.moved) rerunSmartMaskFromPoints();
+  if (drag.moved && state.kreaMaskTool === 'smart') rerunSmartMaskFromPoints();
+}
+
+function cancelSmartMaskPointDrag() {
+  const drag = smartMaskPointDrag;
+  if (!drag) return;
+  smartMaskPointDrag = null;
+  drag.dot?.classList.remove('dragging');
+  if (drag.dot?.hasPointerCapture?.(drag.pointerId)) drag.dot.releasePointerCapture(drag.pointerId);
+  renderSmartMaskPoints();
 }
 
 let smartMaskRunning = false;
@@ -5272,7 +5346,7 @@ function cancelSmartMaskRequest() {
 }
 
 async function runSmartMask({ prompt = '', point = null } = {}) {
-  if (smartMaskRunning) return;
+  if (smartMaskRunning || state.kreaMaskTool !== 'smart') return;
   const ref = state.refs[0];
   if (!ref || !ref.name) return toast('Add a source image before using Smart Select', true);
   if (point) {
@@ -5524,6 +5598,7 @@ $('#kreaMaskGesture').addEventListener('pointerup', finishMaskGesture);
 $('#kreaMaskGesture').addEventListener('pointercancel', finishMaskGesture);
 $('#kreaMaskGesture').addEventListener('keydown', keyboardMaskGesture);
 $('#kreaMaskCanvas').addEventListener('pointerdown', (e) => {
+  if (kreaMaskDrawing || kreaMaskBoxInteraction || smartMaskPointDrag) return;
   if (state.kreaMaskTool === 'smart') {
     if (state.kreaMaskPointDeleteMode) return;
     if (!state.kreaMaskPreviewCutout) runSmartMask({ point: maskPoint(e) });
@@ -5536,6 +5611,7 @@ $('#kreaMaskCanvas').addEventListener('pointerdown', (e) => {
   cancelSmartMaskRequest();
   discardEditableMaskBoxes();
   kreaMaskDrawing = true;
+  kreaMaskDrawingPointerId = e.pointerId;
   kreaMaskLast = maskPoint(e);
   $('#kreaMaskCanvas').setPointerCapture?.(e.pointerId);
   drawKreaMask(e);
@@ -5546,14 +5622,10 @@ $('#kreaMaskPoints').addEventListener('pointerup', finishSmartMaskPointDrag);
 $('#kreaMaskPoints').addEventListener('pointercancel', finishSmartMaskPointDrag);
 $('#kreaMaskCanvas').addEventListener('pointermove', drawKreaMask);
 document.addEventListener('pointerup', (event) => {
-  kreaMaskDrawing = false;
-  kreaMaskLast = null;
-  const canvas = $('#kreaMaskCanvas');
-  if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  cancelKreaMaskBrushDrawing(event.pointerId);
 });
-document.addEventListener('pointercancel', () => {
-  kreaMaskDrawing = false;
-  kreaMaskLast = null;
+document.addEventListener('pointercancel', (event) => {
+  cancelKreaMaskBrushDrawing(event.pointerId);
 });
 $('#kreaMaskBoxes').addEventListener('pointerdown', beginKreaMaskBoxInteraction);
 $('#kreaMaskBoxes').addEventListener('pointermove', moveKreaMaskBoxInteraction);
@@ -5566,6 +5638,9 @@ $('#kreaMaskBoxDelete').addEventListener('click', deleteActiveKreaMaskBox);
 $('#kreaMaskBoxPrev').addEventListener('click', () => cycleKreaMaskBox(-1));
 $('#kreaMaskBoxNext').addEventListener('click', () => cycleKreaMaskBox(1));
 $('#kreaMaskSmartMode').addEventListener('click', () => {
+  cancelKreaMaskBoxInteraction();
+  cancelKreaMaskBrushDrawing();
+  cancelSmartMaskPointDrag();
   state.kreaMaskTool = 'smart';
   state.kreaMaskErase = false;
   state.kreaMaskPreviewCutout = false;
@@ -5575,6 +5650,9 @@ $('#kreaMaskSmartMode').addEventListener('click', () => {
 });
 $('#kreaMaskBrushMode').addEventListener('click', () => {
   cancelSmartMaskRequest();
+  cancelSmartMaskPointDrag();
+  cancelKreaMaskBoxInteraction();
+  cancelKreaMaskBrushDrawing();
   state.kreaMaskTool = 'brush';
   state.kreaMaskPreviewCutout = false;
   renderKreaMaskMode();
@@ -5583,6 +5661,9 @@ $('#kreaMaskBrushMode').addEventListener('click', () => {
 });
 $('#kreaMaskBoxMode').addEventListener('click', () => {
   cancelSmartMaskRequest();
+  cancelSmartMaskPointDrag();
+  cancelKreaMaskBoxInteraction();
+  cancelKreaMaskBrushDrawing();
   state.kreaMaskTool = 'box';
   state.kreaMaskErase = false;
   state.kreaMaskPreviewCutout = false;
@@ -5640,11 +5721,8 @@ $('#editMaskInfluence').addEventListener('input', () => {
 });
 $('#kreaMaskExpand').addEventListener('input', () => {
   state.editMaskExpand = Math.max(6, Math.min(32, Math.round(Number($('#kreaMaskExpand').value) || 14)));
-  invalidateProcessedMask();
   renderMaskAdjustments();
-  renderMaskOverlay();
-  refreshMaskCutoutPreview();
-  scheduleMaskedRefPreview();
+  scheduleMaskExpansionPreview();
   saveForm();
 });
 $('#kreaMaskInvert').addEventListener('click', () => {
@@ -11938,6 +12016,7 @@ function restoreDesktopInputSetup(snapshot) {
   updatePromptClear();
   updateVideoPanels();
   renderRefs();
+  syncKreaMaskCanvasFromState();
   renderEnhance();
   renderAspects();
   renderDims();
