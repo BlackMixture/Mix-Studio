@@ -382,6 +382,13 @@
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 4h12a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8h2v-4a2 2 0 0 1 2-2h8V6H4Zm4 4v8h12v-8H8Zm2 6 2.4-2.8 1.8 2 1.4-1.6 2.4 2.4h-8Zm7-4.8a1.2 1.2 0 1 1-1.2 1.2 1.2 1.2 0 0 1 1.2-1.2Z"/></svg>
       </button>
     </div>
+    <div class="chip-row prompt-tools video-prompt-tools" id="videoPromptTools" hidden>
+      <button class="chip video-camera-motion-trigger" id="videoCameraMotionBtn" type="button" aria-label="Camera motion" title="Camera motion" aria-haspopup="dialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 7.5h10.5a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Zm12.5 3 5-2.5v8l-5-2.5M6 4.5h5M5 19.5h10"/></svg>
+        <span>Camera motion</span>
+        <span class="video-camera-motion-count" id="videoCameraMotionCount" hidden>0</span>
+      </button>
+    </div>
     <div class="chip-row prompt-tools context-prompt-tools" id="contextPromptTools" hidden></div>
     <div class="create-image-guide" id="createImageGuide" hidden aria-hidden="true" inert>
       <div class="create-image-guide-inner">
@@ -1138,6 +1145,28 @@
   </div>
 </div>
 
+<!-- video camera motion sheet -->
+<div class="sheet" id="videoCameraMotionSheet">
+  <div class="sheet-panel camera-motion-panel" role="dialog" aria-modal="true" aria-labelledby="cameraMotionTitle" aria-describedby="cameraMotionIntro">
+    <header class="camera-motion-head">
+      <div>
+        <span class="camera-motion-kicker">LTX Camera Motion</span>
+        <h3 id="cameraMotionTitle">Direct the camera</h3>
+      </div>
+      <span class="camera-motion-selected-count" id="cameraMotionSelectedCount">0 / 3</span>
+      <button class="camera-motion-close" data-close type="button" aria-label="Close camera motion">✕</button>
+    </header>
+    <p class="camera-motion-intro" id="cameraMotionIntro">Choose up to three moves in the order they should happen. Each preview also becomes the motion reference used during LTX generation.</p>
+    <div class="camera-motion-sequence" id="cameraMotionSequence" aria-live="polite"></div>
+    <div class="camera-motion-grid" id="cameraMotionGrid"></div>
+    <p class="camera-motion-note"><span id="cameraMotionModeNote">LTX 2.3 · reference guided with the Cameraman v2 research adapter.</span><a href="https://huggingface.co/Cseti/LTX2.3-22B_IC-LoRA-Cameraman_v2" target="_blank" rel="noreferrer">Model terms</a></p>
+    <footer class="camera-motion-actions">
+      <button class="camera-motion-clear" id="cameraMotionClear" type="button">Clear</button>
+      <button class="sheet-cta camera-motion-apply" id="cameraMotionApply" type="button">Apply to prompt</button>
+    </footer>
+  </div>
+</div>
+
 <!-- camera settings sheet -->
 <div class="sheet" id="cameraSheet">
   <div class="sheet-panel camera-panel">
@@ -1804,6 +1833,7 @@
           <div class="settings-group"><h5>LTX 2.3 &amp; Face ID</h5>
             <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
             <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
+            <div class="field"><label>Camera Motion IC-LoRA</label><input id="setLtxCameraLora" type="text" /></div>
             <div class="field"><label>Edit Anything LoRA</label><input id="setLtxEditLora" type="text" /></div>
             <div class="field"><label>Gemma text encoder</label><input id="setLtxTe" type="text" /></div>
             <div class="field"><label>Gemma LoRA</label><input id="setLtxGemmaLora" type="text" /></div>
@@ -2133,6 +2163,7 @@
 <div class="toast-zone" id="toastZone"></div>
 
 <script src="/camera-settings.js"></script>
+<script src="/camera-motion.js"></script>
 <script src="/progress-eta.js"></script>
 <script src="/job-reconciliation.js"></script>
 <script src="/app.js"></script>

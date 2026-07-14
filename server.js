@@ -82,6 +82,13 @@ const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-se
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
 const { normalizeEditAngle, supportsEditAngles, editAnglePrompt } = require('./lib/edit-angle');
 const {
+  cameraMotionById,
+  cameraMotionPhrase,
+  ensureCameraMotionPrompt,
+  normalizeCameraMotions,
+  stripCameraMotionPhrase,
+} = require('./public/camera-motion');
+const {
   appendEditMaskNodes,
   appendEditMaskComposite,
   buildSam3MaskGraph,
@@ -230,6 +237,7 @@ const DEFAULT_SETTINGS = {
   qwenEditAnglesLora: 'qwen_image_edit_2511_multiple-angles-lora.safetensors',
   ltxCkpt: 'ltx-2.3-22b-dev-fp8.safetensors',
   ltxDistilledLora: 'ltx-2.3-22b-distilled-lora-384.safetensors',
+  ltxCameramanLora: 'LTX2.3-22B_IC-LoRA-Cameraman_v2_14000.safetensors',
   ltxEditLora: 'edit_anything_v1.1_r256.safetensors',
   ltxTextEncoder: 'gemma_3_12B_it_fp4_mixed.safetensors',
   ltxGemmaLora: 'gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors',
@@ -861,6 +869,10 @@ function configuredModelsStatus(info) {
       gemmaLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.ltxGemmaLora, loraList),
       upscaler: modelStatus(info, 'LatentUpscaleModelLoader', 'model_name', settings.ltxUpscaler),
     },
+    ltxCamera: {
+      label: 'LTX Camera Motion',
+      lora: modelStatus(info, 'LTXICLoRALoaderModelOnly', 'lora_name', settings.ltxCameramanLora, loraList),
+    },
     ltxEdit: {
       label: 'LTX Edit',
       lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxEditLora, loraList),
@@ -907,6 +919,7 @@ function missingDependencyComponentIds(missing, models) {
     upscale: ['upscale'],
     ultimateupscale: ['ultimateupscale'],
     video: ['video'],
+    ltxcamera: ['ltxcamera'],
     videoedit: ['videoedit'],
     video4k: ['video4k'],
     wan: ['wan'],
@@ -922,7 +935,7 @@ function missingDependencyComponentIds(missing, models) {
   for (const [group, classes] of Object.entries(missing || {})) {
     if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
   }
-  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -1078,6 +1091,23 @@ async function uploadToComfy(buffer, filename) {
   });
   const json = await res.json();
   return (json.subfolder ? json.subfolder + '/' : '') + json.name;
+}
+
+async function uploadCameraMotionGuides(value) {
+  const ids = normalizeCameraMotions(value);
+  const uploaded = [];
+  for (const id of ids) {
+    const motion = cameraMotionById(id);
+    if (!motion) continue;
+    const assetName = path.basename(String(motion.asset || ''));
+    const assetPath = path.join(PUBLIC, 'camera-motions', assetName);
+    if (!assetName || !fs.existsSync(assetPath)) {
+      throw new Error(`Camera motion reference is missing: ${assetName || id}`);
+    }
+    const buffer = await fsp.readFile(assetPath);
+    uploaded.push(await uploadToComfy(buffer, `ks_camera_${id}${path.extname(assetName) || '.mp4'}`));
+  }
+  return uploaded;
 }
 
 async function uploadFileToComfy(file, filename) {
@@ -2611,6 +2641,18 @@ function videoDims(w, h) {
   return { W, H };
 }
 
+function cameraMotionDims(w, h) {
+  // Cameraman v2 is trained around a ~960x512 first pass. LTX refines at
+  // 2x, so a 1920px long edge keeps the control signal in its useful range.
+  const long = 1920;
+  const sourceW = Math.max(1, Number(w) || 1024);
+  const sourceH = Math.max(1, Number(h) || 1024);
+  const scale = long / Math.max(sourceW, sourceH);
+  const W = Math.max(512, Math.round((sourceW * scale) / 64) * 64);
+  const H = Math.max(512, Math.round((sourceH * scale) / 64) * 64);
+  return { W, H };
+}
+
 async function buildAnimate(imageName, opts) {
   const { W, H } = opts;
   const seed = opts.seed;
@@ -2631,6 +2673,15 @@ async function buildAnimate(imageName, opts) {
       inputs: { model: ltxBaseModel, lora_name: settings.ltxEditLora, strength_model: 1 },
     };
     ltxBaseModel = ['edit_anything_lora', 0];
+  }
+  if (opts.cameraMotionGuideNames?.length) {
+    graph.camera_motion_lora = await nodeFromOrdered(
+      'LTXICLoRALoaderModelOnly',
+      [settings.ltxCameramanLora, 1],
+      { model: ltxBaseModel },
+      { lora_name: settings.ltxCameramanLora, strength_model: 1, strength: 1 }
+    );
+    ltxBaseModel = ['camera_motion_lora', 0];
   }
   const ltxModel = chainModelLoras(graph, ltxBaseModel, opts.loras, 'ulora');
   graph.te = await nodeFromOrdered(
@@ -2655,12 +2706,23 @@ async function buildAnimate(imageName, opts) {
     graph.refine = {
       class_type: 'TextGenerateLTX2Prompt',
       inputs: Object.assign(
-        { clip: ['te_lora', 1], image: ['resize', 0], prompt: opts.prompt },
+        {
+          clip: ['te_lora', 1],
+          image: ['resize', 0],
+          prompt: opts.cameraMotionPromptBase || opts.prompt,
+        },
         textGenInputs(seed, 256)
       ),
     };
     graph.showPrompt = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
     promptSource = ['refine', 0];
+    if (opts.cameraMotionPhrase) {
+      graph.camera_motion_prompt = {
+        class_type: 'StringConcatenate',
+        inputs: { string_a: promptSource, string_b: opts.cameraMotionPhrase, delimiter: ' ' },
+      };
+      promptSource = ['camera_motion_prompt', 0];
+    }
   }
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: promptSource } };
   graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: LTX_NEGATIVE } };
@@ -2703,6 +2765,29 @@ async function buildAnimate(imageName, opts) {
     graph.prep_end = await nodeFromOrdered('LTXVPreprocess', [opts.imgCompression != null ? opts.imgCompression : 35], { image: ['resize_end', 0] });
   }
 
+  let cameraGuideSource = null;
+  if (opts.cameraMotionGuideNames?.length) {
+    const segmentBase = Math.floor(opts.frames / opts.cameraMotionGuideNames.length);
+    const segmentRemainder = opts.frames % opts.cameraMotionGuideNames.length;
+    const guideSources = [];
+    for (let index = 0; index < opts.cameraMotionGuideNames.length; index += 1) {
+      const key = `camera_motion_video_${index + 1}`;
+      const segmentFrames = Math.max(1, segmentBase + (index < segmentRemainder ? 1 : 0));
+      graph[key] = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
+        video: opts.cameraMotionGuideNames[index],
+        force_rate: opts.fps,
+        custom_width: W / 2,
+        custom_height: H / 2,
+        frame_load_cap: segmentFrames,
+        skip_first_frames: 0,
+        select_every_nth: 1,
+        format: 'LTXV',
+      });
+      guideSources.push([key, 0]);
+    }
+    cameraGuideSource = imageBatchChain(graph, guideSources, 'camera_motion_join_');
+  }
+
   // Stage 1: base generation at half resolution
   graph.latent1 = {
     class_type: 'EmptyLTXVLatentVideo',
@@ -2711,7 +2796,28 @@ async function buildAnimate(imageName, opts) {
   let basePositive = ['cond', 0];
   let baseNegative = ['cond', 1];
   let baseLatent;
-  if (opts.guideVideoName) {
+  if (cameraGuideSource) {
+    graph.camera_image_condition1 = await nodeFromOrdered(
+      'LTXVImgToVideoConditionOnly',
+      [0.5, !!opts.bypass],
+      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['latent1', 0] }
+    );
+    graph.camera_guide1 = await nodeFromOrdered(
+      'LTXAddVideoICLoRAGuide',
+      [0, 1, 'disabled', false, 256, 64],
+      {
+        positive: basePositive,
+        negative: baseNegative,
+        vae: ['ckpt', 2],
+        latent: ['camera_image_condition1', 0],
+        image: cameraGuideSource,
+      },
+      { frame_idx: 0, strength: 1 }
+    );
+    basePositive = ['camera_guide1', 0];
+    baseNegative = ['camera_guide1', 1];
+    baseLatent = ['camera_guide1', 2];
+  } else if (opts.guideVideoName) {
     graph.edit_guide1 = {
       class_type: 'LTXVAddGuide',
       inputs: {
@@ -2782,7 +2888,20 @@ async function buildAnimate(imageName, opts) {
   let refinePositive;
   let refineNegative;
   let refineLatent;
-  if (opts.guideVideoName) {
+  if (cameraGuideSource) {
+    graph.camera_crop1 = {
+      class_type: 'LTXVCropGuides',
+      inputs: { positive: basePositive, negative: baseNegative, latent: ['sep1', 0] },
+    };
+    graph.camera_image_condition2 = await nodeFromOrdered(
+      'LTXVImgToVideoConditionOnly',
+      [0.7, !!opts.bypass],
+      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['ups', 0] }
+    );
+    refinePositive = ['camera_crop1', 0];
+    refineNegative = ['camera_crop1', 1];
+    refineLatent = ['camera_image_condition2', 0];
+  } else if (opts.guideVideoName) {
     // Crop first-pass guide tokens before inserting the full-resolution
     // source clip for refinement. This mirrors LTX's multi-guide flow.
     graph.edit_crop1 = {
@@ -2818,7 +2937,7 @@ async function buildAnimate(imageName, opts) {
     );
     refineLatent = ['i2v2', 0];
   }
-  if (!opts.guideVideoName) {
+  if (!opts.guideVideoName && !cameraGuideSource) {
     graph.crop = {
       class_type: 'LTXVCropGuides',
       inputs: { positive: ['cond', 0], negative: ['cond', 1], latent: ['sep1', 0] },
@@ -3856,6 +3975,8 @@ const REQUIRED_CLASSES = {
     'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
     'LTXVLatentUpsampler', 'LTXVCropGuides', 'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo',
     'SaveVideo', 'ImageScale', 'LTXVPreprocess'],
+  ltxcamera: ['LTXICLoRALoaderModelOnly', 'LTXAddVideoICLoRAGuide', 'LTXVImgToVideoConditionOnly',
+    'VHS_LoadVideo', 'ImageBatch'],
   videoedit: ['VHS_LoadVideo', 'LTXVAddGuide'],
   video4k: ['RTXVideoSuperResolution'],
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
@@ -4692,7 +4813,9 @@ async function handleApi(req, res, url) {
     if (settings.features[VIDEO_FEATURES[engine]] === false) {
       return json(res, 400, { error: 'This video model was not installed on this machine.' });
     }
-    let suppliedMotionPrompt = String(body.prompt || '').trim();
+    const cameraMotions = normalizeCameraMotions(body.cameraMotions);
+    const selectedCameraMotionPhrase = cameraMotionPhrase(cameraMotions);
+    let suppliedMotionPrompt = ensureCameraMotionPrompt(String(body.prompt || '').trim(), cameraMotions);
     const userMotionPrompt = suppliedMotionPrompt;
     const autoMotionRequested = body.autoMotionPrompt === true;
     // SCAIL follows its driving clip, so a motion sentence is an optional
@@ -4744,6 +4867,10 @@ async function handleApi(req, res, url) {
     }
     const faceImageName = engine === 'ltx' && body.faceImageName ? String(body.faceImageName) : null;
     const driveVideoName = (engine === 'scail' || isLtxEdit) && body.driveVideoName ? String(body.driveVideoName) : null;
+    const cameraReferenceGuided = engine === 'ltx'
+      && cameraMotions.length > 0
+      && !faceImageName
+      && !body.endImageName;
     const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
     const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
     const selectedScailMode = scailMode(body.scailMode);
@@ -4798,7 +4925,7 @@ async function handleApi(req, res, url) {
     } else {
       fps = 25;
       frames = ltxFramesForSeconds(seconds, fps, isLtxEdit ? 15 : LTX_MAX_SECONDS);
-      ({ W, H } = videoDims(srcW, srcH));
+      ({ W, H } = cameraReferenceGuided ? cameraMotionDims(srcW, srcH) : videoDims(srcW, srcH));
     }
 
     const requestedSeed = Number(body.seed);
@@ -4812,6 +4939,7 @@ async function handleApi(req, res, url) {
     if (autoMotionRequested) {
       const suggested = await suggestMotionPrompt(comfyName, seed, req.profile.id, userMotionPrompt);
       suppliedMotionPrompt = cleanEnhancedText(suggested, userMotionPrompt || 'subtle natural movement with a steady camera');
+      suppliedMotionPrompt = ensureCameraMotionPrompt(suppliedMotionPrompt, cameraMotions);
       motionPrompt = suppliedMotionPrompt;
       autoGeneratedMotion = true;
     }
@@ -4823,11 +4951,14 @@ async function handleApi(req, res, url) {
       // the user's initial motion idea before the generation graph is built.
       const raw = await wanEnhance(comfyName, motionPrompt, seed);
       wanRefined = cleanEnhancedText(raw, motionPrompt);
+      wanRefined = ensureCameraMotionPrompt(wanRefined, cameraMotions);
       prompt = wanRefined;
     } else if (autoGeneratedMotion) {
       wanRefined = suppliedMotionPrompt;
       prompt = suppliedMotionPrompt;
     }
+    prompt = ensureCameraMotionPrompt(prompt, cameraMotions);
+    const cameraMotionPromptBase = stripCameraMotionPhrase(prompt, selectedCameraMotionPhrase);
 
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
@@ -4837,8 +4968,14 @@ async function handleApi(req, res, url) {
     const isLtxLike = engine === 'ltx' || engine === 'eros';
     const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;
     const endImageName = isLtxLike && !faceImageName && body.endImageName ? String(body.endImageName) : null;
+    const cameraMotionGuideNames = cameraReferenceGuided
+      ? await uploadCameraMotionGuides(cameraMotions)
+      : [];
     const opts = {
       prompt,
+      cameraMotionPhrase: selectedCameraMotionPhrase,
+      cameraMotionPromptBase,
+      cameraMotionGuideNames,
       // I2V was enhanced by the shared vision pass above. T2V and Face ID
       // retain their specialized in-graph prompt enhancement.
       enhance: isLtxLike ? enhance && !wanRefined : false,
@@ -4892,6 +5029,9 @@ async function handleApi(req, res, url) {
         drivenAudio: engine === 'scail' ? opts.driveAudio === true : !!audioName,
         endFrame: !!endImageName,
         motionVideo: !!driveVideoName,
+        cameraMotions: cameraMotions.length ? cameraMotions : undefined,
+        cameraReferenceGuided: cameraMotionGuideNames.length > 0 || undefined,
+        cameraMotionLora: cameraMotionGuideNames.length ? settings.ltxCameramanLora : undefined,
         scailMode: engine === 'scail' ? selectedScailMode : undefined,
         scailStableTracking: engine === 'scail' ? selectedScailChunkOptions.stableTracking : undefined,
         scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,

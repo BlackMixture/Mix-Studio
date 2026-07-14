@@ -4,6 +4,7 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const CameraSettings = window.KreaCameraSettings;
+const CameraMotion = window.KreaCameraMotion;
 const ProgressEta = window.KreaProgressEta;
 const JobReconciliation = window.KreaJobReconciliation;
 const progressEta = ProgressEta.createProgressEtaTracker();
@@ -101,6 +102,8 @@ const state = {
   kreaMaskViewMode: 'dim',
   vidRef: null,              // {name, url, w, h} - Video tab source image
   vidAutoMotionPrompt: false,
+  videoCameraMotions: [],    // ordered camera-motion IDs; up to three
+  videoCameraMotionPhrase: '',
   motionPromptRequestsPending: 0,
   folders: [],
   items: [],
@@ -1430,6 +1433,8 @@ function saveForm() {
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
       videoEngineOrder: state.videoEngineOrder, videoEngineDefault: state.videoEngineDefault,
       cameraSettings: state.cameraSettings,
+      videoCameraMotions: state.videoCameraMotions,
+      videoCameraMotionPhrase: state.videoCameraMotionPhrase,
       createMode: state.createMode,
       createRef: state.createRef ? {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
@@ -1685,6 +1690,10 @@ function loadForm() {
     state.kreaMaskInvert = false;
     if (f.cameraSettings && CameraSettings) {
       state.cameraSettings = CameraSettings.normalizeSettings(f.cameraSettings);
+    }
+    if (CameraMotion) {
+      state.videoCameraMotions = CameraMotion.normalizeCameraMotions(f.videoCameraMotions);
+      state.videoCameraMotionPhrase = String(f.videoCameraMotionPhrase || CameraMotion.cameraMotionPhrase(state.videoCameraMotions));
     }
     state.vidScailMode = f.scailModeVersion >= 2 && ['infinity', 'chunked', 'direct'].includes(f.vidScailMode)
       ? f.vidScailMode
@@ -1973,6 +1982,8 @@ function updateVideoPanels() {
   if (!isRegion) setRegionResolutionExpanded(false);
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
+  $('#videoPromptTools').hidden = !isVideo;
+  syncCameraMotionTool();
   $('#regionsPromptBtn').hidden = isRegion;
   renderKrea2Mode();
   renderCreateImageGuide();
@@ -5920,6 +5931,211 @@ $('#cameraPromptBtn').addEventListener('click', openCameraPicker);
 $('#cameraApply').addEventListener('click', applyCameraPrompt);
 
 /* ------------------------------------------------------------------ */
+/* Video camera motion                                                 */
+/* ------------------------------------------------------------------ */
+
+let cameraMotionDraft = [];
+let cameraMotionPreviewObserver = null;
+
+function cameraMotionReferenceActive() {
+  return state.view === 'video'
+    && state.vidEngine === 'ltx'
+    && !state.vidFace
+    && !state.vidEnd;
+}
+
+function cameraMotionEngineLabel() {
+  return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' }[state.vidEngine] || 'this model';
+}
+
+function cameraMotionModeText() {
+  if (cameraMotionReferenceActive()) {
+    return 'LTX 2.3 · reference guided with the Cameraman v2 research adapter.';
+  }
+  if (state.vidEngine === 'ltx' && state.vidEnd) {
+    return 'Prompt only while a last frame is attached. Remove it to enable Cameraman reference guidance.';
+  }
+  if (state.vidEngine === 'ltx' && state.vidFace) {
+    return 'Prompt only while Face ID is active. Cameraman reference guidance uses the standard LTX workflow.';
+  }
+  return `${cameraMotionEngineLabel()} · prompt direction only. Reference guidance activates on standard LTX 2.3.`;
+}
+
+function syncCameraMotionTool() {
+  if (!CameraMotion) return;
+  state.videoCameraMotions = CameraMotion.normalizeCameraMotions(state.videoCameraMotions);
+  const count = state.videoCameraMotions.length;
+  const button = $('#videoCameraMotionBtn');
+  const badge = $('#videoCameraMotionCount');
+  if (!button || !badge) return;
+  button.classList.toggle('active', count > 0);
+  button.setAttribute('aria-label', count ? `Camera motion, ${count} selected` : 'Camera motion');
+  button.title = count ? `${count} camera motion${count === 1 ? '' : 's'} selected` : 'Camera motion';
+  badge.hidden = count === 0;
+  badge.textContent = String(count);
+  const note = $('#cameraMotionModeNote');
+  if (note) note.textContent = cameraMotionModeText();
+}
+
+function stopCameraMotionPreviews() {
+  $$('#cameraMotionGrid video').forEach((video) => {
+    try { video.pause(); } catch { /* noop */ }
+  });
+}
+
+function observeCameraMotionPreview(video) {
+  if (!('IntersectionObserver' in window)) return;
+  if (!cameraMotionPreviewObserver) {
+    cameraMotionPreviewObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const preview = entry.target;
+        const canPlay = entry.isIntersecting
+          && $('#videoCameraMotionSheet').classList.contains('show')
+          && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (canPlay) {
+          preview.playbackRate = Number(preview.dataset.playbackRate) || 1;
+          preview.play().catch(() => {});
+        } else {
+          preview.pause();
+        }
+      }
+    }, { root: $('#cameraMotionGrid'), threshold: 0.46 });
+  }
+  cameraMotionPreviewObserver.observe(video);
+}
+
+function renderCameraMotionSequence() {
+  const sequence = $('#cameraMotionSequence');
+  if (!sequence || !CameraMotion) return;
+  sequence.innerHTML = '';
+  for (let index = 0; index < CameraMotion.MAX_CAMERA_MOTIONS; index += 1) {
+    const id = cameraMotionDraft[index];
+    const motion = CameraMotion.cameraMotionById(id);
+    const slot = document.createElement(motion ? 'button' : 'div');
+    if (motion) slot.type = 'button';
+    slot.className = `camera-motion-sequence-slot${motion ? ' filled' : ''}`;
+    slot.innerHTML = `<i>${index + 1}</i><span>${escapeHtml(motion ? motion.label : 'Add movement')}</span>`;
+    if (motion) {
+      slot.setAttribute('aria-label', `Remove ${motion.label} from position ${index + 1}`);
+      slot.addEventListener('click', () => {
+        cameraMotionDraft.splice(index, 1);
+        renderCameraMotionPicker();
+      });
+    }
+    sequence.appendChild(slot);
+  }
+}
+
+function buildCameraMotionCards() {
+  const grid = $('#cameraMotionGrid');
+  if (!grid || !CameraMotion || grid.children.length) return;
+  let activeCollection = '';
+  for (const motion of CameraMotion.CAMERA_MOTIONS) {
+    if (motion.collection !== activeCollection) {
+      activeCollection = motion.collection;
+      const heading = document.createElement('div');
+      heading.className = 'camera-motion-grid-heading';
+      heading.innerHTML = `<b>${escapeHtml(activeCollection)}</b><small>${activeCollection === 'Core moves' ? 'Clean single-axis references' : 'Captured compound references'}</small>`;
+      grid.appendChild(heading);
+    }
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'camera-motion-card';
+    card.dataset.motionId = motion.id;
+    card.setAttribute('aria-pressed', 'false');
+    card.innerHTML = `
+      <span class="camera-motion-card-media">
+        <video src="/camera-motions/${encodeURIComponent(motion.asset)}" muted loop playsinline preload="metadata" tabindex="-1" aria-hidden="true"></video>
+        <span class="camera-motion-card-glyph" aria-hidden="true">${escapeHtml(motion.glyph)}</span>
+        <span class="camera-motion-card-order" aria-hidden="true"></span>
+      </span>
+      <span class="camera-motion-card-copy"><b>${escapeHtml(motion.label)}</b><small>${escapeHtml(motion.detail)}</small></span>`;
+    const video = card.querySelector('video');
+    video.disablePictureInPicture = true;
+    video.dataset.playbackRate = String(motion.previewRate || 1);
+    observeCameraMotionPreview(video);
+    card.addEventListener('mouseenter', () => {
+      video.playbackRate = Number(video.dataset.playbackRate) || 1;
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) video.play().catch(() => {});
+    });
+    card.addEventListener('mouseleave', () => {
+      if (!card.matches(':focus-visible')) video.pause();
+    });
+    card.addEventListener('click', () => {
+      const existing = cameraMotionDraft.indexOf(motion.id);
+      if (existing >= 0) cameraMotionDraft.splice(existing, 1);
+      else if (cameraMotionDraft.length < CameraMotion.MAX_CAMERA_MOTIONS) cameraMotionDraft.push(motion.id);
+      else return toast('Choose up to three camera movements', true);
+      renderCameraMotionPicker();
+    });
+    grid.appendChild(card);
+  }
+}
+
+function renderCameraMotionPicker() {
+  if (!CameraMotion) return;
+  cameraMotionDraft = CameraMotion.normalizeCameraMotions(cameraMotionDraft);
+  buildCameraMotionCards();
+  renderCameraMotionSequence();
+  $$('#cameraMotionGrid .camera-motion-card').forEach((card) => {
+    const order = cameraMotionDraft.indexOf(card.dataset.motionId);
+    const selected = order >= 0;
+    card.classList.toggle('selected', selected);
+    card.setAttribute('aria-pressed', String(selected));
+    const badge = card.querySelector('.camera-motion-card-order');
+    if (badge) badge.textContent = selected ? String(order + 1) : '';
+  });
+  $('#cameraMotionSelectedCount').textContent = `${cameraMotionDraft.length} / ${CameraMotion.MAX_CAMERA_MOTIONS}`;
+  $('#cameraMotionClear').disabled = cameraMotionDraft.length === 0;
+  $('#cameraMotionModeNote').textContent = cameraMotionModeText();
+}
+
+function openCameraMotionPicker() {
+  if (!CameraMotion) return;
+  cameraMotionDraft = CameraMotion.normalizeCameraMotions(state.videoCameraMotions);
+  renderCameraMotionPicker();
+  $('#videoCameraMotionSheet').classList.add('show');
+  $('#videoCameraMotionBtn').setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => {
+    $$('#cameraMotionGrid video').forEach((video) => {
+      const rect = video.getBoundingClientRect();
+      if (rect.bottom > 0 && rect.top < window.innerHeight && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        video.playbackRate = Number(video.dataset.playbackRate) || 1;
+        video.play().catch(() => {});
+      }
+    });
+  });
+}
+
+function applyCameraMotionSelection() {
+  if (!CameraMotion) return;
+  const selected = CameraMotion.normalizeCameraMotions(cameraMotionDraft);
+  const applied = CameraMotion.applyCameraMotionPrompt(promptDraft(), state.videoCameraMotionPhrase, selected);
+  state.videoCameraMotions = selected;
+  state.videoCameraMotionPhrase = applied.phrase;
+  setPromptDraft(applied.prompt);
+  state.prompts.video = applied.prompt;
+  updatePromptClear();
+  renderPromptSuggestions();
+  saveForm();
+  $('#videoCameraMotionSheet').classList.remove('show');
+  syncCameraMotionTool();
+  toast(selected.length ? `${selected.length} camera movement${selected.length === 1 ? '' : 's'} added` : 'Camera motion cleared');
+}
+
+$('#videoCameraMotionBtn').addEventListener('click', openCameraMotionPicker);
+$('#cameraMotionClear').addEventListener('click', () => {
+  cameraMotionDraft = [];
+  renderCameraMotionPicker();
+});
+$('#cameraMotionApply').addEventListener('click', applyCameraMotionSelection);
+new MutationObserver(() => {
+  const open = $('#videoCameraMotionSheet').classList.contains('show');
+  $('#videoCameraMotionBtn').setAttribute('aria-expanded', String(open));
+  if (!open) stopCameraMotionPreviews();
+}).observe($('#videoCameraMotionSheet'), { attributes: true, attributeFilter: ['class'] });
+
+/* ------------------------------------------------------------------ */
 /* Resolution                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -9049,6 +9265,7 @@ $('#generateBtn').addEventListener('click', async () => {
       scailChunkOverlap: state.vidEngine === 'scail' ? state.vidScailChunkOverlap : undefined,
       sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.videoLoras,
+      cameraMotions: CameraMotion ? CameraMotion.normalizeCameraMotions(state.videoCameraMotions) : [],
       audioName: vidAudioName,
       faceImageName: state.vidEngine === 'ltx' && state.vidFace && !state.vidRef ? state.vidFace.name : undefined,
       driveVideoName: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.name : undefined,
@@ -10535,6 +10752,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
   'vidScailMode', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
+  'videoCameraMotions', 'videoCameraMotionPhrase',
   'generationTuning',
 ];
 const desktopInputHistory = { entries: [], index: -1, restoring: false };
@@ -10637,6 +10855,7 @@ function restoreDesktopInputSetup(snapshot) {
   renderVidAttach();
   renderVidDrive();
   renderScailChunkControls();
+  syncCameraMotionTool();
   if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
   saveForm();
   desktopInputHistory.restoring = false;
@@ -10684,6 +10903,8 @@ function resetActiveGenerationForm() {
     if (state.vidAudio) stopPreview();
     state.vidAudio = null;
     state.videoLoras = [];
+    state.videoCameraMotions = [];
+    state.videoCameraMotionPhrase = '';
     state.vidEngine = enabledVideoEngines()[0] || state.videoEngineDefault || 'ltx';
     $('#vidDriveVideo').removeAttribute('src');
     $('#vidDriveTrimChip').classList.remove('active');
@@ -10697,6 +10918,7 @@ function resetActiveGenerationForm() {
     renderVidDrive();
     if (endFrameRefresh.vidEnd) endFrameRefresh.vidEnd();
     updateVideoPanels();
+    syncCameraMotionTool();
   } else {
     state.loras = [];
     state.regions = [];
@@ -14222,6 +14444,8 @@ async function reuseVideo(it, v) {
   renderScailChunkControls();
 
   // Prompt + toggles
+  state.videoCameraMotions = CameraMotion ? CameraMotion.normalizeCameraMotions(info.cameraMotions) : [];
+  state.videoCameraMotionPhrase = CameraMotion ? CameraMotion.cameraMotionPhrase(state.videoCameraMotions) : '';
   state.prompts.video = info.motionPrompt || '';
   setPromptDraft(state.prompts.video);
   $('#seedInput').value = info.seed !== undefined && info.seed !== null ? String(info.seed) : '';
@@ -14358,6 +14582,7 @@ async function reuseVideo(it, v) {
   renderLoras();
   renderVidAttach();
   updateVideoPanels();
+  syncCameraMotionTool();
   saveForm();
   if (!options.silent) {
     toast(missing.length
@@ -16556,6 +16781,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';
+    $('#setLtxCameraLora').value = s.ltxCameramanLora || '';
     $('#setLtxEditLora').value = s.ltxEditLora || '';
     $('#setLtxTe').value = s.ltxTextEncoder || '';
     $('#setLtxGemmaLora').value = s.ltxGemmaLora || '';
@@ -16625,6 +16851,7 @@ $('#settingsSave').addEventListener('click', async () => {
         systemPrompt: $('#setSysPrompt').value,
         ltxCkpt: $('#setLtxCkpt').value,
         ltxDistilledLora: $('#setLtxLora').value,
+        ltxCameramanLora: $('#setLtxCameraLora').value,
         ltxEditLora: $('#setLtxEditLora').value,
         ltxTextEncoder: $('#setLtxTe').value,
         ltxGemmaLora: $('#setLtxGemmaLora').value,
@@ -16713,6 +16940,7 @@ function generationSetupComponents() {
     components.add(byEngine[state.vidEngine] || 'video');
     if (state.vidEngine === 'ltx-edit') components.add('video');
     if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
+    if (cameraMotionReferenceActive() && state.videoCameraMotions.length) components.add('ltxcamera');
     if (state.vidEngine === 'scail' && state.vidScailMode === 'infinity') components.add('scailinfinity');
     if ($('#vid4k').classList.contains('active')) components.add('video4k');
     return [...components];
