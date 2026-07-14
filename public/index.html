@@ -879,16 +879,11 @@
                 <span>Localized edit</span>
                 <small>Applies only when an edit area is active</small>
               </div>
-              <div class="edit-mask-advanced-grid">
+              <div class="edit-mask-advanced-grid single">
                 <label class="edit-mask-advanced-control" for="editMaskInfluence">
                   <span><b>Edit influence</b><small>How freely the selected area can change</small></span>
                   <output id="editMaskInfluenceVal" for="editMaskInfluence">78%</output>
                   <input id="editMaskInfluence" type="range" min="25" max="100" step="1" value="78" aria-label="Edit influence" />
-                </label>
-                <label class="edit-mask-advanced-control" for="editMaskExpand">
-                  <span><b>Mask expansion</b><small>Extra room for a seamless transition</small></span>
-                  <output id="editMaskExpandVal" for="editMaskExpand">14 px</output>
-                  <input id="editMaskExpand" type="range" min="6" max="32" step="1" value="14" aria-label="Mask expansion" />
                 </label>
               </div>
             </div>
@@ -1357,6 +1352,10 @@
       <div class="field">
         <label><span id="kreaMaskFeatherLabel">Feather</span> <span id="kreaMaskFeatherVal">8</span></label>
         <div class="range-field"><input id="kreaMaskFeather" type="range" min="0" max="64" step="2" value="8" /></div>
+      </div>
+      <div class="field" id="kreaMaskExpandField">
+        <label><span>Expansion <small>Live preview</small></span> <span id="kreaMaskExpandVal">14 px</span></label>
+        <div class="range-field"><input id="kreaMaskExpand" type="range" min="6" max="32" step="1" value="14" aria-label="Mask expansion" /></div>
       </div>
       <div class="field" id="kreaMaskOffsetField" hidden>
         <label>Mask offset <span id="kreaMaskOffsetVal">0%</span></label>

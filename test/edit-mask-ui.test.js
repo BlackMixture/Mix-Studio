@@ -18,8 +18,24 @@ test('Edit exposes SAM3, brush, and bounding-box area selection for supported en
   assert.match(html, /id="kreaMaskPointAdd"/);
   assert.match(html, /id="kreaMaskPointRemove"/);
   assert.match(html, /id="kreaMaskPointDelete"/);
+  assert.match(html, /id="kreaMaskBoxControls"/);
+  assert.match(html, /id="kreaMaskBoxAdd"/);
+  assert.match(html, /id="kreaMaskBoxDelete"/);
+  assert.match(html, /id="kreaMaskBoxes"/);
+  assert.match(html, /src="\/mask-boxes\.js"[\s\S]*src="\/app\.js"/);
   assert.match(app, /state\.kreaMaskTool === 'box'/);
-  assert.match(app, /ctx\.fillRect\(Math\.min\(start\.x, p\.x\)/);
+  assert.match(app, /kreaMaskBoxes: \[\]/);
+  assert.match(app, /function beginKreaMaskBoxCreate\(event\)/);
+  assert.match(app, /function beginKreaMaskBoxInteraction\(event\)/);
+  assert.match(app, /function moveKreaMaskBoxInteraction\(event\)/);
+  assert.match(app, /function finishKreaMaskBoxInteraction\(event, cancelled = false\)/);
+  assert.match(app, /maskBoxGeometry\.pixelRects\(boxes, canvas\.width, canvas\.height\)\.forEach/);
+  assert.match(app, /context\.fillRect\(rect\.x, rect\.y, rect\.w, rect\.h\)/);
+  assert.match(app, /setPointerCapture\?\.\(event\.pointerId\)/);
+  assert.match(app, /'pointercancel', \(event\) => finishKreaMaskBoxInteraction\(event, true\)/);
+  assert.match(app, /'keydown', keyboardKreaMaskBox/);
+  assert.match(app, /function cancelSmartMaskRequest\(\)/);
+  assert.match(app, /requestRevision === smartMaskRequestRevision/);
   assert.match(app, /api\('\/api\/edit-mask\/sam3'/);
   assert.match(app, /Array\.isArray\(result\.dataUrls\)/);
   assert.match(app, /globalCompositeOperation = index \? 'lighten' : 'source-over'/);
@@ -30,6 +46,8 @@ test('Edit exposes SAM3, brush, and bounding-box area selection for supported en
   assert.match(app, /state\.kreaMaskPointDeleteMode/);
   assert.match(css, /\.edit-area-mode/);
   assert.match(css, /\.smart-mask-point\.dragging/);
+  assert.match(css, /\.krea-mask-box-handle \{[\s\S]*?width: 40px;[\s\S]*?height: 40px;/);
+  assert.match(css, /\.mask-box-controls\[hidden\]/);
 });
 
 test('localized edit requests upload their mask automatically and preserve source-matched output', () => {
@@ -52,7 +70,8 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(html, /id="kreaMaskOverlayCanvas"/);
   assert.match(html, /id="kreaMaskGesture"/);
   assert.match(html, /id="editMaskInfluence"/);
-  assert.match(html, /id="editMaskExpand"/);
+  assert.match(html, /class="edit-mask-adjustments"[\s\S]*id="kreaMaskExpand"[^>]*min="6"[^>]*max="32"[^>]*value="14"/);
+  assert.ok(html.indexOf('id="kreaMaskExpand"') > html.indexOf('</main>'), 'Expansion belongs in the mask sheet, not Advanced');
   assert.match(app, /context\.filter = `blur\(\$\{feather\}px\)`/);
   assert.match(app, /function invertKreaMask\(\)/);
   assert.match(app, /const current = \(image\.data\[i\] \* image\.data\[i \+ 3\]\) \/ 255/);
@@ -71,5 +90,9 @@ test('mask refinements visibly apply feathering and invert the current pixels', 
   assert.match(app, /rgba\(255, 102, 93, \.48\)/);
   assert.match(app, /maskInfluence: localizedEdit \? state\.editMaskInfluence/);
   assert.match(app, /maskExpand: localizedEdit \? state\.editMaskExpand/);
+  assert.match(app, /function previewMaskCanvas\(\)/);
+  assert.match(app, /offsetMaskValues\(values, source\.width, source\.height, expansion, true\)/);
+  assert.match(app, /const out = processedMaskCanvas\(\)/);
+  assert.match(app, /#kreaMaskExpand'\)\.addEventListener\('input',[\s\S]*?renderMaskOverlay\(\);[\s\S]*?refreshMaskCutoutPreview\(\);/);
   assert.doesNotMatch(app, /red tint/);
 });
