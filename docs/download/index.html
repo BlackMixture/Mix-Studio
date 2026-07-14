@@ -558,8 +558,8 @@
           </div>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
-          <div class="window hero-preview-target" data-hero-preview="desktop" role="button" tabindex="0" aria-pressed="false" aria-label="Focus the desktop Mix Studio preview"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.webp" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" fetchpriority="high" decoding="async" /></div>
-          <div class="phone-preview hero-preview-target" data-hero-preview="phone" role="button" tabindex="0" aria-pressed="false" aria-label="Focus the mobile Mix Studio preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
+          <div class="window hero-preview-target" data-hero-preview="desktop" role="button" tabindex="0" aria-pressed="false" aria-label="Hold to focus the desktop Mix Studio preview"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.webp" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" fetchpriority="high" decoding="async" /></div>
+          <div class="phone-preview hero-preview-target" data-hero-preview="phone" role="button" tabindex="0" aria-pressed="false" aria-label="Hold to focus the mobile Mix Studio preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
           <div class="hero-integrations" aria-label="Works with ComfyUI and Tailscale">
             <span class="hero-integration"><img src="./comfyui-logo.svg" alt="" aria-hidden="true" />ComfyUI</span>
             <span class="hero-integration"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="5" cy="5" r="2" opacity=".45"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2" opacity=".45"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2" opacity=".45"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2" opacity=".45"/></g></svg>Tailscale</span>
@@ -731,7 +731,7 @@
       const previews = [...heroVisual.querySelectorAll("[data-hero-preview]")];
       let activeFocus = "";
       const setHeroFocus = (requested = "") => {
-        activeFocus = requested && requested !== activeFocus ? requested : "";
+        activeFocus = requested;
         heroVisual.classList.toggle("is-desktop-focused", activeFocus === "desktop");
         heroVisual.classList.toggle("is-phone-focused", activeFocus === "phone");
         previews.forEach((preview) => preview.setAttribute("aria-pressed", String(preview.dataset.heroPreview === activeFocus)));
@@ -744,12 +744,20 @@
           holdTimer = 0;
           preview.classList.remove("is-holding");
         };
+        const releasePreview = () => {
+          pointerState = null;
+          clearPress();
+          if (activeFocus === preview.dataset.heroPreview) setHeroFocus("");
+        };
         preview.addEventListener("pointerdown", (event) => {
           if (event.pointerType === "mouse" && event.button !== 0) return;
-          clearPress();
+          releasePreview();
           pointerState = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY, moved: false, held: false };
           preview.classList.add("is-holding");
-          if (event.pointerType !== "mouse") {
+          if (event.pointerType === "mouse") {
+            pointerState.held = true;
+            setHeroFocus(preview.dataset.heroPreview);
+          } else {
             holdTimer = window.setTimeout(() => {
               if (!pointerState || pointerState.moved) return;
               pointerState.held = true;
@@ -762,31 +770,32 @@
           if (!pointerState || event.pointerId !== pointerState.id) return;
           if (Math.hypot(event.clientX - pointerState.x, event.clientY - pointerState.y) <= 10) return;
           pointerState.moved = true;
-          clearPress();
+          releasePreview();
         });
         preview.addEventListener("pointerup", (event) => {
           if (!pointerState || event.pointerId !== pointerState.id) return;
-          const shouldClick = pointerState.type === "mouse" && !pointerState.moved && !pointerState.held;
-          pointerState = null;
-          clearPress();
-          if (shouldClick) setHeroFocus(preview.dataset.heroPreview);
+          releasePreview();
         });
         preview.addEventListener("pointerleave", () => {
           if (pointerState?.type !== "mouse") return;
-          pointerState = null;
-          clearPress();
+          releasePreview();
         });
-        preview.addEventListener("pointercancel", () => { pointerState = null; clearPress(); });
+        preview.addEventListener("pointercancel", releasePreview);
         preview.addEventListener("contextmenu", (event) => event.preventDefault());
         preview.addEventListener("keydown", (event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
+          if (event.repeat) return;
+          preview.classList.add("is-holding");
           setHeroFocus(preview.dataset.heroPreview);
         });
+        preview.addEventListener("keyup", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          releasePreview();
+        });
+        preview.addEventListener("blur", releasePreview);
       }
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && activeFocus) setHeroFocus("");
-      });
     }
     const setupVideoReel = (selector, clips) => {
       const reel = document.querySelector(selector);

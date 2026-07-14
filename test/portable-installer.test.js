@@ -55,7 +55,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   const localSources = [...page.matchAll(/\ssrc="\.\/([^"?#]+)"/g)].map((match) => match[1]);
   assert.match(page, /Download for Windows/);
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
-  assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 2);
+  assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 3);
   assert.match(page, /macOS support coming soon/);
   assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
   assert.doesNotMatch(page, /Windows · NVIDIA · Local generation/);
@@ -106,6 +106,13 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.doesNotMatch(page, /hardware-marker recommended"><b>16 GB/);
   assert.match(page, /mix-studio-create\.webp/);
   assert.match(page, /mix-studio-mobile\.png/);
+  assert.match(page, /aria-label="Hold to focus the desktop Mix Studio preview"/);
+  assert.match(page, /aria-label="Hold to focus the mobile Mix Studio preview"/);
+  assert.match(page, /preview\.addEventListener\("pointerup",[\s\S]*?releasePreview\(\);/);
+  assert.match(page, /preview\.addEventListener\("keyup",[\s\S]*?releasePreview\(\);/);
+  assert.match(page, /preview\.addEventListener\("blur", releasePreview\);/);
+  assert.doesNotMatch(page, /requested && requested !== activeFocus/);
+  assert.doesNotMatch(page, /shouldClick/);
   assert.match(page, /mix-studio-profiles-live\.png/);
   assert.match(page, /mix-studio-dependencies\.png/);
   assert.match(page, /scail-flower-world\.mp4/);
