@@ -1094,12 +1094,18 @@ html:-webkit-full-screen { background: #000; }
   background: var(--muted-2);
 }
 .create-image-guide-toggle.has-image::after {
-  background: rgb(var(--mode-rgb));
+  content: none;
 }
 .create-image-guide-toggle[aria-expanded="true"] {
   color: #fff;
   border-color: rgba(var(--mode-rgb), .58);
   background: rgba(var(--mode-rgb), .09);
+}
+.create-image-guide-toggle.has-image {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(#12151d, #12151d) padding-box, var(--gemini) border-box;
+  box-shadow: 0 0 16px rgba(66,87,255,.22);
 }
 .create-image-guide {
   display: grid;
@@ -1182,19 +1188,25 @@ html:-webkit-full-screen { background: #000; }
 .create-image-guide-filled[hidden] { display: none; }
 .create-image-guide-preview {
   width: 100%;
-  display: block;
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   padding: 0;
   border: 0;
-  background: transparent;
+  border-radius: 10px;
+  background: #08090d;
   color: var(--ink-soft);
   text-align: left;
 }
 .create-image-guide-preview img {
-  width: 100%;
-  height: 92px;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(52vh, 420px);
   display: block;
-  border-radius: 10px;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center center;
   background: #08090d;
 }
 .create-image-guide-remove {

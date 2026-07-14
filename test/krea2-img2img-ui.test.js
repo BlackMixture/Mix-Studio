@@ -33,6 +33,12 @@ test('Create Image consolidates reference, depth, style, and image-to-prompt in 
   assert.match(html, /id="createImageInfluence"[^>]*min="0"[^>]*max="100"[^>]*step="5"/);
   assert.match(css, /\.create-image-guide-empty/);
   assert.match(css, /\.create-image-guide\.expanded \{ grid-template-rows: 1fr; \}/);
+  assert.match(css, /\.create-image-guide-toggle\.has-image\s*\{[^}]*border-color:\s*transparent[^}]*var\(--gemini\) border-box/s);
+  assert.match(css, /\.create-image-guide-toggle\.has-image::after\s*\{[^}]*content:\s*none/s);
+  assert.match(css, /\.create-image-guide-preview\s*\{[^}]*min-height:\s*190px[^}]*place-items:\s*center/s);
+  assert.match(css, /\.create-image-guide-preview img\s*\{[^}]*max-width:\s*100%[^}]*max-height:\s*min\(52vh, 420px\)[^}]*object-fit:\s*contain/s);
+  const previewImageRule = css.match(/\.create-image-guide-preview img\s*\{([^}]*)\}/)?.[1] || '';
+  assert.doesNotMatch(previewImageRule, /object-fit:\s*cover|height:\s*92px/);
   assert.match(css, /\.create-image-influence-range::-webkit-slider-runnable-track/);
 });
 
