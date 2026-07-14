@@ -29,7 +29,7 @@ const {
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2depth', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
   for (const group of ['image', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
@@ -43,6 +43,8 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.krea2Depth[1][2], /depth-anything\/DA3-LARGE-1\.1/);
   assert.equal(NODE_PACKS.krea2Control.folder, 'comfyui-krea2-controlnet');
   assert.equal(NODE_PACKS.depthAnything3.folder, 'ComfyUI-DepthAnythingV3');
+  assert.equal(NODE_PACKS.krea2Style.folder, 'ComfyUI-Krea2-StyleTransfer');
+  assert.match(NODE_PACKS.krea2Style.repo, /jieg9341-lab\/ComfyUI-Krea2-StyleTransfer/);
   assert.equal(NODE_PACKS.krea2Edit.folder, 'comfyui-krea2edit');
   assert.equal(NODE_PACKS.ltxvideo.folder, 'ComfyUI-LTXVideo');
   assert.match(NODE_PACKS.ltxvideo.repo, /Lightricks\/ComfyUI-LTXVideo/);

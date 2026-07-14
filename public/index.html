@@ -369,16 +369,13 @@
       </button>
     </div>
     <div class="chip-row prompt-tools" id="createPromptTools">
-      <button class="chip icon-chip" id="imagePromptBtn" aria-label="Image to prompt" title="Image to prompt">
-        <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h14V6H5Zm3.5 3A1.5 1.5 0 1 1 7 10.5 1.5 1.5 0 0 1 8.5 9ZM6 16l3.5-4.5 2.5 3 2-2.5L18 16H6Z"/></svg>
-      </button>
       <button class="chip icon-chip" id="cameraPromptBtn" aria-label="Camera settings" title="Camera settings">
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8L9 4Zm3 5a4 4 0 1 0 4 4 4 4 0 0 0-4-4Zm0 2a2 2 0 1 1-2 2 2 2 0 0 1 2-2Z"/></svg>
       </button>
       <button class="chip icon-chip" id="regionsPromptBtn" aria-label="Regions" title="Region prompting">
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M4 4h4v2H6v2H4V4Zm12 0h4v4h-2V6h-2V4ZM4 16h2v2h2v2H4v-4Zm16 0v4h-4v-2h2v-2h2ZM7 9h6v7H7V9Zm2 2v3h2v-3H9Zm6-1h3v5h-3v-5Z"/></svg>
       </button>
-      <button class="chip icon-chip create-image-guide-toggle" id="createImageGuideToggle" type="button" aria-label="Image guide" title="Image guide" aria-expanded="false" aria-controls="createImageGuide">
+      <button class="chip icon-chip create-image-guide-toggle" id="createImageGuideToggle" type="button" aria-label="Image tools" title="Image tools" aria-expanded="false" aria-controls="createImageGuide">
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 4h12a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8h2v-4a2 2 0 0 1 2-2h8V6H4Zm4 4v8h12v-8H8Zm2 6 2.4-2.8 1.8 2 1.4-1.6 2.4 2.4h-8Zm7-4.8a1.2 1.2 0 1 1-1.2 1.2 1.2 1.2 0 0 1 1.2-1.2Z"/></svg>
       </button>
     </div>
@@ -393,15 +390,21 @@
     <div class="create-image-guide" id="createImageGuide" hidden aria-hidden="true" inert>
       <div class="create-image-guide-inner">
         <div class="create-image-guide-head">
-          <span>Image guide</span>
+          <span>Image tools</span>
           <small id="createImageGuideHint">Optional · image to image</small>
+        </div>
+        <div class="create-image-guide-modes" id="createImageGuideModes" role="group" aria-label="Image tool">
+          <button type="button" data-guide-mode="image" aria-pressed="true">Reference</button>
+          <button type="button" data-guide-mode="depth" aria-pressed="false">Depth</button>
+          <button type="button" data-guide-mode="style" aria-pressed="false">Style</button>
+          <button type="button" data-guide-mode="prompt" aria-pressed="false">To prompt</button>
         </div>
         <button class="create-image-guide-empty" id="createImageGuideAdd" type="button">
           <span class="create-image-guide-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
             <i>+</i>
           </span>
-          <span><b>Add source image</b><small>Guide composition, color, and structure</small></span>
+          <span><b id="createImageGuideAddTitle">Add reference image</b><small id="createImageGuideAddCopy">Guide composition, color, and structure</small></span>
         </button>
         <div class="create-image-guide-filled" id="createImageGuideFilled" hidden>
           <button class="create-image-guide-preview" id="createImageGuideChange" type="button" aria-label="Replace source image">
@@ -412,10 +415,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/></svg>
           </button>
           <button class="create-image-guide-remove" id="createImageGuideRemove" type="button" aria-label="Remove source image">✕</button>
-          <div class="create-image-guide-modes" id="createImageGuideModes" role="group" aria-label="Image guide mode">
-            <button type="button" data-guide-mode="image" aria-pressed="true">Image</button>
-            <button type="button" data-guide-mode="depth" aria-pressed="false">Depth</button>
-          </div>
           <button class="create-depth-preview-btn" id="createDepthPreviewBtn" type="button" hidden>
             <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20V2Z"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
             <span id="createDepthPreviewLbl">Preview depth map</span>

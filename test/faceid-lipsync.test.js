@@ -42,9 +42,9 @@ test('the video UI presents Face ID audio as lipsync and keeps the chip availabl
   assert.match(app, /chip\.id === 'vidAudioChip'.*renderVidFace\(\)/);
 });
 
-test('the influence slider fill tracks the thumb across both value ranges', () => {
+test('the image-tools slider fill tracks the thumb across reference, depth, and style ranges', () => {
   assert.match(app, /const fillMin = depthMode \? 5 : 0;/);
-  assert.match(app, /const fillMax = depthMode \? 200 : 100;/);
+  assert.match(app, /const fillMax = depthMode \|\| styleMode \? 200 : 100;/);
   assert.match(app, /const fillPct = \(\(influence - fillMin\) \/ \(fillMax - fillMin\)\) \* 100;/);
   assert.match(app, /setProperty\('--influence', fillPct \+ '%'\)/);
 });

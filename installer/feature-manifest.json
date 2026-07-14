@@ -6,12 +6,12 @@
   "features": [
     {
       "id": "core.image",
-      "label": "Image generation + depth + SeedVR2",
+      "label": "Image generation + style + depth + SeedVR2",
       "required": true,
       "variant": "Krea 2 FP8 + SeedVR2 FP8",
       "hardware": { "minimumVramGb": 12, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "always" },
       "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae", "seedvr2-7b", "seedvr2-vae"],
-      "nodes": ["core", "TextGenerate", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3", "ComfyUI-SeedVR2_VideoUpscaler"]
+      "nodes": ["core", "TextGenerate", "ComfyUI-Krea2-StyleTransfer", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3", "ComfyUI-SeedVR2_VideoUpscaler"]
     },
     {
       "id": "edit.klein4",

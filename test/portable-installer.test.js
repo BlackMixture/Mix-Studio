@@ -47,8 +47,11 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.match(launcher, /LOCALAPPDATA%\\Mix Studio\\data/);
 });
 
-test('README credits the sponsored Dell workstation and NVIDIA GPU', () => {
+test('README presents the product positioning, contributions, and hardware credits', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.match(readme, /A clean, responsive AI workspace built on ComfyUI\./);
+  assert.match(readme, /Run highly tuned image and video workflows flawlessly from your desktop or your phone\./);
+  assert.match(readme, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
   assert.match(readme, /## Acknowledgments & Attribution/);
   assert.match(readme, /## Contribute a Workflow/);
   assert.match(readme, /### What We Look For/);
@@ -82,7 +85,9 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.doesNotMatch(page, /Windows · NVIDIA · Local generation/);
   assert.match(page, /Quick setup/);
   assert.match(page, /install only that workflow/i);
-  assert.match(page, /mobile-optimized UI/);
+  assert.match(page, /Desktop \+ mobile/);
+  assert.match(page, /Designed for every screen/);
+  assert.match(page, /same responsive UI on desktop or phone/);
   assert.doesNotMatch(page, /in your pocket/);
   assert.match(page, /Created by Black Mixture/);
   assert.match(page, /black-mixture-logomark\.png/);
@@ -109,8 +114,9 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Top model by job/);
   assert.match(page, /VRAM requirements/);
   assert.match(page, /VRAM capacity only/);
-  assert.match(page, /Access leading local models, optimized settings, and a mobile-first UI\./);
-  assert.match(page, /Skip the node wrangling and start generating images and video instantly\./);
+  assert.match(page, /A clean, responsive AI workspace built on ComfyUI\./);
+  assert.match(page, /Run highly tuned image and video workflows flawlessly from your desktop or your phone\./);
+  assert.match(page, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
   assert.match(page, /Most local tools chain you to a desk\./);
   assert.match(page, /full creative control from anywhere\./);
   assert.match(page, /RTX PRO 6000 Blackwell · 96 GB VRAM · Jul 2026/);
@@ -336,6 +342,7 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
   assert.match(hardware, /minimumVramGb/);
   assert.match(hardware, /Difficult on this PC/);
   assert.match(image.label, /depth/i);
+  assert.match(image.label, /style/i);
   assert.match(image.label, /SeedVR2/i);
   assert.ok(image.models.includes('seedvr2-7b'));
   assert.ok(image.nodes.includes('ComfyUI-SeedVR2_VideoUpscaler'));
@@ -352,11 +359,11 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
   assert.deepEqual(dependencyCli.selectedComponents(
     { features: [{ id: 'core.image', required: true }, { id: 'video.ltx' }, { id: 'video.wan' }, { id: 'video.scail' }] },
     { 'video.ltx': true, 'video.wan': true, 'video.scail': true },
-  ), ['image', 'krea2depth', 'upscale', 'video', 'faceid', 'wan', 'scail', 'scailinfinity']);
+  ), ['image', 'krea2depth', 'krea2style', 'upscale', 'video', 'faceid', 'wan', 'scail', 'scailinfinity']);
   assert.deepEqual(dependencyCli.selectedComponents(
     { features: [{ id: 'core.image', required: true }, { id: 'edit.klein4' }, { id: 'edit.klein9' }, { id: 'edit.qwen' }, { id: 'edit.krea2' }, { id: 'edit.krea2ref' }] },
     { 'edit.klein4': true, 'edit.klein9': true, 'edit.qwen': true, 'edit.krea2': true, 'edit.krea2ref': true },
-  ), ['image', 'krea2depth', 'upscale', 'klein4', 'editoutpaint', 'klein9', 'smartmask', 'qwen', 'regional', 'krea2ref', 'krea2outpaint']);
+  ), ['image', 'krea2depth', 'krea2style', 'upscale', 'klein4', 'editoutpaint', 'klein9', 'smartmask', 'qwen', 'regional', 'krea2ref', 'krea2outpaint']);
   assert.deepEqual(dependencyCli.combineDiscovery(
     { registeredModelNames: ['a.safetensors'], modelRoots: ['D:/Models'], preferredModelsPath: 'D:/Models' },
     { registeredModelNames: ['a.safetensors', 'b.safetensors'], modelRoots: ['E:/Models'] },

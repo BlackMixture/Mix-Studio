@@ -1,6 +1,8 @@
 # Mix Studio
 
-Mobile-first local AI studio built around curated image and video models, workflow-tested settings, and the Modatory design language. Generations run through **ComfyUI** on the Windows desktop; you drive the optimized workflows from your phone on the same Wi-Fi or through Tailscale. Zero app dependencies: one Node.js server, vanilla JS frontend, no build step.
+A clean, responsive AI workspace built on ComfyUI. Run highly tuned image and video workflows flawlessly from your desktop or your phone. Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2.3, Wan 2.2, and SCAIL 2.
+
+Generations run through **ComfyUI** on the Windows desktop; use the same responsive workspace from your phone on the same Wi-Fi or through Tailscale. Zero app dependencies: one Node.js server, vanilla JS frontend, no build step.
 
 > Working on this codebase (human or AI agent)? **Read `AGENTS.md` first.**
 

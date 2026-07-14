@@ -1190,7 +1190,7 @@ html:-webkit-full-screen { background: #000; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  margin-top: 12px;
+  margin: 0 0 8px;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 11px;
@@ -1225,6 +1225,7 @@ html:-webkit-full-screen { background: #000; }
   font-size: 11px;
   font-weight: 750;
 }
+.create-depth-preview-btn[hidden] { display: none; }
 .create-depth-preview-btn:disabled { opacity: .6; }
 .create-depth-preview-btn.showing-depth {
   border-style: solid;

@@ -70,9 +70,11 @@ test('upscale sheet exposes target and multiplier modes', () => {
   assert.match(appJs, /scaleFactor/);
 });
 
-test('create tab exposes image-to-prompt wiring', () => {
-  assert.match(indexHtml, /id="imagePromptBtn"/);
+test('create tab exposes image-to-prompt inside the consolidated image tools', () => {
+  assert.doesNotMatch(indexHtml, /id="imagePromptBtn"/);
+  assert.match(indexHtml, /id="createImageGuideModes"[\s\S]*data-guide-mode="prompt"/);
   assert.match(appJs, /\/api\/imageprompt/);
+  assert.match(appJs, /function createPromptFromImageName\(imageName\)/);
 });
 
 test('lightbox image metadata shows generation duration when recorded', () => {

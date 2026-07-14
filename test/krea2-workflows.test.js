@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildKrea2DepthControl, buildKrea2LatentInput } = require('../lib/krea2-workflows');
+const { buildKrea2DepthControl, buildKrea2LatentInput, buildKrea2StyleReference } = require('../lib/krea2-workflows');
 
 test('Krea 2 text-to-image keeps the empty latent path', () => {
   const result = buildKrea2LatentInput({ width: 896, height: 1120, batch: 2 });
@@ -60,4 +60,33 @@ test('Krea 2 depth guidance matches the Reddit DA3 control-LoRA workflow', () =>
 test('Krea 2 depth guidance rejects missing required assets', () => {
   assert.throws(() => buildKrea2DepthControl({ loraName: 'depth.safetensors' }), /source image/);
   assert.throws(() => buildKrea2DepthControl({ imageName: 'room.png' }), /Control LoRA/);
+});
+
+test('Krea 2 style reference keeps a clean target latent and tuned low-leakage defaults', () => {
+  const result = buildKrea2StyleReference({
+    imageName: 'painting.png',
+    latent: ['latent', 0],
+    model: ['user_lora', 0],
+    conditioning: ['pos', 0],
+    strength: 0.75,
+  });
+  assert.equal(result.nodes.style_source.class_type, 'LoadImage');
+  assert.equal(result.nodes.style_reference.class_type, 'Krea2StyleReference');
+  assert.deepEqual(result.nodes.style_reference.inputs.target_latent, ['latent', 0]);
+  assert.deepEqual(result.nodes.style_reference.inputs.reference_image, ['style_source', 0]);
+  assert.equal(result.nodes.style_reference.inputs.fit, 'crop');
+  assert.equal(result.nodes.style_transfer.class_type, 'Krea2StyleTransfer');
+  assert.deepEqual(result.nodes.style_transfer.inputs.model, ['user_lora', 0]);
+  assert.deepEqual(result.nodes.style_transfer.inputs.ref_conditioning, ['pos', 0]);
+  assert.equal(result.nodes.style_transfer.inputs.mode, 'custom');
+  assert.equal(result.nodes.style_transfer.inputs.style_strength, 0.75);
+  assert.equal(result.nodes.style_transfer.inputs.ref_k_strength, 1.06);
+  assert.equal(result.nodes.style_transfer.inputs.low_scale_end, 1.1);
+  assert.equal(result.nodes.style_transfer.inputs.blocks, '7-27');
+  assert.deepEqual(result.model, ['style_transfer', 0]);
+});
+
+test('Krea 2 style reference validates its required source and graph links', () => {
+  assert.throws(() => buildKrea2StyleReference({}), /source image/);
+  assert.throws(() => buildKrea2StyleReference({ imageName: 'style.png' }), /model, latent, and conditioning/);
 });

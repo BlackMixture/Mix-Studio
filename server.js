@@ -58,7 +58,13 @@ const {
   promptEnhanceParts,
   regionPromptEnhanceParts,
 } = require('./lib/prompt-enhance');
-const { buildDepthMapNodes, buildDepthPreviewGraph, buildKrea2DepthControl, buildKrea2LatentInput } = require('./lib/krea2-workflows');
+const {
+  buildDepthMapNodes,
+  buildDepthPreviewGraph,
+  buildKrea2DepthControl,
+  buildKrea2LatentInput,
+  buildKrea2StyleReference,
+} = require('./lib/krea2-workflows');
 const {
   buildKrea2OutpaintGraph,
   calculateNativeOutpaintPlan,
@@ -989,6 +995,7 @@ function missingDependencyComponentIds(missing, models) {
     qwenedit: ['qwen'],
     krea2inpaint: ['image'],
     krea2depth: ['krea2depth'],
+    krea2style: ['krea2style'],
   };
   for (const [group, classes] of Object.entries(missing || {})) {
     if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
@@ -1594,6 +1601,7 @@ async function completeJob(pid) {
       krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
       imageGuideMode: job.params.mode === 't2i' && job.params.imageName ? job.params.imageGuideMode : undefined,
       depthStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'depth' ? job.params.depthStrength : undefined,
+      styleStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'style' ? job.params.styleStrength : undefined,
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       qwenQuality: job.params.mode === 'edit' && job.params.editEngine === 'qwen'
         ? normalizeQwenEditQuality(job.params.qwenQuality) : undefined,
@@ -1941,7 +1949,8 @@ async function buildT2I(p) {
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip, text: textSource } };
   graph.neg = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos', 0] } };
   const depthGuide = p.imageGuideMode === 'depth' && !!p.imageName;
-  const latentInput = buildKrea2LatentInput(Object.assign({}, p, { imageName: depthGuide ? '' : p.imageName }));
+  const styleGuide = p.imageGuideMode === 'style' && !!p.imageName;
+  const latentInput = buildKrea2LatentInput(Object.assign({}, p, { imageName: depthGuide || styleGuide ? '' : p.imageName }));
   Object.assign(graph, latentInput.nodes);
   if (depthGuide) {
     const depth = buildKrea2DepthControl({
@@ -1957,11 +1966,25 @@ async function buildT2I(p) {
     Object.assign(graph, depth.nodes);
     model = depth.model;
   }
+  if (styleGuide) {
+    const style = buildKrea2StyleReference({
+      imageName: p.imageName,
+      strength: p.styleStrength,
+      latent: latentInput.latent,
+      model,
+      conditioning: ['pos', 0],
+    });
+    Object.assign(graph, style.nodes);
+    model = style.model;
+  }
   graph.sampler = {
     class_type: 'KSampler',
     inputs: {
       model, positive: ['pos', 0], negative: ['neg', 0], latent_image: latentInput.latent,
-      seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'euler', scheduler: 'beta', denoise: latentInput.denoise,
+      seed: p.seed, steps: p.steps, cfg: p.cfg,
+      sampler_name: styleGuide ? 'euler_ancestral' : 'euler',
+      scheduler: styleGuide ? 'simple' : 'beta',
+      denoise: latentInput.denoise,
     },
   };
   graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sampler', 0], vae: ['vae', 0] } };
@@ -4053,6 +4076,7 @@ const REQUIRED_CLASSES = {
     'ImageCompositeMasked', 'KSampler', 'VAEDecode', 'SaveImage'],
   krea2depth: ['DownloadAndLoadDepthAnythingV3Model', 'DepthAnything_V3',
     'Krea2ControlLoRALoader', 'Krea2ControlImageEncode', 'Krea2ControlApply'],
+  krea2style: ['Krea2StyleReference', 'Krea2StyleTransfer'],
   smartmask: SAM3_MASK_CLASSES,
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
   ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
@@ -4727,9 +4751,10 @@ async function handleApi(req, res, url) {
           on: p.krea2RawTurboLora.on !== false,
         };
     p.imageName = p.mode === 'edit' ? '' : String(p.imageName || '').trim();
-    p.imageGuideMode = p.imageName && p.imageGuideMode === 'depth' ? 'depth' : 'image';
+    p.imageGuideMode = p.imageName && ['depth', 'style'].includes(p.imageGuideMode) ? p.imageGuideMode : 'image';
     p.depthStrength = p.imageGuideMode === 'depth' ? clampNum(p.depthStrength, 0.05, 2, 1) : undefined;
-    p.denoise = p.imageGuideMode === 'depth'
+    p.styleStrength = p.imageGuideMode === 'style' ? clampNum(p.styleStrength, 0, 2, 1) : undefined;
+    p.denoise = p.imageGuideMode === 'depth' || p.imageGuideMode === 'style'
       ? 1
       : clampNum(p.denoise, 0.05, 1, p.mode === 'edit' ? 0.4 : (p.imageName ? 0.45 : 1));
     p.editAspectOverride = p.editAspectOverride === true;

@@ -71,13 +71,14 @@ const state = {
   videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
-  createRef: null,           // optional Krea 2 image-to-image source
+  createRef: null,           // optional Krea 2 reference, depth, or style source
   createImageGuideOpen: false,
-  createGuideMode: 'image',  // image-to-image pixels or depth-only structure control
+  createGuideMode: 'image',  // reference, depth, style, or one-shot image-to-prompt
   createMatchSource: false,
   createMatchNative: false,
   createInfluence: 55,       // 0-100; mapped inversely to sampler denoise
   createDepthStrength: 100,  // 5-200; maps to Control LoRA strength 0.05-2.0
+  createStyleStrength: 100,  // 0-200; maps to Krea2StyleTransfer strength 0.0-2.0
   createDepthPreview: null,  // { name, url } — cached DA3 map for the current guide image
   createDepthPreviewShown: false,
   krea2Turbo: true,          // merged Turbo checkpoint vs Raw checkpoint
@@ -1467,6 +1468,7 @@ function saveForm() {
       createMatchNative: state.createMatchNative,
       createInfluence: state.createInfluence,
       createDepthStrength: state.createDepthStrength,
+      createStyleStrength: state.createStyleStrength,
       krea2Turbo: state.krea2Turbo,
       krea2RawTurboLora: state.krea2RawTurboLora,
       regions: state.regions.map((region) => Object.assign({}, region, {
@@ -1674,12 +1676,15 @@ function loadForm() {
       quality: f.videoQuality === true,
     };
     state.createImageGuideOpen = f.createImageGuideOpen === true;
-    state.createGuideMode = f.createGuideMode === 'depth' ? 'depth' : 'image';
+    state.createGuideMode = ['image', 'depth', 'style', 'prompt'].includes(f.createGuideMode) ? f.createGuideMode : 'image';
     state.createMatchSource = f.createMatchSource === true && !!state.createRef;
     state.createMatchNative = f.createMatchNative === true && state.createMatchSource;
     const savedDepthStrength = Number(f.createDepthStrength);
     state.createDepthStrength = Number.isFinite(savedDepthStrength)
       ? Math.max(5, Math.min(200, savedDepthStrength)) : 100;
+    const savedStyleStrength = Number(f.createStyleStrength);
+    state.createStyleStrength = Number.isFinite(savedStyleStrength)
+      ? Math.max(0, Math.min(200, savedStyleStrength)) : 100;
     state.generationTuning = {
       create: normalizeGenerationTuning('create', f.generationTuning && f.generationTuning.create),
       edit: normalizeGenerationTuning('edit', f.generationTuning && f.generationTuning.edit),
@@ -3213,7 +3218,10 @@ function matchedCreateOutputDimensions(ref = state.createRef, native = state.cre
 
 function createGuideInput(ref = state.createRef) {
   if (!ref) return null;
-  const optimized = state.createMatchSource && !state.createMatchNative && ref.safeName;
+  const optimized = ref.safeName && (
+    (state.createMatchSource && !state.createMatchNative)
+    || state.createGuideMode === 'style'
+  );
   return {
     name: optimized ? ref.safeName : ref.name,
     w: optimized ? (ref.safeW || ref.w) : ref.w,
@@ -3280,9 +3288,14 @@ async function prepareCreateImageGuideAsset(asset) {
 async function setCreateImageGuideAsset(asset, mode = 'image') {
   state.createRef = await prepareCreateImageGuideAsset(asset);
   clearCreateDepthPreview();
-  state.createGuideMode = mode === 'depth' ? 'depth' : 'image';
+  state.createGuideMode = ['image', 'depth', 'style'].includes(mode) ? mode : 'image';
   state.createImageGuideOpen = true;
-  applyCreateMatchedDimensions();
+  if (state.createGuideMode === 'style') {
+    state.createMatchSource = false;
+    state.createMatchNative = false;
+  } else {
+    applyCreateMatchedDimensions();
+  }
   setView('create', { createMode: 'image' });
   renderCreateImageGuide();
   renderAspects();
@@ -3299,63 +3312,86 @@ function renderCreateImageGuide() {
   if (section.previousElementSibling !== toolbar) toolbar.after(section);
   section.hidden = !visible;
   toggle.hidden = !visible;
-  const hasImage = !!state.createRef;
+  const mode = ['image', 'depth', 'style', 'prompt'].includes(state.createGuideMode)
+    ? state.createGuideMode : 'image';
+  const promptMode = mode === 'prompt';
+  const depthMode = mode === 'depth';
+  const styleMode = mode === 'style';
+  const hasStoredImage = !!state.createRef;
+  const hasActiveImage = hasStoredImage && !promptMode;
   const open = visible && state.createImageGuideOpen;
-  toggle.classList.toggle('has-image', hasImage);
+  toggle.classList.toggle('has-image', hasActiveImage);
   toggle.classList.toggle('active', open);
   toggle.setAttribute('aria-expanded', String(open));
-  toggle.setAttribute('aria-label', hasImage ? 'Image guide, source image added' : 'Image guide');
+  const modeLabel = { image: 'reference', depth: 'depth guide', style: 'style reference', prompt: 'image to prompt' }[mode];
+  toggle.setAttribute('aria-label', hasActiveImage ? `Image tools, ${modeLabel} added` : 'Image tools');
+  toggle.title = hasActiveImage ? `Image tools · ${modeLabel} added` : 'Image tools';
   section.classList.toggle('expanded', open);
   section.inert = !open;
   section.setAttribute('aria-hidden', String(!open));
-  $('#createImageGuideAdd').hidden = hasImage;
-  $('#createImageGuideFilled').hidden = !hasImage;
-  const depthMode = state.createGuideMode === 'depth';
-  $('#createImageGuideHint').textContent = depthMode
-    ? 'Depth control · matched to source aspect'
-    : 'Image to image · matched to source aspect';
+  $('#createImageGuideAdd').hidden = hasActiveImage;
+  $('#createImageGuideFilled').hidden = !hasActiveImage;
+  const hints = {
+    image: 'Reference · composition and color',
+    depth: 'Depth · perspective and structure',
+    style: 'Style · low-leakage visual transfer',
+    prompt: 'Describe an image as a prompt',
+  };
+  $('#createImageGuideHint').textContent = hints[mode];
+  const addCopy = {
+    image: ['Add reference image', 'Guide composition, color, and structure'],
+    depth: ['Add depth source', 'Preserve perspective without copying pixels'],
+    style: ['Add style reference', 'Transfer palette, texture, and rendering language'],
+    prompt: ['Choose image to describe', 'Create an editable prompt from any image'],
+  }[mode];
+  $('#createImageGuideAddTitle').textContent = addCopy[0];
+  $('#createImageGuideAddCopy').textContent = addCopy[1];
   const influence = depthMode
     ? Math.max(5, Math.min(200, Number(state.createDepthStrength) || 100))
-    : Math.max(0, Math.min(100, Number(state.createInfluence) || 0));
+    : (styleMode
+      ? Math.max(0, Math.min(200, Number.isFinite(Number(state.createStyleStrength)) ? Number(state.createStyleStrength) : 100))
+      : Math.max(0, Math.min(100, Number(state.createInfluence) || 0)));
   $$('#createImageGuideModes [data-guide-mode]').forEach((button) => {
-    button.setAttribute('aria-pressed', String(button.dataset.guideMode === state.createGuideMode));
+    button.setAttribute('aria-pressed', String(button.dataset.guideMode === mode));
   });
-  $('#createImageInfluenceTitle').textContent = depthMode ? 'Depth strength' : 'Image influence';
+  $('#createImageInfluenceTitle').textContent = depthMode ? 'Depth strength'
+    : (styleMode ? 'Style strength' : 'Image influence');
   $('#createImageInfluenceHint').textContent = depthMode
     ? 'Preserves perspective and 3D structure'
-    : 'Higher stays closer to the source';
+    : (styleMode ? 'Transfers visual style without copying the subject' : 'Higher stays closer to the source');
   $('#createImageInfluence').min = depthMode ? '5' : '0';
-  $('#createImageInfluence').max = depthMode ? '200' : '100';
-  $('#createImageInfluence').setAttribute('aria-label', depthMode ? 'Depth strength' : 'Image influence');
+  $('#createImageInfluence').max = depthMode || styleMode ? '200' : '100';
+  $('#createImageInfluence').setAttribute('aria-label', depthMode ? 'Depth strength'
+    : (styleMode ? 'Style strength' : 'Image influence'));
   $('#createImageInfluence').value = String(influence);
   // The track fill must follow the thumb, not the raw value: depth strength
   // spans 5-200, so 100% sits mid-track.
   const fillMin = depthMode ? 5 : 0;
-  const fillMax = depthMode ? 200 : 100;
+  const fillMax = depthMode || styleMode ? 200 : 100;
   const fillPct = ((influence - fillMin) / (fillMax - fillMin)) * 100;
   $('#createImageInfluence').style.setProperty('--influence', fillPct + '%');
   $('#createImageInfluenceVal').textContent = influence + '%';
   const scale = $('.create-image-influence-scale');
   if (scale) {
-    scale.children[0].textContent = depthMode ? 'Looser' : 'Freer';
-    scale.children[1].textContent = depthMode ? 'Stricter' : 'Closer';
+    scale.children[0].textContent = depthMode ? 'Looser' : (styleMode ? 'Subtle' : 'Freer');
+    scale.children[1].textContent = depthMode ? 'Stricter' : (styleMode ? 'Strong' : 'Closer');
   }
   const previewBtn = $('#createDepthPreviewBtn');
-  const cachedDepth = hasImage && state.createDepthPreview
+  const cachedDepth = hasStoredImage && state.createDepthPreview
     && state.createDepthPreview.name === createGuideInput().name ? state.createDepthPreview : null;
   const showingDepth = depthMode && state.createDepthPreviewShown && !!cachedDepth;
   if (previewBtn) {
-    previewBtn.hidden = !(depthMode && hasImage);
+    previewBtn.hidden = !(depthMode && hasStoredImage);
     previewBtn.classList.toggle('showing-depth', showingDepth);
     if (!previewBtn.disabled) {
       $('#createDepthPreviewLbl').textContent = showingDepth ? 'Show source image'
         : (cachedDepth ? 'Show depth map' : 'Preview depth map');
     }
   }
-  if (!hasImage) return;
+  if (!hasActiveImage) return;
   $('#createImageGuideImg').src = showingDepth ? cachedDepth.url : state.createRef.url;
   $('#createImageGuideName').textContent = showingDepth ? 'Depth map'
-    : (state.createRef.label || 'Source image');
+    : (state.createRef.label || (styleMode ? 'Style reference' : 'Source image'));
   $('#createImageGuideDims').textContent = showingDepth
     ? 'What the generation will follow'
     : (state.createRef.w && state.createRef.h
@@ -3371,7 +3407,42 @@ function clearCreateDepthPreview() {
   state.createDepthPreviewShown = false;
 }
 
+async function createPromptFromImageName(imageName) {
+  const res = await api('/api/imageprompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageName }),
+  });
+  state.prompts.create = res.prompt || '';
+  if (state.view !== 'create') setView('create');
+  setPromptDraft(state.prompts.create);
+  updatePromptClear();
+  state.createImageGuideOpen = false;
+  renderCreateImageGuide();
+  saveForm();
+  $('#promptComposer').focus();
+  toast('Prompt created from image');
+}
+
+function pickCreatePromptImage() {
+  pickUpload('image/*', async (file) => {
+    const button = $('#createImageGuideAdd');
+    button.disabled = true;
+    $('#createImageGuideAddTitle').textContent = 'Reading image…';
+    $('#createImageGuideAddCopy').textContent = 'Building an editable prompt';
+    try {
+      await createPromptFromImageName(file.name);
+    } catch (error) {
+      if (!isJobCancellation(error)) toast(error.message, true);
+    } finally {
+      button.disabled = false;
+      renderCreateImageGuide();
+    }
+  }, 'Choose an image to describe');
+}
+
 function pickCreateImageGuide() {
+  if (state.createGuideMode === 'prompt') return pickCreatePromptImage();
   pickUpload('image/*', async (file) => {
     try {
       await setCreateImageGuideAsset(file, state.createGuideMode);
@@ -3404,8 +3475,19 @@ $('#createImageGuideCrop').addEventListener('click', () => {
 $('#createImageGuideModes').addEventListener('click', (event) => {
   const button = event.target.closest('[data-guide-mode]');
   if (!button) return;
-  state.createGuideMode = button.dataset.guideMode === 'depth' ? 'depth' : 'image';
+  const previous = state.createGuideMode;
+  state.createGuideMode = ['image', 'depth', 'style', 'prompt'].includes(button.dataset.guideMode)
+    ? button.dataset.guideMode : 'image';
+  if (state.createGuideMode === 'style' || state.createGuideMode === 'prompt') {
+    state.createMatchSource = false;
+    state.createMatchNative = false;
+    clearCreateDepthPreview();
+  } else if ((previous === 'style' || previous === 'prompt') && state.createRef) {
+    applyCreateMatchedDimensions();
+  }
   renderCreateImageGuide();
+  renderAspects();
+  renderDims();
   saveForm();
 });
 $('#createDepthPreviewBtn').addEventListener('click', async () => {
@@ -3456,6 +3538,7 @@ $('#createImageGuideRemove').addEventListener('click', () => {
 });
 $('#createImageInfluence').addEventListener('input', (event) => {
   if (state.createGuideMode === 'depth') state.createDepthStrength = Number(event.target.value);
+  else if (state.createGuideMode === 'style') state.createStyleStrength = Number(event.target.value);
   else state.createInfluence = Number(event.target.value);
   renderCreateImageGuide();
   saveForm();
@@ -5739,31 +5822,6 @@ $('#promptClear').addEventListener('click', () => {
   saveForm();
 });
 
-$('#imagePromptBtn').addEventListener('click', () => {
-  const btn = $('#imagePromptBtn');
-  pickUpload('image/*', async (file) => {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spin"></span> Reading image...';
-    try {
-      const res = await api('/api/imageprompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageName: file.name }),
-      });
-      state.prompts.create = res.prompt || '';
-      if (state.view !== 'create') setView('create');
-      setPromptDraft(state.prompts.create);
-      updatePromptClear();
-      saveForm();
-      toast('Prompt created from image');
-    } catch (e) {
-      if (!isJobCancellation(e)) toast(e.message, true);
-    }
-    btn.disabled = false;
-    btn.textContent = 'Image to Prompt';
-  });
-});
-
 const CAMERA_WHEEL_KEYS = ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso'];
 const cameraWheelScrollTimers = {};
 let cameraWheelSyncing = false;
@@ -6302,6 +6360,7 @@ function renderAspects() {
   const row = $('#aspectRow');
   row.innerHTML = '';
   const safeMatch = state.view === 'create' && state.createMode === 'image'
+    && (state.createGuideMode === 'image' || state.createGuideMode === 'depth')
     ? matchedCreateOutputDimensions(state.createRef, false)
     : null;
   const nativeMatch = safeMatch ? matchedCreateOutputDimensions(state.createRef, true) : null;
@@ -9505,7 +9564,8 @@ $('#generateBtn').addEventListener('click', async () => {
     return toast('Sequential edits need at least two sentences', true);
   }
   if (!(await ensureGenerationSetup())) return;
-  const createImageGuide = mode === 't2i' && state.createMode === 'image' ? state.createRef : null;
+  const createImageGuide = mode === 't2i' && state.createMode === 'image' && state.createGuideMode !== 'prompt'
+    ? state.createRef : null;
   const createImageGuideName = createImageGuide ? createGuideInput(createImageGuide).name : undefined;
   const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
@@ -9565,7 +9625,7 @@ $('#generateBtn').addEventListener('click', async () => {
     cfg: Number($('#cfgInput').value) || 1,
     batch: sequenceSteps.length ? 1 : (Number($('#batchInput').value) || 1),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)
-      : (createImageGuide && state.createGuideMode !== 'depth' ? createDenoiseFromInfluence() : 1),
+      : (createImageGuide && state.createGuideMode === 'image' ? createDenoiseFromInfluence() : 1),
     seed: seedRaw === '' ? undefined : Number(seedRaw),
     loras: mode === 'edit' ? state.editLoras : state.loras,
     refImages: mode === 'edit'
@@ -9575,6 +9635,8 @@ $('#generateBtn').addEventListener('click', async () => {
     imageGuideMode: createImageGuide ? state.createGuideMode : undefined,
     depthStrength: createImageGuide && state.createGuideMode === 'depth'
       ? Number((state.createDepthStrength / 100).toFixed(2)) : undefined,
+    styleStrength: createImageGuide && state.createGuideMode === 'style'
+      ? Number((state.createStyleStrength / 100).toFixed(2)) : undefined,
     regions: activeRegionsForRequest(),
     maskImageName,
     editMaskMode: localizedEdit || preserveMask ? (state.kreaMaskKind || state.kreaMaskTool) : undefined,
@@ -10953,7 +11015,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
   'prompts', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs',
   'createRef', 'createImageGuideOpen', 'createGuideMode', 'createMatchSource', 'createMatchNative',
-  'createInfluence', 'createDepthStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
+  'createInfluence', 'createDepthStrength', 'createStyleStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
   'regions', 'activeRegionId', 'kreaMask', 'kreaMaskPreview', 'kreaMaskDirty', 'kreaMaskErase', 'kreaMaskTool', 'kreaMaskKind',
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
@@ -11135,6 +11197,7 @@ function resetActiveGenerationForm() {
     state.createMatchSource = false;
     state.createMatchNative = false;
     state.createGuideMode = 'image';
+    state.createStyleStrength = 100;
     state.createUpscaleEnabled = false;
     state.customDims = false;
     state.aspect = '1:1';
@@ -12564,8 +12627,13 @@ async function applyDesktopGalleryDrop(target, drag) {
     return;
   }
   if (target.matches('#createImageGuideAdd, #createImageGuideFilled')) {
-    await setCreateImageGuideAsset(await galleryItemEditReference(item), state.createGuideMode);
-    toast('Gallery image added as the image guide');
+    const reference = await galleryItemEditReference(item);
+    if (state.createGuideMode === 'prompt') {
+      await createPromptFromImageName(reference.name);
+    } else {
+      await setCreateImageGuideAsset(reference, state.createGuideMode);
+      toast(state.createGuideMode === 'style' ? 'Gallery image added as the style reference' : 'Gallery image added as the image guide');
+    }
     return;
   }
   if (target.matches('#regionRefBtn, #regionRefPreview')) {
@@ -14513,9 +14581,11 @@ async function reuseItem(it, useEnhanced) {
     state.createRef = null;
     state.createMatchSource = false;
     state.createMatchNative = false;
-    state.createGuideMode = it.imageGuideMode === 'depth' ? 'depth' : 'image';
+    state.createGuideMode = ['image', 'depth', 'style'].includes(it.imageGuideMode) ? it.imageGuideMode : 'image';
     state.createInfluence = createInfluenceFromDenoise(it.denoise);
     state.createDepthStrength = Math.max(5, Math.min(200, Math.round((Number(it.depthStrength) || 1) * 100)));
+    const restoredStyleStrength = Number(it.styleStrength);
+    state.createStyleStrength = Math.max(0, Math.min(200, Math.round((Number.isFinite(restoredStyleStrength) ? restoredStyleStrength : 1) * 100)));
     state.krea2Turbo = it.krea2Turbo !== false;
     const savedRawTurboLora = it.krea2RawTurboLora || (!state.krea2Turbo
       ? (Array.isArray(it.loras) ? it.loras.find((lora) => assetNameKey(lora && lora.name) === assetNameKey(krea2TurboLoraName())) : null)
@@ -17228,6 +17298,7 @@ function generationSetupComponents() {
   }
   components.add(state.createMode === 'region' ? 'regional' : 'image');
   if (state.createMode === 'image' && state.createRef && state.createGuideMode === 'depth') components.add('krea2depth');
+  if (state.createMode === 'image' && state.createRef && state.createGuideMode === 'style') components.add('krea2style');
   if (state.createUpscaleEnabled) components.add('upscale');
   return [...components];
 }
