@@ -79,12 +79,25 @@
     .proof-item + .proof-item { border-left: 1px solid var(--line); }
     .proof-item strong { display: block; margin-bottom: 6px; font-size: 15px; }
     .proof-item span { color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .creator-note { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 42px; align-items: center; padding: 42px 0; border-bottom: 1px solid var(--line); }
-    .creator-note h2 { max-width: 610px; margin: 0; font-size: clamp(26px,3.5vw,42px); line-height: 1.05; letter-spacing: -.04em; }
-    .creator-note p { max-width: 650px; margin: 13px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
-    .creator-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
-    .creator-links a { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0 13px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.025); color: var(--soft); font-size: 11px; font-weight: 850; text-decoration: none; white-space: nowrap; transition: background 180ms ease, border-color 180ms ease, color 180ms ease; }
-    .creator-links a:hover, .creator-links a:focus-visible { border-color: rgba(157,179,247,.55); background: rgba(66,133,244,.12); color: #fff; }
+    .creator-note { position: relative; display: grid; grid-template-columns: minmax(0,1.05fr) minmax(310px,.95fr); gap: 48px; align-items: center; padding: 52px 0 46px; border-bottom: 1px solid var(--line); }
+    .creator-spectrum { position: absolute; top: 0; left: 0; width: 100%; height: 7px; object-fit: cover; }
+    .creator-intro { min-width: 0; }
+    .creator-heading { display: flex; align-items: center; gap: 16px; }
+    .creator-logo { flex: 0 0 auto; width: 66px; height: 66px; display: grid; place-items: center; border-radius: 50%; background: #fff; box-shadow: 0 12px 36px rgba(0,0,0,.34); }
+    .creator-logo img { width: 52px; height: 52px; object-fit: contain; }
+    .creator-note h2 { max-width: 570px; margin: 0; font-size: clamp(26px,3.5vw,42px); line-height: 1.05; letter-spacing: -.04em; }
+    .creator-note p { max-width: 610px; margin: 13px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .creator-links { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+    .creator-links a { width: 42px; height: 42px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,255,255,.025); color: var(--soft); text-decoration: none; transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease; }
+    .creator-links svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .creator-links .creator-youtube { fill: #ff3542; stroke: none; }
+    .creator-links .creator-youtube path:last-child { fill: #fff; }
+    .creator-links a:hover, .creator-links a:focus-visible { border-color: rgba(157,179,247,.55); background: rgba(66,133,244,.12); color: #fff; transform: translateY(-2px); }
+    .creator-founders { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+    .creator-founder { position: relative; min-width: 0; overflow: hidden; aspect-ratio: .82 / 1; border: 1px solid rgba(255,255,255,.13); border-radius: 20px; background: linear-gradient(160deg,#151920,#050608); }
+    .creator-founder img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center top; }
+    .creator-founder figcaption { position: absolute; right: 8px; bottom: 8px; left: 8px; padding: 8px 9px; border: 1px solid rgba(255,255,255,.13); border-radius: 11px; background: rgba(3,5,9,.76); color: #fff; font-size: 11px; font-weight: 850; line-height: 1.25; backdrop-filter: blur(9px); }
+    .creator-founder figcaption small { display: block; margin-top: 2px; color: #bec9dd; font-size: 9px; font-weight: 750; }
     .mobile-story { display: grid; grid-template-columns: .82fr 1.18fr; gap: 72px; align-items: center; padding: 130px 0 80px; }
     .mobile-story h2 { margin: 0; max-width: 520px; font-size: clamp(38px,5vw,60px); line-height: 1.02; letter-spacing: -.048em; }
     .mobile-story-copy > p:last-child { margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
@@ -390,8 +403,7 @@
       .hero-copy { max-width: 700px; }
       .hero-visual { width: min(100%,700px); margin-bottom: 58px; transform: none; }
       .mobile-story { grid-template-columns: 1fr; gap: 42px; }
-      .creator-note { grid-template-columns: 1fr; gap: 24px; }
-      .creator-links { justify-content: flex-start; }
+      .creator-note { grid-template-columns: minmax(0,1fr) minmax(290px,.72fr); gap: 32px; }
       .feature-grid { grid-template-columns: repeat(2,1fr); }
       .section-head, .benchmark-head { grid-template-columns: 1fr; gap: 20px; }
       .quick { grid-template-columns: 1fr; gap: 52px; }
@@ -419,7 +431,9 @@
       .proof { grid-template-columns: 1fr; }
       .proof-item { padding-inline: 0; }
       .proof-item + .proof-item { border-left: 0; border-top: 1px solid var(--line); }
-      .creator-note { padding: 34px 0; }
+      .creator-note { grid-template-columns: 1fr; gap: 25px; padding: 40px 0 34px; }
+      .creator-logo { width: 56px; height: 56px; }
+      .creator-logo img { width: 44px; height: 44px; }
       .phone-preview { right: 12px; bottom: -48px; width: 35%; border-width: 5px; border-radius: 23px; }
       .mobile-story { padding: 92px 0 36px; }
       .control-flow { grid-template-columns: 1fr; gap: 12px; }
@@ -525,8 +539,9 @@
       </section>
 
       <section class="creator-note" aria-labelledby="creator-note-title">
-        <div><p class="section-kicker">Created by Black Mixture</p><h2 id="creator-note-title">A creative studio for artists working with AI.</h2><p>Mix Studio is built by Black Mixture: a creative studio and education platform focused on design, storytelling, and practical AI tools for artists and innovators.</p></div>
-        <nav class="creator-links" aria-label="Black Mixture links"><a href="https://www.blackmixture.com/">blackmixture.com</a><a href="https://www.youtube.com/@blackmixture">YouTube</a><a href="https://www.instagram.com/blackmixture/">Instagram</a></nav>
+        <img class="creator-spectrum" src="./brand/black-mixture-spectrum.png" alt="" aria-hidden="true" />
+        <div class="creator-intro"><div class="creator-heading"><a class="creator-logo" href="https://www.blackmixture.com/" aria-label="Visit Black Mixture" title="Black Mixture"><img src="./brand/black-mixture-logomark.png" alt="Black Mixture logo" /></a><div><p class="section-kicker">Created by Black Mixture</p><h2 id="creator-note-title">A creative studio for artists working with AI.</h2></div></div><p>Mix Studio is built by Black Mixture: a creative studio and education platform focused on design, storytelling, and practical AI tools for artists and innovators.</p><nav class="creator-links" aria-label="Black Mixture links"><a href="https://www.blackmixture.com/" aria-label="Visit Black Mixture" title="Black Mixture"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.6 5.2 3.6 8.5S14.4 18.1 12 20.5M12 3.5C9.6 5.9 8.4 8.7 8.4 12s1.2 6.1 3.6 8.5"/></svg></a><a href="https://www.youtube.com/@blackmixture" aria-label="Black Mixture on YouTube" title="YouTube"><svg class="creator-youtube" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.1 7.2a2.8 2.8 0 0 0-2-2C17.3 4.7 12 4.7 12 4.7s-5.3 0-7.1.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2.4 12a29 29 0 0 0 .5 4.8 2.8 2.8 0 0 0 2 2c1.8.5 7.1.5 7.1.5s5.3 0 7.1-.5a2.8 2.8 0 0 0 2-2 29 29 0 0 0 .5-4.8 29 29 0 0 0-.5-4.8Z"/><path d="m10.2 15.4 4.6-3.4-4.6-3.4v6.8Z" fill="currentColor"/></svg></a><a href="https://www.instagram.com/blackmixture/" aria-label="Black Mixture on Instagram" title="Instagram"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.4"/><circle cx="12" cy="12" r="3.8"/><circle cx="17.6" cy="6.5" r=".8" fill="currentColor" stroke="none"/></svg></a></nav></div>
+        <div class="creator-founders" aria-label="Black Mixture founders"><figure class="creator-founder"><img src="./brand/nate-dwarika.webp" alt="Nate Dwarika" loading="lazy" /><figcaption>Nate Dwarika<small>Co-founder</small></figcaption></figure><figure class="creator-founder"><img src="./brand/chriselle-dwarika.webp" alt="Chriselle Dwarika" loading="lazy" /><figcaption>Chriselle Dwarika<small>Co-founder</small></figcaption></figure></div>
       </section>
 
       <section class="mobile-story" id="mobile-first">

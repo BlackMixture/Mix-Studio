@@ -63,6 +63,12 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /mobile-optimized UI/);
   assert.doesNotMatch(page, /in your pocket/);
   assert.match(page, /Created by Black Mixture/);
+  assert.match(page, /black-mixture-logomark\.png/);
+  assert.match(page, /black-mixture-spectrum\.png/);
+  assert.match(page, /nate-dwarika\.webp/);
+  assert.match(page, /chriselle-dwarika\.webp/);
+  assert.match(page, /Nate Dwarika/);
+  assert.match(page, /Chriselle Dwarika/);
   assert.match(page, /https:\/\/www\.blackmixture\.com\//);
   assert.match(page, /https:\/\/www\.youtube\.com\/@blackmixture/);
   assert.match(page, /https:\/\/www\.instagram\.com\/blackmixture\//);
@@ -177,6 +183,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(workflow, /cp docs\/download\/mix-studio-wordmark\.svg _site\/mix-studio-wordmark\.svg/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.webp _site\/mix-studio-create\.webp/);
   assert.match(workflow, /cp docs\/download\/comfyui-logo\.svg _site\/comfyui-logo\.svg/);
+  assert.match(workflow, /cp -R docs\/download\/brand _site\/brand/);
   assert.match(workflow, /cp docs\/download\/mix-studio-edit\.png _site\/mix-studio-edit\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-scail\.png _site\/mix-studio-scail\.png/);

@@ -54,6 +54,7 @@ jobs:
           cp docs/download/mix-studio-profiles-live.png _site/mix-studio-profiles-live.png
           cp docs/download/mix-studio-dependencies.png _site/mix-studio-dependencies.png
           cp docs/download/comfyui-logo.svg _site/comfyui-logo.svg
+          cp -R docs/download/brand _site/brand
           cp -R docs/download/media _site/media
           touch _site/.nojekyll
 
