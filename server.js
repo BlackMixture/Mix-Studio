@@ -5256,6 +5256,7 @@ async function handleApi(req, res, url) {
 
     // The result lives in our data dir -> push it into ComfyUI's input
     const buf = await fsp.readFile(path.join(VIDEOS, entry.file));
+    const hasAudio = detectAudioStream(buf, entry.file) === true;
     const outName = await uploadToComfy(buf, `ks_cmp_${entry.id}.mp4`);
 
     const graph = {};
@@ -5291,7 +5292,12 @@ async function handleApi(req, res, url) {
       ['right', true, 8, 'black'],
       { image1: ['drive_s', 0], image2: ['result_s', 0] }
     );
-    graph.video = { class_type: 'CreateVideo', inputs: { images: ['stitch', 0], fps } };
+    // Keep the result video's already-trimmed audio track. Pulling audio from
+    // the original drive clip here can drift when the generation used a
+    // start offset, duration trim, or frame interpolation.
+    const videoInputs = { images: ['stitch', 0], fps };
+    if (hasAudio) videoInputs.audio = ['result', 2];
+    graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
     graph.save = {
       class_type: 'SaveVideo',
       inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/side', format: 'auto', codec: 'auto' },
@@ -5303,6 +5309,7 @@ async function handleApi(req, res, url) {
         engine: info.engine, composite: true,
         motionPrompt: info.motionPrompt || '',
         enhance: false, frames, fps, seed: info.seed,
+        preservedAudio: hasAudio || undefined,
       },
     });
     ensureWs();
