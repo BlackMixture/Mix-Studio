@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   LTX_MAX_SECONDS,
+  LTX_CAMERA_FPS,
+  LTX_CAMERA_MAX_SECONDS,
+  ltxCameraDurationSeconds,
   ltxDurationSeconds,
   ltxFramesForSeconds,
   scailDurationSeconds,
@@ -26,6 +29,15 @@ test('LTX 2.3 accepts up to 20 seconds and preserves 8n+1 frame counts', () => {
   assert.equal(ltxFramesForSeconds(20, 25), 497);
   assert.equal((ltxFramesForSeconds(20, 25) - 1) % 8, 0);
   assert.equal(ltxFramesForSeconds(20, 25, 15), 377);
+});
+
+test('LTX Cameraman guidance stays inside its 24 fps five-second training window', () => {
+  assert.equal(LTX_CAMERA_FPS, 24);
+  assert.equal(LTX_CAMERA_MAX_SECONDS, 5);
+  assert.equal(ltxCameraDurationSeconds(10), 5);
+  assert.equal(ltxCameraDurationSeconds(5, 10, 4), 5);
+  assert.equal(ltxCameraDurationSeconds(5, 6, 3), 3);
+  assert.equal(ltxFramesForSeconds(ltxCameraDurationSeconds(5), LTX_CAMERA_FPS, LTX_CAMERA_MAX_SECONDS), 121);
 });
 
 test('scailDurationSeconds clamps to trim length and 60 second app cap', () => {

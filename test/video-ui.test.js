@@ -41,7 +41,7 @@ test('SCAIL motion video first frames route to Edit, image guidance, or depth gu
   assert.match(app, /async function extractDriveFirstFrame\(\)/);
   assert.match(app, /trimStart:?[\s\S]*motion_first_frame\.png/);
   assert.match(app, /async function useDriveFirstFrame\(destination\)/);
-  assert.match(app, /label: 'Edit image'[\s\S]*useDriveFirstFrame\('edit'\)/);
+  assert.match(app, /label: 'Edit first frame'[\s\S]*useDriveFirstFrame\('edit'\)/);
   assert.match(app, /label: 'Image guide'[\s\S]*useDriveFirstFrame\('image'\)/);
   assert.match(app, /label: 'Depth guide'[\s\S]*useDriveFirstFrame\('depth'\)/);
   assert.match(app, /setCreateImageGuideAsset\(frame, destination === 'depth' \? 'depth' : 'image'\)/);
@@ -120,7 +120,7 @@ test('LTX 2.3 exposes its supported 20-second duration without raising other mod
   assert.match(html, /id="vidDurScrub"[^>]*aria-valuemax="20"/);
   assert.match(html, /id="vidDur"[^>]*max="20"/);
   assert.match(html, /id="animDur"[^>]*max="20"/);
-  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*engine === 'ltx'\) return 20;[\s\S]*return 15;/);
+  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx'\) return 20;[\s\S]*return 15;/);
   assert.match(app, /Math\.min\(Number\(durEl\.max\) \|\| 15, Math\.round\(len\)\)/);
   assert.match(server, /engine === 'ltx'[\s\S]*ltxDurationSeconds\(seconds\)/);
   assert.match(server, /seconds: opts\.seconds/);

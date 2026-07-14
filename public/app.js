@@ -104,6 +104,7 @@ const state = {
   vidAutoMotionPrompt: false,
   videoCameraMotions: [],    // ordered camera-motion IDs; up to three
   videoCameraMotionPhrase: '',
+  videoCameraGuide: null,    // optional custom camera-motion reference video
   motionPromptRequestsPending: 0,
   folders: [],
   items: [],
@@ -307,9 +308,16 @@ async function api(path, opts) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && data.code === 'auth') showProfileGate();
-    throw new Error(data.error || `${path} failed (${res.status})`);
+    const error = new Error(data.error || `${path} failed (${res.status})`);
+    error.code = data.code || '';
+    error.status = res.status;
+    throw error;
   }
   return data;
+}
+
+function isJobCancellation(error) {
+  return !!error && error.code === 'job_cancelled';
 }
 
 /* ------------------------------------------------------------------ */
@@ -1435,6 +1443,7 @@ function saveForm() {
       cameraSettings: state.cameraSettings,
       videoCameraMotions: state.videoCameraMotions,
       videoCameraMotionPhrase: state.videoCameraMotionPhrase,
+      videoCameraGuide: serializeWorkspaceAsset(state.videoCameraGuide),
       createMode: state.createMode,
       createRef: state.createRef ? {
         name: state.createRef.name, w: state.createRef.w, h: state.createRef.h, label: state.createRef.label,
@@ -1695,6 +1704,7 @@ function loadForm() {
       state.videoCameraMotions = CameraMotion.normalizeCameraMotions(f.videoCameraMotions);
       state.videoCameraMotionPhrase = String(f.videoCameraMotionPhrase || CameraMotion.cameraMotionPhrase(state.videoCameraMotions));
     }
+    state.videoCameraGuide = restoreWorkspaceAsset(f.videoCameraGuide);
     state.vidScailMode = f.scailModeVersion >= 2 && ['infinity', 'chunked', 'direct'].includes(f.vidScailMode)
       ? f.vidScailMode
       : (f.vidScailMode === 'direct' ? 'direct' : 'infinity');
@@ -4635,7 +4645,7 @@ async function runSmartMask({ prompt = '', point = null } = {}) {
   } catch (error) {
     if (point) state.kreaMaskPoints.pop();
     renderSmartMaskPoints();
-    toast(error.message, true);
+    if (!isJobCancellation(error)) toast(error.message, true);
   } finally {
     smartMaskRunning = false;
     clearTimeout(smartMaskSlowTimer);
@@ -5731,7 +5741,7 @@ $('#imagePromptBtn').addEventListener('click', () => {
       saveForm();
       toast('Prompt created from image');
     } catch (e) {
-      toast(e.message, true);
+      if (!isJobCancellation(e)) toast(e.message, true);
     }
     btn.disabled = false;
     btn.textContent = 'Image to Prompt';
@@ -5935,7 +5945,9 @@ $('#cameraApply').addEventListener('click', applyCameraPrompt);
 /* ------------------------------------------------------------------ */
 
 let cameraMotionDraft = [];
+let cameraMotionGuideDraft = null;
 let cameraMotionPreviewObserver = null;
+const LTX_CAMERA_MAX_SECONDS = 5;
 
 function cameraMotionReferenceActive() {
   return state.view === 'video'
@@ -5944,13 +5956,30 @@ function cameraMotionReferenceActive() {
     && !state.vidEnd;
 }
 
+function cameraMotionReferenceSelected() {
+  return cameraMotionReferenceActive()
+    && (state.videoCameraMotions.length > 0 || !!state.videoCameraGuide);
+}
+
+function cameraMotionGuideAvailableSeconds(guide = state.videoCameraGuide) {
+  if (!guide || !(Number(guide.dur) > 0)) return LTX_CAMERA_MAX_SECONDS;
+  return Math.max(0, Number(guide.dur) - Math.max(0, Number(guide.trimStart) || 0));
+}
+
+function cameraMotionGuideLimit(guide = state.videoCameraGuide) {
+  const available = cameraMotionGuideAvailableSeconds(guide);
+  return Math.max(1, Math.min(LTX_CAMERA_MAX_SECONDS, Math.floor(available || LTX_CAMERA_MAX_SECONDS)));
+}
+
 function cameraMotionEngineLabel() {
   return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' }[state.vidEngine] || 'this model';
 }
 
-function cameraMotionModeText() {
+function cameraMotionModeText(guide = state.videoCameraGuide, motions = state.videoCameraMotions) {
   if (cameraMotionReferenceActive()) {
-    return 'LTX 2.3 · reference guided with the Cameraman v2 research adapter.';
+    if (guide) return 'Custom guide · 24 fps · selected segment capped at 5 seconds.';
+    if (motions.length) return 'Preset guide · 24 fps · camera-guided clips capped at 5 seconds.';
+    return 'LTX 2.3 · choose presets or add your own camera-motion clip.';
   }
   if (state.vidEngine === 'ltx' && state.vidEnd) {
     return 'Prompt only while a last frame is attached. Remove it to enable Cameraman reference guidance.';
@@ -5965,14 +5994,18 @@ function syncCameraMotionTool() {
   if (!CameraMotion) return;
   state.videoCameraMotions = CameraMotion.normalizeCameraMotions(state.videoCameraMotions);
   const count = state.videoCameraMotions.length;
+  const hasCustomGuide = !!state.videoCameraGuide;
   const button = $('#videoCameraMotionBtn');
   const badge = $('#videoCameraMotionCount');
   if (!button || !badge) return;
-  button.classList.toggle('active', count > 0);
-  button.setAttribute('aria-label', count ? `Camera motion, ${count} selected` : 'Camera motion');
-  button.title = count ? `${count} camera motion${count === 1 ? '' : 's'} selected` : 'Camera motion';
-  badge.hidden = count === 0;
-  badge.textContent = String(count);
+  const active = count > 0 || hasCustomGuide;
+  button.classList.toggle('active', active);
+  button.setAttribute('aria-label', hasCustomGuide
+    ? `Camera motion, custom clip${count ? ` and ${count} prompt move${count === 1 ? '' : 's'}` : ''}`
+    : (count ? `Camera motion, ${count} selected` : 'Camera motion'));
+  button.title = hasCustomGuide ? 'Custom camera-motion clip selected' : (count ? `${count} camera motion${count === 1 ? '' : 's'} selected` : 'Camera motion');
+  badge.hidden = !active;
+  badge.textContent = String(count || 1);
   const note = $('#cameraMotionModeNote');
   if (note) note.textContent = cameraMotionModeText();
 }
@@ -6003,6 +6036,104 @@ function observeCameraMotionPreview(video) {
   }
   cameraMotionPreviewObserver.observe(video);
 }
+
+function cameraMotionPreviewWindow(guide = cameraMotionGuideDraft) {
+  if (!guide) return { start: 0, end: 0, duration: 0 };
+  const total = Math.max(0, Number(guide.dur) || 0);
+  const requested = Math.max(1, Math.min(LTX_CAMERA_MAX_SECONDS, Number($('#vidDur').value) || 5));
+  const start = Math.max(0, Math.min(Number(guide.trimStart) || 0, Math.max(0, total - 1)));
+  const duration = total > 0 ? Math.max(0, Math.min(requested, total - start)) : requested;
+  return { start, end: start + duration, duration };
+}
+
+async function prepareCameraMotionGuide(asset) {
+  if (!asset || !asset.name || !asset.url) throw new Error('Choose a camera-motion video first');
+  const guide = Object.assign({}, asset, { trimStart: Math.max(0, Number(asset.trimStart) || 0) });
+  const probe = document.createElement('video');
+  probe.preload = 'metadata';
+  probe.muted = true;
+  probe.playsInline = true;
+  probe.src = guide.url;
+  await new Promise((resolve, reject) => {
+    probe.onloadedmetadata = resolve;
+    probe.onerror = () => reject(new Error('Could not read that camera-motion video'));
+  });
+  guide.dur = Number(probe.duration) || Number(asset.dur) || 0;
+  guide.w = Number(probe.videoWidth) || Number(asset.w) || 0;
+  guide.h = Number(probe.videoHeight) || Number(asset.h) || 0;
+  if (guide.dur > 0 && guide.dur < 1) throw new Error('Camera-motion clips need at least 1 second of video');
+  guide.trimStart = Math.min(guide.trimStart, Math.max(0, guide.dur - 1));
+  return guide;
+}
+
+function renderCameraMotionCustom() {
+  const guide = cameraMotionGuideDraft;
+  const empty = $('#cameraMotionCustomEmpty');
+  const filled = $('#cameraMotionCustomFilled');
+  if (!empty || !filled) return;
+  empty.hidden = !!guide;
+  filled.hidden = !guide;
+  if (!guide) {
+    $('#cameraMotionCustomVideo').pause();
+    $('#cameraMotionCustomVideo').removeAttribute('src');
+    return;
+  }
+  const video = $('#cameraMotionCustomVideo');
+  if (video.src !== new URL(guide.url, location.href).href) video.src = guide.url;
+  const range = $('#cameraMotionCustomStart');
+  const maxStart = Math.max(0, (Number(guide.dur) || 0) - 1);
+  guide.trimStart = Math.max(0, Math.min(Number(guide.trimStart) || 0, maxStart));
+  range.max = maxStart.toFixed(1);
+  range.value = guide.trimStart.toFixed(1);
+  range.disabled = maxStart <= 0;
+  const preview = cameraMotionPreviewWindow(guide);
+  $('#cameraMotionCustomName').textContent = guide.label || 'Custom motion clip';
+  $('#cameraMotionCustomStartValue').textContent = `${preview.start.toFixed(1)}s`;
+  $('#cameraMotionCustomTiming').textContent = preview.duration > 0
+    ? `Uses ${preview.start.toFixed(1)}–${preview.end.toFixed(1)}s · ${preview.duration.toFixed(1)}s guide`
+    : 'Duration will match the generated clip';
+  if (video.readyState >= 1 && (video.currentTime < preview.start || video.currentTime >= preview.end)) {
+    video.currentTime = preview.start;
+  }
+  if ($('#videoCameraMotionSheet').classList.contains('show')
+    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) video.play().catch(() => {});
+}
+
+function chooseCustomCameraMotion() {
+  pickUpload('video/*', async (asset) => {
+    try {
+      cameraMotionGuideDraft = await prepareCameraMotionGuide(asset);
+      renderCameraMotionPicker();
+      toast('Custom camera-motion clip ready');
+    } catch (error) {
+      toast(error.message, true);
+    }
+  }, 'Choose a camera-motion clip');
+}
+
+$('#cameraMotionCustomChoose').addEventListener('click', chooseCustomCameraMotion);
+$('#cameraMotionCustomChange').addEventListener('click', chooseCustomCameraMotion);
+$('#cameraMotionCustomRemove').addEventListener('click', () => {
+  cameraMotionGuideDraft = null;
+  renderCameraMotionPicker();
+});
+$('#cameraMotionCustomStart').addEventListener('input', (event) => {
+  if (!cameraMotionGuideDraft) return;
+  cameraMotionGuideDraft.trimStart = Math.max(0, Number(event.currentTarget.value) || 0);
+  const video = $('#cameraMotionCustomVideo');
+  if (video.readyState >= 1) video.currentTime = cameraMotionGuideDraft.trimStart;
+  renderCameraMotionCustom();
+});
+$('#cameraMotionCustomVideo').addEventListener('timeupdate', () => {
+  if (!cameraMotionGuideDraft) return;
+  const video = $('#cameraMotionCustomVideo');
+  const preview = cameraMotionPreviewWindow(cameraMotionGuideDraft);
+  if (preview.duration > 0 && video.currentTime >= preview.end - 0.035) {
+    video.currentTime = preview.start;
+    video.play().catch(() => {});
+  }
+});
+$('#cameraMotionCustomVideo').addEventListener('loadedmetadata', renderCameraMotionCustom);
 
 function renderCameraMotionSequence() {
   const sequence = $('#cameraMotionSequence');
@@ -6076,6 +6207,7 @@ function renderCameraMotionPicker() {
   if (!CameraMotion) return;
   cameraMotionDraft = CameraMotion.normalizeCameraMotions(cameraMotionDraft);
   buildCameraMotionCards();
+  renderCameraMotionCustom();
   renderCameraMotionSequence();
   $$('#cameraMotionGrid .camera-motion-card').forEach((card) => {
     const order = cameraMotionDraft.indexOf(card.dataset.motionId);
@@ -6085,14 +6217,17 @@ function renderCameraMotionPicker() {
     const badge = card.querySelector('.camera-motion-card-order');
     if (badge) badge.textContent = selected ? String(order + 1) : '';
   });
-  $('#cameraMotionSelectedCount').textContent = `${cameraMotionDraft.length} / ${CameraMotion.MAX_CAMERA_MOTIONS}`;
-  $('#cameraMotionClear').disabled = cameraMotionDraft.length === 0;
-  $('#cameraMotionModeNote').textContent = cameraMotionModeText();
+  $('#cameraMotionSelectedCount').textContent = cameraMotionGuideDraft
+    ? `${cameraMotionDraft.length} move${cameraMotionDraft.length === 1 ? '' : 's'} + clip`
+    : `${cameraMotionDraft.length} / ${CameraMotion.MAX_CAMERA_MOTIONS}`;
+  $('#cameraMotionClear').disabled = cameraMotionDraft.length === 0 && !cameraMotionGuideDraft;
+  $('#cameraMotionModeNote').textContent = cameraMotionModeText(cameraMotionGuideDraft, cameraMotionDraft);
 }
 
 function openCameraMotionPicker() {
   if (!CameraMotion) return;
   cameraMotionDraft = CameraMotion.normalizeCameraMotions(state.videoCameraMotions);
+  cameraMotionGuideDraft = state.videoCameraGuide ? Object.assign({}, state.videoCameraGuide) : null;
   renderCameraMotionPicker();
   $('#videoCameraMotionSheet').classList.add('show');
   $('#videoCameraMotionBtn').setAttribute('aria-expanded', 'true');
@@ -6113,26 +6248,34 @@ function applyCameraMotionSelection() {
   const applied = CameraMotion.applyCameraMotionPrompt(promptDraft(), state.videoCameraMotionPhrase, selected);
   state.videoCameraMotions = selected;
   state.videoCameraMotionPhrase = applied.phrase;
+  state.videoCameraGuide = cameraMotionGuideDraft ? Object.assign({}, cameraMotionGuideDraft) : null;
   setPromptDraft(applied.prompt);
   state.prompts.video = applied.prompt;
   updatePromptClear();
   renderPromptSuggestions();
-  saveForm();
   $('#videoCameraMotionSheet').classList.remove('show');
   syncCameraMotionTool();
-  toast(selected.length ? `${selected.length} camera movement${selected.length === 1 ? '' : 's'} added` : 'Camera motion cleared');
+  updateVideoTuningSummary();
+  saveForm();
+  toast(state.videoCameraGuide
+    ? 'Custom camera guide applied · output capped at 5s'
+    : (selected.length ? `${selected.length} camera movement${selected.length === 1 ? '' : 's'} added` : 'Camera motion cleared'));
 }
 
 $('#videoCameraMotionBtn').addEventListener('click', openCameraMotionPicker);
 $('#cameraMotionClear').addEventListener('click', () => {
   cameraMotionDraft = [];
+  cameraMotionGuideDraft = null;
   renderCameraMotionPicker();
 });
 $('#cameraMotionApply').addEventListener('click', applyCameraMotionSelection);
 new MutationObserver(() => {
   const open = $('#videoCameraMotionSheet').classList.contains('show');
   $('#videoCameraMotionBtn').setAttribute('aria-expanded', String(open));
-  if (!open) stopCameraMotionPreviews();
+  if (!open) {
+    stopCameraMotionPreviews();
+    $('#cameraMotionCustomVideo').pause();
+  }
 }).observe($('#videoCameraMotionSheet'), { attributes: true, attributeFilter: ['class'] });
 
 /* ------------------------------------------------------------------ */
@@ -7509,6 +7652,7 @@ $('#editModelHeader').addEventListener('click', () => {
 
 function videoDurationMax(engine) {
   if (engine === 'scail') return 60;
+  if (engine === 'ltx' && cameraMotionReferenceSelected()) return cameraMotionGuideLimit();
   if (engine === 'ltx') return 20;
   return 15;
 }
@@ -7525,10 +7669,14 @@ function syncVideoDurationLimit() {
   const durationInput = $('#vidDur');
   const max = clampVideoDurationInput(durationInput, state.vidEngine);
   $('#vidDurScrub').setAttribute('aria-valuemax', String(max));
+  const cameraGuided = state.vidEngine === 'ltx' && cameraMotionReferenceSelected();
   const longLtx = state.vidEngine === 'ltx' && Number(durationInput.value) > 15;
-  $('#vidDurationHint').textContent = longLtx ? 'Long clip · slower, higher memory' : 'Video length';
-  $('#durationPickerCopy').textContent = state.vidEngine === 'ltx'
-    ? 'Seconds · up to 20 with LTX 2.3' : 'Seconds';
+  $('#vidDurationHint').textContent = cameraGuided
+    ? `Camera guide · up to ${max}s`
+    : (longLtx ? 'Long clip · slower, higher memory' : 'Video length');
+  $('#durationPickerCopy').textContent = cameraGuided
+    ? `Seconds · camera reference capped at ${max}`
+    : (state.vidEngine === 'ltx' ? 'Seconds · up to 20 with LTX 2.3' : 'Seconds');
 }
 
 function syncAnimateDurationLimit() {
@@ -8571,7 +8719,7 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
     saveForm();
     toast(automatic ? 'Motion prompt added automatically' : 'Motion prompt created from the start frame');
   } catch (e) {
-    toast(e.message, true);
+    if (!isJobCancellation(e)) toast(e.message, true);
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-loading');
@@ -8605,7 +8753,10 @@ function pickVidRef() {
     saveForm();
   }, 'Choose first frame');
 }
-$('#vidDur').addEventListener('input', updateVideoTuningSummary);
+$('#vidDur').addEventListener('input', () => {
+  updateVideoTuningSummary();
+  if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
+});
 $('#vid4k').addEventListener('click', () => $('#vid4k').classList.toggle('active'));
 
 /* SCAIL 2 driving-video attachment (+ trim + first-frame extract) */
@@ -8870,14 +9021,27 @@ async function extractDriveFirstFrame() {
 }
 
 async function useDriveFirstFrame(destination) {
+  const sourceDrive = state.vidDrive;
+  const sourceTrimStart = Number(sourceDrive?.trimStart) || 0;
+  const transferToken = ++state.desktopReuseToken;
   try {
     const frame = await extractDriveFirstFrame();
+    const sourceChanged = state.vidDrive !== sourceDrive
+      || Math.abs((Number(state.vidDrive?.trimStart) || 0) - sourceTrimStart) >= 0.001;
+    if (state.desktopReuseToken !== transferToken || sourceChanged) {
+      toast('First-frame transfer stopped because the source changed');
+      return;
+    }
     if (destination === 'edit') {
-      const slot = state.refs.findIndex((ref) => !ref);
-      state.refs[slot === -1 ? 0 : slot] = Object.assign({}, frame);
-      renderRefs();
+      checkpointDesktopInputSetup();
+      clearKreaMask(true);
+      state.refs[0] = Object.assign({}, frame);
+      state.editRefSlots = Math.max(1, Number(state.editRefSlots) || 1);
       setView('edit');
-      toast('First frame added to Edit');
+      renderRefs();
+      saveForm();
+      appendDesktopInputSetup();
+      toast('First frame set as the Edit source');
       return;
     }
     await setCreateImageGuideAsset(frame, destination === 'depth' ? 'depth' : 'image');
@@ -8891,7 +9055,7 @@ async function useDriveFirstFrame(destination) {
 
 $('#vidDriveFrameChip').addEventListener('click', () => {
   openActionMenu($('#vidDriveFrameChip'), [
-    { label: 'Edit image', detail: 'Add as an Edit reference', icon: 'edit', tone: 'edit', action: () => useDriveFirstFrame('edit') },
+    { label: 'Edit first frame', detail: 'Use as the Edit source', icon: 'edit', tone: 'edit', action: () => useDriveFirstFrame('edit') },
     { label: 'Image guide', detail: 'Start an image-to-image generation', icon: 'first-frame', tone: 'reuse', action: () => useDriveFirstFrame('image') },
     { label: 'Depth guide', detail: 'Preserve camera and scene structure', icon: 'depth', tone: 'reuse', action: () => useDriveFirstFrame('depth') },
   ], { menuTitle: 'Use first frame', tone: 'image' });
@@ -9266,6 +9430,11 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.videoLoras,
       cameraMotions: CameraMotion ? CameraMotion.normalizeCameraMotions(state.videoCameraMotions) : [],
+      cameraGuideVideoName: cameraMotionReferenceActive() && state.videoCameraGuide ? state.videoCameraGuide.name : undefined,
+      cameraGuideStartSeconds: cameraMotionReferenceActive() && state.videoCameraGuide
+        ? Math.max(0, Number(state.videoCameraGuide.trimStart) || 0) : undefined,
+      cameraGuideSourceDuration: cameraMotionReferenceActive() && state.videoCameraGuide
+        ? Math.max(0, Number(state.videoCameraGuide.dur) || 0) : undefined,
       audioName: vidAudioName,
       faceImageName: state.vidEngine === 'ltx' && state.vidFace && !state.vidRef ? state.vidFace.name : undefined,
       driveVideoName: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.name : undefined,
@@ -9305,7 +9474,7 @@ $('#generateBtn').addEventListener('click', async () => {
       if (results.length > 1) toast(`${results.length} videos queued`);
     } catch (e) {
       setGenerating(false);
-      toast(e.message, true);
+      if (!isJobCancellation(e)) toast(e.message, true);
     }
     return;
   }
@@ -9427,7 +9596,7 @@ $('#generateBtn').addEventListener('click', async () => {
     if (jobIds.length > 1) toast(`${jobIds.length} camera variations queued`);
   } catch (e) {
     setGenerating(false);
-    toast(e.message, true);
+    if (!isJobCancellation(e)) toast(e.message, true);
   }
 });
 
@@ -9836,7 +10005,7 @@ function renderQueue(q) {
     const x = document.createElement('button');
     x.className = 'q-cancel';
     x.textContent = '✕';
-    x.hidden = !!j.finalizing;
+    x.hidden = !!j.finalizing || j.owned !== true;
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!await askConfirm({
@@ -10130,6 +10299,7 @@ function connectEvents() {
   });
   es.addEventListener('jobError', (ev) => {
     const d = JSON.parse(ev.data);
+    if (d.profileId && (!state.profile || d.profileId !== state.profile.id)) return;
     progressEta.clear(d.jobId);
     delete state.queueProgress[d.jobId];
     state.activeJobSequences.delete(d.jobId);
@@ -10142,6 +10312,25 @@ function connectEvents() {
     renderGrid();
     if (d.items && d.items.length) refreshGallery(true);
     showErrorDetail(d.message, d.kind === 'upscale' || d.operation === 'upscale' ? 'Upscale error' : 'Generation error');
+    queueRefreshSoon();
+  });
+  es.addEventListener('jobCancelled', (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.profileId && (!state.profile || d.profileId !== state.profile.id)) return;
+    progressEta.clear(d.jobId);
+    delete state.queueProgress[d.jobId];
+    state.activeJobSequences.delete(d.jobId);
+    state.compositeJobs.delete(d.jobId);
+    if (d.itemId) {
+      state.upscaling.delete(d.itemId);
+      state.animating.delete(d.itemId);
+    }
+    if (state.activeJobs.has(d.jobId)) {
+      state.activeJobs.delete(d.jobId);
+      setGenerating(false);
+      if (!state.activeJobs.size) stopLivePreviewSimulation();
+    }
+    renderGrid();
     queueRefreshSoon();
   });
   es.addEventListener('queueReset', () => {
@@ -10752,7 +10941,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
   'vidScailMode', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
-  'videoCameraMotions', 'videoCameraMotionPhrase',
+  'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
 ];
 const desktopInputHistory = { entries: [], index: -1, restoring: false };
@@ -10905,6 +11094,7 @@ function resetActiveGenerationForm() {
     state.videoLoras = [];
     state.videoCameraMotions = [];
     state.videoCameraMotionPhrase = '';
+    state.videoCameraGuide = null;
     state.vidEngine = enabledVideoEngines()[0] || state.videoEngineDefault || 'ltx';
     $('#vidDriveVideo').removeAttribute('src');
     $('#vidDriveTrimChip').classList.remove('active');
@@ -13904,7 +14094,7 @@ $('#animAuto').addEventListener('click', async () => {
       body: JSON.stringify({ id: it.id }),
     });
     $('#animPrompt').value = r.prompt;
-  } catch (e) { toast(e.message, true); }
+  } catch (e) { if (!isJobCancellation(e)) toast(e.message, true); }
   btn.disabled = false;
   btn.innerHTML = `${actionIconMarkup('eye')}<span>Auto from image</span>`;
 });
@@ -13948,7 +14138,7 @@ $('#animateGo').addEventListener('click', async () => {
   } catch (e) {
     state.animating.delete(it.id);
     renderGrid();
-    toast(e.message, true);
+    if (!isJobCancellation(e)) toast(e.message, true);
   } finally {
     state.pendingGalleryRequests.delete(requestKey);
   }
@@ -14422,6 +14612,7 @@ async function reuseVideo(it, v) {
   state.vidEnd = null;
   state.vidDrive = null;
   state.vidFace = null;
+  state.videoCameraGuide = null;
   if (state.vidAudio) stopPreview();
   state.vidAudio = null;
   setAudioChipVisual($('#vidAudioChip'), false);
@@ -14552,6 +14743,38 @@ async function reuseVideo(it, v) {
     } catch { missing.push('face reference'); }
   }
 
+  // Custom Cameraman reference clip + its selected start point.
+  if (engine === 'ltx' && info.cameraGuideVideoName) {
+    try {
+      const blob = await inputBlob(info.cameraGuideVideoName);
+      if (!reuseRequestCurrent(options)) return;
+      const urlObj = URL.createObjectURL(blob);
+      const guide = {
+        name: info.cameraGuideVideoName,
+        url: urlObj,
+        label: 'reused camera-motion clip',
+        trimStart: Math.max(0, Number(info.cameraGuideStartSeconds) || 0),
+      };
+      state.videoCameraGuide = guide;
+      const probe = document.createElement('video');
+      probe.preload = 'metadata';
+      probe.src = urlObj;
+      probe.onloadedmetadata = () => {
+        if (!reuseRequestCurrent(options)) {
+          URL.revokeObjectURL(urlObj);
+          return;
+        }
+        guide.dur = Number(probe.duration) || 0;
+        guide.w = Number(probe.videoWidth) || 0;
+        guide.h = Number(probe.videoHeight) || 0;
+        guide.trimStart = Math.min(guide.trimStart, Math.max(0, guide.dur - 1));
+        updateVideoTuningSummary();
+        syncCameraMotionTool();
+        saveForm();
+      };
+    } catch { missing.push('camera-motion clip'); }
+  }
+
   // Motion video (SCAIL) + its trim window
   if (engine === 'scail' && info.driveVideoName) {
     try {
@@ -14583,6 +14806,7 @@ async function reuseVideo(it, v) {
   renderVidAttach();
   updateVideoPanels();
   syncCameraMotionTool();
+  updateVideoTuningSummary();
   saveForm();
   if (!options.silent) {
     toast(missing.length
@@ -16944,7 +17168,7 @@ function generationSetupComponents() {
     components.add(byEngine[state.vidEngine] || 'video');
     if (state.vidEngine === 'ltx-edit') components.add('video');
     if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
-    if (cameraMotionReferenceActive() && state.videoCameraMotions.length) components.add('ltxcamera');
+    if (cameraMotionReferenceSelected()) components.add('ltxcamera');
     if (state.vidEngine === 'scail' && state.vidScailMode === 'infinity') components.add('scailinfinity');
     if ($('#vid4k').classList.contains('active')) components.add('video4k');
     return [...components];
@@ -17149,17 +17373,26 @@ function renderInitialSetup() {
   $('#setupDetectedPath').textContent = comfy.connected
     ? 'ComfyUI is connected on this computer.'
     : (comfy.detectedPath ? 'ComfyUI was found on this computer.' : (comfy.configuredPath ? 'A saved ComfyUI connection is available.' : 'ComfyUI has not been connected yet.'));
+  const nodeSetupActive = ['running', 'cancelling', 'restarting', 'error'].includes(dependency.state);
+  const connectionChoicesHidden = !!comfy.connected || nodeSetupActive;
+  $('#setupConnectionChoices').hidden = connectionChoicesHidden;
+  $('#setupConnectHeading').textContent = comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI');
+  $('#setupConnectCopy').textContent = comfy.connected
+    ? 'Connection details are available below if a path changes.'
+    : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Choose the easiest option for the generation computer.');
   $('#setupUseDetected').disabled = busy || !comfy.detectedPath || !state.profileIsOwner;
   $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial || !state.profileIsOwner;
   $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Downloads the signed official ComfyUI Desktop installer' : 'Available when Mix Studio is running on Windows';
   $('#setupSaveConnection').disabled = busy || !state.profileIsOwner;
   const canBrowse = setupViewStatus.platform === 'win32' && state.profileIsOwner && !busy;
   $('#setupBrowseComfy').disabled = !canBrowse;
+  $('#setupBrowseComfyDetails').disabled = !canBrowse;
   $('#setupBrowseModels').disabled = !canBrowse;
   const browseTitle = setupViewStatus.platform === 'win32'
     ? 'Opens a folder picker on the generation computer'
     : 'Browse opens on the Windows generation computer. Enter the path manually here.';
   $('#setupBrowseComfy').title = browseTitle;
+  $('#setupBrowseComfyDetails').title = browseTitle;
   $('#setupBrowseModels').title = browseTitle;
 
   const missing = dependencyMissingLabels();
@@ -17392,11 +17625,12 @@ $('#setupUseDetected').addEventListener('click', async () => {
     await saveSetupConnection(detected);
   } catch (error) { toast(error.message, true); }
 });
-async function browseSetupDirectory(kind) {
-  const button = kind === 'models' ? $('#setupBrowseModels') : $('#setupBrowseComfy');
-  const previous = button.textContent;
+async function browseSetupDirectory(kind, trigger) {
+  const button = trigger || (kind === 'models' ? $('#setupBrowseModels') : $('#setupBrowseComfy'));
+  const previousLabel = button.getAttribute('aria-label');
   button.disabled = true;
-  if (kind === 'models') button.textContent = 'Opening…';
+  button.classList.add('working');
+  if (previousLabel) button.setAttribute('aria-label', 'Opening folder picker');
   try {
     const result = await api('/api/setup/browse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }),
@@ -17413,11 +17647,13 @@ async function browseSetupDirectory(kind) {
   } catch (error) {
     toast(error.message, true);
   } finally {
-    if (kind === 'models') button.textContent = previous;
+    button.classList.remove('working');
+    if (previousLabel) button.setAttribute('aria-label', previousLabel);
     renderInitialSetup();
   }
 }
 $('#setupBrowseComfy').addEventListener('click', () => browseSetupDirectory('comfy'));
+$('#setupBrowseComfyDetails').addEventListener('click', (event) => browseSetupDirectory('comfy', event.currentTarget));
 $('#setupBrowseModels').addEventListener('click', () => browseSetupDirectory('models'));
 $('#setupInstallComfy').addEventListener('click', async () => {
   try {
@@ -17493,7 +17729,52 @@ $('#dependencyOpenSetup').addEventListener('click', () => {
   openInitialSetup();
 });
 
+function renderGenerationSetupEntry() {
+  const entry = $('#dependencyOpenSetup');
+  if (!entry) return;
+  const copy = $('#generationSetupSettingsCopy');
+  const status = $('#generationSetupSettingsStatus');
+  const dependency = lastMeta?.dependencies || {};
+  const install = dependency.install || {};
+  const missing = dependencyMissingLabels();
+  const busy = ['running', 'cancelling', 'restarting'].includes(install.state);
+  let stateName = 'checking';
+  let statusText = 'Checking';
+  let copyText = 'Connection, models, and workflow requirements.';
+  if (busy) {
+    stateName = 'working';
+    statusText = install.state === 'restarting' ? 'Restarting' : 'Installing';
+    copyText = install.message || 'Preparing the generation computer.';
+  } else if (!lastMeta) {
+    copyText = 'Check the generation computer and enabled workflows.';
+  } else if (!lastMeta.ok) {
+    stateName = 'attention';
+    statusText = 'Connect';
+    copyText = 'ComfyUI needs a connection before generation can run.';
+  } else if (install.restartRequired) {
+    stateName = 'attention';
+    statusText = 'Restart';
+    copyText = 'Installed components are waiting for a ComfyUI restart.';
+  } else if (install.state === 'error') {
+    stateName = 'attention';
+    statusText = 'Review';
+    copyText = 'The last setup operation needs attention.';
+  } else if (missing.length) {
+    stateName = 'attention';
+    statusText = `${missing.length} missing`;
+    copyText = 'Add only the models and nodes needed for your workflows.';
+  } else {
+    stateName = 'ready';
+    statusText = 'Ready';
+    copyText = 'ComfyUI and all enabled workflow requirements are ready.';
+  }
+  entry.dataset.state = stateName;
+  status.textContent = statusText;
+  copy.textContent = copyText;
+}
+
 function renderDependencyManager() {
+  renderGenerationSetupEntry();
   const card = $('#dependencyManagerCard');
   if (!card) return;
   const dependency = (lastMeta && lastMeta.dependencies) || {};
@@ -17781,6 +18062,7 @@ $('#dependencyCheckAll').addEventListener('click', async () => {
 });
 
 function renderHealth() {
+  renderGenerationSetupEntry();
   const el = $('#healthList');
   if (!lastMeta) { el.innerHTML = ''; return; }
   if (!lastMeta.ok) {

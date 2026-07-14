@@ -1156,7 +1156,27 @@
       <span class="camera-motion-selected-count" id="cameraMotionSelectedCount">0 / 3</span>
       <button class="camera-motion-close" data-close type="button" aria-label="Close camera motion">✕</button>
     </header>
-    <p class="camera-motion-intro" id="cameraMotionIntro">Choose up to three moves in the order they should happen. Each preview also becomes the motion reference used during LTX generation.</p>
+    <p class="camera-motion-intro" id="cameraMotionIntro">Choose up to three moves for the prompt, or use your own motion clip. Camera-guided LTX clips stay within five seconds so the reference and result remain synchronized.</p>
+    <section class="camera-motion-custom" aria-labelledby="cameraMotionCustomTitle">
+      <div class="camera-motion-custom-empty" id="cameraMotionCustomEmpty">
+        <span class="camera-motion-custom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5h11.5v11H4zM15.5 10l4.5-2.5v9L15.5 14z"/><path d="M8 4v5M5.5 6.5 8 4l2.5 2.5"/></svg></span>
+        <span><b id="cameraMotionCustomTitle">Custom motion clip</b><small>Upload a driving video and choose where its 1–5 second guide begins.</small></span>
+        <button id="cameraMotionCustomChoose" type="button">Choose video</button>
+      </div>
+      <div class="camera-motion-custom-filled" id="cameraMotionCustomFilled" hidden>
+        <video id="cameraMotionCustomVideo" muted loop playsinline preload="metadata" aria-label="Custom camera motion preview"></video>
+        <div class="camera-motion-custom-copy">
+          <b id="cameraMotionCustomName">Custom motion</b>
+          <small id="cameraMotionCustomTiming">First 5 seconds</small>
+          <label for="cameraMotionCustomStart"><span>Start point</span><output id="cameraMotionCustomStartValue">0.0s</output></label>
+          <input id="cameraMotionCustomStart" type="range" min="0" max="0" step="0.1" value="0" aria-label="Camera motion clip start point" />
+        </div>
+        <div class="camera-motion-custom-actions">
+          <button id="cameraMotionCustomChange" type="button">Change</button>
+          <button id="cameraMotionCustomRemove" type="button" aria-label="Remove custom camera motion clip">✕</button>
+        </div>
+      </div>
+    </section>
     <div class="camera-motion-sequence" id="cameraMotionSequence" aria-live="polite"></div>
     <div class="camera-motion-grid" id="cameraMotionGrid"></div>
     <p class="camera-motion-note"><span id="cameraMotionModeNote">LTX 2.3 · reference guided with the Cameraman v2 research adapter.</span><a href="https://huggingface.co/Cseti/LTX2.3-22B_IC-LoRA-Cameraman_v2" target="_blank" rel="noreferrer">Model terms</a></p>
@@ -1683,9 +1703,9 @@
       </div>
 
       <section class="setup-pane active" id="setupPaneConnect" role="tabpanel" aria-labelledby="setupTabConnect" data-setup-pane="connect">
-        <header class="setup-pane-head"><span>Connection</span><h3>Connect ComfyUI</h3><p>Choose the easiest option for the generation computer.</p></header>
+        <header class="setup-pane-head"><span>Connection</span><h3 id="setupConnectHeading">Connect ComfyUI</h3><p id="setupConnectCopy">Choose the easiest option for the generation computer.</p></header>
         <p class="setup-detected" id="setupDetectedPath">Looking for ComfyUI…</p>
-        <div class="setup-choice-list">
+        <div class="setup-choice-list" id="setupConnectionChoices">
           <button class="setup-choice setup-choice-blue" id="setupUseDetected" type="button">
             <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/></svg></span>
             <span><strong>Use detected</strong><small>Connect to the ComfyUI already found.</small></span><i aria-hidden="true">›</i>
@@ -1702,11 +1722,10 @@
         <button class="setup-disclosure" id="setupGuideToggle" type="button" aria-expanded="false" aria-controls="setupFullGuide"><span>Connection details</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg></button>
         <div class="setup-full-guide" id="setupFullGuide" hidden>
           <div class="setup-connection-fields">
-            <label><span>ComfyUI URL</span><input id="setupComfyUrl" type="text" value="http://127.0.0.1:8188" autocomplete="off" spellcheck="false" /></label>
-            <label><span>ComfyUI folder</span><input id="setupComfyPath" type="text" placeholder="C:\ComfyUI" autocomplete="off" spellcheck="false" /></label>
-            <label><span>Models folder</span><span class="setup-input-row"><input id="setupModelsPath" type="text" placeholder="C:\ComfyUI\models" autocomplete="off" spellcheck="false" /><button id="setupBrowseModels" type="button">Browse</button></span></label>
+            <label><span>ComfyUI URL</span><span class="setup-input-row"><input id="setupComfyUrl" type="text" value="http://127.0.0.1:8188" autocomplete="off" spellcheck="false" /><button class="setup-save-connection setup-icon-action" id="setupSaveConnection" type="button" aria-label="Save connection" title="Save connection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h11l3 3V20H5V3.5Z"/><path d="M8 3.5v6h8v-6M8 20v-7h8v7"/></svg></button></span></label>
+            <label><span>ComfyUI folder</span><span class="setup-input-row"><input id="setupComfyPath" type="text" placeholder="C:\ComfyUI" autocomplete="off" spellcheck="false" /><button class="setup-icon-action" id="setupBrowseComfyDetails" type="button" aria-label="Browse for ComfyUI folder" title="Browse for ComfyUI folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></button></span></label>
+            <label><span>Models folder</span><span class="setup-input-row"><input id="setupModelsPath" type="text" placeholder="C:\ComfyUI\models" autocomplete="off" spellcheck="false" /><button class="setup-icon-action" id="setupBrowseModels" type="button" aria-label="Browse for models folder" title="Browse for models folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></button></span></label>
           </div>
-          <button class="setup-save-connection" id="setupSaveConnection" type="button">Save connection</button>
         </div>
       </section>
 
@@ -1787,6 +1806,12 @@
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>
             </button>
           </div>
+          <button class="generation-setup-entry" id="dependencyOpenSetup" type="button" data-state="checking" aria-describedby="generationSetupSettingsCopy">
+            <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
+            <span class="generation-setup-entry-copy"><strong>Generation setup</strong><small id="generationSetupSettingsCopy">Connection, models, and workflow requirements.</small></span>
+            <span class="generation-setup-entry-status" id="generationSetupSettingsStatus">Checking</span>
+            <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
           <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
           <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
           <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
@@ -1818,7 +1843,6 @@
             </div>
             <div class="dependency-missing-list" id="dependencyMissingList"></div>
             <div class="dependency-card-actions dependency-manager-actions">
-              <button class="dependency-check" id="dependencyOpenSetup" type="button">Open setup guide</button>
               <button class="dependency-install" id="dependencyInstallMissing" type="button">Install missing</button>
               <button class="dependency-cancel" id="dependencyCancelInstall" type="button" hidden>Cancel download</button>
               <button class="dependency-check" id="dependencyRepairMissing" type="button">Repair missing tools</button>

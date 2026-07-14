@@ -54,10 +54,17 @@ test('video UI exposes an ordered, animated camera motion picker', () => {
   assert.match(html, /id="videoCameraMotionSheet"/);
   assert.match(html, /id="cameraMotionSequence"/);
   assert.match(html, /id="cameraMotionGrid"/);
+  assert.match(html, /id="cameraMotionCustomChoose"/);
+  assert.match(html, /id="cameraMotionCustomStart"/);
+  assert.match(html, /id="cameraMotionCustomVideo"/);
   assert.match(html, /id="cameraMotionApply"[^>]*>Apply to prompt/);
   assert.ok(html.indexOf('/camera-motion.js') < html.indexOf('/app.js'));
   assert.match(app, /cameraMotions: CameraMotion \? CameraMotion\.normalizeCameraMotions/);
   assert.match(app, /components\.add\('ltxcamera'\)/);
+  assert.match(app, /cameraGuideVideoName: cameraMotionReferenceActive\(\) && state\.videoCameraGuide/);
+  assert.match(app, /cameraGuideStartSeconds: cameraMotionReferenceActive\(\) && state\.videoCameraGuide/);
+  assert.match(app, /cameraGuideSourceDuration: cameraMotionReferenceActive\(\) && state\.videoCameraGuide/);
+  assert.match(app, /cameraMotionGuideLimit\(\)/);
   assert.match(app, /camera-motion-grid-heading/);
   assert.match(css, /\.camera-motion-card-media[\s\S]*aspect-ratio: 16 \/ 9/);
   assert.match(css, /\.camera-motion-grid-heading/);
@@ -71,6 +78,9 @@ test('standard LTX jobs can load Cameraman v2 and sequence video guides', () => 
   assert.match(server, /format: 'None'/);
   assert.match(server, /'LTXVImgToVideoConditionOnly'/);
   assert.match(server, /uploadCameraMotionGuides\(cameraMotions\)/);
+  assert.match(server, /cameraGuideVideoName \? \[cameraGuideVideoName\] : await uploadCameraMotionGuides\(cameraMotions\)/);
+  assert.match(server, /fps = cameraReferenceGuided \? LTX_CAMERA_FPS : 25/);
+  assert.match(server, /cameraMotionGuideSkipFrames/);
   assert.match(server, /cameraReferenceGuided: cameraMotionGuideNames\.length > 0/);
   assert.match(server, /cameraMotionDims\(srcW, srcH\)/);
 });

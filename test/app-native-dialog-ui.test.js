@@ -27,8 +27,9 @@ test('long generation errors use a contained, copyable dialog', () => {
   assert.match(app, /function showErrorDetail\(message, title = 'Generation error'\)/);
   assert.match(app, /copyTextToClipboard\(errorDetailText\)/);
   assert.match(app, /showErrorDetail\(d\.message, d\.kind === 'upscale' \|\| d\.operation === 'upscale' \? 'Upscale error' : 'Generation error'\)/);
-  assert.match(css, /\.error-detail-panel \{[\s\S]*max-height: min\(78dvh, 720px\);[\s\S]*overflow: hidden;/);
+  assert.match(css, /\.sheet-panel\.error-detail-panel\s*\{[^}]*max-height: min\(78dvh, 720px\);[^}]*overflow: hidden;[^}]*background: #000;/);
   assert.match(css, /\.error-detail-message \{[\s\S]*overflow: auto;[\s\S]*white-space: pre-wrap;[\s\S]*overflow-wrap: anywhere;/);
+  assert.match(css, /#errorDetailSheet \.error-detail-actions \.sheet-cta\s*\{[^}]*linear-gradient\(#000, #000\)/);
 });
 
 test('LoRA presets can choose and retain a stack thumbnail', () => {

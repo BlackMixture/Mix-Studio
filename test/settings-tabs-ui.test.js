@@ -50,6 +50,17 @@ test('settings tabs switch panes, support keyboard navigation, and keep content 
   assert.match(css, /\.settings-panel \{[\s\S]*overflow: hidden[\s\S]*display: flex/);
 });
 
+test('advanced settings exposes generation setup as a dedicated status entry', () => {
+  const generalPane = html.match(/id="settingsPaneGeneral"([\s\S]*?)<section class="settings-pane" id="settingsPaneImage"/)?.[1] || '';
+  assert.match(generalPane, /class="generation-setup-entry"[^>]+id="dependencyOpenSetup"/);
+  assert.match(generalPane, /id="generationSetupSettingsCopy"/);
+  assert.match(generalPane, /id="generationSetupSettingsStatus"/);
+  assert.doesNotMatch(html.match(/id="dependencyManagerCard"([\s\S]*?)<\/section>/)?.[1] || '', /id="dependencyOpenSetup"/);
+  assert.match(app, /function renderGenerationSetupEntry\(\)/);
+  assert.match(app, /openInitialSetup\(\)/);
+  assert.match(css, /\.generation-setup-entry \{[\s\S]*grid-template-columns: 40px minmax\(0, 1fr\) auto 18px/);
+});
+
 test('each active settings tab uses a unique full-tile color without a side stripe', () => {
   assert.match(css, /button\[data-settings-tab="general"\] \{ --settings-tab-rgb: 66, 133, 244; \}/);
   assert.match(css, /button\[data-settings-tab="image"\] \{ --settings-tab-rgb: 52, 168, 83; \}/);

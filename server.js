@@ -101,6 +101,9 @@ const {
 } = require('./lib/edit-mask');
 const {
   LTX_MAX_SECONDS,
+  LTX_CAMERA_FPS,
+  LTX_CAMERA_MAX_SECONDS,
+  ltxCameraDurationSeconds,
   ltxDurationSeconds,
   ltxFramesForSeconds,
   scailMode,
@@ -1266,7 +1269,9 @@ function handleWsMessage(msg) {
   } else if (msg.type === 'execution_error' && pid && jobs.has(pid)) {
     failJob(pid, (d.exception_message || 'execution error') + (d.node_type ? ` (${d.node_type})` : ''));
   } else if (msg.type === 'execution_interrupted' && pid && jobs.has(pid)) {
-    failJob(pid, 'Interrupted');
+    const job = jobs.get(pid);
+    if (job.cancelRequested) cancelJob(pid, job.cancelMessage || 'Cancelled');
+    else failJob(pid, 'Interrupted');
   }
 }
 
@@ -1288,6 +1293,38 @@ function handleWsBinary(buf) {
 
 /* --------------------------- Job lifecycle ------------------------ */
 
+function clearPendingJobState(job) {
+  if (!job || job.kind !== 'upscale' || !job.itemId) return;
+  const item = db.items.find((entry) => entry.id === job.itemId);
+  if (item && item.upscalePending) {
+    item.upscalePending = false;
+    saveDb();
+  }
+}
+
+function cancelJob(pid, message = 'Cancelled') {
+  const job = jobs.get(pid);
+  if (!job) return false;
+  const durationMs = jobDurationMs(job);
+  jobs.delete(pid);
+  clearPendingJobState(job);
+  broadcast('jobCancelled', {
+    jobId: pid,
+    kind: job.kind,
+    operation: job.videoInfo ? job.videoInfo.processed : undefined,
+    profileId: job.profileId,
+    itemId: job.itemId || null,
+    message,
+    durationMs,
+  });
+  if (job.kind === 'enhance' || job.kind === 'motionPrompt' || job.kind === 'smartMask') {
+    const error = new Error(message);
+    error.code = 'job_cancelled';
+    job.reject(error);
+  }
+  return true;
+}
+
 function failJob(pid, message) {
   const job = jobs.get(pid);
   const durationMs = job ? jobDurationMs(job) : undefined;
@@ -1296,18 +1333,13 @@ function failJob(pid, message) {
     job.reject(new Error(message));
     return;
   }
-  if (job && job.kind === 'upscale' && job.itemId) {
-    const item = db.items.find((entry) => entry.id === job.itemId);
-    if (item && item.upscalePending) {
-      item.upscalePending = false;
-      saveDb();
-    }
-  }
+  clearPendingJobState(job);
   pushHistory({ kind: 'error', profileId: job ? job.profileId : undefined, itemId: job ? (job.itemId || null) : null, label: `${jobLabel(job)} — ${String(message).slice(0, 80)}` });
   broadcast('jobError', {
     jobId: pid,
     kind: job ? job.kind : 'gen',
     operation: job && job.videoInfo ? job.videoInfo.processed : undefined,
+    profileId: job ? job.profileId : undefined,
     itemId: job ? job.itemId : null,
     message,
     durationMs,
@@ -1654,7 +1686,7 @@ async function completeJob(pid) {
       jobs.delete(pid);
       const message = `Sequential edit stopped after step ${editSequence.index + 1}: ${error.message}`;
       pushHistory({ kind: 'error', profileId: job.profileId, itemId: created[0] && created[0].id, label: message.slice(0, 120) });
-      broadcast('jobError', { jobId: pid, kind: 'gen', itemId: created[0] && created[0].id, items: created, message, durationMs });
+      broadcast('jobError', { jobId: pid, kind: 'gen', profileId: job.profileId, itemId: created[0] && created[0].id, items: created, message, durationMs });
     }
   } else {
     jobs.delete(pid);
@@ -1744,7 +1776,7 @@ function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '') {
 }
 
 /** Vision pass: Qwen3-VL writes a detailed prompt to recreate the image. */
-function suggestImagePrompt(comfyImageName, seed) {
+function suggestImagePrompt(comfyImageName, seed, profileId) {
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
@@ -1766,6 +1798,7 @@ function suggestImagePrompt(comfyImageName, seed) {
       }, 180000);
       trackJob(pid, {
         kind: 'enhance',
+        profileId,
         graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
         reject: (e) => { clearTimeout(timer); reject(e); },
@@ -1834,7 +1867,7 @@ function enhanceRegionPrompt(description, globalPrompt, seed, options = {}) {
 }
 
 /** Wan 2.2 enhance: Qwen3-VL sees the image + user's idea, writes the video prompt. */
-function wanEnhance(comfyImageName, userPrompt, seed) {
+function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
   const instruction = `Look at the provided image. Rewrite the user's motion idea into one vivid video-generation prompt paragraph (under 90 words) for an image-to-video model: describe subject actions, secondary motion, camera behavior and atmosphere, staying faithful to what is actually in the image and to the user's intent. Use present-progressive verbs.\n\nUser's motion idea: ${userPrompt}`;
   return new Promise((resolve, reject) => {
     (async () => {
@@ -1853,12 +1886,12 @@ function wanEnhance(comfyImageName, userPrompt, seed) {
       const pid = await queuePrompt(graph);
       const timer = setTimeout(() => { jobs.delete(pid); reject(new Error('Wan prompt enhance timed out')); }, 180000);
       trackJob(pid, {
-        kind: 'enhance', graph,
+        kind: 'enhance', profileId, graph,
         resolve: (t) => { clearTimeout(timer); resolve(t); },
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
       ensureWs();
-      broadcast('status', { jobId: 'pre', text: 'Enhancing motion prompt...' });
+      broadcast('status', { jobId: 'pre', profileId, text: 'Enhancing motion prompt...' });
     })().catch(reject);
   });
 }
@@ -2832,7 +2865,7 @@ async function buildAnimate(imageName, opts) {
         custom_width: W / 2,
         custom_height: H / 2,
         frame_load_cap: segmentFrames,
-        skip_first_frames: 0,
+        skip_first_frames: index === 0 ? (opts.cameraMotionGuideSkipFrames || 0) : 0,
         select_every_nth: 1,
         format: 'None',
       });
@@ -4949,12 +4982,21 @@ async function handleApi(req, res, url) {
     }
     const faceImageName = engine === 'ltx' && body.faceImageName ? String(body.faceImageName) : null;
     const driveVideoName = (engine === 'scail' || isLtxEdit) && body.driveVideoName ? String(body.driveVideoName) : null;
+    const cameraGuideVideoName = engine === 'ltx' && body.cameraGuideVideoName
+      ? String(body.cameraGuideVideoName)
+      : null;
     const cameraReferenceGuided = engine === 'ltx'
-      && cameraMotions.length > 0
+      && (cameraMotions.length > 0 || !!cameraGuideVideoName)
       && !faceImageName
       && !body.endImageName;
     const driveStart = clampNum(body.driveStartSeconds, 0, 3600, 0);
     const driveDur = clampNum(body.driveDurSeconds, 0, 3600, 0);
+    const cameraGuideStart = clampNum(body.cameraGuideStartSeconds, 0, 3600, 0);
+    const cameraGuideSourceDuration = clampNum(body.cameraGuideSourceDuration, 0, 3600, 0);
+    if (cameraReferenceGuided && cameraGuideVideoName && cameraGuideSourceDuration > 0
+      && cameraGuideSourceDuration - cameraGuideStart < 1) {
+      return json(res, 400, { error: 'Choose a camera-motion segment with at least 1 second remaining.' });
+    }
     const selectedScailMode = scailMode(body.scailMode);
     const selectedScailChunkOptions = normalizeScailChunkOptions({
       mode: selectedScailMode,
@@ -4982,7 +5024,9 @@ async function handleApi(req, res, url) {
       : isLtxEdit && driveDur > 0
         ? Math.max(1, Math.min(15, driveDur, seconds))
         : engine === 'ltx'
-          ? ltxDurationSeconds(seconds)
+          ? cameraReferenceGuided
+            ? ltxCameraDurationSeconds(seconds, cameraGuideVideoName ? cameraGuideSourceDuration : 0, cameraGuideStart)
+            : ltxDurationSeconds(seconds)
           : Math.max(1, Math.min(15, seconds));
     let frames; let fps; let W; let H;
     if (engine === 'scail') {
@@ -5005,8 +5049,12 @@ async function handleApi(req, res, url) {
       frames = ltxFramesForSeconds(seconds, fps);
       ({ W, H } = faceIdDims(srcW, srcH));
     } else {
-      fps = 25;
-      frames = ltxFramesForSeconds(seconds, fps, isLtxEdit ? 15 : LTX_MAX_SECONDS);
+      fps = cameraReferenceGuided ? LTX_CAMERA_FPS : 25;
+      frames = ltxFramesForSeconds(
+        seconds,
+        fps,
+        cameraReferenceGuided ? LTX_CAMERA_MAX_SECONDS : (isLtxEdit ? 15 : LTX_MAX_SECONDS)
+      );
       ({ W, H } = cameraReferenceGuided ? cameraMotionDims(srcW, srcH) : videoDims(srcW, srcH));
     }
 
@@ -5031,7 +5079,7 @@ async function handleApi(req, res, url) {
     if (frameAwareEnhance && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
       // Every image-to-video enhancer sees both the actual first frame and
       // the user's initial motion idea before the generation graph is built.
-      const raw = await wanEnhance(comfyName, motionPrompt, seed);
+      const raw = await wanEnhance(comfyName, motionPrompt, seed, req.profile.id);
       wanRefined = cleanEnhancedText(raw, motionPrompt);
       wanRefined = ensureCameraMotionPrompt(wanRefined, cameraMotions);
       prompt = wanRefined;
@@ -5051,13 +5099,14 @@ async function handleApi(req, res, url) {
     const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;
     const endImageName = isLtxLike && !faceImageName && body.endImageName ? String(body.endImageName) : null;
     const cameraMotionGuideNames = cameraReferenceGuided
-      ? await uploadCameraMotionGuides(cameraMotions)
+      ? (cameraGuideVideoName ? [cameraGuideVideoName] : await uploadCameraMotionGuides(cameraMotions))
       : [];
     const opts = {
       prompt,
       cameraMotionPhrase: selectedCameraMotionPhrase,
       cameraMotionPromptBase,
       cameraMotionGuideNames,
+      cameraMotionGuideSkipFrames: cameraGuideVideoName ? Math.max(0, Math.round(cameraGuideStart * fps)) : 0,
       // I2V was enhanced by the shared vision pass above. T2V and Face ID
       // retain their specialized in-graph prompt enhancement.
       enhance: isLtxLike ? enhance && !wanRefined : false,
@@ -5114,6 +5163,9 @@ async function handleApi(req, res, url) {
         cameraMotions: cameraMotions.length ? cameraMotions : undefined,
         cameraReferenceGuided: cameraMotionGuideNames.length > 0 || undefined,
         cameraMotionLora: cameraMotionGuideNames.length ? settings.ltxCameramanLora : undefined,
+        cameraGuideVideoName: cameraGuideVideoName || undefined,
+        cameraGuideStartSeconds: cameraGuideVideoName && cameraGuideStart > 0 ? cameraGuideStart : undefined,
+        cameraGuideUsedSeconds: cameraGuideVideoName ? seconds : undefined,
         scailMode: engine === 'scail' ? selectedScailMode : undefined,
         scailStableTracking: engine === 'scail' ? selectedScailChunkOptions.stableTracking : undefined,
         scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,
@@ -5416,7 +5468,7 @@ async function handleApi(req, res, url) {
       comfyName = String(body.imageName);
     }
     if (!comfyName) return json(res, 400, { error: 'Upload an image first' });
-    const raw = await suggestImagePrompt(comfyName, Math.floor(Math.random() * 2 ** 31));
+    const raw = await suggestImagePrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id);
     const prompt = cleanEnhancedText(raw, '');
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable prompt' });
     return json(res, 200, { prompt });
@@ -5591,27 +5643,43 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const pid = String(body.jobId || '');
     if (!pid) return json(res, 400, { error: 'jobId required' });
+    const job = jobs.get(pid);
+    if (!job || job.profileId !== req.profile.id) {
+      return json(res, 404, { error: 'This job is no longer available' });
+    }
+    if (job.completing) return json(res, 409, { error: 'This job is already finishing' });
+    job.cancelRequested = true;
+    job.cancelMessage = 'Cancelled by user';
     // remove from pending first
     await comfyFetch('/queue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ delete: [pid] }),
     }).catch(() => { /* noop */ });
-    // still running? interrupt it (fires execution_interrupted -> failJob)
+    // If it is already running, ComfyUI may emit execution_interrupted before
+    // this request returns. The cancel marker keeps that event neutral.
     let stillRunning = false;
     try {
       const q = await (await comfyFetch('/queue')).json();
-      stillRunning = (q.queue_running || []).some((e) => e[1] === pid);
+      stillRunning = (q.queue_running || []).some((e) => String(e[1] || '') === pid);
     } catch { /* noop */ }
     if (stillRunning) {
       await comfyFetch('/interrupt', { method: 'POST' }).catch(() => { /* noop */ });
-    } else if (jobs.has(pid)) {
-      failJob(pid, 'Cancelled');
     }
-    return json(res, 200, { ok: true });
+    // Remove tracking immediately as a polling fallback and to settle any
+    // preprocessing request even when the ComfyUI websocket is unavailable.
+    cancelJob(pid, job.cancelMessage);
+    return json(res, 200, { ok: true, running: stillRunning });
   }
 
   if (route === '/api/queue/reset' && req.method === 'POST') {
+    const clearedJobs = [...jobs.keys()];
+    for (const pid of clearedJobs) {
+      const job = jobs.get(pid);
+      if (!job) continue;
+      job.cancelRequested = true;
+      job.cancelMessage = 'Stopped by hard reset';
+    }
     const reset = [];
     for (const reqInfo of comfyResetRequests()) {
       try {
@@ -5621,9 +5689,8 @@ async function handleApi(req, res, url) {
         reset.push({ name: reqInfo.name, ok: false, error: String(e.message || e) });
       }
     }
-    const clearedJobs = [...jobs.keys()];
     for (const pid of clearedJobs) {
-      if (jobs.has(pid)) failJob(pid, 'Reset by user');
+      cancelJob(pid, 'Stopped by hard reset');
     }
     broadcast('queueReset', { reset, clearedJobs: clearedJobs.length });
     return json(res, 200, { ok: true, reset, clearedJobs: clearedJobs.length });
@@ -6177,8 +6244,14 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
     return serveFile(res, file);
   } catch (e) {
-    console.error('[error]', req.method, url.pathname, e.message);
-    if (!res.headersSent) json(res, 500, { error: String(e.message || e) });
+    const cancelled = e && e.code === 'job_cancelled';
+    if (!cancelled) console.error('[error]', req.method, url.pathname, e.message);
+    if (!res.headersSent) {
+      json(res, cancelled ? 409 : 500, {
+        error: String(e.message || e),
+        code: cancelled ? 'job_cancelled' : undefined,
+      });
+    }
   }
 });
 
