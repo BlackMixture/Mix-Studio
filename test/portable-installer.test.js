@@ -89,8 +89,12 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /scail-flower-world\.mp4/);
   assert.match(page, /scail-racetrack\.mp4/);
   assert.match(page, /scail-animal-replacement\.mp4/);
+  assert.match(page, /scail-season-habitat\.mp4/);
   assert.match(page, /ltx-prism-storm\.mp4/);
   assert.match(page, /ltx-character-performance\.mp4/);
+  assert.match(page, /ltx-stylized-action\.mp4/);
+  assert.match(page, /ltx-rain-portrait\.mp4/);
+  assert.match(page, /ltx-mech-battlefield\.mp4/);
   assert.match(page, /scail-hand-fantasy\.mp4/);
   assert.match(page, /scail-wireframe-mech\.mp4/);
   assert.match(page, /ltx-shark\.mp4/);
@@ -105,8 +109,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /ltx-interior\.mp4/);
   assert.match(page, /ltx-wrestling\.mp4/);
   assert.match(page, /Arena action/);
-  assert.match(page, /Six rotating LTX 2\.3 image-to-video examples/);
-  assert.match(page, /Three rotating SCAIL 2 video transformation examples/);
+  assert.match(page, /Nine rotating LTX 2\.3 image-to-video examples/);
+  assert.match(page, /Four rotating SCAIL 2 video transformation examples/);
   assert.doesNotMatch(page, /Shark breach/);
   assert.match(page, /edit-aging-motion\.mp4/);
   assert.match(page, /data-loop-end="2"/);

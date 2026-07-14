@@ -286,7 +286,7 @@
     .gen-card.wide video { aspect-ratio: 16 / 9; object-fit: cover; }
     .gen-card.span-2 { grid-column: span 2; }
     .video-reel { position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: radial-gradient(circle at 50% 35%,#14253b,#020305 72%); }
-    .video-reel video { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 1; transition: opacity 220ms ease; }
+    .gen-card.wide .video-reel video { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 1; transition: opacity 220ms ease; }
     .video-reel.is-switching video { opacity: 0; }
     .video-reel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 62%,rgba(1,3,7,.86)); pointer-events: none; }
     .video-reel-tabs { position: absolute; right: 14px; bottom: 13px; left: 14px; z-index: 2; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-padding-inline: 2px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
@@ -563,8 +563,8 @@
           <p>Every example was generated locally through tuned workflows for precise image edits, motion-preserving video transformations, image animation, and box-directed compositions.</p>
         </div>
         <div class="gen-grid">
-          <article class="gen-card wide span-2"><div class="video-reel" data-scail-reel><video src="./media/scail-flower-world.mp4" autoplay muted playsinline aria-label="Three rotating SCAIL 2 video transformation examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose a SCAIL 2 transformation"><button type="button" data-reel-index="0" aria-selected="true">Setting replacement</button><button type="button" data-reel-index="1" aria-selected="false">Object + setting</button><button type="button" data-reel-index="2" aria-selected="false">Animal replacement</button></div></div><div class="gen-copy"><span>SCAIL 2 · directed video editing</span><h3>Change the subject, object, or world</h3><p>Transfer the original motion while preserving timing, camera movement, realistic physics, and scene-aware lighting.</p></div></article>
-          <article class="gen-card wide span-2"><div class="video-reel" data-ltx-reel><video src="./media/ltx-prism-storm.mp4" autoplay muted playsinline aria-label="Six rotating LTX 2.3 image-to-video examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-reel-index="0" aria-selected="true">Prism storm</button><button type="button" data-reel-index="1" aria-selected="false">Character performance</button><button type="button" data-reel-index="2" aria-selected="false">Storm ruins</button><button type="button" data-reel-index="3" aria-selected="false">Dreamscape portrait</button><button type="button" data-reel-index="4" aria-selected="false">Interior camera move</button><button type="button" data-reel-index="5" aria-selected="false">Arena action</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Generate motion, performance, and atmosphere</h3><p>Turn a still image into cinematic motion with directed camera movement, physical detail, lighting, sound, and character performance.</p></div></article>
+          <article class="gen-card wide span-2"><div class="video-reel" data-scail-reel><video src="./media/scail-flower-world.mp4" autoplay muted playsinline aria-label="Four rotating SCAIL 2 video transformation examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose a SCAIL 2 transformation"><button type="button" data-reel-index="0" aria-selected="true">Setting replacement</button><button type="button" data-reel-index="1" aria-selected="false">Object + setting</button><button type="button" data-reel-index="2" aria-selected="false">Animal replacement</button><button type="button" data-reel-index="3" aria-selected="false">Season + habitat</button></div></div><div class="gen-copy"><span>SCAIL 2 · directed video editing</span><h3>Change the subject, object, or world</h3><p>Transfer the original motion while preserving timing, camera movement, realistic physics, and scene-aware lighting.</p></div></article>
+          <article class="gen-card wide span-2"><div class="video-reel" data-ltx-reel><video src="./media/ltx-prism-storm.mp4" autoplay muted playsinline aria-label="Nine rotating LTX 2.3 image-to-video examples"></video><div class="video-reel-tabs" role="tablist" aria-label="Choose an LTX example"><button type="button" data-reel-index="0" aria-selected="true">Prism storm</button><button type="button" data-reel-index="1" aria-selected="false">Character performance</button><button type="button" data-reel-index="2" aria-selected="false">Storm ruins</button><button type="button" data-reel-index="3" aria-selected="false">Dreamscape portrait</button><button type="button" data-reel-index="4" aria-selected="false">Interior camera move</button><button type="button" data-reel-index="5" aria-selected="false">Arena action</button><button type="button" data-reel-index="6" aria-selected="false">Stylized action</button><button type="button" data-reel-index="7" aria-selected="false">Rain-lit portrait</button><button type="button" data-reel-index="8" aria-selected="false">Mech battlefield</button></div></div><div class="gen-copy"><span>LTX 2.3 · image to video</span><h3>Generate motion, performance, and atmosphere</h3><p>Turn a still image into cinematic motion with directed camera movement, physical detail, lighting, sound, and character performance.</p></div></article>
           <article class="gen-card span-2"><div class="edit-motion-result"><video src="./media/edit-aging-motion.mp4" autoplay muted loop playsinline aria-label="Edited subject brought to life in a finished motion result"></video></div><div class="gen-copy"><span>Edit to motion</span><h3>A precise edit becomes a performance</h3><p>The finished subject carries directly into a moving, talking study.</p></div></article>
           <article class="gen-card span-2"><div class="region-reveal" role="img" aria-label="Four prompt regions appearing over a sea monster scene before fading into the clean generated result"><img class="region-reveal-back" src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-canvas"><img src="./media/region-monster.jpg" alt="" loading="lazy" /><div class="region-box sky"><span>Sky</span></div><div class="region-box cliff"><span>Cliff</span></div><div class="region-box monster"><span>Sea monster</span></div><div class="region-box car"><span>Car</span></div></div><div class="region-state" aria-hidden="true"><span class="planning">Regions defined</span><span class="result">Generated result</span></div></div><div class="gen-copy"><span>Region prompting · plan to result</span><h3>Define the scene. Generate the composition.</h3><p>Place the sky, cliff, sea monster, and car with visual regions, then generate the complete scene in one pass.</p></div></article>
           <article class="gen-card span-2"><img src="./media/depth-cabin.jpg" alt="Cabin interior, its depth map, and a snow-filled re-imagining" loading="lazy" /><div class="gen-copy"><span>Depth guide</span><h3>New image, same 3D structure</h3><p>Source → Depth Anything V3 map → re-imagined scene. Every armchair and beam stays in place.</p></div></article>
@@ -602,7 +602,7 @@
       </section>
     </main>
 
-    <footer><span>Black Mixture &copy; 2026</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
+    <footer><span>Black Mixture (c) 2026</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
   </div>
   <script>
     const motionObserver = new IntersectionObserver((entries) => {
@@ -668,7 +668,8 @@
     setupVideoReel("[data-scail-reel]", [
       "./media/scail-flower-world.mp4",
       "./media/scail-racetrack.mp4",
-      "./media/scail-animal-replacement.mp4"
+      "./media/scail-animal-replacement.mp4",
+      "./media/scail-season-habitat.mp4"
     ]);
     setupVideoReel("[data-ltx-reel]", [
       "./media/ltx-prism-storm.mp4",
@@ -676,7 +677,10 @@
       "./media/ltx-ruins.mp4",
       "./media/ltx-dreamscape.mp4",
       "./media/ltx-interior.mp4",
-      "./media/ltx-wrestling.mp4"
+      "./media/ltx-wrestling.mp4",
+      "./media/ltx-stylized-action.mp4",
+      "./media/ltx-rain-portrait.mp4",
+      "./media/ltx-mech-battlefield.mp4"
     ]);
     const benchmarkSection = document.querySelector("[data-benchmark]");
     if (benchmarkSection) {
