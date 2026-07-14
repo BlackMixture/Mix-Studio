@@ -67,6 +67,8 @@ test('standard LTX jobs can load Cameraman v2 and sequence video guides', () => 
   assert.match(server, /ltxCameramanLora: 'LTX2\.3-22B_IC-LoRA-Cameraman_v2_14000\.safetensors'/);
   assert.match(server, /nodeFromOrdered\(\s*'LTXICLoRALoaderModelOnly'/);
   assert.match(server, /'LTXAddVideoICLoRAGuide'/);
+  assert.match(server, /\[0, 1, 1, 'disabled', false, 256, 64\]/);
+  assert.match(server, /format: 'None'/);
   assert.match(server, /'LTXVImgToVideoConditionOnly'/);
   assert.match(server, /uploadCameraMotionGuides\(cameraMotions\)/);
   assert.match(server, /cameraReferenceGuided: cameraMotionGuideNames\.length > 0/);

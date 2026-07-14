@@ -17272,7 +17272,10 @@ $('#setupRestartComfy').addEventListener('click', async () => {
     scheduleSetupPoll();
   } catch (error) { toast(error.message, true); }
 });
-$('#setupCheckAgain').addEventListener('click', refreshSetupStatus);
+$('#setupCheckAgain').addEventListener('click', async () => {
+  await loadMeta(true, true);
+  await refreshSetupStatus();
+});
 $('#setupEditProfile').addEventListener('click', () => {
   $('#initialSetupSheet').classList.remove('show');
   syncSheetScrollLock();
@@ -17444,9 +17447,13 @@ function renderSam3Dependency() {
   }
 }
 
-async function loadMeta(refresh) {
+async function loadMeta(refresh, afterRestart = false) {
   try {
-    lastMeta = await api('/api/meta' + (refresh ? '?refresh=1' : ''));
+    const query = new URLSearchParams();
+    if (refresh) query.set('refresh', '1');
+    if (afterRestart) query.set('afterRestart', '1');
+    const queryString = query.toString();
+    lastMeta = await api('/api/meta' + (queryString ? `?${queryString}` : ''));
     state.connOk = lastMeta.ok;
     state.metaLoras = lastMeta.loras || [];
     state.metaLorasInfo = lastMeta.lorasInfo || {};
@@ -17487,7 +17494,7 @@ $('#sam3DependencyInstall').addEventListener('click', async () => {
 });
 
 $('#sam3DependencyCheck').addEventListener('click', async () => {
-  await loadMeta(true);
+  await loadMeta(true, true);
   if (!lastMeta?.missing?.smartmask?.length) sam3InstallResult = null;
   renderHealth();
   renderSam3Dependency();
@@ -17561,7 +17568,7 @@ $('#dependencyRestartComfy').addEventListener('click', async () => {
 });
 
 $('#dependencyCheckAll').addEventListener('click', async () => {
-  await loadMeta(true);
+  await loadMeta(true, true);
   renderHealth();
   renderDependencyManager();
 });

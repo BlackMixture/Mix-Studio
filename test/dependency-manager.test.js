@@ -43,7 +43,10 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(NODE_PACKS.krea2Control.folder, 'comfyui-krea2-controlnet');
   assert.equal(NODE_PACKS.depthAnything3.folder, 'ComfyUI-DepthAnythingV3');
   assert.equal(NODE_PACKS.krea2Edit.folder, 'comfyui-krea2edit');
+  assert.equal(NODE_PACKS.ltxvideo.folder, 'ComfyUI-LTXVideo');
+  assert.match(NODE_PACKS.ltxvideo.repo, /Lightricks\/ComfyUI-LTXVideo/);
   assert.match(MODEL_ASSETS.ltxCamera[0][2], /Cseti\/LTX2\.3-22B_IC-LoRA-Cameraman_v2/);
+  assert.deepEqual(COMPONENTS.ltxcamera.nodes, ['ltxvideo', 'vhs']);
   assert.match(MODEL_ASSETS.krea2Outpaint[0][2], /conradlocke\/krea2-identity-edit/);
   assert.equal(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[1], 'loras');
   assert.match(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[2], /f2k_4B_consist_20260314\.safetensors/);
@@ -211,6 +214,12 @@ test('ComfyUI restart is owner-only, queue-safe, and reports reconnect state', (
   assert.match(server, /route === '\/api\/comfy\/restart'/);
   assert.match(server, /Only the owner profile can restart ComfyUI/);
   assert.match(server, /waitForComfyReconnect/);
+});
+
+test('an explicit post-restart check clears stale restart-required state', () => {
+  assert.match(server, /url\.searchParams\.has\('afterRestart'\)/);
+  assert.match(server, /restartRequired: false/);
+  assert.match(app, /loadMeta\(true, true\)/);
 });
 
 test('Settings presents a compact dependency manager with progress and restart controls', () => {

@@ -2781,7 +2781,7 @@ async function buildAnimate(imageName, opts) {
         frame_load_cap: segmentFrames,
         skip_first_frames: 0,
         select_every_nth: 1,
-        format: 'LTXV',
+        format: 'None',
       });
       guideSources.push([key, 0]);
     }
@@ -2804,15 +2804,14 @@ async function buildAnimate(imageName, opts) {
     );
     graph.camera_guide1 = await nodeFromOrdered(
       'LTXAddVideoICLoRAGuide',
-      [0, 1, 'disabled', false, 256, 64],
+      [0, 1, 1, 'disabled', false, 256, 64],
       {
         positive: basePositive,
         negative: baseNegative,
         vae: ['ckpt', 2],
         latent: ['camera_image_condition1', 0],
         image: cameraGuideSource,
-      },
-      { frame_idx: 0, strength: 1 }
+      }
     );
     basePositive = ['camera_guide1', 0];
     baseNegative = ['camera_guide1', 1];
@@ -4308,6 +4307,18 @@ async function handleApi(req, res, url) {
       }
       const models = configuredModelsStatus(info);
       const installStatus = sam3InstallStatus(RUNTIME);
+      const missingComponents = missingDependencyComponentIds(missing, models);
+      if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
+        updateDependencyInstallState({
+          state: 'complete',
+          phase: 'checked',
+          message: missingComponents.length
+            ? 'ComfyUI was checked after restart. Some workflow dependencies still need attention.'
+            : 'ComfyUI was checked after restart. Installed dependencies are ready.',
+          restartRequired: false,
+          error: null,
+        });
+      }
       return json(res, 200, {
         ok: true,
         loras,
@@ -4319,7 +4330,7 @@ async function handleApi(req, res, url) {
           reason: installStatus.reason,
           restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
           components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label })),
-          missingComponents: missingDependencyComponentIds(missing, models),
+          missingComponents,
           install: dependencyInstallState,
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
         },
