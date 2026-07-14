@@ -1929,6 +1929,13 @@ html:-webkit-full-screen { background: #000; }
 .video-choice-grid .chip[data-engine] b .model-status-badge { margin-left: 3px; vertical-align: 1px; }
 .video-choice-grid .chip[data-engine] small { color: var(--muted-2); font-size: 8.5px; font-weight: 750; line-height: 1.2; }
 .video-choice-grid .chip[data-engine].active b { color: #fff; }
+@media (max-width: 420px) {
+  .video-choice-grid .chip[data-engine] {
+    justify-items: center;
+    padding: 8px 10px;
+    text-align: center;
+  }
+}
 .video-choice-grid .chip[data-engine].model-default::after {
   content: '';
   position: absolute;

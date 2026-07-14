@@ -68,6 +68,7 @@ test('Video model selection sits above the prompt and collapses after choosing',
   assert.doesNotMatch(html, />Compare model capabilities<\/button>/);
   assert.match(css, /\.video-model-body[\s\S]*grid-template-rows: 0fr/);
   assert.match(css, /\.video-model-panel\.expanded \.video-model-body[\s\S]*grid-template-rows: 1fr/);
+  assert.match(css, /@media \(max-width: 420px\)[\s\S]*?\.video-choice-grid \.chip\[data-engine\] \{[\s\S]*?justify-items: center;[\s\S]*?text-align: center;/);
   assert.match(css, /\.info-btn\.video-model-info \{[\s\S]*width: 34px/);
   assert.match(app, /function setVideoModelExpanded\(open\)/);
   assert.match(app, /setTimeout\(\(\) => setVideoModelExpanded\(false\), 120\)/);
