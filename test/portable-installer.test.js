@@ -57,7 +57,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
   assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 2);
   assert.match(page, /macOS support coming soon/);
-  assert.match(page, /Setup continues inside Mix Studio/);
+  assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
   assert.doesNotMatch(page, /Windows · NVIDIA · Local generation/);
   assert.match(page, /Quick setup/);
   assert.match(page, /install only that workflow/i);

@@ -66,13 +66,12 @@
     .download .platform-windows { width: 20px; height: 20px; }
     .platform-coming { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(10,12,18,.72); color: var(--muted); font-size: 11px; font-weight: 750; white-space: nowrap; }
     .platform-coming svg { width: 16px; height: 16px; color: var(--soft); }
-    .requirements { display: block; margin-top: 12px; color: var(--muted); font-size: 12px; font-weight: 700; }
     .hero-visual { position: relative; padding: 1px; border-radius: 28px; background: linear-gradient(125deg,rgba(66,133,244,.72),rgba(234,67,53,.2) 38%,rgba(118,87,255,.68)); box-shadow: 0 34px 100px rgba(10,21,74,.36); }
     .window { overflow: hidden; border-radius: 27px; background: #050608; }
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
     .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
     .window img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; object-position: center; }
-    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 32px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; }
+    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 27px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; }
     .phone-preview img { width: 100%; aspect-ratio: .462 / 1; object-fit: cover; object-position: top center; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
     .proof-item { padding: 26px 24px; }
@@ -107,7 +106,8 @@
     .flow-media > img { width: 100%; height: 100%; display: block; object-fit: cover; }
     .flow-desktop { padding: 7px; background: radial-gradient(circle at 50% 20%,rgba(66,133,244,.12),transparent 58%),#05070b; }
     .flow-desktop > img { object-fit: contain; border-radius: 9px; }
-    .flow-phone > img { object-position: 50% 9%; }
+    .flow-phone { display: grid; place-items: end center; padding-top: 5px; background: radial-gradient(circle at 50% 70%,rgba(66,133,244,.2),transparent 60%),#05070b; }
+    .flow-phone > img { width: auto; height: calc(100% - 5px); max-width: 58%; object-fit: cover; object-position: top center; border: 3px solid #10131b; border-bottom: 0; border-radius: 15px 15px 0 0; box-shadow: 0 14px 28px rgba(0,0,0,.58),0 0 0 1px rgba(220,228,255,.16); }
     .flow-link { display: grid; grid-template-columns: 1fr 32px .56fr; gap: 7px; align-items: center; padding: 16px; background: radial-gradient(circle at 50% 50%,rgba(66,133,244,.18),transparent 58%),#070a11; }
     .flow-device { position: relative; overflow: hidden; height: 66%; border: 1px solid rgba(220,228,255,.2); border-radius: 9px; background: #020305; box-shadow: 0 12px 26px rgba(0,0,0,.38); }
     .flow-device img { width: 100%; height: 100%; padding: 3px; object-fit: contain; background: #020305; }
@@ -434,7 +434,7 @@
       .creator-note { grid-template-columns: 1fr; gap: 25px; padding: 40px 0 34px; }
       .creator-logo { width: 56px; height: 56px; }
       .creator-logo img { width: 44px; height: 44px; }
-      .phone-preview { right: 12px; bottom: -48px; width: 35%; border-width: 5px; border-radius: 23px; }
+      .phone-preview { right: 12px; bottom: -48px; width: 35%; border-width: 5px; border-radius: 19px; }
       .mobile-story { padding: 92px 0 36px; }
       .control-flow { grid-template-columns: 1fr; gap: 12px; }
       .flow-media { aspect-ratio: 1.75 / 1; }
@@ -523,7 +523,6 @@
             </a>
             <span class="platform-coming"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.7 13.1c0-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.2-4.2-2.2-1.8-.2-3.5 1-4.4 1s-2.3-1-3.8-1c-2 0-3.8 1.2-4.8 3-2.1 3.6-.5 9 1.5 11.9 1 1.4 2.1 3 3.7 2.9 1.5-.1 2.1-1 3.9-1s2.3 1 3.9 1c1.7 0 2.8-1.4 3.8-2.9 1.2-1.7 1.7-3.4 1.7-3.5-.1 0-3.8-1.5-3.8-5.9ZM13.8 4.6c.9-1.1 1.5-2.6 1.4-4.1-1.3.1-2.9.9-3.8 2-.8.9-1.6 2.4-1.4 3.8 1.5.1 2.9-.7 3.8-1.7Z"/></svg>macOS support coming soon</span>
           </div>
-          <span class="requirements">Windows 10/11 · NVIDIA GPU · Setup continues inside Mix Studio</span>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
           <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.webp" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" fetchpriority="high" decoding="async" /></div>
