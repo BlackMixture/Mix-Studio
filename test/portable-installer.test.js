@@ -220,7 +220,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
     'setupPaneConnect', 'setupPaneInstall', 'setupPaneFinish', 'setupQuickStart',
     'setupCurrentWorkflow', 'setupFullGuide', 'setupInstallComfy', 'setupUseDetected',
     'setupBrowseComfy', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
-    'setupHardwareSummary', 'setupCancel', 'setupBack', 'setupNext',
+    'setupHardwareSummary', 'setupShowDetails', 'setupCancel', 'setupBack', 'setupNext',
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
@@ -232,6 +232,9 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /\/api\/setup\/browse/);
   assert.match(app, /\/api\/setup\/comfy\/cancel/);
   assert.match(app, /\/api\/dependencies\/cancel/);
+  assert.match(app, /function conciseSetupError\(value\)/);
+  assert.match(app, /showErrorDetail\(setupOperationDiagnostic, 'Setup diagnostic'\)/);
+  assert.match(app, /quick\.hidden = !!setupContextComponents\.length \|\| !quickMissing\.length/);
   assert.match(app, /askConfirm\(\{[\s\S]{0,360}out-of-memory error/);
   assert.match(app, /setupAutoRestart[\s\S]{0,900}\/api\/comfy\/restart/);
   assert.match(style, /\.setup-panel \{[\s\S]{0,500}background: #000;/);

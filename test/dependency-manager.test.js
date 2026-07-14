@@ -22,6 +22,7 @@ const {
   installNodePack,
   looksLikeCustomNodeFolder,
   modelIsRegistered,
+  protectedRuntimeConstraints,
   requirementsArgs,
   sameRepo,
 } = require('../lib/dependency-installer');
@@ -263,12 +264,21 @@ test('model readiness accepts ComfyUI DynamicCombo option lists', () => {
   assert.match(server, /consistencyLora: modelStatus\(info, 'LoraLoaderModelOnly', 'lora_name', settings\.klein9ConsistencyLora/);
 });
 
-test('node installs constrain the existing environment instead of replacing runtime packages', () => {
+test('node installs constrain only the protected runtime instead of freezing packaging tools', () => {
   assert.deepEqual(
-    requirementsArgs('requirements.txt', false, { constraintFile: 'before-install.freeze.txt' }).slice(-4),
-    ['--constraint', 'before-install.freeze.txt', '-r', 'requirements.txt']
+    requirementsArgs('requirements.txt', false, { constraintFile: 'runtime-constraints.txt' }).slice(-4),
+    ['--constraint', 'runtime-constraints.txt', '-r', 'requirements.txt']
   );
   assert.equal(requirementsArgs('requirements.txt', true, { constraintFile: 'before-install.freeze.txt' }).includes('--constraint'), false);
+  const constraints = protectedRuntimeConstraints([
+    'torch==2.11.0+cu128', 'torchvision==0.26.0+cu128', 'numpy==2.2.6',
+    'opencv-python==4.12.0.88', 'setuptools==83.0.0', 'pip==26.0.1',
+    'diffusers==0.39.0', 'transformers==4.57.6',
+  ].join('\n'));
+  assert.match(constraints, /torch==2\.11\.0\+cu128/);
+  assert.match(constraints, /numpy==2\.2\.6/);
+  assert.match(constraints, /opencv-python==4\.12\.0\.88/);
+  assert.doesNotMatch(constraints, /setuptools|pip|diffusers|transformers/i);
 });
 
 test('repair requirements never reinstall ComfyUI runtime packages from PyPI', () => {

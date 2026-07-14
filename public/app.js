@@ -16933,6 +16933,7 @@ let setupPollTimer = null;
 let setupAutoRestart = false;
 let setupActiveStep = 'connect';
 let setupStepTouched = false;
+let setupOperationDiagnostic = '';
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 
@@ -17083,6 +17084,18 @@ function setupFitForComponents(components) {
     .reduce((worst, fit) => (!worst || priority[fit.level] < priority[worst.level] ? fit : worst), null);
 }
 
+function conciseSetupError(value) {
+  const message = String(value || '');
+  if (/ResolutionImpossible|conflicting dependencies|dependency conflict/i.test(message)) {
+    return 'Python packages could not be resolved. Retry the install; open Details if it happens again.';
+  }
+  if (/already exists.+not a Git checkout|does not look like a valid custom-node/i.test(message)) {
+    return 'An existing custom-node folder needs attention. Open Details to see which folder.';
+  }
+  if (/timed? out|timeout/i.test(message)) return 'The install took too long and stopped. Check the connection, then retry.';
+  return 'The install did not finish. Open Details for the diagnostic, then retry.';
+}
+
 function renderInitialSetup() {
   if (!setupViewStatus) return;
   const comfy = setupViewStatus.comfy || {};
@@ -17164,23 +17177,38 @@ function renderInitialSetup() {
   const current = $('#setupCurrentWorkflow');
   const requiredNow = contextMissing.length ? contextMissing : setupContextComponents;
   const currentFit = setupFitForComponents(requiredNow);
+  const componentLabels = setupComponentLabelMap();
+  const quickMissing = missingSetupComponents(setupViewStatus.quickComponents || []);
   quick.querySelector('span').textContent = quickFit.label
     ? `Image starter · ${quickFit.label}`
     : 'A useful image starter.';
-  if (currentFit) current.querySelector('span').textContent = `Only this generation · ${currentFit.label}`;
+  current.querySelector('strong').textContent = requiredNow.length === 1
+    ? (componentLabels.get(requiredNow[0]) || 'Current workflow')
+    : 'Current workflow';
+  current.querySelector('span').textContent = currentFit
+    ? `Only missing for this generation · ${currentFit.label}`
+    : 'Install only what this generation needs.';
+  quick.hidden = !!setupContextComponents.length || !quickMissing.length;
   quick.disabled = busy || !state.profileIsOwner;
   current.hidden = !setupContextComponents.length || workflowReady;
   current.disabled = busy || !state.profileIsOwner;
+  const setupActions = quick.closest('.setup-actions');
+  setupActions.hidden = quick.hidden && current.hidden;
+  setupActions.classList.toggle('single', quick.hidden !== current.hidden);
 
   const operation = $('#setupOperation');
   let operationState = null;
   if (['running', 'cancelling', 'error', 'cancelled'].includes(install.state)) operationState = install;
   else if (dependency.state && dependency.state !== 'idle') operationState = dependency;
   operation.hidden = !operationState;
+  setupOperationDiagnostic = operationState?.error ? String(operationState.error) : '';
+  $('#setupShowDetails').hidden = !setupOperationDiagnostic;
   if (operationState) {
     $('#setupOperationTitle').textContent = operationState.state === 'error' ? 'Setup needs attention'
       : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up'));
-    $('#setupOperationCopy').textContent = operationState.error || operationState.message || 'Working…';
+    $('#setupOperationCopy').textContent = operationState.error
+      ? conciseSetupError(operationState.error)
+      : (operationState.message || 'Working…');
     const total = Number(operationState.total || 0);
     const completed = Number(operationState.completed || 0);
     $('#setupOperationFill').style.width = total > 0 ? `${Math.max(3, Math.min(100, (completed / total) * 100))}%` : (operationState.state === 'complete' ? '100%' : '34%');
@@ -17428,6 +17456,9 @@ $('#setupRestartComfy').addEventListener('click', async () => {
 $('#setupCheckAgain').addEventListener('click', async () => {
   await loadMeta(true, true);
   await refreshSetupStatus();
+});
+$('#setupShowDetails').addEventListener('click', () => {
+  if (setupOperationDiagnostic) showErrorDetail(setupOperationDiagnostic, 'Setup diagnostic');
 });
 $('#setupBack').addEventListener('click', () => {
   const index = SETUP_STEPS.indexOf(setupActiveStep);

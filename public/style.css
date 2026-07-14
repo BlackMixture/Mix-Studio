@@ -6602,6 +6602,9 @@ body.sheet-open {
 .setup-hardware strong { overflow: hidden; color: #dce2ed; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .setup-hardware small { color: #778197; font-size: 9px; }
 .setup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.setup-actions.single { grid-template-columns: 1fr; }
+.setup-actions[hidden] { display: none; }
+.setup-actions > button[hidden] { display: none; }
 .setup-actions > button { min-height: 84px; display: grid; align-content: center; gap: 4px; padding: 14px 15px; border-radius: 12px; text-align: left; transition: transform 170ms var(--ease), border-color 170ms var(--ease); }
 .setup-actions > button:hover:not(:disabled), .setup-actions > button:focus-visible { transform: translateY(-2px); outline: none; }
 .setup-actions strong { font-size: 13px; }
