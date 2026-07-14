@@ -38,7 +38,7 @@ test('the video UI presents Face ID audio as lipsync and keeps the chip availabl
   assert.match(app, /Voice locked · lipsync/);
   assert.match(app, /Lips will follow this recording/);
   assert.match(app, /\$\('#vidEngineSelected'\)\.textContent = definition\.model/);
-  assert.match(app, /`Character Performance · Face ID\$\{state\.vidAudio \? ' \+ voice' : ''\}`/);
+  assert.match(app, /faceMode \? 'Character Performance' : definition\.task/);
   assert.match(app, /audioName: vidAudioName/);
   assert.match(app, /chip\.id === 'vidAudioChip'.*renderVidFace\(\)/);
 });

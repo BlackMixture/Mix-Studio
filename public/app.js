@@ -9098,9 +9098,7 @@ function renderVidFace() {
   const definition = VIDEO_ENGINE_TASKS[state.vidEngine] || VIDEO_ENGINE_TASKS.ltx;
   $('#vidEngineSelected').textContent = definition.model;
   $('#vidEngineBadge').hidden = !definition.experimental;
-  $('#vidEngineNote').textContent = faceMode
-    ? `Character Performance · Face ID${state.vidAudio ? ' + voice' : ''}`
-    : `${definition.task} · ${definition.detail}`;
+  $('#vidEngineNote').textContent = faceMode ? 'Character Performance' : definition.task;
   updateVideoTuningSummary();
 }
 

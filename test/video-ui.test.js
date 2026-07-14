@@ -63,7 +63,7 @@ test('Video model selection sits above the prompt and collapses after choosing',
   assert.match(html, /id="vidModelHeader"[^>]*aria-expanded="false"[^>]*aria-controls="vidModelBody"/);
   assert.match(html, /id="vidModelBody" aria-hidden="true" inert/);
   assert.match(html, /id="vidEngineSelected">LTX 2\.3</);
-  assert.match(html, /id="vidEngineNote">Cinematic Video · text or image \+ audio</);
+  assert.match(html, /id="vidEngineNote">Cinematic Video</);
   assert.match(html, /id="engineInfoBtn"[^>]*aria-label="Compare model capabilities"/);
   assert.doesNotMatch(html, />Compare model capabilities<\/button>/);
   assert.match(css, /\.video-model-body[\s\S]*grid-template-rows: 0fr/);
@@ -86,7 +86,7 @@ test('Video choices lead with model names and keep tasks secondary', () => {
   }
   assert.match(app, /const VIDEO_ENGINE_TASKS = \{[\s\S]*task: 'Cinematic Video', model: 'LTX 2\.3'[\s\S]*task: 'Motion Transfer', model: 'SCAIL 2'/);
   assert.match(app, /\$\('#vidEngineSelected'\)\.textContent = definition\.model/);
-  assert.match(app, /\$\('#vidEngineNote'\)\.textContent = faceMode[\s\S]*definition\.task/);
+  assert.match(app, /\$\('#vidEngineNote'\)\.textContent = faceMode \? 'Character Performance' : definition\.task/);
 });
 
 test('Video model guide provides animated previews and selects the chosen model', () => {
