@@ -142,16 +142,13 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   transform: scale(1) rotate(0deg);
 }
 .brand-wordmark {
-  position: relative;
   width: 128px;
   height: 25px;
   display: block;
-  /* The supplied SVG has generous export margins. Keep a fixed crop so
-     flexbox never trims the final letters when the header gets crowded. */
   flex: 0 0 128px;
-  overflow: hidden;
 }
-.brand-wordmark img { position: absolute; top: -5px; left: -30px; width: auto; height: 47px; max-width: none; }
+.brand-wordmark img,
+.drawer-wordmark-crop img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: left center; }
 .topbar-actions { display: inline-flex; gap: 8px; align-items: center; flex: 0 0 auto; }
 .icon-btn {
   width: 38px; height: 38px; display: grid; place-items: center;
@@ -230,8 +227,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   margin: 0;
   line-height: 0;
 }
-.drawer-wordmark-crop { position: relative; width: 154px; height: 30px; display: block; overflow: hidden; }
-.drawer-wordmark-crop img { position: absolute; top: -6px; left: -38px; width: auto; height: 56px; max-width: none; }
+.drawer-wordmark-crop { width: 154px; height: 30px; display: block; }
 .app-drawer-close {
   width: 40px;
   height: 40px;
@@ -502,7 +498,6 @@ html:-webkit-full-screen { background: #000; }
 }
 @media (max-width: 480px) {
   .brand-wordmark { width: 120px; height: 23px; flex-basis: 120px; }
-  .brand-wordmark img { top: -4px; left: -28px; height: 43px; }
 }
 @media (max-width: 420px) {
   .topbar { gap: 8px; padding-left: 10px; padding-right: 10px; }

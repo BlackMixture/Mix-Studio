@@ -107,3 +107,12 @@ test('grouping selected cards merges every member of groups and mixed standalone
   assert.match(server, /expandGalleryGroupSelection\(visible, ids\)/);
   assert.match(server, /count: items\.length/);
 });
+
+test('deleting a selected group expands every member and requires explicit confirmation', () => {
+  assert.match(app, /const ids = expandedGallerySelection\(\)\.map\(\(item\) => item\.id\)/);
+  assert.match(app, /includesWholeGroups = ids\.length > selectedCount/);
+  assert.match(app, /title: deletingOneGroup[\s\S]*'Delete this entire group\?'/);
+  assert.match(app, /All \$\{ids\.length\} generations in this group will be permanently deleted/);
+  assert.match(app, /confirmLabel: deletingOneGroup \? 'Delete group' : 'Delete selection'/);
+  assert.match(app, /await Promise\.all\(ids\.map\(\(id\) => api\('\/api\/item\/' \+ id, \{ method: 'DELETE' \}\)\)\)/);
+});

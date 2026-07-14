@@ -36,9 +36,11 @@ test('the installed web interface uses the Mix Studio name and Modatory logo', (
   assert.equal(manifest.short_name, 'Mix Studio');
   assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/modatory-logo\.svg"/);
   const wordmark = fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark-white-on-black.svg'), 'utf8');
-  assert.match(wordmark, /<svg[^>]+viewBox="0 0 1500 374\.999991"/);
+  assert.match(wordmark, /<svg[^>]+viewBox="0 0 1310\.81 203\.85"/);
+  assert.match(wordmark, /<g fill="#ffffff">/);
   assert.match(wordmark, /<path/g);
   assert.doesNotMatch(wordmark, /<text\b/);
+  assert.match(css, /\.brand-wordmark img,[\s\S]*object-fit: contain;[\s\S]*object-position: left center;/);
   assert.match(modatoryLogo, /viewBox="0 0 734\.42 753\.63"/);
   assert.match(modatoryLogo, /#fdc302/);
   assert.match(modatoryLogo, /#026cfc/);

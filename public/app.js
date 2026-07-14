@@ -13195,19 +13195,28 @@ $('#selMove').addEventListener('click', () => {
   if (state.selected.size) openMoveSheet([...state.selected]);
 });
 $('#selDelete').addEventListener('click', async () => {
-  const ids = [...state.selected];
+  const selectedCount = state.selected.size;
+  const ids = expandedGallerySelection().map((item) => item.id);
   if (!ids.length) return;
+  const includesWholeGroups = ids.length > selectedCount;
+  const deletingOneGroup = includesWholeGroups && selectedCount === 1;
   if (!await askConfirm({
-    title: `Delete ${ids.length} generation${ids.length > 1 ? 's' : ''}?`,
-    message: 'This cannot be undone.',
-    confirmLabel: 'Delete selection',
+    title: deletingOneGroup
+      ? 'Delete this entire group?'
+      : `Delete ${ids.length} generation${ids.length > 1 ? 's' : ''}?`,
+    message: deletingOneGroup
+      ? `All ${ids.length} generations in this group will be permanently deleted. This cannot be undone.`
+      : (includesWholeGroups
+        ? 'This includes every generation in the selected groups and cannot be undone.'
+        : 'This cannot be undone.'),
+    confirmLabel: deletingOneGroup ? 'Delete group' : 'Delete selection',
     danger: true,
   })) return;
   try {
     await Promise.all(ids.map((id) => api('/api/item/' + id, { method: 'DELETE' })));
     exitSelect();
     await refreshGallery();
-    toast(`Deleted ${ids.length} image${ids.length > 1 ? 's' : ''}`);
+    toast(`Deleted ${ids.length} generation${ids.length > 1 ? 's' : ''}`);
   } catch (e) { toast(e.message, true); refreshGallery(); }
 });
 
