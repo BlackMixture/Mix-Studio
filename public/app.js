@@ -2048,16 +2048,6 @@ function updateVideoPanels() {
    fresh device file or an existing image/video from the current gallery. */
 let assetPickerState = null;
 let assetPickerReturnFocus = null;
-let assetPickerEntrance = null;
-let assetPickerPointerTrigger = null;
-let assetPickerPointerTime = 0;
-
-document.addEventListener('pointerdown', (event) => {
-  const trigger = event.target instanceof Element ? event.target.closest('button, [role="button"]') : null;
-  if (!trigger || $('#assetPickerSheet').contains(trigger)) return;
-  assetPickerPointerTrigger = trigger;
-  assetPickerPointerTime = performance.now();
-}, true);
 let resetAssetPickerSwipeVisuals = () => {};
 let animateAssetPickerNavigation = () => {};
 
@@ -2298,109 +2288,23 @@ function closeAssetPickerPreview() {
 }
 
 function animateAssetPickerEntrance(panel, trigger) {
-  if (assetPickerEntrance) assetPickerEntrance.cancel();
   panel.classList.remove('asset-picker-opening');
-  const sheet = $('#assetPickerSheet');
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reducedMotion || !trigger?.isConnected || trigger === document.body || sheet.contains(trigger)) return;
-
-  const triggerRect = trigger.getBoundingClientRect();
-  const panelRect = panel.getBoundingClientRect();
-  if (!triggerRect.width || !triggerRect.height || !panelRect.width || !panelRect.height) return;
-
-  const triggerStyle = getComputedStyle(trigger);
-  const panelStyle = getComputedStyle(panel);
-  const morph = document.createElement('div');
-  morph.className = 'asset-picker-morph';
-  morph.setAttribute('aria-hidden', 'true');
-  morph.innerHTML = trigger.innerHTML;
-  morph.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
-  Object.assign(morph.style, {
-    alignItems: triggerStyle.alignItems,
-    backgroundColor: triggerStyle.backgroundColor,
-    backgroundImage: triggerStyle.backgroundImage,
-    borderColor: triggerStyle.borderColor,
-    borderStyle: triggerStyle.borderStyle,
-    borderWidth: triggerStyle.borderWidth,
-    color: triggerStyle.color,
-    display: triggerStyle.display,
-    fontFamily: triggerStyle.fontFamily,
-    fontSize: triggerStyle.fontSize,
-    fontWeight: triggerStyle.fontWeight,
-    gap: triggerStyle.gap,
-    gridTemplateColumns: triggerStyle.gridTemplateColumns,
-    justifyContent: triggerStyle.justifyContent,
-    letterSpacing: triggerStyle.letterSpacing,
-    padding: triggerStyle.padding,
-    textAlign: triggerStyle.textAlign,
-  });
-  sheet.appendChild(morph);
-  trigger.classList.add('asset-picker-trigger-morphing');
-  sheet.classList.add('asset-picker-morphing');
+  let originX = '50%';
+  let originY = '50%';
+  if (trigger?.isConnected && trigger !== document.body) {
+    const triggerRect = trigger.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    if (triggerRect.width > 0 && triggerRect.height > 0 && panelRect.width > 0 && panelRect.height > 0) {
+      const inset = 18;
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      originX = `${clamp(triggerRect.left + triggerRect.width / 2 - panelRect.left, inset, panelRect.width - inset)}px`;
+      originY = `${clamp(triggerRect.top + triggerRect.height / 2 - panelRect.top, inset, panelRect.height - inset)}px`;
+    }
+  }
+  panel.style.setProperty('--asset-origin-x', originX);
+  panel.style.setProperty('--asset-origin-y', originY);
+  void panel.offsetWidth;
   panel.classList.add('asset-picker-opening');
-
-  const px = (value) => `${value}px`;
-  const pop = Math.min(5, Math.max(3, triggerRect.height * .055));
-  const morphAnimation = morph.animate([
-    {
-      left: px(triggerRect.left), top: px(triggerRect.top),
-      width: px(triggerRect.width), height: px(triggerRect.height),
-      borderRadius: triggerStyle.borderRadius,
-      backgroundColor: triggerStyle.backgroundColor,
-      borderColor: triggerStyle.borderColor,
-      boxShadow: triggerStyle.boxShadow,
-      opacity: 1,
-      easing: 'cubic-bezier(.2,.8,.2,1)',
-      offset: 0,
-    },
-    {
-      left: px(triggerRect.left - pop), top: px(triggerRect.top - pop),
-      width: px(triggerRect.width + pop * 2), height: px(triggerRect.height + pop * 2),
-      borderRadius: triggerStyle.borderRadius,
-      backgroundColor: triggerStyle.backgroundColor,
-      borderColor: triggerStyle.borderColor,
-      boxShadow: '0 14px 34px rgba(0,0,0,.52)',
-      opacity: 1,
-      easing: 'cubic-bezier(.32,0,.2,1)',
-      offset: .18,
-    },
-    {
-      left: px(panelRect.left), top: px(panelRect.top),
-      width: px(panelRect.width), height: px(panelRect.height),
-      borderRadius: panelStyle.borderRadius,
-      backgroundColor: panelStyle.backgroundColor,
-      borderColor: panelStyle.borderColor,
-      boxShadow: panelStyle.boxShadow,
-      opacity: 1,
-      easing: 'ease-out',
-      offset: .8,
-    },
-    {
-      left: px(panelRect.left), top: px(panelRect.top),
-      width: px(panelRect.width), height: px(panelRect.height),
-      borderRadius: panelStyle.borderRadius,
-      backgroundColor: panelStyle.backgroundColor,
-      borderColor: panelStyle.borderColor,
-      boxShadow: panelStyle.boxShadow,
-      opacity: 0,
-      offset: 1,
-    },
-  ], { duration: 300, easing: 'linear', fill: 'both' });
-
-  let finished = false;
-  const finish = () => {
-    if (finished) return;
-    finished = true;
-    morphAnimation.cancel();
-    morph.remove();
-    trigger.classList.remove('asset-picker-trigger-morphing');
-    sheet.classList.remove('asset-picker-morphing');
-    panel.classList.remove('asset-picker-opening');
-    if (assetPickerEntrance?.cancel === finish) assetPickerEntrance = null;
-    if (sheet.classList.contains('show')) $('#assetPickerUpload').focus({ preventScroll: true });
-  };
-  assetPickerEntrance = { cancel: finish };
-  morphAnimation.finished.then(finish).catch(() => {});
 }
 
 function openAssetPicker(accept, callback, title) {
@@ -2413,11 +2317,7 @@ function openAssetPicker(accept, callback, title) {
   };
   const picker = assetPickerState;
   const panel = $('#assetPickerSheet .asset-picker-panel');
-  const focused = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
-    ? document.activeElement : null;
-  const recentPointerTrigger = performance.now() - assetPickerPointerTime < 700 && assetPickerPointerTrigger?.isConnected
-    ? assetPickerPointerTrigger : null;
-  assetPickerReturnFocus = recentPointerTrigger || focused;
+  assetPickerReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   panel.classList.remove('browsing', 'previewing');
   $('#assetPickerSearch').value = '';
   $('#assetPickerSearchClear').hidden = true;
@@ -2433,7 +2333,7 @@ function openAssetPicker(accept, callback, title) {
   animateAssetPickerEntrance(panel, assetPickerReturnFocus);
   $('#assetPickerGallery').hidden = true;
   syncSheetScrollLock();
-  if (!assetPickerEntrance) requestAnimationFrame(() => $('#assetPickerUpload').focus({ preventScroll: true }));
+  requestAnimationFrame(() => $('#assetPickerUpload').focus({ preventScroll: true }));
   if (!state.items.length) {
     refreshGallery(true).then(() => {
       if (assetPickerState !== picker) return;
@@ -2443,7 +2343,6 @@ function openAssetPicker(accept, callback, title) {
 }
 
 function closeAssetPicker() {
-  if (assetPickerEntrance) assetPickerEntrance.cancel();
   resetAssetPickerSwipeVisuals();
   closeAssetPickerMenus();
   $('#assetPickerSheet').classList.remove('show');
