@@ -2287,6 +2287,26 @@ function closeAssetPickerPreview() {
   $('#assetPickerGallery').hidden = false;
 }
 
+function animateAssetPickerEntrance(panel, trigger) {
+  panel.classList.remove('asset-picker-opening');
+  let originX = '50%';
+  let originY = '50%';
+  if (trigger?.isConnected && trigger !== document.body) {
+    const triggerRect = trigger.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    if (triggerRect.width > 0 && triggerRect.height > 0 && panelRect.width > 0 && panelRect.height > 0) {
+      const inset = 18;
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      originX = `${clamp(triggerRect.left + triggerRect.width / 2 - panelRect.left, inset, panelRect.width - inset)}px`;
+      originY = `${clamp(triggerRect.top + triggerRect.height / 2 - panelRect.top, inset, panelRect.height - inset)}px`;
+    }
+  }
+  panel.style.setProperty('--asset-origin-x', originX);
+  panel.style.setProperty('--asset-origin-y', originY);
+  void panel.offsetWidth;
+  panel.classList.add('asset-picker-opening');
+}
+
 function openAssetPicker(accept, callback, title) {
   const folder = state.activeFolder === 'all' || (state.folders || []).some((entry) => entry.id === state.activeFolder)
     ? state.activeFolder : 'all';
@@ -2310,6 +2330,7 @@ function openAssetPicker(accept, callback, title) {
     ? 'Use a video from your device or select one from your gallery.'
     : 'Use an image from your device or select one from your gallery.';
   $('#assetPickerSheet').classList.add('show');
+  animateAssetPickerEntrance(panel, assetPickerReturnFocus);
   $('#assetPickerGallery').hidden = true;
   syncSheetScrollLock();
   requestAnimationFrame(() => $('#assetPickerUpload').focus({ preventScroll: true }));
@@ -2325,7 +2346,7 @@ function closeAssetPicker() {
   resetAssetPickerSwipeVisuals();
   closeAssetPickerMenus();
   $('#assetPickerSheet').classList.remove('show');
-  $('#assetPickerSheet .asset-picker-panel').classList.remove('browsing', 'previewing');
+  $('#assetPickerSheet .asset-picker-panel').classList.remove('browsing', 'previewing', 'asset-picker-opening');
   $('#assetPickerPreviewCurrent').replaceChildren();
   assetPickerState = null;
   syncSheetScrollLock();

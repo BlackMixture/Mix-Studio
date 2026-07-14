@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
 const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 test('prompt panel exposes contextual LoRA phrase suggestions', () => {
@@ -67,11 +68,15 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(indexHtml, /id="assetPickerPreviewNeighbor"/);
   assert.match(indexHtml, /id="assetPickerPreviewPrevious"/);
   assert.match(indexHtml, /id="assetPickerPreviewNext"/);
+  assert.match(indexHtml, /id="assetPickerBrowseBack"[^>]*>[\s\S]*?Sources<\/button>[\s\S]*?<span>Your gallery<\/span>/);
   assert.match(appJs, /function assetMatchesQuery\(asset, query\)/);
   assert.match(appJs, /function assetPickerVisibleAssets\(\)/);
   assert.match(appJs, /assetPickerState\.folder !== 'all'/);
   assert.match(appJs, /assetPickerState\.likes && !asset\.liked/);
   assert.match(appJs, /function openAssetPickerPreview\(asset\)/);
+  assert.match(appJs, /function animateAssetPickerEntrance\(panel, trigger\)/);
+  assert.match(appJs, /panel\.style\.setProperty\('--asset-origin-x', originX\)/);
+  assert.match(appJs, /animateAssetPickerEntrance\(panel, assetPickerReturnFocus\)/);
   assert.match(appJs, /button\.addEventListener\('click', \(\) => openAssetPickerPreview\(asset\)\)/);
   assert.match(appJs, /assetPickerState\?\.preview\) usePreviousGeneration\(assetPickerState\.preview\)/);
   assert.match(appJs, /function usePreviousGeneration/);
@@ -85,4 +90,20 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(appJs, /request\.upload\.addEventListener\('progress'/);
   assert.match(appJs, /detail\.textContent = 'Available after refresh'/);
   assert.match(appJs, /const res = await uploadInputAsset\(file, file\.name \|\| 'file\.bin'\)/);
+});
+
+test('mobile source preview keeps its primary action in the visible panel', () => {
+  assert.match(styleCss, /@media \(max-width: 600px\)[\s\S]*?\.asset-picker-panel\.previewing \{[\s\S]*?height: min\(88dvh, 620px\);[\s\S]*?overflow: hidden;/);
+  assert.match(styleCss, /\.asset-picker-panel\.previewing \.asset-picker-preview \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\) auto auto;/);
+  assert.match(styleCss, /\.asset-picker-panel\.previewing \.asset-picker-preview-media \{[\s\S]*?min-height: 0;[\s\S]*?height: auto;/);
+});
+
+test('source picker uses a focused black surface and grows from its trigger', () => {
+  assert.match(styleCss, /#assetPickerSheet \.asset-picker-panel \{[\s\S]*?background: #000;[\s\S]*?transform-origin: var\(--asset-origin-x, 50%\) var\(--asset-origin-y, 50%\);/);
+  assert.match(styleCss, /\.asset-picker-panel\.asset-picker-opening \{[\s\S]*?animation: assetPickerIn 280ms/);
+  assert.match(styleCss, /@keyframes assetPickerIn \{[\s\S]*?transform: scale\(\.56\); filter: blur\(6px\);/);
+});
+
+test('mobile create prompt contains long generated text instead of expanding indefinitely', () => {
+  assert.match(styleCss, /@media \(max-width: 760px\)[\s\S]*?#view-create \.prompt-composer \{[\s\S]*?max-height: clamp\(150px, 24dvh, 180px\);[\s\S]*?overflow-y: auto;[\s\S]*?resize: none;/);
 });
