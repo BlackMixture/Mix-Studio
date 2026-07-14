@@ -131,8 +131,9 @@ test('LTX settings avoid duplicate pipeline and playback summaries', () => {
   assert.doesNotMatch(app, /vidLtx(?:Generation|Playback)/);
   assert.match(app, /const ltxFamily = engine === 'ltx' \|\| ltxEdit/);
   assert.match(app, /function renderVideoFpsChoices\(\)/);
-  assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : 16/);
+  assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : \(state\.vidEngine === 'scail' \? state\.vidScailFps : 16\)/);
   assert.match(app, /\$\('#vidFpsRow'\)\.hidden = !\(ltxFamily \|\| wanOrScail\)/);
+  assert.match(app, /\$\('#vidScailFpsField'\)\.hidden = !\(isVideo && state\.vidEngine === 'scail'\)/);
   assert.match(app, /\$\{baseFps \* multiplier\} fps · RIFE/);
 });
 

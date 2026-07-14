@@ -94,9 +94,16 @@ test('selected images can create a grid contact sheet', () => {
 });
 
 test('arbitrary generation groups collapse into one gallery entry and remain browsable', () => {
-  assert.match(app, /item\.angleGroupId \|\| item\.generationGroupId/);
+  assert.match(app, /item\.generationGroupId \|\| item\.angleGroupId/);
   assert.match(app, /function generationGroupItems\(item\)/);
   assert.match(app, /Generation \$\{generationIndex \+ 1\} of \$\{generationItems\.length\}/);
   assert.match(server, /item\.generationGroupId = generationGroupId/);
   assert.match(server, /delete item\.generationGroupId/);
+});
+
+test('grouping selected cards merges every member of groups and mixed standalone items', () => {
+  assert.match(app, /JSON\.stringify\(\{ ids, includeGroups: true \}\)/);
+  assert.match(app, /Grouped \$\{result\.count \|\| ids\.length\} generations/);
+  assert.match(server, /expandGalleryGroupSelection\(visible, ids\)/);
+  assert.match(server, /count: items\.length/);
 });

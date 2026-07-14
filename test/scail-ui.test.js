@@ -16,6 +16,29 @@ test('SCAIL advanced controls expose stable chunks, chunk size, and overlap', ()
   assert.match(indexHtml, /data-scail-overlap="13"/);
 });
 
+test('SCAIL exposes an experimental 24 fps generation rate in Advanced settings', () => {
+  assert.match(indexHtml, /id="vidScailFpsField"[\s\S]*data-scail-fps="16"[\s\S]*data-scail-fps="24"/);
+  assert.match(indexHtml, /24 fps · experimental/);
+  assert.match(appJs, /state\.vidScailFps = 16/);
+  assert.match(appJs, /vidScailFps: state\.vidScailFps/);
+  assert.match(appJs, /scailFps: state\.vidEngine === 'scail' \? state\.vidScailFps : undefined/);
+  assert.match(appJs, /state\.vidScailFps = engine === 'scail' && Number\(info\.scailFps\) === 24 \? 24 : 16/);
+});
+
+test('SCAIL applies the selected rate to source sampling, generation frames, output, trim, and metadata', () => {
+  const buildStart = serverJs.indexOf('async function buildAnimateScail');
+  const buildEnd = serverJs.indexOf('/** Optional RIFE interpolation', buildStart);
+  const buildSource = serverJs.slice(buildStart, buildEnd);
+  assert.ok(buildStart >= 0 && buildEnd > buildStart);
+  assert.match(serverJs, /const selectedScailFps = normalizeScailFps\(body\.scailFps\)/);
+  assert.match(serverJs, /frames = scailFramesForSeconds\(seconds, fps\)/);
+  assert.match(buildSource, /force_rate: opts\.fps/g);
+  assert.doesNotMatch(buildSource, /force_rate: 16/);
+  assert.match(buildSource, /fps: opts\.fps \* \(opts\.smooth > 1 \? opts\.smooth : 1\)/g);
+  assert.match(serverJs, /driveStart \* \(engine === 'scail' \? fps : 16\)/);
+  assert.match(serverJs, /scailFps: engine === 'scail' \? opts\.fps : undefined/);
+});
+
 test('SCAIL mode selector exposes Infinity as the preferred long-video path', () => {
   assert.match(indexHtml, /data-scail-mode="infinity"/);
   assert.match(appJs, /state\.vidScailMode = 'infinity'/);

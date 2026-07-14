@@ -830,6 +830,13 @@
               <label>Batch</label>
               <input id="batchInput" type="number" inputmode="numeric" value="1" min="1" max="8" />
             </div>
+            <div class="field field-span scail-fps-field" id="vidScailFpsField" hidden>
+              <label>Generation frame rate <small>24 fps is experimental, generates 50% more frames, and takes longer</small></label>
+              <div class="chip-row compact" id="vidScailFpsRow" role="group" aria-label="SCAIL generation frame rate">
+                <button class="chip active" type="button" data-scail-fps="16">16 fps</button>
+                <button class="chip" type="button" data-scail-fps="24">24 fps · experimental</button>
+              </div>
+            </div>
             <div class="video-advanced-note field-span" id="videoAdvancedNote" hidden>Steps and CFG follow the selected video model. Seed and Batch remain adjustable.</div>
             <div class="field" id="denoiseField" hidden>
               <label>Denoise</label>
@@ -1494,8 +1501,8 @@
     </div>
 
     <div class="info-block">
-      <h4>SCAIL 2 <span>16 fps · motion-video audio · image + motion video</span></h4>
-      <p>The motion transfer engine. Attach a source image <b>and</b> a motion video — SAM3 tracks the person in both, and SCAIL-2 (a Wan 2.1 finetune) re-animates your image with the clip's exact movement. Infinity mode uses the SCAIL-2 Infinity node with the Pusa LoRA to handle long clips inside one workflow. Runs 6 steps with lightx2v. Wan-family models generate at 16 fps — pick <b>32/48 fps · RIFE</b> to interpolate extra frames for smoother playback.</p>
+      <h4>SCAIL 2 <span>16 or 24 fps · motion-video audio · image + motion video</span></h4>
+      <p>The motion transfer engine. Attach a source image <b>and</b> a motion video — SAM3 tracks the person in both, and SCAIL-2 (a Wan 2.1 finetune) re-animates your image with the clip's exact movement. Infinity mode uses the SCAIL-2 Infinity node with the Pusa LoRA to handle long clips inside one workflow. Runs 6 steps with lightx2v. Official inference defaults to 16 fps; Advanced offers an experimental 24 fps generation rate with 50% more frames, and RIFE can interpolate further for smoother playback.</p>
       <p class="info-opts">Supports: motion video audio · Infinity/Chunked/Direct modes · RIFE frame rates · LoRAs · RTX 4K · up to 60s</p>
     </div>
   </div>

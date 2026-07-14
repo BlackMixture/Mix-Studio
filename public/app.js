@@ -1482,6 +1482,7 @@ function saveForm() {
       kreaMaskViewMode: state.kreaMaskViewMode,
       scailModeVersion: 2,
       vidAutoMotionPrompt: state.vidAutoMotionPrompt,
+      vidScailFps: state.vidScailFps,
       vidScailStableTracking: state.vidScailStableTracking,
       vidScailChunkFrames: state.vidScailChunkFrames,
       vidScailChunkOverlap: state.vidScailChunkOverlap,
@@ -1708,6 +1709,7 @@ function loadForm() {
     state.vidScailMode = f.scailModeVersion >= 2 && ['infinity', 'chunked', 'direct'].includes(f.vidScailMode)
       ? f.vidScailMode
       : (f.vidScailMode === 'direct' ? 'direct' : 'infinity');
+    state.vidScailFps = [16, 24].includes(Number(f.vidScailFps)) ? Number(f.vidScailFps) : 16;
     state.vidScailStableTracking = f.vidScailStableTracking !== false;
     state.vidAutoMotionPrompt = f.vidAutoMotionPrompt === true;
     if ([41, 61, 81].includes(Number(f.vidScailChunkFrames))) state.vidScailChunkFrames = Number(f.vidScailChunkFrames);
@@ -2011,6 +2013,7 @@ function updateVideoPanels() {
   $('#seedInput').closest('.panel').hidden = false;
   $('#advancedStepsField').hidden = isVideo;
   $('#advancedCfgField').hidden = isVideo;
+  $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
   $('#videoAdvancedNote').hidden = !isVideo;
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   renderLoras();
@@ -5374,9 +5377,15 @@ state.vidSigma = 'dmd';
 state.animSigma = 'dmd';
 state.vidSmooth = 1;
 state.vidScailMode = 'infinity';
+state.vidScailFps = 16;
 state.vidScailStableTracking = true;
 state.vidScailChunkFrames = 81;
 state.vidScailChunkOverlap = 13;
+function renderScailFpsControls() {
+  $$('#vidScailFpsRow .chip').forEach((chip) => {
+    chip.classList.toggle('active', Number(chip.dataset.scailFps) === state.vidScailFps);
+  });
+}
 function renderScailChunkControls() {
   const row = $('#vidScailAdvancedRow');
   if (!row) return;
@@ -5393,6 +5402,13 @@ function renderScailChunkControls() {
     x.classList.toggle('active', Number(x.dataset.scailOverlap) === Number(state.vidScailChunkOverlap || 13));
   });
 }
+$$('#vidScailFpsRow .chip').forEach((chip) => chip.addEventListener('click', () => {
+  state.vidScailFps = Number(chip.dataset.scailFps) === 24 ? 24 : 16;
+  renderScailFpsControls();
+  renderVidFace();
+  updateVideoTuningSummary();
+  saveForm();
+}));
 $$('#vidFpsRow .chip').forEach((c) => c.addEventListener('click', () => {
   $$('#vidFpsRow .chip').forEach((x) => x.classList.toggle('active', x === c));
   state.vidSmooth = Number(c.dataset.smooth) || 1;
@@ -8552,7 +8568,7 @@ function renderVidFace() {
     'ltx-edit': 'guide video · exact prompt',
     eros: '24 fps · image required',
     wan: '16 fps · image required',
-    scail: '16 fps · motion transfer',
+    scail: `${state.vidScailFps} fps${state.vidScailFps === 24 ? ' · experimental' : ''} · motion transfer`,
   };
   $('#vidEngineSelected').textContent = labels[state.vidEngine] || labels.ltx;
   $('#vidEngineNote').textContent = notes[state.vidEngine] || notes.ltx;
@@ -8561,7 +8577,8 @@ function renderVidFace() {
 
 function renderVideoFpsChoices() {
   const ltx = state.vidEngine === 'ltx' || state.vidEngine === 'ltx-edit';
-  const baseFps = ltx ? (state.vidFace ? 24 : 25) : 16;
+  const baseFps = ltx ? (state.vidFace ? 24 : 25) : (state.vidEngine === 'scail' ? state.vidScailFps : 16);
+  renderScailFpsControls();
   $$('#vidFpsRow .chip').forEach((chip) => {
     const multiplier = Number(chip.dataset.smooth) || 1;
     chip.textContent = multiplier === 1 ? `${baseFps} fps` : `${baseFps * multiplier} fps · RIFE`;
@@ -9424,6 +9441,7 @@ $('#generateBtn').addEventListener('click', async () => {
       sigmaPreset: state.vidSigma,
       smooth: state.vidSmooth,
       scailMode: state.vidEngine === 'scail' ? state.vidScailMode : undefined,
+      scailFps: state.vidEngine === 'scail' ? state.vidScailFps : undefined,
       scailStableTracking: state.vidEngine === 'scail' ? state.vidScailStableTracking !== false : undefined,
       scailChunkFrames: state.vidEngine === 'scail' ? state.vidScailChunkFrames : undefined,
       scailChunkOverlap: state.vidEngine === 'scail' ? state.vidScailChunkOverlap : undefined,
@@ -10729,9 +10747,9 @@ function syncDesktopGallerySelection() {
 
 function desktopStageChoices(item) {
   if (!item) return [];
-  const angles = angleGroupItems(item);
   const generations = generationGroupItems(item);
-  const group = angles.length > 1 ? angles : (generations.length > 1 ? generations : [item]);
+  const angles = generations.length > 1 ? [] : angleGroupItems(item);
+  const group = generations.length > 1 ? generations : (angles.length > 1 ? angles : [item]);
   const grouped = group.length > 1;
   const choices = [];
   group.forEach((groupItem, groupIndex) => {
@@ -10845,16 +10863,16 @@ function renderDesktopStage(item, mediaSel) {
     video: selectedVideo ? '/videos/' + selectedVideo.file : '',
     poster: image,
   });
-  const angleItems = angleGroupItems(item);
   const generationItems = generationGroupItems(item);
-  const groupItems = angleItems.length > 1 ? angleItems : generationItems;
+  const angleItems = generationItems.length > 1 ? [] : angleGroupItems(item);
+  const groupItems = generationItems.length > 1 ? generationItems : angleItems;
   const groupIndex = groupItems.findIndex((entry) => entry.id === item.id);
   $('#desktopStageTitle').textContent = selectedVideo
     ? (resolved.selected ? 'Selected video' : 'Latest video')
-    : (angleItems.length > 1
-      ? `${angleViewLabel(item)} · ${groupIndex + 1} of ${groupItems.length}`
-      : (generationItems.length > 1
-        ? `Generation ${groupIndex + 1} of ${groupItems.length}`
+    : (generationItems.length > 1
+      ? `Generation ${groupIndex + 1} of ${groupItems.length}`
+      : (angleItems.length > 1
+        ? `${angleViewLabel(item)} · ${groupIndex + 1} of ${groupItems.length}`
         : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'))));
   status.hidden = resolved.selected;
   status.textContent = resolved.selected ? '' : 'Latest output';
@@ -10940,7 +10958,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidScailMode', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
+  'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
 ];
@@ -11333,19 +11351,22 @@ function galleryEntries(items) {
   const entries = [];
   const byGroup = new Map();
   items.forEach((item) => {
-    const groupId = item.angleGroupId || item.generationGroupId;
+    // A user-created group overrides an automatic camera-angle set so the
+    // whole set can be merged with other groups or standalone generations.
+    const groupId = item.generationGroupId || item.angleGroupId;
     if (!groupId) {
       entries.push({ item, items: [item] });
       return;
     }
-    const key = `${item.angleGroupId ? 'angle' : 'generation'}:${groupId}`;
+    const isGenerationGroup = !!item.generationGroupId;
+    const key = `${isGenerationGroup ? 'generation' : 'angle'}:${groupId}`;
     let entry = byGroup.get(key);
     if (!entry) {
       entry = {
         item,
         items: [item],
-        angleGroupId: item.angleGroupId || null,
-        generationGroupId: item.generationGroupId || null,
+        angleGroupId: isGenerationGroup ? null : item.angleGroupId,
+        generationGroupId: isGenerationGroup ? item.generationGroupId : null,
       };
       byGroup.set(key, entry);
       entries.push(entry);
@@ -13035,13 +13056,23 @@ function selectedUngroupableGenerationGroupIds() {
 }
 
 function expandedGallerySelection(ids = [...state.selected]) {
-  const selectedIds = new Set(ids);
-  const selectedItems = state.items.filter((item) => selectedIds.has(item.id));
-  const generationGroups = new Set(selectedItems.map((item) => item.generationGroupId).filter(Boolean));
-  const angleGroups = new Set(selectedItems.map((item) => item.angleGroupId).filter(Boolean));
-  return state.items.filter((item) => selectedIds.has(item.id)
-    || (item.generationGroupId && generationGroups.has(item.generationGroupId))
-    || (item.angleGroupId && angleGroups.has(item.angleGroupId)));
+  const includedIds = new Set(ids);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const includedItems = state.items.filter((item) => includedIds.has(item.id));
+    const generationGroups = new Set(includedItems.map((item) => item.generationGroupId).filter(Boolean));
+    const angleGroups = new Set(includedItems.map((item) => item.angleGroupId).filter(Boolean));
+    state.items.forEach((item) => {
+      if (includedIds.has(item.id)) return;
+      if ((item.generationGroupId && generationGroups.has(item.generationGroupId))
+        || (item.angleGroupId && angleGroups.has(item.angleGroupId))) {
+        includedIds.add(item.id);
+        changed = true;
+      }
+    });
+  }
+  return state.items.filter((item) => includedIds.has(item.id));
 }
 
 function syncSelectionVisuals() {
@@ -13124,12 +13155,12 @@ $('#selGroup').addEventListener('click', async () => {
   const ids = [...state.selected];
   if (ids.length < 2) return;
   try {
-    await api('/api/items/group', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+    const result = await api('/api/items/group', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, includeGroups: true }),
     });
     exitSelect();
     await refreshGallery();
-    toast(`Grouped ${ids.length} generations`);
+    toast(`Grouped ${result.count || ids.length} generations`);
   } catch (error) { toast(error.message, true); }
 });
 $('#selUngroup').addEventListener('click', async () => {
@@ -13464,10 +13495,10 @@ function openLightbox(id, mediaSel) {
   }
   state.currentItem = it;
   preloadLightboxNeighbors(it);
-  const angleItems = angleGroupItems(it);
-  const angleIndex = angleItems.findIndex((item) => item.id === it.id);
   const generationItems = generationGroupItems(it);
   const generationIndex = generationItems.findIndex((item) => item.id === it.id);
+  const angleItems = generationItems.length > 1 ? [] : angleGroupItems(it);
+  const angleIndex = angleItems.findIndex((item) => item.id === it.id);
   const videos = Array.isArray(it.videos) ? it.videos : [];
   const composites = Array.isArray(it.composites) ? it.composites : [];
   let sel = mediaSel;
@@ -13501,10 +13532,10 @@ function openLightbox(id, mediaSel) {
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
   }
   setGenerationNameInput(it, selVideo || selComposite || null);
-  const focusedPosition = angleItems.length > 1
-    ? `${angleViewLabel(it)} · Variation ${angleIndex + 1} of ${angleItems.length}`
-    : (generationItems.length > 1
-      ? `Generation ${generationIndex + 1} of ${generationItems.length}`
+  const focusedPosition = generationItems.length > 1
+    ? `Generation ${generationIndex + 1} of ${generationItems.length}`
+    : (angleItems.length > 1
+      ? `${angleViewLabel(it)} · Variation ${angleIndex + 1} of ${angleItems.length}`
       : 'Rename generation');
   $('#lbTitle').title = focusedPosition;
   $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
@@ -13593,7 +13624,7 @@ function openLightbox(id, mediaSel) {
     if (info.refinedMotionPrompt) meta.push(copyableMeta('Enhanced motion', info.refinedMotionPrompt));
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
-      const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
+      const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailFps && `${info.scailFps} fps generation`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
       const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.smooth && `RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; ${copyableMeta('Seed', info.seed)}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
@@ -14625,6 +14656,8 @@ async function reuseVideo(it, v) {
   if (echip) echip.click();
   const schip = $(`#vidSigmaRow .chip[data-sig="${info.sigmaPreset || 'dmd'}"]`);
   if (schip) schip.click();
+  state.vidScailFps = engine === 'scail' && Number(info.scailFps) === 24 ? 24 : 16;
+  renderVideoFpsChoices();
   const fchip = $(`#vidFpsRow .chip[data-smooth="${info.smooth || 1}"]`);
   if (fchip) fchip.click();
   const scailModeChip = $(`#vidScailModeRow .chip[data-scail-mode="${info.scailMode || 'infinity'}"]`);
@@ -15487,6 +15520,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.engine === 'wan' && info.fast && '4-step',
     info.sigmaPreset && `Sigmas: ${info.sigmaPreset}`,
     info.engine === 'scail' && info.scailMode && `SCAIL ${info.scailMode}`,
+    info.engine === 'scail' && info.scailFps && `${info.scailFps} fps generation`,
     info.processed === 'upscale' && 'Video upscale',
     info.processed === 'interpolate' && 'Frame interpolation',
   ].filter(Boolean).join(', ');

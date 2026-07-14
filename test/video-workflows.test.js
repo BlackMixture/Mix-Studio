@@ -9,11 +9,14 @@ const {
   ltxCameraDurationSeconds,
   ltxDurationSeconds,
   ltxFramesForSeconds,
+  SCAIL_FPS,
+  SCAIL_FPS_CHOICES,
   scailDurationSeconds,
   scailFramesForSeconds,
   scailInfinityMaskArgs,
   scailInfinitySamTrackArgs,
   scailMode,
+  normalizeScailFps,
   normalizeScailChunkOptions,
   scailMaskArgs,
   scailSamTrackArgs,
@@ -46,10 +49,18 @@ test('scailDurationSeconds clamps to trim length and 60 second app cap', () => {
   assert.equal(scailDurationSeconds(0, 8), 1);
 });
 
-test('scailFramesForSeconds preserves Wan 4n+1 frame counts at 16 fps', () => {
+test('SCAIL frame-rate choices default to 16 and preserve 4n+1 frame counts at 16 or 24 fps', () => {
+  assert.equal(SCAIL_FPS, 16);
+  assert.deepEqual(SCAIL_FPS_CHOICES, [16, 24]);
+  assert.equal(normalizeScailFps(16), 16);
+  assert.equal(normalizeScailFps(24), 24);
+  assert.equal(normalizeScailFps(30), 16);
   assert.equal(scailFramesForSeconds(5), 81);
   assert.equal(scailFramesForSeconds(12), 193);
   assert.equal((scailFramesForSeconds(12) - 1) % 4, 0);
+  assert.equal(scailFramesForSeconds(5, 24), 121);
+  assert.equal(scailFramesForSeconds(12, 24), 289);
+  assert.equal((scailFramesForSeconds(12, 24) - 1) % 4, 0);
 });
 
 test('scailMode defaults to infinity and accepts legacy modes', () => {

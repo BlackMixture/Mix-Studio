@@ -108,6 +108,7 @@ const {
   ltxFramesForSeconds,
   scailMode,
   normalizeScailChunkOptions,
+  normalizeScailFps,
   scailDurationSeconds,
   scailFramesForSeconds,
   scailInfinityMaskArgs,
@@ -130,6 +131,7 @@ const {
 } = require('./lib/progress-labels');
 const { decodePreviewPayload } = require('./lib/preview-payload');
 const { selectionAssetRefs, selectionSummary } = require('./lib/selection-summary');
+const { expandGalleryGroupSelection } = require('./lib/gallery-grouping');
 const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
@@ -3728,7 +3730,7 @@ async function buildAnimateScail(imageName, opts) {
 
   if (opts.scailMode === 'infinity') {
     graph.drive_infinity = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
-      video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+      video: opts.driveVideoName, force_rate: opts.fps, custom_width: 0, custom_height: 0,
       frame_load_cap: opts.frames, skip_first_frames: opts.driveSkipFrames || 0,
       select_every_nth: 1, format: 'None',
     });
@@ -3764,7 +3766,7 @@ async function buildAnimateScail(imageName, opts) {
         graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
       }
     }
-    const videoInputs = { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) };
+    const videoInputs = { images: frameSource, fps: opts.fps * (opts.smooth > 1 ? opts.smooth : 1) };
     const audioRef = await scailAudioRef(graph, opts, 'drive_infinity');
     if (audioRef) videoInputs.audio = audioRef;
     graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
@@ -3777,7 +3779,7 @@ async function buildAnimateScail(imageName, opts) {
 
   if (useStableChunks) {
     graph.drive_full = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
-      video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+      video: opts.driveVideoName, force_rate: opts.fps, custom_width: 0, custom_height: 0,
       frame_load_cap: opts.frames, skip_first_frames: opts.driveSkipFrames || 0,
       select_every_nth: 1, format: 'None',
     });
@@ -3813,7 +3815,7 @@ async function buildAnimateScail(imageName, opts) {
       const trackKey = `track_drive${suffix}`;
       if (!firstDriveKey) firstDriveKey = driveKey;
       graph[driveKey] = await nodeFromOrdered('VHS_LoadVideo', [], {}, {
-        video: opts.driveVideoName, force_rate: 16, custom_width: 0, custom_height: 0,
+        video: opts.driveVideoName, force_rate: opts.fps, custom_width: 0, custom_height: 0,
         frame_load_cap: seg.length, skip_first_frames: (opts.driveSkipFrames || 0) + seg.startFrame,
         select_every_nth: 1, format: 'None',
       });
@@ -3884,7 +3886,7 @@ async function buildAnimateScail(imageName, opts) {
       graph.poster_save = { class_type: 'SaveImage', inputs: { images: ['poster_pick', 0], filename_prefix: 'KreaStudio/poster' } };
     }
   }
-  const videoInputs = { images: frameSource, fps: 16 * (opts.smooth > 1 ? opts.smooth : 1) };
+  const videoInputs = { images: frameSource, fps: opts.fps * (opts.smooth > 1 ? opts.smooth : 1) };
   const audioRef = await scailAudioRef(graph, opts, firstDriveKey);
   if (audioRef) videoInputs.audio = audioRef;
   graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
@@ -4998,6 +5000,7 @@ async function handleApi(req, res, url) {
       return json(res, 400, { error: 'Choose a camera-motion segment with at least 1 second remaining.' });
     }
     const selectedScailMode = scailMode(body.scailMode);
+    const selectedScailFps = normalizeScailFps(body.scailFps);
     const selectedScailChunkOptions = normalizeScailChunkOptions({
       mode: selectedScailMode,
       stableTracking: body.scailStableTracking,
@@ -5030,8 +5033,8 @@ async function handleApi(req, res, url) {
           : Math.max(1, Math.min(15, seconds));
     let frames; let fps; let W; let H;
     if (engine === 'scail') {
-      fps = 16;
-      frames = scailFramesForSeconds(seconds);
+      fps = selectedScailFps;
+      frames = scailFramesForSeconds(seconds, fps);
       ({ W, H } = scailDims(srcW, srcH));
     } else if (engine === 'wan') {
       fps = 16;
@@ -5126,7 +5129,7 @@ async function handleApi(req, res, url) {
       guideSkipFrames: isLtxEdit ? Math.max(0, Math.round(driveStart * fps)) : 0,
       editAnything: isLtxEdit,
       faceImageName,
-      driveSkipFrames: Math.max(0, Math.round(driveStart * 16)),
+      driveSkipFrames: Math.max(0, Math.round(driveStart * (engine === 'scail' ? fps : 16))),
       driveStartSeconds: driveStart,
       seconds,
       scailMode: selectedScailMode,
@@ -5167,6 +5170,7 @@ async function handleApi(req, res, url) {
         cameraGuideStartSeconds: cameraGuideVideoName && cameraGuideStart > 0 ? cameraGuideStart : undefined,
         cameraGuideUsedSeconds: cameraGuideVideoName ? seconds : undefined,
         scailMode: engine === 'scail' ? selectedScailMode : undefined,
+        scailFps: engine === 'scail' ? opts.fps : undefined,
         scailStableTracking: engine === 'scail' ? selectedScailChunkOptions.stableTracking : undefined,
         scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,
         scailChunkOverlap: engine === 'scail' ? selectedScailChunkOptions.overlapFrames : undefined,
@@ -5856,12 +5860,15 @@ async function handleApi(req, res, url) {
     const unlocked = isPrivateUnlocked(req);
     const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
     const byId = new Map(visible.map((item) => [item.id, item]));
-    const items = ids.map((id) => byId.get(id)).filter(Boolean);
-    if (items.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const requested = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (requested.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const items = body.includeGroups === true
+      ? expandGalleryGroupSelection(visible, ids)
+      : requested;
     const generationGroupId = uid();
     items.forEach((item) => { item.generationGroupId = generationGroupId; });
     saveDb();
-    return json(res, 200, { generationGroupId, items });
+    return json(res, 200, { generationGroupId, count: items.length, items });
   }
 
   if (route === '/api/items/ungroup' && req.method === 'POST') {

@@ -18,6 +18,9 @@ test('current workspace autosave retains active mode, LoRAs, prompts, and durabl
   }
   assert.match(app, /serializeWorkspaceAsset/);
   assert.match(app, /restoreWorkspaceAsset/);
+  assert.match(app, /vidScailFps: state\.vidScailFps/);
+  assert.match(app, /state\.vidScailFps = \[16, 24\]\.includes\(Number\(f\.vidScailFps\)\)/);
+  assert.match(app, /'vidScailMode', 'vidScailFps', 'vidScailStableTracking'/);
   assert.match(app, /window\.addEventListener\('pagehide', saveForm\)/);
   assert.match(app, /setView\(state\.view/);
   assert.match(app, /loadForm\(\);\r?\nsyncGallerySortControl\(\);\r?\nsetPromptDraft\(state\.prompts\[state\.view\] \|\| ''\);/);
