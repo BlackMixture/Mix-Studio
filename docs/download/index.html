@@ -67,14 +67,23 @@
     .platform-coming { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(10,12,18,.72); color: var(--muted); font-size: 11px; font-weight: 750; white-space: nowrap; }
     .platform-coming svg { width: 16px; height: 16px; color: var(--soft); }
     .hero-visual { position: relative; padding: 1px; border-radius: 22px; background: linear-gradient(125deg,rgba(66,133,244,.72),rgba(234,67,53,.2) 38%,rgba(118,87,255,.68)); box-shadow: 0 34px 100px rgba(10,21,74,.36); }
-    .window { overflow: hidden; border-radius: 21px; background: #050608; }
+    .window { position: relative; z-index: 1; overflow: hidden; border-radius: 21px; background: #050608; transform-origin: center; }
     .window-bar { display: flex; gap: 7px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #0b0d12; }
     .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #303543; }
     .window img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; object-position: center; }
-    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 22px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; }
+    .phone-preview { position: absolute; right: 18px; bottom: -70px; width: 31%; overflow: hidden; border: 7px solid #10131b; border-radius: 22px; background: #000; box-shadow: 0 28px 70px rgba(0,0,0,.72),0 0 0 1px rgba(220,228,255,.2); z-index: 2; transform-origin: center; }
     .phone-preview img { width: 100%; aspect-ratio: .462 / 1; object-fit: cover; object-position: top center; }
-    .hero-integrations { position: absolute; bottom: -54px; left: 18px; z-index: 3; display: flex; align-items: center; gap: 8px; }
-    .hero-integration { min-height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; border: 1px solid rgba(220,228,255,.14); border-radius: 12px; background: rgba(7,9,14,.9); color: var(--soft); box-shadow: 0 12px 30px rgba(0,0,0,.34); font-size: 10px; font-weight: 800; line-height: 1; backdrop-filter: blur(10px); }
+    .hero-preview-target { cursor: pointer; touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: right 520ms cubic-bezier(.2,.75,.2,1),bottom 520ms cubic-bezier(.2,.75,.2,1),transform 520ms cubic-bezier(.2,.75,.2,1),opacity 340ms ease,filter 340ms ease,box-shadow 520ms ease; }
+    .hero-preview-target img { -webkit-user-drag: none; }
+    .hero-preview-target.is-holding { filter: brightness(1.08); }
+    .hero-preview-target:focus-visible { outline: 2px solid #76a8ff; outline-offset: 4px; }
+    .hero-visual.is-desktop-focused .window { z-index: 4; transform: scale(1.025); box-shadow: 0 28px 70px rgba(0,0,0,.56); }
+    .hero-visual.is-desktop-focused .phone-preview { z-index: 5; opacity: .34; filter: blur(1.5px) saturate(.5); transform: translateX(34%) scale(.76); }
+    .hero-visual.is-phone-focused .window { opacity: .13; filter: blur(2px) saturate(.45); transform: scale(.96); }
+    .hero-visual.is-phone-focused .phone-preview { right: 50%; bottom: 50%; z-index: 4; opacity: 1; filter: none; transform: translate(50%,50%) scale(1.2); box-shadow: 0 36px 90px rgba(0,0,0,.82),0 0 0 1px rgba(220,228,255,.24); }
+    .hero-visual.is-phone-focused .hero-integrations { opacity: 0; pointer-events: none; }
+    .hero-integrations { position: absolute; bottom: -54px; left: 18px; z-index: 3; display: flex; align-items: center; gap: 8px; transition: opacity 240ms ease; }
+    .hero-integration { min-height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; border: 0; border-radius: 12px; background: rgba(7,9,14,.9); color: var(--soft); box-shadow: 0 12px 30px rgba(0,0,0,.34); font-size: 10px; font-weight: 800; line-height: 1; backdrop-filter: blur(10px); }
     .hero-integration img, .hero-integration svg { flex: 0 0 auto; width: 26px; height: 26px; }
     .hero-integration img { border-radius: 7px; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
@@ -453,6 +462,7 @@
       .hero-integrations { bottom: -45px; left: 10px; gap: 6px; }
       .hero-integration { min-height: 34px; gap: 6px; padding: 4px 8px 4px 5px; border-radius: 10px; font-size: 9px; }
       .hero-integration img, .hero-integration svg { width: 24px; height: 24px; }
+      .hero-visual.is-phone-focused .phone-preview { transform: translate(50%,50%) scale(1.12); }
       .mobile-story { padding: 92px 0 36px; }
       .control-flow { grid-template-columns: 1fr; gap: 12px; }
       .flow-media { aspect-ratio: 1.75 / 1; }
@@ -495,6 +505,7 @@
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       .download, .feature-media > img, .feature-media > video { transition: none; }
+      .hero-preview-target, .hero-integrations { transition: none; }
       .shot-motion .focus-window > img, .guide-swipe i::after, .flow-signal::after, .create-tile, .upscale-demo > img, .upscale-after, .upscale-after > img, .upscale-divider, .outpaint-result, .outpaint-source, .outpaint-sequence::before, .outpaint-status span, .library-track, .feature-region-canvas > img, .feature-region-box, .region-canvas > img, .region-box, .region-state span, .model-ranking, .hardware-segment, .speed-metric { animation: none; }
       .create-tile { z-index: 1; filter: none; transform: none; }
       .upscale-demo > img, .upscale-after > img { transform: scale(1.36); }
@@ -547,8 +558,8 @@
           </div>
         </div>
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
-          <div class="window"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.webp" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" fetchpriority="high" decoding="async" /></div>
-          <div class="phone-preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
+          <div class="window hero-preview-target" data-hero-preview="desktop" role="button" tabindex="0" aria-pressed="false" aria-label="Focus the desktop Mix Studio preview"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.webp" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" fetchpriority="high" decoding="async" /></div>
+          <div class="phone-preview hero-preview-target" data-hero-preview="phone" role="button" tabindex="0" aria-pressed="false" aria-label="Focus the mobile Mix Studio preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
           <div class="hero-integrations" aria-label="Works with ComfyUI and Tailscale">
             <span class="hero-integration"><img src="./comfyui-logo.svg" alt="" aria-hidden="true" />ComfyUI</span>
             <span class="hero-integration"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="5" cy="5" r="2" opacity=".45"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2" opacity=".45"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2" opacity=".45"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2" opacity=".45"/></g></svg>Tailscale</span>
@@ -714,6 +725,68 @@
       };
       video.addEventListener("loadedmetadata", () => { video.currentTime = start; });
       video.addEventListener("timeupdate", keepInsidePreview);
+    }
+    const heroVisual = document.querySelector(".hero-visual");
+    if (heroVisual) {
+      const previews = [...heroVisual.querySelectorAll("[data-hero-preview]")];
+      let activeFocus = "";
+      const setHeroFocus = (requested = "") => {
+        activeFocus = requested && requested !== activeFocus ? requested : "";
+        heroVisual.classList.toggle("is-desktop-focused", activeFocus === "desktop");
+        heroVisual.classList.toggle("is-phone-focused", activeFocus === "phone");
+        previews.forEach((preview) => preview.setAttribute("aria-pressed", String(preview.dataset.heroPreview === activeFocus)));
+      };
+      for (const preview of previews) {
+        let holdTimer = 0;
+        let pointerState = null;
+        const clearPress = () => {
+          window.clearTimeout(holdTimer);
+          holdTimer = 0;
+          preview.classList.remove("is-holding");
+        };
+        preview.addEventListener("pointerdown", (event) => {
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          clearPress();
+          pointerState = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY, moved: false, held: false };
+          preview.classList.add("is-holding");
+          if (event.pointerType !== "mouse") {
+            holdTimer = window.setTimeout(() => {
+              if (!pointerState || pointerState.moved) return;
+              pointerState.held = true;
+              setHeroFocus(preview.dataset.heroPreview);
+              clearPress();
+            }, 320);
+          }
+        });
+        preview.addEventListener("pointermove", (event) => {
+          if (!pointerState || event.pointerId !== pointerState.id) return;
+          if (Math.hypot(event.clientX - pointerState.x, event.clientY - pointerState.y) <= 10) return;
+          pointerState.moved = true;
+          clearPress();
+        });
+        preview.addEventListener("pointerup", (event) => {
+          if (!pointerState || event.pointerId !== pointerState.id) return;
+          const shouldClick = pointerState.type === "mouse" && !pointerState.moved && !pointerState.held;
+          pointerState = null;
+          clearPress();
+          if (shouldClick) setHeroFocus(preview.dataset.heroPreview);
+        });
+        preview.addEventListener("pointerleave", () => {
+          if (pointerState?.type !== "mouse") return;
+          pointerState = null;
+          clearPress();
+        });
+        preview.addEventListener("pointercancel", () => { pointerState = null; clearPress(); });
+        preview.addEventListener("contextmenu", (event) => event.preventDefault());
+        preview.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          setHeroFocus(preview.dataset.heroPreview);
+        });
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && activeFocus) setHeroFocus("");
+      });
     }
     const setupVideoReel = (selector, clips) => {
       const reel = document.querySelector(selector);
