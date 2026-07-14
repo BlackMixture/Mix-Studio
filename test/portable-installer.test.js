@@ -89,7 +89,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Does my work stay local\?/);
   assert.doesNotMatch(page, /hardware-marker minimum"><b>16 GB/);
   assert.doesNotMatch(page, /hardware-marker recommended"><b>16 GB/);
-  assert.match(page, /mix-studio-create\.png/);
+  assert.match(page, /mix-studio-create\.webp/);
   assert.match(page, /mix-studio-mobile\.png/);
   assert.match(page, /mix-studio-profiles-live\.png/);
   assert.match(page, /mix-studio-dependencies\.png/);
@@ -168,7 +168,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.doesNotMatch(page, /—/);
   assert.match(workflow, /cp install\.bat _site\/install\.bat/);
   assert.match(workflow, /cp docs\/download\/mix-studio-wordmark\.svg _site\/mix-studio-wordmark\.svg/);
-  assert.match(workflow, /cp docs\/download\/mix-studio-create\.png _site\/mix-studio-create\.png/);
+  assert.match(workflow, /cp docs\/download\/mix-studio-create\.webp _site\/mix-studio-create\.webp/);
+  assert.match(workflow, /cp docs\/download\/comfyui-logo\.svg _site\/comfyui-logo\.svg/);
   assert.match(workflow, /cp docs\/download\/mix-studio-edit\.png _site\/mix-studio-edit\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-mobile\.png _site\/mix-studio-mobile\.png/);
   assert.match(workflow, /cp docs\/download\/mix-studio-scail\.png _site\/mix-studio-scail\.png/);

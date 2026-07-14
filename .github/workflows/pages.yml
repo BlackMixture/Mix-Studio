@@ -44,7 +44,7 @@ jobs:
           cp install.bat _site/install.bat
           cp public/modatory-logo.svg _site/modatory-logo.svg
           cp docs/download/mix-studio-wordmark.svg _site/mix-studio-wordmark.svg
-          cp docs/download/mix-studio-create.png _site/mix-studio-create.png
+          cp docs/download/mix-studio-create.webp _site/mix-studio-create.webp
           cp docs/download/mix-studio-edit.png _site/mix-studio-edit.png
           cp docs/download/mix-studio-region.png _site/mix-studio-region.png
           cp docs/download/mix-studio-video.png _site/mix-studio-video.png
@@ -53,6 +53,7 @@ jobs:
           cp docs/download/mix-studio-library.png _site/mix-studio-library.png
           cp docs/download/mix-studio-profiles-live.png _site/mix-studio-profiles-live.png
           cp docs/download/mix-studio-dependencies.png _site/mix-studio-dependencies.png
+          cp docs/download/comfyui-logo.svg _site/comfyui-logo.svg
           cp -R docs/download/media _site/media
           touch _site/.nojekyll
 

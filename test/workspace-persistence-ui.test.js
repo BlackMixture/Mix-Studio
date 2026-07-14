@@ -57,7 +57,7 @@ test('reset clears only the current autosave and keeps named workspaces', () => 
 
 test('workspace storage stays bound to the profile that loaded the page', () => {
   const declaration = app.match(/const workspaceSessionProfileId = localStorage\.getItem\('ks-profile-id'\) \|\| '';/)?.[0];
-  const helpers = app.match(/function profileStorageKey\(prefix, profileId = workspaceSessionProfileId\) \{[\s\S]*?\n\}\n\nfunction formKey\(\) \{[\s\S]*?\n\}/)?.[0];
+  const helpers = app.match(/function profileStorageKey\(prefix, profileId = workspaceSessionProfileId\) \{[\s\S]*?\r?\n\}\r?\n\r?\nfunction formKey\(\) \{[\s\S]*?\r?\n\}/)?.[0];
   assert.ok(declaration);
   assert.ok(helpers);
 
