@@ -60,6 +60,13 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Setup continues inside Mix Studio/);
   assert.match(page, /Quick setup/);
   assert.match(page, /install only that workflow/i);
+  assert.match(page, /mobile-optimized UI/);
+  assert.doesNotMatch(page, /in your pocket/);
+  assert.match(page, /Created by Black Mixture/);
+  assert.match(page, /https:\/\/www\.blackmixture\.com\//);
+  assert.match(page, /https:\/\/www\.youtube\.com\/@blackmixture/);
+  assert.match(page, /https:\/\/www\.instagram\.com\/blackmixture\//);
+  assert.match(page, /Black Mixture © 2026/);
   assert.match(page, /modatory-logo\.svg/);
   assert.equal(localLogo, fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8'));
   assert.match(localWordmark, /fill="#ffffff"/);

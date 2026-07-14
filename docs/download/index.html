@@ -79,6 +79,12 @@
     .proof-item + .proof-item { border-left: 1px solid var(--line); }
     .proof-item strong { display: block; margin-bottom: 6px; font-size: 15px; }
     .proof-item span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .creator-note { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 42px; align-items: center; padding: 42px 0; border-bottom: 1px solid var(--line); }
+    .creator-note h2 { max-width: 610px; margin: 0; font-size: clamp(26px,3.5vw,42px); line-height: 1.05; letter-spacing: -.04em; }
+    .creator-note p { max-width: 650px; margin: 13px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .creator-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+    .creator-links a { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0 13px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.025); color: var(--soft); font-size: 11px; font-weight: 850; text-decoration: none; white-space: nowrap; transition: background 180ms ease, border-color 180ms ease, color 180ms ease; }
+    .creator-links a:hover, .creator-links a:focus-visible { border-color: rgba(157,179,247,.55); background: rgba(66,133,244,.12); color: #fff; }
     .mobile-story { display: grid; grid-template-columns: .82fr 1.18fr; gap: 72px; align-items: center; padding: 130px 0 80px; }
     .mobile-story h2 { margin: 0; max-width: 520px; font-size: clamp(38px,5vw,60px); line-height: 1.02; letter-spacing: -.048em; }
     .mobile-story-copy > p:last-child { margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
@@ -384,6 +390,8 @@
       .hero-copy { max-width: 700px; }
       .hero-visual { width: min(100%,700px); margin-bottom: 58px; transform: none; }
       .mobile-story { grid-template-columns: 1fr; gap: 42px; }
+      .creator-note { grid-template-columns: 1fr; gap: 24px; }
+      .creator-links { justify-content: flex-start; }
       .feature-grid { grid-template-columns: repeat(2,1fr); }
       .section-head, .benchmark-head { grid-template-columns: 1fr; gap: 20px; }
       .quick { grid-template-columns: 1fr; gap: 52px; }
@@ -411,6 +419,7 @@
       .proof { grid-template-columns: 1fr; }
       .proof-item { padding-inline: 0; }
       .proof-item + .proof-item { border-left: 0; border-top: 1px solid var(--line); }
+      .creator-note { padding: 34px 0; }
       .phone-preview { right: 12px; bottom: -48px; width: 35%; border-width: 5px; border-radius: 23px; }
       .mobile-story { padding: 92px 0 36px; }
       .control-flow { grid-template-columns: 1fr; gap: 12px; }
@@ -493,7 +502,7 @@
         <div class="hero-copy">
           <p class="eyebrow">Windows · NVIDIA · Local generation</p>
           <h1>Your studio.<br />On your machine.</h1>
-          <p class="lede">Leading local models, optimized settings, and a focused workspace for creating images and video without building every ComfyUI workflow yourself.</p>
+          <p class="lede">Leading local models, optimized settings, and a mobile-optimized UI for creating images and video without building every ComfyUI workflow yourself.</p>
           <div class="actions">
             <a class="download" href="./install.bat" download="install.bat">
               <svg class="platform-icon platform-windows" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.5 4.3 10.6 3v8H2.5V4.3Zm9.2-1.5 9.8-1.4V11h-9.8V2.8ZM2.5 12.2h8.1v8l-8.1-1.1v-6.9Zm9.2 0h9.8v9.7l-9.8-1.4v-8.3Z"/></svg>
@@ -515,12 +524,17 @@
         <div class="proof-item"><strong>Designed for touch</strong><span>Prompt, edit, queue, review, and reuse work from a phone-sized interface.</span></div>
       </section>
 
+      <section class="creator-note" aria-labelledby="creator-note-title">
+        <div><p class="section-kicker">Created by Black Mixture</p><h2 id="creator-note-title">A creative studio for artists working with AI.</h2><p>Mix Studio is built by Black Mixture: a creative studio and education platform focused on design, storytelling, and practical AI tools for artists and innovators.</p></div>
+        <nav class="creator-links" aria-label="Black Mixture links"><a href="https://www.blackmixture.com/">blackmixture.com</a><a href="https://www.youtube.com/@blackmixture">YouTube</a><a href="https://www.instagram.com/blackmixture/">Instagram</a></nav>
+      </section>
+
       <section class="mobile-story" id="mobile-first">
         <div class="mobile-story-copy"><p class="section-kicker">A different local AI workflow</p><h2>The computer does the work. Your phone runs the studio.</h2><p>Most local generation tools assume you are sitting at the desktop. Mix Studio is designed so the desktop can stay with the GPU while the interface goes wherever you do.</p></div>
         <div class="control-flow" aria-label="Desktop to phone connection flow">
           <div class="flow-node"><div class="flow-media flow-desktop"><img src="./mix-studio-create.webp" alt="Mix Studio running on a Windows desktop" loading="lazy" decoding="async" /></div><div class="flow-copy"><strong>GPU power stays home</strong><span>ComfyUI, models, storage, and every generation remain on the Windows machine.</span></div></div>
           <div class="flow-node"><div class="flow-media flow-link" aria-hidden="true"><div class="flow-device desktop"><img src="./mix-studio-create.webp" alt="" loading="lazy" decoding="async" /></div><i class="flow-signal"></i><div class="flow-device phone"><img src="./mix-studio-mobile.png" alt="" loading="lazy" decoding="async" /></div></div><div class="flow-copy"><strong>Your studio stays within reach</strong><span><a href="https://tailscale.com/download">Tailscale</a> connects the same studio without moving the workload.</span></div></div>
-          <div class="flow-node"><div class="flow-media flow-phone"><img src="./mix-studio-mobile.png" alt="Mix Studio's touch-first interface on a phone" loading="lazy" /></div><div class="flow-copy"><strong>Create anywhere</strong><span>Prompt, queue, review, and reuse work from the interface already in your pocket.</span></div></div>
+          <div class="flow-node"><div class="flow-media flow-phone"><img src="./mix-studio-mobile.png" alt="Mix Studio's touch-first interface on a phone" loading="lazy" /></div><div class="flow-copy"><strong>Create anywhere</strong><span>Prompt, queue, review, and reuse work from the mobile-optimized UI.</span></div></div>
         </div>
       </section>
 
@@ -630,7 +644,7 @@
       </section>
     </main>
 
-    <footer><span>Black Mixture (c) 2026</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
+    <footer><span>Black Mixture © 2026</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
   </div>
   <script>
     const motionObserver = new IntersectionObserver((entries) => {
