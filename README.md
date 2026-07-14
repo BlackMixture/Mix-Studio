@@ -187,3 +187,15 @@ All model filenames and the ComfyUI URL are editable in **Settings (gear) → Sa
 - `data/trash/` — content from deleted profiles (never hard-deleted)
 
 `data/` is deliberately not in git. Private folders are lightweight UI privacy: locked folders hide their items from gallery responses, but files remain on disk.
+
+## Acknowledgments & Attribution
+
+Mix Studio is built on the incredible work of the open-source AI community. We want to extend our deepest gratitude to the creators and researchers who power these workflows:
+
+**ComfyUI:** The node-based backbone that makes this entire pipeline possible.
+
+**Model Creators:** Huge thanks to Black Forest Labs (Flux 2), Lightricks (LTX 2.3), Krea AI, and the Wan team for pushing the boundaries of local generation.
+
+**Community Workflows:** Thank you to the creators of SCAIL 2, 10Eros, SeedVR2, Ultimate SD, and Depth Anything V3 for the specialized tools and fine-tunes.
+
+**Hardware Partner:** A special thank you to **Dell** for generously sponsoring the Dell Pro Max T2 Tower used to develop, benchmark, and stress-test this project. The system is powered by an **NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM**.

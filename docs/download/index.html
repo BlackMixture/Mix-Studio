@@ -87,6 +87,8 @@
     .hero-integration { min-height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; border: 0; border-radius: 12px; background: rgba(7,9,14,.9); color: var(--soft); box-shadow: 0 12px 30px rgba(0,0,0,.34); font-size: 10px; font-weight: 800; line-height: 1; backdrop-filter: blur(10px); }
     .hero-integration img, .hero-integration svg { flex: 0 0 auto; width: 26px; height: 26px; }
     .hero-integration img { border-radius: 7px; }
+    .hero-integration-nvidia { justify-content: center; padding-inline: 7px; }
+    .hero-integration .nvidia-logo { width: 80px; height: auto; border-radius: 0; object-fit: contain; }
     .proof { display: grid; grid-template-columns: repeat(3,1fr); border-block: 1px solid var(--line); }
     .proof-item { padding: 26px 24px; }
     .proof-item + .proof-item { border-left: 1px solid var(--line); }
@@ -278,7 +280,7 @@
     @keyframes benchmark-rank-in { to { opacity: 1; transform: translateX(0); } }
     @keyframes benchmark-bar-in { to { transform: scaleX(1); } }
     @keyframes speed-metric-in { to { opacity: 1; transform: translateY(0); } }
-    .download-band { display: grid; justify-items: center; gap: 15px; padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(60% 120% at 50% 100%,rgba(66,133,244,.08),transparent 68%),#07090d; }
+    .download-band { display: grid; justify-items: center; gap: 29px; padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(60% 120% at 50% 100%,rgba(66,133,244,.08),transparent 68%),#07090d; }
     .download-band-actions { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 12px; }
     .download-band .download, .download-band .platform-coming { min-width: 248px; }
     .download-band .platform-coming { min-height: 56px; padding-inline: 22px; border-radius: 18px; font-size: 12px; background: rgba(10,12,18,.82); }
@@ -415,10 +417,21 @@
     .closing-actions { position: relative; z-index: 1; flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
     .closing .download { position: relative; z-index: 1; flex: 0 0 auto; }
     .closing .platform-coming { background: rgba(6,8,13,.6); }
-    footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-    footer div { display: flex; gap: 22px; }
-    footer a { text-decoration: none; }
-    footer a:hover, footer a:focus-visible { color: var(--ink); }
+    .site-footer { padding: 30px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .footer-brands { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 18px; }
+    .footer-brand { min-width: 0; min-height: 72px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 4px; color: #e8edf9; }
+    .footer-brand img, .footer-brand svg { display: block; flex: 0 0 auto; max-width: 100%; }
+    .footer-brand-comfy img, .footer-brand-tailscale svg { width: 28px; height: 28px; }
+    .footer-brand-name { font-size: 11px; font-weight: 850; white-space: nowrap; }
+    .footer-brand-nvidia img { width: 96px; }
+    .footer-brand-dell img { width: 84px; filter: grayscale(1) brightness(0) invert(1); }
+    .footer-brand-black-mixture img { width: 130px; }
+    .footer-brand-mix-studio img:first-child { width: 25px; height: 25px; }
+    .footer-brand-mix-studio img:last-child { width: 84px; }
+    .footer-meta { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 22px; }
+    .footer-links { display: flex; gap: 22px; }
+    .site-footer a { text-decoration: none; }
+    .site-footer a:hover, .site-footer a:focus-visible { color: var(--ink); }
     @media (max-width: 1040px) {
       .hero { grid-template-columns: 1fr; gap: 52px; padding-top: 62px; }
       .hero-copy { max-width: 700px; }
@@ -438,6 +451,7 @@
     }
     @media (max-width: 760px) {
       .header-links a:nth-child(1), .header-links a:nth-child(4) { display: none; }
+      .footer-brands { grid-template-columns: repeat(3,minmax(0,1fr)); }
     }
     @media (max-width: 680px) {
       .shell { width: min(100% - 28px, 620px); }
@@ -463,6 +477,8 @@
       .hero-integrations { bottom: -45px; left: 10px; gap: 6px; }
       .hero-integration { min-height: 34px; gap: 6px; padding: 4px 8px 4px 5px; border-radius: 10px; font-size: 9px; }
       .hero-integration img, .hero-integration svg { width: 24px; height: 24px; }
+      .hero-integration-nvidia { padding-inline: 6px; }
+      .hero-integration .nvidia-logo { width: 71px; height: auto; }
       .hero-visual.is-phone-focused .phone-preview { transform: translate(50%,50%) scale(1.12); }
       .mobile-story { padding: 92px 0 36px; }
       .control-flow { grid-template-columns: 1fr; gap: 12px; }
@@ -481,7 +497,7 @@
       .model-rankings { grid-template-columns: 1fr; }
       .model-ranking:nth-child(2) { border-top: 1px solid var(--line); }
       .speed-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
-      .download-band { gap: 13px; padding: 24px 18px; border-radius: 18px; }
+      .download-band { gap: 25px; padding: 24px 18px; border-radius: 18px; }
       .download-band-actions { width: 100%; flex-direction: column; }
       .download-band .download, .download-band .platform-coming { width: 100%; min-width: 0; }
       #made-in { padding-top: 60px; }
@@ -498,7 +514,13 @@
       .faq-item:nth-child(n+2) { border-top: 1px solid var(--line); }
       .closing { margin-bottom: 70px; padding: 34px 24px; border-radius: 26px; }
       .closing-actions { width: 100%; }
-      footer { flex-direction: column; }
+      .footer-meta { align-items: start; flex-direction: column; }
+    }
+    @media (max-width: 520px) {
+      .footer-brands { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 8px; }
+      .footer-brand-black-mixture img { width: 118px; }
+      .footer-brand-mix-studio { gap: 6px; }
+      .footer-brand-mix-studio img:last-child { width: 76px; }
     }
     @media (max-width: 300px) {
       .site-header, .brand { gap: 8px; }
@@ -561,9 +583,10 @@
         <div class="hero-visual" aria-label="Mix Studio Create Image interface">
           <div class="window hero-preview-target" data-hero-preview="desktop" role="button" tabindex="0" aria-pressed="false" aria-label="Hold to focus the desktop Mix Studio preview"><div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="./mix-studio-create.webp" alt="Mix Studio desktop workspace with inputs, generation stage, and recent work" fetchpriority="high" decoding="async" /></div>
           <div class="phone-preview hero-preview-target" data-hero-preview="phone" role="button" tabindex="0" aria-pressed="false" aria-label="Hold to focus the mobile Mix Studio preview"><img src="./mix-studio-mobile.png" alt="Mix Studio mobile Create Image interface" /></div>
-          <div class="hero-integrations" aria-label="Works with ComfyUI and Tailscale">
+          <div class="hero-integrations" aria-label="Works with ComfyUI, Tailscale, and NVIDIA">
             <span class="hero-integration"><img src="./comfyui-logo.svg" alt="" aria-hidden="true" />ComfyUI</span>
             <span class="hero-integration"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="5" cy="5" r="2" opacity=".45"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2" opacity=".45"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2" opacity=".45"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2" opacity=".45"/></g></svg>Tailscale</span>
+            <span class="hero-integration hero-integration-nvidia"><img class="nvidia-logo" src="./brand/nvidia-logo-horizontal.png" alt="NVIDIA" /></span>
           </div>
         </div>
       </section>
@@ -703,7 +726,17 @@
       </section>
     </main>
 
-    <footer><span>Black Mixture © 2026</span><div><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></footer>
+    <footer class="site-footer">
+      <div class="footer-brands" aria-label="Mix Studio ecosystem and partners">
+        <span class="footer-brand footer-brand-black-mixture"><img src="./brand/black-mixture-wordmark.png" alt="Black Mixture" /></span>
+        <span class="footer-brand footer-brand-comfy"><img src="./comfyui-logo.svg" alt="" aria-hidden="true" /><span class="footer-brand-name">ComfyUI</span></span>
+        <span class="footer-brand footer-brand-tailscale"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="5" cy="5" r="2" opacity=".45"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2" opacity=".45"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2" opacity=".45"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2" opacity=".45"/></g></svg><span class="footer-brand-name">Tailscale</span></span>
+        <span class="footer-brand footer-brand-nvidia"><img src="./brand/nvidia-logo-horizontal.png" alt="NVIDIA" /></span>
+        <span class="footer-brand footer-brand-dell"><img src="./brand/dell-logo.png" alt="Dell" /></span>
+        <span class="footer-brand footer-brand-mix-studio"><img src="./modatory-logo.svg" alt="" aria-hidden="true" /><img src="./mix-studio-wordmark.svg" alt="Mix Studio" /></span>
+      </div>
+      <div class="footer-meta"><span>Black Mixture © 2026</span><div class="footer-links"><a href="https://github.com/BlackMixture/Mix-Studio/blob/main/docs/portable-install.md">Installation details</a><a href="https://github.com/BlackMixture/Mix-Studio">GitHub</a></div></div>
+    </footer>
   </div>
   <script>
     const motionObserver = new IntersectionObserver((entries) => {

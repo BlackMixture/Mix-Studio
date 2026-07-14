@@ -47,6 +47,16 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.match(launcher, /LOCALAPPDATA%\\Mix Studio\\data/);
 });
 
+test('README credits the sponsored Dell workstation and NVIDIA GPU', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.match(readme, /## Acknowledgments & Attribution/);
+  assert.match(readme, /\*\*ComfyUI:\*\* The node-based backbone/);
+  assert.match(readme, /Black Forest Labs \(Flux 2\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
+  assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD, and Depth Anything V3/);
+  assert.match(readme, /\*\*Dell\*\* for generously sponsoring the Dell Pro Max T2 Tower/);
+  assert.match(readme, /\*\*NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM\*\*/);
+});
+
 test('GitHub Pages publishes the canonical installer from a branded download page', () => {
   const page = fs.readFileSync(path.join(root, 'docs', 'download', 'index.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
@@ -94,6 +104,21 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /full creative control from anywhere\./);
   assert.match(page, /RTX PRO 6000 Blackwell · 96 GB VRAM · Jul 2026/);
   assert.match(page, /RTX PRO 6000 Blackwell with 96 GB VRAM/);
+  assert.doesNotMatch(page, /Benchmarks and stress-testing powered/);
+  assert.doesNotMatch(page, /benchmark-sponsor/);
+  assert.match(page, /brand\/nvidia-logo-horizontal\.png/);
+  assert.match(page, /brand\/dell-logo\.png/);
+  assert.match(page, /brand\/black-mixture-wordmark\.png/);
+  const footerMarkup = page.match(/<footer class="site-footer">([\s\S]*?)<\/footer>/)?.[1] || '';
+  assert.equal((footerMarkup.match(/class="footer-brand(?:\s|")/g) || []).length, 6);
+  assert.ok(footerMarkup.indexOf('Black Mixture') < footerMarkup.indexOf('ComfyUI'));
+  assert.match(footerMarkup, /ComfyUI/);
+  assert.match(footerMarkup, /Tailscale/);
+  assert.match(footerMarkup, /NVIDIA/);
+  assert.match(footerMarkup, /Dell/);
+  assert.match(footerMarkup, /Black Mixture/);
+  assert.match(footerMarkup, /Mix Studio/);
+  assert.match(page, /Works with ComfyUI, Tailscale, and NVIDIA/);
   assert.match(page, /Measured Timing/);
   assert.doesNotMatch(page, />12 min</);
   assert.doesNotMatch(page, />16 rec</);
