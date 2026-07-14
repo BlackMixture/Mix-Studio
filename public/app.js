@@ -110,6 +110,10 @@ const state = {
   kreaMaskPreviewCutout: false,
   kreaMaskViewMode: 'dim',
   vidRef: null,              // {name, url, w, h} - Video tab source image
+  directorOpen: false,
+  directorProject: null,
+  directorSelection: null,
+  directorPlayhead: 0,
   vidAutoMotionPrompt: false,
   videoCameraMotions: [],    // ordered camera-motion IDs; up to three
   videoCameraMotionPhrase: '',
@@ -320,6 +324,7 @@ async function api(path, opts) {
     const error = new Error(data.error || `${path} failed (${res.status})`);
     error.code = data.code || '';
     error.status = res.status;
+    if (Array.isArray(data.missingAssets)) error.missingAssets = data.missingAssets;
     throw error;
   }
   return data;
@@ -1474,6 +1479,8 @@ function saveForm() {
       videoMotionFreedom: $('#vidFree').value,
       videoFourK: $('#vid4k').classList.contains('active'),
       videoQuality: $('#vidQuality').classList.contains('active'),
+      directorProject: directorSerializableProject(),
+      directorOpen: state.directorOpen === true,
       createImageGuideOpen: state.createImageGuideOpen,
       createGuideMode: state.createGuideMode,
       createGuideActive: state.createGuideActive,
@@ -1683,6 +1690,8 @@ function loadForm() {
     state.vidEnd = restoreWorkspaceAsset(f.vidEnd);
     state.vidDrive = restoreWorkspaceAsset(f.vidDrive);
     state.vidFace = restoreWorkspaceAsset(f.vidFace);
+    state.directorProject = f.directorProject && typeof f.directorProject === 'object' ? f.directorProject : null;
+    state.directorOpen = f.directorOpen === true && state.view === 'video' && state.vidEngine === 'ltx';
     persistedWorkspaceAudio = f.vidAudio && f.vidAudio.name ? f.vidAudio : null;
     state.vidSigma = f.vidSigma || state.vidSigma;
     state.vidSmooth = [1, 2, 3].includes(Number(f.vidSmooth)) ? Number(f.vidSmooth) : state.vidSmooth;
@@ -1917,6 +1926,7 @@ function syncNavigation() {
 
 function setView(view, opts = {}) {
   const prev = state.view;
+  if (view !== 'video' && state.directorOpen) closeDirectorMode();
   if (prev !== view) captureGenerationTuning(generationTuningMode(prev));
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
     state.prompts[prev] = promptDraft();
@@ -2003,6 +2013,7 @@ function updateVideoPanels() {
         : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidModelPanel').hidden = !isVideo;
+  $('#directorModeBtn').hidden = !(isVideo && state.vidEngine === 'ltx');
   $('#editModelPanel').hidden = !isEdit;
   if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
@@ -2065,7 +2076,7 @@ function previousGenerationAssets(accept) {
     if (kind === 'video') {
       for (const video of Array.isArray(item.videos) ? item.videos : []) {
         if (!video || !video.file) continue;
-        const engine = videoEngineLabel(video.info && video.info.engine);
+        const engine = videoEngineLabel(video.info && video.info.engine, video.info);
         const createdAt = Number(video.createdAt || item.createdAt || 0);
         assets.push({
           key: `${item.id}:video:${video.id || video.file}`,
@@ -8600,6 +8611,799 @@ $('#vidModelHeader').addEventListener('click', () => {
   setVideoModelExpanded(!$('#vidModelPanel').classList.contains('expanded'));
 });
 
+/* ------------------------------------------------------------------ */
+/* LTX Director workspace                                             */
+/* ------------------------------------------------------------------ */
+
+const DIRECTOR_FPS = 24;
+const DIRECTOR_MAX_FRAMES = 24000;
+const DIRECTOR_MAX_WINDOW = 480;
+const DIRECTOR_TRACK_LIMIT = 256;
+const directorWaveforms = new Map();
+const directorMissingAssets = new Set();
+let directorPixelsPerSecond = 64;
+let directorSaveTimer = 0;
+let directorPlayFrame = 0;
+let directorPlayingAt = 0;
+let directorAnimation = 0;
+let directorReplaceTarget = null;
+
+function directorStorageKey() { return profileStorageKey('ks-director'); }
+function directorId(prefix = 'segment') {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function directorClamp(value, min, max) { return Math.max(min, Math.min(max, Number(value) || 0)); }
+function directorAssetName(segment) { return segment.imageFile || segment.audioFile || segment.videoFile || ''; }
+function directorTrackFor(segment) {
+  if (!segment) return '';
+  if (segment.type === 'audio') return 'audio';
+  if (segment.type === 'motion_video') return 'motion';
+  return 'main';
+}
+function directorTrackSegments(track, project = state.directorProject) {
+  if (!project) return [];
+  return track === 'audio' ? project.audioSegments : (track === 'motion' ? project.motionSegments : project.segments);
+}
+function directorSelected() {
+  const selection = state.directorSelection;
+  return selection ? directorTrackSegments(selection.track).find((segment) => segment.id === selection.id) || null : null;
+}
+function directorAssets(project = state.directorProject) {
+  if (!project) return [];
+  return [
+    ...project.segments.filter((segment) => segment.type === 'image').map((segment) => ({ name: segment.imageFile, kind: 'image' })),
+    ...project.audioSegments.map((segment) => ({ name: segment.audioFile, kind: 'audio' })),
+    ...project.motionSegments.map((segment) => ({ name: segment.videoFile, kind: segment.isStaticImage ? 'image' : 'video' })),
+  ].filter((asset) => asset.name);
+}
+function directorSerializableProject(project = state.directorProject) {
+  if (!project || typeof project !== 'object') return null;
+  return JSON.parse(JSON.stringify(project, (key, value) => key.startsWith('_') ? undefined : value));
+}
+
+function directorSeedProject() {
+  const seconds = directorClamp(Number($('#vidDur')?.value) || 5, 1, 20);
+  const durationFrames = Math.max(1, Math.min(DIRECTOR_MAX_FRAMES, Math.round(seconds * DIRECTOR_FPS)));
+  const segments = [];
+  if (state.vidRef?.name) segments.push({
+    id: directorId('keyframe'), type: 'image', start: 0, length: 1, prompt: '', imageFile: state.vidRef.name,
+    fileName: state.vidRef.label || state.vidRef.name, guideStrength: 1, isEndFrame: false,
+  });
+  if (state.vidEnd?.name && durationFrames > 1) segments.push({
+    id: directorId('keyframe'), type: 'image', start: durationFrames - 1, length: 1, prompt: '', imageFile: state.vidEnd.name,
+    fileName: state.vidEnd.label || state.vidEnd.name, guideStrength: 1, isEndFrame: true,
+  });
+  const audioSegments = [];
+  if (state.vidAudio?.uploadedName) {
+    const trimStart = Math.max(0, Math.round((Number(state.vidAudio.trimStart) || 0) * DIRECTOR_FPS));
+    const available = Math.max(1, Math.round(((Number(state.vidAudio.trimEnd) || state.vidAudio.duration || seconds) - (Number(state.vidAudio.trimStart) || 0)) * DIRECTOR_FPS));
+    audioSegments.push({
+      id: directorId('audio'), type: 'audio', start: 0, length: Math.min(durationFrames, available), trimStart,
+      audioDurationFrames: Math.max(trimStart + available, Math.round((Number(state.vidAudio.duration) || seconds) * DIRECTOR_FPS)),
+      audioFile: state.vidAudio.uploadedName, fileName: state.vidAudio.label || state.vidAudio.uploadedName,
+    });
+  }
+  const seed = Number($('#seedInput')?.value);
+  return {
+    version: 1, fps: DIRECTOR_FPS, durationFrames,
+    range: { startFrame: 0, lengthFrames: Math.min(DIRECTOR_MAX_WINDOW, durationFrames) },
+    globalPrompt: promptDraft().trim(), segments, audioSegments, motionSegments: [],
+    settings: { inpaintAudio: true, overrideAudio: false, icLoraName: '', icLoraStrength: 1, epsilon: 0.001, resizeMethod: 'maintain aspect ratio', imgCompression: 18 },
+    output: {
+      width: Number(state.vidRef?.w) || Number(state.width) || 1280,
+      height: Number(state.vidRef?.h) || Number(state.height) || 720,
+      seed: Number.isSafeInteger(seed) && seed >= 0 ? seed : '',
+      batch: directorClamp(Number($('#batchInput')?.value) || 1, 1, 8),
+      smooth: [1, 2, 3].includes(Number(state.vidSmooth)) ? Number(state.vidSmooth) : 1,
+      fourK: $('#vid4k')?.classList.contains('active') === true,
+      loras: state.videoLoras.map((lora) => ({ name: lora.name, strength: Number(lora.strength) || 1, on: lora.on !== false })),
+    },
+  };
+}
+
+function directorNormalizeClientProject(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  if (Number(source.version) !== 1) throw new Error('Only Director project version 1 can be imported');
+  if (source.fps != null && Number(source.fps) !== DIRECTOR_FPS) throw new Error('Director projects use a fixed 24 fps timeline');
+  const durationFrames = Math.round(directorClamp(source.durationFrames || 120, 1, DIRECTOR_MAX_FRAMES));
+  const cleanSegment = (entry, track, index) => {
+    const item = entry && typeof entry === 'object' ? entry : {};
+    const base = {
+      id: String(item.id || directorId(track)).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80) || `${track}-${index}`,
+      start: Math.round(directorClamp(item.start, 0, durationFrames - 1)),
+      length: Math.max(1, Math.round(directorClamp(item.length || 1, 1, durationFrames))),
+    };
+    base.length = Math.min(base.length, durationFrames - base.start);
+    if (track === 'main') {
+      base.type = item.type === 'image' ? 'image' : 'text';
+      base.prompt = String(item.prompt || '').slice(0, 4000);
+      if (base.type === 'image') Object.assign(base, {
+        imageFile: String(item.imageFile || item.assetName || ''), fileName: String(item.fileName || item.imageFile || 'Keyframe'),
+        guideStrength: directorClamp(item.guideStrength ?? 1, 0, 1), isEndFrame: item.isEndFrame === true,
+      });
+    } else if (track === 'audio') Object.assign(base, {
+      type: 'audio', audioFile: String(item.audioFile || item.assetName || ''), fileName: String(item.fileName || item.audioFile || 'Audio'),
+      trimStart: Math.max(0, Math.round(Number(item.trimStart) || 0)),
+      audioDurationFrames: Math.max(base.length, Math.round(Number(item.audioDurationFrames || item.sourceFrames) || base.length)),
+    });
+    else Object.assign(base, {
+      type: 'motion_video', isStaticImage: item.isStaticImage === true || item.kind === 'image',
+      videoFile: String(item.videoFile || item.assetName || ''), fileName: String(item.fileName || item.videoFile || 'IC guide'),
+      trimStart: Math.max(0, Math.round(Number(item.trimStart) || 0)),
+      videoDurationFrames: Math.max(base.length, Math.round(Number(item.videoDurationFrames || item.sourceFrames) || base.length)),
+      videoStrength: directorClamp(item.videoStrength ?? 1, 0, 1),
+      videoAttentionStrength: directorClamp(item.videoAttentionStrength ?? 0.65, 0, 1), resampleMode: item.resampleMode || 'nearest',
+    });
+    return base;
+  };
+  const list = (items, track) => (Array.isArray(items) ? items : []).slice(0, DIRECTOR_TRACK_LIMIT)
+    .map((item, index) => cleanSegment(item, track, index)).sort((a, b) => a.start - b.start);
+  const settings = source.settings && typeof source.settings === 'object' ? source.settings : {};
+  const output = source.output && typeof source.output === 'object' ? source.output : {};
+  const startFrame = Math.round(directorClamp(source.range?.startFrame, 0, durationFrames - 1));
+  const lengthFrames = Math.max(1, Math.min(DIRECTOR_MAX_WINDOW, Math.round(Number(source.range?.lengthFrames) || Math.min(120, durationFrames)), durationFrames - startFrame));
+  return {
+    version: 1, fps: DIRECTOR_FPS, durationFrames,
+    range: { startFrame, lengthFrames }, globalPrompt: String(source.globalPrompt || '').slice(0, 4000),
+    segments: list(source.segments, 'main'), audioSegments: list(source.audioSegments, 'audio'), motionSegments: list(source.motionSegments, 'motion'),
+    settings: {
+      inpaintAudio: settings.inpaintAudio !== false, overrideAudio: settings.overrideAudio === true,
+      icLoraName: String(settings.icLoraName || '').slice(0, 512), icLoraStrength: Number(settings.icLoraStrength) || 1,
+      epsilon: Number(settings.epsilon) || 0.001, resizeMethod: settings.resizeMethod || 'maintain aspect ratio',
+      imgCompression: Math.round(Number(settings.imgCompression) || 18),
+    },
+    output: {
+      width: Math.round(directorClamp(output.width || state.width || 1280, 256, 4096)),
+      height: Math.round(directorClamp(output.height || state.height || 720, 256, 4096)),
+      seed: Number.isSafeInteger(Number(output.seed)) && Number(output.seed) >= 0 ? Number(output.seed) : '',
+      batch: Math.round(directorClamp(output.batch || 1, 1, 8)), smooth: [1, 2, 3].includes(Number(output.smooth)) ? Number(output.smooth) : 1,
+      fourK: output.fourK === true, loras: Array.isArray(output.loras) ? output.loras.slice(0, 64) : state.videoLoras,
+    },
+  };
+}
+
+function directorOverlapError(project = state.directorProject) {
+  if (!project) return 'Create or import a Director project.';
+  if (!project.globalPrompt.trim() && !project.segments.some((segment) => String(segment.prompt || '').trim())) return 'Add a global or timed prompt.';
+  for (const [label, list] of [['Main', project.segments], ['Audio', project.audioSegments], ['IC guide', project.motionSegments]]) {
+    const sorted = [...list].sort((a, b) => a.start - b.start);
+    if (sorted.length > DIRECTOR_TRACK_LIMIT) return `${label} track has more than 256 segments.`;
+    for (let index = 0; index < sorted.length; index += 1) {
+      const segment = sorted[index];
+      if (segment.start < 0 || segment.length < 1 || segment.start + segment.length > project.durationFrames) return `${label} has a segment outside the project.`;
+      if (index && segment.start < sorted[index - 1].start + sorted[index - 1].length) return `${label} segments cannot overlap.`;
+    }
+  }
+  if (project.range.lengthFrames > DIRECTOR_MAX_WINDOW || project.range.startFrame + project.range.lengthFrames > project.durationFrames) return 'The marked window must stay within the project and be no longer than 20 seconds.';
+  if (directorMissingAssets.size) return 'Replace or remove missing media before generating.';
+  return '';
+}
+
+function saveDirectorProject() {
+  clearTimeout(directorSaveTimer);
+  $('#directorSaveStatus').textContent = 'Saving…';
+  directorSaveTimer = setTimeout(() => {
+    const key = directorStorageKey();
+    if (key && state.directorProject) {
+      try { localStorage.setItem(key, JSON.stringify(directorSerializableProject())); } catch { /* storage may be full */ }
+    }
+    $('#directorSaveStatus').textContent = 'Autosaved';
+    saveForm();
+  }, 180);
+}
+
+async function directorCheckAssets() {
+  directorMissingAssets.clear();
+  const assets = directorAssets();
+  if (assets.length) {
+    try {
+      const result = await api('/api/director/assets', { method: 'POST', body: JSON.stringify({ assets }) });
+      (result.missingAssets || []).forEach((name) => directorMissingAssets.add(name));
+    } catch { assets.forEach((asset) => directorMissingAssets.add(asset.name)); }
+  }
+  renderDirector();
+}
+
+function directorSetFormValues() {
+  const project = state.directorProject;
+  if (!project) return;
+  $('#directorGlobalPrompt').value = project.globalPrompt;
+  $('#directorDuration').value = (project.durationFrames / DIRECTOR_FPS).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  $('#directorRangeStart').value = project.range.startFrame;
+  $('#directorRangeLength').value = project.range.lengthFrames;
+  $('#directorWidth').value = project.output.width;
+  $('#directorHeight').value = project.output.height;
+  $('#directorBatch').value = project.output.batch;
+  $('#directorSmooth').value = String(project.output.smooth);
+  $('#directorSeed').value = project.output.seed;
+  $('#directorFourK').checked = project.output.fourK;
+  $('#directorInpaintAudio').checked = project.settings.inpaintAudio;
+  $('#directorOverrideAudio').checked = project.settings.overrideAudio;
+  $('#directorOverrideAudio').disabled = !project.motionSegments.some((segment) => !segment.isStaticImage);
+  $('#directorIcLora').value = project.settings.icLoraName;
+}
+
+function directorSegmentLabel(segment) {
+  if (segment.type === 'text') return ['Prompt', segment.prompt || 'Untitled direction'];
+  if (segment.type === 'image') return [segment.isEndFrame ? 'End frame' : 'Keyframe', segment.fileName || segment.imageFile];
+  if (segment.type === 'audio') return ['Audio', segment.fileName || segment.audioFile];
+  return [segment.isStaticImage ? 'IC image' : 'IC video', segment.fileName || segment.videoFile];
+}
+
+function renderDirectorSegment(track, segment, ppf) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'director-segment';
+  button.dataset.directorSegment = segment.id;
+  button.dataset.directorTrackName = track;
+  button.dataset.kind = segment.type === 'motion_video' ? (segment.isStaticImage ? 'motion-image' : 'motion-video') : segment.type;
+  button.style.left = `${segment.start * ppf}px`;
+  button.style.width = `${Math.max(12, segment.length * ppf)}px`;
+  button.setAttribute('role', 'listitem');
+  button.tabIndex = 0;
+  const selected = state.directorSelection?.track === track && state.directorSelection.id === segment.id;
+  button.classList.toggle('selected', selected);
+  const assetName = directorAssetName(segment);
+  button.classList.toggle('missing', !!assetName && directorMissingAssets.has(assetName));
+  const [title, detail] = directorSegmentLabel(segment);
+  button.setAttribute('aria-label', `${title}, starts at frame ${segment.start}, lasts ${segment.length} frames${assetName && directorMissingAssets.has(assetName) ? ', media missing' : ''}`);
+  const startHandle = document.createElement('span');
+  startHandle.className = 'director-segment-handle start';
+  startHandle.dataset.directorHandle = 'start';
+  const copy = document.createElement('span');
+  copy.className = 'director-segment-copy';
+  const strong = document.createElement('b');
+  strong.textContent = assetName && directorMissingAssets.has(assetName) ? `Missing · ${title}` : title;
+  const small = document.createElement('small');
+  small.textContent = detail || `${segment.length} frames`;
+  copy.append(strong);
+  if (segment.type === 'audio' && directorWaveforms.has(segment.id)) {
+    const waveform = document.createElement('span');
+    waveform.className = 'director-waveform';
+    for (const value of directorWaveforms.get(segment.id).slice(0, 36)) {
+      const bar = document.createElement('i');
+      bar.style.height = `${Math.max(2, Math.round(value * 15))}px`;
+      waveform.appendChild(bar);
+    }
+    copy.appendChild(waveform);
+  } else copy.appendChild(small);
+  const endHandle = document.createElement('span');
+  endHandle.className = 'director-segment-handle end';
+  endHandle.dataset.directorHandle = 'end';
+  button.append(startHandle, copy, endHandle);
+  return button;
+}
+
+function renderDirectorRuler(ppf) {
+  const ruler = $('#directorRuler');
+  ruler.replaceChildren();
+  const interval = directorPixelsPerSecond < 40 ? 5 : (directorPixelsPerSecond < 80 ? 2 : 1);
+  const seconds = Math.ceil(state.directorProject.durationFrames / DIRECTOR_FPS);
+  for (let second = 0; second <= seconds; second += interval) {
+    const tick = document.createElement('i');
+    tick.className = 'director-ruler-tick major';
+    tick.style.left = `${second * DIRECTOR_FPS * ppf}px`;
+    const label = document.createElement('span');
+    label.textContent = second >= 60 ? `${Math.floor(second / 60)}:${String(second % 60).padStart(2, '0')}` : `${second}s`;
+    tick.appendChild(label);
+    ruler.appendChild(tick);
+  }
+}
+
+function renderDirectorInspector() {
+  const segment = directorSelected();
+  $('#directorEmptyInspector').hidden = !!segment;
+  $('#directorSegmentInspector').hidden = !segment;
+  if (!segment) return;
+  const track = directorTrackFor(segment);
+  const [kind] = directorSegmentLabel(segment);
+  $('#directorSegmentKind').textContent = kind;
+  $('#directorSegmentStart').value = segment.start;
+  $('#directorSegmentLength').value = segment.length;
+  const promptField = $('#directorSegmentPromptField');
+  promptField.hidden = track !== 'main';
+  $('#directorSegmentPrompt').value = segment.prompt || '';
+  $('#directorGuideStrengthField').hidden = !(segment.type === 'image' || segment.type === 'motion_video');
+  $('#directorGuideStrength').value = segment.type === 'motion_video' ? segment.videoStrength : (segment.guideStrength ?? 1);
+  $('#directorAttentionStrengthField').hidden = segment.type !== 'motion_video';
+  $('#directorAttentionStrength').value = segment.videoAttentionStrength ?? 0.65;
+  $('#directorTrimField').hidden = !['audio', 'motion_video'].includes(segment.type) || segment.isStaticImage;
+  $('#directorTrimStart').value = segment.trimStart || 0;
+  $('#directorEndFrameField').hidden = segment.type !== 'image';
+  $('#directorEndFrame').checked = segment.isEndFrame === true;
+  $('#directorReplace').hidden = !directorAssetName(segment);
+}
+
+function renderDirectorPlayhead() {
+  if (!state.directorProject) return;
+  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
+  const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
+  state.directorPlayhead = Math.round(directorClamp(state.directorPlayhead, 0, state.directorProject.durationFrames - 1));
+  $('#directorPlayhead').value = state.directorPlayhead;
+  $('#directorPlayhead').max = state.directorProject.durationFrames - 1;
+  $('#directorPlayheadLine').style.left = `${labelWidth + state.directorPlayhead * ppf}px`;
+}
+
+function renderDirector() {
+  const project = state.directorProject;
+  if (!project || !state.directorOpen) return;
+  const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
+  const canvas = $('#directorTimelineCanvas');
+  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
+  canvas.style.width = `${labelWidth + Math.max(640, project.durationFrames * ppf)}px`;
+  renderDirectorRuler(ppf);
+  const entries = [
+    ['main', '#directorMainTrack', project.segments],
+    ['audio', '#directorAudioTrack', project.audioSegments],
+    ['motion', '#directorMotionTrack', project.motionSegments],
+  ];
+  for (const [track, selector, segments] of entries) {
+    const lane = $(selector);
+    lane.replaceChildren(...segments.map((segment) => renderDirectorSegment(track, segment, ppf)));
+  }
+  const range = $('#directorRange');
+  range.style.left = `${labelWidth + project.range.startFrame * ppf}px`;
+  range.style.width = `${Math.max(28, project.range.lengthFrames * ppf)}px`;
+  $('#directorRangeLabel').textContent = `${(project.range.lengthFrames / DIRECTOR_FPS).toFixed(2)}s`;
+  renderDirectorPlayhead();
+  directorSetFormValues();
+  renderDirectorInspector();
+  const activeTracks = [
+    project.segments.length ? `${project.segments.length} main` : 'global prompt',
+    project.audioSegments.length ? `${project.audioSegments.length} audio` : (project.settings.inpaintAudio ? 'generated audio' : ''),
+    project.motionSegments.length ? `${project.motionSegments.length} IC guide` : '',
+  ].filter(Boolean).join(' · ');
+  $('#directorSummary').textContent = `${(project.range.startFrame / DIRECTOR_FPS).toFixed(2)}–${((project.range.startFrame + project.range.lengthFrames) / DIRECTOR_FPS).toFixed(2)} sec · ${project.output.width}×${project.output.height}${project.output.fourK ? ' → 4K' : ''} · ${activeTracks} · ${project.output.batch} video${project.output.batch === 1 ? '' : 's'}`;
+  const error = directorOverlapError(project);
+  $('#directorValidation').textContent = error;
+  $('#directorGenerate').disabled = !!error;
+}
+
+function openDirectorMode(project) {
+  if (state.vidEngine !== 'ltx') return;
+  if (project) state.directorProject = directorNormalizeClientProject(project);
+  if (!state.directorProject) {
+    const key = directorStorageKey();
+    try {
+      const saved = key ? JSON.parse(localStorage.getItem(key) || 'null') : null;
+      state.directorProject = saved ? directorNormalizeClientProject(saved) : directorSeedProject();
+    } catch { state.directorProject = directorSeedProject(); }
+  } else {
+    try { state.directorProject = directorNormalizeClientProject(state.directorProject); } catch { state.directorProject = directorSeedProject(); }
+  }
+  state.directorOpen = true;
+  state.directorSelection = null;
+  state.directorPlayhead = state.directorProject.range.startFrame;
+  $('#directorWorkspace').hidden = false;
+  document.body.classList.add('director-open');
+  $('#genDock').style.display = 'none';
+  renderDirector();
+  saveDirectorProject();
+  directorCheckAssets();
+}
+
+function closeDirectorMode() {
+  state.directorOpen = false;
+  stopDirectorPlayback();
+  $('#directorWorkspace').hidden = true;
+  document.body.classList.remove('director-open');
+  if (state.view !== 'gallery') $('#genDock').style.display = '';
+  saveForm();
+}
+
+function directorFindPlacement(track, desiredStart, length, excludeId) {
+  const project = state.directorProject;
+  const maxStart = Math.max(0, project.durationFrames - length);
+  let start = Math.round(directorClamp(desiredStart, 0, maxStart));
+  const other = directorTrackSegments(track).filter((segment) => segment.id !== excludeId).sort((a, b) => a.start - b.start);
+  for (const segment of other) {
+    if (start + length <= segment.start) break;
+    if (start < segment.start + segment.length) start = segment.start + segment.length;
+  }
+  return start + length <= project.durationFrames && !other.some((segment) => start < segment.start + segment.length && start + length > segment.start) ? start : -1;
+}
+
+function directorSelect(track, id) {
+  state.directorSelection = { track, id };
+  const segment = directorSelected();
+  if (segment) state.directorPlayhead = segment.start;
+  renderDirector();
+}
+
+function directorAddSegment(track, segment) {
+  const list = directorTrackSegments(track);
+  if (list.length >= DIRECTOR_TRACK_LIMIT) return toast('This track already has 256 segments', true);
+  const start = directorFindPlacement(track, state.directorPlayhead, segment.length);
+  if (start < 0) return toast('There is no non-overlapping space for that segment', true);
+  segment.start = start;
+  list.push(segment);
+  list.sort((a, b) => a.start - b.start);
+  directorSelect(track, segment.id);
+  saveDirectorProject();
+}
+
+function directorApplyTiming() {
+  const segment = directorSelected();
+  if (!segment) return;
+  const track = directorTrackFor(segment);
+  const length = Math.max(1, Math.min(state.directorProject.durationFrames, Math.round(Number($('#directorSegmentLength').value) || segment.length)));
+  const start = directorFindPlacement(track, Number($('#directorSegmentStart').value), length, segment.id);
+  if (start < 0) { toast('That timing overlaps another segment', true); return renderDirector(); }
+  segment.start = start;
+  segment.length = Math.min(length, state.directorProject.durationFrames - start);
+  directorTrackSegments(track).sort((a, b) => a.start - b.start);
+  renderDirector();
+  saveDirectorProject();
+}
+
+function directorUpdateProjectFields() {
+  const project = state.directorProject;
+  if (!project) return;
+  project.globalPrompt = $('#directorGlobalPrompt').value.slice(0, 4000);
+  const requestedFrames = Math.round(directorClamp(Number($('#directorDuration').value) * DIRECTOR_FPS, 1, DIRECTOR_MAX_FRAMES));
+  const occupied = [...project.segments, ...project.audioSegments, ...project.motionSegments]
+    .reduce((max, segment) => Math.max(max, segment.start + segment.length), 1);
+  project.durationFrames = Math.max(requestedFrames, occupied);
+  project.range.startFrame = Math.round(directorClamp($('#directorRangeStart').value, 0, project.durationFrames - 1));
+  project.range.lengthFrames = Math.max(1, Math.min(DIRECTOR_MAX_WINDOW, Math.round(Number($('#directorRangeLength').value) || 1), project.durationFrames - project.range.startFrame));
+  project.output.width = Math.round(directorClamp($('#directorWidth').value, 256, 4096));
+  project.output.height = Math.round(directorClamp($('#directorHeight').value, 256, 4096));
+  project.output.batch = Math.round(directorClamp($('#directorBatch').value, 1, 8));
+  project.output.smooth = [1, 2, 3].includes(Number($('#directorSmooth').value)) ? Number($('#directorSmooth').value) : 1;
+  const seed = Number($('#directorSeed').value);
+  project.output.seed = Number.isSafeInteger(seed) && seed >= 0 && $('#directorSeed').value !== '' ? seed : '';
+  project.output.fourK = $('#directorFourK').checked;
+  project.settings.inpaintAudio = $('#directorInpaintAudio').checked;
+  project.settings.overrideAudio = $('#directorOverrideAudio').checked && project.motionSegments.some((segment) => !segment.isStaticImage);
+  project.settings.icLoraName = $('#directorIcLora').value.trim().slice(0, 512);
+  renderDirector();
+  saveDirectorProject();
+}
+
+async function directorReadMedia(file, kind) {
+  const uploaded = await uploadInputAsset(file, file.name || `${kind}.bin`);
+  const url = URL.createObjectURL(file);
+  let durationFrames = DIRECTOR_FPS * 5;
+  if (kind === 'audio') {
+    try {
+      const raw = await file.arrayBuffer();
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const buffer = await audioCtx.decodeAudioData(raw.slice(0));
+      durationFrames = Math.max(1, Math.round(buffer.duration * DIRECTOR_FPS));
+      const bins = 48;
+      const channel = buffer.getChannelData(0);
+      const values = [];
+      for (let bin = 0; bin < bins; bin += 1) {
+        const from = Math.floor(channel.length * bin / bins);
+        const to = Math.max(from + 1, Math.floor(channel.length * (bin + 1) / bins));
+        let peak = 0;
+        for (let index = from; index < to; index += Math.max(1, Math.floor((to - from) / 80))) peak = Math.max(peak, Math.abs(channel[index] || 0));
+        values.push(peak);
+      }
+      return { name: uploaded.name, label: file.name, url, durationFrames, waveform: values };
+    } catch { /* metadata fallback below */ }
+  }
+  if (kind === 'video') {
+    durationFrames = await new Promise((resolve) => {
+      const probe = document.createElement('video');
+      probe.preload = 'metadata';
+      probe.onloadedmetadata = () => resolve(Math.max(1, Math.round((Number(probe.duration) || 5) * DIRECTOR_FPS)));
+      probe.onerror = () => resolve(DIRECTOR_FPS * 5);
+      probe.src = url;
+    });
+  }
+  return { name: uploaded.name, label: file.name, url, durationFrames };
+}
+
+async function directorHandleMedia(file, kind) {
+  if (!file) return;
+  try {
+    const asset = await directorReadMedia(file, kind);
+    if (directorReplaceTarget) {
+      const target = directorReplaceTarget;
+      directorReplaceTarget = null;
+      const segment = directorTrackSegments(target.track).find((item) => item.id === target.id);
+      if (!segment) return;
+      if (segment.type === 'image') { segment.imageFile = asset.name; segment.fileName = asset.label; }
+      else if (segment.type === 'audio') {
+        segment.audioFile = asset.name; segment.fileName = asset.label; segment.trimStart = 0; segment.audioDurationFrames = asset.durationFrames;
+        segment.length = Math.min(segment.length, asset.durationFrames);
+      } else {
+        segment.videoFile = asset.name; segment.fileName = asset.label; segment.trimStart = 0; segment.videoDurationFrames = asset.durationFrames;
+        if (!segment.isStaticImage) segment.length = Math.min(segment.length, asset.durationFrames);
+      }
+      if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
+      await directorCheckAssets();
+      saveDirectorProject();
+      return;
+    }
+    if (kind === 'image') return directorAddSegment('main', {
+      id: directorId('keyframe'), type: 'image', start: 0, length: 1, prompt: '', imageFile: asset.name,
+      fileName: asset.label, guideStrength: 1, isEndFrame: false,
+    });
+    if (kind === 'audio') {
+      const segment = {
+        id: directorId('audio'), type: 'audio', start: 0, length: Math.min(asset.durationFrames, state.directorProject.durationFrames), trimStart: 0,
+        audioDurationFrames: asset.durationFrames, audioFile: asset.name, fileName: asset.label,
+      };
+      if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
+      return directorAddSegment('audio', segment);
+    }
+    return directorAddSegment('motion', {
+      id: directorId('motion'), type: 'motion_video', isStaticImage: kind === 'ic-image', start: 0,
+      length: kind === 'ic-image' ? Math.min(120, state.directorProject.durationFrames) : Math.min(asset.durationFrames, state.directorProject.durationFrames),
+      trimStart: 0, videoDurationFrames: asset.durationFrames, videoFile: asset.name, fileName: asset.label,
+      videoStrength: 1, videoAttentionStrength: 0.65, resampleMode: 'nearest',
+    });
+  } catch (error) { directorReplaceTarget = null; toast(error.message, true); }
+}
+
+function directorDeleteSelected() {
+  const selection = state.directorSelection;
+  if (!selection) return;
+  const list = directorTrackSegments(selection.track);
+  const index = list.findIndex((segment) => segment.id === selection.id);
+  if (index >= 0) {
+    directorWaveforms.delete(list[index].id);
+    list.splice(index, 1);
+  }
+  state.directorSelection = null;
+  renderDirector();
+  saveDirectorProject();
+}
+
+function directorDuplicateSelected() {
+  const segment = directorSelected();
+  if (!segment) return;
+  const track = directorTrackFor(segment);
+  const clone = JSON.parse(JSON.stringify(segment));
+  clone.id = directorId(track);
+  const start = directorFindPlacement(track, segment.start + segment.length, segment.length);
+  if (start < 0) return toast('There is no room to duplicate this segment', true);
+  clone.start = start;
+  directorTrackSegments(track).push(clone);
+  if (directorWaveforms.has(segment.id)) directorWaveforms.set(clone.id, directorWaveforms.get(segment.id));
+  directorSelect(track, clone.id);
+  saveDirectorProject();
+}
+
+function directorSplitSelected() {
+  const segment = directorSelected();
+  if (!segment || segment.length < 2) return toast('This segment is too short to split', true);
+  const track = directorTrackFor(segment);
+  const split = state.directorPlayhead > segment.start && state.directorPlayhead < segment.start + segment.length
+    ? state.directorPlayhead : segment.start + Math.floor(segment.length / 2);
+  const clone = JSON.parse(JSON.stringify(segment));
+  clone.id = directorId(track);
+  clone.start = split;
+  clone.length = segment.start + segment.length - split;
+  if (['audio', 'motion_video'].includes(clone.type)) clone.trimStart = (clone.trimStart || 0) + (split - segment.start);
+  segment.length = split - segment.start;
+  directorTrackSegments(track).push(clone);
+  directorTrackSegments(track).sort((a, b) => a.start - b.start);
+  directorSelect(track, clone.id);
+  saveDirectorProject();
+}
+
+function stopDirectorPlayback() {
+  cancelAnimationFrame(directorAnimation);
+  directorAnimation = 0;
+  $('#directorPlay').textContent = '▶';
+  $('#directorPlay').setAttribute('aria-label', 'Play timeline');
+}
+
+function toggleDirectorPlayback() {
+  if (directorAnimation) return stopDirectorPlayback();
+  directorPlayFrame = state.directorPlayhead;
+  directorPlayingAt = performance.now();
+  $('#directorPlay').textContent = '❚❚';
+  $('#directorPlay').setAttribute('aria-label', 'Pause timeline');
+  const tick = (now) => {
+    const elapsed = Math.floor((now - directorPlayingAt) * DIRECTOR_FPS / 1000);
+    state.directorPlayhead = directorPlayFrame + elapsed;
+    if (state.directorPlayhead >= state.directorProject.durationFrames) {
+      state.directorPlayhead = 0;
+      stopDirectorPlayback();
+    }
+    renderDirectorPlayhead();
+    if (directorAnimation) directorAnimation = requestAnimationFrame(tick);
+  };
+  directorAnimation = requestAnimationFrame(tick);
+}
+
+function directorSnapFrame(frame, event) {
+  if (!$('#directorSnap').checked || event.altKey) return Math.round(frame);
+  return Math.round(frame / 6) * 6;
+}
+
+function startDirectorDrag(event) {
+  const target = event.target.closest('[data-director-segment]');
+  const rangeHandle = event.target.closest('[data-director-range-handle]');
+  if (!target && !rangeHandle) return;
+  event.preventDefault();
+  const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
+  const startX = event.clientX;
+  if (rangeHandle) {
+    const original = { ...state.directorProject.range };
+    const mode = rangeHandle.dataset.directorRangeHandle;
+    rangeHandle.setPointerCapture?.(event.pointerId);
+    const move = (moveEvent) => {
+      const delta = directorSnapFrame((moveEvent.clientX - startX) / ppf, moveEvent);
+      const range = state.directorProject.range;
+      if (mode === 'start') {
+        const end = original.startFrame + original.lengthFrames;
+        range.startFrame = Math.round(directorClamp(original.startFrame + delta, 0, end - 1));
+        range.lengthFrames = Math.min(DIRECTOR_MAX_WINDOW, end - range.startFrame);
+      } else range.lengthFrames = Math.max(1, Math.min(DIRECTOR_MAX_WINDOW, original.lengthFrames + delta, state.directorProject.durationFrames - range.startFrame));
+      renderDirector();
+    };
+    const end = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); saveDirectorProject(); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end, { once: true });
+    return;
+  }
+  const track = target.dataset.directorTrackName;
+  const segment = directorTrackSegments(track).find((item) => item.id === target.dataset.directorSegment);
+  if (!segment) return;
+  directorSelect(track, segment.id);
+  const handle = event.target.closest('[data-director-handle]')?.dataset.directorHandle || 'move';
+  const original = { start: segment.start, length: segment.length, trimStart: segment.trimStart || 0 };
+  target.setPointerCapture?.(event.pointerId);
+  const move = (moveEvent) => {
+    const delta = directorSnapFrame((moveEvent.clientX - startX) / ppf, moveEvent);
+    if (handle === 'move') {
+      const next = directorFindPlacement(track, original.start + delta, original.length, segment.id);
+      if (next >= 0) segment.start = next;
+    } else if (handle === 'end') {
+      const nextLength = Math.max(1, Math.min(original.length + delta, state.directorProject.durationFrames - original.start));
+      const next = directorFindPlacement(track, original.start, nextLength, segment.id);
+      if (next === original.start) segment.length = nextLength;
+    } else {
+      const endFrame = original.start + original.length;
+      const nextStart = Math.round(directorClamp(original.start + delta, 0, endFrame - 1));
+      const nextLength = endFrame - nextStart;
+      const placed = directorFindPlacement(track, nextStart, nextLength, segment.id);
+      if (placed === nextStart) {
+        segment.start = nextStart;
+        segment.length = nextLength;
+        if (['audio', 'motion_video'].includes(segment.type)) segment.trimStart = Math.max(0, original.trimStart + nextStart - original.start);
+      }
+    }
+    renderDirector();
+  };
+  const end = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); saveDirectorProject(); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end, { once: true });
+}
+
+async function generateDirector() {
+  const project = state.directorProject;
+  const error = directorOverlapError(project);
+  if (error) return toast(error, true);
+  if (!(await ensureGenerationSetup())) return;
+  const button = $('#directorGenerate');
+  button.disabled = true;
+  button.textContent = 'Queueing…';
+  try {
+    const baseSeed = project.output.seed === '' ? Math.floor(Math.random() * 0x7fffffff) : Number(project.output.seed);
+    for (let index = 0; index < project.output.batch; index += 1) {
+      const result = await api('/api/director/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          project: directorSerializableProject(project), seed: baseSeed + index,
+          loras: project.output.loras || state.videoLoras, width: project.output.width, height: project.output.height,
+          smooth: project.output.smooth, fourK: project.output.fourK,
+        }),
+      });
+      state.activeJobs.add(result.jobId);
+    }
+    $('#genLbl').textContent = genLabel();
+    toast(`${project.output.batch} Director generation${project.output.batch === 1 ? '' : 's'} added to the queue`);
+  } catch (requestError) {
+    if (Array.isArray(requestError.missingAssets)) requestError.missingAssets.forEach((name) => directorMissingAssets.add(name));
+    toast(requestError.message, true);
+  } finally {
+    button.textContent = 'Generate marked range';
+    renderDirector();
+  }
+}
+
+$('#directorModeBtn').addEventListener('click', () => openDirectorMode());
+$('#directorBack').addEventListener('click', closeDirectorMode);
+$('#directorGlobalPrompt').addEventListener('input', directorUpdateProjectFields);
+$('#directorZoom').addEventListener('input', () => { directorPixelsPerSecond = Number($('#directorZoom').value) || 64; renderDirector(); });
+$('#directorPlay').addEventListener('click', toggleDirectorPlayback);
+$('#directorPlayhead').addEventListener('change', () => { state.directorPlayhead = Math.round(directorClamp($('#directorPlayhead').value, 0, state.directorProject.durationFrames - 1)); renderDirector(); });
+$('#directorAddPrompt').addEventListener('click', () => directorAddSegment('main', { id: directorId('prompt'), type: 'text', start: 0, length: Math.min(120, state.directorProject.durationFrames), prompt: '' }));
+$('#directorAddImage').addEventListener('click', () => $('#directorImageFile').click());
+$('#directorAddAudio').addEventListener('click', () => $('#directorAudioFile').click());
+$('#directorAddIcImage').addEventListener('click', () => $('#directorIcImageFile').click());
+$('#directorAddIcVideo').addEventListener('click', () => $('#directorIcVideoFile').click());
+for (const [selector, kind] of [['#directorImageFile', 'image'], ['#directorAudioFile', 'audio'], ['#directorIcImageFile', 'ic-image'], ['#directorIcVideoFile', 'video']]) {
+  $(selector).addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    await directorHandleMedia(file, kind);
+  });
+}
+$('#directorMainTrack').closest('.director-timeline-canvas').addEventListener('pointerdown', startDirectorDrag);
+$('#directorTimelineCanvas').addEventListener('click', (event) => {
+  const target = event.target.closest('[data-director-segment]');
+  if (target) directorSelect(target.dataset.directorTrackName, target.dataset.directorSegment);
+});
+$('#directorTimelineCanvas').addEventListener('keydown', (event) => {
+  const target = event.target.closest('[data-director-segment]');
+  if (!target || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  const segment = directorTrackSegments(target.dataset.directorTrackName).find((item) => item.id === target.dataset.directorSegment);
+  const delta = (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? DIRECTOR_FPS : 1);
+  const start = directorFindPlacement(target.dataset.directorTrackName, segment.start + delta, segment.length, segment.id);
+  if (start >= 0) segment.start = start;
+  renderDirector();
+  document.querySelector(`[data-director-segment="${CSS.escape(segment.id)}"]`)?.focus();
+  saveDirectorProject();
+});
+$('#directorSegmentStart').addEventListener('change', directorApplyTiming);
+$('#directorSegmentLength').addEventListener('change', directorApplyTiming);
+$('#directorSegmentPrompt').addEventListener('input', () => { const segment = directorSelected(); if (segment) { segment.prompt = $('#directorSegmentPrompt').value.slice(0, 4000); renderDirector(); saveDirectorProject(); } });
+$('#directorGuideStrength').addEventListener('change', () => { const segment = directorSelected(); if (segment?.type === 'motion_video') segment.videoStrength = directorClamp($('#directorGuideStrength').value, 0, 1); else if (segment) segment.guideStrength = directorClamp($('#directorGuideStrength').value, 0, 1); renderDirector(); saveDirectorProject(); });
+$('#directorAttentionStrength').addEventListener('change', () => { const segment = directorSelected(); if (segment) segment.videoAttentionStrength = directorClamp($('#directorAttentionStrength').value, 0, 1); renderDirector(); saveDirectorProject(); });
+$('#directorTrimStart').addEventListener('change', () => { const segment = directorSelected(); if (segment) segment.trimStart = Math.max(0, Math.round(Number($('#directorTrimStart').value) || 0)); renderDirector(); saveDirectorProject(); });
+$('#directorEndFrame').addEventListener('change', () => { const segment = directorSelected(); if (segment) { state.directorProject.segments.forEach((item) => { if (item.type === 'image') item.isEndFrame = false; }); segment.isEndFrame = $('#directorEndFrame').checked; renderDirector(); saveDirectorProject(); } });
+$('#directorDelete').addEventListener('click', directorDeleteSelected);
+$('#directorDuplicate').addEventListener('click', directorDuplicateSelected);
+$('#directorSplit').addEventListener('click', directorSplitSelected);
+$('#directorReplace').addEventListener('click', () => {
+  const segment = directorSelected();
+  if (!segment) return;
+  directorReplaceTarget = { ...state.directorSelection };
+  if (segment.type === 'image') $('#directorImageFile').click();
+  else if (segment.type === 'audio') $('#directorAudioFile').click();
+  else if (segment.isStaticImage) $('#directorIcImageFile').click();
+  else $('#directorIcVideoFile').click();
+});
+for (const selector of ['#directorDuration', '#directorRangeStart', '#directorRangeLength', '#directorWidth', '#directorHeight', '#directorBatch', '#directorSmooth', '#directorSeed', '#directorFourK', '#directorInpaintAudio', '#directorOverrideAudio', '#directorIcLora']) {
+  $(selector).addEventListener(selector.includes('Prompt') || selector === '#directorIcLora' ? 'input' : 'change', directorUpdateProjectFields);
+}
+$('#directorGenerate').addEventListener('click', generateDirector);
+$('#directorExportBtn').addEventListener('click', () => {
+  const blob = new Blob([`${JSON.stringify(directorSerializableProject(), null, 2)}\n`], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `mix-studio-director-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 500);
+});
+$('#directorImportBtn').addEventListener('click', () => $('#directorImportFile').click());
+$('#directorImportFile').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    state.directorProject = directorNormalizeClientProject(JSON.parse(await file.text()));
+    state.directorSelection = null;
+    state.directorPlayhead = state.directorProject.range.startFrame;
+    renderDirector();
+    saveDirectorProject();
+    await directorCheckAssets();
+    toast(directorMissingAssets.size ? 'Project imported — missing media is marked in red' : 'Director project imported');
+  } catch (error) { toast(`Could not import project: ${error.message}`, true); }
+});
+$('#directorNewBtn').addEventListener('click', async () => {
+  if (!await askConfirm({
+    title: 'Start a new Director project?',
+    message: 'The current autosaved timeline will be replaced with the settings from the Video form.',
+    confirmLabel: 'Start new project',
+    danger: true,
+  })) return;
+  state.directorProject = directorSeedProject();
+  state.directorSelection = null;
+  directorMissingAssets.clear();
+  renderDirector();
+  saveDirectorProject();
+  directorCheckAssets();
+});
+
 function setEditModelExpanded(open) {
   const expand = open === true;
   const body = $('#editModelBody');
@@ -8619,14 +9423,35 @@ function videoDurationMax(engine) {
   return 15;
 }
 
-function clampVideoDurationInput(input, engine) {
-  const min = Number(input.min) || 1;
-  const step = Math.max(0.001, Number(input.step) || 1);
+const videoDurationInteraction = {
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  fine: false,
+  zooming: false,
+  returning: false,
+  anchorProgress: 0,
+  holdTimer: 0,
+  zoomTimer: 0,
+  snapTimer: 0,
+  scaleTimer: 0,
+  exitTimer: 0,
+};
+
+function clampVideoDurationInput(input, engine, { preserveRange = false } = {}) {
+  const min = Number(input.dataset.fullMin) || 1;
+  const step = Math.max(0.001, Number(input.dataset.fullStep) || Number(input.step) || 1);
   const rawMax = videoDurationMax(engine);
   const maxSteps = Math.max(0, Math.floor(((rawMax - min) / step) + 1e-8));
   const max = Number((min + maxSteps * step).toFixed(3));
   const requested = Number(input.value);
-  input.max = String(max);
+  input.dataset.fullMin = String(min);
+  input.dataset.fullMax = String(max);
+  input.dataset.fullStep = String(step);
+  if (!preserveRange) {
+    input.min = String(min);
+    input.max = String(max);
+  }
   const bounded = Math.max(min, Math.min(max, Number.isFinite(requested) ? requested : 5));
   const snapped = min + Math.round((bounded - min) / step) * step;
   input.value = String(Number(Math.max(min, Math.min(max, snapped)).toFixed(3)));
@@ -8642,38 +9467,60 @@ function formatVideoDuration(value) {
 function videoDurationTickIncrement(min, max) {
   const span = max - min;
   if (span > 30) return 5;
-  if (span > 15) return 2;
   return 1;
 }
 
 function renderVideoDurationSlider() {
   const input = $('#vidDur');
+  const slider = $('#vidDurationSlider');
   const min = Number(input.min) || 1;
   const max = Number(input.max) || 20;
   const value = Math.max(min, Math.min(max, Number(input.value) || min));
   const displayValue = formatVideoDuration(value);
   const progress = max > min ? ((value - min) / (max - min)) * 100 : 0;
-  $('#vidDurationSlider').style.setProperty('--duration-progress', `${progress}%`);
+  slider.style.setProperty('--duration-progress', `${progress}%`);
+  slider.style.setProperty('--duration-visual-progress', `${progress}%`);
   const manual = $('#vidDurManual');
-  manual.min = String(min);
-  manual.max = String(max);
-  manual.step = input.step || '0.1';
+  manual.min = input.dataset.fullMin || String(min);
+  manual.max = input.dataset.fullMax || String(max);
+  manual.step = input.dataset.fullStep || input.step || '0.1';
   if (document.activeElement !== manual) manual.value = displayValue;
   $('#vidDurBubble').textContent = displayValue;
   $('#vidDurMin').textContent = `${formatVideoDuration(min)}s`;
   $('#vidDurMax').textContent = `${formatVideoDuration(max)}s`;
   input.setAttribute('aria-valuetext', `${displayValue} second${value === 1 ? '' : 's'}`);
 
-  const increment = videoDurationTickIncrement(min, max);
-  const rangeKey = `${min}:${max}:${increment}`;
+  const fine = videoDurationInteraction.fine;
+  const increment = fine ? 0.1 : videoDurationTickIncrement(min, max);
+  const rangeKey = `${min}:${max}:${increment}:${fine}`;
   const ticks = $('#vidDurTicks');
   if (ticks.dataset.range === rangeKey) return;
   const values = [];
-  for (let tick = min; tick <= max; tick += increment) values.push(tick);
-  if (values[values.length - 1] !== max) values.push(max);
+  if (fine) {
+    const firstTick = Math.ceil((min - 1e-8) * 10) / 10;
+    const lastTick = Math.floor((max + 1e-8) * 10) / 10;
+    for (let tick = firstTick; tick <= lastTick + 1e-8; tick += 0.1) {
+      values.push(Number(tick.toFixed(1)));
+    }
+  } else {
+    const tickCount = Math.floor(((max - min) / increment) + 1e-8);
+    for (let index = 0; index <= tickCount; index += 1) {
+      values.push(Number((min + index * increment).toFixed(3)));
+    }
+    if (Math.abs(values[values.length - 1] - max) > 1e-6) values.push(max);
+  }
   ticks.replaceChildren(...values.map((tick) => {
     const mark = document.createElement('i');
-    mark.style.left = `${max > min ? ((tick - min) / (max - min)) * 100 : 0}%`;
+    const whole = Math.abs(tick - Math.round(tick)) < 1e-6;
+    mark.className = whole ? 'major' : 'minor';
+    const tickProgress = max > min ? ((tick - min) / (max - min)) * 100 : 0;
+    if (Math.abs(tickProgress) < 1e-6) mark.classList.add('edge-start');
+    if (Math.abs(tickProgress - 100) < 1e-6) mark.classList.add('edge-end');
+    mark.style.left = `${tickProgress}%`;
+    if (fine || videoDurationInteraction.returning) {
+      const distance = Math.abs(tickProgress - videoDurationInteraction.anchorProgress * 100);
+      mark.style.setProperty('--duration-tick-delay', `${Math.round(distance * 0.9)}ms`);
+    }
     return mark;
   }));
   ticks.dataset.range = rangeKey;
@@ -8681,13 +9528,157 @@ function renderVideoDurationSlider() {
 
 function syncVideoDurationLimit() {
   const durationInput = $('#vidDur');
-  const max = clampVideoDurationInput(durationInput, state.vidEngine);
+  const max = clampVideoDurationInput(durationInput, state.vidEngine, {
+    preserveRange: videoDurationInteraction.fine,
+  });
   const cameraGuided = state.vidEngine === 'ltx' && cameraMotionReferenceSelected();
   const longLtx = state.vidEngine === 'ltx' && Number(durationInput.value) > 15;
-  $('#vidDurationHint').textContent = cameraGuided
-    ? `Camera guide · up to ${formatVideoDuration(max)}s`
-    : (longLtx ? 'Long clip · slower, higher memory' : 'Video length · 0.1s steps');
+  $('#vidDurationHint').textContent = videoDurationInteraction.fine
+    ? 'Fine tune · 0.1s steps'
+    : (cameraGuided
+      ? `${formatVideoDuration(max)}s max · hold for tenths`
+      : (longLtx ? 'Long clip · slower, higher memory' : 'Whole-second snap · hold for tenths'));
   renderVideoDurationSlider();
+}
+
+function clearVideoDurationHold() {
+  if (videoDurationInteraction.holdTimer) clearTimeout(videoDurationInteraction.holdTimer);
+  videoDurationInteraction.holdTimer = 0;
+}
+
+function clearVideoDurationZoomTransition() {
+  if (videoDurationInteraction.zoomTimer) clearTimeout(videoDurationInteraction.zoomTimer);
+  videoDurationInteraction.zoomTimer = 0;
+  videoDurationInteraction.zooming = false;
+  const slider = $('#vidDurationSlider');
+  slider.classList.remove('zooming');
+}
+
+function clearVideoDurationSnapTransition() {
+  if (videoDurationInteraction.snapTimer) clearTimeout(videoDurationInteraction.snapTimer);
+  videoDurationInteraction.snapTimer = 0;
+  $('#vidDurationSlider').classList.remove('snapping');
+}
+
+function clearVideoDurationScaleTransition() {
+  if (videoDurationInteraction.scaleTimer) clearTimeout(videoDurationInteraction.scaleTimer);
+  videoDurationInteraction.scaleTimer = 0;
+  videoDurationInteraction.returning = false;
+  $('#vidDurationSlider').classList.remove('zooming-out', 'returning', 'scale-transition');
+}
+
+function activateFineVideoDuration() {
+  if (!videoDurationInteraction.zooming || videoDurationInteraction.pointerId === null) {
+    clearVideoDurationZoomTransition();
+    return;
+  }
+  const input = $('#vidDur');
+  const fullMin = Number(input.dataset.fullMin) || 1;
+  const fullMax = Number(input.dataset.fullMax) || videoDurationMax(state.vidEngine);
+  const value = Math.max(fullMin, Math.min(fullMax, Number(input.value) || fullMin));
+  const windowSize = Math.min(2, fullMax - fullMin);
+  const anchor = Math.max(0, Math.min(1, videoDurationInteraction.anchorProgress));
+  const fineMin = Number((value - anchor * windowSize).toFixed(4));
+  const fineMax = Number((fineMin + windowSize).toFixed(4));
+  clearVideoDurationZoomTransition();
+  videoDurationInteraction.fine = true;
+  $('#vidDurationSlider').classList.add('fine');
+  input.min = String(fineMin);
+  input.max = String(fineMax);
+  input.step = 'any';
+  input.value = String(value);
+  updateVideoDurationFromControl();
+}
+
+function enterFineVideoDuration() {
+  if (videoDurationInteraction.fine || videoDurationInteraction.zooming
+    || videoDurationInteraction.pointerId === null) return;
+  const input = $('#vidDur');
+  const fullMin = Number(input.dataset.fullMin) || 1;
+  const fullMax = Number(input.dataset.fullMax) || videoDurationMax(state.vidEngine);
+  const value = Math.max(fullMin, Math.min(fullMax, Number(input.value) || fullMin));
+  const anchor = fullMax > fullMin ? (value - fullMin) / (fullMax - fullMin) : 0;
+  videoDurationInteraction.anchorProgress = Math.max(0, Math.min(1, anchor));
+  videoDurationInteraction.zooming = true;
+  const slider = $('#vidDurationSlider');
+  slider.style.setProperty('--duration-anchor', `${videoDurationInteraction.anchorProgress * 100}%`);
+  $('#vidDurTicks').querySelectorAll('i').forEach((mark) => {
+    const position = Number.parseFloat(mark.style.left) || 0;
+    const direction = position <= videoDurationInteraction.anchorProgress * 100 ? -1 : 1;
+    const distance = Math.abs(position - videoDurationInteraction.anchorProgress * 100);
+    const shift = direction * (18 + Math.max(0, 24 - distance) * 0.45);
+    mark.style.setProperty('--duration-tick-shift', `${shift.toFixed(1)}px`);
+  });
+  slider.classList.add('zooming');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  videoDurationInteraction.zoomTimer = setTimeout(activateFineVideoDuration, reduceMotion ? 0 : 170);
+}
+
+function exitFineVideoDuration({ immediate = false } = {}) {
+  clearVideoDurationZoomTransition();
+  if (videoDurationInteraction.exitTimer) clearTimeout(videoDurationInteraction.exitTimer);
+  videoDurationInteraction.exitTimer = 0;
+  const restore = (animate) => {
+    if (!videoDurationInteraction.fine) return;
+    const input = $('#vidDur');
+    const value = input.value;
+    const fullMin = Number(input.dataset.fullMin) || 1;
+    const fullMax = Number(input.dataset.fullMax) || videoDurationMax(state.vidEngine);
+    const slider = $('#vidDurationSlider');
+    clearVideoDurationScaleTransition();
+    if (animate) {
+      videoDurationInteraction.returning = true;
+      videoDurationInteraction.anchorProgress = fullMax > fullMin
+        ? (Number(value) - fullMin) / (fullMax - fullMin) : 0;
+      slider.classList.add('returning', 'scale-transition');
+      slider.getBoundingClientRect();
+    }
+    videoDurationInteraction.fine = false;
+    slider.classList.remove('fine', 'zooming-out');
+    input.min = input.dataset.fullMin || '1';
+    input.max = input.dataset.fullMax || String(videoDurationMax(state.vidEngine));
+    input.step = input.dataset.fullStep || '0.1';
+    input.value = value;
+    updateVideoDurationFromControl();
+    if (animate) {
+      videoDurationInteraction.scaleTimer = setTimeout(clearVideoDurationScaleTransition, 260);
+    }
+  };
+  if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    restore(false);
+    return;
+  }
+  videoDurationInteraction.exitTimer = setTimeout(() => {
+    if (!videoDurationInteraction.fine) return;
+    const slider = $('#vidDurationSlider');
+    slider.classList.add('zooming-out');
+    videoDurationInteraction.scaleTimer = setTimeout(() => restore(true), 135);
+  }, 650);
+}
+
+function updateVideoDurationFromControl() {
+  updateVideoTuningSummary();
+  if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
+}
+
+function animateVideoDurationSnap() {
+  const input = $('#vidDur');
+  const min = Number(input.dataset.fullMin) || 1;
+  const max = Number(input.dataset.fullMax) || videoDurationMax(state.vidEngine);
+  const snapped = Math.max(min, Math.min(max, Math.round(Number(input.value) || min)));
+  clearVideoDurationSnapTransition();
+  if (Math.abs(Number(input.value) - snapped) < 1e-6
+    || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    input.value = String(snapped);
+    updateVideoDurationFromControl();
+    return;
+  }
+  const slider = $('#vidDurationSlider');
+  slider.classList.add('snapping');
+  slider.getBoundingClientRect();
+  input.value = String(snapped);
+  updateVideoDurationFromControl();
+  videoDurationInteraction.snapTimer = setTimeout(clearVideoDurationSnapTransition, 210);
 }
 
 function syncAnimateDurationLimit() {
@@ -9740,9 +10731,52 @@ function pickVidRef() {
     saveForm();
   }, 'Choose first frame');
 }
-$('#vidDur').addEventListener('input', () => {
-  updateVideoTuningSummary();
-  if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
+const videoDurationRange = $('#vidDur');
+function scheduleVideoDurationFineHold(event) {
+  clearVideoDurationHold();
+  videoDurationInteraction.startX = event.clientX;
+  videoDurationInteraction.startY = event.clientY;
+  videoDurationInteraction.holdTimer = setTimeout(enterFineVideoDuration, 420);
+}
+videoDurationRange.addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  clearVideoDurationSnapTransition();
+  exitFineVideoDuration({ immediate: true });
+  videoDurationInteraction.pointerId = event.pointerId;
+  scheduleVideoDurationFineHold(event);
+});
+videoDurationRange.addEventListener('pointermove', (event) => {
+  if (event.pointerId !== videoDurationInteraction.pointerId || videoDurationInteraction.fine) return;
+  const distance = Math.hypot(
+    event.clientX - videoDurationInteraction.startX,
+    event.clientY - videoDurationInteraction.startY,
+  );
+  if (distance > 8) {
+    clearVideoDurationZoomTransition();
+    scheduleVideoDurationFineHold(event);
+  }
+});
+function finishVideoDurationPointer(event) {
+  if (event.pointerId !== videoDurationInteraction.pointerId) return;
+  clearVideoDurationHold();
+  clearVideoDurationZoomTransition();
+  videoDurationInteraction.pointerId = null;
+  if (videoDurationInteraction.fine) exitFineVideoDuration();
+  else animateVideoDurationSnap();
+}
+videoDurationRange.addEventListener('pointerup', finishVideoDurationPointer);
+videoDurationRange.addEventListener('pointercancel', finishVideoDurationPointer);
+videoDurationRange.addEventListener('input', () => {
+  updateVideoDurationFromControl();
+});
+videoDurationRange.addEventListener('keydown', (event) => {
+  if (videoDurationInteraction.fine || !['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(event.key)) return;
+  event.preventDefault();
+  const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
+  const min = Number(videoDurationRange.dataset.fullMin) || 1;
+  const max = Number(videoDurationRange.dataset.fullMax) || videoDurationMax(state.vidEngine);
+  videoDurationRange.value = String(Math.max(min, Math.min(max, Math.round(Number(videoDurationRange.value)) + direction)));
+  updateVideoDurationFromControl();
 });
 function syncManualVideoDuration() {
   const manual = $('#vidDurManual');
@@ -9751,14 +10785,17 @@ function syncManualVideoDuration() {
     renderVideoDurationSlider();
     return;
   }
+  exitFineVideoDuration({ immediate: true });
   duration.value = manual.value;
   clampVideoDurationInput(duration, state.vidEngine);
-  updateVideoTuningSummary();
-  if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
+  updateVideoDurationFromControl();
 }
 $('#vidDurManual').addEventListener('input', syncManualVideoDuration);
 $('#vidDurManual').addEventListener('blur', syncManualVideoDuration);
-$('#vidDurManual').addEventListener('focus', (event) => event.currentTarget.select());
+$('#vidDurManual').addEventListener('focus', (event) => {
+  exitFineVideoDuration({ immediate: true });
+  event.currentTarget.select();
+});
 $('#vidDurManual').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
@@ -11642,7 +12679,8 @@ function itemActivity(it) {
   return t;
 }
 
-function videoEngineLabel(engine) {
+function videoEngineLabel(engine, info) {
+  if (info?.workflow === 'director') return 'LTX 2.3 Director';
   return {
     ltx: 'LTX 2.3',
     'ltx-edit': 'LTX Edit',
@@ -11890,7 +12928,7 @@ function renderDesktopStage(item, mediaSel) {
   status.textContent = resolved.selected ? '' : 'Latest output';
   $('#desktopStagePrompt').textContent = item.prompt || item.refinedPrompt || 'Untitled generation';
   $('#desktopStageModel').textContent = selectedVideo
-    ? videoEngineLabel(selectedVideo.info && selectedVideo.info.engine)
+    ? videoEngineLabel(selectedVideo.info && selectedVideo.info.engine, selectedVideo.info)
     : (galleryImageModelLabel(item) || (item.mode === 'composite' ? 'Composite' : 'Image'));
   $('#desktopStageDims').textContent = item.width && item.height
     ? `${item.width} × ${item.height}`
@@ -12324,7 +13362,7 @@ function librarySearchText(it) {
     ...loras,
     ...regions,
     ...videoText,
-    ...(it.videos || []).map((video) => videoEngineLabel(video && video.info && video.info.engine)),
+    ...(it.videos || []).map((video) => videoEngineLabel(video && video.info && video.info.engine, video && video.info)),
   ].filter(Boolean).join(' ').toLocaleLowerCase();
 }
 
@@ -13288,7 +14326,7 @@ function renderGrid() {
     }
     if (it.videos && it.videos.length) {
       const latestVideo = latestGalleryVideo(it);
-      const videoModel = videoEngineLabel(latestVideo && latestVideo.info && latestVideo.info.engine);
+      const videoModel = videoEngineLabel(latestVideo && latestVideo.info && latestVideo.info.engine, latestVideo && latestVideo.info);
       const v = document.createElement('span');
       v.className = 'badge vid';
       v.textContent = `▶ ${videoModel}`;
@@ -14642,7 +15680,8 @@ function openLightbox(id, mediaSel) {
   if (selVideo) {
     const info = selVideo.info || {};
     const model = videoEngineLabel(info.engine);
-    meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
+    const workflowModel = info.workflow === 'director' ? videoEngineLabel(info.engine, info) : model;
+    meta.push(`<b>Model:</b> ${escapeHtml(workflowModel)}`);
     const recordedVideoWidth = Math.round(Number(info.width));
     const recordedVideoHeight = Math.round(Number(info.height));
     const fallbackVideoWidth = Math.round(Number(it.width));
@@ -15672,6 +16711,23 @@ async function reuseVideo(it, v) {
   closeLightbox();
   setView('video');
 
+  if (info.workflow === 'director' && info.directorProject) {
+    const engineChip = $('#vidEngineRow .chip[data-engine="ltx"]');
+    if (engineChip) engineChip.click();
+    state.videoLoras = (info.loras || []).map((lora) => ({ name: lora.name, strength: Number(lora.strength) || 1, on: true }));
+    const project = JSON.parse(JSON.stringify(info.directorProject));
+    project.output = Object.assign({}, project.output || {}, {
+      width: info.fourK ? Math.round((Number(info.width) || 2560) / 2) : (Number(info.width) || 1280),
+      height: info.fourK ? Math.round((Number(info.height) || 1440) / 2) : (Number(info.height) || 720),
+      seed: Number.isSafeInteger(Number(info.seed)) ? Number(info.seed) : '',
+      batch: 1, smooth: [1, 2, 3].includes(Number(info.smooth)) ? Number(info.smooth) : 1,
+      fourK: info.fourK === true, loras: state.videoLoras,
+    });
+    openDirectorMode(project);
+    if (!options.silent) toast('Director project loaded from the gallery');
+    return;
+  }
+
   // Clear current attachments + their UI
   state.vidRef = null;
   state.vidEnd = null;
@@ -16559,7 +17615,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.processed === 'interpolate' && 'Frame interpolation',
   ].filter(Boolean).join(', ');
   const facts = [
-    ['Model', videoEngineLabel(info.engine)],
+    ['Model', videoEngineLabel(info.engine, info)],
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
@@ -18736,6 +19792,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setLtxLora').value = s.ltxDistilledLora || '';
     $('#setLtxCameraLora').value = s.ltxCameramanLora || '';
     $('#setLtxEditLora').value = s.ltxEditLora || '';
+    $('#setLtxDirectorLora').value = s.ltxDirectorIcLora || '';
     $('#setLtxTe').value = s.ltxTextEncoder || '';
     $('#setLtxGemmaLora').value = s.ltxGemmaLora || '';
     $('#setLtxUps').value = s.ltxUpscaler || '';
@@ -18807,6 +19864,7 @@ $('#settingsSave').addEventListener('click', async () => {
         ltxDistilledLora: $('#setLtxLora').value,
         ltxCameramanLora: $('#setLtxCameraLora').value,
         ltxEditLora: $('#setLtxEditLora').value,
+        ltxDirectorIcLora: $('#setLtxDirectorLora').value,
         ltxTextEncoder: $('#setLtxTe').value,
         ltxGemmaLora: $('#setLtxGemmaLora').value,
         ltxUpscaler: $('#setLtxUps').value,
@@ -18897,6 +19955,7 @@ function generationSetupComponents() {
   if (state.view === 'video') {
     const byEngine = { ltx: 'video', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
+    if (state.directorOpen) components.add('ltxdirector');
     if (state.vidEngine === 'ltx-edit') components.add('video');
     if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
     if (cameraMotionReferenceSelected()) components.add('ltxcamera');
@@ -19802,7 +20861,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -19861,6 +20920,7 @@ renderDims();
 renderLoras();
 renderRefs();
 setView(state.view, state.view === 'create' ? { createMode: state.createMode } : {});
+if (state.directorOpen) openDirectorMode(state.directorProject);
 restorePersistedWorkspaceControls();
 restorePersistedWorkspaceMedia();
 connectEvents();

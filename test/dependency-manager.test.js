@@ -29,10 +29,10 @@ const {
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -50,11 +50,39 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(NODE_PACKS.ltxvideo.repo, /Lightricks\/ComfyUI-LTXVideo/);
   assert.match(MODEL_ASSETS.ltxCamera[0][2], /Cseti\/LTX2\.3-22B_IC-LoRA-Cameraman_v2/);
   assert.deepEqual(COMPONENTS.ltxcamera.nodes, ['ltxvideo', 'vhs']);
+  assert.deepEqual(COMPONENTS.ltxdirector.nodes, ['whatdreamscost', 'ltxvideo', 'kjnodes', 'vhs']);
+  assert.equal(COMPONENTS.video.nodes.includes('whatdreamscost'), false);
+  assert.equal(COMPONENTS.video.models.includes('ltxDirector'), false);
+  assert.match(NODE_PACKS.whatdreamscost.ref, /^[a-f0-9]{40}$/);
+  assert.match(MODEL_ASSETS.ltxDirector[0][2], /Lightricks\/LTX-2\.3-22b-IC-LoRA-Ingredients/);
   assert.match(MODEL_ASSETS.krea2Outpaint[0][2], /conradlocke\/krea2-identity-edit/);
   assert.equal(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[1], 'loras');
   assert.match(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[2], /f2k_4B_consist_20260314\.safetensors/);
   assert.equal(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[1], 'loras');
   assert.match(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[2], /f2k_9B_lcs_consist_20260415\.safetensors/);
+});
+
+test('automatic Director node installs use the reviewed commit while compatible checkouts are reused', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-director-node-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.whatdreamscost.folder);
+  const commands = [];
+  try {
+    await installNodePack(NODE_PACKS.whatdreamscost, {
+      customNodesPath, basePath: rootDir, pythonPath: 'python',
+    }, () => {}, {
+      existsSync: (target) => target === path.join(nodePath, 'requirements.txt') ? false : fs.existsSync(target),
+      run: async (command, args) => {
+        commands.push([command, args]);
+        if (command === 'git' && args[0] === 'clone') fs.mkdirSync(path.join(nodePath, '.git'), { recursive: true });
+        return '';
+      },
+    });
+    assert.deepEqual(commands[0], ['git', ['clone', NODE_PACKS.whatdreamscost.repo, nodePath]]);
+    assert.deepEqual(commands[1], ['git', ['-C', nodePath, 'checkout', '--detach', NODE_PACKS.whatdreamscost.ref]]);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test('dependency paths stay inside ComfyUI model folders and trusted repos compare safely', () => {

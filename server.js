@@ -125,6 +125,14 @@ const {
   videoProcessInfo,
 } = require('./lib/video-workflows');
 const {
+  DIRECTOR_FPS,
+  buildLtxDirectorGraph,
+  directorAssetNames,
+  directorOutputFrames,
+  normalizeDirectorAssetName,
+  normalizeDirectorProject,
+} = require('./lib/ltx-director-workflows');
+const {
   buildRegionalT2IGraph,
   buildKrea2InpaintGraph,
   hasActiveRegions,
@@ -252,6 +260,7 @@ const DEFAULT_SETTINGS = {
   ltxDistilledLora: 'ltx-2.3-22b-distilled-lora-384.safetensors',
   ltxCameramanLora: 'LTX2.3-22B_IC-LoRA-Cameraman_v2_14000.safetensors',
   ltxEditLora: 'edit_anything_v1.1_r256.safetensors',
+  ltxDirectorIcLora: 'ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors',
   ltxTextEncoder: 'gemma_3_12B_it_fp4_mixed.safetensors',
   ltxGemmaLora: 'gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors',
   ltxUpscaler: 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors',
@@ -828,6 +837,21 @@ async function comfyFetch(p, opts) {
   return res;
 }
 
+async function directorInputAssetAvailable(name) {
+  try {
+    await fsp.access(inputAssetPath(INPUTS, name));
+    return true;
+  } catch { /* fall through to ComfyUI's input folder */ }
+  const parts = name.split('/');
+  const filename = parts.pop();
+  const subfolder = parts.join('/');
+  try {
+    const response = await comfyFetch(`/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=input`);
+    if (response.body?.cancel) await response.body.cancel().catch(() => {});
+    return true;
+  } catch { return false; }
+}
+
 let objectInfoCache = null;
 let objectInfoAt = 0;
 async function getObjectInfo(force, fetchOptions) {
@@ -937,6 +961,10 @@ function configuredModelsStatus(info) {
       gemmaLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.ltxGemmaLora, loraList),
       upscaler: modelStatus(info, 'LatentUpscaleModelLoader', 'model_name', settings.ltxUpscaler),
     },
+    ltxDirector: {
+      label: 'LTX 2.3 Director',
+      ingredients: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxDirectorIcLora, loraList),
+    },
     ltxCamera: {
       label: 'LTX Camera Motion',
       lora: modelStatus(info, 'LTXICLoRALoaderModelOnly', 'lora_name', settings.ltxCameramanLora, loraList),
@@ -988,6 +1016,7 @@ function missingDependencyComponentIds(missing, models) {
     ultimateupscale: ['ultimateupscale'],
     video: ['video'],
     ltxcamera: ['ltxcamera'],
+    ltxdirector: ['ltxdirector'],
     videoedit: ['videoedit'],
     video4k: ['video4k'],
     wan: ['wan'],
@@ -1004,7 +1033,7 @@ function missingDependencyComponentIds(missing, models) {
   for (const [group, classes] of Object.entries(missing || {})) {
     if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
   }
-  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -4117,6 +4146,7 @@ const REQUIRED_CLASSES = {
     'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
     'LTXVLatentUpsampler', 'LTXVCropGuides', 'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo',
     'SaveVideo', 'ImageScale', 'LTXVPreprocess'],
+  ltxdirector: ['LTXDirector', 'LTXDirectorGuide', 'LTXDirectorCropGuides'],
   ltxcamera: ['LTXICLoRALoaderModelOnly', 'LTXAddVideoICLoRAGuide', 'LTXVImgToVideoConditionOnly',
     'VHS_LoadVideo', 'ImageBatch'],
   videoedit: ['VHS_LoadVideo', 'LTXVAddGuide'],
@@ -4979,6 +5009,105 @@ async function handleApi(req, res, url) {
     trackJob(pid, { kind: 'upscale', profileId: req.profile.id, itemId: item.id, graph, upscaleInfo: opts });
     ensureWs();
     return json(res, 200, { jobId: pid });
+  }
+
+  if (route === '/api/director/assets' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const assets = Array.isArray(body.assets) ? body.assets.slice(0, 768) : [];
+    const missingAssets = [];
+    for (const entry of assets) {
+      try {
+        const kind = ['image', 'video', 'audio'].includes(entry?.kind) ? entry.kind : 'image';
+        const name = normalizeDirectorAssetName(entry?.name, kind);
+        if (!(await directorInputAssetAvailable(name))) missingAssets.push(name);
+      } catch {
+        missingAssets.push(String(entry?.name || 'invalid asset'));
+      }
+    }
+    return json(res, 200, { missingAssets: [...new Set(missingAssets)] });
+  }
+
+  if (route === '/api/director/generate' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    if (settings.features['video.ltx'] === false) {
+      return json(res, 400, { error: 'LTX 2.3 was not installed on this machine.' });
+    }
+    let project;
+    try {
+      project = normalizeDirectorProject(body.project);
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
+
+    const info = await getObjectInfo();
+    const missingNodes = [...REQUIRED_CLASSES.video, ...REQUIRED_CLASSES.ltxdirector]
+      .filter((name) => !info[name]);
+    if (missingNodes.length) {
+      return json(res, 400, {
+        error: `Director mode needs its ComfyUI dependencies installed and ComfyUI restarted. Missing: ${missingNodes.join(', ')}`,
+        component: 'ltxdirector',
+      });
+    }
+    if (project.motionSegments.length) {
+      const model = configuredModelsStatus(info).ltxDirector.ingredients;
+      if (!model.ok) {
+        return json(res, 400, {
+          error: `IC guidance needs the Ingredients IC-LoRA in ComfyUI loras: ${model.name}`,
+          component: 'ltxdirector',
+        });
+      }
+    }
+
+    const missingAssets = [];
+    for (const name of directorAssetNames(project)) {
+      if (!(await directorInputAssetAvailable(name))) missingAssets.push(name);
+    }
+    if (missingAssets.length) {
+      return json(res, 400, { error: 'Replace or remove missing Director media before generating.', missingAssets });
+    }
+
+    const seedValue = Number(body.seed);
+    const seed = Number.isSafeInteger(seedValue) && seedValue >= 0
+      ? seedValue : Math.floor(Math.random() * 0x7fffffff);
+    const { W, H } = videoDims(
+      clampInt(body.width, 64, 8192, 1280),
+      clampInt(body.height, 64, 8192, 720),
+    );
+    const smooth = [1, 2, 3].includes(Number(body.smooth)) ? Number(body.smooth) : 1;
+    const loras = Array.isArray(body.loras) ? body.loras.filter((lora) => lora && lora.on && lora.name) : [];
+    const outputFrames = directorOutputFrames(project);
+    const graph = await buildLtxDirectorGraph(project, {
+      W, H, seed, smooth, fourK: body.fourK === true, makePoster: true, loras,
+      sigmasBase: LTX_SIGMAS_BASE, sigmasRefine: LTX_SIGMAS_REFINE,
+    }, settings, {
+      nodeFromOrdered, filterInputs, chainModelLoras, rifeSmooth,
+      rtxVideoSuperResolutionNode, getObjectInfo,
+    });
+    const pid = await queuePrompt(graph);
+    trackJob(pid, {
+      kind: 'video', profileId: req.profile.id, itemId: null, createItem: true, graph,
+      videoInfo: {
+        engine: 'ltx', workflow: 'director',
+        directorProject: Object.assign({}, project, {
+          output: { width: W, height: H, seed, batch: 1, smooth, fourK: body.fourK === true, loras },
+        }),
+        seconds: project.range.lengthFrames / DIRECTOR_FPS,
+        motionPrompt: project.globalPrompt || project.segments.find((segment) => segment.prompt)?.prompt || 'Director project',
+        enhance: false,
+        frames: outputFrames * smooth, fps: DIRECTOR_FPS * smooth,
+        smooth: smooth > 1 ? smooth : undefined,
+        fourK: body.fourK === true,
+        width: body.fourK === true ? W * 2 : W,
+        height: body.fourK === true ? H * 2 : H,
+        seed, t2v: !project.segments.some((segment) => segment.type === 'image'),
+        drivenAudio: project.audioSegments.length > 0 || project.settings.inpaintAudio,
+        motionVideo: project.motionSegments.length > 0,
+        endFrame: project.segments.some((segment) => segment.type === 'image' && segment.isEndFrame),
+        loras,
+      },
+    });
+    ensureWs();
+    return json(res, 200, { jobId: pid, frames: outputFrames, engine: 'ltx', workflow: 'director' });
   }
 
   if (route === '/api/animate' && req.method === 'POST') {

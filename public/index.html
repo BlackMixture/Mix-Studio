@@ -175,6 +175,96 @@
       </button>
     </nav>
   </div>
+  <section class="director-workspace" id="directorWorkspace" aria-label="LTX 2.3 Director workspace" hidden>
+    <header class="director-head">
+      <button class="director-back" id="directorBack" type="button">← Back to Video</button>
+      <div><span>LTX 2.3</span><h1>Director mode</h1><small id="directorSaveStatus" role="status">Autosaved</small></div>
+      <div class="director-file-actions">
+        <button id="directorImportBtn" type="button">Import</button>
+        <button id="directorExportBtn" type="button">Export</button>
+        <button id="directorNewBtn" type="button">New</button>
+        <input id="directorImportFile" type="file" accept="application/json,.json" hidden />
+      </div>
+    </header>
+    <div class="director-global">
+      <label for="directorGlobalPrompt">Global prompt</label>
+      <textarea id="directorGlobalPrompt" maxlength="4000" rows="3" placeholder="The visual and sonic direction shared by this marked window…"></textarea>
+    </div>
+    <div class="director-layout">
+      <div class="director-timeline-column">
+        <div class="director-toolbar" aria-label="Add timeline segment">
+          <button id="directorAddPrompt" type="button">+ Prompt</button>
+          <button id="directorAddImage" type="button">+ Keyframe</button>
+          <button id="directorAddAudio" type="button">+ Audio</button>
+          <button id="directorAddIcImage" type="button">+ IC image</button>
+          <button id="directorAddIcVideo" type="button">+ IC video</button>
+          <input id="directorImageFile" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <input id="directorAudioFile" type="file" accept="audio/*" hidden />
+          <input id="directorIcImageFile" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <input id="directorIcVideoFile" type="file" accept="video/mp4,video/webm,video/quicktime" hidden />
+        </div>
+        <div class="director-transport">
+          <button id="directorPlay" type="button" aria-label="Play timeline">▶</button>
+          <label>Playhead <input id="directorPlayhead" type="number" min="0" max="24000" step="1" value="0" /> f</label>
+          <label class="director-zoom">Zoom <input id="directorZoom" type="range" min="24" max="160" step="4" value="64" /></label>
+          <label><input id="directorSnap" type="checkbox" checked /> Snap</label>
+        </div>
+        <div class="director-timeline" id="directorTimelineViewport" tabindex="0" aria-label="Director timeline. Scroll horizontally to navigate.">
+          <div class="director-timeline-canvas" id="directorTimelineCanvas">
+            <div class="director-ruler" id="directorRuler" aria-hidden="true"></div>
+            <div class="director-range" id="directorRange" aria-label="Generation range">
+              <button class="director-range-handle start" data-director-range-handle="start" type="button" aria-label="Move generation in point"></button>
+              <span id="directorRangeLabel"></span>
+              <button class="director-range-handle end" data-director-range-handle="end" type="button" aria-label="Move generation out point"></button>
+            </div>
+            <div class="director-playhead-line" id="directorPlayheadLine" aria-hidden="true"></div>
+            <div class="director-track" data-director-track="main"><div class="director-track-name">Main<small>prompts + keyframes</small></div><div class="director-track-lane" id="directorMainTrack" role="list"></div></div>
+            <div class="director-track" data-director-track="audio"><div class="director-track-name">Audio<small>clips + gap fill</small></div><div class="director-track-lane" id="directorAudioTrack" role="list"></div></div>
+            <div class="director-track" data-director-track="motion"><div class="director-track-name">IC guide<small>image + video</small></div><div class="director-track-lane" id="directorMotionTrack" role="list"></div></div>
+          </div>
+        </div>
+        <p class="director-timeline-help">Drag segments and trim handles, or use the exact fields. Arrow keys move one frame; Shift + Arrow moves one second.</p>
+      </div>
+      <aside class="director-inspector" aria-label="Director inspector">
+        <section id="directorEmptyInspector"><h2>Inspector</h2><p>Select a segment to edit its timing and direction.</p></section>
+        <section id="directorSegmentInspector" hidden>
+          <div class="director-inspector-head"><span>Selected segment</span><strong id="directorSegmentKind">Prompt</strong></div>
+          <div class="director-field-grid">
+            <label>Start (frames)<input id="directorSegmentStart" type="number" min="0" max="23999" step="1" /></label>
+            <label>Duration (frames)<input id="directorSegmentLength" type="number" min="1" max="24000" step="1" /></label>
+            <label class="director-inspector-wide" id="directorSegmentPromptField">Prompt<textarea id="directorSegmentPrompt" maxlength="4000" rows="4"></textarea></label>
+            <label id="directorGuideStrengthField">Guide strength<input id="directorGuideStrength" type="number" min="0" max="1" step="0.05" /></label>
+            <label id="directorAttentionStrengthField">Attention<input id="directorAttentionStrength" type="number" min="0" max="1" step="0.05" /></label>
+            <label id="directorTrimField">Source trim (frames)<input id="directorTrimStart" type="number" min="0" max="24000" step="1" /></label>
+            <label id="directorEndFrameField"><input id="directorEndFrame" type="checkbox" /> Use as end frame</label>
+          </div>
+          <div class="director-inspector-actions"><button id="directorReplace" type="button">Replace media</button><button id="directorSplit" type="button">Split</button><button id="directorDuplicate" type="button">Duplicate</button><button id="directorDelete" class="danger" type="button">Delete</button></div>
+        </section>
+        <section class="director-project-settings">
+          <h2>Project</h2>
+          <div class="director-field-grid">
+            <label>Duration (seconds)<input id="directorDuration" type="number" min="0.042" max="1000" step="0.042" /></label>
+            <label>In point (frames)<input id="directorRangeStart" type="number" min="0" max="23999" step="1" /></label>
+            <label>Window (frames)<input id="directorRangeLength" type="number" min="1" max="480" step="1" /></label>
+            <label>Width<input id="directorWidth" type="number" min="256" max="4096" step="64" /></label>
+            <label>Height<input id="directorHeight" type="number" min="256" max="4096" step="64" /></label>
+            <label>Batch<input id="directorBatch" type="number" min="1" max="8" step="1" /></label>
+            <label>Smoothing<select id="directorSmooth"><option value="1">Off</option><option value="2">2×</option><option value="3">3×</option></select></label>
+            <label>Seed<input id="directorSeed" type="number" min="0" step="1" placeholder="Random" /></label>
+            <label><input id="directorFourK" type="checkbox" /> 4K output</label>
+            <label><input id="directorInpaintAudio" type="checkbox" checked /> Generate audio in gaps</label>
+            <label><input id="directorOverrideAudio" type="checkbox" /> Use guide video audio</label>
+            <label class="director-inspector-wide">IC-LoRA override<input id="directorIcLora" type="text" placeholder="Use owner-configured Ingredients model" /></label>
+          </div>
+        </section>
+        <section class="director-attribution"><p>Director nodes by <a href="https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI" target="_blank" rel="noreferrer">WhatDreamsCost (GPL-3.0)</a>. Ingredients model by <a href="https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients" target="_blank" rel="noreferrer">Lightricks</a>.</p></section>
+      </aside>
+    </div>
+    <footer class="director-summary">
+      <div><span>Marked generation</span><strong id="directorSummary">0–5 sec · 1280×720 · text only · 1 video</strong><small id="directorValidation" role="alert"></small></div>
+      <button class="btn-generate" id="directorGenerate" type="button">Generate marked range</button>
+    </footer>
+  </section>
   <section class="panel video-model-panel edit-model-panel" id="editModelPanel" hidden>
     <button class="video-model-header" id="editModelHeader" type="button" aria-expanded="false" aria-controls="editModelBody">
       <span class="video-model-kicker">Edit model</span>
@@ -328,6 +418,7 @@
       </div>
     </div>
   </section>
+  <button class="director-entry" id="directorModeBtn" type="button" hidden><span><b>Director mode</b><small>Timed prompts, keyframes, audio, and IC guidance</small></span><i aria-hidden="true">→</i></button>
 
   <section class="panel" id="promptPanel">
     <div class="panel-label" id="promptLabel">Prompt</div>
@@ -697,20 +788,21 @@
       <div class="video-options-body-inner">
         <div class="video-number-setting video-duration-primary" id="vidDurationField">
           <div class="video-duration-heading">
-            <span><b>Duration</b><small id="vidDurationHint">Video length</small></span>
+            <span><b>Duration</b><small id="vidDurationHint" hidden></small></span>
             <label class="duration-slider-value" for="vidDurManual" title="Enter duration">
               <input id="vidDurManual" type="number" min="1" max="20" step="0.1" value="5" inputmode="decimal" aria-label="Enter video duration in seconds" />
               <span aria-hidden="true">s</span>
             </label>
           </div>
-          <div class="duration-slider-shell" id="vidDurationSlider" style="--duration-progress: 21.0526%;">
+          <div class="duration-slider-shell" id="vidDurationSlider" style="--duration-progress: 21.0526%; --duration-visual-progress: 21.0526%;">
             <output class="duration-slider-bubble" id="vidDurBubble" for="vidDur" aria-hidden="true">5</output>
             <div class="duration-slider-control">
               <div class="duration-slider-track" aria-hidden="true">
                 <span class="duration-slider-progress"></span>
                 <span class="duration-slider-ticks" id="vidDurTicks"></span>
               </div>
-              <input id="vidDur" type="range" min="1" max="20" step="0.1" value="5" aria-label="Video duration in seconds" aria-describedby="vidDurationHint" />
+              <span class="duration-slider-thumb" aria-hidden="true"></span>
+              <input id="vidDur" type="range" min="1" max="20" step="0.1" value="5" aria-label="Video duration in seconds" />
             </div>
             <div class="duration-slider-scale" aria-hidden="true"><span id="vidDurMin">1s</span><span id="vidDurMax">20s</span></div>
           </div>
@@ -1942,6 +2034,7 @@
             <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
             <div class="field"><label>Camera Motion IC-LoRA</label><input id="setLtxCameraLora" type="text" /></div>
             <div class="field"><label>Edit Anything LoRA</label><input id="setLtxEditLora" type="text" /></div>
+            <div class="field"><label>Director Ingredients IC-LoRA</label><input id="setLtxDirectorLora" type="text" /></div>
             <div class="field"><label>Gemma text encoder</label><input id="setLtxTe" type="text" /></div>
             <div class="field"><label>Gemma LoRA</label><input id="setLtxGemmaLora" type="text" /></div>
             <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>
