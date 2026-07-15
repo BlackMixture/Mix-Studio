@@ -3455,11 +3455,13 @@ async function setCreateImageGuideAsset(asset, mode = 'image') {
 function renderCreateImageGuide() {
   const section = $('#createImageGuide');
   if (!section) return;
+  const chip = $('#createImageGuideChip');
   const toggle = $('#createImageGuideToggle');
   const toolbar = $('#createPromptTools');
   const visible = state.view === 'create' && state.createMode === 'image';
   if (section.previousElementSibling !== toolbar) toolbar.after(section);
   section.hidden = !visible;
+  chip.hidden = !visible;
   toggle.hidden = !visible;
   const mode = ['image', 'depth', 'style'].includes(state.createGuideMode)
     ? state.createGuideMode : 'image';
@@ -3468,17 +3470,22 @@ function renderCreateImageGuide() {
   const hasStoredImage = !!state.createRef;
   const hasActiveImage = hasStoredImage && state.createGuideActive;
   const open = visible && state.createImageGuideOpen;
+  chip.classList.toggle('has-image', hasActiveImage);
+  toggle.classList.toggle('icon-chip', !hasActiveImage);
   toggle.classList.toggle('has-source', hasStoredImage);
   toggle.classList.toggle('has-image', hasActiveImage);
   toggle.classList.toggle('active', open);
   toggle.setAttribute('aria-expanded', String(open));
-  const modeLabel = { image: 'reference', depth: 'depth guide', style: 'style reference' }[mode];
+  const modeLabel = { image: 'Reference', depth: 'Depth guide', style: 'Style reference' }[mode];
+  $('#createImageGuideToggleLabel').textContent = hasActiveImage ? modeLabel : '';
+  $('#createImageGuideToggleLabel').hidden = !hasActiveImage;
+  $('#createImageGuideQuickRemove').hidden = !hasActiveImage;
   toggle.setAttribute('aria-label', hasActiveImage
-    ? `Image tools, ${modeLabel} active`
+    ? `Image tools, ${modeLabel.toLowerCase()} active`
     : (hasStoredImage ? 'Image tools, image loaded' : 'Add image from device or Library'));
-  toggle.title = hasActiveImage
-    ? `Image tools · ${modeLabel} active`
-    : (hasStoredImage ? 'Image tools · image loaded' : 'Add image · device or Library');
+  if (hasActiveImage) toggle.removeAttribute('title');
+  else toggle.title = hasStoredImage ? 'Image tools · image loaded' : 'Add image · device or Library';
+  markIconTooltip(toggle);
   section.classList.toggle('expanded', open);
   section.inert = !open;
   section.setAttribute('aria-hidden', String(!open));
@@ -3811,7 +3818,7 @@ $('#createDepthPreviewBtn').addEventListener('click', async () => {
   btn.disabled = false;
   renderCreateImageGuide();
 });
-$('#createImageGuideRemove').addEventListener('click', () => {
+function clearCreateImageGuide() {
   state.createRef = null;
   state.createGuideActive = false;
   state.createImageGuideOpen = false;
@@ -3824,6 +3831,12 @@ $('#createImageGuideRemove').addEventListener('click', () => {
   saveForm();
   schedulePromptIntentHint();
   toast('Image guide removed');
+  requestAnimationFrame(() => $('#createImageGuideToggle').focus({ preventScroll: true }));
+}
+$('#createImageGuideRemove').addEventListener('click', clearCreateImageGuide);
+$('#createImageGuideQuickRemove').addEventListener('click', (event) => {
+  event.stopPropagation();
+  clearCreateImageGuide();
 });
 $('#createImageInfluence').addEventListener('input', (event) => {
   if (state.createGuideMode === 'depth') state.createDepthStrength = Number(event.target.value);

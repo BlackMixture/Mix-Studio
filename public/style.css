@@ -1091,7 +1091,25 @@ html:-webkit-full-screen { background: #000; }
   transform: translateX(14px);
   background: rgb(var(--mode-rgb));
 }
+.create-image-guide-chip {
+  display: inline-flex;
+  align-items: stretch;
+  position: relative;
+  border-radius: 999px;
+}
+.create-image-guide-chip[hidden] { display: none; }
 .create-image-guide-toggle { position: relative; }
+.create-image-guide-toggle-label {
+  overflow: hidden;
+  max-width: 96px;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 850;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.create-image-guide-toggle-label[hidden] { display: none; }
 .create-image-guide-toggle.has-source::after {
   content: '';
   position: absolute;
@@ -1117,6 +1135,48 @@ html:-webkit-full-screen { background: #000; }
   background: linear-gradient(#12151d, #12151d) padding-box, var(--gemini) border-box;
   box-shadow: 0 0 16px rgba(66,87,255,.22);
 }
+.create-image-guide-chip.has-image {
+  border: 1.5px solid transparent;
+  background: linear-gradient(#12151d, #12151d) padding-box, var(--gemini) border-box;
+  box-shadow: 0 0 16px rgba(66,87,255,.22);
+}
+.create-image-guide-chip.has-image:focus-within {
+  box-shadow: 0 0 0 2px rgba(5,7,11,.92), 0 0 0 4px rgba(var(--mode-rgb),.52), 0 0 20px rgba(66,87,255,.26);
+}
+.create-image-guide-chip.has-image .create-image-guide-toggle {
+  min-height: 37px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px 8px 12px;
+  border: 0;
+  border-radius: 999px 0 0 999px;
+  background: transparent;
+  box-shadow: none;
+  line-height: 1;
+}
+.create-image-guide-quick-remove {
+  width: 36px;
+  min-height: 37px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid rgba(226,232,255,.12);
+  border-radius: 0 999px 999px 0;
+  background: transparent;
+  color: var(--muted-2);
+  transition: color 160ms var(--ease), background 160ms var(--ease), filter 160ms var(--ease), translate 160ms var(--ease);
+}
+.create-image-guide-quick-remove[hidden] { display: none; }
+.create-image-guide-quick-remove svg { width: 14px; height: 14px; }
+.create-image-guide-quick-remove:hover,
+.create-image-guide-quick-remove:focus-visible {
+  background: rgba(255,255,255,.055);
+  color: #fff;
+}
+.create-image-guide-chip.has-image .create-image-guide-toggle:focus-visible,
+.create-image-guide-chip.has-image .create-image-guide-quick-remove:focus-visible { outline: 0; }
 .create-image-guide {
   display: grid;
   grid-template-rows: 0fr;

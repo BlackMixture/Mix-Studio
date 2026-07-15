@@ -42,6 +42,31 @@ test('Create Image consolidates reference, depth, style, and image-to-prompt in 
   assert.match(css, /\.create-image-influence-range::-webkit-slider-runnable-track/);
 });
 
+test('an active Create image guide expands its chip and can be unloaded without opening image tools', () => {
+  assert.match(html, /id="createImageGuideChip"[\s\S]*id="createImageGuideToggle"[\s\S]*id="createImageGuideToggleLabel"[\s\S]*<\/button>\s*<button[^>]*id="createImageGuideQuickRemove"[^>]*aria-label="Remove image guide"[^>]*hidden/);
+  assert.match(app, /const chip = \$\('#createImageGuideChip'\)/);
+  assert.match(app, /chip\.classList\.toggle\('has-image', hasActiveImage\)/);
+  assert.match(app, /\$\('#createImageGuideToggleLabel'\)\.textContent = hasActiveImage \? modeLabel : ''/);
+  assert.match(app, /\$\('#createImageGuideToggleLabel'\)\.hidden = !hasActiveImage/);
+  assert.match(app, /\$\('#createImageGuideQuickRemove'\)\.hidden = !hasActiveImage/);
+  assert.match(css, /\.create-image-guide-chip\.has-image \.[^{]*create-image-guide-toggle\s*\{[^}]*display:\s*inline-flex[^}]*gap:\s*7px/s);
+  assert.match(css, /\.create-image-guide-toggle-label\s*\{[^}]*max-width:\s*96px[^}]*white-space:\s*nowrap/s);
+  assert.match(css, /\.create-image-guide-quick-remove\s*\{[^}]*border-left:[^}]*border-radius:\s*0 999px 999px 0/s);
+
+  const clearStart = app.indexOf('function clearCreateImageGuide()');
+  const clearEnd = app.indexOf("$('#createImageInfluence').addEventListener", clearStart);
+  assert.ok(clearStart > -1 && clearEnd > clearStart, 'image guide clear helper should own the reset path');
+  const clearBlock = app.slice(clearStart, clearEnd);
+  assert.match(clearBlock, /state\.createRef = null/);
+  assert.match(clearBlock, /state\.createGuideActive = false/);
+  assert.match(clearBlock, /state\.createImageGuideOpen = false/);
+  assert.match(clearBlock, /clearCreateDepthPreview\(\)/);
+  assert.match(clearBlock, /renderCreateImageGuide\(\)/);
+  assert.match(clearBlock, /saveForm\(\)/);
+  assert.match(clearBlock, /\$\('#createImageGuideRemove'\)\.addEventListener\('click', clearCreateImageGuide\)/);
+  assert.match(clearBlock, /\$\('#createImageGuideQuickRemove'\)\.addEventListener\('click',[\s\S]*clearCreateImageGuide\(\)/);
+});
+
 test('Create Image uploads, persists, and submits the guide with inverse denoise', () => {
   assert.match(app, /createRef: null/);
   assert.match(app, /createInfluence: 55/);

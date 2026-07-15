@@ -668,9 +668,15 @@
       <button class="prompt-intent-action" id="promptIntentAction" type="button">Show me</button>
     </div>
     <div class="chip-row prompt-tools" id="createPromptTools">
-      <button class="chip icon-chip create-image-guide-toggle" id="createImageGuideToggle" type="button" aria-label="Image tools" title="Image tools" aria-expanded="false" aria-controls="createImageGuide">
-        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 4h12a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8h2v-4a2 2 0 0 1 2-2h8V6H4Zm4 4v8h12v-8H8Zm2 6 2.4-2.8 1.8 2 1.4-1.6 2.4 2.4h-8Zm7-4.8a1.2 1.2 0 1 1-1.2 1.2 1.2 1.2 0 0 1 1.2-1.2Z"/></svg>
-      </button>
+      <div class="create-image-guide-chip" id="createImageGuideChip" role="group" aria-label="Image guide controls">
+        <button class="chip icon-chip create-image-guide-toggle" id="createImageGuideToggle" type="button" aria-label="Image tools" title="Image tools" aria-expanded="false" aria-controls="createImageGuide">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 4h12a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8h2v-4a2 2 0 0 1 2-2h8V6H4Zm4 4v8h12v-8H8Zm2 6 2.4-2.8 1.8 2 1.4-1.6 2.4 2.4h-8Zm7-4.8a1.2 1.2 0 1 1-1.2 1.2 1.2 1.2 0 0 1 1.2-1.2Z"/></svg>
+          <span class="create-image-guide-toggle-label" id="createImageGuideToggleLabel" hidden></span>
+        </button>
+        <button class="create-image-guide-quick-remove" id="createImageGuideQuickRemove" type="button" aria-label="Remove image guide" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m7 7 10 10M17 7 7 17"/></svg>
+        </button>
+      </div>
       <button class="chip icon-chip" id="promptAssistantBtn" type="button" aria-label="Revise prompt" title="Revise prompt with local AI" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 3h12a3 3 0 0 1 3 3v3h-2V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2v4l4.8-4H13v2h-1.5L4 23v-6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm14 8 1.05 2.95L22 15l-2.95 1.05L18 19l-1.05-2.95L14 15l2.95-1.05L18 11Zm3-3 .55 1.45L23 10l-1.45.55L21 12l-.55-1.45L19 10l1.45-.55L21 8Z"/></svg>
       </button>
