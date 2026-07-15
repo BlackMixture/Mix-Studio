@@ -8421,6 +8421,8 @@ function setLoraThumb(name) {
 let loraPickHandler = null;
 let loraPickAllowNone = false;
 let loraPickExcluded = new Set();
+let loraPickPointerCandidate = null;
+let loraPickSuppressClickUntil = 0;
 function openLoraPicker(onPick, opts) {
   loraPickHandler = typeof onPick === 'function' ? onPick : null;
   loraPickAllowNone = !!(opts && opts.allowNone);
@@ -8434,14 +8436,14 @@ function openLoraPicker(onPick, opts) {
 }
 function closeLoraPicker() {
   $('#loraPickSheet').classList.remove('show');
+  loraPickHandler = null;
+  loraPickAllowNone = false;
   loraPickExcluded = new Set();
+  loraPickPointerCandidate = null;
   syncSheetScrollLock();
 }
-function renderLoraPicker(query) {
-  const listEl = $('#loraPickList');
-  listEl.innerHTML = '';
-  const q = query.trim().toLowerCase();
-  const pick = (name) => {
+function commitLoraPick(name) {
+  try {
     if (loraPickHandler) {
       loraPickHandler(name);
     } else {
@@ -8453,13 +8455,25 @@ function renderLoraPicker(query) {
       saveForm();
     }
     closeLoraPicker();
-  };
+    return true;
+  } catch (error) {
+    toast(error?.message || 'Could not add that LoRA', true);
+    return false;
+  }
+}
+function renderLoraPicker(query) {
+  const listEl = $('#loraPickList');
+  listEl.innerHTML = '';
+  const q = query.trim().toLowerCase();
   if (loraPickAllowNone && !q) {
     const none = document.createElement('button');
     none.type = 'button';
     none.className = 'lora-pick-row';
     none.innerHTML = '<span class="lp-thumb">–</span>None';
-    none.addEventListener('click', () => pick(''));
+    none.dataset.loraPickName = '';
+    none.addEventListener('click', () => {
+      if (performance.now() >= loraPickSuppressClickUntil) commitLoraPick('');
+    });
     listEl.appendChild(none);
   }
   const inStack = loraPickHandler ? loraPickExcluded : new Set(curLoras().map((l) => l.name));
@@ -8472,16 +8486,42 @@ function renderLoraPicker(query) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'lora-pick-row';
+    row.dataset.loraPickName = name;
     row.innerHTML = `${loraThumbHtml(name, 'lp-thumb')}${escapeHtml(prettyLora(name))}`;
     row.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      pick(name);
+      if (performance.now() >= loraPickSuppressClickUntil) commitLoraPick(name);
     });
     listEl.appendChild(row);
   }
 }
 $('#loraSearch').addEventListener('input', () => renderLoraPicker($('#loraSearch').value));
+$('#loraPickList').addEventListener('pointerdown', (event) => {
+  if (event.isPrimary === false || (event.button !== undefined && event.button > 0)) return;
+  const row = event.target.closest('.lora-pick-row[data-lora-pick-name]');
+  if (!row) return;
+  loraPickPointerCandidate = {
+    pointerId: event.pointerId,
+    name: row.dataset.loraPickName,
+    x: event.clientX,
+    y: event.clientY,
+  };
+});
+window.addEventListener('pointerup', (event) => {
+  const candidate = loraPickPointerCandidate;
+  if (!candidate || candidate.pointerId !== event.pointerId) return;
+  loraPickPointerCandidate = null;
+  if (!$('#loraPickSheet').classList.contains('show')) return;
+  if (Math.hypot(event.clientX - candidate.x, event.clientY - candidate.y) > 10) return;
+  loraPickSuppressClickUntil = performance.now() + 400;
+  event.preventDefault();
+  event.stopPropagation();
+  commitLoraPick(candidate.name);
+}, true);
+window.addEventListener('pointercancel', (event) => {
+  if (loraPickPointerCandidate?.pointerId === event.pointerId) loraPickPointerCandidate = null;
+}, true);
 function prettyLora(name) { return name.replace(/\.safetensors$/i, '').split(/[\\/]/).pop(); }
 function editEngineLabel(engine) {
   if (engine === 'krea2') return 'Krea2';
@@ -8764,6 +8804,7 @@ let directorScaleCustomized = false;
 let directorNeedsRangeScroll = false;
 let directorSuppressClickUntil = 0;
 let directorAddContext = null;
+let directorStoryboardInsertIndex = null;
 let directorChoosingWorkflow = false;
 
 function directorStorageKey() { return profileStorageKey('ks-director'); }
@@ -8907,7 +8948,8 @@ function directorSeedProject() {
       audioFile: state.vidAudio.uploadedName, fileName: state.vidAudio.label || state.vidAudio.uploadedName,
     });
   }
-  const seed = Number($('#seedInput')?.value);
+  const seedInput = $('#seedInput')?.value ?? '';
+  const seed = Number(seedInput);
   return {
     version: 1, fps: DIRECTOR_FPS, durationFrames,
     range: { startFrame: 0, lengthFrames: Math.min(DIRECTOR_MAX_WINDOW, durationFrames) },
@@ -8916,7 +8958,7 @@ function directorSeedProject() {
     output: {
       width: Number(state.vidRef?.w) || Number(state.width) || 1280,
       height: Number(state.vidRef?.h) || Number(state.height) || 720,
-      seed: Number.isSafeInteger(seed) && seed >= 0 ? seed : '',
+      seed: seedInput !== '' && Number.isSafeInteger(seed) && seed >= 0 ? seed : '',
       batch: directorClamp(Number($('#batchInput')?.value) || 1, 1, 8),
       smooth: [1, 2, 3].includes(Number(state.vidSmooth)) ? Number(state.vidSmooth) : 1,
       fourK: $('#vid4k')?.classList.contains('active') === true,
@@ -9011,7 +9053,7 @@ function directorNormalizeClientProject(value) {
     output: {
       width: Math.round(directorClamp(output.width || state.width || 1280, 256, 4096)),
       height: Math.round(directorClamp(output.height || state.height || 720, 256, 4096)),
-      seed: Number.isSafeInteger(Number(output.seed)) && Number(output.seed) >= 0 ? Number(output.seed) : '',
+      seed: output.seed !== '' && output.seed != null && Number.isSafeInteger(Number(output.seed)) && Number(output.seed) >= 0 ? Number(output.seed) : '',
       batch: Math.round(directorClamp(output.batch || 1, 1, 8)), smooth: [1, 2, 3].includes(Number(output.smooth)) ? Number(output.smooth) : 1,
       fourK: output.fourK === true, loras: Array.isArray(output.loras) ? output.loras.slice(0, 64) : state.videoLoras,
     },
@@ -9070,6 +9112,95 @@ async function directorCheckAssets() {
   renderDirector();
 }
 
+function setDirectorResolutionExpanded(expanded) {
+  const picker = $('#directorResolutionPicker');
+  const header = $('#directorResolutionHeader');
+  const body = $('#directorResolutionBody');
+  if (!picker || !header || !body) return;
+  picker.classList.toggle('expanded', expanded);
+  header.setAttribute('aria-expanded', String(expanded));
+  body.setAttribute('aria-hidden', String(!expanded));
+  body.inert = !expanded;
+}
+
+function renderDirectorResolutionPicker() {
+  const project = state.directorProject;
+  const row = $('#directorAspectRow');
+  if (!project || !row) return;
+  const width = project.output.width;
+  const height = project.output.height;
+  const ratio = width / Math.max(1, height);
+  const match = ASPECTS.reduce((best, aspect) => {
+    const error = Math.abs(aspect.ar - ratio) / ratio;
+    return !best || error < best.error ? { aspect, error } : best;
+  }, null);
+  const selectedAspect = match?.error <= 0.025 ? match.aspect : null;
+  const selectedMp = nearestResolutionMegapixels(width, height);
+  const actualMp = width * height / 1e6;
+  const sizeMatches = Math.abs(actualMp - selectedMp) <= 0.12;
+  const label = selectedAspect?.label || derivedAspectLabel(width, height);
+  $('#directorResolutionSummary').textContent = `${label} · ${width} × ${height}`;
+  $('#directorResolutionDimensions').textContent = `${width} × ${height}`;
+  const icon = $('#directorResolutionIcon');
+  const base = 14;
+  icon.style.width = `${ratio >= 1 ? base : Math.max(7, Math.round(base * ratio))}px`;
+  icon.style.height = `${ratio >= 1 ? Math.max(7, Math.round(base / ratio)) : base}px`;
+  row.replaceChildren(...ASPECTS.map((aspect) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'aspect-chip' + (selectedAspect?.label === aspect.label ? ' active' : '');
+    const maxSide = 22;
+    const iconWidth = aspect.ar >= 1 ? maxSide : Math.max(7, Math.round(maxSide * aspect.ar));
+    const iconHeight = aspect.ar >= 1 ? Math.max(7, Math.round(maxSide / aspect.ar)) : maxSide;
+    button.innerHTML = `<span class="ar-box" style="width:${iconWidth}px;height:${iconHeight}px"></span>${aspect.label}`;
+    button.addEventListener('click', () => {
+      const dimensions = dimensionsForMegapixels(aspect.ar, sizeMatches ? selectedMp : 1);
+      project.output.width = dimensions.w;
+      project.output.height = dimensions.h;
+      renderDirector();
+      saveDirectorProject();
+    });
+    return button;
+  }));
+  $$('#directorSizeSeg button').forEach((button) => {
+    button.classList.toggle('active', sizeMatches && Number(button.dataset.directorMp) === selectedMp);
+  });
+}
+
+function renderDirectorDurationControl() {
+  const project = state.directorProject;
+  const range = $('#directorDurationRange');
+  const shell = $('#directorDurationSlider');
+  if (!project || !range || !shell) return;
+  const value = Number(directorFramesToSeconds(project.durationFrames));
+  const min = project.extensionSource ? 1 : (value < 1 ? 0.04 : 1);
+  const max = Math.max(20, Math.ceil(value));
+  range.min = String(min);
+  range.max = String(max);
+  range.step = '0.1';
+  range.value = String(value);
+  const progress = max > min ? directorClamp((value - min) / (max - min) * 100, 0, 100) : 0;
+  shell.style.setProperty('--duration-progress', `${progress}%`);
+  shell.style.setProperty('--duration-visual-progress', `${progress}%`);
+  $('#directorDurationBubble').textContent = formatVideoDuration(value);
+  $('#directorDurationMin').textContent = `${formatVideoDuration(min)}s`;
+  $('#directorDurationMax').textContent = `${formatVideoDuration(max)}s`;
+  const increment = max - min > 30 ? 5 : 1;
+  const tickValues = [];
+  for (let tick = Math.ceil(min / increment) * increment; tick <= max; tick += increment) tickValues.push(tick);
+  if (!tickValues.includes(min)) tickValues.unshift(min);
+  if (!tickValues.includes(max)) tickValues.push(max);
+  $('#directorDurationTicks').replaceChildren(...tickValues.map((tick) => {
+    const mark = document.createElement('i');
+    mark.className = 'major';
+    const tickProgress = max > min ? (tick - min) / (max - min) * 100 : 0;
+    if (Math.abs(tickProgress) < 0.001) mark.classList.add('edge-start');
+    if (Math.abs(tickProgress - 100) < 0.001) mark.classList.add('edge-end');
+    mark.style.left = `${tickProgress}%`;
+    return mark;
+  }));
+}
+
 function directorSetFormValues() {
   const project = state.directorProject;
   if (!project) return;
@@ -9077,21 +9208,22 @@ function directorSetFormValues() {
   $('#directorDuration').value = directorFramesToSeconds(project.durationFrames);
   $('#directorRangeStart').value = project.range.startFrame;
   $('#directorRangeLength').value = project.range.lengthFrames;
-  $('#directorWidth').value = project.output.width;
-  $('#directorHeight').value = project.output.height;
   $('#directorBatch').value = project.output.batch;
-  $('#directorSmooth').value = String(project.output.smooth);
   $('#directorSeed').value = project.output.seed;
+  renderDirectorResolutionPicker();
+  renderDirectorDurationControl();
+  $$('#directorSmoothRow [data-director-smooth]').forEach((button) => {
+    button.classList.toggle('active', Number(button.dataset.directorSmooth) === project.output.smooth);
+  });
   setDirectorToggleValue('directorFourK', project.output.fourK);
   $('#directorContinueAudioField').hidden = !project.extensionSource;
   setDirectorToggleValue('directorContinueAudio', project.extensionSource?.continueAudio !== false);
   setDirectorToggleValue('directorInpaintAudio', project.settings.inpaintAudio);
   setDirectorToggleValue('directorOverrideAudio', project.settings.overrideAudio);
   $('#directorOverrideAudio').disabled = !project.motionSegments.some((segment) => !segment.isStaticImage);
-  $('#directorIcLora').value = project.settings.icLoraName;
   const extending = !!project.extensionSource;
   $('#directorDuration').min = extending ? '1' : '0.04';
-  for (const id of ['directorWidth', 'directorHeight', 'directorFourK']) {
+  for (const id of ['directorResolutionHeader', 'directorFourK']) {
     const control = $(`#${id}`);
     if (control) control.disabled = extending;
   }
@@ -9172,15 +9304,17 @@ function renderDirectorLoras() {
 }
 
 function openDirectorLoraPicker() {
-  const loras = directorLoras();
+  const selected = directorLoras();
   openLoraPicker((name) => {
+    const loras = directorLoras();
     if (!name || loras.some((lora) => lora.name === name)) return;
     const lora = { name, strength: 1, on: true };
     applyContextLoraDefault(lora);
-    loras.push(lora);
+    state.directorProject.output.loras = [...loras, lora];
     renderDirectorLoras();
     saveDirectorProject();
-  }, { title: 'Add Director LoRA', exclude: loras.map((lora) => lora.name) });
+    toast(`${prettyLora(name)} added to Director`);
+  }, { title: 'Add Director LoRA', exclude: selected.map((lora) => lora.name) });
 }
 
 function directorSegmentLabel(segment) {
@@ -9257,26 +9391,44 @@ function directorKeyframes(project = state.directorProject) {
   return (project?.segments || []).filter((segment) => segment.type === 'image').sort((a, b) => a.start - b.start);
 }
 
-function directorRedistributeKeyframes(ordered = directorKeyframes()) {
+function directorStoryItems(project = state.directorProject) {
+  return [...(project?.segments || [])].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+}
+
+function directorRedistributeStoryItems(ordered = directorStoryItems()) {
   const project = state.directorProject;
   if (!project || !ordered.length) return;
+  const previousDuration = project.durationFrames;
+  const wasWholeSequence = project.range.startFrame === 0 && project.range.lengthFrames === previousDuration;
+  if (project.durationFrames < ordered.length) project.durationFrames = ordered.length;
   const lastFrame = Math.max(0, project.durationFrames - 1);
+  const anchors = ordered.map((segment, index) => ordered.length === 1 ? 0 : Math.round(index * lastFrame / (ordered.length - 1)));
+  const images = ordered.filter((segment) => segment.type === 'image');
+  const lastImage = images[images.length - 1];
   ordered.forEach((segment, index) => {
-    segment.start = ordered.length === 1 ? 0 : Math.round(index * lastFrame / (ordered.length - 1));
-    segment.length = 1;
-    segment.isEndFrame = ordered.length > 1 && index === ordered.length - 1;
+    segment.start = anchors[index];
+    segment.length = segment.type === 'image' ? 1 : Math.max(1, (anchors[index + 1] ?? project.durationFrames) - anchors[index]);
+    if (segment.type === 'image') segment.isEndFrame = images.length > 1 && segment === lastImage;
   });
-  const directions = project.segments.filter((segment) => segment.type !== 'image');
-  project.segments = [...directions, ...ordered].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+  project.segments = [...ordered];
+  if (wasWholeSequence) project.range.lengthFrames = Math.min(DIRECTOR_MAX_WINDOW, project.durationFrames);
+}
+
+function directorRedistributeKeyframes(ordered = directorKeyframes()) {
+  const story = directorStoryItems();
+  let imageIndex = 0;
+  const merged = story.map((segment) => segment.type === 'image' ? ordered[imageIndex++] : segment).filter(Boolean);
+  merged.push(...ordered.slice(imageIndex));
+  directorRedistributeStoryItems(merged);
 }
 
 function directorMoveKeyframe(id, direction) {
-  const ordered = directorKeyframes();
+  const ordered = directorStoryItems();
   const index = ordered.findIndex((segment) => segment.id === id);
   const target = index + direction;
   if (index < 0 || target < 0 || target >= ordered.length) return;
   [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
-  directorRedistributeKeyframes(ordered);
+  directorRedistributeStoryItems(ordered);
   renderDirector();
   saveDirectorProject();
 }
@@ -9285,29 +9437,29 @@ function directorRemoveKeyframe(id) {
   const project = state.directorProject;
   if (!project) return;
   project.segments = project.segments.filter((segment) => segment.id !== id);
-  directorRedistributeKeyframes();
+  directorRedistributeStoryItems();
   if (state.directorSelection?.id === id) state.directorSelection = null;
   renderDirector();
   saveDirectorProject();
 }
 
 function directorRefreshKeyframeDomOrder(list) {
-  [...list.querySelectorAll('[data-keyframe-id]')].forEach((card, index, cards) => {
+  [...list.querySelectorAll('[data-director-story-id]')].forEach((card, index, cards) => {
     const order = card.querySelector('.director-keyframe-order');
     const time = card.querySelector('.director-keyframe-copy small');
     if (order) order.textContent = String(index + 1);
-    if (time) time.textContent = index === 0 ? 'Starts the video'
-      : (index === cards.length - 1 ? 'Ends the video' : `Keyframe ${index + 1}`);
+    if (time) time.textContent = index === 0 ? 'Starts the story'
+      : (index === cards.length - 1 ? 'Ends the story' : `Story beat ${index + 1}`);
   });
 }
 
 function directorCommitKeyframeDomOrder(list) {
-  const byId = new Map(directorKeyframes().map((segment) => [segment.id, segment]));
-  const ordered = [...list.querySelectorAll('[data-keyframe-id]')]
-    .map((card) => byId.get(card.dataset.keyframeId))
+  const byId = new Map(directorStoryItems().map((segment) => [segment.id, segment]));
+  const ordered = [...list.querySelectorAll('[data-director-story-id]')]
+    .map((card) => byId.get(card.dataset.directorStoryId))
     .filter(Boolean);
   if (ordered.length !== byId.size) return renderDirector();
-  directorRedistributeKeyframes(ordered);
+  directorRedistributeStoryItems(ordered);
   renderDirector();
   saveDirectorProject();
 }
@@ -9334,7 +9486,7 @@ function wireDirectorKeyframeDrag(card, list) {
       return;
     }
     event.preventDefault();
-    const siblings = [...list.querySelectorAll('[data-keyframe-id]')].filter((entry) => entry !== card);
+    const siblings = [...list.querySelectorAll('[data-director-story-id]')].filter((entry) => entry !== card);
     const before = siblings.find((entry) => {
       const rect = entry.getBoundingClientRect();
       return event.clientY < rect.top + rect.height / 2;
@@ -9357,7 +9509,7 @@ function wireDirectorKeyframeDrag(card, list) {
     if (wasActive) renderDirector();
   };
   card.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('button') || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (event.target.closest('button,input,textarea') || (event.pointerType === 'mouse' && event.button !== 0)) return;
     if (event.pointerType === 'touch' && !event.target.closest('.director-keyframe-grip')) return;
     pointerId = event.pointerId;
     startX = event.clientX;
@@ -9377,23 +9529,49 @@ function wireDirectorKeyframeDrag(card, list) {
   card.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
+function directorRefreshGenerationValidation() {
+  const error = directorOverlapError(state.directorProject);
+  if ($('#directorValidation')) $('#directorValidation').textContent = error;
+  if ($('#directorGenerate')) $('#directorGenerate').disabled = !!error;
+  if ($('#directorPromptValidation')) $('#directorPromptValidation').textContent = error === 'Add an overall or timed direction.' ? error : '';
+}
+
 function renderDirectorKeyframePreset() {
   const list = $('#directorKeyframeList');
   if (!list || !state.directorProject) return;
-  const keyframes = directorKeyframes();
+  const story = directorStoryItems();
   list.replaceChildren();
-  keyframes.forEach((segment, index) => {
+  const appendAdd = (index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'director-storyboard-add';
+    button.setAttribute('aria-label', index === 0 ? 'Add at the start of the storyboard' : 'Add after this story beat');
+    button.innerHTML = '<span aria-hidden="true">＋</span><small>Image or direction</small>';
+    button.addEventListener('click', () => directorOpenStoryboardAdd(index));
+    list.appendChild(button);
+  };
+  story.forEach((segment, index) => {
+    appendAdd(index);
     const card = document.createElement('article');
-    card.className = 'director-keyframe-card';
-    card.dataset.keyframeId = segment.id;
+    card.className = `director-keyframe-card${segment.type === 'text' ? ' direction' : ''}`;
+    card.dataset.directorStoryId = segment.id;
+    if (segment.type === 'image') card.dataset.keyframeId = segment.id;
     card.setAttribute('role', 'listitem');
     card.setAttribute('aria-grabbed', 'false');
     const media = document.createElement('span');
     media.className = 'director-keyframe-media';
-    const image = document.createElement('img');
-    image.src = `/api/input?name=${encodeURIComponent(segment.imageFile)}`;
-    image.alt = '';
-    media.appendChild(image);
+    if (segment.type === 'image') {
+      const image = document.createElement('img');
+      image.src = `/api/input?name=${encodeURIComponent(segment.imageFile)}`;
+      image.alt = '';
+      media.appendChild(image);
+    } else {
+      const directionIcon = document.createElement('span');
+      directionIcon.className = 'director-storyboard-direction-icon';
+      directionIcon.setAttribute('aria-hidden', 'true');
+      directionIcon.textContent = '✦';
+      media.appendChild(directionIcon);
+    }
     const order = document.createElement('span');
     order.className = 'director-keyframe-order';
     order.textContent = String(index + 1);
@@ -9407,13 +9585,28 @@ function renderDirectorKeyframePreset() {
     const copy = document.createElement('span');
     copy.className = 'director-keyframe-copy';
     const title = document.createElement('b');
-    title.textContent = segment.fileName || `Keyframe ${index + 1}`;
+    title.textContent = segment.type === 'image' ? (segment.fileName || `Keyframe ${index + 1}`) : 'Direction';
     const time = document.createElement('small');
-    time.textContent = index === 0 ? 'Starts the video' : (index === keyframes.length - 1 ? 'Ends the video' : `Around ${directorFramesToSeconds(segment.start)}s`);
-    copy.append(title, time);
+    time.textContent = index === 0 ? 'Starts the story' : (index === story.length - 1 ? 'Ends the story' : `Around ${directorFramesToSeconds(segment.start)}s`);
+    copy.append(title);
+    if (segment.type === 'text') {
+      const prompt = document.createElement('textarea');
+      prompt.value = segment.prompt || '';
+      prompt.maxLength = 4000;
+      prompt.rows = 2;
+      prompt.placeholder = 'Describe what happens here…';
+      prompt.setAttribute('aria-label', `Direction for story beat ${index + 1}`);
+      prompt.addEventListener('input', () => {
+        segment.prompt = prompt.value.slice(0, 4000);
+        directorRefreshGenerationValidation();
+        saveDirectorProject();
+      });
+      copy.append(prompt);
+    }
+    copy.append(time);
     const actions = document.createElement('span');
     actions.className = 'director-keyframe-actions';
-    for (const [label, delta, disabled] of [['Move earlier', -1, index === 0], ['Move later', 1, index === keyframes.length - 1]]) {
+    for (const [label, delta, disabled] of [['Move earlier', -1, index === 0], ['Move later', 1, index === story.length - 1]]) {
       const button = document.createElement('button');
       button.type = 'button';
       button.disabled = disabled;
@@ -9433,12 +9626,13 @@ function renderDirectorKeyframePreset() {
     list.appendChild(card);
     wireDirectorKeyframeDrag(card, list);
   });
-  list.classList.toggle('is-empty', keyframes.length === 0);
-  if (!keyframes.length) {
+  appendAdd(story.length);
+  list.classList.toggle('is-empty', story.length === 0);
+  if (!story.length) {
     const empty = document.createElement('p');
     empty.className = 'director-keyframe-empty';
-    empty.textContent = 'Your first image becomes the opening frame.';
-    list.appendChild(empty);
+    empty.textContent = 'Start with an image or a direction.';
+    list.insertBefore(empty, list.lastElementChild);
   }
 }
 
@@ -9706,7 +9900,7 @@ function renderDirector() {
     renderDirectorZoomFill();
   }
   const newSeconds = Number(directorFramesToSeconds(project.range.lengthFrames));
-  if ($('#directorSummaryLabel')) $('#directorSummaryLabel').textContent = extension ? 'Extension' : (state.directorComposerMode === 'keyframes' ? 'Keyframe video' : (partialRange ? 'Selected range' : 'Sequence'));
+  if ($('#directorSummaryLabel')) $('#directorSummaryLabel').textContent = extension ? 'Extension' : (state.directorComposerMode === 'keyframes' ? 'Storyboard video' : (partialRange ? 'Selected range' : 'Sequence'));
   $('#directorSummary').textContent = extension
     ? `${directorFramesToSeconds(project.range.lengthFrames)}s new · ${(extensionSeconds + newSeconds).toFixed(1)}s total · ${project.output.width}×${project.output.height}${project.output.fourK ? ' · 4K' : ''}${project.output.batch > 1 ? ` · ${project.output.batch} videos` : ''}`
     : `${directorFramesToSeconds(project.range.lengthFrames)}s · ${project.output.width}×${project.output.height}${project.output.fourK ? ' · 4K' : ''}${project.output.batch > 1 ? ` · ${project.output.batch} videos` : ''}`;
@@ -9772,6 +9966,7 @@ function openDirectorMode(project, options = {}) {
 
 function startDirectorWorkflow(mode) {
   directorChoosingWorkflow = false;
+  directorStoryboardInsertIndex = null;
   if (mode === 'timeline') {
     openDirectorMode(undefined, { mode: 'timeline' });
     return;
@@ -9796,6 +9991,7 @@ function switchDirectorWorkflow(mode) {
     state.directorProject = directorNormalizeClientProject(project);
   }
   state.directorComposerMode = mode;
+  directorStoryboardInsertIndex = null;
   directorChoosingWorkflow = false;
   state.directorSelection = null;
   directorCloseInspector();
@@ -9964,6 +10160,30 @@ function directorFindPlacementBefore(track, beforeFrame, length, excludeId) {
   return placement;
 }
 
+function directorInsertRelative(track, anchor, side, length) {
+  const project = state.directorProject;
+  const insertionFrame = side === 'before' ? anchor.start : anchor.start + anchor.length;
+  const shifted = directorTrackSegments(track).filter((segment) => segment.start >= insertionFrame);
+  const requiredEnd = Math.max(
+    insertionFrame + length,
+    ...directorTrackSegments(track).map((segment) => segment.start + segment.length + (segment.start >= insertionFrame ? length : 0)),
+  );
+  if (requiredEnd > DIRECTOR_MAX_FRAMES) return -1;
+  const previousDuration = project.durationFrames;
+  const wasWholeSequence = project.range.startFrame === 0 && project.range.lengthFrames === previousDuration;
+  shifted.forEach((segment) => { segment.start += length; });
+  project.durationFrames = Math.max(previousDuration, requiredEnd);
+  if (wasWholeSequence) {
+    project.range.startFrame = 0;
+    project.range.lengthFrames = Math.min(DIRECTOR_MAX_WINDOW, project.durationFrames);
+  } else if (insertionFrame <= project.range.startFrame) {
+    project.range.startFrame = Math.min(project.durationFrames - project.range.lengthFrames, project.range.startFrame + length);
+  } else if (insertionFrame < project.range.startFrame + project.range.lengthFrames) {
+    project.range.lengthFrames = Math.min(DIRECTOR_MAX_WINDOW, project.range.lengthFrames + length, project.durationFrames - project.range.startFrame);
+  }
+  return insertionFrame;
+}
+
 function directorTimingOverlaps(track, start, length, excludeId) {
   return directorTrackSegments(track).some((segment) => segment.id !== excludeId
     && start < segment.start + segment.length
@@ -9984,8 +10204,26 @@ function directorSelect(track, id, { openInspector = true, reveal = true } = {})
 function directorOpenAddRelative(side) {
   const selection = state.directorSelection;
   if (!selection || !['before', 'after'].includes(side)) return;
+  directorConfigureAddSheet(false);
+  directorStoryboardInsertIndex = null;
   directorAddContext = { ...selection, side };
   $('#directorAddTitle span').textContent = `Add ${side}`;
+  directorOpenSheet('directorAddSheet');
+}
+
+function directorConfigureAddSheet(storyOnly) {
+  $('#directorAddPrompt').hidden = false;
+  $('#directorAddImage').hidden = false;
+  for (const id of ['directorAddAudio', 'directorAddIcImage', 'directorAddIcVideo']) $(`#${id}`).hidden = storyOnly;
+}
+
+function directorOpenStoryboardAdd(index) {
+  const count = directorStoryItems().length;
+  directorStoryboardInsertIndex = Math.round(directorClamp(index, 0, count));
+  directorAddContext = null;
+  directorReplaceTarget = null;
+  directorConfigureAddSheet(true);
+  $('#directorAddTitle span').textContent = count ? 'Add a story beat' : 'Start the storyboard';
   directorOpenSheet('directorAddSheet');
 }
 
@@ -9996,7 +10234,8 @@ function directorAddSegment(track, segment) {
   directorAddContext = null;
   const anchor = context ? directorTrackSegments(context.track).find((item) => item.id === context.id) : null;
   let start;
-  if (anchor && context.side === 'before') start = directorFindPlacementBefore(track, anchor.start, segment.length);
+  if (anchor && context.track === track) start = directorInsertRelative(track, anchor, context.side, segment.length);
+  else if (anchor && context.side === 'before') start = directorFindPlacementBefore(track, anchor.start, segment.length);
   else if (anchor && context.side === 'after') start = directorFindPlacement(track, anchor.start + anchor.length, segment.length);
   else start = directorFindPlacement(track, state.directorPlayhead, segment.length);
   if (start < 0) {
@@ -10077,17 +10316,13 @@ function directorUpdateProjectFields() {
     project.range.startFrame = Math.round(directorClamp($('#directorRangeStart').value, 0, project.durationFrames - 1));
     project.range.lengthFrames = Math.max(1, Math.min(DIRECTOR_MAX_WINDOW, Math.round(Number($('#directorRangeLength').value) || 1), project.durationFrames - project.range.startFrame));
   }
-  project.output.width = Math.round(directorClamp($('#directorWidth').value, 256, 4096));
-  project.output.height = Math.round(directorClamp($('#directorHeight').value, 256, 4096));
   project.output.batch = Math.round(directorClamp($('#directorBatch').value, 1, 8));
-  project.output.smooth = [1, 2, 3].includes(Number($('#directorSmooth').value)) ? Number($('#directorSmooth').value) : 1;
   const seed = Number($('#directorSeed').value);
   project.output.seed = Number.isSafeInteger(seed) && seed >= 0 && $('#directorSeed').value !== '' ? seed : '';
   project.output.fourK = directorToggleValue('directorFourK');
   if (project.extensionSource) project.extensionSource.continueAudio = directorToggleValue('directorContinueAudio');
   project.settings.inpaintAudio = directorToggleValue('directorInpaintAudio');
   project.settings.overrideAudio = directorToggleValue('directorOverrideAudio') && project.motionSegments.some((segment) => !segment.isStaticImage);
-  project.settings.icLoraName = $('#directorIcLora').value.trim().slice(0, 512);
   renderDirector();
   saveDirectorProject();
 }
@@ -10173,10 +10408,13 @@ async function directorCommitMedia(asset, kind) {
       fileName: asset.label, guideStrength: 1, isEndFrame: false,
     };
     if (state.directorComposerMode === 'keyframes') {
-      if (directorKeyframes().length >= DIRECTOR_TRACK_LIMIT) return toast('This video already has 256 keyframes', true);
+      const ordered = directorStoryItems();
+      if (ordered.length >= DIRECTOR_TRACK_LIMIT) return toast('This storyboard already has 256 items', true);
+      const insertion = directorStoryboardInsertIndex == null ? ordered.length : Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length));
+      directorStoryboardInsertIndex = null;
       directorAddContext = null;
-      state.directorProject.segments.push(segment);
-      directorRedistributeKeyframes();
+      ordered.splice(insertion, 0, segment);
+      directorRedistributeStoryItems(ordered);
       state.directorSelection = null;
       renderDirector();
       saveDirectorProject();
@@ -10206,17 +10444,20 @@ async function directorHandlePickedMedia(asset, kind) {
   if (!assets.length) return;
   try {
     if (kind === 'image' && state.directorComposerMode === 'keyframes' && !directorReplaceTarget) {
-      const available = Math.max(0, DIRECTOR_TRACK_LIMIT - directorKeyframes().length);
+      const ordered = directorStoryItems();
+      const available = Math.max(0, DIRECTOR_TRACK_LIMIT - ordered.length);
       const accepted = assets.slice(0, available);
-      if (!accepted.length) return toast('This video already has 256 keyframes', true);
+      if (!accepted.length) return toast('This storyboard already has 256 items', true);
       const prepared = await Promise.all(accepted.map((entry) => directorPreparePickedAsset(entry, kind)));
       const segments = prepared.map((entry) => ({
         id: directorId('keyframe'), type: 'image', start: 0, length: 1, prompt: '', imageFile: entry.name,
         fileName: entry.label, guideStrength: 1, isEndFrame: false,
       }));
+      const insertion = directorStoryboardInsertIndex == null ? ordered.length : Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length));
+      directorStoryboardInsertIndex = null;
       directorAddContext = null;
-      state.directorProject.segments.push(...segments);
-      directorRedistributeKeyframes();
+      ordered.splice(insertion, 0, ...segments);
+      directorRedistributeStoryItems(ordered);
       state.directorSelection = null;
       renderDirector();
       saveDirectorProject();
@@ -10418,6 +10659,9 @@ async function generateDirector() {
   const error = directorOverlapError(project);
   if (error) return toast(error, true);
   if (!(await ensureGenerationSetup())) return;
+  const activeLoras = directorLoras()
+    .filter((lora) => lora.on && lora.name)
+    .map((lora) => ({ name: lora.name, strength: Number(lora.strength), on: true }));
   const button = $('#directorGenerate');
   button.disabled = true;
   button.textContent = 'Queueing…';
@@ -10428,7 +10672,7 @@ async function generateDirector() {
         method: 'POST',
         body: JSON.stringify({
           project: directorSerializableProject(project), seed: baseSeed + index,
-          loras: project.output.loras || state.videoLoras, width: project.output.width, height: project.output.height,
+          loras: activeLoras, width: project.output.width, height: project.output.height,
           smooth: project.output.smooth, fourK: project.output.fourK,
         }),
       });
@@ -10493,7 +10737,7 @@ $('#directorPresetSettings').addEventListener('click', () => directorOpenSheet('
 $('#directorAddLora').addEventListener('click', openDirectorLoraPicker);
 $('#directorExtendChoose').addEventListener('click', directorChooseExtensionSource);
 $('#directorExtendChange').addEventListener('click', directorChooseExtensionSource);
-$('#directorKeyframeAdd').addEventListener('click', () => directorOpenMediaPicker('image'));
+$('#directorKeyframeAdd').addEventListener('click', () => directorOpenStoryboardAdd(directorStoryItems().length));
 $('#directorExtendDuration').addEventListener('change', (event) => directorUpdatePresetDuration(event.target));
 $('#directorKeyframeDuration').addEventListener('change', (event) => directorUpdatePresetDuration(event.target));
 wireDirectorToggle('directorExtendContinueAudio', () => {
@@ -10504,6 +10748,8 @@ wireDirectorToggle('directorExtendContinueAudio', () => {
   saveDirectorProject();
 });
 $('#directorAddBtn').addEventListener('click', () => {
+  directorConfigureAddSheet(false);
+  directorStoryboardInsertIndex = null;
   directorAddContext = null;
   directorReplaceTarget = null;
   $('#directorAddTitle span').textContent = 'Add to Story';
@@ -10541,6 +10787,19 @@ $('#directorPlay').addEventListener('click', toggleDirectorPlayback);
 $('#directorPlayhead').addEventListener('change', () => { state.directorPlayhead = Math.round(directorClamp($('#directorPlayhead').value, 0, state.directorProject.durationFrames - 1)); renderDirector(); });
 $('#directorAddPrompt').addEventListener('click', () => {
   directorCloseSheet('directorAddSheet');
+  if (state.directorComposerMode === 'keyframes' && directorStoryboardInsertIndex != null) {
+    const ordered = directorStoryItems();
+    const insertion = Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length));
+    const segment = { id: directorId('prompt'), type: 'text', start: 0, length: 1, prompt: '' };
+    directorStoryboardInsertIndex = null;
+    ordered.splice(insertion, 0, segment);
+    directorRedistributeStoryItems(ordered);
+    state.directorSelection = null;
+    renderDirector();
+    saveDirectorProject();
+    requestAnimationFrame(() => $(`[data-director-story-id="${segment.id}"] textarea`)?.focus());
+    return;
+  }
   directorAddSegment('main', { id: directorId('prompt'), type: 'text', start: 0, length: Math.min(120, state.directorProject.durationFrames), prompt: '' });
 });
 $('#directorAddImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('image'); });
@@ -10596,9 +10855,34 @@ $('#directorReplace').addEventListener('click', () => {
   else if (segment.isStaticImage) directorOpenMediaPicker('ic-image');
   else directorOpenMediaPicker('video');
 });
-for (const selector of ['#directorDuration', '#directorRangeStart', '#directorRangeLength', '#directorWidth', '#directorHeight', '#directorBatch', '#directorSmooth', '#directorSeed', '#directorIcLora']) {
-  $(selector).addEventListener(selector.includes('Prompt') || selector === '#directorIcLora' ? 'input' : 'change', directorUpdateProjectFields);
+for (const selector of ['#directorDuration', '#directorRangeStart', '#directorRangeLength', '#directorBatch', '#directorSeed']) {
+  $(selector).addEventListener('change', directorUpdateProjectFields);
 }
+$('#directorDurationRange').addEventListener('input', () => {
+  $('#directorDuration').value = formatVideoDuration($('#directorDurationRange').value);
+  directorUpdateProjectFields();
+});
+$('#directorResolutionHeader').addEventListener('click', () => {
+  if ($('#directorResolutionHeader').disabled) return;
+  setDirectorResolutionExpanded(!$('#directorResolutionPicker').classList.contains('expanded'));
+});
+$('#directorSizeSeg').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-director-mp]');
+  if (!button || !state.directorProject || state.directorProject.extensionSource) return;
+  const ratio = state.directorProject.output.width / Math.max(1, state.directorProject.output.height);
+  const dimensions = dimensionsForMegapixels(ratio, Number(button.dataset.directorMp));
+  state.directorProject.output.width = dimensions.w;
+  state.directorProject.output.height = dimensions.h;
+  renderDirector();
+  saveDirectorProject();
+});
+$('#directorSmoothRow').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-director-smooth]');
+  if (!button || !state.directorProject) return;
+  state.directorProject.output.smooth = Number(button.dataset.directorSmooth);
+  renderDirector();
+  saveDirectorProject();
+});
 for (const id of ['directorFourK', 'directorContinueAudio', 'directorInpaintAudio', 'directorOverrideAudio']) wireDirectorToggle(id, directorUpdateProjectFields);
 wireDirectorToggle('directorSnap');
 $('#directorGenerate').addEventListener('click', generateDirector);

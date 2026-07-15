@@ -243,9 +243,9 @@
         </div>
       </div>
       <div class="director-preset-view" id="directorKeyframePreset" hidden>
-        <div class="director-preset-heading"><div><h2>Keyframe video</h2><p>Add several images, then hold and drag to reorder them.</p></div><label>Duration <span><input id="directorKeyframeDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" />s</span></label></div>
-        <div class="director-keyframes" id="directorKeyframeList" role="list" aria-label="Video keyframes. Hold and drag to reorder."></div>
-        <button class="director-keyframe-add" id="directorKeyframeAdd" type="button"><span aria-hidden="true">＋</span><b>Add keyframe</b><small>Upload or choose a previous image</small></button>
+        <div class="director-preset-heading"><div><h2>Storyboard video</h2><p>Arrange images and directions in story order. Hold and drag to reorder.</p></div><label>Duration <span><input id="directorKeyframeDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" />s</span></label></div>
+        <div class="director-keyframes" id="directorKeyframeList" role="list" aria-label="Video storyboard. Hold and drag to reorder images and directions."></div>
+        <button class="director-keyframe-add" id="directorKeyframeAdd" type="button"><span aria-hidden="true">＋</span><b>Add to storyboard</b><small>Choose an image or write a direction</small></button>
       </div>
       <button class="director-preset-settings" id="directorPresetSettings" type="button" aria-controls="directorSettingsSheet">More settings</button>
     </section>
@@ -363,12 +363,56 @@
         <section class="director-project-settings">
           <div class="director-settings-section-heading"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h16v14H4V5Zm2 2v10h12V7H6Zm2 2h8v2H8V9Zm0 4h5v2H8v-2Z"/></svg></span><div><strong>Output</strong><small>Sequence size, length, and playback</small></div></div>
           <div class="director-field-grid">
-            <label>Sequence duration <span class="director-unit">seconds</span><input id="directorDuration" type="number" min="0.04" max="1000" step="0.01" /></label>
+            <div class="video-number-setting video-duration-primary director-duration-setting director-inspector-wide">
+              <div class="video-duration-heading">
+                <span><b>Duration</b><small>Sequence length · enter up to 1000s</small></span>
+                <label class="duration-slider-value" for="directorDuration" title="Enter duration">
+                  <input id="directorDuration" type="number" min="0.04" max="1000" step="0.1" inputmode="decimal" aria-label="Enter Director sequence duration in seconds" />
+                  <span aria-hidden="true">s</span>
+                </label>
+              </div>
+              <div class="duration-slider-shell" id="directorDurationSlider" style="--duration-progress: 21.0526%; --duration-visual-progress: 21.0526%;">
+                <output class="duration-slider-bubble" id="directorDurationBubble" for="directorDurationRange" aria-hidden="true">5</output>
+                <div class="duration-slider-control">
+                  <div class="duration-slider-track" aria-hidden="true">
+                    <span class="duration-slider-progress"></span>
+                    <span class="duration-slider-ticks" id="directorDurationTicks"></span>
+                  </div>
+                  <span class="duration-slider-thumb" aria-hidden="true"></span>
+                  <input id="directorDurationRange" type="range" min="1" max="20" step="0.1" value="5" aria-label="Director sequence duration in seconds" />
+                </div>
+                <div class="duration-slider-scale" aria-hidden="true"><span id="directorDurationMin">1s</span><span id="directorDurationMax">20s</span></div>
+              </div>
+            </div>
+            <div class="res-panel director-resolution-picker director-inspector-wide" id="directorResolutionPicker">
+              <button class="res-header" id="directorResolutionHeader" type="button" aria-expanded="false" aria-controls="directorResolutionBody">
+                <span class="panel-label">Resolution</span>
+                <span class="res-summary" id="directorResolutionSummary">16:9 · 1280 × 720</span>
+                <span class="res-aspect-icon" id="directorResolutionIcon" aria-hidden="true"></span>
+                <svg class="res-chevron" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+              </button>
+              <div class="res-body" id="directorResolutionBody" aria-hidden="true" inert>
+                <div class="res-body-inner">
+                  <div class="aspect-row" id="directorAspectRow"></div>
+                  <div class="res-meta">
+                    <div class="size-seg" id="directorSizeSeg" aria-label="Resolution size">
+                      <button type="button" data-director-mp="0.75">S</button>
+                      <button type="button" data-director-mp="1">M</button>
+                      <button type="button" data-director-mp="1.75">L</button>
+                    </div>
+                    <span class="director-resolution-dimensions" id="directorResolutionDimensions">1280 × 720</span>
+                  </div>
+                </div>
+              </div>
+            </div>
             <label>Batch<input id="directorBatch" type="number" min="1" max="8" step="1" /></label>
-            <label>Width<input id="directorWidth" type="number" min="256" max="4096" step="64" /></label>
-            <label>Height<input id="directorHeight" type="number" min="256" max="4096" step="64" /></label>
-            <label>Smoothing<select id="directorSmooth"><option value="1">Off</option><option value="2">2×</option><option value="3">3×</option></select></label>
             <button class="director-setting-toggle" id="directorFourK" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>4K output</strong><small>Upscale the finished sequence</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
+            <div class="chip-row video-option-group director-frame-rate director-inspector-wide" id="directorSmoothRow" role="group" aria-label="Director playback frame rate">
+              <span class="video-option-label">Playback</span>
+              <button class="chip active" type="button" data-director-smooth="1">24 fps</button>
+              <button class="chip" type="button" data-director-smooth="2">48 fps · RIFE</button>
+              <button class="chip" type="button" data-director-smooth="3">72 fps · RIFE</button>
+            </div>
             <div class="director-inspector-wide" id="directorContinueAudioField" hidden><button class="director-setting-toggle" id="directorContinueAudio" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Continue source sound</strong><small>Carry audio into the generated extension</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button></div>
             <button class="director-setting-toggle director-inspector-wide" id="directorInpaintAudio" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Generate audio in gaps</strong><small>Fill uncovered audio regions automatically</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
             <button class="director-setting-toggle director-inspector-wide" id="directorOverrideAudio" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>Use motion guide audio</strong><small>Follow sound from the motion guide video</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
@@ -382,10 +426,9 @@
           </div>
         </section>
         <details class="director-settings-advanced">
-          <summary><span class="director-settings-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm14-2h2v6h-2V5ZM4 15h4v2H4v-2Zm8-2h2v6h-2v-6Zm4 2h4v2h-4v-2ZM10 6h2v4h-2V6Z"/></svg></span><span><strong>Advanced</strong><small>Generation overrides and exact range frames</small></span><i aria-hidden="true">＋</i></summary>
+          <summary><span class="director-settings-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm14-2h2v6h-2V5ZM4 15h4v2H4v-2Zm8-2h2v6h-2v-6Zm4 2h4v2h-4v-2ZM10 6h2v4h-2V6Z"/></svg></span><span><strong>Advanced</strong><small>Seed and exact range frames</small></span><i aria-hidden="true">＋</i></summary>
           <div class="director-field-grid">
-            <label>Seed<input id="directorSeed" type="number" min="0" step="1" placeholder="Random" /></label>
-            <label class="director-inspector-wide">Motion guide LoRA override<input id="directorIcLora" type="text" placeholder="Use owner-configured Ingredients model" /></label>
+            <label class="director-inspector-wide">Seed <span class="director-unit">blank uses a new random seed</span><input id="directorSeed" type="number" min="0" step="1" placeholder="Random each generation" /></label>
           </div>
           <div class="director-range-tools" id="directorRangeTools" hidden>
             <h4>Selected range</h4>

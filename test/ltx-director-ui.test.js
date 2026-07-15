@@ -100,8 +100,9 @@ test('Director offers streamlined Extend and Keyframe presets beside the full ti
   assert.match(app, /function startDirectorWorkflow\(mode\)/);
   assert.match(app, /function switchDirectorWorkflow\(mode\)/);
   assert.match(app, /timeline\.hidden = streamlined/);
-  assert.match(app, /segment\.start = ordered\.length === 1 \? 0 : Math\.round\(index \* lastFrame \/ \(ordered\.length - 1\)\)/);
-  assert.match(app, /segment\.isEndFrame = ordered\.length > 1 && index === ordered\.length - 1/);
+  assert.match(app, /function directorRedistributeStoryItems\(ordered = directorStoryItems\(\)\)/);
+  assert.match(app, /const anchors = ordered\.map\(\(segment, index\) => ordered\.length === 1 \? 0 : Math\.round\(index \* lastFrame \/ \(ordered\.length - 1\)\)\)/);
+  assert.match(app, /segment\.isEndFrame = images\.length > 1 && segment === lastImage/);
   assert.match(app, /directorComposerMode === 'extend' && !project\.extensionSource\) return 'Choose a video to extend\.'/);
   assert.match(app, /directorComposerMode === 'keyframes'[\s\S]{0,160}return 'Add at least one keyframe\.'/);
 });
@@ -122,12 +123,29 @@ test('Keyframe preset accepts multi-image picks and supports direct drag reorder
   assert.match(app, /multiple: options\.multiple === true && assetPickerKind\(accept\) === 'image'/);
   assert.match(app, /input\.multiple = options\.multiple === true/);
   assert.match(app, /usePreviousGenerations\(\[\.\.\.assetPickerState\.selected\.values\(\)\]\)/);
-  assert.match(app, /state\.directorProject\.segments\.push\(\.\.\.segments\)/);
+  assert.match(app, /ordered\.splice\(insertion, 0, \.\.\.segments\)/);
   assert.match(app, /function wireDirectorKeyframeDrag\(card, list\)/);
   assert.match(app, /directorCommitKeyframeDomOrder\(list\)/);
   assert.match(app, /event\.pointerType === 'touch'[\s\S]{0,100}director-keyframe-grip/);
   assert.match(css, /\.director-keyframe-card\.dragging/);
   assert.match(css, /\.director-keyframe-grip[^}]*touch-action:\s*none/);
+});
+
+test('Keyframe workflow is a reorderable storyboard with inline image or direction insertion', () => {
+  assert.match(html, /id="directorKeyframeList"[^>]*aria-label="Video storyboard/);
+  assert.match(html, /id="directorKeyframeAdd"[\s\S]{0,180}>Add to storyboard<[\s\S]{0,120}>Choose an image or write a direction</);
+  assert.match(app, /function directorOpenStoryboardAdd\(index\)/);
+  assert.match(app, /button\.className = 'director-storyboard-add'/);
+  assert.match(app, /button\.innerHTML = '<span aria-hidden="true">＋<\/span><small>Image or direction<\/small>'/);
+  assert.match(app, /directorConfigureAddSheet\(true\)/);
+  assert.match(app, /for \(const id of \['directorAddAudio', 'directorAddIcImage', 'directorAddIcVideo'\]\)[\s\S]{0,120}hidden = storyOnly/);
+  assert.match(app, /state\.directorComposerMode === 'keyframes' && directorStoryboardInsertIndex != null[\s\S]{0,500}type: 'text'[\s\S]{0,300}ordered\.splice\(insertion, 0, segment\)/);
+  assert.match(app, /prompt\.placeholder = 'Describe what happens here…'/);
+  assert.match(app, /prompt\.addEventListener\('input'[\s\S]{0,180}segment\.prompt = prompt\.value[\s\S]{0,120}directorRefreshGenerationValidation\(\)/);
+  assert.match(app, /querySelectorAll\('\[data-director-story-id\]'\)/);
+  assert.match(css, /\.director-storyboard-add\s*\{/);
+  assert.match(css, /\.director-keyframe-card\.direction/);
+  assert.match(css, /\.director-keyframe-copy textarea/);
 });
 
 test('Director has a project-scoped LoRA picker and editable LoRA stack', () => {
@@ -138,11 +156,15 @@ test('Director has a project-scoped LoRA picker and editable LoRA stack', () => 
   assert.match(app, /function renderDirectorLoras\(\)/);
   assert.match(app, /function openDirectorLoraPicker\(\)/);
   assert.match(app, /openLoraPicker\([\s\S]{0,700}title: 'Add Director LoRA'/);
-  assert.match(app, /exclude: loras\.map\(\(lora\) => lora\.name\)/);
-  assert.match(app, /loras: project\.output\.loras \|\| state\.videoLoras/);
+  assert.match(app, /exclude: selected\.map\(\(lora\) => lora\.name\)/);
+  assert.match(app, /state\.directorProject\.output\.loras = \[\.\.\.loras, lora\]/);
+  assert.match(app, /const activeLoras = directorLoras\(\)[\s\S]{0,220}\.filter\(\(lora\) => lora\.on && lora\.name\)/);
+  assert.match(app, /loras: activeLoras, width: project\.output\.width/);
   assert.match(app, /toggle\.setAttribute\('aria-checked', String\(lora\.on\)\)/);
   assert.match(app, /toggle\.innerHTML = '<span class="settings-media-switch"/);
-  assert.match(app, /row\.addEventListener\('click', \(event\) => \{[\s\S]{0,100}event\.stopPropagation\(\)[\s\S]{0,100}pick\(name\)/);
+  assert.match(app, /row\.addEventListener\('click', \(event\) => \{[\s\S]{0,180}commitLoraPick\(name\)/);
+  assert.match(app, /loraPickList'\)\.addEventListener\('pointerdown'[\s\S]{0,420}row\.dataset\.loraPickName/);
+  assert.match(app, /window\.addEventListener\('pointerup'[\s\S]{0,700}Math\.hypot[\s\S]{0,240}commitLoraPick\(candidate\.name\)/);
   assert.match(css, /\.director-lora-item\.on/);
   assert.match(css, /\.lora-picker-panel\s*\{[^}]*height:\s*min\(620px,calc\(100dvh - 40px\)\)/);
 });
@@ -278,6 +300,30 @@ test('Director settings use centered app-native animated switches', () => {
   assert.match(css, /\.director-modal-sheet\s*\{[^}]*align-items:\s*center/);
   assert.match(css, /\.director-setting-toggle\[aria-checked="true"\]/);
   assert.match(css, /\.director-settings-advanced\[open\][\s\S]{0,260}rotate\(45deg\)/);
+});
+
+test('Director output settings reuse the site resolution, duration, playback, and random-seed conventions', () => {
+  for (const id of ['directorDurationSlider', 'directorDurationRange', 'directorResolutionPicker', 'directorAspectRow', 'directorSizeSeg', 'directorSmoothRow']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.doesNotMatch(html, /id="director(?:Width|Height|Smooth|IcLora)"/);
+  for (const label of ['24 fps', '48 fps · RIFE', '72 fps · RIFE']) assert.match(html, new RegExp(label.replace('·', '·')));
+  assert.match(html, /Seed[\s\S]{0,100}blank uses a new random seed/);
+  assert.match(app, /function renderDirectorResolutionPicker\(\)/);
+  assert.match(app, /dimensionsForMegapixels\(aspect\.ar, sizeMatches \? selectedMp : 1\)/);
+  assert.match(app, /function renderDirectorDurationControl\(\)/);
+  assert.match(app, /output\.seed !== '' && output\.seed != null/);
+  assert.match(app, /directorDurationRange'\)\.addEventListener\('input'/);
+  assert.match(css, /\.director-resolution-picker/);
+  assert.match(css, /\.director-field-grid \.duration-slider-value/);
+});
+
+test('Relative timeline insertion makes room instead of rejecting an occupied adjacent frame', () => {
+  assert.match(app, /function directorInsertRelative\(track, anchor, side, length\)/);
+  assert.match(app, /const shifted = directorTrackSegments\(track\)\.filter\(\(segment\) => segment\.start >= insertionFrame\)/);
+  assert.match(app, /shifted\.forEach\(\(segment\) => \{ segment\.start \+= length; \}\)/);
+  assert.match(app, /project\.durationFrames = Math\.max\(previousDuration, requiredEnd\)/);
+  assert.match(app, /anchor && context\.track === track\) start = directorInsertRelative/);
 });
 
 test('Director gives instant keyframes usable controls without changing frame precision', () => {
