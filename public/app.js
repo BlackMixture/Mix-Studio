@@ -10017,6 +10017,7 @@ function openDirectorMode(project, options = {}) {
   directorNeedsRangeScroll = true;
   $('#directorWorkspace').hidden = false;
   document.body.classList.add('director-open');
+  setDirectorProgressLocation(true);
   renderDirectorModelChoices();
   setDirectorModelExpanded(false);
   directorUseComfortableTimelineScale();
@@ -10241,6 +10242,7 @@ function closeDirectorMode() {
   directorCloseInspector();
   setDirectorModelExpanded(false);
   for (const id of ['directorAddSheet', 'directorProjectMenuSheet', 'directorSettingsSheet']) directorCloseSheet(id);
+  setDirectorProgressLocation(false);
   $('#directorWorkspace').hidden = true;
   document.body.classList.remove('director-open');
   if (state.view !== 'gallery') $('#genDock').style.display = '';
@@ -10813,6 +10815,7 @@ async function generateDirector() {
   button.disabled = true;
   button.textContent = 'Queueing…';
   try {
+    setGenerating(true, 'Queued…');
     const baseSeed = project.output.seed === '' ? Math.floor(Math.random() * 0x7fffffff) : Number(project.output.seed);
     for (let index = 0; index < project.output.batch; index += 1) {
       const result = await api('/api/director/generate', {
@@ -10828,15 +10831,31 @@ async function generateDirector() {
       state.activeJobs.add(result.jobId);
     }
     $('#genLbl').textContent = genLabel();
+    queueRefreshSoon();
     toast(project.extensionSource
       ? `${project.output.batch} video extension${project.output.batch === 1 ? '' : 's'} added to the queue`
       : `${project.output.batch} Director generation${project.output.batch === 1 ? '' : 's'} added to the queue`);
   } catch (requestError) {
+    setGenerating(false);
     if (Array.isArray(requestError.missingAssets)) requestError.missingAssets.forEach((name) => directorMissingAssets.add(name));
     toast(requestError.message, true);
   } finally {
     button.textContent = project.extensionSource ? 'Generate Extension' : 'Generate Video';
     renderDirector();
+  }
+}
+
+function setDirectorProgressLocation(inDirector) {
+  const preview = $('#livePreview');
+  const summary = $('#directorSummary');
+  const home = $('#genDock .generate-inner');
+  if (!preview || !summary || !home) return;
+  if (inDirector) {
+    if (preview.parentElement !== $('#directorWorkspace')) summary.before(preview);
+    preview.classList.add('director-live-preview');
+  } else {
+    if (preview.parentElement !== home) home.insertBefore(preview, home.firstElementChild);
+    preview.classList.remove('director-live-preview');
   }
 }
 

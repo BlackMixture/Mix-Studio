@@ -36,8 +36,8 @@ test('Director is a pinned LTX model workflow and not a navigation destination',
   assert.match(app, /closeDirectorMode\(\);[\s\S]{0,100}source\.click\(\)/);
   assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
   assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,620}hasSavedProject[\s\S]{0,220}openDirectorMode\(undefined, \{ mode:[\s\S]{0,160}else openDirectorWorkflowChooser\(\)/);
-  assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,260}\.director-head\s*\{[\s\S]{0,180}width:\s*min\(720px, calc\(100% - 150px\)\)/);
-  assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,500}\.director-head-actions\s*\{[\s\S]{0,120}left:\s*calc\(100% \+ 10px\)/);
+  assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,260}\.director-head\s*\{[\s\S]{0,180}width:\s*100%/);
+  assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,600}\.director-head-actions\s*\{[\s\S]{0,120}right:\s*0/);
 });
 
 test('Director timeline exposes accessible drag and exact-value editing at 24 fps', () => {
@@ -290,7 +290,7 @@ test('Director starts populated timelines at a comfortable scrollable scale', ()
   assert.match(app, /function directorComfortableTimelineScale\(\)/);
   assert.match(app, /visibleSeconds = window\.innerWidth <= 720 \? 1\.5 : 3\.25/);
   assert.match(app, /function directorUseComfortableTimelineScale\(\)[\s\S]{0,220}directorAutoFit = false[\s\S]{0,220}directorComfortableTimelineScale\(\)/);
-  assert.match(app, /openDirectorMode\(project, options = \{\}\)[\s\S]{0,1200}directorWorkspace'\)\.hidden = false;[\s\S]{0,120}directorUseComfortableTimelineScale\(\)/);
+  assert.match(app, /openDirectorMode\(project, options = \{\}\)[\s\S]{0,1200}directorWorkspace'\)\.hidden = false;[\s\S]{0,220}directorUseComfortableTimelineScale\(\)/);
   assert.match(css, /\.director-timeline\s*\{[^}]*overflow-x:\s*auto[^}]*scrollbar-gutter:\s*stable/);
   assert.doesNotMatch(css, /\.director-workspace\.auto-fit \.director-timeline-canvas\s*\{[^}]*width:\s*100%\s*!important/);
   const autoFit = openingTagById(html, 'directorAutoFit');
@@ -370,6 +370,27 @@ test('Director has a compact full-sequence or selected-range generation footer',
   assert.match(app, /button\.textContent = project\.extensionSource \? 'Generate Extension' : 'Generate Video'/);
   assert.match(css, /\.director-summary\s*\{[^}]*position:\s*sticky;[^}]*bottom:/);
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.director-summary\s*\{\s*position:\s*static;\s*bottom:\s*auto/);
+});
+
+test('Director generation uses the shared progress card and queue lifecycle', () => {
+  assert.match(app, /function setDirectorProgressLocation\(inDirector\)/);
+  assert.match(app, /if \(inDirector\)[\s\S]{0,220}summary\.before\(preview\)[\s\S]{0,160}director-live-preview/);
+  assert.match(app, /function openDirectorMode[\s\S]{0,1300}setDirectorProgressLocation\(true\)/);
+  assert.match(app, /function closeDirectorMode[\s\S]{0,700}setDirectorProgressLocation\(false\)/);
+  assert.match(app, /async function generateDirector\(\)[\s\S]{0,900}setGenerating\(true, 'Queued…'\)[\s\S]{0,1100}queueRefreshSoon\(\)/);
+  assert.match(app, /async function generateDirector\(\)[\s\S]{0,1900}catch \(requestError\) \{[\s\S]{0,100}setGenerating\(false\)/);
+  assert.match(css, /\.director-workspace > \.director-live-preview\s*\{[^}]*grid-row:\s*6;[^}]*width:\s*min\(100%,720px\)/);
+  assert.match(css, /\.director-summary\s*\{[^}]*grid-row:\s*7/);
+});
+
+test('Director reuses the desktop creation surface alongside the Library rail', () => {
+  assert.doesNotMatch(css, /\.director-open #desktopStage, \.director-open #genDock, \.director-open #view-gallery/);
+  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open \.studio-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,1fr\) minmax\(310px,360px\)/);
+  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open #view-create\s*\{[^}]*grid-column:\s*1;/);
+  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open #view-gallery\s*\{[^}]*display:\s*block;[^}]*grid-column:\s*2;/);
+  assert.match(css, /\.director-open #desktopStage, \.director-open #genDock\s*\{\s*display:\s*none !important;/);
+  assert.match(css, /@media \(min-width: 721px\)[\s\S]*\.director-model-panel\s*\{[^}]*width:\s*min\(720px, calc\(100% - 220px\)\);[^}]*justify-self:\s*center;/);
+  assert.match(css, /@media \(min-width: 721px\)[\s\S]*\.director-head-actions\s*\{[^}]*right:\s*0;/);
 });
 
 test('Director projects autosave, import, export, preflight media, and restore from gallery metadata', () => {
