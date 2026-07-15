@@ -25,7 +25,7 @@ test('icon help uses one accessible tooltip portal', () => {
 });
 
 test('icon-only buttons are marked and lose native titles only after opting into custom help', () => {
-  const tooltipJs = sourceAround(app, 'data-icon-tooltip');
+  const tooltipJs = sourceAround(app, 'data-icon-tooltip', 7000);
 
   assert.match(tooltipJs, /(?:querySelectorAll|matches)\([^)]*button/);
   assert.match(tooltipJs, /getAttribute\(\s*['"]aria-label['"]\s*\)/);
@@ -40,6 +40,20 @@ test('icon-only buttons are marked and lose native titles only after opting into
   }), 'title removal should be scoped to the custom-tooltip opt-in path');
   assert.doesNotMatch(tooltipJs, /querySelectorAll\(\s*['"](?:button)?\[title\]['"]\s*\)/,
     'native titles on ordinary, visibly labelled controls must remain untouched');
+});
+
+test('drawer focus transfers do not trigger touch-style icon tooltips', () => {
+  const drawerJs = sourceAround(app, 'function openAppDrawer', 2600);
+  const tooltipJs = sourceAround(app, 'function focusIconControlSilently', 3200);
+
+  assert.match(drawerJs, /appDrawerFocusTimer = setTimeout\(\(\) => \{[\s\S]{0,220}focusIconControlSilently\(\$\('#appDrawerClose'\)\)[\s\S]{0,40}\}, 80\)/);
+  assert.match(drawerJs, /function closeAppDrawer\(\)[\s\S]{0,120}clearTimeout\(appDrawerFocusTimer\)/,
+    'closing the tutorial-opened drawer should cancel its delayed focus transfer');
+  assert.match(drawerJs, /function closeAppDrawer\(\)[\s\S]{0,500}focusIconControlSilently\(\$\('#appMenuBtn'\)\)/);
+  assert.match(tooltipJs, /iconTooltipSilentFocusTargets\.add\(button\)[\s\S]{0,100}button\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(tooltipJs, /addEventListener\('focusin'[^]*iconTooltipSilentFocusTargets\.delete\(button\)[^]*hideIconTooltip\(\)[^]*return;/);
+  assert.match(tooltipJs, /showIconTooltip\(button, true\)/,
+    'later deliberate keyboard focus should still receive the tooltip');
 });
 
 test('icon tooltip behavior is delegated, keyboard accessible, and supports dynamic buttons', () => {

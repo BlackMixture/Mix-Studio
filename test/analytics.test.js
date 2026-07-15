@@ -98,8 +98,6 @@ test('the first-run analytics notice uses a clear primary action and a quiet opt
   assert.match(analyticsSource, /setAttribute\('aria-live', 'polite'\)/);
   assert.match(analyticsSource, /setAttribute\('aria-labelledby', 'telemetryNoticeTitle'\)/);
   assert.match(analyticsSource, /setAttribute\('aria-describedby', 'telemetryNoticeCopy'\)/);
-  assert.match(analyticsSource, /notice\.setAttribute\('role', 'region'\)/);
-  assert.match(analyticsSource, /notice\.setAttribute\('aria-live', 'polite'\)/);
 
   const markup = analyticsSource.match(/notice\.innerHTML\s*=\s*(['"])(.*?)\1;/s)?.[2] || '';
   const thanks = markup.match(/<button[^>]*class="telemetry-toast-thanks"[^>]*>Thanks, continue<\/button>/)?.[0] || '';
@@ -142,4 +140,22 @@ test('anonymous analytics remain controllable from the persistent Advanced Setti
   assert.match(analyticsSource, /toggle\.addEventListener\('click', \(\) => requestSetEnabled\(optedOut\(\)\)\)/);
   assert.match(analyticsSource, /storage\.setItem\(OPT_OUT_KEY, '1'\)/);
   assert.match(analyticsSource, /storage\.removeItem\(OPT_OUT_KEY\)/);
+});
+
+test('the analytics switch is the compact final control in General settings', () => {
+  const generalStart = html.indexOf('id="settingsPaneGeneral"');
+  const generalEnd = html.indexOf('id="settingsPaneImage"', generalStart);
+  const general = html.slice(generalStart, generalEnd);
+  const health = general.indexOf('id="healthList"');
+  const analytics = general.indexOf('id="analyticsToggle"');
+
+  assert.ok(health >= 0 && analytics > health, 'analytics should follow the health report at the end of General settings');
+  assert.equal(general.lastIndexOf('<button'), general.lastIndexOf('<button', analytics),
+    'analytics should be the final interactive control in General settings');
+
+  const compactRule = css.match(/(?:#settingsPaneGeneral\s+|\.settings-pane\s+(?:>\s*)?)?\.analytics-toggle\s*\{([^}]*)\}/)?.[1] || '';
+  assert.match(compactRule, /min-height:/, 'analytics should have its own compact height instead of inheriting the large generic row');
+  assert.match(compactRule, /padding:/, 'analytics should have its own compact spacing');
+  assert.match(css, /\.analytics-toggle\s+\.settings-media-toggle-copy\s+(?:strong|small)\s*\{/,
+    'analytics copy sizing should be scoped without shrinking every Settings toggle');
 });

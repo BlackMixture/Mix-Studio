@@ -2135,7 +2135,7 @@
             <span class="guided-tour-setting-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 4h14v11H9l-4 4V4Zm3 4h8M8 11h5"/></svg>
             </span>
-            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for prompts, LoRAs, modes, and Library.</small></span>
+            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for the side panel, prompts, LoRAs, modes, and Library.</small></span>
             <button id="guidedTourStart" type="button">Start tutorial</button>
             <button class="settings-media-toggle guided-tips-toggle" id="guidedTipsToggle" type="button" role="switch" aria-checked="true">
               <span class="settings-media-toggle-copy"><strong>Contextual tips</strong><small>Show one-time help when a control first becomes useful.</small></span>
@@ -2146,10 +2146,6 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"/></svg>
             </button>
           </div>
-          <button class="settings-media-toggle analytics-toggle" id="analyticsToggle" type="button" role="switch" aria-checked="true" aria-labelledby="analyticsToggleLabel" aria-describedby="analyticsToggleStatus" hidden>
-            <span class="settings-media-toggle-copy"><strong id="analyticsToggleLabel">Anonymous analytics</strong><small id="analyticsToggleStatus">On · app launches and model starts only. Never prompts, media, or screen recordings.</small></span>
-            <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-          </button>
           <button class="generation-setup-entry" id="dependencyOpenSetup" type="button" data-state="checking" aria-describedby="generationSetupSettingsCopy">
             <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
             <span class="generation-setup-entry-copy"><strong>Generation setup</strong><small id="generationSetupSettingsCopy">Connection, models, and workflow requirements.</small></span>
@@ -2200,6 +2196,10 @@
             </div>
           </div>
           <div class="health-list" id="healthList"></div>
+          <button class="settings-media-toggle analytics-toggle" id="analyticsToggle" type="button" role="switch" aria-checked="true" aria-labelledby="analyticsToggleLabel" aria-describedby="analyticsToggleStatus" hidden>
+            <span class="settings-media-toggle-copy"><strong id="analyticsToggleLabel">Anonymous analytics</strong><small id="analyticsToggleStatus">On · app launches and model starts only. Never prompts, media, or screen recordings.</small></span>
+            <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+          </button>
         </section>
 
         <section class="settings-pane" id="settingsPaneImage" role="tabpanel" aria-labelledby="settingsTabImage" data-settings-pane="image" hidden>
@@ -2595,7 +2595,7 @@
   </div>
   <section class="guided-tour-card" id="guidedTourCard" role="dialog" aria-modal="true" aria-labelledby="guidedTourTitle" aria-describedby="guidedTourCopy" tabindex="-1">
     <div class="guided-tour-card-head">
-      <span class="guided-tour-step" id="guidedTourStep">1 of 13</span>
+      <span class="guided-tour-step" id="guidedTourStep">1 of 14</span>
       <button class="guided-tour-close" id="guidedTourClose" type="button" aria-label="Close tutorial">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
       </button>

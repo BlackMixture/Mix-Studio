@@ -14,7 +14,7 @@ test('opening a completed queue result suppresses the grid Library guide in focu
   );
   assert.match(
     setView,
-    /if \(opts\.focusedResult\) cancelContextualGuide\('library-basics'\);\s*else scheduleContextualGuide\('library-basics', 760\);/,
+    /if \(opts\.focusedResult\) cancelContextualGuide\('library-basics'\);\s*else schedulePrimaryOrSidePanelGuide\('library-basics', 760\);/,
     'focused-result navigation should cancel the inaccurate toolbar guide while normal Library navigation retains it',
   );
 

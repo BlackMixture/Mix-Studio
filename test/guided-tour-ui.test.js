@@ -23,9 +23,10 @@ test('Advanced Settings can replay an accessible guided UI tutorial', () => {
   assert.match(app, /localStorage\.setItem\(guidedTourStorageKey\(\), guidedTourCompletionValue\(\)\)/);
   assert.match(app, /completed \? 'Replay tutorial' : \(hasOlderTour \? 'See what’s new' : 'Start tutorial'\)/);
   assert.match(app, /See what’s new/);
+  assert.match(app, /Updated · now covers side panel access/);
   assert.match(app, /event\.key === 'Escape'/);
   assert.match(app, /event\.key !== 'Tab'/);
-  assert.match(html, /Optional walkthrough for prompts, LoRAs, modes, and Library/);
+  assert.match(html, /Optional walkthrough for the side panel, prompts, LoRAs, modes, and Library/);
   assert.equal((app.match(/startGuidedTour\(\)/g) || []).length, 1, 'the tutorial is declared but never started automatically');
 });
 
@@ -54,6 +55,46 @@ test('guided steps cover the main workflow with animated gesture demonstrations'
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*\.guided-tour-demo-cursor/);
 });
 
+test('every guide action row leaves breathing room after its explanatory content', () => {
+  const actions = css.match(/(?:^|\n)\.guided-tour-actions\s*\{([^}]*)\}/)?.[1] || '';
+  assert.match(actions, /margin-top:\s*(?:1[2-9]|[2-9]\d)px/,
+    'tutorial and contextual-tip buttons should not crowd the guide copy');
+});
+
+test('the full tour starts by showing where to open the side panel', () => {
+  const stepsStart = app.indexOf('const GUIDED_TOUR_STEPS = [');
+  const stepsEnd = app.indexOf('\n];', stepsStart);
+  const steps = app.slice(stepsStart, stepsEnd);
+  const menuTarget = steps.indexOf("target: '#appMenuBtn'");
+  const workspaceStep = steps.indexOf("id: 'workspaces'");
+
+  assert.ok(menuTarget >= 0, 'the full tour should highlight the existing menu trigger');
+  assert.ok(menuTarget < workspaceStep, 'side-panel access should be taught before workspace details');
+  const menuStep = steps.slice(Math.max(0, menuTarget - 180), menuTarget + 700);
+  assert.match(menuStep, /title: ['"][^'"]*side panel[^'"]*['"]/i);
+  assert.match(menuStep, /motion: 'tap'/);
+  assert.match(menuStep, /simulateOn: '\.side-menu-icon'/);
+  assert.match(menuStep, /scroll: false/);
+  assert.match(menuStep, /Advanced Settings/);
+});
+
+test('side-panel access is a one-time contextual guide retired when the drawer is opened', () => {
+  const guideStart = app.indexOf("  'side-panel-access': {");
+  const guideEnd = app.indexOf("\n  },", guideStart);
+  const guide = app.slice(guideStart, guideEnd);
+  assert.ok(guideStart >= 0, 'the side-panel-access contextual guide should exist');
+  assert.match(guide, /id: 'side-panel-access'/);
+  assert.match(guide, /target: '#appMenuBtn'/);
+  assert.match(guide, /simulateOn: '\.side-menu-icon'/);
+  assert.match(app, /scheduleContextualGuide\('side-panel-access',\s*\d+\)/);
+
+  const openStart = app.indexOf('function openAppDrawer()');
+  const openEnd = app.indexOf('function closeAppDrawer()', openStart);
+  const openDrawer = app.slice(openStart, openEnd);
+  assert.match(openDrawer, /completeContextualGuide\('side-panel-access'\)/,
+    'people who find the drawer themselves should never see the access tip later');
+});
+
 test('Advanced Settings controls profile-scoped contextual gesture tips', () => {
   assert.match(html, /id="guidedTipsToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
   assert.match(app, /function guidedTipsStorageKey\(\)[\s\S]{0,180}ks-contextual-guides-/);
@@ -67,15 +108,16 @@ test('basic contextual tips appear where prompting, models, LoRAs, and Library t
   for (const guide of ['prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics']) {
     assert.match(app, new RegExp(`id: '${guide}'`));
   }
-  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1500}scheduleContextualGuide\('library-basics'/);
-  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1700}scheduleContextualGuide\('prompt-entry'/);
+  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1500}schedulePrimaryOrSidePanelGuide\('library-basics'/);
+  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1700}schedulePrimaryOrSidePanelGuide\('prompt-entry'/);
+  assert.match(app, /function schedulePrimaryOrSidePanelGuide\([\s\S]{0,500}scheduleContextualGuide\(primarySeen \? 'side-panel-access' : primaryId/);
   assert.match(app, /kreaTurboToggle'\)\.addEventListener\('click'[\s\S]{0,900}scheduleContextualGuide\('turbo-vs-raw'/);
   assert.match(app, /loraHeader'\)\.addEventListener\('click'[\s\S]{0,260}scheduleContextualGuide\('lora-basics'/);
   assert.match(html, />Contextual tips<[\s\S]{0,120}Show one-time help when a control first becomes useful/);
 });
 
 test('the expanded tutorial is versioned and restores the workspace it temporarily opens', () => {
-  assert.match(app, /const GUIDED_TOUR_VERSION = 2/);
+  assert.match(app, /const GUIDED_TOUR_VERSION = 3/);
   assert.match(app, /stored === 'complete'/);
   assert.match(app, /hasOlderTour \? 'See what’s new'/);
   assert.match(app, /guidedTourRestoreState = \{[\s\S]{0,220}view: state\.view[\s\S]{0,220}lorasExpanded/);
@@ -85,6 +127,8 @@ test('the expanded tutorial is versioned and restores the workspace it temporari
   assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,2000}openDirectorMode\(restore\.directorProject,[\s\S]{0,180}chooseWorkflow: restore\.directorChoosingWorkflow/);
   assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,2300}saveForm\(\)/,
     'the restored mode must replace the tutorial workspace in profile persistence');
+  assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,700}['"]side-panel-access['"][\s\S]{0,300}contextualGuideSeenKey\(id\)/,
+    'completing the full tour should retire the equivalent one-time side-panel tip');
 });
 
 test('Escape dismisses both action-required and informational contextual tips', () => {

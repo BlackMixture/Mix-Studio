@@ -1094,6 +1094,7 @@ function syncSheetScrollLock() {
 let appUpdateRunning = false;
 let appRestartRunning = false;
 let appDrawerCreateExpanded = true;
+let appDrawerFocusTimer = null;
 const standaloneDisplayQuery = window.matchMedia('(display-mode: standalone)');
 
 function syncAppDrawerScrollFades() {
@@ -1182,6 +1183,7 @@ function renderAppDrawerNavigation() {
 }
 
 function openAppDrawer() {
+  completeContextualGuide('side-panel-access');
   closeActionMenu();
   scheduleFullscreenControlSync();
   renderAppDrawerNavigation();
@@ -1191,16 +1193,22 @@ function openAppDrawer() {
   $('#appMenuBtn').setAttribute('aria-expanded', 'true');
   syncSheetScrollLock();
   requestAnimationFrame(syncAppDrawerScrollFades);
-  setTimeout(() => $('#appDrawerClose').focus(), 80);
+  clearTimeout(appDrawerFocusTimer);
+  appDrawerFocusTimer = setTimeout(() => {
+    appDrawerFocusTimer = null;
+    if ($('#appDrawer').classList.contains('show')) focusIconControlSilently($('#appDrawerClose'));
+  }, 80);
 }
 
 function closeAppDrawer() {
+  clearTimeout(appDrawerFocusTimer);
+  appDrawerFocusTimer = null;
   document.body.classList.remove('app-drawer-open');
   $('#appDrawer').classList.remove('show');
   $('#appDrawer').setAttribute('aria-hidden', 'true');
   $('#appMenuBtn').setAttribute('aria-expanded', 'false');
   syncSheetScrollLock();
-  $('#appMenuBtn').focus();
+  focusIconControlSilently($('#appMenuBtn'));
 }
 
 function setAppUpdateStatus(message, tone) {
@@ -1983,9 +1991,9 @@ function setView(view, opts = {}) {
   if (isGallery) {
     refreshGallery();
     if (opts.focusedResult) cancelContextualGuide('library-basics');
-    else scheduleContextualGuide('library-basics', 760);
+    else schedulePrimaryOrSidePanelGuide('library-basics', 760);
   } else if (view === 'create' && state.createMode === 'image') {
-    scheduleContextualGuide('prompt-entry', 960);
+    schedulePrimaryOrSidePanelGuide('prompt-entry', 960);
   }
 }
 
@@ -20828,6 +20836,7 @@ let iconTooltipHideTimer = null;
 let iconTooltipFrame = null;
 let iconTooltipScanFrame = null;
 let iconTooltipPreviousDescription = '';
+const iconTooltipSilentFocusTargets = new WeakSet();
 
 function conciseIconTooltipLabel(value) {
   let label = String(value || '').replace(/\s+/g, ' ').trim();
@@ -21003,6 +21012,14 @@ function hideIconTooltip(button = null) {
   }, 120);
 }
 
+function focusIconControlSilently(button) {
+  if (!(button instanceof HTMLElement)) return;
+  hideIconTooltip();
+  iconTooltipSilentFocusTargets.add(button);
+  button.focus({ preventScroll: true });
+  queueMicrotask(() => iconTooltipSilentFocusTargets.delete(button));
+}
+
 function initIconTooltips() {
   scanIconTooltips();
   const hoverQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
@@ -21019,7 +21036,12 @@ function initIconTooltips() {
   });
   document.addEventListener('focusin', (event) => {
     const button = event.target.closest('button[data-icon-tooltip]');
-    if (button) showIconTooltip(button, true);
+    if (!button) return;
+    if (iconTooltipSilentFocusTargets.delete(button)) {
+      hideIconTooltip();
+      return;
+    }
+    showIconTooltip(button, true);
   });
   document.addEventListener('focusout', (event) => {
     const button = event.target.closest('button[data-icon-tooltip]');
@@ -21308,6 +21330,7 @@ $('#firstRunTutorialSkip').addEventListener('click', () => {
   localStorage.setItem(firstRunTutorialStorageKey(), 'skipped');
   firstImageTutorialPhase = 'skipped';
   hideFirstRunTutorial();
+  scheduleContextualGuide('side-panel-access', 720);
 });
 $('#firstRunTutorial').addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
@@ -21329,11 +21352,27 @@ $('#firstRunTutorial').addEventListener('keydown', (event) => {
 /* Guided UI tutorial                                                  */
 /* ------------------------------------------------------------------ */
 
-const GUIDED_TOUR_VERSION = 2;
+const GUIDED_TOUR_VERSION = 3;
 const GUIDED_TOUR_STEPS = [
+  {
+    id: 'side-panel',
+    target: '#appMenuBtn',
+    advanceOn: '#appMenuBtn',
+    title: 'Open the side panel',
+    copy: 'The Mix Studio mark opens navigation, Workspaces, Full screen, updates, and Advanced Settings.',
+    motion: 'tap',
+    simulateOn: '.side-menu-icon',
+    demo: 'Tap the Mix Studio mark to open the menu',
+    scroll: false,
+    prepare: () => {
+      if ($('#appDrawer').classList.contains('show')) closeAppDrawer();
+      prepareGuidedTourImage(false);
+    },
+  },
   {
     id: 'workspaces',
     target: '#primaryTabs',
+    advanceOn: '[data-primary-mode="create"]',
     title: 'Choose a workspace',
     copy: 'Create starts new work, Edit changes an image, and Library keeps every completed generation.',
     motion: 'tap',
@@ -21345,6 +21384,7 @@ const GUIDED_TOUR_STEPS = [
   {
     id: 'creation-method',
     target: '#createTabs',
+    advanceOn: '[data-create-mode="image"]',
     title: 'Pick a creation method',
     copy: 'Image builds a frame, Region directs separate areas, and Video creates motion. LTX 2.3 also offers Director mode inside its model picker.',
     motion: 'tap',
@@ -21356,6 +21396,8 @@ const GUIDED_TOUR_STEPS = [
   {
     id: 'prompt',
     target: '#promptPanel',
+    advanceOn: '#promptComposer',
+    advanceEvent: 'input',
     title: 'Start with a prompt',
     copy: 'Type what you want in the large Prompt box. A short plain-language sentence is enough; Prompt Enhance can add production detail.',
     motion: 'type',
@@ -21377,6 +21419,7 @@ const GUIDED_TOUR_STEPS = [
   {
     id: 'resolution',
     target: '#resPanel',
+    advanceOn: '#resHeader',
     title: 'Set the output shape',
     copy: 'Choose the aspect ratio and S, M, or L output size. The dimensions shown here are the dimensions sent to generation.',
     motion: 'tap',
@@ -21387,6 +21430,7 @@ const GUIDED_TOUR_STEPS = [
   {
     id: 'turbo-raw',
     target: '#kreaTurboToggle',
+    advanceOn: '#kreaTurboToggle',
     title: 'Choose Turbo or Raw',
     copy: 'Turbo is the fast, high-quality model with steadier results and sometimes less variance. Turn it off for Raw when you want more variation.',
     motion: 'tap',
@@ -21435,6 +21479,7 @@ const GUIDED_TOUR_STEPS = [
   {
     id: 'open-library',
     target: '[data-primary-mode="gallery"]',
+    advanceOn: '[data-primary-mode="gallery"]',
     title: 'Open your Library',
     copy: 'Library stores every result and its generation settings, ready to compare, reuse, organize, or send into another workflow.',
     motion: 'tap',
@@ -21464,6 +21509,7 @@ const GUIDED_TOUR_STEPS = [
 ];
 
 function prepareGuidedTourImage(expandLoras = false) {
+  if ($('#appDrawer').classList.contains('show')) closeAppDrawer();
   if (state.view !== 'create' || state.createMode !== 'image') setCreateMode('image');
   setLorasExpanded(expandLoras);
 }
@@ -21544,6 +21590,17 @@ const CONTEXTUAL_GUIDES = {
     motion: 'tap',
     demo: 'Tap your image to open it',
     scroll: true,
+  },
+  'side-panel-access': {
+    id: 'side-panel-access',
+    target: '#appMenuBtn',
+    kicker: 'App controls',
+    title: 'Your side panel',
+    copy: 'Open it for navigation, Workspaces, Full screen, updates, and Advanced Settings.',
+    motion: 'tap',
+    simulateOn: '.side-menu-icon',
+    demo: 'Tap the Mix Studio mark to open it',
+    scroll: false,
   },
   'prompt-entry': {
     id: 'prompt-entry',
@@ -21901,6 +21958,7 @@ function offerPromptIntentGuide(intent, { explicit = false } = {}) {
 let guidedTourIndex = -1;
 let guidedTourRestoreState = null;
 let guidedTourTimer = null;
+let guidedTourActionTimer = null;
 let guidedTourPositionFrame = null;
 let guidedTourTrackFrame = null;
 let guidedTourTrackedTarget = null;
@@ -22239,21 +22297,50 @@ function renderGuidedTourSetting() {
   const tipsEnabled = contextualGuidesEnabled();
   $('#guidedTourStart').textContent = completed ? 'Replay tutorial' : (hasOlderTour ? 'See what’s new' : 'Start tutorial');
   $('#guidedTourSettingStatus').textContent = completed
-    ? 'Completed · replay the prompt, LoRA, and Library walkthrough anytime.'
-    : (hasOlderTour ? 'Updated · now covers LoRAs, model modes, and Library actions.' : 'Optional walkthrough · start it whenever you want.');
+    ? 'Completed · replay the side panel, prompt, LoRA, and Library walkthrough anytime.'
+    : (hasOlderTour ? 'Updated · now covers side panel access, LoRAs, model modes, and Library actions.' : 'Optional walkthrough · start it whenever you want.');
   $('#guidedTipsToggle').setAttribute('aria-checked', String(tipsEnabled));
 }
 
-function guidedTourTarget() {
-  const guide = contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
-  const selector = guide ? contextualGuideValue(guide.target) : '';
+function activeGuidedTourDefinition() {
+  return contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
+}
+
+function guidedTourActions(definition = activeGuidedTourDefinition(), target = guidedTourTarget(definition)) {
+  const selector = definition ? contextualGuideValue(definition.advanceOn) : '';
+  if (!selector || !target) return [];
+  try {
+    if (target.matches(selector) && !target.disabled) return [target];
+    return $$(selector).filter((candidate) => target.contains(candidate) && !candidate.disabled && guidedTourTargetUsable(candidate));
+  } catch {
+    return [];
+  }
+}
+
+function guidedTourActionAtPoint(definition, target, clientX, clientY) {
+  const candidates = guidedTourActions(definition, target);
+  if (!candidates.length) return null;
+  const direct = candidates.find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  });
+  if (direct) return direct;
+  return candidates.reduce((nearest, candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    const distance = (clientX - (rect.left + rect.width / 2)) ** 2 + (clientY - (rect.top + rect.height / 2)) ** 2;
+    return !nearest || distance < nearest.distance ? { candidate, distance } : nearest;
+  }, null)?.candidate || null;
+}
+
+function guidedTourTarget(definition = activeGuidedTourDefinition()) {
+  const selector = definition ? contextualGuideValue(definition.target) : '';
   return selector ? $(selector) : null;
 }
 
 function positionGuidedTour() {
   const root = $('#guidedTour');
-  const guide = contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
-  const target = guidedTourTarget();
+  const guide = activeGuidedTourDefinition();
+  const target = guidedTourTarget(guide);
   if (root.hidden) return;
   if (!guidedTourTargetUsable(target)) {
     if (contextualGuide) {
@@ -22264,7 +22351,10 @@ function positionGuidedTour() {
     }
     return;
   }
-  const rect = target.getBoundingClientRect();
+  const interactionTarget = !contextualGuide && guide?.advanceOn
+    ? (guidedTourActions(guide, target)[0] || target)
+    : target;
+  const rect = interactionTarget.getBoundingClientRect();
   const pad = 7;
   const left = Math.max(4, rect.left - pad);
   const top = Math.max(4, rect.top - pad);
@@ -22276,7 +22366,7 @@ function positionGuidedTour() {
   spotlight.style.top = `${top}px`;
   spotlight.style.width = `${Math.max(12, right - left)}px`;
   spotlight.style.height = `${Math.max(12, bottom - top)}px`;
-  const radius = parseFloat(getComputedStyle(target).borderRadius) || 14;
+  const radius = parseFloat(getComputedStyle(interactionTarget).borderRadius) || 14;
   spotlight.style.borderRadius = `${Math.min(28, Math.max(10, radius + 5))}px`;
   positionGuidedTargetSimulation(guide, target);
 
@@ -22317,6 +22407,11 @@ function scheduleContextualGuide(id, delay = 560) {
     contextualGuideTimer = null;
     showContextualGuide(id);
   }, delay);
+}
+
+function schedulePrimaryOrSidePanelGuide(primaryId, delay) {
+  const primarySeen = localStorage.getItem(contextualGuideSeenKey(primaryId)) === 'seen';
+  scheduleContextualGuide(primarySeen ? 'side-panel-access' : primaryId, delay);
 }
 
 function showContextualGuide(id, { repeat = false, ignoreEnabled = false, intentKey = '' } = {}) {
@@ -22420,12 +22515,14 @@ function dismissContextualGuide() {
     localStorage.setItem(contextualGuideSeenKey(id), 'seen');
     hideContextualGuide({ restoreFocus: false });
     if (!['first-image-generating', 'first-image-library'].includes(id)) finishFirstImageTutorial({ pause: true });
+    if (id === 'first-image-library') scheduleContextualGuide('side-panel-access', 720);
     return;
   }
   if (contextualGuideIntentKey) dismissedIntentGuides.add(contextualGuideIntentKey);
   localStorage.setItem(contextualGuideSeenKey(id), 'seen');
   hideContextualGuide();
   schedulePromptIntentHint();
+  if (['prompt-entry', 'library-basics'].includes(id)) scheduleContextualGuide('side-panel-access', 720);
 }
 
 function cancelContextualGuide(id) {
@@ -22481,28 +22578,11 @@ function signalContextualGuideTarget() {
 }
 
 function contextualGuideActionAtPoint(guide, target, clientX, clientY) {
-  const selector = contextualGuideValue(guide.advanceOn);
-  if (!selector) return null;
-  if (target.matches(selector) && !target.disabled) return target;
-  const candidates = contextualGuideActions(guide, target);
-  if (!candidates.length) return null;
-  const direct = candidates.find((candidate) => {
-    const rect = candidate.getBoundingClientRect();
-    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
-  });
-  if (direct) return direct;
-  return candidates.reduce((nearest, candidate) => {
-    const rect = candidate.getBoundingClientRect();
-    const distance = (clientX - (rect.left + rect.width / 2)) ** 2 + (clientY - (rect.top + rect.height / 2)) ** 2;
-    return !nearest || distance < nearest.distance ? { candidate, distance } : nearest;
-  }, null)?.candidate || null;
+  return guidedTourActionAtPoint(guide, target, clientX, clientY);
 }
 
 function contextualGuideActions(guide = contextualGuide, target = contextualGuideTarget(guide)) {
-  const selector = guide ? contextualGuideValue(guide.advanceOn) : '';
-  if (!selector || !target) return [];
-  if (target.matches(selector) && !target.disabled) return [target];
-  return $$(selector).filter((candidate) => target.contains(candidate) && !candidate.disabled);
+  return guidedTourActions(guide, target);
 }
 
 function focusContextualGuideAction(guide = contextualGuide) {
@@ -22532,6 +22612,17 @@ function advanceContextualGuideFromAction(guide, action) {
   }
 }
 
+function advanceFullGuidedTourFromAction(step, action) {
+  if (contextualGuide || guidedTourIndex < 0 || GUIDED_TOUR_STEPS[guidedTourIndex] !== step) return;
+  if (step.advanceEvent === 'input' && !action?.textContent?.trim()) {
+    signalContextualGuideTarget();
+    return;
+  }
+  clearTimeout(guidedTourActionTimer);
+  guidedTourActionTimer = null;
+  advanceGuidedTour(1);
+}
+
 function setContextualGuidesEnabled(enabled) {
   localStorage.setItem(guidedTipsStorageKey(), enabled ? 'on' : 'off');
   if (!enabled) cancelContextualGuide();
@@ -22556,13 +22647,24 @@ function renderGuidedTourStep({ focus = true } = {}) {
   const step = GUIDED_TOUR_STEPS[guidedTourIndex];
   stopGuidedTargetSimulation();
   if (typeof step?.prepare === 'function') step.prepare();
-  const target = guidedTourTarget();
+  const target = guidedTourTarget(step);
   if (!step || !target) return finishGuidedTour(false);
   clearTimeout(guidedTourTimer);
+  clearTimeout(guidedTourActionTimer);
+  guidedTourActionTimer = null;
+  const actions = guidedTourActions(step, target);
+  const requiresAction = !!step.advanceOn && actions.length > 0;
   root.classList.add('is-positioning');
+  root.classList.toggle('requires-action', requiresAction);
+  $('#guidedTourCard').setAttribute('aria-modal', String(!requiresAction));
   $('#guidedTourStep').textContent = `${guidedTourIndex + 1} of ${GUIDED_TOUR_STEPS.length}`;
   $('#guidedTourTitle').textContent = step.title;
   $('#guidedTourCopy').textContent = step.copy;
+  const actionInstruction = requiresAction ? (step.actionLabel || step.demo || 'Use the highlighted control') : '';
+  $('#guidedTourAnnouncement').textContent = [step.title, step.copy, actionInstruction]
+    .filter(Boolean)
+    .map((part) => part.trim().replace(/[.!?]+$/, ''))
+    .join('. ') + '.';
   renderGuidedTourMedia(null);
   $('#guidedTourDemo').dataset.motion = step.motion;
   $('#guidedTourDemoLabel').textContent = step.demo;
@@ -22575,6 +22677,10 @@ function renderGuidedTourStep({ focus = true } = {}) {
     dot.classList.toggle('active', index === guidedTourIndex);
     return dot;
   }));
+  const card = $('#guidedTourCard');
+  const active = document.activeElement;
+  const focusIsStillConstrained = card.contains(active) || actions.includes(active);
+  if (focus || !focusIsStillConstrained) card.focus({ preventScroll: true });
   if (step.scroll !== false) {
     target.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -22582,12 +22688,14 @@ function renderGuidedTourStep({ focus = true } = {}) {
       inline: 'nearest',
     });
   }
-  observeGuidedTourTarget(target);
+  observeGuidedTourTarget(actions[0] || target);
   startGuidedTargetSimulation(step, target);
   const delay = step.scroll === false || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 30 : 320;
   guidedTourTimer = setTimeout(() => {
     positionGuidedTour();
-    if (focus) $('#guidedTourCard').focus({ preventScroll: true });
+    const delayedActive = document.activeElement;
+    const delayedFocusIsConstrained = card.contains(delayedActive) || actions.includes(delayedActive);
+    if (!delayedFocusIsConstrained) card.focus({ preventScroll: true });
   }, delay);
 }
 
@@ -22631,12 +22739,14 @@ function startGuidedTour() {
 function finishGuidedTour(completed = false) {
   if (contextualGuide) return dismissContextualGuide();
   clearTimeout(guidedTourTimer);
+  clearTimeout(guidedTourActionTimer);
+  guidedTourActionTimer = null;
   cancelContextualGuide();
   stopGuidedTargetSimulation();
   stopGuidedTourTargetObservation();
   if (completed) {
     localStorage.setItem(guidedTourStorageKey(), guidedTourCompletionValue());
-    ['prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics'].forEach((id) => {
+    ['side-panel-access', 'prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics'].forEach((id) => {
       localStorage.setItem(contextualGuideSeenKey(id), 'seen');
     });
   }
@@ -22646,7 +22756,8 @@ function finishGuidedTour(completed = false) {
   const root = $('#guidedTour');
   root.hidden = true;
   root.setAttribute('aria-hidden', 'true');
-  root.classList.remove('is-contextual', 'is-positioning', 'requires-action');
+  root.classList.remove('is-contextual', 'is-positioning', 'requires-action', 'target-needed');
+  $('#guidedTourCard').setAttribute('aria-modal', 'true');
   document.body.classList.remove('guided-tour-open');
   if (restore) {
     setLorasExpanded(restore.lorasExpanded);
@@ -22676,6 +22787,8 @@ function advanceGuidedTour(direction) {
   const next = guidedTourIndex + direction;
   if (next >= GUIDED_TOUR_STEPS.length) return finishGuidedTour(true);
   if (next < 0) return;
+  clearTimeout(guidedTourActionTimer);
+  guidedTourActionTimer = null;
   guidedTourIndex = next;
   renderGuidedTourStep({ focus: false });
 }
@@ -22694,33 +22807,58 @@ $('#promptIntentAction').addEventListener('click', () => {
   offerPromptIntentGuide(intent, { explicit: true });
 });
 $('#guidedTourSpotlight').addEventListener('click', (event) => {
-  const guide = contextualGuide;
-  if (!guide || !guide.advanceOn) return;
+  const definition = activeGuidedTourDefinition();
+  if (!definition?.advanceOn) return;
   event.preventDefault();
   event.stopPropagation();
-  const target = contextualGuideTarget(guide);
+  const target = guidedTourTarget(definition);
   if (!guidedTourTargetUsable(target)) {
-    hideContextualGuide();
-    schedulePromptIntentHint(0);
+    if (contextualGuide) {
+      hideContextualGuide();
+      schedulePromptIntentHint(0);
+    } else {
+      finishGuidedTour(false);
+    }
     return;
   }
-  const action = contextualGuideActionAtPoint(guide, target, event.clientX, event.clientY);
+  const action = guidedTourActionAtPoint(definition, target, event.clientX, event.clientY);
   if (!action) return signalContextualGuideTarget();
+  if (!contextualGuide && definition.advanceEvent === 'input') {
+    pauseGuidedTargetSimulation();
+    action.focus({ preventScroll: true });
+    return;
+  }
   action.click();
 });
 document.addEventListener('click', (event) => {
-  const guide = contextualGuide;
-  if (!guide || !guide.advanceOn) return;
-  const selector = contextualGuideValue(guide.advanceOn);
+  const definition = activeGuidedTourDefinition();
+  if (!definition?.advanceOn || definition.advanceEvent === 'input') return;
+  const selector = contextualGuideValue(definition.advanceOn);
   const action = selector && event.target.closest ? event.target.closest(selector) : null;
-  const target = contextualGuideTarget(guide);
+  const target = guidedTourTarget(definition);
   // Some controls (aspect chips, model choices) re-render themselves during
   // their click handler. The clicked node is detached by the time this
   // document listener runs, but the stable guide target remains in the
   // original event path and should still advance the step.
   const targetWasInEventPath = typeof event.composedPath === 'function' && event.composedPath().includes(target);
   if (!action || !target || (action !== target && !target.contains(action) && !targetWasInEventPath)) return;
-  setTimeout(() => advanceContextualGuideFromAction(guide, action), 70);
+  setTimeout(() => {
+    if (contextualGuide === definition) advanceContextualGuideFromAction(definition, action);
+    else advanceFullGuidedTourFromAction(definition, action);
+  }, 70);
+}, true);
+document.addEventListener('input', (event) => {
+  const definition = activeGuidedTourDefinition();
+  if (contextualGuide || !definition?.advanceOn || definition.advanceEvent !== 'input') return;
+  const selector = contextualGuideValue(definition.advanceOn);
+  const action = selector && event.target.closest ? event.target.closest(selector) : null;
+  const target = guidedTourTarget(definition);
+  if (!action || !target || (action !== target && !target.contains(action))) return;
+  pauseGuidedTargetSimulation();
+  clearTimeout(guidedTourActionTimer);
+  guidedTourActionTimer = setTimeout(() => {
+    advanceFullGuidedTourFromAction(definition, action);
+  }, 900);
 }, true);
 document.addEventListener('beforeinput', (event) => {
   if ($('#guidedTargetSimulation')?.dataset.motion !== 'type' || !guidedTargetSimulationElement) return;
@@ -22729,7 +22867,8 @@ document.addEventListener('beforeinput', (event) => {
   }
 }, true);
 $('#guidedTour').addEventListener('click', (event) => {
-  if (!contextualGuide?.advanceOn || event.target.closest('.guided-tour-card, .guided-tour-spotlight')) return;
+  const definition = activeGuidedTourDefinition();
+  if (!definition || event.target.closest('.guided-tour-card, .guided-tour-spotlight')) return;
   event.preventDefault();
   event.stopPropagation();
   signalContextualGuideTarget();
@@ -22752,7 +22891,29 @@ document.addEventListener('keydown', (event) => {
   }
   if (!guide.advanceOn) return;
   if (event.key !== 'Tab') return;
-  const allowed = [...contextualGuideActions(guide), $('#guidedTourClose')].filter(Boolean);
+  const allowed = [...guidedTourActions(guide, contextualGuideTarget(guide)), $('#guidedTourClose')]
+    .filter((candidate) => candidate && !candidate.disabled && !candidate.hidden);
+  if (!allowed.length) return;
+  const current = allowed.indexOf(document.activeElement);
+  const next = event.shiftKey
+    ? (current <= 0 ? allowed.length - 1 : current - 1)
+    : (current < 0 || current >= allowed.length - 1 ? 0 : current + 1);
+  event.preventDefault();
+  event.stopPropagation();
+  allowed[next].focus({ preventScroll: true });
+}, true);
+document.addEventListener('keydown', (event) => {
+  if (contextualGuide || guidedTourIndex < 0 || $('#guidedTour').hidden) return;
+  const step = GUIDED_TOUR_STEPS[guidedTourIndex];
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    finishGuidedTour(false);
+    return;
+  }
+  if (!step?.advanceOn || event.key !== 'Tab') return;
+  const allowed = [...guidedTourActions(step, guidedTourTarget(step)), $('#guidedTourClose'), $('#guidedTourBack'), $('#guidedTourNext')]
+    .filter((candidate) => candidate && !candidate.disabled && !candidate.hidden);
   if (!allowed.length) return;
   const current = allowed.indexOf(document.activeElement);
   const next = event.shiftKey
