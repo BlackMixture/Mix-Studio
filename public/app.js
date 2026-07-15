@@ -1927,6 +1927,7 @@ function syncNavigation() {
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
   document.body.classList.toggle('desktop-library-expanded', desktopWorkspaceActive() && state.view === 'gallery');
   renderAppDrawerNavigation();
+  requestIconTooltipScan();
 }
 
 function setView(view, opts = {}) {
@@ -20747,7 +20748,16 @@ const ICON_TOOLTIP_EXEMPT_SELECTOR = [
 ].join(',');
 const ICON_TOOLTIP_OVERRIDES = Object.freeze({
   appMenuBtn: 'Menu',
+  createImageGuideToggle: (button) => button.classList.contains('has-image') ? 'Image tools' : 'Add image',
+  desktopInputsBack: 'Previous settings',
+  desktopInputsForward: 'Next settings',
+  desktopStageClear: 'Clear result',
+  desktopStageInfo: 'Details',
   editSequenceBtn: 'Edit sequence',
+  folderAddBtn: 'New folder',
+  gallerySortTrigger: 'Sort',
+  likesFilter: 'Liked only',
+  privacyBtn: (button) => button.classList.contains('unlocked') ? 'Hide locked folders' : 'Locked folders',
   qwenAnglesBtn: 'Camera angles',
 });
 const ICON_GLYPH_ONLY = /^[×✕✖＋+\-−–—…⋯‹›«»←→↑↓↕↔↻⟳⌫◫▦▤⊘︎\s]+$/u;
@@ -20755,6 +20765,7 @@ let iconTooltipButton = null;
 let iconTooltipShowTimer = null;
 let iconTooltipHideTimer = null;
 let iconTooltipFrame = null;
+let iconTooltipScanFrame = null;
 let iconTooltipPreviousDescription = '';
 
 function conciseIconTooltipLabel(value) {
@@ -20773,12 +20784,22 @@ function conciseIconTooltipLabel(value) {
 }
 
 function iconButtonVisibleText(button) {
-  const clone = button.cloneNode(true);
-  clone.querySelectorAll([
-    'svg', 'img', 'picture', 'video', 'canvas', '.sr-only', '[aria-hidden="true"]',
-    '.queue-count', '.qwen-angle-count', '.edit-sequence-count', '.badge',
-  ].join(',')).forEach((node) => node.remove());
-  return clone.textContent.replace(/\s+/g, ' ').trim();
+  const hiddenTextSelector = [
+    'svg', '.sr-only', '[aria-hidden="true"]', '.queue-count', '.qwen-angle-count',
+    '.edit-sequence-count', '.badge',
+  ].join(',');
+  const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+  const visible = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent.replace(/\s+/g, ' ').trim();
+    const parent = node.parentElement;
+    const hiddenOwner = parent?.closest(hiddenTextSelector);
+    if (!text || !parent || (hiddenOwner && button.contains(hiddenOwner))) continue;
+    const style = getComputedStyle(parent);
+    if (parent.hidden || style.display === 'none' || style.visibility === 'hidden') continue;
+    visible.push(text);
+  }
+  return visible.join(' ');
 }
 
 function buttonIsIconOnly(button) {
@@ -20792,9 +20813,11 @@ function buttonIsIconOnly(button) {
 
 function iconTooltipLabel(button) {
   const explicit = button.dataset.iconTooltip;
+  const configured = ICON_TOOLTIP_OVERRIDES[button.id];
+  const override = typeof configured === 'function' ? configured(button) : configured;
   return conciseIconTooltipLabel(
     (explicit && explicit !== 'auto' ? explicit : '')
-      || ICON_TOOLTIP_OVERRIDES[button.id]
+      || override
       || button.getAttribute('aria-label')
       || button.getAttribute('title'),
   );
@@ -20807,15 +20830,23 @@ function markIconTooltip(button) {
     return;
   }
   const legacyTitle = button.getAttribute('title');
+  const configured = ICON_TOOLTIP_OVERRIDES[button.id];
+  const override = typeof configured === 'function' ? configured(button) : configured;
   const label = conciseIconTooltipLabel(
     (explicit ? button.dataset.iconTooltip : '')
-      || ICON_TOOLTIP_OVERRIDES[button.id]
+      || override
       || button.getAttribute('aria-label')
       || legacyTitle,
   );
   if (!label) return;
-  button.dataset.iconTooltip = explicit || ICON_TOOLTIP_OVERRIDES[button.id] ? label : 'auto';
+  button.dataset.iconTooltip = explicit ? label : 'auto';
   if (!button.getAttribute('aria-label')) button.setAttribute('aria-label', label);
+  // Disabled buttons cannot reliably emit delegated pointer/focus events. Keep a
+  // concise native fallback until the control becomes interactive again.
+  if (button.disabled) {
+    if (legacyTitle !== label) button.setAttribute('title', label);
+    return;
+  }
   if (legacyTitle) button.removeAttribute('title');
 }
 
@@ -20823,6 +20854,14 @@ function scanIconTooltips(root = document) {
   if (root instanceof HTMLButtonElement) markIconTooltip(root);
   if (root.querySelectorAll) root.querySelectorAll('button').forEach(markIconTooltip);
   if (root.parentElement instanceof HTMLButtonElement) markIconTooltip(root.parentElement);
+}
+
+function requestIconTooltipScan() {
+  if (iconTooltipScanFrame) return;
+  iconTooltipScanFrame = requestAnimationFrame(() => {
+    iconTooltipScanFrame = null;
+    scanIconTooltips();
+  });
 }
 
 function restoreIconTooltipDescription(button) {
@@ -20931,23 +20970,28 @@ function initIconTooltips() {
     if (event.key === 'Escape') hideIconTooltip();
   });
   window.addEventListener('scroll', () => hideIconTooltip(), { passive: true, capture: true });
-  window.addEventListener('resize', () => hideIconTooltip(), { passive: true });
+  window.addEventListener('resize', () => {
+    hideIconTooltip();
+    requestIconTooltipScan();
+  }, { passive: true });
   new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.type === 'childList') {
         mutation.addedNodes.forEach((node) => {
           if (node instanceof Element) scanIconTooltips(node);
         });
-        if (mutation.target instanceof Element) scanIconTooltips(mutation.target);
-      } else if (mutation.target instanceof HTMLButtonElement) {
-        markIconTooltip(mutation.target);
       }
+      const owner = mutation.target instanceof Element ? mutation.target.closest('button') : null;
+      if (owner) markIconTooltip(owner);
     });
+    if (iconTooltipButton && !iconTooltipButton.isConnected) {
+      hideIconTooltip();
+    }
   }).observe(document.body, {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['aria-label', 'title', 'class', 'hidden'],
+    attributeFilter: ['aria-label', 'aria-hidden', 'title', 'hidden', 'disabled'],
   });
 }
 
@@ -21950,7 +21994,12 @@ function startGuidedTour() {
   guidedTourRestoreState = {
     view: state.view,
     createMode: state.createMode,
+    directorOpen: state.directorOpen,
+    directorProject: state.directorProject,
+    directorComposerMode: state.directorComposerMode,
+    directorChoosingWorkflow,
     lorasExpanded: $('#loraPanel').classList.contains('expanded'),
+    resolutionExpanded: $('#resPanel').classList.contains('expanded'),
     scrollX: window.scrollX,
     scrollY: window.scrollY,
   };
@@ -21998,7 +22047,15 @@ function finishGuidedTour(completed = false) {
     setLorasExpanded(restore.lorasExpanded);
     if (restore.view === 'create') setView('create', { createMode: restore.createMode });
     else setView(restore.view);
+    collapseRes(restore.resolutionExpanded);
+    if (restore.directorOpen) {
+      openDirectorMode(restore.directorProject, {
+        mode: restore.directorComposerMode,
+        chooseWorkflow: restore.directorChoosingWorkflow,
+      });
+    }
     cancelContextualGuide();
+    saveForm();
     requestAnimationFrame(() => window.scrollTo(restore.scrollX, restore.scrollY));
   }
   renderGuidedTourSetting();
@@ -22070,13 +22127,14 @@ $('#guidedTour').addEventListener('wheel', (event) => {
 }, { passive: false });
 document.addEventListener('keydown', (event) => {
   const guide = contextualGuide;
-  if (!guide?.advanceOn) return;
+  if (!guide) return;
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
     finishGuidedTour(false);
     return;
   }
+  if (!guide.advanceOn) return;
   if (event.key !== 'Tab') return;
   const allowed = [...contextualGuideActions(guide), $('#guidedTourClose')].filter(Boolean);
   if (!allowed.length) return;

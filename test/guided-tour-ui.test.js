@@ -79,8 +79,17 @@ test('the expanded tutorial is versioned and restores the workspace it temporari
   assert.match(app, /stored === 'complete'/);
   assert.match(app, /hasOlderTour \? 'See what’s new'/);
   assert.match(app, /guidedTourRestoreState = \{[\s\S]{0,220}view: state\.view[\s\S]{0,220}lorasExpanded/);
+  assert.match(app, /guidedTourRestoreState = \{[\s\S]{0,420}directorOpen: state\.directorOpen[\s\S]{0,180}directorChoosingWorkflow/);
   assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,1400}setLorasExpanded\(restore\.lorasExpanded\)/);
   assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,1700}setView\(restore\.view\)/);
+  assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,2000}openDirectorMode\(restore\.directorProject,[\s\S]{0,180}chooseWorkflow: restore\.directorChoosingWorkflow/);
+  assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,2300}saveForm\(\)/,
+    'the restored mode must replace the tutorial workspace in profile persistence');
+});
+
+test('Escape dismisses both action-required and informational contextual tips', () => {
+  assert.match(app, /document\.addEventListener\('keydown', \(event\) => \{\s*const guide = contextualGuide;\s*if \(!guide\) return;\s*if \(event\.key === 'Escape'\)/);
+  assert.match(app, /if \(event\.key === 'Escape'\)[\s\S]{0,180}finishGuidedTour\(false\)[\s\S]{0,100}if \(!guide\.advanceOn\) return/);
 });
 
 test('Advanced Settings can reset every profile-scoped tip and guide', () => {

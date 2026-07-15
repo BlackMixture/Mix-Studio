@@ -61,6 +61,29 @@ test('icon tooltip behavior is delegated, keyboard accessible, and supports dyna
   assert.match(tooltipJs, /new MutationObserver\(/);
   assert.match(tooltipJs, /childList:\s*true/);
   assert.match(tooltipJs, /subtree:\s*true/);
+  assert.match(tooltipJs, /mutation\.addedNodes\.forEach/);
+  assert.match(tooltipJs, /mutation\.target instanceof Element \? mutation\.target\.closest\('button'\)/);
+  assert.doesNotMatch(tooltipJs, /scanIconTooltips\(mutation\.target\)/,
+    'adding one gallery card must not rescan the entire containing grid');
+  assert.match(tooltipJs, /iconTooltipButton && !iconTooltipButton\.isConnected[\s\S]{0,100}hideIconTooltip\(\)/,
+    'removing a hovered dynamic button should also dismiss its portal tooltip');
+});
+
+test('disabled icon controls retain concise native help until they become interactive', () => {
+  const tooltipJs = sourceAround(app, 'function markIconTooltip', 2600);
+  assert.match(tooltipJs, /if \(button\.disabled\)[\s\S]{0,180}setAttribute\('title', label\)/);
+  assert.match(app, /attributeFilter: \[[^\]]*'disabled'/);
+  assert.match(tooltipJs, /if \(legacyTitle\) button\.removeAttribute\('title'\)/);
+});
+
+test('responsive icon controls use their rendered labels and concise overrides', () => {
+  const tooltipJs = sourceAround(app, 'ICON_TOOLTIP_OVERRIDES', 7000);
+  assert.match(tooltipJs, /gallerySortTrigger:\s*'Sort'/);
+  assert.match(tooltipJs, /likesFilter:\s*'Liked only'/);
+  assert.match(tooltipJs, /createImageGuideToggle:[\s\S]{0,120}'Add image'/);
+  assert.match(tooltipJs, /getComputedStyle\(parent\)/);
+  assert.match(tooltipJs, /style\.display === 'none'/);
+  assert.match(app, /function syncNavigation\(\)[\s\S]{0,1000}requestIconTooltipScan\(\)/);
 });
 
 test('tooltip hover polish is subtle, input-aware, and motion-safe', () => {
