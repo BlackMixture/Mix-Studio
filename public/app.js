@@ -8649,6 +8649,7 @@ let directorReplaceTarget = null;
 let directorAutoFit = true;
 let directorNeedsRangeScroll = false;
 let directorSuppressClickUntil = 0;
+let directorAddContext = null;
 
 function directorStorageKey() { return profileStorageKey('ks-director'); }
 function directorId(prefix = 'segment') {
@@ -8692,14 +8693,19 @@ function directorSelected() {
 }
 function directorAssets(project = state.directorProject) {
   if (!project) return [];
-  return [
+  const assets = [
     ...project.segments.filter((segment) => segment.type === 'image').map((segment) => ({ name: segment.imageFile, kind: 'image' })),
     ...project.audioSegments.map((segment) => ({ name: segment.audioFile, kind: 'audio' })),
     ...project.motionSegments.map((segment) => ({ name: segment.videoFile, kind: segment.isStaticImage ? 'image' : 'video' })),
-  ].filter((asset) => asset.name);
+  ];
+  if (project.extensionSource?.inputName) assets.push({ name: project.extensionSource.inputName, kind: 'video' });
+  return assets.filter((asset) => asset.name);
+}
+function directorExtensionIsUpload(source = state.directorProject?.extensionSource) {
+  return !!source?.inputName && !source?.itemId && !source?.videoId;
 }
 function directorExtensionVideo(source = state.directorProject?.extensionSource) {
-  if (!source) return null;
+  if (!source || directorExtensionIsUpload(source)) return null;
   const item = state.items.find((candidate) => candidate.id === source.itemId);
   const video = item?.videos?.find((candidate) => candidate.id === source.videoId) || null;
   return item && video ? { item, video } : null;
@@ -8718,6 +8724,10 @@ function directorExtensionSeconds(source = state.directorProject?.extensionSourc
   return Math.max(0, Number(source?.sourceSeconds) || 0);
 }
 function directorExtensionUses4K(source = state.directorProject?.extensionSource) {
+  if (directorExtensionIsUpload(source)) {
+    return Math.max(Number(source.sourceWidth) || 0, Number(source.sourceHeight) || 0) > 1536
+      && Number(source.sourceWidth) >= 512 && Number(source.sourceHeight) >= 512;
+  }
   const found = directorExtensionVideo(source);
   const info = found?.video?.info || {};
   const width = Number(info.width) || Number(found?.item?.width) || 0;
@@ -8815,15 +8825,31 @@ function directorNormalizeClientProject(value) {
     const candidate = source.extensionSource && typeof source.extensionSource === 'object' ? source.extensionSource : {};
     const itemId = String(candidate.itemId || '').trim();
     const videoId = String(candidate.videoId || '').trim();
-    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(itemId) || !/^[a-zA-Z0-9_-]{1,80}$/.test(videoId)) {
-      throw new Error('The continuation source is invalid');
+    const inputName = String(candidate.inputName || '').trim();
+    if (inputName) {
+      if (inputName.length > 512 || inputName.includes('..') || inputName.startsWith('/') || inputName.startsWith('\\')) {
+        throw new Error('The uploaded continuation source is invalid');
+      }
+      extensionSource = {
+        inputName,
+        fileName: String(candidate.fileName || candidate.label || 'Uploaded video').slice(0, 255),
+        continueAudio: candidate.continueAudio !== false,
+        sourceSeconds: Math.max(0, Number(candidate.sourceSeconds) || 0),
+        sourceWidth: Math.max(0, Math.round(Number(candidate.sourceWidth) || 0)),
+        sourceHeight: Math.max(0, Math.round(Number(candidate.sourceHeight) || 0)),
+        sourceHasAudio: candidate.sourceHasAudio === true,
+      };
+    } else {
+      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(itemId) || !/^[a-zA-Z0-9_-]{1,80}$/.test(videoId)) {
+        throw new Error('The continuation source is invalid');
+      }
+      extensionSource = {
+        itemId, videoId,
+        fileName: String(candidate.fileName || candidate.label || 'Video').slice(0, 255),
+        continueAudio: candidate.continueAudio !== false,
+        sourceSeconds: Math.max(0, Number(candidate.sourceSeconds) || 0),
+      };
     }
-    extensionSource = {
-      itemId, videoId,
-      fileName: String(candidate.fileName || candidate.label || 'Video').slice(0, 255),
-      continueAudio: candidate.continueAudio !== false,
-      sourceSeconds: Math.max(0, Number(candidate.sourceSeconds) || 0),
-    };
   }
   return {
     version: 1, fps: DIRECTOR_FPS, durationFrames,
@@ -8851,7 +8877,7 @@ function directorOverlapError(project = state.directorProject) {
   if (!project.globalPrompt.trim() && !project.segments.some((segment) => String(segment.prompt || '').trim())) return 'Add an overall or timed direction.';
   if (project.extensionSource) {
     const source = directorExtensionVideo(project.extensionSource);
-    if (!source) return 'The continuation source is no longer in this gallery.';
+    if (!source && !directorExtensionIsUpload(project.extensionSource)) return 'The continuation source is no longer in this gallery.';
     if (project.range.lengthFrames < DIRECTOR_FPS) return 'A video extension must add at least 1 second.';
     const seconds = directorExtensionSeconds(project.extensionSource, true);
     const limit = directorExtensionUses4K(project.extensionSource) ? 10 : 20;
@@ -8939,6 +8965,7 @@ function renderDirectorSegment(track, segment, ppf) {
   button.dataset.kind = segment.type === 'motion_video' ? (segment.isStaticImage ? 'motion-image' : 'motion-video') : segment.type;
   button.style.left = `${segment.start * ppf}px`;
   button.style.width = `${Math.max(12, segment.length * ppf)}px`;
+  button.classList.toggle('compact', segment.length * ppf < 40);
   button.setAttribute('role', 'listitem');
   button.tabIndex = 0;
   const selected = state.directorSelection?.track === track && state.directorSelection.id === segment.id;
@@ -8972,6 +8999,152 @@ function renderDirectorSegment(track, segment, ppf) {
   endHandle.dataset.directorHandle = 'end';
   button.append(startHandle, copy, endHandle);
   return button;
+}
+
+function directorKeyframes(project = state.directorProject) {
+  return (project?.segments || []).filter((segment) => segment.type === 'image').sort((a, b) => a.start - b.start);
+}
+
+function directorRedistributeKeyframes(ordered = directorKeyframes()) {
+  const project = state.directorProject;
+  if (!project || !ordered.length) return;
+  const lastFrame = Math.max(0, project.durationFrames - 1);
+  ordered.forEach((segment, index) => {
+    segment.start = ordered.length === 1 ? 0 : Math.round(index * lastFrame / (ordered.length - 1));
+    segment.length = 1;
+    segment.isEndFrame = ordered.length > 1 && index === ordered.length - 1;
+  });
+  const directions = project.segments.filter((segment) => segment.type !== 'image');
+  project.segments = [...directions, ...ordered].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+}
+
+function directorMoveKeyframe(id, direction) {
+  const ordered = directorKeyframes();
+  const index = ordered.findIndex((segment) => segment.id === id);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= ordered.length) return;
+  [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+  directorRedistributeKeyframes(ordered);
+  renderDirector();
+  saveDirectorProject();
+}
+
+function directorRemoveKeyframe(id) {
+  const project = state.directorProject;
+  if (!project) return;
+  project.segments = project.segments.filter((segment) => segment.id !== id);
+  directorRedistributeKeyframes();
+  if (state.directorSelection?.id === id) state.directorSelection = null;
+  renderDirector();
+  saveDirectorProject();
+}
+
+function renderDirectorKeyframePreset() {
+  const list = $('#directorKeyframeList');
+  if (!list || !state.directorProject) return;
+  const keyframes = directorKeyframes();
+  list.replaceChildren();
+  keyframes.forEach((segment, index) => {
+    const card = document.createElement('article');
+    card.className = 'director-keyframe-card';
+    card.dataset.keyframeId = segment.id;
+    card.setAttribute('role', 'listitem');
+    const media = document.createElement('span');
+    media.className = 'director-keyframe-media';
+    const image = document.createElement('img');
+    image.src = `/api/input?name=${encodeURIComponent(segment.imageFile)}`;
+    image.alt = '';
+    media.appendChild(image);
+    const order = document.createElement('span');
+    order.className = 'director-keyframe-order';
+    order.textContent = String(index + 1);
+    media.appendChild(order);
+    const copy = document.createElement('span');
+    copy.className = 'director-keyframe-copy';
+    const title = document.createElement('b');
+    title.textContent = segment.fileName || `Keyframe ${index + 1}`;
+    const time = document.createElement('small');
+    time.textContent = index === 0 ? 'Starts the video' : (index === keyframes.length - 1 ? 'Ends the video' : `Around ${directorFramesToSeconds(segment.start)}s`);
+    copy.append(title, time);
+    const actions = document.createElement('span');
+    actions.className = 'director-keyframe-actions';
+    for (const [label, delta, disabled] of [['Move earlier', -1, index === 0], ['Move later', 1, index === keyframes.length - 1]]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.disabled = disabled;
+      button.setAttribute('aria-label', `${label}: ${title.textContent}`);
+      button.textContent = delta < 0 ? '‹' : '›';
+      button.addEventListener('click', () => directorMoveKeyframe(segment.id, delta));
+      actions.appendChild(button);
+    }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.setAttribute('aria-label', `Remove ${title.textContent}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => directorRemoveKeyframe(segment.id));
+    actions.appendChild(remove);
+    card.append(media, copy, actions);
+    list.appendChild(card);
+  });
+  list.classList.toggle('is-empty', keyframes.length === 0);
+  if (!keyframes.length) {
+    const empty = document.createElement('p');
+    empty.className = 'director-keyframe-empty';
+    empty.textContent = 'Your first image becomes the opening frame.';
+    list.appendChild(empty);
+  }
+}
+
+function renderDirectorPreset() {
+  const mode = state.directorComposerMode;
+  const project = state.directorProject;
+  const preset = $('#directorPreset');
+  const timeline = $('#directorLayout');
+  if (!preset || !timeline || !project) return;
+  $$('#directorModeSwitch [data-director-mode]').forEach((button) => {
+    const active = button.dataset.directorMode === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const streamlined = mode !== 'timeline';
+  preset.hidden = !streamlined;
+  timeline.hidden = streamlined;
+  $('#directorExtendPreset').hidden = mode !== 'extend';
+  $('#directorKeyframePreset').hidden = mode !== 'keyframes';
+  if (mode === 'extend') {
+    const hasSource = !!project.extensionSource;
+    $('#directorExtendChoose').hidden = hasSource;
+    $('#directorExtendControls').hidden = !hasSource;
+    $('#directorExtendDuration').value = directorFramesToSeconds(project.durationFrames);
+    $('#directorExtendContinueAudio').checked = project.extensionSource?.continueAudio !== false;
+  } else if (mode === 'keyframes') {
+    $('#directorKeyframeDuration').value = directorFramesToSeconds(project.durationFrames);
+    renderDirectorKeyframePreset();
+  }
+}
+
+function renderDirectorSelectionControls(ppf, labelWidth) {
+  const controls = $('#directorSelectionControls');
+  const selection = state.directorSelection;
+  const segment = directorSelected();
+  if (!controls || !selection || !segment || state.directorComposerMode !== 'timeline') {
+    if (controls) controls.hidden = true;
+    return;
+  }
+  const row = $(`#director${selection.track === 'main' ? 'Story' : (selection.track === 'audio' ? 'Audio' : 'Motion')}TrackRow`);
+  if (!row || row.hidden) {
+    controls.hidden = true;
+    return;
+  }
+  const renderedWidth = Math.max(12, segment.length * ppf);
+  controls.hidden = false;
+  controls.style.left = `${labelWidth + segment.start * ppf}px`;
+  controls.style.top = `${row.offsetTop + (window.innerWidth <= 720 ? 10 : 9)}px`;
+  controls.style.width = `${renderedWidth}px`;
+  controls.style.height = `${window.innerWidth <= 720 ? 62 : 59}px`;
+  controls.classList.toggle('at-start', segment.start === 0);
+  controls.classList.toggle('at-end', segment.start + segment.length >= state.directorProject.durationFrames);
 }
 
 function renderDirectorRuler(ppf) {
@@ -9077,6 +9250,7 @@ function renderDirectorPlayhead() {
 function renderDirector() {
   const project = state.directorProject;
   if (!project || !state.directorOpen) return;
+  if (!['extend', 'keyframes', 'timeline'].includes(state.directorComposerMode)) state.directorComposerMode = 'timeline';
   const extension = project.extensionSource;
   const extensionEntry = directorExtensionVideo(extension);
   const extensionSeconds = extension ? directorExtensionSeconds(extension) : 0;
@@ -9105,12 +9279,18 @@ function renderDirector() {
     const lane = $(selector);
     lane.replaceChildren(...segments.map((segment) => renderDirectorSegment(track, segment, ppf)));
   }
+  const timelineEmpty = project.segments.length === 0 && project.audioSegments.length === 0 && project.motionSegments.length === 0;
+  $('#directorTimelineViewport').classList.toggle('is-empty', timelineEmpty);
+  $('#directorTimelineViewport').tabIndex = timelineEmpty ? -1 : 0;
+  $('#directorAddBtn').textContent = timelineEmpty ? '＋ Add to timeline' : '+ Add';
+  $('#directorAddBtn').setAttribute('aria-label', timelineEmpty ? 'Add the first item to the timeline' : 'Add to Story');
   if ($('#directorAudioTrackRow')) $('#directorAudioTrackRow').hidden = project.audioSegments.length === 0;
   if ($('#directorMotionTrackRow')) $('#directorMotionTrackRow').hidden = project.motionSegments.length === 0;
   if ($('#directorStoryTrackRow')) {
     $('#directorStoryTrackRow').hidden = false;
     $('#directorStoryTrackRow').classList.toggle('is-empty', project.segments.length === 0);
   }
+  renderDirectorSelectionControls(ppf, labelWidth);
   const partialRange = directorUsesPartialRange(project);
   const range = $('#directorRange');
   range.hidden = !partialRange;
@@ -9120,6 +9300,7 @@ function renderDirector() {
   if ($('#directorRangeTools')) $('#directorRangeTools').hidden = !partialRange;
   renderDirectorPlayhead();
   directorSetFormValues();
+  renderDirectorPreset();
   renderDirectorInspector();
   if ($('#directorAutoFit')) {
     $('#directorAutoFit').checked = directorAutoFit && project.durationFrames <= DIRECTOR_MAX_WINDOW;
@@ -9127,7 +9308,7 @@ function renderDirector() {
   }
   if ($('#directorZoom')) $('#directorZoom').value = String(Math.min(Number($('#directorZoom').max) || 160, Math.round(directorPixelsPerSecond)));
   const newSeconds = Number(directorFramesToSeconds(project.range.lengthFrames));
-  if ($('#directorSummaryLabel')) $('#directorSummaryLabel').textContent = extension ? 'Extension' : (partialRange ? 'Selected range' : 'Sequence');
+  if ($('#directorSummaryLabel')) $('#directorSummaryLabel').textContent = extension ? 'Extension' : (state.directorComposerMode === 'keyframes' ? 'Keyframe video' : (partialRange ? 'Selected range' : 'Sequence'));
   $('#directorSummary').textContent = extension
     ? `${directorFramesToSeconds(project.range.lengthFrames)}s new · ${(extensionSeconds + newSeconds).toFixed(1)}s total · ${project.output.width}×${project.output.height}${project.output.fourK ? ' · 4K' : ''}${project.output.batch > 1 ? ` · ${project.output.batch} videos` : ''}`
     : `${directorFramesToSeconds(project.range.lengthFrames)}s · ${project.output.width}×${project.output.height}${project.output.fourK ? ' · 4K' : ''}${project.output.batch > 1 ? ` · ${project.output.batch} videos` : ''}`;
@@ -9155,7 +9336,20 @@ function renderDirector() {
   }
 }
 
-function openDirectorMode(project) {
+function openDirectorStart() {
+  const sheet = $('#directorStartSheet');
+  if (!sheet) return;
+  sheet.classList.add('show');
+  syncSheetScrollLock();
+  requestAnimationFrame(() => $('#directorChooseExtend')?.focus({ preventScroll: true }));
+}
+
+function closeDirectorStart() {
+  $('#directorStartSheet')?.classList.remove('show');
+  syncSheetScrollLock();
+}
+
+function openDirectorMode(project, options = {}) {
   if (state.vidEngine !== 'ltx') return;
   if (project) state.directorProject = directorNormalizeClientProject(project);
   if (!state.directorProject) {
@@ -9167,6 +9361,9 @@ function openDirectorMode(project) {
   } else {
     try { state.directorProject = directorNormalizeClientProject(state.directorProject); } catch { state.directorProject = directorSeedProject(); }
   }
+  state.directorComposerMode = ['extend', 'keyframes', 'timeline'].includes(options.mode)
+    ? options.mode
+    : (state.directorProject.extensionSource ? 'extend' : (state.directorComposerMode || 'timeline'));
   state.directorOpen = true;
   state.directorSelection = null;
   state.directorPlayhead = state.directorProject.range.startFrame;
@@ -9178,6 +9375,104 @@ function openDirectorMode(project) {
   renderDirector();
   saveDirectorProject();
   directorCheckAssets();
+}
+
+function startDirectorWorkflow(mode) {
+  closeDirectorStart();
+  if (mode === 'timeline') {
+    openDirectorMode(undefined, { mode: 'timeline' });
+    return;
+  }
+  const project = directorSeedProject();
+  project.extensionSource = null;
+  project.audioSegments = [];
+  project.motionSegments = [];
+  if (mode === 'extend') project.segments = [];
+  openDirectorMode(project, { mode });
+  if (mode === 'keyframes') directorRedistributeKeyframes();
+  else requestAnimationFrame(directorChooseExtensionSource);
+}
+
+function switchDirectorWorkflow(mode) {
+  if (!['extend', 'keyframes', 'timeline'].includes(mode) || !state.directorProject) return;
+  if (mode === 'keyframes' && state.directorProject.extensionSource) {
+    const project = directorSeedProject();
+    project.extensionSource = null;
+    project.audioSegments = [];
+    project.motionSegments = [];
+    state.directorProject = directorNormalizeClientProject(project);
+  }
+  state.directorComposerMode = mode;
+  state.directorSelection = null;
+  directorCloseInspector();
+  if (mode === 'keyframes') directorRedistributeKeyframes();
+  renderDirector();
+  saveDirectorProject();
+  if (mode === 'extend' && !state.directorProject.extensionSource) directorChooseExtensionSource();
+}
+
+function directorProbeVideo(url) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.onloadedmetadata = () => resolve({
+      seconds: Math.max(0, Number(video.duration) || 0),
+      width: Math.max(0, Number(video.videoWidth) || 0),
+      height: Math.max(0, Number(video.videoHeight) || 0),
+    });
+    video.onerror = () => resolve({ seconds: 0, width: 0, height: 0 });
+    video.src = url;
+  });
+}
+
+async function openDirectorUploadedExtension(asset) {
+  const metadata = await directorProbeVideo(asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`);
+  if (!(metadata.seconds > 0) || !(metadata.width > 0) || !(metadata.height > 0)) {
+    toast('Mix Studio could not read that video. Try an MP4, WebM, or MOV file.', true);
+    return;
+  }
+  const fourK = Math.max(metadata.width, metadata.height) > 1536 && metadata.width >= 512 && metadata.height >= 512;
+  const limit = fourK ? 10 : 20;
+  if (metadata.seconds > limit + 0.08) {
+    toast(`Video extension supports source clips up to ${limit} seconds${fourK ? ' at 4K' : ''}.`, true);
+    return;
+  }
+  const project = directorSeedProject();
+  project.durationFrames = DIRECTOR_FPS * 5;
+  project.range = { startFrame: 0, lengthFrames: project.durationFrames };
+  project.globalPrompt = promptDraft().trim() || 'Continue the action naturally from the final frame.';
+  project.segments = [];
+  project.audioSegments = [];
+  project.motionSegments = [];
+  project.extensionSource = {
+    inputName: asset.name,
+    fileName: asset.label || 'Uploaded video',
+    sourceSeconds: metadata.seconds,
+    sourceWidth: metadata.width,
+    sourceHeight: metadata.height,
+    sourceHasAudio: asset.hasAudio === true,
+    continueAudio: true,
+  };
+  const scale = fourK ? 2 : 1;
+  project.output.width = Math.max(256, Math.round((metadata.width / scale) / 64) * 64);
+  project.output.height = Math.max(256, Math.round((metadata.height / scale) / 64) * 64);
+  project.output.fourK = fourK;
+  openDirectorMode(project, { mode: 'extend' });
+  toast('Extension ready — describe what should happen next.');
+}
+
+function directorChooseExtensionSource() {
+  pickUpload('video/*', async (asset) => {
+    if (asset.srcItemId && asset.srcVideoId) {
+      const item = state.items.find((entry) => entry.id === asset.srcItemId);
+      const video = item?.videos?.find((entry) => entry.id === asset.srcVideoId);
+      if (!item || !video) return toast('That gallery video is no longer available.', true);
+      openDirectorExtension(item, video);
+      return;
+    }
+    await openDirectorUploadedExtension(asset);
+  }, 'Choose a video to extend', { galleryReference: true });
 }
 
 function openDirectorExtension(item, video) {
@@ -9228,7 +9523,7 @@ function openDirectorExtension(item, video) {
     sourceSeconds,
     continueAudio: true,
   };
-  openDirectorMode(project);
+  openDirectorMode(project, { mode: 'extend' });
   toast('Extension ready — direct the new footage, then generate the joined video.');
 }
 

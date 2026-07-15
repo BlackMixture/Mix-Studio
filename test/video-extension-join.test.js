@@ -7,6 +7,8 @@ const path = require('path');
 const {
   extensionJoinArgs,
   joinVideoExtension,
+  parseFfmpegVideoProbe,
+  probeVideoFile,
   resolveFfmpegExecutable,
 } = require('../lib/video-extension-join');
 
@@ -32,6 +34,55 @@ function argsFor(continueAudio, sourceHasAudio) {
 function filterFrom(args) {
   return args[args.indexOf('-filter_complex') + 1];
 }
+
+test('FFmpeg video probes normalize exact frames, playback rate, and phone rotation', () => {
+  const metadata = parseFfmpegVideoProbe({
+    stdout: '',
+    stderr: [
+      'Duration: 00:00:10.05, start: 0.000000, bitrate: 9000 kb/s',
+      'Stream #0:0: Video: h264, yuv420p, 1920x1080, 23.98 fps, 24 tbr',
+      'displaymatrix: rotation of -90.00 degrees',
+      'frame=  241 fps=0.0 q=-1.0 size=N/A time=00:00:10.04 bitrate=N/A speed=200x',
+    ].join('\n'),
+  });
+  assert.deepEqual(metadata, {
+    width: 1080,
+    height: 1920,
+    fps: 23.98,
+    frames: 241,
+    durationSeconds: 241 / 23.98,
+    exactFrameCount: true,
+  });
+});
+
+test('uploaded video probing uses a bounded stream-copy pass and rejects unreadable metadata', async () => {
+  let invocation;
+  const metadata = await probeVideoFile('/durable/source.webm', '/tools/ffmpeg', {
+    run: async (command, args, options) => {
+      invocation = { command, args, options };
+      return {
+        stderr: 'Duration: 00:00:05.00\nStream #0:0: Video: vp9, yuv420p, 1280x720, 30 fps\nframe=  150',
+      };
+    },
+  });
+  assert.equal(invocation.command, '/tools/ffmpeg');
+  assert.deepEqual(invocation.args.slice(invocation.args.indexOf('-map'), invocation.args.indexOf('-f')), [
+    '-map', '0:v:0', '-c:v', 'copy', '-an', '-t', '21',
+  ]);
+  assert.equal(invocation.options.captureStderr, true);
+  assert.deepEqual(metadata, {
+    width: 1280,
+    height: 720,
+    fps: 30,
+    frames: 150,
+    durationSeconds: 5,
+    exactFrameCount: true,
+  });
+
+  await assert.rejects(probeVideoFile('/durable/bad.mp4', '/tools/ffmpeg', {
+    run: async () => ({ stderr: 'not a media file' }),
+  }), (error) => error.code === 'video_extension_probe_failed');
+});
 
 test('extension join arguments normalize and concatenate source then tail video', () => {
   const args = argsFor(true, true);

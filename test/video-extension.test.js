@@ -8,10 +8,38 @@ const {
   VIDEO_EXTENSION_MAX_4K_SOURCE_SECONDS,
   extensionPlaybackPlan,
   extensionDimensions,
+  resolveDurableUploadedVideo,
   normalizeVideoExtensionPlan,
   normalizeDirectorExtensionPlan,
   videoExtensionInfo,
 } = require('../lib/video-extension');
+
+test('durable uploaded extension sources accept only server-issued video names and regular bounded files', async () => {
+  const inputName = 'ks_1752500000000_deadbeef_source-video.mp4';
+  let resolvedPath = '';
+  const result = await resolveDurableUploadedVideo('/durable/inputs', inputName, {
+    fsp: {
+      stat: async (file) => {
+        resolvedPath = file;
+        return { size: 1024, isFile: () => true };
+      },
+    },
+  });
+  assert.equal(result.name, inputName);
+  assert.equal(result.file, resolvedPath);
+  assert.match(result.file, /\/durable\/inputs\/[0-9a-f]{64}\.mp4$/);
+  assert.equal(result.size, 1024);
+
+  await assert.rejects(resolveDurableUploadedVideo('/durable/inputs', 'motion.mp4', {
+    fsp: { stat: async () => ({ size: 1024, isFile: () => true }) },
+  }), (error) => error.code === 'invalid_extension_source');
+  await assert.rejects(resolveDurableUploadedVideo('/durable/inputs', '../ks_1752500000000_deadbeef_source.mp4', {
+    fsp: { stat: async () => ({ size: 1024, isFile: () => true }) },
+  }), (error) => error.code === 'invalid_extension_source');
+  await assert.rejects(resolveDurableUploadedVideo('/durable/inputs', inputName, {
+    fsp: { stat: async () => { throw new Error('missing'); } },
+  }), (error) => error.code === 'missing_extension_source');
+});
 
 test('extension playback preserves supported 16, 24, and 25 fps source rates', () => {
   assert.deepEqual(extensionPlaybackPlan(16), {

@@ -119,6 +119,53 @@ test('Director schema v1 retains a profile-scoped continuation source without tr
   })), /extension source is invalid/);
 });
 
+test('Director schema v1 also accepts bounded durable uploaded continuation metadata', () => {
+  const normalized = normalizeDirectorProject(project({
+    extensionSource: {
+      inputName: 'ks_1752500000000_deadbeef_opening-shot.mp4',
+      fileName: 'Opening shot.mp4',
+      sourceSeconds: 8.25,
+      sourceWidth: 1920,
+      sourceHeight: 1080,
+      sourceHasAudio: true,
+      continueAudio: false,
+    },
+  }));
+  assert.deepEqual(normalized.extensionSource, {
+    inputName: 'ks_1752500000000_deadbeef_opening-shot.mp4',
+    fileName: 'Opening shot.mp4',
+    sourceSeconds: 8.25,
+    sourceWidth: 1920,
+    sourceHeight: 1080,
+    sourceHasAudio: true,
+    continueAudio: false,
+  });
+  assert.deepEqual(directorAssetNames(normalized), ['key.png']);
+
+  assert.throws(() => normalizeDirectorProject(project({
+    extensionSource: {
+      inputName: 'ks_1752500000000_deadbeef_clip.mp4',
+      itemId: 'item1',
+      videoId: 'video1',
+    },
+  })), /extension source is invalid/);
+  assert.throws(() => normalizeDirectorProject(project({
+    extensionSource: { inputName: '../clip.mp4' },
+  })), /invalid media file/);
+  assert.throws(() => normalizeDirectorProject(project({
+    extensionSource: {
+      inputName: 'ks_1752500000000_deadbeef_clip.mp4',
+      sourceSeconds: 20.1,
+    },
+  })), /duration must be between 0 and 20 seconds/);
+  assert.throws(() => normalizeDirectorProject(project({
+    extensionSource: {
+      inputName: 'ks_1752500000000_deadbeef_clip.mp4',
+      sourceWidth: 1280,
+    },
+  })), /width and height must be provided together/);
+});
+
 test('Director graph inserts prompt relay and guide nodes into the existing two-stage LTX pipeline', async () => {
   const normalized = normalizeDirectorProject(project({
     audioSegments: [{ start: 0, length: 120, audioFile: 'voice.wav', audioDurationFrames: 120 }],
