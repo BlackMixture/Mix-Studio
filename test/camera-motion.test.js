@@ -59,7 +59,7 @@ test('video UI exposes an ordered, animated camera motion picker', () => {
   assert.match(html, /id="cameraMotionCustomVideo"/);
   assert.match(html, /id="cameraMotionApply"[^>]*>Apply to prompt/);
   assert.ok(html.indexOf('/camera-motion.js') < html.indexOf('/app.js'));
-  assert.match(app, /cameraMotions: CameraMotion \? CameraMotion\.normalizeCameraMotions/);
+  assert.match(app, /cameraMotions: cameraMotionsForEngine\(\)/);
   assert.match(app, /components\.add\('ltxcamera'\)/);
   assert.match(app, /cameraGuideVideoName: cameraMotionReferenceActive\(\) && state\.videoCameraGuide/);
   assert.match(app, /cameraGuideStartSeconds: cameraMotionReferenceActive\(\) && state\.videoCameraGuide/);

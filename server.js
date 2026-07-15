@@ -5325,9 +5325,14 @@ async function handleApi(req, res, url) {
     if (settings.features[VIDEO_FEATURES[engine]] === false) {
       return json(res, 400, { error: 'This video model was not installed on this machine.' });
     }
-    const cameraMotions = normalizeCameraMotions(body.cameraMotions);
+    const requestedCameraMotions = normalizeCameraMotions(body.cameraMotions);
+    const blockedCameraMotionPhrase = engine === 'scail' ? cameraMotionPhrase(requestedCameraMotions) : '';
+    const cameraMotions = engine === 'scail' ? [] : requestedCameraMotions;
     const selectedCameraMotionPhrase = cameraMotionPhrase(cameraMotions);
-    let suppliedMotionPrompt = ensureCameraMotionPrompt(String(body.prompt || '').trim(), cameraMotions);
+    const suppliedPrompt = engine === 'scail'
+      ? stripCameraMotionPhrase(String(body.prompt || '').trim(), blockedCameraMotionPhrase)
+      : String(body.prompt || '').trim();
+    let suppliedMotionPrompt = ensureCameraMotionPrompt(suppliedPrompt, cameraMotions);
     const userMotionPrompt = suppliedMotionPrompt;
     const autoMotionRequested = body.autoMotionPrompt === true;
     // SCAIL follows its driving clip, so a motion sentence is an optional

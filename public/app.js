@@ -2073,7 +2073,7 @@ function updateVideoPanels() {
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
   $('#cameraPromptBtn').hidden = state.view !== 'create';
-  $('#videoPromptTools').hidden = !isVideo;
+  $('#videoPromptTools').hidden = !isVideo || state.vidEngine === 'scail';
   syncCameraMotionTool();
   renderKrea2Mode();
   renderCreateImageGuide();
@@ -6914,6 +6914,21 @@ function cameraMotionReferenceSelected() {
     && (state.videoCameraMotions.length > 0 || !!state.videoCameraGuide);
 }
 
+function cameraMotionAvailableForEngine(engine = state.vidEngine) {
+  return engine !== 'scail';
+}
+
+function cameraMotionsForEngine(engine = state.vidEngine) {
+  if (!CameraMotion || !cameraMotionAvailableForEngine(engine)) return [];
+  return CameraMotion.normalizeCameraMotions(state.videoCameraMotions);
+}
+
+function cameraMotionPromptForEngine(prompt, engine = state.vidEngine) {
+  const source = String(prompt || '').trim();
+  if (!CameraMotion || cameraMotionAvailableForEngine(engine)) return source;
+  return CameraMotion.stripCameraMotionPhrase(source, state.videoCameraMotionPhrase);
+}
+
 function cameraMotionGuideAvailableSeconds(guide = state.videoCameraGuide) {
   if (!guide || !(Number(guide.dur) > 0)) return LTX_CAMERA_MAX_SECONDS;
   return Math.max(0, Number(guide.dur) - Math.max(0, Number(guide.trimStart) || 0));
@@ -6925,7 +6940,7 @@ function cameraMotionGuideLimit(guide = state.videoCameraGuide) {
 }
 
 function cameraMotionEngineLabel() {
-  return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' }[state.vidEngine] || 'this model';
+  return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2' }[state.vidEngine] || 'this model';
 }
 
 function cameraMotionModeText(guide = state.videoCameraGuide, motions = state.videoCameraMotions) {
@@ -6951,6 +6966,13 @@ function syncCameraMotionTool() {
   const button = $('#videoCameraMotionBtn');
   const badge = $('#videoCameraMotionCount');
   if (!button || !badge) return;
+  const available = state.view === 'video' && cameraMotionAvailableForEngine();
+  button.hidden = !available;
+  const sheet = $('#videoCameraMotionSheet');
+  if (!available && sheet.classList.contains('show')) {
+    sheet.classList.remove('show');
+    syncSheetScrollLock();
+  }
   const active = count > 0 || hasCustomGuide;
   button.classList.toggle('active', active);
   button.setAttribute('aria-label', hasCustomGuide
@@ -7178,7 +7200,7 @@ function renderCameraMotionPicker() {
 }
 
 function openCameraMotionPicker() {
-  if (!CameraMotion) return;
+  if (!CameraMotion || !cameraMotionAvailableForEngine()) return;
   cameraMotionDraft = CameraMotion.normalizeCameraMotions(state.videoCameraMotions);
   cameraMotionGuideDraft = state.videoCameraGuide ? Object.assign({}, state.videoCameraGuide) : null;
   renderCameraMotionPicker();
@@ -7196,7 +7218,7 @@ function openCameraMotionPicker() {
 }
 
 function applyCameraMotionSelection() {
-  if (!CameraMotion) return;
+  if (!CameraMotion || !cameraMotionAvailableForEngine()) return;
   const selected = CameraMotion.normalizeCameraMotions(cameraMotionDraft);
   const applied = CameraMotion.applyCameraMotionPrompt(promptDraft(), state.videoCameraMotionPhrase, selected);
   state.videoCameraMotions = selected;
@@ -13247,7 +13269,8 @@ $('#editComposite').addEventListener('click', () => {
   saveForm();
 });
 $('#generateBtn').addEventListener('click', async () => {
-  const prompt = promptForGeneration().trim();
+  const rawPrompt = promptForGeneration().trim();
+  const prompt = state.view === 'video' ? cameraMotionPromptForEngine(rawPrompt) : rawPrompt;
   const promptIntent = currentPromptIntent();
   if (promptIntent && offerPromptIntentGuide(promptIntent)) return;
   if (contextualGuide?.id === 'first-image-generate' && prompt === FIRST_IMAGE_TUTORIAL_PROMPT) {
@@ -13306,7 +13329,7 @@ $('#generateBtn').addEventListener('click', async () => {
       scailChunkOverlap: state.vidEngine === 'scail' ? state.vidScailChunkOverlap : undefined,
       sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.videoLoras,
-      cameraMotions: CameraMotion ? CameraMotion.normalizeCameraMotions(state.videoCameraMotions) : [],
+      cameraMotions: cameraMotionsForEngine(),
       cameraGuideVideoName: cameraMotionReferenceActive() && state.videoCameraGuide ? state.videoCameraGuide.name : undefined,
       cameraGuideStartSeconds: cameraMotionReferenceActive() && state.videoCameraGuide
         ? Math.max(0, Number(state.videoCameraGuide.trimStart) || 0) : undefined,
@@ -18772,9 +18795,13 @@ async function reuseVideo(it, v) {
   renderScailChunkControls();
 
   // Prompt + toggles
-  state.videoCameraMotions = CameraMotion ? CameraMotion.normalizeCameraMotions(info.cameraMotions) : [];
-  state.videoCameraMotionPhrase = CameraMotion ? CameraMotion.cameraMotionPhrase(state.videoCameraMotions) : '';
-  state.prompts.video = info.motionPrompt || '';
+  const reusedCameraMotions = CameraMotion ? CameraMotion.normalizeCameraMotions(info.cameraMotions) : [];
+  const reusedCameraMotionPhrase = CameraMotion ? CameraMotion.cameraMotionPhrase(reusedCameraMotions) : '';
+  state.videoCameraMotions = engine === 'scail' ? [] : reusedCameraMotions;
+  state.videoCameraMotionPhrase = engine === 'scail' ? '' : reusedCameraMotionPhrase;
+  state.prompts.video = engine === 'scail' && CameraMotion
+    ? CameraMotion.stripCameraMotionPhrase(info.motionPrompt || '', reusedCameraMotionPhrase)
+    : (info.motionPrompt || '');
   setPromptDraft(state.prompts.video);
   $('#seedInput').value = info.seed !== undefined && info.seed !== null ? String(info.seed) : '';
   $('#batchInput').value = 1;
