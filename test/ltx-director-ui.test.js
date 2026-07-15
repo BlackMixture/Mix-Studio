@@ -24,11 +24,16 @@ test('Director is a pinned LTX model workflow and not a navigation destination',
   assert.doesNotMatch(directorOption, /\bdata-engine=/, 'Director must not leak into normal video engine state');
   assert.doesNotMatch(html, /id="directorModeBtn"/);
   assert.match(html, /id="directorWorkspace"[^>]*hidden/);
-  assert.match(openingTagById(html, 'directorBack'), /aria-label="Back to Video"/);
-  assert.match(html, /id="directorBack"[^>]*>[\s\S]{0,80}>Back</);
+  assert.doesNotMatch(html, /id="directorBack"/);
+  assert.match(openingTagById(html, 'directorModelHeader'), /aria-controls="directorModelBody"/);
+  assert.match(openingTagById(html, 'directorModelHeader'), /aria-expanded="false"/);
+  assert.match(html, /id="directorModelHeader"[\s\S]{0,400}>LTX Director<[\s\S]{0,180}>Directed Sequences</);
+  assert.match(html, /id="directorEngineRow"[^>]*aria-label="Video model"/);
   assert.doesNotMatch(html, /data-(?:primary-mode|create-mode)="director"/);
   assert.match(app, /function openDirectorMode\(project, options = \{\}\)/);
   assert.match(app, /function closeDirectorMode\(\)/);
+  assert.match(app, /function renderDirectorModelChoices\(\)/);
+  assert.match(app, /closeDirectorMode\(\);[\s\S]{0,100}source\.click\(\)/);
   assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
   assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,260}openDirectorStart\(\)/);
 });
@@ -59,11 +64,12 @@ test('Director defaults to a focused Story timeline with progressive disclosure'
   assert.match(addActions[0], />\s*(?:\+\s*)?Add\s*</);
   assert.match(openingTagById(html, 'directorStoryTrackRow'), /data-director-track="main"/);
   assert.doesNotMatch(openingTagById(html, 'directorStoryTrackRow'), /\bhidden\b/);
-  assert.match(html, /id="directorStoryTrackRow"[\s\S]{0,420}class="director-track-name">Story\b[\s\S]{0,420}id="directorAddBtn"/);
+  assert.match(html, /id="directorStoryTrackRow"[\s\S]{0,320}id="directorMainTrack"[^>]*aria-label="Story timeline"[\s\S]{0,320}id="directorAddBtn"/);
+  assert.doesNotMatch(html, /class="director-track-name"/);
 
   for (const [id, label] of [['directorAudioTrackRow', 'Audio'], ['directorMotionTrackRow', 'Motion guide']]) {
     assert.match(openingTagById(html, id), /\bhidden\b/, `${label} should be hidden until it contains media`);
-    assert.match(html, new RegExp(`id="${id}"[\\s\\S]{0,240}class="director-track-name">${label}\\b`));
+    assert.match(html, new RegExp(`id="${id}"[\\s\\S]{0,240}aria-label="${label} timeline"`));
   }
   assert.match(app, /directorAudioTrackRow'\)\.hidden\s*=\s*(?:!project\.audioSegments\.length|project\.audioSegments\.length === 0)/);
   assert.match(app, /directorMotionTrackRow'\)\.hidden\s*=\s*(?:!project\.motionSegments\.length|project\.motionSegments\.length === 0)/);
@@ -139,9 +145,15 @@ test('Selected timeline segments expose contextual add and delete controls outsi
   assert.match(app, /context\.side === 'after'[\s\S]{0,120}directorFindPlacement/);
   assert.match(app, /directorSelectionDelete'\)\.addEventListener\('click'[\s\S]{0,140}directorDeleteSelected\(\)/);
   assert.match(css, /\.director-selection-controls \.delete\s*\{[\s\S]{0,180}top:\s*-16px;\s*right:\s*-11px/);
+  assert.match(css, /\.director-selection-controls \.before\s*\{\s*right:\s*calc\(100% \+ var\(--director-selection-action-gap\)\)/);
+  assert.match(css, /\.director-selection-controls \.after\s*\{\s*left:\s*calc\(100% \+ var\(--director-selection-action-gap\)\)/);
+  assert.doesNotMatch(css, /\.director-selection-controls\.at-(?:start|end)/);
+  assert.match(app, /directorAddBefore'\)\.hidden = atStart/);
+  assert.match(app, /directorAddAfter'\)\.hidden = atEnd/);
+  assert.match(app, /querySelectorAll\('button:not\(\[hidden\]\)'\)/);
   assert.match(css, /\.director-segment\.compact \.director-segment-handle\s*\{\s*display:\s*none/);
-  assert.match(css, /\.director-track-name\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1/);
-  assert.match(css, /\.director-track-lane\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1/);
+  assert.doesNotMatch(css, /\.director-track-name/);
+  assert.match(css, /\.director-track-lane\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1/);
   assert.match(app, /const segmentRect = segmentNode\.getBoundingClientRect\(\)[\s\S]{0,260}segmentRect\.left - canvasRect\.left/);
 });
 
@@ -237,8 +249,12 @@ test('Director gives instant keyframes usable controls without changing frame pr
   assert.match(app, /button\.classList\.toggle\('compact', segment\.length \* ppf < 40\)/);
   assert.match(app, /project\.durationFrames \* ppf \+ DIRECTOR_TIMELINE_ACTION_GUTTER/);
   assert.match(css, /\.director-segment\.instant::after/);
+  assert.match(app, /thumbnail\.className = 'director-segment-thumbnail'/);
+  assert.match(app, /thumbnail\.src = `\/api\/input\?name=\$\{encodeURIComponent\(segment\.imageFile\)\}`/);
+  assert.match(app, /if \(segment\.type === 'image'\)[\s\S]{0,900}button\.append\(thumbnail, fallback\)/);
+  assert.match(css, /\.director-segment-thumbnail\s*\{[^}]*object-fit:\s*cover/);
   assert.match(app, /function directorRevealSelection\(\)/);
-  assert.match(app, /const visibleLeft = viewportRect\.left \+ labelWidth \+ 8/);
+  assert.match(app, /const visibleLeft = viewportRect\.left \+ 8/);
   assert.match(app, /directorSelect\(track, segment\.id, \{ openInspector: false, reveal: false \}\)/);
   assert.match(app, /requestAnimationFrame\(directorRevealSelection\)/);
 });

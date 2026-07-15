@@ -86,7 +86,7 @@ test('focused videos can export source, generation details, and result in one pe
   assert.match(app, /function documentationVideoDetails\(item, video, inputMedia = \[\], resultMedia = null\)/);
   assert.match(html, /Generation inputs, settings, and the complete result stay together in one view/);
   assert.match(app, /const boardRatio = portrait \? ratio \/ 1\.32 : ratio \+ \.52/);
-  assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height, inputCount = 1\)/);
+  assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height, inputCount = 1, storyboardCount = 0\)/);
   assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, inputMedia, item, video, resultMedia\)/);
   assert.match(app, /drawDocumentationVideoMedia\(ctx, resultMedia, layout\.result, 'Final Result', '#ea4335', \{ quiet: true \}\)/);
   assert.match(app, /inputMedia\.forEach\(\(input, index\) => \{[\s\S]*drawDocumentationVideoMedia\(ctx, input\.media, box, input\.label, input\.accent\)/);
@@ -113,6 +113,20 @@ test('documentation videos resolve the real model-specific generation inputs', (
   assert.match(app, /item && item\.mode !== 'video' && item\.file[\s\S]*encodeURIComponent\(item\.file\)/);
   assert.match(app, /Promise\.all\(specs\.map/);
   assert.match(app, /if \(!spec\.fallbackSrc\) return null/);
+});
+
+test('Director documentation videos include a compact ordered keyframe storyboard', () => {
+  assert.match(app, /function documentationVideoStoryboardSegments\(video, limit = 8\)/);
+  assert.match(app, /video\?\.info\?\.workflow === 'director'/);
+  assert.match(app, /segment\?\.type === 'image' && segment\.imageFile/);
+  assert.match(app, /Math\.round\(index \* \(keyframes\.length - 1\) \/ \(count - 1\)\)/);
+  assert.match(app, /storyboard:\s*true/);
+  assert.match(app, /storyboardTime:/);
+  assert.match(app, /function drawDocumentationVideoStoryboard\(ctx, inputMedia, box\)/);
+  assert.match(app, /`KEYFRAMES · \$\{inputMedia\.length\}/);
+  assert.match(app, /drawCoveredMedia\(ctx, input\.media/);
+  assert.match(app, /const storyboardMedia = inputMedia\.filter\(\(input\) => input\.storyboard\)/);
+  assert.match(app, /drawDocumentationVideoStoryboard\(ctx, storyboardMedia, layout\.storyboard\)/);
 });
 
 test('documentation video recording follows result fps and retains result audio when supported', () => {

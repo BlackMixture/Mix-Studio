@@ -8686,6 +8686,55 @@ $('#vidModelHeader').addEventListener('click', () => {
   setVideoModelExpanded(!$('#vidModelPanel').classList.contains('expanded'));
 });
 
+function setDirectorModelExpanded(open) {
+  const expand = open === true;
+  const panel = $('#directorModelPanel');
+  const body = $('#directorModelBody');
+  if (!panel || !body) return;
+  panel.classList.toggle('expanded', expand);
+  body.inert = !expand;
+  body.setAttribute('aria-hidden', String(!expand));
+  $('#directorModelHeader').setAttribute('aria-expanded', String(expand));
+}
+
+function renderDirectorModelChoices() {
+  const row = $('#directorEngineRow');
+  const sourceRow = $('#vidEngineRow');
+  if (!row || !sourceRow) return;
+  row.replaceChildren();
+  [...sourceRow.querySelectorAll(':scope > .chip')].forEach((source) => {
+    const isDirector = source.hasAttribute('data-director-entry');
+    const engine = source.dataset.engine || '';
+    if (!isDirector && !engine) return;
+    const button = source.cloneNode(true);
+    button.removeAttribute('id');
+    button.classList.toggle('active', isDirector);
+    button.classList.remove('model-default');
+    button.hidden = source.hidden;
+    button.setAttribute('aria-pressed', String(isDirector));
+    button.setAttribute('aria-label', isDirector
+      ? 'LTX Director selected'
+      : `Switch to ${source.dataset.modelLabel || source.querySelector('b')?.textContent?.trim() || 'video model'}`);
+    button.addEventListener('click', () => {
+      if (isDirector) {
+        setDirectorModelExpanded(false);
+        return;
+      }
+      closeDirectorMode();
+      source.click();
+      setVideoModelExpanded(false);
+      requestAnimationFrame(() => $('#vidModelHeader')?.focus({ preventScroll: true }));
+    });
+    row.appendChild(button);
+  });
+}
+
+$('#directorModelHeader').addEventListener('click', () => {
+  const open = !$('#directorModelPanel').classList.contains('expanded');
+  if (open) renderDirectorModelChoices();
+  setDirectorModelExpanded(open);
+});
+
 /* ------------------------------------------------------------------ */
 /* LTX Director workspace                                             */
 /* ------------------------------------------------------------------ */
@@ -8730,15 +8779,13 @@ function directorUsesPartialRange(project = state.directorProject) {
 function directorAutoFitTimeline(project = state.directorProject) {
   if (!project || project.durationFrames > DIRECTOR_MAX_WINDOW) return 64;
   const viewport = $('#directorTimelineViewport');
-  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
-  const available = Math.max(120, (viewport?.clientWidth || window.innerWidth) - labelWidth - DIRECTOR_TIMELINE_ACTION_GUTTER - 2);
+  const available = Math.max(120, (viewport?.clientWidth || window.innerWidth) - DIRECTOR_TIMELINE_ACTION_GUTTER - 2);
   return directorClamp(available / Math.max(1 / DIRECTOR_FPS, project.durationFrames / DIRECTOR_FPS), 10, 9600);
 }
 function directorComfortableTimelineScale() {
   const viewport = $('#directorTimelineViewport');
-  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
   const visibleSeconds = window.innerWidth <= 720 ? 1.5 : 3.25;
-  const available = Math.max(180, (viewport?.clientWidth || window.innerWidth) - labelWidth);
+  const available = Math.max(180, viewport?.clientWidth || window.innerWidth);
   return directorClamp(available / visibleSeconds, 160, 480);
 }
 function directorUseComfortableTimelineScale() {
@@ -9134,33 +9181,50 @@ function renderDirectorSegment(track, segment, ppf) {
   const selected = state.directorSelection?.track === track && state.directorSelection.id === segment.id;
   button.classList.toggle('selected', selected);
   const assetName = directorAssetName(segment);
-  button.classList.toggle('missing', !!assetName && directorMissingAssets.has(assetName));
+  const mediaMissing = !!assetName && directorMissingAssets.has(assetName);
+  button.classList.toggle('missing', mediaMissing);
   const [title, detail] = directorSegmentLabel(segment);
-  button.setAttribute('aria-label', `${title}, starts at frame ${segment.start}, lasts ${segment.length} frames${assetName && directorMissingAssets.has(assetName) ? ', media missing' : ''}`);
+  button.setAttribute('aria-label', `${title}${detail ? `, ${detail}` : ''}, starts at frame ${segment.start}, lasts ${segment.length} frames${mediaMissing ? ', media missing' : ''}`);
   const startHandle = document.createElement('span');
   startHandle.className = 'director-segment-handle start';
   startHandle.dataset.directorHandle = 'start';
-  const copy = document.createElement('span');
-  copy.className = 'director-segment-copy';
-  const strong = document.createElement('b');
-  strong.textContent = assetName && directorMissingAssets.has(assetName) ? `Missing · ${title}` : title;
-  const small = document.createElement('small');
-  small.textContent = detail || `${segment.length} frames`;
-  copy.append(strong);
-  if (segment.type === 'audio' && directorWaveforms.has(segment.id)) {
-    const waveform = document.createElement('span');
-    waveform.className = 'director-waveform';
-    for (const value of directorWaveforms.get(segment.id).slice(0, 36)) {
-      const bar = document.createElement('i');
-      bar.style.height = `${Math.max(2, Math.round(value * 15))}px`;
-      waveform.appendChild(bar);
-    }
-    copy.appendChild(waveform);
-  } else copy.appendChild(small);
   const endHandle = document.createElement('span');
   endHandle.className = 'director-segment-handle end';
   endHandle.dataset.directorHandle = 'end';
-  button.append(startHandle, copy, endHandle);
+  button.appendChild(startHandle);
+  if (segment.type === 'image') {
+    const thumbnail = document.createElement('img');
+    thumbnail.className = 'director-segment-thumbnail';
+    thumbnail.src = `/api/input?name=${encodeURIComponent(segment.imageFile)}`;
+    thumbnail.alt = '';
+    thumbnail.decoding = 'async';
+    thumbnail.draggable = false;
+    thumbnail.addEventListener('error', () => button.classList.add('thumbnail-error'), { once: true });
+    const fallback = document.createElement('span');
+    fallback.className = 'director-segment-image-fallback';
+    fallback.textContent = 'Image unavailable';
+    button.append(thumbnail, fallback);
+  } else {
+    const copy = document.createElement('span');
+    copy.className = 'director-segment-copy';
+    const strong = document.createElement('b');
+    strong.textContent = mediaMissing ? `Missing · ${title}` : title;
+    const small = document.createElement('small');
+    small.textContent = detail || `${segment.length} frames`;
+    copy.append(strong);
+    if (segment.type === 'audio' && directorWaveforms.has(segment.id)) {
+      const waveform = document.createElement('span');
+      waveform.className = 'director-waveform';
+      for (const value of directorWaveforms.get(segment.id).slice(0, 36)) {
+        const bar = document.createElement('i');
+        bar.style.height = `${Math.max(2, Math.round(value * 15))}px`;
+        waveform.appendChild(bar);
+      }
+      copy.appendChild(waveform);
+    } else copy.appendChild(small);
+    button.appendChild(copy);
+  }
+  button.appendChild(endHandle);
   return button;
 }
 
@@ -9409,8 +9473,12 @@ function renderDirectorSelectionControls() {
   controls.style.top = `${segmentRect.top - canvasRect.top}px`;
   controls.style.width = `${segmentRect.width}px`;
   controls.style.height = `${segmentRect.height}px`;
-  controls.classList.toggle('at-start', segment.start === 0);
-  controls.classList.toggle('at-end', segment.start + segment.length >= state.directorProject.durationFrames);
+  const atStart = segment.start === 0;
+  const atEnd = segment.start + segment.length >= state.directorProject.durationFrames;
+  controls.classList.toggle('at-start', atStart);
+  controls.classList.toggle('at-end', atEnd);
+  $('#directorAddBefore').hidden = atStart;
+  $('#directorAddAfter').hidden = atEnd;
 }
 
 function directorRevealSelection() {
@@ -9418,11 +9486,10 @@ function directorRevealSelection() {
   const controls = $('#directorSelectionControls');
   if (!viewport || !controls || controls.hidden) return;
   const viewportRect = viewport.getBoundingClientRect();
-  const actionRects = [controls, ...controls.querySelectorAll('button')].map((node) => node.getBoundingClientRect());
+  const actionRects = [controls, ...controls.querySelectorAll('button:not([hidden])')].map((node) => node.getBoundingClientRect());
   const contentLeft = Math.min(...actionRects.map((rect) => rect.left));
   const contentRight = Math.max(...actionRects.map((rect) => rect.right));
-  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
-  const visibleLeft = viewportRect.left + labelWidth + 8;
+  const visibleLeft = viewportRect.left + 8;
   const visibleRight = viewportRect.right - 8;
   if (contentLeft < visibleLeft) viewport.scrollLeft += contentLeft - visibleLeft;
   else if (contentRight > visibleRight) viewport.scrollLeft += contentRight - visibleRight;
@@ -9520,12 +9587,11 @@ function renderDirectorInspector() {
 
 function renderDirectorPlayhead() {
   if (!state.directorProject) return;
-  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
   const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
   state.directorPlayhead = Math.round(directorClamp(state.directorPlayhead, 0, state.directorProject.durationFrames - 1));
   $('#directorPlayhead').value = state.directorPlayhead;
   $('#directorPlayhead').max = state.directorProject.durationFrames - 1;
-  $('#directorPlayheadLine').style.left = `${labelWidth + state.directorPlayhead * ppf}px`;
+  $('#directorPlayheadLine').style.left = `${state.directorPlayhead * ppf}px`;
 }
 
 function renderDirector() {
@@ -9548,9 +9614,8 @@ function renderDirector() {
   $('#directorWorkspace').classList.toggle('auto-fit', directorAutoFit && project.durationFrames <= DIRECTOR_MAX_WINDOW);
   const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
   const canvas = $('#directorTimelineCanvas');
-  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
   const viewportWidth = $('#directorTimelineViewport')?.clientWidth || window.innerWidth;
-  canvas.style.width = `${labelWidth + Math.max(1, viewportWidth - labelWidth, project.durationFrames * ppf + DIRECTOR_TIMELINE_ACTION_GUTTER)}px`;
+  canvas.style.width = `${Math.max(1, viewportWidth, project.durationFrames * ppf + DIRECTOR_TIMELINE_ACTION_GUTTER)}px`;
   renderDirectorRuler(ppf);
   const entries = [
     ['main', '#directorMainTrack', project.segments],
@@ -9576,7 +9641,7 @@ function renderDirector() {
   const partialRange = directorUsesPartialRange(project);
   const range = $('#directorRange');
   range.hidden = !partialRange;
-  range.style.left = `${labelWidth + project.range.startFrame * ppf}px`;
+  range.style.left = `${project.range.startFrame * ppf}px`;
   range.style.width = `${Math.max(28, project.range.lengthFrames * ppf)}px`;
   $('#directorRangeLabel').textContent = `${directorFramesToSeconds(project.range.lengthFrames)}s`;
   if ($('#directorRangeTools')) $('#directorRangeTools').hidden = !partialRange;
@@ -9653,6 +9718,8 @@ function openDirectorMode(project, options = {}) {
   directorNeedsRangeScroll = true;
   $('#directorWorkspace').hidden = false;
   document.body.classList.add('director-open');
+  renderDirectorModelChoices();
+  setDirectorModelExpanded(false);
   directorUseComfortableTimelineScale();
   $('#genDock').style.display = 'none';
   renderDirector();
@@ -9816,6 +9883,7 @@ function closeDirectorMode() {
   directorReplaceTarget = null;
   stopDirectorPlayback();
   directorCloseInspector();
+  setDirectorModelExpanded(false);
   for (const id of ['directorAddSheet', 'directorProjectMenuSheet', 'directorSettingsSheet']) directorCloseSheet(id);
   $('#directorWorkspace').hidden = true;
   document.body.classList.remove('director-open');
@@ -10362,7 +10430,6 @@ $('#directorStartSheet').addEventListener('click', (event) => {
   if (event.target === $('#directorStartSheet') || event.target.closest('[data-close]')) closeDirectorStart();
 });
 $$('#directorModeSwitch [data-director-mode]').forEach((button) => button.addEventListener('click', () => switchDirectorWorkflow(button.dataset.directorMode)));
-$('#directorBack').addEventListener('click', closeDirectorMode);
 $('#directorExtensionSourceRemove').addEventListener('click', () => {
   if (!state.directorProject?.extensionSource) return;
   state.directorProject.extensionSource = null;
@@ -12314,6 +12381,7 @@ function applyEngineOrder(rowId, order) {
     const directorOption = $('#directorModelOption');
     const ltxOption = buttons.get('ltx');
     if (directorOption && ltxOption) ltxOption.after(directorOption);
+    if (state.directorOpen) renderDirectorModelChoices();
   }
   syncModelOrderDefault(rowId);
 }
@@ -18661,6 +18729,33 @@ function drawContainedMedia(ctx, media, x, y, width, height) {
   ctx.drawImage(media, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
+function drawCoveredMedia(ctx, media, x, y, width, height) {
+  const sourceWidth = media.videoWidth || media.naturalWidth || media.width || width;
+  const sourceHeight = media.videoHeight || media.naturalHeight || media.height || height;
+  const scale = Math.max(width / sourceWidth, height / sourceHeight);
+  const sampleWidth = width / scale;
+  const sampleHeight = height / scale;
+  const sampleX = Math.max(0, (sourceWidth - sampleWidth) / 2);
+  const sampleY = Math.max(0, (sourceHeight - sampleHeight) / 2);
+  ctx.drawImage(media, sampleX, sampleY, sampleWidth, sampleHeight, x, y, width, height);
+}
+
+function documentationVideoStoryboardSegments(video, limit = 8) {
+  const project = video?.info?.workflow === 'director' ? video.info.directorProject : null;
+  const keyframes = Array.isArray(project?.segments)
+    ? project.segments.filter((segment) => segment?.type === 'image' && segment.imageFile).sort((a, b) => a.start - b.start)
+    : [];
+  const count = Math.max(1, Math.min(keyframes.length, Math.round(Number(limit) || 8)));
+  const selected = keyframes.length <= count || count === 1
+    ? keyframes.slice(0, count)
+    : Array.from({ length: count }, (_, index) => keyframes[Math.round(index * (keyframes.length - 1) / (count - 1))]);
+  return selected.map((segment) => ({
+    segment,
+    index: keyframes.indexOf(segment),
+    total: keyframes.length,
+  }));
+}
+
 function documentationVideoInputSpecs(item, video) {
   const info = video.info || {};
   const engine = info.engine || 'ltx';
@@ -18670,9 +18765,12 @@ function documentationVideoInputSpecs(item, video) {
   const gallerySource = item && item.mode !== 'video' && item.file
     ? `/images/${encodeURIComponent(item.file)}` : '';
   const specs = [];
-  const addImage = (label, name, accent, fallbackSrc = '') => {
+  const addImage = (label, name, accent, fallbackSrc = '', options = {}) => {
     if (!name && !fallbackSrc) return;
-    specs.push({ type: 'image', label, accent, src: name ? inputUrl(name) : fallbackSrc, fallbackSrc: name ? fallbackSrc : '' });
+    specs.push(Object.assign({
+      type: 'image', label, accent, src: name ? inputUrl(name) : fallbackSrc,
+      fallbackSrc: name ? fallbackSrc : '',
+    }, options));
   };
   const addVideo = (label, name, accent, startAt = 0, duration = 0, src = '') => {
     if (!name && !src) return;
@@ -18693,6 +18791,14 @@ function documentationVideoInputSpecs(item, video) {
     addVideo('Source Video', info.driveVideoName, '#00bcd4', info.driveStartSeconds, info.driveDurSeconds);
     return specs;
   }
+
+  documentationVideoStoryboardSegments(video).forEach(({ segment, index, total }) => {
+    addImage(`Keyframe ${index + 1}`, segment.imageFile, '#4285f4', '', {
+      storyboard: true,
+      storyboardTime: `${directorFramesToSeconds(segment.start)}s`,
+      storyboardTotal: total,
+    });
+  });
 
   if (info.faceImageName) {
     addImage('Face Reference', info.faceImageName, '#a970ff');
@@ -18751,8 +18857,11 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
   const measuredSeconds = resultMedia && Number(resultMedia.duration);
   const seconds = Number.isFinite(measuredSeconds) && measuredSeconds > 0
     ? measuredSeconds : (info.frames && info.fps ? info.frames / info.fps : null);
-  const inputSummary = inputMedia.length
-    ? inputMedia.map((input) => input.label).join(', ')
+  const storyboardTotal = inputMedia.reduce((total, input) => input.storyboard ? Math.max(total, Number(input.storyboardTotal) || 0) : total, 0);
+  const inputLabels = inputMedia.filter((input) => !input.storyboard).map((input) => input.label);
+  if (storyboardTotal) inputLabels.unshift(`${storyboardTotal} keyframe${storyboardTotal === 1 ? '' : 's'}`);
+  const inputSummary = inputLabels.length
+    ? inputLabels.join(', ')
     : (info.t2v ? 'Text only' : (info.composite ? 'Side-by-side comparison' : ''));
   const options = [
     info.faceId && 'Face ID',
@@ -18797,24 +18906,30 @@ function documentationVideoInputBoxes(area, count, gap) {
   }));
 }
 
-function documentationVideoLayout(width, height, mediaRatio = width / height, inputCount = 1) {
+function documentationVideoLayout(width, height, mediaRatio = width / height, inputCount = 1, storyboardCount = 0) {
   const safeMediaRatio = Math.max(.25, Math.min(4, Number(mediaRatio) || width / height));
   const portrait = safeMediaRatio < (1 / 1.08);
   const pad = Math.max(18, Math.round(Math.min(width, height) * .04));
   const gap = Math.max(12, Math.round(pad * .62));
   const sourceCount = Math.max(0, Math.round(Number(inputCount) || 0));
+  const storyboardHeight = storyboardCount ? Math.max(64, Math.min(118, Math.round(height * .115))) : 0;
+  const storyboardGap = storyboardHeight ? gap : 0;
   if (portrait) {
     const lowerWidth = width - pad * 2;
     const resultHeight = Math.min(
       lowerWidth / safeMediaRatio,
-      height - pad * 2 - gap - Math.round(height * .24),
+      height - pad * 2 - gap - Math.round(height * .24) - storyboardHeight - storyboardGap,
     );
-    const lowerY = pad + resultHeight + gap;
+    const storyboard = storyboardHeight ? {
+      x: pad, y: pad + resultHeight + storyboardGap, width: lowerWidth, height: storyboardHeight,
+    } : null;
+    const lowerY = storyboard ? storyboard.y + storyboard.height + gap : pad + resultHeight + gap;
     const lowerHeight = height - pad - lowerY;
     const sourceWidth = sourceCount ? Math.round((lowerWidth - gap) * .34) : 0;
     const sourceArea = { x: pad, y: lowerY, width: sourceWidth, height: lowerHeight };
     return {
       result: { x: pad, y: pad, width: lowerWidth, height: resultHeight },
+      storyboard,
       inputs: documentationVideoInputBoxes(sourceArea, sourceCount, gap),
       details: sourceCount
         ? { x: pad + sourceWidth + gap, y: lowerY, width: lowerWidth - sourceWidth - gap, height: lowerHeight }
@@ -18822,15 +18937,19 @@ function documentationVideoLayout(width, height, mediaRatio = width / height, in
     };
   }
   const innerHeight = height - pad * 2;
+  const resultHeight = innerHeight - storyboardHeight - storyboardGap;
   const resultWidth = Math.min(
-    innerHeight * safeMediaRatio,
+    resultHeight * safeMediaRatio,
     width - pad * 2 - gap - Math.round(width * .23),
   );
   const railWidth = width - pad * 2 - gap - resultWidth;
   const sourceHeight = sourceCount ? Math.round(innerHeight * (sourceCount > 1 ? .48 : .36)) : 0;
   const sourceArea = { x: pad + resultWidth + gap, y: pad, width: railWidth, height: sourceHeight };
   return {
-    result: { x: pad, y: pad, width: resultWidth, height: innerHeight },
+    result: { x: pad, y: pad, width: resultWidth, height: resultHeight },
+    storyboard: storyboardHeight ? {
+      x: pad, y: pad + resultHeight + storyboardGap, width: resultWidth, height: storyboardHeight,
+    } : null,
     inputs: documentationVideoInputBoxes(sourceArea, sourceCount, gap),
     details: {
       x: pad + resultWidth + gap,
@@ -18865,6 +18984,42 @@ function drawDocumentationVideoMedia(ctx, media, box, label, accent, { quiet = f
   ctx.fillStyle = quiet ? 'rgba(255,255,255,.86)' : '#fff';
   ctx.textBaseline = 'top';
   ctx.fillText(label, box.x + inset * 2.05, box.y + inset + (badgeHeight - fontSize) * .42);
+}
+
+function drawDocumentationVideoStoryboard(ctx, inputMedia, box) {
+  if (!box || !inputMedia.length) return;
+  const inset = Math.max(6, Math.round(box.height * .075));
+  const gap = Math.max(4, Math.round(inset * .72));
+  const labelSize = Math.max(8, Math.min(11, Math.round(box.height * .1)));
+  const headerHeight = Math.round(labelSize * 1.8);
+  const total = inputMedia.reduce((value, input) => Math.max(value, Number(input.storyboardTotal) || 0), inputMedia.length);
+  ctx.fillStyle = '#08090c';
+  ctx.fillRect(box.x, box.y, box.width, box.height);
+  ctx.strokeStyle = 'rgba(255,255,255,.16)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(box.x + .5, box.y + .5, box.width - 1, box.height - 1);
+  ctx.fillStyle = 'rgba(255,255,255,.52)';
+  setDocumentationMonoFont(ctx, 650, labelSize);
+  ctx.textBaseline = 'top';
+  ctx.fillText(`KEYFRAMES · ${inputMedia.length}${total > inputMedia.length ? ` OF ${total}` : ''}`, box.x + inset, box.y + inset * .7);
+
+  const mediaY = box.y + headerHeight;
+  const mediaHeight = Math.max(20, box.height - headerHeight - inset);
+  const mediaWidth = Math.max(12, (box.width - inset * 2 - gap * (inputMedia.length - 1)) / inputMedia.length);
+  inputMedia.forEach((input, index) => {
+    const x = box.x + inset + index * (mediaWidth + gap);
+    drawCoveredMedia(ctx, input.media, x, mediaY, mediaWidth, mediaHeight);
+    ctx.strokeStyle = 'rgba(255,255,255,.14)';
+    ctx.strokeRect(x + .5, mediaY + .5, mediaWidth - 1, mediaHeight - 1);
+    if (!input.storyboardTime || mediaWidth < 34) return;
+    const timeSize = Math.max(7, Math.min(10, Math.round(mediaHeight * .16)));
+    setDocumentationMonoFont(ctx, 700, timeSize);
+    const badgeWidth = ctx.measureText(input.storyboardTime).width + 8;
+    ctx.fillStyle = 'rgba(0,0,0,.7)';
+    ctx.fillRect(x + 4, mediaY + mediaHeight - timeSize - 8, badgeWidth, timeSize + 5);
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.fillText(input.storyboardTime, x + 8, mediaY + mediaHeight - timeSize - 6);
+  });
 }
 
 function drawDocumentationVideoDetails(ctx, box, item, video, inputMedia, resultMedia) {
@@ -18918,12 +19073,15 @@ function drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, resul
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const mediaWidth = resultMedia.videoWidth || resultMedia.naturalWidth || resultMedia.width || canvas.width;
   const mediaHeight = resultMedia.videoHeight || resultMedia.naturalHeight || resultMedia.height || canvas.height;
-  const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight, inputMedia.length);
+  const storyboardMedia = inputMedia.filter((input) => input.storyboard);
+  const standardInputMedia = inputMedia.filter((input) => !input.storyboard);
+  const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight, standardInputMedia.length, storyboardMedia.length);
   drawDocumentationVideoMedia(ctx, resultMedia, layout.result, 'Final Result', '#ea4335', { quiet: true });
-  inputMedia.forEach((input, index) => {
+  standardInputMedia.forEach((input, index) => {
     const box = layout.inputs[index];
     if (box) drawDocumentationVideoMedia(ctx, input.media, box, input.label, input.accent);
   });
+  drawDocumentationVideoStoryboard(ctx, storyboardMedia, layout.storyboard);
   drawDocumentationVideoDetails(ctx, layout.details, item, video, inputMedia, resultMedia);
 }
 
