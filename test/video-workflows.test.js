@@ -132,12 +132,13 @@ test('videoProcessInfo updates metadata for after-the-fact interpolation and ups
 
   assert.deepEqual(videoProcessInfo(base, { kind: 'interpolate', multiplier: 2, parentVideoId: 'v1' }), {
     engine: 'scail',
-    frames: 162,
+    frames: 161,
     fps: 32,
     width: 512,
     height: 896,
     motionPrompt: 'spin',
     smooth: 2,
+    exactFrameCount: true,
     processed: 'interpolate',
     parentVideoId: 'v1',
   });
@@ -149,6 +150,7 @@ test('videoProcessInfo updates metadata for after-the-fact interpolation and ups
     width: 1024,
     height: 1792,
     motionPrompt: 'spin',
+    exactFrameCount: true,
     fourK: true,
     processed: 'upscale',
     parentVideoId: 'v1',

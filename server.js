@@ -125,6 +125,10 @@ const {
   videoProcessInfo,
 } = require('./lib/video-workflows');
 const {
+  normalizeDirectorExtensionPlan,
+  videoExtensionInfo,
+} = require('./lib/video-extension');
+const {
   DIRECTOR_FPS,
   buildLtxDirectorGraph,
   directorAssetNames,
@@ -1518,7 +1522,9 @@ async function completeJob(pid) {
     saveDb();
     const videoActionLabel = job.videoInfo.processed === 'upscale'
       ? 'Video upscale'
-      : (job.videoInfo.processed === 'interpolate' ? 'Frame interpolation' : (job.videoInfo.composite ? 'Side-by-side' : 'Video'));
+      : (job.videoInfo.processed === 'interpolate'
+        ? 'Frame interpolation'
+        : (job.videoInfo.processed === 'extend' ? 'Video extension' : (job.videoInfo.composite ? 'Side-by-side' : 'Video')));
     pushHistory({
       kind: 'video', profileId: job.profileId, itemId: item.id, videoId: entry.id, durationMs,
       label: `${videoActionLabel} (${{ wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
@@ -5040,7 +5046,10 @@ async function handleApi(req, res, url) {
     }
 
     const info = await getObjectInfo();
-    const missingNodes = [...REQUIRED_CLASSES.video, ...REQUIRED_CLASSES.ltxdirector]
+    const extensionClasses = project.extensionSource
+      ? ['VHS_LoadVideo', 'ImageFromBatch', 'ImageBatch', 'AudioConcat', 'EmptyAudio']
+      : [];
+    const missingNodes = [...new Set([...REQUIRED_CLASSES.video, ...REQUIRED_CLASSES.ltxdirector, ...extensionClasses])]
       .filter((name) => !info[name]);
     if (missingNodes.length) {
       return json(res, 400, {
@@ -5066,48 +5075,127 @@ async function handleApi(req, res, url) {
       return json(res, 400, { error: 'Replace or remove missing Director media before generating.', missingAssets });
     }
 
+    let extension = null;
+    let extensionItem = null;
+    let extensionVideo = null;
+    if (project.extensionSource) {
+      const visibleItems = galleryView(db, isPrivateUnlocked(req)).items
+        .filter((item) => item.profileId === req.profile.id);
+      extensionItem = visibleItems.find((item) => item.id === project.extensionSource.itemId);
+      extensionVideo = extensionItem?.videos?.find((video) => video.id === project.extensionSource.videoId) || null;
+      if (!extensionItem || !extensionVideo) {
+        return json(res, 404, { error: 'The video being extended is no longer available in this gallery.' });
+      }
+      if (extensionVideo.info?.composite) {
+        return json(res, 400, { error: 'Side-by-side comparison videos cannot be extended.' });
+      }
+      const videosRoot = `${path.resolve(VIDEOS)}${path.sep}`;
+      const sourcePath = path.resolve(VIDEOS, String(extensionVideo.file || ''));
+      if (!sourcePath.startsWith(videosRoot)) {
+        return json(res, 400, { error: 'The extension source has an invalid gallery path.' });
+      }
+      let sourceBuffer;
+      try {
+        sourceBuffer = await fsp.readFile(sourcePath);
+      } catch {
+        return json(res, 404, { error: 'The video file being extended is missing.' });
+      }
+      const sourceInfo = extensionVideo.info || {};
+      const sourceDims = mp4Dims(sourceBuffer) || {};
+      let plan;
+      try {
+        plan = normalizeDirectorExtensionPlan({
+          info: sourceInfo,
+          width: sourceDims.w || sourceInfo.width || extensionItem.width,
+          height: sourceDims.h || sourceInfo.height || extensionItem.height,
+          rangeFrames: project.range.lengthFrames,
+          smooth: body.smooth,
+          continueAudio: project.extensionSource.continueAudio,
+        });
+      } catch (error) {
+        return json(res, 400, { error: error.message });
+      }
+      const sourceExtension = ['.mp4', '.webm', '.mov'].includes(path.extname(extensionVideo.file).toLowerCase())
+        ? path.extname(extensionVideo.file).toLowerCase()
+        : '.mp4';
+      const videoName = await uploadToComfy(sourceBuffer, `ks_extend_${extensionVideo.id}${sourceExtension}`);
+      extension = {
+        videoName,
+        sourceHasAudio: detectAudioStream(sourceBuffer, extensionVideo.file) === true,
+        plan,
+      };
+    }
+
     const seedValue = Number(body.seed);
     const seed = Number.isSafeInteger(seedValue) && seedValue >= 0
       ? seedValue : Math.floor(Math.random() * 0x7fffffff);
-    const { W, H } = videoDims(
+    let { W, H } = videoDims(
       clampInt(body.width, 64, 8192, 1280),
       clampInt(body.height, 64, 8192, 720),
     );
-    const smooth = [1, 2, 3].includes(Number(body.smooth)) ? Number(body.smooth) : 1;
+    let smooth = [1, 2, 3].includes(Number(body.smooth)) ? Number(body.smooth) : 1;
+    let fourK = body.fourK === true;
+    if (extension) {
+      ({ W, H, smooth, fourK } = extension.plan);
+    }
     const loras = Array.isArray(body.loras) ? body.loras.filter((lora) => lora && lora.on && lora.name) : [];
     const outputFrames = directorOutputFrames(project);
     const graph = await buildLtxDirectorGraph(project, {
-      W, H, seed, smooth, fourK: body.fourK === true, makePoster: true, loras,
+      W, H, seed, smooth, fourK, makePoster: !extension, loras, extension,
       sigmasBase: LTX_SIGMAS_BASE, sigmasRefine: LTX_SIGMAS_REFINE,
     }, settings, {
       nodeFromOrdered, filterInputs, chainModelLoras, rifeSmooth,
       rtxVideoSuperResolutionNode, getObjectInfo,
     });
     const pid = await queuePrompt(graph);
-    trackJob(pid, {
-      kind: 'video', profileId: req.profile.id, itemId: null, createItem: true, graph,
-      videoInfo: {
+    const directorProject = Object.assign({}, project, {
+      output: { width: W, height: H, seed, batch: 1, smooth, fourK, loras },
+    });
+    const baseVideoInfo = {
         engine: 'ltx', workflow: 'director',
-        directorProject: Object.assign({}, project, {
-          output: { width: W, height: H, seed, batch: 1, smooth, fourK: body.fourK === true, loras },
-        }),
+        directorProject,
         seconds: project.range.lengthFrames / DIRECTOR_FPS,
         motionPrompt: project.globalPrompt || project.segments.find((segment) => segment.prompt)?.prompt || 'Director project',
         enhance: false,
-        frames: outputFrames * smooth, fps: DIRECTOR_FPS * smooth,
+        frames: (outputFrames - 1) * smooth + 1, fps: DIRECTOR_FPS * smooth,
+        exactFrameCount: true,
         smooth: smooth > 1 ? smooth : undefined,
-        fourK: body.fourK === true,
-        width: body.fourK === true ? W * 2 : W,
-        height: body.fourK === true ? H * 2 : H,
+        fourK,
+        width: fourK ? W * 2 : W,
+        height: fourK ? H * 2 : H,
         seed, t2v: !project.segments.some((segment) => segment.type === 'image'),
         drivenAudio: project.audioSegments.length > 0 || project.settings.inpaintAudio,
         motionVideo: project.motionSegments.length > 0,
         endFrame: project.segments.some((segment) => segment.type === 'image' && segment.isEndFrame),
         loras,
-      },
+    };
+    const videoInfo = extension
+      ? videoExtensionInfo(baseVideoInfo, extension.plan, {
+        parentVideoId: extensionVideo.id,
+        prompt: baseVideoInfo.motionPrompt,
+        sourceHasAudio: extension.sourceHasAudio,
+      })
+      : baseVideoInfo;
+    if (extension) {
+      videoInfo.workflow = 'director';
+      videoInfo.directorProject = directorProject;
+      videoInfo.t2v = false;
+      videoInfo.drivenAudio = project.audioSegments.length > 0 || project.settings.inpaintAudio;
+    }
+    trackJob(pid, {
+      kind: 'video', profileId: req.profile.id,
+      itemId: extensionItem ? extensionItem.id : null,
+      createItem: !extensionItem,
+      graph,
+      videoInfo,
     });
     ensureWs();
-    return json(res, 200, { jobId: pid, frames: outputFrames, engine: 'ltx', workflow: 'director' });
+    return json(res, 200, {
+      jobId: pid,
+      frames: extension ? extension.plan.totalFrames : outputFrames,
+      engine: 'ltx',
+      workflow: extension ? 'extend' : 'director',
+    });
   }
 
   if (route === '/api/animate' && req.method === 'POST') {
@@ -5339,7 +5427,8 @@ async function handleApi(req, res, url) {
         seconds: opts.seconds,
         motionPrompt: userMotionPrompt || suppliedMotionPrompt || (engine === 'scail' ? 'Motion copied from driving video' : motionPrompt),
         enhance: enhance && !!suppliedMotionPrompt,
-        frames: opts.frames * smooth, fps: opts.fps * smooth,
+        frames: (opts.frames - 1) * smooth + 1, fps: opts.fps * smooth,
+        exactFrameCount: true,
         smooth: smooth > 1 ? smooth : undefined,
         fourK: opts.fourK, width: opts.fourK ? W * 2 : W, height: opts.fourK ? H * 2 : H,
         seed: opts.seed, t2v: bypass,
@@ -6407,6 +6496,7 @@ function jobLabel(job) {
   if (job.kind === 'upscale') return job.upscaleInfo && job.upscaleInfo.engine === 'ultimate' ? 'Upscale (Ultimate SD)' : 'Upscale (SeedVR2)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'upscale') return 'Video upscale (RTX)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
+  if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'extend') return 'Video extension (LTX 2.3)';
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);
   if (job.kind === 'enhance') return 'Prompt enhance';
   if (job.kind === 'motionPrompt') return 'Motion prompt from first frame';

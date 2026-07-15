@@ -106,6 +106,19 @@ test('Director projects retain first, middle, last, audio, and IC guidance asset
   assert.deepEqual(directorAssetNames(normalized), ['first.png', 'middle.webp', 'last.jpg', 'voice.wav', 'motion.mp4']);
 });
 
+test('Director schema v1 retains a profile-scoped continuation source without treating it as guide media', () => {
+  const normalized = normalizeDirectorProject(project({
+    extensionSource: { itemId: 'item_123', videoId: 'video-456', fileName: 'Opening shot', continueAudio: true },
+  }));
+  assert.deepEqual(normalized.extensionSource, {
+    itemId: 'item_123', videoId: 'video-456', fileName: 'Opening shot', continueAudio: true,
+  });
+  assert.deepEqual(directorAssetNames(normalized), ['key.png']);
+  assert.throws(() => normalizeDirectorProject(project({
+    extensionSource: { itemId: '../item', videoId: 'video-456' },
+  })), /extension source is invalid/);
+});
+
 test('Director graph inserts prompt relay and guide nodes into the existing two-stage LTX pipeline', async () => {
   const normalized = normalizeDirectorProject(project({
     audioSegments: [{ start: 0, length: 120, audioFile: 'voice.wav', audioDurationFrames: 120 }],
@@ -184,4 +197,57 @@ test('Director graph keeps LoRAs, guide audio override, smoothing, 4K, and poste
   assert.deepEqual(graph.video.inputs.images, ['vsr', 0]);
   assert.equal(graph.video.inputs.fps, 48);
   assert.equal(graph.poster_save.class_type, 'SaveImage');
+});
+
+test('Director extension anchors both stages, removes the seam frame, and joins source media first', async () => {
+  const normalized = normalizeDirectorProject(project({
+    durationFrames: 120,
+    range: { startFrame: 0, lengthFrames: 120 },
+    extensionSource: { itemId: 'item1', videoId: 'video1', fileName: 'Source' },
+  }));
+  const helpers = {
+    async nodeFromOrdered(classType, ordered, links = {}, overrides = {}) {
+      return { class_type: classType, inputs: Object.assign({ ordered }, links, overrides) };
+    },
+    async filterInputs(graph) { return graph; },
+    chainModelLoras(graph, model) { return model; },
+    async rifeSmooth(graph, source) { return source; },
+    rtxVideoSuperResolutionNode(source) { return { class_type: 'RTXVideoSuperResolution', inputs: { images: source } }; },
+    async getObjectInfo() { return { ImageFromBatch: {}, TrimAudioDuration: {} }; },
+  };
+  const plan = {
+    outputFps: 24, outputWidth: 1280, outputHeight: 704,
+    sourceFrames: 120, sourceSeconds: 5,
+    appendedFrames: 120, normalizedSeconds: 5,
+    continueAudio: true,
+  };
+  const graph = await buildLtxDirectorGraph(normalized, {
+    W: 1280, H: 704, seed: 42, smooth: 1, fourK: false, makePoster: false,
+    loras: [], sigmasBase: '1,0', sigmasRefine: '0.5,0',
+    extension: { videoName: 'source.mp4', sourceHasAudio: false, plan },
+  }, {
+    ltxCkpt: 'ltx.safetensors', ltxDistilledLora: 'distilled.safetensors', ltxTextEncoder: 'gemma.safetensors',
+    ltxGemmaLora: 'gemma-lora.safetensors', ltxUpscaler: 'up.safetensors', ltxDirectorIcLora: 'ingredients.safetensors',
+  }, helpers);
+
+  assert.equal(graph.extension_source.class_type, 'VHS_LoadVideo');
+  assert.equal(graph.extension_source.inputs.frame_load_cap, 120);
+  assert.equal(graph.extension_tail.class_type, 'ImageFromBatch');
+  assert.deepEqual(graph.extension_tail.inputs, { image: ['extension_source', 0], batch_index: 119, length: 1 });
+  assert.equal(graph.extension_tail_prep.inputs.ordered[0], 0);
+  assert.deepEqual(graph.extension_guide_base.inputs.latent, ['guide_base', 2]);
+  assert.deepEqual(graph.concat1.inputs.video_latent, ['extension_guide_base', 0]);
+  assert.deepEqual(graph.extension_guide_refine.inputs.latent, ['guide_refine', 2]);
+  assert.deepEqual(graph.concat2.inputs.video_latent, ['extension_guide_refine', 0]);
+  assert.deepEqual(graph.extension_tail_frames.inputs, { image: ['decode', 0], batch_index: 1, length: 120 });
+  assert.deepEqual(graph.extension_join_frames.inputs.image1, ['extension_source', 0]);
+  assert.deepEqual(graph.extension_join_frames.inputs.image2, ['extension_tail_frames', 0]);
+  assert.equal(graph.extension_silent_source.inputs.duration, 5);
+  assert.deepEqual(graph.extension_join_audio.inputs.audio1, ['extension_silent_source', 0]);
+  assert.deepEqual(graph.extension_join_audio.inputs.audio2, ['extension_trim_audio', 0]);
+  assert.deepEqual(graph.video.inputs.images, ['extension_join_frames', 0]);
+  assert.deepEqual(graph.video.inputs.audio, ['extension_join_audio', 0]);
+  assert.equal(graph.video.inputs.fps, 24);
+  assert.equal(graph.poster_save, undefined);
+  assert.equal(Object.values(graph).filter((node) => node.class_type === 'SaveVideo').length, 1);
 });
