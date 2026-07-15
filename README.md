@@ -179,6 +179,8 @@ The owner can also choose **Restart app** from the same menu. It checks both Mix
 
 **Remote maintenance** — the owner can update or safely restart the desktop app from a phone. Updates require a clean checkout; updates and manual restarts both wait for idle Mix Studio and ComfyUI queues.
 
+ComfyUI's disaster-recovery copies are organized under `ComfyUI/output/MixStudio/<profile-name>_<profile-id>/`, with separate prefixes for images, edits, videos, upscales, posters, and composites. Existing files in the legacy `ComfyUI/output/KreaStudio/` folder are left untouched.
+
 ## ComfyUI requirements
 
 All model filenames and the ComfyUI URL are editable in **Settings (gear) → Save & test connection**, which health-checks every node group. Highlights: Krea 2 (unet/clip/vae), Krea 2 Depth Control LoRA + Depth Anything V3 Large, Krea 2 Identity Edit LoRA + ComfyUI-Krea2Edit for outpainting, Flux Klein 4B/9B, Qwen Image Edit 2511, LTX 2.3 (+ spatial upscaler, Gemma encoder), Wan 2.2, 10Eros, SCAIL-2 (+ SAM3 multiplex, clip_vision_h), Best-FaceID LoRA + [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes), SeedVR2, KJNodes, VideoHelperSuite, ComfyUI-Frame-Interpolation (RIFE), Krea2-Regional-MultiLoRA.
@@ -188,7 +190,7 @@ All model filenames and the ComfyUI URL are editable in **Settings (gear) → Sa
 - `data/db.json` — all metadata (items, folders, profiles, presets, faces) · `data/backups/` — rolling snapshots
 - `data/images/`, `data/videos/` — media · `data/faces/`, `data/avatars/`, `data/lorathumbs/` — thumbnails
 - `data/settings.json` — model config · `data/auth_secret.txt` — session signing secret
-- `data/trash/` — content from deleted profiles (never hard-deleted)
+- `data/trash/` — recoverable media from deleted gallery items, videos, and profiles; the owner can permanently clear it from **Advanced Settings → System → Trash**
 
 `data/` is deliberately not in git. Private folders are lightweight UI privacy: locked folders hide their items from gallery responses, but files remain on disk.
 

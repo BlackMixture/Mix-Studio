@@ -155,6 +155,13 @@ const {
 } = require('./lib/progress-labels');
 const { decodePreviewPayload } = require('./lib/preview-payload');
 const { selectionAssetRefs, selectionSummary } = require('./lib/selection-summary');
+const {
+  emptyTrashDirectory,
+  moveAssetRefsToTrash,
+  trashDirectorySummary,
+  unreferencedAssetRefs,
+} = require('./lib/deleted-media');
+const { applyProfileOutputPrefix, profileOutputFolder } = require('./lib/output-prefix');
 const { expandGalleryGroupSelection } = require('./lib/gallery-grouping');
 const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
@@ -199,11 +206,13 @@ const DATA = RUNTIME.dataDir;
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
 const INPUTS = path.join(DATA, 'inputs');
+const TRASH_ROOT = path.join(DATA, 'trash');
 const PORT = Number(process.env.PORT || 3300);
 
 fs.mkdirSync(IMAGES, { recursive: true });
 fs.mkdirSync(VIDEOS, { recursive: true });
 fs.mkdirSync(INPUTS, { recursive: true });
+fs.mkdirSync(TRASH_ROOT, { recursive: true });
 const FACES = path.join(DATA, 'faces');
 fs.mkdirSync(FACES, { recursive: true });
 const AVATARS = path.join(DATA, 'avatars');
@@ -358,11 +367,18 @@ function seedVr2ModelDirs() {
 const DB_FILE = path.join(DATA, 'db.json');
 let db = loadJson(DB_FILE, { folders: [], items: [] });
 let dbSaveTimer = null;
+let mediaDeletionQueue = Promise.resolve();
 function saveDb() {
   clearTimeout(dbSaveTimer);
   dbSaveTimer = setTimeout(() => saveJsonSync(DB_FILE, db), 150);
 }
 function uid() { return crypto.randomBytes(8).toString('hex'); }
+
+function serializeMediaDeletion(task) {
+  const run = mediaDeletionQueue.then(task, task);
+  mediaDeletionQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 const PRIVATE_COOKIE = 'ks_private';
 const privateUnlockToken = crypto.randomBytes(18).toString('hex');
@@ -1258,6 +1274,10 @@ async function uploadFileToComfy(file, filename) {
 }
 
 async function queuePrompt(graph, options = {}) {
+  if (options.profileId) {
+    const outputProfile = db.profiles.find((profile) => profile.id === options.profileId);
+    if (outputProfile) applyProfileOutputPrefix(graph, outputProfile);
+  }
   const body = { prompt: graph, client_id: CLIENT_ID };
   if (options.front === true) body.front = true;
   const res = await comfyFetch('/prompt', {
@@ -1860,7 +1880,7 @@ function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '') {
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
       await filterInputs(graph);
-      const pid = await queuePrompt(graph);
+      const pid = await queuePrompt(graph, { profileId });
       const timer = setTimeout(() => {
         jobs.delete(pid);
         reject(new Error('Motion prompt timed out (3 min)'));
@@ -1894,7 +1914,7 @@ function suggestImagePrompt(comfyImageName, seed, profileId) {
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
       await filterInputs(graph);
-      const pid = await queuePrompt(graph);
+      const pid = await queuePrompt(graph, { profileId });
       const timer = setTimeout(() => {
         jobs.delete(pid);
         reject(new Error('Image prompt timed out (3 min)'));
@@ -1929,7 +1949,7 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
       await filterInputs(graph);
-      const pid = await queuePrompt(graph);
+      const pid = await queuePrompt(graph, { profileId: options.profileId });
       const timer = setTimeout(() => {
         jobs.delete(pid);
         reject(new Error('Prompt enhance timed out (3 min)'));
@@ -1998,7 +2018,7 @@ function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
       await filterInputs(graph);
-      const pid = await queuePrompt(graph);
+      const pid = await queuePrompt(graph, { profileId });
       const timer = setTimeout(() => { jobs.delete(pid); reject(new Error('Wan prompt enhance timed out')); }, 180000);
       trackJob(pid, {
         kind: 'enhance', profileId, graph,
@@ -2591,7 +2611,7 @@ async function buildGenerationGraph(p, refNames) {
 
 async function queueGenerationJob(p, profileId, refNames, refinedPrompt = null) {
   const graph = await buildGenerationGraph(p, refNames);
-  const pid = await queuePrompt(graph);
+  const pid = await queuePrompt(graph, { profileId });
   trackJob(pid, { kind: 'gen', profileId, params: p, graph, refImageNames: refNames, refinedPrompt });
   ensureWs();
   return { pid, graph };
@@ -2818,7 +2838,7 @@ async function queuePostUpscale(item, options, profileId) {
   const buf = await fsp.readFile(path.join(IMAGES, item.file));
   const comfyName = await uploadToComfy(buf, `ks_finish_${item.id}.png`);
   const graph = await buildUpscale(comfyName, options);
-  const pid = await queuePrompt(graph);
+  const pid = await queuePrompt(graph, { profileId });
   item.upscalePending = true;
   trackJob(pid, { kind: 'upscale', profileId, itemId: item.id, graph, upscaleInfo: options });
   ensureWs();
@@ -4402,6 +4422,28 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (route === '/api/trash' && req.method === 'GET') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can manage trash' });
+    return json(res, 200, await trashDirectorySummary(TRASH_ROOT));
+  }
+
+  if (route === '/api/trash' && req.method === 'DELETE') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can empty trash' });
+    const body = await readJsonBody(req).catch(() => ({}));
+    if (String(body.confirm || '') !== 'EMPTY TRASH') {
+      return json(res, 400, { error: 'Type EMPTY TRASH to permanently delete trashed files' });
+    }
+    return serializeMediaDeletion(async () => {
+      try {
+        const removed = await emptyTrashDirectory(TRASH_ROOT);
+        return json(res, 200, { ok: true, removed });
+      } catch (error) {
+        console.error('[trash] empty failed:', error.message);
+        return json(res, 500, { error: 'Could not completely empty Mix Studio trash. Any remaining files are still recoverable.' });
+      }
+    });
+  }
+
   if (route === '/api/update' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update Mix Studio' });
     if (jobs.size) return json(res, 409, { error: 'Wait for the Mix Studio queue to finish before updating' });
@@ -4808,7 +4850,7 @@ async function handleApi(req, res, url) {
     await filterInputs(graph);
     const result = await new Promise((resolve, reject) => {
       (async () => {
-        const pid = await queuePrompt(graph);
+        const pid = await queuePrompt(graph, { profileId: req.profile.id });
         const timer = setTimeout(() => {
           jobs.delete(pid);
           reject(new Error('SAM3 selection timed out after 8 minutes. Check the ComfyUI console for a model download or SAM3 error.'));
@@ -5057,7 +5099,7 @@ async function handleApi(req, res, url) {
       };
     }
     const graph = await buildUpscale(comfyName, opts);
-    const pid = await queuePrompt(graph);
+    const pid = await queuePrompt(graph, { profileId: req.profile.id });
     trackJob(pid, { kind: 'upscale', profileId: req.profile.id, itemId: item.id, graph, upscaleInfo: opts });
     ensureWs();
     return json(res, 200, { jobId: pid });
@@ -5261,7 +5303,7 @@ async function handleApi(req, res, url) {
       nodeFromOrdered, filterInputs, chainModelLoras, rifeSmooth,
       rtxVideoSuperResolutionNode, getObjectInfo,
     });
-    const pid = await queuePrompt(graph);
+    const pid = await queuePrompt(graph, { profileId: req.profile.id });
     const directorProject = Object.assign({}, project, {
       output: { width: W, height: H, seed: requestedSeed ?? seed, batch: requestedBatch, smooth, fourK, loras: savedLoras },
     });
@@ -5545,7 +5587,7 @@ async function handleApi(req, res, url) {
         : engine === 'eros' ? await buildAnimateEros(comfyName, opts)
           : faceImageName ? await buildAnimateFaceId(faceImageName, opts)
             : await buildAnimate(comfyName, opts);
-    const pid = await queuePrompt(graph);
+    const pid = await queuePrompt(graph, { profileId: req.profile.id });
     trackJob(pid, {
       kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
       videoInfo: {
@@ -5633,7 +5675,7 @@ async function handleApi(req, res, url) {
     if (hasAudio) videoInfo.preservedAudio = true;
     else delete videoInfo.preservedAudio;
 
-    const pid = await queuePrompt(graph);
+    const pid = await queuePrompt(graph, { profileId: req.profile.id });
     trackJob(pid, { kind: 'video', profileId: req.profile.id, itemId: item.id, graph, videoInfo });
     ensureWs();
     return json(res, 200, { jobId: pid });
@@ -5703,7 +5745,7 @@ async function handleApi(req, res, url) {
       class_type: 'SaveVideo',
       inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/side', format: 'auto', codec: 'auto' },
     };
-    const pid = await queuePrompt(await filterInputs(graph));
+    const pid = await queuePrompt(await filterInputs(graph), { profileId: req.profile.id });
     trackJob(pid, {
       kind: 'video', profileId: req.profile.id, itemId: item.id, graph,
       videoInfo: {
@@ -5730,7 +5772,7 @@ async function handleApi(req, res, url) {
         width: body.width ? clampInt(body.width, 64, 4096, 1024) : 0,
         height: body.height ? clampInt(body.height, 64, 4096, 1024) : 0,
       }));
-      const pid = await queuePrompt(graph);
+      const pid = await queuePrompt(graph, { profileId: req.profile.id });
       const buf = await waitForComfyImage(pid);
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
       return res.end(buf);
@@ -5827,7 +5869,7 @@ async function handleApi(req, res, url) {
       : (type === 'depth-map'
         ? await buildDepthComposite(comfyNames, { width: root.width, height: root.height })
         : await buildImageComposite(comfyNames));
-    const pid = await queuePrompt(graph);
+    const pid = await queuePrompt(graph, { profileId: req.profile.id });
     trackJob(pid, {
       kind: 'imageComposite', profileId: req.profile.id, graph,
       compositeInfo: {
@@ -6052,7 +6094,7 @@ async function handleApi(req, res, url) {
     try {
       for (const oldPid of order) {
         const job = jobs.get(oldPid);
-        const newPid = await queuePrompt(job.graph);
+        const newPid = await queuePrompt(job.graph, { profileId: job.profileId });
         jobs.delete(oldPid);
         jobs.set(newPid, Object.assign(job, {
           enqueuedAt: Date.now(),
@@ -6547,13 +6589,28 @@ async function handleApi(req, res, url) {
     return json(res, 200, item);
   }
   if (vidRoute && req.method === 'DELETE') {
-    const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
-    if (!item) return json(res, 404, { error: 'Not found' });
-    const v = (item.videos || []).find((x) => x.id === vidRoute[2]);
-    item.videos = (item.videos || []).filter((x) => x.id !== vidRoute[2]);
-    saveDb();
-    if (v) fsp.unlink(path.join(VIDEOS, v.file)).catch(() => { /* noop */ });
-    return json(res, 200, item);
+    return serializeMediaDeletion(async () => {
+      const item = db.items.find((it) => it.id === vidRoute[1] && it.profileId === req.profile.id);
+      if (!item) return json(res, 404, { error: 'Not found' });
+      const video = (item.videos || []).find((entry) => entry.id === vidRoute[2]);
+      if (!video) return json(res, 404, { error: 'Video not found' });
+      const retainedVideos = (item.videos || []).filter((entry) => entry.id !== video.id);
+      const retainedItem = Object.assign({}, item, { videos: retainedVideos });
+      const remainingItems = db.items.map((entry) => entry.id === item.id ? retainedItem : entry);
+      const refs = unreferencedAssetRefs([{ videos: [video] }], remainingItems);
+      const trashRoot = path.join(
+        TRASH_ROOT, 'profiles', profileOutputFolder(req.profile), 'items', `${Date.now()}_${item.id}_${video.id}`
+      );
+      try {
+        await moveAssetRefsToTrash(refs, { imageRoot: IMAGES, videoRoot: VIDEOS, trashRoot });
+      } catch (error) {
+        console.error('[trash] video delete failed:', error.message);
+        return json(res, 500, { error: 'Could not move this video to trash. Nothing was deleted.' });
+      }
+      item.videos = retainedVideos;
+      saveDb();
+      return json(res, 200, item);
+    });
   }
 
   const itemRoute = route.match(/^\/api\/item\/([\w]+)(?:\/(move))?$/);
@@ -6594,15 +6651,25 @@ async function handleApi(req, res, url) {
       return json(res, 200, item);
     }
     if (req.method === 'DELETE') {
-      db.items = db.items.filter((it) => it.id !== item.id);
-      saveDb();
-      for (const f of [item.file, item.upscaled, item.sourceFile, ...(item.composites || []).map((composite) => composite.file)]) {
-        if (f) fsp.unlink(path.join(IMAGES, f)).catch(() => { /* noop */ });
-      }
-      for (const v of item.videos || []) {
-        fsp.unlink(path.join(VIDEOS, v.file)).catch(() => { /* noop */ });
-      }
-      return json(res, 200, { ok: true });
+      return serializeMediaDeletion(async () => {
+        const current = db.items.find((entry) => entry.id === itemRoute[1] && entry.profileId === req.profile.id);
+        if (!current) return json(res, 404, { error: 'Not found' });
+        const remainingItems = db.items.filter((entry) => entry.id !== current.id);
+        const refs = unreferencedAssetRefs([current], remainingItems);
+        const trashRoot = path.join(
+          TRASH_ROOT, 'profiles', profileOutputFolder(req.profile), 'items', `${Date.now()}_${current.id}`
+        );
+        let moved;
+        try {
+          moved = await moveAssetRefsToTrash(refs, { imageRoot: IMAGES, videoRoot: VIDEOS, trashRoot });
+        } catch (error) {
+          console.error('[trash] item delete failed:', error.message);
+          return json(res, 500, { error: 'Could not move this generation to trash. Nothing was deleted.' });
+        }
+        db.items = remainingItems;
+        saveDb();
+        return json(res, 200, { ok: true, movedToTrash: moved.length });
+      });
     }
     return json(res, 200, item);
   }

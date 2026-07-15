@@ -8528,6 +8528,11 @@ body.sheet-open {
   font-weight: 850;
 }
 .settings-cache-clear:disabled { opacity: .45; }
+.trash-management-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.trash-management-row > span { min-width: 0; display: grid; gap: 3px; }
+.trash-management-row strong { color: var(--ink); font-size: 11px; }
+.trash-management-row small { color: var(--muted-2); font-size: 10px; font-weight: 700; line-height: 1.35; }
+.trash-empty { flex: 0 0 auto; margin-top: 0; border-color: rgba(234,67,53,.38); color: #ffaaa3; }
 .settings-choice { position: relative; }
 .settings-choice-trigger {
   width: 100%;

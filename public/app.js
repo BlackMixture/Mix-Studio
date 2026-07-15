@@ -17282,21 +17282,21 @@ $('#selDelete').addEventListener('click', async () => {
   const deletingOneGroup = includesWholeGroups && selectedCount === 1;
   if (!await askConfirm({
     title: deletingOneGroup
-      ? 'Delete this entire group?'
-      : `Delete ${ids.length} generation${ids.length > 1 ? 's' : ''}?`,
+      ? 'Move this entire group to trash?'
+      : `Move ${ids.length} generation${ids.length > 1 ? 's' : ''} to trash?`,
     message: deletingOneGroup
-      ? `All ${ids.length} generations in this group will be permanently deleted. This cannot be undone.`
+      ? `All ${ids.length} generations in this group will be moved to Mix Studio trash on this machine.`
       : (includesWholeGroups
-        ? 'This includes every generation in the selected groups and cannot be undone.'
-        : 'This cannot be undone.'),
-    confirmLabel: deletingOneGroup ? 'Delete group' : 'Delete selection',
+        ? 'This includes every generation in the selected groups. Their files will be moved to Mix Studio trash on this machine.'
+        : 'Their files will be moved to Mix Studio trash on this machine.'),
+    confirmLabel: 'Move to trash',
     danger: true,
   })) return;
   try {
     await Promise.all(ids.map((id) => api('/api/item/' + id, { method: 'DELETE' })));
     exitSelect();
     await refreshGallery();
-    toast(`Deleted ${ids.length} generation${ids.length > 1 ? 's' : ''}`);
+    toast(`Moved ${ids.length} generation${ids.length > 1 ? 's' : ''} to trash`);
   } catch (e) { toast(e.message, true); refreshGallery(); }
 });
 
@@ -18015,20 +18015,20 @@ function openLightbox(id, mediaSel) {
     mk(`${actionIconMarkup('delete')}<span>Delete video</span>`, 'danger', async () => {
       const lastOfStandalone = it.mode === 'video' && videos.length === 1;
       const msg = lastOfStandalone
-        ? 'Delete this video? It\'s the only one on this entry, so the whole gallery item goes with it.'
-        : 'Delete this video? The image stays.';
-      if (!await askConfirm({ title: 'Delete video?', message: msg.replace(/^Delete this video\?\s*/, ''), confirmLabel: 'Delete video', danger: true })) return;
+        ? 'It\'s the only video on this entry, so the whole gallery item will move to Mix Studio trash with it.'
+        : 'The video file will move to Mix Studio trash on this machine. The image stays.';
+      if (!await askConfirm({ title: 'Move video to trash?', message: msg, confirmLabel: 'Move to trash', danger: true })) return;
       if (lastOfStandalone) {
         await api('/api/item/' + it.id, { method: 'DELETE' });
         closeLightbox();
         refreshGallery();
-        toast('Video deleted');
+        toast('Video moved to trash');
         return;
       }
       await api(`/api/item/${it.id}/video/${selVideo.id}`, { method: 'DELETE' });
       await refreshGallery(true);
       openLightbox(it.id, 'image');
-      toast('Video deleted');
+      toast('Video moved to trash');
     });
   } else if (selComposite) {
     mk('↓ Save image', '', () => downloadComposite(it, selComposite));
@@ -18047,9 +18047,11 @@ function openLightbox(id, mediaSel) {
     mk(`${actionIconMarkup('delete')}<span>Delete</span>`, 'danger', async () => {
       const n = videos.length;
       if (!await askConfirm({
-        title: 'Delete image?',
-        message: n ? `Its ${n} attached video${n > 1 ? 's' : ''} will also be deleted.` : 'This cannot be undone.',
-        confirmLabel: 'Delete image',
+        title: 'Move generation to trash?',
+        message: n
+          ? `Its image files and ${n} attached video${n > 1 ? 's' : ''} will move to Mix Studio trash on this machine.`
+          : 'Its image files will move to Mix Studio trash on this machine.',
+        confirmLabel: 'Move to trash',
         danger: true,
       })) return;
       await api('/api/item/' + it.id, { method: 'DELETE' });
@@ -20582,6 +20584,53 @@ function mediaPreferenceControlValue(id) {
   return $('#' + id)?.getAttribute('aria-checked') === 'true';
 }
 
+async function refreshTrashStatus() {
+  const control = $('#trashManagement');
+  const status = $('#trashStatus');
+  const button = $('#trashEmpty');
+  if (!control || !status || !button) return;
+  control.hidden = !state.profileIsOwner;
+  if (!state.profileIsOwner) return;
+  status.textContent = 'Checking Mix Studio trash...';
+  button.disabled = true;
+  try {
+    const summary = await api('/api/trash');
+    const files = Math.max(0, Number(summary.files) || 0);
+    const bytes = Math.max(0, Number(summary.bytes) || 0);
+    status.textContent = files
+      ? `${files} recoverable file${files === 1 ? '' : 's'} \u00b7 ${formatSelectionBytes(bytes)}`
+      : 'Trash is empty';
+    button.disabled = files === 0;
+  } catch (error) {
+    status.textContent = error.message || 'Could not check trash';
+  }
+}
+
+async function emptyTrashFromSettings() {
+  const typed = await askText({
+    title: 'Permanently empty trash?',
+    message: 'This permanently deletes every file in Mix Studio trash and frees that disk space. Type EMPTY TRASH to continue.',
+    confirmLabel: 'Empty trash',
+    danger: true,
+    input: { label: 'Type EMPTY TRASH', expected: 'EMPTY TRASH', expectedMessage: 'Type EMPTY TRASH exactly.' },
+  });
+  if (typed == null) return;
+  const button = $('#trashEmpty');
+  button.disabled = true;
+  try {
+    const result = await api('/api/trash', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: typed }),
+    });
+    const removed = result.removed || {};
+    toast(`Permanently deleted ${Number(removed.files) || 0} trashed file${Number(removed.files) === 1 ? '' : 's'}`);
+  } catch (error) {
+    toast(error.message, true);
+  }
+  await refreshTrashStatus();
+}
+
 ['setVideoPreviews', 'setPreviewCache', 'setSmartFilenames'].forEach((id) => {
   $('#' + id).addEventListener('click', () => {
     const button = $('#' + id);
@@ -20589,6 +20638,7 @@ function mediaPreferenceControlValue(id) {
   });
 });
 $('#previewCacheClear').addEventListener('click', clearPreviewCache);
+$('#trashEmpty').addEventListener('click', emptyTrashFromSettings);
 
 function setSvAttnValue(value) {
   const next = svAttentionOptions[value] ? value : 'sdpa';
@@ -23094,6 +23144,7 @@ $('#settingsBtn').addEventListener('click', async () => {
   setMediaPreferenceControl('setVideoPreviews', state.mediaPreferences.videoPreviews);
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);
   refreshPreviewCacheStatus();
+  refreshTrashStatus().catch(() => {});
   setSettingsTab(settingsActiveTab);
   $('#settingsSheet').classList.add('show');
   renderHealth();
