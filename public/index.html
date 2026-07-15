@@ -198,10 +198,19 @@
         <button class="director-icon-button" id="directorProjectMenuBtn" type="button" aria-label="Open Director project menu" aria-haspopup="dialog" aria-controls="directorProjectMenuSheet">…</button>
       </div>
     </header>
-    <nav class="director-mode-switch" id="directorModeSwitch" aria-label="Director workflow">
-      <button id="directorModeExtend" type="button" data-director-mode="extend"><span>Extend</span><small>Continue a clip</small></button>
-      <button id="directorModeKeyframes" type="button" data-director-mode="keyframes"><span>Keyframes</span><small>Guide with images</small></button>
-      <button id="directorModeTimeline" type="button" data-director-mode="timeline"><span>Timeline</span><small>Full control</small></button>
+    <section class="director-workflow-chooser" id="directorWorkflowChooser" aria-labelledby="directorWorkflowTitle" hidden>
+      <div class="director-workflow-heading"><span>Start with a workflow</span><h2 id="directorWorkflowTitle">How do you want to direct this video?</h2><p>Choose a focused setup now. You can switch workflows at any time.</p></div>
+      <div class="director-workflow-cards">
+        <button id="directorChooseExtend" type="button" data-workflow-card="extend"><span class="director-workflow-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h10a2 2 0 0 1 2 2v2l4-2.4v10.8L16 15v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h10V7H4Zm12 4.3v1.4l2 1.2v-3.8l-2 1.2ZM9 8l4 4-4 4v-3H5v-2h4V8Z"/></svg></span><span><b>Extend video</b><small>Continue a clip with matching motion and sound</small></span><i aria-hidden="true">›</i></button>
+        <button id="directorChooseKeyframes" type="button" data-workflow-card="keyframes"><span class="director-workflow-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h12v4h4v12H8v-4H4V4Zm2 2v8h8V6H6Zm4 10v2h8v-8h-2v6h-6Zm-2-8 2.1 2.5 1.4-1.6L14 12H6l2-4Z"/></svg></span><span><b>Keyframe video</b><small>Add images in order and let Director connect them</small></span><i aria-hidden="true">›</i></button>
+        <button id="directorChooseTimeline" type="button" data-workflow-card="timeline"><span class="director-workflow-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 5h18v3H3V5Zm0 5h18v9H3v-9Zm2 2v5h3v-5H5Zm5 0v5h5v-5h-5Zm7 0v5h2v-5h-2ZM8 3h2v18H8V3Z"/></svg></span><span><b>Timeline</b><small>Control prompts, media, motion, and timing</small></span><i aria-hidden="true">›</i></button>
+      </div>
+    </section>
+    <nav class="director-mode-switch" id="directorModeSwitch" aria-label="Director workflow" data-active-mode="timeline">
+      <span class="director-mode-indicator" aria-hidden="true"></span>
+      <button id="directorModeExtend" type="button" data-director-mode="extend"><span class="director-mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h10a2 2 0 0 1 2 2v2l4-2.4v10.8L16 15v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h10V7H4Zm12 4.3v1.4l2 1.2v-3.8l-2 1.2ZM9 8l4 4-4 4v-3H5v-2h4V8Z"/></svg></span><span class="director-mode-copy"><span>Extend</span><small>Continue a clip</small></span></button>
+      <button id="directorModeKeyframes" type="button" data-director-mode="keyframes"><span class="director-mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h12v4h4v12H8v-4H4V4Zm2 2v8h8V6H6Zm4 10v2h8v-8h-2v6h-6Zm-2-8 2.1 2.5 1.4-1.6L14 12H6l2-4Z"/></svg></span><span class="director-mode-copy"><span>Keyframes</span><small>Guide with images</small></span></button>
+      <button id="directorModeTimeline" type="button" data-director-mode="timeline"><span class="director-mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 5h18v3H3V5Zm0 5h18v9H3v-9Zm2 2v5h3v-5H5Zm5 0v5h5v-5h-5Zm7 0v5h2v-5h-2ZM8 3h2v18H8V3Z"/></svg></span><span class="director-mode-copy"><span>Timeline</span><small>Full control</small></span></button>
     </nav>
     <div class="director-direction-stack">
       <aside class="director-extension-source" id="directorExtensionSource" aria-label="Video continuation source" hidden>
@@ -229,7 +238,7 @@
         </button>
         <div class="director-preset-controls" id="directorExtendControls" hidden>
           <label>New footage <span><input id="directorExtendDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" /> seconds</span></label>
-          <label class="director-preset-check"><input id="directorExtendContinueAudio" type="checkbox" checked /> Continue the original sound</label>
+          <button class="director-setting-toggle director-preset-toggle" id="directorExtendContinueAudio" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Continue original sound</strong><small>Carry source audio into the new footage</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
           <button class="director-preset-change" id="directorExtendChange" type="button">Change video</button>
         </div>
       </div>
@@ -272,6 +281,7 @@
         </div>
         <small class="director-field-validation director-validation-inline" id="directorValidationInline" role="alert"></small>
       </div>
+      <button class="director-inspector-backdrop" id="directorInspectorBackdrop" type="button" aria-label="Deselect segment" tabindex="-1" hidden></button>
       <aside class="director-inspector" id="directorInspector" aria-label="Selected segment editor" hidden>
         <section id="directorEmptyInspector" hidden></section>
         <section id="directorSegmentInspector" hidden>
@@ -294,7 +304,7 @@
               <label>Duration <span class="director-unit">frames</span><input id="directorSegmentLength" type="number" min="1" max="24000" step="1" /></label>
               <label id="directorAttentionStrengthField">Attention<input id="directorAttentionStrength" type="number" min="0" max="1" step="0.05" /></label>
               <label id="directorTrimField">Source trim <span class="director-unit">frames</span><input id="directorTrimStart" type="number" min="0" max="24000" step="1" /></label>
-              <label class="director-inspector-wide" id="directorEndFrameField"><input id="directorEndFrame" type="checkbox" /> Use as end frame</label>
+              <div class="director-inspector-wide" id="directorEndFrameField"><button class="director-setting-toggle" id="directorEndFrame" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>Use as end frame</strong><small>Make this image the landing frame</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button></div>
             </div>
             <div class="director-inspector-actions"><button id="directorReplace" type="button">Replace</button><button id="directorSplit" type="button">Split</button><button id="directorDuplicate" type="button">Duplicate</button><button id="directorDelete" class="danger" type="button">Delete</button></div>
           </div>
@@ -340,31 +350,32 @@
       </section>
     </div>
 
-    <div class="sheet director-sheet" id="directorSettingsSheet">
+    <div class="sheet director-sheet director-modal-sheet" id="directorSettingsSheet">
       <section class="sheet-panel director-sheet-panel director-settings-panel" role="dialog" aria-modal="true" aria-labelledby="directorSettingsTitle">
         <h3 class="sheet-title" id="directorSettingsTitle"><span>Director Settings</span><button data-close type="button" aria-label="Close Director settings">✕</button></h3>
         <section class="director-project-settings">
+          <div class="director-settings-section-heading"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h16v14H4V5Zm2 2v10h12V7H6Zm2 2h8v2H8V9Zm0 4h5v2H8v-2Z"/></svg></span><div><strong>Output</strong><small>Sequence size, length, and playback</small></div></div>
           <div class="director-field-grid">
             <label>Sequence duration <span class="director-unit">seconds</span><input id="directorDuration" type="number" min="0.04" max="1000" step="0.01" /></label>
             <label>Batch<input id="directorBatch" type="number" min="1" max="8" step="1" /></label>
             <label>Width<input id="directorWidth" type="number" min="256" max="4096" step="64" /></label>
             <label>Height<input id="directorHeight" type="number" min="256" max="4096" step="64" /></label>
             <label>Smoothing<select id="directorSmooth"><option value="1">Off</option><option value="2">2×</option><option value="3">3×</option></select></label>
-            <label><input id="directorFourK" type="checkbox" /> 4K output</label>
-            <label class="director-inspector-wide" id="directorContinueAudioField" hidden><input id="directorContinueAudio" type="checkbox" checked /> Continue sound into the new footage</label>
-            <label class="director-inspector-wide"><input id="directorInpaintAudio" type="checkbox" checked /> Generate audio in gaps</label>
-            <label class="director-inspector-wide"><input id="directorOverrideAudio" type="checkbox" /> Use motion guide video audio</label>
+            <button class="director-setting-toggle" id="directorFourK" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>4K output</strong><small>Upscale the finished sequence</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
+            <div class="director-inspector-wide" id="directorContinueAudioField" hidden><button class="director-setting-toggle" id="directorContinueAudio" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Continue source sound</strong><small>Carry audio into the generated extension</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button></div>
+            <button class="director-setting-toggle director-inspector-wide" id="directorInpaintAudio" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Generate audio in gaps</strong><small>Fill uncovered audio regions automatically</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
+            <button class="director-setting-toggle director-inspector-wide" id="directorOverrideAudio" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>Use motion guide audio</strong><small>Follow sound from the motion guide video</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
           </div>
           <div class="director-lora-section">
             <div class="director-lora-heading">
-              <div><strong>Style LoRAs</strong><small id="directorLoraSummary">None selected</small></div>
+              <span class="director-settings-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7L12 2Zm7 12 1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z"/></svg></span><div><strong>Style LoRAs</strong><small id="directorLoraSummary">None selected</small></div>
               <button id="directorAddLora" type="button">+ Add LoRA</button>
             </div>
             <div class="director-lora-list" id="directorLoraList" aria-label="Director LoRAs"></div>
           </div>
         </section>
         <details class="director-settings-advanced">
-          <summary>Advanced</summary>
+          <summary><span class="director-settings-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm14-2h2v6h-2V5ZM4 15h4v2H4v-2Zm8-2h2v6h-2v-6Zm4 2h4v2h-4v-2ZM10 6h2v4h-2V6Z"/></svg></span><span><strong>Advanced</strong><small>Precision timing, overrides, and timeline behavior</small></span><i aria-hidden="true">＋</i></summary>
           <div class="director-field-grid">
             <label>Seed<input id="directorSeed" type="number" min="0" step="1" placeholder="Random" /></label>
             <label class="director-inspector-wide">Motion guide LoRA override<input id="directorIcLora" type="text" placeholder="Use owner-configured Ingredients model" /></label>
@@ -381,9 +392,9 @@
             <div class="director-transport">
               <button id="directorPlay" type="button" aria-label="Play timeline">▶ <span>Play</span></button>
               <label>Playhead <input id="directorPlayhead" type="number" min="0" max="24000" step="1" value="0" /> <span class="director-unit">frames</span></label>
-              <label class="director-checkbox"><input id="directorAutoFit" type="checkbox" /> Fit full timeline</label>
+              <button class="director-setting-toggle" id="directorAutoFit" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>Fit full timeline</strong><small>Show the entire sequence at once</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
               <label class="director-zoom">Zoom <input id="directorZoom" type="range" min="80" max="960" step="10" value="320" /></label>
-              <label class="director-checkbox"><input id="directorSnap" type="checkbox" checked /> Snap while dragging</label>
+              <button class="director-setting-toggle" id="directorSnap" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Snap while dragging</strong><small>Align clips to whole-frame positions</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
             </div>
             <p class="director-timeline-help">Arrow keys move one frame. Shift + Arrow moves one second.</p>
           </div>
@@ -545,18 +556,6 @@
       </div>
     </div>
   </section>
-
-  <div class="sheet director-start-sheet" id="directorStartSheet">
-    <section class="sheet-panel director-start-panel" role="dialog" aria-modal="true" aria-labelledby="directorStartTitle">
-      <h3 class="sheet-title"><span id="directorStartTitle">Create with LTX Director</span><button data-close type="button" aria-label="Close Director choices">✕</button></h3>
-      <p class="director-start-copy">Choose the lightest workflow for this video. You can switch to the full timeline at any time.</p>
-      <div class="director-start-actions">
-        <button id="directorChooseExtend" type="button"><span class="director-start-icon" aria-hidden="true">↗</span><span><b>Extend video</b><small>Continue a clip with matching motion and sound</small></span><i aria-hidden="true">›</i></button>
-        <button id="directorChooseKeyframes" type="button"><span class="director-start-icon" aria-hidden="true">▧</span><span><b>Keyframe video</b><small>Add images in order and let Director connect them</small></span><i aria-hidden="true">›</i></button>
-        <button id="directorChooseTimeline" type="button"><span class="director-start-icon" aria-hidden="true">⌁</span><span><b>Timeline</b><small>Control prompts, media, motion, and timing</small></span><i aria-hidden="true">›</i></button>
-      </div>
-    </section>
-  </div>
 
   <section class="panel" id="promptPanel">
     <div class="panel-label" id="promptLabel">Prompt</div>
@@ -1820,9 +1819,9 @@
 
 <!-- LoRA picker sheet -->
 <div class="sheet" id="loraPickSheet">
-  <div class="sheet-panel">
+  <div class="sheet-panel lora-picker-panel">
     <h3 class="sheet-title"><span id="loraPickTitle">Add LoRA</span> <button data-close>✕</button></h3>
-    <input class="lora-search" id="loraSearch" type="text" placeholder="Search LoRAs…" />
+    <label class="lora-picker-search" for="loraSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg><input class="lora-search" id="loraSearch" type="search" placeholder="Search LoRAs…" autocomplete="off" /></label>
     <div class="lora-pick-list" id="loraPickList"></div>
   </div>
 </div>

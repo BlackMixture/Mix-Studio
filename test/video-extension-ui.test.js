@@ -30,7 +30,7 @@ test('Director identifies, summarizes, persists, and can remove its continuation
   assert.match(app, /s new · .*s total/);
   assert.match(app, /directorExtensionSourceRemove'\)\.addEventListener\('click'/);
   assert.match(app, /state\.directorProject\.extensionSource = null/);
-  assert.match(app, /project\.extensionSource\.continueAudio = \$\('#directorContinueAudio'\)\.checked/);
+  assert.match(app, /project\.extensionSource\.continueAudio = directorToggleValue\('directorContinueAudio'\)/);
 });
 
 test('Director extension generation resolves the source through the signed-in profile and creates one joined gallery version', () => {

@@ -35,7 +35,7 @@ test('Director is a pinned LTX model workflow and not a navigation destination',
   assert.match(app, /function renderDirectorModelChoices\(\)/);
   assert.match(app, /closeDirectorMode\(\);[\s\S]{0,100}source\.click\(\)/);
   assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
-  assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,260}openDirectorStart\(\)/);
+  assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,260}openDirectorWorkflowChooser\(\)/);
 });
 
 test('Director timeline exposes accessible drag and exact-value editing at 24 fps', () => {
@@ -81,11 +81,20 @@ test('Director defaults to a focused Story timeline with progressive disclosure'
 });
 
 test('Director offers streamlined Extend and Keyframe presets beside the full timeline', () => {
-  for (const id of ['directorStartSheet', 'directorChooseExtend', 'directorChooseKeyframes', 'directorChooseTimeline', 'directorModeSwitch', 'directorExtendPreset', 'directorKeyframePreset']) {
+  for (const id of ['directorWorkflowChooser', 'directorChooseExtend', 'directorChooseKeyframes', 'directorChooseTimeline', 'directorModeSwitch', 'directorExtendPreset', 'directorKeyframePreset']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.doesNotMatch(html, /id="directorStartSheet"/, 'workflow choice belongs in the Director workspace, not a popup');
+  assert.ok(html.indexOf('id="directorWorkflowChooser"') > html.indexOf('id="directorWorkspace"'));
+  assert.match(openingTagById(html, 'directorModeSwitch'), /data-active-mode="timeline"/);
+  assert.match(html, /class="director-mode-indicator"/);
+  assert.match(html, /id="directorChooseExtend"[\s\S]{0,300}<svg/);
+  assert.match(html, /id="directorChooseKeyframes"[\s\S]{0,300}<svg/);
+  assert.match(html, /id="directorChooseTimeline"[\s\S]{0,300}<svg/);
   for (const label of ['Extend video', 'Keyframe video', 'Timeline']) assert.match(html, new RegExp(`>\\s*${label}\\s*<`));
   assert.match(app, /directorComposerMode: state\.directorComposerMode/);
+  assert.match(app, /function openDirectorWorkflowChooser\(\)[\s\S]{0,180}chooseWorkflow: true/);
+  assert.match(app, /directorWorkflowChooser'\)\.hidden = !directorChoosingWorkflow/);
   assert.match(app, /function startDirectorWorkflow\(mode\)/);
   assert.match(app, /function switchDirectorWorkflow\(mode\)/);
   assert.match(app, /timeline\.hidden = streamlined/);
@@ -129,7 +138,11 @@ test('Director has a project-scoped LoRA picker and editable LoRA stack', () => 
   assert.match(app, /openLoraPicker\([\s\S]{0,700}title: 'Add Director LoRA'/);
   assert.match(app, /exclude: loras\.map\(\(lora\) => lora\.name\)/);
   assert.match(app, /loras: project\.output\.loras \|\| state\.videoLoras/);
+  assert.match(app, /toggle\.setAttribute\('aria-checked', String\(lora\.on\)\)/);
+  assert.match(app, /toggle\.innerHTML = '<span class="settings-media-switch"/);
+  assert.match(app, /row\.addEventListener\('click', \(event\) => \{[\s\S]{0,100}event\.stopPropagation\(\)[\s\S]{0,100}pick\(name\)/);
   assert.match(css, /\.director-lora-item\.on/);
+  assert.match(css, /\.lora-picker-panel\s*\{[^}]*height:\s*min\(620px,calc\(100dvh - 40px\)\)/);
 });
 
 test('Selected timeline segments expose contextual add and delete controls outside the segment button', () => {
@@ -221,6 +234,11 @@ test('Director auto-fit, partial ranges, contextual inspector, and drag gating a
   assert.match(app, /const cancel = \(\) => \{[\s\S]{0,420}segment\.start = original\.start[\s\S]{0,180}renderDirector\(\)/);
   assert.doesNotMatch(app.match(/const cancel = \(\) => \{[\s\S]*?\n\s*\};\n\s*window\.addEventListener\('pointermove'/)?.[0] || '', /directorOpenInspector\(\)/);
   assert.match(app, /directorTimelineCanvas'\)\.addEventListener\('click'[\s\S]{0,240}directorSuppressClickUntil[\s\S]{0,100}return/);
+  assert.match(app, /directorTimelineCanvas'\)\.addEventListener\('click'[\s\S]{0,700}directorDeselect\(\)/);
+  assert.match(app, /function directorDeselect\(\)[\s\S]{0,180}state\.directorSelection = null;[\s\S]{0,100}directorCloseInspector\(\)/);
+  assert.match(openingTagById(html, 'directorInspectorBackdrop'), /aria-label="Deselect segment"/);
+  assert.match(app, /directorInspectorBackdrop'\)\.addEventListener\('click', directorDeselect\)/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.director-inspector-backdrop\s*\{[\s\S]{0,220}position:\s*fixed/);
 });
 
 test('Director starts populated timelines at a comfortable scrollable scale', () => {
@@ -232,12 +250,29 @@ test('Director starts populated timelines at a comfortable scrollable scale', ()
   assert.match(app, /openDirectorMode\(project, options = \{\}\)[\s\S]{0,1200}directorWorkspace'\)\.hidden = false;[\s\S]{0,120}directorUseComfortableTimelineScale\(\)/);
   assert.match(css, /\.director-timeline\s*\{[^}]*overflow-x:\s*auto[^}]*scrollbar-gutter:\s*stable/);
   assert.doesNotMatch(css, /\.director-workspace\.auto-fit \.director-timeline-canvas\s*\{[^}]*width:\s*100%\s*!important/);
-  assert.doesNotMatch(openingTagById(html, 'directorAutoFit'), /\bchecked\b/);
-  assert.match(html, /<label class="director-checkbox"><input id="directorAutoFit"[^>]*\/> Fit full timeline<\/label>/);
+  const autoFit = openingTagById(html, 'directorAutoFit');
+  assert.match(autoFit, /role="switch"/);
+  assert.match(autoFit, /aria-checked="false"/);
+  assert.doesNotMatch(autoFit, /\schecked(?:\s|=|>)/);
   const zoom = openingTagById(html, 'directorZoom');
   assert.match(zoom, /min="80"/);
   assert.match(zoom, /max="960"/);
   assert.match(zoom, /value="320"/);
+});
+
+test('Director settings use centered app-native animated switches', () => {
+  assert.match(openingTagById(html, 'directorSettingsSheet'), /\bdirector-modal-sheet\b/);
+  for (const id of ['directorFourK', 'directorContinueAudio', 'directorInpaintAudio', 'directorOverrideAudio', 'directorAutoFit', 'directorSnap', 'directorEndFrame']) {
+    const control = openingTagById(html, id);
+    assert.match(control, /<button\b/);
+    assert.match(control, /role="switch"/);
+    assert.match(control, /aria-checked="(?:true|false)"/);
+  }
+  assert.doesNotMatch(html.match(/<div class="sheet director-sheet director-modal-sheet" id="directorSettingsSheet">[\s\S]*?<\/div>\s*<\/div>\s*<div class="sheet/s)?.[0] || '', /type="checkbox"/);
+  assert.match(app, /function wireDirectorToggle\(id, onChange\)/);
+  assert.match(css, /\.director-modal-sheet\s*\{[^}]*align-items:\s*center/);
+  assert.match(css, /\.director-setting-toggle\[aria-checked="true"\]/);
+  assert.match(css, /\.director-settings-advanced\[open\][\s\S]{0,260}rotate\(45deg\)/);
 });
 
 test('Director gives instant keyframes usable controls without changing frame precision', () => {

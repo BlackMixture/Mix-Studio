@@ -8430,6 +8430,7 @@ function openLoraPicker(onPick, opts) {
   renderLoraPicker('');
   $('#loraPickSheet').classList.add('show');
   syncSheetScrollLock();
+  requestAnimationFrame(() => $('#loraSearch')?.focus({ preventScroll: true }));
 }
 function closeLoraPicker() {
   $('#loraPickSheet').classList.remove('show');
@@ -8455,6 +8456,7 @@ function renderLoraPicker(query) {
   };
   if (loraPickAllowNone && !q) {
     const none = document.createElement('button');
+    none.type = 'button';
     none.className = 'lora-pick-row';
     none.innerHTML = '<span class="lp-thumb">–</span>None';
     none.addEventListener('click', () => pick(''));
@@ -8468,9 +8470,14 @@ function renderLoraPicker(query) {
   }
   for (const name of names.slice(0, 200)) {
     const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'lora-pick-row';
     row.innerHTML = `${loraThumbHtml(name, 'lp-thumb')}${escapeHtml(prettyLora(name))}`;
-    row.addEventListener('click', () => pick(name));
+    row.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      pick(name);
+    });
     listEl.appendChild(row);
   }
 }
@@ -8757,6 +8764,7 @@ let directorScaleCustomized = false;
 let directorNeedsRangeScroll = false;
 let directorSuppressClickUntil = 0;
 let directorAddContext = null;
+let directorChoosingWorkflow = false;
 
 function directorStorageKey() { return profileStorageKey('ks-director'); }
 function directorId(prefix = 'segment') {
@@ -8769,6 +8777,22 @@ function directorFramesToSeconds(frames) {
 function directorSecondsToFrames(seconds, { minimum = 0 } = {}) {
   const value = Number(seconds);
   return Math.max(minimum, Math.round((Number.isFinite(value) ? value : 0) * DIRECTOR_FPS));
+}
+function directorToggleValue(id) {
+  return $(`#${id}`)?.getAttribute('aria-checked') === 'true';
+}
+function setDirectorToggleValue(id, value) {
+  const button = $(`#${id}`);
+  if (button) button.setAttribute('aria-checked', String(!!value));
+}
+function wireDirectorToggle(id, onChange) {
+  const button = $(`#${id}`);
+  if (!button) return;
+  button.addEventListener('click', () => {
+    if (button.disabled) return;
+    setDirectorToggleValue(id, !directorToggleValue(id));
+    if (onChange) onChange(button);
+  });
 }
 function directorUsesPartialRange(project = state.directorProject) {
   if (!project) return false;
@@ -9058,11 +9082,11 @@ function directorSetFormValues() {
   $('#directorBatch').value = project.output.batch;
   $('#directorSmooth').value = String(project.output.smooth);
   $('#directorSeed').value = project.output.seed;
-  $('#directorFourK').checked = project.output.fourK;
+  setDirectorToggleValue('directorFourK', project.output.fourK);
   $('#directorContinueAudioField').hidden = !project.extensionSource;
-  $('#directorContinueAudio').checked = project.extensionSource?.continueAudio !== false;
-  $('#directorInpaintAudio').checked = project.settings.inpaintAudio;
-  $('#directorOverrideAudio').checked = project.settings.overrideAudio;
+  setDirectorToggleValue('directorContinueAudio', project.extensionSource?.continueAudio !== false);
+  setDirectorToggleValue('directorInpaintAudio', project.settings.inpaintAudio);
+  setDirectorToggleValue('directorOverrideAudio', project.settings.overrideAudio);
   $('#directorOverrideAudio').disabled = !project.motionSegments.some((segment) => !segment.isStaticImage);
   $('#directorIcLora').value = project.settings.icLoraName;
   const extending = !!project.extensionSource;
@@ -9121,8 +9145,9 @@ function renderDirectorLoras() {
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'director-lora-toggle';
-    toggle.textContent = lora.on ? 'On' : 'Off';
-    toggle.setAttribute('aria-pressed', String(lora.on));
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-checked', String(lora.on));
+    toggle.innerHTML = '<span class="settings-media-switch" aria-hidden="true"><i></i></span>';
     toggle.setAttribute('aria-label', `${lora.on ? 'Disable' : 'Enable'} ${prettyLora(lora.name)}`);
     toggle.addEventListener('click', () => {
       lora.on = !lora.on;
@@ -9424,6 +9449,7 @@ function renderDirectorPreset() {
   const timeline = $('#directorLayout');
   if (!preset || !timeline || !project) return;
   $('#directorWorkspace').dataset.composerMode = mode;
+  $('#directorModeSwitch').dataset.activeMode = mode;
   $$('#directorModeSwitch [data-director-mode]').forEach((button) => {
     const active = button.dataset.directorMode === mode;
     button.classList.toggle('active', active);
@@ -9439,7 +9465,7 @@ function renderDirectorPreset() {
     $('#directorExtendChoose').hidden = hasSource;
     $('#directorExtendControls').hidden = !hasSource;
     $('#directorExtendDuration').value = directorFramesToSeconds(project.durationFrames);
-    $('#directorExtendContinueAudio').checked = project.extensionSource?.continueAudio !== false;
+    setDirectorToggleValue('directorExtendContinueAudio', project.extensionSource?.continueAudio !== false);
   } else if (mode === 'keyframes') {
     $('#directorKeyframeDuration').value = directorFramesToSeconds(project.durationFrames);
     renderDirectorKeyframePreset();
@@ -9536,6 +9562,8 @@ function directorOpenInspector() {
   else inspector.removeAttribute('aria-modal');
   $('#directorLayout')?.classList.add('inspector-open');
   document.body.classList.add('director-inspector-open');
+  const backdrop = $('#directorInspectorBackdrop');
+  if (backdrop) backdrop.hidden = window.innerWidth > 720;
   if (layoutChanged && window.innerWidth >= 900 && directorAutoFit) requestAnimationFrame(renderDirector);
 }
 
@@ -9547,9 +9575,16 @@ function directorCloseInspector() {
     inspector.hidden = true;
   }
   $('#directorLayout')?.classList.remove('inspector-open');
+  if ($('#directorInspectorBackdrop')) $('#directorInspectorBackdrop').hidden = true;
   document.body.classList.remove('director-inspector-open');
   setDirectorDisclosure('directorInspectorAdvancedBtn', 'directorInspectorAdvanced', false);
   if (layoutChanged && state.directorOpen && window.innerWidth >= 900 && directorAutoFit) requestAnimationFrame(renderDirector);
+}
+
+function directorDeselect() {
+  state.directorSelection = null;
+  directorCloseInspector();
+  renderDirector();
 }
 
 function renderDirectorInspector() {
@@ -9580,7 +9615,7 @@ function renderDirectorInspector() {
   $('#directorTrimField').hidden = !['audio', 'motion_video'].includes(segment.type) || segment.isStaticImage;
   $('#directorTrimStart').value = segment.trimStart || 0;
   $('#directorEndFrameField').hidden = segment.type !== 'image';
-  $('#directorEndFrame').checked = segment.isEndFrame === true;
+  setDirectorToggleValue('directorEndFrame', segment.isEndFrame === true);
   $('#directorReplace').hidden = !directorAssetName(segment);
   if ($('#directorInspectorValidation')) $('#directorInspectorValidation').textContent = '';
 }
@@ -9597,6 +9632,8 @@ function renderDirectorPlayhead() {
 function renderDirector() {
   const project = state.directorProject;
   if (!project || !state.directorOpen) return;
+  $('#directorWorkspace').classList.toggle('choosing-workflow', directorChoosingWorkflow);
+  $('#directorWorkflowChooser').hidden = !directorChoosingWorkflow;
   if (!['extend', 'keyframes', 'timeline'].includes(state.directorComposerMode)) state.directorComposerMode = 'timeline';
   const extension = project.extensionSource;
   const extensionEntry = directorExtensionVideo(extension);
@@ -9651,7 +9688,7 @@ function renderDirector() {
   renderDirectorPreset();
   renderDirectorInspector();
   if ($('#directorAutoFit')) {
-    $('#directorAutoFit').checked = directorAutoFit && project.durationFrames <= DIRECTOR_MAX_WINDOW;
+    setDirectorToggleValue('directorAutoFit', directorAutoFit && project.durationFrames <= DIRECTOR_MAX_WINDOW);
     $('#directorAutoFit').disabled = project.durationFrames > DIRECTOR_MAX_WINDOW;
   }
   if ($('#directorZoom')) $('#directorZoom').value = String(Math.min(Number($('#directorZoom').max) || 160, Math.round(directorPixelsPerSecond)));
@@ -9684,17 +9721,9 @@ function renderDirector() {
   }
 }
 
-function openDirectorStart() {
-  const sheet = $('#directorStartSheet');
-  if (!sheet) return;
-  sheet.classList.add('show');
-  syncSheetScrollLock();
+function openDirectorWorkflowChooser() {
+  openDirectorMode(undefined, { chooseWorkflow: true });
   requestAnimationFrame(() => $('#directorChooseExtend')?.focus({ preventScroll: true }));
-}
-
-function closeDirectorStart() {
-  $('#directorStartSheet')?.classList.remove('show');
-  syncSheetScrollLock();
 }
 
 function openDirectorMode(project, options = {}) {
@@ -9712,6 +9741,7 @@ function openDirectorMode(project, options = {}) {
   state.directorComposerMode = ['extend', 'keyframes', 'timeline'].includes(options.mode)
     ? options.mode
     : (state.directorProject.extensionSource ? 'extend' : (state.directorComposerMode || 'timeline'));
+  directorChoosingWorkflow = options.chooseWorkflow === true;
   state.directorOpen = true;
   state.directorSelection = null;
   state.directorPlayhead = state.directorProject.range.startFrame;
@@ -9728,7 +9758,7 @@ function openDirectorMode(project, options = {}) {
 }
 
 function startDirectorWorkflow(mode) {
-  closeDirectorStart();
+  directorChoosingWorkflow = false;
   if (mode === 'timeline') {
     openDirectorMode(undefined, { mode: 'timeline' });
     return;
@@ -9753,6 +9783,7 @@ function switchDirectorWorkflow(mode) {
     state.directorProject = directorNormalizeClientProject(project);
   }
   state.directorComposerMode = mode;
+  directorChoosingWorkflow = false;
   state.directorSelection = null;
   directorCloseInspector();
   if (mode === 'keyframes') directorRedistributeKeyframes();
@@ -9879,6 +9910,7 @@ function openDirectorExtension(item, video) {
 
 function closeDirectorMode() {
   state.directorOpen = false;
+  directorChoosingWorkflow = false;
   directorAddContext = null;
   directorReplaceTarget = null;
   stopDirectorPlayback();
@@ -10038,10 +10070,10 @@ function directorUpdateProjectFields() {
   project.output.smooth = [1, 2, 3].includes(Number($('#directorSmooth').value)) ? Number($('#directorSmooth').value) : 1;
   const seed = Number($('#directorSeed').value);
   project.output.seed = Number.isSafeInteger(seed) && seed >= 0 && $('#directorSeed').value !== '' ? seed : '';
-  project.output.fourK = $('#directorFourK').checked;
-  if (project.extensionSource) project.extensionSource.continueAudio = $('#directorContinueAudio').checked;
-  project.settings.inpaintAudio = $('#directorInpaintAudio').checked;
-  project.settings.overrideAudio = $('#directorOverrideAudio').checked && project.motionSegments.some((segment) => !segment.isStaticImage);
+  project.output.fourK = directorToggleValue('directorFourK');
+  if (project.extensionSource) project.extensionSource.continueAudio = directorToggleValue('directorContinueAudio');
+  project.settings.inpaintAudio = directorToggleValue('directorInpaintAudio');
+  project.settings.overrideAudio = directorToggleValue('directorOverrideAudio') && project.motionSegments.some((segment) => !segment.isStaticImage);
   project.settings.icLoraName = $('#directorIcLora').value.trim().slice(0, 512);
   renderDirector();
   saveDirectorProject();
@@ -10270,7 +10302,7 @@ function toggleDirectorPlayback() {
 }
 
 function directorSnapFrame(frame, event) {
-  if (!$('#directorSnap').checked || event.altKey) return Math.round(frame);
+  if (!directorToggleValue('directorSnap') || event.altKey) return Math.round(frame);
   return Math.round(frame / 6) * 6;
 }
 
@@ -10426,9 +10458,6 @@ function directorOpenMediaPicker(kind) {
 $('#directorChooseExtend').addEventListener('click', () => startDirectorWorkflow('extend'));
 $('#directorChooseKeyframes').addEventListener('click', () => startDirectorWorkflow('keyframes'));
 $('#directorChooseTimeline').addEventListener('click', () => startDirectorWorkflow('timeline'));
-$('#directorStartSheet').addEventListener('click', (event) => {
-  if (event.target === $('#directorStartSheet') || event.target.closest('[data-close]')) closeDirectorStart();
-});
 $$('#directorModeSwitch [data-director-mode]').forEach((button) => button.addEventListener('click', () => switchDirectorWorkflow(button.dataset.directorMode)));
 $('#directorExtensionSourceRemove').addEventListener('click', () => {
   if (!state.directorProject?.extensionSource) return;
@@ -10440,8 +10469,7 @@ $('#directorExtensionSourceRemove').addEventListener('click', () => {
 $('#directorProjectMenuBtn').addEventListener('click', () => directorOpenSheet('directorProjectMenuSheet'));
 $('#directorExtendBtn').addEventListener('click', () => {
   directorCloseSheet('directorProjectMenuSheet');
-  closeDirectorMode();
-  openDirectorStart();
+  openDirectorWorkflowChooser();
 });
 $('#directorSettingsBtn').addEventListener('click', () => directorOpenSheet('directorSettingsSheet'));
 $('#directorPresetSettings').addEventListener('click', () => directorOpenSheet('directorSettingsSheet'));
@@ -10451,10 +10479,10 @@ $('#directorExtendChange').addEventListener('click', directorChooseExtensionSour
 $('#directorKeyframeAdd').addEventListener('click', () => directorOpenMediaPicker('image'));
 $('#directorExtendDuration').addEventListener('change', (event) => directorUpdatePresetDuration(event.target));
 $('#directorKeyframeDuration').addEventListener('change', (event) => directorUpdatePresetDuration(event.target));
-$('#directorExtendContinueAudio').addEventListener('change', () => {
+wireDirectorToggle('directorExtendContinueAudio', () => {
   if (!state.directorProject?.extensionSource) return;
-  state.directorProject.extensionSource.continueAudio = $('#directorExtendContinueAudio').checked;
-  $('#directorContinueAudio').checked = $('#directorExtendContinueAudio').checked;
+  state.directorProject.extensionSource.continueAudio = directorToggleValue('directorExtendContinueAudio');
+  setDirectorToggleValue('directorContinueAudio', directorToggleValue('directorExtendContinueAudio'));
   renderDirector();
   saveDirectorProject();
 });
@@ -10468,6 +10496,7 @@ $('#directorAddBefore').addEventListener('click', (event) => { event.stopPropaga
 $('#directorAddAfter').addEventListener('click', (event) => { event.stopPropagation(); directorOpenAddRelative('after'); });
 $('#directorSelectionDelete').addEventListener('click', (event) => { event.stopPropagation(); directorDeleteSelected(); });
 $('#directorInspectorClose').addEventListener('click', directorCloseInspector);
+$('#directorInspectorBackdrop').addEventListener('click', directorDeselect);
 $('#directorInspectorAdvancedBtn').addEventListener('click', () => {
   setDirectorDisclosure(
     'directorInspectorAdvancedBtn',
@@ -10486,13 +10515,13 @@ $('#directorGlobalPrompt').addEventListener('input', directorUpdateProjectFields
 $('#directorZoom').addEventListener('input', () => {
   directorAutoFit = false;
   directorScaleCustomized = true;
-  $('#directorAutoFit').checked = false;
+  setDirectorToggleValue('directorAutoFit', false);
   directorPixelsPerSecond = Number($('#directorZoom').value) || 64;
   renderDirector();
   requestAnimationFrame(directorRevealSelection);
 });
-$('#directorAutoFit').addEventListener('change', () => {
-  directorAutoFit = $('#directorAutoFit').checked;
+wireDirectorToggle('directorAutoFit', () => {
+  directorAutoFit = directorToggleValue('directorAutoFit');
   directorScaleCustomized = false;
   if (!directorAutoFit) directorPixelsPerSecond = directorComfortableTimelineScale();
   renderDirector();
@@ -10520,6 +10549,7 @@ $('#directorTimelineCanvas').addEventListener('click', (event) => {
   if (performance.now() < directorSuppressClickUntil) return;
   const target = event.target.closest('[data-director-segment]');
   if (target) directorSelect(target.dataset.directorTrackName, target.dataset.directorSegment);
+  else if (!event.target.closest('button, input, select, textarea, a')) directorDeselect();
 });
 $('#directorTimelineCanvas').addEventListener('keydown', (event) => {
   const target = event.target.closest('[data-director-segment]');
@@ -10543,7 +10573,7 @@ $('#directorSegmentName').addEventListener('input', () => { const segment = dire
 $('#directorGuideStrength').addEventListener('change', () => { const segment = directorSelected(); if (segment?.type === 'motion_video') segment.videoStrength = directorClamp($('#directorGuideStrength').value, 0, 1); else if (segment) segment.guideStrength = directorClamp($('#directorGuideStrength').value, 0, 1); renderDirector(); saveDirectorProject(); });
 $('#directorAttentionStrength').addEventListener('change', () => { const segment = directorSelected(); if (segment) segment.videoAttentionStrength = directorClamp($('#directorAttentionStrength').value, 0, 1); renderDirector(); saveDirectorProject(); });
 $('#directorTrimStart').addEventListener('change', () => { const segment = directorSelected(); if (segment) segment.trimStart = Math.max(0, Math.round(Number($('#directorTrimStart').value) || 0)); renderDirector(); saveDirectorProject(); });
-$('#directorEndFrame').addEventListener('change', () => { const segment = directorSelected(); if (segment) { state.directorProject.segments.forEach((item) => { if (item.type === 'image') item.isEndFrame = false; }); segment.isEndFrame = $('#directorEndFrame').checked; renderDirector(); saveDirectorProject(); } });
+wireDirectorToggle('directorEndFrame', () => { const segment = directorSelected(); if (segment) { state.directorProject.segments.forEach((item) => { if (item.type === 'image') item.isEndFrame = false; }); segment.isEndFrame = directorToggleValue('directorEndFrame'); renderDirector(); saveDirectorProject(); } });
 $('#directorDelete').addEventListener('click', directorDeleteSelected);
 $('#directorDuplicate').addEventListener('click', directorDuplicateSelected);
 $('#directorSplit').addEventListener('click', directorSplitSelected);
@@ -10556,9 +10586,11 @@ $('#directorReplace').addEventListener('click', () => {
   else if (segment.isStaticImage) directorOpenMediaPicker('ic-image');
   else directorOpenMediaPicker('video');
 });
-for (const selector of ['#directorDuration', '#directorRangeStart', '#directorRangeLength', '#directorWidth', '#directorHeight', '#directorBatch', '#directorSmooth', '#directorSeed', '#directorFourK', '#directorContinueAudio', '#directorInpaintAudio', '#directorOverrideAudio', '#directorIcLora']) {
+for (const selector of ['#directorDuration', '#directorRangeStart', '#directorRangeLength', '#directorWidth', '#directorHeight', '#directorBatch', '#directorSmooth', '#directorSeed', '#directorIcLora']) {
   $(selector).addEventListener(selector.includes('Prompt') || selector === '#directorIcLora' ? 'input' : 'change', directorUpdateProjectFields);
 }
+for (const id of ['directorFourK', 'directorContinueAudio', 'directorInpaintAudio', 'directorOverrideAudio']) wireDirectorToggle(id, directorUpdateProjectFields);
+wireDirectorToggle('directorSnap');
 $('#directorGenerate').addEventListener('click', generateDirector);
 $('#directorExportBtn').addEventListener('click', () => {
   directorCloseSheet('directorProjectMenuSheet');
@@ -12624,7 +12656,7 @@ $('#directorModelOption').addEventListener('click', () => {
   const ltx = $('#vidEngineRow .chip[data-engine="ltx"]');
   if (ltx && state.vidEngine !== 'ltx') ltx.click();
   setVideoModelExpanded(false);
-  openDirectorStart();
+  openDirectorWorkflowChooser();
 });
 wireEngineRow('animEngineRow', (engine) => {
   state.animEngine = engine;
