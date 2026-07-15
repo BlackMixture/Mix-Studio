@@ -1329,7 +1329,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
       <input class="overlay-title generation-name-input" id="lbTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Generation name" />
     </label>
-    <button class="icon-btn" id="lbClose">✕</button>
+    <button class="icon-btn" id="lbClose" type="button" aria-label="Close preview">✕</button>
   </div>
   <div class="lightbox-img-wrap">
     <img id="lbImg" alt="" />
@@ -1515,7 +1515,7 @@
 <!-- camera settings sheet -->
 <div class="sheet" id="cameraSheet">
   <div class="sheet-panel camera-panel">
-    <h3 class="sheet-title">Camera Settings <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Camera Settings <button data-close type="button" aria-label="Close camera settings">✕</button></h3>
     <div class="camera-preview" id="cameraPreview"></div>
 
     <div class="field camera-field-label"><label>Recommended</label></div>
@@ -1670,7 +1670,7 @@
 <!-- upscale sheet -->
 <div class="sheet" id="upscaleSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Upscale image <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Upscale image <button data-close type="button" aria-label="Close upscale settings">✕</button></h3>
     <div class="field"><label>Engine</label></div>
     <div class="chip-row" id="upEngineChips">
       <button class="chip active" data-engine="seedvr2">SeedVR2</button>
@@ -1721,7 +1721,7 @@
 <!-- lora presets sheet -->
 <div class="sheet" id="loraPresetSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">LoRA Presets <button data-close>✕</button></h3>
+    <h3 class="sheet-title">LoRA Presets <button data-close type="button" aria-label="Close LoRA presets">✕</button></h3>
     <div class="settings-note">Tap a preset to apply it to the current tab's LoRA list. Presets are shared across all your devices.</div>
     <div id="loraPresetList"></div>
   </div>
@@ -1806,13 +1806,13 @@
 <!-- move-to-folder sheet -->
 <div class="sheet" id="moveSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title"><span id="moveSheetTitle">Move to folder</span><button data-close>✕</button></h3>
+    <h3 class="sheet-title"><span id="moveSheetTitle">Move to folder</span><button data-close type="button" aria-label="Close move dialog">✕</button></h3>
     <div class="chip-row" id="moveChips"></div>
     <div class="field">
       <label>New folder</label>
       <div class="seed-wrap">
         <input id="newFolderName" type="text" placeholder="Folder name" />
-        <button class="icon-btn" id="newFolderBtn">＋</button>
+        <button class="icon-btn" id="newFolderBtn" type="button" aria-label="Create folder">＋</button>
       </div>
     </div>
   </div>
@@ -1849,7 +1849,7 @@
 <!-- profile edit sheet -->
 <div class="sheet" id="profileEditSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Edit Profile <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Edit Profile <button data-close type="button" aria-label="Close profile editor">✕</button></h3>
     <div class="profile-edit-head">
       <div class="profile-avatar-lg" id="peAvatar"></div>
       <button class="chip icon-label-btn" id="peChangePhoto"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h4l1.4-2h5.2L16 7h4v12H4V7Zm2 2v8h12V9h-3.1l-1.4-2h-3L9.1 9H6Zm6 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg><span>Change photo</span></button>
@@ -1864,7 +1864,7 @@
 <!-- manage profiles sheet (owner) -->
 <div class="sheet" id="profileManageSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Manage Profiles <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Manage Profiles <button data-close type="button" aria-label="Close profile manager">✕</button></h3>
     <div class="face-hint">As the owner profile you can rename, clear PINs, or delete any account. Deleting removes all of its generations.</div>
     <div id="profileManageList"></div>
   </div>
@@ -1873,7 +1873,7 @@
 <!-- LoRA picker sheet -->
 <div class="sheet" id="loraPickSheet">
   <div class="sheet-panel lora-picker-panel">
-    <h3 class="sheet-title"><span id="loraPickTitle">Add LoRA</span> <button data-close>✕</button></h3>
+    <h3 class="sheet-title"><span id="loraPickTitle">Add LoRA</span> <button data-close type="button" aria-label="Close LoRA picker">✕</button></h3>
     <label class="lora-picker-search" for="loraSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg><input class="lora-search" id="loraSearch" type="search" placeholder="Search LoRAs…" autocomplete="off" /></label>
     <div class="lora-pick-list" id="loraPickList"></div>
   </div>
@@ -1882,7 +1882,7 @@
 <!-- Face ID library sheet -->
 <div class="sheet" id="faceSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Face ID Library <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Face ID Library <button data-close type="button" aria-label="Close Face ID library">✕</button></h3>
     <div class="face-hint">Tap a face to use it. Tap the name to rename. Clean, frontal, well-lit close-ups give the strongest identity.</div>
     <div class="face-grid" id="faceGrid"></div>
     <div class="face-empty" id="faceEmpty" hidden>No saved faces yet — upload one below.</div>
@@ -1893,7 +1893,7 @@
 <!-- queue sheet -->
 <div class="sheet" id="queueSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Queue <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Queue <button data-close type="button" aria-label="Close queue">✕</button></h3>
     <div class="queue-health" id="queueHealth"></div>
     <div class="queue-tools">
       <button class="queue-clear-btn" id="queueClearHistoryBtn" type="button">Clear history</button>
@@ -1907,7 +1907,7 @@
 <!-- animate sheet -->
 <div class="sheet" id="animateSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Animate with LTX 2.3 <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Animate with LTX 2.3 <button data-close type="button" aria-label="Close animation settings">✕</button></h3>
     <div class="field">
       <label>Motion prompt</label>
       <textarea id="animPrompt" rows="3" class="sheet-textarea" placeholder="Describe the motion… e.g. “the camera slowly pushes in as she turns her head and smiles”"></textarea>
@@ -1988,7 +1988,7 @@
 <!-- reuse sheet -->
 <div class="sheet" id="reuseSheet">
   <div class="sheet-panel">
-    <h3 class="sheet-title">Reuse settings <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Reuse settings <button data-close type="button" aria-label="Close reuse settings">✕</button></h3>
     <div class="settings-note">This image was made with prompt enhance. Which prompt should go in the form?</div>
     <button class="sheet-cta" id="reuseEnhanced">Use enhanced prompt — skip re-enhancing</button>
     <button class="sheet-cta ghost" id="reuseOriginal">Use original prompt — enhance again</button>
@@ -2099,7 +2099,7 @@
 <!-- settings sheet -->
 <div class="sheet" id="settingsSheet">
   <div class="sheet-panel settings-panel">
-    <h3 class="sheet-title">Settings <button data-close>✕</button></h3>
+    <h3 class="sheet-title">Settings <button data-close type="button" aria-label="Close settings">✕</button></h3>
     <div class="settings-shell">
       <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
         <button class="active" id="settingsTabGeneral" type="button" role="tab" aria-selected="true" aria-controls="settingsPaneGeneral" data-settings-tab="general">
@@ -2129,10 +2129,10 @@
             <span class="guided-tour-setting-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 4h14v11H9l-4 4V4Zm3 4h8M8 11h5"/></svg>
             </span>
-            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for the complete workflow.</small></span>
+            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for prompts, LoRAs, modes, and Library.</small></span>
             <button id="guidedTourStart" type="button">Start tutorial</button>
             <button class="settings-media-toggle guided-tips-toggle" id="guidedTipsToggle" type="button" role="switch" aria-checked="true">
-              <span class="settings-media-toggle-copy"><strong>Contextual gesture tips</strong><small>Show a one-time animation when hidden controls become useful.</small></span>
+              <span class="settings-media-toggle-copy"><strong>Contextual tips</strong><small>Show one-time help when a control first becomes useful.</small></span>
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>
             </button>
             <button class="guided-guides-reset" id="guidedGuidesReset" type="button">
@@ -2564,7 +2564,7 @@
   <div class="guided-tour-spotlight" id="guidedTourSpotlight" aria-hidden="true"></div>
   <section class="guided-tour-card" id="guidedTourCard" role="dialog" aria-modal="true" aria-labelledby="guidedTourTitle" aria-describedby="guidedTourCopy" tabindex="-1">
     <div class="guided-tour-card-head">
-      <span class="guided-tour-step" id="guidedTourStep">1 of 7</span>
+      <span class="guided-tour-step" id="guidedTourStep">1 of 13</span>
       <button class="guided-tour-close" id="guidedTourClose" type="button" aria-label="Close tutorial">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
       </button>
@@ -2590,6 +2590,7 @@
   <div class="sr-only" id="guidedTourAnnouncement" role="status" aria-live="polite"></div>
 </div>
 
+<div class="icon-tooltip" id="iconTooltip" role="tooltip" aria-hidden="true" hidden></div>
 <div class="toast-zone" id="toastZone"></div>
 
 <script src="/camera-settings.js"></script>

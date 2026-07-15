@@ -17,6 +17,14 @@ function openingTagById(source, id) {
   return match[0];
 }
 
+function sourceSection(source, start, end) {
+  const startIndex = source.indexOf(start);
+  assert.notEqual(startIndex, -1, `expected source section beginning with ${start}`);
+  const endIndex = end ? source.indexOf(end, startIndex + start.length) : source.length;
+  assert.ok(endIndex > startIndex, `expected source section ending with ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
 test('Director is a pinned LTX model workflow and not a navigation destination', () => {
   const directorOption = openingTagById(html, 'directorModelOption');
   assert.match(directorOption, /\bdata-director-entry\b/);
@@ -124,6 +132,54 @@ test('Director media additions reuse the upload-or-gallery source picker', () =>
   assert.match(app, /\$\('#directorAddIcVideo'\)\.addEventListener\('click'[\s\S]{0,180}directorOpenMediaPicker\('video'\)/);
 });
 
+test('desktop Library media can be dropped into compatible Director workflows and timeline times', () => {
+  const targetList = sourceSection(app, 'const DESKTOP_GALLERY_DROP_SELECTOR', 'const DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR');
+  for (const selector of [
+    '#directorTimelineViewport',
+    '#directorExtendChoose',
+    '#directorExtendChange',
+    '#directorExtensionSource',
+    '#directorExtendKeyframeChoose',
+    '#directorExtendKeyframePreview',
+    '#directorKeyframeAdd',
+    '[data-director-story-insert]',
+  ]) assert.match(targetList, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const targetGate = sourceSection(app, 'function directorGalleryDropTargetAllowed', 'function directorTimelineFrameAtClientX');
+  assert.match(targetGate, /state\.directorOpen/);
+  assert.match(targetGate, /DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR[\s\S]{0,220}directorComposerMode === 'extend'[\s\S]{0,100}!!drag\.video[\s\S]{0,100}composite !== true/);
+  assert.match(targetGate, /DIRECTOR_EXTENSION_KEYFRAME_DROP_SELECTOR[\s\S]{0,180}directorComposerMode === 'extend'[\s\S]{0,100}!!drag\.item\.file/);
+  assert.match(targetGate, /DIRECTOR_STORYBOARD_DROP_SELECTOR[\s\S]{0,180}directorComposerMode === 'keyframes'/);
+  assert.match(targetGate, /#directorTimelineViewport[\s\S]{0,180}directorComposerMode === 'timeline'/);
+
+  const frameAtPointer = sourceSection(app, 'function directorTimelineFrameAtClientX', 'function clearDirectorGalleryDropIndicator');
+  assert.match(frameAtPointer, /viewport\.classList\.contains\('is-empty'\)[\s\S]{0,220}canvasRect\.width/);
+  assert.match(frameAtPointer, /directorPixelsPerSecond \/ DIRECTOR_FPS/);
+  assert.match(frameAtPointer, /directorSnapFrame\(frame, event\)/);
+  assert.match(frameAtPointer, /project\.durationFrames - 1/);
+
+  const durableAsset = sourceSection(app, 'async function directorGalleryDropAsset', 'async function applyDirectorGalleryDrop');
+  assert.match(durableAsset, /kind === 'video' \? '\/videos\/' : '\/images\/'/);
+  assert.match(durableAsset, /await uploadInputAsset\(blob, file\)/);
+  assert.match(durableAsset, /srcItemId: item\.id/);
+  assert.match(durableAsset, /srcVideoId: video\?\.id/);
+
+  const applyDrop = sourceSection(app, 'async function applyDirectorGalleryDrop', 'function desktopGalleryDropTarget');
+  assert.match(app, /button\.dataset\.directorStoryInsert = String\(index\)/);
+  assert.match(applyDrop, /openDirectorExtension\(drag\.item, drag\.video\)/);
+  assert.match(applyDrop, /directorCommitExtensionKeyframe\(await directorGalleryDropAsset\(drag, 'image'\)\)/);
+  assert.match(applyDrop, /directorCommitMedia\(prepared, kind, \{ storyboardIndex \}\)/);
+  assert.match(applyDrop, /directorTimelineFrameAtClientX\(event\?\.clientX, event \|\| \{\}\)/);
+  assert.match(applyDrop, /directorCommitMedia\(prepared, kind, \{ startFrame \}\)/);
+  assert.match(app, /async function applyDesktopGalleryDrop\(target, drag, event\)[\s\S]{0,120}applyDirectorGalleryDrop\(target, drag, event\)/);
+
+  assert.match(app, /target\.setAttribute\('aria-dropeffect', 'copy'\)/);
+  assert.match(app, /target\.removeAttribute\('aria-dropeffect'\)/);
+  assert.match(css, /\.director-timeline-canvas\.director-gallery-drop-position::before/);
+  assert.match(css, /\.director-timeline-canvas\.director-gallery-drop-position::after/);
+  assert.match(css, /#directorTimelineViewport\.gallery-drop-active[\s\S]{0,180}transform:\s*none/);
+});
+
 test('Keyframe preset accepts multi-image picks and supports direct drag reordering', () => {
   for (const id of ['assetPickerMultiBar', 'assetPickerMultiCount', 'assetPickerMultiUse']) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -149,7 +205,11 @@ test('Keyframe workflow is a reorderable storyboard with inline image, video, or
   assert.match(app, /for \(const id of \['directorAddAudio', 'directorAddIcImage'\]\)[\s\S]{0,120}hidden = storyOnly/);
   assert.match(app, /video\.querySelector\('span'\)\.textContent = storyOnly \? 'Video clip' : 'Motion guide video'/);
   assert.match(app, /function directorStoryItems\(project = state\.directorProject\)[\s\S]{0,180}project\?\.motionSegments/);
-  assert.match(app, /kind === 'video' && state\.directorComposerMode === 'keyframes'[\s\S]{0,900}type: 'motion_video'[\s\S]{0,500}directorRedistributeStoryItems\(ordered\)/);
+  const commitMedia = sourceSection(app, 'async function directorCommitMedia', 'async function directorHandlePickedMedia');
+  const videoBranch = sourceSection(commitMedia, "if (kind === 'video' && state.directorComposerMode === 'keyframes')", "if (kind === 'audio')");
+  assert.match(videoBranch, /type: 'motion_video'/);
+  assert.match(videoBranch, /ordered\.splice\(insertion, 0, segment\)/);
+  assert.match(videoBranch, /directorRedistributeStoryItems\(ordered\)/);
   assert.match(app, /video: \['video\/\*', state\.directorComposerMode === 'keyframes' \? 'Choose a video clip'/);
   assert.match(app, /document\.createElement\('video'\)[\s\S]{0,480}director-storyboard-video-mark/);
   assert.match(app, /project\.motionSegments = ordered\.filter\(\(segment\) => segment\.type === 'motion_video'\)/);

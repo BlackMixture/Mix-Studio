@@ -1957,7 +1957,12 @@ function setView(view, opts = {}) {
   updateVideoPanels();
   renderEnhance();
   $('#genLbl').textContent = genLabel();
-  if (isGallery) refreshGallery();
+  if (isGallery) {
+    refreshGallery();
+    scheduleContextualGuide('library-basics', 760);
+  } else if (view === 'create' && state.createMode === 'image') {
+    scheduleContextualGuide('prompt-entry', 960);
+  }
 }
 
 function setCreateMode(mode, openEditor) {
@@ -3252,6 +3257,7 @@ $('#kreaTurboToggle').addEventListener('click', () => {
   renderKrea2Mode();
   renderLoras();
   saveForm();
+  scheduleContextualGuide('turbo-vs-raw', 260);
 });
 
 function createInfluenceFromDenoise(denoise) {
@@ -9583,6 +9589,7 @@ function renderDirectorKeyframePreset() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'director-storyboard-add';
+    button.dataset.directorStoryInsert = String(index);
     button.setAttribute('aria-label', index === 0 ? 'Add at the start of the storyboard' : 'Add after this story beat');
     button.innerHTML = '<span aria-hidden="true">＋</span><small>Image, clip, or direction</small>';
     button.addEventListener('click', () => directorOpenStoryboardAdd(index));
@@ -10348,7 +10355,7 @@ function directorOpenStoryboardAdd(index) {
   directorOpenSheet('directorAddSheet');
 }
 
-function directorAddSegment(track, segment) {
+function directorAddSegment(track, segment, options = {}) {
   const list = directorTrackSegments(track);
   if (list.length >= DIRECTOR_TRACK_LIMIT) return toast('This track already has 256 segments', true);
   const context = directorAddContext;
@@ -10358,7 +10365,13 @@ function directorAddSegment(track, segment) {
   if (anchor && context.track === track) start = directorInsertRelative(track, anchor, context.side, segment.length);
   else if (anchor && context.side === 'before') start = directorFindPlacementBefore(track, anchor.start, segment.length);
   else if (anchor && context.side === 'after') start = directorFindPlacement(track, anchor.start + anchor.length, segment.length);
-  else start = directorFindPlacement(track, state.directorPlayhead, segment.length);
+  else {
+    const requestedStart = Number(options.startFrame);
+    const desiredStart = Number.isFinite(requestedStart)
+      ? Math.round(directorClamp(requestedStart, 0, state.directorProject.durationFrames - 1))
+      : state.directorPlayhead;
+    start = directorFindPlacement(track, desiredStart, segment.length);
+  }
   if (start < 0) {
     const where = anchor ? ` ${context.side} the selected segment` : '';
     return toast(`There is no non-overlapping space${where} for that item`, true);
@@ -10511,7 +10524,7 @@ async function directorPreparePickedAsset(asset, kind) {
   return prepared;
 }
 
-async function directorCommitMedia(asset, kind) {
+async function directorCommitMedia(asset, kind, options = {}) {
   if (directorReplaceTarget) {
     const target = directorReplaceTarget;
     directorReplaceTarget = null;
@@ -10538,7 +10551,10 @@ async function directorCommitMedia(asset, kind) {
     if (state.directorComposerMode === 'keyframes') {
       const ordered = directorStoryItems();
       if (ordered.length >= DIRECTOR_TRACK_LIMIT) return toast('This storyboard already has 256 items', true);
-      const insertion = directorStoryboardInsertIndex == null ? ordered.length : Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length));
+      const requestedInsertion = Number(options.storyboardIndex);
+      const insertion = Number.isFinite(requestedInsertion)
+        ? Math.round(directorClamp(requestedInsertion, 0, ordered.length))
+        : (directorStoryboardInsertIndex == null ? ordered.length : Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length)));
       directorStoryboardInsertIndex = null;
       directorAddContext = null;
       ordered.splice(insertion, 0, segment);
@@ -10549,17 +10565,24 @@ async function directorCommitMedia(asset, kind) {
       directorCheckAssets();
       return;
     }
-    return directorAddSegment('main', segment);
+    return directorAddSegment('main', segment, options);
   }
   if (kind === 'video' && state.directorComposerMode === 'keyframes') {
     const ordered = directorStoryItems();
     if (ordered.length >= DIRECTOR_TRACK_LIMIT) return toast('This storyboard already has 256 items', true);
-    const insertion = directorStoryboardInsertIndex == null ? ordered.length : Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length));
+    const requestedInsertion = Number(options.storyboardIndex);
+    const insertion = Number.isFinite(requestedInsertion)
+      ? Math.round(directorClamp(requestedInsertion, 0, ordered.length))
+      : (directorStoryboardInsertIndex == null ? ordered.length : Math.round(directorClamp(directorStoryboardInsertIndex, 0, ordered.length)));
     directorStoryboardInsertIndex = null;
     directorAddContext = null;
+    const requestedStart = Number(options.startFrame);
+    const availableLength = Number.isFinite(requestedStart)
+      ? Math.max(1, state.directorProject.durationFrames - Math.round(directorClamp(requestedStart, 0, state.directorProject.durationFrames - 1)))
+      : state.directorProject.durationFrames;
     const segment = {
       id: directorId('clip'), type: 'motion_video', isStaticImage: false, start: 0,
-      length: Math.min(asset.durationFrames, state.directorProject.durationFrames), trimStart: 0,
+      length: Math.min(asset.durationFrames, availableLength), trimStart: 0,
       videoDurationFrames: asset.durationFrames, videoFile: asset.name, fileName: asset.label,
       videoStrength: 1, videoAttentionStrength: 0.65, resampleMode: 'nearest',
     };
@@ -10573,19 +10596,27 @@ async function directorCommitMedia(asset, kind) {
     return;
   }
   if (kind === 'audio') {
+    const requestedStart = Number(options.startFrame);
+    const availableLength = Number.isFinite(requestedStart)
+      ? Math.max(1, state.directorProject.durationFrames - Math.round(directorClamp(requestedStart, 0, state.directorProject.durationFrames - 1)))
+      : state.directorProject.durationFrames;
     const segment = {
-      id: directorId('audio'), type: 'audio', start: 0, length: Math.min(asset.durationFrames, state.directorProject.durationFrames), trimStart: 0,
+      id: directorId('audio'), type: 'audio', start: 0, length: Math.min(asset.durationFrames, availableLength), trimStart: 0,
       audioDurationFrames: asset.durationFrames, audioFile: asset.name, fileName: asset.label,
     };
     if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
-    return directorAddSegment('audio', segment);
+    return directorAddSegment('audio', segment, options);
   }
+  const requestedStart = Number(options.startFrame);
+  const availableLength = Number.isFinite(requestedStart)
+    ? Math.max(1, state.directorProject.durationFrames - Math.round(directorClamp(requestedStart, 0, state.directorProject.durationFrames - 1)))
+    : state.directorProject.durationFrames;
   return directorAddSegment('motion', {
     id: directorId('motion'), type: 'motion_video', isStaticImage: kind === 'ic-image', start: 0,
-    length: kind === 'ic-image' ? Math.min(120, state.directorProject.durationFrames) : Math.min(asset.durationFrames, state.directorProject.durationFrames),
+    length: kind === 'ic-image' ? Math.min(120, availableLength) : Math.min(asset.durationFrames, availableLength),
     trimStart: 0, videoDurationFrames: asset.durationFrames, videoFile: asset.name, fileName: asset.label,
     videoStrength: 1, videoAttentionStrength: 0.65, resampleMode: 'nearest',
-  });
+  }, options);
 }
 
 async function directorHandlePickedMedia(asset, kind) {
@@ -11558,7 +11589,9 @@ function setLorasExpanded(open) {
   $('#loraHeader').setAttribute('aria-expanded', String(expand));
 }
 $('#loraHeader').addEventListener('click', () => {
-  setLorasExpanded(!$('#loraPanel').classList.contains('expanded'));
+  const expand = !$('#loraPanel').classList.contains('expanded');
+  setLorasExpanded(expand);
+  if (expand) scheduleContextualGuide('lora-basics', 420);
 });
 
 function setAdvancedExpanded(open) {
@@ -11711,6 +11744,8 @@ async function renderLoraPresets() {
     const x = document.createElement('button');
     x.className = 'q-cancel';
     x.textContent = '✕';
+    x.type = 'button';
+    x.setAttribute('aria-label', `Delete preset ${pr.name}`);
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!await askConfirm({ title: `Delete “${pr.name}”?`, message: 'The LoRAs themselves will not be removed.', confirmLabel: 'Delete preset', danger: true })) return;
@@ -13801,6 +13836,8 @@ function renderQueue(q) {
     const x = document.createElement('button');
     x.className = 'q-cancel';
     x.textContent = '✕';
+    x.type = 'button';
+    x.setAttribute('aria-label', j.run ? 'Stop job' : 'Remove queued job');
     x.hidden = !!j.finalizing || j.owned !== true;
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -16257,7 +16294,138 @@ const DESKTOP_GALLERY_DROP_SELECTOR = [
   '#vidEndChip', '#vidEndThumb',
   '#vidFaceChip', '#vidFaceThumb',
   '#vidDriveBtn', '#vidDriveThumb',
+  '#directorTimelineViewport',
+  '#directorExtendChoose', '#directorExtendChange', '#directorExtensionSource',
+  '#directorExtendKeyframeChoose', '#directorExtendKeyframePreview',
+  '#directorKeyframeAdd', '[data-director-story-insert]',
 ].join(',');
+
+const DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR = '#directorExtendChoose, #directorExtendChange, #directorExtensionSource';
+const DIRECTOR_EXTENSION_KEYFRAME_DROP_SELECTOR = '#directorExtendKeyframeChoose, #directorExtendKeyframePreview';
+const DIRECTOR_STORYBOARD_DROP_SELECTOR = '#directorKeyframeAdd, [data-director-story-insert]';
+
+function directorGalleryDropTargetAllowed(target, drag) {
+  if (!target?.closest('#directorWorkspace') || !state.directorOpen || !drag?.item) return false;
+  if (target.matches(DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR)) {
+    return state.directorComposerMode === 'extend' && !!drag.video && drag.video.info?.composite !== true;
+  }
+  if (target.matches(DIRECTOR_EXTENSION_KEYFRAME_DROP_SELECTOR)) {
+    return state.directorComposerMode === 'extend' && !!drag.item.file;
+  }
+  if (target.matches(DIRECTOR_STORYBOARD_DROP_SELECTOR)) {
+    return state.directorComposerMode === 'keyframes' && (!!drag.video || !!drag.item.file);
+  }
+  if (target.matches('#directorTimelineViewport')) {
+    return state.directorComposerMode === 'timeline' && (!!drag.video || !!drag.item.file);
+  }
+  return false;
+}
+
+function directorTimelineFrameAtClientX(clientX, event = {}) {
+  const project = state.directorProject;
+  const viewport = $('#directorTimelineViewport');
+  const canvas = $('#directorTimelineCanvas');
+  if (!project || !viewport || !canvas || !Number.isFinite(Number(clientX))) return state.directorPlayhead || 0;
+  const canvasRect = canvas.getBoundingClientRect();
+  let frame;
+  if (viewport.classList.contains('is-empty')) {
+    const ratio = directorClamp((Number(clientX) - canvasRect.left) / Math.max(1, canvasRect.width), 0, 1);
+    frame = ratio * Math.max(0, project.durationFrames - 1);
+  } else {
+    const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
+    frame = (Number(clientX) - canvasRect.left) / Math.max(0.001, ppf);
+  }
+  return Math.round(directorClamp(directorSnapFrame(frame, event), 0, project.durationFrames - 1));
+}
+
+function clearDirectorGalleryDropIndicator() {
+  const canvas = $('#directorTimelineCanvas');
+  if (!canvas) return;
+  canvas.classList.remove('director-gallery-drop-position');
+  canvas.style.removeProperty('--director-drop-x');
+  delete canvas.dataset.directorDropLabel;
+}
+
+function updateDirectorGalleryDropIndicator(target, drag, event) {
+  if (!target?.matches('#directorTimelineViewport') || !event) return clearDirectorGalleryDropIndicator();
+  const canvas = $('#directorTimelineCanvas');
+  const viewport = $('#directorTimelineViewport');
+  const project = state.directorProject;
+  if (!canvas || !viewport || !project) return;
+  const frame = directorTimelineFrameAtClientX(event.clientX, event);
+  const canvasRect = canvas.getBoundingClientRect();
+  const left = viewport.classList.contains('is-empty')
+    ? (project.durationFrames <= 1 ? 0 : frame / (project.durationFrames - 1) * canvasRect.width)
+    : frame * (directorPixelsPerSecond / DIRECTOR_FPS);
+  canvas.style.setProperty('--director-drop-x', `${Math.round(left)}px`);
+  canvas.dataset.directorDropLabel = `${drag.video ? 'Motion guide' : 'Keyframe'} · ${directorFramesToSeconds(frame)}s`;
+  canvas.classList.add('director-gallery-drop-position');
+}
+
+function directorGalleryDropDescription(target, drag, event) {
+  if (!target) return state.directorOpen ? 'Drop into Director' : 'Drop into an input';
+  if (target.matches(DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR)) return 'Use as source video';
+  if (target.matches(DIRECTOR_EXTENSION_KEYFRAME_DROP_SELECTOR)) return 'Add ending keyframe';
+  if (target.matches('#directorTimelineViewport')) {
+    const frame = directorTimelineFrameAtClientX(event?.clientX, event || {});
+    return `${drag.video ? 'Motion guide' : 'Keyframe'} · ${directorFramesToSeconds(frame)}s`;
+  }
+  if (target.matches(DIRECTOR_STORYBOARD_DROP_SELECTOR)) return 'Add to storyboard';
+  return 'Drop into this input';
+}
+
+async function directorGalleryDropAsset(drag, kind) {
+  const item = drag?.item;
+  const video = kind === 'video' ? drag?.video : null;
+  const file = video?.file || item?.file;
+  if (!item || !file) throw new Error(`This gallery item does not have a reusable ${kind}`);
+  const response = await fetch(`${kind === 'video' ? '/videos/' : '/images/'}${encodeURIComponent(file)}`);
+  if (!response.ok) throw new Error(`${generationDisplayName(item, video)} is no longer available`);
+  const blob = await response.blob();
+  const uploaded = await uploadInputAsset(blob, file);
+  const url = URL.createObjectURL(blob);
+  const dims = kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+  return {
+    name: uploaded.name,
+    url,
+    w: dims.w || Number(item.width) || 0,
+    h: dims.h || Number(item.height) || 0,
+    label: generationDisplayName(item, video),
+    hasAudio: uploaded.hasAudio === true,
+    srcItemId: item.id,
+    srcVideoId: video?.id,
+  };
+}
+
+async function applyDirectorGalleryDrop(target, drag, event) {
+  if (!target?.closest('#directorWorkspace')) return false;
+  if (target.matches(DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR)) {
+    openDirectorExtension(drag.item, drag.video);
+    return true;
+  }
+  directorReplaceTarget = null;
+  directorAddContext = null;
+  directorStoryboardInsertIndex = null;
+  if (target.matches(DIRECTOR_EXTENSION_KEYFRAME_DROP_SELECTOR)) {
+    await directorCommitExtensionKeyframe(await directorGalleryDropAsset(drag, 'image'));
+    toast('Ending keyframe added');
+    return true;
+  }
+  const kind = drag.video ? 'video' : 'image';
+  const prepared = await directorPreparePickedAsset(await directorGalleryDropAsset(drag, kind), kind);
+  if (target.matches(DIRECTOR_STORYBOARD_DROP_SELECTOR)) {
+    const requestedIndex = Number(target.dataset.directorStoryInsert);
+    const storyboardIndex = Number.isFinite(requestedIndex) ? requestedIndex : directorStoryItems().length;
+    await directorCommitMedia(prepared, kind, { storyboardIndex });
+    return true;
+  }
+  if (target.matches('#directorTimelineViewport')) {
+    const startFrame = directorTimelineFrameAtClientX(event?.clientX, event || {});
+    await directorCommitMedia(prepared, kind, { startFrame });
+    return true;
+  }
+  return false;
+}
 
 function desktopGalleryDropTarget(node) {
   const target = node && node.closest ? node.closest(DESKTOP_GALLERY_DROP_SELECTOR) : null;
@@ -16269,6 +16437,7 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
   return $$(DESKTOP_GALLERY_DROP_SELECTOR).filter((target) => {
     if (!target.getClientRects().length) return false;
     if (target.closest('[inert], [aria-hidden="true"]')) return false;
+    if (target.closest('#directorWorkspace') && !directorGalleryDropTargetAllowed(target, drag)) return false;
     if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
     if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
     return true;
@@ -16276,7 +16445,11 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
 }
 
 function clearDesktopGalleryDropTargets() {
-  $$('.gallery-drop-ready, .gallery-drop-active').forEach((target) => target.classList.remove('gallery-drop-ready', 'gallery-drop-active'));
+  $$('.gallery-drop-ready, .gallery-drop-active').forEach((target) => {
+    target.classList.remove('gallery-drop-ready', 'gallery-drop-active');
+    target.removeAttribute('aria-dropeffect');
+  });
+  clearDirectorGalleryDropIndicator();
 }
 
 function activateDesktopGalleryDrag(item, media, card) {
@@ -16284,7 +16457,10 @@ function activateDesktopGalleryDrag(item, media, card) {
   desktopGalleryDrag = { item, media, video, card };
   card.classList.add('is-dragging');
   document.body.classList.add('desktop-gallery-dragging');
-  desktopGalleryDropTargets().forEach((target) => target.classList.add('gallery-drop-ready'));
+  desktopGalleryDropTargets().forEach((target) => {
+    target.classList.add('gallery-drop-ready');
+    target.setAttribute('aria-dropeffect', 'copy');
+  });
 }
 
 let desktopGalleryPointerDrag = null;
@@ -16293,9 +16469,10 @@ function beginDesktopGalleryPointerDrag(candidate, event) {
   activateDesktopGalleryDrag(candidate.item, candidate.media, candidate.card);
   const ghost = document.createElement('div');
   ghost.className = 'desktop-gallery-drag-ghost';
-  const preview = candidate.card.querySelector('img');
-  if (preview && preview.src) ghost.style.backgroundImage = `url("${preview.src.replace(/"/g, '%22')}")`;
-  ghost.innerHTML = '<span>Drop into an input</span>';
+  const preview = candidate.card.querySelector('img, video');
+  const previewSource = preview?.tagName === 'VIDEO' ? (preview.poster || preview.currentSrc) : preview?.src;
+  if (previewSource) ghost.style.backgroundImage = `url("${previewSource.replace(/"/g, '%22')}")`;
+  ghost.innerHTML = `<span>${state.directorOpen ? 'Drop into Director' : 'Drop into an input'}</span>`;
   document.body.appendChild(ghost);
   desktopGalleryPointerDrag = { pointerId: event.pointerId, card: candidate.card, ghost, target: null };
   try { candidate.card.setPointerCapture(event.pointerId); } catch { /* pointer capture is an enhancement */ }
@@ -16312,6 +16489,9 @@ function updateDesktopGalleryPointerDrag(event) {
     pointer.target = allowed;
     if (allowed) allowed.classList.add('gallery-drop-active');
   }
+  updateDirectorGalleryDropIndicator(allowed, desktopGalleryDrag, event);
+  const copy = pointer.ghost.querySelector('span');
+  if (copy) copy.textContent = directorGalleryDropDescription(allowed, desktopGalleryDrag, event);
 }
 
 async function finishDesktopGalleryPointerDrag(event, shouldDrop) {
@@ -16326,8 +16506,17 @@ async function finishDesktopGalleryPointerDrag(event, shouldDrop) {
   if (!target || !drag) return;
   target.classList.add('gallery-drop-received');
   setTimeout(() => target.classList.remove('gallery-drop-received'), 520);
-  try { await applyDesktopGalleryDrop(target, drag); }
+  try { await applyDesktopGalleryDrop(target, drag, event); }
   catch (error) { toast(error.message, true); }
+}
+
+function cancelDesktopGalleryPointerDrag() {
+  const pointer = desktopGalleryPointerDrag;
+  if (!pointer) return;
+  try { pointer.card.releasePointerCapture(pointer.pointerId); } catch { /* noop */ }
+  pointer.ghost.remove();
+  desktopGalleryPointerDrag = null;
+  endDesktopGalleryDrag();
 }
 
 function endDesktopGalleryDrag() {
@@ -16337,7 +16526,8 @@ function endDesktopGalleryDrag() {
   clearDesktopGalleryDropTargets();
 }
 
-async function applyDesktopGalleryDrop(target, drag) {
+async function applyDesktopGalleryDrop(target, drag, event) {
+  if (await applyDirectorGalleryDrop(target, drag, event)) return;
   const { item, video } = drag;
   if (target.matches('.ref-slot')) {
     const index = Number(target.dataset.refIndex);
@@ -16388,11 +16578,15 @@ $('#view-create').addEventListener('dragover', (event) => {
   const target = desktopGalleryDropTarget(event.target);
   const allowed = target && desktopGalleryDropTargets().includes(target);
   clearDesktopGalleryDropTargets();
-  desktopGalleryDropTargets().forEach((entry) => entry.classList.add('gallery-drop-ready'));
+  desktopGalleryDropTargets().forEach((entry) => {
+    entry.classList.add('gallery-drop-ready');
+    entry.setAttribute('aria-dropeffect', 'copy');
+  });
   if (!allowed) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = 'copy';
   target.classList.add('gallery-drop-active');
+  updateDirectorGalleryDropIndicator(target, desktopGalleryDrag, event);
 });
 $('#view-create').addEventListener('dragleave', (event) => {
   const target = desktopGalleryDropTarget(event.target);
@@ -16406,8 +16600,14 @@ $('#view-create').addEventListener('drop', async (event) => {
   endDesktopGalleryDrag();
   target.classList.add('gallery-drop-received');
   setTimeout(() => target.classList.remove('gallery-drop-received'), 520);
-  try { await applyDesktopGalleryDrop(target, drag); }
+  try { await applyDesktopGalleryDrop(target, drag, event); }
   catch (error) { toast(error.message, true); }
+});
+
+window.addEventListener('blur', cancelDesktopGalleryPointerDrag);
+window.addEventListener('pagehide', cancelDesktopGalleryPointerDrag);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && desktopGalleryPointerDrag) cancelDesktopGalleryPointerDrag();
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -16902,7 +17102,7 @@ function toggleSelect(id) {
   else updateSelectBar();
 }
 function exitSelect() {
-  cancelContextualGuide('gallery-selection-details');
+  cancelContextualGuide('gallery-selection-actions');
   if (!state.selectMode && !state.selected.size) { $('#selectBar').hidden = true; return; }
   state.selectMode = false;
   state.selected = new Set();
@@ -16921,7 +17121,7 @@ function updateSelectBar() {
   $('#selComposite').disabled = state.selected.size < 2;
   syncSelectionVisuals();
   if ($('#selectBar').classList.contains('is-expanded')) scheduleSelectionInsightsRefresh();
-  else scheduleContextualGuide('gallery-selection-details');
+  else scheduleContextualGuide('gallery-selection-actions');
 }
 $('#selCancel').addEventListener('click', exitSelect);
 $('#selSave').addEventListener('click', () => {
@@ -17101,7 +17301,7 @@ function populateSelectionExpandedActions() {
 
 function openSelectionInsights() {
   if (!state.selected.size) return;
-  completeContextualGuide('gallery-selection-details');
+  completeContextualGuide('gallery-selection-actions');
   const consoleBar = $('#selectBar');
   consoleBar.classList.add('is-expanded');
   consoleBar.classList.remove('is-dragging');
@@ -20531,72 +20731,412 @@ async function loadHardwareInfo(force = false) {
 $('#hardwareRefresh').addEventListener('click', () => loadHardwareInfo(true).catch(() => toast('Hardware information is unavailable', true)));
 
 /* ------------------------------------------------------------------ */
+/* Fast icon tooltips                                                  */
+/* ------------------------------------------------------------------ */
+
+const ICON_TOOLTIP_FORCE_SELECTOR = [
+  '.icon-btn', '.icon-chip', '.info-btn', '.folder-picker-icon', '.app-drawer-close',
+  '.side-menu-trigger', '.qwen-angle-mode-btn', '.lc-menu', '.lora-card.add', '.q-cancel',
+  '.prompt-clear', '.input-crop-action', '.asset-picker-preview-nav', '.director-icon-button',
+  '.director-inspector-close', '.setup-icon-action', '#queueBtn', '#editSequenceBtn', '#qwenAnglesBtn',
+].join(',');
+const ICON_TOOLTIP_EXEMPT_SELECTOR = [
+  '[data-tooltip-exempt]', '[role="switch"]', '.app-drawer-backdrop', '.director-inspector-backdrop',
+  '.director-range-handle', '.director-segment-handle', '.select-bar-grabber',
+  '[data-director-range-handle]', '[data-resize-handle]', '[data-mask-handle]',
+].join(',');
+const ICON_TOOLTIP_OVERRIDES = Object.freeze({
+  appMenuBtn: 'Menu',
+  editSequenceBtn: 'Edit sequence',
+  qwenAnglesBtn: 'Camera angles',
+});
+const ICON_GLYPH_ONLY = /^[×✕✖＋+\-−–—…⋯‹›«»←→↑↓↕↔↻⟳⌫◫▦▤⊘︎\s]+$/u;
+let iconTooltipButton = null;
+let iconTooltipShowTimer = null;
+let iconTooltipHideTimer = null;
+let iconTooltipFrame = null;
+let iconTooltipPreviousDescription = '';
+
+function conciseIconTooltipLabel(value) {
+  let label = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!label) return '';
+  const replacements = {
+    'Open Mix Studio menu': 'Menu',
+    'Close Mix Studio menu': 'Close menu',
+    'Save current LoRAs as a preset': 'Save preset',
+    'Load a saved preset': 'Load preset',
+  };
+  label = replacements[label] || label;
+  if (label.length > 48) label = label.split(/[.;]/, 1)[0];
+  if (label.length > 48) label = `${label.slice(0, 45).trimEnd()}…`;
+  return label;
+}
+
+function iconButtonVisibleText(button) {
+  const clone = button.cloneNode(true);
+  clone.querySelectorAll([
+    'svg', 'img', 'picture', 'video', 'canvas', '.sr-only', '[aria-hidden="true"]',
+    '.queue-count', '.qwen-angle-count', '.edit-sequence-count', '.badge',
+  ].join(',')).forEach((node) => node.remove());
+  return clone.textContent.replace(/\s+/g, ' ').trim();
+}
+
+function buttonIsIconOnly(button) {
+  if (!(button instanceof HTMLButtonElement) || button.matches(ICON_TOOLTIP_EXEMPT_SELECTOR)) return false;
+  const forced = button.matches(ICON_TOOLTIP_FORCE_SELECTOR);
+  if (button.querySelector('img, video, canvas') && !forced) return false;
+  const text = iconButtonVisibleText(button);
+  if (text && !ICON_GLYPH_ONLY.test(text) && !forced) return false;
+  return forced || !!button.querySelector('svg') || ICON_GLYPH_ONLY.test(text);
+}
+
+function iconTooltipLabel(button) {
+  const explicit = button.dataset.iconTooltip;
+  return conciseIconTooltipLabel(
+    (explicit && explicit !== 'auto' ? explicit : '')
+      || ICON_TOOLTIP_OVERRIDES[button.id]
+      || button.getAttribute('aria-label')
+      || button.getAttribute('title'),
+  );
+}
+
+function markIconTooltip(button) {
+  const explicit = button.dataset.iconTooltip && button.dataset.iconTooltip !== 'auto';
+  if (!explicit && !buttonIsIconOnly(button)) {
+    if (button.dataset.iconTooltip === 'auto') delete button.dataset.iconTooltip;
+    return;
+  }
+  const legacyTitle = button.getAttribute('title');
+  const label = conciseIconTooltipLabel(
+    (explicit ? button.dataset.iconTooltip : '')
+      || ICON_TOOLTIP_OVERRIDES[button.id]
+      || button.getAttribute('aria-label')
+      || legacyTitle,
+  );
+  if (!label) return;
+  button.dataset.iconTooltip = explicit || ICON_TOOLTIP_OVERRIDES[button.id] ? label : 'auto';
+  if (!button.getAttribute('aria-label')) button.setAttribute('aria-label', label);
+  if (legacyTitle) button.removeAttribute('title');
+}
+
+function scanIconTooltips(root = document) {
+  if (root instanceof HTMLButtonElement) markIconTooltip(root);
+  if (root.querySelectorAll) root.querySelectorAll('button').forEach(markIconTooltip);
+  if (root.parentElement instanceof HTMLButtonElement) markIconTooltip(root.parentElement);
+}
+
+function restoreIconTooltipDescription(button) {
+  if (!button) return;
+  if (iconTooltipPreviousDescription) button.setAttribute('aria-describedby', iconTooltipPreviousDescription);
+  else button.removeAttribute('aria-describedby');
+  iconTooltipPreviousDescription = '';
+}
+
+function positionIconTooltip(button) {
+  const tooltip = $('#iconTooltip');
+  if (!tooltip || !button?.isConnected) return;
+  const target = button.getBoundingClientRect();
+  const bubble = tooltip.getBoundingClientRect();
+  const margin = 8;
+  const gap = 9;
+  const center = target.left + target.width / 2;
+  const halfWidth = bubble.width / 2;
+  const left = Math.max(margin + halfWidth, Math.min(window.innerWidth - margin - halfWidth, center));
+  const roomAbove = target.top - gap - margin;
+  const roomBelow = window.innerHeight - target.bottom - gap - margin;
+  const above = roomAbove >= bubble.height || roomAbove >= roomBelow;
+  const top = above
+    ? Math.max(margin + bubble.height, target.top - gap)
+    : Math.min(window.innerHeight - margin - bubble.height, target.bottom + gap);
+  tooltip.dataset.placement = above ? 'top' : 'bottom';
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function revealIconTooltip(button) {
+  const tooltip = $('#iconTooltip');
+  const label = iconTooltipLabel(button);
+  if (!tooltip || !label || button.disabled || !button.isConnected || !$('#guidedTour')?.hidden) return;
+  const sameButton = iconTooltipButton === button;
+  if (iconTooltipButton && !sameButton) restoreIconTooltipDescription(iconTooltipButton);
+  clearTimeout(iconTooltipHideTimer);
+  iconTooltipButton = button;
+  if (!sameButton) iconTooltipPreviousDescription = button.getAttribute('aria-describedby') || '';
+  const descriptions = new Set(iconTooltipPreviousDescription.split(/\s+/).filter(Boolean));
+  descriptions.add('iconTooltip');
+  button.setAttribute('aria-describedby', [...descriptions].join(' '));
+  tooltip.textContent = label;
+  tooltip.hidden = false;
+  tooltip.setAttribute('aria-hidden', 'false');
+  tooltip.classList.remove('visible');
+  positionIconTooltip(button);
+  if (iconTooltipFrame) cancelAnimationFrame(iconTooltipFrame);
+  iconTooltipFrame = requestAnimationFrame(() => {
+    iconTooltipFrame = null;
+    if (iconTooltipButton === button) tooltip.classList.add('visible');
+  });
+}
+
+function showIconTooltip(button, immediate = false) {
+  clearTimeout(iconTooltipShowTimer);
+  if (!button || button.disabled) return;
+  iconTooltipShowTimer = setTimeout(() => {
+    iconTooltipShowTimer = null;
+    revealIconTooltip(button);
+  }, immediate ? 0 : 110);
+}
+
+function hideIconTooltip(button = null) {
+  clearTimeout(iconTooltipShowTimer);
+  iconTooltipShowTimer = null;
+  if (button && iconTooltipButton && iconTooltipButton !== button) return;
+  const tooltip = $('#iconTooltip');
+  const previousButton = iconTooltipButton;
+  iconTooltipButton = null;
+  restoreIconTooltipDescription(previousButton);
+  if (!tooltip) return;
+  tooltip.classList.remove('visible');
+  tooltip.setAttribute('aria-hidden', 'true');
+  clearTimeout(iconTooltipHideTimer);
+  iconTooltipHideTimer = setTimeout(() => {
+    if (!iconTooltipButton) tooltip.hidden = true;
+  }, 120);
+}
+
+function initIconTooltips() {
+  scanIconTooltips();
+  const hoverQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+  document.addEventListener('pointerover', (event) => {
+    if (!hoverQuery.matches) return;
+    const button = event.target.closest('button[data-icon-tooltip]');
+    if (!button || (event.relatedTarget && button.contains(event.relatedTarget))) return;
+    showIconTooltip(button);
+  });
+  document.addEventListener('pointerout', (event) => {
+    const button = event.target.closest('button[data-icon-tooltip]');
+    if (!button || (event.relatedTarget && button.contains(event.relatedTarget))) return;
+    hideIconTooltip(button);
+  });
+  document.addEventListener('focusin', (event) => {
+    const button = event.target.closest('button[data-icon-tooltip]');
+    if (button) showIconTooltip(button, true);
+  });
+  document.addEventListener('focusout', (event) => {
+    const button = event.target.closest('button[data-icon-tooltip]');
+    if (button) hideIconTooltip(button);
+  });
+  document.addEventListener('pointerdown', () => hideIconTooltip(), true);
+  document.addEventListener('click', () => hideIconTooltip(), true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') hideIconTooltip();
+  });
+  window.addEventListener('scroll', () => hideIconTooltip(), { passive: true, capture: true });
+  window.addEventListener('resize', () => hideIconTooltip(), { passive: true });
+  new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList') {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element) scanIconTooltips(node);
+        });
+        if (mutation.target instanceof Element) scanIconTooltips(mutation.target);
+      } else if (mutation.target instanceof HTMLButtonElement) {
+        markIconTooltip(mutation.target);
+      }
+    });
+  }).observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['aria-label', 'title', 'class', 'hidden'],
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Guided UI tutorial                                                  */
 /* ------------------------------------------------------------------ */
 
+const GUIDED_TOUR_VERSION = 2;
 const GUIDED_TOUR_STEPS = [
   {
+    id: 'workspaces',
     target: '#primaryTabs',
     title: 'Choose a workspace',
-    copy: 'Create starts new image or video work. Edit changes an existing image. Library keeps every completed generation.',
+    copy: 'Create starts new work, Edit changes an image, and Library keeps every completed generation.',
     motion: 'tap',
     demo: 'Tap a workspace to switch tools',
     scroll: false,
+    prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'creation-method',
     target: '#createTabs',
     title: 'Pick a creation method',
-    copy: 'Image builds a full frame, Region gives different parts of the frame their own prompts, and Video creates motion.',
+    copy: 'Image builds a frame, Region directs separate areas, and Video creates motion. LTX 2.3 also offers Director mode inside its model picker.',
     motion: 'tap',
     demo: 'Tap Image, Region, or Video',
     scroll: false,
+    prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'prompt',
     target: '#promptPanel',
-    title: 'Describe the result',
-    copy: 'Write the scene in plain language. Prompt Enhance can turn a short idea into a more detailed generation prompt.',
+    title: 'Start with a prompt',
+    copy: 'Type what you want in the large Prompt box. A short plain-language sentence is enough; Prompt Enhance can add production detail.',
     motion: 'type',
-    demo: 'Type a prompt or start with a short idea',
+    demo: 'Type the scene you want to create',
+    prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'prompt-tools',
     target: '#createPromptTools',
     title: 'Add visual direction',
-    copy: 'Use these tools for an image guide or image-to-prompt, conversational revisions, and camera choices. They are optional.',
+    copy: 'Image tools add a reference, depth, style, or image-to-prompt source. Revise prompt uses local AI. Both are optional.',
     motion: 'tap',
     demo: 'Tap a tool to add more control',
+    prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'resolution',
     target: '#resPanel',
     title: 'Set the output shape',
     copy: 'Choose the aspect ratio and S, M, or L output size. The dimensions shown here are the dimensions sent to generation.',
     motion: 'tap',
     demo: 'Tap Resolution to open the picker',
+    prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'turbo-raw',
+    target: '#kreaTurboToggle',
+    title: 'Choose Turbo or Raw',
+    copy: 'Turbo is the fast, high-quality model with steadier results and sometimes less variance. Turn it off for Raw when you want more variation.',
+    motion: 'tap',
+    demo: 'Toggle between Turbo and Raw',
+    prepare: () => prepareGuidedTourImage(false),
+  },
+  {
+    id: 'lora-add',
+    target: '#loraList .lora-card.add',
+    title: 'Add a LoRA',
+    copy: 'LoRAs add a style, subject, or behavior. Tap + to choose one, then tap its card to turn it on or off.',
+    motion: 'tap',
+    demo: 'Tap + to browse compatible LoRAs',
+    prepare: prepareGuidedTourLoras,
+  },
+  {
+    id: 'lora-strength',
+    target: '#loraList',
+    title: 'Tune LoRA strength',
+    copy: 'Hold a LoRA card and slide up or down to adjust strength. Its ⋯ menu offers an exact value and lets you set the card thumbnail.',
+    motion: 'swipe-up',
+    demo: 'Hold, then slide to change strength',
+    prepare: prepareGuidedTourLoras,
+  },
+  {
+    id: 'lora-presets',
+    target: '.lora-tools',
+    title: 'Save a LoRA stack',
+    copy: 'The disk saves the current stack as a preset; the folder loads one. When saving, choose which LoRA thumbnail becomes the preset cover.',
+    motion: 'tap',
+    demo: 'Save or load a reusable preset',
+    prepare: prepareGuidedTourLoras,
+  },
+  {
+    id: 'generate',
     target: '#generateBtn',
     title: 'Generate or add to the queue',
     copy: 'Tap Generate to start. If another job is active, the same button adds this setup to the queue so you can keep working.',
     motion: 'press',
     demo: 'Press once to generate or queue',
     scroll: false,
+    prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'open-library',
     target: '[data-primary-mode="gallery"]',
-    title: 'Return to your Library',
-    copy: 'Library contains every result. Open an item to compare, reuse its settings, move it, group it, or send it into another workflow.',
+    title: 'Open your Library',
+    copy: 'Library stores every result and its generation settings, ready to compare, reuse, organize, or send into another workflow.',
     motion: 'tap',
-    demo: 'Tap Library whenever you want your results',
+    demo: 'Tap Library to browse your results',
+    prepare: () => prepareGuidedTourImage(false),
+  },
+  {
+    id: 'library-tools',
+    target: '.library-toolbar',
+    title: 'Find any result',
+    copy: 'Search prompts, LoRAs, and folders. Filter images, videos, or likes, then sort and organize results with the folder row.',
+    motion: 'tap',
+    demo: 'Search, filter, sort, or choose a folder',
+    prepare: prepareGuidedTourLibrary,
+  },
+  {
+    id: 'library-selection',
+    target: () => $('#galleryGrid .card') ? '#galleryGrid' : '.folder-picker',
+    title: 'Select and group results',
+    copy: 'Hold a result to select it, then sweep across more. The action bar can Group related generations or Save, Composite, Move, and Delete the selection.',
+    motion: 'press',
+    demo: 'Hold a result to reveal selection actions',
+    prepare: prepareGuidedTourLibrary,
   },
 ];
 
+function prepareGuidedTourImage(expandLoras = false) {
+  if (state.view !== 'create' || state.createMode !== 'image') setCreateMode('image');
+  setLorasExpanded(expandLoras);
+}
+
+function prepareGuidedTourLoras() {
+  prepareGuidedTourImage(true);
+  renderLoras();
+}
+
+function prepareGuidedTourLibrary() {
+  if (state.view !== 'gallery') setView('gallery');
+}
+
 const CONTEXTUAL_GUIDES = {
-  'gallery-selection-details': {
-    id: 'gallery-selection-details',
-    target: '#selectBar',
-    title: 'Reveal selection actions',
-    copy: 'Drag the selection bar upward to reveal details and the full set of actions.',
+  'prompt-entry': {
+    id: 'prompt-entry',
+    target: '#promptPanel',
+    kicker: 'Create basics',
+    title: 'Prompt here',
+    copy: 'Describe the scene you want in plain language. A short sentence is enough to begin.',
+    motion: 'type',
+    demo: 'Type your idea in the Prompt box',
+  },
+  'turbo-vs-raw': {
+    id: 'turbo-vs-raw',
+    target: '#kreaTurboToggle',
+    kicker: 'Image model',
+    title: () => state.krea2Turbo ? 'Turbo is on' : 'Raw is on',
+    copy: 'Turbo is fast and high quality with steadier results. Raw takes longer and explores more variation.',
+    motion: 'tap',
+    demo: 'Toggle this control to switch modes',
+  },
+  'lora-basics': {
+    id: 'lora-basics',
+    target: '#loraBody',
+    kicker: 'LoRA basics',
+    title: 'Build a LoRA stack',
+    copy: 'Tap + to add one and tap a card to toggle it. Hold and slide for strength; use ⋯ for an exact value or thumbnail. Disk and folder icons save and load presets.',
     motion: 'swipe-up',
-    demo: 'Swipe up on the handle',
+    demo: 'Add, tap, or hold a LoRA card',
+  },
+  'library-basics': {
+    id: 'library-basics',
+    target: '.library-toolbar',
+    kicker: 'Library basics',
+    title: 'Find and organize results',
+    copy: 'Search prompts, LoRAs, and folders, then filter or sort the grid. Hold any result when you want to act on several at once.',
+    motion: 'press',
+    demo: 'Search, filter, or hold a result',
+  },
+  'gallery-selection-actions': {
+    id: 'gallery-selection-actions',
+    target: '#selectBar',
+    title: 'Work with the selection',
+    copy: 'Group stacks related generations into one Library card. Save, Composite, Move, and Delete apply to everything selected; pull up for details.',
+    motion: 'swipe-up',
+    demo: 'Choose an action or pull up for details',
   },
   'prompt-missing-reference': {
     id: 'prompt-missing-reference',
@@ -20902,6 +21442,7 @@ function offerPromptIntentGuide(intent, { explicit = false } = {}) {
 }
 
 let guidedTourIndex = -1;
+let guidedTourRestoreState = null;
 let guidedTourTimer = null;
 let guidedTourPositionFrame = null;
 let guidedTourTrackFrame = null;
@@ -21049,6 +21590,10 @@ function guidedTourStorageKey() {
   return profileStorageKey('ks-guided-tour') || 'ks-guided-tour-anonymous';
 }
 
+function guidedTourCompletionValue() {
+  return `complete:${GUIDED_TOUR_VERSION}`;
+}
+
 function guidedTipsStorageKey() {
   return profileStorageKey('ks-contextual-guides') || 'ks-contextual-guides-anonymous';
 }
@@ -21062,18 +21607,21 @@ function contextualGuidesEnabled() {
 }
 
 function renderGuidedTourSetting() {
-  const completed = localStorage.getItem(guidedTourStorageKey()) === 'complete';
+  const stored = localStorage.getItem(guidedTourStorageKey());
+  const completed = stored === guidedTourCompletionValue();
+  const hasOlderTour = stored === 'complete' || (stored?.startsWith('complete:') && !completed);
   const tipsEnabled = contextualGuidesEnabled();
-  $('#guidedTourStart').textContent = completed ? 'Replay tutorial' : 'Start tutorial';
+  $('#guidedTourStart').textContent = completed ? 'Replay tutorial' : (hasOlderTour ? 'See what’s new' : 'Start tutorial');
   $('#guidedTourSettingStatus').textContent = completed
-    ? 'Completed · replay the animated walkthrough anytime.'
-    : 'Optional walkthrough · start it whenever you want.';
+    ? 'Completed · replay the prompt, LoRA, and Library walkthrough anytime.'
+    : (hasOlderTour ? 'Updated · now covers LoRAs, model modes, and Library actions.' : 'Optional walkthrough · start it whenever you want.');
   $('#guidedTipsToggle').setAttribute('aria-checked', String(tipsEnabled));
 }
 
 function guidedTourTarget() {
   const guide = contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
-  return contextualGuide ? contextualGuideTarget(guide) : (guide ? $(guide.target) : null);
+  const selector = guide ? contextualGuideValue(guide.target) : '';
+  return selector ? $(selector) : null;
 }
 
 function positionGuidedTour() {
@@ -21084,6 +21632,8 @@ function positionGuidedTour() {
     if (contextualGuide) {
       hideContextualGuide();
       schedulePromptIntentHint(0);
+    } else if (guidedTourIndex >= 0) {
+      finishGuidedTour(false);
     }
     return;
   }
@@ -21147,13 +21697,14 @@ function showContextualGuide(id, { repeat = false, ignoreEnabled = false, intent
   if (!guide || (!ignoreEnabled && !contextualGuidesEnabled())) return false;
   if (!repeat && localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return false;
   if (contextualGuide || guidedTourIndex >= 0 || !root.hidden) return false;
-  if (id === 'gallery-selection-details' && (document.hidden || gallerySelectionDrag.active)) {
+  if (id === 'gallery-selection-actions' && (document.hidden || gallerySelectionDrag.active)) {
     if (state.selected.size) scheduleContextualGuide(id, 280);
     return false;
   }
   if (!guidedTourTargetUsable(target)) return false;
-  if (id === 'gallery-selection-details' && (!state.selected.size || target.classList.contains('is-expanded'))) return false;
+  if (id === 'gallery-selection-actions' && (!state.selected.size || target.classList.contains('is-expanded'))) return false;
 
+  hideIconTooltip();
   contextualGuide = guide;
   contextualGuideIntentKey = intentKey;
   contextualGuidePreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -21359,6 +21910,7 @@ function resetTipsAndGuides() {
 function renderGuidedTourStep({ focus = true } = {}) {
   const root = $('#guidedTour');
   const step = GUIDED_TOUR_STEPS[guidedTourIndex];
+  if (typeof step?.prepare === 'function') step.prepare();
   const target = guidedTourTarget();
   if (!step || !target) return finishGuidedTour(false);
   clearTimeout(guidedTourTimer);
@@ -21394,11 +21946,20 @@ function renderGuidedTourStep({ focus = true } = {}) {
 
 function startGuidedTour() {
   cancelContextualGuide();
+  hideIconTooltip();
+  guidedTourRestoreState = {
+    view: state.view,
+    createMode: state.createMode,
+    lorasExpanded: $('#loraPanel').classList.contains('expanded'),
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+  };
   closeActionMenu();
   closeAppDrawer();
   $$('.sheet.show').forEach((sheet) => sheet.classList.remove('show'));
   syncSheetScrollLock();
   setCreateMode('image');
+  cancelContextualGuide();
   collapseRes(false);
   window.scrollTo(0, 0);
   guidedTourIndex = 0;
@@ -21418,15 +21979,31 @@ function startGuidedTour() {
 function finishGuidedTour(completed = false) {
   if (contextualGuide) return dismissContextualGuide();
   clearTimeout(guidedTourTimer);
-  if (completed) localStorage.setItem(guidedTourStorageKey(), 'complete');
+  cancelContextualGuide();
+  if (completed) {
+    localStorage.setItem(guidedTourStorageKey(), guidedTourCompletionValue());
+    ['prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics'].forEach((id) => {
+      localStorage.setItem(contextualGuideSeenKey(id), 'seen');
+    });
+  }
+  const restore = guidedTourRestoreState;
+  guidedTourRestoreState = null;
   guidedTourIndex = -1;
   const root = $('#guidedTour');
   root.hidden = true;
   root.setAttribute('aria-hidden', 'true');
   root.classList.remove('is-contextual', 'is-positioning', 'requires-action');
   document.body.classList.remove('guided-tour-open');
+  if (restore) {
+    setLorasExpanded(restore.lorasExpanded);
+    if (restore.view === 'create') setView('create', { createMode: restore.createMode });
+    else setView(restore.view);
+    cancelContextualGuide();
+    requestAnimationFrame(() => window.scrollTo(restore.scrollX, restore.scrollY));
+  }
   renderGuidedTourSetting();
   $('#appMenuBtn').focus({ preventScroll: true });
+  hideIconTooltip();
 }
 
 function advanceGuidedTour(direction) {
@@ -22771,6 +23348,7 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
   renderDesktopStage();
 });
 
+initIconTooltips();
 loadForm();
 syncGallerySortControl();
 setPromptDraft(state.prompts[state.view] || '');

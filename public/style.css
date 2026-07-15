@@ -9053,6 +9053,8 @@ body.sheet-open {
   #view-gallery .card.desktop-drag-source { cursor: grab; touch-action: pan-y; }
   #view-gallery .card.desktop-drag-source:active { cursor: grabbing; }
   #view-gallery .card.is-dragging { opacity: .34; transform: scale(.96); }
+  body.desktop-gallery-dragging,
+  body.desktop-gallery-dragging * { cursor: grabbing !important; user-select: none; }
   .desktop-gallery-drag-ghost {
     position: fixed;
     z-index: 260;
@@ -9901,6 +9903,58 @@ body.sheet-open {
   .guided-tour-demo[data-motion="swipe-up"] .guided-tour-demo-touch { opacity: .9; transform: translateY(-5px); }
 }
 
+.icon-tooltip[hidden] { display: none; }
+.icon-tooltip {
+  position: fixed;
+  z-index: 320;
+  max-width: min(220px, calc(100vw - 16px));
+  padding: 7px 9px;
+  border: 1px solid rgba(var(--mode-rgb), .38);
+  border-radius: 9px;
+  background: rgba(10, 12, 18, .96);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .58), 0 0 16px rgba(var(--mode-rgb), .13);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: .01em;
+  text-align: center;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(14px);
+  transition: opacity 110ms ease, transform 140ms var(--ease);
+}
+.icon-tooltip[data-placement="top"] { transform: translate(-50%, -100%) translateY(3px); }
+.icon-tooltip[data-placement="bottom"] { transform: translate(-50%, 0) translateY(-3px); }
+.icon-tooltip.visible[data-placement="top"] { opacity: 1; transform: translate(-50%, -100%) translateY(0); }
+.icon-tooltip.visible[data-placement="bottom"] { opacity: 1; transform: translate(-50%, 0) translateY(0); }
+
+button[data-icon-tooltip] {
+  will-change: translate, filter;
+  transition-property: translate, filter, color, border-color, background-color, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  button[data-icon-tooltip]:not(:disabled):hover {
+    translate: 0 -2px;
+    filter: brightness(1.08) drop-shadow(0 0 8px rgba(var(--mode-rgb), .44));
+  }
+}
+button[data-icon-tooltip]:not(:disabled):focus-visible {
+  translate: 0 -2px;
+  filter: brightness(1.08) drop-shadow(0 0 8px rgba(var(--mode-rgb), .44));
+}
+button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-tooltip,
+  button[data-icon-tooltip] { transition-duration: 1ms; }
+  button[data-icon-tooltip]:not(:disabled):hover,
+  button[data-icon-tooltip]:not(:disabled):focus-visible { translate: 0 0; }
+}
+
 .toast-zone { position: fixed; left: 0; right: 0; bottom: 90px; z-index: 90; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .toast {
   max-width: min(92vw, 480px);
@@ -10258,6 +10312,27 @@ body.sheet-open {
 .director-timeline-canvas {
   position: relative; min-width: 100%; width: 1000px; padding-top: 31px;
   transition: width 220ms var(--ease);
+}
+.director-timeline-canvas.director-gallery-drop-position::before {
+  content: attr(data-director-drop-label);
+  position: absolute; z-index: 31; top: 5px; left: clamp(48px,var(--director-drop-x),calc(100% - 48px));
+  max-width: 130px; padding: 4px 7px; overflow: hidden;
+  border: 1px solid rgba(var(--mode-rgb),.58); border-radius: 8px;
+  background: rgba(2,3,5,.94); color: #fff; box-shadow: 0 7px 22px rgba(0,0,0,.48);
+  font-size: 8px; font-weight: 850; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap;
+  transform: translateX(-50%); pointer-events: none;
+}
+.director-timeline-canvas.director-gallery-drop-position::after {
+  content: "";
+  position: absolute; z-index: 30; top: 4px; bottom: 5px; left: var(--director-drop-x);
+  width: 2px; border-radius: 999px; background: var(--mode-color);
+  box-shadow: 0 0 0 3px rgba(var(--mode-rgb),.14),0 0 18px rgba(var(--mode-rgb),.55);
+  transform: translateX(-1px); pointer-events: none;
+}
+body.director-open #directorTimelineViewport.gallery-drop-ready { border-color: rgba(var(--mode-rgb),.56); }
+body.director-open #directorTimelineViewport.gallery-drop-active {
+  background: linear-gradient(rgba(var(--mode-rgb),.055),rgba(var(--mode-rgb),.055)),#050609;
+  transform: none;
 }
 .director-ruler { position: absolute; z-index: 2; left: 0; right: 0; top: 0; height: 30px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.018); }
 .director-ruler-tick { position: absolute; bottom: 0; height: 7px; border-left: 1px solid rgba(255,255,255,.28); color: var(--muted); font-size: 9px; }

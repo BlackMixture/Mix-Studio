@@ -43,7 +43,9 @@ test('desktop gallery items drag onto compatible generation inputs', () => {
   assert.match(app, /dx < -10 && Math\.abs\(dx\) > Math\.abs\(dy\) \* 0\.65/);
   assert.match(app, /movedOutAfterHold = desktopPointerCandidate\.selectionStarted && e\.clientX < galleryLeft - 6/);
   assert.match(app, /stopGallerySelectionDrag\(e\);[\s\S]*exitSelect\(\)/);
-  assert.match(app, /function applyDesktopGalleryDrop\(target, drag\)/);
+  assert.match(app, /function applyDesktopGalleryDrop\(target, drag, event\)/);
+  assert.match(app, /finishDesktopGalleryPointerDrag\(event, shouldDrop\)[\s\S]{0,700}applyDesktopGalleryDrop\(target, drag, event\)/);
+  assert.match(app, /#view-create'\)\.addEventListener\('drop'[\s\S]{0,700}applyDesktopGalleryDrop\(target, drag, event\)/);
   assert.match(app, /#createImageGuideAdd/);
   assert.match(app, /\.ref-slot/);
   assert.match(app, /#vidAttachBtn/);

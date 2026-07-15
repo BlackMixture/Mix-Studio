@@ -19,18 +19,30 @@ test('Advanced Settings can replay an accessible guided UI tutorial', () => {
   }
   assert.match(app, /function startGuidedTour\(\)/);
   assert.match(app, /function finishGuidedTour\(completed = false\)/);
-  assert.match(app, /localStorage\.setItem\(guidedTourStorageKey\(\), 'complete'\)/);
-  assert.match(app, /completed \? 'Replay tutorial' : 'Start tutorial'/);
+  assert.match(app, /function guidedTourCompletionValue\(\)[\s\S]{0,120}GUIDED_TOUR_VERSION/);
+  assert.match(app, /localStorage\.setItem\(guidedTourStorageKey\(\), guidedTourCompletionValue\(\)\)/);
+  assert.match(app, /completed \? 'Replay tutorial' : \(hasOlderTour \? 'See what’s new' : 'Start tutorial'\)/);
+  assert.match(app, /See what’s new/);
   assert.match(app, /event\.key === 'Escape'/);
   assert.match(app, /event\.key !== 'Tab'/);
-  assert.match(html, /Optional walkthrough for the complete workflow/);
+  assert.match(html, /Optional walkthrough for prompts, LoRAs, modes, and Library/);
   assert.equal((app.match(/startGuidedTour\(\)/g) || []).length, 1, 'the tutorial is declared but never started automatically');
 });
 
 test('guided steps cover the main workflow with animated gesture demonstrations', () => {
-  for (const selector of ['#primaryTabs', '#createTabs', '#promptPanel', '#createPromptTools', '#resPanel', '#generateBtn', '[data-primary-mode="gallery"]']) {
+  for (const selector of [
+    '#primaryTabs', '#createTabs', '#promptPanel', '#createPromptTools', '#resPanel', '#kreaTurboToggle',
+    '#loraList .lora-card.add', '#loraList', '.lora-tools', '#generateBtn',
+    '[data-primary-mode="gallery"]', '.library-toolbar',
+  ]) {
     assert.match(app, new RegExp(`target: '${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
   }
+  for (const phrase of ['Turbo is the fast, high-quality model', 'Raw when you want more variation', 'Hold a LoRA card', 'set the card thumbnail', 'saves the current stack as a preset', 'Group related generations']) {
+    assert.match(app, new RegExp(phrase));
+  }
+  assert.match(app, /function prepareGuidedTourImage\(expandLoras = false\)[\s\S]{0,180}setLorasExpanded\(expandLoras\)/);
+  assert.match(app, /function prepareGuidedTourLoras\(\)[\s\S]{0,120}prepareGuidedTourImage\(true\)/);
+  assert.match(app, /function prepareGuidedTourLibrary\(\)[\s\S]{0,140}setView\('gallery'\)/);
   assert.match(app, /setCreateMode\('image'\)/);
   assert.match(app, /target\.scrollIntoView\(\{/);
   assert.match(app, /positionGuidedTour\(\)/);
@@ -51,6 +63,26 @@ test('Advanced Settings controls profile-scoped contextual gesture tips', () => 
   assert.match(app, /localStorage\.setItem\(guidedTipsStorageKey\(\), enabled \? 'on' : 'off'\)/);
 });
 
+test('basic contextual tips appear where prompting, models, LoRAs, and Library tools become useful', () => {
+  for (const guide of ['prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics']) {
+    assert.match(app, new RegExp(`id: '${guide}'`));
+  }
+  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1500}scheduleContextualGuide\('library-basics'/);
+  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1700}scheduleContextualGuide\('prompt-entry'/);
+  assert.match(app, /kreaTurboToggle'\)\.addEventListener\('click'[\s\S]{0,900}scheduleContextualGuide\('turbo-vs-raw'/);
+  assert.match(app, /loraHeader'\)\.addEventListener\('click'[\s\S]{0,260}scheduleContextualGuide\('lora-basics'/);
+  assert.match(html, />Contextual tips<[\s\S]{0,120}Show one-time help when a control first becomes useful/);
+});
+
+test('the expanded tutorial is versioned and restores the workspace it temporarily opens', () => {
+  assert.match(app, /const GUIDED_TOUR_VERSION = 2/);
+  assert.match(app, /stored === 'complete'/);
+  assert.match(app, /hasOlderTour \? 'See what’s new'/);
+  assert.match(app, /guidedTourRestoreState = \{[\s\S]{0,220}view: state\.view[\s\S]{0,220}lorasExpanded/);
+  assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,1400}setLorasExpanded\(restore\.lorasExpanded\)/);
+  assert.match(app, /function finishGuidedTour\(completed = false\)[\s\S]{0,1700}setView\(restore\.view\)/);
+});
+
 test('Advanced Settings can reset every profile-scoped tip and guide', () => {
   assert.match(html, /id="guidedGuidesReset"[^>]*>[\s\S]{0,180}Reset tips &amp; guides[\s\S]{0,120}Show all one-time help again/);
   assert.match(app, /function resetTipsAndGuides\(\)[\s\S]{0,800}localStorage\.removeItem\(guidedTourStorageKey\(\)\)/);
@@ -61,13 +93,13 @@ test('Advanced Settings can reset every profile-scoped tip and guide', () => {
   assert.match(css, /\.guided-guides-reset \{/);
 });
 
-test('gallery selection offers a one-time nonblocking swipe-up guide', () => {
-  assert.match(app, /id: 'gallery-selection-details'[\s\S]{0,180}target: '#selectBar'[\s\S]{0,180}motion: 'swipe-up'/);
+test('gallery selection offers a one-time nonblocking action and grouping guide', () => {
+  assert.match(app, /id: 'gallery-selection-actions'[\s\S]{0,180}target: '#selectBar'[\s\S]{0,260}Group stacks related generations[\s\S]{0,220}motion: 'swipe-up'/);
   assert.match(app, /function contextualGuideSeenKey\(id\)[\s\S]{0,180}ks-context-guide-/);
   assert.match(app, /function scheduleContextualGuide\(/);
   assert.match(app, /function showContextualGuide\(/);
-  assert.match(app, /function updateSelectBar\(\)[\s\S]{0,700}scheduleContextualGuide\('gallery-selection-details'\)/);
-  assert.match(app, /function openSelectionInsights\(\)[\s\S]{0,180}completeContextualGuide\('gallery-selection-details'\)/);
+  assert.match(app, /function updateSelectBar\(\)[\s\S]{0,700}scheduleContextualGuide\('gallery-selection-actions'\)/);
+  assert.match(app, /function openSelectionInsights\(\)[\s\S]{0,180}completeContextualGuide\('gallery-selection-actions'\)/);
   assert.match(css, /\.guided-tour\.is-contextual \{[^}]*pointer-events: none/);
   assert.match(css, /\.guided-tour\.is-contextual \.guided-tour-card \{[^}]*pointer-events: auto/);
   assert.match(css, /\.guided-tour-demo\[data-motion="swipe-up"\][\s\S]*guidedTourSwipeUp/);
