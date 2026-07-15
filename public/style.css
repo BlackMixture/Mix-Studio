@@ -9752,9 +9752,119 @@ body.first-run-tutorial-open { overflow: hidden; }
   animation-name: contextualChoiceTrace;
   animation-duration: 3.5s;
 }
-.guided-tour-card {
+.guided-tour.has-target-simulation .guided-tour-spotlight::before { display: none; }
+.guided-target-simulation[hidden] { display: none; }
+.guided-target-simulation {
+  --guided-sim-x: 50%;
+  --guided-sim-y: 50%;
+  --guided-choice-x-1: 18%;
+  --guided-choice-y-1: 50%;
+  --guided-choice-x-2: 50%;
+  --guided-choice-y-2: 50%;
+  --guided-choice-x-3: 82%;
+  --guided-choice-y-3: 50%;
   position: fixed;
   z-index: 2;
+  min-width: 12px;
+  min-height: 12px;
+  border-radius: 12px;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.guided-target-simulation-surface {
+  position: absolute;
+  inset: 1px;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.guided-target-simulation-cursor {
+  position: absolute;
+  left: var(--guided-sim-x);
+  top: var(--guided-sim-y);
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 1.2;
+  filter: drop-shadow(0 4px 7px rgba(0,0,0,.8));
+  transform: translate(10px, 10px);
+  transform-origin: 5px 4px;
+  animation: guidedTargetTap 2.15s cubic-bezier(.2,.8,.2,1) infinite;
+}
+.guided-target-simulation-touch {
+  position: absolute;
+  left: var(--guided-sim-x);
+  top: var(--guided-sim-y);
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,.96);
+  border-radius: 50%;
+  background: rgba(var(--mode-rgb),.74);
+  box-shadow: 0 0 0 0 rgba(var(--mode-rgb),.3), 0 4px 16px rgba(0,0,0,.68);
+  transform: translate(-50%, -50%) scale(.7);
+  animation: guidedTargetTouch 2.15s cubic-bezier(.2,.8,.2,1) infinite;
+}
+.guided-target-simulation-typing {
+  position: absolute;
+  inset: 13px 58px 12px 14px;
+  display: none;
+  align-items: flex-start;
+  align-content: flex-start;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+}
+.guided-target-simulation-typing i {
+  display: inline-block;
+  width: 1.5px;
+  height: 1.18em;
+  margin: .12em 0 0 2px;
+  flex: 0 0 1.5px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(var(--mode-rgb),.7);
+  animation: guidedTargetCaret 760ms steps(1,end) infinite;
+}
+.guided-target-simulation[data-motion="type"] .guided-target-simulation-surface {
+  inset: 2px 52px 2px 2px;
+  border: 0;
+  border-radius: max(10px, calc(var(--radius-md) - 2px)) 3px 3px max(10px, calc(var(--radius-md) - 2px));
+  background:
+    linear-gradient(135deg, rgba(var(--mode-rgb),.075), transparent 54%),
+    #030405;
+}
+.guided-target-simulation[data-motion="type"] .guided-target-simulation-typing { display: block; }
+.guided-target-simulation[data-motion="type"] .guided-target-simulation-cursor,
+.guided-target-simulation[data-motion="type"] .guided-target-simulation-touch { display: none; }
+.guided-target-simulation[data-motion="press"] .guided-target-simulation-surface {
+  animation: guidedTargetPress 2.25s ease-in-out infinite;
+}
+.guided-target-simulation[data-motion="choices"] .guided-target-simulation-cursor {
+  animation: guidedTargetChoiceCursor 3.8s cubic-bezier(.2,.8,.2,1) infinite;
+}
+.guided-target-simulation[data-motion="choices"] .guided-target-simulation-touch {
+  animation: guidedTargetChoiceTouch 3.8s cubic-bezier(.2,.8,.2,1) infinite;
+}
+.guided-target-simulation[data-motion="swipe-up"] .guided-target-simulation-cursor { display: none; }
+.guided-target-simulation[data-motion="swipe-up"] .guided-target-simulation-touch {
+  left: 50%;
+  top: auto;
+  bottom: 16%;
+  animation: guidedTargetSwipeUp 2s cubic-bezier(.2,.8,.2,1) infinite;
+}
+.guided-target-simulation[data-motion="swipe-up"] .guided-target-simulation-surface {
+  animation: guidedTargetSwipeSurface 2s ease-in-out infinite;
+}
+.guided-tour-card {
+  position: fixed;
+  z-index: 3;
   width: min(360px, calc(100vw - 24px));
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
@@ -9775,7 +9885,8 @@ body.first-run-tutorial-open { overflow: hidden; }
 }
 .guided-tour-card::-webkit-scrollbar { display: none; }
 .guided-tour.is-positioning .guided-tour-card,
-.guided-tour.is-positioning .guided-tour-spotlight { opacity: 0; }
+.guided-tour.is-positioning .guided-tour-spotlight,
+.guided-tour.is-positioning .guided-target-simulation { opacity: 0; }
 .guided-tour-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .guided-tour-step { color: var(--muted-2); font-size: 9.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
 .guided-tour-close {
@@ -9913,6 +10024,17 @@ body.first-run-tutorial-open { overflow: hidden; }
   display: block;
   animation: guidedTourSwipeUp 1.7s cubic-bezier(.2,.8,.2,1) infinite;
 }
+.guided-tour.has-target-simulation:not(.requires-action) .guided-tour-demo { display: none; }
+.guided-tour.has-target-simulation.requires-action .guided-tour-demo-stage { display: none; }
+.guided-tour.has-target-simulation.requires-action .guided-tour-demo::before {
+  content: "Try it";
+  flex: 0 0 auto;
+  color: var(--mode-color-2);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
 .guided-tour-actions { display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr); gap: 8px; }
 .guided-tour-actions button { min-height: 42px; border-radius: 12px; font-size: 11.5px; font-weight: 900; }
 .guided-tour-back { border: 1px solid var(--line); background: rgba(255,255,255,.025); color: var(--muted); }
@@ -9953,6 +10075,47 @@ body.first-run-tutorial-open { overflow: hidden; }
   68% { opacity: 1; transform: translateY(-13px) scale(1); }
   82%, 100% { opacity: 0; transform: translateY(-15px) scale(.92); }
 }
+@keyframes guidedTargetTap {
+  0%, 16%, 100% { opacity: 0; transform: translate(16px, 14px) scale(1); }
+  27% { opacity: 1; }
+  42%, 58% { opacity: 1; transform: translate(3px, 3px) scale(.86); }
+  72% { opacity: .4; transform: translate(3px, 3px) scale(.86); }
+}
+@keyframes guidedTargetTouch {
+  0%, 34%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(.62); box-shadow: 0 0 0 0 rgba(var(--mode-rgb),.3); }
+  43% { opacity: 1; transform: translate(-50%, -50%) scale(.86); }
+  58% { opacity: .95; transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 11px rgba(var(--mode-rgb),0); }
+  72% { opacity: 0; transform: translate(-50%, -50%) scale(1.08); }
+}
+@keyframes guidedTargetPress {
+  0%, 24%, 76%, 100% { border-color: transparent; background: transparent; box-shadow: 0 0 0 0 rgba(var(--mode-rgb),0); transform: scale(1); }
+  40%, 62% { border-color: rgba(var(--mode-rgb),.74); background: rgba(var(--mode-rgb),.09); box-shadow: 0 0 0 5px rgba(var(--mode-rgb),.14), 0 0 28px rgba(var(--mode-rgb),.35); transform: scale(.97); }
+}
+@keyframes guidedTargetChoiceCursor {
+  0%, 7% { left: var(--guided-choice-x-1); top: var(--guided-choice-y-1); opacity: 0; transform: translate(14px, 12px); }
+  13%, 26% { left: var(--guided-choice-x-1); top: var(--guided-choice-y-1); opacity: 1; transform: translate(3px, 3px) scale(.88); }
+  39%, 57% { left: var(--guided-choice-x-2); top: var(--guided-choice-y-2); opacity: 1; transform: translate(3px, 3px) scale(.88); }
+  70%, 88% { left: var(--guided-choice-x-3); top: var(--guided-choice-y-3); opacity: 1; transform: translate(3px, 3px) scale(.88); }
+  96%, 100% { left: var(--guided-choice-x-3); top: var(--guided-choice-y-3); opacity: 0; transform: translate(12px, 10px); }
+}
+@keyframes guidedTargetChoiceTouch {
+  0%, 10% { left: var(--guided-choice-x-1); top: var(--guided-choice-y-1); opacity: 0; transform: translate(-50%, -50%) scale(.65); }
+  15%, 25% { left: var(--guided-choice-x-1); top: var(--guided-choice-y-1); opacity: .95; transform: translate(-50%, -50%) scale(1); }
+  38%, 56% { left: var(--guided-choice-x-2); top: var(--guided-choice-y-2); opacity: .95; transform: translate(-50%, -50%) scale(1); }
+  69%, 87% { left: var(--guided-choice-x-3); top: var(--guided-choice-y-3); opacity: .95; transform: translate(-50%, -50%) scale(1); }
+  96%, 100% { left: var(--guided-choice-x-3); top: var(--guided-choice-y-3); opacity: 0; transform: translate(-50%, -50%) scale(.65); }
+}
+@keyframes guidedTargetSwipeUp {
+  0%, 12% { opacity: 0; transform: translate(-50%, 8px) scale(.72); }
+  22% { opacity: 1; transform: translate(-50%, 4px) scale(1); }
+  67% { opacity: 1; transform: translate(-50%, calc(-100% - 34px)) scale(1); }
+  82%, 100% { opacity: 0; transform: translate(-50%, calc(-100% - 40px)) scale(.86); }
+}
+@keyframes guidedTargetSwipeSurface {
+  0%, 20%, 86%, 100% { border-color: transparent; background: transparent; box-shadow: none; }
+  38%, 70% { border-color: rgba(var(--mode-rgb),.54); background: linear-gradient(0deg, rgba(var(--mode-rgb),.12), transparent 66%); box-shadow: 0 0 24px rgba(var(--mode-rgb),.24); }
+}
+@keyframes guidedTargetCaret { 0%, 48% { opacity: 1; } 49%, 100% { opacity: 0; } }
 @keyframes contextualTargetTap {
   0%, 18%, 100% { opacity: .2; transform: scale(.72); box-shadow: 0 0 0 3px rgba(var(--mode-rgb),.08); }
   34%, 52% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 8px rgba(var(--mode-rgb),.2), 0 4px 16px rgba(0,0,0,.62); }
@@ -10008,6 +10171,10 @@ body.first-run-tutorial-open { overflow: hidden; }
   .guided-tour-demo-touch,
   .guided-tour-demo-button,
   .guided-tour-demo-lines i,
+  .guided-target-simulation-cursor,
+  .guided-target-simulation-touch,
+  .guided-target-simulation-surface,
+  .guided-target-simulation-typing i,
   .guided-tour-media > img,
   .guided-tour-media > video,
   .guided-tour-media-frame img,
@@ -10016,6 +10183,9 @@ body.first-run-tutorial-open { overflow: hidden; }
   .guided-tour.target-needed .guided-tour-spotlight,
   .prompt-intent-hint { animation: none !important; }
   .guided-tour-demo[data-motion="swipe-up"] .guided-tour-demo-touch { opacity: .9; transform: translateY(-5px); }
+  .guided-target-simulation { transition-duration: 1ms; }
+  .guided-target-simulation[data-motion="type"] .guided-target-simulation-typing i { opacity: 1; }
+  .guided-target-simulation[data-motion="swipe-up"] .guided-target-simulation-touch { opacity: .9; transform: translate(-50%, -26px); }
 }
 
 .icon-tooltip[hidden] { display: none; }

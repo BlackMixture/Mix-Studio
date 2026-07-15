@@ -21335,6 +21335,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Choose a workspace',
     copy: 'Create starts new work, Edit changes an image, and Library keeps every completed generation.',
     motion: 'tap',
+    simulateOn: '[data-primary-mode="create"]',
     demo: 'Tap a workspace to switch tools',
     scroll: false,
     prepare: () => prepareGuidedTourImage(false),
@@ -21345,6 +21346,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Pick a creation method',
     copy: 'Image builds a frame, Region directs separate areas, and Video creates motion. LTX 2.3 also offers Director mode inside its model picker.',
     motion: 'tap',
+    simulateOn: '[data-create-mode="image"]',
     demo: 'Tap Image, Region, or Video',
     scroll: false,
     prepare: () => prepareGuidedTourImage(false),
@@ -21355,6 +21357,8 @@ const GUIDED_TOUR_STEPS = [
     title: 'Start with a prompt',
     copy: 'Type what you want in the large Prompt box. A short plain-language sentence is enough; Prompt Enhance can add production detail.',
     motion: 'type',
+    simulateOn: '#promptComposer',
+    simulationText: FIRST_IMAGE_TUTORIAL_PROMPT,
     demo: 'Type the scene you want to create',
     prepare: () => prepareGuidedTourImage(false),
   },
@@ -21364,6 +21368,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Add visual direction',
     copy: 'Image tools add a reference, depth, style, or image-to-prompt source. Revise prompt uses local AI. Both are optional.',
     motion: 'tap',
+    simulateOn: '#createImageGuideToggle',
     demo: 'Tap a tool to add more control',
     prepare: () => prepareGuidedTourImage(false),
   },
@@ -21373,6 +21378,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Set the output shape',
     copy: 'Choose the aspect ratio and S, M, or L output size. The dimensions shown here are the dimensions sent to generation.',
     motion: 'tap',
+    simulateOn: '#resHeader',
     demo: 'Tap Resolution to open the picker',
     prepare: () => prepareGuidedTourImage(false),
   },
@@ -21400,6 +21406,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Tune LoRA strength',
     copy: 'Hold a LoRA card and slide up or down to adjust strength. Its ⋯ menu offers an exact value and lets you set the card thumbnail.',
     motion: 'swipe-up',
+    simulateOn: '.lora-card:not(.add)',
     demo: 'Hold, then slide to change strength',
     prepare: prepareGuidedTourLoras,
   },
@@ -21409,6 +21416,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Save a LoRA stack',
     copy: 'The disk saves the current stack as a preset; the folder loads one. When saving, choose which LoRA thumbnail becomes the preset cover.',
     motion: 'tap',
+    simulateOn: 'button',
     demo: 'Save or load a reusable preset',
     prepare: prepareGuidedTourLoras,
   },
@@ -21437,6 +21445,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Find any result',
     copy: 'Search prompts, LoRAs, and folders. Filter images, videos, or likes, then sort and organize results with the folder row.',
     motion: 'tap',
+    simulateOn: 'input:not([type="hidden"]), button',
     demo: 'Search, filter, sort, or choose a folder',
     prepare: prepareGuidedTourLibrary,
   },
@@ -21446,6 +21455,7 @@ const GUIDED_TOUR_STEPS = [
     title: 'Select and group results',
     copy: 'Hold a result to select it, then sweep across more. The action bar can Group related generations or Save, Composite, Move, and Delete the selection.',
     motion: 'press',
+    simulateOn: '.card',
     demo: 'Hold a result to reveal selection actions',
     prepare: prepareGuidedTourLibrary,
   },
@@ -21472,6 +21482,8 @@ const CONTEXTUAL_GUIDES = {
     title: 'Start with the prompt',
     copy: 'Tap the Prompt box. We’ll type the example so you can see exactly where your ideas go.',
     motion: 'type',
+    simulateOn: '#promptComposer',
+    simulationText: FIRST_IMAGE_TUTORIAL_PROMPT,
     demo: 'Tap the Prompt box',
     actionLabel: 'Tap Prompt',
   },
@@ -21538,6 +21550,8 @@ const CONTEXTUAL_GUIDES = {
     title: 'Prompt here',
     copy: 'Describe the scene you want in plain language. A short sentence is enough to begin.',
     motion: 'type',
+    simulateOn: '#promptComposer',
+    simulationText: FIRST_IMAGE_TUTORIAL_PROMPT,
     demo: 'Type your idea in the Prompt box',
   },
   'turbo-vs-raw': {
@@ -21556,6 +21570,7 @@ const CONTEXTUAL_GUIDES = {
     title: 'Build a LoRA stack',
     copy: 'Tap + to add one and tap a card to toggle it. Hold and slide for strength; use ⋯ for an exact value or thumbnail. Disk and folder icons save and load presets.',
     motion: 'swipe-up',
+    simulateOn: '.lora-card:not(.add), .lora-card.add',
     demo: 'Add, tap, or hold a LoRA card',
   },
   'library-basics': {
@@ -21564,7 +21579,8 @@ const CONTEXTUAL_GUIDES = {
     kicker: 'Library basics',
     title: 'Find and organize results',
     copy: 'Search prompts, LoRAs, and folders, then filter or sort the grid. Hold any result when you want to act on several at once.',
-    motion: 'press',
+    motion: 'tap',
+    simulateOn: 'input:not([type="hidden"]), button',
     demo: 'Search, filter, or hold a result',
   },
   'gallery-selection-actions': {
@@ -21573,6 +21589,7 @@ const CONTEXTUAL_GUIDES = {
     title: 'Work with the selection',
     copy: 'Group stacks related generations into one Library card. Save, Composite, Move, and Delete apply to everything selected; pull up for details.',
     motion: 'swipe-up',
+    simulateOn: 'button',
     demo: 'Choose an action or pull up for details',
   },
   'prompt-missing-reference': {
@@ -21894,6 +21911,10 @@ let contextualGuideIntentKey = '';
 let contextualGuidePreviousFocus = null;
 let guidedTourResizeObserver = null;
 let guidedTourMutationObserver = null;
+let guidedTargetSimulationTimer = null;
+let guidedTargetSimulationCycle = 0;
+let guidedTargetSimulationGuide = null;
+let guidedTargetSimulationElement = null;
 const dismissedIntentGuides = new Set();
 
 function contextualGuideValue(value) {
@@ -21912,6 +21933,170 @@ function guidedTourTargetUsable(target) {
   if (style.display === 'none' || style.visibility === 'hidden') return false;
   const rect = target.getBoundingClientRect();
   return rect.width > 1 && rect.height > 1 && target.getClientRects().length > 0;
+}
+
+function guidedTourPrefersReducedMotion() {
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
+function guidedTourSimulationMotion(guide) {
+  const motion = contextualGuideValue(guide?.simulateMotion || guide?.trace || guide?.motion || '');
+  return ['tap', 'type', 'press', 'choices', 'swipe-up'].includes(motion) ? motion : '';
+}
+
+function guidedTourSimulationTarget(guide, target) {
+  if (!guide || !target) return null;
+  const explicitSelector = contextualGuideValue(guide.simulateOn);
+  if (explicitSelector) {
+    let explicitTarget = null;
+    try {
+      explicitTarget = target.matches(explicitSelector) ? target : target.querySelector(explicitSelector);
+    } catch {
+      explicitTarget = null;
+    }
+    if (guidedTourTargetUsable(explicitTarget)) return explicitTarget;
+  }
+
+  const motion = guidedTourSimulationMotion(guide);
+  if (motion === 'type') {
+    const composer = $('#promptComposer');
+    if (guidedTourTargetUsable(composer) && (target === composer || target.contains(composer))) return composer;
+  }
+  if (motion === 'choices') return target;
+  if (guide.advanceOn) {
+    const action = contextualGuideActions(guide, target)[0];
+    if (guidedTourTargetUsable(action)) return action;
+  }
+  if (target.matches('button, input, textarea, select, [role="button"], [role="textbox"]')) return target;
+  if (motion === 'press') {
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 380 && rect.height <= 190) return target;
+  }
+  const selector = motion === 'swipe-up'
+    ? '.lora-card:not(.add), .card:not(.add), button:not(:disabled), [role="button"]'
+    : 'button:not(:disabled), input:not(:disabled):not([type="hidden"]), [role="button"], [role="textbox"]';
+  const candidate = [...target.querySelectorAll(selector)].find(guidedTourTargetUsable);
+  return candidate || target;
+}
+
+function guidedTourSimulationChoices(guide, target) {
+  const selector = contextualGuideValue(guide?.simulateChoices || guide?.advanceOn);
+  let candidates = [];
+  try {
+    candidates = selector
+      ? $$(selector).filter((candidate) => (candidate === target || target.contains(candidate)) && guidedTourTargetUsable(candidate))
+      : [...target.querySelectorAll('button:not(:disabled), [role="button"]')].filter(guidedTourTargetUsable);
+  } catch {
+    candidates = [];
+  }
+  if (!candidates.length) candidates = [target];
+  if (candidates.length <= 3) return candidates;
+  return [candidates[0], candidates[Math.floor((candidates.length - 1) / 2)], candidates[candidates.length - 1]];
+}
+
+function positionGuidedTargetSimulation(guide, target) {
+  const simulation = $('#guidedTargetSimulation');
+  if (!guide || !target || !simulation || simulation.hidden) return;
+  const motion = guidedTourSimulationMotion(guide);
+  const actionTarget = guidedTourSimulationTarget(guide, target);
+  if (!motion || !guidedTourTargetUsable(actionTarget)) {
+    simulation.hidden = true;
+    return;
+  }
+  const rect = actionTarget.getBoundingClientRect();
+  const left = Math.max(2, rect.left);
+  const top = Math.max(2, rect.top);
+  const right = Math.min(window.innerWidth - 2, rect.right);
+  const bottom = Math.min(window.innerHeight - 2, rect.bottom);
+  simulation.style.left = `${left}px`;
+  simulation.style.top = `${top}px`;
+  simulation.style.width = `${Math.max(12, right - left)}px`;
+  simulation.style.height = `${Math.max(12, bottom - top)}px`;
+  const radius = parseFloat(getComputedStyle(actionTarget).borderRadius) || 12;
+  simulation.style.borderRadius = `${Math.min(28, Math.max(8, radius))}px`;
+  guidedTargetSimulationElement = actionTarget;
+
+  if (motion === 'choices') {
+    const points = guidedTourSimulationChoices(guide, target).map((candidate) => {
+      const candidateRect = candidate.getBoundingClientRect();
+      return {
+        x: Math.max(9, Math.min(rect.width - 9, candidateRect.left + candidateRect.width / 2 - rect.left)),
+        y: Math.max(9, Math.min(rect.height - 9, candidateRect.top + candidateRect.height / 2 - rect.top)),
+      };
+    });
+    const first = points[0] || { x: rect.width / 2, y: rect.height / 2 };
+    const middle = points[Math.floor((points.length - 1) / 2)] || first;
+    const last = points[points.length - 1] || middle;
+    [[1, first], [2, middle], [3, last]].forEach(([index, point]) => {
+      simulation.style.setProperty(`--guided-choice-x-${index}`, `${point.x}px`);
+      simulation.style.setProperty(`--guided-choice-y-${index}`, `${point.y}px`);
+    });
+  }
+}
+
+function pauseGuidedTargetSimulation() {
+  clearTimeout(guidedTargetSimulationTimer);
+  guidedTargetSimulationTimer = null;
+  guidedTargetSimulationCycle += 1;
+  const simulation = $('#guidedTargetSimulation');
+  if (simulation) simulation.hidden = true;
+  const text = $('#guidedTargetSimulationText');
+  if (text) text.textContent = '';
+}
+
+function stopGuidedTargetSimulation() {
+  pauseGuidedTargetSimulation();
+  guidedTargetSimulationGuide = null;
+  guidedTargetSimulationElement = null;
+  const simulation = $('#guidedTargetSimulation');
+  if (simulation) {
+    simulation.dataset.motion = 'tap';
+    delete simulation.dataset.guideId;
+    simulation.removeAttribute('style');
+  }
+  $('#guidedTour')?.classList.remove('has-target-simulation');
+}
+
+function startGuidedTargetSimulation(guide, target) {
+  stopGuidedTargetSimulation();
+  const simulation = $('#guidedTargetSimulation');
+  const motion = guidedTourSimulationMotion(guide);
+  if (!simulation || !motion || !guidedTourTargetUsable(target)) return;
+  guidedTargetSimulationGuide = guide;
+  simulation.dataset.motion = motion;
+  simulation.dataset.guideId = guide.id || '';
+  simulation.hidden = false;
+  $('#guidedTour').classList.add('has-target-simulation');
+  positionGuidedTargetSimulation(guide, target);
+  if (motion !== 'type') return;
+
+  const fullText = contextualGuideValue(guide.simulationText) || FIRST_IMAGE_TUTORIAL_PROMPT;
+  const text = $('#guidedTargetSimulationText');
+  if (!text || !fullText) return;
+  if (guidedTourPrefersReducedMotion()) {
+    text.textContent = fullText;
+    return;
+  }
+  const characters = Array.from(fullText);
+  const cycle = ++guidedTargetSimulationCycle;
+  let index = 0;
+  const typeNext = () => {
+    if (cycle !== guidedTargetSimulationCycle || guidedTargetSimulationGuide !== guide) return;
+    if (index < characters.length) {
+      index += 1;
+      text.textContent = characters.slice(0, index).join('');
+      const punctuationPause = /[,.!?]/.test(characters[index - 1]) ? 115 : 0;
+      guidedTargetSimulationTimer = setTimeout(typeNext, 31 + punctuationPause);
+      return;
+    }
+    guidedTargetSimulationTimer = setTimeout(() => {
+      if (cycle !== guidedTargetSimulationCycle || guidedTargetSimulationGuide !== guide) return;
+      index = 0;
+      text.textContent = '';
+      guidedTargetSimulationTimer = setTimeout(typeNext, 480);
+    }, 1250);
+  };
+  guidedTargetSimulationTimer = setTimeout(typeNext, 320);
 }
 
 function stopGuidedTourTargetObservation() {
@@ -21988,15 +22173,16 @@ function renderGuidedTourMedia(definition) {
 
   if (media.type === 'video') {
     const video = document.createElement('video');
+    const reduceMotion = guidedTourPrefersReducedMotion();
     video.src = media.src;
     video.muted = true;
     video.loop = true;
-    video.autoplay = true;
+    video.autoplay = !reduceMotion;
     video.playsInline = true;
     video.preload = 'metadata';
     video.setAttribute('aria-label', media.alt || media.label || 'Example result');
     container.appendChild(video);
-    video.play().catch(() => { /* browsers may wait for the next user gesture */ });
+    if (!reduceMotion) video.play().catch(() => { /* browsers may wait for the next user gesture */ });
   } else if (media.type === 'compare') {
     const comparison = document.createElement('span');
     comparison.className = 'guided-tour-media-compare';
@@ -22064,6 +22250,7 @@ function guidedTourTarget() {
 
 function positionGuidedTour() {
   const root = $('#guidedTour');
+  const guide = contextualGuide || (guidedTourIndex >= 0 ? GUIDED_TOUR_STEPS[guidedTourIndex] : null);
   const target = guidedTourTarget();
   if (root.hidden) return;
   if (!guidedTourTargetUsable(target)) {
@@ -22089,6 +22276,7 @@ function positionGuidedTour() {
   spotlight.style.height = `${Math.max(12, bottom - top)}px`;
   const radius = parseFloat(getComputedStyle(target).borderRadius) || 14;
   spotlight.style.borderRadius = `${Math.min(28, Math.max(10, radius + 5))}px`;
+  positionGuidedTargetSimulation(guide, target);
 
   const card = $('#guidedTourCard');
   const cardRect = card.getBoundingClientRect();
@@ -22145,6 +22333,7 @@ function showContextualGuide(id, { repeat = false, ignoreEnabled = false, intent
   if (id === 'gallery-selection-actions' && (!state.selected.size || target.classList.contains('is-expanded'))) return false;
 
   hideIconTooltip();
+  stopGuidedTargetSimulation();
   contextualGuide = guide;
   contextualGuideIntentKey = intentKey;
   contextualGuidePreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -22187,6 +22376,7 @@ function showContextualGuide(id, { repeat = false, ignoreEnabled = false, intent
     });
   }
   observeGuidedTourTarget(target);
+  startGuidedTargetSimulation(guide, target);
   guidedTourTimer = setTimeout(() => {
     positionGuidedTour();
     focusContextualGuideAction(guide);
@@ -22201,6 +22391,7 @@ function hideContextualGuide({ keepSequence = false, restoreFocus = true } = {})
     clearTimeout(contextualGuideRetryTimer);
     contextualGuideRetryTimer = null;
   }
+  stopGuidedTargetSimulation();
   stopGuidedTourTargetObservation();
   contextualGuide = null;
   contextualGuideIntentKey = '';
@@ -22361,6 +22552,7 @@ function resetTipsAndGuides() {
 function renderGuidedTourStep({ focus = true } = {}) {
   const root = $('#guidedTour');
   const step = GUIDED_TOUR_STEPS[guidedTourIndex];
+  stopGuidedTargetSimulation();
   if (typeof step?.prepare === 'function') step.prepare();
   const target = guidedTourTarget();
   if (!step || !target) return finishGuidedTour(false);
@@ -22388,6 +22580,8 @@ function renderGuidedTourStep({ focus = true } = {}) {
       inline: 'nearest',
     });
   }
+  observeGuidedTourTarget(target);
+  startGuidedTargetSimulation(step, target);
   const delay = step.scroll === false || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 30 : 320;
   guidedTourTimer = setTimeout(() => {
     positionGuidedTour();
@@ -22436,6 +22630,8 @@ function finishGuidedTour(completed = false) {
   if (contextualGuide) return dismissContextualGuide();
   clearTimeout(guidedTourTimer);
   cancelContextualGuide();
+  stopGuidedTargetSimulation();
+  stopGuidedTourTargetObservation();
   if (completed) {
     localStorage.setItem(guidedTourStorageKey(), guidedTourCompletionValue());
     ['prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics'].forEach((id) => {
@@ -22523,6 +22719,12 @@ document.addEventListener('click', (event) => {
   const targetWasInEventPath = typeof event.composedPath === 'function' && event.composedPath().includes(target);
   if (!action || !target || (action !== target && !target.contains(action) && !targetWasInEventPath)) return;
   setTimeout(() => advanceContextualGuideFromAction(guide, action), 70);
+}, true);
+document.addEventListener('beforeinput', (event) => {
+  if ($('#guidedTargetSimulation')?.dataset.motion !== 'type' || !guidedTargetSimulationElement) return;
+  if (event.target === guidedTargetSimulationElement || guidedTargetSimulationElement.contains(event.target)) {
+    pauseGuidedTargetSimulation();
+  }
 }, true);
 $('#guidedTour').addEventListener('click', (event) => {
   if (!contextualGuide?.advanceOn || event.target.closest('.guided-tour-card, .guided-tour-spotlight')) return;
