@@ -19,6 +19,7 @@ test('Director generation resolves uploaded extension videos from durable inputs
 test('uploaded extensions remain parentless so completion creates a profile-scoped gallery item', () => {
   assert.match(server, /itemId: extensionItem \? extensionItem\.id : null/);
   assert.match(server, /createItem: !extensionItem/);
+  assert.match(server, /makePoster: !extension \|\| !extensionItem/);
   assert.match(server, /parentVideoId: extensionVideo \? extensionVideo\.id : undefined/);
   assert.match(server, /profileId: job\.profileId/);
 });

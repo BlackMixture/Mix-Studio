@@ -8874,6 +8874,8 @@ function directorNormalizeClientProject(value) {
 
 function directorOverlapError(project = state.directorProject) {
   if (!project) return 'Create or import a Director project.';
+  if (state.directorComposerMode === 'extend' && !project.extensionSource) return 'Choose a video to extend.';
+  if (state.directorComposerMode === 'keyframes' && !project.segments.some((segment) => segment.type === 'image')) return 'Add at least one keyframe.';
   if (!project.globalPrompt.trim() && !project.segments.some((segment) => String(segment.prompt || '').trim())) return 'Add an overall or timed direction.';
   if (project.extensionSource) {
     const source = directorExtensionVideo(project.extensionSource);
@@ -9102,6 +9104,7 @@ function renderDirectorPreset() {
   const preset = $('#directorPreset');
   const timeline = $('#directorLayout');
   if (!preset || !timeline || !project) return;
+  $('#directorWorkspace').dataset.composerMode = mode;
   $$('#directorModeSwitch [data-director-mode]').forEach((button) => {
     const active = button.dataset.directorMode === mode;
     button.classList.toggle('active', active);
@@ -9124,7 +9127,7 @@ function renderDirectorPreset() {
   }
 }
 
-function renderDirectorSelectionControls(ppf, labelWidth) {
+function renderDirectorSelectionControls() {
   const controls = $('#directorSelectionControls');
   const selection = state.directorSelection;
   const segment = directorSelected();
@@ -9137,12 +9140,20 @@ function renderDirectorSelectionControls(ppf, labelWidth) {
     controls.hidden = true;
     return;
   }
-  const renderedWidth = Math.max(12, segment.length * ppf);
+  const segmentNode = [...row.querySelectorAll('[data-director-segment]')]
+    .find((node) => node.dataset.directorSegment === segment.id);
+  const canvas = $('#directorTimelineCanvas');
+  if (!segmentNode || !canvas) {
+    controls.hidden = true;
+    return;
+  }
+  const segmentRect = segmentNode.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
   controls.hidden = false;
-  controls.style.left = `${labelWidth + segment.start * ppf}px`;
-  controls.style.top = `${row.offsetTop + (window.innerWidth <= 720 ? 10 : 9)}px`;
-  controls.style.width = `${renderedWidth}px`;
-  controls.style.height = `${window.innerWidth <= 720 ? 62 : 59}px`;
+  controls.style.left = `${segmentRect.left - canvasRect.left}px`;
+  controls.style.top = `${segmentRect.top - canvasRect.top}px`;
+  controls.style.width = `${segmentRect.width}px`;
+  controls.style.height = `${segmentRect.height}px`;
   controls.classList.toggle('at-start', segment.start === 0);
   controls.classList.toggle('at-end', segment.start + segment.length >= state.directorProject.durationFrames);
 }
@@ -9262,6 +9273,7 @@ function renderDirector() {
       $('#directorExtensionSourceMeta').textContent = `${extensionSeconds > 0 ? `${extensionSeconds.toFixed(1)}s original` : 'Original duration unavailable'} · ${extension.continueAudio === false ? 'new section silent' : 'sound continues'}`;
     }
   }
+  renderDirectorPreset();
   if (directorAutoFit) directorPixelsPerSecond = directorAutoFitTimeline(project);
   $('#directorWorkspace').classList.toggle('auto-fit', directorAutoFit && project.durationFrames <= DIRECTOR_MAX_WINDOW);
   const ppf = directorPixelsPerSecond / DIRECTOR_FPS;
@@ -9290,7 +9302,7 @@ function renderDirector() {
     $('#directorStoryTrackRow').hidden = false;
     $('#directorStoryTrackRow').classList.toggle('is-empty', project.segments.length === 0);
   }
-  renderDirectorSelectionControls(ppf, labelWidth);
+  renderDirectorSelectionControls();
   const partialRange = directorUsesPartialRange(project);
   const range = $('#directorRange');
   range.hidden = !partialRange;
@@ -9529,6 +9541,8 @@ function openDirectorExtension(item, video) {
 
 function closeDirectorMode() {
   state.directorOpen = false;
+  directorAddContext = null;
+  directorReplaceTarget = null;
   stopDirectorPlayback();
   directorCloseInspector();
   for (const id of ['directorAddSheet', 'directorProjectMenuSheet', 'directorSettingsSheet']) directorCloseSheet(id);
@@ -10031,7 +10045,23 @@ function setDirectorDisclosure(buttonId, panelId, open) {
   panel.hidden = !expanded;
 }
 
-$('#directorModeBtn').addEventListener('click', () => openDirectorMode());
+function directorOpenMediaPicker(kind) {
+  const config = {
+    image: ['image/*', 'Choose a keyframe'],
+    'ic-image': ['image/*', 'Choose a motion guide image'],
+    video: ['video/*', 'Choose a motion guide video'],
+  }[kind];
+  if (!config) return;
+  pickUpload(config[0], (asset) => directorHandlePickedMedia(asset, kind), config[1]);
+}
+
+$('#directorChooseExtend').addEventListener('click', () => startDirectorWorkflow('extend'));
+$('#directorChooseKeyframes').addEventListener('click', () => startDirectorWorkflow('keyframes'));
+$('#directorChooseTimeline').addEventListener('click', () => startDirectorWorkflow('timeline'));
+$('#directorStartSheet').addEventListener('click', (event) => {
+  if (event.target === $('#directorStartSheet') || event.target.closest('[data-close]')) closeDirectorStart();
+});
+$$('#directorModeSwitch [data-director-mode]').forEach((button) => button.addEventListener('click', () => switchDirectorWorkflow(button.dataset.directorMode)));
 $('#directorBack').addEventListener('click', closeDirectorMode);
 $('#directorExtensionSourceRemove').addEventListener('click', () => {
   if (!state.directorProject?.extensionSource) return;
@@ -10044,11 +10074,31 @@ $('#directorProjectMenuBtn').addEventListener('click', () => directorOpenSheet('
 $('#directorExtendBtn').addEventListener('click', () => {
   directorCloseSheet('directorProjectMenuSheet');
   closeDirectorMode();
-  setView('gallery');
-  toast('Open a video, then choose Use → Extend video.');
+  openDirectorStart();
 });
 $('#directorSettingsBtn').addEventListener('click', () => directorOpenSheet('directorSettingsSheet'));
-$('#directorAddBtn').addEventListener('click', () => directorOpenSheet('directorAddSheet'));
+$('#directorPresetSettings').addEventListener('click', () => directorOpenSheet('directorSettingsSheet'));
+$('#directorExtendChoose').addEventListener('click', directorChooseExtensionSource);
+$('#directorExtendChange').addEventListener('click', directorChooseExtensionSource);
+$('#directorKeyframeAdd').addEventListener('click', () => directorOpenMediaPicker('image'));
+$('#directorExtendDuration').addEventListener('change', (event) => directorUpdatePresetDuration(event.target));
+$('#directorKeyframeDuration').addEventListener('change', (event) => directorUpdatePresetDuration(event.target));
+$('#directorExtendContinueAudio').addEventListener('change', () => {
+  if (!state.directorProject?.extensionSource) return;
+  state.directorProject.extensionSource.continueAudio = $('#directorExtendContinueAudio').checked;
+  $('#directorContinueAudio').checked = $('#directorExtendContinueAudio').checked;
+  renderDirector();
+  saveDirectorProject();
+});
+$('#directorAddBtn').addEventListener('click', () => {
+  directorAddContext = null;
+  directorReplaceTarget = null;
+  $('#directorAddTitle span').textContent = 'Add to Story';
+  directorOpenSheet('directorAddSheet');
+});
+$('#directorAddBefore').addEventListener('click', (event) => { event.stopPropagation(); directorOpenAddRelative('before'); });
+$('#directorAddAfter').addEventListener('click', (event) => { event.stopPropagation(); directorOpenAddRelative('after'); });
+$('#directorSelectionDelete').addEventListener('click', (event) => { event.stopPropagation(); directorDeleteSelected(); });
 $('#directorInspectorClose').addEventListener('click', directorCloseInspector);
 $('#directorInspectorAdvancedBtn').addEventListener('click', () => {
   setDirectorDisclosure(
@@ -10081,10 +10131,10 @@ $('#directorAddPrompt').addEventListener('click', () => {
   directorCloseSheet('directorAddSheet');
   directorAddSegment('main', { id: directorId('prompt'), type: 'text', start: 0, length: Math.min(120, state.directorProject.durationFrames), prompt: '' });
 });
-$('#directorAddImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); $('#directorImageFile').click(); });
+$('#directorAddImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('image'); });
 $('#directorAddAudio').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); $('#directorAudioFile').click(); });
-$('#directorAddIcImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); $('#directorIcImageFile').click(); });
-$('#directorAddIcVideo').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); $('#directorIcVideoFile').click(); });
+$('#directorAddIcImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('ic-image'); });
+$('#directorAddIcVideo').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('video'); });
 for (const [selector, kind] of [['#directorImageFile', 'image'], ['#directorAudioFile', 'audio'], ['#directorIcImageFile', 'ic-image'], ['#directorIcVideoFile', 'video']]) {
   $(selector).addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
@@ -10127,10 +10177,10 @@ $('#directorReplace').addEventListener('click', () => {
   const segment = directorSelected();
   if (!segment) return;
   directorReplaceTarget = { ...state.directorSelection };
-  if (segment.type === 'image') $('#directorImageFile').click();
+  if (segment.type === 'image') directorOpenMediaPicker('image');
   else if (segment.type === 'audio') $('#directorAudioFile').click();
-  else if (segment.isStaticImage) $('#directorIcImageFile').click();
-  else $('#directorIcVideoFile').click();
+  else if (segment.isStaticImage) directorOpenMediaPicker('ic-image');
+  else directorOpenMediaPicker('video');
 });
 for (const selector of ['#directorDuration', '#directorRangeStart', '#directorRangeLength', '#directorWidth', '#directorHeight', '#directorBatch', '#directorSmooth', '#directorSeed', '#directorFourK', '#directorContinueAudio', '#directorInpaintAudio', '#directorOverrideAudio', '#directorIcLora']) {
   $(selector).addEventListener(selector.includes('Prompt') || selector === '#directorIcLora' ? 'input' : 'change', directorUpdateProjectFields);
@@ -10152,6 +10202,7 @@ $('#directorImportFile').addEventListener('change', async (event) => {
   if (!file) return;
   try {
     state.directorProject = directorNormalizeClientProject(JSON.parse(await file.text()));
+    state.directorComposerMode = state.directorProject.extensionSource ? 'extend' : 'timeline';
     state.directorSelection = null;
     state.directorPlayhead = state.directorProject.range.startFrame;
     directorAutoFit = true;
@@ -10171,6 +10222,7 @@ $('#directorNewBtn').addEventListener('click', async () => {
     danger: true,
   })) return;
   state.directorProject = directorSeedProject();
+  state.directorComposerMode = 'timeline';
   state.directorSelection = null;
   state.directorPlayhead = 0;
   directorAutoFit = true;

@@ -12,10 +12,18 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 test('Edit and Video model selectors explain that the first reordered model is the default', () => {
   assert.match(html, /id="editModelOrderHint">Hold and drag to reorder · first is default</);
-  assert.match(html, /id="videoModelOrderHint">Hold and drag to reorder · first is default</);
+  assert.match(html, /id="videoModelOrderHint">Hold models to reorder · first is default</);
   assert.match(html, /id="editEngineRow"[^>]*aria-describedby="editModelOrderHint"/);
   assert.match(html, /id="vidEngineRow"[^>]*aria-describedby="videoModelOrderHint"/);
   assert.match(css, /\.video-choice-grid \.chip\[data-engine\]\.model-default::after \{[\s\S]*top: 50%;[\s\S]*transform: translateY\(-50%\)/);
+});
+
+test('LTX Director stays pinned beside LTX without becoming a reorderable engine', () => {
+  const director = html.match(/<button\b[^>]*id="directorModelOption"[^>]*>/)?.[0] || '';
+  assert.match(director, /\bdata-director-entry\b/);
+  assert.doesNotMatch(director, /\bdata-engine=/);
+  assert.match(app, /function modelOrderButtons\(rowId, visibleOnly = false\)[\s\S]{0,180}\.chip\[data-engine\]/);
+  assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
 });
 
 test('Model orders and defaults persist in profile-scoped form state', () => {

@@ -5210,7 +5210,7 @@ async function handleApi(req, res, url) {
     const loras = Array.isArray(body.loras) ? body.loras.filter((lora) => lora && lora.on && lora.name) : [];
     const outputFrames = directorOutputFrames(project);
     const graph = await buildLtxDirectorGraph(project, {
-      W, H, seed, smooth, fourK, makePoster: !extension, loras, extension,
+      W, H, seed, smooth, fourK, makePoster: !extension || !extensionItem, loras, extension,
       sigmasBase: LTX_SIGMAS_BASE, sigmasRefine: LTX_SIGMAS_REFINE,
     }, settings, {
       nodeFromOrdered, filterInputs, chainModelLoras, rifeSmooth,

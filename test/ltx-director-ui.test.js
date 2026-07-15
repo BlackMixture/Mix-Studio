@@ -17,15 +17,20 @@ function openingTagById(source, id) {
   return match[0];
 }
 
-test('Director mode is a conditional LTX workspace and not a navigation destination', () => {
-  assert.match(html, /id="directorModeBtn"[^>]*hidden/);
+test('Director is a pinned LTX model workflow and not a navigation destination', () => {
+  const directorOption = openingTagById(html, 'directorModelOption');
+  assert.match(directorOption, /\bdata-director-entry\b/);
+  assert.match(directorOption, /data-feature-engine="video\.ltx"/);
+  assert.doesNotMatch(directorOption, /\bdata-engine=/, 'Director must not leak into normal video engine state');
+  assert.doesNotMatch(html, /id="directorModeBtn"/);
   assert.match(html, /id="directorWorkspace"[^>]*hidden/);
   assert.match(openingTagById(html, 'directorBack'), /aria-label="Back to Video"/);
   assert.match(html, /id="directorBack"[^>]*>[\s\S]{0,80}>Back</);
   assert.doesNotMatch(html, /data-(?:primary-mode|create-mode)="director"/);
-  assert.match(app, /directorModeBtn'\)\.hidden = !\(isVideo && state\.vidEngine === 'ltx'\)/);
-  assert.match(app, /function openDirectorMode\(project\)/);
+  assert.match(app, /function openDirectorMode\(project, options = \{\}\)/);
   assert.match(app, /function closeDirectorMode\(\)/);
+  assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
+  assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,260}openDirectorStart\(\)/);
 });
 
 test('Director timeline exposes accessible drag and exact-value editing at 24 fps', () => {
@@ -63,8 +68,53 @@ test('Director defaults to a focused Story timeline with progressive disclosure'
   assert.match(app, /directorAudioTrackRow'\)\.hidden\s*=\s*(?:!project\.audioSegments\.length|project\.audioSegments\.length === 0)/);
   assert.match(app, /directorMotionTrackRow'\)\.hidden\s*=\s*(?:!project\.motionSegments\.length|project\.motionSegments\.length === 0)/);
   assert.match(app, /directorStoryTrackRow'\)\.classList\.toggle\('is-empty', project\.segments\.length === 0\)/);
-  assert.match(css, /\.director-track\.is-empty \.director-timeline-add/);
+  assert.match(app, /const timelineEmpty = project\.segments\.length === 0 && project\.audioSegments\.length === 0 && project\.motionSegments\.length === 0/);
+  assert.match(app, /directorTimelineViewport'\)\.classList\.toggle\('is-empty', timelineEmpty\)/);
+  assert.match(css, /\.director-timeline\.is-empty \.director-timeline-add\s*\{[\s\S]{0,260}position:\s*absolute;\s*inset:\s*0;\s*width:\s*auto/);
   assert.match(html, /id="directorValidationInline"[^>]*role="alert"/);
+});
+
+test('Director offers streamlined Extend and Keyframe presets beside the full timeline', () => {
+  for (const id of ['directorStartSheet', 'directorChooseExtend', 'directorChooseKeyframes', 'directorChooseTimeline', 'directorModeSwitch', 'directorExtendPreset', 'directorKeyframePreset']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  for (const label of ['Extend video', 'Keyframe video', 'Timeline']) assert.match(html, new RegExp(`>\\s*${label}\\s*<`));
+  assert.match(app, /directorComposerMode: state\.directorComposerMode/);
+  assert.match(app, /function startDirectorWorkflow\(mode\)/);
+  assert.match(app, /function switchDirectorWorkflow\(mode\)/);
+  assert.match(app, /timeline\.hidden = streamlined/);
+  assert.match(app, /segment\.start = ordered\.length === 1 \? 0 : Math\.round\(index \* lastFrame \/ \(ordered\.length - 1\)\)/);
+  assert.match(app, /segment\.isEndFrame = ordered\.length > 1 && index === ordered\.length - 1/);
+  assert.match(app, /directorComposerMode === 'extend' && !project\.extensionSource\) return 'Choose a video to extend\.'/);
+  assert.match(app, /directorComposerMode === 'keyframes'[\s\S]{0,160}return 'Add at least one keyframe\.'/);
+});
+
+test('Director media additions reuse the upload-or-gallery source picker', () => {
+  assert.match(app, /function directorOpenMediaPicker\(kind\)/);
+  assert.match(app, /pickUpload\(config\[0\], \(asset\) => directorHandlePickedMedia\(asset, kind\), config\[1\]\)/);
+  assert.match(app, /function directorChooseExtensionSource\(\)[\s\S]{0,900}'Choose a video to extend', \{ galleryReference: true \}\)/);
+  assert.match(app, /if \(picker\.galleryReference\)[\s\S]{0,360}srcItemId: asset\.itemId[\s\S]{0,120}srcVideoId: asset\.videoId/);
+  assert.match(app, /\$\('#directorAddImage'\)\.addEventListener\('click'[\s\S]{0,180}directorOpenMediaPicker\('image'\)/);
+  assert.match(app, /\$\('#directorAddIcVideo'\)\.addEventListener\('click'[\s\S]{0,180}directorOpenMediaPicker\('video'\)/);
+});
+
+test('Selected timeline segments expose contextual add and delete controls outside the segment button', () => {
+  for (const id of ['directorSelectionControls', 'directorAddBefore', 'directorSelectionDelete', 'directorAddAfter']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  const selectionControlsIndex = html.indexOf('id="directorSelectionControls"');
+  const storyLaneIndex = html.indexOf('id="directorMainTrack"');
+  assert.ok(selectionControlsIndex > storyLaneIndex, 'selection actions should be a stable canvas overlay');
+  assert.match(app, /function directorFindPlacementBefore\(track, beforeFrame, length, excludeId\)/);
+  assert.match(app, /function directorOpenAddRelative\(side\)/);
+  assert.match(app, /context\.side === 'before'[\s\S]{0,120}directorFindPlacementBefore/);
+  assert.match(app, /context\.side === 'after'[\s\S]{0,120}directorFindPlacement/);
+  assert.match(app, /directorSelectionDelete'\)\.addEventListener\('click'[\s\S]{0,140}directorDeleteSelected\(\)/);
+  assert.match(css, /\.director-selection-controls \.delete\s*\{[\s\S]{0,180}top:\s*-12px;\s*right:\s*-11px/);
+  assert.match(css, /\.director-segment\.compact \.director-segment-handle\s*\{\s*display:\s*none/);
+  assert.match(css, /\.director-track-name\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1/);
+  assert.match(css, /\.director-track-lane\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1/);
+  assert.match(app, /const segmentRect = segmentNode\.getBoundingClientRect\(\)[\s\S]{0,260}segmentRect\.left - canvasRect\.left/);
 });
 
 test('Director groups project, add, timeline, and output controls into focused sheets', () => {
@@ -127,7 +177,9 @@ test('Director auto-fit, partial ranges, contextual inspector, and drag gating a
 
   assert.match(app, /directorDragMoved/);
   assert.match(app, /directorSuppressClickUntil/);
-  assert.match(app, /(?:Math\.hypot\([^)]*\)|Math\.abs\([^)]*\))\s*(?:>|<=)\s*6|DIRECTOR_DRAG_THRESHOLD\s*=\s*6/);
+  assert.match(app, /const dragThreshold = event\.pointerType === 'touch' \? 10 : 6/);
+  assert.match(app, /const cancel = \(\) => \{[\s\S]{0,420}segment\.start = original\.start[\s\S]{0,180}renderDirector\(\)/);
+  assert.doesNotMatch(app.match(/const cancel = \(\) => \{[\s\S]*?\n\s*\};\n\s*window\.addEventListener\('pointermove'/)?.[0] || '', /directorOpenInspector\(\)/);
   assert.match(app, /directorTimelineCanvas'\)\.addEventListener\('click'[\s\S]{0,240}directorSuppressClickUntil[\s\S]{0,100}return/);
 });
 
@@ -139,6 +191,7 @@ test('Director has a compact full-sequence or selected-range generation footer',
   assert.match(app, /(?:Full sequence|Selected range)/);
   assert.match(app, /button\.textContent = project\.extensionSource \? 'Generate Extension' : 'Generate Video'/);
   assert.match(css, /\.director-summary\s*\{[^}]*position:\s*sticky;[^}]*bottom:/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.director-summary\s*\{\s*position:\s*static;\s*bottom:\s*auto/);
 });
 
 test('Director projects autosave, import, export, preflight media, and restore from gallery metadata', () => {
