@@ -9882,7 +9882,7 @@ body.sheet-open {
 .director-title { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
 .director-head h1 { margin: 0; font-size: clamp(20px, 3vw, 25px); line-height: 1; letter-spacing: -.035em; }
 .director-head small { overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.director-back, .director-icon-button, .director-primary-buttons button, .director-transport button,
+.director-back, .director-icon-button, .director-primary-buttons button, .director-timeline-add, .director-transport button,
 .director-inspector-actions button, .director-inspector-close, .director-disclosure {
   min-height: 42px; padding: 0 13px; border: 1px solid var(--line); border-radius: 11px;
   background: rgba(255,255,255,.045); color: var(--ink); font: inherit; font-size: 12px; font-weight: 800;
@@ -9890,9 +9890,9 @@ body.sheet-open {
 .director-back { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .director-back span { color: inherit; font: inherit; letter-spacing: 0; text-transform: none; }
 .director-icon-button { width: 42px; padding: 0; font-size: 23px; line-height: 1; }
-.director-back:hover, .director-icon-button:hover, .director-primary-buttons button:hover,
+.director-back:hover, .director-icon-button:hover, .director-primary-buttons button:hover, .director-timeline-add:hover,
 .director-inspector-actions button:hover, .director-disclosure:hover { border-color: rgba(var(--mode-rgb),.58); background: rgba(var(--mode-rgb),.08); }
-.director-back:focus-visible, .director-icon-button:focus-visible, .director-primary-buttons button:focus-visible,
+.director-back:focus-visible, .director-icon-button:focus-visible, .director-primary-buttons button:focus-visible, .director-timeline-add:focus-visible,
 .director-sheet-actions button:focus-visible, .director-disclosure:focus-visible, .director-inspector button:focus-visible {
   outline: 2px solid var(--mode-color); outline-offset: 2px;
 }
@@ -9954,9 +9954,6 @@ body.sheet-open {
 .director-primary-actions h2 { margin: 0; font-size: 15px; letter-spacing: -.015em; }
 .director-primary-actions small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .director-primary-buttons { flex: 0 0 auto; display: flex; gap: 7px; }
-.director-primary-buttons .director-add-button {
-  min-width: 82px; border-color: rgba(var(--mode-rgb),.7); background: rgba(var(--mode-rgb),.14); color: #fff;
-}
 .director-timeline {
   max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 15px;
   background: #050609; scrollbar-color: rgba(var(--mode-rgb),.5) rgba(255,255,255,.04); scrollbar-width: thin;
@@ -9975,9 +9972,13 @@ body.sheet-open {
 .director-track-name { position: sticky; z-index: 8; left: 0; display: grid; align-content: center; gap: 2px; padding: 10px; border-right: 1px solid var(--line); background: #0c0e13; font-size: 12px; font-weight: 850; }
 .director-track-name small { color: var(--muted); font-size: 9px; font-weight: 600; }
 .director-track-lane { position: relative; min-width: 0; background-image: linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px); background-size: 16px 100%; }
-.director-timeline-empty {
-  position: absolute; z-index: 3; left: calc(var(--director-label-width) + 15px); top: 55px; right: 15px;
-  overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 650; text-align: center; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+.director-timeline-add {
+  z-index: 7; grid-column: 2; grid-row: 1; align-self: center; justify-self: end; min-width: 72px; min-height: 40px; margin-right: 10px;
+  border-color: rgba(var(--mode-rgb),.62); background: rgba(5,5,7,.92); box-shadow: 0 8px 24px rgba(0,0,0,.36); color: #fff;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 180ms var(--ease);
+}
+.director-track.is-empty .director-timeline-add {
+  justify-self: center; min-width: 94px; margin-right: 0; background: rgba(var(--mode-rgb),.14); box-shadow: 0 10px 30px rgba(var(--mode-rgb),.08);
 }
 .director-segment {
   position: absolute; top: 9px; height: 59px; min-width: 12px; overflow: hidden;
@@ -10104,7 +10105,8 @@ body.sheet-open {
   .director-track-name { padding: 8px; }
   .director-segment { top: 10px; height: 62px; }
   .director-segment-handle { width: 18px; min-width: 18px; }
-  .director-timeline-empty { left: calc(var(--director-label-width) + 10px); right: 10px; top: 57px; text-align: left; }
+  .director-timeline-add { min-width: 68px; min-height: 44px; margin-right: 8px; }
+  .director-track.is-empty .director-timeline-add { min-width: 96px; }
   body.director-inspector-open { overflow: hidden; }
   .director-inspector {
     position: fixed; z-index: 82; inset: auto 0 0; width: 100%; max-height: min(84dvh,760px); overflow-y: auto;

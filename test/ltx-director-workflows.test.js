@@ -199,7 +199,7 @@ test('Director graph keeps LoRAs, guide audio override, smoothing, 4K, and poste
   assert.equal(graph.poster_save.class_type, 'SaveImage');
 });
 
-test('Director extension anchors both stages, removes the seam frame, and joins source media first', async () => {
+test('Director extension anchors both stages and emits a seam-trimmed tail for an encoded join', async () => {
   const normalized = normalizeDirectorProject(project({
     durationFrames: 120,
     range: { startFrame: 0, lengthFrames: 120 },
@@ -217,7 +217,7 @@ test('Director extension anchors both stages, removes the seam frame, and joins 
   };
   const plan = {
     outputFps: 24, outputWidth: 1280, outputHeight: 704,
-    sourceFrames: 120, sourceSeconds: 5,
+    sourceFrames: 120, sourceOriginalFrames: 120, sourceSeconds: 5,
     appendedFrames: 120, normalizedSeconds: 5,
     continueAudio: true,
   };
@@ -231,22 +231,18 @@ test('Director extension anchors both stages, removes the seam frame, and joins 
   }, helpers);
 
   assert.equal(graph.extension_source.class_type, 'VHS_LoadVideo');
-  assert.equal(graph.extension_source.inputs.frame_load_cap, 120);
-  assert.equal(graph.extension_tail.class_type, 'ImageFromBatch');
-  assert.deepEqual(graph.extension_tail.inputs, { image: ['extension_source', 0], batch_index: 119, length: 1 });
+  assert.equal(graph.extension_source.inputs.force_rate, 0);
+  assert.equal(graph.extension_source.inputs.frame_load_cap, 1);
+  assert.equal(graph.extension_source.inputs.skip_first_frames, 119);
   assert.equal(graph.extension_tail_prep.inputs.ordered[0], 0);
   assert.deepEqual(graph.extension_guide_base.inputs.latent, ['guide_base', 2]);
   assert.deepEqual(graph.concat1.inputs.video_latent, ['extension_guide_base', 0]);
   assert.deepEqual(graph.extension_guide_refine.inputs.latent, ['guide_refine', 2]);
   assert.deepEqual(graph.concat2.inputs.video_latent, ['extension_guide_refine', 0]);
   assert.deepEqual(graph.extension_tail_frames.inputs, { image: ['decode', 0], batch_index: 1, length: 120 });
-  assert.deepEqual(graph.extension_join_frames.inputs.image1, ['extension_source', 0]);
-  assert.deepEqual(graph.extension_join_frames.inputs.image2, ['extension_tail_frames', 0]);
-  assert.equal(graph.extension_silent_source.inputs.duration, 5);
-  assert.deepEqual(graph.extension_join_audio.inputs.audio1, ['extension_silent_source', 0]);
-  assert.deepEqual(graph.extension_join_audio.inputs.audio2, ['extension_trim_audio', 0]);
-  assert.deepEqual(graph.video.inputs.images, ['extension_join_frames', 0]);
-  assert.deepEqual(graph.video.inputs.audio, ['extension_join_audio', 0]);
+  assert.equal(graph.extension_join_frames, undefined);
+  assert.deepEqual(graph.video.inputs.images, ['extension_tail_frames', 0]);
+  assert.deepEqual(graph.video.inputs.audio, ['audio_dec', 0]);
   assert.equal(graph.video.inputs.fps, 24);
   assert.equal(graph.poster_save, undefined);
   assert.equal(Object.values(graph).filter((node) => node.class_type === 'SaveVideo').length, 1);

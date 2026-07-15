@@ -40,6 +40,9 @@ test('Director extension generation resolves the source through the signed-in pr
   assert.match(server, /parentVideoId: extensionVideo\.id/);
   assert.match(server, /sourcePath\.startsWith\(videosRoot\)/);
   assert.match(server, /detectAudioStream\(sourceBuffer, extensionVideo\.file\) === true/);
+  assert.match(server, /resolveFfmpegExecutable\(RUNTIME\)/);
+  assert.match(server, /joinVideoExtension\(Object\.assign\(\{\}, job\.extensionJoin, \{ tailBuffer: buf \}\)\)/);
+  assert.match(server, /it\.id === job\.itemId && it\.profileId === job\.profileId/);
   assert.match(server, /workflow: extension \? 'extend' : 'director'/);
   assert.match(server, /processed === 'extend'\) return 'Video extension \(LTX 2\.3\)'/);
 });

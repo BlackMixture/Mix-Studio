@@ -155,4 +155,8 @@ test('videoProcessInfo updates metadata for after-the-fact interpolation and ups
     processed: 'upscale',
     parentVideoId: 'v1',
   });
+
+  assert.equal(videoProcessInfo({ frames: 324, fps: 64, smooth: 4 }, {
+    kind: 'upscale', scale: 2, parentVideoId: 'v4',
+  }).frames, 321);
 });

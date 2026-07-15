@@ -8686,16 +8686,25 @@ function directorExtensionVideo(source = state.directorProject?.extensionSource)
   const video = item?.videos?.find((candidate) => candidate.id === source.videoId) || null;
   return item && video ? { item, video } : null;
 }
-function directorExtensionSeconds(source = state.directorProject?.extensionSource) {
+function directorExtensionSeconds(source = state.directorProject?.extensionSource, span = false) {
   const found = directorExtensionVideo(source);
   const info = found?.video?.info || {};
   const fps = Number(info.fps);
   let frames = Number(info.frames);
-  if (Number.isFinite(frames) && frames > 0 && info.exactFrameCount !== true && [2, 3].includes(Number(info.smooth))) {
+  if (Number.isFinite(frames) && frames > 0 && info.exactFrameCount !== true && [2, 3, 4].includes(Number(info.smooth))) {
     frames = Math.max(1, frames - (Number(info.smooth) - 1));
   }
-  if (Number.isFinite(frames) && frames > 0 && Number.isFinite(fps) && fps > 0) return frames / fps;
+  if (Number.isFinite(frames) && frames > 0 && Number.isFinite(fps) && fps > 0) {
+    return Math.max(0, frames - (span ? 1 : 0)) / fps;
+  }
   return Math.max(0, Number(source?.sourceSeconds) || 0);
+}
+function directorExtensionUses4K(source = state.directorProject?.extensionSource) {
+  const found = directorExtensionVideo(source);
+  const info = found?.video?.info || {};
+  const width = Number(info.width) || Number(found?.item?.width) || 0;
+  const height = Number(info.height) || Number(found?.item?.height) || 0;
+  return (info.fourK === true || Math.max(width, height) > 1536) && width >= 512 && height >= 512;
 }
 function directorSerializableProject(project = state.directorProject) {
   if (!project || typeof project !== 'object') return null;
@@ -8826,8 +8835,8 @@ function directorOverlapError(project = state.directorProject) {
     const source = directorExtensionVideo(project.extensionSource);
     if (!source) return 'The continuation source is no longer in this gallery.';
     if (project.range.lengthFrames < DIRECTOR_FPS) return 'A video extension must add at least 1 second.';
-    const seconds = directorExtensionSeconds(project.extensionSource);
-    const limit = source.video.info?.fourK === true ? 10 : 20;
+    const seconds = directorExtensionSeconds(project.extensionSource, true);
+    const limit = directorExtensionUses4K(project.extensionSource) ? 10 : 20;
     if (seconds > limit + 0.001) return `Video extension supports source clips up to ${limit} seconds${limit === 10 ? ' at 4K' : ''}.`;
   }
   for (const [label, list] of [['Story', project.segments], ['Audio', project.audioSegments], ['Motion guide', project.motionSegments]]) {
@@ -9080,8 +9089,10 @@ function renderDirector() {
   }
   if ($('#directorAudioTrackRow')) $('#directorAudioTrackRow').hidden = project.audioSegments.length === 0;
   if ($('#directorMotionTrackRow')) $('#directorMotionTrackRow').hidden = project.motionSegments.length === 0;
-  if ($('#directorStoryTrackRow')) $('#directorStoryTrackRow').hidden = false;
-  if ($('#directorTimelineEmpty')) $('#directorTimelineEmpty').hidden = project.segments.length > 0;
+  if ($('#directorStoryTrackRow')) {
+    $('#directorStoryTrackRow').hidden = false;
+    $('#directorStoryTrackRow').classList.toggle('is-empty', project.segments.length === 0);
+  }
   const partialRange = directorUsesPartialRange(project);
   const range = $('#directorRange');
   range.hidden = !partialRange;
@@ -9160,12 +9171,17 @@ function openDirectorExtension(item, video) {
     toast('This older video does not have the playback metadata needed for extension.', true);
     return;
   }
-  if (info.exactFrameCount !== true && [2, 3].includes(Number(info.smooth))) {
+  if (info.exactFrameCount !== true && [2, 3, 4].includes(Number(info.smooth))) {
     frames = Math.max(1, frames - (Number(info.smooth) - 1));
   }
   const sourceSeconds = frames / fps;
-  const sourceLimit = info.fourK === true ? 10 : 20;
-  if (sourceSeconds > sourceLimit + 0.001) {
+  const sourceSpanSeconds = Math.max(0, frames - 1) / fps;
+  const outputWidth = Number(info.width) || Number(item.width) || 1280;
+  const outputHeight = Number(info.height) || Number(item.height) || 720;
+  const fourK = (info.fourK === true || Math.max(outputWidth, outputHeight) > 1536)
+    && outputWidth >= 512 && outputHeight >= 512;
+  const sourceLimit = fourK ? 10 : 20;
+  if (sourceSpanSeconds > sourceLimit + 0.001) {
     toast(`Video extension supports source clips up to ${sourceLimit} seconds${sourceLimit === 10 ? ' at 4K' : ''}.`, true);
     return;
   }
@@ -9181,9 +9197,6 @@ function openDirectorExtension(item, video) {
   project.segments = [];
   project.audioSegments = [];
   project.motionSegments = [];
-  const outputWidth = Number(info.width) || Number(item.width) || 1280;
-  const outputHeight = Number(info.height) || Number(item.height) || 720;
-  const fourK = info.fourK === true && outputWidth >= 512 && outputHeight >= 512;
   const dimensionScale = fourK ? 2 : 1;
   project.output.width = Math.max(256, Math.round((outputWidth / dimensionScale) / 64) * 64);
   project.output.height = Math.max(256, Math.round((outputHeight / dimensionScale) / 64) * 64);

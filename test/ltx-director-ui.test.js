@@ -54,7 +54,7 @@ test('Director defaults to a focused Story timeline with progressive disclosure'
   assert.match(addActions[0], />\s*(?:\+\s*)?Add\s*</);
   assert.match(openingTagById(html, 'directorStoryTrackRow'), /data-director-track="main"/);
   assert.doesNotMatch(openingTagById(html, 'directorStoryTrackRow'), /\bhidden\b/);
-  assert.match(html, /id="directorStoryTrackRow"[\s\S]{0,220}class="director-track-name">Story\b/);
+  assert.match(html, /id="directorStoryTrackRow"[\s\S]{0,420}class="director-track-name">Story\b[\s\S]{0,420}id="directorAddBtn"/);
 
   for (const [id, label] of [['directorAudioTrackRow', 'Audio'], ['directorMotionTrackRow', 'Motion guide']]) {
     assert.match(openingTagById(html, id), /\bhidden\b/, `${label} should be hidden until it contains media`);
@@ -62,7 +62,8 @@ test('Director defaults to a focused Story timeline with progressive disclosure'
   }
   assert.match(app, /directorAudioTrackRow'\)\.hidden\s*=\s*(?:!project\.audioSegments\.length|project\.audioSegments\.length === 0)/);
   assert.match(app, /directorMotionTrackRow'\)\.hidden\s*=\s*(?:!project\.motionSegments\.length|project\.motionSegments\.length === 0)/);
-  assert.match(html, /id="directorTimelineEmpty"/);
+  assert.match(app, /directorStoryTrackRow'\)\.classList\.toggle\('is-empty', project\.segments\.length === 0\)/);
+  assert.match(css, /\.director-track\.is-empty \.director-timeline-add/);
   assert.match(html, /id="directorValidationInline"[^>]*role="alert"/);
 });
 

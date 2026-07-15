@@ -131,9 +131,21 @@ test('Director extension plans require reliable metadata, useful duration, and s
   assert.throws(() => normalizeDirectorExtensionPlan({
     info: { fps: 24, frames: 120, width: 1280, height: 704 }, rangeFrames: 23,
   }), /at least 1 second/);
-  assert.throws(() => normalizeDirectorExtensionPlan({
+  const nominalTenSeconds = normalizeDirectorExtensionPlan({
     info: { fps: 24, frames: 241, width: 2048, height: 1152, fourK: true }, rangeFrames: 120,
+  });
+  assert.equal(nominalTenSeconds.sourceOriginalFrames, 241);
+  assert.throws(() => normalizeDirectorExtensionPlan({
+    info: { fps: 24, frames: 242, width: 2048, height: 1152, fourK: true }, rangeFrames: 120,
   }), /up to 10 seconds at 4K/);
+
+  const nominalTwentySeconds = normalizeDirectorExtensionPlan({
+    info: { fps: 24, frames: 481, width: 1280, height: 704, exactFrameCount: true }, rangeFrames: 120,
+  });
+  assert.equal(nominalTwentySeconds.sourceOriginalFrames, 481);
+  assert.throws(() => normalizeDirectorExtensionPlan({
+    info: { fps: 24, frames: 482, width: 1280, height: 704, exactFrameCount: true }, rangeFrames: 120,
+  }), /up to 20 seconds/);
 });
 
 test('extension length and source length remain inside their safety caps', () => {
@@ -169,10 +181,17 @@ test('extension dimensions normalize to model-safe multiples and preserve eligib
     W: 1280,
     H: 704,
     outputWidth: 1280,
-    outputHeight: 704,
+    outputHeight: 720,
     fourK: false,
   });
   assert.deepEqual(extensionDimensions(2048, 1152, true), {
+    W: 1024,
+    H: 576,
+    outputWidth: 2048,
+    outputHeight: 1152,
+    fourK: true,
+  });
+  assert.deepEqual(extensionDimensions(2048, 1152, false), {
     W: 1024,
     H: 576,
     outputWidth: 2048,

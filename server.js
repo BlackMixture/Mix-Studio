@@ -129,6 +129,10 @@ const {
   videoExtensionInfo,
 } = require('./lib/video-extension');
 const {
+  joinVideoExtension,
+  resolveFfmpegExecutable,
+} = require('./lib/video-extension-join');
+const {
   DIRECTOR_FPS,
   buildLtxDirectorGraph,
   directorAssetNames,
@@ -188,6 +192,7 @@ const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
 const SETUP_FEATURE_MANIFEST = loadJson(path.join(ROOT, 'installer', 'feature-manifest.json'), { features: [] });
 let RUNTIME = resolveRuntimeConfig(ROOT);
+let videoExtensionFfmpeg = '';
 const DATA = RUNTIME.dataDir;
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
@@ -1446,7 +1451,7 @@ async function completeJob(pid) {
   // finalization window so a resumed browser does not clear it too early.
   if (job.completing) return;
   job.completing = true;
-  const durationMs = jobDurationMs(job);
+  let durationMs = jobDurationMs(job);
   const res = await comfyFetch(`/history/${pid}`);
   const hist = (await res.json())[pid];
   if (!hist) return failJob(pid, 'No history entry from ComfyUI');
@@ -1468,10 +1473,19 @@ async function completeJob(pid) {
   if (job.kind === 'video') {
     const vids = findOutputFiles(outputs, /\.(mp4|webm|mov|mkv)$/i);
     if (!vids.length) return failJob(pid, 'ComfyUI produced no video file');
-    const buf = await downloadOutput(vids[vids.length - 1]);
+    let buf = await downloadOutput(vids[vids.length - 1]);
+    if (job.extensionJoin) {
+      broadcast('status', { jobId: pid, kind: 'video', text: 'Joining video extension…', itemId: job.itemId || null });
+      try {
+        buf = await joinVideoExtension(Object.assign({}, job.extensionJoin, { tailBuffer: buf }));
+        durationMs = jobDurationMs(job);
+      } catch (error) {
+        return failJob(pid, error.message || 'Could not join the generated video extension');
+      }
+    }
     let item;
     if (job.itemId) {
-      item = db.items.find((it) => it.id === job.itemId);
+      item = db.items.find((it) => it.id === job.itemId && it.profileId === job.profileId);
       if (!item) return failJob(pid, 'Gallery item no longer exists');
     } else {
       // standalone video (Video tab): create a gallery item with a poster frame
@@ -5047,7 +5061,7 @@ async function handleApi(req, res, url) {
 
     const info = await getObjectInfo();
     const extensionClasses = project.extensionSource
-      ? ['VHS_LoadVideo', 'ImageFromBatch', 'ImageBatch', 'AudioConcat', 'EmptyAudio']
+      ? ['VHS_LoadVideo', 'ImageFromBatch']
       : [];
     const missingNodes = [...new Set([...REQUIRED_CLASSES.video, ...REQUIRED_CLASSES.ltxdirector, ...extensionClasses])]
       .filter((name) => !info[name]);
@@ -5106,8 +5120,8 @@ async function handleApi(req, res, url) {
       try {
         plan = normalizeDirectorExtensionPlan({
           info: sourceInfo,
-          width: sourceDims.w || sourceInfo.width || extensionItem.width,
-          height: sourceDims.h || sourceInfo.height || extensionItem.height,
+          width: sourceInfo.width || extensionItem.width || sourceDims.w,
+          height: sourceInfo.height || extensionItem.height || sourceDims.h,
           rangeFrames: project.range.lengthFrames,
           smooth: body.smooth,
           continueAudio: project.extensionSource.continueAudio,
@@ -5118,10 +5132,18 @@ async function handleApi(req, res, url) {
       const sourceExtension = ['.mp4', '.webm', '.mov'].includes(path.extname(extensionVideo.file).toLowerCase())
         ? path.extname(extensionVideo.file).toLowerCase()
         : '.mp4';
+      if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
+      if (!videoExtensionFfmpeg) {
+        return json(res, 400, {
+          error: 'Video extension needs FFmpeg. Install it or make the ComfyUI imageio-ffmpeg executable available.',
+        });
+      }
       const videoName = await uploadToComfy(sourceBuffer, `ks_extend_${extensionVideo.id}${sourceExtension}`);
       extension = {
         videoName,
         sourceHasAudio: detectAudioStream(sourceBuffer, extensionVideo.file) === true,
+        sourcePath,
+        ffmpegPath: videoExtensionFfmpeg,
         plan,
       };
     }
@@ -5188,6 +5210,12 @@ async function handleApi(req, res, url) {
       createItem: !extensionItem,
       graph,
       videoInfo,
+      extensionJoin: extension ? {
+        sourcePath: extension.sourcePath,
+        sourceHasAudio: extension.sourceHasAudio,
+        ffmpegPath: extension.ffmpegPath,
+        plan: extension.plan,
+      } : null,
     });
     ensureWs();
     return json(res, 200, {
