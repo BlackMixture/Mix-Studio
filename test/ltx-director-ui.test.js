@@ -36,6 +36,8 @@ test('Director is a pinned LTX model workflow and not a navigation destination',
   assert.match(app, /closeDirectorMode\(\);[\s\S]{0,100}source\.click\(\)/);
   assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
   assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,260}openDirectorWorkflowChooser\(\)/);
+  assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,260}\.director-head\s*\{[\s\S]{0,180}width:\s*min\(720px, calc\(100% - 150px\)\)/);
+  assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,500}\.director-head-actions\s*\{[\s\S]{0,120}left:\s*calc\(100% \+ 10px\)/);
 });
 
 test('Director timeline exposes accessible drag and exact-value editing at 24 fps', () => {
@@ -170,7 +172,7 @@ test('Selected timeline segments expose contextual add and delete controls outsi
   assert.match(app, /const segmentRect = segmentNode\.getBoundingClientRect\(\)[\s\S]{0,260}segmentRect\.left - canvasRect\.left/);
 });
 
-test('Director groups project, add, timeline, and output controls into focused sheets', () => {
+test('Director groups project and output controls into focused sheets while keeping timeline navigation visible', () => {
   for (const id of ['directorProjectMenuSheet', 'directorAddSheet', 'directorSettingsSheet']) {
     assert.match(openingTagById(html, id), /class="[^"]*\bsheet\b/);
   }
@@ -187,10 +189,13 @@ test('Director groups project, add, timeline, and output controls into focused s
   }
   for (const label of ['Import', 'Export', 'New', 'About']) assert.match(html, new RegExp(`>\\s*${label}(?: project| Director)?\\s*<`));
 
-  assert.match(html, /id="directorTimelineSettingsBtn"[^>]*aria-controls="directorTimelineSettings"/);
-  assert.match(html, /id="directorTimelineSettings"/);
-  for (const id of ['directorPlay', 'directorPlayhead', 'directorZoom', 'directorSnap']) assert.match(html, new RegExp(`id="${id}"`));
-  assert.ok(html.indexOf('class="director-transport"') > html.indexOf('id="directorTimelineSettings"'), 'transport belongs inside Timeline settings');
+  assert.match(openingTagById(html, 'directorTimelineToolbar'), /aria-label="Timeline controls"/);
+  for (const id of ['directorPlay', 'directorPlayhead', 'directorAutoFit', 'directorZoom', 'directorSnap']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.ok(html.indexOf('id="directorTimelineToolbar"') < html.indexOf('id="directorTimelineViewport"'), 'timeline controls belong directly above the timeline');
+  assert.doesNotMatch(html, /id="directorTimelineSettings(?:Btn)?"/);
+  assert.match(css, /\.director-timeline-toolbar\s*\{/);
+  assert.match(css, /\.director-zoom input\[type="range"\][\s\S]{0,360}--director-zoom-progress/);
+  assert.match(app, /function renderDirectorZoomFill\(\)/);
 });
 
 test('Director uses friendly seconds while retaining exact frame controls under Advanced', () => {

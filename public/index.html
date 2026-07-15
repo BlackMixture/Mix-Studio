@@ -260,6 +260,13 @@
             <button class="director-quiet-button" id="directorSettingsBtn" type="button" aria-label="Open Director settings" aria-haspopup="dialog" aria-controls="directorSettingsSheet">Settings</button>
           </div>
         </div>
+        <div class="director-timeline-toolbar" id="directorTimelineToolbar" aria-label="Timeline controls">
+          <button class="director-timeline-play" id="directorPlay" type="button" aria-label="Play timeline" title="Play timeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m8 5 11 7-11 7V5Z"/></svg><span>Play</span></button>
+          <label class="director-timeline-playhead"><span>Playhead</span><input id="directorPlayhead" type="number" min="0" max="24000" step="1" value="0" inputmode="numeric" /><small>fr</small></label>
+          <button class="director-timeline-tool" id="directorAutoFit" type="button" role="switch" aria-checked="false" title="Fit the full timeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 4H4v4m12-4h4v4M8 20H4v-4m12 4h4v-4M4 12h16"/></svg><span>Fit</span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
+          <label class="director-zoom"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4M8 11h6m-3-3v6"/></svg>Zoom</span><input id="directorZoom" type="range" min="80" max="960" step="10" value="320" aria-label="Timeline zoom" /></label>
+          <button class="director-timeline-tool" id="directorSnap" type="button" role="switch" aria-checked="true" title="Snap clips while dragging"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 3v9a6 6 0 0 0 12 0V3M6 7h4m4 0h4M6 12h4m4 0h4"/></svg><span>Snap</span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
+        </div>
         <div class="director-timeline" id="directorTimelineViewport" tabindex="0" aria-label="Director timeline. Scroll horizontally to navigate.">
           <div class="director-timeline-canvas" id="directorTimelineCanvas">
             <div class="director-ruler" id="directorRuler" aria-hidden="true"></div>
@@ -375,7 +382,7 @@
           </div>
         </section>
         <details class="director-settings-advanced">
-          <summary><span class="director-settings-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm14-2h2v6h-2V5ZM4 15h4v2H4v-2Zm8-2h2v6h-2v-6Zm4 2h4v2h-4v-2ZM10 6h2v4h-2V6Z"/></svg></span><span><strong>Advanced</strong><small>Precision timing, overrides, and timeline behavior</small></span><i aria-hidden="true">＋</i></summary>
+          <summary><span class="director-settings-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h10v2H4V7Zm14-2h2v6h-2V5ZM4 15h4v2H4v-2Zm8-2h2v6h-2v-6Zm4 2h4v2h-4v-2ZM10 6h2v4h-2V6Z"/></svg></span><span><strong>Advanced</strong><small>Generation overrides and exact range frames</small></span><i aria-hidden="true">＋</i></summary>
           <div class="director-field-grid">
             <label>Seed<input id="directorSeed" type="number" min="0" step="1" placeholder="Random" /></label>
             <label class="director-inspector-wide">Motion guide LoRA override<input id="directorIcLora" type="text" placeholder="Use owner-configured Ingredients model" /></label>
@@ -386,17 +393,6 @@
               <label>Start <span class="director-unit">frames</span><input id="directorRangeStart" type="number" min="0" max="23999" step="1" /></label>
               <label>Duration <span class="director-unit">frames</span><input id="directorRangeLength" type="number" min="1" max="480" step="1" /></label>
             </div>
-          </div>
-          <button class="director-disclosure" id="directorTimelineSettingsBtn" type="button" aria-expanded="false" aria-controls="directorTimelineSettings"><span>Timeline settings</span><span aria-hidden="true">›</span></button>
-          <div class="director-timeline-settings" id="directorTimelineSettings" hidden>
-            <div class="director-transport">
-              <button id="directorPlay" type="button" aria-label="Play timeline">▶ <span>Play</span></button>
-              <label>Playhead <input id="directorPlayhead" type="number" min="0" max="24000" step="1" value="0" /> <span class="director-unit">frames</span></label>
-              <button class="director-setting-toggle" id="directorAutoFit" type="button" role="switch" aria-checked="false"><span class="director-setting-toggle-copy"><strong>Fit full timeline</strong><small>Show the entire sequence at once</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
-              <label class="director-zoom">Zoom <input id="directorZoom" type="range" min="80" max="960" step="10" value="320" /></label>
-              <button class="director-setting-toggle" id="directorSnap" type="button" role="switch" aria-checked="true"><span class="director-setting-toggle-copy"><strong>Snap while dragging</strong><small>Align clips to whole-frame positions</small></span><span class="settings-media-switch" aria-hidden="true"><i></i></span></button>
-            </div>
-            <p class="director-timeline-help">Arrow keys move one frame. Shift + Arrow moves one second.</p>
           </div>
         </details>
       </section>

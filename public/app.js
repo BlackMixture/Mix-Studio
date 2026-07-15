@@ -9629,6 +9629,16 @@ function renderDirectorPlayhead() {
   $('#directorPlayheadLine').style.left = `${state.directorPlayhead * ppf}px`;
 }
 
+function renderDirectorZoomFill() {
+  const input = $('#directorZoom');
+  if (!input) return;
+  const min = Number(input.min) || 0;
+  const max = Number(input.max) || 100;
+  const value = Number(input.value) || min;
+  const progress = max > min ? directorClamp((value - min) / (max - min) * 100, 0, 100) : 0;
+  input.style.setProperty('--director-zoom-progress', `${progress}%`);
+}
+
 function renderDirector() {
   const project = state.directorProject;
   if (!project || !state.directorOpen) return;
@@ -9691,7 +9701,10 @@ function renderDirector() {
     setDirectorToggleValue('directorAutoFit', directorAutoFit && project.durationFrames <= DIRECTOR_MAX_WINDOW);
     $('#directorAutoFit').disabled = project.durationFrames > DIRECTOR_MAX_WINDOW;
   }
-  if ($('#directorZoom')) $('#directorZoom').value = String(Math.min(Number($('#directorZoom').max) || 160, Math.round(directorPixelsPerSecond)));
+  if ($('#directorZoom')) {
+    $('#directorZoom').value = String(Math.min(Number($('#directorZoom').max) || 160, Math.round(directorPixelsPerSecond)));
+    renderDirectorZoomFill();
+  }
   const newSeconds = Number(directorFramesToSeconds(project.range.lengthFrames));
   if ($('#directorSummaryLabel')) $('#directorSummaryLabel').textContent = extension ? 'Extension' : (state.directorComposerMode === 'keyframes' ? 'Keyframe video' : (partialRange ? 'Selected range' : 'Sequence'));
   $('#directorSummary').textContent = extension
@@ -10278,16 +10291,20 @@ function directorSplitSelected() {
 function stopDirectorPlayback() {
   cancelAnimationFrame(directorAnimation);
   directorAnimation = 0;
-  $('#directorPlay').textContent = '▶';
-  $('#directorPlay').setAttribute('aria-label', 'Play timeline');
+  const button = $('#directorPlay');
+  button.classList.remove('playing');
+  button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m8 5 11 7-11 7V5Z"/></svg><span>Play</span>';
+  button.setAttribute('aria-label', 'Play timeline');
 }
 
 function toggleDirectorPlayback() {
   if (directorAnimation) return stopDirectorPlayback();
   directorPlayFrame = state.directorPlayhead;
   directorPlayingAt = performance.now();
-  $('#directorPlay').textContent = '❚❚';
-  $('#directorPlay').setAttribute('aria-label', 'Pause timeline');
+  const button = $('#directorPlay');
+  button.classList.add('playing');
+  button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 5h4v14H7V5Zm6 0h4v14h-4V5Z"/></svg><span>Pause</span>';
+  button.setAttribute('aria-label', 'Pause timeline');
   const tick = (now) => {
     const elapsed = Math.floor((now - directorPlayingAt) * DIRECTOR_FPS / 1000);
     state.directorPlayhead = directorPlayFrame + elapsed;
@@ -10502,13 +10519,6 @@ $('#directorInspectorAdvancedBtn').addEventListener('click', () => {
     'directorInspectorAdvancedBtn',
     'directorInspectorAdvanced',
     $('#directorInspectorAdvancedBtn').getAttribute('aria-expanded') !== 'true',
-  );
-});
-$('#directorTimelineSettingsBtn').addEventListener('click', () => {
-  setDirectorDisclosure(
-    'directorTimelineSettingsBtn',
-    'directorTimelineSettings',
-    $('#directorTimelineSettingsBtn').getAttribute('aria-expanded') !== 'true',
   );
 });
 $('#directorGlobalPrompt').addEventListener('input', directorUpdateProjectFields);
