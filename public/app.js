@@ -16,6 +16,9 @@ const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'kr
 // setup into another profile.
 const workspaceSessionProfileId = localStorage.getItem('ks-profile-id') || '';
 let suppressWorkspaceAutosave = false;
+let firstRunTutorialAuthLoaded = false;
+let firstRunTutorialMetaLoaded = false;
+let firstRunTutorialGalleryLoaded = false;
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -948,6 +951,9 @@ async function checkAuth() {
     await loadUserPreferences();
   } catch {
     renderAppUpdateAccess(); // 401 -> api() already opened the gate
+  } finally {
+    firstRunTutorialAuthLoaded = true;
+    maybeShowFirstRunTutorial();
   }
 }
 checkAuth();
@@ -1119,6 +1125,16 @@ function syncFullscreenControl() {
     : (standalone ? 'Standalone app' : 'Hide browser controls');
 }
 
+let fullscreenControlSyncTimer = 0;
+function scheduleFullscreenControlSync() {
+  syncFullscreenControl();
+  clearTimeout(fullscreenControlSyncTimer);
+  // Download/save UI can dismiss fullscreen before the browser updates its
+  // fullscreen element or dispatches fullscreenchange. Recheck after that
+  // transition settles so the drawer never keeps a stale “Exit” action.
+  fullscreenControlSyncTimer = setTimeout(syncFullscreenControl, 250);
+}
+
 async function toggleFullscreen() {
   const current = activeFullscreenElement();
   if (current) {
@@ -1165,6 +1181,7 @@ function renderAppDrawerNavigation() {
 
 function openAppDrawer() {
   closeActionMenu();
+  scheduleFullscreenControlSync();
   renderAppDrawerNavigation();
   document.body.classList.add('app-drawer-open');
   $('#appDrawer').classList.add('show');
@@ -1255,9 +1272,12 @@ $('#fullscreenBtn').addEventListener('click', async () => {
     syncFullscreenControl();
   }
 });
-document.addEventListener('fullscreenchange', syncFullscreenControl);
-document.addEventListener('webkitfullscreenchange', syncFullscreenControl);
-standaloneDisplayQuery.addEventListener?.('change', syncFullscreenControl);
+document.addEventListener('fullscreenchange', scheduleFullscreenControlSync);
+document.addEventListener('webkitfullscreenchange', scheduleFullscreenControlSync);
+document.addEventListener('visibilitychange', scheduleFullscreenControlSync);
+window.addEventListener('focus', scheduleFullscreenControlSync);
+window.addEventListener('pageshow', scheduleFullscreenControlSync);
+standaloneDisplayQuery.addEventListener?.('change', scheduleFullscreenControlSync);
 syncFullscreenControl();
 $('#drawerCreateBtn').addEventListener('click', () => {
   const createActive = state.view === 'create' || state.view === 'video';
@@ -1960,7 +1980,8 @@ function setView(view, opts = {}) {
   $('#genLbl').textContent = genLabel();
   if (isGallery) {
     refreshGallery();
-    scheduleContextualGuide('library-basics', 760);
+    if (opts.focusedResult) cancelContextualGuide('library-basics');
+    else scheduleContextualGuide('library-basics', 760);
   } else if (view === 'create' && state.createMode === 'image') {
     scheduleContextualGuide('prompt-entry', 960);
   }
@@ -7247,6 +7268,7 @@ function renderAspects() {
   for (const a of ASPECTS) {
     const btn = document.createElement('button');
     btn.className = 'aspect-chip' + (a.label === state.aspect && !state.customDims ? ' active' : '');
+    btn.dataset.aspect = a.label;
     const maxSide = 22;
     const w = a.ar >= 1 ? maxSide : Math.round(maxSide * a.ar);
     const h = a.ar >= 1 ? Math.round(maxSide / a.ar) : maxSide;
@@ -13218,6 +13240,9 @@ $('#generateBtn').addEventListener('click', async () => {
   const prompt = promptForGeneration().trim();
   const promptIntent = currentPromptIntent();
   if (promptIntent && offerPromptIntentGuide(promptIntent)) return;
+  if (contextualGuide?.id === 'first-image-generate' && prompt === FIRST_IMAGE_TUTORIAL_PROMPT) {
+    firstImageTutorialPhase = 'submitting';
+  }
   const outpaintActive = state.view === 'edit' && OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint;
   const hasRegionPrompts = state.view === 'create' && activeRegionsForRequest().some((r) => r.description);
   const qwenAngleExports = supportsCurrentEditAngles() && !state.editSequential && !hasEditMask()
@@ -13434,6 +13459,11 @@ $('#generateBtn').addEventListener('click', async () => {
       });
       jobIds.push(res.jobId);
       state.activeJobs.add(res.jobId);
+      if (!firstImageTutorialJobId && firstImageTutorialPhase === 'submitting'
+        && mode === 't2i' && request.prompt === FIRST_IMAGE_TUTORIAL_PROMPT) {
+        firstImageTutorialJobId = res.jobId;
+        firstImageTutorialPhase = 'generating';
+      }
       if (res.sequenceId) state.activeJobSequences.set(res.jobId, res.sequenceId);
     }
     $('#genLbl').textContent = genLabel();
@@ -13441,6 +13471,7 @@ $('#generateBtn').addEventListener('click', async () => {
     if (jobIds.length > 1) toast(`${jobIds.length} camera variations queued`);
   } catch (e) {
     setGenerating(false);
+    if (!firstImageTutorialJobId) retryFirstImageTutorialGeneration();
     if (!isJobCancellation(e)) toast(e.message, true);
   }
 });
@@ -13531,7 +13562,10 @@ function renderQueueHealth(health) {
 }
 function openFromQueue(itemId, videoId) {
   $('#queueSheet').classList.remove('show');
-  const go = () => { setView('gallery'); openLightbox(itemId, videoId || 'image'); };
+  const go = () => {
+    setView('gallery', { focusedResult: true });
+    openLightbox(itemId, videoId || 'image');
+  };
   if (state.items.some((i) => i.id === itemId)) go();
   else refreshGallery(true).then(go);
 }
@@ -14043,6 +14077,10 @@ function connectEvents() {
   });
   es.addEventListener('jobDone', (ev) => {
     const d = JSON.parse(ev.data);
+    if (d.jobId === firstImageTutorialJobId && d.items && d.items[0]) {
+      firstImageTutorialItemId = d.items[0].id;
+      refreshGallery(true).then(() => completeFirstImageTutorial(d.items[0]));
+    }
     progressEta.clear(d.jobId);
     delete state.queueProgress[d.jobId];
     state.activeJobSequences.delete(d.jobId);
@@ -14156,6 +14194,7 @@ function connectEvents() {
       setGenerating(false);
       if (!state.activeJobs.size) stopLivePreviewSimulation();
     }
+    if (d.jobId === firstImageTutorialJobId) retryFirstImageTutorialGeneration('That first image did not finish. Try Generate again.');
     renderGrid();
     if (d.items && d.items.length) refreshGallery(true);
     showErrorDetail(d.message, d.kind === 'upscale' || d.operation === 'upscale' ? 'Upscale error' : 'Generation error');
@@ -14177,6 +14216,7 @@ function connectEvents() {
       setGenerating(false);
       if (!state.activeJobs.size) stopLivePreviewSimulation();
     }
+    if (d.jobId === firstImageTutorialJobId) retryFirstImageTutorialGeneration('The first image was cancelled. Press Generate when you are ready.');
     renderGrid();
     queueRefreshSoon();
   });
@@ -14216,7 +14256,12 @@ async function refreshGallery(soft) {
     renderGrid();
     renderDesktopStage();
     updatePrivacyButton();
-  } catch (e) { if (!soft) toast(e.message, true); }
+  } catch (e) {
+    if (!soft) toast(e.message, true);
+  } finally {
+    firstRunTutorialGalleryLoaded = true;
+    maybeShowFirstRunTutorial();
+  }
 }
 
 function updatePrivacyButton() {
@@ -17759,6 +17804,12 @@ function openLightbox(id, mediaSel) {
         action: () => saveImageComposite(it, 'depth-map'),
       });
     }
+
+    const imageUseItems = galleryImageDestinationActions(it);
+    if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
+      imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId) });
+    }
+    mkMenu('Use', '', imageUseItems, { icon: 'use', ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
   }
 
   if (canContinueCompletedEdit) {
@@ -17954,11 +18005,6 @@ function openLightbox(id, mediaSel) {
     } else {
       mk(it.upscaled ? '⇪ Re-upscale' : '⇪ Upscale', '', () => openUpscaleSheet(it));
     }
-    const imageUseItems = galleryImageDestinationActions(it);
-    if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
-      imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId) });
-    }
-    mkMenu('Use', '', imageUseItems, { icon: 'use', ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
     mk('▤ Move', '', () => openMoveSheet(it));
     if (imageSaveItems.length > 1) {
       mkMenu('Save', '', imageSaveItems, { icon: 'save', ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
@@ -21009,6 +21055,275 @@ function initIconTooltips() {
 }
 
 /* ------------------------------------------------------------------ */
+/* First image onboarding                                              */
+/* ------------------------------------------------------------------ */
+
+const FIRST_IMAGE_TUTORIAL_PROMPT = 'A dog with a colorful cape and black mask flies through the sky at high speed.';
+const FIRST_IMAGE_TUTORIAL_SEED = '280701327651061';
+const FIRST_IMAGE_TUTORIAL_STEPS = [
+  { id: 'first-image-prompt', target: '#promptPanel', advanceOn: '#promptComposer' },
+  { id: 'first-image-resolution', target: '#resPanel', advanceOn: '#resHeader' },
+  { id: 'first-image-aspect', target: '#aspectRow', advanceOn: '#aspectRow [data-aspect="1:1"]' },
+  { id: 'first-image-generate', target: '#generateBtn', advanceOn: '#generateBtn' },
+];
+let firstRunTutorialPreviousFocus = null;
+let firstImageTutorialPhase = '';
+let firstImageTutorialAwaitingSetup = false;
+let firstImageTutorialJobId = '';
+let firstImageTutorialItemId = '';
+let firstImageTutorialTypingTimer = null;
+
+function firstRunTutorialStorageKey() {
+  return profileStorageKey('ks-first-image-tutorial');
+}
+
+function firstImageTutorialIsTerminal(value = localStorage.getItem(firstRunTutorialStorageKey())) {
+  return ['complete', 'skipped', 'existing'].includes(value);
+}
+
+function firstImageTutorialBlocksContextualGuides() {
+  const offer = $('#firstRunTutorial');
+  const stored = localStorage.getItem(firstRunTutorialStorageKey());
+  return !!(offer && !offer.hidden) || ['active', 'offered'].includes(stored) && !!firstImageTutorialPhase;
+}
+
+function hideFirstRunTutorial() {
+  const root = $('#firstRunTutorial');
+  if (!root || root.hidden) return;
+  root.hidden = true;
+  root.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('first-run-tutorial-open');
+  if (firstRunTutorialPreviousFocus?.isConnected) firstRunTutorialPreviousFocus.focus({ preventScroll: true });
+  firstRunTutorialPreviousFocus = null;
+}
+
+function showFirstRunTutorial() {
+  const root = $('#firstRunTutorial');
+  if (!root || !root.hidden) return;
+  firstRunTutorialPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  root.hidden = false;
+  root.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('first-run-tutorial-open');
+  requestAnimationFrame(() => $('#firstRunTutorialShow').focus({ preventScroll: true }));
+}
+
+function maybeShowFirstRunTutorial() {
+  const key = firstRunTutorialStorageKey();
+  if (!key || !firstRunTutorialAuthLoaded || !firstRunTutorialMetaLoaded || !firstRunTutorialGalleryLoaded) return;
+  const stored = localStorage.getItem(key);
+  const metaChecked = lastMeta === null || typeof lastMeta === 'object';
+  if (!metaChecked || !state.profile || profileGateOpen || !state.profileIsOwner) return;
+  if (state.profile.id !== workspaceSessionProfileId || firstImageTutorialIsTerminal(stored)) return;
+  if (!stored && (localStorage.getItem(formKey()) || state.items.length || Number(state.profile.itemCount) > 0)) {
+    localStorage.setItem(key, 'existing');
+    return;
+  }
+  if (firstImageTutorialPhase || !$('#guidedTour').hidden || $$('.sheet.show').length) return;
+  if (!stored) localStorage.setItem(key, 'offered');
+  showFirstRunTutorial();
+}
+
+function firstImageTutorialReady() {
+  return !!lastMeta?.ok
+    && !missingSetupComponents(['image']).length
+    && setupViewStatus?.comfy?.connected !== false;
+}
+
+function applyFirstImageTutorialPreset(options = {}) {
+  setView('create', { createMode: 'image' });
+  state.enhance = false;
+  state.aspect = '1:1';
+  state.mp = 1;
+  state.width = 992;
+  state.height = 992;
+  state.customDims = false;
+  state.createMatchSource = false;
+  state.createMatchNative = false;
+  state.krea2Turbo = true;
+  state.loras = [];
+  state.createRef = null;
+  state.createGuideActive = false;
+  state.createImageGuideOpen = false;
+  state.createGuideMode = 'image';
+  state.createUpscaleEnabled = false;
+  state.createUpscaleExpanded = false;
+  setPromptDraft(FIRST_IMAGE_TUTORIAL_PROMPT);
+  state.prompts.create = FIRST_IMAGE_TUTORIAL_PROMPT;
+  const tutorialTuning = {
+    seed: FIRST_IMAGE_TUTORIAL_SEED,
+    steps: 8,
+    cfg: 1,
+    batch: 1,
+  };
+  $('#seedInput').value = tutorialTuning.seed;
+  $('#stepsInput').value = tutorialTuning.steps;
+  $('#cfgInput').value = tutorialTuning.cfg;
+  $('#batchInput').value = tutorialTuning.batch;
+  state.generationTuning.create = { ...tutorialTuning };
+  if (options.startBlank) {
+    setPromptDraft('');
+    state.prompts.create = '';
+  }
+  setLorasExpanded(false);
+  collapseRes(false);
+  renderEnhance();
+  renderKrea2Mode();
+  renderAspects();
+  renderDims();
+  renderLoras();
+  renderCreateImageGuide();
+  renderEditUpscale();
+  updatePromptClear();
+  saveForm();
+}
+
+function beginFirstImageTutorialWalkthrough() {
+  const key = firstRunTutorialStorageKey();
+  if (key) localStorage.setItem(key, 'active');
+  firstImageTutorialPhase = 'prompt';
+  firstImageTutorialJobId = '';
+  firstImageTutorialItemId = '';
+  cancelContextualGuide();
+  applyFirstImageTutorialPreset({ startBlank: true });
+  closeActionMenu();
+  hideIconTooltip();
+  $$('.sheet.show').forEach((sheet) => sheet.classList.remove('show'));
+  syncSheetScrollLock();
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    showNextContextualGuide('first-image-prompt');
+  });
+}
+
+async function resumeFirstImageTutorialAfterSetup() {
+  if (!firstImageTutorialAwaitingSetup) return false;
+  if (!lastMeta?.ok) await loadMeta(true);
+  if (!firstImageTutorialReady()) return false;
+  firstImageTutorialAwaitingSetup = false;
+  beginFirstImageTutorialWalkthrough();
+  return true;
+}
+
+async function startFirstImageTutorial() {
+  const key = firstRunTutorialStorageKey();
+  if (key) localStorage.setItem(key, 'active');
+  hideFirstRunTutorial();
+  cancelContextualGuide();
+  const imageMissing = missingSetupComponents(['image']);
+  if (!lastMeta?.ok || imageMissing.length) {
+    firstImageTutorialAwaitingSetup = true;
+    firstImageTutorialPhase = 'setup';
+    await openInitialSetup({
+      components: ['image'],
+      message: lastMeta?.ok
+        ? 'Install Krea 2 Image, then we’ll make your first image together.'
+        : 'Connect ComfyUI and install Krea 2 Image, then we’ll make your first image together.',
+    });
+    return;
+  }
+  beginFirstImageTutorialWalkthrough();
+}
+
+function finishFirstImageTutorial({ pause = false } = {}) {
+  clearTimeout(firstImageTutorialTypingTimer);
+  firstImageTutorialTypingTimer = null;
+  if (pause) firstImageTutorialPhase = 'paused';
+  if (contextualGuide?.id?.startsWith('first-image-')) hideContextualGuide({ restoreFocus: false });
+}
+
+function typeFirstImageTutorialPrompt() {
+  clearTimeout(firstImageTutorialTypingTimer);
+  firstImageTutorialPhase = 'typing';
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let length = reducedMotion ? FIRST_IMAGE_TUTORIAL_PROMPT.length : 0;
+  const type = () => {
+    length = reducedMotion ? FIRST_IMAGE_TUTORIAL_PROMPT.length : Math.min(FIRST_IMAGE_TUTORIAL_PROMPT.length, length + 2);
+    const value = FIRST_IMAGE_TUTORIAL_PROMPT.slice(0, length);
+    setPromptDraft(value);
+    state.prompts.create = value;
+    updatePromptClear();
+    if (length < FIRST_IMAGE_TUTORIAL_PROMPT.length) {
+      firstImageTutorialTypingTimer = setTimeout(type, 26);
+      return;
+    }
+    firstImageTutorialTypingTimer = null;
+    saveForm();
+    firstImageTutorialPhase = 'resolution';
+    showNextContextualGuide('first-image-resolution');
+  };
+  type();
+}
+
+function advanceFirstImageTutorialFromAction(guide, action) {
+  if (!guide?.id?.startsWith('first-image-')) return false;
+  if (guide.id === 'first-image-prompt') {
+    localStorage.setItem(contextualGuideSeenKey(guide.id), 'seen');
+    hideContextualGuide({ keepSequence: true, restoreFocus: false });
+    typeFirstImageTutorialPrompt();
+    return true;
+  }
+  if (guide.id === 'first-image-resolution') firstImageTutorialPhase = 'aspect';
+  if (guide.id === 'first-image-aspect') firstImageTutorialPhase = 'generate';
+  if (guide.id === 'first-image-generate') firstImageTutorialPhase = 'submitting';
+  return false;
+}
+
+function retryFirstImageTutorialGeneration(message = '') {
+  if (!['submitting', 'generating'].includes(firstImageTutorialPhase)) return;
+  firstImageTutorialJobId = '';
+  if (contextualGuide?.id === 'first-image-generating') hideContextualGuide({ restoreFocus: false });
+  firstImageTutorialPhase = 'generate';
+  if (message) toast(message, true);
+  setTimeout(() => showNextContextualGuide('first-image-generate'), 120);
+}
+
+async function completeFirstImageTutorial(completedItem) {
+  if (!completedItem?.id || completedItem.id !== firstImageTutorialItemId) return;
+  const key = firstRunTutorialStorageKey();
+  if (key) localStorage.setItem(firstRunTutorialStorageKey(), 'complete');
+  firstImageTutorialPhase = 'complete';
+  firstImageTutorialAwaitingSetup = false;
+  state.activeFolder = 'all';
+  state.mediaFilter = 'all';
+  state.likesOnly = false;
+  state.libraryQuery = '';
+  $('#gallerySearch').value = '';
+  $('#gallerySearchClear').hidden = true;
+  $('#likesFilter').setAttribute('aria-pressed', 'false');
+  $$('#mediaFilter button').forEach((button) => {
+    const active = button.dataset.f === 'all';
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  setView('gallery', { focusedResult: true });
+  renderGrid();
+  focusCompletedDesktopOutput(completedItem.id, 'image');
+  setTimeout(() => showNextContextualGuide('first-image-library'), 220);
+}
+
+$('#firstRunTutorialShow').addEventListener('click', () => { startFirstImageTutorial(); });
+$('#firstRunTutorialSkip').addEventListener('click', () => {
+  localStorage.setItem(firstRunTutorialStorageKey(), 'skipped');
+  firstImageTutorialPhase = 'skipped';
+  hideFirstRunTutorial();
+});
+$('#firstRunTutorial').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    $('#firstRunTutorialSkip').click();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [$('#firstRunTutorialShow'), $('#firstRunTutorialSkip')];
+  const current = focusable.indexOf(document.activeElement);
+  const next = event.shiftKey
+    ? (current <= 0 ? focusable.length - 1 : current - 1)
+    : (current < 0 || current >= focusable.length - 1 ? 0 : current + 1);
+  event.preventDefault();
+  focusable[next].focus();
+});
+
+/* ------------------------------------------------------------------ */
 /* Guided UI tutorial                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -21151,6 +21466,71 @@ function prepareGuidedTourLibrary() {
 }
 
 const CONTEXTUAL_GUIDES = {
+  'first-image-prompt': {
+    ...FIRST_IMAGE_TUTORIAL_STEPS[0],
+    kicker: 'First image · 1 of 4',
+    title: 'Start with the prompt',
+    copy: 'Tap the Prompt box. We’ll type the example so you can see exactly where your ideas go.',
+    motion: 'type',
+    demo: 'Tap the Prompt box',
+    actionLabel: 'Tap Prompt',
+  },
+  'first-image-resolution': {
+    ...FIRST_IMAGE_TUTORIAL_STEPS[1],
+    kicker: 'First image · 2 of 4',
+    title: 'Open Resolution',
+    copy: 'Resolution controls the shape and output size. Open it to choose a square image.',
+    motion: 'tap',
+    demo: 'Tap Resolution',
+    actionLabel: 'Tap Resolution',
+    next: 'first-image-aspect',
+  },
+  'first-image-aspect': {
+    ...FIRST_IMAGE_TUTORIAL_STEPS[2],
+    kicker: 'First image · 3 of 4',
+    title: 'Choose 1:1',
+    copy: 'Pick the square aspect. M is already selected, which makes this example 992 × 992.',
+    motion: 'tap',
+    trace: 'choices',
+    demo: 'Tap 1:1',
+    actionLabel: 'Choose 1:1',
+    next: 'first-image-generate',
+  },
+  'first-image-generate': {
+    ...FIRST_IMAGE_TUTORIAL_STEPS[3],
+    kicker: 'First image · 4 of 4',
+    title: 'Make your image',
+    copy: 'Everything is ready. Press Generate yourself to send this exact prompt and setup to Krea 2 Turbo.',
+    motion: 'press',
+    demo: 'Press Generate',
+    actionLabel: 'Press Generate',
+    next: 'first-image-generating',
+    scroll: false,
+  },
+  'first-image-generating': {
+    id: 'first-image-generating',
+    target: '#livePreview',
+    kicker: 'Creating your image',
+    title: 'Now Mix Studio is working',
+    copy: 'This progress card follows your generation. When it finishes, we’ll take you to that exact result in the Library.',
+    motion: 'press',
+    demo: 'You can keep an eye on progress here',
+    scroll: false,
+  },
+  'first-image-library': {
+    id: 'first-image-library',
+    target: () => {
+      if (!firstImageTutorialItemId) return '#galleryGrid';
+      const escaped = window.CSS?.escape ? CSS.escape(firstImageTutorialItemId) : firstImageTutorialItemId.replace(/["\\]/g, '\\$&');
+      return `#galleryGrid .card[data-id="${escaped}"]`;
+    },
+    kicker: 'Your first image is ready',
+    title: 'This is your Library',
+    copy: 'Every finished generation lands here with its prompt and settings. Tap this image whenever you want to view, reuse, organize, or save it.',
+    motion: 'tap',
+    demo: 'Tap your image to open it',
+    scroll: true,
+  },
   'prompt-entry': {
     id: 'prompt-entry',
     target: '#promptPanel',
@@ -21455,7 +21835,8 @@ function renderPromptIntentHint() {
   if (!hint) return;
   const intent = currentPromptIntent();
   const copy = intent && PROMPT_INTENT_HINTS[intent.id];
-  const hidden = !intent || !copy || dismissedIntentGuides.has(intent.key) || !!contextualGuide || guidedTourIndex >= 0;
+  const hidden = !intent || !copy || dismissedIntentGuides.has(intent.key) || !!contextualGuide
+    || guidedTourIndex >= 0 || firstImageTutorialBlocksContextualGuides();
   hint.hidden = hidden;
   if (hidden) {
     delete hint.dataset.guideId;
@@ -21736,6 +22117,7 @@ function positionGuidedTour() {
 
 function scheduleContextualGuide(id, delay = 560) {
   const guide = CONTEXTUAL_GUIDES[id];
+  if (firstImageTutorialBlocksContextualGuides() && !id.startsWith('first-image-')) return;
   if (!guide || !contextualGuidesEnabled() || localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return;
   if (contextualGuide || guidedTourIndex >= 0 || !$('#guidedTour').hidden || pendingContextualGuideId === id) return;
   clearTimeout(contextualGuideTimer);
@@ -21751,6 +22133,7 @@ function showContextualGuide(id, { repeat = false, ignoreEnabled = false, intent
   const guide = CONTEXTUAL_GUIDES[id];
   const root = $('#guidedTour');
   const target = contextualGuideTarget(guide);
+  if (firstImageTutorialBlocksContextualGuides() && !id.startsWith('first-image-')) return false;
   if (!guide || (!ignoreEnabled && !contextualGuidesEnabled())) return false;
   if (!repeat && localStorage.getItem(contextualGuideSeenKey(id)) === 'seen') return false;
   if (contextualGuide || guidedTourIndex >= 0 || !root.hidden) return false;
@@ -21840,6 +22223,12 @@ function hideContextualGuide({ keepSequence = false, restoreFocus = true } = {})
 function dismissContextualGuide() {
   if (!contextualGuide) return;
   const id = contextualGuide.id;
+  if (id.startsWith('first-image-')) {
+    localStorage.setItem(contextualGuideSeenKey(id), 'seen');
+    hideContextualGuide({ restoreFocus: false });
+    if (!['first-image-generating', 'first-image-library'].includes(id)) finishFirstImageTutorial({ pause: true });
+    return;
+  }
   if (contextualGuideIntentKey) dismissedIntentGuides.add(contextualGuideIntentKey);
   localStorage.setItem(contextualGuideSeenKey(id), 'seen');
   hideContextualGuide();
@@ -21875,6 +22264,10 @@ function showNextContextualGuide(id, intentKey = '', attempt = 0) {
 
 function contextualGuideActionSatisfied(guide, action) {
   if (!guide) return false;
+  if (guide.id === 'first-image-prompt') return action?.id === 'promptComposer';
+  if (guide.id === 'first-image-resolution') return $('#resPanel').classList.contains('expanded');
+  if (guide.id === 'first-image-aspect') return action?.dataset?.aspect === '1:1' && state.aspect === '1:1';
+  if (guide.id === 'first-image-generate') return promptForGeneration().trim() === FIRST_IMAGE_TUTORIAL_PROMPT;
   if (guide.id === 'prompt-missing-reference') return true;
   if (guide.id === 'create-guide-choices') return state.createGuideMode === action?.dataset?.guideMode;
   if (guide.id === 'edit-image-intent') return state.view === 'edit';
@@ -21932,6 +22325,7 @@ function advanceContextualGuideFromAction(guide, action) {
     requestGuidedTourPosition();
     return;
   }
+  if (advanceFirstImageTutorialFromAction(guide, action)) return;
   const next = contextualGuideValue(guide.next);
   const intentKey = contextualGuideIntentKey;
   localStorage.setItem(contextualGuideSeenKey(guide.id), 'seen');
@@ -22122,9 +22516,14 @@ document.addEventListener('click', (event) => {
   const selector = contextualGuideValue(guide.advanceOn);
   const action = selector && event.target.closest ? event.target.closest(selector) : null;
   const target = contextualGuideTarget(guide);
-  if (!action || !target || (action !== target && !target.contains(action))) return;
+  // Some controls (aspect chips, model choices) re-render themselves during
+  // their click handler. The clicked node is detached by the time this
+  // document listener runs, but the stable guide target remains in the
+  // original event path and should still advance the step.
+  const targetWasInEventPath = typeof event.composedPath === 'function' && event.composedPath().includes(target);
+  if (!action || !target || (action !== target && !target.contains(action) && !targetWasInEventPath)) return;
   setTimeout(() => advanceContextualGuideFromAction(guide, action), 70);
-});
+}, true);
 $('#guidedTour').addEventListener('click', (event) => {
   if (!contextualGuide?.advanceOn || event.target.closest('.guided-tour-card, .guided-tour-spotlight')) return;
   event.preventDefault();
@@ -22518,10 +22917,14 @@ function setSetupStep(step, options = {}) {
   $('#initialSetupSheet .setup-stage')?.scrollTo({ top: 0, behavior: options.user ? 'smooth' : 'auto' });
 }
 
-function closeGenerationSetup() {
+function closeGenerationSetup(options = {}) {
   clearTimeout(setupPollTimer);
   $('#initialSetupSheet').classList.remove('show');
   syncSheetScrollLock();
+  if (options.pauseTutorial && firstImageTutorialAwaitingSetup) {
+    firstImageTutorialAwaitingSetup = false;
+    firstImageTutorialPhase = 'paused';
+  }
 }
 
 function renderSetupFooter() {
@@ -23005,9 +23408,14 @@ $('#setupBack').addEventListener('click', () => {
   const index = SETUP_STEPS.indexOf(setupActiveStep);
   setSetupStep(SETUP_STEPS[Math.max(0, index - 1)], { user: true });
 });
-$('#setupNext').addEventListener('click', () => {
+$('#setupNext').addEventListener('click', async () => {
   const index = SETUP_STEPS.indexOf(setupActiveStep);
-  if (index >= SETUP_STEPS.length - 1) return closeGenerationSetup();
+  if (index >= SETUP_STEPS.length - 1) {
+    const resumeTutorial = firstImageTutorialAwaitingSetup && firstImageTutorialReady();
+    closeGenerationSetup({ pauseTutorial: !resumeTutorial });
+    if (resumeTutorial) await resumeFirstImageTutorialAfterSetup();
+    return;
+  }
   setSetupStep(SETUP_STEPS[index + 1], { user: true });
 });
 $('#setupCancel').addEventListener('click', async () => {
@@ -23027,7 +23435,7 @@ $('#setupCancel').addEventListener('click', async () => {
   }
   setupPendingComponents = [];
   setupAutoRestart = false;
-  closeGenerationSetup();
+  closeGenerationSetup({ pauseTutorial: true });
 });
 $('#dependencyOpenSetup').addEventListener('click', () => {
   $('#settingsSheet').classList.remove('show');
@@ -23267,6 +23675,9 @@ async function loadMeta(refresh, afterRestart = false) {
     $('#connDot').className = 'conn-dot bad';
     renderSam3Dependency();
     renderDependencyManager();
+  } finally {
+    firstRunTutorialMetaLoaded = true;
+    maybeShowFirstRunTutorial();
   }
 }
 
@@ -23404,8 +23815,12 @@ function renderHealth() {
 /* ------------------------------------------------------------------ */
 
 $$('.sheet').forEach((sheet) => {
-  sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.classList.remove('show'); });
-  sheet.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => sheet.classList.remove('show')));
+  const closeSheet = () => {
+    if (sheet.id === 'initialSetupSheet') closeGenerationSetup({ pauseTutorial: true });
+    else sheet.classList.remove('show');
+  };
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+  sheet.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
   new MutationObserver(syncSheetScrollLock).observe(sheet, { attributes: true, attributeFilter: ['class'] });
 });
 syncSheetScrollLock();
@@ -23426,8 +23841,8 @@ setPromptDraft(state.prompts[state.view] || '');
 applySavedEngineOrders();
 loadMediaPreferences();
 restoreGenerationTuning(generationTuningMode(state.view));
-// First launch goes straight to the workspace. The complete tutorial remains
-// available from Advanced Settings and never starts automatically.
+// The complete feature tour remains available from Advanced Settings. The
+// smaller first-image offer waits for auth, readiness, and Library state below.
 markEngineRow('editEngineRow', state.editEngine);
 markEngineRow('vidEngineRow', state.vidEngine);
 updatePromptClear();

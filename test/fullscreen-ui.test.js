@@ -26,6 +26,15 @@ test('fullscreen supports standard and WebKit browser APIs', () => {
   assert.match(app, /webkitfullscreenchange/);
 });
 
+test('fullscreen control resyncs after save dialogs and whenever the drawer opens', () => {
+  const openDrawer = app.match(/function openAppDrawer\(\) \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.match(openDrawer, /scheduleFullscreenControlSync\(\)/);
+  assert.match(app, /document\.addEventListener\('visibilitychange', scheduleFullscreenControlSync\)/);
+  assert.match(app, /window\.addEventListener\('focus', scheduleFullscreenControlSync\)/);
+  assert.match(app, /window\.addEventListener\('pageshow', scheduleFullscreenControlSync\)/);
+  assert.match(app, /setTimeout\(syncFullscreenControl, 250\)/);
+});
+
 test('installed mobile mode is recognized as already fullscreen', () => {
   assert.equal(manifest.display, 'standalone');
   assert.match(app, /window\.matchMedia\('\(display-mode: standalone\)'\)/);

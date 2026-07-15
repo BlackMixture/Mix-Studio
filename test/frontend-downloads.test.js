@@ -47,6 +47,20 @@ test('gallery Use menus are icon-led and show concise image destinations', () =>
   assert.match(appJs, /menuTitle: 'Use video'/);
 });
 
+test('image lightbox puts Use first without moving the video Use menu', () => {
+  const actionsStart = appJs.indexOf("  const actions = $('#lbActions');");
+  const actionsEnd = appJs.indexOf('\nfunction closeLightbox', actionsStart);
+  const actions = appJs.slice(actionsStart, actionsEnd);
+  const imageUse = actions.indexOf("mkMenu('Use', '', imageUseItems");
+  const sharedActions = actions.indexOf('if (canContinueCompletedEdit)');
+  const videoBranch = actions.indexOf('  if (selVideo) {', sharedActions);
+  const videoUse = actions.indexOf("mkMenu('Use', '', videoUseItems", videoBranch);
+
+  assert.ok(imageUse >= 0, 'image Use menu should be present');
+  assert.ok(imageUse < sharedActions, 'image Use menu should be appended before shared lightbox actions');
+  assert.ok(videoUse > videoBranch, 'video Use menu should remain inside the video action branch');
+});
+
 test('using a gallery image in Edit asks whether to replace or add an input', () => {
   assert.match(appJs, /async function useAsRef\(item\)/);
   assert.match(appJs, /title: 'Use image in Edit'/);
