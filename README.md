@@ -218,6 +218,14 @@ When you submit, please include:
 
 Let's build the ultimate creative toolkit together!
 
+## License
+
+Mix Studio is free and open source software licensed under the **[GNU General Public License v3.0](LICENSE)**, the same copyleft license used by ComfyUI.
+
+You may use, study, modify, and redistribute Mix Studio, including for commercial purposes. If you distribute Mix Studio or a modified version, the GPL requires you to provide the corresponding source code under GPLv3 and preserve the license and copyright notices. You can run the app privately and modify it for yourself without publishing those private changes.
+
+The GPL applies to Mix Studio's source code and documentation unless a file says otherwise. ComfyUI, custom nodes, model weights, and other third-party components keep their own licenses and terms. Mix Studio does not claim ownership of media users create; use of generated media remains subject to applicable law and the licenses or terms of the models involved.
+
 ## Acknowledgments & Attribution
 
 Mix Studio is built on the incredible work of the open-source AI community. We want to extend our deepest gratitude to the creators and researchers who power these workflows:
