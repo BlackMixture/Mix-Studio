@@ -10256,33 +10256,35 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
 .telemetry-toast {
   width: min(92vw, 520px);
   display: grid;
-  grid-template-columns: minmax(0,1fr) auto auto;
-  align-items: center;
-  gap: 10px;
+  gap: 8px;
   border-radius: 16px;
   pointer-events: auto;
 }
 .telemetry-toast-copy { min-width: 0; display: grid; gap: 2px; }
 .telemetry-toast-copy strong { color: #fff; font-size: 12px; }
 .telemetry-toast-copy small { color: var(--muted); font-size: 10px; font-weight: 650; line-height: 1.35; }
-.telemetry-toast-optout,
-.telemetry-toast-close {
-  min-height: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: rgba(255,255,255,.045);
-  color: var(--ink);
+.telemetry-toast-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.telemetry-toast-disable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-2);
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 750;
+  cursor: pointer;
 }
-.telemetry-toast-optout { padding: 0 11px; white-space: nowrap; }
-.telemetry-toast-close { width: 34px; padding: 0; font-size: 15px; }
+.telemetry-toast-disable input { margin: 0; accent-color: var(--violet); }
+.telemetry-toast-thanks {
+  min-height: 34px;
+  padding: 0 16px;
+  border: 1px solid rgba(255,255,255,.9);
+  border-radius: 10px;
+  background: #fff;
+  color: #090909;
+  font-size: 11px;
+  font-weight: 900;
+}
 .analytics-toggle { margin-bottom: 12px; }
-@media (max-width: 520px) {
-  .telemetry-toast { grid-template-columns: minmax(0,1fr) auto; }
-  .telemetry-toast-optout { grid-column: 1 / -1; grid-row: 2; width: 100%; }
-  .telemetry-toast-close { grid-column: 2; grid-row: 1; }
-}
 .toast.upload-progress {
   width: min(92vw, 360px);
   display: grid;

@@ -15,6 +15,7 @@ const {
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const analyticsSource = fs.readFileSync(path.join(root, 'public', 'analytics.js'), 'utf8');
 
 test('PostHog configuration is memory-only and disables automatic collection', () => {
   const config = postHogConfig('https://eu.i.posthog.com');
@@ -93,4 +94,10 @@ test('the first-run analytics notice and persistent Settings control are present
   assert.match(html, /id="analyticsToggle"[^>]*role="switch"[^>]*hidden/);
   assert.match(html, /<script src="\/analytics\.js"><\/script>/);
   assert.match(css, /\.telemetry-toast\s*\{/);
+  assert.match(analyticsSource, /Quick heads up, this app is completely FREE and OPEN SOURCE!/);
+  assert.match(analyticsSource, /Zero screen recording, ever/);
+  assert.match(analyticsSource, /anything you create stays completely PRIVATE/);
+  assert.match(analyticsSource, /type="checkbox"> Disable/);
+  assert.match(analyticsSource, />Thanks<\/button>/);
+  assert.match(analyticsSource, /Disable anonymous analytics\?/);
 });

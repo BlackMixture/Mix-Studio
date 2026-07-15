@@ -125,7 +125,7 @@
       toggle.setAttribute('aria-checked', String(enabled));
       toggle.classList.toggle('active', enabled);
       if (status) status.textContent = enabled
-        ? 'Shares app launches and the generation model only. Never prompts or media.'
+        ? 'Just tells me the app opened and which model you started. Zero screen, prompt, or generation recording.'
         : 'Anonymous analytics are off on this browser.';
     }
 
@@ -143,9 +143,13 @@
       notice.id = 'telemetryNotice';
       notice.className = 'toast telemetry-toast';
       notice.setAttribute('role', 'status');
-      notice.innerHTML = '<span class="telemetry-toast-copy"><strong>Anonymous usage analytics</strong><small>Mix Studio shares app launches and the generation model to improve the app. No prompts, images, video, accounts, or saved identifiers.</small></span><button class="telemetry-toast-optout" type="button">Don\'t share</button><button class="telemetry-toast-close" type="button" aria-label="Dismiss analytics notice">&times;</button>';
-      notice.querySelector('.telemetry-toast-optout').addEventListener('click', () => setEnabled(false));
-      notice.querySelector('.telemetry-toast-close').addEventListener('click', () => closeNotice(true));
+      notice.innerHTML = '<span class="telemetry-toast-copy"><strong>Quick heads up, this app is completely FREE and OPEN SOURCE!</strong><small>Anonymous stats are only to see that Mix Studio made it onto a machine and ran a model successfully. Zero screen recording, ever. Your prompts, images, videos, generations, and anything you create stays completely PRIVATE.</small></span><span class="telemetry-toast-actions"><label class="telemetry-toast-disable"><input type="checkbox"> Disable</label><button class="telemetry-toast-thanks" type="button">Thanks</button></span>';
+      const disable = notice.querySelector('.telemetry-toast-disable input');
+      disable.addEventListener('change', () => {
+        if (!disable.checked) return;
+        if (!requestSetEnabled(false)) disable.checked = false;
+      });
+      notice.querySelector('.telemetry-toast-thanks').addEventListener('click', () => closeNotice(true));
       zone.appendChild(notice);
     }
 
@@ -183,7 +187,7 @@
       const toggle = win.document.getElementById('analyticsToggle');
       if (toggle && !toggle.dataset.analyticsWired) {
         toggle.dataset.analyticsWired = 'true';
-        toggle.addEventListener('click', () => setEnabled(optedOut()));
+        toggle.addEventListener('click', () => requestSetEnabled(optedOut()));
       }
       if (initPromise) return initPromise;
       initPromise = win.fetch('/api/analytics-config', { cache: 'no-store' })
@@ -198,6 +202,15 @@
         })
         .catch(() => { pending = []; return false; });
       return initPromise;
+    }
+
+    function requestSetEnabled(enabled) {
+      if (!enabled && typeof win.confirm === 'function') {
+        const confirmed = win.confirm('Disable anonymous analytics? Mix Studio will stop sending app launch and model success events.');
+        if (!confirmed) return false;
+      }
+      setEnabled(enabled);
+      return true;
     }
 
     function setEnabled(enabled) {
