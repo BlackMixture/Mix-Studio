@@ -37,7 +37,7 @@ test('Director extension generation resolves the source through the signed-in pr
   assert.match(server, /galleryView\(db, isPrivateUnlocked\(req\)\)\.items[\s\S]*filter\(\(item\) => item\.profileId === req\.profile\.id\)/);
   assert.match(server, /visibleItems\.find\(\(item\) => item\.id === project\.extensionSource\.itemId\)/);
   assert.match(server, /itemId: extensionItem \? extensionItem\.id : null/);
-  assert.match(server, /parentVideoId: extensionVideo\.id/);
+  assert.match(server, /parentVideoId: extensionVideo \? extensionVideo\.id : undefined/);
   assert.match(server, /sourcePath\.startsWith\(videosRoot\)/);
   assert.match(server, /detectAudioStream\(sourceBuffer, extensionVideo\.file\) === true/);
   assert.match(server, /resolveFfmpegExecutable\(RUNTIME\)/);

@@ -12,7 +12,7 @@ test('Director generation resolves uploaded extension videos from durable inputs
   assert.match(server, /resolveDurableUploadedVideo\(INPUTS, project\.extensionSource\.inputName\)/);
   assert.match(server, /probeVideoFile\(durable\.file, videoExtensionFfmpeg\)/);
   assert.match(server, /detectAudioStreamFile\(sourcePath, durable\.name\) === true/);
-  assert.match(server, /videoName = durable\.name/);
+  assert.match(server, /videoName = await uploadFileToComfy\(durableSource\.file, durableSource\.name\)/);
   assert.match(server, /sourceInfo = probe/);
 });
 

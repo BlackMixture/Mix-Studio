@@ -9550,6 +9550,22 @@ function directorFindPlacement(track, desiredStart, length, excludeId) {
   return start + length <= project.durationFrames && !other.some((segment) => start < segment.start + segment.length && start + length > segment.start) ? start : -1;
 }
 
+function directorFindPlacementBefore(track, beforeFrame, length, excludeId) {
+  const project = state.directorProject;
+  const boundary = Math.round(directorClamp(beforeFrame, 0, project.durationFrames));
+  const other = directorTrackSegments(track).filter((segment) => segment.id !== excludeId).sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  let placement = -1;
+  for (const segment of other) {
+    const gapEnd = Math.min(boundary, segment.start);
+    if (gapEnd - cursor >= length) placement = gapEnd - length;
+    cursor = Math.max(cursor, segment.start + segment.length);
+    if (cursor >= boundary) break;
+  }
+  if (boundary - cursor >= length) placement = boundary - length;
+  return placement;
+}
+
 function directorTimingOverlaps(track, start, length, excludeId) {
   return directorTrackSegments(track).some((segment) => segment.id !== excludeId
     && start < segment.start + segment.length
@@ -9566,11 +9582,28 @@ function directorSelect(track, id, { openInspector = true } = {}) {
   if (segment && openInspector) directorOpenInspector();
 }
 
+function directorOpenAddRelative(side) {
+  const selection = state.directorSelection;
+  if (!selection || !['before', 'after'].includes(side)) return;
+  directorAddContext = { ...selection, side };
+  $('#directorAddTitle span').textContent = `Add ${side}`;
+  directorOpenSheet('directorAddSheet');
+}
+
 function directorAddSegment(track, segment) {
   const list = directorTrackSegments(track);
   if (list.length >= DIRECTOR_TRACK_LIMIT) return toast('This track already has 256 segments', true);
-  const start = directorFindPlacement(track, state.directorPlayhead, segment.length);
-  if (start < 0) return toast('There is no non-overlapping space for that segment', true);
+  const context = directorAddContext;
+  directorAddContext = null;
+  const anchor = context ? directorTrackSegments(context.track).find((item) => item.id === context.id) : null;
+  let start;
+  if (anchor && context.side === 'before') start = directorFindPlacementBefore(track, anchor.start, segment.length);
+  else if (anchor && context.side === 'after') start = directorFindPlacement(track, anchor.start + anchor.length, segment.length);
+  else start = directorFindPlacement(track, state.directorPlayhead, segment.length);
+  if (start < 0) {
+    const where = anchor ? ` ${context.side} the selected segment` : '';
+    return toast(`There is no non-overlapping space${where} for that item`, true);
+  }
   segment.start = start;
   list.push(segment);
   list.sort((a, b) => a.start - b.start);
@@ -9658,6 +9691,17 @@ function directorUpdateProjectFields() {
   saveDirectorProject();
 }
 
+function directorUpdatePresetDuration(input) {
+  if (!state.directorProject || !input) return;
+  $('#directorDuration').value = input.value;
+  directorUpdateProjectFields();
+  if (state.directorComposerMode === 'keyframes') {
+    directorRedistributeKeyframes();
+    renderDirector();
+    saveDirectorProject();
+  }
+}
+
 async function directorReadMedia(file, kind) {
   const uploaded = await uploadInputAsset(file, file.name || `${kind}.bin`);
   const url = URL.createObjectURL(file);
@@ -9693,47 +9737,87 @@ async function directorReadMedia(file, kind) {
   return { name: uploaded.name, label: file.name, url, durationFrames };
 }
 
+async function directorPreparePickedAsset(asset, kind) {
+  const prepared = { ...asset, label: asset.label || asset.name };
+  prepared.durationFrames = DIRECTOR_FPS * 5;
+  if (kind === 'video') {
+    const metadata = await directorProbeVideo(asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`);
+    prepared.durationFrames = Math.max(1, Math.round((metadata.seconds || 5) * DIRECTOR_FPS));
+  }
+  return prepared;
+}
+
+async function directorCommitMedia(asset, kind) {
+  if (directorReplaceTarget) {
+    const target = directorReplaceTarget;
+    directorReplaceTarget = null;
+    const segment = directorTrackSegments(target.track).find((item) => item.id === target.id);
+    if (!segment) return;
+    if (segment.type === 'image') { segment.imageFile = asset.name; segment.fileName = asset.label; }
+    else if (segment.type === 'audio') {
+      segment.audioFile = asset.name; segment.fileName = asset.label; segment.trimStart = 0; segment.audioDurationFrames = asset.durationFrames;
+      segment.length = Math.min(segment.length, asset.durationFrames);
+    } else {
+      segment.videoFile = asset.name; segment.fileName = asset.label; segment.trimStart = 0; segment.videoDurationFrames = asset.durationFrames;
+      if (!segment.isStaticImage) segment.length = Math.min(segment.length, asset.durationFrames);
+    }
+    if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
+    await directorCheckAssets();
+    saveDirectorProject();
+    return;
+  }
+  if (kind === 'image') {
+    const segment = {
+      id: directorId('keyframe'), type: 'image', start: 0, length: 1, prompt: '', imageFile: asset.name,
+      fileName: asset.label, guideStrength: 1, isEndFrame: false,
+    };
+    if (state.directorComposerMode === 'keyframes') {
+      if (directorKeyframes().length >= DIRECTOR_TRACK_LIMIT) return toast('This video already has 256 keyframes', true);
+      directorAddContext = null;
+      state.directorProject.segments.push(segment);
+      directorRedistributeKeyframes();
+      state.directorSelection = null;
+      renderDirector();
+      saveDirectorProject();
+      directorCheckAssets();
+      return;
+    }
+    return directorAddSegment('main', segment);
+  }
+  if (kind === 'audio') {
+    const segment = {
+      id: directorId('audio'), type: 'audio', start: 0, length: Math.min(asset.durationFrames, state.directorProject.durationFrames), trimStart: 0,
+      audioDurationFrames: asset.durationFrames, audioFile: asset.name, fileName: asset.label,
+    };
+    if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
+    return directorAddSegment('audio', segment);
+  }
+  return directorAddSegment('motion', {
+    id: directorId('motion'), type: 'motion_video', isStaticImage: kind === 'ic-image', start: 0,
+    length: kind === 'ic-image' ? Math.min(120, state.directorProject.durationFrames) : Math.min(asset.durationFrames, state.directorProject.durationFrames),
+    trimStart: 0, videoDurationFrames: asset.durationFrames, videoFile: asset.name, fileName: asset.label,
+    videoStrength: 1, videoAttentionStrength: 0.65, resampleMode: 'nearest',
+  });
+}
+
+async function directorHandlePickedMedia(asset, kind) {
+  if (!asset?.name) return;
+  try {
+    await directorCommitMedia(await directorPreparePickedAsset(asset, kind), kind);
+  } catch (error) {
+    directorReplaceTarget = null;
+    toast(error.message, true);
+  }
+}
+
 async function directorHandleMedia(file, kind) {
   if (!file) return;
   try {
-    const asset = await directorReadMedia(file, kind);
-    if (directorReplaceTarget) {
-      const target = directorReplaceTarget;
-      directorReplaceTarget = null;
-      const segment = directorTrackSegments(target.track).find((item) => item.id === target.id);
-      if (!segment) return;
-      if (segment.type === 'image') { segment.imageFile = asset.name; segment.fileName = asset.label; }
-      else if (segment.type === 'audio') {
-        segment.audioFile = asset.name; segment.fileName = asset.label; segment.trimStart = 0; segment.audioDurationFrames = asset.durationFrames;
-        segment.length = Math.min(segment.length, asset.durationFrames);
-      } else {
-        segment.videoFile = asset.name; segment.fileName = asset.label; segment.trimStart = 0; segment.videoDurationFrames = asset.durationFrames;
-        if (!segment.isStaticImage) segment.length = Math.min(segment.length, asset.durationFrames);
-      }
-      if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
-      await directorCheckAssets();
-      saveDirectorProject();
-      return;
-    }
-    if (kind === 'image') return directorAddSegment('main', {
-      id: directorId('keyframe'), type: 'image', start: 0, length: 1, prompt: '', imageFile: asset.name,
-      fileName: asset.label, guideStrength: 1, isEndFrame: false,
-    });
-    if (kind === 'audio') {
-      const segment = {
-        id: directorId('audio'), type: 'audio', start: 0, length: Math.min(asset.durationFrames, state.directorProject.durationFrames), trimStart: 0,
-        audioDurationFrames: asset.durationFrames, audioFile: asset.name, fileName: asset.label,
-      };
-      if (asset.waveform) directorWaveforms.set(segment.id, asset.waveform);
-      return directorAddSegment('audio', segment);
-    }
-    return directorAddSegment('motion', {
-      id: directorId('motion'), type: 'motion_video', isStaticImage: kind === 'ic-image', start: 0,
-      length: kind === 'ic-image' ? Math.min(120, state.directorProject.durationFrames) : Math.min(asset.durationFrames, state.directorProject.durationFrames),
-      trimStart: 0, videoDurationFrames: asset.durationFrames, videoFile: asset.name, fileName: asset.label,
-      videoStrength: 1, videoAttentionStrength: 0.65, resampleMode: 'nearest',
-    });
-  } catch (error) { directorReplaceTarget = null; toast(error.message, true); }
+    await directorCommitMedia(await directorReadMedia(file, kind), kind);
+  } catch (error) {
+    directorReplaceTarget = null;
+    toast(error.message, true);
+  }
 }
 
 function directorDeleteSelected() {
@@ -9815,6 +9899,8 @@ function directorSnapFrame(frame, event) {
 }
 
 function startDirectorDrag(event) {
+  if (event.isPrimary === false || (event.button !== undefined && event.button > 0)) return;
+  if (event.target.closest('#directorSelectionControls')) return;
   const target = event.target.closest('[data-director-segment]');
   const rangeHandle = event.target.closest('[data-director-range-handle]');
   if (!target && !rangeHandle) return;
@@ -9854,9 +9940,10 @@ function startDirectorDrag(event) {
   const handle = event.target.closest('[data-director-handle]')?.dataset.directorHandle || 'move';
   const original = { start: segment.start, length: segment.length, trimStart: segment.trimStart || 0 };
   let directorDragMoved = false;
+  const dragThreshold = event.pointerType === 'touch' ? 10 : 6;
   $('#directorTimelineCanvas').setPointerCapture?.(event.pointerId);
   const move = (moveEvent) => {
-    if (!directorDragMoved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) <= 6) return;
+    if (!directorDragMoved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) <= dragThreshold) return;
     directorDragMoved = true;
     const delta = directorSnapFrame((moveEvent.clientX - startX) / ppf, moveEvent);
     if (handle === 'move') {
@@ -9882,14 +9969,23 @@ function startDirectorDrag(event) {
   const end = () => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', end);
-    window.removeEventListener('pointercancel', end);
+    window.removeEventListener('pointercancel', cancel);
     if (directorDragMoved) directorSuppressClickUntil = performance.now() + 320;
     else directorOpenInspector();
     saveDirectorProject();
   };
+  const cancel = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', end);
+    window.removeEventListener('pointercancel', cancel);
+    segment.start = original.start;
+    segment.length = original.length;
+    segment.trimStart = original.trimStart;
+    renderDirector();
+  };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', end, { once: true });
-  window.addEventListener('pointercancel', end, { once: true });
+  window.addEventListener('pointercancel', cancel, { once: true });
 }
 
 async function generateDirector() {

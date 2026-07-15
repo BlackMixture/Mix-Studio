@@ -5102,6 +5102,7 @@ async function handleApi(req, res, url) {
       let sourceHeight;
       let sourceHasAudio = false;
       let videoName;
+      let durableSource = null;
       if (project.extensionSource.inputName) {
         let durable;
         try {
@@ -5127,9 +5128,7 @@ async function handleApi(req, res, url) {
         sourceWidth = probe.width;
         sourceHeight = probe.height;
         sourceHasAudio = await detectAudioStreamFile(sourcePath, durable.name) === true;
-        // /api/upload already copied this durable name into ComfyUI's input
-        // folder, so avoid loading a potentially large upload into memory.
-        videoName = durable.name;
+        durableSource = durable;
       } else {
         const visibleItems = galleryView(db, isPrivateUnlocked(req)).items
           .filter((item) => item.profileId === req.profile.id);
@@ -5176,7 +5175,12 @@ async function handleApi(req, res, url) {
           error: 'Video extension needs FFmpeg. Install it or make the ComfyUI imageio-ffmpeg executable available.',
         });
       }
-      if (!videoName) {
+      if (durableSource) {
+        // Restore the durable local copy into ComfyUI in case its input folder
+        // was cleaned or the backend was reinstalled. This streams from disk
+        // and does not load a potentially large video into Node's heap.
+        videoName = await uploadFileToComfy(durableSource.file, durableSource.name);
+      } else {
         const sourceExtension = ['.mp4', '.webm', '.mov'].includes(path.extname(extensionVideo.file).toLowerCase())
           ? path.extname(extensionVideo.file).toLowerCase()
           : '.mp4';
