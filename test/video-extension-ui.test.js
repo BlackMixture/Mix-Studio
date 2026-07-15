@@ -16,7 +16,7 @@ test('gallery videos expose a focused Director extension action but composites d
   assert.match(app, /action: \(\) => openDirectorExtension\(it, selVideo\)/);
   assert.match(app, /function openDirectorExtension\(item, video\)[\s\S]*video\.info\?\.composite/);
   assert.match(app, /project\.extensionSource = \{[\s\S]*itemId: item\.id,[\s\S]*videoId: video\.id/);
-  assert.match(app, /openDirectorMode\(project\)/);
+  assert.match(app, /openDirectorMode\(project, \{ mode: 'extend' \}\)/);
 });
 
 test('Director identifies, summarizes, persists, and can remove its continuation source', () => {

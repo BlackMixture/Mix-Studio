@@ -5085,6 +5085,14 @@ async function handleApi(req, res, url) {
     } catch (error) {
       return json(res, 400, { error: error.message });
     }
+    const requestedOutput = body.project?.output && typeof body.project.output === 'object'
+      ? body.project.output : {};
+    const requestedBatch = Math.max(1, Math.min(8, Math.round(Number(requestedOutput.batch) || 1)));
+    const requestedSeedValue = Number(body.batchSeed);
+    const requestedSeed = Number.isSafeInteger(requestedSeedValue) && requestedSeedValue >= 0
+      ? requestedSeedValue : null;
+    const directorComposerMode = ['extend', 'keyframes', 'timeline'].includes(body.composerMode)
+      ? body.composerMode : (project.extensionSource ? 'extend' : 'timeline');
 
     const info = await getObjectInfo();
     const extensionClasses = project.extensionSource
@@ -5233,6 +5241,13 @@ async function handleApi(req, res, url) {
       ({ W, H, smooth, fourK } = extension.plan);
     }
     const loras = Array.isArray(body.loras) ? body.loras.filter((lora) => lora && lora.on && lora.name) : [];
+    const savedLoras = Array.isArray(requestedOutput.loras)
+      ? requestedOutput.loras.slice(0, 64).filter((lora) => lora && lora.name).map((lora) => ({
+        name: String(lora.name).slice(0, 512),
+        strength: Number.isFinite(Number(lora.strength)) ? Number(lora.strength) : 1,
+        on: lora.on !== false,
+      }))
+      : loras;
     const outputFrames = directorOutputFrames(project);
     const graph = await buildLtxDirectorGraph(project, {
       W, H, seed, smooth, fourK, makePoster: !extension || !extensionItem, loras, extension,
@@ -5243,11 +5258,12 @@ async function handleApi(req, res, url) {
     });
     const pid = await queuePrompt(graph);
     const directorProject = Object.assign({}, project, {
-      output: { width: W, height: H, seed, batch: 1, smooth, fourK, loras },
+      output: { width: W, height: H, seed: requestedSeed ?? seed, batch: requestedBatch, smooth, fourK, loras: savedLoras },
     });
     const baseVideoInfo = {
         engine: 'ltx', workflow: 'director',
         directorProject,
+        directorComposerMode,
         seconds: project.range.lengthFrames / DIRECTOR_FPS,
         motionPrompt: project.globalPrompt || project.segments.find((segment) => segment.prompt)?.prompt || 'Director project',
         enhance: false,

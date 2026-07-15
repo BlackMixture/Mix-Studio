@@ -35,7 +35,7 @@ test('Director is a pinned LTX model workflow and not a navigation destination',
   assert.match(app, /function renderDirectorModelChoices\(\)/);
   assert.match(app, /closeDirectorMode\(\);[\s\S]{0,100}source\.click\(\)/);
   assert.match(app, /if \(rowId === 'vidEngineRow'\)[\s\S]{0,260}ltxOption\.after\(directorOption\)/);
-  assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,260}openDirectorWorkflowChooser\(\)/);
+  assert.match(app, /\$\('#directorModelOption'\)\.addEventListener\('click'[\s\S]{0,620}hasSavedProject[\s\S]{0,220}openDirectorMode\(undefined, \{ mode:[\s\S]{0,160}else openDirectorWorkflowChooser\(\)/);
   assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,260}\.director-head\s*\{[\s\S]{0,180}width:\s*min\(720px, calc\(100% - 150px\)\)/);
   assert.match(css, /@media \(min-width: 721px\)[\s\S]{0,500}\.director-head-actions\s*\{[\s\S]{0,120}left:\s*calc\(100% \+ 10px\)/);
 });
@@ -374,17 +374,42 @@ test('Director has a compact full-sequence or selected-range generation footer',
 
 test('Director projects autosave, import, export, preflight media, and restore from gallery metadata', () => {
   assert.match(app, /profileStorageKey\('ks-director'\)/);
+  assert.match(app, /profileStorageKey\('ks-director-mode'\)/);
+  assert.match(app, /localStorage\.setItem\(modeKey, state\.directorComposerMode\)/);
   assert.match(app, /directorProject: directorSerializableProject\(\)/);
   assert.match(app, /directorNormalizeClientProject\(JSON\.parse\(await file\.text\(\)\)\)/);
   assert.match(app, /new Blob\(\[.*JSON\.stringify\(directorSerializableProject\(\)/s);
   assert.match(app, /api\('\/api\/director\/assets'/);
   assert.match(app, /directorMissingAssets\.has\(assetName\)/);
   assert.match(app, /info\.workflow === 'director' && info\.directorProject/);
+  assert.match(app, /const savedOutput = project\.output && typeof project\.output === 'object'/);
+  assert.match(app, /const savedLoras = Array\.isArray\(savedOutput\.loras\)/);
+  assert.match(app, /const legacyStoryboard = !project\.extensionSource[\s\S]{0,300}segment\.type === 'image' \|\| segment\.type === 'motion_video'/);
+  assert.match(app, /openDirectorMode\(project, \{ mode: composerMode \}\)/);
+  assert.match(app, /composerMode: state\.directorComposerMode/);
+  assert.match(app, /batchSeed: baseSeed/);
   assert.match(app, /if \(info\?\.workflow === 'director'\) return 'LTX 2\.3 Director'/);
   assert.match(server, /route === '\/api\/director\/assets'/);
   assert.match(server, /route === '\/api\/director\/generate'/);
   assert.match(server, /workflow: 'director',/);
   assert.match(server, /const directorProject = Object\.assign/);
+  assert.match(server, /directorComposerMode,/);
+  assert.match(server, /batch: requestedBatch/);
+  assert.match(server, /seed: requestedSeed \?\? seed/);
+  assert.match(server, /loras: savedLoras/);
+});
+
+test('Director keeps mobile storyboard text focused while the software keyboard resizes the viewport', () => {
+  assert.match(app, /window\.addEventListener\('resize'[\s\S]{0,240}active\?\.closest\('#directorWorkspace'\)[\s\S]{0,140}active\.matches\('input, textarea, select, \[contenteditable\]'\)\) return/);
+  assert.match(app, /window\.matchMedia\('\(pointer: fine\)'\)\.matches[\s\S]{0,180}data-director-story-id/);
+  assert.match(app, /contextmenu'[\s\S]{0,180}!event\.target\.closest\('button,input,textarea,select,a,\[contenteditable\]'\)/);
+  assert.match(css, /\.director-keyframe-copy textarea[^}]*touch-action:\s*manipulation/);
+});
+
+test('Video model cards are centered and Director uses a neutral selected treatment', () => {
+  assert.match(css, /\.video-choice-grid :is\(\.chip\[data-engine\], \.video-model-option\)\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center/);
+  assert.match(css, /\.video-choice-grid \.video-model-option\s*\{[^}]*border-color:\s*var\(--line\);[^}]*background:\s*rgba\(255,255,255,\.025\)/);
+  assert.match(css, /\.director-model-options \.video-model-option\.active\s*\{[^}]*border-color:\s*rgba\(226,232,255,\.3\);[^}]*box-shadow:\s*none/);
 });
 
 test('Director generation remains a separate dependency and uses literal prompts', () => {

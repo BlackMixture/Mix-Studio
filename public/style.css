@@ -1915,10 +1915,10 @@ html:-webkit-full-screen { background: #000; }
   display: grid;
   align-content: center;
   justify-content: stretch;
-  justify-items: start;
+  justify-items: center;
   gap: 2px;
-  padding: 8px 22px 8px 10px;
-  text-align: left;
+  padding: 8px 10px;
+  text-align: center;
   cursor: grab;
   touch-action: pan-y;
   user-select: none;
@@ -1930,10 +1930,17 @@ html:-webkit-full-screen { background: #000; }
 .video-choice-grid :is(.chip[data-engine], .video-model-option) small { color: var(--muted-2); font-size: 8.5px; font-weight: 750; line-height: 1.2; }
 .video-choice-grid .chip[data-engine].active b { color: #fff; }
 .video-choice-grid .video-model-option {
-  cursor: pointer; touch-action: manipulation; border-color: rgba(var(--mode-rgb),.38);
-  background: linear-gradient(135deg, rgba(var(--mode-rgb),.12), rgba(255,255,255,.025));
+  cursor: pointer; touch-action: manipulation; border-color: var(--line);
+  background: rgba(255,255,255,.025);
 }
-.video-choice-grid .video-model-option:hover { border-color: rgba(var(--mode-rgb),.72); background: rgba(var(--mode-rgb),.13); }
+.video-choice-grid .video-model-option:hover { border-color: rgba(226,232,255,.28); background: rgba(255,255,255,.055); }
+.director-model-options .video-model-option.active {
+  color: #fff;
+  border-color: rgba(226,232,255,.3);
+  background: rgba(255,255,255,.065);
+  box-shadow: none;
+}
+.director-model-options .video-model-option.active b { color: #fff; }
 @media (max-width: 420px) {
   .video-choice-grid :is(.chip[data-engine], .video-model-option) {
     justify-items: center;
@@ -10157,7 +10164,7 @@ body.sheet-open {
 .director-keyframe-copy b, .director-keyframe-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-keyframe-copy b { font-size: 11px; }
 .director-keyframe-copy small { color: var(--muted); font-size: 9px; }
-.director-keyframe-copy textarea { width: 100%; min-height: 48px; padding: 8px 9px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; background: #000; color: var(--ink); font: inherit; font-size: 10.5px; line-height: 1.4; user-select: text; }
+.director-keyframe-copy textarea { width: 100%; min-height: 48px; padding: 8px 9px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; background: #000; color: var(--ink); font: inherit; font-size: 10.5px; line-height: 1.4; user-select: text; touch-action: manipulation; }
 .director-keyframe-copy textarea:focus { border-color: rgba(var(--mode-rgb),.62); outline: 0; box-shadow: 0 0 0 3px rgba(var(--mode-rgb),.1); }
 .director-keyframe-actions { display: flex; gap: 4px; }
 .director-keyframe-actions button { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.035); color: var(--ink); font: inherit; font-size: 17px; }

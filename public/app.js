@@ -1695,7 +1695,7 @@ function loadForm() {
     state.vidFace = restoreWorkspaceAsset(f.vidFace);
     state.directorProject = f.directorProject && typeof f.directorProject === 'object' ? f.directorProject : null;
     state.directorComposerMode = ['extend', 'keyframes', 'timeline'].includes(f.directorComposerMode)
-      ? f.directorComposerMode : 'timeline';
+      ? f.directorComposerMode : (savedDirectorComposerMode() || 'timeline');
     state.directorOpen = f.directorOpen === true && state.view === 'video' && state.vidEngine === 'ltx';
     persistedWorkspaceAudio = f.vidAudio && f.vidAudio.name ? f.vidAudio : null;
     state.vidSigma = f.vidSigma || state.vidSigma;
@@ -8808,6 +8808,14 @@ let directorStoryboardInsertIndex = null;
 let directorChoosingWorkflow = false;
 
 function directorStorageKey() { return profileStorageKey('ks-director'); }
+function directorModeStorageKey() { return profileStorageKey('ks-director-mode'); }
+function savedDirectorComposerMode() {
+  const key = directorModeStorageKey();
+  try {
+    const mode = key ? localStorage.getItem(key) : '';
+    return ['extend', 'keyframes', 'timeline'].includes(mode) ? mode : null;
+  } catch { return null; }
+}
 function directorId(prefix = 'segment') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -9106,8 +9114,12 @@ function saveDirectorProject() {
   $('#directorSaveStatus').textContent = 'Saving…';
   directorSaveTimer = setTimeout(() => {
     const key = directorStorageKey();
+    const modeKey = directorModeStorageKey();
     if (key && state.directorProject) {
       try { localStorage.setItem(key, JSON.stringify(directorSerializableProject())); } catch { /* storage may be full */ }
+    }
+    if (modeKey) {
+      try { localStorage.setItem(modeKey, state.directorComposerMode); } catch { /* storage may be full */ }
     }
     $('#directorSaveStatus').textContent = 'Autosaved';
     saveForm();
@@ -9550,7 +9562,9 @@ function wireDirectorKeyframeDrag(card, list) {
       if (navigator.vibrate) navigator.vibrate(10);
     }, event.pointerType === 'mouse' ? 0 : 260);
   });
-  card.addEventListener('contextmenu', (event) => event.preventDefault());
+  card.addEventListener('contextmenu', (event) => {
+    if (!event.target.closest('button,input,textarea,select,a,[contenteditable]')) event.preventDefault();
+  });
 }
 
 function directorRefreshGenerationValidation() {
@@ -9992,9 +10006,10 @@ function openDirectorMode(project, options = {}) {
   } else {
     try { state.directorProject = directorNormalizeClientProject(state.directorProject); } catch { state.directorProject = directorSeedProject(); }
   }
+  const savedMode = savedDirectorComposerMode();
   state.directorComposerMode = ['extend', 'keyframes', 'timeline'].includes(options.mode)
     ? options.mode
-    : (state.directorProject.extensionSource ? 'extend' : (state.directorComposerMode || 'timeline'));
+    : (state.directorProject.extensionSource ? 'extend' : (state.directorComposerMode || savedMode || 'timeline'));
   directorChoosingWorkflow = options.chooseWorkflow === true;
   state.directorOpen = true;
   state.directorSelection = null;
@@ -10804,6 +10819,8 @@ async function generateDirector() {
         method: 'POST',
         body: JSON.stringify({
           project: directorSerializableProject(project), seed: baseSeed + index,
+          batchSeed: baseSeed,
+          composerMode: state.directorComposerMode,
           loras: activeLoras, width: project.output.width, height: project.output.height,
           smooth: project.output.smooth, fourK: project.output.fourK,
         }),
@@ -10932,7 +10949,9 @@ $('#directorAddPrompt').addEventListener('click', () => {
     state.directorSelection = null;
     renderDirector();
     saveDirectorProject();
-    requestAnimationFrame(() => $(`[data-director-story-id="${segment.id}"] textarea`)?.focus());
+    if (window.matchMedia('(pointer: fine)').matches) {
+      requestAnimationFrame(() => $(`[data-director-story-id="${segment.id}"] textarea`)?.focus());
+    }
     return;
   }
   directorAddSegment('main', { id: directorId('prompt'), type: 'text', start: 0, length: Math.min(120, state.directorProject.durationFrames), prompt: '' });
@@ -11069,6 +11088,8 @@ $('#directorNewBtn').addEventListener('click', async () => {
 });
 window.addEventListener('resize', () => {
   if (!state.directorOpen || (!directorAutoFit && directorScaleCustomized)) return;
+  const active = document.activeElement;
+  if (active?.closest('#directorWorkspace') && active.matches('input, textarea, select, [contenteditable]')) return;
   if (!directorAutoFit) directorPixelsPerSecond = directorComfortableTimelineScale();
   renderDirector();
   requestAnimationFrame(directorRevealSelection);
@@ -13085,7 +13106,13 @@ $('#directorModelOption').addEventListener('click', () => {
   const ltx = $('#vidEngineRow .chip[data-engine="ltx"]');
   if (ltx && state.vidEngine !== 'ltx') ltx.click();
   setVideoModelExpanded(false);
-  openDirectorWorkflowChooser();
+  const key = directorStorageKey();
+  let hasSavedProject = !!state.directorProject;
+  if (!hasSavedProject && key) {
+    try { hasSavedProject = !!localStorage.getItem(key); } catch { /* storage may be unavailable */ }
+  }
+  if (hasSavedProject) openDirectorMode(undefined, { mode: state.directorComposerMode || savedDirectorComposerMode() });
+  else openDirectorWorkflowChooser();
 });
 wireEngineRow('animEngineRow', (engine) => {
   state.animEngine = engine;
@@ -18398,16 +18425,30 @@ async function reuseVideo(it, v) {
   if (info.workflow === 'director' && info.directorProject) {
     const engineChip = $('#vidEngineRow .chip[data-engine="ltx"]');
     if (engineChip) engineChip.click();
-    state.videoLoras = (info.loras || []).map((lora) => ({ name: lora.name, strength: Number(lora.strength) || 1, on: true }));
     const project = JSON.parse(JSON.stringify(info.directorProject));
-    project.output = Object.assign({}, project.output || {}, {
-      width: info.fourK ? Math.round((Number(info.width) || 2560) / 2) : (Number(info.width) || 1280),
-      height: info.fourK ? Math.round((Number(info.height) || 1440) / 2) : (Number(info.height) || 720),
-      seed: Number.isSafeInteger(Number(info.seed)) ? Number(info.seed) : '',
-      batch: 1, smooth: [1, 2, 3].includes(Number(info.smooth)) ? Number(info.smooth) : 1,
-      fourK: info.fourK === true, loras: state.videoLoras,
-    });
-    openDirectorMode(project);
+    const savedOutput = project.output && typeof project.output === 'object' ? project.output : {};
+    const savedLoras = Array.isArray(savedOutput.loras) ? savedOutput.loras : (info.loras || []);
+    project.output = {
+      width: Number(savedOutput.width) || (info.fourK ? Math.round((Number(info.width) || 2560) / 2) : (Number(info.width) || 1280)),
+      height: Number(savedOutput.height) || (info.fourK ? Math.round((Number(info.height) || 1440) / 2) : (Number(info.height) || 720)),
+      seed: savedOutput.seed !== '' && Number.isSafeInteger(Number(savedOutput.seed))
+        ? Number(savedOutput.seed) : (Number.isSafeInteger(Number(info.seed)) ? Number(info.seed) : ''),
+      batch: Number.isSafeInteger(Number(savedOutput.batch)) ? Number(savedOutput.batch) : 1,
+      smooth: [1, 2, 3].includes(Number(savedOutput.smooth))
+        ? Number(savedOutput.smooth) : ([1, 2, 3].includes(Number(info.smooth)) ? Number(info.smooth) : 1),
+      fourK: savedOutput.fourK === true || (savedOutput.fourK == null && info.fourK === true),
+      loras: savedLoras.map((lora) => ({
+        name: lora.name, strength: Number.isFinite(Number(lora.strength)) ? Number(lora.strength) : 1, on: lora.on !== false,
+      })),
+    };
+    state.videoLoras = project.output.loras.map((lora) => ({ ...lora }));
+    const legacyStoryboard = !project.extensionSource
+      && !(project.audioSegments || []).length
+      && ([...(project.segments || []), ...(project.motionSegments || [])]
+        .some((segment) => segment.type === 'image' || segment.type === 'motion_video'));
+    const composerMode = ['extend', 'keyframes', 'timeline'].includes(info.directorComposerMode)
+      ? info.directorComposerMode : (project.extensionSource ? 'extend' : (legacyStoryboard ? 'keyframes' : 'timeline'));
+    openDirectorMode(project, { mode: composerMode });
     if (!options.silent) toast('Director project loaded from the gallery');
     return;
   }
