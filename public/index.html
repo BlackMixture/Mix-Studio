@@ -2146,6 +2146,10 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"/></svg>
             </button>
           </div>
+          <button class="settings-media-toggle analytics-toggle" id="analyticsToggle" type="button" role="switch" aria-checked="true" hidden>
+            <span class="settings-media-toggle-copy"><strong>Anonymous usage analytics</strong><small id="analyticsToggleStatus">Shares app launches and the generation model only. Never prompts or media.</small></span>
+            <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+          </button>
           <button class="generation-setup-entry" id="dependencyOpenSetup" type="button" data-state="checking" aria-describedby="generationSetupSettingsCopy">
             <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
             <span class="generation-setup-entry-copy"><strong>Generation setup</strong><small id="generationSetupSettingsCopy">Connection, models, and workflow requirements.</small></span>
@@ -2625,6 +2629,7 @@
 <script src="/mask-boxes.js"></script>
 <script src="/progress-eta.js"></script>
 <script src="/job-reconciliation.js"></script>
+<script src="/analytics.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

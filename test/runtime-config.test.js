@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const { resolveRuntimeConfig, publicRuntimeConfig } = require('../lib/runtime-config');
+const { resolveRuntimeConfig, publicAnalyticsConfig, publicRuntimeConfig } = require('../lib/runtime-config');
 
 function fakeFs(files = {}) {
   const normalized = new Map(Object.entries(files).map(([file, value]) => [path.resolve(file), value]));
@@ -75,4 +75,41 @@ test('a portable copy without Git clearly reports updates as unavailable', () =>
     ...fakeFs({ [installFile]: { installMode: 'portable', dataDir: 'data' } }),
   });
   assert.equal(runtime.update.provider, 'unavailable');
+});
+
+test('analytics stays disabled until a PostHog project key is configured', () => {
+  const root = path.resolve('/work/mixbox');
+  const runtime = resolveRuntimeConfig(root, { env: {}, ...fakeFs({}) });
+  assert.deepEqual(publicAnalyticsConfig(runtime), {
+    enabled: false,
+    provider: 'posthog',
+    key: '',
+    host: '',
+  });
+});
+
+test('analytics accepts a public project key and HTTPS PostHog host from the environment', () => {
+  const root = path.resolve('/work/mixbox');
+  const runtime = resolveRuntimeConfig(root, {
+    env: {
+      MIXBOX_POSTHOG_KEY: 'phc_public_project_key',
+      MIXBOX_POSTHOG_HOST: 'https://eu.i.posthog.com/some/path',
+    },
+    ...fakeFs({}),
+  });
+  assert.deepEqual(publicAnalyticsConfig(runtime), {
+    enabled: true,
+    provider: 'posthog',
+    key: 'phc_public_project_key',
+    host: 'https://eu.i.posthog.com',
+  });
+});
+
+test('analytics refuses an insecure collection host', () => {
+  const root = path.resolve('/work/mixbox');
+  const runtime = resolveRuntimeConfig(root, {
+    env: { MIXBOX_POSTHOG_KEY: 'phc_key', MIXBOX_POSTHOG_HOST: 'http://analytics.example.test' },
+    ...fakeFs({}),
+  });
+  assert.equal(publicAnalyticsConfig(runtime).enabled, false);
 });

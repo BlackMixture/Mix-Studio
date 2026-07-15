@@ -14,7 +14,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { updateFromGit } = require('./lib/app-update');
-const { resolveRuntimeConfig } = require('./lib/runtime-config');
+const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponents } = require('./lib/dependency-installer');
 const { restartComfy, restartStatus } = require('./lib/comfy-restart');
@@ -4249,6 +4249,11 @@ async function setupStatusPayload() {
 
 async function handleApi(req, res, url) {
   const route = url.pathname;
+
+  if (route === '/api/analytics-config' && req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-store');
+    return json(res, 200, publicAnalyticsConfig(RUNTIME));
+  }
 
   /* ------------------------- Auth / profiles ----------------------- */
   const profile = currentProfile(req);

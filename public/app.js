@@ -7,6 +7,7 @@ const CameraSettings = window.KreaCameraSettings;
 const CameraMotion = window.KreaCameraMotion;
 const ProgressEta = window.KreaProgressEta;
 const JobReconciliation = window.KreaJobReconciliation;
+const Analytics = window.KreaAnalytics;
 const progressEta = ProgressEta.createProgressEtaTracker();
 const EDIT_MODEL_ORDER_VERSION = 2;
 const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2']);
@@ -331,6 +332,7 @@ async function api(path, opts) {
     if (Array.isArray(data.missingAssets)) error.missingAssets = data.missingAssets;
     throw error;
   }
+  if (Analytics) Analytics.trackGenerationRequest(path, opts);
   return data;
 }
 
@@ -24059,6 +24061,7 @@ if (state.directorOpen) openDirectorMode(state.directorProject);
 restorePersistedWorkspaceControls();
 restorePersistedWorkspaceMedia();
 connectEvents();
+if (Analytics) Analytics.init();
 loadMeta();
 refreshGallery(true);
 setInterval(() => loadMeta(), 30000);

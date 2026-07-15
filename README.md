@@ -111,6 +111,8 @@ When the user first presses Generate, Mix Studio checks the exact workflow they 
 
 The bootstrap writes ignored, machine-specific configuration to `install.json`. Changes made in Generation setup update the ComfyUI connection atomically and merge the URL into `data/settings.json`. Setup never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
 
+Optional anonymous product analytics use PostHog and remain disabled unless a public project key is configured. Set `MIXBOX_POSTHOG_KEY` and, for EU Cloud, `MIXBOX_POSTHOG_HOST=https://eu.i.posthog.com` before starting the server, or add an `analytics` object with `key` and HTTPS `host` fields to the ignored `install.json`. The browser SDK uses memory-only persistence, disables autocapture, page views, session replay, surveys, and person profiles, and sends only `App_Launched` plus `Generation_Started` with a public model label. Users see a first-run notice and can disable or re-enable analytics under **Settings → General**. In PostHog, also set **Settings → Project → General → IP data capture** to discard client IP addresses; this server-side project setting is required because browser code cannot prevent a network peer from receiving an IP address.
+
 The console prints two URLs:
 
    - `Local:  http://localhost:3300` — on the desktop

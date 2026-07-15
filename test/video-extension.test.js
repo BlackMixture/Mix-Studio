@@ -27,7 +27,7 @@ test('durable uploaded extension sources accept only server-issued video names a
   });
   assert.equal(result.name, inputName);
   assert.equal(result.file, resolvedPath);
-  assert.match(result.file, /\/durable\/inputs\/[0-9a-f]{64}\.mp4$/);
+  assert.match(result.file, /[\\/]durable[\\/]inputs[\\/][0-9a-f]{64}\.mp4$/);
   assert.equal(result.size, 1024);
 
   await assert.rejects(resolveDurableUploadedVideo('/durable/inputs', 'motion.mp4', {

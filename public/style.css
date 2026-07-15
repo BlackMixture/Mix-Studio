@@ -10253,6 +10253,36 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
   animation: sheetUp 240ms var(--ease);
 }
 .toast.error { border-color: rgba(234,67,53,0.55); color: #ffd3cf; }
+.telemetry-toast {
+  width: min(92vw, 520px);
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 16px;
+  pointer-events: auto;
+}
+.telemetry-toast-copy { min-width: 0; display: grid; gap: 2px; }
+.telemetry-toast-copy strong { color: #fff; font-size: 12px; }
+.telemetry-toast-copy small { color: var(--muted); font-size: 10px; font-weight: 650; line-height: 1.35; }
+.telemetry-toast-optout,
+.telemetry-toast-close {
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255,255,255,.045);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 850;
+}
+.telemetry-toast-optout { padding: 0 11px; white-space: nowrap; }
+.telemetry-toast-close { width: 34px; padding: 0; font-size: 15px; }
+.analytics-toggle { margin-bottom: 12px; }
+@media (max-width: 520px) {
+  .telemetry-toast { grid-template-columns: minmax(0,1fr) auto; }
+  .telemetry-toast-optout { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .telemetry-toast-close { grid-column: 2; grid-row: 1; }
+}
 .toast.upload-progress {
   width: min(92vw, 360px);
   display: grid;
