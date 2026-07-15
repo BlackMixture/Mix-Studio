@@ -250,6 +250,10 @@ test('Director extension anchors both stages and emits a seam-trimmed tail for a
   const normalized = normalizeDirectorProject(project({
     durationFrames: 120,
     range: { startFrame: 0, lengthFrames: 120 },
+    segments: [{
+      id: 'landing', type: 'image', start: 119, length: 1, prompt: '', imageFile: 'landing.png',
+      guideStrength: 1, isEndFrame: true,
+    }],
     extensionSource: { itemId: 'item1', videoId: 'video1', fileName: 'Source' },
   }));
   const helpers = {
@@ -281,6 +285,11 @@ test('Director extension anchors both stages and emits a seam-trimmed tail for a
   assert.equal(graph.extension_source.inputs.force_rate, 0);
   assert.equal(graph.extension_source.inputs.frame_load_cap, 1);
   assert.equal(graph.extension_source.inputs.skip_first_frames, 119);
+  assert.equal(graph.director.inputs.guide_strength, '1.00');
+  assert.deepEqual(JSON.parse(graph.director.inputs.timeline_data).segments.map((segment) => ({
+    imageFile: segment.imageFile, start: segment.start, isEndFrame: segment.isEndFrame,
+  })), [{ imageFile: 'landing.png', start: 119, isEndFrame: true }]);
+  assert.deepEqual(directorAssetNames(normalized), ['landing.png']);
   assert.equal(graph.extension_tail_prep.inputs.ordered[0], 0);
   assert.deepEqual(graph.extension_guide_base.inputs.latent, ['guide_base', 2]);
   assert.deepEqual(graph.concat1.inputs.video_latent, ['extension_guide_base', 0]);

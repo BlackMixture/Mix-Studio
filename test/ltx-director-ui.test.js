@@ -83,7 +83,7 @@ test('Director defaults to a focused Story timeline with progressive disclosure'
 });
 
 test('Director offers streamlined Extend and Keyframe presets beside the full timeline', () => {
-  for (const id of ['directorWorkflowChooser', 'directorChooseExtend', 'directorChooseKeyframes', 'directorChooseTimeline', 'directorModeSwitch', 'directorExtendPreset', 'directorKeyframePreset']) {
+  for (const id of ['directorWorkflowChooser', 'directorChooseExtend', 'directorChooseKeyframes', 'directorChooseTimeline', 'directorModeSwitch', 'directorExtendPreset', 'directorKeyframePreset', 'directorExtendKeyframeChoose', 'directorExtendKeyframePreview']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(html, /id="directorStartSheet"/, 'workflow choice belongs in the Director workspace, not a popup');
@@ -101,10 +101,18 @@ test('Director offers streamlined Extend and Keyframe presets beside the full ti
   assert.match(app, /function switchDirectorWorkflow\(mode\)/);
   assert.match(app, /timeline\.hidden = streamlined/);
   assert.match(app, /function directorRedistributeStoryItems\(ordered = directorStoryItems\(\)\)/);
-  assert.match(app, /const anchors = ordered\.map\(\(segment, index\) => ordered\.length === 1 \? 0 : Math\.round\(index \* lastFrame \/ \(ordered\.length - 1\)\)\)/);
-  assert.match(app, /segment\.isEndFrame = images\.length > 1 && segment === lastImage/);
+  assert.match(app, /const anchorDivisor = Math\.max\(1, endsOnImage && ordered\.length > 1 \? ordered\.length - 1 : ordered\.length\)/);
+  assert.match(app, /const anchors = ordered\.map\(\(segment, index\) => Math\.round\(index \* lastFrame \/ anchorDivisor\)\)/);
+  assert.match(app, /segment\.isEndFrame = images\.length > 1 && segment === lastImage && segment\.start === lastFrame/);
   assert.match(app, /directorComposerMode === 'extend' && !project\.extensionSource\) return 'Choose a video to extend\.'/);
-  assert.match(app, /directorComposerMode === 'keyframes'[\s\S]{0,160}return 'Add at least one keyframe\.'/);
+  assert.match(app, /directorComposerMode === 'keyframes'[\s\S]{0,260}return 'Add at least one image or video clip\.'/);
+  assert.match(html, /id="directorExtendKeyframeChoose"[\s\S]{0,180}>Add ending keyframe<[\s\S]{0,120}>Guide where the new footage lands</);
+  assert.match(app, /function directorChooseExtensionKeyframe\(\)[\s\S]{0,420}pickUpload\('image\/\*'[\s\S]{0,300}'Choose an ending keyframe'\)/);
+  assert.match(app, /function directorCommitExtensionKeyframe\(asset\)[\s\S]{0,900}isEndFrame: true/);
+  assert.match(app, /function directorPlaceExtensionKeyframe\(project = state\.directorProject\)[\s\S]{0,220}project\.durationFrames - 1/);
+  assert.match(app, /const extensionKeyframe = project\.extensionSource \? directorExtensionKeyframe\(project\) : null[\s\S]{0,700}directorPlaceExtensionKeyframe\(project\)/);
+  assert.match(app, /function directorRemoveExtensionKeyframe\(\)[\s\S]{0,360}project\.segments = project\.segments\.filter/);
+  assert.match(css, /\.director-extend-keyframe\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
 });
 
 test('Director media additions reuse the upload-or-gallery source picker', () => {
@@ -131,14 +139,20 @@ test('Keyframe preset accepts multi-image picks and supports direct drag reorder
   assert.match(css, /\.director-keyframe-grip[^}]*touch-action:\s*none/);
 });
 
-test('Keyframe workflow is a reorderable storyboard with inline image or direction insertion', () => {
+test('Keyframe workflow is a reorderable storyboard with inline image, video, or direction insertion', () => {
   assert.match(html, /id="directorKeyframeList"[^>]*aria-label="Video storyboard/);
-  assert.match(html, /id="directorKeyframeAdd"[\s\S]{0,180}>Add to storyboard<[\s\S]{0,120}>Choose an image or write a direction</);
+  assert.match(html, /id="directorKeyframeAdd"[\s\S]{0,180}>Add to storyboard<[\s\S]{0,140}>Choose an image, video clip, or direction</);
   assert.match(app, /function directorOpenStoryboardAdd\(index\)/);
   assert.match(app, /button\.className = 'director-storyboard-add'/);
-  assert.match(app, /button\.innerHTML = '<span aria-hidden="true">＋<\/span><small>Image or direction<\/small>'/);
+  assert.match(app, /button\.innerHTML = '<span aria-hidden="true">＋<\/span><small>Image, clip, or direction<\/small>'/);
   assert.match(app, /directorConfigureAddSheet\(true\)/);
-  assert.match(app, /for \(const id of \['directorAddAudio', 'directorAddIcImage', 'directorAddIcVideo'\]\)[\s\S]{0,120}hidden = storyOnly/);
+  assert.match(app, /for \(const id of \['directorAddAudio', 'directorAddIcImage'\]\)[\s\S]{0,120}hidden = storyOnly/);
+  assert.match(app, /video\.querySelector\('span'\)\.textContent = storyOnly \? 'Video clip' : 'Motion guide video'/);
+  assert.match(app, /function directorStoryItems\(project = state\.directorProject\)[\s\S]{0,180}project\?\.motionSegments/);
+  assert.match(app, /kind === 'video' && state\.directorComposerMode === 'keyframes'[\s\S]{0,900}type: 'motion_video'[\s\S]{0,500}directorRedistributeStoryItems\(ordered\)/);
+  assert.match(app, /video: \['video\/\*', state\.directorComposerMode === 'keyframes' \? 'Choose a video clip'/);
+  assert.match(app, /document\.createElement\('video'\)[\s\S]{0,480}director-storyboard-video-mark/);
+  assert.match(app, /project\.motionSegments = ordered\.filter\(\(segment\) => segment\.type === 'motion_video'\)/);
   assert.match(app, /state\.directorComposerMode === 'keyframes' && directorStoryboardInsertIndex != null[\s\S]{0,500}type: 'text'[\s\S]{0,300}ordered\.splice\(insertion, 0, segment\)/);
   assert.match(app, /prompt\.placeholder = 'Describe what happens here…'/);
   assert.match(app, /prompt\.addEventListener\('input'[\s\S]{0,180}segment\.prompt = prompt\.value[\s\S]{0,120}directorRefreshGenerationValidation\(\)/);
@@ -146,6 +160,8 @@ test('Keyframe workflow is a reorderable storyboard with inline image or directi
   assert.match(css, /\.director-storyboard-add\s*\{/);
   assert.match(css, /\.director-keyframe-card\.direction/);
   assert.match(css, /\.director-keyframe-copy textarea/);
+  assert.match(css, /\.director-keyframe-media img, \.director-keyframe-media video/);
+  assert.match(css, /\.director-storyboard-video-mark/);
 });
 
 test('Director has a project-scoped LoRA picker and editable LoRA stack', () => {
