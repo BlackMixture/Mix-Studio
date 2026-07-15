@@ -220,8 +220,8 @@
         </div>
       </div>
       <div class="director-preset-view" id="directorKeyframePreset" hidden>
-        <div class="director-preset-heading"><div><h2>Keyframe video</h2><p>Add images in story order. Director spaces them across the video.</p></div><label>Duration <span><input id="directorKeyframeDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" />s</span></label></div>
-        <div class="director-keyframes" id="directorKeyframeList" role="list" aria-label="Video keyframes"></div>
+        <div class="director-preset-heading"><div><h2>Keyframe video</h2><p>Add several images, then hold and drag to reorder them.</p></div><label>Duration <span><input id="directorKeyframeDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" />s</span></label></div>
+        <div class="director-keyframes" id="directorKeyframeList" role="list" aria-label="Video keyframes. Hold and drag to reorder."></div>
         <button class="director-keyframe-add" id="directorKeyframeAdd" type="button"><span aria-hidden="true">＋</span><b>Add keyframe</b><small>Upload or choose a previous image</small></button>
       </div>
       <button class="director-preset-settings" id="directorPresetSettings" type="button" aria-controls="directorSettingsSheet">More settings</button>
@@ -341,6 +341,13 @@
             <label class="director-inspector-wide"><input id="directorInpaintAudio" type="checkbox" checked /> Generate audio in gaps</label>
             <label class="director-inspector-wide"><input id="directorOverrideAudio" type="checkbox" /> Use motion guide video audio</label>
           </div>
+          <div class="director-lora-section">
+            <div class="director-lora-heading">
+              <div><strong>Style LoRAs</strong><small id="directorLoraSummary">None selected</small></div>
+              <button id="directorAddLora" type="button">+ Add LoRA</button>
+            </div>
+            <div class="director-lora-list" id="directorLoraList" aria-label="Director LoRAs"></div>
+          </div>
         </section>
         <details class="director-settings-advanced">
           <summary>Advanced</summary>
@@ -360,8 +367,8 @@
             <div class="director-transport">
               <button id="directorPlay" type="button" aria-label="Play timeline">▶ <span>Play</span></button>
               <label>Playhead <input id="directorPlayhead" type="number" min="0" max="24000" step="1" value="0" /> <span class="director-unit">frames</span></label>
-              <label class="director-checkbox"><input id="directorAutoFit" type="checkbox" checked /> Auto-fit timeline</label>
-              <label class="director-zoom">Zoom <input id="directorZoom" type="range" min="10" max="160" step="2" value="64" /></label>
+              <label class="director-checkbox"><input id="directorAutoFit" type="checkbox" /> Fit full timeline</label>
+              <label class="director-zoom">Zoom <input id="directorZoom" type="range" min="80" max="960" step="10" value="320" /></label>
               <label class="director-checkbox"><input id="directorSnap" type="checkbox" checked /> Snap while dragging</label>
             </div>
             <p class="director-timeline-help">Arrow keys move one frame. Shift + Arrow moves one second.</p>
@@ -1947,6 +1954,11 @@
       <div class="setup-operation" id="setupOperation" aria-live="polite" hidden>
         <div><strong id="setupOperationTitle">Working…</strong><span id="setupOperationCopy"></span></div>
         <div class="dependency-progress"><span id="setupOperationFill"></span></div>
+        <div class="dependency-access" id="setupDependencyAccess" hidden>
+          <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
+          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Sign in and accept or request access. This installer also needs an HF_TOKEN from that account.</small></span>
+          <a class="dependency-access-link" id="setupDependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
+        </div>
         <div class="setup-operation-actions">
           <button id="setupShowDetails" type="button" hidden>Details</button>
           <button id="setupRestartComfy" type="button" hidden>Restart ComfyUI</button>
@@ -2093,6 +2105,11 @@
               <p id="dependencyManagerStatus">Checking every configured model and node…</p>
             </div>
             <div class="dependency-progress" id="dependencyProgress" hidden><span id="dependencyProgressFill"></span></div>
+            <div class="dependency-access" id="dependencyAccess" hidden>
+              <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
+              <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Sign in and accept or request access. This installer also needs an HF_TOKEN from that account.</small></span>
+              <a class="dependency-access-link" id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
+            </div>
             <div class="dependency-selection-head" id="dependencySelectionHead" hidden>
               <span>Choose downloads</span>
               <button id="dependencyToggleAll" type="button">Clear</button>
@@ -2415,6 +2432,10 @@
         </div>
       </div>
       <div class="asset-picker-list" id="assetPickerList"></div>
+      <div class="asset-picker-multi-bar" id="assetPickerMultiBar" hidden>
+        <span id="assetPickerMultiCount">0 images selected</span>
+        <button id="assetPickerMultiUse" type="button" disabled>Add keyframes</button>
+      </div>
     </div>
     <div class="asset-picker-preview" id="assetPickerPreview" hidden>
       <button class="asset-picker-preview-back" id="assetPickerPreviewBack" type="button">‹ Back to generations</button>

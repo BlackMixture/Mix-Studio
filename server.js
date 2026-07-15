@@ -574,8 +574,31 @@ let dependencyInstallState = {
   total: 0,
   restartRequired: false,
   error: null,
+  errorCode: null,
+  accessUrl: null,
+  failedModel: null,
+  failedSettingKey: null,
+  statusCode: null,
   updatedAt: Date.now(),
 };
+
+const EMPTY_DEPENDENCY_FAILURE = Object.freeze({
+  errorCode: null,
+  accessUrl: null,
+  failedModel: null,
+  failedSettingKey: null,
+  statusCode: null,
+});
+
+function dependencyFailureState(error) {
+  return {
+    errorCode: error?.code || null,
+    accessUrl: error?.accessUrl || null,
+    failedModel: error?.failedModel || null,
+    failedSettingKey: error?.settingKey || null,
+    statusCode: Number.isFinite(error?.statusCode) ? error.statusCode : null,
+  };
+}
 
 function updateDependencyInstallState(patch) {
   dependencyInstallState = Object.assign({}, dependencyInstallState, patch, { updatedAt: Date.now() });
@@ -4531,6 +4554,7 @@ async function handleApi(req, res, url) {
             : 'ComfyUI was checked after restart. Installed dependencies are ready.',
           restartRequired: false,
           error: null,
+          ...EMPTY_DEPENDENCY_FAILURE,
         });
       }
       return json(res, 200, {
@@ -4636,7 +4660,7 @@ async function handleApi(req, res, url) {
       return json(res, 409, { error: 'No dependency installation is running.' });
     }
     if (!dependencyInstallController.signal.aborted) {
-      updateDependencyInstallState({ state: 'cancelling', phase: 'cancelling', message: 'Stopping the dependency installer safely…', error: null });
+      updateDependencyInstallState({ state: 'cancelling', phase: 'cancelling', message: 'Stopping the dependency installer safely…', error: null, ...EMPTY_DEPENDENCY_FAILURE });
       dependencyInstallController.abort();
     }
     return json(res, 202, { ok: true, install: dependencyInstallState });
@@ -4653,17 +4677,17 @@ async function handleApi(req, res, url) {
     const restart = restartStatus(RUNTIME);
     if (!restart.canRestart) return json(res, 409, { error: restart.reason || 'ComfyUI restart is not configured for this machine.' });
     comfyRestartRunning = true;
-    updateDependencyInstallState({ state: 'restarting', phase: 'stopping', message: 'Stopping ComfyUI…', error: null });
+    updateDependencyInstallState({ state: 'restarting', phase: 'stopping', message: 'Stopping ComfyUI…', error: null, ...EMPTY_DEPENDENCY_FAILURE });
     (async () => {
       try {
         await restartComfy(RUNTIME, (phase, message) => updateDependencyInstallState({ state: 'restarting', phase, message, error: null }));
         const reconnected = await waitForComfyReconnect();
         objectInfoCache = null;
         updateDependencyInstallState(reconnected
-          ? { state: 'complete', phase: 'reconnected', message: 'ComfyUI is back online. Checking installed models and nodes…', restartRequired: false, error: null }
-          : { state: 'error', phase: 'timeout', message: 'ComfyUI did not reconnect yet. Check the desktop app, then press Check again.', error: 'Reconnect timed out.' });
+          ? { state: 'complete', phase: 'reconnected', message: 'ComfyUI is back online. Checking installed models and nodes…', restartRequired: false, error: null, ...EMPTY_DEPENDENCY_FAILURE }
+          : { state: 'error', phase: 'timeout', message: 'ComfyUI did not reconnect yet. Check the desktop app, then press Check again.', error: 'Reconnect timed out.', ...EMPTY_DEPENDENCY_FAILURE });
       } catch (error) {
-        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Could not restart ComfyUI.', error: String(error.message || error) });
+        updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Could not restart ComfyUI.', error: String(error.message || error), ...EMPTY_DEPENDENCY_FAILURE });
       } finally {
         comfyRestartRunning = false;
       }
@@ -4692,6 +4716,7 @@ async function handleApi(req, res, url) {
     updateDependencyInstallState({
       state: 'running', phase: 'queued', message: 'Starting dependency installation…',
       components, repair, completed: 0, total: 0, restartRequired: false, error: null,
+      ...EMPTY_DEPENDENCY_FAILURE,
     });
     (async () => {
       try {
@@ -4705,12 +4730,12 @@ async function handleApi(req, res, url) {
           },
         });
         objectInfoCache = null;
-        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null });
+        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null, ...EMPTY_DEPENDENCY_FAILURE });
       } catch (error) {
         if (installController.signal.aborted || error?.code === 'dependency_cancelled' || error?.name === 'AbortError') {
-          updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Dependency installation cancelled. Finished files were kept; partial downloads were removed.', error: null });
+          updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Dependency installation cancelled. Finished files were kept; partial downloads were removed.', error: null, ...EMPTY_DEPENDENCY_FAILURE });
         } else {
-          updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Dependency installation stopped.', error: String(error.message || error) });
+          updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Dependency installation stopped.', error: String(error.message || error), ...dependencyFailureState(error) });
         }
       } finally {
         dependencyInstallRunning = false;
@@ -4729,7 +4754,7 @@ async function handleApi(req, res, url) {
     const installController = new AbortController();
     dependencyInstallController = installController;
     dependencyInstallRunning = true;
-    updateDependencyInstallState({ state: 'running', phase: 'queued', message: 'Starting the safe Smart Mask installation…', components: ['smartmask'], repair: false, completed: 0, total: 0, restartRequired: false, error: null });
+    updateDependencyInstallState({ state: 'running', phase: 'queued', message: 'Starting the safe Smart Mask installation…', components: ['smartmask'], repair: false, completed: 0, total: 0, restartRequired: false, error: null, ...EMPTY_DEPENDENCY_FAILURE });
     (async () => {
       try {
         const result = await installComponents({
@@ -4740,12 +4765,12 @@ async function handleApi(req, res, url) {
           },
         });
         objectInfoCache = null;
-        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: 'Smart Mask tools installed safely. Restart ComfyUI, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null });
+        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: 'Smart Mask tools installed safely. Restart ComfyUI, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null, ...EMPTY_DEPENDENCY_FAILURE });
       } catch (error) {
         if (installController.signal.aborted || error?.code === 'dependency_cancelled' || error?.name === 'AbortError') {
-          updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Smart Mask installation cancelled safely.', error: null });
+          updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Smart Mask installation cancelled safely.', error: null, ...EMPTY_DEPENDENCY_FAILURE });
         } else {
-          updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Smart Mask installation stopped.', error: String(error.message || error) });
+          updateDependencyInstallState({ state: 'error', phase: 'error', message: 'Smart Mask installation stopped.', error: String(error.message || error), ...dependencyFailureState(error) });
         }
       } finally {
         dependencyInstallRunning = false;

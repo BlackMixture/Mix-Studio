@@ -19,6 +19,7 @@ const {
   cleanRelative,
   downloadAsset,
   filterProtectedRuntimeRequirements,
+  huggingFaceAccessUrl,
   installNodePack,
   looksLikeCustomNodeFolder,
   modelIsRegistered,
@@ -92,6 +93,68 @@ test('dependency paths stay inside ComfyUI model folders and trusted repos compa
   assert.equal(sameRepo('https://github.com/example/other.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), false);
   assert.equal(modelIsRegistered('krea2_turbo_fp8_scaled.safetensors', new Set(['Krea2_Turbo_FP8_Scaled.safetensors'])), true);
   assert.equal(modelIsRegistered('Wan2.1\\model.safetensors', new Set(['wan2.1/model.safetensors'])), true);
+});
+
+test('gated Hugging Face downloads expose only their reviewed repository access page', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-gated-model-'));
+  const asset = MODEL_ASSETS.ltxDirector[0];
+  const expectedAccessUrl = 'https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients';
+  const filename = 'ltx-director-ingredients.safetensors';
+  try {
+    assert.equal(huggingFaceAccessUrl(asset[2]), expectedAccessUrl);
+    assert.equal(huggingFaceAccessUrl(`${expectedAccessUrl}/blob/main/model.safetensors`), '');
+    assert.equal(huggingFaceAccessUrl('https://example.test/owner/model/resolve/main/model.safetensors'), '');
+
+    for (const status of [401, 403]) {
+      await assert.rejects(
+        downloadAsset(asset, rootDir, { ltxDirectorIcLora: filename }, () => {}, {
+          fetch: async () => ({
+            ok: false,
+            status,
+            body: null,
+            text: async () => 'Access denied',
+          }),
+        }),
+        (error) => {
+          assert.equal(error.code, 'dependency_model_access_required');
+          assert.equal(error.statusCode, status);
+          assert.equal(error.settingKey, 'ltxDirectorIcLora');
+          assert.equal(error.failedModel, filename);
+          assert.equal(error.accessUrl, expectedAccessUrl);
+          assert.doesNotMatch(error.accessUrl, /resolve|safetensors|[?#]/);
+          return true;
+        }
+      );
+    }
+
+    const destination = path.join(rootDir, 'loras', filename);
+    assert.equal(fs.existsSync(destination), false);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part`), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('generic and non-Hugging Face download failures never expose an access link', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-generic-download-'));
+  try {
+    await assert.rejects(
+      downloadAsset(
+        ['unet', 'diffusion_models', 'https://example.test/model.safetensors'],
+        rootDir,
+        { unet: 'model.safetensors' },
+        () => {},
+        { fetch: async () => ({ ok: false, status: 403, body: null, text: async () => 'Forbidden' }) }
+      ),
+      (error) => {
+        assert.equal(error.code, 'dependency_download_failed');
+        assert.equal(error.accessUrl, undefined);
+        return true;
+      }
+    );
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test('a valid manually installed custom-node folder is reused without requiring Git metadata', async () => {
@@ -225,6 +288,10 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /dependencyInstallController\.abort\(\)/);
   assert.match(server, /return json\(res, 202, \{ ok: true, install: dependencyInstallState \}\)/);
   assert.match(server, /updateDependencyInstallState\(/);
+  assert.match(server, /function dependencyFailureState\(error\)/);
+  assert.match(server, /accessUrl: error\?\.accessUrl \|\| null/);
+  assert.match(server, /errorCode: error\?\.code \|\| null/);
+  assert.match(server, /\.\.\.EMPTY_DEPENDENCY_FAILURE/);
   assert.match(server, /broadcast\('dependencyInstall'/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
   assert.match(server, /qwenedit: \['qwen'\]/);
@@ -261,7 +328,15 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(html, /id="dependencyRepairMissing"/);
   assert.match(html, /id="dependencyRestartComfy"/);
   assert.match(html, /id="dependencyProgress"/);
+  assert.match(html, /id="dependencyAccess"/);
+  assert.match(html, /id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"/);
   assert.match(app, /function renderDependencyManager\(\)/);
+  assert.match(app, /function dependencyAccessUrl\(installState\)/);
+  assert.match(app, /function renderDependencyAccess\(containerSelector, linkSelector, installState\)/);
+  assert.match(app, /value\.protocol !== 'https:' \|\| value\.hostname\.toLowerCase\(\) !== 'huggingface\.co'/);
+  assert.match(app, /link\.href = accessUrl/);
+  assert.match(app, /link\.removeAttribute\('href'\)/);
+  assert.match(app, /Retry selected/);
   assert.match(app, /function scheduleDependencyPoll\(\)/);
   assert.match(app, /Repair selected/);
   assert.match(app, /formatDependencyBytes/);
@@ -274,6 +349,8 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(css, /\.dependency-option\.selected/);
   assert.match(css, /\.dependency-cancel/);
   assert.match(css, /\.dependency-restart\.needed/);
+  assert.match(css, /\.dependency-access\[hidden\]/);
+  assert.match(css, /\.dependency-access-link:focus-visible/);
   assert.match(css, /@keyframes dependencyProgress/);
 });
 

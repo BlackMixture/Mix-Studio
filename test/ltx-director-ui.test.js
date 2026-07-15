@@ -91,11 +91,39 @@ test('Director offers streamlined Extend and Keyframe presets beside the full ti
 
 test('Director media additions reuse the upload-or-gallery source picker', () => {
   assert.match(app, /function directorOpenMediaPicker\(kind\)/);
-  assert.match(app, /pickUpload\(config\[0\], \(asset\) => directorHandlePickedMedia\(asset, kind\), config\[1\]\)/);
+  assert.match(app, /pickUpload\([\s\S]{0,260}\(asset\) => directorHandlePickedMedia\(asset, kind\)[\s\S]{0,160}\{ multiple \}/);
   assert.match(app, /function directorChooseExtensionSource\(\)[\s\S]{0,900}'Choose a video to extend', \{ galleryReference: true \}\)/);
   assert.match(app, /if \(picker\.galleryReference\)[\s\S]{0,360}srcItemId: asset\.itemId[\s\S]{0,120}srcVideoId: asset\.videoId/);
   assert.match(app, /\$\('#directorAddImage'\)\.addEventListener\('click'[\s\S]{0,180}directorOpenMediaPicker\('image'\)/);
   assert.match(app, /\$\('#directorAddIcVideo'\)\.addEventListener\('click'[\s\S]{0,180}directorOpenMediaPicker\('video'\)/);
+});
+
+test('Keyframe preset accepts multi-image picks and supports direct drag reordering', () => {
+  for (const id of ['assetPickerMultiBar', 'assetPickerMultiCount', 'assetPickerMultiUse']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(app, /multiple: options\.multiple === true && assetPickerKind\(accept\) === 'image'/);
+  assert.match(app, /input\.multiple = options\.multiple === true/);
+  assert.match(app, /usePreviousGenerations\(\[\.\.\.assetPickerState\.selected\.values\(\)\]\)/);
+  assert.match(app, /state\.directorProject\.segments\.push\(\.\.\.segments\)/);
+  assert.match(app, /function wireDirectorKeyframeDrag\(card, list\)/);
+  assert.match(app, /directorCommitKeyframeDomOrder\(list\)/);
+  assert.match(app, /event\.pointerType === 'touch'[\s\S]{0,100}director-keyframe-grip/);
+  assert.match(css, /\.director-keyframe-card\.dragging/);
+  assert.match(css, /\.director-keyframe-grip[^}]*touch-action:\s*none/);
+});
+
+test('Director has a project-scoped LoRA picker and editable LoRA stack', () => {
+  for (const id of ['directorLoraSummary', 'directorAddLora', 'directorLoraList']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(app, /function directorLoras\(\)/);
+  assert.match(app, /function renderDirectorLoras\(\)/);
+  assert.match(app, /function openDirectorLoraPicker\(\)/);
+  assert.match(app, /openLoraPicker\([\s\S]{0,700}title: 'Add Director LoRA'/);
+  assert.match(app, /exclude: loras\.map\(\(lora\) => lora\.name\)/);
+  assert.match(app, /loras: project\.output\.loras \|\| state\.videoLoras/);
+  assert.match(css, /\.director-lora-item\.on/);
 });
 
 test('Selected timeline segments expose contextual add and delete controls outside the segment button', () => {
@@ -110,7 +138,7 @@ test('Selected timeline segments expose contextual add and delete controls outsi
   assert.match(app, /context\.side === 'before'[\s\S]{0,120}directorFindPlacementBefore/);
   assert.match(app, /context\.side === 'after'[\s\S]{0,120}directorFindPlacement/);
   assert.match(app, /directorSelectionDelete'\)\.addEventListener\('click'[\s\S]{0,140}directorDeleteSelected\(\)/);
-  assert.match(css, /\.director-selection-controls \.delete\s*\{[\s\S]{0,180}top:\s*-12px;\s*right:\s*-11px/);
+  assert.match(css, /\.director-selection-controls \.delete\s*\{[\s\S]{0,180}top:\s*-16px;\s*right:\s*-11px/);
   assert.match(css, /\.director-segment\.compact \.director-segment-handle\s*\{\s*display:\s*none/);
   assert.match(css, /\.director-track-name\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1/);
   assert.match(css, /\.director-track-lane\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1/);
@@ -181,6 +209,38 @@ test('Director auto-fit, partial ranges, contextual inspector, and drag gating a
   assert.match(app, /const cancel = \(\) => \{[\s\S]{0,420}segment\.start = original\.start[\s\S]{0,180}renderDirector\(\)/);
   assert.doesNotMatch(app.match(/const cancel = \(\) => \{[\s\S]*?\n\s*\};\n\s*window\.addEventListener\('pointermove'/)?.[0] || '', /directorOpenInspector\(\)/);
   assert.match(app, /directorTimelineCanvas'\)\.addEventListener\('click'[\s\S]{0,240}directorSuppressClickUntil[\s\S]{0,100}return/);
+});
+
+test('Director starts populated timelines at a comfortable scrollable scale', () => {
+  assert.match(app, /let directorPixelsPerSecond = 320/);
+  assert.match(app, /let directorAutoFit = false/);
+  assert.match(app, /function directorComfortableTimelineScale\(\)/);
+  assert.match(app, /visibleSeconds = window\.innerWidth <= 720 \? 1\.5 : 3\.25/);
+  assert.match(app, /function directorUseComfortableTimelineScale\(\)[\s\S]{0,220}directorAutoFit = false[\s\S]{0,220}directorComfortableTimelineScale\(\)/);
+  assert.match(app, /openDirectorMode\(project, options = \{\}\)[\s\S]{0,1200}directorWorkspace'\)\.hidden = false;[\s\S]{0,120}directorUseComfortableTimelineScale\(\)/);
+  assert.match(css, /\.director-timeline\s*\{[^}]*overflow-x:\s*auto[^}]*scrollbar-gutter:\s*stable/);
+  assert.doesNotMatch(css, /\.director-workspace\.auto-fit \.director-timeline-canvas\s*\{[^}]*width:\s*100%\s*!important/);
+  assert.doesNotMatch(openingTagById(html, 'directorAutoFit'), /\bchecked\b/);
+  assert.match(html, /<label class="director-checkbox"><input id="directorAutoFit"[^>]*\/> Fit full timeline<\/label>/);
+  const zoom = openingTagById(html, 'directorZoom');
+  assert.match(zoom, /min="80"/);
+  assert.match(zoom, /max="960"/);
+  assert.match(zoom, /value="320"/);
+});
+
+test('Director gives instant keyframes usable controls without changing frame precision', () => {
+  assert.match(app, /const DIRECTOR_TIMELINE_ACTION_GUTTER = 96/);
+  assert.match(app, /function directorSegmentVisualWidth\(segment, ppf\)/);
+  assert.match(app, /instantWidth = window\.innerWidth <= 720 \? 72 : 80/);
+  assert.match(app, /segment\.type === 'image' && segment\.length <= 1 \? instantWidth : 12/);
+  assert.match(app, /button\.style\.width = `\$\{directorSegmentVisualWidth\(segment, ppf\)\}px`/);
+  assert.match(app, /button\.classList\.toggle\('compact', segment\.length \* ppf < 40\)/);
+  assert.match(app, /project\.durationFrames \* ppf \+ DIRECTOR_TIMELINE_ACTION_GUTTER/);
+  assert.match(css, /\.director-segment\.instant::after/);
+  assert.match(app, /function directorRevealSelection\(\)/);
+  assert.match(app, /const visibleLeft = viewportRect\.left \+ labelWidth \+ 8/);
+  assert.match(app, /directorSelect\(track, segment\.id, \{ openInspector: false, reveal: false \}\)/);
+  assert.match(app, /requestAnimationFrame\(directorRevealSelection\)/);
 });
 
 test('Director has a compact full-sequence or selected-range generation footer', () => {

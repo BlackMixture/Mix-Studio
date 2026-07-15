@@ -2206,6 +2206,17 @@ function renderAssetPickerFilters() {
   });
 }
 
+function renderAssetPickerMultiBar() {
+  const bar = $('#assetPickerMultiBar');
+  if (!bar) return;
+  const multiple = assetPickerState?.multiple === true;
+  const count = multiple ? assetPickerState.selected.size : 0;
+  bar.hidden = !multiple;
+  $('#assetPickerMultiCount').textContent = `${count} image${count === 1 ? '' : 's'} selected`;
+  $('#assetPickerMultiUse').disabled = count === 0;
+  $('#assetPickerMultiUse').textContent = count ? `Add ${count} keyframe${count === 1 ? '' : 's'}` : 'Add keyframes';
+}
+
 function renderAssetPickerList() {
   const list = $('#assetPickerList');
   const gallery = $('#assetPickerGallery');
@@ -2220,13 +2231,19 @@ function renderAssetPickerList() {
     : `${allAssets.length} available`;
   if (!assets.length) {
     list.innerHTML = `<div class="asset-picker-empty">${allAssets.length ? 'No generations match these filters.' : `No previous ${assetPickerKind(assetPickerState.accept)} generations yet.`}</div>`;
+    renderAssetPickerMultiBar();
     return;
   }
   assets.forEach((asset) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'asset-picker-item';
-    button.setAttribute('aria-label', `Preview ${asset.label || `previous ${asset.kind}`}`);
+    const selected = assetPickerState.multiple && assetPickerState.selected.has(asset.key);
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(!!selected));
+    button.setAttribute('aria-label', assetPickerState.multiple
+      ? `${selected ? 'Deselect' : 'Select'} ${asset.label || `previous ${asset.kind}`}`
+      : `Preview ${asset.label || `previous ${asset.kind}`}`);
     const thumb = document.createElement('span');
     thumb.className = 'asset-picker-thumb';
     const src = assetPickerImageUrl(asset);
@@ -2244,6 +2261,12 @@ function renderAssetPickerList() {
       badge.textContent = '▶';
       thumb.appendChild(badge);
     }
+    if (assetPickerState.multiple) {
+      const check = document.createElement('i');
+      check.className = 'asset-picker-select-check';
+      check.textContent = selected ? '✓' : '';
+      thumb.appendChild(check);
+    }
     const copy = document.createElement('span');
     copy.className = 'asset-picker-item-copy';
     const label = document.createElement('b');
@@ -2253,9 +2276,15 @@ function renderAssetPickerList() {
     detail.textContent = asset.detail;
     copy.append(label, detail);
     button.append(thumb, copy);
-    button.addEventListener('click', () => openAssetPickerPreview(asset));
+    button.addEventListener('click', () => {
+      if (!assetPickerState?.multiple) return openAssetPickerPreview(asset);
+      if (assetPickerState.selected.has(asset.key)) assetPickerState.selected.delete(asset.key);
+      else assetPickerState.selected.set(asset.key, asset);
+      renderAssetPickerList();
+    });
     list.appendChild(button);
   });
+  renderAssetPickerMultiBar();
 }
 
 function openAssetPickerPreview(asset) {
@@ -2330,6 +2359,8 @@ function openAssetPicker(accept, callback, title, options = {}) {
   assetPickerState = {
     accept, callback, query: '', preview: null, assets: [], folder,
     galleryReference: options.galleryReference === true,
+    multiple: options.multiple === true && assetPickerKind(accept) === 'image',
+    selected: new Map(),
     likes: state.likesOnly === true,
     sort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
   };
@@ -2344,9 +2375,12 @@ function openAssetPicker(accept, callback, title, options = {}) {
   closeAssetPickerMenus();
   renderAssetPickerFilters();
   $('#assetPickerTitle').textContent = title || (assetPickerKind(accept) === 'video' ? 'Choose a video source' : 'Choose an image source');
-  $('#assetPickerCopy').textContent = assetPickerKind(accept) === 'video'
+  $('#assetPickerCopy').textContent = assetPickerState.multiple
+    ? 'Upload several images at once or select multiple images from your gallery.'
+    : assetPickerKind(accept) === 'video'
     ? 'Use a video from your device or select one from your gallery.'
     : 'Use an image from your device or select one from your gallery.';
+  renderAssetPickerMultiBar();
   $('#assetPickerSheet').classList.add('show');
   animateAssetPickerEntrance(panel, assetPickerReturnFocus);
   $('#assetPickerGallery').hidden = true;
@@ -2431,66 +2465,81 @@ function uploadInputAsset(blob, filename) {
   });
 }
 
-function pickDeviceUpload(accept, cb) {
+function pickDeviceUpload(accept, cb, options = {}) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = accept;
+  input.multiple = options.multiple === true;
   input.addEventListener('change', async () => {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    try {
-      const res = await uploadInputAsset(file, file.name || 'file.bin');
-      const url = URL.createObjectURL(file);
-      let dims = { w: 0, h: 0 };
-      if (accept.startsWith('image')) {
-        dims = await new Promise((resolve) => {
-          const im = new Image();
-          im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
-          im.onerror = () => resolve({ w: 1024, h: 1024 });
-          im.src = url;
-        });
-      }
-      cb({ name: res.name, url, w: dims.w, h: dims.h, label: file.name, hasAudio: res.hasAudio === true });
-    } catch (e) { toast(e.message, true); }
+    const files = [...(input.files || [])];
+    if (!files.length) return;
+    const assets = [];
+    for (const file of files) {
+      try {
+        const res = await uploadInputAsset(file, file.name || 'file.bin');
+        const url = URL.createObjectURL(file);
+        let dims = { w: 0, h: 0 };
+        if (accept.startsWith('image')) {
+          dims = await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
+            im.onerror = () => resolve({ w: 1024, h: 1024 });
+            im.src = url;
+          });
+        }
+        assets.push({ name: res.name, url, w: dims.w, h: dims.h, label: file.name, hasAudio: res.hasAudio === true });
+      } catch (e) { toast(`${file.name}: ${e.message}`, true); }
+    }
+    if (assets.length) await cb(input.multiple ? assets : assets[0]);
   });
   input.click();
 }
 
-async function usePreviousGeneration(asset) {
+async function usePreviousGenerations(assets) {
   const picker = assetPickerState;
-  if (!picker || !asset) return;
+  const chosen = (Array.isArray(assets) ? assets : [assets]).filter(Boolean);
+  if (!picker || !chosen.length) return;
   try {
     if (picker.galleryReference) {
       closeAssetPicker();
-      await picker.callback({
-        name: asset.file,
-        url: assetPickerMediaUrl(asset),
-        label: asset.label || 'Previous generation',
-        srcItemId: asset.itemId,
-        srcVideoId: asset.videoId,
-        galleryFile: asset.file,
-        hasAudio: false,
-      });
+      const prepared = chosen.map((asset) => ({
+          name: asset.file,
+          url: assetPickerMediaUrl(asset),
+          label: asset.label || 'Previous generation',
+          srcItemId: asset.itemId,
+          srcVideoId: asset.videoId,
+          galleryFile: asset.file,
+          hasAudio: false,
+        }));
+      await picker.callback(picker.multiple ? prepared : prepared[0]);
       return;
     }
-    toast('Loading previous generation…');
-    const path = asset.kind === 'video' ? '/videos/' : '/images/';
-    const response = await fetch(path + encodeURIComponent(asset.file));
-    if (!response.ok) throw new Error('That generation is no longer available');
-    const blob = await response.blob();
-    const res = await uploadInputAsset(blob, asset.file);
-    const url = URL.createObjectURL(blob);
-    const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+    toast(chosen.length > 1 ? `Loading ${chosen.length} previous generations…` : 'Loading previous generation…');
+    const prepared = [];
+    for (const asset of chosen) {
+      const path = asset.kind === 'video' ? '/videos/' : '/images/';
+      const response = await fetch(path + encodeURIComponent(asset.file));
+      if (!response.ok) throw new Error(`${asset.label || asset.file} is no longer available`);
+      const blob = await response.blob();
+      const res = await uploadInputAsset(blob, asset.file);
+      const url = URL.createObjectURL(blob);
+      const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+      prepared.push({
+        name: res.name, url, w: dims.w, h: dims.h,
+        label: asset.label || 'Previous generation', hasAudio: res.hasAudio === true,
+        srcItemId: asset.itemId,
+        srcVideoId: asset.videoId,
+      });
+    }
     closeAssetPicker();
-    await picker.callback({
-      name: res.name, url, w: dims.w, h: dims.h,
-      label: asset.label || 'Previous generation', hasAudio: res.hasAudio === true,
-      srcItemId: asset.itemId,
-      srcVideoId: asset.videoId,
-    });
+    await picker.callback(picker.multiple ? prepared : prepared[0]);
   } catch (e) {
     toast(e.message, true);
   }
+}
+
+async function usePreviousGeneration(asset) {
+  return usePreviousGenerations([asset]);
 }
 
 /* Generic upload picker: uploads to ComfyUI via the server, returns {name,url,w,h}. */
@@ -2731,7 +2780,7 @@ $('#assetPickerUpload').addEventListener('click', () => {
   const picker = assetPickerState;
   if (!picker) return;
   closeAssetPicker();
-  pickDeviceUpload(picker.accept, picker.callback);
+  pickDeviceUpload(picker.accept, picker.callback, { multiple: picker.multiple });
 });
 $('#assetPickerPrevious').addEventListener('click', () => {
   const panel = $('#assetPickerSheet .asset-picker-panel');
@@ -2803,6 +2852,10 @@ $('#assetPickerPreviewPrevious').addEventListener('click', () => animateAssetPic
 $('#assetPickerPreviewNext').addEventListener('click', () => animateAssetPickerNavigation(1));
 $('#assetPickerPreviewUse').addEventListener('click', () => {
   if (assetPickerState?.preview) usePreviousGeneration(assetPickerState.preview);
+});
+$('#assetPickerMultiUse').addEventListener('click', () => {
+  if (!assetPickerState?.multiple || !assetPickerState.selected.size) return;
+  usePreviousGenerations([...assetPickerState.selected.values()]);
 });
 $('#assetPickerSheet').addEventListener('click', (event) => {
   if (event.target === $('#assetPickerSheet') || event.target.closest('[data-close]')) closeAssetPicker();
@@ -8367,9 +8420,11 @@ function setLoraThumb(name) {
    (regions, future engines). */
 let loraPickHandler = null;
 let loraPickAllowNone = false;
+let loraPickExcluded = new Set();
 function openLoraPicker(onPick, opts) {
   loraPickHandler = typeof onPick === 'function' ? onPick : null;
   loraPickAllowNone = !!(opts && opts.allowNone);
+  loraPickExcluded = new Set(Array.isArray(opts?.exclude) ? opts.exclude : []);
   $('#loraPickTitle').textContent = (opts && opts.title) || 'Add LoRA';
   $('#loraSearch').value = '';
   renderLoraPicker('');
@@ -8378,6 +8433,7 @@ function openLoraPicker(onPick, opts) {
 }
 function closeLoraPicker() {
   $('#loraPickSheet').classList.remove('show');
+  loraPickExcluded = new Set();
   syncSheetScrollLock();
 }
 function renderLoraPicker(query) {
@@ -8404,7 +8460,7 @@ function renderLoraPicker(query) {
     none.addEventListener('click', () => pick(''));
     listEl.appendChild(none);
   }
-  const inStack = loraPickHandler ? new Set() : new Set(curLoras().map((l) => l.name));
+  const inStack = loraPickHandler ? loraPickExcluded : new Set(curLoras().map((l) => l.name));
   const names = loraOptionsFor('').filter((n) => !inStack.has(n) && (!q || n.toLowerCase().includes(q)));
   if (!names.length && !loraPickAllowNone) {
     listEl.innerHTML = '<div class="queue-empty">No matching LoRAs.</div>';
@@ -8638,15 +8694,17 @@ const DIRECTOR_FPS = 24;
 const DIRECTOR_MAX_FRAMES = 24000;
 const DIRECTOR_MAX_WINDOW = 480;
 const DIRECTOR_TRACK_LIMIT = 256;
+const DIRECTOR_TIMELINE_ACTION_GUTTER = 96;
 const directorWaveforms = new Map();
 const directorMissingAssets = new Set();
-let directorPixelsPerSecond = 64;
+let directorPixelsPerSecond = 320;
 let directorSaveTimer = 0;
 let directorPlayFrame = 0;
 let directorPlayingAt = 0;
 let directorAnimation = 0;
 let directorReplaceTarget = null;
-let directorAutoFit = true;
+let directorAutoFit = false;
+let directorScaleCustomized = false;
 let directorNeedsRangeScroll = false;
 let directorSuppressClickUntil = 0;
 let directorAddContext = null;
@@ -8673,8 +8731,25 @@ function directorAutoFitTimeline(project = state.directorProject) {
   if (!project || project.durationFrames > DIRECTOR_MAX_WINDOW) return 64;
   const viewport = $('#directorTimelineViewport');
   const labelWidth = window.innerWidth <= 720 ? 92 : 112;
-  const available = Math.max(180, (viewport?.clientWidth || window.innerWidth) - labelWidth - 2);
+  const available = Math.max(120, (viewport?.clientWidth || window.innerWidth) - labelWidth - DIRECTOR_TIMELINE_ACTION_GUTTER - 2);
   return directorClamp(available / Math.max(1 / DIRECTOR_FPS, project.durationFrames / DIRECTOR_FPS), 10, 9600);
+}
+function directorComfortableTimelineScale() {
+  const viewport = $('#directorTimelineViewport');
+  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
+  const visibleSeconds = window.innerWidth <= 720 ? 1.5 : 3.25;
+  const available = Math.max(180, (viewport?.clientWidth || window.innerWidth) - labelWidth);
+  return directorClamp(available / visibleSeconds, 160, 480);
+}
+function directorUseComfortableTimelineScale() {
+  directorAutoFit = false;
+  directorScaleCustomized = false;
+  directorPixelsPerSecond = directorComfortableTimelineScale();
+}
+function directorSegmentVisualWidth(segment, ppf) {
+  const timedWidth = segment.length * ppf;
+  const instantWidth = window.innerWidth <= 720 ? 72 : 80;
+  return Math.max(segment.type === 'image' && segment.length <= 1 ? instantWidth : 12, timedWidth);
 }
 function directorAssetName(segment) { return segment.imageFile || segment.audioFile || segment.videoFile || ''; }
 function directorTrackFor(segment) {
@@ -8951,6 +9026,91 @@ function directorSetFormValues() {
   }
 }
 
+function directorLoras() {
+  const output = state.directorProject?.output;
+  if (!output) return [];
+  output.loras = (Array.isArray(output.loras) ? output.loras : [])
+    .filter((lora) => lora && String(lora.name || '').trim())
+    .slice(0, 64)
+    .map((lora) => ({
+      ...lora,
+      name: String(lora.name).slice(0, 512),
+      strength: Number.isFinite(Number(lora.strength)) ? Math.max(0, Math.min(2, Number(lora.strength))) : 1,
+      on: lora.on !== false,
+    }));
+  return output.loras;
+}
+
+function renderDirectorLoras() {
+  const list = $('#directorLoraList');
+  if (!list) return;
+  const loras = directorLoras();
+  list.replaceChildren();
+  loras.forEach((lora, index) => {
+    const item = document.createElement('article');
+    item.className = `director-lora-item${lora.on ? ' on' : ''}`;
+    item.style.setProperty('--lora-color', REGION_COLORS[index % REGION_COLORS.length]);
+    item.insertAdjacentHTML('beforeend', loraThumbHtml(lora.name, 'director-lora-thumb'));
+    const copy = document.createElement('span');
+    copy.className = 'director-lora-copy';
+    const name = document.createElement('b');
+    name.textContent = prettyLora(lora.name);
+    name.title = prettyLora(lora.name);
+    const stateLabel = document.createElement('small');
+    stateLabel.textContent = lora.on ? 'Active' : 'Off';
+    copy.append(name, stateLabel);
+    const strength = document.createElement('input');
+    strength.type = 'number';
+    strength.min = '0';
+    strength.max = '2';
+    strength.step = '0.05';
+    strength.value = Number(lora.strength).toFixed(2);
+    strength.setAttribute('aria-label', `${prettyLora(lora.name)} strength`);
+    strength.addEventListener('change', () => {
+      lora.strength = Math.max(0, Math.min(2, Number(strength.value) || 0));
+      strength.value = lora.strength.toFixed(2);
+      saveDirectorProject();
+    });
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'director-lora-toggle';
+    toggle.textContent = lora.on ? 'On' : 'Off';
+    toggle.setAttribute('aria-pressed', String(lora.on));
+    toggle.setAttribute('aria-label', `${lora.on ? 'Disable' : 'Enable'} ${prettyLora(lora.name)}`);
+    toggle.addEventListener('click', () => {
+      lora.on = !lora.on;
+      renderDirectorLoras();
+      saveDirectorProject();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'director-lora-remove';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', `Remove ${prettyLora(lora.name)}`);
+    remove.addEventListener('click', () => {
+      loras.splice(index, 1);
+      renderDirectorLoras();
+      saveDirectorProject();
+    });
+    item.append(copy, strength, toggle, remove);
+    list.appendChild(item);
+  });
+  const active = loras.filter((lora) => lora.on).length;
+  $('#directorLoraSummary').textContent = active ? `${active} active` : (loras.length ? `${loras.length} loaded · off` : 'None selected');
+}
+
+function openDirectorLoraPicker() {
+  const loras = directorLoras();
+  openLoraPicker((name) => {
+    if (!name || loras.some((lora) => lora.name === name)) return;
+    const lora = { name, strength: 1, on: true };
+    applyContextLoraDefault(lora);
+    loras.push(lora);
+    renderDirectorLoras();
+    saveDirectorProject();
+  }, { title: 'Add Director LoRA', exclude: loras.map((lora) => lora.name) });
+}
+
 function directorSegmentLabel(segment) {
   if (segment.type === 'text') return ['Timed direction', segment.prompt || 'Untitled direction'];
   if (segment.type === 'image') return [segment.isEndFrame ? 'End frame' : 'Keyframe', segment.fileName || segment.imageFile];
@@ -8966,8 +9126,9 @@ function renderDirectorSegment(track, segment, ppf) {
   button.dataset.directorTrackName = track;
   button.dataset.kind = segment.type === 'motion_video' ? (segment.isStaticImage ? 'motion-image' : 'motion-video') : segment.type;
   button.style.left = `${segment.start * ppf}px`;
-  button.style.width = `${Math.max(12, segment.length * ppf)}px`;
+  button.style.width = `${directorSegmentVisualWidth(segment, ppf)}px`;
   button.classList.toggle('compact', segment.length * ppf < 40);
+  button.classList.toggle('instant', segment.type === 'image' && segment.length <= 1);
   button.setAttribute('role', 'listitem');
   button.tabIndex = 0;
   const selected = state.directorSelection?.track === track && state.directorSelection.id === segment.id;
@@ -9041,6 +9202,92 @@ function directorRemoveKeyframe(id) {
   saveDirectorProject();
 }
 
+function directorRefreshKeyframeDomOrder(list) {
+  [...list.querySelectorAll('[data-keyframe-id]')].forEach((card, index, cards) => {
+    const order = card.querySelector('.director-keyframe-order');
+    const time = card.querySelector('.director-keyframe-copy small');
+    if (order) order.textContent = String(index + 1);
+    if (time) time.textContent = index === 0 ? 'Starts the video'
+      : (index === cards.length - 1 ? 'Ends the video' : `Keyframe ${index + 1}`);
+  });
+}
+
+function directorCommitKeyframeDomOrder(list) {
+  const byId = new Map(directorKeyframes().map((segment) => [segment.id, segment]));
+  const ordered = [...list.querySelectorAll('[data-keyframe-id]')]
+    .map((card) => byId.get(card.dataset.keyframeId))
+    .filter(Boolean);
+  if (ordered.length !== byId.size) return renderDirector();
+  directorRedistributeKeyframes(ordered);
+  renderDirector();
+  saveDirectorProject();
+}
+
+function wireDirectorKeyframeDrag(card, list) {
+  let timer = 0;
+  let active = false;
+  let pointerId = null;
+  let startX = 0;
+  let startY = 0;
+  const cleanup = () => {
+    clearTimeout(timer);
+    card.classList.remove('dragging');
+    card.setAttribute('aria-grabbed', 'false');
+    list.classList.remove('reordering');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', end);
+    window.removeEventListener('pointercancel', cancel);
+  };
+  const move = (event) => {
+    if (event.pointerId !== pointerId) return;
+    if (!active) {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 9) clearTimeout(timer);
+      return;
+    }
+    event.preventDefault();
+    const siblings = [...list.querySelectorAll('[data-keyframe-id]')].filter((entry) => entry !== card);
+    const before = siblings.find((entry) => {
+      const rect = entry.getBoundingClientRect();
+      return event.clientY < rect.top + rect.height / 2;
+    });
+    list.insertBefore(card, before || null);
+    directorRefreshKeyframeDomOrder(list);
+  };
+  const end = (event) => {
+    if (event.pointerId !== pointerId) return;
+    const moved = active;
+    cleanup();
+    pointerId = null;
+    if (moved) directorCommitKeyframeDomOrder(list);
+  };
+  const cancel = (event) => {
+    if (event.pointerId !== pointerId) return;
+    const wasActive = active;
+    cleanup();
+    pointerId = null;
+    if (wasActive) renderDirector();
+  };
+  card.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('button') || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (event.pointerType === 'touch' && !event.target.closest('.director-keyframe-grip')) return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    active = false;
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', cancel);
+    timer = setTimeout(() => {
+      active = true;
+      card.classList.add('dragging');
+      card.setAttribute('aria-grabbed', 'true');
+      list.classList.add('reordering');
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, event.pointerType === 'mouse' ? 0 : 260);
+  });
+  card.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
 function renderDirectorKeyframePreset() {
   const list = $('#directorKeyframeList');
   if (!list || !state.directorProject) return;
@@ -9051,6 +9298,7 @@ function renderDirectorKeyframePreset() {
     card.className = 'director-keyframe-card';
     card.dataset.keyframeId = segment.id;
     card.setAttribute('role', 'listitem');
+    card.setAttribute('aria-grabbed', 'false');
     const media = document.createElement('span');
     media.className = 'director-keyframe-media';
     const image = document.createElement('img');
@@ -9061,6 +9309,12 @@ function renderDirectorKeyframePreset() {
     order.className = 'director-keyframe-order';
     order.textContent = String(index + 1);
     media.appendChild(order);
+    const grip = document.createElement('span');
+    grip.className = 'director-keyframe-grip';
+    grip.title = 'Hold and drag to reorder';
+    grip.setAttribute('aria-hidden', 'true');
+    grip.textContent = '⠿';
+    media.appendChild(grip);
     const copy = document.createElement('span');
     copy.className = 'director-keyframe-copy';
     const title = document.createElement('b');
@@ -9088,6 +9342,7 @@ function renderDirectorKeyframePreset() {
     actions.appendChild(remove);
     card.append(media, copy, actions);
     list.appendChild(card);
+    wireDirectorKeyframeDrag(card, list);
   });
   list.classList.toggle('is-empty', keyframes.length === 0);
   if (!keyframes.length) {
@@ -9156,6 +9411,21 @@ function renderDirectorSelectionControls() {
   controls.style.height = `${segmentRect.height}px`;
   controls.classList.toggle('at-start', segment.start === 0);
   controls.classList.toggle('at-end', segment.start + segment.length >= state.directorProject.durationFrames);
+}
+
+function directorRevealSelection() {
+  const viewport = $('#directorTimelineViewport');
+  const controls = $('#directorSelectionControls');
+  if (!viewport || !controls || controls.hidden) return;
+  const viewportRect = viewport.getBoundingClientRect();
+  const actionRects = [controls, ...controls.querySelectorAll('button')].map((node) => node.getBoundingClientRect());
+  const contentLeft = Math.min(...actionRects.map((rect) => rect.left));
+  const contentRight = Math.max(...actionRects.map((rect) => rect.right));
+  const labelWidth = window.innerWidth <= 720 ? 92 : 112;
+  const visibleLeft = viewportRect.left + labelWidth + 8;
+  const visibleRight = viewportRect.right - 8;
+  if (contentLeft < visibleLeft) viewport.scrollLeft += contentLeft - visibleLeft;
+  else if (contentRight > visibleRight) viewport.scrollLeft += contentRight - visibleRight;
 }
 
 function renderDirectorRuler(ppf) {
@@ -9280,7 +9550,7 @@ function renderDirector() {
   const canvas = $('#directorTimelineCanvas');
   const labelWidth = window.innerWidth <= 720 ? 92 : 112;
   const viewportWidth = $('#directorTimelineViewport')?.clientWidth || window.innerWidth;
-  canvas.style.width = `${labelWidth + Math.max(1, viewportWidth - labelWidth, project.durationFrames * ppf)}px`;
+  canvas.style.width = `${labelWidth + Math.max(1, viewportWidth - labelWidth, project.durationFrames * ppf + DIRECTOR_TIMELINE_ACTION_GUTTER)}px`;
   renderDirectorRuler(ppf);
   const entries = [
     ['main', '#directorMainTrack', project.segments],
@@ -9312,6 +9582,7 @@ function renderDirector() {
   if ($('#directorRangeTools')) $('#directorRangeTools').hidden = !partialRange;
   renderDirectorPlayhead();
   directorSetFormValues();
+  renderDirectorLoras();
   renderDirectorPreset();
   renderDirectorInspector();
   if ($('#directorAutoFit')) {
@@ -9379,10 +9650,10 @@ function openDirectorMode(project, options = {}) {
   state.directorOpen = true;
   state.directorSelection = null;
   state.directorPlayhead = state.directorProject.range.startFrame;
-  directorAutoFit = true;
   directorNeedsRangeScroll = true;
   $('#directorWorkspace').hidden = false;
   document.body.classList.add('director-open');
+  directorUseComfortableTimelineScale();
   $('#genDock').style.display = 'none';
   renderDirector();
   saveDirectorProject();
@@ -9586,7 +9857,7 @@ function directorTimingOverlaps(track, start, length, excludeId) {
     && start + length > segment.start);
 }
 
-function directorSelect(track, id, { openInspector = true } = {}) {
+function directorSelect(track, id, { openInspector = true, reveal = true } = {}) {
   const changed = state.directorSelection?.track !== track || state.directorSelection?.id !== id;
   state.directorSelection = { track, id };
   const segment = directorSelected();
@@ -9594,6 +9865,7 @@ function directorSelect(track, id, { openInspector = true } = {}) {
   if (changed) setDirectorDisclosure('directorInspectorAdvancedBtn', 'directorInspectorAdvanced', false);
   renderDirector();
   if (segment && openInspector) directorOpenInspector();
+  if (segment && reveal) requestAnimationFrame(directorRevealSelection);
 }
 
 function directorOpenAddRelative(side) {
@@ -9642,6 +9914,7 @@ function directorApplyTiming() {
   segment.length = Math.min(length, state.directorProject.durationFrames - start);
   directorTrackSegments(track).sort((a, b) => a.start - b.start);
   renderDirector();
+  requestAnimationFrame(directorRevealSelection);
   saveDirectorProject();
 }
 
@@ -9670,6 +9943,7 @@ function directorApplySecondsTiming() {
   directorTrackSegments(track).sort((a, b) => a.start - b.start);
   renderDirector();
   directorOpenInspector();
+  requestAnimationFrame(directorRevealSelection);
   saveDirectorProject();
 }
 
@@ -9815,9 +10089,29 @@ async function directorCommitMedia(asset, kind) {
 }
 
 async function directorHandlePickedMedia(asset, kind) {
-  if (!asset?.name) return;
+  const assets = (Array.isArray(asset) ? asset : [asset]).filter((entry) => entry?.name);
+  if (!assets.length) return;
   try {
-    await directorCommitMedia(await directorPreparePickedAsset(asset, kind), kind);
+    if (kind === 'image' && state.directorComposerMode === 'keyframes' && !directorReplaceTarget) {
+      const available = Math.max(0, DIRECTOR_TRACK_LIMIT - directorKeyframes().length);
+      const accepted = assets.slice(0, available);
+      if (!accepted.length) return toast('This video already has 256 keyframes', true);
+      const prepared = await Promise.all(accepted.map((entry) => directorPreparePickedAsset(entry, kind)));
+      const segments = prepared.map((entry) => ({
+        id: directorId('keyframe'), type: 'image', start: 0, length: 1, prompt: '', imageFile: entry.name,
+        fileName: entry.label, guideStrength: 1, isEndFrame: false,
+      }));
+      directorAddContext = null;
+      state.directorProject.segments.push(...segments);
+      directorRedistributeKeyframes();
+      state.directorSelection = null;
+      renderDirector();
+      saveDirectorProject();
+      directorCheckAssets();
+      toast(`${segments.length} keyframe${segments.length === 1 ? '' : 's'} added${accepted.length < assets.length ? ' · track limit reached' : ''}`);
+      return;
+    }
+    await directorCommitMedia(await directorPreparePickedAsset(assets[0], kind), kind);
   } catch (error) {
     directorReplaceTarget = null;
     toast(error.message, true);
@@ -9950,7 +10244,7 @@ function startDirectorDrag(event) {
   const track = target.dataset.directorTrackName;
   const segment = directorTrackSegments(track).find((item) => item.id === target.dataset.directorSegment);
   if (!segment) return;
-  directorSelect(track, segment.id, { openInspector: false });
+  directorSelect(track, segment.id, { openInspector: false, reveal: false });
   const handle = event.target.closest('[data-director-handle]')?.dataset.directorHandle || 'move';
   const original = { start: segment.start, length: segment.length, trimStart: segment.trimStart || 0 };
   let directorDragMoved = false;
@@ -10052,7 +10346,13 @@ function directorOpenMediaPicker(kind) {
     video: ['video/*', 'Choose a motion guide video'],
   }[kind];
   if (!config) return;
-  pickUpload(config[0], (asset) => directorHandlePickedMedia(asset, kind), config[1]);
+  const multiple = kind === 'image' && state.directorComposerMode === 'keyframes' && !directorReplaceTarget;
+  pickUpload(
+    config[0],
+    (asset) => directorHandlePickedMedia(asset, kind),
+    multiple ? 'Choose keyframes' : config[1],
+    { multiple },
+  );
 }
 
 $('#directorChooseExtend').addEventListener('click', () => startDirectorWorkflow('extend'));
@@ -10078,6 +10378,7 @@ $('#directorExtendBtn').addEventListener('click', () => {
 });
 $('#directorSettingsBtn').addEventListener('click', () => directorOpenSheet('directorSettingsSheet'));
 $('#directorPresetSettings').addEventListener('click', () => directorOpenSheet('directorSettingsSheet'));
+$('#directorAddLora').addEventListener('click', openDirectorLoraPicker);
 $('#directorExtendChoose').addEventListener('click', directorChooseExtensionSource);
 $('#directorExtendChange').addEventListener('click', directorChooseExtensionSource);
 $('#directorKeyframeAdd').addEventListener('click', () => directorOpenMediaPicker('image'));
@@ -10117,13 +10418,18 @@ $('#directorTimelineSettingsBtn').addEventListener('click', () => {
 $('#directorGlobalPrompt').addEventListener('input', directorUpdateProjectFields);
 $('#directorZoom').addEventListener('input', () => {
   directorAutoFit = false;
+  directorScaleCustomized = true;
   $('#directorAutoFit').checked = false;
   directorPixelsPerSecond = Number($('#directorZoom').value) || 64;
   renderDirector();
+  requestAnimationFrame(directorRevealSelection);
 });
 $('#directorAutoFit').addEventListener('change', () => {
   directorAutoFit = $('#directorAutoFit').checked;
+  directorScaleCustomized = false;
+  if (!directorAutoFit) directorPixelsPerSecond = directorComfortableTimelineScale();
   renderDirector();
+  requestAnimationFrame(directorRevealSelection);
 });
 $('#directorPlay').addEventListener('click', toggleDirectorPlayback);
 $('#directorPlayhead').addEventListener('change', () => { state.directorPlayhead = Math.round(directorClamp($('#directorPlayhead').value, 0, state.directorProject.durationFrames - 1)); renderDirector(); });
@@ -10158,6 +10464,7 @@ $('#directorTimelineCanvas').addEventListener('keydown', (event) => {
   if (start >= 0) segment.start = start;
   renderDirector();
   document.querySelector(`[data-director-segment="${CSS.escape(segment.id)}"]`)?.focus();
+  requestAnimationFrame(directorRevealSelection);
   saveDirectorProject();
 });
 $('#directorSegmentStart').addEventListener('change', directorApplyTiming);
@@ -10205,7 +10512,7 @@ $('#directorImportFile').addEventListener('change', async (event) => {
     state.directorComposerMode = state.directorProject.extensionSource ? 'extend' : 'timeline';
     state.directorSelection = null;
     state.directorPlayhead = state.directorProject.range.startFrame;
-    directorAutoFit = true;
+    directorUseComfortableTimelineScale();
     directorNeedsRangeScroll = true;
     renderDirector();
     saveDirectorProject();
@@ -10225,14 +10532,19 @@ $('#directorNewBtn').addEventListener('click', async () => {
   state.directorComposerMode = 'timeline';
   state.directorSelection = null;
   state.directorPlayhead = 0;
-  directorAutoFit = true;
+  directorUseComfortableTimelineScale();
   directorNeedsRangeScroll = false;
   directorMissingAssets.clear();
   renderDirector();
   saveDirectorProject();
   directorCheckAssets();
 });
-window.addEventListener('resize', () => { if (state.directorOpen && directorAutoFit) renderDirector(); });
+window.addEventListener('resize', () => {
+  if (!state.directorOpen || (!directorAutoFit && directorScaleCustomized)) return;
+  if (!directorAutoFit) directorPixelsPerSecond = directorComfortableTimelineScale();
+  renderDirector();
+  requestAnimationFrame(directorRevealSelection);
+});
 
 function setEditModelExpanded(open) {
   const expand = open === true;
@@ -20955,6 +21267,36 @@ function conciseSetupError(value) {
   return 'The install did not finish. Open Details for the diagnostic, then retry.';
 }
 
+function dependencyAccessUrl(installState) {
+  if (installState?.state !== 'error' || installState?.errorCode !== 'dependency_model_access_required') return '';
+  try {
+    const value = new URL(String(installState.accessUrl || ''));
+    const parts = value.pathname.split('/').filter(Boolean);
+    if (value.protocol !== 'https:' || value.hostname.toLowerCase() !== 'huggingface.co' || parts.length !== 2) return '';
+    if (!parts.every((part) => /^[A-Za-z0-9._-]+$/.test(part))) return '';
+    return `https://huggingface.co/${parts[0]}/${parts[1]}`;
+  } catch {
+    return '';
+  }
+}
+
+function renderDependencyAccess(containerSelector, linkSelector, installState) {
+  const container = $(containerSelector);
+  const link = $(linkSelector);
+  if (!container || !link) return '';
+  const accessUrl = dependencyAccessUrl(installState);
+  const visible = !!accessUrl && state.profileIsOwner;
+  container.hidden = !visible;
+  if (visible) {
+    link.href = accessUrl;
+    link.setAttribute('aria-label', `Open the Hugging Face model page${installState.failedModel ? ` for ${installState.failedModel}` : ''}`);
+  } else {
+    link.removeAttribute('href');
+    link.removeAttribute('aria-label');
+  }
+  return accessUrl;
+}
+
 function renderInitialSetup() {
   if (!setupViewStatus) return;
   const comfy = setupViewStatus.comfy || {};
@@ -21071,11 +21413,12 @@ function renderInitialSetup() {
   operation.hidden = !operationState;
   setupOperationDiagnostic = operationState?.error ? String(operationState.error) : '';
   $('#setupShowDetails').hidden = !setupOperationDiagnostic;
+  const setupAccessUrl = renderDependencyAccess('#setupDependencyAccess', '#setupDependencyAccessLink', operationState);
   if (operationState) {
     $('#setupOperationTitle').textContent = operationState.state === 'error' ? 'Setup needs attention'
       : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up'));
     $('#setupOperationCopy').textContent = operationState.error
-      ? conciseSetupError(operationState.error)
+      ? (setupAccessUrl ? 'This model needs Hugging Face access before installation can continue.' : conciseSetupError(operationState.error))
       : (operationState.message || 'Working…');
     const total = Number(operationState.total || 0);
     const completed = Number(operationState.completed || 0);
@@ -21427,6 +21770,7 @@ function renderDependencyManager() {
   const repair = $('#dependencyRepairMissing');
   const restart = $('#dependencyRestartComfy');
   const check = $('#dependencyCheckAll');
+  const accessUrl = renderDependencyAccess('#dependencyAccess', '#dependencyAccessLink', installState);
   const selected = syncDependencySelection(missing);
   const selectedCount = selected.size;
   const busy = ['running', 'cancelling', 'restarting'].includes(installState.state);
@@ -21460,12 +21804,14 @@ function renderDependencyManager() {
   } else if (installState.state === 'cancelled') {
     badge.textContent = 'Cancelled';
     status.textContent = installState.message || 'The dependency operation was cancelled safely.';
+  } else if (installState.state === 'error') {
+    badge.textContent = 'Needs attention';
+    status.textContent = accessUrl
+      ? 'This model needs Hugging Face access before the download can continue.'
+      : (installState.error || installState.message || 'The last dependency operation did not finish.');
   } else if (!lastMeta?.ok) {
     badge.textContent = 'Offline';
     status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
-  } else if (installState.state === 'error') {
-    badge.textContent = 'Needs attention';
-    status.textContent = installState.error || installState.message || 'The last dependency operation did not finish.';
   } else if (ready) {
     badge.textContent = 'Green';
     status.textContent = 'Every enabled Mix Studio model and node group is ready.';
@@ -21490,7 +21836,7 @@ function renderDependencyManager() {
   cancel.textContent = installState.state === 'cancelling' ? 'Cancelling…' : 'Cancel download';
   install.hidden = ready || !state.profileIsOwner || busy;
   repair.hidden = ready || !state.profileIsOwner || busy;
-  install.textContent = `Install selected${selectedCount ? ` (${selectedCount})` : ''}`;
+  install.textContent = `${installState.state === 'error' ? 'Retry selected' : 'Install selected'}${selectedCount ? ` (${selectedCount})` : ''}`;
   install.disabled = busy || !selectedCount || !dependency.canInstall || !state.profileIsOwner;
   repair.textContent = 'Repair selected';
   repair.disabled = busy || !selectedCount || !dependency.canInstall || !state.profileIsOwner;

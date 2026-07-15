@@ -294,7 +294,8 @@ test('generation setup lives in the web app and gates only a generation attempt'
     'setupPaneConnect', 'setupPaneInstall', 'setupPaneFinish', 'setupQuickStart',
     'setupCurrentWorkflow', 'setupFullGuide', 'setupInstallComfy', 'setupUseDetected',
     'setupBrowseComfy', 'setupBrowseComfyDetails', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
-    'setupHardwareSummary', 'setupShowDetails', 'setupCancel', 'setupBack', 'setupNext',
+    'setupHardwareSummary', 'setupShowDetails', 'setupDependencyAccess', 'setupDependencyAccessLink',
+    'setupCancel', 'setupBack', 'setupNext',
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
@@ -307,6 +308,8 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /\/api\/setup\/comfy\/cancel/);
   assert.match(app, /\/api\/dependencies\/cancel/);
   assert.match(app, /function conciseSetupError\(value\)/);
+  assert.match(app, /renderDependencyAccess\('#setupDependencyAccess', '#setupDependencyAccessLink', operationState\)/);
+  assert.match(app, /This model needs Hugging Face access before installation can continue\./);
   assert.match(app, /showErrorDetail\(setupOperationDiagnostic, 'Setup diagnostic'\)/);
   assert.match(app, /quick\.hidden = !!setupContextComponents\.length \|\| !quickMissing\.length/);
   assert.match(app, /connectionChoicesHidden = !!comfy\.connected \|\| nodeSetupActive/);

@@ -77,7 +77,8 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(appJs, /function animateAssetPickerEntrance\(panel, trigger\)/);
   assert.match(appJs, /panel\.style\.setProperty\('--asset-origin-x', originX\)/);
   assert.match(appJs, /animateAssetPickerEntrance\(panel, assetPickerReturnFocus\)/);
-  assert.match(appJs, /button\.addEventListener\('click', \(\) => openAssetPickerPreview\(asset\)\)/);
+  assert.match(appJs, /if \(!assetPickerState\?\.multiple\) return openAssetPickerPreview\(asset\)/);
+  assert.match(appJs, /assetPickerState\.selected\.set\(asset\.key, asset\)/);
   assert.match(appJs, /assetPickerState\?\.preview\) usePreviousGeneration\(assetPickerState\.preview\)/);
   assert.match(appJs, /function usePreviousGeneration/);
   assert.match(appJs, /function finishSwipe\(commit\)/);
