@@ -125,8 +125,8 @@
       toggle.setAttribute('aria-checked', String(enabled));
       toggle.classList.toggle('active', enabled);
       if (status) status.textContent = enabled
-        ? 'Just tells me the app opened and which model you started. Zero screen, prompt, or generation recording.'
-        : 'Anonymous analytics are off on this browser.';
+        ? 'On · app launches and model starts only. Never prompts, media, or screen recordings.'
+        : 'Off on this browser. No anonymous events are sent.';
     }
 
     function closeNotice(remember = true) {
@@ -142,13 +142,12 @@
       const notice = win.document.createElement('div');
       notice.id = 'telemetryNotice';
       notice.className = 'toast telemetry-toast';
-      notice.setAttribute('role', 'status');
-      notice.innerHTML = '<span class="telemetry-toast-copy"><strong>Quick heads up, this app is completely FREE and OPEN SOURCE!</strong><small>Anonymous stats are only to see that Mix Studio made it onto a machine and ran a model successfully. Zero screen recording, ever. Your prompts, images, videos, generations, and anything you create stays completely PRIVATE.</small></span><span class="telemetry-toast-actions"><label class="telemetry-toast-disable"><input type="checkbox"> Disable</label><button class="telemetry-toast-thanks" type="button">Thanks</button></span>';
-      const disable = notice.querySelector('.telemetry-toast-disable input');
-      disable.addEventListener('change', () => {
-        if (!disable.checked) return;
-        if (!requestSetEnabled(false)) disable.checked = false;
-      });
+      notice.setAttribute('role', 'region');
+      notice.setAttribute('aria-live', 'polite');
+      notice.setAttribute('aria-labelledby', 'telemetryNoticeTitle');
+      notice.setAttribute('aria-describedby', 'telemetryNoticeCopy');
+      notice.innerHTML = '<span class="telemetry-toast-copy"><strong id="telemetryNoticeTitle">Anonymous analytics are on</strong><small id="telemetryNoticeCopy">Mix Studio only notes when the app opens and which model starts. No prompts, media, screen recording, or generation content. Change this anytime in Advanced Settings.</small></span><span class="telemetry-toast-actions"><button class="telemetry-toast-thanks" type="button">Thanks, continue</button><button class="telemetry-toast-disable" type="button">Disable</button></span>';
+      notice.querySelector('.telemetry-toast-disable').addEventListener('click', () => requestSetEnabled(false));
       notice.querySelector('.telemetry-toast-thanks').addEventListener('click', () => closeNotice(true));
       zone.appendChild(notice);
     }
@@ -204,9 +203,17 @@
       return initPromise;
     }
 
-    function requestSetEnabled(enabled) {
-      if (!enabled && typeof win.confirm === 'function') {
-        const confirmed = win.confirm('Disable anonymous analytics? Mix Studio will stop sending app launch and model success events.');
+    async function requestSetEnabled(enabled) {
+      if (!enabled) {
+        const message = 'Mix Studio will stop sending anonymous app launch and model start events. You can turn them back on anytime in Advanced Settings.';
+        const confirmed = typeof win.askConfirm === 'function'
+          ? await win.askConfirm({
+            title: 'Disable anonymous analytics?',
+            message,
+            confirmLabel: 'Disable',
+            cancelLabel: 'Keep enabled',
+          })
+          : (typeof win.confirm === 'function' ? win.confirm(`Disable anonymous analytics? ${message}`) : true);
         if (!confirmed) return false;
       }
       setEnabled(enabled);

@@ -90,14 +90,56 @@ test('an existing opt-out never schedules or initializes the PostHog SDK', async
   assert.equal(idleCalls, 0);
 });
 
-test('the first-run analytics notice and persistent Settings control are present', () => {
-  assert.match(html, /id="analyticsToggle"[^>]*role="switch"[^>]*hidden/);
-  assert.match(html, /<script src="\/analytics\.js"><\/script>/);
-  assert.match(css, /\.telemetry-toast\s*\{/);
-  assert.match(analyticsSource, /Quick heads up, this app is completely FREE and OPEN SOURCE!/);
-  assert.match(analyticsSource, /Zero screen recording, ever/);
-  assert.match(analyticsSource, /anything you create stays completely PRIVATE/);
-  assert.match(analyticsSource, /type="checkbox"> Disable/);
-  assert.match(analyticsSource, />Thanks<\/button>/);
+test('the first-run analytics notice uses a clear primary action and a quiet opt-out', () => {
+  assert.match(analyticsSource, /Anonymous analytics are on/);
+  assert.match(analyticsSource, /No prompts, media, screen recording, or generation content/);
+  assert.match(analyticsSource, /Change this anytime in Advanced Settings/);
+  assert.match(analyticsSource, /setAttribute\('role', 'region'\)/);
+  assert.match(analyticsSource, /setAttribute\('aria-live', 'polite'\)/);
+  assert.match(analyticsSource, /setAttribute\('aria-labelledby', 'telemetryNoticeTitle'\)/);
+  assert.match(analyticsSource, /setAttribute\('aria-describedby', 'telemetryNoticeCopy'\)/);
+  assert.match(analyticsSource, /notice\.setAttribute\('role', 'region'\)/);
+  assert.match(analyticsSource, /notice\.setAttribute\('aria-live', 'polite'\)/);
+
+  const markup = analyticsSource.match(/notice\.innerHTML\s*=\s*(['"])(.*?)\1;/s)?.[2] || '';
+  const thanks = markup.match(/<button[^>]*class="telemetry-toast-thanks"[^>]*>Thanks, continue<\/button>/)?.[0] || '';
+  const disable = markup.match(/<button[^>]*class="telemetry-toast-disable"[^>]*>Disable<\/button>/)?.[0] || '';
+  assert.match(thanks, /type="button"/);
+  assert.match(disable, /type="button"/);
+  assert.doesNotMatch(markup, /type="checkbox"/);
+  assert.ok(
+    markup.indexOf('telemetry-toast-thanks') < markup.indexOf('telemetry-toast-disable'),
+    'the prominent continue action should precede the secondary opt-out',
+  );
+  assert.match(analyticsSource, /telemetry-toast-disable['"]\)\.addEventListener\('click',[\s\S]{0,180}requestSetEnabled\(false\)/);
   assert.match(analyticsSource, /Disable anonymous analytics\?/);
+  assert.match(analyticsSource, /typeof win\.askConfirm === 'function'[\s\S]{0,260}confirmLabel: 'Disable'[\s\S]{0,120}cancelLabel: 'Keep enabled'/,
+    'the secondary opt-out should use the app-styled confirmation when it is available');
+});
+
+test('the analytics notice is black and its visual hierarchy does not rely on fixed pixel sizes', () => {
+  const noticeRule = css.match(/\.telemetry-toast\s*\{([^}]*)\}/)?.[1] || '';
+  const actionsRule = css.match(/\.telemetry-toast-actions\s*\{([^}]*)\}/)?.[1] || '';
+  const thanksRule = css.match(/\.telemetry-toast-thanks\s*\{([^}]*)\}/)?.[1] || '';
+  const disableRule = css.match(/\.telemetry-toast-disable\s*\{([^}]*)\}/)?.[1] || '';
+
+  const background = noticeRule.match(/background(?:-color)?:\s*([^;]+)/i)?.[1] || '';
+  assert.match(background, /(?:#(?:[01][0-9a-f]){3}\b|#[01]{3}\b|rgba?\(\s*(?:[0-2]?\d|3[01])\s*,\s*(?:[0-2]?\d|3[01])\s*,\s*(?:[0-2]?\d|3[01])\b)/i);
+  const primaryGetsFlexibleSpace = /(?:flex:\s*(?:1|[1-9]\d*)\b|width:\s*100%|grid-column:)/.test(thanksRule)
+    || /grid-template-columns:[^;]*(?:minmax\(\s*0\s*,\s*1fr\s*\)|1fr)[^;]*auto/.test(actionsRule)
+    || (/display:\s*grid/.test(actionsRule) && /justify-self:\s*(?:start|center|end)/.test(disableRule));
+  assert.ok(primaryGetsFlexibleSpace, 'the continue action should receive the flexible share of the action row');
+  assert.match(disableRule, /background:\s*(?:transparent|none|rgba?\([^;]*,\s*0\s*\))/i);
+  assert.match(disableRule, /border:\s*(?:0|none)\b/i);
+});
+
+test('anonymous analytics remain controllable from the persistent Advanced Settings switch', () => {
+  assert.match(html, /id="analyticsToggle"[^>]*role="switch"[^>]*aria-labelledby="analyticsToggleLabel"[^>]*aria-describedby="analyticsToggleStatus"[^>]*hidden/);
+  assert.match(html, /id="analyticsToggle"[^>]*aria-labelledby="analyticsToggleLabel"[^>]*aria-describedby="analyticsToggleStatus"/);
+  assert.match(html, /<script src="\/analytics\.js"><\/script>/);
+  assert.match(analyticsSource, /toggle\.hidden\s*=\s*!config/);
+  assert.match(analyticsSource, /toggle\.setAttribute\('aria-checked', String\(enabled\)\)/);
+  assert.match(analyticsSource, /toggle\.addEventListener\('click', \(\) => requestSetEnabled\(optedOut\(\)\)\)/);
+  assert.match(analyticsSource, /storage\.setItem\(OPT_OUT_KEY, '1'\)/);
+  assert.match(analyticsSource, /storage\.removeItem\(OPT_OUT_KEY\)/);
 });
