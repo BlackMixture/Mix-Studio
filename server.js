@@ -126,10 +126,12 @@ const {
 } = require('./lib/video-workflows');
 const {
   normalizeDirectorExtensionPlan,
+  resolveDurableUploadedVideo,
   videoExtensionInfo,
 } = require('./lib/video-extension');
 const {
   joinVideoExtension,
+  probeVideoFile,
   resolveFfmpegExecutable,
 } = require('./lib/video-extension-join');
 const {
@@ -5093,35 +5095,74 @@ async function handleApi(req, res, url) {
     let extensionItem = null;
     let extensionVideo = null;
     if (project.extensionSource) {
-      const visibleItems = galleryView(db, isPrivateUnlocked(req)).items
-        .filter((item) => item.profileId === req.profile.id);
-      extensionItem = visibleItems.find((item) => item.id === project.extensionSource.itemId);
-      extensionVideo = extensionItem?.videos?.find((video) => video.id === project.extensionSource.videoId) || null;
-      if (!extensionItem || !extensionVideo) {
-        return json(res, 404, { error: 'The video being extended is no longer available in this gallery.' });
+      let sourcePath;
+      let sourceBuffer = null;
+      let sourceInfo;
+      let sourceWidth;
+      let sourceHeight;
+      let sourceHasAudio = false;
+      let videoName;
+      if (project.extensionSource.inputName) {
+        let durable;
+        try {
+          durable = await resolveDurableUploadedVideo(INPUTS, project.extensionSource.inputName);
+        } catch (error) {
+          const status = error?.code === 'missing_extension_source' ? 404 : 400;
+          return json(res, status, { error: error.message });
+        }
+        if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
+        if (!videoExtensionFfmpeg) {
+          return json(res, 400, {
+            error: 'Video extension needs FFmpeg. Install it or make the ComfyUI imageio-ffmpeg executable available.',
+          });
+        }
+        let probe;
+        try {
+          probe = await probeVideoFile(durable.file, videoExtensionFfmpeg);
+        } catch (error) {
+          return json(res, 400, { error: error.message });
+        }
+        sourcePath = durable.file;
+        sourceInfo = probe;
+        sourceWidth = probe.width;
+        sourceHeight = probe.height;
+        sourceHasAudio = await detectAudioStreamFile(sourcePath, durable.name) === true;
+        // /api/upload already copied this durable name into ComfyUI's input
+        // folder, so avoid loading a potentially large upload into memory.
+        videoName = durable.name;
+      } else {
+        const visibleItems = galleryView(db, isPrivateUnlocked(req)).items
+          .filter((item) => item.profileId === req.profile.id);
+        extensionItem = visibleItems.find((item) => item.id === project.extensionSource.itemId);
+        extensionVideo = extensionItem?.videos?.find((video) => video.id === project.extensionSource.videoId) || null;
+        if (!extensionItem || !extensionVideo) {
+          return json(res, 404, { error: 'The video being extended is no longer available in this gallery.' });
+        }
+        if (extensionVideo.info?.composite) {
+          return json(res, 400, { error: 'Side-by-side comparison videos cannot be extended.' });
+        }
+        const videosRoot = `${path.resolve(VIDEOS)}${path.sep}`;
+        sourcePath = path.resolve(VIDEOS, String(extensionVideo.file || ''));
+        if (!sourcePath.startsWith(videosRoot)) {
+          return json(res, 400, { error: 'The extension source has an invalid gallery path.' });
+        }
+        try {
+          sourceBuffer = await fsp.readFile(sourcePath);
+        } catch {
+          return json(res, 404, { error: 'The video file being extended is missing.' });
+        }
+        sourceInfo = extensionVideo.info || {};
+        const sourceDims = mp4Dims(sourceBuffer) || {};
+        sourceWidth = sourceInfo.width || extensionItem.width || sourceDims.w;
+        sourceHeight = sourceInfo.height || extensionItem.height || sourceDims.h;
+        sourceHasAudio = detectAudioStream(sourceBuffer, extensionVideo.file) === true;
       }
-      if (extensionVideo.info?.composite) {
-        return json(res, 400, { error: 'Side-by-side comparison videos cannot be extended.' });
-      }
-      const videosRoot = `${path.resolve(VIDEOS)}${path.sep}`;
-      const sourcePath = path.resolve(VIDEOS, String(extensionVideo.file || ''));
-      if (!sourcePath.startsWith(videosRoot)) {
-        return json(res, 400, { error: 'The extension source has an invalid gallery path.' });
-      }
-      let sourceBuffer;
-      try {
-        sourceBuffer = await fsp.readFile(sourcePath);
-      } catch {
-        return json(res, 404, { error: 'The video file being extended is missing.' });
-      }
-      const sourceInfo = extensionVideo.info || {};
-      const sourceDims = mp4Dims(sourceBuffer) || {};
       let plan;
       try {
         plan = normalizeDirectorExtensionPlan({
           info: sourceInfo,
-          width: sourceInfo.width || extensionItem.width || sourceDims.w,
-          height: sourceInfo.height || extensionItem.height || sourceDims.h,
+          width: sourceWidth,
+          height: sourceHeight,
           rangeFrames: project.range.lengthFrames,
           smooth: body.smooth,
           continueAudio: project.extensionSource.continueAudio,
@@ -5129,19 +5170,21 @@ async function handleApi(req, res, url) {
       } catch (error) {
         return json(res, 400, { error: error.message });
       }
-      const sourceExtension = ['.mp4', '.webm', '.mov'].includes(path.extname(extensionVideo.file).toLowerCase())
-        ? path.extname(extensionVideo.file).toLowerCase()
-        : '.mp4';
       if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
       if (!videoExtensionFfmpeg) {
         return json(res, 400, {
           error: 'Video extension needs FFmpeg. Install it or make the ComfyUI imageio-ffmpeg executable available.',
         });
       }
-      const videoName = await uploadToComfy(sourceBuffer, `ks_extend_${extensionVideo.id}${sourceExtension}`);
+      if (!videoName) {
+        const sourceExtension = ['.mp4', '.webm', '.mov'].includes(path.extname(extensionVideo.file).toLowerCase())
+          ? path.extname(extensionVideo.file).toLowerCase()
+          : '.mp4';
+        videoName = await uploadToComfy(sourceBuffer, `ks_extend_${extensionVideo.id}${sourceExtension}`);
+      }
       extension = {
         videoName,
-        sourceHasAudio: detectAudioStream(sourceBuffer, extensionVideo.file) === true,
+        sourceHasAudio,
         sourcePath,
         ffmpegPath: videoExtensionFfmpeg,
         plan,
@@ -5193,7 +5236,7 @@ async function handleApi(req, res, url) {
     };
     const videoInfo = extension
       ? videoExtensionInfo(baseVideoInfo, extension.plan, {
-        parentVideoId: extensionVideo.id,
+        parentVideoId: extensionVideo ? extensionVideo.id : undefined,
         prompt: baseVideoInfo.motionPrompt,
         sourceHasAudio: extension.sourceHasAudio,
       })

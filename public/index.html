@@ -184,6 +184,11 @@
       </div>
       <button class="director-icon-button" id="directorProjectMenuBtn" type="button" aria-label="Open Director project menu" aria-haspopup="dialog" aria-controls="directorProjectMenuSheet">…</button>
     </header>
+    <nav class="director-mode-switch" id="directorModeSwitch" aria-label="Director workflow">
+      <button id="directorModeExtend" type="button" data-director-mode="extend"><span>Extend</span><small>Continue a clip</small></button>
+      <button id="directorModeKeyframes" type="button" data-director-mode="keyframes"><span>Keyframes</span><small>Guide with images</small></button>
+      <button id="directorModeTimeline" type="button" data-director-mode="timeline"><span>Timeline</span><small>Full control</small></button>
+    </nav>
     <div class="director-direction-stack">
       <aside class="director-extension-source" id="directorExtensionSource" aria-label="Video continuation source" hidden>
         <span class="director-extension-source-mark" aria-hidden="true">
@@ -202,6 +207,25 @@
         <small class="director-field-validation" id="directorPromptValidation" role="alert"></small>
       </div>
     </div>
+    <section class="director-preset" id="directorPreset" aria-label="Streamlined Director preset" hidden>
+      <div class="director-preset-view" id="directorExtendPreset" hidden>
+        <button class="director-preset-source" id="directorExtendChoose" type="button">
+          <span class="director-preset-source-icon" aria-hidden="true">＋</span>
+          <span><b>Choose the video to extend</b><small>Upload a clip or use a previous generation</small></span>
+        </button>
+        <div class="director-preset-controls" id="directorExtendControls" hidden>
+          <label>New footage <span><input id="directorExtendDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" /> seconds</span></label>
+          <label class="director-preset-check"><input id="directorExtendContinueAudio" type="checkbox" checked /> Continue the original sound</label>
+          <button class="director-preset-change" id="directorExtendChange" type="button">Change video</button>
+        </div>
+      </div>
+      <div class="director-preset-view" id="directorKeyframePreset" hidden>
+        <div class="director-preset-heading"><div><h2>Keyframe video</h2><p>Add images in story order. Director spaces them across the video.</p></div><label>Duration <span><input id="directorKeyframeDuration" type="number" min="1" max="20" step="0.01" inputmode="decimal" />s</span></label></div>
+        <div class="director-keyframes" id="directorKeyframeList" role="list" aria-label="Video keyframes"></div>
+        <button class="director-keyframe-add" id="directorKeyframeAdd" type="button"><span aria-hidden="true">＋</span><b>Add keyframe</b><small>Upload or choose a previous image</small></button>
+      </div>
+      <button class="director-preset-settings" id="directorPresetSettings" type="button" aria-controls="directorSettingsSheet">More settings</button>
+    </section>
     <div class="director-layout" id="directorLayout">
       <div class="director-timeline-column">
         <div class="director-primary-actions">
@@ -225,6 +249,11 @@
             <div class="director-track is-empty" id="directorStoryTrackRow" data-director-track="main"><div class="director-track-name">Story<small>direction + keyframes</small></div><div class="director-track-lane" id="directorMainTrack" role="list"></div><button class="director-timeline-add" id="directorAddBtn" type="button" aria-label="Add to Story" aria-haspopup="dialog" aria-controls="directorAddSheet">+ Add</button></div>
             <div class="director-track" id="directorAudioTrackRow" data-director-track="audio" hidden><div class="director-track-name">Audio<small>clips + gap fill</small></div><div class="director-track-lane" id="directorAudioTrack" role="list"></div></div>
             <div class="director-track" id="directorMotionTrackRow" data-director-track="motion" hidden><div class="director-track-name">Motion guide<small>image + video</small></div><div class="director-track-lane" id="directorMotionTrack" role="list"></div></div>
+            <div class="director-selection-controls" id="directorSelectionControls" hidden>
+              <button class="before" id="directorAddBefore" type="button" aria-label="Add before selected segment">＋</button>
+              <button class="delete" id="directorSelectionDelete" type="button" aria-label="Delete selected segment" title="Delete segment">×</button>
+              <button class="after" id="directorAddAfter" type="button" aria-label="Add after selected segment">＋</button>
+            </div>
           </div>
         </div>
         <small class="director-field-validation director-validation-inline" id="directorValidationInline" role="alert"></small>
@@ -285,7 +314,7 @@
         <h3 class="sheet-title" id="directorProjectMenuTitle"><span>Director project</span><button data-close type="button" aria-label="Close project menu">✕</button></h3>
         <div class="director-sheet-actions compact">
           <button id="directorNewBtn" type="button"><span>New project</span><small>Start with a clean timeline</small></button>
-          <button id="directorExtendBtn" type="button"><span>Extend a video</span><small>Choose a gallery clip to continue</small></button>
+          <button id="directorExtendBtn" type="button"><span>Choose workflow</span><small>Extend, keyframes, or full timeline</small></button>
           <button id="directorImportBtn" type="button"><span>Import project</span><small>Open a Director JSON file</small></button>
           <button id="directorExportBtn" type="button"><span>Export project</span><small>Save this timeline as JSON</small></button>
         </div>
@@ -480,9 +509,10 @@
     </button>
     <div class="video-model-body" id="vidModelBody" aria-hidden="true" inert>
       <div class="video-model-body-inner">
-        <div class="model-order-hint" id="videoModelOrderHint">Hold and drag to reorder · first is default</div>
+        <div class="model-order-hint" id="videoModelOrderHint">Hold models to reorder · first is default</div>
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model" aria-describedby="videoModelOrderHint">
           <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx" data-task-label="Cinematic Video" data-model-label="LTX 2.3"><b>LTX 2.3</b><small>Cinematic Video</small></button>
+          <button class="chip video-model-option" id="directorModelOption" type="button" data-director-entry data-feature-engine="video.ltx" aria-label="Open LTX Director for directed sequences"><b>LTX Director</b><small>Directed Sequences</small></button>
           <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit" data-task-label="Video Editing" data-model-label="LTX Edit" data-experimental="true"><b>LTX Edit <span class="model-status-badge">Experimental</span></b><small>Video Editing</small></button>
           <button class="chip" data-engine="eros" data-feature-engine="video.eros" data-task-label="Image Animation" data-model-label="10Eros DMD"><b>10Eros DMD</b><small>Image Animation</small></button>
           <button class="chip" data-engine="wan" data-feature-engine="video.wan" data-task-label="Complex Motion" data-model-label="Wan 2.2"><b>Wan 2.2</b><small>Complex Motion</small></button>
@@ -494,7 +524,18 @@
       </div>
     </div>
   </section>
-  <button class="director-entry" id="directorModeBtn" type="button" hidden><span><b>Director mode</b><small>Timed direction, keyframes, audio, and motion guidance</small></span><i aria-hidden="true">→</i></button>
+
+  <div class="sheet director-start-sheet" id="directorStartSheet">
+    <section class="sheet-panel director-start-panel" role="dialog" aria-modal="true" aria-labelledby="directorStartTitle">
+      <h3 class="sheet-title"><span id="directorStartTitle">Create with LTX Director</span><button data-close type="button" aria-label="Close Director choices">✕</button></h3>
+      <p class="director-start-copy">Choose the lightest workflow for this video. You can switch to the full timeline at any time.</p>
+      <div class="director-start-actions">
+        <button id="directorChooseExtend" type="button"><span class="director-start-icon" aria-hidden="true">↗</span><span><b>Extend video</b><small>Continue a clip with matching motion and sound</small></span><i aria-hidden="true">›</i></button>
+        <button id="directorChooseKeyframes" type="button"><span class="director-start-icon" aria-hidden="true">▧</span><span><b>Keyframe video</b><small>Add images in order and let Director connect them</small></span><i aria-hidden="true">›</i></button>
+        <button id="directorChooseTimeline" type="button"><span class="director-start-icon" aria-hidden="true">⌁</span><span><b>Timeline</b><small>Control prompts, media, motion, and timing</small></span><i aria-hidden="true">›</i></button>
+      </div>
+    </section>
+  </div>
 
   <section class="panel" id="promptPanel">
     <div class="panel-label" id="promptLabel">Prompt</div>

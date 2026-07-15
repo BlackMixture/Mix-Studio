@@ -112,6 +112,7 @@ const state = {
   vidRef: null,              // {name, url, w, h} - Video tab source image
   directorOpen: false,
   directorProject: null,
+  directorComposerMode: 'timeline',
   directorSelection: null,
   directorPlayhead: 0,
   vidAutoMotionPrompt: false,
@@ -1481,6 +1482,7 @@ function saveForm() {
       videoFourK: $('#vid4k').classList.contains('active'),
       videoQuality: $('#vidQuality').classList.contains('active'),
       directorProject: directorSerializableProject(),
+      directorComposerMode: state.directorComposerMode,
       directorOpen: state.directorOpen === true,
       createImageGuideOpen: state.createImageGuideOpen,
       createGuideMode: state.createGuideMode,
@@ -1692,6 +1694,8 @@ function loadForm() {
     state.vidDrive = restoreWorkspaceAsset(f.vidDrive);
     state.vidFace = restoreWorkspaceAsset(f.vidFace);
     state.directorProject = f.directorProject && typeof f.directorProject === 'object' ? f.directorProject : null;
+    state.directorComposerMode = ['extend', 'keyframes', 'timeline'].includes(f.directorComposerMode)
+      ? f.directorComposerMode : 'timeline';
     state.directorOpen = f.directorOpen === true && state.view === 'video' && state.vidEngine === 'ltx';
     persistedWorkspaceAudio = f.vidAudio && f.vidAudio.name ? f.vidAudio : null;
     state.vidSigma = f.vidSigma || state.vidSigma;
@@ -2014,7 +2018,6 @@ function updateVideoPanels() {
         : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidModelPanel').hidden = !isVideo;
-  $('#directorModeBtn').hidden = !(isVideo && state.vidEngine === 'ltx');
   $('#editModelPanel').hidden = !isEdit;
   if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
@@ -2321,11 +2324,12 @@ function animateAssetPickerEntrance(panel, trigger) {
   panel.classList.add('asset-picker-opening');
 }
 
-function openAssetPicker(accept, callback, title) {
+function openAssetPicker(accept, callback, title, options = {}) {
   const folder = state.activeFolder === 'all' || (state.folders || []).some((entry) => entry.id === state.activeFolder)
     ? state.activeFolder : 'all';
   assetPickerState = {
     accept, callback, query: '', preview: null, assets: [], folder,
+    galleryReference: options.galleryReference === true,
     likes: state.likesOnly === true,
     sort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
   };
@@ -2456,6 +2460,19 @@ async function usePreviousGeneration(asset) {
   const picker = assetPickerState;
   if (!picker || !asset) return;
   try {
+    if (picker.galleryReference) {
+      closeAssetPicker();
+      await picker.callback({
+        name: asset.file,
+        url: assetPickerMediaUrl(asset),
+        label: asset.label || 'Previous generation',
+        srcItemId: asset.itemId,
+        srcVideoId: asset.videoId,
+        galleryFile: asset.file,
+        hasAudio: false,
+      });
+      return;
+    }
     toast('Loading previous generation…');
     const path = asset.kind === 'video' ? '/videos/' : '/images/';
     const response = await fetch(path + encodeURIComponent(asset.file));
@@ -2469,6 +2486,7 @@ async function usePreviousGeneration(asset) {
       name: res.name, url, w: dims.w, h: dims.h,
       label: asset.label || 'Previous generation', hasAudio: res.hasAudio === true,
       srcItemId: asset.itemId,
+      srcVideoId: asset.videoId,
     });
   } catch (e) {
     toast(e.message, true);
@@ -2476,8 +2494,8 @@ async function usePreviousGeneration(asset) {
 }
 
 /* Generic upload picker: uploads to ComfyUI via the server, returns {name,url,w,h}. */
-function pickUpload(accept, cb, title) {
-  openAssetPicker(accept, (asset) => cb(asset), title);
+function pickUpload(accept, cb, title, options) {
+  openAssetPicker(accept, (asset) => cb(asset), title, options);
 }
 
 const IMAGE_CROP_RATIOS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '16:9': 16 / 9, '9:16': 9 / 16 };
@@ -11537,6 +11555,11 @@ function applyEngineOrder(rowId, order) {
     if (button) fragment.appendChild(button);
   });
   row.appendChild(fragment);
+  if (rowId === 'vidEngineRow') {
+    const directorOption = $('#directorModelOption');
+    const ltxOption = buttons.get('ltx');
+    if (directorOption && ltxOption) ltxOption.after(directorOption);
+  }
   syncModelOrderDefault(rowId);
 }
 
@@ -11772,6 +11795,13 @@ wireEngineRow('vidEngineRow', (engine) => {
   updateVideoPanels();
   saveForm();
   setTimeout(() => setVideoModelExpanded(false), 120);
+});
+$('#directorModelOption').addEventListener('click', () => {
+  if ($('#vidEngineRow').dataset.modelDragSuppress === 'true') return;
+  const ltx = $('#vidEngineRow .chip[data-engine="ltx"]');
+  if (ltx && state.vidEngine !== 'ltx') ltx.click();
+  setVideoModelExpanded(false);
+  openDirectorStart();
 });
 wireEngineRow('animEngineRow', (engine) => {
   state.animEngine = engine;
