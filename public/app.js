@@ -8174,7 +8174,7 @@ async function loadUserPreferences() {
   } catch { /* profile gate handles auth */ }
 }
 
-async function saveUserPreferences() {
+async function saveUserPreferences(options = {}) {
   state.userDefaults = generationDefaultsFromControls();
   const prefs = await api('/api/preferences', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -8184,7 +8184,8 @@ async function saveUserPreferences() {
   state.contextOverrides = prefs.contextOverrides;
   renderGenerationDefaults();
   applyGenerationDefaults();
-  await refreshLoraContext();
+  if (options.refreshContext !== false) await refreshLoraContext();
+  else renderPromptSuggestions();
 }
 
 function renderContextPreferences() {
@@ -8213,6 +8214,7 @@ function renderContextPreferences() {
     strengthInput.value = override.defaultStrength ?? profile.defaultStrength ?? 1;
     strengthInput.addEventListener('input', () => {
       state.contextOverrides[name] = { ...state.contextOverrides[name], defaultStrength: Number(strengthInput.value) };
+      scheduleSettingsAutosave('preferences');
     });
     strength.appendChild(strengthInput);
     const phrase = document.createElement('label');
@@ -8222,6 +8224,7 @@ function renderContextPreferences() {
     phraseInput.value = override.suggestion ?? profile.suggestion ?? '';
     phraseInput.addEventListener('input', () => {
       state.contextOverrides[name] = { ...state.contextOverrides[name], suggestion: phraseInput.value };
+      scheduleSettingsAutosave('preferences');
     });
     phrase.appendChild(phraseInput);
     const enabled = document.createElement('button');
@@ -8235,11 +8238,16 @@ function renderContextPreferences() {
     enabled.addEventListener('click', () => {
       state.contextOverrides[name] = { ...state.contextOverrides[name], disabled: !(state.contextOverrides[name]?.disabled === true) };
       syncEnabled();
+      scheduleSettingsAutosave('preferences', 0);
     });
     syncEnabled();
     const reset = document.createElement('button');
     reset.type = 'button'; reset.className = 'context-preference-reset'; reset.textContent = 'Reset learned values';
-    reset.addEventListener('click', () => { delete state.contextOverrides[name]; renderContextPreferences(); });
+    reset.addEventListener('click', () => {
+      delete state.contextOverrides[name];
+      renderContextPreferences();
+      scheduleSettingsAutosave('preferences', 0);
+    });
     card.append(title, strength, phrase, enabled, reset);
     list.appendChild(card);
   });
@@ -20816,6 +20824,179 @@ function mediaPreferenceControlValue(id) {
   return $('#' + id)?.getAttribute('aria-checked') === 'true';
 }
 
+const SETTINGS_SERVER_CONTROL_IDS = new Set([
+  'setComfy', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
+  'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
+  'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
+  'setKlein4Unet', 'setKlein4Clip', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
+  'setKlein9Unet', 'setKlein9Clip', 'setKlein9ConsistencyLora', 'setKlein9ConsistencyTrigger',
+  'setKleinVae', 'setQeUnet', 'setQeClip', 'setQeLora', 'setQeAnglesLora',
+  'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
+  'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
+  'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
+  'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
+  'setWanLowLora', 'setErosCkpt', 'setErosTe', 'setErosDmd', 'setErosSigF',
+  'setErosSigU', 'setScailUnet', 'setScailLora', 'setScailPusaLora',
+  'setScailCv', 'setScailSam',
+]);
+const SETTINGS_PREFERENCE_CONTROL_IDS = new Set([
+  'defaultSeedValue', 'defaultCreateSteps', 'defaultCreateCfg', 'defaultCreateBatch',
+  'defaultEditSteps', 'defaultEditCfg', 'defaultEditBatch', 'defaultEditDenoise',
+  'defaultVideoDuration', 'defaultVideoMotion',
+]);
+
+let settingsLoading = false;
+let settingsAutosaveTimer = null;
+let settingsSaveStatusTimer = null;
+let settingsSaveChain = Promise.resolve();
+let settingsSaveRevision = 0;
+let settingsAutosavePending = { server: false, preferences: false, media: false };
+let settingsAppRestartRequired = false;
+let settingsAppRestartRunning = false;
+
+function settingsPayload() {
+  return {
+    comfyUrl: $('#setComfy').value,
+    galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
+    vramProfile: $('#setVramProfile').value,
+    krea2ModelVariant: $('#setKrea2ModelVariant').value,
+    unet: $('#setUnet').value,
+    krea2RawUnet: $('#setKrea2RawUnet').value,
+    krea2TurboLora: $('#setKrea2TurboLora').value,
+    krea2DepthLora: $('#setKrea2DepthLora').value,
+    krea2OutpaintLora: $('#setKrea2OutpaintLora').value,
+    depthAnythingV3Model: $('#setDepthAnythingV3Model').value,
+    clip: $('#setClip').value,
+    vae: $('#setVae').value,
+    kleinUnet: $('#setKlein4Unet').value,
+    kleinClip: $('#setKlein4Clip').value,
+    klein4Unet: $('#setKlein4Unet').value,
+    klein4Clip: $('#setKlein4Clip').value,
+    klein4ConsistencyLora: $('#setKlein4ConsistencyLora').value,
+    klein4ConsistencyTrigger: $('#setKlein4ConsistencyTrigger').value,
+    klein9Unet: $('#setKlein9Unet').value,
+    klein9Clip: $('#setKlein9Clip').value,
+    klein9ConsistencyLora: $('#setKlein9ConsistencyLora').value,
+    klein9ConsistencyTrigger: $('#setKlein9ConsistencyTrigger').value,
+    kleinVae: $('#setKleinVae').value,
+    qwenEditUnet: $('#setQeUnet').value,
+    qwenEditClip: $('#setQeClip').value,
+    qwenEditLora: $('#setQeLora').value,
+    qwenEditAnglesLora: $('#setQeAnglesLora').value,
+    seedvr2Dit: $('#setDit').value,
+    seedvr2Vae: $('#setSvVae').value,
+    seedvr2Attention: $('#setSvAttn').value,
+    systemPrompt: $('#setSysPrompt').value,
+    ltxCkpt: $('#setLtxCkpt').value,
+    ltxDistilledLora: $('#setLtxLora').value,
+    ltxCameramanLora: $('#setLtxCameraLora').value,
+    ltxEditLora: $('#setLtxEditLora').value,
+    ltxDirectorIcLora: $('#setLtxDirectorLora').value,
+    ltxTextEncoder: $('#setLtxTe').value,
+    ltxGemmaLora: $('#setLtxGemmaLora').value,
+    ltxUpscaler: $('#setLtxUps').value,
+    ltxFaceIdLora: $('#setFaceIdLora').value,
+    ltxFaceIdDistilledLora: $('#setFaceIdDistilled').value,
+    wanHighUnet: $('#setWanHigh').value,
+    wanLowUnet: $('#setWanLow').value,
+    wanClip: $('#setWanClip').value,
+    wanVae: $('#setWanVae').value,
+    wanHighLora: $('#setWanHighLora').value,
+    wanLowLora: $('#setWanLowLora').value,
+    erosCkpt: $('#setErosCkpt').value,
+    erosTextEncoder: $('#setErosTe').value,
+    erosDmdLora: $('#setErosDmd').value,
+    erosSigmasFirst: $('#setErosSigF').value,
+    erosSigmasUpscale: $('#setErosSigU').value,
+    scailUnet: $('#setScailUnet').value,
+    scailLora: $('#setScailLora').value,
+    scailPusaLora: $('#setScailPusaLora').value,
+    scailClipVision: $('#setScailCv').value,
+    scailSam: $('#setScailSam').value,
+    smartFilenames: mediaPreferenceControlValue('setSmartFilenames'),
+  };
+}
+
+function renderSettingsRestartAction() {
+  const button = $('#settingsRestartApply');
+  if (!button) return;
+  button.hidden = !settingsAppRestartRequired || !state.profileIsOwner;
+  button.disabled = settingsAppRestartRunning;
+  button.textContent = settingsAppRestartRunning ? 'Restarting…' : 'Restart to Apply';
+}
+
+function setSettingsSaveStatus(text = '', tone = '') {
+  const status = $('#settingsSaveStatus');
+  if (!status) return;
+  clearTimeout(settingsSaveStatusTimer);
+  status.textContent = text;
+  status.className = tone;
+  if (tone === 'saved') {
+    settingsSaveStatusTimer = setTimeout(() => {
+      if (status.textContent === text) {
+        status.textContent = '';
+        status.className = '';
+      }
+    }, 1600);
+  }
+}
+
+function hasPendingSettingsAutosave() {
+  return Object.values(settingsAutosavePending).some(Boolean);
+}
+
+function scheduleSettingsAutosave(kind, delay = 480) {
+  if (settingsLoading || !Object.prototype.hasOwnProperty.call(settingsAutosavePending, kind)) return;
+  settingsAutosavePending[kind] = true;
+  setSettingsSaveStatus('Saving…', 'saving');
+  clearTimeout(settingsAutosaveTimer);
+  settingsAutosaveTimer = setTimeout(() => {
+    flushSettingsAutosave().catch(() => { /* status and toast are handled below */ });
+  }, delay);
+}
+
+function flushSettingsAutosave() {
+  clearTimeout(settingsAutosaveTimer);
+  settingsAutosaveTimer = null;
+  if (!hasPendingSettingsAutosave()) return settingsSaveChain;
+  const work = settingsAutosavePending;
+  settingsAutosavePending = { server: false, preferences: false, media: false };
+  const revision = ++settingsSaveRevision;
+  setSettingsSaveStatus('Saving…', 'saving');
+
+  settingsSaveChain = settingsSaveChain.catch(() => {}).then(async () => {
+    let savedSettings = null;
+    if (work.server) {
+      savedSettings = await api('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsPayload()),
+      });
+    }
+    if (work.preferences) await saveUserPreferences({ refreshContext: false });
+    if (work.media) {
+      saveMediaPreferences({
+        videoPreviews: mediaPreferenceControlValue('setVideoPreviews'),
+        previewCache: mediaPreferenceControlValue('setPreviewCache'),
+      });
+    }
+    if (savedSettings) {
+      settingsAppRestartRequired = savedSettings.appRestartRequired === true;
+      renderSettingsRestartAction();
+      loadMeta(true).then(renderHealth).catch(() => { /* health remains available for manual retry */ });
+    }
+    if (revision === settingsSaveRevision && !hasPendingSettingsAutosave()) {
+      setSettingsSaveStatus('Saved', 'saved');
+    }
+    return savedSettings;
+  }).catch((error) => {
+    setSettingsSaveStatus('Couldn’t save', 'error');
+    toast(error.message, true);
+    throw error;
+  });
+  return settingsSaveChain;
+}
+
 async function refreshTrashStatus() {
   const control = $('#trashManagement');
   const status = $('#trashStatus');
@@ -20867,6 +21048,7 @@ async function emptyTrashFromSettings() {
   $('#' + id).addEventListener('click', () => {
     const button = $('#' + id);
     button.setAttribute('aria-checked', String(!mediaPreferenceControlValue(id)));
+    scheduleSettingsAutosave(id === 'setSmartFilenames' ? 'server' : 'media', 0);
   });
 });
 $('#previewCacheClear').addEventListener('click', clearPreviewCache);
@@ -20917,6 +21099,7 @@ svAttnOptionButtons.forEach((option, index) => {
     setSvAttnValue(option.dataset.attention);
     setSvAttnPickerOpen(false);
     $('#svAttnTrigger').focus();
+    scheduleSettingsAutosave('server', 0);
   });
   option.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -23307,10 +23490,38 @@ $$('[data-settings-tab]').forEach((tab) => {
 $$('#defaultSeedMode button').forEach((button) => button.addEventListener('click', () => {
   $$('#defaultSeedMode button').forEach((item) => item.classList.toggle('active', item === button));
   $('#defaultSeedValueField').hidden = button.dataset.seedMode !== 'fixed';
+  scheduleSettingsAutosave('preferences', 0);
 }));
+
+function settingsAutosaveKindForControl(control) {
+  if (!control || !control.id) return '';
+  if (SETTINGS_SERVER_CONTROL_IDS.has(control.id)) return 'server';
+  if (SETTINGS_PREFERENCE_CONTROL_IDS.has(control.id)) return 'preferences';
+  return '';
+}
+
+$('#settingsSheet').addEventListener('input', (event) => {
+  if (event.target.matches('select')) return;
+  const kind = settingsAutosaveKindForControl(event.target);
+  if (kind) scheduleSettingsAutosave(kind);
+});
+
+$('#settingsSheet').addEventListener('change', (event) => {
+  if (!event.target.matches('select')) return;
+  const kind = settingsAutosaveKindForControl(event.target);
+  if (kind) scheduleSettingsAutosave(kind, 0);
+});
+
+$('#settingsSheet').addEventListener('click', (event) => {
+  if (event.target === $('#settingsSheet') || event.target.closest('[data-close]')) {
+    flushSettingsAutosave().catch(() => { /* status and toast are handled by the save chain */ });
+  }
+});
 
 $('#settingsBtn').addEventListener('click', async () => {
   closeAppDrawer();
+  settingsLoading = true;
+  setSettingsSaveStatus();
   renderGuidedTourSetting();
   loadMediaPreferences();
   await loadUserPreferences();
@@ -23374,7 +23585,12 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setScailSam').value = s.scailSam || '';
     setMediaPreferenceControl('setSmartFilenames', s.smartFilenames !== false);
     renderExportLocation(s.exportDir || '');
+    settingsAppRestartRequired = s.appRestartRequired === true;
   } catch { /* noop */ }
+  finally {
+    settingsLoading = false;
+    renderSettingsRestartAction();
+  }
   setMediaPreferenceControl('setVideoPreviews', state.mediaPreferences.videoPreviews);
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);
   refreshPreviewCacheStatus();
@@ -23394,81 +23610,22 @@ $('#setKrea2ModelVariant').addEventListener('change', () => {
     : 'krea2_raw_fp8_scaled.safetensors';
 });
 
-$('#settingsSave').addEventListener('click', async () => {
+$('#settingsRestartApply').addEventListener('click', async () => {
+  if (settingsAppRestartRunning || !settingsAppRestartRequired) return;
   try {
-    await api('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          comfyUrl: $('#setComfy').value,
-          galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
-          vramProfile: $('#setVramProfile').value,
-          krea2ModelVariant: $('#setKrea2ModelVariant').value,
-          unet: $('#setUnet').value,
-        krea2RawUnet: $('#setKrea2RawUnet').value,
-        krea2TurboLora: $('#setKrea2TurboLora').value,
-        krea2DepthLora: $('#setKrea2DepthLora').value,
-        krea2OutpaintLora: $('#setKrea2OutpaintLora').value,
-        depthAnythingV3Model: $('#setDepthAnythingV3Model').value,
-        clip: $('#setClip').value,
-        vae: $('#setVae').value,
-        kleinUnet: $('#setKlein4Unet').value,
-        kleinClip: $('#setKlein4Clip').value,
-        klein4Unet: $('#setKlein4Unet').value,
-        klein4Clip: $('#setKlein4Clip').value,
-        klein4ConsistencyLora: $('#setKlein4ConsistencyLora').value,
-        klein4ConsistencyTrigger: $('#setKlein4ConsistencyTrigger').value,
-        klein9Unet: $('#setKlein9Unet').value,
-        klein9Clip: $('#setKlein9Clip').value,
-        klein9ConsistencyLora: $('#setKlein9ConsistencyLora').value,
-        klein9ConsistencyTrigger: $('#setKlein9ConsistencyTrigger').value,
-        kleinVae: $('#setKleinVae').value,
-        qwenEditUnet: $('#setQeUnet').value,
-        qwenEditClip: $('#setQeClip').value,
-        qwenEditLora: $('#setQeLora').value,
-        qwenEditAnglesLora: $('#setQeAnglesLora').value,
-        seedvr2Dit: $('#setDit').value,
-        seedvr2Vae: $('#setSvVae').value,
-        seedvr2Attention: $('#setSvAttn').value,
-        systemPrompt: $('#setSysPrompt').value,
-        ltxCkpt: $('#setLtxCkpt').value,
-        ltxDistilledLora: $('#setLtxLora').value,
-        ltxCameramanLora: $('#setLtxCameraLora').value,
-        ltxEditLora: $('#setLtxEditLora').value,
-        ltxDirectorIcLora: $('#setLtxDirectorLora').value,
-        ltxTextEncoder: $('#setLtxTe').value,
-        ltxGemmaLora: $('#setLtxGemmaLora').value,
-        ltxUpscaler: $('#setLtxUps').value,
-        ltxFaceIdLora: $('#setFaceIdLora').value,
-        ltxFaceIdDistilledLora: $('#setFaceIdDistilled').value,
-        wanHighUnet: $('#setWanHigh').value,
-        wanLowUnet: $('#setWanLow').value,
-        wanClip: $('#setWanClip').value,
-        wanVae: $('#setWanVae').value,
-        wanHighLora: $('#setWanHighLora').value,
-        wanLowLora: $('#setWanLowLora').value,
-        erosCkpt: $('#setErosCkpt').value,
-        erosTextEncoder: $('#setErosTe').value,
-        erosDmdLora: $('#setErosDmd').value,
-        erosSigmasFirst: $('#setErosSigF').value,
-        erosSigmasUpscale: $('#setErosSigU').value,
-            scailUnet: $('#setScailUnet').value,
-            scailLora: $('#setScailLora').value,
-            scailPusaLora: $('#setScailPusaLora').value,
-            scailClipVision: $('#setScailCv').value,
-            scailSam: $('#setScailSam').value,
-            smartFilenames: mediaPreferenceControlValue('setSmartFilenames'),
-      }),
-    });
-    await saveUserPreferences();
-    saveMediaPreferences({
-      videoPreviews: mediaPreferenceControlValue('setVideoPreviews'),
-      previewCache: mediaPreferenceControlValue('setPreviewCache'),
-    });
-    toast('Settings saved');
-    await loadMeta(true);
-    renderHealth();
-  } catch (e) { toast(e.message, true); }
+    await flushSettingsAutosave();
+    if (!settingsAppRestartRequired) return;
+    settingsAppRestartRunning = true;
+    renderSettingsRestartAction();
+    setSettingsSaveStatus('Restarting…', 'saving');
+    await api('/api/app/restart', { method: 'POST' });
+    await waitForAppRestart();
+  } catch (error) {
+    settingsAppRestartRunning = false;
+    renderSettingsRestartAction();
+    setSettingsSaveStatus('Restart needed', 'error');
+    toast(error.message, true);
+  }
 });
 
 let lastMeta = null;

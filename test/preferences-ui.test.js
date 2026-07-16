@@ -32,8 +32,8 @@ test('profile preferences save separately from machine model settings', () => {
   assert.match(server, /db\.userPreferences/);
   assert.match(server, /mergeContextOverrides\(learned/);
   assert.match(app, /async function loadUserPreferences\(\)/);
-  assert.match(app, /async function saveUserPreferences\(\)/);
-  assert.match(app, /await saveUserPreferences\(\)/);
+  assert.match(app, /async function saveUserPreferences\(options = \{\}\)/);
+  assert.match(app, /await saveUserPreferences\(\{ refreshContext: false \}\)/);
 });
 
 test('saved defaults are applied to image, edit, and video controls', () => {

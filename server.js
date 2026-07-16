@@ -359,6 +359,15 @@ function normalizeSettings(s) {
 }
 
 let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
+const APP_RESTART_SETTINGS_AT_BOOT = Object.freeze({ comfyUrl: settings.comfyUrl });
+
+function settingsRequireAppRestart() {
+  return settings.comfyUrl !== APP_RESTART_SETTINGS_AT_BOOT.comfyUrl;
+}
+
+function settingsResponse() {
+  return Object.assign({}, settings, { appRestartRequired: settingsRequireAppRestart() });
+}
 
 function seedVr2ModelDirs() {
   const roots = [
@@ -4745,7 +4754,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/settings' && req.method === 'GET') {
-    return json(res, 200, settings);
+    return json(res, 200, settingsResponse());
   }
   if (route === '/api/setup/status' && req.method === 'GET') {
     return json(res, 200, await setupStatusPayload());
@@ -4842,7 +4851,7 @@ async function handleApi(req, res, url) {
     saveJsonSync(SETTINGS_FILE, settings);
     objectInfoCache = null;
     loraInfoCache = { key: '', at: 0, value: {} };
-    return json(res, 200, settings);
+    return json(res, 200, settingsResponse());
   }
 
   if (route === '/api/meta') {

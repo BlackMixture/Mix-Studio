@@ -2114,8 +2114,14 @@
 
 <!-- settings sheet -->
 <div class="sheet" id="settingsSheet">
-  <div class="sheet-panel settings-panel">
-    <h3 class="sheet-title">Settings <button data-close type="button" aria-label="Close settings">✕</button></h3>
+  <div class="sheet-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <h3 class="sheet-title" id="settingsTitle">
+      <span class="settings-title-copy">Settings <small id="settingsSaveStatus" role="status" aria-live="polite"></small></span>
+      <span class="settings-title-actions">
+        <button class="settings-restart-apply" id="settingsRestartApply" type="button" hidden>Restart to Apply</button>
+        <button class="settings-close" data-close type="button" aria-label="Close settings">✕</button>
+      </span>
+    </h3>
     <div class="settings-shell">
       <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
         <button class="active" id="settingsTabGeneral" type="button" role="tab" aria-selected="true" aria-controls="settingsPaneGeneral" data-settings-tab="general">
@@ -2410,9 +2416,6 @@
           </div>
         </section>
       </div>
-    </div>
-    <div class="settings-footer">
-      <button class="sheet-cta" id="settingsSave">Save settings</button>
     </div>
   </div>
 </div>
