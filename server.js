@@ -16,6 +16,7 @@ const { execFile, spawn } = require('child_process');
 const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
+const { nativeInt8Compatibility, nativeInt8CompatibilityError } = require('./lib/comfy-compatibility');
 const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponents } = require('./lib/dependency-installer');
 const { restartComfy, restartStatus } = require('./lib/comfy-restart');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
@@ -174,6 +175,7 @@ const { mobileAccessAddresses } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const {
   buildKrea2ModelLoader,
+  effectiveKrea2Variant,
   krea2VariantSettings,
   normalizeKrea2Variant,
   recommendedKrea2Variant,
@@ -605,6 +607,8 @@ let dependencyInstallController = null;
 let comfyRestartRunning = false;
 let setupHardwareSnapshot = null;
 let setupHardwareAt = 0;
+let comfyCompatibilitySnapshot = null;
+let comfyCompatibilityAt = 0;
 let comfySetupProcess = null;
 let comfySetupCancelRequested = false;
 let comfySetupState = {
@@ -682,6 +686,8 @@ function applySetupConnection(values) {
   saveJsonSync(SETTINGS_FILE, settings);
   objectInfoCache = null;
   objectInfoAt = 0;
+  comfyCompatibilitySnapshot = null;
+  comfyCompatibilityAt = 0;
   return config;
 }
 
@@ -926,6 +932,22 @@ async function comfyFetch(p, opts) {
     throw new Error(`ComfyUI ${p} -> ${res.status} ${text.slice(0, 400)}`);
   }
   return res;
+}
+
+async function getComfyCompatibility(force = false, basePath = '') {
+  if (!force && comfyCompatibilitySnapshot && comfyCompatibilitySnapshot.supported !== null
+    && Date.now() - comfyCompatibilityAt < 5 * 60 * 1000) {
+    return comfyCompatibilitySnapshot;
+  }
+  let stats = null;
+  try {
+    const response = await comfyFetch('/system_stats', { signal: AbortSignal.timeout(4000) });
+    stats = await response.json();
+  } catch { /* an offline install can still expose its version on disk */ }
+  const detectedPath = basePath || sam3InstallStatus(RUNTIME).basePath;
+  comfyCompatibilitySnapshot = nativeInt8Compatibility(stats, detectedPath);
+  comfyCompatibilityAt = Date.now();
+  return comfyCompatibilitySnapshot;
 }
 
 async function directorInputAssetAvailable(name) {
@@ -4483,7 +4505,7 @@ const REQUIRED_CLASSES = {
   scailinfinity: ['WanSCAILInfinity'],
 };
 
-async function setupStatusPayload() {
+async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
   const hardwareInfoValue = await getSetupHardwareInfo();
   const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
@@ -4498,6 +4520,9 @@ async function setupStatusPayload() {
   } catch (error) {
     connectionError = String(error.message || error);
   }
+  const compatibility = connected
+    ? await getComfyCompatibility(forceCompatibility, detected.basePath)
+    : nativeInt8Compatibility(null, detected.basePath);
   return {
     appReady: true,
     platform: process.platform,
@@ -4505,6 +4530,7 @@ async function setupStatusPayload() {
     quickFit: combinedHardwareFit(QUICK_SETUP_COMPONENTS, guidance),
     hardware: hardwareProfile,
     modelRecommendations: { krea2: krea2Recommendation },
+    modelVariants: { krea2: settings.krea2ModelVariant },
     vramProfile: {
       configured: settings.vramProfile,
       recommended: vramRecommendation,
@@ -4515,6 +4541,8 @@ async function setupStatusPayload() {
     comfy: {
       connected,
       connectionError,
+      version: compatibility.version,
+      nativeInt8: compatibility,
       url: settings.comfyUrl,
       configuredPath: RUNTIME.comfy.path || '',
       detectedPath: detected.basePath || '',
@@ -4737,7 +4765,12 @@ async function handleApi(req, res, url) {
       return;
     } catch (e) {
       const status = ['update_dirty', 'update_branch'].includes(e.code) ? 409 : 500;
-      return json(res, status, { error: String(e.message || e), code: e.code || 'update_failed' });
+      const payload = { error: String(e.message || e), code: e.code || 'update_failed' };
+      if (e.code === 'update_dirty' && Array.isArray(e.dirtyFiles)) {
+        payload.dirtyFiles = e.dirtyFiles;
+        payload.dirtyFileCount = Number.isFinite(e.dirtyFileCount) ? e.dirtyFileCount : e.dirtyFiles.length;
+      }
+      return json(res, status, payload);
     }
   }
 
@@ -4757,12 +4790,19 @@ async function handleApi(req, res, url) {
     return json(res, 200, settingsResponse());
   }
   if (route === '/api/setup/status' && req.method === 'GET') {
-    return json(res, 200, await setupStatusPayload());
+    return json(res, 200, await setupStatusPayload(url.searchParams.has('refresh')));
   }
   if (route === '/api/setup/vram-profile' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure the generation computer' });
     const body = await readJsonBody(req);
     settings.vramProfile = normalizeVramProfile(body.vramProfile);
+    saveJsonSync(SETTINGS_FILE, settings);
+    return json(res, 200, await setupStatusPayload());
+  }
+  if (route === '/api/setup/krea2-variant' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure the generation computer' });
+    const body = await readJsonBody(req);
+    Object.assign(settings, krea2VariantSettings(body.krea2ModelVariant));
     saveJsonSync(SETTINGS_FILE, settings);
     return json(res, 200, await setupStatusPayload());
   }
@@ -4867,6 +4907,7 @@ async function handleApi(req, res, url) {
       const models = configuredModelsStatus(info);
       const installStatus = sam3InstallStatus(RUNTIME);
       const missingComponents = missingDependencyComponentIds(missing, models);
+      const compatibility = await getComfyCompatibility(url.searchParams.has('refresh'));
       if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
         updateDependencyInstallState({
           state: 'complete',
@@ -4898,6 +4939,7 @@ async function handleApi(req, res, url) {
         models,
         krea2: {
           modelVariant: settings.krea2ModelVariant,
+          nativeInt8: compatibility,
           rawUnet: settings.krea2RawUnet,
           turboLora: settings.krea2TurboLora,
           depthLora: settings.krea2DepthLora,
@@ -5007,6 +5049,8 @@ async function handleApi(req, res, url) {
         await restartComfy(RUNTIME, (phase, message) => updateDependencyInstallState({ state: 'restarting', phase, message, error: null }));
         const reconnected = await waitForComfyReconnect();
         objectInfoCache = null;
+        comfyCompatibilitySnapshot = null;
+        comfyCompatibilityAt = 0;
         updateDependencyInstallState(reconnected
           ? { state: 'complete', phase: 'reconnected', message: 'ComfyUI is back online. Checking installed models and nodes…', restartRequired: false, error: null, ...EMPTY_DEPENDENCY_FAILURE }
           : { state: 'error', phase: 'timeout', message: 'ComfyUI did not reconnect yet. Check the desktop app, then press Check again.', error: 'Reconnect timed out.', ...EMPTY_DEPENDENCY_FAILURE });
@@ -5025,11 +5069,24 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const requested = Array.isArray(body.components) ? body.components.map((value) => String(value)) : [];
     const repair = body.repair === true;
-    const modelVariants = body.modelVariants && typeof body.modelVariants === 'object'
-      ? { krea2: normalizeKrea2Variant(body.modelVariants.krea2, krea2VariantSettings(body.modelVariants.krea2)) }
-      : undefined;
+    const requestedKrea2Variant = body.modelVariants && typeof body.modelVariants === 'object'
+      ? body.modelVariants.krea2
+      : '';
+    const krea2Variant = effectiveKrea2Variant(requestedKrea2Variant, settings);
+    const modelVariants = { krea2: krea2Variant };
     const components = [...new Set(requested.filter((id) => Object.prototype.hasOwnProperty.call(DEPENDENCY_COMPONENTS, id)))];
     if (!components.length) return json(res, 400, { error: 'Choose at least one missing model or node group to install.' });
+    const installsKrea2 = components.some((id) => (DEPENDENCY_COMPONENTS[id].models || []).includes('image'));
+    if (installsKrea2 && krea2Variant === 'int8-convrot') {
+      const compatibility = await getComfyCompatibility(true);
+      if (compatibility.supported !== true) {
+        return json(res, 409, {
+          error: nativeInt8CompatibilityError(compatibility),
+          code: 'comfy_int8_update_required',
+          compatibility,
+        });
+      }
+    }
     try {
       await assertDesktopIsIdle();
     } catch (error) {
@@ -5368,6 +5425,17 @@ async function handleApi(req, res, url) {
       // itself but skip the incompatible preservation pass.
       if (p.editAspectOverride && !p.editOutpaint) p.composite = false;
     }
+    const usesKrea2Model = p.mode !== 'edit' || ['krea2', 'krea2ref'].includes(p.editEngine);
+    if (usesKrea2Model && settings.krea2ModelVariant === 'int8-convrot') {
+      const compatibility = await getComfyCompatibility();
+      if (compatibility.supported !== true) {
+        return json(res, 409, {
+          error: nativeInt8CompatibilityError(compatibility),
+          code: 'comfy_int8_update_required',
+          compatibility,
+        });
+      }
+    }
     if (requestedHuntLoras.length && (p.editSequence || p.qwenAngle)) {
       return json(res, 400, { error: 'Run Strength Hunt separately from sequential edits and camera variations' });
     }
@@ -5409,6 +5477,16 @@ async function handleApi(req, res, url) {
     const engine = body.engine === 'ultimate' ? 'ultimate' : 'seedvr2';
     const upscaleMode = body.upscaleMode === 'scale' ? 'scale' : 'resolution';
     const scaleFactor = clampNum(body.scaleFactor, 1, 4, 2);
+    if (engine === 'ultimate' && settings.krea2ModelVariant === 'int8-convrot') {
+      const compatibility = await getComfyCompatibility();
+      if (compatibility.supported !== true) {
+        return json(res, 409, {
+          error: nativeInt8CompatibilityError(compatibility),
+          code: 'comfy_int8_update_required',
+          compatibility,
+        });
+      }
+    }
     const comfyName = await uploadToComfy(buf, `ks_upsrc_${item.id}.png`);
     let opts;
     if (engine === 'ultimate') {

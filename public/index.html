@@ -2081,6 +2081,13 @@
             <option value="standard">Standard · 16 GB+</option>
           </select>
         </label>
+        <label class="vram-profile-control setup-vram-profile">
+          <span><strong>Krea 2 precision</strong><small id="setupKrea2VariantCopy">Choose the compatible route for this GPU and ComfyUI.</small></span>
+          <select id="setupKrea2Variant">
+            <option value="fp8">FP8 · compatible fallback</option>
+            <option value="int8-convrot">INT8 ConvRot · low VRAM</option>
+          </select>
+        </label>
         <div class="setup-actions">
           <button class="setup-primary" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
           <button class="setup-secondary" id="setupCurrentWorkflow" type="button"><strong>Current workflow</strong><span>Install only what this generation needs.</span></button>

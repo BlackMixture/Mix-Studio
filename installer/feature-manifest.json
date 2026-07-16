@@ -44,7 +44,7 @@
       "id": "edit.krea2",
       "label": "Krea 2 Inpaint + Outpaint + Regions",
       "default": true,
-      "variant": "Uses native Krea 2 INT8 and asks before applying safer low-VRAM generation settings",
+      "variant": "Krea 2 FP8 or native INT8 ConvRot; low-VRAM requests ask before safer settings are applied",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
       "models": ["krea2", "sam3"],
       "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ", "ComfyUI-SAM3", "KJNodes outpaint"]

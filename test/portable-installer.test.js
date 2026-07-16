@@ -378,6 +378,23 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
   });
 });
 
+test('standalone dependency setup gates only Krea INT8 on incompatible ComfyUI', async () => {
+  const runtime = { comfy: { url: 'http://127.0.0.1:8188', path: 'C:\\ComfyUI' } };
+  const unsupported = async () => ({ version: '0.26.9', minimumVersion: '0.27.0', supported: false });
+  await assert.rejects(
+    dependencyCli.verifyNativeInt8Install({
+      variant: 'int8-convrot', components: ['image'], runtime, detectCompatibility: unsupported,
+    }),
+    (error) => error.code === 'comfy_int8_update_required' && /FP8 variant/.test(error.message)
+  );
+  assert.equal(await dependencyCli.verifyNativeInt8Install({
+    variant: 'fp8', components: ['image'], runtime, detectCompatibility: unsupported,
+  }), null);
+  assert.equal(await dependencyCli.verifyNativeInt8Install({
+    variant: 'int8-convrot', components: ['wan'], runtime, detectCompatibility: unsupported,
+  }), null);
+});
+
 test('hardware guidance rates recommended, offload, and difficult model families', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
   const info = (vram, ram) => ({

@@ -1228,6 +1228,32 @@ function setAppUpdateStatus(message, tone) {
   status.classList.toggle('bad', tone === 'bad');
 }
 
+function formatAppUpdateError(error) {
+  const fallback = String(error?.message || 'Mix Studio could not install the update.');
+  if (error?.code !== 'update_dirty') return fallback;
+  const files = Array.isArray(error.details?.dirtyFiles) ? error.details.dirtyFiles : [];
+  if (!files.length) return fallback;
+
+  const statusLabel = (status) => {
+    const value = String(status || '');
+    if (['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(value)) return 'conflict';
+    if (value.includes('D')) return 'deleted';
+    if (value.includes('R')) return 'renamed';
+    if (value.includes('C')) return 'copied';
+    if (value.includes('A')) return 'added';
+    if (value.includes('T')) return 'type changed';
+    return 'modified';
+  };
+  const shown = files.slice(0, 4)
+    .filter((file) => file && typeof file.path === 'string' && file.path.trim())
+    .map((file) => `${file.path.trim()} (${statusLabel(file.status)})`);
+  if (!shown.length) return fallback;
+  const reportedTotal = Number(error.details?.dirtyFileCount);
+  const total = Number.isFinite(reportedTotal) ? Math.max(shown.length, reportedTotal) : files.length;
+  const remainder = Math.max(0, total - shown.length);
+  return `Update blocked by tracked local changes: ${shown.join(', ')}${remainder ? `, +${remainder} more` : ''}. Commit or restore them, then try again.`;
+}
+
 function formatAppVersion(version, revision = '') {
   const rawVersion = String(version || '').trim();
   if (/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(rawVersion)) {
@@ -1377,7 +1403,7 @@ $('#appUpdateBtn').addEventListener('click', async () => {
     setTimeout(() => location.reload(), 800);
   } catch (error) {
     button.classList.remove('busy');
-    setAppUpdateStatus(error.message, 'bad');
+    setAppUpdateStatus(formatAppUpdateError(error), 'bad');
     appUpdateRunning = false;
     renderAppUpdateAccess();
   }
@@ -13670,7 +13696,12 @@ $('#generateBtn').addEventListener('click', async () => {
   } catch (e) {
     setGenerating(false);
     if (!firstImageTutorialJobId) retryFirstImageTutorialGeneration();
-    if (!isJobCancellation(e)) toast(e.message, true);
+    if (e.code === 'comfy_int8_update_required') {
+      await openInitialSetup({
+        components: generationSetupComponents(),
+        message: e.message,
+      });
+    } else if (!isJobCancellation(e)) toast(e.message, true);
   }
 });
 
@@ -20741,7 +20772,11 @@ $('#upscaleGo').addEventListener('click', async () => {
   } catch (e) {
     state.upscaling.delete(it.id);
     renderGrid();
-    toast(e.message, true);
+    if (e.code === 'comfy_int8_update_required') {
+      await openInitialSetup({ components: ['image', 'ultimateupscale'], message: e.message });
+    } else {
+      toast(e.message, true);
+    }
   } finally {
     state.pendingGalleryRequests.delete(requestKey);
   }
@@ -23674,9 +23709,37 @@ let setupPollTimer = null;
 let setupAutoRestart = false;
 let setupActiveStep = 'connect';
 let setupStepTouched = false;
+let setupKrea2VariantOverride = '';
 let setupOperationDiagnostic = '';
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
+const KREA2_MODEL_COMPONENTS = new Set(['image', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
+
+function setupSelectedKrea2Variant() {
+  if (setupKrea2VariantOverride) return setupKrea2VariantOverride;
+  return setupViewStatus?.modelVariants?.krea2
+    || setupViewStatus?.modelRecommendations?.krea2
+    || 'fp8';
+}
+
+function setupNeedsNativeInt8(components) {
+  if (setupSelectedKrea2Variant() !== 'int8-convrot') return false;
+  const requested = (components || []).filter(Boolean);
+  return requested.some((id) => KREA2_MODEL_COMPONENTS.has(id));
+}
+
+function setupNativeInt8Blocked(components) {
+  return setupNeedsNativeInt8(components)
+    && setupViewStatus?.comfy?.nativeInt8?.supported !== true;
+}
+
+function setupNativeInt8Message() {
+  const compatibility = setupViewStatus?.comfy?.nativeInt8 || {};
+  const minimum = compatibility.minimumVersion || '0.27.0';
+  return compatibility.version
+    ? `Update ComfyUI ${compatibility.version} to ${minimum} or newer for Krea 2 INT8 ConvRot, or select FP8.`
+    : `Start or update ComfyUI ${minimum} or newer so Mix Studio can verify native INT8 ConvRot support, or select FP8.`;
+}
 
 function generationSetupComponents() {
   const components = new Set();
@@ -23719,13 +23782,18 @@ async function ensureGenerationSetup() {
   const required = generationSetupComponents();
   if (!lastMeta?.ok) await loadMeta(true);
   const missing = missingSetupComponents(required);
-  if (lastMeta?.ok && !missing.length) return true;
+  const nativeInt8Blocked = lastMeta?.krea2?.modelVariant === 'int8-convrot'
+    && lastMeta?.krea2?.nativeInt8?.supported !== true
+    && required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
+  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked) return true;
   saveForm();
   await openInitialSetup({
     components: missing.length ? missing : required,
-    message: lastMeta?.ok
+    message: nativeInt8Blocked
+      ? 'Update ComfyUI for Krea 2 INT8 ConvRot, or choose the compatible FP8 route.'
+      : (lastMeta?.ok
       ? 'This workflow needs a few desktop tools before it can run.'
-      : 'Connect ComfyUI, then install what this workflow needs.',
+      : 'Connect ComfyUI, then install what this workflow needs.'),
   });
   return false;
 }
@@ -23782,7 +23850,10 @@ function renderSetupFooter() {
   const cancellable = officialBusy || ['running', 'cancelling'].includes(setupDependencyState?.state);
   const contextMissing = missingSetupComponents(setupContextComponents);
   const allMissing = dependencyMissingLabels();
-  const workflowReady = !!comfy.connected && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
+  const workflowReady = !!comfy.connected
+    && !setupNativeInt8Blocked(compatibilityComponents)
+    && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
   const restartRequired = !!setupDependencyState?.restartRequired;
   const cancel = $('#setupCancel');
   cancel.textContent = cancellable ? 'Stop setup' : 'Not now';
@@ -23803,6 +23874,7 @@ function renderSetupFooter() {
 
 async function openInitialSetup(options = {}) {
   setupContextComponents = [...new Set((options.components || []).filter(Boolean))];
+  setupKrea2VariantOverride = '';
   setupStepTouched = false;
   setupActiveStep = 'connect';
   setSetupGuideExpanded(false);
@@ -23881,23 +23953,29 @@ function renderInitialSetup() {
   const officialBusy = ['running', 'cancelling'].includes(install.state);
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(dependency.state);
   const busy = officialBusy || dependencyBusy;
+  const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
+  const int8Blocked = setupNativeInt8Blocked(compatibilityComponents);
   const comfyCard = $('#setupComfyStatus');
-  comfyCard.classList.toggle('ready', !!comfy.connected);
-  comfyCard.classList.toggle('attention', !comfy.connected);
+  comfyCard.classList.toggle('ready', !!comfy.connected && !int8Blocked);
+  comfyCard.classList.toggle('attention', !comfy.connected || int8Blocked);
   $('#setupComfyStatusCopy').textContent = comfy.connected
-    ? 'Connected'
+    ? (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`)
     : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed');
 
   const contextMissing = missingSetupComponents(setupContextComponents);
   const allMissing = dependencyMissingLabels();
   const workflowCard = $('#setupWorkflowStatus');
-  const workflowReady = !!comfy.connected && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  const workflowReady = !!comfy.connected
+    && !int8Blocked
+    && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
   const restartRequired = !!dependency.restartRequired;
   workflowCard.classList.toggle('ready', workflowReady);
   workflowCard.classList.toggle('attention', !workflowReady);
-  $('#setupWorkflowStatusCopy').textContent = setupContextComponents.length
-    ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
-    : (comfy.connected ? (allMissing.length ? `${allMissing.length} available` : 'Ready') : 'Waiting for ComfyUI');
+  $('#setupWorkflowStatusCopy').textContent = int8Blocked
+    ? 'ComfyUI update needed for Krea INT8'
+    : (setupContextComponents.length
+      ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
+      : (comfy.connected ? (allMissing.length ? `${allMissing.length} available` : 'Ready') : 'Waiting for ComfyUI'));
 
   const connectReady = !!comfy.connected;
   const installReady = workflowReady || restartRequired;
@@ -23914,13 +23992,15 @@ function renderInitialSetup() {
   $('#setupHardwareCopy').textContent = hardware.gpuAvailable
     ? `${hardware.gpuName || 'NVIDIA GPU'}${hardware.vramGb ? ` · ${hardware.vramGb} GB VRAM` : ' · VRAM unavailable'}${hardware.memoryGb ? ` · ${hardware.memoryGb} GB RAM` : ''}`
     : 'No NVIDIA GPU detected';
-  $('#setupHardwareFit').textContent = quickFit.label || 'Compatibility not yet available';
+  $('#setupHardwareFit').textContent = int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available');
   $('#setupHardwareSummary').title = quickFit.detail || 'Recommendations match the generation computer.';
   $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
   const recommendedKrea2 = setupViewStatus.modelRecommendations?.krea2;
+  const selectedKrea2 = setupSelectedKrea2Variant();
   if (recommendedKrea2) {
-    $('#setupHardwareSummary').title += ` Krea 2 setup will use ${recommendedKrea2 === 'int8-convrot' ? 'the optimized INT8 ConvRot format' : 'FP8'}.`;
+    $('#setupHardwareSummary').title += ` This GPU recommends ${recommendedKrea2 === 'int8-convrot' ? 'the optimized INT8 ConvRot format' : 'FP8'}; the current setup selection is ${selectedKrea2 === 'int8-convrot' ? 'INT8 ConvRot' : 'FP8'}.`;
   }
+  if (int8Blocked) $('#setupHardwareSummary').title += ` ${setupNativeInt8Message()}`;
   const vramProfile = setupViewStatus.vramProfile || {};
   if (document.activeElement !== $('#setupVramProfile')) {
     $('#setupVramProfile').value = vramProfile.configured || 'auto';
@@ -23930,6 +24010,13 @@ function renderInitialSetup() {
     ? 'Recommends safer 8–12 GB settings before generation, with an explicit bypass.'
     : 'Uses standard image limits for GPUs with more memory.';
   $('#setupVramProfile').disabled = busy || !state.profileIsOwner;
+  if (document.activeElement !== $('#setupKrea2Variant')) $('#setupKrea2Variant').value = selectedKrea2;
+  $('#setupKrea2VariantCopy').textContent = selectedKrea2 === 'int8-convrot'
+    ? (int8Blocked ? setupNativeInt8Message() : 'Selected native INT8; FP8 remains available.')
+    : (recommendedKrea2 === 'int8-convrot'
+      ? 'FP8 is selected. Native INT8 is recommended for this GPU and remains available.'
+      : 'Selected the standard FP8 route.');
+  $('#setupKrea2Variant').disabled = busy || !state.profileIsOwner;
 
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
   const modelsValue = comfy.modelsPath || (pathValue ? `${pathValue.replace(/[\\/]+$/, '')}\\models` : '');
@@ -24041,9 +24128,9 @@ function scheduleSetupPoll() {
   setupPollTimer = setTimeout(() => refreshSetupStatus(), 1000);
 }
 
-async function refreshSetupStatus() {
+async function refreshSetupStatus(forceCompatibility = false) {
   try {
-    setupViewStatus = await api('/api/setup/status');
+    setupViewStatus = await api(`/api/setup/status${forceCompatibility ? '?refresh=1' : ''}`);
     if (['error', 'cancelled'].includes(setupViewStatus.comfy?.install?.state)) setupPendingComponents = [];
     setupDependencyState = await api('/api/dependencies/status').catch(() => setupDependencyState);
     if (['error', 'cancelled'].includes(setupDependencyState?.state)) setupAutoRestart = false;
@@ -24131,6 +24218,11 @@ async function startSetupDependencies(components) {
     toast(setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.', true);
     return false;
   }
+  if (setupNativeInt8Blocked(requested)) {
+    setSetupStep('connect', { user: true });
+    toast(setupNativeInt8Message(), true);
+    return false;
+  }
   const available = new Set((setupViewStatus.components || []).map((entry) => entry.id));
   const filtered = requested.filter((id) => available.has(id));
   if (!filtered.length) {
@@ -24140,7 +24232,7 @@ async function startSetupDependencies(components) {
   const result = await api('/api/dependencies/install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       components: filtered,
-      modelVariants: setupViewStatus.modelRecommendations || undefined,
+      modelVariants: { krea2: setupSelectedKrea2Variant() },
     }),
   });
   setupDependencyState = result.install;
@@ -24161,6 +24253,25 @@ $('#setupVramProfile').addEventListener('change', async () => {
     renderInitialSetup();
   } catch (error) {
     toast(error.message, true);
+  }
+});
+
+$('#setupKrea2Variant').addEventListener('change', async () => {
+  const choice = $('#setupKrea2Variant').value;
+  setupKrea2VariantOverride = choice === 'int8-convrot' ? 'int8-convrot' : 'fp8';
+  const selected = setupSelectedKrea2Variant();
+  try {
+    setupViewStatus = await api('/api/setup/krea2-variant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ krea2ModelVariant: selected }),
+    });
+    if ($('#setKrea2ModelVariant')) $('#setKrea2ModelVariant').value = selected;
+    await loadMeta(true);
+    renderInitialSetup();
+  } catch (error) {
+    toast(error.message, true);
+    await refreshSetupStatus(true);
   }
 });
 
@@ -24274,7 +24385,7 @@ $('#setupRestartComfy').addEventListener('click', async () => {
 });
 $('#setupCheckAgain').addEventListener('click', async () => {
   await loadMeta(true, true);
-  await refreshSetupStatus();
+  await refreshSetupStatus(true);
 });
 $('#setupShowDetails').addEventListener('click', () => {
   if (setupOperationDiagnostic) showErrorDetail(setupOperationDiagnostic, 'Setup diagnostic');
@@ -24605,7 +24716,10 @@ $('#dependencyInstallMissing').addEventListener('click', async () => {
   if (!components.length) return;
   try {
     const result = await api('/api/dependencies/install', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        components,
+        modelVariants: { krea2: $('#setKrea2ModelVariant').value },
+      }),
     });
     if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
     renderDependencyManager();
@@ -24618,7 +24732,11 @@ $('#dependencyRepairMissing').addEventListener('click', async () => {
   if (!components.length) return;
   try {
     const result = await api('/api/dependencies/install', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components, repair: true }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        components,
+        repair: true,
+        modelVariants: { krea2: $('#setKrea2ModelVariant').value },
+      }),
     });
     if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = result.install;
     renderDependencyManager();

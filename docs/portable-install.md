@@ -14,6 +14,14 @@ The bootstrap is intentionally small. It gets the Mix Studio web app running fir
 6. Choose **Quick setup** for the recommended image starter, **Install this workflow** for only the current generation, or **Full setup guide** for individual control. The full guide can use a detected ComfyUI installation, accept a manual URL and folders, or launch the signed official ComfyUI Desktop installer.
 7. Review the detected NVIDIA GPU, VRAM, and system RAM. Each family is labeled recommended, capable with offload, or difficult. A below-minimum choice requires explicit confirmation. Existing model files registered by ComfyUI are reused.
 
+## Low-VRAM setup
+
+The curated Krea 2 image route has an 8 GB VRAM minimum and a 16 GB recommendation. On detected 8–12 GB systems, Auto selects the Low VRAM profile and setup recommends the official Krea 2 INT8 ConvRot models. Those files use ComfyUI's native quantized-weight support through its standard diffusion loader—not a GGUF or custom INT8 loader—and require ComfyUI 0.27.0 or newer. Generation setup checks that version before installing or running them and keeps FP8 available as a visible fallback. A fresh official ComfyUI Desktop install satisfies the requirement; an older existing installation must be updated before using INT8.
+
+Low VRAM mode is guidance, not a hidden cap. Image requests above roughly one megapixel or batch one receive a confirmation that offers safer settings or the exact original request. Current larger edit and video families retain their own hardware ratings: Klein 4B starts at 12 GB, while Klein 9B, Qwen Edit, LTX, Wan, 10Eros, and SCAIL start at 16 GB and benefit from substantial system RAM.
+
+Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configured diffusion filename ends in `.gguf`, and their setup groups install ComfyUI-GGUF. Guided downloads still use the curated safetensors/FP8 files, so third-party GGUF weights must be downloaded and selected manually. The current LTX 2.3 and 10Eros graphs use combined checkpoints; transformer-only GGUF files are not drop-in replacements for those pipelines.
+
 ## Phone-first access with Tailscale
 
 1. Install [Tailscale](https://tailscale.com/download) on the Windows generation machine and the phone.

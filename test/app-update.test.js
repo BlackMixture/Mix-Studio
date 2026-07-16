@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   normalizeAppRelease,
+  parseDirtyStatus,
   readAppRelease,
   restartRequiredForFiles,
   updateFromGit,
@@ -127,9 +128,33 @@ test('tracked local changes block an update before pulling', async () => {
   const fake = gitSequence([' M server.js\n']);
   await assert.rejects(
     updateFromGit('/app', { runGit: fake.runGit }),
-    (error) => error.code === 'update_dirty'
+    (error) => {
+      assert.equal(error.code, 'update_dirty');
+      assert.deepEqual(error.dirtyFiles, [{ status: ' M', path: 'server.js' }]);
+      assert.equal(error.dirtyFileCount, 1);
+      return true;
+    }
   );
   assert.equal(fake.calls.length, 1);
+});
+
+test('dirty status details are bounded and exclude untracked files', () => {
+  const status = [
+    'M  server.js',
+    ' D public/app.js',
+    'R  old-name.js -> lib/new-name.js',
+    '?? local-only.txt',
+    ...Array.from({ length: 9 }, (_, index) => ` M lib/change-${index}.js`),
+    '',
+  ].join('\n');
+  const result = parseDirtyStatus(status);
+  assert.equal(result.dirtyFileCount, 12);
+  assert.equal(result.dirtyFiles.length, 8);
+  assert.deepEqual(result.dirtyFiles.slice(0, 3), [
+    { status: 'M ', path: 'server.js' },
+    { status: ' D', path: 'public/app.js' },
+    { status: 'R ', path: 'old-name.js -> lib/new-name.js' },
+  ]);
 });
 
 test('update and meta APIs expose semantic releases independently of ComfyUI readiness', () => {
@@ -138,6 +163,8 @@ test('update and meta APIs expose semantic releases independently of ComfyUI rea
   assert.match(updateRoute, /previousVersion:\s*update\.releaseBefore\.version\s*\|\|\s*update\.before\.slice\(0, 7\)/);
   assert.match(updateRoute, /releasedAt:\s*update\.release\.releasedAt/);
   assert.match(updateRoute, /revision:\s*update\.after\.slice\(0, 7\)/);
+  assert.match(updateRoute, /payload\.dirtyFiles\s*=\s*e\.dirtyFiles/);
+  assert.match(updateRoute, /payload\.dirtyFileCount/);
 
   const metaRoute = server.slice(server.indexOf("route === '/api/meta'"), server.indexOf("route === '/api/input'"));
   assert.match(metaRoute, /const app = readAppRelease\(ROOT\)/);

@@ -150,3 +150,28 @@ test('update status copy uses the formatted release instead of exposing a raw ve
   assert.match(handler, /Updated to \$\{versionLabel\}/);
   assert.doesNotMatch(handler, /\$\{result\.version\}/);
 });
+
+test('dirty update errors identify tracked files and retain the generic fallback', () => {
+  const formatAppUpdateError = appFunction('formatAppUpdateError', 'formatAppVersion');
+  assert.equal(
+    formatAppUpdateError({
+      code: 'update_dirty',
+      message: 'generic dirty message',
+      details: {
+        dirtyFiles: [
+          { status: ' M', path: 'public/app.js' },
+          { status: 'D ', path: 'server.js' },
+          { status: 'UU', path: 'lib/profiles.js' },
+          { status: 'A ', path: 'public/new.js' },
+        ],
+        dirtyFileCount: 6,
+      },
+    }),
+    'Update blocked by tracked local changes: public/app.js (modified), server.js (deleted), lib/profiles.js (conflict), public/new.js (added), +2 more. Commit or restore them, then try again.'
+  );
+  assert.equal(formatAppUpdateError({ code: 'update_dirty', message: 'generic dirty message', details: {} }), 'generic dirty message');
+  assert.equal(formatAppUpdateError({ code: 'update_failed', message: 'network failed' }), 'network failed');
+
+  const handler = app.slice(app.indexOf("$('#appUpdateBtn').addEventListener"), app.indexOf("$('#appRestartBtn').addEventListener"));
+  assert.match(handler, /setAppUpdateStatus\(formatAppUpdateError\(error\), 'bad'\)/);
+});

@@ -95,6 +95,20 @@ On Windows, open the [Mix Studio download page](https://blackmixture.github.io/M
 
 When the user first presses Generate, Mix Studio checks the exact workflow they selected. If ComfyUI, models, or nodes are missing, the in-app **Generation setup** panel offers three paths: **Quick setup** installs the recommended image starter, **Install this workflow** downloads only what the current generation requires, and **Full setup guide** exposes ComfyUI detection, manual URL and folder fields, and individual capability groups. The panel reads NVIDIA VRAM and system RAM, identifies the curated precision variant, and labels model families as recommended, usable with offload, or difficult. Below-minimum choices require an explicit warning confirmation. A running ComfyUI is queried for registered model filenames, so matching files are reused even when they live in a shared model root.
 
+### GPU memory and quantized models
+
+Mix Studio targets Windows PCs with NVIDIA GPUs. Its curated Krea 2 image route is intended to run with **8 GB of VRAM** when current ComfyUI, adequate system RAM, and model offloading are available; 16 GB remains the recommendation. On detected 8–12 GB systems, setup selects the Low VRAM profile and recommends the official Krea 2 INT8 ConvRot weights. Native INT8 ConvRot requires ComfyUI 0.27.0 or newer, which Generation setup verifies before installing or running that variant. FP8 remains a visible fallback instead of blocking an otherwise compatible workflow.
+
+Low VRAM mode never silently changes a request. If an image exceeds roughly one megapixel or batch one, Mix Studio asks whether to use the safer values or continue unchanged.
+
+| Workflow family | Minimum VRAM | Recommended VRAM | Guided model route |
+| --- | ---: | ---: | --- |
+| Krea 2 image and Krea-based edit | 8 GB | 16 GB | FP8, or native INT8 ConvRot below 16 GB |
+| Flux 2 Klein 4B edit | 12 GB | 16 GB | BF16 with offload |
+| Klein 9B, Qwen Edit, and current video workflows | 16 GB | 24 GB | Curated BF16/FP8 variants |
+
+Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in the supported Klein, Qwen, Wan, and SCAIL graphs. Guided setup currently installs that loader but does not download third-party GGUF weights or quantized text encoders; select those files manually. LTX 2.3 and 10Eros use combined audio/video checkpoints and cannot use a transformer-only GGUF file as a drop-in replacement. Krea 2 INT8 ConvRot is not GGUF and uses ComfyUI's standard diffusion loader.
+
 ### Manual Git install
 
 1. Install [Git for Windows](https://git-scm.com/download/win) and Node.js 22 or newer.
@@ -185,7 +199,7 @@ ComfyUI's disaster-recovery copies are organized under `ComfyUI/output/MixStudio
 
 ## ComfyUI requirements
 
-All model filenames and the ComfyUI URL are editable in **Settings (gear) → Save & test connection**, which health-checks every node group. Highlights: Krea 2 (unet/clip/vae), Krea 2 Depth Control LoRA + Depth Anything V3 Large, Krea 2 Identity Edit LoRA + ComfyUI-Krea2Edit for outpainting, Flux Klein 4B/9B, Qwen Image Edit 2511, LTX 2.3 (+ spatial upscaler, Gemma encoder), Wan 2.2, 10Eros, SCAIL-2 (+ SAM3 multiplex, clip_vision_h), Best-FaceID LoRA + [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes), SeedVR2, KJNodes, VideoHelperSuite, ComfyUI-Frame-Interpolation (RIFE), Krea2-Regional-MultiLoRA.
+All model filenames and the ComfyUI URL are editable in **Advanced Settings**; changes apply automatically, and a contextual restart action appears when needed. Generation setup health-checks every node group. Highlights: Krea 2 (unet/clip/vae), Krea 2 Depth Control LoRA + Depth Anything V3 Large, Krea 2 Identity Edit LoRA + ComfyUI-Krea2Edit for outpainting, Flux Klein 4B/9B, Qwen Image Edit 2511, LTX 2.3 (+ spatial upscaler, Gemma encoder), Wan 2.2, 10Eros, SCAIL-2 (+ SAM3 multiplex, clip_vision_h), Best-FaceID LoRA + [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes), SeedVR2, KJNodes, VideoHelperSuite, ComfyUI-Frame-Interpolation (RIFE), Krea2-Regional-MultiLoRA.
 
 ## Where things live
 
@@ -202,7 +216,7 @@ Mix Studio thrives on community collaboration. If you have spent hours dialing i
 
 ### What We Look For
 
-- **Performance:** The workflow needs to run efficiently. We benchmark everything on our Dell workstation, but we want workflows that scale well for users with 16 GB to 24 GB of VRAM.
+- **Performance:** The workflow needs to run efficiently. We benchmark everything on our Dell workstation, but submissions should document a practical memory tier: an 8 GB route where the model allows it, plus sensible 12 GB, 16 GB, or 24 GB targets for heavier workflows.
 - **Stability:** We prioritize pipelines that deliver consistent results without requiring constant node tweaking.
 - **Practicality:** The best workflows solve a specific creative problem for artists, like clean motion transfer, precise inpainting, or perfect text rendering.
 

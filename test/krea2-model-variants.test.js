@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const {
   buildKrea2ModelLoader,
+  effectiveKrea2Variant,
   krea2VariantSettings,
   normalizeKrea2Variant,
   recommendedKrea2Variant,
@@ -38,6 +39,12 @@ test('Krea 2 variant inference recognizes manually selected ConvRot files', () =
     unet: 'krea2_turbo_int8_convrot.safetensors',
     krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
   }), 'int8-convrot');
+});
+
+test('dependency planning resolves the requested variant before saved settings', () => {
+  assert.equal(effectiveKrea2Variant('', krea2VariantSettings('int8-convrot')), 'int8-convrot');
+  assert.equal(effectiveKrea2Variant('fp8', krea2VariantSettings('int8-convrot')), 'fp8');
+  assert.equal(effectiveKrea2Variant('int8-convrot', krea2VariantSettings('fp8')), 'int8-convrot');
 });
 
 test('official INT8 ConvRot uses ComfyUI native quantization through the standard loader', () => {
@@ -101,7 +108,7 @@ test('setup and settings expose the low-VRAM choice and persist installer update
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   const installer = fs.readFileSync(path.join(root, 'installer', 'install-dependencies.js'), 'utf8');
   assert.match(html, /INT8 ConvRot · optimized 8-bit/);
-  assert.match(app, /modelVariants: setupViewStatus\.modelRecommendations/);
+  assert.match(app, /modelVariants: \{ krea2: setupSelectedKrea2Variant\(\) \}/);
   assert.match(app, /krea2_turbo_int8_convrot\.safetensors/);
   assert.doesNotMatch(server, /OTUNetLoaderW8A8/);
   assert.match(server, /result\.settingUpdates/);
