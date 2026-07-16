@@ -178,6 +178,7 @@ const {
   normalizeKrea2Variant,
   recommendedKrea2Variant,
 } = require('./lib/krea2-model');
+const { diffusionModelInput, diffusionModelLoader } = require('./lib/model-loader');
 const {
   applyLowVramImageLimits,
   normalizeVramProfile,
@@ -958,6 +959,11 @@ function modelStatus(info, cls, field, name, fallbackList) {
   return { name, ok: !name || list.includes(name) };
 }
 
+function diffusionModelStatus(info, name) {
+  const input = diffusionModelInput(name);
+  return modelStatus(info, input.className, input.field, name);
+}
+
 function modelStatusAny(info, name, choices, fallbackList) {
   const list = fallbackList || choices.flatMap(([cls, field]) => comboList(info, cls, field));
   return { name, ok: !name || list.includes(name) };
@@ -994,8 +1000,8 @@ function configuredModelsStatus(info) {
   return {
     krea2: {
       label: 'Krea 2',
-      turbo: modelStatus(info, 'UNETLoader', 'unet_name', settings.unet),
-      raw: modelStatus(info, 'UNETLoader', 'unet_name', settings.krea2RawUnet),
+      turbo: diffusionModelStatus(info, settings.unet),
+      raw: diffusionModelStatus(info, settings.krea2RawUnet),
       turboLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.krea2TurboLora, loraList),
     },
     krea2Depth: {
@@ -1009,21 +1015,21 @@ function configuredModelsStatus(info) {
     },
     klein4: {
       label: 'Flux Klein 4B',
-      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein4Unet),
+      unet: diffusionModelStatus(info, settings.klein4Unet),
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.klein4Clip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
       consistencyLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.klein4ConsistencyLora, loraList),
     },
     klein9: {
       label: 'Flux Klein 9B',
-      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.klein9Unet),
+      unet: diffusionModelStatus(info, settings.klein9Unet),
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.klein9Clip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
       consistencyLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.klein9ConsistencyLora, loraList),
     },
     qwen: {
       label: 'Qwen Edit',
-      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.qwenEditUnet),
+      unet: diffusionModelStatus(info, settings.qwenEditUnet),
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.qwenEditClip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.vae),
       lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.qwenEditLora, loraList),
@@ -1061,8 +1067,8 @@ function configuredModelsStatus(info) {
     },
     wan: {
       label: 'Wan 2.2',
-      high: modelStatus(info, 'UNETLoader', 'unet_name', settings.wanHighUnet),
-      low: modelStatus(info, 'UNETLoader', 'unet_name', settings.wanLowUnet),
+      high: diffusionModelStatus(info, settings.wanHighUnet),
+      low: diffusionModelStatus(info, settings.wanLowUnet),
       textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', settings.wanClip),
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.wanVae),
       highLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.wanHighLora, loraList),
@@ -1076,7 +1082,7 @@ function configuredModelsStatus(info) {
     },
     scail: {
       label: 'SCAIL 2',
-      unet: modelStatus(info, 'UNETLoader', 'unet_name', settings.scailUnet),
+      unet: diffusionModelStatus(info, settings.scailUnet),
       lightx: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.scailLora, loraList),
       clipVision: modelStatus(info, 'CLIPVisionLoader', 'clip_name', settings.scailClipVision),
       sam: modelStatus(info, 'CheckpointLoaderSimple', 'ckpt_name', settings.scailSam),
@@ -2622,7 +2628,7 @@ async function buildEditKrea2Ref(p, refNames) {
 async function buildEditQwen(p, refNames) {
   const graph = {};
   const preset = qwenEditPreset(p.qwenQuality);
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.qwenEditUnet, weight_dtype: 'default' } };
+  graph.unet = diffusionModelLoader(settings.qwenEditUnet);
   let qwenBaseModel = ['unet', 0];
   const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
   const lightningOverride = (Array.isArray(p.loras) ? p.loras : [])
@@ -2730,7 +2736,7 @@ function kleinConfigForEngine(engine) {
 async function buildEdit(p, refNames) {
   const graph = {};
   const klein = kleinConfigForEngine(p.editEngine);
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: klein.unet, weight_dtype: 'default' } };
+  graph.unet = diffusionModelLoader(klein.unet);
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: klein.clip, type: 'flux2', device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.kleinVae } };
 
@@ -3935,8 +3941,8 @@ async function buildAnimateWan(imageName, opts) {
   const cfg = fast ? 1 : 3.5;
   const split = fast ? 2 : 10;
 
-  graph.high = { class_type: 'UNETLoader', inputs: { unet_name: settings.wanHighUnet, weight_dtype: 'default' } };
-  graph.low = { class_type: 'UNETLoader', inputs: { unet_name: settings.wanLowUnet, weight_dtype: 'default' } };
+  graph.high = diffusionModelLoader(settings.wanHighUnet);
+  graph.low = diffusionModelLoader(settings.wanLowUnet);
   let hiModel = ['high', 0];
   let loModel = ['low', 0];
   if (fast) {
@@ -4051,7 +4057,7 @@ async function scailAudioRef(graph, opts, fallbackDriveKey) {
 async function buildAnimateScail(imageName, opts) {
   const graph = {};
 
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.scailUnet, weight_dtype: 'default' } };
+  graph.unet = diffusionModelLoader(settings.scailUnet);
   graph.lightx = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['unet', 0], lora_name: settings.scailLora, strength_model: 1 } };
   let infinityModel = null;
   if (opts.scailMode === 'infinity') {
@@ -5169,9 +5175,28 @@ async function handleApi(req, res, url) {
     let vramAdjustments = [];
     if (vramProfile === 'low') {
       const guarded = applyLowVramImageLimits(p);
-      Object.assign(p, guarded.params);
-      vramAdjustments = guarded.adjustments;
+      if (guarded.adjustments.length) {
+        const lowVramChoice = ['safe', 'bypass'].includes(p.lowVramChoice) ? p.lowVramChoice : '';
+        if (!lowVramChoice) {
+          return json(res, 409, {
+            error: 'Low VRAM mode recommends safer settings for this generation',
+            code: 'low_vram_confirmation',
+            adjustments: guarded.adjustments,
+            requested: { width: p.width, height: p.height, batch: p.batch },
+            guarded: {
+              width: guarded.params.width,
+              height: guarded.params.height,
+              batch: guarded.params.batch,
+            },
+          });
+        }
+        if (lowVramChoice === 'safe') {
+          Object.assign(p, guarded.params);
+          vramAdjustments = guarded.adjustments;
+        }
+      }
     }
+    delete p.lowVramChoice;
     if (p.editOutpaint) Object.assign(p, normalizeOutpaintDimensions(p.width, p.height));
     p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
     p.steps = clampInt(p.steps, 1, 100, p.mode === 't2i' && p.krea2Turbo ? 8 : 12);
@@ -6261,6 +6286,7 @@ async function handleApi(req, res, url) {
     const pick = (cls, field) => ((info[cls]?.input?.required?.[field]?.[0]) || []).filter((n) => n.toLowerCase().includes(q));
     return json(res, 200, {
       unets: pick('UNETLoader', 'unet_name'),
+      gguf_unets: pick('UnetLoaderGGUF', 'unet_name'),
       clips: pick('CLIPLoader', 'clip_name'),
       vaes: pick('VAELoader', 'vae_name'),
       loras: pick('LoraLoader', 'lora_name'),

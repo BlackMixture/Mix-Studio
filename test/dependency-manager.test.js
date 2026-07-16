@@ -221,6 +221,27 @@ test('registered ComfyUI models are reused even when they live outside the confi
   }
 });
 
+test('a missing manually configured GGUF is never filled with safetensors bytes', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-gguf-format-'));
+  let fetched = false;
+  try {
+    await assert.rejects(
+      downloadAsset(
+        ['wanHighUnet', 'diffusion_models', 'https://example.test/wan-high-fp8.safetensors'],
+        rootDir,
+        { wanHighUnet: 'Wan/high-noise-Q3_K_S.gguf' },
+        () => {},
+        { fetch: async () => { fetched = true; throw new Error('should not fetch'); } }
+      ),
+      (error) => error.code === 'dependency_custom_model_missing'
+        && error.failedModel === path.join('Wan', 'high-noise-Q3_K_S.gguf')
+    );
+    assert.equal(fetched, false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('models in discovered external roots are reused while ComfyUI is stopped', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-dependency-roots-'));
   const destinationRoot = path.join(rootDir, 'destination');

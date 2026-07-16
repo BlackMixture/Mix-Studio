@@ -2226,18 +2226,18 @@
             <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
           </div>
           <div class="settings-group"><h5>Flux 2 Klein Edit</h5>
-            <div class="field"><label>Klein 4B UNET</label><input id="setKlein4Unet" type="text" /></div>
+            <div class="field"><label>Klein 4B diffusion model (.safetensors or .gguf)</label><input id="setKlein4Unet" type="text" /></div>
             <div class="field"><label>Klein 4B text encoder</label><input id="setKlein4Clip" type="text" /></div>
             <div class="field"><label>Klein 4B Expand consistency LoRA</label><input id="setKlein4ConsistencyLora" type="text" /></div>
             <div class="field"><label>Klein 4B consistency trigger</label><input id="setKlein4ConsistencyTrigger" type="text" /></div>
-            <div class="field"><label>Klein 9B UNET</label><input id="setKlein9Unet" type="text" /></div>
+            <div class="field"><label>Klein 9B diffusion model (.safetensors or .gguf)</label><input id="setKlein9Unet" type="text" /></div>
             <div class="field"><label>Klein 9B text encoder</label><input id="setKlein9Clip" type="text" /></div>
             <div class="field"><label>Klein 9B Expand consistency LoRA</label><input id="setKlein9ConsistencyLora" type="text" /></div>
             <div class="field"><label>Klein 9B consistency trigger</label><input id="setKlein9ConsistencyTrigger" type="text" /></div>
             <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
           </div>
           <div class="settings-group"><h5>Qwen Image Edit</h5>
-            <div class="field"><label>Qwen edit UNET</label><input id="setQeUnet" type="text" /></div>
+            <div class="field"><label>Qwen edit diffusion model (.safetensors or .gguf)</label><input id="setQeUnet" type="text" /></div>
             <div class="field"><label>Qwen edit text encoder</label><input id="setQeClip" type="text" /></div>
             <div class="field"><label>Lightning LoRA</label><input id="setQeLora" type="text" /></div>
             <div class="field"><label>Multiple Angles LoRA</label><input id="setQeAnglesLora" type="text" /></div>
@@ -2263,8 +2263,8 @@
             <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
           </div>
           <div class="settings-group"><h5>Wan 2.2</h5>
-            <div class="field"><label>High-noise UNET</label><input id="setWanHigh" type="text" /></div>
-            <div class="field"><label>Low-noise UNET</label><input id="setWanLow" type="text" /></div>
+            <div class="field"><label>High-noise diffusion model (.safetensors or .gguf)</label><input id="setWanHigh" type="text" /></div>
+            <div class="field"><label>Low-noise diffusion model (.safetensors or .gguf)</label><input id="setWanLow" type="text" /></div>
             <div class="field"><label>UMT5 text encoder</label><input id="setWanClip" type="text" /></div>
             <div class="field"><label>Wan VAE</label><input id="setWanVae" type="text" /></div>
             <div class="field"><label>lightx2v high LoRA</label><input id="setWanHighLora" type="text" /></div>
@@ -2278,7 +2278,7 @@
             <div class="field"><label>Custom sigmas — upscale pass</label><input id="setErosSigU" type="text" placeholder="e.g. 0.92, 0.725, 0.42, 0.0" /></div>
           </div>
           <div class="settings-group"><h5>SCAIL 2 Motion Transfer</h5>
-            <div class="field"><label>SCAIL-2 UNET</label><input id="setScailUnet" type="text" /></div>
+            <div class="field"><label>SCAIL-2 diffusion model (.safetensors or .gguf)</label><input id="setScailUnet" type="text" /></div>
             <div class="field"><label>lightx2v distill LoRA</label><input id="setScailLora" type="text" /></div>
             <div class="field"><label>Pusa LoRA</label><input id="setScailPusaLora" type="text" /></div>
             <div class="field"><label>CLIP Vision</label><input id="setScailCv" type="text" /></div>
@@ -2334,7 +2334,7 @@
               </div>
             </div>
             <label class="vram-profile-control settings-vram-profile">
-              <span><strong>Generation memory</strong><small>Low VRAM keeps image batches at one and limits base generations to about one megapixel so ComfyUI can offload model weights through system RAM.</small></span>
+              <span><strong>Generation memory</strong><small>Low VRAM recommends batch one and about one megapixel, but always asks first and offers the exact requested settings. Configured .gguf diffusion models automatically use the GGUF loader; Krea INT8 ConvRot uses ComfyUI's native loader.</small></span>
               <select id="setVramProfile">
                 <option value="auto">Auto</option>
                 <option value="low">Low VRAM · 8–12 GB</option>

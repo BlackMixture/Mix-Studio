@@ -25,7 +25,7 @@ test('VRAM profile recommends the guarded route through 12 GB', () => {
   assert.equal(resolveVramProfile('standard', { vramGb: 8 }), 'standard');
 });
 
-test('low VRAM image limits retain normal Krea resolution and bound larger requests', () => {
+test('low VRAM image recommendations retain normal Krea resolution and bound larger requests', () => {
   assert.deepEqual(lowVramDimensions(1024, 1024), { width: 1024, height: 1024, adjusted: false });
   const bounded = lowVramDimensions(2048, 1024);
   assert.ok(bounded.width * bounded.height <= 1024 * 1024);
@@ -43,6 +43,9 @@ test('setup and advanced settings expose the low VRAM route', () => {
   assert.match(html, /id="setupVramProfile"/);
   assert.match(html, /id="setVramProfile"/);
   assert.match(server, /applyLowVramImageLimits/);
+  assert.match(server, /low_vram_confirmation/);
+  assert.match(server, /lowVramChoice === 'safe'/);
   assert.match(server, /route === '\/api\/setup\/vram-profile'/);
-  assert.match(app, /res\.adjustments/);
+  assert.match(app, /Use requested settings/);
+  assert.match(app, /lowVramChoice/);
 });

@@ -8,7 +8,7 @@
       "id": "core.image",
       "label": "Image generation + style + depth + SeedVR2",
       "required": true,
-      "variant": "Krea 2 FP8 or INT8 ConvRot with dynamic VRAM offloading + SeedVR2 FP8",
+      "variant": "Krea 2 FP8 or native INT8 ConvRot with dynamic VRAM offloading + SeedVR2 FP8",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "always" },
       "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae", "seedvr2-7b", "seedvr2-vae"],
       "nodes": ["core", "TextGenerate", "ComfyUI-Krea2-StyleTransfer", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3", "ComfyUI-SeedVR2_VideoUpscaler"]
@@ -17,34 +17,34 @@
       "id": "edit.klein4",
       "label": "Klein 4B Edit + Outpaint",
       "default": false,
-      "variant": "Klein 4B BF16",
+      "variant": "Klein 4B BF16; configured GGUF files use the GGUF loader",
       "hardware": { "minimumVramGb": 12, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
       "models": ["flux-2-klein-4b", "qwen-3-4b", "flux2-vae", "klein-4b-consistency-lora"],
-      "nodes": ["Flux2Scheduler", "ReferenceLatent", "KJNodes outpaint"]
+      "nodes": ["Flux2Scheduler", "ReferenceLatent", "KJNodes outpaint", "ComfyUI-GGUF"]
     },
     {
       "id": "edit.klein9",
       "label": "Klein 9B Edit + Outpaint",
       "default": false,
-      "variant": "Klein 9B FP8",
+      "variant": "Klein 9B FP8; configured GGUF files use the GGUF loader",
       "hardware": { "minimumVramGb": 16, "recommendedVramGb": 24, "minimumRamGb": 32, "recommendedRamGb": 48, "autoSelect": "recommended" },
       "models": ["flux-2-klein-9b", "qwen-3-8b", "flux2-vae", "klein-9b-consistency-lora", "sam3"],
-      "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3", "KJNodes outpaint"]
+      "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3", "KJNodes outpaint", "ComfyUI-GGUF"]
     },
     {
       "id": "edit.qwen",
       "label": "Qwen Edit + Outpaint + multi-angle",
       "default": false,
-      "variant": "Qwen Image Edit 2511 BF16",
+      "variant": "Qwen Image Edit 2511 BF16; configured GGUF files use the GGUF loader",
       "hardware": { "minimumVramGb": 16, "recommendedVramGb": 24, "minimumRamGb": 48, "recommendedRamGb": 64, "autoSelect": "recommended" },
       "models": ["qwen-image-edit-2511", "qwen-image-edit-lightning", "qwen-image-edit-multi-angle", "sam3"],
-      "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod", "ComfyUI-SAM3", "KJNodes outpaint"]
+      "nodes": ["TextEncodeQwenImageEditPlus", "FluxKontextMultiReferenceLatentMethod", "ComfyUI-SAM3", "KJNodes outpaint", "ComfyUI-GGUF"]
     },
     {
       "id": "edit.krea2",
       "label": "Krea 2 Inpaint + Outpaint + Regions",
       "default": true,
-      "variant": "Uses the guarded Krea 2 low-VRAM image route when needed",
+      "variant": "Uses native Krea 2 INT8 and asks before applying safer low-VRAM generation settings",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
       "models": ["krea2", "sam3"],
       "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ", "ComfyUI-SAM3", "KJNodes outpaint"]
@@ -90,20 +90,20 @@
       "id": "video.wan",
       "label": "Wan 2.2 Video",
       "default": false,
-      "variant": "Wan 2.2 14B FP8",
+      "variant": "Wan 2.2 14B FP8; configured GGUF pairs use the GGUF loader",
       "hardware": { "minimumVramGb": 16, "recommendedVramGb": 24, "minimumRamGb": 48, "recommendedRamGb": 64, "autoSelect": "recommended" },
       "models": ["wan2.2-high", "wan2.2-low", "umt5-xxl", "wan-vae", "wan-lightx2v"],
-      "nodes": ["WanImageToVideo", "VideoHelperSuite"]
+      "nodes": ["WanImageToVideo", "VideoHelperSuite", "ComfyUI-GGUF"]
     },
     {
       "id": "video.scail",
       "label": "SCAIL 2 Motion Transfer",
       "default": false,
-      "variant": "SCAIL 2 14B FP8",
+      "variant": "SCAIL 2 14B FP8; configured GGUF files use the GGUF loader",
       "hardware": { "minimumVramGb": 16, "recommendedVramGb": 24, "minimumRamGb": 48, "recommendedRamGb": 64, "autoSelect": "recommended" },
       "dependsOn": ["video.wan"],
       "models": ["scail2", "sam3.1", "clip-vision-h", "pusa"],
-      "nodes": ["WanSCAILToVideo", "SAM3_VideoTrack", "comfyui-scail2-infinity"]
+      "nodes": ["WanSCAILToVideo", "SAM3_VideoTrack", "comfyui-scail2-infinity", "ComfyUI-GGUF"]
     }
   ]
 }

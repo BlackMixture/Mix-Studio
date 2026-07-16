@@ -330,6 +330,7 @@ async function api(path, opts) {
     const error = new Error(data.error || `${path} failed (${res.status})`);
     error.code = data.code || '';
     error.status = res.status;
+    error.details = data;
     if (Array.isArray(data.missingAssets)) error.missingAssets = data.missingAssets;
     throw error;
   }
@@ -13603,12 +13604,46 @@ $('#generateBtn').addEventListener('click', async () => {
         : (requests.length > 1 ? `Queueing ${requests.length} camera variations…` : 'Queued…')));
     const jobIds = [];
     const generationAdjustments = new Set();
+    let lowVramChoice = '';
     for (const request of requests) {
-      const res = await api('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
+      let res;
+      while (!res) {
+        try {
+          res = await api('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({}, request, lowVramChoice ? { lowVramChoice } : {})),
+          });
+        } catch (error) {
+          if (error.code !== 'low_vram_confirmation') throw error;
+          const requested = error.details?.requested || {};
+          const guarded = error.details?.guarded || {};
+          const choice = await openAppDialog({
+            title: 'Low VRAM recommendation',
+            message: 'These requested settings may run out of GPU or system memory. Choose the safer recommendation, or keep the exact settings you requested.',
+            confirmLabel: 'Continue',
+            defaultChoice: 'safe',
+            choices: [
+              {
+                value: 'safe',
+                label: 'Use safer settings',
+                detail: `${guarded.width || requested.width} × ${guarded.height || requested.height} · batch ${guarded.batch || 1}`,
+              },
+              {
+                value: 'bypass',
+                label: 'Use requested settings',
+                detail: `${requested.width} × ${requested.height} · batch ${requested.batch} · may run out of memory`,
+              },
+            ],
+          });
+          if (!choice) {
+            const cancelled = new Error('Generation cancelled');
+            cancelled.code = 'job_cancelled';
+            throw cancelled;
+          }
+          lowVramChoice = choice;
+        }
+      }
       jobIds.push(res.jobId);
       (res.adjustments || []).forEach((adjustment) => generationAdjustments.add(adjustment));
       state.activeJobs.add(res.jobId);
@@ -23735,7 +23770,7 @@ function renderInitialSetup() {
   }
   const effectiveVramProfile = vramProfile.effective || vramProfile.recommended || 'standard';
   $('#setupVramProfileCopy').textContent = effectiveVramProfile === 'low'
-    ? 'Uses the guarded 8–12 GB image route with ComfyUI weight offloading.'
+    ? 'Recommends safer 8–12 GB settings before generation, with an explicit bypass.'
     : 'Uses standard image limits for GPUs with more memory.';
   $('#setupVramProfile').disabled = busy || !state.profileIsOwner;
 
