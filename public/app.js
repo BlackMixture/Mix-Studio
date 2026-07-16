@@ -17972,7 +17972,14 @@ function openLightbox(id, mediaSel) {
     && it.mode === 'edit' && !selVideo && !selComposite;
   const imageSaveItems = [];
   if (!selVideo && !selComposite) {
-    if (it.upscaled) {
+    const huntLayouts = it.mode === 'composite' && it.strengthHunt?.documentation
+      ? it.strengthHunt.layouts : null;
+    if (huntLayouts?.row && huntLayouts?.square) {
+      imageSaveItems.push(
+        { label: 'Save row', detail: 'Horizontal comparison strip', icon: 'save', action: () => downloadStrengthHuntLayout(it, 'row') },
+        { label: 'Save square', detail: 'Square comparison grid', icon: 'save', action: () => downloadStrengthHuntLayout(it, 'square') },
+      );
+    } else if (it.upscaled) {
       imageSaveItems.push(
         { label: 'Save upscaled', detail: 'Current image', icon: 'save', action: () => downloadItem(it, 'upscaled') },
         { label: 'Save original', detail: 'Before upscale', icon: 'save', action: () => downloadItem(it, 'original') },
@@ -20283,6 +20290,15 @@ function downloadItem(it, variant) {
   a.href = '/images/' + (useUpscaled ? it.upscaled : it.file);
   a.download = generationDownloadStem(it, 'kreastudio') + suffix + '.png';
   mirrorGalleryExport({ id: it.id, asset: 'image', variant });
+  a.click();
+}
+function downloadStrengthHuntLayout(it, layoutName) {
+  const layout = it?.strengthHunt?.layouts?.[layoutName];
+  if (!layout?.file) return;
+  const a = document.createElement('a');
+  a.href = '/images/' + layout.file;
+  a.download = generationDownloadStem(it, 'kreastudio') + `_strength_hunt_${layoutName}.png`;
+  mirrorGalleryExport({ id: it.id, asset: 'image', variant: `strength-hunt-${layoutName}` });
   a.click();
 }
 function downloadComposite(it, composite) {

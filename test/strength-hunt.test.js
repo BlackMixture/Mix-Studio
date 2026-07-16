@@ -116,6 +116,34 @@ test('Strength Hunt matrix documentation uses a bounded high-resolution layout',
   assert.ok(layout.height <= 4096);
 });
 
+test('single-LoRA Strength Hunt can render an exact square documentation grid', () => {
+  const colors = [
+    [255, 0, 0, 255], [0, 255, 0, 255], [0, 80, 255, 255],
+    [255, 200, 0, 255], [180, 0, 255, 255],
+  ];
+  const square = buildStrengthHuntSheet(colors.map((color, index) => ({
+    buffer: solidPng(8, 6, color),
+    label: `Film ${(index * 0.2).toFixed(1)}`,
+    strengths: [index * 0.2],
+  })), {
+    columns: 3,
+    rows: 2,
+    squareCanvas: true,
+    desiredTileWidth: 128,
+    axes: [{ label: 'Film' }],
+    prompt: 'Portrait',
+    seed: 42,
+    cfg: 1,
+    steps: 8,
+    model: 'Krea 2',
+  });
+  const decoded = decodePng(square.buffer);
+  assert.equal(square.width, square.height);
+  assert.equal(decoded.width, square.width);
+  assert.equal(decoded.height, square.height);
+  assert.ok(square.width > 400);
+});
+
 test('Strength Hunt is exposed as an intentional single-job UI and server workflow', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
   const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
@@ -130,4 +158,9 @@ test('Strength Hunt is exposed as an intentional single-job UI and server workfl
   assert.match(server, /kind: 'loraHunt'/);
   assert.match(server, /generationGroupId: plan\.id/);
   assert.match(server, /buildStrengthHuntSheet/);
+  assert.match(server, /squareCanvas: true/);
+  assert.match(server, /layouts\.square/);
+  assert.match(app, /label: 'Save row'/);
+  assert.match(app, /label: 'Save square'/);
+  assert.match(app, /downloadStrengthHuntLayout/);
 });

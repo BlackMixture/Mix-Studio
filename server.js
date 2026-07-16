@@ -1560,7 +1560,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
   const model = job.params.mode === 'edit'
     ? ({ qwen: 'Qwen Edit', klein9: 'Flux Klein 9B', krea2: 'Krea 2', krea2ref: 'Krea 2 Edit' }[job.params.editEngine] || 'Flux Klein 4B')
     : (job.params.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo');
-  const documentation = buildStrengthHuntSheet(sheetInputs, {
+  const documentationInfo = {
     columns: plan.columns,
     rows: plan.rows,
     prompt: job.params.prompt,
@@ -1569,12 +1569,41 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     steps: job.params.steps,
     model,
     axes: plan.axes,
-  });
+  };
+  const documentation = buildStrengthHuntSheet(sheetInputs, documentationInfo);
   const compositeId = uid();
   const compositeFile = settings.smartFilenames
     ? smartAssetFilename(job.params.prompt, compositeId, '.png', 'strength-hunt-documentation')
     : `${compositeId}_strength_hunt.png`;
   await fsp.writeFile(path.join(IMAGES, compositeFile), documentation.buffer);
+  const layouts = {
+    row: { file: compositeFile, width: documentation.width, height: documentation.height },
+  };
+  if (plan.axes.length === 1) {
+    const squareColumns = Math.ceil(Math.sqrt(sheetInputs.length));
+    const squareRows = Math.ceil(sheetInputs.length / squareColumns);
+    const squareDocumentation = buildStrengthHuntSheet(sheetInputs.map((entry) => ({
+      buffer: entry.buffer,
+      label: entry.label,
+      strengths: entry.strengths,
+    })), {
+      ...documentationInfo,
+      columns: squareColumns,
+      rows: squareRows,
+      squareCanvas: true,
+      desiredTileWidth: 512,
+    });
+    const squareId = uid();
+    const squareFile = settings.smartFilenames
+      ? smartAssetFilename(job.params.prompt, squareId, '.png', 'strength-hunt-square')
+      : `${compositeId}_strength_hunt_square.png`;
+    await fsp.writeFile(path.join(IMAGES, squareFile), squareDocumentation.buffer);
+    layouts.square = {
+      file: squareFile,
+      width: squareDocumentation.width,
+      height: squareDocumentation.height,
+    };
+  }
   const composite = {
     id: compositeId,
     file: compositeFile,
@@ -1601,7 +1630,13 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     createdAt: createdAt + plan.variants.length + 1,
     durationMs,
     generationGroupId: plan.id,
-    strengthHunt: { id: plan.id, axes: plan.axes, documentation: true, count: created.length },
+    strengthHunt: {
+      id: plan.id,
+      axes: plan.axes,
+      documentation: true,
+      count: created.length,
+      layouts,
+    },
     upscaled: null,
     video: null,
   };

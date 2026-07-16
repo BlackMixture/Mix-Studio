@@ -7,6 +7,7 @@ const { selectionAssetRefs, selectionSummary } = require('../lib/selection-summa
 test('selectionAssetRefs collects unique local image and video assets', () => {
   const items = [{
     file: 'one.png', upscaled: 'one-up.png', sourceFile: 'source.png',
+    strengthHunt: { layouts: { row: { file: 'one.png' }, square: { file: 'hunt-square.png' } } },
     composites: [{ file: 'sheet.png' }, { file: 'sheet.png' }],
     videos: [{ file: 'clip.mp4' }],
   }];
@@ -14,6 +15,7 @@ test('selectionAssetRefs collects unique local image and video assets', () => {
     { kind: 'image', file: 'one.png' },
     { kind: 'image', file: 'one-up.png' },
     { kind: 'image', file: 'source.png' },
+    { kind: 'image', file: 'hunt-square.png' },
     { kind: 'image', file: 'sheet.png' },
     { kind: 'video', file: 'clip.mp4' },
   ]);
