@@ -13474,7 +13474,13 @@ $('#generateBtn').addEventListener('click', async () => {
     : [];
   const strengthHuntLoras = (mode === 'edit' ? state.editLoras : state.loras)
     .filter((lora) => lora && lora.name && lora.on && lora.strengthHunt);
-  const strengthHuntCount = strengthHuntLoras.length === 2 ? 121 : (strengthHuntLoras.length === 1 ? 11 : 0);
+  const strengthHuntAxes = strengthHuntLoras.map((lora) => ({
+    lora,
+    values: strengthHuntValues(lora.strength),
+  }));
+  const strengthHuntCount = strengthHuntAxes.length
+    ? strengthHuntAxes.reduce((count, axis) => count * axis.values.length, 1)
+    : 0;
   if (strengthHuntLoras.length > 2) return toast('Strength Hunt supports two LoRAs at a time', true);
   if (strengthHuntCount && (sequenceSteps.length || qwenAngleExports.length)) {
     return toast('Run Strength Hunt separately from sequential edits and camera variations', true);
@@ -13485,11 +13491,12 @@ $('#generateBtn').addEventListener('click', async () => {
   if (strengthHuntCount) {
     const matrix = strengthHuntLoras.length === 2;
     const names = strengthHuntLoras.map((lora) => prettyLora(lora.name)).join(' × ');
+    const maxima = strengthHuntAxes.map((axis) => strengthHuntStrengthLabel(axis.lora.strength));
     const confirmed = await askConfirm({
       title: `Generate ${strengthHuntCount}-image Strength Hunt?`,
       message: matrix
-        ? `${names} will run as one 11 × 11 matrix job, comparing Off and every 0.2 step through 2.0 on both axes. This is 121 generations with the same prompt and seed and may take a long time. Finish upscaling is skipped for the comparison.`
-        : `${names} will generate 11 images at strengths 0.0 through 2.0 in 0.2 steps, using the same prompt and seed. They and a labeled documentation sheet will be saved as one gallery group. Finish upscaling is skipped for the comparison.`,
+        ? `${names} will run as one ${strengthHuntAxes[0].values.length} × ${strengthHuntAxes[1].values.length} matrix job. X runs from 0.0 to ${maxima[0]}; Y runs from 0.0 to ${maxima[1]}, in 0.2 steps with each exact maximum included. This is ${strengthHuntCount} generations with the same prompt and seed and may take a long time. Finish upscaling is skipped.`
+        : `${names} will generate ${strengthHuntCount} images from 0.0 through its current ${maxima[0]} strength, in 0.2 steps with the exact maximum included. They use the same prompt and seed and will be saved with a labeled documentation sheet as one gallery group. Finish upscaling is skipped.`,
       confirmLabel: `Queue ${strengthHuntCount} generations`,
     });
     if (!confirmed) return;
@@ -15425,12 +15432,29 @@ function generationGroupItems(item) {
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
 
+function strengthHuntStrengthLabel(value) {
+  const strength = Math.round((Number(value) || 0) * 100) / 100;
+  return Number.isInteger(strength * 10) ? strength.toFixed(1) : strength.toFixed(2);
+}
+
+function strengthHuntValues(maximum) {
+  const ceiling = Math.max(0, Math.min(2, Number(maximum) || 0));
+  const values = [0];
+  for (let value = 0.2; value < ceiling - 0.001; value += 0.2) {
+    values.push(Math.round(value * 100) / 100);
+  }
+  if (ceiling > 0 && Math.abs(values[values.length - 1] - ceiling) > 0.001) {
+    values.push(Math.round(ceiling * 100) / 100);
+  }
+  return values;
+}
+
 function strengthHuntItemLabel(item) {
   if (!item || !item.strengthHunt) return '';
   if (item.strengthHunt.documentation) return 'Documentation';
   const strengths = Array.isArray(item.strengthHunt.strengths) ? item.strengthHunt.strengths : [];
-  if (strengths.length > 1) return `X ${Number(strengths[0]).toFixed(1)} · Y ${Number(strengths[1]).toFixed(1)}`;
-  if (strengths.length) return `Strength ${Number(strengths[0]).toFixed(1)}`;
+  if (strengths.length > 1) return `X ${strengthHuntStrengthLabel(strengths[0])} · Y ${strengthHuntStrengthLabel(strengths[1])}`;
+  if (strengths.length) return `Strength ${strengthHuntStrengthLabel(strengths[0])}`;
   return item.strengthHunt.label || 'Strength Hunt';
 }
 

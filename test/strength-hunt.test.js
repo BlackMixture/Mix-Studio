@@ -29,32 +29,45 @@ function solidPng(width, height, rgba) {
   return encodeRgbaPng(width, height, pixels);
 }
 
-test('single-LoRA Strength Hunt generates 0.0 through 2.0 in 0.2 steps', () => {
+test('single-LoRA Strength Hunt stops at the LoRA current strength', () => {
   const plan = buildStrengthHuntPlan([
     lora('Looks/Film.safetensors', { strengthHunt: true }),
     lora('Looks/Fixed.safetensors', { strength: 0.55 }),
   ], { id: 'hunt-one' });
-  assert.equal(plan.variants.length, 11);
-  assert.deepEqual(plan.variants.map((variant) => variant.strengths[0]), [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]);
+  assert.equal(plan.variants.length, 5);
+  assert.deepEqual(plan.variants.map((variant) => variant.strengths[0]), [0, 0.2, 0.4, 0.6, 0.7]);
   assert.equal(plan.variants[0].loras[0].strength, 0);
   assert.equal(plan.variants[0].loras[0].on, false);
-  assert.equal(plan.variants[10].loras[0].strength, 2);
-  assert.equal(plan.variants[5].loras[1].strength, 0.55);
+  assert.equal(plan.variants[4].loras[0].strength, 0.7);
+  assert.equal(plan.variants[4].label, 'Film 0.7');
+  assert.equal(plan.variants[3].loras[1].strength, 0.55);
+  assert.equal(plan.axes[0].maxStrength, 0.7);
 });
 
-test('two-LoRA Strength Hunt creates a complete 11 by 11 matrix', () => {
+test('two-LoRA Strength Hunt gives each matrix axis its own current maximum', () => {
   const plan = buildStrengthHuntPlan([
-    lora('A.safetensors', { strengthHunt: true }),
-    lora('B.safetensors', { strengthHunt: true }),
+    lora('A.safetensors', { strength: 0.6, strengthHunt: true }),
+    lora('B.safetensors', { strength: 1, strengthHunt: true }),
   ], { id: 'hunt-two' });
-  assert.equal(plan.columns, 11);
-  assert.equal(plan.rows, 11);
-  assert.equal(plan.variants.length, 121);
+  assert.equal(plan.columns, 4);
+  assert.equal(plan.rows, 6);
+  assert.equal(plan.variants.length, 24);
   assert.deepEqual(plan.variants[0].strengths, [0, 0]);
   assert.equal(plan.variants[0].loras[0].on, false);
   assert.equal(plan.variants[0].loras[1].on, false);
-  assert.deepEqual(plan.variants[10].strengths, [2, 0]);
-  assert.deepEqual(plan.variants[110].strengths, [0, 2]);
+  assert.deepEqual(plan.variants[3].strengths, [0.6, 0]);
+  assert.deepEqual(plan.variants[20].strengths, [0, 1]);
+  assert.deepEqual(plan.variants[23].strengths, [0.6, 1]);
+});
+
+test('Strength Hunt still reaches the global 2.0 safety ceiling', () => {
+  const plan = buildStrengthHuntPlan([
+    lora('A.safetensors', { strength: 2, strengthHunt: true }),
+    lora('B.safetensors', { strength: 2, strengthHunt: true }),
+  ]);
+  assert.equal(plan.columns, 11);
+  assert.equal(plan.rows, 11);
+  assert.equal(plan.variants.length, 121);
   assert.deepEqual(plan.variants[120].strengths, [2, 2]);
 });
 
@@ -109,8 +122,11 @@ test('Strength Hunt is exposed as an intentional single-job UI and server workfl
   assert.match(app, /Strength Hunt: On/);
   assert.match(app, /Generate \$\{strengthHuntCount\}-image Strength Hunt/);
   assert.match(app, /strengthHuntConfirmed: strengthHuntCount/);
+  assert.match(app, /values: strengthHuntValues\(lora\.strength\)/);
+  assert.match(app, /current \$\{maxima\[0\]\} strength/);
   assert.match(app, /classList\.add\('strength-hunt-chip'\)/);
   assert.match(server, /async function queueStrengthHuntJob/);
+  assert.match(server, /const huntCount = requestedHuntPlan \? requestedHuntPlan\.variants\.length : 0/);
   assert.match(server, /kind: 'loraHunt'/);
   assert.match(server, /generationGroupId: plan\.id/);
   assert.match(server, /buildStrengthHuntSheet/);
