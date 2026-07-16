@@ -13602,6 +13602,7 @@ $('#generateBtn').addEventListener('click', async () => {
       : (strengthHuntCount ? `Queueing ${strengthHuntCount}-image Strength Hunt…`
         : (requests.length > 1 ? `Queueing ${requests.length} camera variations…` : 'Queued…')));
     const jobIds = [];
+    const generationAdjustments = new Set();
     for (const request of requests) {
       const res = await api('/api/generate', {
         method: 'POST',
@@ -13609,6 +13610,7 @@ $('#generateBtn').addEventListener('click', async () => {
         body: JSON.stringify(request),
       });
       jobIds.push(res.jobId);
+      (res.adjustments || []).forEach((adjustment) => generationAdjustments.add(adjustment));
       state.activeJobs.add(res.jobId);
       if (!firstImageTutorialJobId && firstImageTutorialPhase === 'submitting'
         && mode === 't2i' && request.prompt === FIRST_IMAGE_TUTORIAL_PROMPT) {
@@ -13621,6 +13623,7 @@ $('#generateBtn').addEventListener('click', async () => {
     queueRefreshSoon();
     if (strengthHuntCount) toast(`Strength Hunt queued as one ${strengthHuntCount}-image job`);
     else if (jobIds.length > 1) toast(`${jobIds.length} camera variations queued`);
+    if (generationAdjustments.size) toast(`Low VRAM mode: ${[...generationAdjustments].join(' · ')}`);
   } catch (e) {
     setGenerating(false);
     if (!firstImageTutorialJobId) retryFirstImageTutorialGeneration();
@@ -23281,6 +23284,8 @@ $('#settingsBtn').addEventListener('click', async () => {
     const s = await api('/api/settings');
     $('#setComfy').value = s.comfyUrl;
     $('#galleryPasswordInput').value = s.galleryPassword || '1234';
+    $('#setVramProfile').value = s.vramProfile || 'auto';
+    $('#setKrea2ModelVariant').value = s.krea2ModelVariant || (/int8.*convrot|convrot.*int8/i.test(s.unet || '') ? 'int8-convrot' : 'fp8');
     $('#setUnet').value = s.unet;
     $('#setKrea2RawUnet').value = s.krea2RawUnet || '';
     $('#setKrea2TurboLora').value = s.krea2TurboLora || '';
@@ -23344,6 +23349,16 @@ $('#settingsBtn').addEventListener('click', async () => {
   renderHealth();
 });
 
+$('#setKrea2ModelVariant').addEventListener('change', () => {
+  const int8 = $('#setKrea2ModelVariant').value === 'int8-convrot';
+  $('#setUnet').value = int8
+    ? 'krea2_turbo_int8_convrot.safetensors'
+    : 'krea2_turbo_fp8_scaled.safetensors';
+  $('#setKrea2RawUnet').value = int8
+    ? 'krea2_raw_int8_convrot.safetensors'
+    : 'krea2_raw_fp8_scaled.safetensors';
+});
+
 $('#settingsSave').addEventListener('click', async () => {
   try {
     await api('/api/settings', {
@@ -23352,6 +23367,8 @@ $('#settingsSave').addEventListener('click', async () => {
         body: JSON.stringify({
           comfyUrl: $('#setComfy').value,
           galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
+          vramProfile: $('#setVramProfile').value,
+          krea2ModelVariant: $('#setKrea2ModelVariant').value,
           unet: $('#setUnet').value,
         krea2RawUnet: $('#setKrea2RawUnet').value,
         krea2TurboLora: $('#setKrea2TurboLora').value,
@@ -23708,6 +23725,19 @@ function renderInitialSetup() {
   $('#setupHardwareFit').textContent = quickFit.label || 'Compatibility not yet available';
   $('#setupHardwareSummary').title = quickFit.detail || 'Recommendations match the generation computer.';
   $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
+  const recommendedKrea2 = setupViewStatus.modelRecommendations?.krea2;
+  if (recommendedKrea2) {
+    $('#setupHardwareSummary').title += ` Krea 2 setup will use ${recommendedKrea2 === 'int8-convrot' ? 'the optimized INT8 ConvRot format' : 'FP8'}.`;
+  }
+  const vramProfile = setupViewStatus.vramProfile || {};
+  if (document.activeElement !== $('#setupVramProfile')) {
+    $('#setupVramProfile').value = vramProfile.configured || 'auto';
+  }
+  const effectiveVramProfile = vramProfile.effective || vramProfile.recommended || 'standard';
+  $('#setupVramProfileCopy').textContent = effectiveVramProfile === 'low'
+    ? 'Uses the guarded 8–12 GB image route with ComfyUI weight offloading.'
+    : 'Uses standard image limits for GPUs with more memory.';
+  $('#setupVramProfile').disabled = busy || !state.profileIsOwner;
 
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
   const modelsValue = comfy.modelsPath || (pathValue ? `${pathValue.replace(/[\\/]+$/, '')}\\models` : '');
@@ -23916,7 +23946,10 @@ async function startSetupDependencies(components) {
     return false;
   }
   const result = await api('/api/dependencies/install', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ components: filtered }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      components: filtered,
+      modelVariants: setupViewStatus.modelRecommendations || undefined,
+    }),
   });
   setupDependencyState = result.install;
   setSetupStep('install', { user: true });
@@ -23925,6 +23958,19 @@ async function startSetupDependencies(components) {
   scheduleSetupPoll();
   return true;
 }
+
+$('#setupVramProfile').addEventListener('change', async () => {
+  try {
+    setupViewStatus = await api('/api/setup/vram-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vramProfile: $('#setupVramProfile').value }),
+    });
+    renderInitialSetup();
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
 
 $('#setupGuideToggle').addEventListener('click', () => {
   setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');

@@ -8,8 +8,8 @@
       "id": "core.image",
       "label": "Image generation + style + depth + SeedVR2",
       "required": true,
-      "variant": "Krea 2 FP8 + SeedVR2 FP8",
-      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "always" },
+      "variant": "Krea 2 FP8 or INT8 ConvRot with dynamic VRAM offloading + SeedVR2 FP8",
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "always" },
       "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae", "seedvr2-7b", "seedvr2-vae"],
       "nodes": ["core", "TextGenerate", "ComfyUI-Krea2-StyleTransfer", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3", "ComfyUI-SeedVR2_VideoUpscaler"]
     },
@@ -44,8 +44,8 @@
       "id": "edit.krea2",
       "label": "Krea 2 Inpaint + Outpaint + Regions",
       "default": true,
-      "variant": "Uses the Krea 2 FP8 core",
-      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
+      "variant": "Uses the guarded Krea 2 low-VRAM image route when needed",
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
       "models": ["krea2", "sam3"],
       "nodes": ["Krea2RegionalMultiLoRAV3", "Ideogram4PromptBuilderKJ", "ComfyUI-SAM3", "KJNodes outpaint"]
     },
@@ -53,8 +53,8 @@
       "id": "edit.krea2ref",
       "label": "Krea 2 Edit + Identity Outpaint",
       "default": true,
-      "variant": "Krea 2 FP8 + Identity Edit LoRA",
-      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
+      "variant": "Krea 2 FP8 or INT8 ConvRot + Identity Edit LoRA with offloading",
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
       "models": ["krea2", "krea2-identity-edit-lora"],
       "nodes": ["Krea2EditRebalance", "comfyui-krea2edit", "KJNodes outpaint"]
     },

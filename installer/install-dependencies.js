@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { installComponents } = require('../lib/dependency-installer');
 const { FEATURE_COMPONENTS } = require('../lib/setup-guide');
+const { normalizeKrea2Variant, recommendedKrea2Variant } = require('../lib/krea2-model');
+const { recommendedVramProfile } = require('../lib/vram-profile');
 const { discoverModels } = require('./model-discovery');
 
 const root = path.resolve(__dirname, '..');
@@ -50,10 +52,17 @@ function combineDiscovery(saved, live) {
   };
 }
 
+function writeJsonAtomic(file, value) {
+  const temporary = `${file}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  fs.renameSync(temporary, file);
+}
+
 async function main() {
   const install = readJson(path.join(root, 'install.json'));
   const dataDir = path.resolve(root, String(install.dataDir || 'data'));
-  const settings = readJson(path.join(dataDir, 'settings.json'));
+  const settingsFile = path.join(dataDir, 'settings.json');
+  const settings = readJson(settingsFile);
   const manifest = readJson(path.join(__dirname, 'feature-manifest.json'));
   const selection = readJson(argument('--features'));
   const components = selectedComponents(manifest, selection);
@@ -80,11 +89,18 @@ async function main() {
   if (discovery.registeredModelCount) {
     process.stdout.write(`ComfyUI already reports ${discovery.registeredModelCount} model files; matching downloads will be skipped.\n`);
   }
-  await installComponents({
+  const configuredVariant = settings.krea2ModelVariant
+    ? normalizeKrea2Variant(settings.krea2ModelVariant, settings)
+    : recommendedKrea2Variant(install.hardware || {});
+  const result = await installComponents({
     runtime,
     settings,
     components,
-    options: { availableModelNames: discovery.registeredModelNames, availableModelRoots: discovery.modelRoots },
+    options: {
+      availableModelNames: discovery.registeredModelNames,
+      availableModelRoots: discovery.modelRoots,
+      modelVariants: { krea2: configuredVariant },
+    },
     report(phase, message, detail = {}) {
       const progress = Number.isFinite(detail.completed) && Number.isFinite(detail.total) && detail.total > 0
         ? ` (${detail.completed}/${detail.total})`
@@ -92,6 +108,14 @@ async function main() {
       process.stdout.write(`[${phase}]${progress} ${message}\n`);
     },
   });
+  if (result.settingUpdates && Object.keys(result.settingUpdates).length) {
+    Object.assign(settings, result.settingUpdates);
+    process.stdout.write(`Configured Krea 2 ${result.modelVariants.krea2} models for this machine.\n`);
+  }
+  if (!settings.vramProfile) {
+    settings.vramProfile = recommendedVramProfile(install.hardware || {});
+  }
+  writeJsonAtomic(settingsFile, settings);
 }
 
 if (require.main === module) {
@@ -101,4 +125,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { FEATURE_COMPONENTS, combineDiscovery, selectedComponents };
+module.exports = { FEATURE_COMPONENTS, combineDiscovery, selectedComponents, writeJsonAtomic };

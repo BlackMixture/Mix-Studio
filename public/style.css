@@ -7358,6 +7358,12 @@ body.sheet-open {
 .setup-hardware[data-fit="recommended"] { border-color: rgba(52,168,83,.3); }
 .setup-hardware[data-fit="limited"] { border-color: rgba(251,188,4,.3); }
 .setup-hardware[data-fit="difficult"] { border-color: rgba(255,95,95,.34); }
+.vram-profile-control { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.vram-profile-control > span { min-width: 0; display: grid; gap: 3px; }
+.vram-profile-control strong { color: var(--ink-soft); font-size: 11px; }
+.vram-profile-control small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.vram-profile-control select { min-width: 170px; min-height: 38px; padding: 0 34px 0 11px; border: 1px solid var(--line-strong); border-radius: 11px; background: #090c12; color: var(--ink-soft); font-size: 11px; font-weight: 800; }
+.setup-vram-profile { margin: -4px 0 14px; padding: 12px 14px; border: 1px solid rgba(226,232,255,.1); border-radius: 15px; background: rgba(8,11,17,.74); }
 .setup-operation { margin-bottom: 14px; padding: 14px; border: 1px solid rgba(66,133,244,.25); border-radius: 16px; background: rgba(66,133,244,.075); }
 .setup-operation > div:first-child { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .setup-operation strong { font-size: 12px; }
@@ -7415,6 +7421,8 @@ body.sheet-open {
   .setup-status small { white-space: normal; }
   .setup-hardware { align-items: flex-start; }
   .setup-hardware strong { white-space: normal; }
+  .vram-profile-control { align-items: stretch; flex-direction: column; gap: 9px; }
+  .vram-profile-control select { width: 100%; }
   .setup-actions { grid-template-columns: 1fr; }
   .setup-actions > button { min-height: 82px; }
   .setup-connection-fields { grid-template-columns: 1fr; }
@@ -8359,6 +8367,7 @@ body.sheet-open {
   transition: opacity 160ms ease;
 }
 .hardware-list.loading { opacity: .55; }
+.settings-vram-profile { padding: 13px 0; border-bottom: 1px solid rgba(226,232,255,.075); }
 .hardware-row {
   min-width: 0;
   padding: 11px 0;

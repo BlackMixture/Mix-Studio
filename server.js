@@ -173,6 +173,18 @@ const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const {
+  buildKrea2ModelLoader,
+  krea2VariantSettings,
+  normalizeKrea2Variant,
+  recommendedKrea2Variant,
+} = require('./lib/krea2-model');
+const {
+  applyLowVramImageLimits,
+  normalizeVramProfile,
+  recommendedVramProfile,
+  resolveVramProfile,
+} = require('./lib/vram-profile');
+const {
   QUICK_SETUP_COMPONENTS,
   combinedHardwareFit,
   componentHardwareGuidance,
@@ -257,6 +269,8 @@ const DEFAULT_SETTINGS = {
   comfyUrl: RUNTIME.comfy.url || 'http://127.0.0.1:8188',
   unet: 'krea2_turbo_fp8_scaled.safetensors',
   krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
+  krea2ModelVariant: 'fp8',
+  vramProfile: 'auto',
   krea2TurboLora: 'krea2_turbo_lora_rank_64_bf16.safetensors',
   krea2DepthLora: 'depth-control-lora.safetensors',
   krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
@@ -328,6 +342,8 @@ function saveJsonSync(file, obj) {
 
 function normalizeSettings(s) {
   normalizeSeedVr2Defaults(s);
+  s.krea2ModelVariant = normalizeKrea2Variant(s.krea2ModelVariant, s);
+  s.vramProfile = normalizeVramProfile(s.vramProfile);
   if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
   if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
   if (!s.klein9Unet) s.klein9Unet = DEFAULT_SETTINGS.klein9Unet;
@@ -637,6 +653,15 @@ async function getSetupHardwareInfo(force = false) {
   setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA });
   setupHardwareAt = Date.now();
   return setupHardwareSnapshot;
+}
+
+async function activeVramProfile() {
+  try {
+    const hardware = setupHardwareProfile(await getSetupHardwareInfo());
+    return resolveVramProfile(settings.vramProfile, hardware);
+  } catch {
+    return settings.vramProfile === 'low' ? 'low' : 'standard';
+  }
 }
 
 function applySetupConnection(values) {
@@ -2250,7 +2275,7 @@ function buildLoraChain(graph, loras) {
 
 function baseLoaders(graph, params = {}) {
   const unetName = params.krea2Turbo === false ? settings.krea2RawUnet : settings.unet;
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: unetName, weight_dtype: 'default' } };
+  graph.unet = buildKrea2ModelLoader(settings, unetName);
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 }
@@ -2537,7 +2562,7 @@ async function buildEditKrea2MaskedOutpaint(p, refNames) {
  * latent (the refs steer content; nothing is latent-copied). */
 async function buildEditKrea2Ref(p, refNames) {
   const graph = {};
-  graph.unet = { class_type: 'UNETLoader', inputs: { unet_name: settings.unet, weight_dtype: 'default' } };
+  graph.unet = buildKrea2ModelLoader(settings, settings.unet);
   const model = chainModelLoras(graph, ['unet', 0], p.loras, 'kelora');
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
@@ -4446,6 +4471,9 @@ const REQUIRED_CLASSES = {
 async function setupStatusPayload() {
   const detected = sam3InstallStatus(RUNTIME);
   const hardwareInfoValue = await getSetupHardwareInfo();
+  const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
+  const krea2Recommendation = recommendedKrea2Variant(hardwareProfile);
+  const vramRecommendation = recommendedVramProfile(hardwareProfile);
   const guidance = componentHardwareGuidance(SETUP_FEATURE_MANIFEST, hardwareInfoValue);
   let connected = false;
   let connectionError = '';
@@ -4460,7 +4488,13 @@ async function setupStatusPayload() {
     platform: process.platform,
     quickComponents: QUICK_SETUP_COMPONENTS,
     quickFit: combinedHardwareFit(QUICK_SETUP_COMPONENTS, guidance),
-    hardware: setupHardwareProfile(hardwareInfoValue),
+    hardware: hardwareProfile,
+    modelRecommendations: { krea2: krea2Recommendation },
+    vramProfile: {
+      configured: settings.vramProfile,
+      recommended: vramRecommendation,
+      effective: resolveVramProfile(settings.vramProfile, hardwareProfile),
+    },
     restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
     components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label, fit: guidance[id] || null })),
     comfy: {
@@ -4710,6 +4744,13 @@ async function handleApi(req, res, url) {
   if (route === '/api/setup/status' && req.method === 'GET') {
     return json(res, 200, await setupStatusPayload());
   }
+  if (route === '/api/setup/vram-profile' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure the generation computer' });
+    const body = await readJsonBody(req);
+    settings.vramProfile = normalizeVramProfile(body.vramProfile);
+    saveJsonSync(SETTINGS_FILE, settings);
+    return json(res, 200, await setupStatusPayload());
+  }
   if (route === '/api/setup/connection' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure the generation desktop' });
     if (dependencyInstallRunning || comfySetupProcess) return json(res, 409, { error: 'Wait for the current setup operation to finish.' });
@@ -4786,6 +4827,9 @@ async function handleApi(req, res, url) {
       if (key === 'exportDir') continue;
       if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
     }
+    if (typeof body.krea2ModelVariant === 'string') {
+      settings.krea2ModelVariant = body.krea2ModelVariant;
+    }
     if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
     settings = normalizeSettings(settings);
@@ -4838,6 +4882,7 @@ async function handleApi(req, res, url) {
         },
         models,
         krea2: {
+          modelVariant: settings.krea2ModelVariant,
           rawUnet: settings.krea2RawUnet,
           turboLora: settings.krea2TurboLora,
           depthLora: settings.krea2DepthLora,
@@ -4965,6 +5010,9 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const requested = Array.isArray(body.components) ? body.components.map((value) => String(value)) : [];
     const repair = body.repair === true;
+    const modelVariants = body.modelVariants && typeof body.modelVariants === 'object'
+      ? { krea2: normalizeKrea2Variant(body.modelVariants.krea2, krea2VariantSettings(body.modelVariants.krea2)) }
+      : undefined;
     const components = [...new Set(requested.filter((id) => Object.prototype.hasOwnProperty.call(DEPENDENCY_COMPONENTS, id)))];
     if (!components.length) return json(res, 400, { error: 'Choose at least one missing model or node group to install.' });
     try {
@@ -4988,11 +5036,16 @@ async function handleApi(req, res, url) {
           runtime: RUNTIME,
           settings,
           components,
-          options: { repair, signal: installController.signal, availableModelNames },
+          options: { repair, signal: installController.signal, availableModelNames, modelVariants },
           report: (phase, message, detail) => {
             if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
           },
         });
+        if (result.settingUpdates && Object.keys(result.settingUpdates).length) {
+          Object.assign(settings, result.settingUpdates);
+          settings = normalizeSettings(settings);
+          saveJsonSync(SETTINGS_FILE, settings);
+        }
         objectInfoCache = null;
         updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null, ...EMPTY_DEPENDENCY_FAILURE });
       } catch (error) {
@@ -5111,10 +5164,17 @@ async function handleApi(req, res, url) {
     if (!p.prompt && !p.qwenAngle && !hasActiveRegions(p.regions)) return json(res, 400, { error: 'Prompt is empty' });
     p.width = clampInt(p.width, 64, 4096, 1024);
     p.height = clampInt(p.height, 64, 4096, 1024);
+    p.batch = clampInt(p.batch, 1, 8, 1);
+    const vramProfile = await activeVramProfile();
+    let vramAdjustments = [];
+    if (vramProfile === 'low') {
+      const guarded = applyLowVramImageLimits(p);
+      Object.assign(p, guarded.params);
+      vramAdjustments = guarded.adjustments;
+    }
     if (p.editOutpaint) Object.assign(p, normalizeOutpaintDimensions(p.width, p.height));
     p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
     p.steps = clampInt(p.steps, 1, 100, p.mode === 't2i' && p.krea2Turbo ? 8 : 12);
-    p.batch = clampInt(p.batch, 1, 8, 1);
     p.cfg = clampNum(p.cfg, 0, 30, 1);
     p.krea2RawTurboLora = p.krea2Turbo || !p.krea2RawTurboLora || typeof p.krea2RawTurboLora !== 'object'
       ? undefined
@@ -5299,6 +5359,8 @@ async function handleApi(req, res, url) {
       refinedPrompt: refined,
       sequenceId: p.editSequence ? p.editSequence.id : undefined,
       strengthHunt: huntCount || undefined,
+      vramProfile,
+      adjustments: vramAdjustments.length ? vramAdjustments : undefined,
     });
   }
 

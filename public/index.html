@@ -2073,6 +2073,14 @@
           <span aria-hidden="true">GPU</span>
           <div><strong id="setupHardwareCopy">Checking this computer…</strong><small id="setupHardwareFit">Checking compatibility…</small></div>
         </div>
+        <label class="vram-profile-control setup-vram-profile">
+          <span><strong>Generation memory</strong><small id="setupVramProfileCopy">Automatically match this GPU.</small></span>
+          <select id="setupVramProfile">
+            <option value="auto">Auto</option>
+            <option value="low">Low VRAM · 8–12 GB</option>
+            <option value="standard">Standard · 16 GB+</option>
+          </select>
+        </label>
         <div class="setup-actions">
           <button class="setup-primary" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
           <button class="setup-secondary" id="setupCurrentWorkflow" type="button"><strong>Current workflow</strong><span>Install only what this generation needs.</span></button>
@@ -2207,6 +2215,7 @@
         <section class="settings-pane" id="settingsPaneImage" role="tabpanel" aria-labelledby="settingsTabImage" data-settings-pane="image" hidden>
           <div class="settings-pane-head"><h4>Image Models</h4><p>Create, edit, and upscale pipelines.</p></div>
           <div class="settings-group"><h5>Krea 2</h5>
+            <div class="field"><label>Model precision</label><select id="setKrea2ModelVariant"><option value="fp8">FP8 · standard 8-bit</option><option value="int8-convrot">INT8 ConvRot · optimized 8-bit</option></select></div>
             <div class="field"><label>Turbo UNET</label><input id="setUnet" type="text" /></div>
             <div class="field"><label>Raw UNET</label><input id="setKrea2RawUnet" type="text" /></div>
             <div class="field"><label>Turbo LoRA for Raw</label><input id="setKrea2TurboLora" type="text" /></div>
@@ -2324,6 +2333,14 @@
                 <span class="hardware-copy"><strong id="hardwareDisk">Checking…</strong><small id="hardwareDiskDetail"></small><span class="hardware-meter" aria-hidden="true"><i id="hardwareDiskFill"></i></span></span>
               </div>
             </div>
+            <label class="vram-profile-control settings-vram-profile">
+              <span><strong>Generation memory</strong><small>Low VRAM keeps image batches at one and limits base generations to about one megapixel so ComfyUI can offload model weights through system RAM.</small></span>
+              <select id="setVramProfile">
+                <option value="auto">Auto</option>
+                <option value="low">Low VRAM · 8–12 GB</option>
+                <option value="standard">Standard · 16 GB+</option>
+              </select>
+            </label>
             <div class="export-location" id="exportLocationControl">
               <div class="export-location-heading">
                 <span class="export-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
