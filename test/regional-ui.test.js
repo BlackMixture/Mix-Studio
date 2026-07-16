@@ -119,7 +119,8 @@ test('Region keeps the compact phone picker and reuses Image resolution on wider
 test('tablet Region rail is wider, container-aware, and hides only its scrollbar chrome', () => {
   assert.match(styleCss, /\.region-workspace \{[\s\S]*container: region-workspace \/ inline-size/);
   assert.match(styleCss, /@container region-workspace \(max-width: 340px\)[\s\S]*\.region-fields \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) 50px/);
-  assert.match(styleCss, /body\[data-ui-mode="region"\] \.tabs-wrap,[\s\S]*body\[data-ui-mode="region"\] \.studio-workspace \{[\s\S]*grid-template-columns: 380px minmax\(420px, 1fr\) 300px/);
+  assert.match(styleCss, /body\[data-ui-mode="region"\] \{[\s\S]*--studio-left-width: 380px;[\s\S]*--studio-right-width: 300px/);
+  assert.match(styleCss, /\.tabs-wrap \{[\s\S]*grid-template-columns: var\(--studio-left-width\) minmax\(420px, 1fr\) var\(--studio-right-width\)/);
   assert.match(styleCss, /#view-create \{[\s\S]*scrollbar-width: none;[\s\S]*-ms-overflow-style: none/);
   assert.match(styleCss, /#view-create::\-webkit-scrollbar \{[\s\S]*display: none;[\s\S]*width: 0;[\s\S]*height: 0/);
   assert.match(styleCss, /body\[data-ui-mode="region"\] \.region-toolbar-actions \.chip \{[\s\S]*white-space: nowrap/);

@@ -347,8 +347,9 @@ test('Director auto-fit, partial ranges, contextual inspector, and drag gating a
 test('Director starts populated timelines at a comfortable scrollable scale', () => {
   assert.match(app, /let directorPixelsPerSecond = 320/);
   assert.match(app, /let directorAutoFit = false/);
+  assert.match(app, /function directorCompact\(\)/);
   assert.match(app, /function directorComfortableTimelineScale\(\)/);
-  assert.match(app, /visibleSeconds = window\.innerWidth <= 720 \? 1\.5 : 3\.25/);
+  assert.match(app, /visibleSeconds = directorCompact\(\) \? 1\.5 : 3\.25/);
   assert.match(app, /function directorUseComfortableTimelineScale\(\)[\s\S]{0,220}directorAutoFit = false[\s\S]{0,220}directorComfortableTimelineScale\(\)/);
   assert.match(app, /openDirectorMode\(project, options = \{\}\)[\s\S]{0,1200}directorWorkspace'\)\.hidden = false;[\s\S]{0,220}directorUseComfortableTimelineScale\(\)/);
   assert.match(css, /\.director-timeline\s*\{[^}]*overflow-x:\s*auto[^}]*scrollbar-gutter:\s*stable/);
@@ -405,7 +406,7 @@ test('Relative timeline insertion makes room instead of rejecting an occupied ad
 test('Director gives instant keyframes usable controls without changing frame precision', () => {
   assert.match(app, /const DIRECTOR_TIMELINE_ACTION_GUTTER = 96/);
   assert.match(app, /function directorSegmentVisualWidth\(segment, ppf\)/);
-  assert.match(app, /instantWidth = window\.innerWidth <= 720 \? 72 : 80/);
+  assert.match(app, /instantWidth = directorCompact\(\) \? 72 : 80/);
   assert.match(app, /segment\.type === 'image' && segment\.length <= 1 \? instantWidth : 12/);
   assert.match(app, /button\.style\.width = `\$\{directorSegmentVisualWidth\(segment, ppf\)\}px`/);
   assert.match(app, /button\.classList\.toggle\('compact', segment\.length \* ppf < 40\)/);
@@ -444,13 +445,15 @@ test('Director generation uses the shared progress card and queue lifecycle', ()
 });
 
 test('Director reuses the desktop creation surface alongside the Library rail', () => {
-  assert.doesNotMatch(css, /\.director-open #desktopStage, \.director-open #genDock, \.director-open #view-gallery/);
-  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open \.studio-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,1fr\) minmax\(310px,360px\)/);
+  assert.doesNotMatch(css, /\.director-open #desktopStage[^\n{]*\{\s*display:\s*none/);
+  assert.match(css, /\.director-open #genDock\s*\{\s*display:\s*none !important;/);
+  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open \.studio-workspace\s*\{[^}]*grid-template-columns:\s*var\(--studio-left-width\) minmax\(420px,1fr\) var\(--studio-right-width\)/);
   assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open #view-create\s*\{[^}]*grid-column:\s*1;/);
-  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open #view-gallery\s*\{[^}]*display:\s*block;[^}]*grid-column:\s*2;/);
-  assert.match(css, /\.director-open #desktopStage, \.director-open #genDock\s*\{\s*display:\s*none !important;/);
-  assert.match(css, /@media \(min-width: 721px\)[\s\S]*\.director-model-panel\s*\{[^}]*width:\s*min\(720px, calc\(100% - 220px\)\);[^}]*justify-self:\s*center;/);
-  assert.match(css, /@media \(min-width: 721px\)[\s\S]*\.director-head-actions\s*\{[^}]*right:\s*0;/);
+  assert.match(css, /body\.director-open #desktopStage\s*\{[^}]*display:\s*grid;[^}]*grid-column:\s*2;/);
+  assert.match(css, /body\.director-open #view-gallery\s*\{[^}]*display:\s*block;[^}]*grid-column:\s*3;/);
+  assert.match(css, /body\.director-open \.director-workflow-cards\s*\{[^}]*grid-template-columns:\s*minmax\(0,1fr\)/);
+  assert.match(css, /body\.director-open \.director-timeline-toolbar\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto/);
+  assert.match(app, /const compact = directorCompact\(\)[\s\S]{0,340}backdrop\.hidden = !compact/);
 });
 
 test('Director projects autosave, import, export, preflight media, and restore from gallery metadata', () => {

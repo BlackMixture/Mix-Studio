@@ -163,6 +163,8 @@
 
 <!-- ============ CREATE / EDIT (shared markup, JS re-parents) ============ -->
 <div class="studio-workspace">
+<div class="desktop-panel-resizer desktop-panel-resizer-left" id="desktopLeftResizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize inputs panel" aria-controls="view-create" aria-valuemin="260" aria-valuemax="520" aria-valuenow="360"></div>
+<div class="desktop-panel-resizer desktop-panel-resizer-right" id="desktopRightResizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize library panel" aria-controls="view-gallery" aria-valuemin="240" aria-valuemax="440" aria-valuenow="360"></div>
 <main class="view active" id="view-create">
   <div class="desktop-inputs-head">
     <span>Inputs</span>
@@ -1228,6 +1230,29 @@
         <span id="desktopStageDims">Desktop workspace</span>
       </div>
     </footer>
+    <div class="desktop-stage-actions" id="desktopStageActions" aria-label="Result actions" hidden>
+      <button id="desktopStageLike" type="button" aria-label="Like result" title="Like">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Z"/></svg>
+      </button>
+      <button id="desktopStageEdit" type="button" aria-label="Choose how to use result" title="Use" aria-haspopup="menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1"/></svg>
+      </button>
+      <button id="desktopStageUpscale" type="button" aria-label="Process result" title="Process" aria-haspopup="menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4M8 8l-4-4m12 4 4-4M8 16l-4 4m12-4 4 4"/></svg>
+      </button>
+      <button id="desktopStageExtend" type="button" aria-label="Extend video" title="Extend video" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10a2 2 0 0 1 2 2v2l4-2.5v9L16 14v2a2 2 0 0 1-2 2H4V6Zm5 3v6l5-3-5-3Z"/></svg>
+      </button>
+      <button id="desktopStageMove" type="button" aria-label="Move result" title="Move">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h6l1.8 2H20v9.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5V7Z"/><path d="m9 14 3-3 3 3m-3-3v6"/></svg>
+      </button>
+      <button id="desktopStageSave" type="button" aria-label="Save result" title="Save" aria-haspopup="menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2"/></svg>
+      </button>
+      <button class="danger" id="desktopStageDelete" type="button" aria-label="Move result to trash" title="Move to trash">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m-8 0 1 13h8l1-13M10 10v7m4-7v7"/></svg>
+      </button>
+    </div>
   </div>
 
   <!-- generate dock -->
@@ -1249,20 +1274,6 @@
           <span class="fill" id="genFill"></span>
           <span class="lbl" id="genLbl">Generate</span>
         </button>
-        <div class="desktop-stage-actions" id="desktopStageActions" aria-label="Selected result actions" hidden>
-          <button id="desktopStageLike" type="button" aria-label="Like selected result" title="Like">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Z"/></svg>
-          </button>
-          <button id="desktopStageSave" type="button" aria-label="Save selected result" title="Save">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2"/></svg>
-          </button>
-          <button id="desktopStageEdit" type="button" aria-label="Choose how to use selected image" title="Use image" aria-haspopup="menu" aria-expanded="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1"/></svg>
-          </button>
-          <button id="desktopStageUpscale" type="button" aria-label="Upscale selected image" title="Upscale">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4M8 8l-4-4m12 4 4-4M8 16l-4 4m12-4 4 4"/></svg>
-          </button>
-        </div>
       </div>
     </div>
   </div>

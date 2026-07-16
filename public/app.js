@@ -1981,9 +1981,160 @@ const primaryTabButtons = $$('#primaryTabs .tab');
 const createTabButtons = $$('#createTabs .tab');
 const desktopWorkspaceQuery = window.matchMedia('(min-width: 1180px)');
 const wideRegionResolutionQuery = window.matchMedia('(min-width: 641px)');
+const DESKTOP_PANEL_DEFAULT = 360;
+const DESKTOP_PANEL_LIMITS = Object.freeze({ leftMin: 260, leftMax: 520, rightMin: 240, rightMax: 440, centerMin: 440 });
+const desktopPanelLayout = { left: DESKTOP_PANEL_DEFAULT, right: DESKTOP_PANEL_DEFAULT, active: null, resizeFrame: 0 };
 
 function desktopWorkspaceActive() {
   return desktopWorkspaceQuery.matches;
+}
+
+function desktopLayoutStorageKey() {
+  return profileStorageKey('ks-desktop-layout') || 'ks-desktop-layout-anonymous';
+}
+
+function clampDesktopPanel(value, min, max) {
+  return Math.max(min, Math.min(max, Number(value) || min));
+}
+
+function normalizedDesktopPanelLayout(activeSide = null) {
+  const workspaceWidth = Math.max(0, $('.studio-workspace')?.clientWidth || window.innerWidth);
+  const limits = DESKTOP_PANEL_LIMITS;
+  const available = Math.max(limits.leftMin + limits.rightMin, workspaceWidth - limits.centerMin);
+  let left = clampDesktopPanel(desktopPanelLayout.left, limits.leftMin, limits.leftMax);
+  let right = clampDesktopPanel(desktopPanelLayout.right, limits.rightMin, limits.rightMax);
+  if (left + right > available) {
+    if (activeSide === 'left') left = Math.max(limits.leftMin, available - right);
+    else if (activeSide === 'right') right = Math.max(limits.rightMin, available - left);
+    else {
+      const scale = available / (left + right);
+      left = Math.max(limits.leftMin, Math.round(left * scale));
+      right = Math.max(limits.rightMin, available - left);
+      if (left + right > available) left = Math.max(limits.leftMin, available - right);
+    }
+  }
+  return { left: Math.round(left), right: Math.round(right), available };
+}
+
+function updateDesktopResizerAria(side, value, otherValue) {
+  const resizer = side === 'left' ? $('#desktopLeftResizer') : $('#desktopRightResizer');
+  if (!resizer) return;
+  const limits = DESKTOP_PANEL_LIMITS;
+  const min = side === 'left' ? limits.leftMin : limits.rightMin;
+  const hardMax = side === 'left' ? limits.leftMax : limits.rightMax;
+  const workspaceWidth = Math.max(0, $('.studio-workspace')?.clientWidth || window.innerWidth);
+  const max = Math.max(min, Math.min(hardMax, workspaceWidth - limits.centerMin - otherValue));
+  const label = side === 'left' ? 'Inputs panel' : 'Library panel';
+  resizer.setAttribute('aria-valuemin', String(min));
+  resizer.setAttribute('aria-valuemax', String(Math.round(max)));
+  resizer.setAttribute('aria-valuenow', String(value));
+  resizer.setAttribute('aria-valuetext', `${label}, ${value} pixels`);
+  resizer.title = `${label}: ${value}px · drag or use arrow keys · double-click to reset`;
+}
+
+function applyDesktopPanelLayout({ activeSide = null, persist = false } = {}) {
+  const applied = normalizedDesktopPanelLayout(activeSide);
+  document.body.style.setProperty('--studio-left-width', `${applied.left}px`);
+  document.body.style.setProperty('--studio-right-width', `${applied.right}px`);
+  updateDesktopResizerAria('left', applied.left, applied.right);
+  updateDesktopResizerAria('right', applied.right, applied.left);
+  if (persist) {
+    try {
+      localStorage.setItem(desktopLayoutStorageKey(), JSON.stringify({ version: 1, left: desktopPanelLayout.left, right: desktopPanelLayout.right }));
+    } catch { /* layout persistence is optional */ }
+  }
+  return applied;
+}
+
+function restoreDesktopPanelLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(desktopLayoutStorageKey()) || 'null');
+    if (saved?.version === 1) {
+      desktopPanelLayout.left = clampDesktopPanel(saved.left, DESKTOP_PANEL_LIMITS.leftMin, DESKTOP_PANEL_LIMITS.leftMax);
+      desktopPanelLayout.right = clampDesktopPanel(saved.right, DESKTOP_PANEL_LIMITS.rightMin, DESKTOP_PANEL_LIMITS.rightMax);
+    }
+  } catch { /* use defaults */ }
+  applyDesktopPanelLayout();
+}
+
+function setDesktopPanelWidth(side, value, { persist = false } = {}) {
+  if (side !== 'left' && side !== 'right') return;
+  const min = side === 'left' ? DESKTOP_PANEL_LIMITS.leftMin : DESKTOP_PANEL_LIMITS.rightMin;
+  const max = side === 'left' ? DESKTOP_PANEL_LIMITS.leftMax : DESKTOP_PANEL_LIMITS.rightMax;
+  desktopPanelLayout[side] = clampDesktopPanel(value, min, max);
+  applyDesktopPanelLayout({ activeSide: side, persist });
+}
+
+function finishDesktopPanelResize({ persist = true } = {}) {
+  const active = desktopPanelLayout.active;
+  if (!active) return;
+  const { resizer, pointerId, side, pendingWidth } = active;
+  desktopPanelLayout.active = null;
+  if (desktopPanelLayout.resizeFrame) cancelAnimationFrame(desktopPanelLayout.resizeFrame);
+  desktopPanelLayout.resizeFrame = 0;
+  if (Number.isFinite(pendingWidth)) {
+    const min = side === 'left' ? DESKTOP_PANEL_LIMITS.leftMin : DESKTOP_PANEL_LIMITS.rightMin;
+    const max = side === 'left' ? DESKTOP_PANEL_LIMITS.leftMax : DESKTOP_PANEL_LIMITS.rightMax;
+    desktopPanelLayout[side] = clampDesktopPanel(pendingWidth, min, max);
+  }
+  resizer.classList.remove('is-active');
+  document.body.classList.remove('workspace-resizing');
+  try {
+    if (pointerId != null && resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId);
+  } catch { /* pointer capture may already be released */ }
+  applyDesktopPanelLayout({ activeSide: side, persist });
+}
+
+function beginDesktopPanelResize(event, side, resizer) {
+  if (!desktopWorkspaceActive() || event.button !== 0 || desktopPanelLayout.active) return;
+  event.preventDefault();
+  const applied = normalizedDesktopPanelLayout();
+  desktopPanelLayout.active = {
+    side,
+    resizer,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: applied[side],
+  };
+  resizer.setPointerCapture(event.pointerId);
+  resizer.classList.add('is-active');
+  document.body.classList.add('workspace-resizing');
+}
+
+function wireDesktopPanelResizers() {
+  [['left', $('#desktopLeftResizer')], ['right', $('#desktopRightResizer')]].forEach(([side, resizer]) => {
+    if (!resizer) return;
+    resizer.addEventListener('pointerdown', (event) => beginDesktopPanelResize(event, side, resizer));
+    resizer.addEventListener('pointermove', (event) => {
+      const active = desktopPanelLayout.active;
+      if (!active || active.resizer !== resizer || active.pointerId !== event.pointerId) return;
+      const delta = event.clientX - active.startX;
+      const next = active.startWidth + (side === 'left' ? delta : -delta);
+      active.pendingWidth = next;
+      if (desktopPanelLayout.resizeFrame) cancelAnimationFrame(desktopPanelLayout.resizeFrame);
+      desktopPanelLayout.resizeFrame = requestAnimationFrame(() => {
+        desktopPanelLayout.resizeFrame = 0;
+        setDesktopPanelWidth(side, next);
+      });
+    });
+    resizer.addEventListener('pointerup', () => finishDesktopPanelResize());
+    resizer.addEventListener('pointercancel', () => finishDesktopPanelResize());
+    resizer.addEventListener('lostpointercapture', () => finishDesktopPanelResize());
+    resizer.addEventListener('dblclick', () => setDesktopPanelWidth(side, DESKTOP_PANEL_DEFAULT, { persist: true }));
+    resizer.addEventListener('keydown', (event) => {
+      const applied = normalizedDesktopPanelLayout();
+      const step = event.shiftKey ? 48 : 16;
+      let next = applied[side];
+      if (event.key === 'Home') next = side === 'left' ? DESKTOP_PANEL_LIMITS.leftMin : DESKTOP_PANEL_LIMITS.rightMin;
+      else if (event.key === 'End') next = side === 'left' ? DESKTOP_PANEL_LIMITS.leftMax : DESKTOP_PANEL_LIMITS.rightMax;
+      else if (event.key === 'ArrowLeft') next += side === 'left' ? -step : step;
+      else if (event.key === 'ArrowRight') next += side === 'left' ? step : -step;
+      else return;
+      event.preventDefault();
+      setDesktopPanelWidth(side, next, { persist: true });
+    });
+  });
+  if (window.ResizeObserver) new ResizeObserver(() => applyDesktopPanelLayout()).observe($('.studio-workspace'));
 }
 
 function pinDesktopViewport() {
@@ -9053,9 +9204,13 @@ function directorAutoFitTimeline(project = state.directorProject) {
   const available = Math.max(120, (viewport?.clientWidth || window.innerWidth) - DIRECTOR_TIMELINE_ACTION_GUTTER - 2);
   return directorClamp(available / Math.max(1 / DIRECTOR_FPS, project.durationFrames / DIRECTOR_FPS), 10, 9600);
 }
+function directorCompact() {
+  const workspace = $('#directorWorkspace');
+  return window.innerWidth <= 720 || (!!workspace && workspace.clientWidth > 0 && workspace.clientWidth <= 720);
+}
 function directorComfortableTimelineScale() {
   const viewport = $('#directorTimelineViewport');
-  const visibleSeconds = window.innerWidth <= 720 ? 1.5 : 3.25;
+  const visibleSeconds = directorCompact() ? 1.5 : 3.25;
   const available = Math.max(180, viewport?.clientWidth || window.innerWidth);
   return directorClamp(available / visibleSeconds, 160, 480);
 }
@@ -9066,7 +9221,7 @@ function directorUseComfortableTimelineScale() {
 }
 function directorSegmentVisualWidth(segment, ppf) {
   const timedWidth = segment.length * ppf;
-  const instantWidth = window.innerWidth <= 720 ? 72 : 80;
+  const instantWidth = directorCompact() ? 72 : 80;
   return Math.max(segment.type === 'image' && segment.length <= 1 ? instantWidth : 12, timedWidth);
 }
 function directorAssetName(segment) { return segment.imageFile || segment.audioFile || segment.videoFile || ''; }
@@ -10012,13 +10167,14 @@ function directorOpenInspector() {
   const layoutChanged = !inspector.classList.contains('show');
   inspector.hidden = false;
   inspector.classList.add('show');
-  if (window.innerWidth <= 720) inspector.setAttribute('aria-modal', 'true');
+  const compact = directorCompact();
+  if (compact) inspector.setAttribute('aria-modal', 'true');
   else inspector.removeAttribute('aria-modal');
   $('#directorLayout')?.classList.add('inspector-open');
   document.body.classList.add('director-inspector-open');
   const backdrop = $('#directorInspectorBackdrop');
-  if (backdrop) backdrop.hidden = window.innerWidth > 720;
-  if (layoutChanged && window.innerWidth >= 900 && directorAutoFit) requestAnimationFrame(renderDirector);
+  if (backdrop) backdrop.hidden = !compact;
+  if (layoutChanged && !compact && window.innerWidth >= 900 && directorAutoFit) requestAnimationFrame(renderDirector);
 }
 
 function directorCloseInspector() {
@@ -10032,7 +10188,7 @@ function directorCloseInspector() {
   if ($('#directorInspectorBackdrop')) $('#directorInspectorBackdrop').hidden = true;
   document.body.classList.remove('director-inspector-open');
   setDirectorDisclosure('directorInspectorAdvancedBtn', 'directorInspectorAdvanced', false);
-  if (layoutChanged && state.directorOpen && window.innerWidth >= 900 && directorAutoFit) requestAnimationFrame(renderDirector);
+  if (layoutChanged && state.directorOpen && !directorCompact() && window.innerWidth >= 900 && directorAutoFit) requestAnimationFrame(renderDirector);
 }
 
 function directorDeselect() {
@@ -14890,6 +15046,62 @@ function desktopStageChoices(item) {
   return choices;
 }
 
+function revealHorizontalSelection(scroller, selected) {
+  if (!scroller || !selected) return;
+  requestAnimationFrame(() => {
+    const left = selected.offsetLeft;
+    const right = left + selected.offsetWidth;
+    if (left < scroller.scrollLeft) scroller.scrollLeft = left;
+    else if (right > scroller.scrollLeft + scroller.clientWidth) scroller.scrollLeft = right - scroller.clientWidth;
+  });
+}
+
+function wireHorizontalScroller(scroller) {
+  if (!scroller || scroller.dataset.dragScrollReady === 'true') return;
+  scroller.dataset.dragScrollReady = 'true';
+  let drag = null;
+  let suppressClick = false;
+  const finish = (event) => {
+    if (!drag || (event?.pointerId != null && drag.pointerId !== event.pointerId)) return;
+    suppressClick = drag.moved;
+    if (suppressClick) setTimeout(() => { suppressClick = false; }, 250);
+    try {
+      if (scroller.hasPointerCapture(drag.pointerId)) scroller.releasePointerCapture(drag.pointerId);
+    } catch { /* capture may already be gone */ }
+    drag = null;
+    scroller.classList.remove('is-dragging');
+  };
+  scroller.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.pointerType === 'touch') return;
+    suppressClick = false;
+    drag = { pointerId: event.pointerId, startX: event.clientX, startScroll: scroller.scrollLeft, moved: false };
+    scroller.setPointerCapture(event.pointerId);
+  });
+  scroller.addEventListener('pointermove', (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = event.clientX - drag.startX;
+    if (!drag.moved && Math.abs(delta) < 5) return;
+    drag.moved = true;
+    scroller.classList.add('is-dragging');
+    scroller.scrollLeft = drag.startScroll - delta;
+    event.preventDefault();
+  });
+  scroller.addEventListener('pointerup', finish);
+  scroller.addEventListener('pointercancel', finish);
+  scroller.addEventListener('lostpointercapture', finish);
+  scroller.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+  scroller.addEventListener('wheel', (event) => {
+    if (scroller.scrollWidth <= scroller.clientWidth + 1 || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    scroller.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, { passive: false });
+}
+
 function renderDesktopStagePicker(item, media = 'image') {
   const picker = $('#desktopStagePicker');
   if (!picker) return;
@@ -14923,6 +15135,8 @@ function renderDesktopStagePicker(item, media = 'image') {
     button.addEventListener('click', () => selectDesktopLibraryItem(choice.item, choice.media));
     picker.appendChild(button);
   });
+  wireHorizontalScroller(picker);
+  revealHorizontalSelection(picker, picker.querySelector('.desktop-stage-choice.active'));
 }
 
 function renderDesktopStage(item, mediaSel) {
@@ -14994,7 +15208,7 @@ function renderDesktopStage(item, mediaSel) {
     ? `${item.width} × ${item.height}`
     : new Date(itemActivity(item) || Date.now()).toLocaleDateString();
   renderDesktopStagePicker(item, selectedVideo ? selectedVideo.id : 'image');
-  renderDesktopStageActions(item, selectedVideo, resolved.selected);
+  renderDesktopStageActions(item, selectedVideo);
 }
 
 function renderDesktopStageGenerating(statusText = 'Working…') {
@@ -15034,25 +15248,41 @@ $('#desktopStageInfo').addEventListener('click', () => {
   openLightbox(info.dataset.itemId, info.dataset.media || 'image');
 });
 
-function renderDesktopStageActions(item, video, selected = false) {
+function renderDesktopStageActions(item, video) {
   const actions = $('#desktopStageActions');
   if (!actions) return;
-  actions.hidden = !selected || !item;
-  if (!selected || !item) return;
+  actions.hidden = !item;
+  if (!item) return;
   const liked = video ? !!video.liked : !!item.liked;
   const like = $('#desktopStageLike');
   like.classList.toggle('liked', liked);
   like.setAttribute('aria-pressed', String(liked));
-  like.setAttribute('aria-label', video ? (liked ? 'Unlike selected video' : 'Like selected video') : (liked ? 'Unlike selected image' : 'Like selected image'));
-  $('#desktopStageSave').setAttribute('aria-label', video ? 'Save selected video' : 'Save selected image');
-  $('#desktopStageEdit').hidden = !!video || item.mode === 'composite';
-  $('#desktopStageUpscale').hidden = !!video || item.mode === 'composite';
+  like.setAttribute('aria-label', video ? (liked ? 'Unlike video' : 'Like video') : (liked ? 'Unlike image' : 'Like image'));
+  like.title = liked ? 'Unlike' : 'Like';
+  const use = $('#desktopStageEdit');
+  const process = $('#desktopStageUpscale');
+  const extend = $('#desktopStageExtend');
+  const move = $('#desktopStageMove');
+  const videoComposite = !!video?.info?.composite;
+  use.hidden = item.mode === 'composite' || videoComposite;
+  use.setAttribute('aria-label', video ? 'Use video' : 'Use image');
+  use.title = video ? 'Use video' : 'Use image';
+  process.hidden = item.mode === 'composite' || videoComposite;
+  process.setAttribute('aria-label', video ? 'Process video' : (item.upscaled ? 'Re-upscale image' : 'Upscale image'));
+  process.title = video ? 'Process video' : (item.upscaled ? 'Re-upscale' : 'Upscale');
+  process.toggleAttribute('aria-haspopup', !!video);
+  if (!video) process.removeAttribute('aria-expanded');
+  extend.hidden = !video || !!video.info?.composite;
+  move.hidden = item.mode === 'composite' || videoComposite;
+  $('#desktopStageSave').setAttribute('aria-label', video ? 'Save video' : 'Save image');
+  $('#desktopStageDelete').setAttribute('aria-label', video ? 'Move video to trash' : 'Move generation to trash');
 }
 
 function activeDesktopStageMedia() {
-  const item = state.desktopItemId && state.items.find((entry) => entry.id === state.desktopItemId);
+  const open = $('#desktopStageOpen');
+  const item = open?.dataset.itemId && state.items.find((entry) => entry.id === open.dataset.itemId);
   if (!item) return { item: null, video: null };
-  return { item, video: (item.videos || []).find((entry) => entry.id === state.desktopMediaId) || null };
+  return { item, video: (item.videos || []).find((entry) => entry.id === open.dataset.media) || null };
 }
 
 const DESKTOP_INPUT_STATE_KEYS = [
@@ -15295,27 +15525,128 @@ $('#desktopStageLike').addEventListener('click', () => {
   else toggleItemLike(item);
   setTimeout(() => renderDesktopStage(item, video ? video.id : 'image'), 0);
 });
+
+function desktopStageSaveMenuItems(item, video) {
+  if (video) return [
+    { label: 'Save video', detail: 'Original result', icon: 'save', action: () => {
+      mirrorGalleryExport({ id: item.id, asset: 'video', videoId: video.id });
+      const link = document.createElement('a');
+      link.href = '/videos/' + video.file;
+      link.download = generationDownloadStem(item, 'mix_studio') + '.mp4';
+      link.click();
+    } },
+    { label: 'Documentation video', detail: 'Source + settings + result', icon: 'documentation', action: () => saveDocumentationVideo(item, video) },
+  ];
+  const choices = [];
+  const huntLayouts = item.mode === 'composite' && item.strengthHunt?.documentation ? item.strengthHunt.layouts : null;
+  if (huntLayouts?.row && huntLayouts?.square) {
+    choices.push(
+      { label: 'Save row', detail: 'Horizontal comparison strip', icon: 'save', action: () => downloadStrengthHuntLayout(item, 'row') },
+      { label: 'Save square', detail: 'Square comparison grid', icon: 'save', action: () => downloadStrengthHuntLayout(item, 'square') },
+    );
+  } else if (item.upscaled) {
+    choices.push(
+      { label: 'Save upscaled', detail: 'Current image', icon: 'save', action: () => downloadItem(item, 'upscaled') },
+      { label: 'Save original', detail: 'Before upscale', icon: 'save', action: () => downloadItem(item, 'original') },
+    );
+  } else choices.push({ label: 'Save image', detail: 'Current image', icon: 'save', action: () => downloadItem(item, 'current') });
+  if (item.mode !== 'composite') choices.push({ label: 'Documentation image', detail: 'Image + generation details', icon: 'documentation', action: () => openDocumentationBuilder(item) });
+  if (Array.isArray(item.regions) && item.regions.length) choices.push({ label: 'Save region map', detail: 'Regions + prompts', icon: 'documentation', action: () => downloadRegionMap(item) });
+  const angles = angleGroupItems(item);
+  if (angles.length > 1) choices.push({ label: 'Save angle composite', detail: 'All camera views', icon: 'composite', action: () => saveImageComposite(item, 'angles') });
+  if (item.sourceFile && (item.mode === 'edit' || item.mode === 't2i')) {
+    const beforeAfter = item.mode === 'edit';
+    choices.push({
+      label: beforeAfter ? 'Save before + after' : 'Save reference + generation',
+      detail: beforeAfter ? 'Original and edited image' : 'Reference and generated image',
+      icon: 'composite',
+      action: () => saveImageComposite(item, beforeAfter ? 'before-after' : 'reference-generation'),
+    });
+  }
+  if (item.mode === 't2i' && item.imageGuideMode === 'depth' && item.sourceFile) choices.push({ label: 'Save depth composite', detail: 'Source, depth map, and generation', icon: 'composite', action: () => saveImageComposite(item, 'depth-map') });
+  return choices;
+}
+
 $('#desktopStageSave').addEventListener('click', () => {
   const { item, video } = activeDesktopStageMedia();
   if (!item) return;
-  if (!video) return downloadItem(item, 'current');
-  mirrorGalleryExport({ id: item.id, asset: 'video', videoId: video.id });
-  const link = document.createElement('a');
-  link.href = '/videos/' + video.file;
-  link.download = generationDownloadStem(item, 'mix_studio') + '.mp4';
-  link.click();
+  openActionMenu($('#desktopStageSave'), desktopStageSaveMenuItems(item, video), {
+    menuTitle: video ? 'Save video' : 'Save image',
+    tone: video ? 'video' : 'image',
+  });
 });
 $('#desktopStageEdit').addEventListener('click', () => {
-  const { item } = activeDesktopStageMedia();
+  const { item, video } = activeDesktopStageMedia();
   if (!item) return;
-  openActionMenu($('#desktopStageEdit'), galleryImageDestinationActions(item), {
-    menuTitle: 'Use image',
-    tone: 'image',
+  const choices = video
+    ? [
+      { label: 'Reuse settings', detail: 'Load this video setup', icon: 'reuse', action: () => reuseVideo(item, video) },
+      { label: 'Motion input', detail: 'Use in the Video tab', icon: 'motion', action: () => sendVideoAsDrive(item, video) },
+    ]
+    : galleryImageDestinationActions(item);
+  if (!video && item.sourceItemId && state.items.some((entry) => entry.id === item.sourceItemId)) choices.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => selectDesktopLibraryItem(state.items.find((entry) => entry.id === item.sourceItemId), 'image') });
+  openActionMenu($('#desktopStageEdit'), choices, {
+    menuTitle: video ? 'Use video' : 'Use image',
+    tone: video ? 'video' : 'image',
   });
 });
 $('#desktopStageUpscale').addEventListener('click', () => {
+  const { item, video } = activeDesktopStageMedia();
+  if (!item) return;
+  if (!video) return openUpscaleSheet(item);
+  const choices = [
+    { label: 'Upscale video', detail: 'SeedVR2 finish', icon: 'process', action: () => processVideo(item, video, 'upscale') },
+    { label: 'Increase FPS', detail: 'RIFE interpolation', icon: 'process', action: () => processVideo(item, video, 'interpolate') },
+  ];
+  if (video.info?.engine === 'scail' && video.info?.driveVideoName && !video.info?.composite) choices.push({
+    label: 'Side-by-side', detail: 'Reference and result', icon: 'composite', action: async () => {
+      try {
+        toast('Building side-by-side comparison…');
+        const result = await api('/api/composite', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, videoId: video.id }),
+        });
+        state.activeJobs.add(result.jobId);
+        $('#genLbl').textContent = genLabel();
+        queueRefreshSoon();
+      } catch (error) { toast(error.message, true); }
+    },
+  });
+  openActionMenu($('#desktopStageUpscale'), choices, { menuTitle: 'Process video', tone: 'video' });
+});
+$('#desktopStageExtend').addEventListener('click', () => {
+  const { item, video } = activeDesktopStageMedia();
+  if (item && video && !video.info?.composite) openDirectorExtension(item, video);
+});
+$('#desktopStageMove').addEventListener('click', () => {
   const { item } = activeDesktopStageMedia();
-  if (item) openUpscaleSheet(item);
+  if (item) openMoveSheet(item);
+});
+$('#desktopStageDelete').addEventListener('click', async () => {
+  const { item, video } = activeDesktopStageMedia();
+  if (!item) return;
+  if (video) {
+    const onlyStandalone = item.mode === 'video' && (item.videos || []).length === 1;
+    if (!await askConfirm({
+      title: 'Move video to trash?',
+      message: onlyStandalone ? 'This is the only video on the entry, so the whole gallery item will move to trash.' : 'The video will move to trash. The image stays.',
+      confirmLabel: 'Move to trash', danger: true,
+    })) return;
+    if (onlyStandalone) await api('/api/item/' + item.id, { method: 'DELETE' });
+    else await api(`/api/item/${item.id}/video/${video.id}`, { method: 'DELETE' });
+  } else {
+    const count = (item.videos || []).length;
+    if (!await askConfirm({
+      title: 'Move generation to trash?',
+      message: count ? `Its image files and ${count} attached video${count === 1 ? '' : 's'} will move to trash.` : 'Its image files will move to trash.',
+      confirmLabel: 'Move to trash', danger: true,
+    })) return;
+    await api('/api/item/' + item.id, { method: 'DELETE' });
+  }
+  state.desktopItemId = null;
+  state.desktopMediaId = 'image';
+  await refreshGallery(true);
+  renderDesktopStage();
+  toast(video ? 'Video moved to trash' : 'Generation moved to trash');
 });
 
 function generationMediaFilename(item, media = null) {
@@ -17833,6 +18164,7 @@ function openLightbox(id, mediaSel) {
   const selComposite = composites.find((composite) => 'composite:' + composite.id === sel) || null;
   state.currentMedia = selVideo ? { type: 'video', id: selVideo.id }
     : (selComposite ? { type: 'composite', id: selComposite.id } : { type: 'image', id: 'image' });
+  if (desktopWorkspaceActive()) document.body.classList.add('desktop-focused-result');
   $('#lightbox').classList.add('show');
 
   const vid = $('#lbVideo');
@@ -17940,6 +18272,10 @@ function openLightbox(id, mediaSel) {
     composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id, false, 'composite'));
     videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked, 'video'));
   }
+  $$('#lbMedia .lb-media-options').forEach((options) => {
+    wireHorizontalScroller(options);
+    revealHorizontalSelection(options, options.querySelector('.active'));
+  });
 
   const meta = [];
   const metaCopyValues = [];
@@ -18326,6 +18662,7 @@ function closeLightbox(fromPop) {
   closeActionMenu();
   resetLightboxSwipeVisuals();
   $('#lightbox').classList.remove('show');
+  document.body.classList.remove('desktop-focused-result');
   const vid = $('#lbVideo');
   try { vid.pause(); } catch { /* noop */ }
   vid.removeAttribute('src');
@@ -24824,6 +25161,8 @@ syncSheetScrollLock();
 /* ------------------------------------------------------------------ */
 
 desktopWorkspaceQuery.addEventListener('change', (event) => {
+  if (!event.matches) finishDesktopPanelResize({ persist: false });
+  applyDesktopPanelLayout();
   syncNavigation();
   renderDesktopStage();
 });
@@ -24835,6 +25174,8 @@ setPromptDraft(state.prompts[state.view] || '');
 applySavedEngineOrders();
 loadMediaPreferences();
 restoreGenerationTuning(generationTuningMode(state.view));
+restoreDesktopPanelLayout();
+wireDesktopPanelResizers();
 // The complete feature tour remains available from Advanced Settings. The
 // smaller first-image offer waits for auth, readiness, and Library state below.
 markEngineRow('editEngineRow', state.editEngine);
