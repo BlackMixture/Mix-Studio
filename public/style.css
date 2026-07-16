@@ -5466,6 +5466,33 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   padding: 0;
 }
 .lb-generation-label { display: none; }
+.lb-media-generations .generation-group-chip.strength-hunt-chip {
+  width: 72px;
+  min-height: 88px;
+  padding: 5px;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 5px;
+}
+.strength-hunt-chip img {
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #020204;
+}
+.strength-hunt-chip .lb-generation-label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: rgba(240,244,255,.82);
+  font-size: 8px;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .lb-generation-index {
   width: 100%;
   height: 100%;

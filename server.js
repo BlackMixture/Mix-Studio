@@ -5242,7 +5242,7 @@ async function handleApi(req, res, url) {
     if (requestedHuntLoras.length && (p.editSequence || p.qwenAngle)) {
       return json(res, 400, { error: 'Run Strength Hunt separately from sequential edits and camera variations' });
     }
-    const huntCount = requestedHuntLoras.length === 2 ? 121 : (requestedHuntLoras.length === 1 ? 10 : 0);
+    const huntCount = requestedHuntLoras.length === 2 ? 121 : (requestedHuntLoras.length === 1 ? 11 : 0);
     if (huntCount && Number(p.strengthHuntConfirmed) !== huntCount) {
       return json(res, 409, { error: `Confirm the ${huntCount}-image Strength Hunt before queueing it` });
     }

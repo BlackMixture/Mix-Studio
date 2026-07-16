@@ -11,6 +11,7 @@ const {
   decodePng,
   encodeRgbaPng,
   mergeStrengthHuntGraphs,
+  strengthHuntSheetLayout,
 } = require('../lib/strength-hunt');
 
 function lora(name, options = {}) {
@@ -28,16 +29,17 @@ function solidPng(width, height, rgba) {
   return encodeRgbaPng(width, height, pixels);
 }
 
-test('single-LoRA Strength Hunt generates 0.2 steps through 2.0', () => {
+test('single-LoRA Strength Hunt generates 0.0 through 2.0 in 0.2 steps', () => {
   const plan = buildStrengthHuntPlan([
     lora('Looks/Film.safetensors', { strengthHunt: true }),
     lora('Looks/Fixed.safetensors', { strength: 0.55 }),
   ], { id: 'hunt-one' });
-  assert.equal(plan.variants.length, 10);
-  assert.deepEqual(plan.variants.map((variant) => variant.strengths[0]), [0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]);
-  assert.equal(plan.variants[0].loras[0].strength, 0.2);
-  assert.equal(plan.variants[9].loras[0].strength, 2);
-  assert.equal(plan.variants[4].loras[1].strength, 0.55);
+  assert.equal(plan.variants.length, 11);
+  assert.deepEqual(plan.variants.map((variant) => variant.strengths[0]), [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]);
+  assert.equal(plan.variants[0].loras[0].strength, 0);
+  assert.equal(plan.variants[0].loras[0].on, false);
+  assert.equal(plan.variants[10].loras[0].strength, 2);
+  assert.equal(plan.variants[5].loras[1].strength, 0.55);
 });
 
 test('two-LoRA Strength Hunt creates a complete 11 by 11 matrix', () => {
@@ -88,8 +90,17 @@ test('Strength Hunt creates a readable PNG documentation image', () => {
   const decoded = decodePng(sheet.buffer);
   assert.equal(decoded.width, sheet.width);
   assert.equal(decoded.height, sheet.height);
-  assert.ok(sheet.width > 600);
+  assert.ok(sheet.width > 1000);
   assert.ok(sheet.height > 300);
+});
+
+test('Strength Hunt matrix documentation uses a bounded high-resolution layout', () => {
+  const layout = strengthHuntSheetLayout(11, 11, 1);
+  assert.ok(layout.tileWidth >= 300);
+  assert.ok(layout.width >= 3500);
+  assert.ok(layout.height >= 3900);
+  assert.ok(layout.width <= 4096);
+  assert.ok(layout.height <= 4096);
 });
 
 test('Strength Hunt is exposed as an intentional single-job UI and server workflow', () => {
@@ -98,6 +109,7 @@ test('Strength Hunt is exposed as an intentional single-job UI and server workfl
   assert.match(app, /Strength Hunt: On/);
   assert.match(app, /Generate \$\{strengthHuntCount\}-image Strength Hunt/);
   assert.match(app, /strengthHuntConfirmed: strengthHuntCount/);
+  assert.match(app, /classList\.add\('strength-hunt-chip'\)/);
   assert.match(server, /async function queueStrengthHuntJob/);
   assert.match(server, /kind: 'loraHunt'/);
   assert.match(server, /generationGroupId: plan\.id/);

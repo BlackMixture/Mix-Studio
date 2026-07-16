@@ -13474,7 +13474,7 @@ $('#generateBtn').addEventListener('click', async () => {
     : [];
   const strengthHuntLoras = (mode === 'edit' ? state.editLoras : state.loras)
     .filter((lora) => lora && lora.name && lora.on && lora.strengthHunt);
-  const strengthHuntCount = strengthHuntLoras.length === 2 ? 121 : (strengthHuntLoras.length === 1 ? 10 : 0);
+  const strengthHuntCount = strengthHuntLoras.length === 2 ? 121 : (strengthHuntLoras.length === 1 ? 11 : 0);
   if (strengthHuntLoras.length > 2) return toast('Strength Hunt supports two LoRAs at a time', true);
   if (strengthHuntCount && (sequenceSteps.length || qwenAngleExports.length)) {
     return toast('Run Strength Hunt separately from sequential edits and camera variations', true);
@@ -13489,7 +13489,7 @@ $('#generateBtn').addEventListener('click', async () => {
       title: `Generate ${strengthHuntCount}-image Strength Hunt?`,
       message: matrix
         ? `${names} will run as one 11 × 11 matrix job, comparing Off and every 0.2 step through 2.0 on both axes. This is 121 generations with the same prompt and seed and may take a long time. Finish upscaling is skipped for the comparison.`
-        : `${names} will generate 10 images at strengths 0.2 through 2.0, using the same prompt and seed. They and a labeled documentation sheet will be saved as one gallery group. Finish upscaling is skipped for the comparison.`,
+        : `${names} will generate 11 images at strengths 0.0 through 2.0 in 0.2 steps, using the same prompt and seed. They and a labeled documentation sheet will be saved as one gallery group. Finish upscaling is skipped for the comparison.`,
       confirmLabel: `Queue ${strengthHuntCount} generations`,
     });
     if (!confirmed) return;
@@ -17805,7 +17805,13 @@ function openLightbox(id, mediaSel) {
       button.className = 'chip generation-group-chip' + (groupItem.id === it.id ? ' active' : '');
       const huntLabel = strengthHuntItemLabel(groupItem);
       button.innerHTML = `<span class="lb-generation-label">Generation</span><span class="lb-generation-index">${index + 1}</span>`;
-      if (huntLabel) button.innerHTML = `<span class="lb-generation-label">${escapeHtml(huntLabel)}</span>`;
+      if (huntLabel) {
+        const thumbnail = groupItem.upscaled || groupItem.file;
+        button.classList.add('strength-hunt-chip');
+        button.innerHTML = `${thumbnail
+          ? `<img src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="lazy" />`
+          : ''}<span class="lb-generation-label">${escapeHtml(huntLabel)}</span>`;
+      }
       button.title = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
       button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openLightbox(groupItem.id, 'image'));
