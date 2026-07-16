@@ -2317,7 +2317,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   inset: 0 auto 0 0;
   width: var(--duration-visual-progress);
   border-radius: inherit;
-  background: linear-gradient(90deg, #ff293d 0%, #ff4d47 58%, #d91649 100%);
+  background: linear-gradient(to right, #000 0%, var(--spectrum-red) 100%);
 }
 .duration-slider-ticks { position: absolute; inset: 0; }
 .duration-slider-ticks i {
@@ -2359,7 +2359,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   animation: durationFineTicks 160ms ease-out both;
   animation-delay: var(--duration-tick-delay, 0ms);
 }
-.duration-slider-shell.fine .duration-slider-scale { color: #ff8b91; }
+.duration-slider-shell.fine .duration-slider-scale { color: #ff9189; }
 @keyframes durationFineTicks {
   from { opacity: 0; scale: 1 .15; }
 }
