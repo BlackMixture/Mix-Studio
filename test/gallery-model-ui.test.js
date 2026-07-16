@@ -79,7 +79,11 @@ test('gallery performance controls can disable video previews and build an idle 
 
 test('focused media switchers separate parent generations from their media', () => {
   assert.match(app, /makeMediaTier\('lb-media-generations', 'Generations'\)/);
-  assert.match(app, /class="lb-generation-label">Generation/);
+  assert.match(app, /function lightboxGroupThumbnailMarkup\(item, index, label\)/);
+  assert.match(app, /class="lb-group-thumb-image"/);
+  assert.match(app, /class="lb-group-thumb-image"[^>]*loading="lazy"/);
+  assert.match(app, /class="lb-group-thumb-number">\$\{number\}/);
+  assert.match(app, /!sharedDesktopGroupPicker && generationItems\.length > 1/);
   assert.match(app, /`Generation \$\{generationIndex \+ 1\} media`/);
   assert.match(app, /lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}/);
   assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked, 'video'\)\)/);
@@ -90,7 +94,9 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(css, /\.chip-row\.lb-media \{[\s\S]*display: grid/);
   assert.match(css, /\.lb-media \.chip\.active/);
   assert.match(css, /\.lb-media-generations \.chip/);
-  assert.match(css, /\.lb-media-generations \.generation-group-chip \{[\s\S]*width: 38px/);
+  assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*width: var\(--lb-group-chip-width\)/);
+  assert.match(css, /\.lb-group-thumb-image,[\s\S]*width: 32px;[\s\S]*object-fit: cover/);
+  assert.match(css, /\.lb-group-thumb-number \{[\s\S]*font-size: 11px/);
   assert.match(css, /\.lb-media-assets\.nested::before/);
   assert.match(css, /\.lb-media-kind-icon/);
   assert.match(css, /\.lb-media-like/);

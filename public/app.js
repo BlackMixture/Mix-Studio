@@ -2160,7 +2160,17 @@ function pinDesktopViewport() {
 
 window.addEventListener('scroll', pinDesktopViewport, { passive: true });
 desktopWorkspaceQuery.addEventListener('change', () => {
-  const focused = $('#lightbox')?.classList.contains('show') && desktopWorkspaceActive();
+  const lightboxOpen = $('#lightbox')?.classList.contains('show');
+  const focused = lightboxOpen && desktopWorkspaceActive();
+  if (lightboxOpen && state.currentItem) {
+    const media = state.currentMedia?.type === 'video'
+      ? state.currentMedia.id
+      : (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : 'image');
+    if (!focused) restoreDesktopStagePickerHome();
+    openLightbox(state.currentItem.id, media);
+  } else {
+    restoreDesktopStagePickerHome();
+  }
   document.body.classList.toggle('desktop-focused-result', !!focused);
   syncNavigation();
   requestAnimationFrame(pinDesktopViewport);
@@ -15058,6 +15068,10 @@ function desktopStageChoices(item) {
             : (groupItem.strengthHunt?.strengths?.length === 1
               ? Number(groupItem.strengthHunt.strengths[0]).toFixed(1)
               : (grouped ? String(groupIndex + 1) : ''))),
+        summary: angles.length > 1
+          ? angleViewLabel(groupItem)
+          : (strengthHuntItemLabel(groupItem) || (grouped ? 'Generation' : 'Image')),
+        position: grouped ? `${groupIndex + 1} of ${group.length}` : '',
         video: false,
       });
     }
@@ -15068,6 +15082,8 @@ function desktopStageChoices(item) {
         src: imageFile ? '/images/' + imageFile : '',
         label: grouped ? `Generation ${groupIndex + 1}, video ${videoIndex + 1}` : `Video ${videoIndex + 1}`,
         badge: 'play',
+        summary: `Video ${videoIndex + 1}`,
+        position: grouped ? `${groupIndex + 1} of ${group.length}` : '',
         video: true,
       });
     });
@@ -15092,26 +15108,29 @@ function wireHorizontalScroller(scroller) {
   let suppressClick = false;
   const finish = (event) => {
     if (!drag || (event?.pointerId != null && drag.pointerId !== event.pointerId)) return;
-    suppressClick = drag.moved;
+    const finished = drag;
+    drag = null;
+    suppressClick = finished.moved;
     if (suppressClick) setTimeout(() => { suppressClick = false; }, 250);
     try {
-      if (scroller.hasPointerCapture(drag.pointerId)) scroller.releasePointerCapture(drag.pointerId);
+      if (scroller.hasPointerCapture(finished.pointerId)) scroller.releasePointerCapture(finished.pointerId);
     } catch { /* capture may already be gone */ }
-    drag = null;
     scroller.classList.remove('is-dragging');
   };
   scroller.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || event.pointerType === 'touch') return;
     suppressClick = false;
     drag = { pointerId: event.pointerId, startX: event.clientX, startScroll: scroller.scrollLeft, moved: false };
-    scroller.setPointerCapture(event.pointerId);
   });
   scroller.addEventListener('pointermove', (event) => {
     if (!drag || drag.pointerId !== event.pointerId) return;
     const delta = event.clientX - drag.startX;
     if (!drag.moved && Math.abs(delta) < 5) return;
-    drag.moved = true;
-    scroller.classList.add('is-dragging');
+    if (!drag.moved) {
+      drag.moved = true;
+      scroller.classList.add('is-dragging');
+      try { scroller.setPointerCapture(event.pointerId); } catch { /* pointer may have ended */ }
+    }
     scroller.scrollLeft = drag.startScroll - delta;
     event.preventDefault();
   });
@@ -15134,6 +15153,8 @@ function wireHorizontalScroller(scroller) {
 function renderDesktopStagePicker(item, media = 'image') {
   const picker = $('#desktopStagePicker');
   if (!picker) return;
+  const restoreChoiceFocus = picker.contains(document.activeElement);
+  const previousScrollLeft = picker.scrollLeft;
   const choices = desktopStageChoices(item);
   picker.innerHTML = '';
   picker.hidden = choices.length < 2;
@@ -15147,12 +15168,17 @@ function renderDesktopStagePicker(item, media = 'image') {
     button.setAttribute('aria-label', choice.label);
     button.setAttribute('aria-pressed', String(active));
     button.title = choice.label;
+    button.dataset.itemId = choice.item.id;
+    button.dataset.media = choice.media;
+    const thumbnail = document.createElement('span');
+    thumbnail.className = 'desktop-stage-choice-thumb';
     if (choice.src) {
       const image = document.createElement('img');
       image.src = choice.src;
       image.alt = '';
       image.loading = 'eager';
-      button.appendChild(image);
+      image.draggable = false;
+      thumbnail.appendChild(image);
     }
     const badge = document.createElement('span');
     badge.className = 'desktop-stage-choice-badge';
@@ -15160,12 +15186,74 @@ function renderDesktopStagePicker(item, media = 'image') {
     badge.innerHTML = choice.video
       ? '<svg viewBox="0 0 20 20"><path d="m7.5 5.5 6 4.5-6 4.5Z"/></svg>'
       : escapeHtml(choice.badge);
-    button.appendChild(badge);
-    button.addEventListener('click', () => selectDesktopLibraryItem(choice.item, choice.media));
+    thumbnail.appendChild(badge);
+    const copy = document.createElement('span');
+    copy.className = 'desktop-stage-choice-copy';
+    const summary = document.createElement('b');
+    summary.textContent = choice.summary || choice.label;
+    const position = document.createElement('small');
+    position.textContent = choice.position;
+    copy.append(summary, position);
+    button.append(thumbnail, copy);
+    button.addEventListener('click', () => {
+      if (picker.classList.contains('focused')) openLightbox(choice.item.id, choice.media);
+      else selectDesktopLibraryItem(choice.item, choice.media);
+    });
     picker.appendChild(button);
   });
+  picker.scrollLeft = previousScrollLeft;
   wireHorizontalScroller(picker);
-  revealHorizontalSelection(picker, picker.querySelector('.desktop-stage-choice.active'));
+  const activeChoice = picker.querySelector('.desktop-stage-choice.active');
+  revealHorizontalSelection(picker, activeChoice);
+  if (restoreChoiceFocus && activeChoice) requestAnimationFrame(() => activeChoice.focus({ preventScroll: true }));
+}
+
+const desktopStagePickerHome = $('#desktopStagePicker')?.parentElement || null;
+const desktopStagePickerHomeAnchor = $('#desktopStageInfo');
+let desktopStagePickerAnimationTimer = 0;
+
+function focusDesktopStagePicker(item, media = 'image') {
+  const picker = $('#desktopStagePicker');
+  const slot = $('#lbGroupPickerSlot');
+  if (!picker || !slot || !item) return false;
+  const alreadyFocused = picker.classList.contains('focused');
+  renderDesktopStagePicker(item, media);
+  if (picker.hidden) {
+    $('#lightbox').classList.remove('desktop-group-picker-active');
+    return false;
+  }
+  const origin = alreadyFocused ? null : picker.getBoundingClientRect();
+  if (picker.parentElement !== slot) slot.appendChild(picker);
+  picker.classList.add('focused');
+  $('#lightbox').classList.add('desktop-group-picker-active');
+  if (!alreadyFocused) {
+    clearTimeout(desktopStagePickerAnimationTimer);
+    picker.classList.add('entering');
+    desktopStagePickerAnimationTimer = setTimeout(() => picker.classList.remove('entering'), 320);
+    if (origin?.width && picker.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      requestAnimationFrame(() => {
+        if (!picker.classList.contains('focused')) return;
+        const target = picker.getBoundingClientRect();
+        picker.animate([
+          { transform: `translate3d(${origin.x - target.x}px, ${origin.y - target.y}px, 0)`, opacity: 0.82 },
+          { transform: 'translate3d(0, 0, 0)', opacity: 1 },
+        ], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      });
+    }
+  }
+  return true;
+}
+
+function restoreDesktopStagePickerHome() {
+  const picker = $('#desktopStagePicker');
+  if (!picker || !desktopStagePickerHome || !picker.classList.contains('focused')) return;
+  clearTimeout(desktopStagePickerAnimationTimer);
+  if (picker.getAnimations) picker.getAnimations().forEach((animation) => animation.cancel());
+  picker.classList.remove('focused', 'entering', 'is-dragging');
+  desktopStagePickerHome.insertBefore(picker, desktopStagePickerHomeAnchor);
+  $('#lightbox').classList.remove('desktop-group-picker-active');
+  const item = state.desktopItemId && state.items.find((entry) => entry.id === state.desktopItemId);
+  renderDesktopStagePicker(item || null, state.desktopMediaId || 'image');
 }
 
 function renderDesktopStage(item, mediaSel) {
@@ -15897,6 +15985,19 @@ function strengthHuntItemLabel(item) {
   if (strengths.length > 1) return `X ${strengthHuntStrengthLabel(strengths[0])} · Y ${strengthHuntStrengthLabel(strengths[1])}`;
   if (strengths.length) return `Strength ${strengthHuntStrengthLabel(strengths[0])}`;
   return item.strengthHunt.label || 'Strength Hunt';
+}
+
+function lightboxGroupThumbnailMarkup(item, index, label) {
+  const thumbnail = item && (item.upscaled || item.file);
+  const number = index + 1;
+  return `${thumbnail
+    ? `<img class="lb-group-thumb-image" src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="lazy" draggable="false" />`
+    : `<span class="lb-group-thumb-fallback" aria-hidden="true">${number}</span>`}
+    ${item?.angleView ? `<span class="angle-group-glyph lb-group-thumb-glyph" aria-hidden="true">${angleViewGlyph(item)}</span>` : ''}
+    <span class="lb-group-thumb-copy">
+      <span class="lb-group-thumb-label">${escapeHtml(label || 'Generation')}</span>
+      <span class="lb-group-thumb-number">${number}</span>
+    </span>`;
 }
 
 function angleViewLabel(item) {
@@ -18201,7 +18302,9 @@ function openLightbox(id, mediaSel) {
   const selComposite = composites.find((composite) => 'composite:' + composite.id === sel) || null;
   state.currentMedia = selVideo ? { type: 'video', id: selVideo.id }
     : (selComposite ? { type: 'composite', id: selComposite.id } : { type: 'image', id: 'image' });
+  let sharedDesktopGroupPicker = false;
   if (desktopWorkspaceActive()) {
+    sharedDesktopGroupPicker = focusDesktopStagePicker(it, selVideo ? selVideo.id : 'image');
     document.body.classList.add('desktop-focused-result');
     syncNavigation();
   }
@@ -18258,40 +18361,37 @@ function openLightbox(id, mediaSel) {
     mrow.appendChild(tier);
     return options;
   };
-  if (angleItems.length > 1) {
+  if (!sharedDesktopGroupPicker && angleItems.length > 1) {
     const angleOptions = makeMediaTier('lb-media-generations', 'Camera variations');
     angleItems.forEach((angleItem, index) => {
       const button = document.createElement('button');
-      button.className = 'chip angle-group-chip' + (angleItem.id === it.id ? ' active' : '');
-      button.innerHTML = `<span class="angle-group-glyph" aria-hidden="true">${angleViewGlyph(angleItem)}</span><span>${escapeHtml(angleViewLabel(angleItem))}</span>`;
+      button.type = 'button';
+      button.className = 'chip angle-group-chip lb-group-thumb-chip' + (angleItem.id === it.id ? ' active' : '');
+      button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index, angleViewLabel(angleItem));
       button.title = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
+      button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openLightbox(angleItem.id, 'image'));
       angleOptions.appendChild(button);
     });
   }
-  if (generationItems.length > 1) {
+  if (!sharedDesktopGroupPicker && generationItems.length > 1) {
     const strengthHuntGroup = generationItems.some((item) => item.strengthHunt);
     const generationOptions = makeMediaTier('lb-media-generations', 'Generations');
     if (strengthHuntGroup) generationOptions.previousElementSibling.textContent = 'Strength Hunt';
     generationItems.forEach((groupItem, index) => {
       const button = document.createElement('button');
-      button.className = 'chip generation-group-chip' + (groupItem.id === it.id ? ' active' : '');
+      button.type = 'button';
+      button.className = 'chip generation-group-chip lb-group-thumb-chip' + (groupItem.id === it.id ? ' active' : '');
       const huntLabel = strengthHuntItemLabel(groupItem);
-      button.innerHTML = `<span class="lb-generation-label">Generation</span><span class="lb-generation-index">${index + 1}</span>`;
-      if (huntLabel) {
-        const thumbnail = groupItem.upscaled || groupItem.file;
-        button.classList.add('strength-hunt-chip');
-        button.innerHTML = `${thumbnail
-          ? `<img src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="lazy" />`
-          : ''}<span class="lb-generation-label">${escapeHtml(huntLabel)}</span>`;
-      }
+      if (huntLabel) button.classList.add('strength-hunt-chip');
+      button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index, huntLabel || 'Generation');
       button.title = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
       button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openLightbox(groupItem.id, 'image'));
       generationOptions.appendChild(button);
     });
   }
-  if (generationItems.length > 1 || videos.length || composites.length) {
+  if ((!sharedDesktopGroupPicker && generationItems.length > 1) || videos.length || composites.length) {
     const groupedGeneration = generationItems.length > 1;
     let mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
     if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
@@ -18711,6 +18811,7 @@ function closeLightbox(fromPop) {
   lightboxReturnFocus = null;
   closeActionMenu();
   resetLightboxSwipeVisuals();
+  restoreDesktopStagePickerHome();
   $('#lightbox').classList.remove('show');
   const restoreDesktopNavigation = document.body.classList.contains('desktop-focused-result');
   document.body.classList.remove('desktop-focused-result');
@@ -25220,7 +25321,7 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
   if (!event.matches) finishDesktopPanelResize({ persist: false });
   applyDesktopPanelLayout();
   syncNavigation();
-  renderDesktopStage();
+  if (!$('#lightbox')?.classList.contains('show')) renderDesktopStage();
 });
 
 initIconTooltips();
