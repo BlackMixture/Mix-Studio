@@ -151,6 +151,8 @@ Open Mix Studio's side menu and choose **Update app**. Updates require:
 
 Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side updates restart the Node process automatically; frontend-only updates do not need a restart.
 
+Every user-facing release is associated with the semantic version in `release.json`. The side menu and **Advanced Settings → System** show that installed version, while the short Git revision remains available to the update API for diagnostics. Bump `release.json` once when preparing each release; commits that belong to the same release may share its version.
+
 The owner can also choose **Restart app** from the same menu. It checks both Mix Studio and ComfyUI queues before restarting the Node server, and is available because `start.bat` launches the server in restart-aware mode.
 
 ## Features

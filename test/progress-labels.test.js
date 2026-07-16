@@ -60,3 +60,15 @@ test('multi-stage video progress names each pass and reports one overall percent
     phaseLabel: '',
   });
 });
+
+test('Strength Hunt reports one overall percentage across comparison samplers', () => {
+  const hunt = job('loraHunt', 'KSampler');
+  hunt.graph.second = { class_type: 'KSampler', inputs: {} };
+  hunt.huntPlan = { variants: [{ label: 'Film 0.2' }, { label: 'Film 0.4' }] };
+  assert.equal(nodeLabelForJob(hunt, 'sampler'), 'Strength comparison 1 of 2');
+  const progress = progressDetailsForJob(hunt, 'second', 5, 10);
+  assert.equal(progress.phaseIndex, 2);
+  assert.equal(progress.phaseCount, 2);
+  assert.equal(progress.phaseLabel, 'Film 0.4');
+  assert.equal(progress.overallPercent, 72);
+});

@@ -13,7 +13,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
-const { updateFromGit } = require('./lib/app-update');
+const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponents } = require('./lib/dependency-installer');
@@ -163,6 +163,12 @@ const {
 } = require('./lib/deleted-media');
 const { applyProfileOutputPrefix, profileOutputFolder } = require('./lib/output-prefix');
 const { expandGalleryGroupSelection } = require('./lib/gallery-grouping');
+const {
+  buildStrengthHuntPlan,
+  buildStrengthHuntSheet,
+  huntLoras,
+  mergeStrengthHuntGraphs,
+} = require('./lib/strength-hunt');
 const { streamStoredZip } = require('./lib/zip-stream');
 const { mobileAccessAddresses } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
@@ -1464,6 +1470,151 @@ async function downloadOutput(entry) {
   )).arrayBuffer());
 }
 
+function strengthHuntOutputIndex(entry) {
+  const match = String(entry && entry.filename || '').match(/strength_hunt_(\d+)/i);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOut) {
+  const plan = job.huntPlan;
+  const files = [...outputFiles].sort((a, b) => strengthHuntOutputIndex(a) - strengthHuntOutputIndex(b));
+  if (!plan || files.length < plan.variants.length) {
+    return failJob(pid, `Strength Hunt expected ${plan ? plan.variants.length : 0} images but ComfyUI returned ${files.length}`);
+  }
+  const createdAt = Date.now();
+  const created = [];
+  const sheetInputs = [];
+  let sourceFile = null;
+  const sourceImageName = job.refImageNames && job.refImageNames[0];
+  if (sourceImageName && (job.params.mode === 'edit' || job.params.imageName)) {
+    try {
+      const parts = String(sourceImageName).split('/');
+      const fn = parts.pop();
+      const sub = parts.join('/');
+      const source = Buffer.from(await (await comfyFetch(
+        `/view?filename=${encodeURIComponent(fn)}&subfolder=${encodeURIComponent(sub)}&type=input`
+      )).arrayBuffer());
+      sourceFile = `${plan.id}_src.png`;
+      await fsp.writeFile(path.join(IMAGES, sourceFile), source);
+    } catch { /* source copy is best-effort */ }
+  }
+  for (let index = 0; index < plan.variants.length; index += 1) {
+    const variant = plan.variants[index];
+    const buf = await downloadOutput(files[index]);
+    const id = uid();
+    const fname = settings.smartFilenames
+      ? smartAssetFilename(job.params.prompt, id, '.png', 'strength-hunt')
+      : `${id}.png`;
+    await fsp.writeFile(path.join(IMAGES, fname), buf);
+    const dims = pngDims(buf) || {};
+    const item = {
+      id,
+      file: fname,
+      name: settings.smartFilenames ? smartGenerationName(job.params.prompt, `Strength Hunt ${index + 1}`) : undefined,
+      mode: job.params.mode,
+      krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
+      imageGuideMode: job.params.mode === 't2i' && job.params.imageName ? job.params.imageGuideMode : undefined,
+      depthStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'depth' ? job.params.depthStrength : undefined,
+      styleStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'style' ? job.params.styleStrength : undefined,
+      editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
+      qwenQuality: job.params.mode === 'edit' && job.params.editEngine === 'qwen'
+        ? normalizeQwenEditQuality(job.params.qwenQuality) : undefined,
+      sourceFile,
+      sourceItemId: job.params.sourceItemId || null,
+      profileId: job.profileId,
+      regions: Array.isArray(job.params.regions) && job.params.regions.length
+        ? normalizeRegions(job.params.regions) : undefined,
+      prompt: job.params.prompt,
+      refinedPrompt: job.refinedPrompt || textOut,
+      enhance: !!job.params.enhance,
+      width: dims.w || job.params.width,
+      height: dims.h || job.params.height,
+      seed: job.params.seed,
+      steps: job.params.steps,
+      cfg: job.params.cfg,
+      denoise: job.params.denoise,
+      batch: 1,
+      loras: variant.loras.filter((lora) => lora && lora.on && lora.name),
+      refImages: job.refImageNames || [],
+      folder: job.params.folder || null,
+      createdAt: createdAt + index,
+      durationMs,
+      upscaled: null,
+      video: null,
+      generationGroupId: plan.id,
+      strengthHunt: {
+        id: plan.id,
+        axes: plan.axes,
+        strengths: variant.strengths,
+        row: variant.row,
+        column: variant.column,
+        label: variant.label,
+      },
+    };
+    created.push(item);
+    sheetInputs.push({
+      buffer: buf, label: variant.label, strengths: variant.strengths,
+      row: variant.row, column: variant.column,
+    });
+  }
+  const model = job.params.mode === 'edit'
+    ? ({ qwen: 'Qwen Edit', klein9: 'Flux Klein 9B', krea2: 'Krea 2', krea2ref: 'Krea 2 Edit' }[job.params.editEngine] || 'Flux Klein 4B')
+    : (job.params.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo');
+  const documentation = buildStrengthHuntSheet(sheetInputs, {
+    columns: plan.columns,
+    rows: plan.rows,
+    prompt: job.params.prompt,
+    seed: job.params.seed,
+    cfg: job.params.cfg,
+    steps: job.params.steps,
+    model,
+    axes: plan.axes,
+  });
+  const compositeId = uid();
+  const compositeFile = settings.smartFilenames
+    ? smartAssetFilename(job.params.prompt, compositeId, '.png', 'strength-hunt-documentation')
+    : `${compositeId}_strength_hunt.png`;
+  await fsp.writeFile(path.join(IMAGES, compositeFile), documentation.buffer);
+  const composite = {
+    id: compositeId,
+    file: compositeFile,
+    name: settings.smartFilenames ? smartGenerationName(job.params.prompt, 'LoRA Strength Hunt') : undefined,
+    mode: 'composite',
+    compositeInfo: {
+      type: 'strength-hunt',
+      label: 'LoRA Strength Hunt',
+      axes: plan.axes,
+      count: created.length,
+    },
+    profileId: job.profileId,
+    prompt: job.params.prompt,
+    refinedPrompt: job.refinedPrompt || textOut,
+    width: documentation.width,
+    height: documentation.height,
+    seed: job.params.seed,
+    steps: job.params.steps,
+    cfg: job.params.cfg,
+    denoise: job.params.denoise,
+    loras: job.params.loras.filter((lora) => lora && lora.on && lora.name),
+    refImages: job.refImageNames || [],
+    folder: job.params.folder || null,
+    createdAt: createdAt + plan.variants.length + 1,
+    durationMs,
+    generationGroupId: plan.id,
+    strengthHunt: { id: plan.id, axes: plan.axes, documentation: true, count: created.length },
+    upscaled: null,
+    video: null,
+  };
+  db.items.unshift(composite, ...created.slice().reverse());
+  saveDb();
+  pushHistory({
+    kind: 'gen', profileId: job.profileId, itemId: composite.id, durationMs,
+    label: `LoRA Strength Hunt · ${created.length} comparisons: ${(job.params.prompt || '').slice(0, 50)}`,
+  });
+  jobs.delete(pid);
+  broadcast('jobDone', { jobId: pid, items: [composite, ...created], strengthHunt: true, count: created.length });
+}
+
 async function completeJob(pid) {
   const job = jobs.get(pid);
   if (!job) return;
@@ -1595,6 +1746,10 @@ async function completeJob(pid) {
 
   const files = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
   if (!files.length) return failJob(pid, 'ComfyUI produced no output images');
+
+  if (job.kind === 'loraHunt') {
+    return completeStrengthHuntJob(pid, job, files, durationMs, textOut);
+  }
 
   if (job.kind === 'upscale') {
     const buf = await downloadOutput(files[0]);
@@ -2615,6 +2770,28 @@ async function queueGenerationJob(p, profileId, refNames, refinedPrompt = null) 
   trackJob(pid, { kind: 'gen', profileId, params: p, graph, refImageNames: refNames, refinedPrompt });
   ensureWs();
   return { pid, graph };
+}
+
+async function queueStrengthHuntJob(p, profileId, refNames, refinedPrompt = null) {
+  const huntPlan = buildStrengthHuntPlan(p.loras, { id: uid() });
+  if (!huntPlan) throw new Error('Choose at least one enabled LoRA for Strength Hunt');
+  const graphs = [];
+  for (const variant of huntPlan.variants) {
+    graphs.push(await buildGenerationGraph(Object.assign({}, p, {
+      loras: variant.loras,
+      batch: 1,
+      postUpscale: undefined,
+      strengthHunt: undefined,
+    }), refNames));
+  }
+  const graph = mergeStrengthHuntGraphs(graphs);
+  const pid = await queuePrompt(graph, { profileId });
+  trackJob(pid, {
+    kind: 'loraHunt', profileId, params: Object.assign({}, p, { batch: 1, postUpscale: undefined }),
+    graph, refImageNames: refNames, refinedPrompt, huntPlan,
+  });
+  ensureWs();
+  return { pid, graph, huntPlan };
 }
 
 async function queueNextSequentialEdit(job, sourceItem) {
@@ -4466,7 +4643,10 @@ async function handleApi(req, res, url) {
         updated: update.updated,
         restarting: update.updated && update.restartRequired,
         branch: update.branch,
-        version: update.after.slice(0, 7),
+        version: update.release.version || update.after.slice(0, 7),
+        previousVersion: update.releaseBefore.version || update.before.slice(0, 7),
+        releasedAt: update.release.releasedAt,
+        revision: update.after.slice(0, 7),
         changedFiles: update.changedFiles,
       });
       if (update.updated && update.restartRequired) scheduleServerRestart();
@@ -4581,6 +4761,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/meta') {
+    const app = readAppRelease(ROOT);
     try {
       const info = await getObjectInfo(url.searchParams.has('refresh'), { signal: AbortSignal.timeout(6000) });
       const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];
@@ -4606,6 +4787,7 @@ async function handleApi(req, res, url) {
       }
       return json(res, 200, {
         ok: true,
+        app,
         loras,
         lorasInfo,
         loraThumbs: db.loraThumbs,
@@ -4631,7 +4813,7 @@ async function handleApi(req, res, url) {
         queue: jobs.size,
       });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), loras: [], lorasInfo: {}, missing: null, models: null, features: settings.features, queue: jobs.size });
+      return json(res, 200, { ok: false, app, error: String(e.message || e), loras: [], lorasInfo: {}, missing: null, models: null, features: settings.features, queue: jobs.size });
     }
   }
 
@@ -4917,6 +5099,18 @@ async function handleApi(req, res, url) {
     p.postUpscale = p.mode === 'edit' || p.mode === 't2i' ? normalizePostUpscale(p.postUpscale) : undefined;
     p.seed = Number.isFinite(Number(p.seed)) && Number(p.seed) >= 0
       ? Math.floor(Number(p.seed)) : Math.floor(Math.random() * 2 ** 48);
+    p.loras = (Array.isArray(p.loras) ? p.loras : []).slice(0, 64)
+      .filter((lora) => lora && lora.name)
+      .map((lora) => ({
+        name: String(lora.name).slice(0, 512),
+        strength: clampNum(lora.strength, 0, 2, 1),
+        on: lora.on !== false,
+        strengthHunt: lora.strengthHunt === true,
+      }));
+    const requestedHuntLoras = huntLoras(p.loras);
+    if (requestedHuntLoras.length > 2) {
+      return json(res, 400, { error: 'Strength Hunt supports up to two enabled LoRAs at a time' });
+    }
     p.regions = Array.isArray(p.regions) ? p.regions : [];
     p.maskImageName = String(p.maskImageName || '').trim();
     p.editMaskMode = ['smart', 'box', 'brush'].includes(p.editMaskMode) ? p.editMaskMode : 'brush';
@@ -5045,12 +5239,26 @@ async function handleApi(req, res, url) {
       // itself but skip the incompatible preservation pass.
       if (p.editAspectOverride && !p.editOutpaint) p.composite = false;
     }
-    const { pid } = await queueGenerationJob(p, req.profile.id, refNames, refined);
+    if (requestedHuntLoras.length && (p.editSequence || p.qwenAngle)) {
+      return json(res, 400, { error: 'Run Strength Hunt separately from sequential edits and camera variations' });
+    }
+    const huntCount = requestedHuntLoras.length === 2 ? 121 : (requestedHuntLoras.length === 1 ? 10 : 0);
+    if (huntCount && Number(p.strengthHuntConfirmed) !== huntCount) {
+      return json(res, 409, { error: `Confirm the ${huntCount}-image Strength Hunt before queueing it` });
+    }
+    if (huntCount) {
+      p.batch = 1;
+      p.postUpscale = undefined;
+    }
+    const queued = huntCount
+      ? await queueStrengthHuntJob(p, req.profile.id, refNames, refined)
+      : await queueGenerationJob(p, req.profile.id, refNames, refined);
     return json(res, 200, {
-      jobId: pid,
+      jobId: queued.pid,
       seed: p.seed,
       refinedPrompt: refined,
       sequenceId: p.editSequence ? p.editSequence.id : undefined,
+      strengthHunt: huntCount || undefined,
     });
   }
 
@@ -6679,6 +6887,10 @@ async function handleApi(req, res, url) {
 
 function jobLabel(job) {
   if (!job) return 'Other ComfyUI job';
+  if (job.kind === 'loraHunt') {
+    const count = job.huntPlan && job.huntPlan.variants ? job.huntPlan.variants.length : 0;
+    return `LoRA Strength Hunt${count ? ` (${count})` : ''}: ${(job.params.prompt || '').slice(0, 55)}`;
+  }
   if (job.kind === 'gen') {
     const sequence = job.params.editSequence;
     const prefix = sequence

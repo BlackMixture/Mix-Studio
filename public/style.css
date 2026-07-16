@@ -489,6 +489,18 @@ html:-webkit-full-screen { background: #000; }
   }
   .app-drawer { width: min(326px, calc(100vw - 36px)); }
   .app-drawer-action small { display: none; }
+  .app-drawer-action #appVersionLabel {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 7px;
+    border: 1px solid rgba(226,232,255,.1);
+    border-radius: 999px;
+    background: rgba(255,255,255,.035);
+    color: var(--ink-soft);
+    font-size: 10px;
+  }
   body.app-drawer-open .topbar,
   body.app-drawer-open .tabs-wrap,
   body.app-drawer-open .view,
@@ -2756,6 +2768,23 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   text-transform: uppercase;
   pointer-events: none;
 }
+.lora-card .lc-hunt-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 27px;
+  padding: 3px 7px;
+  border: 1px solid rgba(171, 199, 255, .62);
+  border-radius: 999px;
+  color: #e8efff;
+  background: rgba(23, 41, 78, .88);
+  box-shadow: 0 3px 12px rgba(57, 102, 194, .28);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.lora-card.strength-hunt { border-color: rgba(139, 177, 255, .78); }
 .lora-card.missing .lc-auto-badge { color: #ff8b8b; border-color: rgba(255,82,82,.45); }
 .lora-card.adjusting {
   border-color: rgba(255,255,255,0.85);
@@ -2864,6 +2893,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   box-shadow: 0 26px 90px rgba(0,0,0,.72);
 }
 .lora-picker-panel .sheet-title { margin-bottom: 12px; }
+.lora-picker-search-form { margin: 0; }
 .lora-picker-search {
   min-width: 0; min-height: 44px; margin-bottom: 10px; padding: 0 12px; display: flex; align-items: center; gap: 9px;
   border: 1px solid var(--line); border-radius: 12px; background: #000;
@@ -9174,6 +9204,8 @@ body.sheet-open {
     box-shadow: 0 0 0 1px rgba(var(--mode-rgb),.08), 0 0 22px rgba(var(--mode-rgb),.1) !important;
     transition: outline-color 150ms var(--ease), outline-offset 150ms var(--ease), box-shadow 180ms var(--ease), transform 180ms var(--ease) !important;
   }
+  .lora-card.gallery-drop-ready { opacity: .78; }
+  .lora-card.gallery-drop-active { opacity: 1; }
   .gallery-drop-active {
     outline-style: solid !important;
     outline-color: rgba(var(--mode-rgb),.95) !important;

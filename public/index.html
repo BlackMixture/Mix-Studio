@@ -106,7 +106,7 @@
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5a7 7 0 0 1 6.3 4H16l3.3 3.3L22.6 9h-2.2A9 9 0 0 0 4 8.2L5.7 9A7 7 0 0 1 12 5Zm-7.3 6.7L1.4 15h2.2A9 9 0 0 0 20 15.8l-1.7-.8A7 7 0 0 1 5.7 15H8l-3.3-3.3Z"/></svg>
           </span>
           <span class="app-drawer-label">Update app</span>
-          <small>GitHub</small>
+          <small id="appVersionLabel">Loading version…</small>
         </button>
         <div class="app-update-status" id="appUpdateStatus" role="status" aria-live="polite">
           Pulls the latest version and restarts only when needed.
@@ -1753,7 +1753,7 @@
 
 <!-- shared app-native prompt and confirmation dialog -->
 <div class="sheet" id="appDialogSheet">
-  <form class="sheet-panel app-dialog-panel" id="appDialogForm" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+  <form class="sheet-panel app-dialog-panel" id="appDialogForm" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" autocomplete="off">
     <h3 class="sheet-title"><span id="appDialogTitle">Continue?</span><button id="appDialogClose" type="button" aria-label="Close">✕</button></h3>
     <p class="app-dialog-copy" id="appDialogCopy" hidden></p>
     <div class="field" id="appDialogField" hidden>
@@ -1854,17 +1854,17 @@
 
 <!-- profile edit sheet -->
 <div class="sheet" id="profileEditSheet">
-  <div class="sheet-panel">
+  <form class="sheet-panel" id="profileEditForm" autocomplete="off">
     <h3 class="sheet-title">Edit Profile <button data-close type="button" aria-label="Close profile editor">✕</button></h3>
     <div class="profile-edit-head">
       <div class="profile-avatar-lg" id="peAvatar"></div>
-      <button class="chip icon-label-btn" id="peChangePhoto"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h4l1.4-2h5.2L16 7h4v12H4V7Zm2 2v8h12V9h-3.1l-1.4-2h-3L9.1 9H6Zm6 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg><span>Change photo</span></button>
+      <button class="chip icon-label-btn" id="peChangePhoto" type="button"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h4l1.4-2h5.2L16 7h4v12H4V7Zm2 2v8h12V9h-3.1l-1.4-2h-3L9.1 9H6Zm6 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg><span>Change photo</span></button>
     </div>
-    <div class="field"><label>Name</label><input id="peName" type="text" maxlength="30" /></div>
-    <div class="field"><label>PIN — leave empty for no PIN</label><input id="pePin" type="password" inputmode="numeric" placeholder="••••" maxlength="12" /></div>
-    <button class="sheet-cta" id="peSave">Save changes</button>
-    <button class="action-btn danger" id="peDelete" style="width:100%; margin-top:10px"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7h10l-.7 13H7.7L7 7Zm2 2 .45 9h5.1L15 9H9Zm1-5h4l1 1h4v2H5V5h4l1-1Z"/></svg><span>Delete this profile and all its content</span></button>
-  </div>
+    <div class="field"><label>Name</label><input id="peName" name="profile-name" type="text" autocomplete="name" maxlength="30" /></div>
+    <div class="field"><label>PIN — leave empty for no PIN</label><input id="pePin" name="profile-pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="••••" maxlength="12" /></div>
+    <button class="sheet-cta" id="peSave" type="submit">Save changes</button>
+    <button class="action-btn danger" id="peDelete" type="button" style="width:100%; margin-top:10px"><svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7h10l-.7 13H7.7L7 7Zm2 2 .45 9h5.1L15 9H9Zm1-5h4l1 1h4v2H5V5h4l1-1Z"/></svg><span>Delete this profile and all its content</span></button>
+  </form>
 </div>
 
 <!-- manage profiles sheet (owner) -->
@@ -1880,7 +1880,9 @@
 <div class="sheet" id="loraPickSheet">
   <div class="sheet-panel lora-picker-panel">
     <h3 class="sheet-title"><span id="loraPickTitle">Add LoRA</span> <button data-close type="button" aria-label="Close LoRA picker">✕</button></h3>
-    <label class="lora-picker-search" for="loraSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg><input class="lora-search" id="loraSearch" type="search" placeholder="Search LoRAs…" autocomplete="off" /></label>
+    <form class="lora-picker-search-form" id="loraSearchForm" role="search" autocomplete="off" data-form-type="other">
+      <label class="lora-picker-search" for="loraSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg><input class="lora-search" id="loraSearch" name="lora-filter" type="search" placeholder="Search LoRAs…" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" data-1p-ignore data-lpignore="true" /></label>
+    </form>
     <div class="lora-pick-list" id="loraPickList"></div>
   </div>
 </div>
@@ -2386,8 +2388,8 @@
             <span class="settings-update-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.2-2.1L20 10M4 14l2.7 3.1A7 7 0 0 0 17.9 15"/></svg>
             </span>
-            <span class="settings-update-copy"><small>Update channel</small><strong>main</strong></span>
-            <span class="settings-update-requirement">Owner · idle queue</span>
+            <span class="settings-update-copy"><small>Installed version</small><strong id="settingsAppVersion">Loading…</strong></span>
+            <span class="settings-update-requirement">main · Owner · idle queue</span>
           </div>
         </section>
       </div>

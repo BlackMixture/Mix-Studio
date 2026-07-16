@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
@@ -11,6 +12,13 @@ const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const modatoryLogo = fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8');
+
+function appFunction(name, nextName) {
+  const start = app.indexOf(`function ${name}(`);
+  const end = app.indexOf(`\nfunction ${nextName}(`, start);
+  assert.ok(start >= 0 && end > start, `${name} should be a standalone app helper`);
+  return vm.runInNewContext(`(${app.slice(start, end)})`);
+}
 
 test('the logo mark opens a labeled mobile app drawer', () => {
   assert.match(html, /class="side-menu-trigger"[^>]+id="appMenuBtn"[^>]+aria-label="Open Mix Studio menu"[^>]+aria-controls="appDrawer"/);
@@ -109,4 +117,36 @@ test('the update flow pulls safely and waits for a conditional restart', () => {
   assert.match(server, /jobs\.size/);
   assert.match(app, /waitForAppRestart/);
   assert.match(app, /api\('\/api\/update'/);
+});
+
+test('semantic app versions are visible in the drawer and System settings', () => {
+  const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
+  const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<\/section>/)?.[1] || '';
+  assert.match(drawer, /id="appVersionLabel"/);
+  assert.match(systemPane, /Installed version[\s\S]*id="settingsAppVersion"[\s\S]*main · Owner · idle queue/);
+
+  const releaseRenderer = app.slice(app.indexOf('function renderAppRelease('), app.indexOf('\nfunction renderAppUpdateAccess('));
+  assert.match(releaseRenderer, /formatAppVersion\(state\.appRelease\.version, state\.appRelease\.revision\)/);
+  assert.match(releaseRenderer, /\$\('#appVersionLabel'\)/);
+  assert.match(releaseRenderer, /\$\('#settingsAppVersion'\)/);
+  assert.match(app, /lastMeta = await api\('\/api\/meta'[\s\S]{0,220}renderAppRelease\(lastMeta\.app \|\| \{\}\)/);
+  assert.match(css, /\.app-drawer-action #appVersionLabel \{[\s\S]*display: inline-flex;[\s\S]*border-radius: 999px;/);
+});
+
+test('app version formatting distinguishes SemVer, legacy revisions, and development builds', () => {
+  const formatAppVersion = appFunction('formatAppVersion', 'renderAppRelease');
+  assert.equal(formatAppVersion('1.0.0'), 'v1.0.0');
+  assert.equal(formatAppVersion('2.3.4-beta.1+win'), 'v2.3.4-beta.1+win');
+  assert.equal(formatAppVersion('', 'abcdef0123456789'), 'build abcdef0');
+  assert.equal(formatAppVersion('9945455'), 'build 9945455');
+  assert.equal(formatAppVersion('not-a-version'), 'Development build');
+  assert.equal(formatAppVersion(), 'Development build');
+});
+
+test('update status copy uses the formatted release instead of exposing a raw version field', () => {
+  const handler = app.slice(app.indexOf("$('#appUpdateBtn').addEventListener"), app.indexOf("$('#appRestartBtn').addEventListener"));
+  assert.match(handler, /const versionLabel = renderAppRelease\(result\)/);
+  assert.match(handler, /Mix Studio \$\{versionLabel\} is up to date/);
+  assert.match(handler, /Updated to \$\{versionLabel\}/);
+  assert.doesNotMatch(handler, /\$\{result\.version\}/);
 });

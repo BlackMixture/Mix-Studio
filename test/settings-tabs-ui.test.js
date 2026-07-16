@@ -23,7 +23,8 @@ test('advanced settings are split into four accessible side tabs', () => {
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<\/section>/)?.[1] || '';
   assert.doesNotMatch(drawer, /Update channel/);
-  assert.match(systemPane, /settings-update-info[\s\S]*Update channel[\s\S]*main[\s\S]*Owner · idle queue/);
+  assert.match(systemPane, /settings-update-info[\s\S]*Installed version[\s\S]*id="settingsAppVersion"[\s\S]*main · Owner · idle queue/);
+  assert.match(app, /renderAppRelease\(lastMeta\.app \|\| \{\}\)/);
 });
 
 test('model settings retain one field each and follow logical pipeline groups', () => {

@@ -76,6 +76,7 @@ const state = {
   editEngineDefault: 'klein9',
   videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
+  appRelease: { version: '', releasedAt: null, revision: '' },
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   promptSourceImage: null,   // image retained as optional context for conversational prompt revision
   promptAssistantUseSource: true,
@@ -556,6 +557,11 @@ function closeAppDialog(value = null) {
   if (sheet.contains(document.activeElement)) document.activeElement.blur();
   sheet.classList.remove('show', 'over-profile-gate');
   const resolve = appDialogResolver;
+  const input = $('#appDialogInput');
+  input.value = '';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  input.name = 'dialog-value';
   appDialogResolver = null;
   appDialogOptions = null;
   appDialogChoice = null;
@@ -581,6 +587,7 @@ function openAppDialog(options = {}) {
     const input = $('#appDialogInput');
     $('#appDialogLabel').textContent = inputOptions.label || 'Value';
     input.type = inputOptions.type || 'text';
+    input.name = inputOptions.name || (input.type === 'password' ? 'profile-pin' : 'dialog-value');
     input.value = inputOptions.value == null ? '' : String(inputOptions.value);
     input.placeholder = inputOptions.placeholder || '';
     input.setAttribute('maxlength', String(inputOptions.maxLength || 160));
@@ -795,6 +802,7 @@ function openProfileEdit() {
   if (!state.profile) return;
   $('#peName').value = state.profile.name;
   $('#pePin').value = '';
+  delete $('#pePin').dataset.cleared;
   $('#pePin').placeholder = state.profile.hasPin ? 'PIN set — type a new one or leave empty to remove' : 'No PIN — type one to add';
   $('#peAvatar').className = 'profile-avatar-lg' + (state.profile.avatar ? '' : ` tile-grad-${(state.profile.name || '?').length % 5}`);
   $('#peAvatar').innerHTML = state.profile.avatar
@@ -834,7 +842,8 @@ $('#peChangePhoto').addEventListener('click', () => {
   input.click();
 });
 
-$('#peSave').addEventListener('click', async () => {
+$('#profileEditForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
   try {
     const body = { name: $('#peName').value.trim() };
     const pin = $('#pePin').value.trim();
@@ -1218,6 +1227,29 @@ function setAppUpdateStatus(message, tone) {
   status.classList.toggle('bad', tone === 'bad');
 }
 
+function formatAppVersion(version, revision = '') {
+  const rawVersion = String(version || '').trim();
+  if (/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(rawVersion)) {
+    return `v${rawVersion}`;
+  }
+  const build = String(revision || (/^[0-9a-f]{7,40}$/i.test(rawVersion) ? rawVersion : '')).trim();
+  return build ? `build ${build.slice(0, 7)}` : 'Development build';
+}
+
+function renderAppRelease(release = {}) {
+  state.appRelease = {
+    version: String(release.version || ''),
+    releasedAt: release.releasedAt || null,
+    revision: String(release.revision || ''),
+  };
+  const label = formatAppVersion(state.appRelease.version, state.appRelease.revision);
+  const drawer = $('#appVersionLabel');
+  const settings = $('#settingsAppVersion');
+  if (drawer) drawer.textContent = label;
+  if (settings) settings.textContent = label;
+  return label;
+}
+
 function renderAppUpdateAccess() {
   const button = $('#appUpdateBtn');
   const restartButton = $('#appRestartBtn');
@@ -1325,21 +1357,22 @@ $('#appUpdateBtn').addEventListener('click', async () => {
   setAppUpdateStatus('Connecting to GitHub and checking the current branch…');
   try {
     const result = await api('/api/update', { method: 'POST' });
+    const versionLabel = renderAppRelease(result);
     button.classList.remove('busy');
     if (!result.updated) {
-      setAppUpdateStatus(`Mix Studio is up to date · ${result.version}`, 'good');
+      setAppUpdateStatus(`Mix Studio ${versionLabel} is up to date`, 'good');
       appUpdateRunning = false;
       renderAppUpdateAccess();
       return;
     }
     if (result.restarting) {
       label.textContent = 'Restarting Mix Studio…';
-      setAppUpdateStatus(`Updated to ${result.version}. Waiting for the desktop app to restart…`, 'good');
+      setAppUpdateStatus(`Updated to ${versionLabel}. Waiting for the desktop app to restart…`, 'good');
       await waitForAppRestart();
       return;
     }
     label.textContent = 'Update installed';
-    setAppUpdateStatus(`Updated to ${result.version}. Reloading the app…`, 'good');
+    setAppUpdateStatus(`Updated to ${versionLabel}. Reloading the app…`, 'good');
     setTimeout(() => location.reload(), 800);
   } catch (error) {
     button.classList.remove('busy');
@@ -3926,6 +3959,10 @@ function normalizeRegionStrength(value) {
   return Number.isFinite(strength) ? Math.max(0, Math.min(2, strength)) : 1;
 }
 
+function loraStrengthHoldDelay(pointerType) {
+  return pointerType === 'mouse' ? 140 : 300;
+}
+
 function createRegion() {
   const n = state.regions.length;
   const region = {
@@ -4148,7 +4185,7 @@ function renderRegionLoraCard(region) {
       adjustEl.textContent = startStrength.toFixed(2);
       try { card.setPointerCapture(pointerId); } catch { /* noop */ }
       if (navigator.vibrate) navigator.vibrate(10);
-    }, 300);
+    }, loraStrengthHoldDelay(event.pointerType));
     try { card.setPointerCapture(pointerId); } catch { /* noop */ }
   });
   card.addEventListener('pointermove', (event) => {
@@ -8292,12 +8329,15 @@ function renderLoras() {
     const trigger = loraTriggerPhrase(l);
     const managedConsistency = l.managed === 'klein-outpaint-consistency' || l.managed === 'edit-workflow-auto';
     card.className = 'lora-card' + (l.on ? ' on' : '') + (trigger ? ' has-trigger' : '')
+      + (l.strengthHunt ? ' strength-hunt' : '')
       + (managedConsistency ? ' managed-consistency' : '') + (l.missing ? ' missing' : '');
+    card.dataset.loraName = l.name;
     card.style.setProperty('--lora-color', loraTriggerColor(l.name));
     card.innerHTML = `${loraThumbHtml(l.name, 'lc-thumb')}`
       + `<span class="lc-strength">${Number(l.strength).toFixed(2)}</span>`
       + `<button class="lc-menu" type="button" aria-label="LoRA options" aria-haspopup="menu" aria-expanded="false">⋯</button>`
       + (trigger ? `<span class="lc-trigger-badge" title="Trigger phrase: ${escapeHtml(trigger)}" aria-label="Has trigger phrase">✦</span>` : '')
+      + (l.strengthHunt ? '<span class="lc-hunt-badge" title="Included in Strength Hunt">Hunt</span>' : '')
       + (managedConsistency ? '<span class="lc-auto-badge" title="Applied automatically for Klein Expand">Auto</span>' : '')
       + `<span class="lc-name" title="${escapeHtml(prettyLora(l.name))}">${escapeHtml(prettyLora(l.name))}</span>`
       + `<span class="lc-adjust"></span>`;
@@ -8321,8 +8361,8 @@ function renderLoras() {
   renderPromptSuggestions();
 }
 
-/* Card interactions: tap toggles, hold (300ms) + slide up/down adjusts
-   strength. The ⋯ menu handles thumbnail + remove. */
+/* Card interactions: tap toggles; a brief hold (140ms with a mouse,
+   300ms for touch/pen) + slide up/down adjusts strength. */
 function wireLoraCard(card, l, idx, arr) {
   const menuBtn = card.querySelector('.lc-menu');
   ['pointerdown', 'pointerup', 'pointercancel'].forEach((type) => {
@@ -8332,6 +8372,21 @@ function wireLoraCard(card, l, idx, arr) {
     e.stopPropagation();
     openActionMenu(menuBtn, [
       { label: 'Set thumbnail', icon: 'image', action: () => setLoraThumb(l.name) },
+      state.view !== 'video' && !l.managed ? {
+        label: l.strengthHunt ? 'Strength Hunt: On' : 'Strength Hunt: Off',
+        detail: l.strengthHunt ? 'Tap to remove this LoRA from the comparison' : 'Compare strengths from 0.2 through 2.0',
+        icon: 'process',
+        action: () => {
+          if (!l.strengthHunt) {
+            const selected = arr.filter((candidate) => candidate && candidate.strengthHunt && candidate !== l);
+            if (selected.length >= 2) return toast('Strength Hunt supports two LoRAs at a time', true);
+            l.strengthHunt = true;
+            l.on = true;
+          } else l.strengthHunt = false;
+          renderLoras();
+          saveForm();
+        },
+      } : null,
       { label: loraTriggerPhrase(l) ? `Trigger: ${loraTriggerPhrase(l)}` : 'Add trigger phrase', action: async () => {
         const value = await askText({
           title: 'LoRA trigger phrase',
@@ -8398,7 +8453,7 @@ function wireLoraCard(card, l, idx, arr) {
       adjustEl.textContent = startStrength.toFixed(2);
       try { card.setPointerCapture(pointerId); } catch { /* noop */ }
       if (navigator.vibrate) navigator.vibrate(10);
-    }, 300);
+    }, loraStrengthHoldDelay(e.pointerType));
     try { card.setPointerCapture(pointerId); } catch { /* noop */ }
   });
   card.addEventListener('pointermove', (e) => {
@@ -8433,6 +8488,7 @@ function wireLoraCard(card, l, idx, arr) {
     } else if (!moved) {
       const wasOn = l.on === true;
       l.on = !l.on;
+      if (!l.on) l.strengthHunt = false;
       if (!wasOn && l.on) ensureLoraTriggerInPrompt(l);
       else if (wasOn && !l.on) demoteLoraTriggerInPrompt(l);
       managedLoraChanged(l);
@@ -8457,7 +8513,56 @@ function wireLoraCard(card, l, idx, arr) {
   card.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-/* Thumbnail: square-crop client-side, stored server-side per LoRA file */
+/* Thumbnail: square-crop client-side, stored server-side per LoRA file. */
+async function cropLoraThumbnail(sourceBlob) {
+  const url = URL.createObjectURL(sourceBlob);
+  try {
+    const img = new Image();
+    await new Promise((ok, bad) => {
+      img.onload = ok;
+      img.onerror = () => bad(new Error('Could not read the image'));
+      img.src = url;
+    });
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const scale = Math.max(size / img.naturalWidth, size / img.naturalHeight);
+    canvas.getContext('2d').drawImage(
+      img,
+      (size - img.naturalWidth * scale) / 2,
+      (size - img.naturalHeight * scale) / 2,
+      img.naturalWidth * scale,
+      img.naturalHeight * scale
+    );
+    return await new Promise((ok, bad) => canvas.toBlob(
+      (blob) => (blob ? ok(blob) : bad(new Error('Crop failed'))),
+      'image/jpeg',
+      0.85
+    ));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function uploadLoraThumbnail(name, blob) {
+  const result = await api('/api/lorathumb', {
+    method: 'POST',
+    headers: { 'x-lora-name': encodeURIComponent(name) },
+    body: blob,
+  });
+  state.loraThumbs = result.loraThumbs || {};
+  renderLoras();
+  toast('LoRA thumbnail saved');
+}
+
+async function setLoraThumbFromGallery(name, item) {
+  if (!item?.file) throw new Error('This Library item does not have an image');
+  const response = await fetch('/images/' + encodeURIComponent(item.file));
+  if (!response.ok) throw new Error('That Library image is no longer available');
+  await uploadLoraThumbnail(name, await cropLoraThumbnail(await response.blob()));
+}
+
 function setLoraThumb(name) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -8466,24 +8571,7 @@ function setLoraThumb(name) {
     const file = input.files && input.files[0];
     if (!file) return;
     try {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error('Could not read the image')); img.src = url; });
-      const size = 256;
-      const c = document.createElement('canvas');
-      c.width = size;
-      c.height = size;
-      const s = Math.max(size / img.naturalWidth, size / img.naturalHeight);
-      c.getContext('2d').drawImage(img, (size - img.naturalWidth * s) / 2, (size - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
-      const blob = await new Promise((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error('Crop failed'))), 'image/jpeg', 0.85));
-      const r = await api('/api/lorathumb', {
-        method: 'POST',
-        headers: { 'x-lora-name': encodeURIComponent(name) },
-        body: blob,
-      });
-      state.loraThumbs = r.loraThumbs || {};
-      renderLoras();
-      toast('LoRA thumbnail saved');
+      await uploadLoraThumbnail(name, await cropLoraThumbnail(file));
     } catch (e) { toast(e.message, true); }
   });
   input.click();
@@ -8571,6 +8659,7 @@ function renderLoraPicker(query) {
   }
 }
 $('#loraSearch').addEventListener('input', () => renderLoraPicker($('#loraSearch').value));
+$('#loraSearchForm').addEventListener('submit', (event) => event.preventDefault());
 $('#loraPickList').addEventListener('pointerdown', (event) => {
   if (event.isPrimary === false || (event.button !== undefined && event.button > 0)) return;
   const row = event.target.closest('.lora-pick-row[data-lora-pick-name]');
@@ -13383,8 +13472,27 @@ $('#generateBtn').addEventListener('click', async () => {
   const sequenceSteps = mode === 'edit' && !outpaintActive && state.editSequential && SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)
     ? sequentialEditPrompts(prompt)
     : [];
+  const strengthHuntLoras = (mode === 'edit' ? state.editLoras : state.loras)
+    .filter((lora) => lora && lora.name && lora.on && lora.strengthHunt);
+  const strengthHuntCount = strengthHuntLoras.length === 2 ? 121 : (strengthHuntLoras.length === 1 ? 10 : 0);
+  if (strengthHuntLoras.length > 2) return toast('Strength Hunt supports two LoRAs at a time', true);
+  if (strengthHuntCount && (sequenceSteps.length || qwenAngleExports.length)) {
+    return toast('Run Strength Hunt separately from sequential edits and camera variations', true);
+  }
   if (state.editSequential && sequenceSteps.length < 2) {
     return toast('Sequential edits need at least two sentences', true);
+  }
+  if (strengthHuntCount) {
+    const matrix = strengthHuntLoras.length === 2;
+    const names = strengthHuntLoras.map((lora) => prettyLora(lora.name)).join(' × ');
+    const confirmed = await askConfirm({
+      title: `Generate ${strengthHuntCount}-image Strength Hunt?`,
+      message: matrix
+        ? `${names} will run as one 11 × 11 matrix job, comparing Off and every 0.2 step through 2.0 on both axes. This is 121 generations with the same prompt and seed and may take a long time. Finish upscaling is skipped for the comparison.`
+        : `${names} will generate 10 images at strengths 0.2 through 2.0, using the same prompt and seed. They and a labeled documentation sheet will be saved as one gallery group. Finish upscaling is skipped for the comparison.`,
+      confirmLabel: `Queue ${strengthHuntCount} generations`,
+    });
+    if (!confirmed) return;
   }
   if (!(await ensureGenerationSetup())) return;
   const createImageGuide = mode === 't2i' && state.createMode === 'image' && state.createGuideActive
@@ -13446,7 +13554,7 @@ $('#generateBtn').addEventListener('click', async () => {
     } : undefined,
     steps: Number($('#stepsInput').value) || (mode === 't2i' && state.krea2Turbo ? 8 : 12),
     cfg: Number($('#cfgInput').value) || 1,
-    batch: sequenceSteps.length ? 1 : (Number($('#batchInput').value) || 1),
+    batch: sequenceSteps.length ? 1 : (strengthHuntCount ? 1 : (Number($('#batchInput').value) || 1)),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)
       : (createImageGuide && state.createGuideMode === 'image' ? createDenoiseFromInfluence() : 1),
     seed: seedRaw === '' ? undefined : Number(seedRaw),
@@ -13470,7 +13578,9 @@ $('#generateBtn').addEventListener('click', async () => {
     sourceItemId: mode === 'edit' && state.refs[0] ? state.refs[0].srcItemId
       : (createImageGuide ? createImageGuide.srcItemId : undefined),
     folder: state.activeFolder !== 'all' ? state.activeFolder : null,
+    strengthHuntConfirmed: strengthHuntCount || undefined,
   };
+  if (strengthHuntCount) body.postUpscale = undefined;
   try {
     const angleGroupId = qwenAngleExports.length > 1 ? createAngleGroupId() : null;
     const requests = qwenAngleExports.length
@@ -13482,7 +13592,8 @@ $('#generateBtn').addEventListener('click', async () => {
       : [body];
     setGenerating(true, sequenceSteps.length
       ? `Sequential edit 1 of ${sequenceSteps.length}…`
-      : (requests.length > 1 ? `Queueing ${requests.length} camera variations…` : 'Queued…'));
+      : (strengthHuntCount ? `Queueing ${strengthHuntCount}-image Strength Hunt…`
+        : (requests.length > 1 ? `Queueing ${requests.length} camera variations…` : 'Queued…')));
     const jobIds = [];
     for (const request of requests) {
       const res = await api('/api/generate', {
@@ -13501,7 +13612,8 @@ $('#generateBtn').addEventListener('click', async () => {
     }
     $('#genLbl').textContent = genLabel();
     queueRefreshSoon();
-    if (jobIds.length > 1) toast(`${jobIds.length} camera variations queued`);
+    if (strengthHuntCount) toast(`Strength Hunt queued as one ${strengthHuntCount}-image job`);
+    else if (jobIds.length > 1) toast(`${jobIds.length} camera variations queued`);
   } catch (e) {
     setGenerating(false);
     if (!firstImageTutorialJobId) retryFirstImageTutorialGeneration();
@@ -14134,7 +14246,9 @@ function connectEvents() {
         };
         $('#livePreviewImg').onclick = open;
         $('#liveStatusText').onclick = open;
-        toast(d.sequenceComplete ? '✓ Sequential edits complete' : '✓ Generated');
+        toast(d.strengthHunt
+          ? `✓ Strength Hunt complete · ${d.count || d.items.length - 1} comparisons`
+          : (d.sequenceComplete ? '✓ Sequential edits complete' : '✓ Generated'));
       }
     }
     refreshGallery(true).then(() => {
@@ -14669,8 +14783,12 @@ function desktopStageChoices(item) {
         src: '/images/' + imageFile,
         label: angles.length > 1
           ? angleViewLabel(groupItem)
-          : (grouped ? `Generation ${groupIndex + 1}` : 'Image'),
-        badge: angles.length > 1 ? angleViewGlyph(groupItem) : (grouped ? String(groupIndex + 1) : ''),
+          : (strengthHuntItemLabel(groupItem) || (grouped ? `Generation ${groupIndex + 1}` : 'Image')),
+        badge: angles.length > 1 ? angleViewGlyph(groupItem)
+          : (groupItem.strengthHunt?.documentation ? 'Doc'
+            : (groupItem.strengthHunt?.strengths?.length === 1
+              ? Number(groupItem.strengthHunt.strengths[0]).toFixed(1)
+              : (grouped ? String(groupIndex + 1) : ''))),
         video: false,
       });
     }
@@ -14778,7 +14896,7 @@ function renderDesktopStage(item, mediaSel) {
   $('#desktopStageTitle').textContent = selectedVideo
     ? (resolved.selected ? 'Selected video' : 'Latest video')
     : (generationItems.length > 1
-      ? `Generation ${groupIndex + 1} of ${groupItems.length}`
+      ? `${strengthHuntItemLabel(item) || `Generation ${groupIndex + 1}`} · ${groupIndex + 1} of ${groupItems.length}`
       : (angleItems.length > 1
         ? `${angleViewLabel(item)} · ${groupIndex + 1} of ${groupItems.length}`
         : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'))));
@@ -15305,6 +15423,15 @@ function generationGroupItems(item) {
   return state.items
     .filter((candidate) => candidate.generationGroupId === item.generationGroupId)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+function strengthHuntItemLabel(item) {
+  if (!item || !item.strengthHunt) return '';
+  if (item.strengthHunt.documentation) return 'Documentation';
+  const strengths = Array.isArray(item.strengthHunt.strengths) ? item.strengthHunt.strengths : [];
+  if (strengths.length > 1) return `X ${Number(strengths[0]).toFixed(1)} · Y ${Number(strengths[1]).toFixed(1)}`;
+  if (strengths.length) return `Strength ${Number(strengths[0]).toFixed(1)}`;
+  return item.strengthHunt.label || 'Strength Hunt';
 }
 
 function angleViewLabel(item) {
@@ -16379,6 +16506,7 @@ function handleDesktopGalleryTap(item, card) {
 
 let desktopGalleryDrag = null;
 const DESKTOP_GALLERY_DROP_SELECTOR = [
+  '.lora-card[data-lora-name]',
   '.ref-slot',
   '#createImageGuideToggle', '#createImageGuideAdd', '#createImageGuideFilled',
   '#regionRefBtn', '#regionRefPreview',
@@ -16456,6 +16584,9 @@ function updateDirectorGalleryDropIndicator(target, drag, event) {
 
 function directorGalleryDropDescription(target, drag, event) {
   if (!target) return state.directorOpen ? 'Drop into Director' : 'Drop into an input';
+  if (target.matches('.lora-card[data-lora-name]')) {
+    return `Set ${prettyLora(target.dataset.loraName)} thumbnail`;
+  }
   if (target.matches(DIRECTOR_EXTENSION_VIDEO_DROP_SELECTOR)) return 'Use as source video';
   if (target.matches(DIRECTOR_EXTENSION_KEYFRAME_DROP_SELECTOR)) return 'Add ending keyframe';
   if (target.matches('#directorTimelineViewport')) {
@@ -16530,6 +16661,7 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
     if (!target.getClientRects().length) return false;
     if (target.closest('[inert], [aria-hidden="true"]')) return false;
     if (target.closest('#directorWorkspace') && !directorGalleryDropTargetAllowed(target, drag)) return false;
+    if (target.matches('.lora-card[data-lora-name]') && (drag.video || !drag.item?.file)) return false;
     if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
     if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
     return true;
@@ -16619,8 +16751,12 @@ function endDesktopGalleryDrag() {
 }
 
 async function applyDesktopGalleryDrop(target, drag, event) {
-  if (await applyDirectorGalleryDrop(target, drag, event)) return;
   const { item, video } = drag;
+  if (await applyDirectorGalleryDrop(target, drag, event)) return;
+  if (target.matches('.lora-card[data-lora-name]')) {
+    await setLoraThumbFromGallery(target.dataset.loraName, item);
+    return;
+  }
   if (target.matches('.ref-slot')) {
     const index = Number(target.dataset.refIndex);
     if (!Number.isInteger(index)) return;
@@ -17621,11 +17757,14 @@ function openLightbox(id, mediaSel) {
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
   }
   setGenerationNameInput(it, selVideo || selComposite || null);
-  const focusedPosition = generationItems.length > 1
+  let focusedPosition = generationItems.length > 1
     ? `Generation ${generationIndex + 1} of ${generationItems.length}`
     : (angleItems.length > 1
       ? `${angleViewLabel(it)} · Variation ${angleIndex + 1} of ${angleItems.length}`
       : 'Rename generation');
+  if (generationItems.length > 1 && strengthHuntItemLabel(it)) {
+    focusedPosition = `${strengthHuntItemLabel(it)} · ${generationIndex + 1} of ${generationItems.length}`;
+  }
   $('#lbTitle').title = focusedPosition;
   $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
 
@@ -17658,12 +17797,16 @@ function openLightbox(id, mediaSel) {
     });
   }
   if (generationItems.length > 1) {
+    const strengthHuntGroup = generationItems.some((item) => item.strengthHunt);
     const generationOptions = makeMediaTier('lb-media-generations', 'Generations');
+    if (strengthHuntGroup) generationOptions.previousElementSibling.textContent = 'Strength Hunt';
     generationItems.forEach((groupItem, index) => {
       const button = document.createElement('button');
       button.className = 'chip generation-group-chip' + (groupItem.id === it.id ? ' active' : '');
+      const huntLabel = strengthHuntItemLabel(groupItem);
       button.innerHTML = `<span class="lb-generation-label">Generation</span><span class="lb-generation-index">${index + 1}</span>`;
-      button.title = `Generation ${index + 1} of ${generationItems.length}`;
+      if (huntLabel) button.innerHTML = `<span class="lb-generation-label">${escapeHtml(huntLabel)}</span>`;
+      button.title = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
       button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openLightbox(groupItem.id, 'image'));
       generationOptions.appendChild(button);
@@ -17671,7 +17814,8 @@ function openLightbox(id, mediaSel) {
   }
   if (generationItems.length > 1 || videos.length || composites.length) {
     const groupedGeneration = generationItems.length > 1;
-    const mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
+    let mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
+    if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
     const mediaOptions = makeMediaTier(`lb-media-assets${groupedGeneration ? ' nested' : ''}`, mediaLabel);
     const mediaGlyph = (kind) => kind === 'video'
       ? '<svg viewBox="0 0 20 20"><path d="m7 5 7 5-7 5Z"/></svg>'
@@ -17726,6 +17870,10 @@ function openLightbox(id, mediaSel) {
     meta.push(copyableMeta('Prompt', it.prompt || ''));
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
+    if (it.strengthHunt) {
+      const axes = (it.strengthHunt.axes || []).map((axis) => prettyLora(axis.name || axis.label)).join(' × ');
+      meta.push(`<b>Strength Hunt:</b> ${escapeHtml([strengthHuntItemLabel(it), axes].filter(Boolean).join(' · '))}`);
+    }
     if (angleItems.length > 1) meta.push(`<b>Camera variation set:</b> ${angleViewLabel(it)} · ${angleItems.length} exports`);
     if (it.refinedPrompt) meta.push(copyableMeta('Enhanced', it.refinedPrompt));
     meta.push(`<b>Size:</b> ${it.width}×${it.height} &nbsp; ${copyableMeta('Seed', it.seed)} &nbsp; <b>Steps:</b> ${it.steps} &nbsp; <b>CFG:</b> ${it.cfg}`);
@@ -24101,6 +24249,7 @@ async function loadMeta(refresh, afterRestart = false) {
     if (afterRestart) query.set('afterRestart', '1');
     const queryString = query.toString();
     lastMeta = await api('/api/meta' + (queryString ? `?${queryString}` : ''));
+    renderAppRelease(lastMeta.app || {});
     state.connOk = lastMeta.ok;
     state.metaLoras = lastMeta.loras || [];
     state.metaLorasInfo = lastMeta.lorasInfo || {};
