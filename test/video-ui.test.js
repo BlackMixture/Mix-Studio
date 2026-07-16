@@ -187,8 +187,9 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.match(css, /\.duration-slider-track \{[\s\S]*border-radius: 999px/);
   assert.match(css, /\.video-duration-primary \{[\s\S]*background: #000/);
   assert.match(html, /class="duration-slider-thumb" aria-hidden="true"/);
-  assert.match(css, /\.duration-slider-progress \{[\s\S]*var\(--duration-visual-progress\)[\s\S]*linear-gradient\(to right, #000 0%, var\(--spectrum-red\) 100%\)/);
-  assert.doesNotMatch(css, /\.duration-slider-progress \{[\s\S]{0,300}rgba\(124,77,255/);
+  assert.match(css, /\.duration-slider-progress \{[\s\S]*var\(--duration-visual-progress\)[\s\S]*linear-gradient\(to right, #fc575d 0%, #9253f7 100%\)/);
+  assert.match(css, /\.duration-slider-value \{[\s\S]*linear-gradient\(#000, #000\) padding-box, linear-gradient\(to right, #fc575d, #9253f7\) border-box/);
+  assert.match(css, /\.director-field-grid \.duration-slider-value \{[\s\S]*linear-gradient\(#000,#000\) padding-box,linear-gradient\(to right,#fc575d,#9253f7\) border-box/);
   assert.doesNotMatch(css, /\.duration-slider-progress \{[\s\S]{0,300}box-shadow/);
   assert.match(css, /\.duration-slider-ticks i \{[\s\S]*height: 13px/);
   assert.match(css, /\.duration-slider-ticks i\.minor \{[\s\S]*height: 7px/);
