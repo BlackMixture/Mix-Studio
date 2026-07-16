@@ -26,13 +26,23 @@ test('desktop stage exposes an explicit focused-view information action', () => 
 test('desktop navigation and focused viewer align to the three-column workspace', () => {
   assert.match(css, /\.primary-tabs \{ grid-column: 2; grid-row: 1; \}/);
   assert.match(css, /\.create-tabs \{ grid-column: 1; grid-row: 1;/);
-  assert.match(css, /#lightbox \{ inset: 122px 0 0; \}/);
-  assert.match(css, /#lightbox\.show \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(250px, 286px\)/);
-  assert.match(css, /#lightbox \.lightbox-img-wrap \{[\s\S]*grid-column: 1;/);
-  assert.match(css, /#lightbox \.lightbox-meta \{[\s\S]*grid-column: 2;/);
-  assert.match(css, /#lightbox #lbActions \{[\s\S]*grid-column: 1 \/ -1;[\s\S]*flex-wrap: nowrap;[\s\S]*overflow-x: auto;/);
+  assert.match(css, /body\.desktop-focused-result \.tabs-wrap,[\s\S]*body\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px minmax\(420px, 1fr\) var\(--studio-right-width\)/);
+  assert.match(css, /body\.desktop-focused-result \.create-tabs \{[\s\S]*opacity: 0;[\s\S]*translateX\(calc\(-100% - 18px\)\)/);
+  assert.match(css, /#lightbox \{[\s\S]*inset: 122px var\(--studio-right-width\) 0 0;/);
+  assert.match(css, /#lightbox\.show \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);[\s\S]*grid-template-rows: auto auto minmax\(0, 1fr\) auto auto;/);
+  assert.match(css, /#lightbox \.lightbox-img-wrap \{[\s\S]*grid-column: 1;[\s\S]*grid-row: 3;/);
+  assert.match(css, /#lightbox \.lightbox-meta \{[\s\S]*grid-column: 1;[\s\S]*grid-row: 4;/);
+  assert.match(css, /#lightbox #lbActions \{[\s\S]*grid-row: 5;[\s\S]*justify-content: flex-start;[\s\S]*flex-wrap: nowrap;[\s\S]*overflow-x: auto;/);
+  assert.match(css, /#lightbox #lbActions > :first-child \{ margin-left: auto; \}/);
+  assert.match(css, /#lightbox #lbActions > :last-child \{ margin-right: auto; \}/);
   assert.match(app, /document\.body\.classList\.add\('desktop-focused-result'\)/);
   assert.match(app, /document\.body\.classList\.remove\('desktop-focused-result'\)/);
+  assert.match(app, /const primaryMode = focusedResult \? 'gallery' : \(createActive \? 'create' : state\.view\)/);
+  assert.match(app, /for \(const element of \[\$\('#view-create'\), \$\('#createTabs'\), \$\('\.desktop-stage'\), \$\('#genDock'\)\]\)/);
+  assert.match(app, /element\.inert = focusedResult/);
+  assert.match(app, /lightboxReturnFocus = document\.activeElement instanceof HTMLElement/);
+  assert.match(app, /focusIconControlSilently\(\$\('#lbClose'\)\)/);
+  assert.match(app, /focusIconControlSilently\(returnFocus\)/);
 });
 
 test('desktop gallery items drag onto compatible generation inputs', () => {
@@ -123,6 +133,8 @@ test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(css, /\.desktop-stage-head-actions \{[\s\S]*max-width: min\(62%, 430px\)/);
   assert.match(css, /\.desktop-stage-choice \{[\s\S]*width: 34px;[\s\S]*height: 34px;/);
   assert.match(css, /\.desktop-stage-choice\.active \{/);
+  assert.match(css, /#lightbox \.lb-media-generations \{[\s\S]*flex: 1 1 auto;/);
+  assert.match(css, /#lightbox \.lb-media-options \{[\s\S]*width: 100%;[\s\S]*overflow-x: auto;/);
 });
 
 test('desktop image action opens the full destination menu', () => {
@@ -136,8 +148,10 @@ test('desktop image action opens the full destination menu', () => {
   assert.match(app, /label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
 });
 
-test('Generate stays pinned in the left rail while result actions use the middle stage', () => {
-  assert.match(css, /\.desktop-stage \.generate-dock \{[\s\S]*position: fixed;[\s\S]*left: 0;[\s\S]*width: var\(--studio-left-width\)/);
+test('Generate occupies the middle stage and animates away with focused results', () => {
+  assert.match(css, /\.desktop-stage \{[\s\S]*grid-template-rows: minmax\(0, 1fr\) auto;/);
+  assert.match(css, /\.desktop-stage \.generate-dock \{[\s\S]*position: relative;[\s\S]*left: auto;[\s\S]*right: auto;[\s\S]*width: auto;/);
+  assert.match(css, /body\.desktop-focused-result \.desktop-stage \.generate-dock \{[\s\S]*z-index: 61;[\s\S]*opacity: 0;[\s\S]*pointer-events: none;[\s\S]*translateY\(24px\)/);
   assert.match(css, /\.desktop-stage-shell \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\) auto auto/);
   assert.match(app, /actions\.hidden = !item/);
   assert.match(app, /const item = open\?\.dataset\.itemId && state\.items\.find/);

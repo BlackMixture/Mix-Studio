@@ -70,9 +70,12 @@ test('app drawer mirrors primary navigation and Create submodes', () => {
   assert.match(drawer, /data-drawer-view="edit"/);
   assert.match(drawer, /data-drawer-view="gallery"[\s\S]*Library/);
   assert.match(app, /function renderAppDrawerNavigation\(\)/);
+  assert.match(app, /const presentedView = focusedResult \? 'gallery' : state\.view/);
   assert.match(app, /\$\('#drawerCreateBtn'\)\.addEventListener\('click'/);
+  assert.match(app, /\$\('#drawerCreateBtn'\)\.addEventListener\('click',[\s\S]{0,260}if \(\$\('#lightbox'\)\.classList\.contains\('show'\)\) \{[\s\S]{0,80}closeLightbox\(\)/);
   assert.match(app, /\$\$\('\[data-drawer-create-mode\]'\)/);
   assert.match(app, /\$\$\('\[data-drawer-view\]'\)/);
+  assert.match(app, /\$\$\('\[data-drawer-view\]'\)[\s\S]{0,180}if \(\$\('#lightbox'\)\.classList\.contains\('show'\)\) closeLightbox\(\)/);
   assert.match(css, /\.app-drawer-nav-item\.active/);
 });
 

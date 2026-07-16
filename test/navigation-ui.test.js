@@ -20,10 +20,17 @@ test('navigation has primary modes and nested Create modes', () => {
 
 test('desktop Library navigation expands the gallery into the full workspace', () => {
   assert.doesNotMatch(app, /view === 'gallery' && desktopWorkspaceActive\(\)[\s\S]*refreshGallery\(true\)[\s\S]*return;/);
-  assert.match(app, /classList\.toggle\('desktop-library-expanded', desktopWorkspaceActive\(\) && state\.view === 'gallery'\)/);
-  assert.match(css, /body\.desktop-library-expanded \.studio-workspace \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(app, /classList\.toggle\('desktop-library-expanded', desktopWorkspaceActive\(\) && state\.view === 'gallery' && !focusedResult\)/);
+  assert.match(css, /body\.desktop-library-expanded \.studio-workspace \{[\s\S]*grid-template-columns: 0px minmax\(420px, 1fr\) 0px/);
   assert.match(css, /body\.desktop-library-expanded #view-create,[\s\S]*body\.desktop-library-expanded \.desktop-stage \{[\s\S]*display: none;/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(220px, 1fr\)\)/);
+});
+
+test('focused results temporarily present Library navigation without changing the underlying mode', () => {
+  assert.match(app, /const focusedResult = desktopWorkspaceActive\(\) && document\.body\.classList\.contains\('desktop-focused-result'\)/);
+  assert.match(app, /const primaryMode = focusedResult \? 'gallery' : \(createActive \? 'create' : state\.view\)/);
+  assert.match(app, /primaryTabButtons\.forEach\(\(button\) => button\.addEventListener\('click', \(\) => \{[\s\S]{0,140}if \(\$\('#lightbox'\)\.classList\.contains\('show'\)\) closeLightbox\(\)/);
+  assert.match(app, /document\.body\.classList\.remove\('desktop-focused-result'\);[\s\S]{0,100}if \(restoreDesktopNavigation\) syncNavigation\(\)/);
 });
 
 test('desktop inputs provide reversible setup history and completed outputs take focus', () => {

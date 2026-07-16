@@ -1180,7 +1180,9 @@ async function toggleFullscreen() {
 }
 
 function renderAppDrawerNavigation() {
-  const createActive = state.view === 'create' || state.view === 'video';
+  const focusedResult = document.body.classList.contains('desktop-focused-result');
+  const createActive = !focusedResult && (state.view === 'create' || state.view === 'video');
+  const presentedView = focusedResult ? 'gallery' : state.view;
   const createButton = $('#drawerCreateBtn');
   createButton.classList.toggle('active', createActive);
   const expanded = createActive && appDrawerCreateExpanded;
@@ -1193,7 +1195,7 @@ function renderAppDrawerNavigation() {
     button.classList.toggle('active', createActive && button.dataset.drawerCreateMode === state.createMode);
   });
   $$('[data-drawer-view]').forEach((button) => {
-    button.classList.toggle('active', button.dataset.drawerView === state.view);
+    button.classList.toggle('active', button.dataset.drawerView === presentedView);
   });
   requestAnimationFrame(syncAppDrawerScrollFades);
 }
@@ -1356,6 +1358,12 @@ standaloneDisplayQuery.addEventListener?.('change', scheduleFullscreenControlSyn
 syncFullscreenControl();
 $('#drawerCreateBtn').addEventListener('click', () => {
   const createActive = state.view === 'create' || state.view === 'video';
+  if ($('#lightbox').classList.contains('show')) {
+    closeLightbox();
+    appDrawerCreateExpanded = true;
+    setCreateMode(createActive ? (state.createMode || 'image') : 'image');
+    return;
+  }
   if (!createActive) {
     appDrawerCreateExpanded = true;
     setCreateMode('image');
@@ -1365,12 +1373,14 @@ $('#drawerCreateBtn').addEventListener('click', () => {
   }
 });
 $$('[data-drawer-create-mode]').forEach((button) => button.addEventListener('click', () => {
+  if ($('#lightbox').classList.contains('show')) closeLightbox();
   appDrawerCreateExpanded = true;
   const mode = button.dataset.drawerCreateMode;
   setCreateMode(mode, mode === 'region');
   closeAppDrawer();
 }));
 $$('[data-drawer-view]').forEach((button) => button.addEventListener('click', () => {
+  if ($('#lightbox').classList.contains('show')) closeLightbox();
   appDrawerCreateExpanded = false;
   setView(button.dataset.drawerView);
   closeAppDrawer();
@@ -2149,7 +2159,12 @@ function pinDesktopViewport() {
 }
 
 window.addEventListener('scroll', pinDesktopViewport, { passive: true });
-desktopWorkspaceQuery.addEventListener('change', () => requestAnimationFrame(pinDesktopViewport));
+desktopWorkspaceQuery.addEventListener('change', () => {
+  const focused = $('#lightbox')?.classList.contains('show') && desktopWorkspaceActive();
+  document.body.classList.toggle('desktop-focused-result', !!focused);
+  syncNavigation();
+  requestAnimationFrame(pinDesktopViewport);
+});
 wideRegionResolutionQuery.addEventListener('change', () => {
   if (state.view !== 'create' || state.createMode !== 'region') return;
   setRegionResolutionExpanded(false);
@@ -2159,20 +2174,27 @@ wideRegionResolutionQuery.addEventListener('change', () => {
 
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
-  const primaryMode = createActive ? 'create' : state.view;
+  const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
+  const primaryMode = focusedResult ? 'gallery' : (createActive ? 'create' : state.view);
   primaryTabButtons.forEach((button, index) => {
     const active = button.dataset.primaryMode === primaryMode;
     button.classList.toggle('active', active);
     if (active) $('#primaryTabPill').style.transform = `translateX(${index * 100}%)`;
   });
   $('#createTabs').hidden = !createActive;
+  for (const element of [$('#view-create'), $('#createTabs'), $('.desktop-stage'), $('#genDock')]) {
+    if (!element) continue;
+    element.inert = focusedResult;
+    if (focusedResult) element.setAttribute('aria-hidden', 'true');
+    else element.removeAttribute('aria-hidden');
+  }
   createTabButtons.forEach((button, index) => {
     const active = button.dataset.createMode === state.createMode;
     button.classList.toggle('active', active);
     if (active) $('#createTabPill').style.transform = `translateX(${index * 100}%)`;
   });
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
-  document.body.classList.toggle('desktop-library-expanded', desktopWorkspaceActive() && state.view === 'gallery');
+  document.body.classList.toggle('desktop-library-expanded', desktopWorkspaceActive() && state.view === 'gallery' && !focusedResult);
   renderAppDrawerNavigation();
   requestIconTooltipScan();
 }
@@ -2225,6 +2247,7 @@ function setCreateMode(mode, openEditor) {
 }
 
 primaryTabButtons.forEach((button) => button.addEventListener('click', () => {
+  if ($('#lightbox').classList.contains('show')) closeLightbox();
   const mode = button.dataset.primaryMode;
   if (mode === 'create') setCreateMode(state.createMode || 'image');
   else setView(mode);
@@ -18141,6 +18164,7 @@ async function saveImageComposite(item, type) {
 }
 
 let resetLightboxSwipeVisuals = () => {};
+let lightboxReturnFocus = null;
 
 function preloadLightboxNeighbors(item) {
   [-1, 1].forEach((direction) => {
@@ -18157,6 +18181,9 @@ function openLightbox(id, mediaSel) {
   resetLightboxSwipeVisuals();
   const freshOpen = !$('#lightbox').classList.contains('show');
   if (freshOpen) {
+    lightboxReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null;
     lockScroll();
     try { history.pushState({ lb: 1 }, ''); } catch { /* noop */ }
   }
@@ -18174,7 +18201,10 @@ function openLightbox(id, mediaSel) {
   const selComposite = composites.find((composite) => 'composite:' + composite.id === sel) || null;
   state.currentMedia = selVideo ? { type: 'video', id: selVideo.id }
     : (selComposite ? { type: 'composite', id: selComposite.id } : { type: 'image', id: 'image' });
-  if (desktopWorkspaceActive()) document.body.classList.add('desktop-focused-result');
+  if (desktopWorkspaceActive()) {
+    document.body.classList.add('desktop-focused-result');
+    syncNavigation();
+  }
   $('#lightbox').classList.add('show');
 
   const vid = $('#lbVideo');
@@ -18672,12 +18702,19 @@ function openLightbox(id, mediaSel) {
       refreshGallery();
     });
   }
+  if (freshOpen) requestAnimationFrame(() => {
+    if ($('#lightbox').classList.contains('show')) focusIconControlSilently($('#lbClose'));
+  });
 }
 function closeLightbox(fromPop) {
+  const returnFocus = lightboxReturnFocus;
+  lightboxReturnFocus = null;
   closeActionMenu();
   resetLightboxSwipeVisuals();
   $('#lightbox').classList.remove('show');
+  const restoreDesktopNavigation = document.body.classList.contains('desktop-focused-result');
   document.body.classList.remove('desktop-focused-result');
+  if (restoreDesktopNavigation) syncNavigation();
   const vid = $('#lbVideo');
   try { vid.pause(); } catch { /* noop */ }
   vid.removeAttribute('src');
@@ -18693,6 +18730,10 @@ function closeLightbox(fromPop) {
   if (!fromPop && window.history.state && window.history.state.lb) {
     try { history.back(); } catch { /* noop */ }
   }
+  requestAnimationFrame(() => {
+    if (!returnFocus?.isConnected || returnFocus.closest('[inert]') || returnFocus.offsetParent === null) return;
+    focusIconControlSilently(returnFocus);
+  });
 }
 
 async function processVideo(it, video, kind) {

@@ -25,14 +25,16 @@ test('desktop shell exposes subtle accessible panel separators', () => {
   assert.match(css, /body\.desktop-library-expanded \.desktop-panel-resizer,[\s\S]*body\.desktop-focused-result \.desktop-panel-resizer \{ display: none; \}/);
 });
 
-test('desktop panel widths drive navigation, workspace, sticky Generate, and Director together', () => {
+test('desktop panel widths drive navigation, workspace, focused expansion, and Director together', () => {
   assert.match(css, /--studio-left-width: 360px/);
   assert.match(css, /--studio-right-width: 360px/);
   assert.match(css, /\.tabs-wrap \{[\s\S]*grid-template-columns: var\(--studio-left-width\) minmax\(420px, 1fr\) var\(--studio-right-width\)/);
   assert.match(css, /\.studio-workspace \{[\s\S]*grid-template-columns: var\(--studio-left-width\) minmax\(420px, 1fr\) var\(--studio-right-width\)/);
   assert.match(css, /\.desktop-panel-resizer-left \{ left: var\(--studio-left-width\)/);
   assert.match(css, /\.desktop-panel-resizer-right \{ right: var\(--studio-right-width\)/);
-  assert.match(css, /\.desktop-stage \.generate-dock \{[\s\S]*width: var\(--studio-left-width\)/);
+  assert.match(css, /body\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px minmax\(420px, 1fr\) var\(--studio-right-width\)/);
+  assert.match(css, /body\.director-open\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px minmax\(420px,1fr\) var\(--studio-right-width\)/);
+  assert.match(css, /\.desktop-stage \.generate-dock \{[\s\S]*position: relative;[\s\S]*width: auto/);
   assert.match(css, /body\.director-open \.director-summary \{[\s\S]*width: var\(--studio-left-width\)/);
 });
 
