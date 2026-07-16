@@ -78,8 +78,31 @@ test('desktop results expose a full icon action row and can be unloaded safely',
   assert.match(css, /\.desktop-generate-row \{ display: block;/);
   assert.ok(html.indexOf('id="desktopStageActions"') < html.indexOf('id="genDock"'));
   assert.match(css, /\.desktop-stage-actions button/);
+  assert.match(css, /\.desktop-stage-actions button\[hidden\] \{ display: none; \}/);
   assert.match(app, /function desktopStageSaveMenuItems\(item, video\)/);
+  assert.match(app, /extend\.hidden = item\.mode === 'composite' \|\| videoComposite/);
+  assert.match(app, /else if \(!video && item\.mode !== 'composite'\) openAnimateRouteSheet\(item\)/);
   assert.match(app, /desktopStageDelete'\)\.addEventListener\('click', async/);
+});
+
+test('focused gallery reuses the center-stage result icons', () => {
+  for (const icon of ['result-use', 'result-process', 'result-extend', 'result-move', 'result-save', 'result-delete']) {
+    assert.match(app, new RegExp(`'${icon}': '<path`));
+  }
+  assert.match(app, /const mkIcon = \(icon, label, cls, fn\) => mk\(actionIconMarkup\(icon\), `icon-only result-action-icon/);
+  assert.match(app, /options\.iconOnly \? actionIconMarkup\(options\.icon\)/);
+  assert.match(app, /b\.setAttribute\('aria-haspopup', 'menu'\);[\s\S]{0,120}b\.setAttribute\('aria-expanded', 'false'\)/);
+  assert.match(app, /mkMenu\('Use', '', imageUseItems, \{ icon: 'result-use', iconOnly: true, ariaLabel: 'Use image'/);
+  assert.match(app, /mkMenu\('Process', '', processItems, \{ icon: 'result-process', iconOnly: true, ariaLabel: 'Process video'/);
+  assert.match(app, /mkIcon\('result-process', upscaleLabel/);
+  assert.match(app, /mkIcon\('result-move', 'Move generation'/);
+  assert.match(app, /mkMenu\('Save', '', imageSaveItems, \{ icon: 'result-save', iconOnly: true, ariaLabel: 'Save image'/);
+  assert.match(app, /mkIcon\('result-delete', 'Move generation to trash'/);
+  assert.doesNotMatch(app, /mk\(it\.upscaled \? '⇪ Re-upscale' : '⇪ Upscale'/);
+  assert.doesNotMatch(app, /mk\('▤ Move'/);
+  assert.doesNotMatch(app, /mk\('↓ Save'/);
+  assert.match(css, /#lbActions \.action-btn\.result-action-icon \{[\s\S]*flex: 0 0 44px;[\s\S]*width: 44px;[\s\S]*height: 44px;[\s\S]*border-radius: 14px;/);
+  assert.match(css, /#lbActions \.action-btn\.result-action-icon:focus-visible/);
 });
 
 test('grouped desktop results expose a synchronized media picker', () => {

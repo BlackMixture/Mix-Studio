@@ -5649,6 +5649,42 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .action-btn.like-toggle .action-glyph { width: 19px; height: 19px; }
 .action-glyph { width: 18px; height: 18px; display: block; }
 .action-btn.icon-only .action-glyph { width: 19px; height: 19px; }
+#lbActions .action-btn.result-action-icon {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  background: #090a0e;
+  color: rgba(226,232,255,.72);
+  box-shadow: none;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease), background 150ms var(--ease), transform 150ms var(--ease);
+}
+#lbActions .action-btn.result-action-icon:hover {
+  color: #fff;
+  border-color: rgba(255,255,255,.28);
+  background: #101117;
+  transform: translateY(-1px);
+}
+#lbActions .action-btn.result-action-icon:focus-visible {
+  outline: 2px solid rgba(var(--mode-rgb),.72);
+  outline-offset: 2px;
+}
+#lbActions .action-btn.result-action-icon.like-toggle.liked {
+  color: #fff;
+  background: rgba(255,255,255,.11);
+  border-color: rgba(255,255,255,.4);
+}
+#lbActions .action-btn.result-action-icon.danger { color: #ff9f97; }
+#lbActions .action-btn.result-action-icon.danger:hover {
+  border-color: rgba(255,112,101,.42);
+  background: rgba(255,92,80,.1);
+}
+#lbActions .action-btn.result-action-icon .action-glyph { width: 19px; height: 19px; }
 .action-menu {
   position: fixed;
   z-index: 80;
@@ -9747,6 +9783,7 @@ body.sheet-open {
   .desktop-stage-actions button.liked { color: #fff; background: rgba(255,255,255,.11); border-color: rgba(255,255,255,.4); }
   .desktop-stage-actions button.danger { color: #ff9f97; }
   .desktop-stage-actions button.danger:hover { border-color: rgba(255,112,101,.42); background: rgba(255,92,80,.1); }
+  .desktop-stage-actions button[hidden] { display: none; }
   .desktop-stage-actions svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .desktop-stage-actions button.liked svg { fill: currentColor; }
   .desktop-stage .live-preview { margin-bottom: 8px; }

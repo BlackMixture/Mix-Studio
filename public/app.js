@@ -997,6 +997,12 @@ function actionIconMarkup(icon) {
     documentation: '<path d="M5 3h10l4 4v14H5V3Zm2 2v14h10V8h-3V5H7Zm2 6h6v2H9v-2Zm0 4h6v2H9v-2Z"/>',
     composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
     process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
+    'result-use': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1"/>',
+    'result-process': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4M8 8l-4-4m12 4 4-4M8 16l-4 4m12-4 4 4"/>',
+    'result-extend': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 6h10a2 2 0 0 1 2 2v2l4-2.5v9L16 14v2a2 2 0 0 1-2 2H4V6Zm5 3v6l5-3-5-3Z"/>',
+    'result-move': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3.5 7h6l1.8 2H20v9.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5V7Z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m9 14 3-3 3 3m-3-3v6"/>',
+    'result-save': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2"/>',
+    'result-delete': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 7h14M9 7V4h6v3m-8 0 1 13h8l1-13M10 10v7m4-7v7"/>',
     delete: '<path d="M7 7h10l-.7 13H7.7L7 7Zm2 2 .45 9h5.1L15 9H9Zm1-5h4l1 1h4v2H5V5h4l1-1Z"/>',
     profile: '<path d="M12 3a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm0 9c4.4 0 8 2.2 8 5v2H4v-2c0-2.8 3.6-5 8-5Zm0 2c-3.5 0-6 1.6-6 3h12c0-1.4-2.5-3-6-3Z"/>',
     users: '<path d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 1a3 3 0 1 1 0 6v-2a1 1 0 1 0 0-2V7ZM9 14c4 0 7 2 7 5v2H2v-2c0-3 3-5 7-5Zm0 2c-3 0-5 1.3-5 3h10c0-1.7-2-3-5-3Zm7-1c3.5 0 6 1.7 6 4.5V21h-4v-2h1.8c-.3-1.1-1.7-1.8-3.8-2V15Z"/>',
@@ -15272,7 +15278,9 @@ function renderDesktopStageActions(item, video) {
   process.title = video ? 'Process video' : (item.upscaled ? 'Re-upscale' : 'Upscale');
   process.toggleAttribute('aria-haspopup', !!video);
   if (!video) process.removeAttribute('aria-expanded');
-  extend.hidden = !video || !!video.info?.composite;
+  extend.hidden = item.mode === 'composite' || videoComposite;
+  extend.setAttribute('aria-label', video ? 'Extend video' : 'Animate image');
+  extend.title = video ? 'Extend video' : 'Animate image';
   move.hidden = item.mode === 'composite' || videoComposite;
   $('#desktopStageSave').setAttribute('aria-label', video ? 'Save video' : 'Save image');
   $('#desktopStageDelete').setAttribute('aria-label', video ? 'Move video to trash' : 'Move generation to trash');
@@ -15615,7 +15623,9 @@ $('#desktopStageUpscale').addEventListener('click', () => {
 });
 $('#desktopStageExtend').addEventListener('click', () => {
   const { item, video } = activeDesktopStageMedia();
-  if (item && video && !video.info?.composite) openDirectorExtension(item, video);
+  if (!item) return;
+  if (video && !video.info?.composite) openDirectorExtension(item, video);
+  else if (!video && item.mode !== 'composite') openAnimateRouteSheet(item);
 });
 $('#desktopStageMove').addEventListener('click', () => {
   const { item } = activeDesktopStageMedia();
@@ -18364,7 +18374,7 @@ function openLightbox(id, mediaSel) {
     actions.appendChild(b);
     return b;
   };
-  const mkIcon = (icon, label, cls, fn) => mk(actionIconMarkup(icon), `icon-only ${cls || ''}`.trim(), fn, { ariaLabel: label, title: label });
+  const mkIcon = (icon, label, cls, fn) => mk(actionIconMarkup(icon), `icon-only result-action-icon ${cls || ''}`.trim(), fn, { ariaLabel: label, title: label });
   const mkMenu = (label, cls, items, options = {}) => {
     let b;
     const onOpen = () => {
@@ -18372,9 +18382,12 @@ function openLightbox(id, mediaSel) {
       openActionMenu(b, list || [], options);
     };
     b = options.icon
-      ? mk(`${actionIconMarkup(options.icon)}<span>${escapeHtml(label)}</span>`, `menu-trigger ${cls || ''}`.trim(), onOpen, { ariaLabel: options.ariaLabel || label, title: options.ariaLabel || label })
+      ? mk(options.iconOnly ? actionIconMarkup(options.icon) : `${actionIconMarkup(options.icon)}<span>${escapeHtml(label)}</span>`, `${options.iconOnly ? 'icon-only result-action-icon ' : ''}menu-trigger ${cls || ''}`.trim(), onOpen, { ariaLabel: options.ariaLabel || label, title: options.ariaLabel || label })
       : mk(label, cls, onOpen);
-    if (options.icon) b.setAttribute('aria-haspopup', 'menu');
+    if (options.icon) {
+      b.setAttribute('aria-haspopup', 'menu');
+      b.setAttribute('aria-expanded', 'false');
+    }
     return b;
   };
 
@@ -18440,7 +18453,7 @@ function openLightbox(id, mediaSel) {
     if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
       imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId) });
     }
-    mkMenu('Use', '', imageUseItems, { icon: 'use', ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
+    mkMenu('Use', '', imageUseItems, { icon: 'result-use', iconOnly: true, ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
   }
 
   if (canContinueCompletedEdit) {
@@ -18452,7 +18465,7 @@ function openLightbox(id, mediaSel) {
   if (state.animating.has(it.id)) {
     mk('<span class="spin"></span> Animating…', selVideo ? 'primary' : '', () => {});
   } else if (it.mode !== 'composite') {
-    mk(`${actionIconMarkup('video')}<span>${videos.length ? 'Animate again' : 'Animate'}</span>`, canContinueCompletedEdit ? '' : 'primary', () => openAnimateRouteSheet(it));
+    mkIcon('result-extend', videos.length ? 'Animate again' : 'Animate', canContinueCompletedEdit ? '' : 'primary', () => openAnimateRouteSheet(it));
   }
   if (!selComposite) {
     const liked = selVideo ? !!selVideo.liked : !!it.liked;
@@ -18576,7 +18589,7 @@ function openLightbox(id, mediaSel) {
       });
     }
     if (!vinfo.composite) videoUseItems.push({ label: 'Motion input', detail: 'Video tab', icon: 'motion', tone: 'video', action: () => sendVideoAsDrive(it, selVideo) });
-    if (videoUseItems.length) mkMenu('Use', '', videoUseItems, { icon: 'use', ariaLabel: 'Use video', menuTitle: 'Use video', tone: 'video' });
+    if (videoUseItems.length) mkMenu('Use', '', videoUseItems, { icon: 'result-use', iconOnly: true, ariaLabel: 'Use video', menuTitle: 'Use video', tone: 'video' });
     const processItems = [];
     if (!vinfo.composite) {
       processItems.push({ label: 'Upscale video', detail: 'SeedVR2 finish', icon: 'process', action: () => processVideo(it, selVideo, 'upscale') });
@@ -18598,7 +18611,7 @@ function openLightbox(id, mediaSel) {
         } catch (e) { toast(e.message, true); }
       } });
     }
-    if (processItems.length) mkMenu('Process', '', processItems, { icon: 'process', ariaLabel: 'Process video', menuTitle: 'Process video', tone: 'video' });
+    if (processItems.length) mkMenu('Process', '', processItems, { icon: 'result-process', iconOnly: true, ariaLabel: 'Process video', menuTitle: 'Process video', tone: 'video' });
     const videoSaveItems = [
       { label: 'Save video', detail: 'Original result', icon: 'save', action: () => {
         mirrorGalleryExport({ id: it.id, asset: 'video', videoId: selVideo.id });
@@ -18609,8 +18622,9 @@ function openLightbox(id, mediaSel) {
       } },
       { label: 'Documentation video', detail: 'Source + settings + result together', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
     ];
-    mkMenu('Save', '', videoSaveItems, { icon: 'save', ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
-    mk(`${actionIconMarkup('delete')}<span>Delete video</span>`, 'danger', async () => {
+    if (!vinfo.composite) mkIcon('result-move', 'Move generation', '', () => openMoveSheet(it));
+    mkMenu('Save', '', videoSaveItems, { icon: 'result-save', iconOnly: true, ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
+    mkIcon('result-delete', 'Move video to trash', 'danger', async () => {
       const lastOfStandalone = it.mode === 'video' && videos.length === 1;
       const msg = lastOfStandalone
         ? 'It\'s the only video on this entry, so the whole gallery item will move to Mix Studio trash with it.'
@@ -18629,20 +18643,21 @@ function openLightbox(id, mediaSel) {
       toast('Video moved to trash');
     });
   } else if (selComposite) {
-    mk('↓ Save image', '', () => downloadComposite(it, selComposite));
+    mkIcon('result-save', 'Save image', '', () => downloadComposite(it, selComposite));
   } else {
     if (state.upscaling.has(it.id)) {
       mk('<span class="spin"></span> Upscaling…', '', () => {});
     } else {
-      mk(it.upscaled ? '⇪ Re-upscale' : '⇪ Upscale', '', () => openUpscaleSheet(it));
+      const upscaleLabel = it.upscaled ? 'Re-upscale image' : 'Upscale image';
+      mkIcon('result-process', upscaleLabel, '', () => openUpscaleSheet(it));
     }
-    mk('▤ Move', '', () => openMoveSheet(it));
+    mkIcon('result-move', 'Move generation', '', () => openMoveSheet(it));
     if (imageSaveItems.length > 1) {
-      mkMenu('Save', '', imageSaveItems, { icon: 'save', ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
+      mkMenu('Save', '', imageSaveItems, { icon: 'result-save', iconOnly: true, ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
     } else if (imageSaveItems.length === 1) {
-      mk('↓ Save', '', imageSaveItems[0].action);
+      mkIcon('result-save', 'Save image', '', imageSaveItems[0].action);
     }
-    mk(`${actionIconMarkup('delete')}<span>Delete</span>`, 'danger', async () => {
+    mkIcon('result-delete', 'Move generation to trash', 'danger', async () => {
       const n = videos.length;
       if (!await askConfirm({
         title: 'Move generation to trash?',
