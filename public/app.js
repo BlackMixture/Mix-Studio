@@ -16768,6 +16768,7 @@ function setLightboxGroupNameInput(item) {
   field.hidden = !group;
   if (!group) {
     position.textContent = '';
+    position.hidden = true;
     const input = $('#lbGroupTitle');
     delete input.dataset.itemId;
     delete input.dataset.groupType;
@@ -16777,7 +16778,10 @@ function setLightboxGroupNameInput(item) {
     return null;
   }
   setGalleryGroupNameInput($('#lbGroupTitle'), item, group);
-  position.textContent = `· ${group.position}`;
+  position.textContent = group.type === 'generation' && !item.strengthHunt
+    ? `${group.index + 1} of ${group.items.length}`
+    : group.position;
+  position.hidden = false;
   return group;
 }
 
@@ -19831,6 +19835,10 @@ function openLightbox(id, mediaSel) {
   resetLightboxZoom();
   resetLightboxSwipeVisuals();
   const freshOpen = !$('#lightbox').classList.contains('show');
+  const focusFromExpandedLibrary = freshOpen
+    && desktopWorkspaceActive()
+    && document.body.classList.contains('desktop-library-expanded');
+  if (focusFromExpandedLibrary) document.body.classList.add('desktop-focus-from-library');
   if (freshOpen) {
     lightboxReturnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
       ? document.activeElement
@@ -19897,7 +19905,11 @@ function openLightbox(id, mediaSel) {
 
   // media switcher keeps attached composites with the image they describe.
   const mrow = $('#lbMedia');
+  const headerContext = $('#lbHeaderContext');
+  const headerMedia = $('#lbHeaderMedia');
   mrow.innerHTML = '';
+  headerMedia.innerHTML = '';
+  headerMedia.hidden = true;
   const makeMediaTier = (className, ariaLabel) => {
     const tier = document.createElement('div');
     tier.className = `lb-media-tier ${className}`;
@@ -19946,7 +19958,8 @@ function openLightbox(id, mediaSel) {
     const groupedGeneration = generationItems.length > 1;
     let mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
     if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
-    const mediaOptions = makeMediaTier(`lb-media-assets${groupedGeneration ? ' nested' : ''}`, mediaLabel);
+    headerMedia.setAttribute('aria-label', mediaLabel);
+    headerMedia.hidden = false;
     const mediaGlyph = (kind) => kind === 'video'
       ? '<svg viewBox="0 0 20 20"><path d="m7 5 7 5-7 5Z"/></svg>'
       : (kind === 'composite'
@@ -19957,13 +19970,14 @@ function openLightbox(id, mediaSel) {
       b.className = 'chip' + ((key === 'image' ? (!selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
       b.innerHTML = `<span class="lb-media-kind-icon" aria-hidden="true">${mediaGlyph(kind)}</span><span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
       b.addEventListener('click', () => openFocusedGalleryItem(it, key));
-      mediaOptions.appendChild(b);
+      headerMedia.appendChild(b);
     };
     mkChip('Image', 'image', !!it.liked);
     composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id, false, 'composite'));
     videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked, 'video'));
   }
-  $$('#lbMedia .lb-media-options').forEach((options) => {
+  headerContext.hidden = !activeGroup && headerMedia.hidden;
+  $$('#lbMedia .lb-media-options, #lbHeaderMedia').forEach((options) => {
     wireHorizontalScroller(options);
     revealHorizontalSelection(options, options.querySelector('.active'));
   });
@@ -20373,6 +20387,7 @@ function closeLightbox(fromPop) {
   const restoreDesktopNavigation = document.body.classList.contains('desktop-focused-result');
   document.body.classList.remove('desktop-focused-result');
   if (restoreDesktopNavigation) syncNavigation();
+  document.body.classList.remove('desktop-focus-from-library');
   const vid = $('#lbVideo');
   try { vid.pause(); } catch { /* noop */ }
   vid.removeAttribute('src');

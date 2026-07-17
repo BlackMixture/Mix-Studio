@@ -1214,7 +1214,7 @@
         <h1 id="desktopStageTitle">Ready to create</h1>
         <label class="desktop-group-name-field" id="desktopStageGroupNameField" for="desktopStageGroupName" title="Rename gallery group" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
-          <input id="desktopStageGroupName" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Untitled group" aria-label="Gallery group name" />
+          <input id="desktopStageGroupName" name="gallery-group-title" type="text" maxlength="80" autocomplete="one-time-code" autocapitalize="sentences" autocorrect="off" spellcheck="false" placeholder="Untitled group" aria-label="Gallery group name" data-form-type="other" data-1p-ignore data-lpignore="true" />
         </label>
         <span class="desktop-stage-position" id="desktopStagePosition" hidden></span>
       </div>
@@ -1360,13 +1360,16 @@
     <div class="overlay-name-stack" id="lbNameStack">
       <label class="generation-name-field group-name-field" id="lbGroupNameField" for="lbGroupTitle" title="Rename gallery group" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
-        <input class="overlay-title generation-name-input" id="lbGroupTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Untitled group" aria-label="Gallery group name" />
-        <span class="generation-group-position" id="lbGroupPosition"></span>
+        <input class="overlay-title generation-name-input" id="lbGroupTitle" name="focused-gallery-group-title" type="text" maxlength="80" autocomplete="one-time-code" autocapitalize="sentences" autocorrect="off" spellcheck="false" placeholder="Untitled group" aria-label="Gallery group name" data-form-type="other" data-1p-ignore data-lpignore="true" />
       </label>
       <label class="generation-name-field item-name-field" for="lbTitle" title="Rename generation">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
         <input class="overlay-title generation-name-input" id="lbTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Generation name" />
       </label>
+    </div>
+    <div class="lb-header-context" id="lbHeaderContext" hidden>
+      <span class="generation-group-position" id="lbGroupPosition" hidden></span>
+      <div class="lb-header-media lb-media-options lb-media-assets" id="lbHeaderMedia" role="group" aria-label="Media" hidden></div>
     </div>
     <button class="icon-btn" id="lbClose" type="button" aria-label="Close preview">✕</button>
   </div>

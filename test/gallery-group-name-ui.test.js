@@ -15,6 +15,7 @@ test('desktop stage separates editable group identity from member position', () 
   assert.match(html, /id="desktopStageKicker"/);
   assert.match(html, /id="desktopStageGroupNameField"[^>]*hidden/);
   assert.match(html, /id="desktopStageGroupName"[^>]*maxlength="80"[^>]*placeholder="Untitled group"/);
+  assert.match(html, /id="desktopStageGroupName"[^>]*autocomplete="one-time-code"[^>]*data-form-type="other"[^>]*data-1p-ignore[^>]*data-lpignore="true"/);
   assert.match(html, /id="desktopStagePosition"[^>]*hidden/);
   assert.match(app, /const galleryGroup = activeGalleryGroup\(item\)/);
   assert.match(app, /kicker\.textContent = `\$\{galleryGroup\.kindLabel\} · \$\{galleryGroup\.items\.length\} results`/);
@@ -28,9 +29,12 @@ test('desktop stage separates editable group identity from member position', () 
 test('focused desktop and mobile keep group and generation names separate', () => {
   assert.match(html, /id="lbGroupNameField"[^>]*hidden/);
   assert.match(html, /id="lbGroupTitle"[^>]*aria-label="Gallery group name"/);
+  assert.match(html, /id="lbGroupTitle"[^>]*autocomplete="one-time-code"[^>]*data-form-type="other"[^>]*data-1p-ignore[^>]*data-lpignore="true"/);
   assert.match(html, /id="lbGroupPosition"/);
+  assert.match(html, /id="lbHeaderMedia"[^>]*role="group"/);
   assert.match(html, /id="lbTitle"[^>]*aria-label="Generation name"/);
   assert.match(app, /setGenerationNameInput\(it, selVideo \|\| selComposite \|\| null\);[\s\S]*setLightboxGroupNameInput\(it\)/);
+  assert.match(app, /group\.type === 'generation' && !item\.strengthHunt[\s\S]*`\$\{group\.index \+ 1\} of \$\{group\.items\.length\}`/);
   assert.match(css, /\.overlay-name-stack\.has-group \.item-name-field/);
   assert.match(css, /\.generation-group-position \{[\s\S]*white-space: nowrap/);
 });

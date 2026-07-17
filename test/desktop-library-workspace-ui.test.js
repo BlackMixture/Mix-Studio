@@ -146,7 +146,8 @@ test('grouped desktop results use the mobile parent and attached-media hierarchy
   assert.doesNotMatch(app, /function focusDesktopStagePicker/);
   assert.doesNotMatch(app, /function restoreDesktopStagePickerHome/);
   assert.match(app, /if \(generationItems\.length > 1\) \{[\s\S]*makeMediaTier\('lb-media-generations', strengthHuntGroup \? 'Strength Hunt generations' : 'Generations'\)/);
-  assert.match(app, /makeMediaTier\(`lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}`/);
+  assert.match(app, /const headerMedia = \$\('#lbHeaderMedia'\)/);
+  assert.match(app, /headerContext\.hidden = !activeGroup && headerMedia\.hidden/);
   assert.match(app, /lightboxGroupThumbnailMarkup\(groupItem, index, groupItem\.id === it\.id\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
   assert.match(app, /desktopWorkspaceQuery\.addEventListener\('change',[\s\S]*openLightbox\(state\.currentItem\.id, media\)/);
@@ -170,8 +171,11 @@ test('grouped desktop results use the mobile parent and attached-media hierarchy
   assert.match(css, /#lightbox \.lb-media \{[\s\S]*max-height: none;[\s\S]*display: grid;[\s\S]*overflow-y: visible;[\s\S]*padding: 8px 22px 9px;/);
   assert.match(css, /#lightbox \.lb-media-options \{[\s\S]*width: 100%;[\s\S]*overflow-x: auto;/);
   assert.match(css, /#lightbox \.lb-media-generations \.lb-media-options > :first-child \{ margin-left: auto; \}/);
-  assert.match(css, /\.lb-media-assets\.nested::before,[\s\S]*\.lb-media-assets\.nested::after/);
+  assert.match(css, /#lightbox \.overlay-top \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, auto\) auto;/);
   assert.match(css, /body\.desktop-focused-result \.select-bar \{[\s\S]*right: 0;[\s\S]*width: var\(--studio-right-width\);[\s\S]*transform: none;/);
+  assert.match(app, /const focusFromExpandedLibrary = freshOpen[\s\S]*classList\.contains\('desktop-library-expanded'\)/);
+  assert.match(app, /if \(focusFromExpandedLibrary\) document\.body\.classList\.add\('desktop-focus-from-library'\)/);
+  assert.match(css, /body\.desktop-focus-from-library \.desktop-stage \{[\s\S]*left: calc\(-100vw \+ var\(--studio-right-width\) \+ 1px\);[\s\S]*transition: none;/);
 });
 
 test('desktop image action opens the full destination menu', () => {

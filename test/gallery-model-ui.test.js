@@ -90,7 +90,8 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(app, /if \(generationItems\.length > 1\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
   assert.doesNotMatch(app, /lb-media-tier-label/);
-  assert.match(app, /lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}/);
+  assert.match(app, /headerMedia\.setAttribute\('aria-label', mediaLabel\)/);
+  assert.match(app, /headerMedia\.appendChild\(b\)/);
   assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked, 'video'\)\)/);
   assert.match(app, /className = 'chip' \+ /);
   assert.match(app, /lb-media-kind-icon/);
@@ -103,7 +104,8 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*width: var\(--lb-group-chip-width\)/);
   assert.match(css, /\.lb-group-thumb-image,[\s\S]*width: 40px;[\s\S]*object-fit: cover/);
   assert.match(css, /\.lb-group-thumb-number \{[\s\S]*font-size: 9px/);
-  assert.match(css, /\.lb-media-assets\.nested::before/);
+  assert.match(css, /\.lb-header-context \{/);
+  assert.match(css, /\.lb-header-media \.chip\.active/);
   assert.match(css, /\.lb-media-kind-icon/);
   assert.match(css, /\.lb-media-like/);
 });
