@@ -77,7 +77,11 @@ const state = {
   videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
   appRelease: { version: '', releasedAt: null, revision: '' },
-  updateAnnouncements: [],
+  officialRelease: null,
+  officialInstalledVersion: '',
+  officialReleaseUpdateAvailable: false,
+  officialReleaseCheckState: 'idle',
+  officialReleaseError: '',
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   promptSourceImage: null,   // image retained as optional context for conversational prompt revision
   promptAssistantUseSource: true,
@@ -1012,10 +1016,10 @@ async function checkAuth() {
     renderAppUpdateAccess();
     loadMediaPreferences();
     await loadUserPreferences();
-    renderUpdatePublisherAccess();
-    await loadUpdateAnnouncements();
+    await loadOfficialRelease({ notify: true });
   } catch {
     renderAppUpdateAccess(); // 401 -> api() already opened the gate
+    renderOfficialRelease();
   } finally {
     firstRunTutorialAuthLoaded = true;
     maybeShowFirstRunTutorial();
@@ -1024,10 +1028,10 @@ async function checkAuth() {
 checkAuth();
 
 /* ------------------------------------------------------------------ */
-/* Update announcements                                                */
+/* Official GitHub release updates                                     */
 /* ------------------------------------------------------------------ */
 
-let publishingUpdateAnnouncement = false;
+const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
 
 function updateSeenKey() {
   return profileStorageKey('ks-update-seen', state.profile?.id);
@@ -1037,8 +1041,12 @@ function updateAlertsKey() {
   return profileStorageKey('ks-update-alerts', state.profile?.id);
 }
 
-function latestUpdateAnnouncement() {
-  return state.updateAnnouncements[0] || null;
+function latestOfficialRelease() {
+  return state.officialRelease;
+}
+
+function officialReleaseId(release = latestOfficialRelease()) {
+  return String(release?.id || release?.tagName || '');
 }
 
 function seenUpdateId() {
@@ -1052,9 +1060,15 @@ function updateAlertsEnabled() {
 }
 
 function formatUpdateDate(value) {
-  const date = new Date(Number(value));
+  const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '';
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
+
+function officialReleaseSummary(release) {
+  const notes = String(release?.notes || '').replace(/\s+/g, ' ').trim();
+  if (!notes) return 'Open the official release notes to see what changed.';
+  return notes.length > 220 ? `${notes.slice(0, 217)}…` : notes;
 }
 
 function renderUpdateNotificationPreference() {
@@ -1074,64 +1088,93 @@ function renderUpdateNotificationPreference() {
         : 'Get an alert while Mix Studio is open.';
 }
 
-function renderUpdatePublisherAccess() {
-  const publisher = $('#updatePublisher');
-  if (!publisher) return;
-  publisher.hidden = !state.profileIsOwner;
-  if (state.profileIsOwner && !$('#updatePublishVersion').value) {
-    $('#updatePublishVersion').value = state.appRelease.version
-      ? formatAppVersion(state.appRelease.version, state.appRelease.revision)
-      : '';
-  }
-}
-
-function renderUpdateAnnouncements() {
+function renderOfficialRelease() {
   const list = $('#updatesList');
   if (!list) return;
-  const latest = latestUpdateAnnouncement();
-  const unread = !!latest && latest.id !== seenUpdateId();
+  const latest = latestOfficialRelease();
+  const latestId = officialReleaseId(latest);
+  const unread = !!latest && state.officialReleaseUpdateAvailable && latestId !== seenUpdateId();
+  const actions = $('#updatesReleaseActions');
+  const install = $('#updatesInstallBtn');
+  const installStatus = $('#updatesInstallStatus');
   $('#updatesUnreadDot').hidden = !unread;
   $('#updatesBtn').classList.toggle('has-unread', unread);
-  $('#updatesDrawerStatus').textContent = unread
-    ? (latest.version || 'New update')
-    : state.updateAnnouncements.length
-      ? `${state.updateAnnouncements.length} release note${state.updateAnnouncements.length === 1 ? '' : 's'}`
-      : 'No announcements yet';
-  if (!state.updateAnnouncements.length) {
-    list.innerHTML = '<p class="updates-empty">No update announcements yet.</p>';
+
+  if (!state.profile) {
+    $('#updatesDrawerStatus').textContent = 'Sign in to check updates';
+    list.innerHTML = '<p class="updates-empty">Sign in to check official Mix Studio releases.</p>';
+    actions.hidden = true;
+    installStatus.textContent = '';
     return;
   }
-  list.innerHTML = state.updateAnnouncements.map((announcement, index) => `
-    <article class="update-entry${index === 0 && unread ? ' new' : ''}">
-      <div class="update-entry-head"><strong>${escapeHtml(announcement.title)}</strong><time datetime="${new Date(Number(announcement.createdAt)).toISOString()}">${escapeHtml(formatUpdateDate(announcement.createdAt))}</time></div>
-      ${announcement.version ? `<span class="update-entry-version">${escapeHtml(announcement.version)}</span>` : ''}
-      <p>${escapeHtml(announcement.message)}</p>
-    </article>`).join('');
+
+  if (state.officialReleaseCheckState === 'loading' && !latest) {
+    $('#updatesDrawerStatus').textContent = 'Checking GitHub…';
+    list.innerHTML = '<p class="updates-empty">Checking the official GitHub release channel…</p>';
+    actions.hidden = true;
+    installStatus.textContent = '';
+    return;
+  }
+
+  if (state.officialReleaseCheckState === 'error' && !latest) {
+    $('#updatesDrawerStatus').textContent = 'Check unavailable';
+    list.innerHTML = `<p class="updates-empty">${escapeHtml(state.officialReleaseError || 'Could not check GitHub releases right now.')}</p>`;
+    actions.hidden = true;
+    installStatus.textContent = 'The local Update app action remains available to the owner.';
+    return;
+  }
+
+  if (!latest) {
+    $('#updatesDrawerStatus').textContent = 'No public releases yet';
+    list.innerHTML = '<p class="updates-empty">No stable GitHub Release has been published yet.</p>';
+    actions.hidden = true;
+    installStatus.textContent = '';
+    return;
+  }
+
+  $('#updatesDrawerStatus').textContent = state.officialReleaseUpdateAvailable
+    ? `${latest.tagName} available`
+    : `${latest.tagName} installed`;
+  const publishedLabel = formatUpdateDate(latest.publishedAt);
+  list.innerHTML = `
+    <article class="update-entry${unread ? ' new' : ''}">
+      <div class="update-entry-head"><strong>${escapeHtml(latest.title)}</strong>${publishedLabel ? `<time datetime="${escapeHtml(latest.publishedAt)}">${escapeHtml(publishedLabel)}</time>` : ''}</div>
+      <span class="update-entry-version">${escapeHtml(latest.tagName || `v${latest.version}`)}</span>${state.officialReleaseUpdateAvailable ? '' : '<span class="update-entry-installed">Installed</span>'}
+      <p>${escapeHtml(latest.notes || 'Open the official release page to see the complete notes.')}</p>
+    </article>`;
+  actions.hidden = false;
+  $('#updatesReleaseLink').href = latest.url;
+  install.hidden = !state.profileIsOwner || !state.officialReleaseUpdateAvailable;
+  install.disabled = appUpdateRunning;
+  installStatus.textContent = state.officialReleaseUpdateAvailable
+    ? (state.profileIsOwner ? 'The update installs only when both queues are idle.' : 'Switch to the owner profile to install this update.')
+    : (state.officialReleaseError ? 'Showing the last successful GitHub check.' : 'This installation matches the latest stable release.');
 }
 
-function markLatestUpdateSeen() {
-  const latest = latestUpdateAnnouncement();
+function markLatestReleaseSeen() {
+  const latest = latestOfficialRelease();
   const key = updateSeenKey();
-  if (latest && key) localStorage.setItem(key, latest.id);
+  const id = officialReleaseId(latest);
+  if (id && key) localStorage.setItem(key, id);
   $('#updateNotice').hidden = true;
-  renderUpdateAnnouncements();
+  renderOfficialRelease();
 }
 
-function showUpdateNotice(announcement) {
-  if (!announcement || announcement.id === seenUpdateId()) return;
-  $('#updateNoticeVersion').textContent = announcement.version || 'Mix Studio update';
-  $('#updateNoticeTitle').textContent = announcement.title;
-  $('#updateNoticeMessage').textContent = announcement.message;
+function showOfficialReleaseNotice(release) {
+  if (!release || !state.officialReleaseUpdateAvailable || officialReleaseId(release) === seenUpdateId()) return;
+  $('#updateNoticeVersion').textContent = release.tagName || `v${release.version}`;
+  $('#updateNoticeTitle').textContent = release.title;
+  $('#updateNoticeMessage').textContent = officialReleaseSummary(release);
   $('#updateNotice').hidden = false;
 }
 
-function showSystemUpdateNotification(announcement) {
-  if (!announcement || !updateAlertsEnabled() || !window.isSecureContext || !('Notification' in window) || Notification.permission !== 'granted') return;
+function showSystemUpdateNotification(release) {
+  if (!release || !state.officialReleaseUpdateAvailable || officialReleaseId(release) === seenUpdateId() || !updateAlertsEnabled() || !window.isSecureContext || !('Notification' in window) || Notification.permission !== 'granted') return;
   try {
-    const notice = new Notification(announcement.title, {
-      body: announcement.message,
+    const notice = new Notification(release.title, {
+      body: officialReleaseSummary(release),
       icon: '/modatory-logo.svg',
-      tag: `mix-studio-update-${announcement.id}`,
+      tag: `mix-studio-update-${officialReleaseId(release)}`,
     });
     notice.onclick = () => {
       window.focus();
@@ -1141,42 +1184,48 @@ function showSystemUpdateNotification(announcement) {
   } catch { /* Browser alerts are optional; the in-app notice remains available. */ }
 }
 
-function receiveUpdateAnnouncement(announcement, options = {}) {
-  if (!announcement || !announcement.id || !state.profile) return;
-  state.updateAnnouncements = [announcement, ...state.updateAnnouncements.filter((entry) => entry.id !== announcement.id)]
-    .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
-    .slice(0, 30);
-  renderUpdateAnnouncements();
-  if (publishingUpdateAnnouncement) {
-    markLatestUpdateSeen();
+function receiveOfficialRelease(result, options = {}) {
+  const previousId = officialReleaseId();
+  state.officialRelease = result?.latest || null;
+  state.officialInstalledVersion = String(result?.installedVersion || '');
+  state.officialReleaseUpdateAvailable = !!result?.updateAvailable;
+  state.officialReleaseCheckState = result?.stale ? 'stale' : 'ready';
+  state.officialReleaseError = String(result?.error || '');
+  renderOfficialRelease();
+  if (!state.officialReleaseUpdateAvailable) {
+    $('#updateNotice').hidden = true;
     return;
   }
-  showUpdateNotice(announcement);
-  if (options.notify) showSystemUpdateNotification(announcement);
+  showOfficialReleaseNotice(state.officialRelease);
+  if (options.notify && officialReleaseId() !== previousId) showSystemUpdateNotification(state.officialRelease);
 }
 
-async function loadUpdateAnnouncements() {
+async function loadOfficialRelease(options = {}) {
   if (!state.profile) return;
+  if (!state.officialRelease) state.officialReleaseCheckState = 'loading';
+  renderOfficialRelease();
   try {
-    const result = await api('/api/update-announcements');
-    state.updateAnnouncements = Array.isArray(result.announcements) ? result.announcements : [];
-    renderUpdateAnnouncements();
+    const result = await api('/api/releases/latest');
+    receiveOfficialRelease(result, options);
     renderUpdateNotificationPreference();
-    showUpdateNotice(latestUpdateAnnouncement());
-  } catch { /* Older servers simply do not expose update announcements yet. */ }
+  } catch (error) {
+    state.officialReleaseCheckState = 'error';
+    state.officialReleaseError = error.message || 'Could not check official Mix Studio releases';
+    renderOfficialRelease();
+  }
 }
 
 async function openUpdatesSheet() {
   closeAppDrawer();
-  if (!state.updateAnnouncements.length) await loadUpdateAnnouncements();
+  if (state.profile && ['idle', 'error'].includes(state.officialReleaseCheckState)) await loadOfficialRelease();
   $('#updatesSheet').classList.add('show');
-  markLatestUpdateSeen();
+  markLatestReleaseSeen();
   renderUpdateNotificationPreference();
 }
 
 $('#updatesBtn').addEventListener('click', openUpdatesSheet);
 $('#updateNoticeView').addEventListener('click', openUpdatesSheet);
-$('#updateNoticeDismiss').addEventListener('click', markLatestUpdateSeen);
+$('#updateNoticeDismiss').addEventListener('click', markLatestReleaseSeen);
 $('#updatesAlertToggle').addEventListener('click', async () => {
   if (!window.isSecureContext || !('Notification' in window)) return;
   const key = updateAlertsKey();
@@ -1192,44 +1241,18 @@ $('#updatesAlertToggle').addEventListener('click', async () => {
   if (permission === 'granted') toast('Browser update alerts enabled');
 });
 
-$('#updatePublishBtn').addEventListener('click', async () => {
-  const title = $('#updatePublishTitle').value.trim();
-  const message = $('#updatePublishMessage').value.trim();
-  const version = $('#updatePublishVersion').value.trim();
-  if (!title || !message) {
-    $('#updatePublishStatus').textContent = 'Add both a title and message.';
-    (title ? $('#updatePublishMessage') : $('#updatePublishTitle')).focus();
-    return;
-  }
-  if (!await askConfirm({
-    title: 'Push this update?',
-    message: 'It will appear for every Mix Studio profile and cannot be edited after publishing.',
-    confirmLabel: 'Push update',
-  })) return;
-  const button = $('#updatePublishBtn');
-  button.disabled = true;
-  publishingUpdateAnnouncement = true;
-  $('#updatePublishStatus').textContent = 'Publishing…';
-  try {
-    const result = await api('/api/update-announcements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, message, version }),
-    });
-    receiveUpdateAnnouncement(result.announcement);
-    markLatestUpdateSeen();
-    $('#updatePublishTitle').value = '';
-    $('#updatePublishMessage').value = '';
-    $('#updatePublishStatus').textContent = `Published · ${result.connected || 0} open session${result.connected === 1 ? '' : 's'} notified live.`;
-    toast('Update pushed to Mix Studio users');
-  } catch (error) {
-    $('#updatePublishStatus').textContent = error.message;
-    toast(error.message, true);
-  } finally {
-    publishingUpdateAnnouncement = false;
-    button.disabled = false;
-  }
+$('#updatesInstallBtn').addEventListener('click', () => {
+  if (!state.profileIsOwner || !state.officialReleaseUpdateAvailable) return;
+  markLatestReleaseSeen();
+  $('#updatesSheet').classList.remove('show');
+  syncSheetScrollLock();
+  openAppDrawer();
+  $('#appUpdateBtn').click();
 });
+
+setInterval(() => {
+  if (state.profile) loadOfficialRelease({ notify: true });
+}, OFFICIAL_RELEASE_POLL_MS);
 
 window.addEventListener('storage', (event) => {
   if (event.key !== 'ks-profile-id' || (event.newValue || '') === workspaceSessionProfileId) return;
@@ -1543,8 +1566,6 @@ function renderAppRelease(release = {}) {
   const settings = $('#settingsAppVersion');
   if (drawer) drawer.textContent = label;
   if (settings) settings.textContent = label;
-  const publishVersion = $('#updatePublishVersion');
-  if (publishVersion && !publishVersion.value) publishVersion.value = label === 'Development build' ? '' : label;
   return label;
 }
 
@@ -1573,6 +1594,7 @@ function renderAppUpdateAccess() {
   restartButton.disabled = false;
   label.textContent = 'Update app';
   restartLabel.textContent = 'Restart app';
+  renderOfficialRelease();
 }
 
 async function waitForAppRestart() {
@@ -15427,9 +15449,6 @@ function connectEvents() {
   es.addEventListener('status', (ev) => {
     renderGenerationStatus(JSON.parse(ev.data));
   });
-  es.addEventListener('updateAnnouncement', (ev) => {
-    receiveUpdateAnnouncement(JSON.parse(ev.data).announcement, { notify: true });
-  });
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);
     if (state.activeJobs.size && (!d.jobId || state.activeJobs.has(d.jobId))) {
@@ -25803,7 +25822,6 @@ $('#settingsSheet').addEventListener('click', (event) => {
 
 $('#settingsBtn').addEventListener('click', async () => {
   closeAppDrawer();
-  renderUpdatePublisherAccess();
   settingsLoading = true;
   setSettingsSaveStatus();
   renderGuidedTourSetting();

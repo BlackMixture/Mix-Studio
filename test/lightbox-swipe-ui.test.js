@@ -96,7 +96,7 @@ test('focused gallery images wheel zoom, click back to Create, and reset across 
   assert.match(app, /\$\('#lbImg'\)\.addEventListener\('auxclick',[\s\S]*event\.button !== 1[\s\S]*event\.preventDefault\(\)/);
   assert.match(app, /tap\.timer = setTimeout\([\s\S]*closeLightbox\(\);[\s\S]*310\)/);
   assert.match(app, /if \(lightboxTap\?\.timer\) clearTimeout\(lightboxTap\.timer\)/);
-  assert.ok((app.match(/clearLightboxTap\(\);\n  resetLightboxZoom\(\);/g) || []).length >= 2);
+  assert.ok((app.match(/clearLightboxTap\(\);\r?\n  resetLightboxZoom\(\);/g) || []).length >= 2);
   assert.match(app, /if \(lightboxZoomState\.active && e\.target === \$\('#lbImg'\)\) return/);
   assert.match(app, /\$\('#lbImg'\)\.addEventListener\('keydown',[\s\S]*\['Enter', ' '\]\.includes\(event\.key\)[\s\S]*closeLightbox\(\)[\s\S]*\['\+', '=', '-', '_', '0'\]\.includes\(event\.key\)[\s\S]*adjustLightboxZoom/);
   assert.match(css, /#lbImg \{[\s\S]*cursor: pointer;[\s\S]*transform-origin: var\(--lightbox-zoom-x, 50%\) var\(--lightbox-zoom-y, 50%\)/);
@@ -160,7 +160,7 @@ test('focused gallery images wheel zoom, click back to Create, and reset across 
 });
 
 test('Escape closes only the focused gallery layer and the close button unwinds history', () => {
-  assert.match(app, /if \(event\.key === 'Escape'\) \{\n    closeLightbox\(\);\n    return;/);
+  assert.match(app, /if \(event\.key === 'Escape'\) \{\r?\n    closeLightbox\(\);\r?\n    return;/);
   assert.match(app, /\|\| \$\('#compare'\)\.classList\.contains\('show'\)[\s\S]*\|\| \$\('\.sheet\.show'\)[\s\S]*\|\| \$\('#appDrawer'\)\.classList\.contains\('show'\)[\s\S]*\|\| actionMenuEl/);
   assert.match(app, /event\.key === 'Escape' && \$\('#appDrawer'\)\.classList\.contains\('show'\)[\s\S]*event\.preventDefault\(\)[\s\S]*closeAppDrawer\(\)/);
   assert.match(app, /\$\('#lbClose'\)\.addEventListener\('click', \(\) => closeLightbox\(\)\)/);

@@ -91,7 +91,7 @@
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg>
           </span>
           <span class="app-drawer-label">Updates</span>
-          <small id="updatesDrawerStatus">No new updates</small>
+          <small id="updatesDrawerStatus">Checking official releases…</small>
           <span class="updates-unread-dot" id="updatesUnreadDot" aria-label="New update" hidden></span>
         </button>
         <button class="app-drawer-action" id="workspacesBtn" type="button">
@@ -2362,21 +2362,6 @@
 
         <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
           <div class="settings-pane-head"><h4>System</h4><p>Runtime, storage, and prompt enhancement.</p></div>
-          <div class="settings-group update-publisher" id="updatePublisher" hidden>
-            <div class="update-publisher-head">
-              <span><h5>Update announcement</h5><p>Send a concise release note to every Mix Studio profile.</p></span>
-              <span class="update-publisher-owner">Owner</span>
-            </div>
-            <div class="update-publisher-fields">
-              <label><span>Version</span><input id="updatePublishVersion" type="text" maxlength="40" autocomplete="off" placeholder="v1.0" /></label>
-              <label><span>Title</span><input id="updatePublishTitle" type="text" maxlength="80" autocomplete="off" placeholder="What’s new" /></label>
-              <label class="update-publisher-message"><span>Message</span><textarea id="updatePublishMessage" rows="4" maxlength="800" placeholder="Share the most useful change and what users can do with it."></textarea></label>
-            </div>
-            <div class="update-publisher-actions">
-              <p id="updatePublishStatus" role="status" aria-live="polite">Users who are offline will see it when they return.</p>
-              <button id="updatePublishBtn" type="button">Push update</button>
-            </div>
-          </div>
           <div class="settings-group hardware-group">
             <div class="hardware-group-head">
               <h5>Hardware</h5>
@@ -2475,7 +2460,7 @@
   </div>
 </div>
 
-<!-- app update announcements -->
+<!-- official GitHub release updates -->
 <div class="sheet" id="updatesSheet">
   <section class="sheet-panel updates-panel" role="dialog" aria-modal="true" aria-labelledby="updatesTitle">
     <h3 class="sheet-title"><span id="updatesTitle">Mix Studio updates</span><button data-close type="button" aria-label="Close updates">✕</button></h3>
@@ -2484,6 +2469,11 @@
       <span class="settings-media-switch" aria-hidden="true"><i></i></span>
     </button>
     <div class="updates-list" id="updatesList" aria-live="polite"><p class="updates-empty">Checking for updates…</p></div>
+    <div class="updates-release-actions" id="updatesReleaseActions" hidden>
+      <a id="updatesReleaseLink" href="https://github.com/BlackMixture/Mix-Studio/releases" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+      <button id="updatesInstallBtn" type="button" hidden>Install update</button>
+    </div>
+    <p class="updates-install-status" id="updatesInstallStatus" role="status" aria-live="polite"></p>
   </section>
 </div>
 

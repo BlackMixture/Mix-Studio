@@ -8587,70 +8587,6 @@ body.sheet-open {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.update-publisher {
-  margin-bottom: 22px;
-  padding: 15px;
-  border: 1px solid rgba(169,102,255,.28);
-  border-radius: 17px;
-  background:
-    linear-gradient(150deg, rgba(169,102,255,.09), rgba(66,133,244,.025) 58%, transparent),
-    #030405;
-}
-.update-publisher + .settings-group { margin-top: 0; padding-top: 0; border-top: 0; }
-.update-publisher-head,
-.update-publisher-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.update-publisher-head > span:first-child { min-width: 0; }
-.update-publisher-head h5 { margin-bottom: 4px; }
-.update-publisher-head p,
-.update-publisher-actions p { margin: 0; color: var(--muted); font-size: 10.5px; font-weight: 650; line-height: 1.45; }
-.update-publisher-owner {
-  flex: 0 0 auto;
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: rgba(169,102,255,.12);
-  color: #d7c0ff;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: .11em;
-  text-transform: uppercase;
-}
-.update-publisher-fields { margin-top: 13px; display: grid; grid-template-columns: 112px minmax(0,1fr); gap: 10px; }
-.update-publisher-fields label { min-width: 0; display: grid; gap: 6px; color: var(--muted-2); font-size: 9px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
-.update-publisher-fields input,
-.update-publisher-fields textarea {
-  width: 100%;
-  min-width: 0;
-  padding: 10px 11px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  outline: none;
-  background: #000;
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.45;
-  text-transform: none;
-  letter-spacing: normal;
-}
-.update-publisher-fields textarea { resize: vertical; min-height: 88px; }
-.update-publisher-fields input:focus,
-.update-publisher-fields textarea:focus { border-color: rgba(169,102,255,.58); box-shadow: 0 0 0 3px rgba(169,102,255,.08); }
-.update-publisher-message { grid-column: 1 / -1; }
-.update-publisher-actions { margin-top: 12px; align-items: flex-end; }
-.update-publisher-actions p { max-width: 280px; }
-#updatePublishBtn {
-  min-height: 38px;
-  flex: 0 0 auto;
-  padding: 0 15px;
-  border: 1px solid rgba(169,102,255,.46);
-  border-radius: 11px;
-  background: rgba(169,102,255,.13);
-  color: #f0e8ff;
-  font-size: 11px;
-  font-weight: 900;
-}
-#updatePublishBtn:hover { border-color: rgba(169,102,255,.72); background: rgba(169,102,255,.2); }
-#updatePublishBtn:disabled { opacity: .55; }
 .hardware-group-head {
   min-height: 30px;
   display: flex;
@@ -11010,16 +10946,24 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
 .update-entry-head time { flex: 0 0 auto; color: var(--muted-2); font-size: 9px; }
 .update-entry-version { display: inline-block; margin-top: 6px; color: #9db8ff; font-size: 8px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; }
 .update-entry p { margin: 8px 0 0; color: var(--ink-soft); font-size: 11.5px; font-weight: 600; line-height: 1.55; white-space: pre-wrap; }
+.update-entry-installed { display: inline-flex; margin-left: 7px; padding: 3px 6px; border-radius: 999px; background: rgba(52,168,83,.12); color: #9ce8b1; font-size: 7.5px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.updates-release-actions { margin-top: 14px; display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.updates-release-actions[hidden] { display: none; }
+.updates-release-actions a,
+.updates-release-actions button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border: 1px solid var(--line); border-radius: 11px; background: transparent; color: var(--ink-soft); font-size: 10.5px; font-weight: 850; text-decoration: none; }
+.updates-release-actions button { border-color: rgba(66,133,244,.46); background: rgba(66,133,244,.13); color: #e3ebff; }
+.updates-release-actions button:hover { border-color: rgba(66,133,244,.7); background: rgba(66,133,244,.2); }
+.updates-install-status { min-height: 16px; margin: 8px 2px 0; color: var(--muted-2); font-size: 9.5px; font-weight: 650; text-align: right; }
 
 @media (max-width: 560px) {
   .update-notice { top: auto; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
   .update-notice-actions { grid-column: 1 / -1; }
   .update-notice-actions #updateNoticeView { flex: 1; }
   .update-notice-actions button { min-height: 44px; }
-  .update-publisher-fields { grid-template-columns: 1fr; }
-  .update-publisher-message { grid-column: 1; }
-  .update-publisher-actions { align-items: stretch; flex-direction: column; }
-  #updatePublishBtn { width: 100%; min-height: 44px; }
+  .updates-release-actions { align-items: stretch; flex-direction: column-reverse; }
+  .updates-release-actions a,
+  .updates-release-actions button { width: 100%; min-height: 44px; }
+  .updates-install-status { text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) {
   .update-notice { animation-duration: 1ms; }

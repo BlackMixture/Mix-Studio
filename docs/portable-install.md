@@ -59,6 +59,8 @@ The optional local models path additionally lets Mix Studio discover LoRA metada
 
 ## Updates
 
+After sign-in, Mix Studio checks the official `BlackMixture/Mix-Studio` GitHub Releases channel for a newer stable semantic version. The server caches successful checks for one hour, and an open browser checks again every six hours. Release notes appear in the Updates inbox; optional browser alerts work while Mix Studio is open. No GitHub credential is shipped with the app, so only maintainers of the official repository can publish notifications.
+
 The owner-only **Update app** action runs the equivalent of:
 
 ```powershell

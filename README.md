@@ -165,7 +165,9 @@ Open Mix Studio's side menu and choose **Update app**. Updates require:
 
 Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side updates restart the Node process automatically; frontend-only updates do not need a restart.
 
-Every user-facing release is associated with the semantic version in `release.json`. The side menu and **Advanced Settings → System** show that installed version, while the short Git revision remains available to the update API for diagnostics. Bump `release.json` once when preparing each release; commits that belong to the same release may share its version.
+Mix Studio checks the official `BlackMixture/Mix-Studio` GitHub Releases channel when a profile signs in and every six hours while the app remains open. A newer stable semantic version appears in the Updates inbox with its release notes and an optional browser alert. The check is read-only, cached locally for one hour, and uses no bundled GitHub credentials; only maintainers who can publish a Release in the official repository can notify installations. The local owner still decides when to install it.
+
+Every user-facing release is associated with the semantic version in `release.json` and a matching Git tag such as `v1.1.0`. The side menu and **Advanced Settings → System** show the installed version, while the short Git revision remains available to the update API for diagnostics. Keep `main` release-ready, bump `release.json` when preparing the release, tag that commit, and publish the GitHub Release with the changelog.
 
 The owner can also choose **Restart app** from the same menu. It checks both Mix Studio and ComfyUI queues before restarting the Node server, and is available because `start.bat` launches the server in restart-aware mode.
 
