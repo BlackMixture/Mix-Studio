@@ -120,10 +120,10 @@ test('focused gallery reuses the center-stage result icons', () => {
   assert.match(css, /#lbActions \.action-btn\.result-action-icon:focus-visible/);
 });
 
-test('grouped desktop results expose a synchronized media picker', () => {
+test('grouped desktop results use the mobile parent and attached-media hierarchy', () => {
   assert.match(html, /id="desktopStagePicker"[^>]*Choose a result from this gallery group/);
   assert.match(html, /desktop-stage-head-actions[\s\S]*desktopStageStatus[\s\S]*desktopStagePicker[\s\S]*desktopStageInfo/);
-  assert.match(html, /id="lbGroupPickerSlot"/);
+  assert.doesNotMatch(html, /id="lbGroupPickerSlot"/);
   assert.match(app, /function desktopStageChoices\(item\)/);
   assert.match(app, /function renderDesktopStagePicker\(item, media = 'image'\)/);
   assert.match(app, /angleGroupItems\(item\)/);
@@ -131,13 +131,17 @@ test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(app, /selectDesktopLibraryItem\(choice\.item, choice\.media\)/);
   assert.match(app, /button\.addEventListener\('click', \(\) => selectDesktopLibraryItem\(choice\.item, choice\.media\)\)/);
   assert.match(app, /thumbnail\.className = 'desktop-stage-choice-thumb'/);
-  assert.match(app, /copy\.className = 'desktop-stage-choice-copy'/);
+  assert.match(app, /button\.appendChild\(thumbnail\)/);
+  assert.doesNotMatch(app, /desktop-stage-choice-copy/);
   assert.match(app, /image\.draggable = false/);
   assert.match(app, /function wireHorizontalScroller\(scroller\)/);
   assert.match(app, /revealHorizontalSelection\(picker, activeChoice\)/);
-  assert.match(app, /function focusDesktopStagePicker\(item, media = 'image'\)[\s\S]*slot\.appendChild\(picker\)[\s\S]*picker\.classList\.add\('focused'\)/);
-  assert.match(app, /function restoreDesktopStagePickerHome\(\)[\s\S]*desktopStagePickerHome\.insertBefore\(picker, desktopStagePickerHomeAnchor\)/);
-  assert.match(app, /picker\.getAnimations\(\)\.forEach\(\(animation\) => animation\.cancel\(\)\)/);
+  assert.doesNotMatch(app, /function focusDesktopStagePicker/);
+  assert.doesNotMatch(app, /function restoreDesktopStagePickerHome/);
+  assert.match(app, /if \(generationItems\.length > 1\) \{[\s\S]*makeMediaTier\('lb-media-generations', 'Generations'\)/);
+  assert.match(app, /makeMediaTier\(`lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}`/);
+  assert.match(app, /lightboxGroupThumbnailMarkup\(groupItem, index\)/);
+  assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
   assert.match(app, /desktopWorkspaceQuery\.addEventListener\('change',[\s\S]*openLightbox\(state\.currentItem\.id, media\)/);
   assert.match(app, /if \(!\$\('#lightbox'\)\?\.classList\.contains\('show'\)\) renderDesktopStage\(\)/);
   const pointerDown = app.match(/scroller\.addEventListener\('pointerdown',[\s\S]*?\n  \}\);/)?.[0] || '';
@@ -153,14 +157,12 @@ test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(css, /\.desktop-stage-head-actions \{[\s\S]*max-width: min\(62%, 430px\)/);
   assert.match(css, /\.desktop-stage-choice \{[\s\S]*width: 34px;[\s\S]*height: 34px;/);
   assert.match(css, /\.desktop-stage-choice\.active \{/);
-  assert.match(css, /#lightbox \.desktop-stage-picker\.focused \.desktop-stage-choice,[\s\S]*width: 96px;[\s\S]*grid-template-columns: 32px minmax\(0, 1fr\)/);
-  assert.match(css, /#lightbox \.desktop-stage-picker\.focused \.desktop-stage-choice-copy \{[\s\S]*opacity: 1;/);
-  assert.match(css, /#lightbox \.lb-group-picker-slot \{[\s\S]*justify-content: flex-end;[\s\S]*justify-self: end;/);
-  assert.match(css, /#lightbox \.desktop-stage-picker\.focused \{[\s\S]*width: max-content;[\s\S]*max-width: 100%;[\s\S]*justify-content: flex-start;[\s\S]*margin-left: auto;/);
-  assert.match(css, /@keyframes focusedGroupChoiceExpand/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*desktop-stage-picker\.focused\.entering/);
-  assert.match(css, /#lightbox \.lb-media-generations \{[\s\S]*flex: 1 1 auto;/);
+  assert.doesNotMatch(css, /desktop-stage-picker\.focused|focusedGroupChoiceExpand/);
+  assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*--lb-group-chip-width: 48px;[\s\S]*height: 48px;/);
+  assert.match(css, /\.lb-group-thumb-image,[\s\S]*width: 40px;[\s\S]*height: 40px;/);
+  assert.match(css, /#lightbox \.lb-media \{[\s\S]*max-height: 138px;[\s\S]*display: grid;[\s\S]*overflow-y: auto;/);
   assert.match(css, /#lightbox \.lb-media-options \{[\s\S]*width: 100%;[\s\S]*overflow-x: auto;/);
+  assert.match(css, /\.lb-media-assets\.nested::before,[\s\S]*\.lb-media-assets\.nested::after/);
 });
 
 test('desktop image action opens the full destination menu', () => {

@@ -73,18 +73,23 @@ test('focused gallery arrow keys traverse every visible generation without closi
   assert.equal(resolveMedia({}, undefined), 'image');
 });
 
-test('focused gallery images zoom by click or keyboard and reset across navigation', () => {
-  assert.match(html, /id="lbImg"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-label="Zoom in image"[^>]*aria-pressed="false"[^>]*aria-keyshortcuts="Enter Space"[^>]*draggable="false"/);
-  assert.match(app, /const lightboxZoomState = \{ active: false, x: 50, y: 50 \}/);
+test('focused gallery images wheel zoom, click back to Create, and reset across navigation', () => {
+  assert.match(html, /id="lbImg"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-label="Return to Create view\. Image zoom 100 percent"[^>]*aria-keyshortcuts="Enter Space \+ - 0"[^>]*title="Scroll to zoom · click to return to Create"[^>]*draggable="false"/);
+  assert.doesNotMatch(html, /id="lbImg"[^>]*aria-pressed/);
+  assert.match(app, /const lightboxZoomState = \{ active: false, scale: 1, x: 50, y: 50 \}/);
+  assert.match(app, /const LIGHTBOX_ZOOM_MIN = 1;[\s\S]*const LIGHTBOX_ZOOM_MAX = 4;/);
   assert.match(app, /function lightboxZoomOrigin\(image, clientX, clientY\)/);
-  assert.match(app, /function toggleLightboxZoom\(clientX, clientY\)/);
-  assert.match(app, /tap\.timer = setTimeout\([\s\S]*toggleLightboxZoom\(tap\.clientX, tap\.clientY\)[\s\S]*310\)/);
+  assert.match(app, /function setLightboxZoom\(scale, clientX, clientY\)/);
+  assert.match(app, /function adjustLightboxZoom\(deltaY, clientX, clientY, deltaMode = 0\)/);
+  assert.match(app, /function handleLightboxZoomWheel\(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*adjustLightboxZoom\(event\.deltaY, event\.clientX, event\.clientY, event\.deltaMode\)/);
+  assert.match(app, /\$\('#lbImg'\)\.addEventListener\('wheel', handleLightboxZoomWheel, \{ passive: false \}\)/);
+  assert.match(app, /tap\.timer = setTimeout\([\s\S]*closeLightbox\(\);[\s\S]*310\)/);
   assert.match(app, /if \(lightboxTap\?\.timer\) clearTimeout\(lightboxTap\.timer\)/);
   assert.ok((app.match(/clearLightboxTap\(\);\n  resetLightboxZoom\(\);/g) || []).length >= 2);
   assert.match(app, /if \(lightboxZoomState\.active && e\.target === \$\('#lbImg'\)\) return/);
-  assert.match(app, /\$\('#lbImg'\)\.addEventListener\('keydown',[\s\S]*\['Enter', ' '\]\.includes\(event\.key\)[\s\S]*toggleLightboxZoom\(\)/);
-  assert.match(css, /#lbImg \{[\s\S]*cursor: zoom-in;[\s\S]*transform-origin: var\(--lightbox-zoom-x, 50%\) var\(--lightbox-zoom-y, 50%\)/);
-  assert.match(css, /#lbImg\.lightbox-zoomed \{[\s\S]*cursor: zoom-out;[\s\S]*transform: scale\(2\)/);
+  assert.match(app, /\$\('#lbImg'\)\.addEventListener\('keydown',[\s\S]*\['Enter', ' '\]\.includes\(event\.key\)[\s\S]*closeLightbox\(\)[\s\S]*\['\+', '=', '-', '_', '0'\]\.includes\(event\.key\)[\s\S]*adjustLightboxZoom/);
+  assert.match(css, /#lbImg \{[\s\S]*cursor: pointer;[\s\S]*transform-origin: var\(--lightbox-zoom-x, 50%\) var\(--lightbox-zoom-y, 50%\)/);
+  assert.match(css, /#lbImg\.lightbox-zoomed \{[\s\S]*transform: scale\(var\(--lightbox-zoom-scale, 1\)\)/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*lightbox-img-wrap:not\(\.is-swiping\):not\(\.is-settling\) #lbImg/);
 
   const start = app.indexOf('function lightboxZoomOrigin(image, clientX, clientY)');
@@ -95,6 +100,30 @@ test('focused gallery images zoom by click or keyboard and reset across navigati
   assert.deepEqual(resolveOrigin(image, 200, 150), { x: 25, y: 50 });
   assert.deepEqual(resolveOrigin(image, -100, 500), { x: 0, y: 100 });
   assert.deepEqual(resolveOrigin(image), { x: 50, y: 50 });
+
+  const zoomStart = app.indexOf('const lightboxZoomState =');
+  const zoomEnd = app.indexOf('function clearLightboxTap()', zoomStart);
+  const zoomSource = app.slice(zoomStart, zoomEnd);
+  const classList = { toggle() {}, contains() { return false; } };
+  const wrap = { classList };
+  const style = { setProperty() {} };
+  const zoomImage = {
+    hidden: false,
+    clientHeight: 600,
+    classList,
+    style,
+    closest: () => wrap,
+    setAttribute() {},
+    getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 200 }),
+  };
+  const zoomApi = new Function('$', `${zoomSource}\nreturn { lightboxZoomState, setLightboxZoom, adjustLightboxZoom };`)(() => zoomImage);
+  zoomApi.adjustLightboxZoom(-100, 200, 150);
+  assert.ok(zoomApi.lightboxZoomState.scale > 1);
+  assert.deepEqual({ x: zoomApi.lightboxZoomState.x, y: zoomApi.lightboxZoomState.y }, { x: 25, y: 50 });
+  zoomApi.setLightboxZoom(20);
+  assert.equal(zoomApi.lightboxZoomState.scale, 4);
+  zoomApi.setLightboxZoom(-20);
+  assert.equal(zoomApi.lightboxZoomState.scale, 1);
 });
 
 test('Escape closes only the focused gallery layer and the close button unwinds history', () => {

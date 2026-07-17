@@ -2169,10 +2169,7 @@ desktopWorkspaceQuery.addEventListener('change', () => {
     const media = state.currentMedia?.type === 'video'
       ? state.currentMedia.id
       : (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : 'image');
-    if (!focused) restoreDesktopStagePickerHome();
     openLightbox(state.currentItem.id, media);
-  } else {
-    restoreDesktopStagePickerHome();
   }
   document.body.classList.toggle('desktop-focused-result', !!focused);
   syncNavigation();
@@ -15071,10 +15068,6 @@ function desktopStageChoices(item) {
             : (groupItem.strengthHunt?.strengths?.length === 1
               ? Number(groupItem.strengthHunt.strengths[0]).toFixed(1)
               : (grouped ? String(groupIndex + 1) : ''))),
-        summary: angles.length > 1
-          ? angleViewLabel(groupItem)
-          : (strengthHuntItemLabel(groupItem) || (grouped ? 'Generation' : 'Image')),
-        position: grouped ? `${groupIndex + 1} of ${group.length}` : '',
         video: false,
       });
     }
@@ -15085,8 +15078,6 @@ function desktopStageChoices(item) {
         src: imageFile ? '/images/' + imageFile : '',
         label: grouped ? `Generation ${groupIndex + 1}, video ${videoIndex + 1}` : `Video ${videoIndex + 1}`,
         badge: 'play',
-        summary: `Video ${videoIndex + 1}`,
-        position: grouped ? `${groupIndex + 1} of ${group.length}` : '',
         video: true,
       });
     });
@@ -15190,14 +15181,7 @@ function renderDesktopStagePicker(item, media = 'image') {
       ? '<svg viewBox="0 0 20 20"><path d="m7.5 5.5 6 4.5-6 4.5Z"/></svg>'
       : escapeHtml(choice.badge);
     thumbnail.appendChild(badge);
-    const copy = document.createElement('span');
-    copy.className = 'desktop-stage-choice-copy';
-    const summary = document.createElement('b');
-    summary.textContent = choice.summary || choice.label;
-    const position = document.createElement('small');
-    position.textContent = choice.position;
-    copy.append(summary, position);
-    button.append(thumbnail, copy);
+    button.appendChild(thumbnail);
     button.addEventListener('click', () => selectDesktopLibraryItem(choice.item, choice.media));
     picker.appendChild(button);
   });
@@ -15206,54 +15190,6 @@ function renderDesktopStagePicker(item, media = 'image') {
   const activeChoice = picker.querySelector('.desktop-stage-choice.active');
   revealHorizontalSelection(picker, activeChoice);
   if (restoreChoiceFocus && activeChoice) requestAnimationFrame(() => activeChoice.focus({ preventScroll: true }));
-}
-
-const desktopStagePickerHome = $('#desktopStagePicker')?.parentElement || null;
-const desktopStagePickerHomeAnchor = $('#desktopStageInfo');
-let desktopStagePickerAnimationTimer = 0;
-
-function focusDesktopStagePicker(item, media = 'image') {
-  const picker = $('#desktopStagePicker');
-  const slot = $('#lbGroupPickerSlot');
-  if (!picker || !slot || !item) return false;
-  const alreadyFocused = picker.classList.contains('focused');
-  renderDesktopStagePicker(item, media);
-  if (picker.hidden) {
-    $('#lightbox').classList.remove('desktop-group-picker-active');
-    return false;
-  }
-  const origin = alreadyFocused ? null : picker.getBoundingClientRect();
-  if (picker.parentElement !== slot) slot.appendChild(picker);
-  picker.classList.add('focused');
-  $('#lightbox').classList.add('desktop-group-picker-active');
-  if (!alreadyFocused) {
-    clearTimeout(desktopStagePickerAnimationTimer);
-    picker.classList.add('entering');
-    desktopStagePickerAnimationTimer = setTimeout(() => picker.classList.remove('entering'), 320);
-    if (origin?.width && picker.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      requestAnimationFrame(() => {
-        if (!picker.classList.contains('focused')) return;
-        const target = picker.getBoundingClientRect();
-        picker.animate([
-          { transform: `translate3d(${origin.x - target.x}px, ${origin.y - target.y}px, 0)`, opacity: 0.82 },
-          { transform: 'translate3d(0, 0, 0)', opacity: 1 },
-        ], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
-      });
-    }
-  }
-  return true;
-}
-
-function restoreDesktopStagePickerHome() {
-  const picker = $('#desktopStagePicker');
-  if (!picker || !desktopStagePickerHome || !picker.classList.contains('focused')) return;
-  clearTimeout(desktopStagePickerAnimationTimer);
-  if (picker.getAnimations) picker.getAnimations().forEach((animation) => animation.cancel());
-  picker.classList.remove('focused', 'entering', 'is-dragging');
-  desktopStagePickerHome.insertBefore(picker, desktopStagePickerHomeAnchor);
-  $('#lightbox').classList.remove('desktop-group-picker-active');
-  const item = state.desktopItemId && state.items.find((entry) => entry.id === state.desktopItemId);
-  renderDesktopStagePicker(item || null, state.desktopMediaId || 'image');
 }
 
 function renderDesktopStage(item, mediaSel) {
@@ -15987,17 +15923,14 @@ function strengthHuntItemLabel(item) {
   return item.strengthHunt.label || 'Strength Hunt';
 }
 
-function lightboxGroupThumbnailMarkup(item, index, label) {
+function lightboxGroupThumbnailMarkup(item, index) {
   const thumbnail = item && (item.upscaled || item.file);
   const number = index + 1;
   return `${thumbnail
     ? `<img class="lb-group-thumb-image" src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="lazy" draggable="false" />`
-    : `<span class="lb-group-thumb-fallback" aria-hidden="true">${number}</span>`}
+    : '<span class="lb-group-thumb-fallback" aria-hidden="true"></span>'}
     ${item?.angleView ? `<span class="angle-group-glyph lb-group-thumb-glyph" aria-hidden="true">${angleViewGlyph(item)}</span>` : ''}
-    <span class="lb-group-thumb-copy">
-      <span class="lb-group-thumb-label">${escapeHtml(label || 'Generation')}</span>
-      <span class="lb-group-thumb-number">${number}</span>
-    </span>`;
+    <span class="lb-group-thumb-number" aria-hidden="true">${number}</span>`;
 }
 
 function angleViewLabel(item) {
@@ -17443,7 +17376,9 @@ let lightboxVideoTap = null;
 let lightboxVideoPointer = null;
 let suppressLightboxVideoClick = false;
 let lightboxSwipeSuppressTap = false;
-const lightboxZoomState = { active: false, x: 50, y: 50 };
+const lightboxZoomState = { active: false, scale: 1, x: 50, y: 50 };
+const LIGHTBOX_ZOOM_MIN = 1;
+const LIGHTBOX_ZOOM_MAX = 4;
 let likeAnimationDataPromise = null;
 let likeAnimationRuntimePromise = null;
 
@@ -17468,31 +17403,59 @@ function renderLightboxZoom() {
   wrap.classList.toggle('image-zoomed', lightboxZoomState.active);
   image.style.setProperty('--lightbox-zoom-x', `${lightboxZoomState.x}%`);
   image.style.setProperty('--lightbox-zoom-y', `${lightboxZoomState.y}%`);
-  image.setAttribute('aria-pressed', String(lightboxZoomState.active));
-  image.setAttribute('aria-label', lightboxZoomState.active ? 'Zoom out image' : 'Zoom in image');
+  image.style.setProperty('--lightbox-zoom-scale', String(lightboxZoomState.scale));
+  image.setAttribute('aria-label', `Return to Create view. Image zoom ${Math.round(lightboxZoomState.scale * 100)} percent`);
 }
 
 function resetLightboxZoom() {
   lightboxZoomState.active = false;
+  lightboxZoomState.scale = 1;
   lightboxZoomState.x = 50;
   lightboxZoomState.y = 50;
   renderLightboxZoom();
 }
 
-function toggleLightboxZoom(clientX, clientY) {
+function setLightboxZoom(scale, clientX, clientY) {
   const image = $('#lbImg');
   const wrap = image.closest('.lightbox-img-wrap');
   if (image.hidden || wrap.classList.contains('reference-preview-active')) return false;
-  if (lightboxZoomState.active) {
-    resetLightboxZoom();
-    return false;
+  const next = Math.max(LIGHTBOX_ZOOM_MIN, Math.min(LIGHTBOX_ZOOM_MAX, Number(scale) || LIGHTBOX_ZOOM_MIN));
+  const snapped = next < 1.015 ? 1 : Math.round(next * 1000) / 1000;
+  if (snapped > 1 && lightboxZoomState.scale <= 1) {
+    const origin = lightboxZoomOrigin(image, clientX, clientY);
+    lightboxZoomState.x = origin.x;
+    lightboxZoomState.y = origin.y;
   }
-  const origin = lightboxZoomOrigin(image, clientX, clientY);
-  lightboxZoomState.active = true;
-  lightboxZoomState.x = origin.x;
-  lightboxZoomState.y = origin.y;
+  lightboxZoomState.scale = snapped;
+  lightboxZoomState.active = snapped > 1;
+  if (!lightboxZoomState.active) {
+    lightboxZoomState.x = 50;
+    lightboxZoomState.y = 50;
+  }
   renderLightboxZoom();
-  return true;
+  return lightboxZoomState.active;
+}
+
+function adjustLightboxZoom(deltaY, clientX, clientY, deltaMode = 0) {
+  const rawDelta = Number(deltaY);
+  if (!Number.isFinite(rawDelta) || rawDelta === 0) return lightboxZoomState.active;
+  const pixels = rawDelta * (deltaMode === 1 ? 16 : (deltaMode === 2 ? Math.max(1, $('#lbImg').clientHeight) : 1));
+  const bounded = Math.max(-160, Math.min(160, pixels));
+  return setLightboxZoom(lightboxZoomState.scale * Math.exp(-bounded * 0.002), clientX, clientY);
+}
+
+function handleLightboxZoomWheel(event) {
+  const image = $('#lbImg');
+  const wrap = image.closest('.lightbox-img-wrap');
+  if (event.ctrlKey
+    || image.hidden
+    || !$('#lightbox').classList.contains('show')
+    || wrap.classList.contains('reference-preview-active')
+    || wrap.classList.contains('is-swiping')
+    || wrap.classList.contains('is-settling')) return;
+  event.preventDefault();
+  clearLightboxTap();
+  adjustLightboxZoom(event.deltaY, event.clientX, event.clientY, event.deltaMode);
 }
 
 function clearLightboxTap() {
@@ -17817,8 +17780,6 @@ function handleLightboxTap(event) {
     itemId: item.id,
     mediaId,
     time: now,
-    clientX: event?.clientX,
-    clientY: event?.clientY,
     timer: null,
   };
   tap.timer = setTimeout(() => {
@@ -17827,7 +17788,7 @@ function handleLightboxTap(event) {
     if (!$('#lightbox').classList.contains('show')
       || state.currentItem?.id !== tap.itemId
       || (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : (state.currentMedia?.id || 'image')) !== tap.mediaId) return;
-    toggleLightboxZoom(tap.clientX, tap.clientY);
+    closeLightbox();
   }, 310);
   lightboxTap = tap;
 }
@@ -18393,9 +18354,7 @@ function openLightbox(id, mediaSel) {
   const selComposite = composites.find((composite) => 'composite:' + composite.id === sel) || null;
   state.currentMedia = selVideo ? { type: 'video', id: selVideo.id }
     : (selComposite ? { type: 'composite', id: selComposite.id } : { type: 'image', id: 'image' });
-  let sharedDesktopGroupPicker = false;
   if (desktopWorkspaceActive()) {
-    sharedDesktopGroupPicker = focusDesktopStagePicker(it, selVideo ? selVideo.id : 'image');
     document.body.classList.add('desktop-focused-result');
     syncNavigation();
   }
@@ -18452,20 +18411,20 @@ function openLightbox(id, mediaSel) {
     mrow.appendChild(tier);
     return options;
   };
-  if (!sharedDesktopGroupPicker && angleItems.length > 1) {
+  if (angleItems.length > 1) {
     const angleOptions = makeMediaTier('lb-media-generations', 'Camera variations');
     angleItems.forEach((angleItem, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'chip angle-group-chip lb-group-thumb-chip' + (angleItem.id === it.id ? ' active' : '');
-      button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index, angleViewLabel(angleItem));
+      button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index);
       button.title = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
       button.setAttribute('aria-label', button.title);
-      button.addEventListener('click', () => openLightbox(angleItem.id, 'image'));
+      button.addEventListener('click', () => openFocusedGalleryItem(angleItem, 'image'));
       angleOptions.appendChild(button);
     });
   }
-  if (!sharedDesktopGroupPicker && generationItems.length > 1) {
+  if (generationItems.length > 1) {
     const strengthHuntGroup = generationItems.some((item) => item.strengthHunt);
     const generationOptions = makeMediaTier('lb-media-generations', 'Generations');
     if (strengthHuntGroup) generationOptions.previousElementSibling.textContent = 'Strength Hunt';
@@ -18475,14 +18434,14 @@ function openLightbox(id, mediaSel) {
       button.className = 'chip generation-group-chip lb-group-thumb-chip' + (groupItem.id === it.id ? ' active' : '');
       const huntLabel = strengthHuntItemLabel(groupItem);
       if (huntLabel) button.classList.add('strength-hunt-chip');
-      button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index, huntLabel || 'Generation');
+      button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index);
       button.title = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
       button.setAttribute('aria-label', button.title);
-      button.addEventListener('click', () => openLightbox(groupItem.id, 'image'));
+      button.addEventListener('click', () => openFocusedGalleryItem(groupItem, 'image'));
       generationOptions.appendChild(button);
     });
   }
-  if ((!sharedDesktopGroupPicker && generationItems.length > 1) || videos.length || composites.length) {
+  if (generationItems.length > 1 || videos.length || composites.length) {
     const groupedGeneration = generationItems.length > 1;
     let mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
     if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
@@ -18496,7 +18455,7 @@ function openLightbox(id, mediaSel) {
       const b = document.createElement('button');
       b.className = 'chip' + ((key === 'image' ? (!selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
       b.innerHTML = `<span class="lb-media-kind-icon" aria-hidden="true">${mediaGlyph(kind)}</span><span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
-      b.addEventListener('click', () => openLightbox(id, key));
+      b.addEventListener('click', () => openFocusedGalleryItem(it, key));
       mediaOptions.appendChild(b);
     };
     mkChip('Image', 'image', !!it.liked);
@@ -18904,7 +18863,6 @@ function closeLightbox(fromPop) {
   resetLightboxZoom();
   closeActionMenu();
   resetLightboxSwipeVisuals();
-  restoreDesktopStagePickerHome();
   $('#lightbox').classList.remove('show');
   const restoreDesktopNavigation = document.body.classList.contains('desktop-focused-result');
   document.body.classList.remove('desktop-focused-result');
@@ -19002,11 +18960,20 @@ $('#likesFilter').addEventListener('click', () => {
   renderGrid();
 });
 $('#lbImg').addEventListener('click', handleLightboxTap);
+$('#lbImg').addEventListener('wheel', handleLightboxZoomWheel, { passive: false });
 $('#lbImg').addEventListener('keydown', (event) => {
-  if (!['Enter', ' '].includes(event.key)) return;
-  event.preventDefault();
-  clearLightboxTap();
-  toggleLightboxZoom();
+  if (['Enter', ' '].includes(event.key)) {
+    event.preventDefault();
+    clearLightboxTap();
+    closeLightbox();
+    return;
+  }
+  if (['+', '=', '-', '_', '0'].includes(event.key)) {
+    event.preventDefault();
+    clearLightboxTap();
+    if (event.key === '0') resetLightboxZoom();
+    else adjustLightboxZoom(['+', '='].includes(event.key) ? -120 : 120);
+  }
 });
 $('#lbVideo').addEventListener('pointerdown', handleLightboxVideoPointerDown);
 $('#lbVideo').addEventListener('pointerup', handleLightboxVideoPointerUp);
