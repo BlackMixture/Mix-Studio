@@ -77,6 +77,7 @@ const state = {
   videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
   appRelease: { version: '', releasedAt: null, revision: '' },
+  updateAnnouncements: [],
   refs: [null, null, null],  // {name(comfy), url(local preview)}
   promptSourceImage: null,   // image retained as optional context for conversational prompt revision
   promptAssistantUseSource: true,
@@ -1011,6 +1012,8 @@ async function checkAuth() {
     renderAppUpdateAccess();
     loadMediaPreferences();
     await loadUserPreferences();
+    renderUpdatePublisherAccess();
+    await loadUpdateAnnouncements();
   } catch {
     renderAppUpdateAccess(); // 401 -> api() already opened the gate
   } finally {
@@ -1019,6 +1022,214 @@ async function checkAuth() {
   }
 }
 checkAuth();
+
+/* ------------------------------------------------------------------ */
+/* Update announcements                                                */
+/* ------------------------------------------------------------------ */
+
+let publishingUpdateAnnouncement = false;
+
+function updateSeenKey() {
+  return profileStorageKey('ks-update-seen', state.profile?.id);
+}
+
+function updateAlertsKey() {
+  return profileStorageKey('ks-update-alerts', state.profile?.id);
+}
+
+function latestUpdateAnnouncement() {
+  return state.updateAnnouncements[0] || null;
+}
+
+function seenUpdateId() {
+  const key = updateSeenKey();
+  return key ? localStorage.getItem(key) || '' : '';
+}
+
+function updateAlertsEnabled() {
+  const key = updateAlertsKey();
+  return !!key && localStorage.getItem(key) === '1';
+}
+
+function formatUpdateDate(value) {
+  const date = new Date(Number(value));
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
+
+function renderUpdateNotificationPreference() {
+  const toggle = $('#updatesAlertToggle');
+  if (!toggle) return;
+  const supported = window.isSecureContext && 'Notification' in window;
+  const granted = supported && Notification.permission === 'granted';
+  const enabled = granted && updateAlertsEnabled();
+  toggle.disabled = !supported || (supported && Notification.permission === 'denied');
+  toggle.setAttribute('aria-checked', String(enabled));
+  $('#updatesAlertStatus').textContent = !supported
+    ? 'Browser alerts require HTTPS or localhost. In-app updates still arrive.'
+    : Notification.permission === 'denied'
+      ? 'Alerts are blocked in this browser. In-app updates still arrive.'
+      : enabled
+        ? 'On · alerts appear while Mix Studio is open.'
+        : 'Get an alert while Mix Studio is open.';
+}
+
+function renderUpdatePublisherAccess() {
+  const publisher = $('#updatePublisher');
+  if (!publisher) return;
+  publisher.hidden = !state.profileIsOwner;
+  if (state.profileIsOwner && !$('#updatePublishVersion').value) {
+    $('#updatePublishVersion').value = state.appRelease.version
+      ? formatAppVersion(state.appRelease.version, state.appRelease.revision)
+      : '';
+  }
+}
+
+function renderUpdateAnnouncements() {
+  const list = $('#updatesList');
+  if (!list) return;
+  const latest = latestUpdateAnnouncement();
+  const unread = !!latest && latest.id !== seenUpdateId();
+  $('#updatesUnreadDot').hidden = !unread;
+  $('#updatesBtn').classList.toggle('has-unread', unread);
+  $('#updatesDrawerStatus').textContent = unread
+    ? (latest.version || 'New update')
+    : state.updateAnnouncements.length
+      ? `${state.updateAnnouncements.length} release note${state.updateAnnouncements.length === 1 ? '' : 's'}`
+      : 'No announcements yet';
+  if (!state.updateAnnouncements.length) {
+    list.innerHTML = '<p class="updates-empty">No update announcements yet.</p>';
+    return;
+  }
+  list.innerHTML = state.updateAnnouncements.map((announcement, index) => `
+    <article class="update-entry${index === 0 && unread ? ' new' : ''}">
+      <div class="update-entry-head"><strong>${escapeHtml(announcement.title)}</strong><time datetime="${new Date(Number(announcement.createdAt)).toISOString()}">${escapeHtml(formatUpdateDate(announcement.createdAt))}</time></div>
+      ${announcement.version ? `<span class="update-entry-version">${escapeHtml(announcement.version)}</span>` : ''}
+      <p>${escapeHtml(announcement.message)}</p>
+    </article>`).join('');
+}
+
+function markLatestUpdateSeen() {
+  const latest = latestUpdateAnnouncement();
+  const key = updateSeenKey();
+  if (latest && key) localStorage.setItem(key, latest.id);
+  $('#updateNotice').hidden = true;
+  renderUpdateAnnouncements();
+}
+
+function showUpdateNotice(announcement) {
+  if (!announcement || announcement.id === seenUpdateId()) return;
+  $('#updateNoticeVersion').textContent = announcement.version || 'Mix Studio update';
+  $('#updateNoticeTitle').textContent = announcement.title;
+  $('#updateNoticeMessage').textContent = announcement.message;
+  $('#updateNotice').hidden = false;
+}
+
+function showSystemUpdateNotification(announcement) {
+  if (!announcement || !updateAlertsEnabled() || !window.isSecureContext || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const notice = new Notification(announcement.title, {
+      body: announcement.message,
+      icon: '/modatory-logo.svg',
+      tag: `mix-studio-update-${announcement.id}`,
+    });
+    notice.onclick = () => {
+      window.focus();
+      openUpdatesSheet();
+      notice.close();
+    };
+  } catch { /* Browser alerts are optional; the in-app notice remains available. */ }
+}
+
+function receiveUpdateAnnouncement(announcement, options = {}) {
+  if (!announcement || !announcement.id || !state.profile) return;
+  state.updateAnnouncements = [announcement, ...state.updateAnnouncements.filter((entry) => entry.id !== announcement.id)]
+    .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
+    .slice(0, 30);
+  renderUpdateAnnouncements();
+  if (publishingUpdateAnnouncement) {
+    markLatestUpdateSeen();
+    return;
+  }
+  showUpdateNotice(announcement);
+  if (options.notify) showSystemUpdateNotification(announcement);
+}
+
+async function loadUpdateAnnouncements() {
+  if (!state.profile) return;
+  try {
+    const result = await api('/api/update-announcements');
+    state.updateAnnouncements = Array.isArray(result.announcements) ? result.announcements : [];
+    renderUpdateAnnouncements();
+    renderUpdateNotificationPreference();
+    showUpdateNotice(latestUpdateAnnouncement());
+  } catch { /* Older servers simply do not expose update announcements yet. */ }
+}
+
+async function openUpdatesSheet() {
+  closeAppDrawer();
+  if (!state.updateAnnouncements.length) await loadUpdateAnnouncements();
+  $('#updatesSheet').classList.add('show');
+  markLatestUpdateSeen();
+  renderUpdateNotificationPreference();
+}
+
+$('#updatesBtn').addEventListener('click', openUpdatesSheet);
+$('#updateNoticeView').addEventListener('click', openUpdatesSheet);
+$('#updateNoticeDismiss').addEventListener('click', markLatestUpdateSeen);
+$('#updatesAlertToggle').addEventListener('click', async () => {
+  if (!window.isSecureContext || !('Notification' in window)) return;
+  const key = updateAlertsKey();
+  if (!key) return;
+  if (updateAlertsEnabled()) {
+    localStorage.setItem(key, '0');
+    renderUpdateNotificationPreference();
+    return;
+  }
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+  localStorage.setItem(key, permission === 'granted' ? '1' : '0');
+  renderUpdateNotificationPreference();
+  if (permission === 'granted') toast('Browser update alerts enabled');
+});
+
+$('#updatePublishBtn').addEventListener('click', async () => {
+  const title = $('#updatePublishTitle').value.trim();
+  const message = $('#updatePublishMessage').value.trim();
+  const version = $('#updatePublishVersion').value.trim();
+  if (!title || !message) {
+    $('#updatePublishStatus').textContent = 'Add both a title and message.';
+    (title ? $('#updatePublishMessage') : $('#updatePublishTitle')).focus();
+    return;
+  }
+  if (!await askConfirm({
+    title: 'Push this update?',
+    message: 'It will appear for every Mix Studio profile and cannot be edited after publishing.',
+    confirmLabel: 'Push update',
+  })) return;
+  const button = $('#updatePublishBtn');
+  button.disabled = true;
+  publishingUpdateAnnouncement = true;
+  $('#updatePublishStatus').textContent = 'Publishing…';
+  try {
+    const result = await api('/api/update-announcements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, message, version }),
+    });
+    receiveUpdateAnnouncement(result.announcement);
+    markLatestUpdateSeen();
+    $('#updatePublishTitle').value = '';
+    $('#updatePublishMessage').value = '';
+    $('#updatePublishStatus').textContent = `Published · ${result.connected || 0} open session${result.connected === 1 ? '' : 's'} notified live.`;
+    toast('Update pushed to Mix Studio users');
+  } catch (error) {
+    $('#updatePublishStatus').textContent = error.message;
+    toast(error.message, true);
+  } finally {
+    publishingUpdateAnnouncement = false;
+    button.disabled = false;
+  }
+});
 
 window.addEventListener('storage', (event) => {
   if (event.key !== 'ks-profile-id' || (event.newValue || '') === workspaceSessionProfileId) return;
@@ -1332,6 +1543,8 @@ function renderAppRelease(release = {}) {
   const settings = $('#settingsAppVersion');
   if (drawer) drawer.textContent = label;
   if (settings) settings.textContent = label;
+  const publishVersion = $('#updatePublishVersion');
+  if (publishVersion && !publishVersion.value) publishVersion.value = label === 'Development build' ? '' : label;
   return label;
 }
 
@@ -15214,6 +15427,9 @@ function connectEvents() {
   es.addEventListener('status', (ev) => {
     renderGenerationStatus(JSON.parse(ev.data));
   });
+  es.addEventListener('updateAnnouncement', (ev) => {
+    receiveUpdateAnnouncement(JSON.parse(ev.data).announcement, { notify: true });
+  });
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);
     if (state.activeJobs.size && (!d.jobId || state.activeJobs.has(d.jobId))) {
@@ -25587,6 +25803,7 @@ $('#settingsSheet').addEventListener('click', (event) => {
 
 $('#settingsBtn').addEventListener('click', async () => {
   closeAppDrawer();
+  renderUpdatePublisherAccess();
   settingsLoading = true;
   setSettingsSaveStatus();
   renderGuidedTourSetting();

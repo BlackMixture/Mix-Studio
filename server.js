@@ -21,6 +21,11 @@ const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponent
 const { restartComfy, restartStatus } = require('./lib/comfy-restart');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
 const {
+  MAX_ANNOUNCEMENTS,
+  normalizeAnnouncementInput,
+  normalizeAnnouncementList,
+} = require('./lib/update-announcements');
+const {
   EDIT_FEATURES,
   VIDEO_FEATURES,
   DEFAULT_FEATURES,
@@ -499,6 +504,7 @@ if (!Array.isArray(db.history)) db.history = [];
 if (!Array.isArray(db.loraPresets)) db.loraPresets = [];
 if (!Array.isArray(db.userPreferences)) db.userPreferences = [];
 if (!Array.isArray(db.faces)) db.faces = [];
+db.updateAnnouncements = normalizeAnnouncementList(db.updateAnnouncements);
 
 /* ---------------------- Profiles (accounts) ------------------------ */
 // Signing secret persists so logins survive server restarts
@@ -4718,6 +4724,34 @@ async function handleApi(req, res, url) {
     const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* noop */ } }, 25000);
     req.on('close', () => { clearInterval(ping); sseClients.delete(res); });
     return;
+  }
+
+  if (route === '/api/update-announcements' && req.method === 'GET') {
+    return json(res, 200, { announcements: db.updateAnnouncements.slice(0, MAX_ANNOUNCEMENTS) });
+  }
+
+  if (route === '/api/update-announcements' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can publish update announcements' });
+    try {
+      const body = await readJsonBody(req);
+      const content = normalizeAnnouncementInput(body);
+      const app = readAppRelease(ROOT);
+      const installedVersion = String(app.version || '').trim();
+      const announcement = {
+        id: uid(),
+        ...content,
+        version: content.version || (/^v/i.test(installedVersion) || !/^\d+\.\d+/.test(installedVersion) ? installedVersion : `v${installedVersion}`),
+        createdAt: Date.now(),
+        createdBy: profile.id,
+      };
+      db.updateAnnouncements.unshift(announcement);
+      db.updateAnnouncements = db.updateAnnouncements.slice(0, MAX_ANNOUNCEMENTS);
+      saveDb();
+      broadcast('updateAnnouncement', { announcement });
+      return json(res, 201, { announcement, connected: sseClients.size });
+    } catch (error) {
+      return json(res, 400, { error: String(error.message || error) });
+    }
   }
 
   if (route === '/api/trash' && req.method === 'GET') {
