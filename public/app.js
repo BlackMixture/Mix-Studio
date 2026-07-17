@@ -1097,11 +1097,20 @@ function renderOfficialRelease() {
   const actions = $('#updatesReleaseActions');
   const install = $('#updatesInstallBtn');
   const installStatus = $('#updatesInstallStatus');
+  const drawerButton = $('#updatesBtn');
+  const settingsButton = $('#settingsUpdatesBtn');
+  const settingsStatus = $('#settingsUpdatesStatus');
+  const setReleaseStatus = (text, stateName) => {
+    $('#updatesDrawerStatus').textContent = text;
+    if (settingsStatus) settingsStatus.textContent = text;
+    if (settingsButton) settingsButton.dataset.state = stateName;
+  };
+  drawerButton.hidden = !state.officialReleaseUpdateAvailable;
   $('#updatesUnreadDot').hidden = !unread;
-  $('#updatesBtn').classList.toggle('has-unread', unread);
+  drawerButton.classList.toggle('has-unread', unread);
 
   if (!state.profile) {
-    $('#updatesDrawerStatus').textContent = 'Sign in to check updates';
+    setReleaseStatus('Sign in to check updates', 'idle');
     list.innerHTML = '<p class="updates-empty">Sign in to check official Mix Studio releases.</p>';
     actions.hidden = true;
     installStatus.textContent = '';
@@ -1109,7 +1118,7 @@ function renderOfficialRelease() {
   }
 
   if (state.officialReleaseCheckState === 'loading' && !latest) {
-    $('#updatesDrawerStatus').textContent = 'Checking GitHub…';
+    setReleaseStatus('Checking official releases…', 'checking');
     list.innerHTML = '<p class="updates-empty">Checking the official GitHub release channel…</p>';
     actions.hidden = true;
     installStatus.textContent = '';
@@ -1117,7 +1126,7 @@ function renderOfficialRelease() {
   }
 
   if (state.officialReleaseCheckState === 'error' && !latest) {
-    $('#updatesDrawerStatus').textContent = 'Check unavailable';
+    setReleaseStatus('Release check unavailable', 'error');
     list.innerHTML = `<p class="updates-empty">${escapeHtml(state.officialReleaseError || 'Could not check GitHub releases right now.')}</p>`;
     actions.hidden = true;
     installStatus.textContent = 'The local Update app action remains available to the owner.';
@@ -1125,16 +1134,17 @@ function renderOfficialRelease() {
   }
 
   if (!latest) {
-    $('#updatesDrawerStatus').textContent = 'No public releases yet';
+    setReleaseStatus('No public releases yet', 'current');
     list.innerHTML = '<p class="updates-empty">No stable GitHub Release has been published yet.</p>';
     actions.hidden = true;
     installStatus.textContent = '';
     return;
   }
 
-  $('#updatesDrawerStatus').textContent = state.officialReleaseUpdateAvailable
-    ? `${latest.tagName} available`
-    : `${latest.tagName} installed`;
+  setReleaseStatus(
+    state.officialReleaseUpdateAvailable ? `${latest.tagName} available` : `${latest.tagName} is current`,
+    state.officialReleaseUpdateAvailable ? 'available' : 'current',
+  );
   const publishedLabel = formatUpdateDate(latest.publishedAt);
   list.innerHTML = `
     <article class="update-entry${unread ? ' new' : ''}">
@@ -1217,13 +1227,15 @@ async function loadOfficialRelease(options = {}) {
 
 async function openUpdatesSheet() {
   closeAppDrawer();
-  if (state.profile && ['idle', 'error'].includes(state.officialReleaseCheckState)) await loadOfficialRelease();
+  $('#settingsSheet').classList.remove('show');
   $('#updatesSheet').classList.add('show');
+  if (state.profile && ['idle', 'error'].includes(state.officialReleaseCheckState)) await loadOfficialRelease();
   markLatestReleaseSeen();
   renderUpdateNotificationPreference();
 }
 
 $('#updatesBtn').addEventListener('click', openUpdatesSheet);
+$('#settingsUpdatesBtn').addEventListener('click', openUpdatesSheet);
 $('#updateNoticeView').addEventListener('click', openUpdatesSheet);
 $('#updateNoticeDismiss').addEventListener('click', markLatestReleaseSeen);
 $('#updatesAlertToggle').addEventListener('click', async () => {
@@ -2470,6 +2482,109 @@ wideRegionResolutionQuery.addEventListener('change', () => {
 
 let desktopGalleryLayoutMotion = null;
 let desktopGalleryScrollContinuity = null;
+let desktopSharedFocusMotion = null;
+
+function captureDesktopSharedFocusSource(card) {
+  if (!desktopWorkspaceActive() || !card?.isConnected) return null;
+  const media = card.querySelector('img, video');
+  const source = media || card;
+  const rect = source.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return null;
+  const src = media instanceof HTMLVideoElement
+    ? (media.poster || media.currentSrc || media.src)
+    : (media?.currentSrc || media?.src || '');
+  return {
+    rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    src,
+    radius: getComputedStyle(card).borderRadius || '16px',
+  };
+}
+
+function cancelDesktopSharedFocusTransition() {
+  const motion = desktopSharedFocusMotion;
+  desktopSharedFocusMotion = null;
+  if (motion?.frame) cancelAnimationFrame(motion.frame);
+  if (motion?.animation) motion.animation.cancel();
+  motion?.overlay?.remove();
+  document.body.classList.remove('desktop-shared-focus-active');
+}
+
+function cascadeFocusedLibraryRail() {
+  if (!desktopWorkspaceActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const panel = $('#view-gallery');
+  const bounds = panel.getBoundingClientRect();
+  $$('#galleryGrid .card')
+    .filter((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.bottom > bounds.top && rect.top < bounds.bottom;
+    })
+    .slice(0, 12)
+    .forEach((card, index) => card.animate([
+      { opacity: 0, transform: 'translateY(5px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ], {
+      duration: 85,
+      delay: index * 7,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+      fill: 'both',
+    }));
+}
+
+function startDesktopSharedFocusTransition(source) {
+  cancelDesktopSharedFocusTransition();
+  if (!source || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    cascadeFocusedLibraryRail();
+    return;
+  }
+  document.body.classList.add('desktop-shared-focus-active');
+  const motion = { source, frame: 0, overlay: null, animation: null };
+  desktopSharedFocusMotion = motion;
+  motion.frame = requestAnimationFrame(() => {
+    motion.frame = 0;
+    if (desktopSharedFocusMotion !== motion || !$('#lightbox').classList.contains('show')) return;
+    const target = $('#lightbox .lightbox-img-wrap').getBoundingClientRect();
+    if (target.width < 2 || target.height < 2) {
+      cancelDesktopSharedFocusTransition();
+      cascadeFocusedLibraryRail();
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'desktop-shared-focus-ghost';
+    overlay.style.left = `${target.left}px`;
+    overlay.style.top = `${target.top}px`;
+    overlay.style.width = `${target.width}px`;
+    overlay.style.height = `${target.height}px`;
+    overlay.style.borderRadius = '21px';
+    if (source.src) {
+      const image = document.createElement('img');
+      image.src = source.src;
+      image.alt = '';
+      overlay.appendChild(image);
+    }
+    document.body.appendChild(overlay);
+    motion.overlay = overlay;
+    const dx = source.rect.left - target.left;
+    const dy = source.rect.top - target.top;
+    const scaleX = source.rect.width / target.width;
+    const scaleY = source.rect.height / target.height;
+    const animation = overlay.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`, borderRadius: source.radius },
+      { transform: 'translate(0, 0) scale(1, 1)', borderRadius: '21px' },
+    ], {
+      duration: 135,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+      fill: 'both',
+    });
+    motion.animation = animation;
+    cascadeFocusedLibraryRail();
+    animation.finished.catch(() => {}).finally(() => {
+      if (desktopSharedFocusMotion !== motion) return;
+      desktopSharedFocusMotion = null;
+      overlay.remove();
+      document.body.classList.remove('desktop-shared-focus-active');
+    });
+  });
+}
 
 function galleryElementContentTop(element, panel) {
   let top = 0;
@@ -2607,7 +2722,8 @@ function syncNavigation() {
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
   const libraryExpanded = desktopWorkspaceActive() && state.view === 'gallery' && !focusedResult;
   const libraryWasExpanded = document.body.classList.contains('desktop-library-expanded');
-  const galleryLayoutSnapshot = libraryWasExpanded !== libraryExpanded
+  const focusFromExpandedLibrary = document.body.classList.contains('desktop-focus-from-library');
+  const galleryLayoutSnapshot = libraryWasExpanded !== libraryExpanded && !focusFromExpandedLibrary
     ? captureDesktopGalleryLayoutTransition() : null;
   const workspaceObscured = focusedResult || libraryExpanded;
   const primaryMode = focusedResult ? 'gallery' : (createActive ? 'create' : state.view);
@@ -19234,6 +19350,15 @@ function toggleItemLike(item, burstTarget) {
 }
 
 function handleGalleryTap(item, card) {
+  if (desktopWorkspaceActive() && document.body.classList.contains('desktop-library-expanded')) {
+    if (galleryTap) clearTimeout(galleryTap.timer);
+    galleryTap = null;
+    stopDesktopGalleryLayoutTransition();
+    const media = card.dataset.media || 'image';
+    const focusSource = captureDesktopSharedFocusSource(card);
+    openLightbox(item.id, media, { focusSource });
+    return;
+  }
   const now = Date.now();
   if (galleryTap && galleryTap.itemId === item.id && now - galleryTap.time < 300) {
     clearTimeout(galleryTap.timer);
@@ -19828,7 +19953,7 @@ function preloadLightboxNeighbors(item) {
   });
 }
 
-function openLightbox(id, mediaSel) {
+function openLightbox(id, mediaSel, options = {}) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
   clearLightboxTap();
@@ -20375,6 +20500,7 @@ function openLightbox(id, mediaSel) {
   if (freshOpen) requestAnimationFrame(() => {
     if ($('#lightbox').classList.contains('show')) focusIconControlSilently($('#lbClose'));
   });
+  if (focusFromExpandedLibrary) startDesktopSharedFocusTransition(options.focusSource);
 }
 function closeLightbox(fromPop) {
   const returnFocus = lightboxReturnFocus;
@@ -20383,6 +20509,7 @@ function closeLightbox(fromPop) {
   resetLightboxZoom();
   closeActionMenu();
   resetLightboxSwipeVisuals();
+  cancelDesktopSharedFocusTransition();
   $('#lightbox').classList.remove('show');
   const restoreDesktopNavigation = document.body.classList.contains('desktop-focused-result');
   document.body.classList.remove('desktop-focused-result');

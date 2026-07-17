@@ -140,10 +140,13 @@ test('server and UI expose a read-only official release channel', () => {
 });
 
 test('release notes include an owner-only install action and no bundled publisher', () => {
-  assert.match(html, /id="updatesBtn"[\s\S]*id="updatesUnreadDot"/);
+  assert.match(html, /id="updatesBtn"[^>]*hidden[\s\S]*id="updatesUnreadDot"/);
+  assert.match(html, /id="settingsPaneSystem"[\s\S]*id="settingsUpdatesBtn"[\s\S]*id="settingsUpdatesStatus"/);
   assert.match(html, /id="updatesSheet"[\s\S]*id="updatesReleaseLink"[\s\S]*id="updatesInstallBtn"/);
   assert.match(html, /github\.com\/BlackMixture\/Mix-Studio\/releases/);
   assert.doesNotMatch(html, /id="updatePublisher"|id="updatePublishBtn"|Push update/);
   assert.match(css, /\.update-notice \{[\s\S]*position: fixed/);
   assert.match(css, /\.updates-release-actions \{[\s\S]*justify-content: flex-end/);
+  assert.match(app, /drawerButton\.hidden = !state\.officialReleaseUpdateAvailable/);
+  assert.match(app, /\$\('#settingsUpdatesBtn'\)\.addEventListener\('click', openUpdatesSheet\)/);
 });

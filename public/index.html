@@ -86,7 +86,7 @@
       </nav>
       <section class="app-drawer-settings" aria-labelledby="appDrawerControlsTitle">
         <h3 id="appDrawerControlsTitle">Local controls</h3>
-        <button class="app-drawer-action" id="updatesBtn" type="button">
+        <button class="app-drawer-action" id="updatesBtn" type="button" hidden>
           <span class="app-drawer-action-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg>
           </span>
@@ -2365,6 +2365,13 @@
 
         <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
           <div class="settings-pane-head"><h4>System</h4><p>Runtime, storage, and prompt enhancement.</p></div>
+          <button class="settings-group settings-update-info" id="settingsUpdatesBtn" type="button" data-state="checking" aria-label="Open release updates">
+            <span class="settings-update-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg>
+            </span>
+            <span class="settings-update-copy"><small>Release updates</small><strong id="settingsUpdatesStatus">Checking official releases…</strong></span>
+            <span class="settings-update-requirement"><span>Installed <b id="settingsAppVersion">Loading…</b></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
+          </button>
           <div class="settings-group hardware-group">
             <div class="hardware-group-head">
               <h5>Hardware</h5>
@@ -2449,13 +2456,6 @@
           <div class="field">
             <label>Prompt-enhance system prompt</label>
             <textarea class="settings-system-prompt" id="setSysPrompt" rows="12"></textarea>
-          </div>
-          <div class="settings-group settings-update-info" aria-label="App update channel">
-            <span class="settings-update-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.2-2.1L20 10M4 14l2.7 3.1A7 7 0 0 0 17.9 15"/></svg>
-            </span>
-            <span class="settings-update-copy"><small>Installed version</small><strong id="settingsAppVersion">Loading…</strong></span>
-            <span class="settings-update-requirement">main · Owner · idle queue</span>
           </div>
         </section>
       </div>

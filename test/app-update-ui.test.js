@@ -126,7 +126,7 @@ test('semantic app versions are visible in the drawer and System settings', () =
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<\/section>/)?.[1] || '';
   assert.match(drawer, /id="appVersionLabel"/);
-  assert.match(systemPane, /Installed version[\s\S]*id="settingsAppVersion"[\s\S]*main · Owner · idle queue/);
+  assert.match(systemPane, /Release updates[\s\S]*id="settingsUpdatesStatus"[\s\S]*Installed[\s\S]*id="settingsAppVersion"/);
 
   const releaseRenderer = app.slice(app.indexOf('function renderAppRelease('), app.indexOf('\nfunction renderAppUpdateAccess('));
   assert.match(releaseRenderer, /formatAppVersion\(state\.appRelease\.version, state\.appRelease\.revision\)/);

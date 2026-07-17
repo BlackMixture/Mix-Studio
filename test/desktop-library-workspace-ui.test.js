@@ -24,6 +24,24 @@ test('desktop library cards load their media and saved settings into the workspa
   assert.match(css, /\.card\.desktop-active:not\(\.selected\)/);
 });
 
+test('full Library taps use a fast shared-origin focused transition on desktop and tablet layouts', () => {
+  const fullLibraryTap = app.match(/function handleGalleryTap\(item, card\) \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.match(fullLibraryTap, /desktopWorkspaceActive\(\) && document\.body\.classList\.contains\('desktop-library-expanded'\)/);
+  assert.match(fullLibraryTap, /stopDesktopGalleryLayoutTransition\(\)/);
+  assert.match(fullLibraryTap, /captureDesktopSharedFocusSource\(card\)/);
+  assert.match(fullLibraryTap, /openLightbox\(item\.id, media, \{ focusSource \}\);\s*return;/);
+  assert.ok(fullLibraryTap.indexOf('openLightbox(item.id, media, { focusSource })') < fullLibraryTap.indexOf('const now = Date.now()'));
+  assert.match(app, /function startDesktopSharedFocusTransition\(source\)/);
+  assert.match(app, /duration: 135/);
+  assert.match(app, /function cascadeFocusedLibraryRail\(\)/);
+  assert.match(app, /duration: 85,[\s\S]{0,80}delay: index \* 7/);
+  assert.match(app, /libraryWasExpanded !== libraryExpanded && !focusFromExpandedLibrary/);
+  assert.match(css, /body\.desktop-focus-from-library \.studio-workspace,[\s\S]*body\.desktop-focus-from-library #view-gallery \{[\s\S]*transition: none;/);
+  assert.match(css, /body\.desktop-focus-from-library #lightbox\.show \{ animation: none; \}/);
+  assert.match(css, /body\.desktop-shared-focus-active #lightbox \.lightbox-img-wrap \{ opacity: 0; \}/);
+  assert.match(css, /focusedDetailsFastIn 90ms 38ms/);
+});
+
 test('desktop stage exposes an explicit focused-view information action', () => {
   assert.match(html, /id="desktopStageInfo"[^>]*aria-label="View generation details"/);
   assert.match(app, /\$\('#desktopStageInfo'\)\.addEventListener\('click'/);

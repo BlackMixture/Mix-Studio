@@ -471,6 +471,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 #updatesBtn.has-unread .app-drawer-action-icon { color: #b8ccff; background: rgba(66,133,244,.11); }
 #updatesBtn.has-unread #updatesDrawerStatus { color: #a9c1ff; }
+#updatesBtn[hidden] { display: none; }
 .app-drawer-action.busy svg { animation: updateSpin 900ms linear infinite; }
 @keyframes updateSpin { to { transform: rotate(360deg); } }
 html:fullscreen,
@@ -8760,31 +8761,53 @@ body.sheet-open {
   text-align: left;
 }
 .settings-update-info {
+  --settings-update-color: 143, 180, 255;
+  width: 100%;
   min-height: 58px;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   background: #000;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms var(--ease), background 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.settings-update-info[data-state="available"] { --settings-update-color: 66, 133, 244; }
+.settings-update-info[data-state="current"] { --settings-update-color: 101, 217, 144; }
+.settings-update-info[data-state="error"] { --settings-update-color: 255, 170, 163; }
+.settings-update-info:hover,
+.settings-update-info:focus-visible {
+  border-color: rgba(var(--settings-update-color), .42);
+  background: rgba(var(--settings-update-color), .055);
+  box-shadow: 0 0 24px rgba(var(--settings-update-color), .07);
+  outline: none;
 }
 .settings-update-icon {
   width: 32px;
   height: 32px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(var(--settings-update-color), .25);
   border-radius: 10px;
-  color: var(--muted-2);
+  background: rgba(var(--settings-update-color), .065);
+  color: rgb(var(--settings-update-color));
 }
 .settings-update-icon svg { width: 17px; height: 17px; }
 .settings-update-copy { min-width: 0; display: grid; gap: 2px; }
 .settings-update-copy small { color: var(--muted-2); font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
 .settings-update-copy strong { color: var(--ink); font-size: 13px; font-weight: 850; }
-.settings-update-requirement { color: var(--muted); font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.settings-update-requirement { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.settings-update-requirement b { color: var(--ink-soft); font-weight: 850; }
+.settings-update-requirement svg { width: 15px; height: 15px; fill: none; stroke: rgb(var(--settings-update-color)); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms var(--ease); }
+.settings-update-info:hover .settings-update-requirement svg { transform: translateX(2px); }
 @media (max-width: 430px) {
   .settings-update-info { grid-template-columns: 34px minmax(0, 1fr); }
-  .settings-update-requirement { grid-column: 2; margin-top: -7px; white-space: normal; }
+  .settings-update-requirement { grid-column: 2; justify-content: space-between; margin-top: -5px; white-space: normal; }
 }
 .settings-media-toggle:focus-visible,
 .settings-cache-clear:focus-visible {
@@ -9660,6 +9683,15 @@ body.sheet-open {
     left: calc(-100vw + var(--studio-right-width) + 1px);
     transition: none;
   }
+  body.desktop-focus-from-library .studio-workspace,
+  body.desktop-focus-from-library #view-gallery {
+    transition: none;
+  }
+  body.desktop-focus-from-library .tabs-wrap,
+  body.desktop-focus-from-library .primary-tabs,
+  body.desktop-focus-from-library .create-tabs {
+    transition-duration: 90ms;
+  }
   body.desktop-library-expanded #view-gallery {
     display: block;
     width: 100%;
@@ -10123,6 +10155,7 @@ body.sheet-open {
     background: #000;
     animation: focusedWorkspaceIn 280ms cubic-bezier(.2,.8,.2,1) both;
   }
+  body.desktop-focus-from-library #lightbox.show { animation: none; }
   #lightbox .lightbox-img-wrap {
     grid-column: 1;
     grid-row: 3;
@@ -10133,6 +10166,26 @@ body.sheet-open {
     border-radius: 22px;
     background: #000;
     box-shadow: 0 26px 70px rgba(0,0,0,.42);
+    transition: opacity 45ms linear;
+  }
+  body.desktop-shared-focus-active #lightbox .lightbox-img-wrap { opacity: 0; }
+  .desktop-shared-focus-ghost {
+    position: fixed;
+    z-index: 90;
+    overflow: hidden;
+    pointer-events: none;
+    transform-origin: top left;
+    border: 1px solid rgba(255,255,255,.12);
+    background: #000;
+    box-shadow: 0 18px 54px rgba(0,0,0,.48);
+    will-change: transform, border-radius;
+  }
+  .desktop-shared-focus-ghost img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
   }
   #lightbox .lightbox-img-wrap img,
   #lightbox .lightbox-img-wrap video {
@@ -10221,6 +10274,10 @@ body.sheet-open {
   #lightbox #lbActions .action-btn { min-height: 40px; }
   #lightbox #lbActions .action-btn.primary:not(.icon-only) { flex: 0 0 auto; justify-content: center; }
   #lightbox .lb-float-btn { top: 26px; right: 26px; }
+  body.desktop-focus-from-library #lightbox.show .lightbox-meta,
+  body.desktop-focus-from-library #lightbox.show #lbActions {
+    animation: focusedDetailsFastIn 90ms 38ms cubic-bezier(.2,.8,.2,1) both;
+  }
 
   /* Multi-select belongs to the Library rail while a result is focused. This
      keeps its grabber, details and actions from covering the active result. */
@@ -10248,6 +10305,10 @@ body.sheet-open {
     from { opacity: 1; clip-path: inset(0 0 0 var(--studio-left-width)); }
     to { opacity: 1; clip-path: inset(0); }
   }
+  @keyframes focusedDetailsFastIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   @media (prefers-reduced-motion: reduce) {
     .tabs-wrap,
     .primary-tabs,
@@ -10257,6 +10318,8 @@ body.sheet-open {
     .desktop-stage,
     #view-gallery { transition-duration: 1ms; }
     #lightbox.show { animation-duration: 1ms; }
+    body.desktop-focus-from-library #lightbox.show .lightbox-meta,
+    body.desktop-focus-from-library #lightbox.show #lbActions { animation-duration: 1ms; animation-delay: 0ms; }
   }
 }
 
