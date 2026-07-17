@@ -90,8 +90,9 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(app, /if \(generationItems\.length > 1\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
   assert.doesNotMatch(app, /lb-media-tier-label/);
-  assert.match(app, /headerMedia\.setAttribute\('aria-label', mediaLabel\)/);
-  assert.match(app, /headerMedia\.appendChild\(b\)/);
+  assert.match(app, /const mediaOptions = desktopWorkspaceActive\(\)[\s\S]*\? headerMedia[\s\S]*: makeMediaTier\('lb-media-assets', mediaLabel\)/);
+  assert.match(app, /if \(mediaOptions === headerMedia\)[\s\S]*headerMedia\.setAttribute\('aria-label', mediaLabel\)/);
+  assert.match(app, /mediaOptions\.appendChild\(b\)/);
   assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked, 'video'\)\)/);
   assert.match(app, /className = 'chip' \+ /);
   assert.match(app, /lb-media-kind-icon/);

@@ -176,6 +176,7 @@ test('grouped desktop results use the mobile parent and attached-media hierarchy
   assert.doesNotMatch(app, /function restoreDesktopStagePickerHome/);
   assert.match(app, /if \(generationItems\.length > 1\) \{[\s\S]*makeMediaTier\('lb-media-generations', strengthHuntGroup \? 'Strength Hunt generations' : 'Generations'\)/);
   assert.match(app, /const headerMedia = \$\('#lbHeaderMedia'\)/);
+  assert.match(app, /const mediaOptions = desktopWorkspaceActive\(\)[\s\S]*\? headerMedia[\s\S]*: makeMediaTier\('lb-media-assets', mediaLabel\)/);
   assert.match(app, /headerContext\.hidden = !activeGroup && headerMedia\.hidden/);
   assert.match(app, /lightboxGroupThumbnailMarkup\(groupItem, index, groupItem\.id === it\.id\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);

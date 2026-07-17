@@ -20485,8 +20485,13 @@ function openLightbox(id, mediaSel, options = {}) {
     const groupedGeneration = generationItems.length > 1;
     let mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
     if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
-    headerMedia.setAttribute('aria-label', mediaLabel);
-    headerMedia.hidden = false;
+    const mediaOptions = desktopWorkspaceActive()
+      ? headerMedia
+      : makeMediaTier('lb-media-assets', mediaLabel);
+    if (mediaOptions === headerMedia) {
+      headerMedia.setAttribute('aria-label', mediaLabel);
+      headerMedia.hidden = false;
+    }
     const mediaGlyph = (kind) => kind === 'video'
       ? '<svg viewBox="0 0 20 20"><path d="m7 5 7 5-7 5Z"/></svg>'
       : (kind === 'composite'
@@ -20497,7 +20502,7 @@ function openLightbox(id, mediaSel, options = {}) {
       b.className = 'chip' + ((key === 'image' ? (!selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
       b.innerHTML = `<span class="lb-media-kind-icon" aria-hidden="true">${mediaGlyph(kind)}</span><span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
       b.addEventListener('click', () => openFocusedGalleryItem(it, key));
-      headerMedia.appendChild(b);
+      mediaOptions.appendChild(b);
     };
     mkChip('Image', 'image', !!it.liked);
     composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id, false, 'composite'));
