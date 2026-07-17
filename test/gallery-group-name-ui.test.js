@@ -20,6 +20,8 @@ test('desktop stage separates editable group identity from member position', () 
   assert.match(app, /kicker\.textContent = `\$\{galleryGroup\.kindLabel\} · \$\{galleryGroup\.items\.length\} results`/);
   assert.match(app, /position\.textContent = galleryGroup\.position/);
   assert.match(css, /\.desktop-group-name-field input:focus/);
+  assert.match(css, /\.desktop-group-name-field:focus-within > svg \{[\s\S]*width: 17px;[\s\S]*opacity: 1;/);
+  assert.doesNotMatch(css, /\.desktop-group-name-field:hover > svg/);
   assert.match(css, /\.desktop-stage-position \{[\s\S]*text-overflow: ellipsis/);
 });
 

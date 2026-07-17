@@ -15,6 +15,9 @@ test('focused gallery exposes an inline generation name instead of a dialog', ()
   assert.match(html, /id="lbTitle"[^>]*type="text"[^>]*maxlength="80"/);
   assert.match(html, /aria-label="Generation name"/);
   assert.match(css, /\.generation-name-input:focus/);
+  assert.match(css, /\.generation-name-field > svg \{[\s\S]*width: 0;[\s\S]*opacity: 0;/);
+  assert.match(css, /\.generation-name-field:focus-within > svg \{[\s\S]*width: 15px;[\s\S]*opacity: 1;/);
+  assert.doesNotMatch(css, /\.generation-name-field:hover > svg/);
   assert.match(app, /setGenerationNameInput\(it, selVideo \|\| selComposite \|\| null\)/);
   assert.doesNotMatch(app, /askText\([^)]*Rename generation/);
   assert.match(html, /id="desktopStageTitle">Ready to create</);

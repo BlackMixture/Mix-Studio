@@ -19798,7 +19798,12 @@ function openLightbox(id, mediaSel) {
     actions.appendChild(b);
     return b;
   };
-  const mkIcon = (icon, label, cls, fn) => mk(actionIconMarkup(icon), `icon-only result-action-icon ${cls || ''}`.trim(), fn, { ariaLabel: label, title: label });
+  const mkIcon = (icon, label, cls, fn, options = {}) => mk(
+    `${actionIconMarkup(icon)}<span class="result-action-label">${escapeHtml(options.mobileLabel || label)}</span>`,
+    `icon-only result-action-icon${options.compact ? ' result-action-compact' : ''} ${cls || ''}`.trim(),
+    fn,
+    { ariaLabel: label, title: label },
+  );
   const mkMenu = (label, cls, items, options = {}) => {
     let b;
     const onOpen = () => {
@@ -19806,7 +19811,7 @@ function openLightbox(id, mediaSel) {
       openActionMenu(b, list || [], options);
     };
     b = options.icon
-      ? mk(options.iconOnly ? actionIconMarkup(options.icon) : `${actionIconMarkup(options.icon)}<span>${escapeHtml(label)}</span>`, `${options.iconOnly ? 'icon-only result-action-icon ' : ''}menu-trigger ${cls || ''}`.trim(), onOpen, { ariaLabel: options.ariaLabel || label, title: options.ariaLabel || label })
+      ? mk(options.iconOnly ? `${actionIconMarkup(options.icon)}<span class="result-action-label">${escapeHtml(options.mobileLabel || label)}</span>` : `${actionIconMarkup(options.icon)}<span>${escapeHtml(label)}</span>`, `${options.iconOnly ? `icon-only result-action-icon${options.compact ? ' result-action-compact' : ''} ` : ''}menu-trigger ${cls || ''}`.trim(), onOpen, { ariaLabel: options.ariaLabel || label, title: options.ariaLabel || label })
       : mk(label, cls, onOpen);
     if (options.icon) {
       b.setAttribute('aria-haspopup', 'menu');
@@ -19897,7 +19902,7 @@ function openLightbox(id, mediaSel) {
     const like = mkIcon(liked ? 'heart-fill' : 'heart', label, `like-toggle${liked ? ' liked' : ''}`, () => {
       if (selVideo) setVideoLiked(it, selVideo, !selVideo.liked, $('#lightboxLikeBurst'));
       else toggleItemLike(it, $('#lightboxLikeBurst'));
-    });
+    }, { compact: true });
     like.setAttribute('aria-pressed', String(liked));
   }
   // Reference-backed generations: hold to flash the retained source image.
@@ -20046,8 +20051,8 @@ function openLightbox(id, mediaSel) {
       } },
       { label: 'Documentation video', detail: 'Source + settings + result together', icon: 'documentation', action: () => saveDocumentationVideo(it, selVideo) },
     ];
-    if (!vinfo.composite) mkIcon('result-move', 'Move generation', '', () => openMoveSheet(it));
-    mkMenu('Save', '', videoSaveItems, { icon: 'result-save', iconOnly: true, ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
+    if (!vinfo.composite) mkIcon('result-move', 'Move generation', '', () => openMoveSheet(it), { mobileLabel: 'Move' });
+    mkMenu('Save', '', videoSaveItems, { icon: 'result-save', iconOnly: true, compact: true, ariaLabel: 'Save video', menuTitle: 'Save video', tone: 'video' });
     mkIcon('result-delete', 'Move video to trash', 'danger', async () => {
       const lastOfStandalone = it.mode === 'video' && videos.length === 1;
       const msg = lastOfStandalone
@@ -20065,21 +20070,21 @@ function openLightbox(id, mediaSel) {
       await refreshGallery(true);
       openLightbox(it.id, 'image');
       toast('Video moved to trash');
-    });
+    }, { compact: true });
   } else if (selComposite) {
-    mkIcon('result-save', 'Save image', '', () => downloadComposite(it, selComposite));
+    mkIcon('result-save', 'Save image', '', () => downloadComposite(it, selComposite), { compact: true });
   } else {
     if (state.upscaling.has(it.id)) {
       mk('<span class="spin"></span> Upscaling…', '', () => {});
     } else {
       const upscaleLabel = it.upscaled ? 'Re-upscale image' : 'Upscale image';
-      mkIcon('result-process', upscaleLabel, '', () => openUpscaleSheet(it));
+      mkIcon('result-process', upscaleLabel, '', () => openUpscaleSheet(it), { mobileLabel: it.upscaled ? 'Re-upscale' : 'Upscale' });
     }
-    mkIcon('result-move', 'Move generation', '', () => openMoveSheet(it));
+    mkIcon('result-move', 'Move generation', '', () => openMoveSheet(it), { mobileLabel: 'Move' });
     if (imageSaveItems.length > 1) {
-      mkMenu('Save', '', imageSaveItems, { icon: 'result-save', iconOnly: true, ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
+      mkMenu('Save', '', imageSaveItems, { icon: 'result-save', iconOnly: true, compact: true, ariaLabel: 'Save image', menuTitle: 'Save image', tone: 'image' });
     } else if (imageSaveItems.length === 1) {
-      mkIcon('result-save', 'Save image', '', imageSaveItems[0].action);
+      mkIcon('result-save', 'Save image', '', imageSaveItems[0].action, { compact: true });
     }
     mkIcon('result-delete', 'Move generation to trash', 'danger', async () => {
       const n = videos.length;
@@ -20094,7 +20099,7 @@ function openLightbox(id, mediaSel) {
       await api('/api/item/' + it.id, { method: 'DELETE' });
       closeLightbox();
       refreshGallery();
-    });
+    }, { compact: true });
   }
   if (freshOpen) requestAnimationFrame(() => {
     if ($('#lightbox').classList.contains('show')) focusIconControlSilently($('#lbClose'));

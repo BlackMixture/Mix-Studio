@@ -300,7 +300,7 @@ test('gallery saves directly when only one image is available and is grouped by 
   assert.match(app, /gallery-date-divider/);
   assert.match(app, /imageSaveItems\.push\(\{ label: 'Save image', icon: 'save', action: \(\) => downloadItem\(it, 'current'\) \}\)/);
   assert.match(app, /if \(imageSaveItems\.length > 1\)/);
-  assert.match(app, /mkIcon\('result-save', 'Save image', '', imageSaveItems\[0\]\.action\)/);
+  assert.match(app, /mkIcon\('result-save', 'Save image', '', imageSaveItems\[0\]\.action, \{ compact: true \}\)/);
   assert.match(app, /if \(it\.upscaled\) \{/);
   assert.match(app, /function downloadComposite\(it, composite\)/);
   assert.match(app, /attached-composite-badge/);

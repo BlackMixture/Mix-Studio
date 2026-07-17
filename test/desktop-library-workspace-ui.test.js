@@ -107,19 +107,23 @@ test('focused gallery reuses the center-stage result icons', () => {
   for (const icon of ['result-use', 'result-process', 'result-extend', 'result-move', 'result-save', 'result-delete']) {
     assert.match(app, new RegExp(`'${icon}': '<path`));
   }
-  assert.match(app, /const mkIcon = \(icon, label, cls, fn\) => mk\(actionIconMarkup\(icon\), `icon-only result-action-icon/);
-  assert.match(app, /options\.iconOnly \? actionIconMarkup\(options\.icon\)/);
+  assert.match(app, /const mkIcon = \(icon, label, cls, fn, options = \{\}\) => mk\(/);
+  assert.match(app, /class="result-action-label">\$\{escapeHtml\(options\.mobileLabel \|\| label\)\}/);
+  assert.match(app, /options\.iconOnly \? `\$\{actionIconMarkup\(options\.icon\)\}<span class="result-action-label/);
   assert.match(app, /b\.setAttribute\('aria-haspopup', 'menu'\);[\s\S]{0,120}b\.setAttribute\('aria-expanded', 'false'\)/);
   assert.match(app, /mkMenu\('Use', '', imageUseItems, \{ icon: 'result-use', iconOnly: true, ariaLabel: 'Use image'/);
   assert.match(app, /mkMenu\('Process', '', processItems, \{ icon: 'result-process', iconOnly: true, ariaLabel: 'Process video'/);
   assert.match(app, /mkIcon\('result-process', upscaleLabel/);
   assert.match(app, /mkIcon\('result-move', 'Move generation'/);
-  assert.match(app, /mkMenu\('Save', '', imageSaveItems, \{ icon: 'result-save', iconOnly: true, ariaLabel: 'Save image'/);
+  assert.match(app, /mkMenu\('Save', '', imageSaveItems, \{ icon: 'result-save', iconOnly: true, compact: true, ariaLabel: 'Save image'/);
   assert.match(app, /mkIcon\('result-delete', 'Move generation to trash'/);
+  assert.match(app, /mkIcon\(liked \? 'heart-fill' : 'heart'[\s\S]{0,360}\}, \{ compact: true \}\)/);
+  assert.match(app, /mkMenu\('Save', '', imageSaveItems, \{ icon: 'result-save', iconOnly: true, compact: true/);
   assert.doesNotMatch(app, /mk\(it\.upscaled \? '⇪ Re-upscale' : '⇪ Upscale'/);
   assert.doesNotMatch(app, /mk\('▤ Move'/);
   assert.doesNotMatch(app, /mk\('↓ Save'/);
   assert.match(css, /#lbActions \.action-btn\.result-action-icon \{[\s\S]*flex: 0 0 44px;[\s\S]*width: 44px;[\s\S]*height: 44px;[\s\S]*border-radius: 14px;/);
+  assert.match(css, /@media \(max-width: 1179px\) \{[\s\S]*\.result-action-icon:not\(\.result-action-compact\)[\s\S]*width: auto;[\s\S]*\.result-action-label \{[\s\S]*display: inline;/);
   assert.match(css, /#lbActions \.action-btn\.result-action-icon:focus-visible/);
 });
 

@@ -5227,16 +5227,18 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   color: var(--muted-2);
 }
 .generation-name-field > svg {
-  width: 15px;
+  width: 0;
   height: 15px;
   flex: 0 0 auto;
+  margin-right: -7px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: .62;
-  transition: color 150ms var(--ease), opacity 150ms var(--ease);
+  opacity: 0;
+  transform: scale(.78);
+  transition: width 150ms var(--ease), margin-right 150ms var(--ease), color 150ms var(--ease), opacity 150ms var(--ease), transform 150ms var(--ease);
 }
 .generation-name-input {
   width: min(100%, 38rem);
@@ -5258,8 +5260,13 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   white-space: nowrap;
   transition: border-color 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
 }
-.generation-name-field:hover > svg,
-.generation-name-field:focus-within > svg { color: var(--ink-soft); opacity: 1; }
+.generation-name-field:focus-within > svg {
+  width: 15px;
+  margin-right: 0;
+  color: var(--ink-soft);
+  opacity: 1;
+  transform: scale(1);
+}
 .generation-name-field:hover .generation-name-input { border-color: rgba(255,255,255,.1); }
 .generation-name-input:focus {
   border-color: rgba(var(--mode-rgb),.48);
@@ -5280,7 +5287,8 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   max-width: min(100%, 34rem);
   opacity: .64;
 }
-.overlay-name-stack.has-group .item-name-field > svg { width: 12px; height: 12px; }
+.overlay-name-stack.has-group .item-name-field > svg { width: 0; height: 12px; }
+.overlay-name-stack.has-group .item-name-field:focus-within > svg { width: 12px; }
 .overlay-name-stack.has-group .item-name-field .generation-name-input {
   height: 25px;
   padding-top: 2px;
@@ -5790,6 +5798,22 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   background: rgba(255,92,80,.1);
 }
 #lbActions .action-btn.result-action-icon .action-glyph { width: 19px; height: 19px; }
+#lbActions .result-action-label { display: none; }
+@media (max-width: 1179px) {
+  #lbActions .action-btn.result-action-icon:not(.result-action-compact) {
+    flex-basis: auto;
+    width: auto;
+    display: inline-flex;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 14px;
+    border-radius: 999px;
+  }
+  #lbActions .action-btn.result-action-icon:not(.result-action-compact) .result-action-label {
+    display: inline;
+    white-space: nowrap;
+  }
+}
 .action-menu {
   position: fixed;
   z-index: 80;
@@ -9734,16 +9758,18 @@ body.sheet-open {
   }
   .desktop-group-name-field[hidden] { display: none; }
   .desktop-group-name-field > svg {
-    width: 17px;
+    width: 0;
     height: 17px;
     flex: 0 0 auto;
+    margin-right: -7px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.7;
     stroke-linecap: round;
     stroke-linejoin: round;
-    opacity: .66;
-    transition: color 150ms var(--ease), opacity 150ms var(--ease);
+    opacity: 0;
+    transform: scale(.78);
+    transition: width 150ms var(--ease), margin-right 150ms var(--ease), color 150ms var(--ease), opacity 150ms var(--ease), transform 150ms var(--ease);
   }
   .desktop-group-name-field input {
     width: 100%;
@@ -9766,8 +9792,13 @@ body.sheet-open {
     transition: border-color 150ms var(--ease), background 150ms var(--ease), opacity 150ms var(--ease);
   }
   .desktop-group-name-field input::placeholder { color: rgba(238,242,255,.72); opacity: 1; }
-  .desktop-group-name-field:hover > svg,
-  .desktop-group-name-field:focus-within > svg { color: var(--ink-soft); opacity: 1; }
+  .desktop-group-name-field:focus-within > svg {
+    width: 17px;
+    margin-right: 0;
+    color: var(--ink-soft);
+    opacity: 1;
+    transform: scale(1);
+  }
   .desktop-group-name-field:hover input { border-color: rgba(255,255,255,.1); }
   .desktop-group-name-field input:focus {
     border-color: rgba(var(--mode-rgb),.48);
