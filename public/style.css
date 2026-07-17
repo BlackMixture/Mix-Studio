@@ -9532,9 +9532,7 @@ body.sheet-open {
   }
   body.desktop-library-expanded #view-create,
   body.desktop-library-expanded .desktop-stage {
-    opacity: 0;
     pointer-events: none;
-    transform: translateX(-100vw);
   }
   body.desktop-library-expanded #view-gallery {
     display: block;

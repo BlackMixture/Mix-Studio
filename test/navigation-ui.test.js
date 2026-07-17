@@ -24,7 +24,8 @@ test('desktop Library navigation expands the gallery into the full workspace', (
   assert.match(app, /classList\.toggle\('desktop-library-expanded', libraryExpanded\)/);
   assert.match(css, /body\.desktop-library-expanded \.studio-workspace \{[\s\S]*grid-template-columns: 0px 0px 100%;[\s\S]*gap: 0/);
   assert.match(css, /body\.desktop-library-expanded \.create-tabs \{[\s\S]*opacity: 0;[\s\S]*transform: translateX\(-100vw\)/);
-  assert.match(css, /body\.desktop-library-expanded #view-create,[\s\S]*body\.desktop-library-expanded \.desktop-stage \{[\s\S]*opacity: 0;[\s\S]*transform: translateX\(-100vw\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-create,[\s\S]*body\.desktop-library-expanded \.desktop-stage \{[\s\S]*pointer-events: none/);
+  assert.doesNotMatch(css, /body\.desktop-library-expanded #view-create,[\s\S]{0,180}(?:opacity: 0|translateX\(-100vw\))/);
   assert.doesNotMatch(css, /body\.desktop-library-expanded #view-create,[\s\S]{0,120}display: none/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \{[\s\S]*grid-column: 3/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(220px, 1fr\)\)/);
