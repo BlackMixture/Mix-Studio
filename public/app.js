@@ -2890,8 +2890,23 @@ function clipboardImageFiles(clipboardData) {
       return [];
     }
   });
-  const files = itemFiles.length ? itemFiles : [...(clipboardData.files || [])];
-  return files.filter((file) => clipboardImageType(file));
+  const files = [...(clipboardData.files || [])];
+  const seen = new Set();
+  return [...itemFiles, ...files].filter((file) => {
+    if (!clipboardImageType(file) || seen.has(file)) return false;
+    seen.add(file);
+    return true;
+  });
+}
+
+function clipboardHasImageLikeData(clipboardData) {
+  if (!clipboardData) return false;
+  if ([...(clipboardData.items || [])].some((item) => item.kind === 'file'
+    && String(item.type || '').toLowerCase().startsWith('image/'))) return true;
+  if ([...(clipboardData.files || [])].some((file) => String(file?.type || '').toLowerCase().startsWith('image/')
+    || /\.(?:svg|heic|heif|avif|ico|jxl)$/i.test(String(file?.name || '')))) return true;
+  try { return /<img\b/i.test(String(clipboardData.getData?.('text/html') || '')); }
+  catch { return false; }
 }
 
 function clipboardImageFilename(file, index = 0, now = Date.now()) {
@@ -3226,7 +3241,12 @@ async function processClipboardImagePaste(request) {
 
 function handlePromptClipboardImagePaste(event) {
   const files = clipboardImageFiles(event.clipboardData);
-  if (!files.length) return;
+  if (!files.length) {
+    if (!clipboardHasImageLikeData(event.clipboardData)) return;
+    event.preventDefault();
+    announceClipboardImagePaste('This clipboard image format is not supported. Paste a PNG, JPEG, WebP, GIF, BMP, or TIFF image.', true);
+    return;
+  }
   event.preventDefault();
   const context = clipboardPasteContext();
   const caption = clipboardImageCaption(event.clipboardData);
