@@ -9598,7 +9598,7 @@ body.sheet-open {
   }
   body.desktop-library-expanded .desktop-stage {
     pointer-events: none;
-    transform: translateX(calc(-100% - var(--studio-left-width) - 1px));
+    left: calc(-100vw + var(--studio-right-width) + 1px);
   }
   body.desktop-library-expanded #view-gallery {
     display: block;
@@ -9643,6 +9643,8 @@ body.sheet-open {
   body.desktop-library-expanded #view-gallery .card { border-radius: 16px; }
 
   .desktop-stage {
+    position: relative;
+    left: 0;
     grid-column: 2;
     min-width: 0;
     height: 100%;
@@ -10025,8 +10027,8 @@ body.sheet-open {
   .desktop-stage .live-preview { margin-bottom: 8px; }
   .toast-zone { bottom: 24px; }
 
-  #view-create,
-  .desktop-stage { transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
+  #view-create { transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
+  .desktop-stage { transition: left 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
   #view-gallery { transition: width 360ms cubic-bezier(.2,.8,.2,1), transform 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
   body.desktop-focused-result #view-create { opacity: 0; pointer-events: none; transform: translateX(-100%); }
   body.desktop-focused-result .desktop-stage,
