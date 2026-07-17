@@ -5610,7 +5610,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .lightbox-meta-copy.copied svg { opacity: 1; transform: scale(1.12); }
 .action-row {
   display: flex; gap: 8px; overflow-x: auto;
-  padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(24px + env(safe-area-inset-bottom));
   scrollbar-width: none;
 }
 .action-row::-webkit-scrollbar { display: none; }
@@ -9913,13 +9913,16 @@ body.sheet-open {
     width: 100%;
     max-width: 560px;
     display: none;
+    justify-content: flex-end;
     justify-self: end;
   }
   #lightbox.desktop-group-picker-active .lb-group-picker-slot { display: flex; }
   #lightbox .desktop-stage-picker.focused {
-    width: auto;
+    width: max-content;
     max-width: 100%;
     flex: 0 1 auto;
+    justify-content: flex-start;
+    margin-left: auto;
     padding: 1px 3px 4px;
   }
   #lightbox .desktop-stage-picker.focused .desktop-stage-choice,
@@ -10002,7 +10005,7 @@ body.sheet-open {
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 10px 22px 16px;
+    padding: 10px 22px calc(28px + env(safe-area-inset-bottom));
     border-top: 1px solid rgba(255,255,255,.07);
     background: rgba(0,0,0,.46);
     scrollbar-width: thin;

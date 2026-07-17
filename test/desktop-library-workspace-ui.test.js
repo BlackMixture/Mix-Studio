@@ -10,9 +10,13 @@ const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 
 test('desktop library cards load their media and saved settings into the workspace', () => {
   assert.match(app, /function selectDesktopLibraryItem\(item, media = 'image'\)/);
-  assert.match(app, /reuseVideo\(item, video, \{ desktopToken: token, silent: true \}\)/);
-  assert.match(app, /reuseItem\(item, false, \{ desktopToken: token, silent: true \}\)/);
-  assert.match(app, /desktopWorkspaceActive\(\) && state\.view !== 'gallery'/);
+  assert.match(app, /const preserveFocusedResult = desktopWorkspaceActive\(\) && \$\('#lightbox'\)\.classList\.contains\('show'\)/);
+  assert.match(app, /if \(preserveFocusedResult\) openLightbox\(item\.id, state\.desktopMediaId\)/);
+  assert.match(app, /const reuseOptions = \{ desktopToken: token, silent: true, preserveLightbox: preserveFocusedResult \}/);
+  assert.match(app, /reuseVideo\(item, video, reuseOptions\)/);
+  assert.match(app, /reuseItem\(item, false, reuseOptions\)/);
+  assert.ok((app.match(/if \(!options\.preserveLightbox\) closeLightbox\(\);/g) || []).length >= 2);
+  assert.match(app, /desktopWorkspaceActive\(\) && \(\$\('#lightbox'\)\.classList\.contains\('show'\) \|\| state\.view !== 'gallery'\)/);
   assert.match(app, /syncDesktopGallerySelection\(\)/);
   assert.match(css, /\.card\.desktop-active:not\(\.selected\)/);
 });
@@ -124,7 +128,7 @@ test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(app, /angleGroupItems\(item\)/);
   assert.match(app, /generationGroupItems\(item\)/);
   assert.match(app, /selectDesktopLibraryItem\(choice\.item, choice\.media\)/);
-  assert.match(app, /openLightbox\(choice\.item\.id, choice\.media\)/);
+  assert.match(app, /button\.addEventListener\('click', \(\) => selectDesktopLibraryItem\(choice\.item, choice\.media\)\)/);
   assert.match(app, /thumbnail\.className = 'desktop-stage-choice-thumb'/);
   assert.match(app, /copy\.className = 'desktop-stage-choice-copy'/);
   assert.match(app, /image\.draggable = false/);
@@ -150,6 +154,8 @@ test('grouped desktop results expose a synchronized media picker', () => {
   assert.match(css, /\.desktop-stage-choice\.active \{/);
   assert.match(css, /#lightbox \.desktop-stage-picker\.focused \.desktop-stage-choice,[\s\S]*width: 96px;[\s\S]*grid-template-columns: 32px minmax\(0, 1fr\)/);
   assert.match(css, /#lightbox \.desktop-stage-picker\.focused \.desktop-stage-choice-copy \{[\s\S]*opacity: 1;/);
+  assert.match(css, /#lightbox \.lb-group-picker-slot \{[\s\S]*justify-content: flex-end;[\s\S]*justify-self: end;/);
+  assert.match(css, /#lightbox \.desktop-stage-picker\.focused \{[\s\S]*width: max-content;[\s\S]*max-width: 100%;[\s\S]*justify-content: flex-start;[\s\S]*margin-left: auto;/);
   assert.match(css, /@keyframes focusedGroupChoiceExpand/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*desktop-stage-picker\.focused\.entering/);
   assert.match(css, /#lightbox \.lb-media-generations \{[\s\S]*flex: 1 1 auto;/);
@@ -181,6 +187,8 @@ test('focused gallery and desktop information rail use true black surfaces', () 
   assert.match(css, /#lightbox \{ background: #000; \}/);
   assert.match(css, /#lightbox\.show \{[\s\S]*background: #000;/);
   assert.match(css, /#lightbox #lbActions \{[\s\S]*background: #000;/);
+  assert.match(css, /#lightbox #lbActions \{[\s\S]*padding: 10px 22px calc\(28px \+ env\(safe-area-inset-bottom\)\);/);
+  assert.match(css, /\.action-row \{[\s\S]*padding: 10px 16px calc\(24px \+ env\(safe-area-inset-bottom\)\);/);
 });
 
 test('desktop viewport stays pinned while each workspace column owns scrolling', () => {

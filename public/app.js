@@ -15195,10 +15195,7 @@ function renderDesktopStagePicker(item, media = 'image') {
     position.textContent = choice.position;
     copy.append(summary, position);
     button.append(thumbnail, copy);
-    button.addEventListener('click', () => {
-      if (picker.classList.contains('focused')) openLightbox(choice.item.id, choice.media);
-      else selectDesktopLibraryItem(choice.item, choice.media);
-    });
+    button.addEventListener('click', () => selectDesktopLibraryItem(choice.item, choice.media));
     picker.appendChild(button);
   });
   picker.scrollLeft = previousScrollLeft;
@@ -16017,25 +16014,39 @@ function angleViewGlyph(item) {
     || (item && item.angleView && item.angleView.elevation ? '↕' : '□');
 }
 
+function galleryEntryNavigationItems(entry) {
+  if (!entry) return [];
+  const grouped = entry.generationGroupId
+    ? generationGroupItems(entry.item)
+    : (entry.angleGroupId ? angleGroupItems(entry.item) : entry.items);
+  return grouped && grouped.length ? grouped : (entry.items || []);
+}
+
 function galleryNavigationTarget(item, direction) {
-  const entries = galleryEntries(visibleItems());
-  const entryIndex = entries.findIndex((entry) => entry.items.some((candidate) => candidate.id === item.id));
-  if (entryIndex < 0) return null;
-  const currentEntry = entries[entryIndex];
-  if (currentEntry.angleGroupId) {
-    const angles = angleGroupItems(item);
-    const angleIndex = angles.findIndex((candidate) => candidate.id === item.id);
-    const withinGroup = angles[angleIndex + direction];
-    if (withinGroup) return withinGroup;
+  const sequence = galleryEntries(visibleItems()).flatMap(galleryEntryNavigationItems);
+  const index = sequence.findIndex((candidate) => candidate.id === item?.id);
+  return index < 0 ? null : (sequence[index + direction] || null);
+}
+
+function focusedGalleryItemMedia(item, media) {
+  return media || latestGalleryVideo(item)?.id || 'image';
+}
+
+function openFocusedGalleryItem(item, media) {
+  if (!item) return;
+  const selectedMedia = focusedGalleryItemMedia(item, media);
+  if (desktopWorkspaceActive() && $('#lightbox').classList.contains('show')) selectDesktopLibraryItem(item, selectedMedia);
+  else openLightbox(item.id, selectedMedia);
+}
+
+function navigateFocusedGallery(direction) {
+  const target = state.currentItem && galleryNavigationTarget(state.currentItem, direction);
+  if (!target) {
+    toast(direction > 0 ? 'No next generation' : 'No previous generation');
+    return false;
   }
-  if (currentEntry.generationGroupId) {
-    const grouped = generationGroupItems(item);
-    const groupedIndex = grouped.findIndex((candidate) => candidate.id === item.id);
-    const withinGroup = grouped[groupedIndex + direction];
-    if (withinGroup) return withinGroup;
-  }
-  const adjacentEntry = entries[entryIndex + direction];
-  return adjacentEntry ? adjacentEntry.item : null;
+  openFocusedGalleryItem(target);
+  return true;
 }
 
 function galleryDateKey(timestamp) {
@@ -17015,7 +17026,7 @@ function renderGrid() {
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
-      else if (desktopWorkspaceActive() && state.view !== 'gallery') handleDesktopGalleryTap(it, card);
+      else if (desktopWorkspaceActive() && ($('#lightbox').classList.contains('show') || state.view !== 'gallery')) handleDesktopGalleryTap(it, card);
       else handleGalleryTap(it, card);
     });
     grid.appendChild(card);
@@ -17028,6 +17039,7 @@ function renderGrid() {
 }
 
 async function selectDesktopLibraryItem(item, media = 'image') {
+  const preserveFocusedResult = desktopWorkspaceActive() && $('#lightbox').classList.contains('show');
   checkpointDesktopInputSetup();
   const video = (item.videos || []).find((entry) => entry.id === media) || null;
   state.desktopStageDismissed = false;
@@ -17037,9 +17049,11 @@ async function selectDesktopLibraryItem(item, media = 'image') {
   const token = ++state.desktopReuseToken;
   renderDesktopStage(item, state.desktopMediaId);
   syncDesktopGallerySelection();
+  if (preserveFocusedResult) openLightbox(item.id, state.desktopMediaId);
+  const reuseOptions = { desktopToken: token, silent: true, preserveLightbox: preserveFocusedResult };
   try {
-    if (video) await reuseVideo(item, video, { desktopToken: token, silent: true });
-    else await reuseItem(item, false, { desktopToken: token, silent: true });
+    if (video) await reuseVideo(item, video, reuseOptions);
+    else await reuseItem(item, false, reuseOptions);
     if (state.desktopReuseToken === token) {
       state.desktopSettingsReady = true;
       appendDesktopInputSetup();
@@ -19028,6 +19042,23 @@ $('#lbClose').addEventListener('click', closeLightbox);
 $('#lbCompareBtn').addEventListener('click', () => {
   if (state.currentItem && state.currentItem.upscaled) openCompare(state.currentItem);
 });
+document.addEventListener('keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)
+    || event.defaultPrevented
+    || event.isComposing
+    || event.altKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+    || !$('#lightbox').classList.contains('show')
+    || $('#compare').classList.contains('show')
+    || $('.sheet.show')
+    || actionMenuEl) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('input, textarea, select, option, video, audio, [contenteditable="true"], [role="slider"]')) return;
+  event.preventDefault();
+  navigateFocusedGallery(event.key === 'ArrowRight' ? 1 : -1);
+});
 
 /* Swipe left/right in the lightbox to move between generations */
 (() => {
@@ -19110,7 +19141,7 @@ $('#lbCompareBtn').addEventListener('click', () => {
       if (token !== animationToken) return;
       const next = commit ? currentSwipe.neighbor : null;
       clearSwipeVisuals();
-      if (next) openLightbox(next.id);
+      if (next) openFocusedGalleryItem(next);
       setTimeout(() => { lightboxSwipeSuppressTap = false; }, commit ? 280 : 80);
     });
   }
@@ -19126,7 +19157,7 @@ $('#lbCompareBtn').addEventListener('click', () => {
     // animation or image decode completes. Sync to that destination before a
     // rapid follow-up gesture so it advances again instead of starting over.
     const pending = pendingNavigationItem;
-    if (pending) openLightbox(pending.id);
+    if (pending) openFocusedGalleryItem(pending);
     else clearSwipeVisuals();
     const t = e.touches[0];
     const now = performance.now();
@@ -19434,7 +19465,7 @@ async function reuseItem(it, useEnhanced) {
     denoise: restoringEdit ? $('#denoiseInput').value : undefined,
   });
 
-  closeLightbox();
+  if (!options.preserveLightbox) closeLightbox();
   setView(restoringEdit ? 'edit' : 'create', restoringEdit ? {} : { createMode: restoredRegions.length ? 'region' : 'image' });
   // setView preserves the outgoing draft. When reusing within the same mode,
   // re-apply the saved prompt after that preservation step so it cannot be
@@ -19489,7 +19520,8 @@ async function reuseVideo(it, v) {
   const options = arguments[2] || {};
   const info = v.info || {};
   const engine = ['wan', 'eros', 'scail'].includes(info.engine) ? info.engine : 'ltx';
-  closeLightbox();
+  if (state.directorOpen && !(info.workflow === 'director' && info.directorProject)) closeDirectorMode();
+  if (!options.preserveLightbox) closeLightbox();
   setView('video');
 
   if (info.workflow === 'director' && info.directorProject) {
