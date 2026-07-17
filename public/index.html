@@ -902,7 +902,7 @@
       <div class="region-resolution-picker">
         <button class="region-resolution-trigger" id="regionResolutionBtn" type="button" aria-expanded="false" aria-controls="regionResolutionMenu">
           <span class="region-resolution-icon" id="regionResolutionIcon" aria-hidden="true"></span>
-          <span id="regionResolutionSummary">1:1 · 1024 × 1024</span>
+          <span id="regionResolutionSummary">1:1 · M · 992 × 992</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
         </button>
         <div class="region-resolution-menu" id="regionResolutionMenu" role="dialog" aria-label="Region canvas resolution" aria-hidden="true" inert>
@@ -1067,7 +1067,7 @@
   <section class="panel res-panel" id="resPanel">
     <button class="res-header" id="resHeader" aria-expanded="false">
       <span class="panel-label" style="margin:0">Resolution</span>
-      <span class="res-summary" id="resSummary">1:1 · 1024 × 1024</span>
+      <span class="res-summary" id="resSummary">1:1 · M · 992 × 992</span>
       <span class="res-aspect-icon" id="resAspectIcon"></span>
       <svg class="res-chevron" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
     </button>
@@ -1076,9 +1076,9 @@
         <div class="aspect-row" id="aspectRow"></div>
         <div class="res-meta">
           <div class="size-seg" id="sizeSeg">
-            <button data-mp="0.75">S</button>
-            <button data-mp="1" class="active">M</button>
-            <button data-mp="1.75">L</button>
+            <button type="button" data-mp="0.75" aria-pressed="false">S</button>
+            <button type="button" data-mp="1" class="active" aria-pressed="true">M</button>
+            <button type="button" data-mp="1.75" aria-pressed="false">L</button>
           </div>
           <div class="res-dims">
             <input id="wInput" type="number" inputmode="numeric" step="16" min="64" max="4096" /> ×
@@ -1201,9 +1201,14 @@
 <section class="desktop-stage" id="desktopStage" aria-label="Generation stage">
   <div class="desktop-stage-shell">
     <header class="desktop-stage-head">
-      <div>
-        <span class="desktop-stage-kicker">Generation</span>
+      <div class="desktop-stage-heading">
+        <span class="desktop-stage-kicker" id="desktopStageKicker">Generation</span>
         <h1 id="desktopStageTitle">Ready to create</h1>
+        <label class="desktop-group-name-field" id="desktopStageGroupNameField" for="desktopStageGroupName" title="Rename gallery group" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
+          <input id="desktopStageGroupName" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Untitled group" aria-label="Gallery group name" />
+        </label>
+        <span class="desktop-stage-position" id="desktopStagePosition" hidden></span>
       </div>
       <div class="desktop-stage-head-actions">
         <span class="desktop-stage-status" id="desktopStageStatus">Ready</span>
@@ -1344,10 +1349,17 @@
 <!-- lightbox -->
 <div class="overlay" id="lightbox" aria-keyshortcuts="Escape ArrowLeft ArrowRight">
   <div class="overlay-top">
-    <label class="generation-name-field" for="lbTitle" title="Rename generation">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
-      <input class="overlay-title generation-name-input" id="lbTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Generation name" />
-    </label>
+    <div class="overlay-name-stack" id="lbNameStack">
+      <label class="generation-name-field group-name-field" id="lbGroupNameField" for="lbGroupTitle" title="Rename gallery group" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
+        <input class="overlay-title generation-name-input" id="lbGroupTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Untitled group" aria-label="Gallery group name" />
+        <span class="generation-group-position" id="lbGroupPosition"></span>
+      </label>
+      <label class="generation-name-field item-name-field" for="lbTitle" title="Rename generation">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
+        <input class="overlay-title generation-name-input" id="lbTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Generation name" />
+      </label>
+    </div>
     <button class="icon-btn" id="lbClose" type="button" aria-label="Close preview">✕</button>
   </div>
   <div class="lightbox-img-wrap">

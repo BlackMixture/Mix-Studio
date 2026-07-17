@@ -106,6 +106,9 @@ test('Region keeps the compact phone picker and reuses Image resolution on wider
   assert.match(appJs, /\$\('\.region-resolution-picker'\)\.hidden = useSharedRegionResolution/);
   assert.match(appJs, /setRegionResolutionExpanded\(false\)/);
   assert.match(appJs, /renderRegionResolutionPicker\(\);/);
+  assert.match(appJs, /summary\.textContent = state\.customDims[\s\S]*`\$\{state\.aspect\} · \$\{createSizeLabel\(\)\} · \$\{state\.width\} × \$\{state\.height\}`/);
+  assert.match(appJs, /button\.setAttribute\('aria-pressed', String\(selected\)\)/);
+  assert.match(appJs, /if \(!desktopResolutionPickerQuery\.matches\) setRegionResolutionExpanded\(false\)/);
   assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*position: absolute/);
   assert.match(styleCss, /\.region-resolution-menu \{[\s\S]*background: #000/);
   assert.match(styleCss, /\.region-aspect-option \.ar-box \{[\s\S]*border: 1\.5px solid currentColor/);

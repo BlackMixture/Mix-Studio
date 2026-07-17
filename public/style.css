@@ -5212,6 +5212,12 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top));
 }
 .overlay-title { font-weight: 900; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.overlay-name-stack {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 0;
+}
 .generation-name-field {
   min-width: 0;
   flex: 1 1 auto;
@@ -5261,6 +5267,28 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   color: #fff;
 }
 .generation-name-input.saving { opacity: .58; }
+.generation-group-position {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.overlay-name-stack.has-group .group-name-field .generation-name-input { font-size: 14px; }
+.overlay-name-stack.has-group .item-name-field {
+  max-width: min(100%, 34rem);
+  opacity: .64;
+}
+.overlay-name-stack.has-group .item-name-field > svg { width: 12px; height: 12px; }
+.overlay-name-stack.has-group .item-name-field .generation-name-input {
+  height: 25px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
 .lightbox-img-wrap { flex: 1 1 0; min-height: 0; position: relative; overflow: hidden; }
 .lightbox-img-wrap img,
 .lightbox-img-wrap video {
@@ -5402,6 +5430,31 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   padding-right: 7px;
   text-align: center;
 }
+.gallery-group-name {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  display: block;
+  padding: 5px 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  background: rgba(0,0,0,.74);
+  color: rgba(255,255,255,.94);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(7px);
+}
+.card.has-group-name .badge.vid,
+.card.has-group-name .badge.liked-badge,
+.card.has-group-name .badge.attached-composite-badge { bottom: 38px; }
+.card.has-group-name.has-attached-composite .badge.vid { bottom: 66px; }
 .angle-group-badge svg { width: 13px; height: 13px; }
 .angle-group-badge b { font: inherit; }
 .angle-group-chip {
@@ -9601,7 +9654,7 @@ body.sheet-open {
     justify-content: space-between;
     gap: 16px;
   }
-  .desktop-stage-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+  .desktop-stage-heading { min-width: 0; flex: 1 1 auto; }
   .desktop-stage-head-actions {
     min-width: 0;
     max-width: min(62%, 430px);
@@ -9648,6 +9701,67 @@ body.sheet-open {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .desktop-group-name-field {
+    min-width: 0;
+    max-width: 40vw;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted-2);
+  }
+  .desktop-group-name-field[hidden] { display: none; }
+  .desktop-group-name-field > svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: .66;
+    transition: color 150ms var(--ease), opacity 150ms var(--ease);
+  }
+  .desktop-group-name-field input {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 3px 7px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    outline: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: clamp(18px, 1.7vw, 25px);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: border-color 150ms var(--ease), background 150ms var(--ease), opacity 150ms var(--ease);
+  }
+  .desktop-group-name-field input::placeholder { color: rgba(238,242,255,.72); opacity: 1; }
+  .desktop-group-name-field:hover > svg,
+  .desktop-group-name-field:focus-within > svg { color: var(--ink-soft); opacity: 1; }
+  .desktop-group-name-field:hover input { border-color: rgba(255,255,255,.1); }
+  .desktop-group-name-field input:focus {
+    border-color: rgba(var(--mode-rgb),.48);
+    background: rgba(255,255,255,.045);
+  }
+  .desktop-group-name-field input.saving { opacity: .58; }
+  .desktop-stage-position {
+    display: block;
+    margin: 2px 0 0 24px;
+    overflow: hidden;
+    color: var(--muted-2);
+    font-size: 10.5px;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .desktop-stage-position[hidden] { display: none; }
   .desktop-stage-status {
     flex: 0 0 auto;
     padding: 7px 10px;

@@ -2049,6 +2049,7 @@ function reloadWithoutWorkspaceAutosave() {
 const primaryTabButtons = $$('#primaryTabs .tab');
 const createTabButtons = $$('#createTabs .tab');
 const desktopWorkspaceQuery = window.matchMedia('(min-width: 1180px)');
+const desktopResolutionPickerQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
 const wideRegionResolutionQuery = window.matchMedia('(min-width: 641px)');
 const DESKTOP_PANEL_DEFAULT = 360;
 const DESKTOP_PANEL_LIMITS = Object.freeze({ leftMin: 260, leftMax: 520, rightMin: 240, rightMax: 440, centerMin: 440 });
@@ -4150,6 +4151,48 @@ function dimensionsForMegapixels(ratio, megapixels) {
   };
 }
 
+function resolutionPresetForDimensions(width, height) {
+  const actualWidth = Math.round(Number(width));
+  const actualHeight = Math.round(Number(height));
+  if (!Number.isFinite(actualWidth) || !Number.isFinite(actualHeight) || actualWidth < 1 || actualHeight < 1) return null;
+  let best = null;
+  ASPECTS.forEach((aspect) => {
+    RESOLUTION_SIZE_OPTIONS.forEach((megapixels) => {
+      const dimensions = dimensionsForMegapixels(aspect.ar, megapixels);
+      const widthError = Math.abs(actualWidth - dimensions.w);
+      const heightError = Math.abs(actualHeight - dimensions.h);
+      const score = widthError + heightError;
+      if (!best || score < best.score) {
+        best = { aspect: aspect.label, megapixels, width: dimensions.w, height: dimensions.h, widthError, heightError, score };
+      }
+    });
+  });
+  // Gallery dimensions come from the output file and may be one latent-size
+  // rounding step away from the dimensions originally sent to ComfyUI.
+  return best && best.widthError <= 32 && best.heightError <= 32 ? best : null;
+}
+
+function restoreCreateResolution(width, height) {
+  const actualWidth = Math.max(64, Math.round(Number(width) || 1024));
+  const actualHeight = Math.max(64, Math.round(Number(height) || 1024));
+  const preset = resolutionPresetForDimensions(actualWidth, actualHeight);
+  if (preset) {
+    state.aspect = preset.aspect;
+    state.mp = preset.megapixels;
+    state.width = preset.width;
+    state.height = preset.height;
+    state.customDims = false;
+    return preset;
+  }
+  const derivedAspect = derivedAspectLabel(actualWidth, actualHeight);
+  if (ASPECTS.some((aspect) => aspect.label === derivedAspect)) state.aspect = derivedAspect;
+  state.mp = nearestResolutionMegapixels(actualWidth, actualHeight);
+  state.width = actualWidth;
+  state.height = actualHeight;
+  state.customDims = true;
+  return null;
+}
+
 function editResolutionSizeLabel(width = state.editWidth, height = state.editHeight) {
   const megapixels = Math.max(0, Number(width) * Number(height)) / 1e6;
   const nearest = nearestResolutionMegapixels(width, height);
@@ -5010,7 +5053,7 @@ function renderRegionResolutionPicker() {
   if (!summary) return;
   summary.textContent = state.customDims
     ? `Custom · ${state.width} × ${state.height}`
-    : `${state.aspect} · ${state.width} × ${state.height}`;
+    : `${state.aspect} · ${createSizeLabel()} · ${state.width} × ${state.height}`;
   const icon = $('#regionResolutionIcon');
   const ratio = (state.width || 1) / (state.height || 1);
   const base = 14;
@@ -5022,7 +5065,9 @@ function renderRegionResolutionPicker() {
   ASPECTS.forEach((aspect) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'region-aspect-option' + (!state.customDims && state.aspect === aspect.label ? ' active' : '');
+    const selected = !state.customDims && state.aspect === aspect.label;
+    button.className = 'region-aspect-option' + (selected ? ' active' : '');
+    button.setAttribute('aria-pressed', String(selected));
     const maxSide = 22;
     const width = aspect.ar >= 1 ? maxSide : Math.max(7, Math.round(maxSide * aspect.ar));
     const height = aspect.ar >= 1 ? Math.max(7, Math.round(maxSide / aspect.ar)) : maxSide;
@@ -5037,7 +5082,7 @@ function renderRegionResolutionPicker() {
       renderAspects();
       renderDims();
       saveForm();
-      setRegionResolutionExpanded(false);
+      if (!desktopResolutionPickerQuery.matches) setRegionResolutionExpanded(false);
     });
     aspectMenu.appendChild(button);
   });
@@ -5047,9 +5092,11 @@ function renderRegionResolutionPicker() {
   [{ value: 0.75, label: 'S' }, { value: 1, label: 'M' }, { value: 1.75, label: 'L' }].forEach((size) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = Number(state.mp) === size.value && !state.customDims ? 'active' : '';
+    const selected = Number(state.mp) === size.value && !state.customDims;
+    button.className = selected ? 'active' : '';
     button.textContent = size.label;
     button.setAttribute('aria-label', `${size.label} resolution`);
+    button.setAttribute('aria-pressed', String(selected));
     button.addEventListener('click', () => {
       state.mp = size.value;
       state.createMatchSource = false;
@@ -5059,7 +5106,7 @@ function renderRegionResolutionPicker() {
       renderAspects();
       renderDims();
       saveForm();
-      setRegionResolutionExpanded(false);
+      if (!desktopResolutionPickerQuery.matches) setRegionResolutionExpanded(false);
     });
     sizeMenu.appendChild(button);
   });
@@ -8063,6 +8110,7 @@ function renderAspects() {
     const source = document.createElement('button');
     source.type = 'button';
     source.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && !state.createMatchNative && state.customDims ? ' active' : '');
+    source.setAttribute('aria-pressed', String(state.createMatchSource && !state.createMatchNative && state.customDims));
     source.setAttribute('aria-label', `Match image aspect at a generation-safe ${safeMatch.w} by ${safeMatch.h}`);
     const ratio = safeMatch.w / safeMatch.h;
     const maxSide = 22;
@@ -8081,6 +8129,7 @@ function renderAspects() {
     const native = document.createElement('button');
     native.type = 'button';
     native.className = 'aspect-chip create-match-aspect' + (state.createMatchSource && state.createMatchNative && state.customDims ? ' active' : '');
+    native.setAttribute('aria-pressed', String(state.createMatchSource && state.createMatchNative && state.customDims));
     native.setAttribute('aria-label', `Use native image size at ${nativeMatch.w} by ${nativeMatch.h}`);
     native.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>Native<small>${derivedAspect} · ${nativeMatch.w} × ${nativeMatch.h}</small>`;
     native.addEventListener('click', () => {
@@ -8093,7 +8142,9 @@ function renderAspects() {
   }
   for (const a of ASPECTS) {
     const btn = document.createElement('button');
-    btn.className = 'aspect-chip' + (a.label === state.aspect && !state.customDims ? ' active' : '');
+    const selected = a.label === state.aspect && !state.customDims;
+    btn.className = 'aspect-chip' + (selected ? ' active' : '');
+    btn.setAttribute('aria-pressed', String(selected));
     btn.dataset.aspect = a.label;
     const maxSide = 22;
     const w = a.ar >= 1 ? maxSide : Math.round(maxSide * a.ar);
@@ -8119,7 +8170,7 @@ function renderDims() {
     ? `${state.aspect} · ${state.createMatchNative ? 'Native image' : `Match image ${createSizeLabel()}`} · ${state.width} × ${state.height}`
     : (state.customDims
       ? `custom · ${state.width} × ${state.height}`
-      : `${state.aspect} · ${state.width} × ${state.height}`);
+      : `${state.aspect} · ${createSizeLabel()} · ${state.width} × ${state.height}`);
   // Tiny aspect glyph shaped like the output
   const icon = $('#resAspectIcon');
   if (icon) {
@@ -8130,8 +8181,12 @@ function renderDims() {
     icon.style.width = `${w}px`;
     icon.style.height = `${h}px`;
   }
-  $$('#sizeSeg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.mp) === state.mp
-    && (!state.customDims || (state.createMatchSource && !state.createMatchNative))));
+  $$('#sizeSeg button').forEach((b) => {
+    const selected = Number(b.dataset.mp) === state.mp
+      && (!state.customDims || (state.createMatchSource && !state.createMatchNative));
+    b.classList.toggle('active', selected);
+    b.setAttribute('aria-pressed', String(selected));
+  });
   syncRegionStageAspect();
   renderRegionResolutionPicker();
 }
@@ -9619,8 +9674,8 @@ $('#loraAllBtn').addEventListener('click', () => {
   toast(state.showAllLoras ? 'Showing every LoRA' : 'Filtering to compatible LoRAs');
 });
 
-/* Collapsible resolution panel: header shows the pick; choosing an
-   aspect or size collapses it again. */
+/* Touch selection collapses the resolution panel; precise-pointer layouts
+   keep it open so several dimensions can be compared without reopening it. */
 function collapseRes(open) {
   const expand = open === true;
   const body = $('#resBody');
@@ -9631,10 +9686,10 @@ function collapseRes(open) {
 }
 $('#resHeader').addEventListener('click', () => collapseRes(!$('#resPanel').classList.contains('expanded')));
 $('#aspectRow').addEventListener('click', (e) => {
-  if (e.target.closest('button')) setTimeout(() => collapseRes(false), 140);
+  if (e.target.closest('button') && !desktopResolutionPickerQuery.matches) setTimeout(() => collapseRes(false), 140);
 });
 $('#sizeSeg').addEventListener('click', (e) => {
-  if (e.target.closest('button')) setTimeout(() => collapseRes(false), 140);
+  if (e.target.closest('button') && !desktopResolutionPickerQuery.matches) setTimeout(() => collapseRes(false), 140);
 });
 
 function setVideoOptionsExpanded(open) {
@@ -15703,6 +15758,7 @@ function renderDesktopStagePicker(item, media = 'image') {
   const restoreChoiceFocus = picker.contains(document.activeElement);
   const previousScrollLeft = picker.scrollLeft;
   const choices = desktopStageChoices(item);
+  const groupName = activeGalleryGroup(item)?.name || '';
   picker.innerHTML = '';
   picker.hidden = choices.length < 2;
   if (choices.length < 2) return;
@@ -15712,9 +15768,9 @@ function renderDesktopStagePicker(item, media = 'image') {
     button.className = 'desktop-stage-choice';
     const active = choice.item.id === item.id && choice.media === (media || 'image');
     button.classList.toggle('active', active);
-    button.setAttribute('aria-label', choice.label);
+    button.setAttribute('aria-label', groupName ? `${groupName}: ${choice.label}` : choice.label);
     button.setAttribute('aria-pressed', String(active));
-    button.title = choice.label;
+    button.title = groupName ? `${groupName} · ${choice.label}` : choice.label;
     button.dataset.itemId = choice.item.id;
     button.dataset.media = choice.media;
     const thumbnail = document.createElement('span');
@@ -15754,6 +15810,10 @@ function renderDesktopStage(item, mediaSel) {
   const progress = $('#desktopStageProgress');
   const info = $('#desktopStageInfo');
   const clear = $('#desktopStageClear');
+  const kicker = $('#desktopStageKicker');
+  const title = $('#desktopStageTitle');
+  const groupNameField = $('#desktopStageGroupNameField');
+  const position = $('#desktopStagePosition');
   status.classList.remove('working');
   status.hidden = false;
   progress.hidden = true;
@@ -15767,7 +15827,11 @@ function renderDesktopStage(item, mediaSel) {
     info.dataset.itemId = '';
     info.dataset.media = '';
     setDesktopStageMedia();
-    $('#desktopStageTitle').textContent = 'Ready to create';
+    kicker.textContent = 'Generation';
+    title.hidden = false;
+    title.textContent = 'Ready to create';
+    groupNameField.hidden = true;
+    position.hidden = true;
     status.textContent = 'Ready';
     $('#desktopStagePrompt').textContent = 'Choose a mode and describe what you want to make.';
     $('#desktopStageModel').textContent = 'Mix Studio';
@@ -15793,17 +15857,25 @@ function renderDesktopStage(item, mediaSel) {
     video: selectedVideo ? '/videos/' + selectedVideo.file : '',
     poster: image,
   });
-  const generationItems = generationGroupItems(item);
-  const angleItems = generationItems.length > 1 ? [] : angleGroupItems(item);
-  const groupItems = generationItems.length > 1 ? generationItems : angleItems;
-  const groupIndex = groupItems.findIndex((entry) => entry.id === item.id);
-  $('#desktopStageTitle').textContent = selectedVideo
-    ? (resolved.selected ? 'Selected video' : 'Latest video')
-    : (generationItems.length > 1
-      ? `${strengthHuntItemLabel(item) || `Generation ${groupIndex + 1}`} · ${groupIndex + 1} of ${groupItems.length}`
-      : (angleItems.length > 1
-        ? `${angleViewLabel(item)} · ${groupIndex + 1} of ${groupItems.length}`
-        : (resolved.selected ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation') : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'))));
+  const galleryGroup = activeGalleryGroup(item);
+  if (galleryGroup) {
+    kicker.textContent = `${galleryGroup.kindLabel} · ${galleryGroup.items.length} results`;
+    title.hidden = true;
+    groupNameField.hidden = false;
+    position.hidden = false;
+    position.textContent = galleryGroup.position;
+    setGalleryGroupNameInput($('#desktopStageGroupName'), item, galleryGroup);
+  } else {
+    kicker.textContent = 'Generation';
+    title.hidden = false;
+    groupNameField.hidden = true;
+    position.hidden = true;
+    title.textContent = selectedVideo
+      ? (resolved.selected ? 'Selected video' : 'Latest video')
+      : (resolved.selected
+        ? (item.mode === 'edit' ? 'Selected edit' : 'Selected generation')
+        : (item.mode === 'edit' ? 'Latest edit' : 'Latest generation'));
+  }
   status.hidden = resolved.selected;
   status.textContent = resolved.selected ? '' : 'Latest output';
   $('#desktopStagePrompt').textContent = item.prompt || item.refinedPrompt || 'Untitled generation';
@@ -15829,6 +15901,10 @@ function renderDesktopStageGenerating(statusText = 'Working…') {
   $('#desktopStageInfo').dataset.media = '';
   $('#desktopStageClear').hidden = true;
   $('#desktopStageStatus').hidden = false;
+  $('#desktopStageKicker').textContent = 'Generation';
+  $('#desktopStageTitle').hidden = false;
+  $('#desktopStageGroupNameField').hidden = true;
+  $('#desktopStagePosition').hidden = true;
   renderDesktopStageActions();
   setDesktopStageMedia();
   $('#desktopStageTitle').textContent = 'Creating new output';
@@ -16290,6 +16366,43 @@ function setGenerationNameInput(item, media = null) {
   input.setAttribute('aria-label', item.name ? `Rename ${item.name}` : `Name ${fallback}`);
 }
 
+function setGalleryGroupNameInput(input, item, group = activeGalleryGroup(item)) {
+  if (!input || !group) return null;
+  const preserveEdit = document.activeElement === input
+    && input.dataset.groupType === group.type
+    && String(input.dataset.groupId || '') === String(group.id);
+  if (preserveEdit) return group;
+  input.value = group.name;
+  input.dataset.itemId = item.id;
+  input.dataset.groupType = group.type;
+  input.dataset.groupId = group.id;
+  input.dataset.initialValue = group.name;
+  input.disabled = false;
+  input.setAttribute('aria-label', group.name ? `Rename group ${group.name}` : 'Name this gallery group');
+  return group;
+}
+
+function setLightboxGroupNameInput(item) {
+  const stack = $('#lbNameStack');
+  const field = $('#lbGroupNameField');
+  const position = $('#lbGroupPosition');
+  const group = activeGalleryGroup(item);
+  stack.classList.toggle('has-group', !!group);
+  field.hidden = !group;
+  if (!group) {
+    position.textContent = '';
+    const input = $('#lbGroupTitle');
+    delete input.dataset.itemId;
+    delete input.dataset.groupType;
+    delete input.dataset.groupId;
+    delete input.dataset.initialValue;
+    return null;
+  }
+  setGalleryGroupNameInput($('#lbGroupTitle'), item, group);
+  position.textContent = `· ${group.position}`;
+  return group;
+}
+
 async function saveGenerationNameInput(input) {
   const item = state.items.find((entry) => entry.id === input.dataset.itemId);
   if (!item) return;
@@ -16343,6 +16456,103 @@ $('#lbTitle').addEventListener('keydown', (event) => {
 });
 $('#lbTitle').addEventListener('blur', (event) => saveGenerationNameInput(event.currentTarget));
 
+let galleryGroupNameSaveSequence = 0;
+function galleryGroupNameEditToken(input) {
+  return [input.dataset.itemId, input.dataset.groupType, input.dataset.groupId, input.dataset.initialValue].join('\u0000');
+}
+
+function applyGalleryGroupName(groupType, groupId, name) {
+  const idKey = groupType === 'angle' ? 'angleGroupId' : 'generationGroupId';
+  const nameKey = groupType === 'angle' ? 'angleGroupName' : 'generationGroupName';
+  state.items.forEach((item) => {
+    if (String(item[idKey] || '') !== String(groupId)) return;
+    if (name) item[nameKey] = name;
+    else delete item[nameKey];
+  });
+  if (state.currentItem && String(state.currentItem[idKey] || '') === String(groupId)) {
+    if (name) state.currentItem[nameKey] = name;
+    else delete state.currentItem[nameKey];
+  }
+}
+
+function syncGalleryGroupNameInputs(groupType, groupId, name, source) {
+  [$('#desktopStageGroupName'), $('#lbGroupTitle')].forEach((input) => {
+    if (!input || input === source || document.activeElement === input) return;
+    if (input.dataset.groupType !== groupType || String(input.dataset.groupId || '') !== String(groupId)) return;
+    input.value = name;
+    input.dataset.initialValue = name;
+  });
+}
+
+async function saveGalleryGroupNameInput(input) {
+  const item = state.items.find((entry) => entry.id === input.dataset.itemId);
+  if (!item) return;
+  const initialValue = String(input.dataset.initialValue || '');
+  const typed = input.value.replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (typed === initialValue) return;
+  const groupType = input.dataset.groupType;
+  const groupId = input.dataset.groupId;
+  const editToken = galleryGroupNameEditToken(input);
+  const saveToken = String(++galleryGroupNameSaveSequence);
+  input.dataset.saveToken = saveToken;
+  input.classList.add('saving');
+  input.setAttribute('aria-busy', 'true');
+  try {
+    const updated = await api('/api/item/' + encodeURIComponent(item.id) + '/group', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: typed, groupType, groupId }),
+    });
+    if (updated.groupType !== groupType || String(updated.groupId) !== String(groupId)) {
+      throw new Error('This gallery group changed before its name could be saved');
+    }
+    const savedName = String(updated.name || '');
+    applyGalleryGroupName(groupType, groupId, savedName);
+    if (galleryGroupNameEditToken(input) === editToken
+      && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed) {
+      input.value = savedName;
+      input.dataset.initialValue = savedName;
+    }
+    syncGalleryGroupNameInputs(groupType, groupId, savedName, input);
+    renderGrid();
+  } catch (error) {
+    if (galleryGroupNameEditToken(input) === editToken
+      && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed) {
+      input.value = initialValue;
+    }
+    toast(error.message, true);
+  } finally {
+    if (input.dataset.saveToken === saveToken) {
+      input.classList.remove('saving');
+      input.removeAttribute('aria-busy');
+      delete input.dataset.saveToken;
+    }
+  }
+}
+
+function wireInlineNameInput(input, save) {
+  input.addEventListener('focus', (event) => {
+    requestAnimationFrame(() => event.target.select());
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.value = event.currentTarget.dataset.initialValue || '';
+      event.currentTarget.blur();
+    }
+  });
+  input.addEventListener('blur', (event) => save(event.currentTarget));
+}
+
+wireInlineNameInput($('#desktopStageGroupName'), saveGalleryGroupNameInput);
+wireInlineNameInput($('#lbGroupTitle'), saveGalleryGroupNameInput);
+
 function librarySearchText(it) {
   const folder = state.folders.find((entry) => entry.id === it.folder);
   const loras = (it.loras || []).map((lora) => lora && lora.name).filter(Boolean);
@@ -16352,6 +16562,8 @@ function librarySearchText(it) {
     return [info.engine, info.motionPrompt, info.refinedMotionPrompt];
   }).filter(Boolean);
   return [
+    it.generationGroupName,
+    it.angleGroupName,
     it.name,
     it.prompt,
     it.refinedPrompt,
@@ -16398,7 +16610,9 @@ function visibleItems() {
     }
   }
   if (state.sortMode === 'old') arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  else if (state.sortMode === 'az') arr.sort((a, b) => (a.name || a.file || a.prompt || '').localeCompare(b.name || b.file || b.prompt || ''));
+  else if (state.sortMode === 'az') arr.sort((a, b) => (
+    a.generationGroupName || a.angleGroupName || a.name || a.file || a.prompt || ''
+  ).localeCompare(b.generationGroupName || b.angleGroupName || b.name || b.file || b.prompt || ''));
   else if (state.sortMode === 'active') arr.sort((a, b) => itemActivity(b) - itemActivity(a));
   else arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return arr;
@@ -16448,6 +16662,48 @@ function generationGroupItems(item) {
   return state.items
     .filter((candidate) => candidate.generationGroupId === item.generationGroupId)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+function activeGalleryGroup(item) {
+  if (!item) return null;
+  const generationItems = generationGroupItems(item);
+  if (generationItems.length > 1) {
+    const index = generationItems.findIndex((candidate) => candidate.id === item.id);
+    const named = generationItems.find((candidate) => String(candidate.generationGroupName || '').trim());
+    const memberLabel = strengthHuntItemLabel(item) || `Generation ${index + 1}`;
+    return {
+      type: 'generation',
+      id: item.generationGroupId,
+      idKey: 'generationGroupId',
+      nameKey: 'generationGroupName',
+      name: String(named?.generationGroupName || '').trim(),
+      items: generationItems,
+      index,
+      kindLabel: item.strengthHunt ? 'Strength Hunt' : 'Generation group',
+      memberLabel,
+      position: strengthHuntItemLabel(item)
+        ? `${memberLabel} · ${index + 1} of ${generationItems.length}`
+        : `Generation ${index + 1} of ${generationItems.length}`,
+    };
+  }
+  const angleItems = angleGroupItems(item);
+  if (angleItems.length > 1) {
+    const index = angleItems.findIndex((candidate) => candidate.id === item.id);
+    const named = angleItems.find((candidate) => String(candidate.angleGroupName || '').trim());
+    return {
+      type: 'angle',
+      id: item.angleGroupId,
+      idKey: 'angleGroupId',
+      nameKey: 'angleGroupName',
+      name: String(named?.angleGroupName || '').trim(),
+      items: angleItems,
+      index,
+      kindLabel: 'Camera group',
+      memberLabel: angleViewLabel(item),
+      position: `${angleViewLabel(item)} · ${index + 1} of ${angleItems.length}`,
+    };
+  }
+  return null;
 }
 
 function strengthHuntStrengthLabel(value) {
@@ -17318,6 +17574,8 @@ function renderGrid() {
   const showDates = state.sortMode !== 'az';
   for (const entry of entries) {
     const it = entry.item;
+    const galleryGroup = activeGalleryGroup(it);
+    const galleryGroupName = galleryGroup?.name || '';
     const dateKey = galleryDateKey(it.createdAt);
     if (showDates && dateKey !== previousDate) {
       previousDate = dateKey;
@@ -17337,6 +17595,7 @@ function renderGrid() {
     card.className = 'card'
       + (entry.angleGroupId ? ' angle-group' : '')
       + (entry.generationGroupId ? ' generation-group' : '')
+      + (galleryGroupName ? ' has-group-name' : '')
       + (hasAttachedComposite ? ' has-attached-composite' : '');
     const latestVideo = latestGalleryVideo(it);
     if (latestVideo && state.mediaPreferences.videoPreviews) {
@@ -17412,6 +17671,15 @@ function renderGrid() {
       badge.textContent = String(groupCount);
       badge.title = `${groupCount} generations grouped`;
       card.appendChild(badge);
+    }
+    if (galleryGroupName) {
+      const groupName = document.createElement('span');
+      groupName.className = 'gallery-group-name';
+      groupName.textContent = galleryGroupName;
+      groupName.title = galleryGroupName;
+      card.appendChild(groupName);
+      card.setAttribute('aria-label', `${galleryGroupName}, ${galleryGroup.items.length} results`);
+      card.title = `${galleryGroupName} · ${galleryGroup.items.length} results`;
     }
     if (entry.items.some(itemHasLike)) {
       const badge = document.createElement('span');
@@ -19124,6 +19392,7 @@ function openLightbox(id, mediaSel) {
     $('#lbImg').src = '/images/' + (selComposite ? selComposite.file : (it.upscaled || it.file));
   }
   setGenerationNameInput(it, selVideo || selComposite || null);
+  const activeGroup = setLightboxGroupNameInput(it);
   let focusedPosition = generationItems.length > 1
     ? `Generation ${generationIndex + 1} of ${generationItems.length}`
     : (angleItems.length > 1
@@ -19132,6 +19401,7 @@ function openLightbox(id, mediaSel) {
   if (generationItems.length > 1 && strengthHuntItemLabel(it)) {
     focusedPosition = `${strengthHuntItemLabel(it)} · ${generationIndex + 1} of ${generationItems.length}`;
   }
+  if (activeGroup?.name) focusedPosition = `${activeGroup.name} · ${activeGroup.position}`;
   $('#lbTitle').title = focusedPosition;
   $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
 
@@ -19159,7 +19429,9 @@ function openLightbox(id, mediaSel) {
       button.type = 'button';
       button.className = 'chip angle-group-chip lb-group-thumb-chip' + (angleItem.id === it.id ? ' active' : '');
       button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index);
-      button.title = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
+      const groupName = activeGalleryGroup(angleItem)?.name || '';
+      const angleLabel = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
+      button.title = groupName ? `${groupName} · ${angleLabel}` : angleLabel;
       button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openFocusedGalleryItem(angleItem, 'image'));
       angleOptions.appendChild(button);
@@ -19176,7 +19448,9 @@ function openLightbox(id, mediaSel) {
       const huntLabel = strengthHuntItemLabel(groupItem);
       if (huntLabel) button.classList.add('strength-hunt-chip');
       button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index);
-      button.title = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
+      const groupName = activeGalleryGroup(groupItem)?.name || '';
+      const generationLabel = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
+      button.title = groupName ? `${groupName} · ${generationLabel}` : generationLabel;
       button.setAttribute('aria-label', button.title);
       button.addEventListener('click', () => openFocusedGalleryItem(groupItem, 'image'));
       generationOptions.appendChild(button);
@@ -20206,9 +20480,13 @@ async function reuseItem(it, useEnhanced) {
 
   state.prompts[targetView] = restoredPrompt;
   state.enhance = useEnhanced ? false : !!it.enhance;
-  state.customDims = true;
-  state.width = it.width || 1024;
-  state.height = it.height || 1024;
+  if (restoringEdit) {
+    state.customDims = true;
+    state.width = it.width || 1024;
+    state.height = it.height || 1024;
+  } else {
+    restoreCreateResolution(it.width, it.height);
+  }
   state.loras = restoringEdit ? state.loras : restoredLoraList(it.loras);
   state.regions = restoringEdit ? state.regions : restoredRegions;
   if (!restoringEdit) {

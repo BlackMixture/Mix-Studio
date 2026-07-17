@@ -181,6 +181,18 @@ test('Use settings rehydrates every saved edit input instead of asking for manua
   assert.match(server, /batch: job\.params\.batch/);
 });
 
+test('Use settings restores saved Create presets and desktop resolution choices stay open', () => {
+  assert.match(app, /function resolutionPresetForDimensions\(width, height\)/);
+  assert.match(app, /best\.widthError <= 32 && best\.heightError <= 32/);
+  assert.match(app, /function restoreCreateResolution\(width, height\)[\s\S]*state\.aspect = preset\.aspect;[\s\S]*state\.mp = preset\.megapixels;[\s\S]*state\.customDims = false/);
+  assert.match(app, /async function reuseItem\(it, useEnhanced\)[\s\S]*restoreCreateResolution\(it\.width, it\.height\)/);
+  assert.match(app, /`\$\{state\.aspect\} · \$\{createSizeLabel\(\)\} · \$\{state\.width\} × \$\{state\.height\}`/);
+  assert.match(app, /desktopResolutionPickerQuery = window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/);
+  assert.match(app, /#aspectRow'\)\.addEventListener\('click',[\s\S]*!desktopResolutionPickerQuery\.matches[\s\S]*collapseRes\(false\)/);
+  assert.match(app, /#sizeSeg'\)\.addEventListener\('click',[\s\S]*!desktopResolutionPickerQuery\.matches[\s\S]*collapseRes\(false\)/);
+  assert.match(app, /b\.setAttribute\('aria-pressed', String\(selected\)\)/);
+});
+
 test('create and edit image workflows can queue an optional SeedVR2 finish pass', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="editUpscaleToggle"[^>]*aria-pressed="false"/);

@@ -164,6 +164,7 @@ const {
 } = require('./lib/deleted-media');
 const { applyProfileOutputPrefix, profileOutputFolder } = require('./lib/output-prefix');
 const { expandGalleryGroupSelection } = require('./lib/gallery-grouping');
+const { updateGalleryGroupName } = require('./lib/gallery-group-names');
 const {
   buildStrengthHuntPlan,
   buildStrengthHuntSheet,
@@ -6756,7 +6757,10 @@ async function handleApi(req, res, url) {
       ? expandGalleryGroupSelection(visible, ids)
       : requested;
     const generationGroupId = uid();
-    items.forEach((item) => { item.generationGroupId = generationGroupId; });
+    items.forEach((item) => {
+      item.generationGroupId = generationGroupId;
+      delete item.generationGroupName;
+    });
     saveDb();
     return json(res, 200, { generationGroupId, count: items.length, items });
   }
@@ -6776,6 +6780,7 @@ async function handleApi(req, res, url) {
     for (const item of db.items) {
       if (item.profileId === req.profile.id && groupIds.has(item.generationGroupId)) {
         delete item.generationGroupId;
+        delete item.generationGroupName;
         changed += 1;
       }
     }
@@ -7037,7 +7042,34 @@ async function handleApi(req, res, url) {
   }
 
   const itemRoute = route.match(/^\/api\/item\/([\w]+)(?:\/(move))?$/);
+  const itemGroupRoute = route.match(/^\/api\/item\/([\w]+)\/group$/);
   const likeRoute = route.match(/^\/api\/item\/([\w]+)\/like$/);
+  if (itemGroupRoute && req.method === 'PATCH') {
+    const body = await readJsonBody(req);
+    if (!Object.prototype.hasOwnProperty.call(body, 'name')) {
+      return json(res, 400, { error: 'Group name is required' });
+    }
+    const unlocked = isPrivateUnlocked(req);
+    const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
+    const anchor = visible.find((item) => item.id === itemGroupRoute[1]);
+    if (!anchor) return json(res, 404, { error: 'Generation group not found' });
+    const result = updateGalleryGroupName(db.items, {
+      anchor,
+      profileId: req.profile.id,
+      groupType: body.groupType,
+      groupId: body.groupId,
+      name: body.name,
+      visibleIds: new Set(visible.map((item) => String(item.id))),
+    });
+    if (!result.ok) {
+      if (result.reason === 'locked') return json(res, 401, { error: 'Unlock the gallery before renaming this group' });
+      return json(res, 409, { error: result.reason === 'stale'
+        ? 'This gallery group changed before its name could be saved'
+        : 'This generation is no longer part of a group' });
+    }
+    saveDb();
+    return json(res, 200, result);
+  }
   if (likeRoute && req.method === 'POST') {
     const item = db.items.find((entry) => entry.id === likeRoute[1] && entry.profileId === req.profile.id);
     if (!item) return json(res, 404, { error: 'Not found' });
