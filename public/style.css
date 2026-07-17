@@ -5274,8 +5274,12 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   transition: transform 110ms ease-out;
 }
 #lbImg.lightbox-zoomed {
-  transform: scale(var(--lightbox-zoom-scale, 1));
+  cursor: grab;
+  transform: translate3d(var(--lightbox-pan-x, 0px), var(--lightbox-pan-y, 0px), 0) scale(var(--lightbox-zoom-scale, 1));
 }
+.lightbox-img-wrap.is-image-panning #lbImg { cursor: grabbing; }
+.lightbox-img-wrap.is-image-panning #lbImg,
+.lightbox-img-wrap.is-wheel-panning #lbImg { transition: none; }
 #lbImg:focus-visible {
   outline: 2px solid rgba(var(--mode-rgb), .78);
   outline-offset: -4px;

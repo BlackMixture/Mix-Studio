@@ -74,25 +74,38 @@ test('focused gallery arrow keys traverse every visible generation without closi
 });
 
 test('focused gallery images wheel zoom, click back to Create, and reset across navigation', () => {
-  assert.match(html, /id="lbImg"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-label="Return to Create view\. Image zoom 100 percent"[^>]*aria-keyshortcuts="Enter Space \+ - 0"[^>]*title="Scroll to zoom · click to return to Create"[^>]*draggable="false"/);
+  assert.match(html, /id="lbImg"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-label="Return to Create view\. Image zoom 100 percent"[^>]*aria-keyshortcuts="Enter Space \+ - 0 Shift\+ArrowLeft Shift\+ArrowRight Shift\+ArrowUp Shift\+ArrowDown"[^>]*title="Scroll or pinch to zoom · drag or two-finger scroll to pan · click to return to Create"[^>]*draggable="false"/);
   assert.doesNotMatch(html, /id="lbImg"[^>]*aria-pressed/);
-  assert.match(app, /const lightboxZoomState = \{ active: false, scale: 1, x: 50, y: 50 \}/);
+  assert.match(app, /const lightboxZoomState = \{ active: false, scale: 1, x: 50, y: 50, panX: 0, panY: 0 \}/);
   assert.match(app, /const LIGHTBOX_ZOOM_MIN = 1;[\s\S]*const LIGHTBOX_ZOOM_MAX = 4;/);
+  assert.match(app, /function lightboxContainedContent\(image\)/);
   assert.match(app, /function lightboxZoomOrigin\(image, clientX, clientY\)/);
+  assert.match(app, /function lightboxPanBounds\(image = \$\('#lbImg'\)\)/);
+  assert.match(app, /function setLightboxPan\(x, y\)/);
+  assert.match(app, /function panLightboxBy\(deltaX, deltaY\)/);
   assert.match(app, /function setLightboxZoom\(scale, clientX, clientY\)/);
   assert.match(app, /function adjustLightboxZoom\(deltaY, clientX, clientY, deltaMode = 0\)/);
-  assert.match(app, /function handleLightboxZoomWheel\(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*adjustLightboxZoom\(event\.deltaY, event\.clientX, event\.clientY, event\.deltaMode\)/);
+  assert.match(app, /function lightboxWheelMode\(event\)[\s\S]*trackpadLike[\s\S]*'pan' : 'zoom'/);
+  assert.match(app, /function handleLightboxZoomWheel\(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*panLightboxBy\(-horizontal, -vertical\)[\s\S]*adjustLightboxZoom\(event\.deltaY, event\.clientX, event\.clientY, event\.deltaMode\)/);
   assert.match(app, /\$\('#lbImg'\)\.addEventListener\('wheel', handleLightboxZoomWheel, \{ passive: false \}\)/);
+  assert.match(app, /function handleLightboxPanPointerDown\(event\)[\s\S]*setPointerCapture\(event\.pointerId\)/);
+  assert.match(app, /function handleLightboxPanPointerMove\(event\)[\s\S]*Math\.hypot\(deltaX, deltaY\) < 5[\s\S]*setLightboxPan\(pan\.panX \+ deltaX, pan\.panY \+ deltaY\)/);
+  assert.match(app, /function finishLightboxPan\(event, cancelled = false\)/);
+  assert.match(app, /if \(lightboxPanSuppressClick\)[\s\S]*event\?\.preventDefault\(\)[\s\S]*return;/);
+  assert.match(app, /\$\('#lbImg'\)\.addEventListener\('pointerdown', handleLightboxPanPointerDown\)/);
+  assert.match(app, /\$\('#lbImg'\)\.addEventListener\('auxclick',[\s\S]*event\.button !== 1[\s\S]*event\.preventDefault\(\)/);
   assert.match(app, /tap\.timer = setTimeout\([\s\S]*closeLightbox\(\);[\s\S]*310\)/);
   assert.match(app, /if \(lightboxTap\?\.timer\) clearTimeout\(lightboxTap\.timer\)/);
   assert.ok((app.match(/clearLightboxTap\(\);\n  resetLightboxZoom\(\);/g) || []).length >= 2);
   assert.match(app, /if \(lightboxZoomState\.active && e\.target === \$\('#lbImg'\)\) return/);
   assert.match(app, /\$\('#lbImg'\)\.addEventListener\('keydown',[\s\S]*\['Enter', ' '\]\.includes\(event\.key\)[\s\S]*closeLightbox\(\)[\s\S]*\['\+', '=', '-', '_', '0'\]\.includes\(event\.key\)[\s\S]*adjustLightboxZoom/);
   assert.match(css, /#lbImg \{[\s\S]*cursor: pointer;[\s\S]*transform-origin: var\(--lightbox-zoom-x, 50%\) var\(--lightbox-zoom-y, 50%\)/);
-  assert.match(css, /#lbImg\.lightbox-zoomed \{[\s\S]*transform: scale\(var\(--lightbox-zoom-scale, 1\)\)/);
+  assert.match(css, /#lbImg\.lightbox-zoomed \{[\s\S]*cursor: grab;[\s\S]*translate3d\(var\(--lightbox-pan-x, 0px\), var\(--lightbox-pan-y, 0px\), 0\) scale\(var\(--lightbox-zoom-scale, 1\)\)/);
+  assert.match(css, /\.lightbox-img-wrap\.is-image-panning #lbImg \{ cursor: grabbing; \}/);
+  assert.match(css, /\.lightbox-img-wrap\.is-wheel-panning #lbImg \{ transition: none; \}/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*lightbox-img-wrap:not\(\.is-swiping\):not\(\.is-settling\) #lbImg/);
 
-  const start = app.indexOf('function lightboxZoomOrigin(image, clientX, clientY)');
+  const start = app.indexOf('function lightboxContainedContent(image)');
   const end = app.indexOf('function renderLightboxZoom()', start);
   const originSource = app.slice(start, end);
   const resolveOrigin = new Function(`${originSource}\nreturn lightboxZoomOrigin;`)();
@@ -109,21 +122,41 @@ test('focused gallery images wheel zoom, click back to Create, and reset across 
   const style = { setProperty() {} };
   const zoomImage = {
     hidden: false,
+    clientWidth: 400,
     clientHeight: 600,
+    naturalWidth: 400,
+    naturalHeight: 600,
     classList,
     style,
     closest: () => wrap,
     setAttribute() {},
-    getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 200 }),
+    getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 600 }),
   };
-  const zoomApi = new Function('$', `${zoomSource}\nreturn { lightboxZoomState, setLightboxZoom, adjustLightboxZoom };`)(() => zoomImage);
-  zoomApi.adjustLightboxZoom(-100, 200, 150);
+  const zoomApi = new Function('$', `${zoomSource}\nreturn { lightboxZoomState, setLightboxZoom, adjustLightboxZoom, setLightboxPan, lightboxPanBounds, lightboxWheelMode };`)(() => zoomImage);
+  zoomApi.adjustLightboxZoom(-100, 200, 350);
   assert.ok(zoomApi.lightboxZoomState.scale > 1);
   assert.deepEqual({ x: zoomApi.lightboxZoomState.x, y: zoomApi.lightboxZoomState.y }, { x: 25, y: 50 });
   zoomApi.setLightboxZoom(20);
   assert.equal(zoomApi.lightboxZoomState.scale, 4);
+  zoomApi.setLightboxZoom(2);
+  zoomApi.setLightboxPan(1000, -1000);
+  assert.deepEqual(
+    { panX: zoomApi.lightboxZoomState.panX, panY: zoomApi.lightboxZoomState.panY },
+    { panX: 100, panY: -300 },
+  );
+  zoomImage.naturalWidth = 100;
+  zoomImage.naturalHeight = 600;
+  zoomApi.setLightboxZoom(1);
+  zoomApi.setLightboxZoom(2, 300, 350);
+  zoomApi.setLightboxPan(1000, 1000);
+  assert.equal(zoomApi.lightboxZoomState.panX, 0);
+  assert.equal(zoomApi.lightboxWheelMode({ ctrlKey: false, shiftKey: false, deltaMode: 0, deltaX: 3, deltaY: 4 }), 'pan');
+  assert.equal(zoomApi.lightboxWheelMode({ ctrlKey: true, shiftKey: false, deltaMode: 0, deltaX: 0, deltaY: -4 }), 'zoom');
   zoomApi.setLightboxZoom(-20);
-  assert.equal(zoomApi.lightboxZoomState.scale, 1);
+  assert.deepEqual(
+    { scale: zoomApi.lightboxZoomState.scale, panX: zoomApi.lightboxZoomState.panX, panY: zoomApi.lightboxZoomState.panY },
+    { scale: 1, panX: 0, panY: 0 },
+  );
 });
 
 test('Escape closes only the focused gallery layer and the close button unwinds history', () => {

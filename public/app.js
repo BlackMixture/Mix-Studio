@@ -17389,23 +17389,50 @@ let lightboxVideoTap = null;
 let lightboxVideoPointer = null;
 let suppressLightboxVideoClick = false;
 let lightboxSwipeSuppressTap = false;
-const lightboxZoomState = { active: false, scale: 1, x: 50, y: 50 };
+const lightboxZoomState = { active: false, scale: 1, x: 50, y: 50, panX: 0, panY: 0 };
 const LIGHTBOX_ZOOM_MIN = 1;
 const LIGHTBOX_ZOOM_MAX = 4;
+let lightboxPanPointer = null;
+let lightboxPanSuppressClick = false;
+let lightboxWheelGesture = null;
+let lightboxWheelPanTimer = 0;
 let likeAnimationDataPromise = null;
 let likeAnimationRuntimePromise = null;
 
+function lightboxContainedContent(image) {
+  const rect = image.getBoundingClientRect();
+  const width = Math.max(0, image.clientWidth || rect.width || 0);
+  const height = Math.max(0, image.clientHeight || rect.height || 0);
+  const naturalWidth = Number(image.naturalWidth) || 0;
+  const naturalHeight = Number(image.naturalHeight) || 0;
+  if (!width || !height || !naturalWidth || !naturalHeight) {
+    return { width, height, left: 0, top: 0, contentWidth: width, contentHeight: height };
+  }
+  const fit = Math.min(width / naturalWidth, height / naturalHeight);
+  const contentWidth = naturalWidth * fit;
+  const contentHeight = naturalHeight * fit;
+  return {
+    width,
+    height,
+    left: (width - contentWidth) / 2,
+    top: (height - contentHeight) / 2,
+    contentWidth,
+    contentHeight,
+  };
+}
+
 function lightboxZoomOrigin(image, clientX, clientY) {
   const rect = image.getBoundingClientRect();
-  const x = Number.isFinite(clientX) && rect.width
-    ? ((clientX - rect.left) / rect.width) * 100
-    : 50;
-  const y = Number.isFinite(clientY) && rect.height
-    ? ((clientY - rect.top) / rect.height) * 100
-    : 50;
+  const content = lightboxContainedContent(image);
+  const localX = Number.isFinite(clientX)
+    ? Math.max(content.left, Math.min(content.left + content.contentWidth, clientX - rect.left))
+    : content.width / 2;
+  const localY = Number.isFinite(clientY)
+    ? Math.max(content.top, Math.min(content.top + content.contentHeight, clientY - rect.top))
+    : content.height / 2;
   return {
-    x: Math.max(0, Math.min(100, x)),
-    y: Math.max(0, Math.min(100, y)),
+    x: content.width ? (localX / content.width) * 100 : 50,
+    y: content.height ? (localY / content.height) * 100 : 50,
   };
 }
 
@@ -17417,15 +17444,76 @@ function renderLightboxZoom() {
   image.style.setProperty('--lightbox-zoom-x', `${lightboxZoomState.x}%`);
   image.style.setProperty('--lightbox-zoom-y', `${lightboxZoomState.y}%`);
   image.style.setProperty('--lightbox-zoom-scale', String(lightboxZoomState.scale));
-  image.setAttribute('aria-label', `Return to Create view. Image zoom ${Math.round(lightboxZoomState.scale * 100)} percent`);
+  image.style.setProperty('--lightbox-pan-x', `${lightboxZoomState.panX}px`);
+  image.style.setProperty('--lightbox-pan-y', `${lightboxZoomState.panY}px`);
+  image.setAttribute('aria-label', `Return to Create view. Image zoom ${Math.round(lightboxZoomState.scale * 100)} percent${lightboxZoomState.active ? '. Drag to pan' : ''}`);
+}
+
+function cancelLightboxPan() {
+  const image = $('#lbImg');
+  const pointer = lightboxPanPointer;
+  lightboxPanPointer = null;
+  if (pointer) {
+    try {
+      if (image.hasPointerCapture(pointer.id)) image.releasePointerCapture(pointer.id);
+    } catch { /* pointer may already be released */ }
+  }
+  lightboxPanSuppressClick = false;
+  lightboxWheelGesture = null;
+  clearTimeout(lightboxWheelPanTimer);
+  image.closest('.lightbox-img-wrap').classList.remove('is-image-panning', 'is-wheel-panning');
 }
 
 function resetLightboxZoom() {
+  cancelLightboxPan();
   lightboxZoomState.active = false;
   lightboxZoomState.scale = 1;
   lightboxZoomState.x = 50;
   lightboxZoomState.y = 50;
+  lightboxZoomState.panX = 0;
+  lightboxZoomState.panY = 0;
   renderLightboxZoom();
+}
+
+function lightboxPanBounds(image = $('#lbImg')) {
+  const content = lightboxContainedContent(image);
+  const scale = lightboxZoomState.scale;
+  const originX = (lightboxZoomState.x / 100) * content.width;
+  const originY = (lightboxZoomState.y / 100) * content.height;
+  const left = originX + (content.left - originX) * scale;
+  const right = originX + (content.left + content.contentWidth - originX) * scale;
+  const top = originY + (content.top - originY) * scale;
+  const bottom = originY + (content.top + content.contentHeight - originY) * scale;
+  const horizontal = content.contentWidth * scale <= content.width
+    ? [content.width / 2 - (left + right) / 2, content.width / 2 - (left + right) / 2]
+    : [content.width - right, -left];
+  const vertical = content.contentHeight * scale <= content.height
+    ? [content.height / 2 - (top + bottom) / 2, content.height / 2 - (top + bottom) / 2]
+    : [content.height - bottom, -top];
+  return {
+    minX: horizontal[0],
+    maxX: horizontal[1],
+    minY: vertical[0],
+    maxY: vertical[1],
+  };
+}
+
+function setLightboxPan(x, y) {
+  if (!lightboxZoomState.active) {
+    lightboxZoomState.panX = 0;
+    lightboxZoomState.panY = 0;
+    renderLightboxZoom();
+    return false;
+  }
+  const bounds = lightboxPanBounds();
+  lightboxZoomState.panX = Math.round(Math.max(bounds.minX, Math.min(bounds.maxX, Number(x) || 0)) * 100) / 100;
+  lightboxZoomState.panY = Math.round(Math.max(bounds.minY, Math.min(bounds.maxY, Number(y) || 0)) * 100) / 100;
+  renderLightboxZoom();
+  return true;
+}
+
+function panLightboxBy(deltaX, deltaY) {
+  return setLightboxPan(lightboxZoomState.panX + (Number(deltaX) || 0), lightboxZoomState.panY + (Number(deltaY) || 0));
 }
 
 function setLightboxZoom(scale, clientX, clientY) {
@@ -17438,12 +17526,20 @@ function setLightboxZoom(scale, clientX, clientY) {
     const origin = lightboxZoomOrigin(image, clientX, clientY);
     lightboxZoomState.x = origin.x;
     lightboxZoomState.y = origin.y;
+    lightboxZoomState.panX = 0;
+    lightboxZoomState.panY = 0;
   }
   lightboxZoomState.scale = snapped;
   lightboxZoomState.active = snapped > 1;
   if (!lightboxZoomState.active) {
     lightboxZoomState.x = 50;
     lightboxZoomState.y = 50;
+    lightboxZoomState.panX = 0;
+    lightboxZoomState.panY = 0;
+  } else {
+    const bounds = lightboxPanBounds(image);
+    lightboxZoomState.panX = Math.max(bounds.minX, Math.min(bounds.maxX, lightboxZoomState.panX));
+    lightboxZoomState.panY = Math.max(bounds.minY, Math.min(bounds.maxY, lightboxZoomState.panY));
   }
   renderLightboxZoom();
   return lightboxZoomState.active;
@@ -17457,18 +17553,106 @@ function adjustLightboxZoom(deltaY, clientX, clientY, deltaMode = 0) {
   return setLightboxZoom(lightboxZoomState.scale * Math.exp(-bounded * 0.002), clientX, clientY);
 }
 
+function lightboxWheelMode(event) {
+  const now = performance.now();
+  if (event.ctrlKey || (lightboxZoomState.active && event.shiftKey)) {
+    const mode = event.ctrlKey ? 'zoom' : 'pan';
+    lightboxWheelGesture = { mode, at: now };
+    return mode;
+  }
+  if (lightboxWheelGesture && now - lightboxWheelGesture.at < 180) {
+    lightboxWheelGesture.at = now;
+    return lightboxWheelGesture.mode;
+  }
+  const deltaX = Math.abs(Number(event.deltaX) || 0);
+  const deltaY = Math.abs(Number(event.deltaY) || 0);
+  const trackpadLike = event.deltaMode === 0 && Math.max(deltaX, deltaY) < 50;
+  const mode = lightboxZoomState.active && (deltaX > 0 || trackpadLike) ? 'pan' : 'zoom';
+  lightboxWheelGesture = { mode, at: now };
+  return mode;
+}
+
 function handleLightboxZoomWheel(event) {
   const image = $('#lbImg');
   const wrap = image.closest('.lightbox-img-wrap');
-  if (event.ctrlKey
-    || image.hidden
+  if (image.hidden
     || !$('#lightbox').classList.contains('show')
     || wrap.classList.contains('reference-preview-active')
     || wrap.classList.contains('is-swiping')
     || wrap.classList.contains('is-settling')) return;
+  const mode = lightboxWheelMode(event);
+  if (mode === 'zoom' && !event.deltaY) return;
   event.preventDefault();
   clearLightboxTap();
+  if (mode === 'pan') {
+    const horizontal = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
+    const vertical = event.shiftKey ? 0 : event.deltaY;
+    panLightboxBy(-horizontal, -vertical);
+    wrap.classList.add('is-wheel-panning');
+    clearTimeout(lightboxWheelPanTimer);
+    lightboxWheelPanTimer = setTimeout(() => wrap.classList.remove('is-wheel-panning'), 120);
+    return;
+  }
   adjustLightboxZoom(event.deltaY, event.clientX, event.clientY, event.deltaMode);
+}
+
+function handleLightboxPanPointerDown(event) {
+  const image = $('#lbImg');
+  const wrap = image.closest('.lightbox-img-wrap');
+  if (!lightboxZoomState.active
+    || event.pointerType === 'touch'
+    || !event.isPrimary
+    || ![0, 1].includes(event.button)
+    || image.hidden
+    || wrap.classList.contains('reference-preview-active')
+    || wrap.classList.contains('is-swiping')
+    || wrap.classList.contains('is-settling')) return;
+  lightboxPanSuppressClick = false;
+  lightboxWheelGesture = null;
+  lightboxPanPointer = {
+    id: event.pointerId,
+    button: event.button,
+    startX: event.clientX,
+    startY: event.clientY,
+    panX: lightboxZoomState.panX,
+    panY: lightboxZoomState.panY,
+    moved: false,
+  };
+  try { image.setPointerCapture(event.pointerId); } catch { /* pointer may already be gone */ }
+  if (event.button === 1) {
+    clearLightboxTap();
+    event.preventDefault();
+  }
+}
+
+function handleLightboxPanPointerMove(event) {
+  const pan = lightboxPanPointer;
+  if (!pan || pan.id !== event.pointerId) return;
+  const deltaX = event.clientX - pan.startX;
+  const deltaY = event.clientY - pan.startY;
+  if (!pan.moved && Math.hypot(deltaX, deltaY) < 5) return;
+  if (!pan.moved) {
+    pan.moved = true;
+    clearLightboxTap();
+    $('#lbImg').closest('.lightbox-img-wrap').classList.add('is-image-panning');
+  }
+  event.preventDefault();
+  setLightboxPan(pan.panX + deltaX, pan.panY + deltaY);
+}
+
+function finishLightboxPan(event, cancelled = false) {
+  const pan = lightboxPanPointer;
+  if (!pan || (event?.pointerId != null && pan.id !== event.pointerId)) return;
+  lightboxPanPointer = null;
+  $('#lbImg').closest('.lightbox-img-wrap').classList.remove('is-image-panning');
+  if (pan.moved && !cancelled) {
+    lightboxPanSuppressClick = pan.button === 0;
+    if (pan.button === 1) event?.preventDefault();
+    if (lightboxPanSuppressClick) setTimeout(() => { lightboxPanSuppressClick = false; }, 250);
+  }
+  try {
+    if ($('#lbImg').hasPointerCapture(pan.id)) $('#lbImg').releasePointerCapture(pan.id);
+  } catch { /* pointer may already be released */ }
 }
 
 function clearLightboxTap() {
@@ -17772,6 +17956,11 @@ function handleGalleryTap(item, card) {
 }
 
 function handleLightboxTap(event) {
+  if (lightboxPanSuppressClick) {
+    lightboxPanSuppressClick = false;
+    event?.preventDefault();
+    return;
+  }
   if (lightboxSwipeSuppressTap) return;
   const item = state.currentItem;
   if (!item) return;
@@ -18974,6 +19163,23 @@ $('#likesFilter').addEventListener('click', () => {
 });
 $('#lbImg').addEventListener('click', handleLightboxTap);
 $('#lbImg').addEventListener('wheel', handleLightboxZoomWheel, { passive: false });
+$('#lbImg').addEventListener('load', () => {
+  if (lightboxZoomState.active) setLightboxPan(lightboxZoomState.panX, lightboxZoomState.panY);
+});
+$('#lbImg').addEventListener('pointerdown', handleLightboxPanPointerDown);
+$('#lbImg').addEventListener('pointermove', handleLightboxPanPointerMove);
+$('#lbImg').addEventListener('pointerup', (event) => finishLightboxPan(event));
+$('#lbImg').addEventListener('pointercancel', (event) => finishLightboxPan(event, true));
+$('#lbImg').addEventListener('lostpointercapture', (event) => finishLightboxPan(event, true));
+window.addEventListener('blur', () => finishLightboxPan(null, true));
+$('#lbImg').addEventListener('mousedown', (event) => {
+  if (event.button === 1 && lightboxZoomState.active) event.preventDefault();
+});
+$('#lbImg').addEventListener('auxclick', (event) => {
+  if (event.button !== 1) return;
+  lightboxPanSuppressClick = false;
+  event.preventDefault();
+});
 $('#lbImg').addEventListener('keydown', (event) => {
   if (['Enter', ' '].includes(event.key)) {
     event.preventDefault();
@@ -18986,7 +19192,20 @@ $('#lbImg').addEventListener('keydown', (event) => {
     clearLightboxTap();
     if (event.key === '0') resetLightboxZoom();
     else adjustLightboxZoom(['+', '='].includes(event.key) ? -120 : 120);
+    return;
   }
+  if (lightboxZoomState.active && event.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+    event.preventDefault();
+    clearLightboxTap();
+    const step = 48;
+    panLightboxBy(
+      event.key === 'ArrowLeft' ? step : (event.key === 'ArrowRight' ? -step : 0),
+      event.key === 'ArrowUp' ? step : (event.key === 'ArrowDown' ? -step : 0),
+    );
+  }
+});
+window.addEventListener('resize', () => {
+  if (lightboxZoomState.active) setLightboxPan(lightboxZoomState.panX, lightboxZoomState.panY);
 });
 $('#lbVideo').addEventListener('pointerdown', handleLightboxVideoPointerDown);
 $('#lbVideo').addEventListener('pointerup', handleLightboxVideoPointerUp);
