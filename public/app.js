@@ -2232,6 +2232,34 @@ wideRegionResolutionQuery.addEventListener('change', () => {
   updateVideoPanels();
 });
 
+let desktopLibraryCollapseTimer = null;
+function syncDesktopLibraryExpansion(expanded, focusedResult) {
+  const body = document.body;
+  const wasExpanded = body.classList.contains('desktop-library-expanded');
+  const isCollapsing = body.classList.contains('desktop-library-collapsing');
+  if (expanded) {
+    clearTimeout(desktopLibraryCollapseTimer);
+    desktopLibraryCollapseTimer = null;
+    body.classList.remove('desktop-library-collapsing');
+    body.classList.add('desktop-library-expanded');
+    return;
+  }
+  if (wasExpanded && desktopWorkspaceActive() && !focusedResult) {
+    if (isCollapsing) return;
+    body.classList.add('desktop-library-collapsing');
+    const finish = () => {
+      desktopLibraryCollapseTimer = null;
+      body.classList.remove('desktop-library-expanded', 'desktop-library-collapsing');
+    };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
+    else desktopLibraryCollapseTimer = setTimeout(finish, 360);
+    return;
+  }
+  clearTimeout(desktopLibraryCollapseTimer);
+  desktopLibraryCollapseTimer = null;
+  body.classList.remove('desktop-library-expanded', 'desktop-library-collapsing');
+}
+
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
@@ -2258,7 +2286,7 @@ function syncNavigation() {
     if (active) $('#createTabPill').style.transform = `translateX(${index * 100}%)`;
   });
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
-  document.body.classList.toggle('desktop-library-expanded', libraryExpanded);
+  syncDesktopLibraryExpansion(libraryExpanded, focusedResult);
   renderAppDrawerNavigation();
   requestIconTooltipScan();
 }
@@ -2863,8 +2891,10 @@ const CLIPBOARD_IMAGE_TYPES_BY_EXTENSION = Object.freeze({
   '.tiff': 'image/tiff',
 });
 const clipboardImageTypeHints = new WeakMap();
+const clipboardDestinationCommits = new Map();
 let clipboardImagePasteQueue = Promise.resolve();
 let clipboardImagePastePending = 0;
+let clipboardImagePasteSequence = 0;
 
 function clipboardImageType(file) {
   const type = String(file?.type || '').toLowerCase();
@@ -2905,8 +2935,12 @@ function clipboardHasImageLikeData(clipboardData) {
     && String(item.type || '').toLowerCase().startsWith('image/'))) return true;
   if ([...(clipboardData.files || [])].some((file) => String(file?.type || '').toLowerCase().startsWith('image/')
     || /\.(?:svg|heic|heif|avif|ico|jxl)$/i.test(String(file?.name || '')))) return true;
-  try { return /<img\b/i.test(String(clipboardData.getData?.('text/html') || '')); }
-  catch { return false; }
+  try {
+    const html = String(clipboardData.getData?.('text/html') || '');
+    if (!/<img\b/i.test(html)) return false;
+    const plain = String(clipboardData.getData?.('text/plain') || '').trim();
+    return !plain || /^(?:https?:\/\/|file:|data:image\/)[^\s]+$/i.test(plain);
+  } catch { return false; }
 }
 
 function clipboardImageFilename(file, index = 0, now = Date.now()) {
@@ -2914,7 +2948,10 @@ function clipboardImageFilename(file, index = 0, now = Date.now()) {
   const extension = CLIPBOARD_IMAGE_EXTENSIONS[type] || '';
   if (!extension) return '';
   const original = String(file?.name || '').trim();
-  if (/\.(?:png|jpe?g|webp|gif|bmp|tiff?)$/i.test(original)) return original;
+  const originalExtension = /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.exec(original)?.[0]?.toLowerCase() || '';
+  const normalizedType = type === 'image/jpg' ? 'image/jpeg' : type;
+  if (originalExtension && CLIPBOARD_IMAGE_TYPES_BY_EXTENSION[originalExtension] === normalizedType) return original;
+  if (original) return `${original.replace(/\.[^.]+$/, '') || `clipboard-image-${now}`}${extension}`;
   return `clipboard-image-${now}${index ? `-${index + 1}` : ''}${extension}`;
 }
 
@@ -2975,6 +3012,37 @@ function assertClipboardPasteContext(request) {
   const error = new Error('Image paste stopped because the active workflow changed.');
   error.code = 'clipboard_context_changed';
   throw error;
+}
+
+function clipboardPasteEventDestination(context) {
+  if (context.kind === 'create') return [state.createRef || null];
+  if (context.kind === 'region') {
+    const region = state.regions.find((entry) => entry.id === context.regionId);
+    return [region?.refAsset || region?.refImageName || null];
+  }
+  if (context.kind === 'edit') return state.refs.slice(0, context.capacity).map((asset) => asset || null);
+  if (context.kind === 'video' || context.kind === 'video-face') return [state.vidRef || null, state.vidFace || null];
+  return [];
+}
+
+function assertClipboardPasteEventDestination(request) {
+  const current = clipboardPasteEventDestination(request.context);
+  const matches = (expected) => current.length === expected.length
+    && current.every((asset, index) => asset === expected[index]);
+  if (matches(request.eventDestination)) return;
+  const commit = clipboardDestinationCommits.get(request.context.key);
+  if (commit && commit.sequence > request.commitSequence && commit.sequence < request.sequence
+    && matches(commit.destination)) return;
+  const error = new Error('Image paste stopped because the destination changed after you pasted.');
+  error.code = 'clipboard_context_changed';
+  throw error;
+}
+
+function rememberClipboardDestinationCommit(request) {
+  clipboardDestinationCommits.set(request.context.key, {
+    sequence: request.sequence,
+    destination: clipboardPasteEventDestination(request.context),
+  });
 }
 
 function announceClipboardImagePaste(message, isError = false) {
@@ -3047,9 +3115,10 @@ async function uploadClipboardImage(file, index = 0) {
   }
   try {
     const response = await uploadInputAsset(file, filename, { quietComplete: true });
+    URL.revokeObjectURL(url);
     return {
       name: response.name,
-      url,
+      url: `/api/input?name=${encodeURIComponent(response.name)}`,
       w: dimensions.w,
       h: dimensions.h,
       label: file.name || 'Pasted image',
@@ -3138,7 +3207,7 @@ async function applyClipboardImages(request, destination, assets) {
   if (destination.kind === 'create') {
     const previous = state.createRef;
     await setCreateImageGuideAsset(assets[0], context.guideMode,
-      () => assertClipboardImageDestination(request, destination));
+      () => assertClipboardImageDestination(request, destination), true);
     releaseClipboardAssetUrl(previous, assets[0]);
     message = destination.targetAsset ? 'Pasted image replaced the current image guide' : 'Pasted image added as the image guide';
     requestAnimationFrame(() => flashClipboardPasteDestination($('#createImageGuideFilled')));
@@ -3208,6 +3277,7 @@ async function applyClipboardImages(request, destination, assets) {
 
 async function processClipboardImagePaste(request) {
   assertClipboardPasteContext(request);
+  assertClipboardPasteEventDestination(request);
   const destination = await resolveClipboardImageDestination(request.context, request.files.length);
   if (!destination) return;
   assertClipboardPasteContext(request);
@@ -3233,6 +3303,7 @@ async function processClipboardImagePaste(request) {
     request.failedFileCount = failures.length;
     assertClipboardImageDestination(request, destination);
     await applyClipboardImages(request, destination, assets);
+    rememberClipboardDestinationCommit(request);
     committed = true;
   } finally {
     if (!committed) assets.forEach((asset) => releaseClipboardAssetUrl(asset));
@@ -3252,7 +3323,12 @@ function handlePromptClipboardImagePaste(event) {
   const caption = clipboardImageCaption(event.clipboardData);
   const promptRange = promptComposerRange(null, { preferLive: true });
   const anchor = insertClipboardPasteAnchor(promptRange, caption);
-  const request = { files, context, anchor };
+  const sequence = ++clipboardImagePasteSequence;
+  const request = {
+    files, context, anchor, sequence,
+    commitSequence: clipboardDestinationCommits.get(context.key)?.sequence || 0,
+    eventDestination: clipboardPasteEventDestination(context),
+  };
   clipboardImagePastePending += 1;
   $('#promptComposer').setAttribute('aria-busy', 'true');
   clipboardImagePasteQueue = clipboardImagePasteQueue
@@ -4209,7 +4285,7 @@ async function setCreateImageGuideAsset(asset, mode = 'image') {
   } else {
     applyCreateMatchedDimensions();
   }
-  setView('create', { createMode: 'image' });
+  if (!arguments[3]) setView('create', { createMode: 'image' });
   renderCreateImageGuide();
   renderAspects();
   renderDims();
@@ -18440,7 +18516,6 @@ function handleGalleryTap(item, card) {
       if (galleryTap && galleryTap.itemId === item.id) {
         galleryTap = null;
         const media = card.dataset.media || 'image';
-        if (desktopWorkspaceActive()) void selectDesktopLibraryItem(item, media);
         openLightbox(item.id, media);
       }
     }, 260),

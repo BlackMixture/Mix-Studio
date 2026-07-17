@@ -35,6 +35,7 @@ test('clipboard extraction accepts image files and leaves text-only paste native
   const png = { type: 'image/png', name: '' };
   const hintedPng = { type: '', name: '' };
   const jpeg = { type: 'image/jpeg', name: 'photo.jpg' };
+  const webp = { type: 'image/webp', name: 'fallback.webp' };
   const genericPng = { type: 'application/octet-stream', name: 'clipboard.png' };
   assert.deepEqual(clipboardImageFiles({
     items: [
@@ -48,6 +49,10 @@ test('clipboard extraction accepts image files and leaves text-only paste native
     files: [],
   }), [hintedPng]);
   assert.deepEqual(clipboardImageFiles({ items: [], files: [jpeg, { type: 'text/plain' }] }), [jpeg]);
+  assert.deepEqual(clipboardImageFiles({
+    items: [{ kind: 'file', type: 'image/png', getAsFile: () => png }],
+    files: [png, webp],
+  }), [png, webp]);
   assert.deepEqual(clipboardImageFiles({ items: [], files: [genericPng] }), [genericPng]);
   assert.deepEqual(clipboardImageFiles({
     items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }],
@@ -58,7 +63,21 @@ test('clipboard extraction accepts image files and leaves text-only paste native
     'function handlePromptClipboardImagePaste(event)',
     'async function usePreviousGenerations(assets)',
   );
-  assert.ok(handler.indexOf('if (!files.length) return;') < handler.indexOf('event.preventDefault();'));
+  assert.ok(handler.indexOf('if (!clipboardHasImageLikeData(event.clipboardData)) return;') < handler.indexOf('event.preventDefault();'));
+
+  const clipboardHasImageLikeData = new Function(`${extractorSource}\nreturn clipboardHasImageLikeData;`)();
+  assert.equal(clipboardHasImageLikeData({
+    items: [{ kind: 'file', type: 'image/svg+xml' }], files: [], getData: () => '',
+  }), true);
+  assert.equal(clipboardHasImageLikeData({
+    items: [], files: [], getData: (type) => type === 'text/html' ? '<img src="example.avif">' : '',
+  }), true);
+  assert.equal(clipboardHasImageLikeData({
+    items: [], files: [], getData: (type) => type === 'text/html' ? '<p>hello <img src="example.png"> world</p>' : 'hello world',
+  }), false);
+  assert.equal(clipboardHasImageLikeData({
+    items: [{ kind: 'string', type: 'text/plain' }], files: [], getData: () => 'ordinary text',
+  }), false);
 });
 
 test('clipboard images receive supported extensions and web-image URLs do not pollute prompts', () => {
@@ -70,6 +89,7 @@ test('clipboard images receive supported extensions and web-image URLs do not po
   assert.equal(api.clipboardImageFilename({ type: 'image/png', name: '' }, 0, 42), 'clipboard-image-42.png');
   assert.equal(api.clipboardImageFilename({ type: 'image/webp', name: '' }, 1, 42), 'clipboard-image-42-2.webp');
   assert.equal(api.clipboardImageFilename({ type: 'image/jpeg', name: 'portrait.jpeg' }, 0, 42), 'portrait.jpeg');
+  assert.equal(api.clipboardImageFilename({ type: 'image/png', name: 'mismatch.jpg' }, 0, 42), 'mismatch.png');
   assert.equal(api.clipboardImageFilename({ type: '', name: 'clipboard.tiff' }, 0, 42), 'clipboard.tiff');
   assert.equal(api.clipboardImageFilename({ type: 'image/svg+xml', name: '' }, 0, 42), '');
   assert.equal(api.clipboardImageCaption({
@@ -90,6 +110,7 @@ test('pasted images use the existing upload path and deterministic workflow dest
   assert.match(upload, /await uploadInputAsset\(file, filename, \{ quietComplete: true \}\)/);
   assert.ok(upload.indexOf('await imageDimensions(url)') < upload.indexOf('await uploadInputAsset(file, filename'));
   assert.match(upload, /URL\.revokeObjectURL\(url\)/);
+  assert.match(upload, /url: `\/api\/input\?name=\$\{encodeURIComponent\(response\.name\)\}`/);
   assert.match(app, /if \(options\.quietComplete\) \{[\s\S]*status\.remove\(\)/);
 
   const routing = sourceBetween(
@@ -105,6 +126,7 @@ test('pasted images use the existing upload path and deterministic workflow dest
   assert.match(routing, /state\.regions\.find\(\(entry\) => entry\.id === context\.regionId\)/);
   assert.match(routing, /setRegionReference\(assets\[0\], \{ announce: false \}\)/);
   assert.match(routing, /renderRefs\(\{ preservePromptComposer: true \}\)/);
+  assert.match(routing, /clearKreaMask\(true, \{ preservePromptComposer: true \}\)/);
   assert.match(routing, /insertPromptReference\(slot \+ 1, caret,/);
   assert.match(routing, /state\.vidFace = Object\.assign/);
   assert.match(routing, /state\.vidRef = null/);
@@ -115,8 +137,12 @@ test('pasted images use the existing upload path and deterministic workflow dest
 
 test('rapid image pastes are serialized and destination feedback respects reduced motion', () => {
   assert.match(app, /let clipboardImagePasteQueue = Promise\.resolve\(\)/);
+  assert.match(app, /const clipboardDestinationCommits = new Map\(\)/);
   assert.match(app, /clipboardImagePasteQueue = clipboardImagePasteQueue[\s\S]*\.then\(\(\) => processClipboardImagePaste\(request\)\)/);
   assert.match(app, /currentClipboardPasteContextKey\(\) === request\.context\.key/);
+  assert.match(app, /commit\.sequence > request\.commitSequence && commit\.sequence < request\.sequence/);
+  assert.match(app, /matches\(commit\.destination\)/);
+  assert.match(app, /rememberClipboardDestinationCommit\(request\)/);
   assert.match(app, /assertClipboardImageDestination\(request, destination\)/);
   assert.match(app, /clipboardImagePastePending[\s\S]*aria-busy/);
   assert.match(app, /insertClipboardPasteAnchor\(promptRange, caption\)/);
@@ -163,6 +189,7 @@ test('Edit reference tokens stay anchored, separated, and do not steal a later s
   assert.match(apply, /clipboardPasteAnchorRange\(request\.anchor\)/);
   assert.match(apply, /ensureSeparator: true, preserveSelection: true/);
   assert.match(apply, /releaseClipboardAssetUrl\(previous\[index\], assets\[index\]\)/);
+  assert.match(apply, /setCreateImageGuideAsset\(assets\[0\], context\.guideMode,[\s\S]*destination\), true\)/);
 
   const anchor = sourceBetween(
     "function insertClipboardPasteAnchor(range, caption = '')",

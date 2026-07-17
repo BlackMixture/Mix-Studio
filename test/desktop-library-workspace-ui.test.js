@@ -17,7 +17,9 @@ test('desktop library cards load their media and saved settings into the workspa
   assert.match(app, /reuseItem\(item, false, reuseOptions\)/);
   assert.ok((app.match(/if \(!options\.preserveLightbox\) closeLightbox\(\);/g) || []).length >= 2);
   assert.match(app, /desktopWorkspaceActive\(\) && \(\$\('#lightbox'\)\.classList\.contains\('show'\) \|\| state\.view !== 'gallery'\)/);
-  assert.match(app, /if \(desktopWorkspaceActive\(\)\) void selectDesktopLibraryItem\(item, media\);\n        openLightbox\(item\.id, media\)/);
+  const fullLibraryTap = app.match(/function handleGalleryTap\(item, card\) \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.match(fullLibraryTap, /openLightbox\(item\.id, media\)/);
+  assert.doesNotMatch(fullLibraryTap, /selectDesktopLibraryItem/);
   assert.match(app, /syncDesktopGallerySelection\(\)/);
   assert.match(css, /\.card\.desktop-active:not\(\.selected\)/);
 });
