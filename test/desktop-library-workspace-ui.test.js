@@ -247,3 +247,16 @@ test('desktop Library rail keeps Likes and Sort inside the narrow right column',
   assert.match(css, /#view-gallery \.gallery-sort-trigger > span,[\s\S]*?#view-gallery \.gallery-sort-chevron \{ display: none; \}/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \.gallery-sort-trigger \{[\s\S]*?min-width: 106px;/);
 });
+
+test('expanded desktop Library defaults to four columns and offers persistent thumbnail zoom plus date navigation', () => {
+  assert.match(html, /id="galleryZoom"[^>]*type="range"[^>]*min="1"[^>]*max="5"[^>]*value="3"/);
+  assert.match(app, /galleryZoom: 3/);
+  assert.match(app, /function galleryColumnsForZoom\(zoom = state\.galleryZoom\)/);
+  assert.match(app, /return 7 - normalizeGalleryZoom\(zoom\)/);
+  assert.match(app, /profileStorageKey\('ks-gallery-layout'\)/);
+  assert.match(app, /captureDesktopGalleryLayoutTransition\(\)/);
+  assert.match(app, /localStorage\.setItem\(galleryLayoutStorageKey\(\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(var\(--gallery-columns, 4\), minmax\(0, 1fr\)\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.gallery-zoom-control \{[\s\S]*display: grid;/);
+  assert.match(css, /#view-gallery \.gallery-date-scrubber \{[\s\S]*right: 2px;/);
+});

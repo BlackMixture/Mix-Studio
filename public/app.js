@@ -132,10 +132,12 @@ const state = {
   motionPromptRequestsPending: 0,
   folders: [],
   items: [],
+  uploadedAssets: [],
   privateUnlocked: false,
   activeFolder: 'all',
   mediaFilter: 'all',
   sortMode: 'new',
+  galleryZoom: 3,
   likesOnly: false,
   libraryQuery: '',
   mediaPreferences: {
@@ -2755,6 +2757,63 @@ function startDesktopGalleryLayoutTransition(snapshot) {
   motion.frame = requestAnimationFrame(tick);
 }
 
+const GALLERY_ZOOM_MIN = 1;
+const GALLERY_ZOOM_MAX = 5;
+let galleryZoomFrame = 0;
+
+function galleryLayoutStorageKey() {
+  return profileStorageKey('ks-gallery-layout') || 'ks-gallery-layout-anonymous';
+}
+
+function normalizeGalleryZoom(value) {
+  return Math.max(GALLERY_ZOOM_MIN, Math.min(GALLERY_ZOOM_MAX, Math.round(Number(value) || 3)));
+}
+
+function galleryColumnsForZoom(zoom = state.galleryZoom) {
+  return 7 - normalizeGalleryZoom(zoom);
+}
+
+function galleryZoomValueText(zoom = state.galleryZoom) {
+  const normalized = normalizeGalleryZoom(zoom);
+  const labels = ['Small', 'Compact', 'Medium', 'Large', 'Extra large'];
+  const columns = galleryColumnsForZoom(normalized);
+  return `${labels[normalized - 1]} thumbnails, ${columns} columns`;
+}
+
+function applyGalleryZoom(value, { animate = false, persist = false } = {}) {
+  const next = normalizeGalleryZoom(value);
+  const changed = next !== state.galleryZoom;
+  const snapshot = animate && changed && desktopWorkspaceActive()
+    && document.body.classList.contains('desktop-library-expanded')
+    ? captureDesktopGalleryLayoutTransition() : null;
+  state.galleryZoom = next;
+  $('#view-gallery').style.setProperty('--gallery-columns', String(galleryColumnsForZoom(next)));
+  const input = $('#galleryZoom');
+  input.value = String(next);
+  input.setAttribute('aria-valuetext', galleryZoomValueText(next));
+  if (persist) {
+    try { localStorage.setItem(galleryLayoutStorageKey(), JSON.stringify({ version: 1, zoom: next })); } catch { /* optional UI preference */ }
+  }
+  if (galleryZoomFrame) cancelAnimationFrame(galleryZoomFrame);
+  galleryZoomFrame = requestAnimationFrame(() => {
+    galleryZoomFrame = 0;
+    if (snapshot) startDesktopGalleryLayoutTransition(snapshot);
+    syncGalleryDateScrubber();
+  });
+}
+
+function restoreGalleryZoom() {
+  let zoom = 3;
+  try {
+    const saved = JSON.parse(localStorage.getItem(galleryLayoutStorageKey()) || 'null');
+    if (saved?.version === 1) zoom = normalizeGalleryZoom(saved.zoom);
+  } catch { /* use the four-column default */ }
+  applyGalleryZoom(zoom);
+}
+
+$('#galleryZoom').addEventListener('input', (event) => applyGalleryZoom(event.target.value, { animate: true }));
+$('#galleryZoom').addEventListener('change', (event) => applyGalleryZoom(event.target.value, { persist: true }));
+
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
@@ -2940,7 +2999,45 @@ let resetAssetPickerSwipeVisuals = () => {};
 let animateAssetPickerNavigation = () => {};
 
 function assetPickerKind(accept) {
-  return String(accept || '').toLowerCase().startsWith('video') ? 'video' : 'image';
+  const normalized = String(accept || '').toLowerCase();
+  if (normalized.startsWith('video')) return 'video';
+  if (normalized.startsWith('audio')) return 'audio';
+  return 'image';
+}
+
+function formatAssetBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(value >= 10 * 1024 ** 2 ? 0 : 1)} MB`;
+  if (value >= 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return value ? `${value} B` : '';
+}
+
+function uploadedAssetPickerAssets(accept) {
+  const kind = assetPickerKind(accept);
+  return (state.uploadedAssets || [])
+    .filter((asset) => asset && asset.kind === kind)
+    .map((asset) => {
+      const createdAt = Number(asset.createdAt || 0);
+      const detail = [kind[0].toUpperCase() + kind.slice(1), formatAssetBytes(asset.size), new Date(createdAt || Date.now()).toLocaleDateString()]
+        .filter(Boolean).join(' · ');
+      return {
+        key: `upload:${asset.id}`,
+        id: asset.id,
+        uploaded: true,
+        kind,
+        file: asset.name,
+        label: asset.label || `Uploaded ${kind}`,
+        detail,
+        activity: createdAt,
+        createdAt,
+        folder: 'uploaded-assets',
+        folderName: 'Uploaded assets',
+        liked: false,
+        hasAudio: asset.hasAudio === true,
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 function previousGenerationAssets(accept) {
@@ -2980,11 +3077,13 @@ function previousGenerationAssets(accept) {
 }
 
 function assetPickerImageUrl(asset) {
+  if (asset.uploaded) return asset.kind === 'image' ? `/api/input?name=${encodeURIComponent(asset.file)}` : '';
   if (asset.kind === 'video') return asset.poster ? '/images/' + encodeURIComponent(asset.poster) : '';
   return '/images/' + encodeURIComponent(asset.file);
 }
 
 function assetPickerMediaUrl(asset) {
+  if (asset.uploaded) return `/api/input?name=${encodeURIComponent(asset.file)}`;
   return (asset.kind === 'video' ? '/videos/' : '/images/') + encodeURIComponent(asset.file);
 }
 
@@ -2997,9 +3096,12 @@ function assetMatchesQuery(asset, query) {
 
 function assetPickerVisibleAssets() {
   if (!assetPickerState) return [];
-  let assets = previousGenerationAssets(assetPickerState.accept).filter((asset) => {
+  const source = assetPickerState.folder === 'uploaded-assets'
+    ? uploadedAssetPickerAssets(assetPickerState.accept)
+    : previousGenerationAssets(assetPickerState.accept);
+  let assets = source.filter((asset) => {
     if (!assetMatchesQuery(asset, assetPickerState.query)) return false;
-    if (assetPickerState.folder !== 'all' && asset.folder !== assetPickerState.folder) return false;
+    if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && asset.folder !== assetPickerState.folder) return false;
     if (assetPickerState.likes && !asset.liked) return false;
     return true;
   });
@@ -3026,8 +3128,12 @@ function closeAssetPickerMenus(except = null) {
 function renderAssetPickerFilters() {
   if (!assetPickerState) return;
   const folder = (state.folders || []).find((entry) => entry.id === assetPickerState.folder);
-  if (assetPickerState.folder !== 'all' && !folder) assetPickerState.folder = 'all';
-  $('#assetPickerFolderLabel').textContent = folder?.name || 'All folders';
+  if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && !folder) assetPickerState.folder = 'all';
+  $('#assetPickerFolderLabel').textContent = assetPickerState.folder === 'uploaded-assets'
+    ? 'Uploaded assets' : (folder?.name || 'All generations');
+  const uploads = assetPickerState.folder === 'uploaded-assets';
+  $('#assetPickerLikes').hidden = uploads;
+  if (uploads) assetPickerState.likes = false;
   $('#assetPickerLikes').setAttribute('aria-pressed', String(assetPickerState.likes));
   const sortLabels = { new: 'Newest', active: 'Active', old: 'Oldest', az: 'A–Z' };
   $('#assetPickerSortLabel').textContent = sortLabels[assetPickerState.sort] || 'Newest';
@@ -3038,7 +3144,11 @@ function renderAssetPickerFilters() {
 
   const menu = $('#assetPickerFolderMenu');
   menu.replaceChildren();
-  [{ id: 'all', name: 'All folders' }, ...(state.folders || [])].forEach((entry) => {
+  [
+    { id: 'all', name: 'All generations' },
+    { id: 'uploaded-assets', name: 'Uploaded assets', virtual: true },
+    ...(state.folders || []),
+  ].forEach((entry) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'option');
@@ -3093,15 +3203,21 @@ function renderAssetPickerList() {
   const gallery = $('#assetPickerGallery');
   const count = $('#assetPickerCount');
   if (!list || !gallery || !assetPickerState) return;
-  const allAssets = previousGenerationAssets(assetPickerState.accept);
+  const browsingUploads = assetPickerState.folder === 'uploaded-assets';
+  const allAssets = browsingUploads
+    ? uploadedAssetPickerAssets(assetPickerState.accept)
+    : previousGenerationAssets(assetPickerState.accept);
   const assets = assetPickerVisibleAssets();
   list.replaceChildren();
-  const filtered = assetPickerState.query || assetPickerState.folder !== 'all' || assetPickerState.likes;
+  const filtered = assetPickerState.query || (!browsingUploads && assetPickerState.folder !== 'all') || assetPickerState.likes;
   count.textContent = filtered
     ? `${assets.length} of ${allAssets.length}`
     : `${allAssets.length} available`;
   if (!assets.length) {
-    list.innerHTML = `<div class="asset-picker-empty">${allAssets.length ? 'No generations match these filters.' : `No previous ${assetPickerKind(assetPickerState.accept)} generations yet.`}</div>`;
+    const kind = assetPickerKind(assetPickerState.accept);
+    list.innerHTML = `<div class="asset-picker-empty">${allAssets.length
+      ? `No ${browsingUploads ? 'uploads' : 'generations'} match these filters.`
+      : (browsingUploads ? `No uploaded ${kind}s yet.` : `No previous ${kind} generations yet.`)}</div>`;
     renderAssetPickerMultiBar();
     return;
   }
@@ -3124,8 +3240,16 @@ function renderAssetPickerList() {
       img.src = src;
       img.alt = '';
       thumb.appendChild(img);
+    } else if (asset.uploaded && asset.kind === 'video') {
+      const video = document.createElement('video');
+      video.src = assetPickerMediaUrl(asset);
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.setAttribute('aria-hidden', 'true');
+      thumb.appendChild(video);
     } else {
-      thumb.textContent = '▶';
+      thumb.textContent = asset.kind === 'audio' ? '♫' : '▶';
     }
     if (asset.kind === 'video') {
       const badge = document.createElement('i');
@@ -3178,6 +3302,12 @@ function openAssetPickerPreview(asset) {
     video.playsInline = true;
     video.preload = 'metadata';
     current.appendChild(video);
+  } else if (canonical.kind === 'audio') {
+    const audio = document.createElement('audio');
+    audio.src = assetPickerMediaUrl(canonical);
+    audio.controls = true;
+    audio.preload = 'metadata';
+    current.appendChild(audio);
   } else {
     const img = document.createElement('img');
     img.src = assetPickerMediaUrl(canonical);
@@ -3191,7 +3321,9 @@ function openAssetPickerPreview(asset) {
   $('#assetPickerPreviewNext').disabled = index < 0 || index >= total - 1;
   $('#assetPickerPreviewDetail').textContent = canonical.detail || '';
   $('#assetPickerPreviewPrompt').textContent = canonical.label || '';
-  $('#assetPickerPreviewUse').textContent = canonical.kind === 'video' ? 'Use video' : 'Use image';
+  $('#assetPickerPreviewUse').textContent = canonical.kind === 'audio'
+    ? 'Use audio' : (canonical.kind === 'video' ? 'Use video' : 'Use image');
+  $('#assetPickerPreviewBack').textContent = canonical.uploaded ? '‹ Back to uploads' : '‹ Back to generations';
 }
 
 function closeAssetPickerPreview() {
@@ -3225,7 +3357,7 @@ function animateAssetPickerEntrance(panel, trigger) {
 }
 
 function openAssetPicker(accept, callback, title, options = {}) {
-  const folder = state.activeFolder === 'all' || (state.folders || []).some((entry) => entry.id === state.activeFolder)
+  const folder = ['all', 'uploaded-assets'].includes(state.activeFolder) || (state.folders || []).some((entry) => entry.id === state.activeFolder)
     ? state.activeFolder : 'all';
   assetPickerState = {
     accept, callback, query: '', preview: null, assets: [], folder,
@@ -3245,19 +3377,18 @@ function openAssetPicker(accept, callback, title, options = {}) {
   $('#assetPickerPreviewCurrent').replaceChildren();
   closeAssetPickerMenus();
   renderAssetPickerFilters();
-  $('#assetPickerTitle').textContent = title || (assetPickerKind(accept) === 'video' ? 'Choose a video source' : 'Choose an image source');
+  const kind = assetPickerKind(accept);
+  $('#assetPickerTitle').textContent = title || `Choose ${kind === 'audio' ? 'an' : 'a'} ${kind} source`;
   $('#assetPickerCopy').textContent = assetPickerState.multiple
-    ? 'Upload several images at once or select multiple images from your gallery.'
-    : assetPickerKind(accept) === 'video'
-    ? 'Use a video from your device or select one from your gallery.'
-    : 'Use an image from your device or select one from your gallery.';
+    ? 'Upload several images at once or select multiple images from generations or uploaded assets.'
+    : `Use ${kind === 'audio' ? 'audio' : `a ${kind}`} from your device, generations, or uploaded assets.`;
   renderAssetPickerMultiBar();
   $('#assetPickerSheet').classList.add('show');
   animateAssetPickerEntrance(panel, assetPickerReturnFocus);
   $('#assetPickerGallery').hidden = true;
   syncSheetScrollLock();
   requestAnimationFrame(() => $('#assetPickerUpload').focus({ preventScroll: true }));
-  if (!state.items.length) {
+  if (!state.items.length && !state.uploadedAssets.length) {
     refreshGallery(true).then(() => {
       if (assetPickerState !== picker) return;
       if (panel.classList.contains('browsing') && !panel.classList.contains('previewing')) renderAssetPickerList();
@@ -3309,6 +3440,7 @@ function uploadInputAsset(blob, filename) {
     const request = new XMLHttpRequest();
     request.open('POST', '/api/upload');
     request.setRequestHeader('x-filename', encodeURIComponent(filename || 'input.bin'));
+    if (options.catalog === true) request.setRequestHeader('x-asset-catalog', '1');
     request.upload.addEventListener('progress', (event) => {
       if (!event.lengthComputable) return;
       const percent = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
@@ -3331,6 +3463,9 @@ function uploadInputAsset(blob, filename) {
         fill.style.width = '100%';
         setTimeout(() => status.remove(), 1200);
       }
+      if (data.asset) {
+        state.uploadedAssets = [data.asset, ...(state.uploadedAssets || []).filter((asset) => asset.id !== data.asset.id)];
+      }
       resolve(data);
     });
     request.addEventListener('error', () => {
@@ -3352,7 +3487,7 @@ function pickDeviceUpload(accept, cb, options = {}) {
     const assets = [];
     for (const file of files) {
       try {
-        const res = await uploadInputAsset(file, file.name || 'file.bin');
+        const res = await uploadInputAsset(file, file.name || 'file.bin', { catalog: true });
         const url = URL.createObjectURL(file);
         let dims = { w: 0, h: 0 };
         if (accept.startsWith('image')) {
@@ -3614,7 +3749,7 @@ async function uploadClipboardImage(file, index = 0) {
     throw new Error('The pasted clipboard item is not a readable image.');
   }
   try {
-    const response = await uploadInputAsset(file, filename, { quietComplete: true });
+    const response = await uploadInputAsset(file, filename, { quietComplete: true, catalog: true });
     URL.revokeObjectURL(url);
     return {
       name: response.name,
@@ -3851,6 +3986,25 @@ async function usePreviousGenerations(assets) {
   const chosen = (Array.isArray(assets) ? assets : [assets]).filter(Boolean);
   if (!picker || !chosen.length) return;
   try {
+    if (chosen.every((asset) => asset.uploaded)) {
+      const prepared = [];
+      for (const asset of chosen) {
+        const url = assetPickerMediaUrl(asset);
+        const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+        prepared.push({
+          name: asset.file,
+          url,
+          w: dims.w,
+          h: dims.h,
+          label: asset.label || `Uploaded ${asset.kind}`,
+          hasAudio: asset.hasAudio === true,
+          uploadedAssetId: asset.id,
+        });
+      }
+      closeAssetPicker();
+      await picker.callback(picker.multiple ? prepared : prepared[0]);
+      return;
+    }
     if (picker.galleryReference) {
       closeAssetPicker();
       const prepared = chosen.map((asset) => ({
@@ -5813,9 +5967,10 @@ async function uploadRegionReference(file) {
     const buf = await file.arrayBuffer();
     const res = await api('/api/upload', {
       method: 'POST',
-      headers: { 'x-filename': encodeURIComponent(file.name || 'region_ref.png') },
+      headers: { 'x-filename': encodeURIComponent(file.name || 'region_ref.png'), 'x-asset-catalog': '1' },
       body: buf,
     });
+    if (res.asset) state.uploadedAssets = [res.asset, ...state.uploadedAssets.filter((asset) => asset.id !== res.asset.id)];
     region.refImageName = res.name;
     region.refUrl = URL.createObjectURL(file);
     renderRegionEditor();
@@ -7582,39 +7737,29 @@ function wireAudioChip(prefix, stateKey, durInputId) {
       saveForm();
       return;
     }
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'audio/*';
-    input.addEventListener('change', async () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
+    pickUpload('audio/*', async (asset) => {
+      if (!asset?.name) return;
       try {
-        const raw = await file.arrayBuffer();
+        const response = await fetch(asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`);
+        if (!response.ok) throw new Error('The audio file is no longer available');
+        const raw = await response.arrayBuffer();
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
         const buffer = await audioCtx.decodeAudioData(raw.slice(0));
-        let uploadedName = null;
-        try {
-          const uploaded = await api('/api/upload', {
-            method: 'POST', headers: { 'x-filename': encodeURIComponent(file.name) }, body: raw,
-          });
-          uploadedName = uploaded.name;
-        } catch { /* audio remains usable for this session, but cannot survive a reload */ }
         state[stateKey] = {
           raw, buffer,
           duration: buffer.duration,
           trimStart: 0,
           trimEnd: buffer.duration,
-          uploadedName,
-          uploadedKey: uploadedName ? `0.00-${buffer.duration.toFixed(2)}` : null,
-          label: file.name,
+          uploadedName: asset.name,
+          uploadedKey: `0.00-${buffer.duration.toFixed(2)}`,
+          label: asset.label || 'audio',
         };
         setAudioChipVisual(chip, true);
         box.hidden = false;
         requestAnimationFrame(() => { drawWave(); layout(); });
         saveForm();
       } catch (e) { toast('Could not read audio: ' + e.message, true); }
-    });
-    input.click();
+    }, 'Choose audio');
   });
 }
 function setAudioChipVisual(chip, active) {
@@ -11989,7 +12134,7 @@ function directorUpdatePresetDuration(input) {
 }
 
 async function directorReadMedia(file, kind) {
-  const uploaded = await uploadInputAsset(file, file.name || `${kind}.bin`);
+  const uploaded = await uploadInputAsset(file, file.name || `${kind}.bin`, { catalog: true });
   const url = URL.createObjectURL(file);
   let durationFrames = DIRECTOR_FPS * 5;
   if (kind === 'audio') {
@@ -12029,6 +12174,22 @@ async function directorPreparePickedAsset(asset, kind) {
   if (kind === 'video') {
     const metadata = await directorProbeVideo(asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`);
     prepared.durationFrames = Math.max(1, Math.round((metadata.seconds || 5) * DIRECTOR_FPS));
+  } else if (kind === 'audio') {
+    const response = await fetch(asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`);
+    if (!response.ok) throw new Error('The audio file is no longer available');
+    const raw = await response.arrayBuffer();
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const buffer = await audioCtx.decodeAudioData(raw.slice(0));
+    prepared.durationFrames = Math.max(1, Math.round(buffer.duration * DIRECTOR_FPS));
+    const bins = 48;
+    const channel = buffer.getChannelData(0);
+    prepared.waveform = Array.from({ length: bins }, (_, bin) => {
+      const from = Math.floor(channel.length * bin / bins);
+      const to = Math.max(from + 1, Math.floor(channel.length * (bin + 1) / bins));
+      let peak = 0;
+      for (let index = from; index < to; index += Math.max(1, Math.floor((to - from) / 80))) peak = Math.max(peak, Math.abs(channel[index] || 0));
+      return peak;
+    });
   }
   return prepared;
 }
@@ -12413,6 +12574,7 @@ function directorOpenMediaPicker(kind) {
     image: ['image/*', 'Choose a keyframe'],
     'ic-image': ['image/*', 'Choose a motion guide image'],
     video: ['video/*', state.directorComposerMode === 'keyframes' ? 'Choose a video clip' : 'Choose a motion guide video'],
+    audio: ['audio/*', 'Choose audio'],
   }[kind];
   if (!config) return;
   const multiple = kind === 'image' && state.directorComposerMode === 'keyframes' && !directorReplaceTarget;
@@ -12516,7 +12678,7 @@ $('#directorAddPrompt').addEventListener('click', () => {
   directorAddSegment('main', { id: directorId('prompt'), type: 'text', start: 0, length: Math.min(120, state.directorProject.durationFrames), prompt: '' });
 });
 $('#directorAddImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('image'); });
-$('#directorAddAudio').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); $('#directorAudioFile').click(); });
+$('#directorAddAudio').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('audio'); });
 $('#directorAddIcImage').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('ic-image'); });
 $('#directorAddIcVideo').addEventListener('click', () => { directorCloseSheet('directorAddSheet'); directorOpenMediaPicker('video'); });
 for (const [selector, kind] of [['#directorImageFile', 'image'], ['#directorAudioFile', 'audio'], ['#directorIcImageFile', 'ic-image'], ['#directorIcVideoFile', 'video']]) {
@@ -12564,7 +12726,7 @@ $('#directorReplace').addEventListener('click', () => {
   if (!segment) return;
   directorReplaceTarget = { ...state.directorSelection };
   if (segment.type === 'image') directorOpenMediaPicker('image');
-  else if (segment.type === 'audio') $('#directorAudioFile').click();
+  else if (segment.type === 'audio') directorOpenMediaPicker('audio');
   else if (segment.isStaticImage) directorOpenMediaPicker('ic-image');
   else directorOpenMediaPicker('video');
 });
@@ -15795,8 +15957,9 @@ async function refreshGallery(soft) {
     const data = await api('/api/gallery');
     state.folders = data.folders;
     state.items = data.items;
+    state.uploadedAssets = Array.isArray(data.uploadedAssets) ? data.uploadedAssets : [];
     state.privateUnlocked = !!data.unlocked;
-    if (state.activeFolder !== 'all' && !state.folders.some((f) => f.id === state.activeFolder)) {
+    if (!['all', 'uploaded-assets'].includes(state.activeFolder) && !state.folders.some((f) => f.id === state.activeFolder)) {
       state.activeFolder = 'all';
     }
     await refreshLoraContext();
@@ -15887,7 +16050,11 @@ async function lockPrivateGallery() {
 function renderFolders() {
   const row = $('#folderRow');
   row.innerHTML = '';
-  const chips = [{ id: 'all', name: 'All' }, ...state.folders];
+  const chips = [
+    { id: 'all', name: 'All' },
+    { id: 'uploaded-assets', name: 'Uploaded assets', virtual: true },
+    ...state.folders,
+  ];
   const active = chips.find((folder) => folder.id === state.activeFolder) || chips[0];
   $('#folderPickerLabel').textContent = active.name;
   for (const f of chips) {
@@ -15905,11 +16072,16 @@ function renderFolders() {
         if (!state.privateUnlocked) return;
       }
       state.activeFolder = f.id;
+      if (f.virtual) {
+        state.selectMode = false;
+        state.selected.clear();
+        updateSelectBar();
+      }
       closeFolderPicker();
       renderFolders();
       renderGrid();
     });
-    if (f.id !== 'all') {
+    if (f.id !== 'all' && !f.virtual) {
       let timer = null;
       btn.addEventListener('contextmenu', (e) => { e.preventDefault(); folderActions(f); });
       btn.addEventListener('touchstart', () => { timer = setTimeout(() => folderActions(f), 700); }, { passive: true });
@@ -17240,6 +17412,125 @@ function visibleItems() {
   return arr;
 }
 
+function syncLibraryCollectionControls() {
+  const uploads = state.activeFolder === 'uploaded-assets';
+  const audioButton = $('#mediaFilter [data-f="audio"]');
+  if (audioButton) audioButton.hidden = !uploads;
+  $('#mediaFilter').classList.toggle('has-audio', uploads);
+  $('#likesFilter').hidden = uploads;
+  $('#gallerySearch').placeholder = uploads
+    ? 'Search uploaded assets…'
+    : 'Search prompts, LoRAs, folders…';
+  if (!uploads && state.mediaFilter === 'audio') state.mediaFilter = 'all';
+  const visibleButtons = $$('#mediaFilter button').filter((button) => !button.hidden);
+  let active = visibleButtons.find((button) => button.dataset.f === state.mediaFilter) || visibleButtons[0];
+  if (active) state.mediaFilter = active.dataset.f;
+  visibleButtons.forEach((button) => {
+    const selected = button === active;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  $('#mediaFilter').style.setProperty('--filter-index', String(Math.max(0, visibleButtons.indexOf(active))));
+}
+
+function visibleUploadedAssets() {
+  const terms = String(state.libraryQuery || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  let assets = (state.uploadedAssets || []).filter((asset) => {
+    if (state.mediaFilter !== 'all' && `${asset.kind}s` !== state.mediaFilter && asset.kind !== state.mediaFilter) return false;
+    const text = `${asset.label || ''} ${asset.name || ''} ${asset.kind || ''}`.toLocaleLowerCase();
+    return terms.every((term) => text.includes(term));
+  });
+  if (state.sortMode === 'old') assets.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  else if (state.sortMode === 'az') assets.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+  else assets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return assets;
+}
+
+async function deleteUploadedAsset(asset) {
+  if (!asset || !await askConfirm({
+    title: `Delete ${asset.label || 'uploaded asset'}?`,
+    message: 'The file will move to Mix Studio trash. Assets used by saved generations cannot be deleted.',
+    confirmLabel: 'Delete asset',
+    danger: true,
+  })) return;
+  try {
+    await api(`/api/uploaded-assets/${encodeURIComponent(asset.id)}`, { method: 'DELETE' });
+    state.uploadedAssets = state.uploadedAssets.filter((entry) => entry.id !== asset.id);
+    renderGrid();
+    toast('Uploaded asset moved to trash');
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+function renderUploadedAssetsLibrary() {
+  const grid = $('#uploadedAssetsGrid');
+  const assets = visibleUploadedAssets();
+  grid.replaceChildren();
+  $('#uploadedAssetsCount').textContent = `${assets.length} asset${assets.length === 1 ? '' : 's'}`;
+  const query = state.libraryQuery.trim();
+  $('#gallerySearchStatus').textContent = query
+    ? `${assets.length} matching uploaded asset${assets.length === 1 ? '' : 's'}`
+    : `${assets.length} uploaded asset${assets.length === 1 ? '' : 's'}`;
+  $('#gallerySearchSelectAll').hidden = true;
+  $('#galleryEmpty').classList.toggle('hidden', assets.length > 0);
+  $('#galleryEmpty').textContent = query
+    ? `No uploaded assets match “${query}”`
+    : 'No uploaded assets yet';
+  for (const asset of assets) {
+    const card = document.createElement('article');
+    card.className = `uploaded-asset-card is-${asset.kind}`;
+    const media = document.createElement('div');
+    media.className = 'uploaded-asset-media';
+    const source = `/api/input?name=${encodeURIComponent(asset.name)}`;
+    if (asset.kind === 'image') {
+      const image = document.createElement('img');
+      image.src = source;
+      image.alt = '';
+      image.loading = 'lazy';
+      media.appendChild(image);
+    } else if (asset.kind === 'video') {
+      const video = document.createElement('video');
+      video.src = source;
+      video.controls = true;
+      video.preload = 'metadata';
+      video.playsInline = true;
+      media.appendChild(video);
+    } else {
+      const icon = document.createElement('span');
+      icon.className = 'uploaded-asset-audio-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '♫';
+      const audio = document.createElement('audio');
+      audio.src = source;
+      audio.controls = true;
+      audio.preload = 'metadata';
+      media.append(icon, audio);
+    }
+    const copy = document.createElement('div');
+    copy.className = 'uploaded-asset-copy';
+    const name = document.createElement('strong');
+    name.textContent = asset.label || `Uploaded ${asset.kind}`;
+    name.title = name.textContent;
+    const detail = document.createElement('small');
+    detail.textContent = [
+      asset.kind[0].toUpperCase() + asset.kind.slice(1),
+      formatAssetBytes(asset.size),
+      new Date(asset.createdAt || Date.now()).toLocaleDateString(),
+    ].filter(Boolean).join(' · ');
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'uploaded-asset-delete';
+    remove.setAttribute('aria-label', `Delete ${name.textContent}`);
+    remove.title = 'Delete uploaded asset';
+    remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m-8 0 1 13h8l1-13M10 10v7m4-7v7"/></svg>';
+    remove.addEventListener('click', () => deleteUploadedAsset(asset));
+    copy.append(name, detail, remove);
+    card.append(media, copy);
+    grid.appendChild(card);
+  }
+}
+
 /* Multi-angle Qwen exports are generated as separate jobs so each view has
    its own reliable result and settings, but they present as one gallery set. */
 function galleryEntries(items) {
@@ -17809,10 +18100,10 @@ const galleryDateScrub = {
   previewTarget: 0,
   previewFrame: 0,
   settleFrame: 0,
-  dragOffsetY: 0,
   dragMoved: false,
   startX: 0,
   startY: 0,
+  startRatio: 0,
 };
 let galleryDateScrollFrame = 0;
 
@@ -17822,6 +18113,29 @@ function galleryDateScrubberGroups() {
     index,
     label: (divider.textContent || '').trim(),
   }));
+}
+
+function galleryScrollPanel() {
+  return desktopWorkspaceActive() ? $('#view-gallery') : null;
+}
+
+function galleryScrollTop() {
+  const panel = galleryScrollPanel();
+  return panel ? panel.scrollTop : window.scrollY;
+}
+
+function setGalleryScrollTop(top, behavior = 'auto') {
+  const panel = galleryScrollPanel();
+  if (panel) panel.scrollTo({ top: Math.max(0, top), behavior });
+  else window.scrollTo({ top: Math.max(0, top), behavior });
+}
+
+function galleryScrollViewportHeight() {
+  return galleryScrollPanel()?.clientHeight || window.innerHeight;
+}
+
+function galleryScrollContentHeight() {
+  return galleryScrollPanel()?.scrollHeight || document.documentElement.scrollHeight;
 }
 
 function setGalleryDateScrubberRatio(ratio, haptic = false) {
@@ -17842,6 +18156,8 @@ function setGalleryDateScrubberRatio(ratio, haptic = false) {
 }
 
 function galleryDateLayoutTop(element) {
+  const panel = galleryScrollPanel();
+  if (panel) return Math.max(0, galleryElementContentTop(element, panel) - 58);
   let top = 0;
   let current = element;
   while (current) {
@@ -17856,12 +18172,12 @@ function scrollGalleryToDate(index, behavior = 'smooth') {
   if (!group) return;
   galleryDateScrub.ignoreScrollUntil = performance.now() + (behavior === 'smooth' ? 720 : 80);
   const target = galleryDateLayoutTop(group.divider);
-  window.scrollTo({ top: Math.max(0, target), behavior });
+  setGalleryScrollTop(target, behavior);
 }
 
 function galleryDateScrollTarget(ratio) {
   const groups = galleryDateScrub.groups;
-  if (!groups.length) return window.scrollY;
+  if (!groups.length) return galleryScrollTop();
   const position = Math.max(0, Math.min(groups.length - 1, ratio * Math.max(0, groups.length - 1)));
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
@@ -17872,9 +18188,10 @@ function galleryDateScrollTarget(ratio) {
   return start + (end - start) * mix;
 }
 
-function galleryDateRatioForScroll(scrollY = window.scrollY) {
+function galleryDateRatioForScroll(scrollY = galleryScrollTop()) {
   const groups = galleryDateScrub.groups;
   if (groups.length < 2) return 0;
+  if (scrollY + galleryScrollViewportHeight() >= galleryScrollContentHeight() - 3) return 1;
   const targets = groups.map((group) => galleryDateLayoutTop(group.divider));
   if (scrollY <= targets[0]) return 0;
   if (scrollY >= targets[targets.length - 1]) return 1;
@@ -17890,10 +18207,11 @@ function galleryDateRatioForScroll(scrollY = window.scrollY) {
 function runGalleryDatePreviewScroll() {
   galleryDateScrub.previewFrame = 0;
   if (!galleryDateScrub.active) return;
-  const delta = galleryDateScrub.previewTarget - window.scrollY;
+  const current = galleryScrollTop();
+  const delta = galleryDateScrub.previewTarget - current;
   if (Math.abs(delta) > 0.8) {
     const step = Math.sign(delta) * Math.min(Math.abs(delta) * 0.105 + 1.5, 52);
-    window.scrollTo({ top: window.scrollY + step, behavior: 'auto' });
+    setGalleryScrollTop(current + step);
   }
   galleryDateScrub.previewFrame = requestAnimationFrame(runGalleryDatePreviewScroll);
 }
@@ -17909,7 +18227,7 @@ function settleGalleryToDate(index) {
   if (galleryDateScrub.previewFrame) cancelAnimationFrame(galleryDateScrub.previewFrame);
   if (galleryDateScrub.settleFrame) cancelAnimationFrame(galleryDateScrub.settleFrame);
   galleryDateScrub.previewFrame = 0;
-  const start = window.scrollY;
+  const start = galleryScrollTop();
   const target = galleryDateLayoutTop(groups[index].divider);
   const distance = target - start;
   const duration = Math.max(150, Math.min(280, 150 + Math.abs(distance) * 0.035));
@@ -17918,7 +18236,7 @@ function settleGalleryToDate(index) {
   const tick = (now) => {
     const progress = Math.min(1, (now - started) / duration);
     const eased = 1 - Math.pow(1 - progress, 4);
-    window.scrollTo({ top: start + distance * eased, behavior: 'auto' });
+    setGalleryScrollTop(start + distance * eased);
     if (progress < 1) galleryDateScrub.settleFrame = requestAnimationFrame(tick);
     else galleryDateScrub.settleFrame = 0;
   };
@@ -17937,8 +18255,9 @@ function setGalleryDateScrubberIndex(index, scroll = false, haptic = false, beha
 function currentGalleryDateIndex() {
   const groups = galleryDateScrub.groups;
   if (!groups.length) return 0;
-  if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 3) return groups.length - 1;
-  const marker = 76;
+  if (galleryScrollTop() + galleryScrollViewportHeight() >= galleryScrollContentHeight() - 3) return groups.length - 1;
+  const panel = galleryScrollPanel();
+  const marker = panel ? panel.getBoundingClientRect().top + 58 : 76;
   let index = 0;
   groups.forEach((group, groupIndex) => {
     if (group.divider.getBoundingClientRect().top <= marker) index = groupIndex;
@@ -17955,7 +18274,6 @@ function resetGalleryDateScrubGesture() {
   }
   galleryDateScrub.active = false;
   galleryDateScrub.pointerId = null;
-  galleryDateScrub.dragOffsetY = 0;
   galleryDateScrub.dragMoved = false;
   if (scrubber) scrubber.classList.remove('is-active', 'is-pressed');
   document.body.classList.remove('gallery-date-scrubbing');
@@ -17996,7 +18314,7 @@ function syncGalleryDateScrubber() {
   const scrubber = $('#galleryDateScrubber');
   if (!scrubber) return;
   galleryDateScrub.groups = galleryDateScrubberGroups();
-  const visible = state.view === 'gallery' && galleryDateScrub.groups.length > 1;
+  const visible = state.view === 'gallery' && state.activeFolder !== 'uploaded-assets' && galleryDateScrub.groups.length > 1;
   scrubber.hidden = !visible;
   if (!visible) {
     resetGalleryDateScrubGesture();
@@ -18015,8 +18333,21 @@ function scrubGalleryDateAt(clientY, haptic = true) {
   const rect = rail.getBoundingClientRect();
   const top = galleryDateScrub.active ? galleryDateScrub.trackTop : rect.top;
   const height = galleryDateScrub.active ? galleryDateScrub.trackHeight : rect.height;
-  const effectiveY = clientY - galleryDateScrub.dragOffsetY;
-  const ratio = Math.max(0, Math.min(1, (effectiveY - top) / Math.max(1, height)));
+  let ratio;
+  if (galleryDateScrub.active) {
+    const startRatio = galleryDateScrub.startRatio;
+    const delta = clientY - galleryDateScrub.startY;
+    if (delta >= 0) {
+      const available = Math.max(1, top + height - galleryDateScrub.startY);
+      ratio = startRatio + (delta / available) * (1 - startRatio);
+    } else {
+      const available = Math.max(1, galleryDateScrub.startY - top);
+      ratio = startRatio + (delta / available) * startRatio;
+    }
+  } else {
+    ratio = (clientY - top) / Math.max(1, height);
+  }
+  ratio = Math.max(0, Math.min(1, ratio));
   setGalleryDateScrubberRatio(ratio, haptic);
   if (galleryDateScrub.active) previewGalleryDateScroll(ratio);
 }
@@ -18040,14 +18371,13 @@ function beginGalleryDateScrub() {
   galleryDateScrub.holdTimer = null;
   galleryDateScrub.active = true;
   const currentRatio = galleryDateRatioForScroll();
+  galleryDateScrub.startRatio = currentRatio;
   setGalleryDateScrubberRatio(currentRatio);
-  const thumbY = galleryDateScrub.trackTop + galleryDateScrub.trackHeight * currentRatio;
-  galleryDateScrub.dragOffsetY = galleryDateScrub.startY - thumbY;
   galleryDateScrub.dragMoved = false;
   $('#galleryDateScrubber').classList.remove('is-pressed');
   $('#galleryDateScrubber').classList.add('is-active');
   document.body.classList.add('gallery-date-scrubbing');
-  galleryDateScrub.previewTarget = window.scrollY;
+  galleryDateScrub.previewTarget = galleryScrollTop();
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   $$('.gallery-card-video').forEach((video) => video.pause());
   if (navigator.vibrate) navigator.vibrate(10);
@@ -18097,7 +18427,7 @@ $('#galleryDateScrubber').addEventListener('keydown', (event) => {
 $('#galleryDateScrubber').addEventListener('blur', () => {
   if (!galleryDateScrub.active) $('#galleryDateScrubber').classList.remove('is-keyboard-active');
 });
-window.addEventListener('scroll', () => {
+function syncGalleryDateScrubberFromScroll() {
   if (galleryDateScrub.active || performance.now() < galleryDateScrub.ignoreScrollUntil || state.view !== 'gallery' || galleryDateScrollFrame) return;
   galleryDateScrollFrame = requestAnimationFrame(() => {
     galleryDateScrollFrame = 0;
@@ -18106,7 +18436,9 @@ window.addEventListener('scroll', () => {
       setGalleryDateScrubberRatio(galleryDateRatioForScroll());
     }
   });
-}, { passive: true });
+}
+window.addEventListener('scroll', syncGalleryDateScrubberFromScroll, { passive: true });
+$('#view-gallery').addEventListener('scroll', syncGalleryDateScrubberFromScroll, { passive: true });
 window.addEventListener('resize', syncGalleryDateScrubber);
 
 const gallerySelectionDrag = {
@@ -18192,6 +18524,18 @@ function stopGallerySelectionDrag(event) {
 
 function renderGrid() {
   const grid = $('#galleryGrid');
+  syncLibraryCollectionControls();
+  const showingUploads = state.activeFolder === 'uploaded-assets';
+  grid.hidden = showingUploads;
+  $('#uploadedAssetsLibrary').hidden = !showingUploads;
+  if (showingUploads) {
+    if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
+    releasePreviewCacheObjectUrls();
+    grid.replaceChildren();
+    renderUploadedAssetsLibrary();
+    $('#galleryDateScrubber').hidden = true;
+    return;
+  }
   ensureGalleryPreviewObserver();
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   releasePreviewCacheObjectUrls();
@@ -20631,7 +20975,7 @@ $('#vidFree').addEventListener('input', updateVideoTuningSummary);
 $('#animEnhance').addEventListener('click', () => $('#animEnhance').classList.toggle('active'));
 $$('#mediaFilter button').forEach((b) => b.addEventListener('click', () => {
   state.mediaFilter = b.dataset.f;
-  const buttons = $$('#mediaFilter button');
+  const buttons = $$('#mediaFilter button').filter((button) => !button.hidden);
   buttons.forEach((x) => {
     const active = x === b;
     x.classList.toggle('active', active);
@@ -27307,6 +27651,7 @@ applySavedEngineOrders();
 loadMediaPreferences();
 restoreGenerationTuning(generationTuningMode(state.view));
 restoreDesktopPanelLayout();
+restoreGalleryZoom();
 wireDesktopPanelResizers();
 // The complete feature tour remains available from Advanced Settings. The
 // smaller first-image offer waits for auth, readiness, and Library state below.

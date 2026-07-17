@@ -1308,6 +1308,7 @@
       <button data-f="all" class="active">All</button>
       <button data-f="images">Images</button>
       <button data-f="videos">Videos</button>
+      <button data-f="audio" hidden>Audio</button>
     </div>
     <button class="likes-filter" id="likesFilter" type="button" aria-pressed="false" title="Show liked generations">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.5 4.5 13A5.15 5.15 0 0 1 12 5.95 5.15 5.15 0 0 1 19.5 13L12 20.5Zm0-2.83 6.07-6.08a3.15 3.15 0 0 0-4.46-4.46L12 8.74l-1.61-1.61a3.15 3.15 0 0 0-4.46 4.46L12 17.67Z"/></svg>
@@ -1326,6 +1327,11 @@
         <button type="button" role="option" aria-selected="false" data-sort="az"><span>A–Z</span><i>✓</i></button>
       </div>
     </div>
+    <label class="gallery-zoom-control" for="galleryZoom" title="Thumbnail size">
+      <svg class="gallery-zoom-small" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+      <input id="galleryZoom" type="range" min="1" max="5" step="1" value="3" aria-label="Gallery thumbnail size" aria-valuetext="Medium thumbnails, 4 columns" />
+      <svg class="gallery-zoom-large" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>
+    </label>
   </div>
   <div class="folder-picker">
     <button class="folder-picker-trigger" id="folderPickerTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="folderRow">
@@ -1342,6 +1348,13 @@
     <div class="folder-row" id="folderRow" role="listbox" aria-label="Gallery folders" aria-hidden="true" inert></div>
   </div>
   <div class="grid" id="galleryGrid"></div>
+  <section class="uploaded-assets-library" id="uploadedAssetsLibrary" aria-labelledby="uploadedAssetsTitle" hidden>
+    <header>
+      <span><small>Reusable files</small><strong id="uploadedAssetsTitle">Uploaded assets</strong></span>
+      <output id="uploadedAssetsCount"></output>
+    </header>
+    <div class="uploaded-assets-grid" id="uploadedAssetsGrid"></div>
+  </section>
   <div class="gallery-empty hidden" id="galleryEmpty">Nothing here yet</div>
   <div class="gallery-date-scrubber" id="galleryDateScrubber" role="slider" tabindex="0"
        aria-label="Browse gallery dates" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0"
@@ -2432,7 +2445,7 @@
           <div class="settings-group trash-management" id="trashManagement" hidden>
             <h5>Trash</h5>
             <div class="trash-management-row">
-              <span><strong>Deleted generation files</strong><small id="trashStatus">Checking Mix Studio trash...</small></span>
+              <span><strong>Deleted files</strong><small id="trashStatus">Checking Mix Studio trash...</small></span>
               <button class="settings-cache-clear trash-empty" id="trashEmpty" type="button" disabled>Empty trash</button>
             </div>
           </div>
@@ -2555,21 +2568,21 @@
       </button>
       <button class="asset-picker-action" id="assetPickerPrevious" type="button">
         <span class="asset-picker-action-icon" aria-hidden="true">✦</span>
-        <span><b>Use previous generation</b><small>Select from your gallery</small></span>
+        <span><b>Browse Library</b><small>Generations and uploaded assets</small></span>
       </button>
     </div>
     <div class="asset-picker-gallery" id="assetPickerGallery" hidden>
       <div class="asset-picker-gallery-head">
         <button class="asset-picker-back" id="assetPickerBrowseBack" type="button" aria-label="Back to source choices"><span aria-hidden="true">‹</span> Sources</button>
-        <span>Your gallery</span>
+        <span>Library</span>
         <small id="assetPickerCount"></small>
       </div>
       <label class="asset-picker-search" for="assetPickerSearch">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 3a7.5 7.5 0 1 1-4.72 13.33L2.7 19.4l-1.4-1.4 3.07-3.08A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-        <input id="assetPickerSearch" type="search" placeholder="Search prompts, models, or dates" autocomplete="off" />
+        <input id="assetPickerSearch" type="search" placeholder="Search generations or uploads" autocomplete="off" />
         <button id="assetPickerSearchClear" type="button" aria-label="Clear search" hidden>✕</button>
       </label>
-      <div class="asset-picker-toolbar" aria-label="Previous generation filters">
+      <div class="asset-picker-toolbar" aria-label="Library asset filters">
         <div class="asset-picker-dropdown" id="assetPickerFolderDropdown">
           <button class="asset-picker-tool asset-picker-folder-trigger" id="assetPickerFolderTrigger" type="button" aria-haspopup="listbox" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>
@@ -2588,7 +2601,7 @@
             <span id="assetPickerSortLabel">Newest</span>
             <svg class="asset-picker-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
           </button>
-          <div class="asset-picker-menu asset-picker-sort-menu" id="assetPickerSortMenu" role="listbox" aria-label="Sort previous generations" hidden>
+          <div class="asset-picker-menu asset-picker-sort-menu" id="assetPickerSortMenu" role="listbox" aria-label="Sort Library assets" hidden>
             <button type="button" role="option" data-asset-sort="new">Newest</button>
             <button type="button" role="option" data-asset-sort="active">Active</button>
             <button type="button" role="option" data-asset-sort="old">Oldest</button>

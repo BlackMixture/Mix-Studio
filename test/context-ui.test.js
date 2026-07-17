@@ -52,7 +52,7 @@ test('LoRAs can persist trigger phrases and add them to the prompt on activation
   assert.match(serverJs, /triggerPhrase: String\(l\.triggerPhrase \|\| ''\)/);
 });
 
-test('generation image and video inputs offer device upload or previous gallery generations', () => {
+test('generation media inputs offer device upload or reusable Library assets', () => {
   assert.match(indexHtml, /id="assetPickerSheet"/);
   assert.match(indexHtml, /id="assetPickerUpload"/);
   assert.match(indexHtml, /id="assetPickerPrevious"/);
@@ -68,7 +68,8 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(indexHtml, /id="assetPickerPreviewNeighbor"/);
   assert.match(indexHtml, /id="assetPickerPreviewPrevious"/);
   assert.match(indexHtml, /id="assetPickerPreviewNext"/);
-  assert.match(indexHtml, /id="assetPickerBrowseBack"[^>]*>[\s\S]*?Sources<\/button>[\s\S]*?<span>Your gallery<\/span>/);
+  assert.match(indexHtml, /id="assetPickerBrowseBack"[^>]*>[\s\S]*?Sources<\/button>[\s\S]*?<span>Library<\/span>/);
+  assert.match(indexHtml, /<b>Browse Library<\/b><small>Generations and uploaded assets<\/small>/);
   assert.match(appJs, /function assetMatchesQuery\(asset, query\)/);
   assert.match(appJs, /function assetPickerVisibleAssets\(\)/);
   assert.match(appJs, /assetPickerState\.folder !== 'all'/);
@@ -90,7 +91,7 @@ test('generation image and video inputs offer device upload or previous gallery 
   assert.match(appJs, /function uploadInputAsset\(blob, filename\)/);
   assert.match(appJs, /request\.upload\.addEventListener\('progress'/);
   assert.match(appJs, /detail\.textContent = 'Available after refresh'/);
-  assert.match(appJs, /const res = await uploadInputAsset\(file, file\.name \|\| 'file\.bin'\)/);
+  assert.match(appJs, /const res = await uploadInputAsset\(file, file\.name \|\| 'file\.bin', \{ catalog: true \}\)/);
 });
 
 test('mobile source preview keeps its primary action in the visible panel', () => {

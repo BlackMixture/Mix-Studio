@@ -34,8 +34,8 @@ test('desktop Library navigation expands the gallery into the full workspace', (
   assert.match(css, /#view-gallery \{[\s\S]*position: absolute;[\s\S]*width: calc\(var\(--studio-right-width\) \+ 1px\)/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \{[\s\S]*width: 100%/);
   assert.match(css, /#view-gallery \{ transition: width 360ms/);
-  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(max\(150px, calc\(\(100cqw - 36px\) \/ 4\)\), 1fr\)\)/);
-  assert.match(css, /@media \(max-width: 1349px\) \{[\s\S]*repeat\(auto-fill, minmax\(max\(150px, calc\(\(100cqw - 24px\) \/ 3\)\), 1fr\)\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(var\(--gallery-columns, 4\), minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(css, /@media \(max-width: 1349px\) \{[\s\S]*100cqw - 24px/);
 });
 
 test('desktop Library transitions preserve the visible item and animate grid reflow', () => {
@@ -317,8 +317,12 @@ test('gallery exposes a draggable date scrubber with keyboard navigation', () =>
   assert.match(app, /function scrubGalleryDateAt\(clientY, haptic = true\)/);
   assert.match(app, /function setGalleryDateScrubberRatio\(ratio, haptic = false\)/);
   assert.match(app, /function previewGalleryDateScroll\(ratio\)/);
-  assert.match(app, /function galleryDateRatioForScroll\(scrollY = window\.scrollY\)/);
-  assert.match(app, /galleryDateScrub\.dragOffsetY = galleryDateScrub\.startY - thumbY/);
+  assert.match(app, /function galleryDateRatioForScroll\(scrollY = galleryScrollTop\(\)\)/);
+  assert.match(app, /scrollY \+ galleryScrollViewportHeight\(\) >= galleryScrollContentHeight\(\) - 3/);
+  assert.match(app, /function galleryScrollPanel\(\)/);
+  assert.match(app, /#view-gallery'\)\.addEventListener\('scroll', syncGalleryDateScrubberFromScroll/);
+  assert.match(app, /galleryDateScrub\.startRatio = currentRatio/);
+  assert.match(app, /top \+ height - galleryDateScrub\.startY/);
   assert.match(app, /galleryDateScrub\.active && galleryDateScrub\.dragMoved/);
   assert.match(app, /Math\.abs\(event\.clientY - galleryDateScrub\.startY\) < 4/);
   assert.match(app, /function settleGalleryToDate\(index\)/);
@@ -333,6 +337,7 @@ test('gallery exposes a draggable date scrubber with keyboard navigation', () =>
   assert.match(css, /\.gallery-date-scrubber\.is-active \.gallery-date-scrubber-label/);
   assert.match(css, /\.gallery-date-scrubber-label \{[\s\S]*font-size: 17px/);
   assert.match(css, /body\.gallery-date-scrubbing #galleryGrid \{[\s\S]*translateX\(-12px\) scale\(0\.94\)/);
+  assert.doesNotMatch(css, /#view-gallery \.gallery-date-scrubber \{ display: none !important; \}/);
 });
 
 test('gallery media supports profile-scoped likes by double tap and a likes-only filter', () => {

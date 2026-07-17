@@ -107,7 +107,7 @@ test('pasted images use the existing upload path and deterministic workflow dest
   );
   assert.match(upload, /URL\.createObjectURL\(file\)/);
   assert.match(upload, /await imageDimensions\(url\)/);
-  assert.match(upload, /await uploadInputAsset\(file, filename, \{ quietComplete: true \}\)/);
+  assert.match(upload, /await uploadInputAsset\(file, filename, \{ quietComplete: true, catalog: true \}\)/);
   assert.ok(upload.indexOf('await imageDimensions(url)') < upload.indexOf('await uploadInputAsset(file, filename'));
   assert.match(upload, /URL\.revokeObjectURL\(url\)/);
   assert.match(upload, /url: `\/api\/input\?name=\$\{encodeURIComponent\(response\.name\)\}`/);

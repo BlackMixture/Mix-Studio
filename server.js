@@ -86,6 +86,11 @@ const {
   receiveInputFile,
   multipartFileUpload,
 } = require('./lib/input-assets');
+const {
+  uploadedAssetKind,
+  uploadedAssetUsage,
+  publicUploadedAsset,
+} = require('./lib/uploaded-assets');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
 const { normalizeEditAngle, supportsEditAngles, editAnglePrompt } = require('./lib/edit-angle');
@@ -501,6 +506,7 @@ if (!Array.isArray(db.history)) db.history = [];
 if (!Array.isArray(db.loraPresets)) db.loraPresets = [];
 if (!Array.isArray(db.userPreferences)) db.userPreferences = [];
 if (!Array.isArray(db.faces)) db.faces = [];
+if (!Array.isArray(db.uploadedAssets)) db.uploadedAssets = [];
 
 /* ---------------------- Profiles (accounts) ------------------------ */
 // Signing secret persists so logins survive server restarts
@@ -4428,6 +4434,8 @@ const MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json',
   '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac',
+  '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.aac': 'audio/aac', '.opus': 'audio/opus',
 };
 function serveFile(res, file, range) {
   fs.stat(file, (err, st) => {
@@ -4696,6 +4704,11 @@ async function handleApi(req, res, url) {
     db.history = db.history.filter((h) => h.profileId !== target.id);
     db.loraPresets = db.loraPresets.filter((p) => p.profileId !== target.id);
     db.userPreferences = db.userPreferences.filter((p) => p.profileId !== target.id);
+    for (const asset of db.uploadedAssets.filter((entry) => entry.profileId === target.id && !entry.deletedAt)) {
+      const durable = inputAssetPath(INPUTS, asset.name);
+      await fsp.rename(durable, path.join(TRASH, path.basename(durable))).catch(() => { /* noop */ });
+    }
+    db.uploadedAssets = db.uploadedAssets.filter((entry) => entry.profileId !== target.id);
     for (const f of db.faces.filter((x) => x.profileId === target.id)) await toTrash(FACES, f.file);
     db.faces = db.faces.filter((f) => f.profileId !== target.id);
     if (target.avatar) await toTrash(AVATARS, target.avatar);
@@ -4982,6 +4995,13 @@ async function handleApi(req, res, url) {
   if (route === '/api/input' && req.method === 'GET') {
     const name = String(url.searchParams.get('name') || '');
     if (!name) return json(res, 400, { error: 'name required' });
+    const catalogedAsset = db.uploadedAssets.find((asset) => asset.name === name);
+    if (catalogedAsset && catalogedAsset.profileId !== req.profile.id) {
+      return json(res, 404, { error: 'Uploaded asset not found' });
+    }
+    if (catalogedAsset && catalogedAsset.deletedAt) {
+      return json(res, 404, { error: 'This uploaded asset was deleted' });
+    }
     const local = inputAssetPath(INPUTS, name);
     try {
       await fsp.access(local);
@@ -5012,7 +5032,9 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/upload' && req.method === 'POST') {
-    const orig = decodeURIComponent(req.headers['x-filename'] || 'ref.png').replace(/[^\w.\-]+/g, '_');
+    const decodedFilename = decodeURIComponent(req.headers['x-filename'] || 'ref.png');
+    const uploadLabel = decodedFilename.split(/[\\/]+/).pop().replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 240) || 'Uploaded asset';
+    const orig = uploadLabel.replace(/[^\w.\-]+/g, '_');
     const contentLength = Number(req.headers['content-length']);
     if (Number.isFinite(contentLength) && contentLength > MAX_INPUT_BYTES) {
       req.resume();
@@ -5029,7 +5051,28 @@ async function handleApi(req, res, url) {
       const durable = inputAssetPath(INPUTS, comfyName);
       await fsp.unlink(durable).catch(() => {});
       await fsp.rename(temporary, durable);
-      return json(res, 200, { name: comfyName, hasAudio: hasAudio === true, durable: true });
+      let asset = null;
+      if (req.headers['x-asset-catalog'] === '1') {
+        const stat = await fsp.stat(durable);
+        asset = {
+          id: uid(),
+          profileId: req.profile.id,
+          name: comfyName,
+          label: uploadLabel,
+          kind: uploadedAssetKind(orig, req.headers['content-type']),
+          size: stat.size,
+          hasAudio: hasAudio === true,
+          createdAt: Date.now(),
+        };
+        db.uploadedAssets.push(asset);
+        saveDb();
+      }
+      return json(res, 200, {
+        name: comfyName,
+        hasAudio: hasAudio === true,
+        durable: true,
+        asset: asset ? publicUploadedAsset(asset) : null,
+      });
     } catch (error) {
       await fsp.unlink(temporary).catch(() => {});
       if (error && error.code === 'INPUT_TOO_LARGE') {
@@ -6636,7 +6679,40 @@ async function handleApi(req, res, url) {
     const view = galleryView(db, unlocked);
     view.items = view.items.filter((it) => it.profileId === req.profile.id);
     view.folders = view.folders.filter((f) => f.profileId === req.profile.id);
-    return json(res, 200, Object.assign({ unlocked, profile: publicProfile(req.profile, db) }, view));
+    const uploadedAssets = db.uploadedAssets
+      .filter((asset) => asset.profileId === req.profile.id && !asset.deletedAt)
+      .map(publicUploadedAsset);
+    return json(res, 200, Object.assign({ unlocked, uploadedAssets, profile: publicProfile(req.profile, db) }, view));
+  }
+
+  const uploadedAssetDelete = route.match(/^\/api\/uploaded-assets\/([\w]+)$/);
+  if (uploadedAssetDelete && req.method === 'DELETE') {
+    const asset = db.uploadedAssets.find((entry) => (
+      entry.id === uploadedAssetDelete[1] && entry.profileId === req.profile.id && !entry.deletedAt
+    ));
+    if (!asset) return json(res, 404, { error: 'Uploaded asset not found' });
+    const usage = uploadedAssetUsage(asset, { items: db.items, jobs: [...jobs.values()] });
+    if (usage.inUse) {
+      const reasons = [];
+      if (usage.savedGenerations) reasons.push(`${usage.savedGenerations} saved generation${usage.savedGenerations === 1 ? '' : 's'}`);
+      if (usage.activeJobs) reasons.push(`${usage.activeJobs} active job${usage.activeJobs === 1 ? '' : 's'}`);
+      return json(res, 409, {
+        error: `This asset is still used by ${reasons.join(' and ')}. Remove those references before deleting it.`,
+        code: 'asset_in_use',
+        usage,
+      });
+    }
+    await serializeMediaDeletion(async () => {
+      const durable = inputAssetPath(INPUTS, asset.name);
+      const trash = path.join(TRASH_ROOT, 'uploaded-assets', asset.profileId);
+      await fsp.mkdir(trash, { recursive: true });
+      await fsp.rename(durable, path.join(trash, `${Date.now()}_${path.basename(durable)}`)).catch((error) => {
+        if (error && error.code !== 'ENOENT') throw error;
+      });
+      asset.deletedAt = Date.now();
+      saveDb();
+    });
+    return json(res, 200, { ok: true, id: asset.id });
   }
 
   if (route === '/api/items/selection-stats' && req.method === 'POST') {
