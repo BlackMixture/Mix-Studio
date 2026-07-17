@@ -90,3 +90,21 @@ test('locked folders use app sheets instead of native password and action prompt
   assert.doesNotMatch(app, /window\.prompt\('Gallery password'/);
   assert.doesNotMatch(app, /type lock, unlock, merge, or delete/);
 });
+
+test('new folders finish refreshing before they can be locked', () => {
+  const handler = app.match(/\$\('#folderAddBtn'\)\?\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/)?.[1] || '';
+  assert.match(handler, /const folder = await api\('\/api\/folders'/);
+  assert.match(handler, /await refreshGallery\(\)/);
+  assert.match(handler, /Folder “\$\{folder\.name\}” created/);
+});
+
+test('folder privacy toggle keeps its target stable and ignores duplicate clicks', () => {
+  assert.match(app, /async function unlockPrivateGallery\(\{ refresh = true, announce = true \} = \{\}\)/);
+  const handler = app.match(/\$\('#folderLockAction'\)\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/)?.[1] || '';
+  assert.match(handler, /const folderId = state\.folderActionTarget\?\.id/);
+  assert.match(handler, /actionButton\.disabled/);
+  assert.match(handler, /unlockPrivateGallery\(\{ refresh: false, announce: false \}\)/);
+  assert.match(handler, /state\.folders\.find\(\(candidate\) => candidate\.id === folderId\)/);
+  assert.match(handler, /const updatedFolder = await api/);
+  assert.match(handler, /updatedFolder\.locked \? 'Folder locked' : 'Folder unlocked'/);
+});

@@ -14702,7 +14702,7 @@ function updatePrivacyButton() {
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>';
 }
 
-async function unlockPrivateGallery() {
+async function unlockPrivateGallery({ refresh = true, announce = true } = {}) {
   let error = '';
   while (true) {
     const password = await openPrivateUnlockSheet(error);
@@ -14714,8 +14714,9 @@ async function unlockPrivateGallery() {
         body: JSON.stringify({ password }),
       });
       state.privateUnlocked = true;
-      await refreshGallery();
-      toast('Locked folders shown');
+      if (refresh) await refreshGallery();
+      else updatePrivacyButton();
+      if (announce) toast('Locked folders shown');
       return true;
     } catch (e) {
       error = e.message;
@@ -14821,8 +14822,9 @@ $('#folderAddBtn')?.addEventListener('click', async () => {
   const name = await askText({ title: 'Create folder', confirmLabel: 'Create folder', input: { label: 'Folder name', maxLength: 60 } });
   if (name == null) return;
   try {
-    await api('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-    refreshGallery();
+    const folder = await api('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    await refreshGallery();
+    toast(`Folder “${folder.name}” created`);
   } catch (e) { toast(e.message, true); }
 });
 
@@ -14852,22 +14854,33 @@ $('#folderActionsSheet').addEventListener('click', (event) => {
   if (event.target === $('#folderActionsSheet')) closeFolderActionsSheet();
 });
 $('#folderLockAction').addEventListener('click', async () => {
-  const f = state.folderActionTarget;
-  if (!f) return;
+  const actionButton = $('#folderLockAction');
+  const folderId = state.folderActionTarget?.id;
+  if (!folderId || actionButton.disabled) return;
+  actionButton.disabled = true;
   try {
     if (!state.privateUnlocked) {
-      const unlocked = await unlockPrivateGallery();
+      // Keep the selected folder stable while the password sheet is open. A full
+      // gallery refresh here used to replace the action target mid-toggle.
+      const unlocked = await unlockPrivateGallery({ refresh: false, announce: false });
       if (!unlocked || !state.privateUnlocked) return;
     }
-    await api(`/api/folders/${f.id}/private`, {
+    const folder = state.folders.find((candidate) => candidate.id === folderId)
+      || state.folderActionTarget;
+    if (!folder) throw new Error('Folder no longer exists');
+    const updatedFolder = await api(`/api/folders/${folderId}/private`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locked: !f.locked }),
+      body: JSON.stringify({ locked: !folder.locked }),
     });
-    if (state.activeFolder === f.id && !f.locked) state.activeFolder = 'all';
+    if (state.activeFolder === folderId && updatedFolder.locked) state.activeFolder = 'all';
     closeFolderActionsSheet();
     await refreshGallery();
-    toast(f.locked ? 'Folder unlocked' : 'Folder locked');
-  } catch (e) { toast(e.message, true); }
+    toast(updatedFolder.locked ? 'Folder locked' : 'Folder unlocked');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    actionButton.disabled = false;
+  }
 });
 $('#folderMergeAction').addEventListener('click', () => {
   const f = state.folderActionTarget;

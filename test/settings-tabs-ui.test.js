@@ -49,6 +49,8 @@ test('settings tabs switch panes, support keyboard navigation, and keep content 
   assert.match(css, /\.settings-shell \{[\s\S]*grid-template-columns: 104px minmax\(0, 1fr\)/);
   assert.match(css, /\.settings-content \{[\s\S]*overflow-y: auto/);
   assert.match(css, /\.settings-panel \{[\s\S]*overflow: hidden[\s\S]*display: flex/);
+  const tabRail = css.match(/\.settings-tabs \{([\s\S]*?)\}/)?.[1] || '';
+  assert.match(tabRail, /background-color: #000/);
 });
 
 test('advanced settings exposes generation setup as a dedicated status entry', () => {
