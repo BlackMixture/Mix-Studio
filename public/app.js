@@ -2530,6 +2530,31 @@ function cascadeFocusedLibraryRail() {
     }));
 }
 
+function waitForDesktopFocusedMedia(maxWait = 120) {
+  const video = $('#lbVideo');
+  const media = video.hidden ? $('#lbImg') : video;
+  const ready = media instanceof HTMLVideoElement
+    ? media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+    : media.complete && media.naturalWidth > 0;
+  if (ready) return Promise.resolve();
+  return new Promise((resolve) => {
+    const readyEvent = media instanceof HTMLVideoElement ? 'loadeddata' : 'load';
+    let settled = false;
+    let timer = 0;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      media.removeEventListener(readyEvent, finish);
+      media.removeEventListener('error', finish);
+      resolve();
+    };
+    media.addEventListener(readyEvent, finish, { once: true });
+    media.addEventListener('error', finish, { once: true });
+    timer = setTimeout(finish, maxWait);
+  });
+}
+
 function startDesktopSharedFocusTransition(source) {
   cancelDesktopSharedFocusTransition();
   if (!source || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -2577,12 +2602,25 @@ function startDesktopSharedFocusTransition(source) {
     });
     motion.animation = animation;
     cascadeFocusedLibraryRail();
-    animation.finished.catch(() => {}).finally(() => {
+    animation.finished.then(async () => {
+      if (desktopSharedFocusMotion !== motion) return;
+      await waitForDesktopFocusedMedia();
+      if (desktopSharedFocusMotion !== motion) return;
+      document.body.classList.remove('desktop-shared-focus-active');
+      const handoff = overlay.animate([
+        { opacity: 1 },
+        { opacity: 0 },
+      ], {
+        duration: 50,
+        easing: 'linear',
+        fill: 'forwards',
+      });
+      motion.animation = handoff;
+      await handoff.finished.catch(() => {});
       if (desktopSharedFocusMotion !== motion) return;
       desktopSharedFocusMotion = null;
       overlay.remove();
-      document.body.classList.remove('desktop-shared-focus-active');
-    });
+    }).catch(() => {});
   });
 }
 

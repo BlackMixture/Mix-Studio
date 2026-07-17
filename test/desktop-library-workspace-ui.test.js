@@ -33,12 +33,18 @@ test('full Library taps use a fast shared-origin focused transition on desktop a
   assert.ok(fullLibraryTap.indexOf('openLightbox(item.id, media, { focusSource })') < fullLibraryTap.indexOf('const now = Date.now()'));
   assert.match(app, /function startDesktopSharedFocusTransition\(source\)/);
   assert.match(app, /duration: 135/);
+  assert.match(app, /function waitForDesktopFocusedMedia\(maxWait = 120\)/);
+  assert.match(app, /await waitForDesktopFocusedMedia\(\)/);
+  assert.match(app, /document\.body\.classList\.remove\('desktop-shared-focus-active'\);[\s\S]{0,180}\{ opacity: 1 \},[\s\S]{0,40}\{ opacity: 0 \}/);
+  assert.match(app, /duration: 50,[\s\S]{0,40}easing: 'linear'/);
   assert.match(app, /function cascadeFocusedLibraryRail\(\)/);
   assert.match(app, /duration: 85,[\s\S]{0,80}delay: index \* 7/);
   assert.match(app, /libraryWasExpanded !== libraryExpanded && !focusFromExpandedLibrary/);
   assert.match(css, /body\.desktop-focus-from-library \.studio-workspace,[\s\S]*body\.desktop-focus-from-library #view-gallery \{[\s\S]*transition: none;/);
   assert.match(css, /body\.desktop-focus-from-library #lightbox\.show \{ animation: none; \}/);
   assert.match(css, /body\.desktop-shared-focus-active #lightbox \.lightbox-img-wrap \{ opacity: 0; \}/);
+  assert.match(css, /#lightbox \.lightbox-img-wrap \{[\s\S]*transition: opacity 50ms linear;/);
+  assert.match(css, /will-change: transform, border-radius, opacity;/);
   assert.match(css, /focusedDetailsFastIn 90ms 38ms/);
 });
 

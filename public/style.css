@@ -10166,7 +10166,7 @@ body.sheet-open {
     border-radius: 22px;
     background: #000;
     box-shadow: 0 26px 70px rgba(0,0,0,.42);
-    transition: opacity 45ms linear;
+    transition: opacity 50ms linear;
   }
   body.desktop-shared-focus-active #lightbox .lightbox-img-wrap { opacity: 0; }
   .desktop-shared-focus-ghost {
@@ -10178,7 +10178,7 @@ body.sheet-open {
     border: 1px solid rgba(255,255,255,.12);
     background: #000;
     box-shadow: 0 18px 54px rgba(0,0,0,.48);
-    will-change: transform, border-radius;
+    will-change: transform, border-radius, opacity;
   }
   .desktop-shared-focus-ghost img {
     display: block;
