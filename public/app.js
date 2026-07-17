@@ -18788,17 +18788,22 @@ function renderGrid() {
   if (state.mediaPreferences.previewCache) schedulePreviewCacheWarmup(items);
 }
 
-async function selectDesktopLibraryItem(item, media = 'image') {
-  const preserveFocusedResult = desktopWorkspaceActive() && $('#lightbox').classList.contains('show');
-  checkpointDesktopInputSetup();
+function setDesktopLibraryStageSelection(item, media = 'image') {
   const video = (item.videos || []).find((entry) => entry.id === media) || null;
   state.desktopStageDismissed = false;
   state.desktopItemId = item.id;
   state.desktopMediaId = video ? video.id : 'image';
   state.desktopSettingsReady = false;
-  const token = ++state.desktopReuseToken;
   renderDesktopStage(item, state.desktopMediaId);
   syncDesktopGallerySelection();
+  return video;
+}
+
+async function selectDesktopLibraryItem(item, media = 'image') {
+  const preserveFocusedResult = desktopWorkspaceActive() && $('#lightbox').classList.contains('show');
+  checkpointDesktopInputSetup();
+  const video = setDesktopLibraryStageSelection(item, media);
+  const token = ++state.desktopReuseToken;
   if (preserveFocusedResult) openLightbox(item.id, state.desktopMediaId);
   const reuseOptions = { desktopToken: token, silent: true, preserveLightbox: preserveFocusedResult };
   try {
@@ -19740,6 +19745,12 @@ function handleGalleryTap(item, card) {
     stopDesktopGalleryLayoutTransition();
     const media = card.dataset.media || 'image';
     const focusSource = captureDesktopSharedFocusSource(card);
+    // Keep the persistent result stage in sync with the item being focused.
+    // Restoring generation settings here would make a simple preview perform
+    // expensive input fetches/uploads, so the explicit Use action remains the
+    // place for that heavier operation.
+    state.desktopReuseToken += 1;
+    setDesktopLibraryStageSelection(item, media);
     openLightbox(item.id, media, { focusSource });
     return;
   }

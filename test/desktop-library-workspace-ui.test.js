@@ -9,7 +9,10 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 
 test('desktop library cards load their media and saved settings into the workspace', () => {
+  assert.match(app, /function setDesktopLibraryStageSelection\(item, media = 'image'\)/);
+  assert.match(app, /state\.desktopItemId = item\.id;[\s\S]{0,180}renderDesktopStage\(item, state\.desktopMediaId\);[\s\S]{0,80}syncDesktopGallerySelection\(\)/);
   assert.match(app, /function selectDesktopLibraryItem\(item, media = 'image'\)/);
+  assert.match(app, /const video = setDesktopLibraryStageSelection\(item, media\)/);
   assert.match(app, /const preserveFocusedResult = desktopWorkspaceActive\(\) && \$\('#lightbox'\)\.classList\.contains\('show'\)/);
   assert.match(app, /if \(preserveFocusedResult\) openLightbox\(item\.id, state\.desktopMediaId\)/);
   assert.match(app, /const reuseOptions = \{ desktopToken: token, silent: true, preserveLightbox: preserveFocusedResult \}/);
@@ -19,6 +22,8 @@ test('desktop library cards load their media and saved settings into the workspa
   assert.match(app, /desktopWorkspaceActive\(\) && \(\$\('#lightbox'\)\.classList\.contains\('show'\) \|\| state\.view !== 'gallery'\)/);
   const fullLibraryTap = app.match(/function handleGalleryTap\(item, card\) \{[\s\S]*?\n\}/)?.[0] || '';
   assert.match(fullLibraryTap, /openLightbox\(item\.id, media\)/);
+  assert.match(fullLibraryTap, /state\.desktopReuseToken \+= 1;[\s\S]{0,80}setDesktopLibraryStageSelection\(item, media\)/);
+  assert.ok(fullLibraryTap.indexOf('setDesktopLibraryStageSelection(item, media)') < fullLibraryTap.indexOf('openLightbox(item.id, media, { focusSource })'));
   assert.doesNotMatch(fullLibraryTap, /selectDesktopLibraryItem/);
   assert.match(app, /syncDesktopGallerySelection\(\)/);
   assert.match(css, /\.card\.desktop-active:not\(\.selected\)/);
