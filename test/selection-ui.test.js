@@ -120,3 +120,9 @@ test('deleting a selected group expands every member and requires explicit confi
   assert.match(app, /confirmLabel: 'Move to trash'/);
   assert.match(app, /await Promise\.all\(ids\.map\(\(id\) => api\('\/api\/item\/' \+ id, \{ method: 'DELETE' \}\)\)\)/);
 });
+
+test('expanded selection actions remain clickable after overflow layout', () => {
+  assert.match(app, /event\.target\.closest\('\.select-actions, \.selection-console-more-actions, #selCancel, #selDock'\)/);
+  assert.match(app, /buttons\.slice\(visible\)\.forEach\(\(button\) => more\.appendChild\(button\)\)/);
+  assert.match(html, /id="selectionConsoleMoreActions"[\s\S]*id="selUngroup"[\s\S]*id="selDelete"/);
+});

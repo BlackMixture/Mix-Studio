@@ -20225,7 +20225,7 @@ $('#selInsightsHandle').addEventListener('click', () => {
 $('#selDock').addEventListener('click', dockSelectionConsole);
 let selectBarSwipe = null;
 $('#selectBar').addEventListener('pointerdown', (event) => {
-  if (event.target.closest('.select-actions, #selCancel, #selDock')) return;
+  if (event.target.closest('.select-actions, .selection-console-more-actions, #selCancel, #selDock')) return;
   const expanded = $('#selectBar').classList.contains('is-expanded');
   selectBarSwipe = {
     pointerId: event.pointerId,
