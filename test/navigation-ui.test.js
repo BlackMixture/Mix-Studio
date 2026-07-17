@@ -25,10 +25,10 @@ test('desktop Library navigation expands the gallery into the full workspace', (
   assert.match(css, /body\.desktop-library-expanded \.studio-workspace \{[\s\S]*grid-template-columns: var\(--studio-left-width\) var\(--studio-center-width\) var\(--studio-right-width\);[\s\S]*gap: 1px/);
   assert.match(css, /body\.desktop-library-expanded \.create-tabs \{[\s\S]*opacity: 0;[\s\S]*transform: translateX\(calc\(-100% - 18px\)\)/);
   assert.match(css, /body\.desktop-library-expanded #view-create \{[\s\S]*pointer-events: none;[\s\S]*translateX\(calc\(-100% - 2px\)\)/);
-  assert.match(css, /body\.desktop-library-expanded \.desktop-stage \{[\s\S]*pointer-events: none;[\s\S]*translateX\(calc\(-100% - var\(--studio-left-width\) - 2px\)\)/);
+  assert.match(css, /body\.desktop-library-expanded \.desktop-stage \{[\s\S]*pointer-events: none;[\s\S]*translateX\(calc\(-100% - var\(--studio-left-width\) - 1px\)\)/);
   assert.doesNotMatch(css, /body\.desktop-library-expanded (?:#view-create|\.desktop-stage) \{[\s\S]{0,180}(?:scale\(|width: 0|opacity: 0)/);
   assert.doesNotMatch(css, /body\.desktop-library-expanded #view-create,[\s\S]{0,120}display: none/);
-  assert.match(css, /#view-gallery \{[\s\S]*position: absolute;[\s\S]*width: var\(--studio-right-width\)/);
+  assert.match(css, /#view-gallery \{[\s\S]*position: absolute;[\s\S]*width: calc\(var\(--studio-right-width\) \+ 1px\)/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \{[\s\S]*width: 100%/);
   assert.match(css, /#view-gallery \{ transition: width 360ms/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(220px, 1fr\)\)/);

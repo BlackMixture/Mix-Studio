@@ -9399,7 +9399,7 @@ body.sheet-open {
     top: 0;
     right: 0;
     bottom: 0;
-    width: var(--studio-right-width);
+    width: calc(var(--studio-right-width) + 1px);
     height: auto;
     padding: 16px 14px 40px;
   }
@@ -9598,7 +9598,7 @@ body.sheet-open {
   }
   body.desktop-library-expanded .desktop-stage {
     pointer-events: none;
-    transform: translateX(calc(-100% - var(--studio-left-width) - 2px));
+    transform: translateX(calc(-100% - var(--studio-left-width) - 1px));
   }
   body.desktop-library-expanded #view-gallery {
     display: block;
