@@ -9393,7 +9393,16 @@ body.sheet-open {
     height: 0;
   }
   #view-create { grid-column: 1; padding: 16px 14px 40px; }
-  #view-gallery { grid-column: 3; padding: 16px 14px 40px; }
+  #view-gallery {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--studio-right-width);
+    height: auto;
+    padding: 16px 14px 40px;
+  }
   #view-gallery::before {
     display: block;
     margin: 2px 3px 13px;
@@ -9567,8 +9576,8 @@ body.sheet-open {
   #view-gallery .gallery-date-scrubber { display: none !important; }
 
   body.desktop-library-expanded .tabs-wrap {
-    grid-template-columns: 0px 0px 100%;
-    gap: 0;
+    grid-template-columns: var(--studio-left-width) var(--studio-center-width) var(--studio-right-width);
+    gap: 1px;
   }
   body.desktop-library-expanded .primary-tabs {
     left: calc((100% - 680px) / 2);
@@ -9577,19 +9586,23 @@ body.sheet-open {
   body.desktop-library-expanded .create-tabs {
     opacity: 0;
     pointer-events: none;
-    transform: translateX(-100vw);
+    transform: translateX(calc(-100% - 18px));
   }
   body.desktop-library-expanded .studio-workspace {
-    grid-template-columns: 0px 0px 100%;
-    gap: 0;
+    grid-template-columns: var(--studio-left-width) var(--studio-center-width) var(--studio-right-width);
+    gap: 1px;
   }
-  body.desktop-library-expanded #view-create,
+  body.desktop-library-expanded #view-create {
+    pointer-events: none;
+    transform: translateX(calc(-100% - 2px));
+  }
   body.desktop-library-expanded .desktop-stage {
     pointer-events: none;
+    transform: translateX(calc(-100% - var(--studio-left-width) - 2px));
   }
   body.desktop-library-expanded #view-gallery {
     display: block;
-    grid-column: 3;
+    width: 100%;
     padding: 18px 22px 46px;
   }
   body.desktop-library-expanded #view-gallery::before { content: "Library"; }
@@ -10013,8 +10026,8 @@ body.sheet-open {
   .toast-zone { bottom: 24px; }
 
   #view-create,
-  .desktop-stage,
-  #view-gallery { transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
+  .desktop-stage { transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
+  #view-gallery { transition: width 360ms cubic-bezier(.2,.8,.2,1), transform 360ms cubic-bezier(.2,.8,.2,1), opacity 240ms var(--ease), padding 320ms var(--ease); }
   body.desktop-focused-result #view-create { opacity: 0; pointer-events: none; transform: translateX(-100%); }
   body.desktop-focused-result .desktop-stage,
   body.desktop-focused-result #view-gallery { opacity: 1; transform: none; }
