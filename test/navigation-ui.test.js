@@ -32,7 +32,8 @@ test('desktop Library navigation expands the gallery into the full workspace', (
   assert.match(css, /#view-gallery \{[\s\S]*position: absolute;[\s\S]*width: calc\(var\(--studio-right-width\) \+ 1px\)/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \{[\s\S]*width: 100%/);
   assert.match(css, /#view-gallery \{ transition: width 360ms/);
-  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(clamp\(150px, 28cqw, 220px\), 1fr\)\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(max\(150px, calc\(\(100cqw - 36px\) \/ 4\)\), 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 1349px\) \{[\s\S]*repeat\(auto-fill, minmax\(max\(150px, calc\(\(100cqw - 24px\) \/ 3\)\), 1fr\)\)/);
 });
 
 test('desktop Library transitions preserve the visible item and animate grid reflow', () => {

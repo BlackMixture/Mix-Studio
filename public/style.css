@@ -9637,8 +9637,13 @@ body.sheet-open {
   body.desktop-library-expanded #view-gallery .gallery-sort-chevron { display: block; }
   body.desktop-library-expanded #view-gallery #sortSeg { display: flex; }
   body.desktop-library-expanded #view-gallery .grid {
-    grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 28cqw, 220px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(max(150px, calc((100cqw - 36px) / 4)), 1fr));
     gap: 12px;
+  }
+  @media (max-width: 1349px) {
+    body.desktop-library-expanded #view-gallery .grid {
+      grid-template-columns: repeat(auto-fill, minmax(max(150px, calc((100cqw - 24px) / 3)), 1fr));
+    }
   }
   body.desktop-library-expanded #view-gallery .gallery-date-divider { margin-top: 12px; }
   body.desktop-library-expanded #view-gallery .card { border-radius: 16px; }
