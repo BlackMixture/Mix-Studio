@@ -99,6 +99,12 @@ test('mobile source preview keeps its primary action in the visible panel', () =
   assert.match(styleCss, /\.asset-picker-panel\.previewing \.asset-picker-preview-media \{[\s\S]*?min-height: 0;[\s\S]*?height: auto;/);
 });
 
+test('previous-generation image choices preserve the complete source frame', () => {
+  assert.match(styleCss, /\.asset-picker-thumb img \{[\s\S]*?width: auto;[\s\S]*?height: auto;[\s\S]*?max-width: 100%;[\s\S]*?max-height: 100%;[\s\S]*?object-fit: contain !important;/);
+  assert.match(styleCss, /\.asset-picker-preview-current img \{[\s\S]*?width: auto;[\s\S]*?height: auto;[\s\S]*?max-width: 100%;[\s\S]*?max-height: 100%;[\s\S]*?object-fit: contain !important;/);
+  assert.match(styleCss, /\.ref-slot img \{[^}]*object-fit: contain !important;[^}]*object-position: center;/);
+});
+
 test('source picker uses a focused black surface and grows from its trigger', () => {
   assert.match(styleCss, /#assetPickerSheet \.asset-picker-panel \{[\s\S]*?background: #000;[\s\S]*?transform-origin: var\(--asset-origin-x, 50%\) var\(--asset-origin-y, 50%\);/);
   assert.match(styleCss, /\.asset-picker-panel\.asset-picker-opening \{[\s\S]*?animation: assetPickerIn 280ms/);
