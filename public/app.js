@@ -17418,6 +17418,8 @@ function syncLibraryCollectionControls() {
   if (audioButton) audioButton.hidden = !uploads;
   $('#mediaFilter').classList.toggle('has-audio', uploads);
   $('#likesFilter').hidden = uploads;
+  $('#folderAddBtn').hidden = uploads;
+  $('#privacyBtn').hidden = uploads;
   $('#gallerySearch').placeholder = uploads
     ? 'Search uploaded assets…'
     : 'Search prompts, LoRAs, folders…';
@@ -24955,8 +24957,10 @@ const CONTEXTUAL_GUIDES = {
     id: 'library-basics',
     target: '.library-toolbar',
     kicker: 'Library basics',
-    title: 'Find and organize results',
-    copy: 'Search prompts, LoRAs, and folders, then filter or sort the grid. Hold any result when you want to act on several at once.',
+    title: () => state.activeFolder === 'uploaded-assets' ? 'Reuse uploaded assets' : 'Find and organize results',
+    copy: () => state.activeFolder === 'uploaded-assets'
+      ? 'Filter previous image, video, and audio uploads here. Delete an unused asset from its card; files used by saved generations stay protected.'
+      : 'Search prompts, LoRAs, and folders, then filter or sort the grid. Hold any result when you want to act on several at once.',
     motion: 'tap',
     simulateOn: 'input:not([type="hidden"]), button',
     demo: 'Search, filter, or hold a result',
