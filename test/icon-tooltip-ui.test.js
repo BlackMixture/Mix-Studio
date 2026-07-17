@@ -97,7 +97,7 @@ test('responsive icon controls use their rendered labels and concise overrides',
   assert.match(tooltipJs, /createImageGuideToggle:[\s\S]{0,120}'Add image'/);
   assert.match(tooltipJs, /getComputedStyle\(parent\)/);
   assert.match(tooltipJs, /style\.display === 'none'/);
-  assert.match(app, /function syncNavigation\(\)[\s\S]{0,1600}requestIconTooltipScan\(\)/);
+  assert.match(app, /function syncNavigation\(\)[\s\S]{0,2400}requestIconTooltipScan\(\)/);
 });
 
 test('tooltip hover polish is subtle, input-aware, and motion-safe', () => {

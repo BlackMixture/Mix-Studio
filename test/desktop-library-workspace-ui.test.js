@@ -29,9 +29,9 @@ test('desktop stage exposes an explicit focused-view information action', () => 
 });
 
 test('desktop navigation and focused viewer align to the three-column workspace', () => {
-  assert.match(css, /\.primary-tabs \{ grid-column: 2; grid-row: 1; \}/);
-  assert.match(css, /\.create-tabs \{ grid-column: 1; grid-row: 1;/);
-  assert.match(css, /body\.desktop-focused-result \.tabs-wrap,[\s\S]*body\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px minmax\(420px, 1fr\) var\(--studio-right-width\)/);
+  assert.match(css, /\.primary-tabs \{[\s\S]*position: absolute;[\s\S]*left: calc\(var\(--studio-left-width\) \+ 15px\);[\s\S]*right: calc\(var\(--studio-right-width\) \+ 15px\)/);
+  assert.match(css, /\.create-tabs \{[\s\S]*grid-column: 1;[\s\S]*grid-row: 1;/);
+  assert.match(css, /body\.desktop-focused-result \.tabs-wrap,[\s\S]*body\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px calc\(100% - var\(--studio-right-width\) - 2px\) var\(--studio-right-width\)/);
   assert.match(css, /body\.desktop-focused-result \.create-tabs \{[\s\S]*opacity: 0;[\s\S]*translateX\(calc\(-100% - 18px\)\)/);
   assert.match(css, /#lightbox \{[\s\S]*inset: 122px var\(--studio-right-width\) 0 0;/);
   assert.match(css, /#lightbox\.show \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);[\s\S]*grid-template-rows: auto auto minmax\(0, 1fr\) auto auto;/);
@@ -44,7 +44,8 @@ test('desktop navigation and focused viewer align to the three-column workspace'
   assert.match(app, /document\.body\.classList\.remove\('desktop-focused-result'\)/);
   assert.match(app, /const primaryMode = focusedResult \? 'gallery' : \(createActive \? 'create' : state\.view\)/);
   assert.match(app, /for \(const element of \[\$\('#view-create'\), \$\('#createTabs'\), \$\('\.desktop-stage'\), \$\('#genDock'\)\]\)/);
-  assert.match(app, /element\.inert = focusedResult/);
+  assert.match(app, /const workspaceObscured = focusedResult \|\| libraryExpanded/);
+  assert.match(app, /element\.inert = workspaceObscured/);
   assert.match(app, /lightboxReturnFocus = document\.activeElement instanceof HTMLElement/);
   assert.match(app, /focusIconControlSilently\(\$\('#lbClose'\)\)/);
   assert.match(app, /focusIconControlSilently\(returnFocus\)/);

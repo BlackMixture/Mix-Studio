@@ -487,25 +487,75 @@ function placePromptCaretAfter(node) {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
+  return range.cloneRange();
 }
 
-function insertPromptReference(index) {
+function promptComposerRange(preferredRange = null, { preferLive = false } = {}) {
   const composer = $('#promptComposer');
-  composer.focus();
   const selection = window.getSelection();
-  const range = promptSelectionRange && composer.contains(promptSelectionRange.commonAncestorContainer)
-    ? promptSelectionRange : document.createRange();
-  if (!promptSelectionRange || !composer.contains(promptSelectionRange.commonAncestorContainer)) range.selectNodeContents(composer), range.collapse(false);
+  const liveRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+  const candidate = preferredRange || (preferLive ? liveRange : (promptSelectionRange || liveRange));
+  if (candidate && composer.contains(candidate.commonAncestorContainer)) return candidate.cloneRange();
+  const range = document.createRange();
+  range.selectNodeContents(composer);
+  range.collapse(false);
+  return range;
+}
+
+function insertPromptPlainText(text, preferredRange = null) {
+  const value = String(text || '');
+  if (!value) return promptComposerRange(preferredRange);
+  const composer = $('#promptComposer');
+  composer.focus({ preventScroll: true });
+  const selection = window.getSelection();
+  const range = promptComposerRange(preferredRange);
   selection.removeAllRanges();
   selection.addRange(range);
   range.deleteContents();
+  const node = document.createTextNode(value);
+  range.insertNode(node);
+  const caret = placePromptCaretAfter(node);
+  promptSelectionRange = caret.cloneRange();
+  syncPromptDraftFromComposer();
+  return caret;
+}
+
+function promptRangeNeedsSeparator(range, composer) {
+  const before = range.cloneRange();
+  before.selectNodeContents(composer);
+  try { before.setEnd(range.startContainer, range.startOffset); }
+  catch { return false; }
+  const text = before.toString();
+  return !!text && !/[\s.,!?;:()[\]{}'\"“”‘’/\\—–-]$/.test(text);
+}
+
+function insertPromptReference(index, preferredRange = null, options = {}) {
+  const composer = $('#promptComposer');
+  const selection = window.getSelection();
+  const range = promptComposerRange(preferredRange);
+  const preserveSelection = options.preserveSelection === true;
+  if (!preserveSelection) {
+    composer.focus({ preventScroll: true });
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  range.deleteContents();
+  const leading = options.ensureSeparator && promptRangeNeedsSeparator(range, composer)
+    ? document.createTextNode(' ') : null;
   const token = makePromptReferenceToken(index);
   const space = document.createTextNode(' ');
-  range.insertNode(space);
-  range.insertNode(token);
-  placePromptCaretAfter(space);
-  promptSelectionRange = null;
+  const fragment = document.createDocumentFragment();
+  if (leading) fragment.appendChild(leading);
+  fragment.append(token, space);
+  range.insertNode(fragment);
+  const caret = preserveSelection ? document.createRange() : placePromptCaretAfter(space);
+  if (preserveSelection) {
+    caret.setStartAfter(space);
+    caret.collapse(true);
+  }
+  if (!preserveSelection) promptSelectionRange = null;
   syncPromptDraftFromComposer();
+  return caret;
 }
 
 function renderPromptMentionPicker() {
@@ -2185,17 +2235,21 @@ wideRegionResolutionQuery.addEventListener('change', () => {
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
+  const libraryExpanded = desktopWorkspaceActive() && state.view === 'gallery' && !focusedResult;
+  const workspaceObscured = focusedResult || libraryExpanded;
   const primaryMode = focusedResult ? 'gallery' : (createActive ? 'create' : state.view);
   primaryTabButtons.forEach((button, index) => {
     const active = button.dataset.primaryMode === primaryMode;
     button.classList.toggle('active', active);
     if (active) $('#primaryTabPill').style.transform = `translateX(${index * 100}%)`;
   });
-  $('#createTabs').hidden = !createActive;
+  // Keep the left-side navigation mounted while Library expands so the whole
+  // desktop shell can slide away as one persistent workspace.
+  $('#createTabs').hidden = !createActive && !libraryExpanded;
   for (const element of [$('#view-create'), $('#createTabs'), $('.desktop-stage'), $('#genDock')]) {
     if (!element) continue;
-    element.inert = focusedResult;
-    if (focusedResult) element.setAttribute('aria-hidden', 'true');
+    element.inert = workspaceObscured;
+    if (workspaceObscured) element.setAttribute('aria-hidden', 'true');
     else element.removeAttribute('aria-hidden');
   }
   createTabButtons.forEach((button, index) => {
@@ -2204,7 +2258,7 @@ function syncNavigation() {
     if (active) $('#createTabPill').style.transform = `translateX(${index * 100}%)`;
   });
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
-  document.body.classList.toggle('desktop-library-expanded', desktopWorkspaceActive() && state.view === 'gallery' && !focusedResult);
+  document.body.classList.toggle('desktop-library-expanded', libraryExpanded);
   renderAppDrawerNavigation();
   requestIconTooltipScan();
 }
@@ -2243,6 +2297,8 @@ function setView(view, opts = {}) {
     else schedulePrimaryOrSidePanelGuide('library-basics', 760);
   } else if (view === 'create' && state.createMode === 'image') {
     schedulePrimaryOrSidePanelGuide('prompt-entry', 960);
+  } else if (view === 'edit' && prev !== view) {
+    scheduleContextualGuide('edit-inputs', 760);
   }
 }
 
@@ -2703,6 +2759,7 @@ function formatUploadBytes(bytes) {
 }
 
 function uploadInputAsset(blob, filename) {
+  const options = arguments[2] || {};
   if (blob.size > MAX_INPUT_UPLOAD_BYTES) {
     return Promise.reject(new Error('This file is larger than the 2 GB input limit. Trim or compress it before uploading.'));
   }
@@ -2738,10 +2795,14 @@ function uploadInputAsset(blob, filename) {
         reject(new Error(data.error || `Upload failed (${request.status})`));
         return;
       }
-      label.textContent = 'Input saved';
-      detail.textContent = 'Available after refresh';
-      fill.style.width = '100%';
-      setTimeout(() => status.remove(), 1200);
+      if (options.quietComplete) {
+        status.remove();
+      } else {
+        label.textContent = 'Input saved';
+        detail.textContent = 'Available after refresh';
+        fill.style.width = '100%';
+        setTimeout(() => status.remove(), 1200);
+      }
       resolve(data);
     });
     request.addEventListener('error', () => {
@@ -2780,6 +2841,413 @@ function pickDeviceUpload(accept, cb, options = {}) {
     if (assets.length) await cb(input.multiple ? assets : assets[0]);
   });
   input.click();
+}
+
+const CLIPBOARD_IMAGE_EXTENSIONS = Object.freeze({
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/bmp': '.bmp',
+  'image/tiff': '.tif',
+});
+const CLIPBOARD_IMAGE_TYPES_BY_EXTENSION = Object.freeze({
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.bmp': 'image/bmp',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff',
+});
+const clipboardImageTypeHints = new WeakMap();
+let clipboardImagePasteQueue = Promise.resolve();
+let clipboardImagePastePending = 0;
+
+function clipboardImageType(file) {
+  const type = String(file?.type || '').toLowerCase();
+  if (CLIPBOARD_IMAGE_EXTENSIONS[type]) return type;
+  const hintedType = String(clipboardImageTypeHints.get(file) || '').toLowerCase();
+  if (CLIPBOARD_IMAGE_EXTENSIONS[hintedType]) return hintedType;
+  if (type && type !== 'application/octet-stream') return '';
+  const name = String(file?.name || '').toLowerCase();
+  const extension = Object.keys(CLIPBOARD_IMAGE_TYPES_BY_EXTENSION).find((entry) => name.endsWith(entry));
+  return extension ? CLIPBOARD_IMAGE_TYPES_BY_EXTENSION[extension] : '';
+}
+
+function clipboardImageFiles(clipboardData) {
+  if (!clipboardData) return [];
+  const itemFiles = [...(clipboardData.items || [])].flatMap((item) => {
+    if (item.kind !== 'file') return [];
+    try {
+      const file = item.getAsFile();
+      const itemType = String(item.type || '').toLowerCase();
+      if (file && CLIPBOARD_IMAGE_EXTENSIONS[itemType]) clipboardImageTypeHints.set(file, itemType);
+      return file && clipboardImageType(file) ? [file] : [];
+    } catch {
+      return [];
+    }
+  });
+  const files = itemFiles.length ? itemFiles : [...(clipboardData.files || [])];
+  return files.filter((file) => clipboardImageType(file));
+}
+
+function clipboardImageFilename(file, index = 0, now = Date.now()) {
+  const type = clipboardImageType(file);
+  const extension = CLIPBOARD_IMAGE_EXTENSIONS[type] || '';
+  if (!extension) return '';
+  const original = String(file?.name || '').trim();
+  if (/\.(?:png|jpe?g|webp|gif|bmp|tiff?)$/i.test(original)) return original;
+  return `clipboard-image-${now}${index ? `-${index + 1}` : ''}${extension}`;
+}
+
+function clipboardImageCaption(clipboardData) {
+  if (!clipboardData || typeof clipboardData.getData !== 'function') return '';
+  let plain = '';
+  let html = '';
+  try {
+    plain = String(clipboardData.getData('text/plain') || '');
+    html = String(clipboardData.getData('text/html') || '');
+  } catch {
+    return '';
+  }
+  if (!plain) return '';
+  const trimmed = plain.trim();
+  const imageUrlOnly = /<img\b/i.test(html)
+    && /^(?:https?:\/\/|file:|data:image\/)[^\s]+$/i.test(trimmed);
+  return imageUrlOnly ? '' : plain;
+}
+
+function clipboardPasteContext() {
+  if (state.directorOpen) return { kind: 'unsupported', key: 'director', message: 'Add pasted images with Director’s Story media controls.' };
+  if (state.view === 'create' && state.createMode === 'region') {
+    const regionId = selectedRegion()?.id || null;
+    return { kind: 'region', key: `create:region:${regionId || 'none'}`, regionId };
+  }
+  if (state.view === 'create') {
+    return {
+      kind: 'create', key: `create:image:${state.createGuideMode}`, guideMode: state.createGuideMode,
+    };
+  }
+  if (state.view === 'edit') {
+    const capacity = state.editEngine === 'krea2' || editOutpaintActive() ? 1 : state.refs.length;
+    return {
+      kind: 'edit', key: `edit:${state.editEngine}:${editOutpaintActive() ? 'expand' : 'standard'}`,
+      capacity,
+    };
+  }
+  if (state.view === 'video') {
+    const activeFace = state.vidEngine === 'ltx' && !!state.vidFace;
+    const kind = state.vidEngine === 'ltx-edit' ? 'unsupported' : (activeFace ? 'video-face' : 'video');
+    return {
+      kind,
+      key: `video:${state.vidEngine}:${kind}`,
+      engine: state.vidEngine,
+      message: state.vidEngine === 'ltx-edit' ? 'LTX Edit needs a source video, so an image cannot be pasted into this prompt.' : '',
+    };
+  }
+  return { kind: 'unsupported', key: String(state.view || 'unknown'), message: 'Open Image, Edit, Region, or Video before pasting an image.' };
+}
+
+function currentClipboardPasteContextKey() {
+  return clipboardPasteContext().key;
+}
+
+function assertClipboardPasteContext(request) {
+  if (currentClipboardPasteContextKey() === request.context.key) return;
+  const error = new Error('Image paste stopped because the active workflow changed.');
+  error.code = 'clipboard_context_changed';
+  throw error;
+}
+
+function announceClipboardImagePaste(message, isError = false) {
+  const status = $('#clipboardPasteStatus');
+  if (status) {
+    status.textContent = '';
+    requestAnimationFrame(() => { status.textContent = message; });
+  }
+  toast(message, isError);
+}
+
+function flashClipboardPasteDestination(element) {
+  if (!element) return;
+  element.classList.remove('clipboard-paste-received');
+  void element.offsetWidth;
+  element.classList.add('clipboard-paste-received');
+  setTimeout(() => element.classList.remove('clipboard-paste-received'), 650);
+}
+
+function releaseClipboardAssetUrl(asset, replacement = null) {
+  const url = String(asset?.url || '');
+  if (!url.startsWith('blob:') || url === replacement?.url) return;
+  try { URL.revokeObjectURL(url); } catch { /* noop */ }
+}
+
+function insertClipboardPasteAnchor(range, caption = '') {
+  const composer = $('#promptComposer');
+  let caret = range;
+  if (caption) {
+    caret = insertPromptPlainText(caption, range);
+  } else {
+    caret = range.cloneRange();
+    caret.collapse(true);
+  }
+  const anchor = document.createElement('span');
+  anchor.className = 'clipboard-paste-anchor';
+  anchor.dataset.clipboardPasteAnchor = 'true';
+  anchor.setAttribute('aria-hidden', 'true');
+  anchor.setAttribute('contenteditable', 'false');
+  caret.insertNode(anchor);
+  const after = document.createRange();
+  after.setStartAfter(anchor);
+  after.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(after);
+  promptSelectionRange = after.cloneRange();
+  return anchor;
+}
+
+function clipboardPasteAnchorRange(anchor) {
+  const composer = $('#promptComposer');
+  if (!anchor?.isConnected || !composer.contains(anchor)) return null;
+  const range = document.createRange();
+  range.setStartBefore(anchor);
+  range.collapse(true);
+  return range;
+}
+
+async function uploadClipboardImage(file, index = 0) {
+  const filename = clipboardImageFilename(file, index);
+  if (!filename) throw new Error('Paste a PNG, JPEG, WebP, GIF, BMP, or TIFF image.');
+  if (!file.size) throw new Error('The pasted image is empty. Copy it again and retry.');
+  if (file.size > MAX_INPUT_UPLOAD_BYTES) throw new Error('The pasted image is larger than the 2 GB input limit.');
+  const url = URL.createObjectURL(file);
+  const dimensions = await imageDimensions(url);
+  if (!dimensions.w || !dimensions.h) {
+    URL.revokeObjectURL(url);
+    throw new Error('The pasted clipboard item is not a readable image.');
+  }
+  try {
+    const response = await uploadInputAsset(file, filename, { quietComplete: true });
+    return {
+      name: response.name,
+      url,
+      w: dimensions.w,
+      h: dimensions.h,
+      label: file.name || 'Pasted image',
+      hasAudio: false,
+    };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+async function resolveClipboardImageDestination(context, fileCount) {
+  if (context.kind === 'unsupported') {
+    announceClipboardImagePaste(context.message, true);
+    return null;
+  }
+  if (context.kind !== 'edit') return { kind: context.kind, limit: 1 };
+  const emptySlots = [];
+  for (let index = 0; index < context.capacity; index += 1) {
+    if (!state.refs[index]) emptySlots.push(index);
+  }
+  if (emptySlots.length) {
+    return { kind: 'edit', slots: emptySlots.slice(0, Math.max(1, fileCount)), replacing: false };
+  }
+  if (context.capacity === 1) return { kind: 'edit', slots: [0], replacing: true };
+  const choice = await openAppDialog({
+    title: 'Replace an Edit input?',
+    message: 'All Edit image inputs are full. Choose which one this pasted image should replace.',
+    confirmLabel: 'Replace input',
+    defaultChoice: '0',
+    choices: Array.from({ length: context.capacity }, (_, index) => ({
+      value: String(index),
+      label: `Input ${index + 1}`,
+      detail: index === 0 ? 'Current source image' : `Reference image ${index + 1}`,
+    })),
+  });
+  if (choice == null) return null;
+  return { kind: 'edit', slots: [Math.max(0, Math.min(context.capacity - 1, Number(choice) || 0))], replacing: true };
+}
+
+function snapshotClipboardImageDestination(context, destination) {
+  if (destination.kind === 'edit') {
+    destination.slotAssets = destination.slots.map((slot) => state.refs[slot] || null);
+  } else if (destination.kind === 'create') {
+    destination.targetAsset = state.createRef || null;
+  } else if (destination.kind === 'region') {
+    const region = state.regions.find((entry) => entry.id === context.regionId);
+    destination.targetAsset = region?.refAsset || null;
+    destination.targetName = region?.refImageName || '';
+  } else if (destination.kind === 'video' || destination.kind === 'video-face') {
+    destination.targetFrame = state.vidRef || null;
+    destination.targetFace = state.vidFace || null;
+  }
+  return destination;
+}
+
+function assertClipboardImageDestination(request, destination) {
+  assertClipboardPasteContext(request);
+  if (destination.kind === 'edit') {
+    const unchanged = destination.slots.every((slot, index) => (state.refs[slot] || null) === destination.slotAssets[index]);
+    if (unchanged) return;
+  } else if (destination.kind === 'create') {
+    if ((state.createRef || null) === destination.targetAsset) return;
+  } else if (destination.kind === 'region') {
+    const region = state.regions.find((entry) => entry.id === request.context.regionId);
+    if (region && (region.refAsset || null) === destination.targetAsset
+      && (region.refImageName || '') === destination.targetName) return;
+  } else if (destination.kind === 'video' || destination.kind === 'video-face') {
+    if ((state.vidRef || null) === destination.targetFrame && (state.vidFace || null) === destination.targetFace) return;
+  } else {
+    return;
+  }
+  const error = new Error('Image paste stopped because the destination changed.');
+  error.code = 'clipboard_context_changed';
+  throw error;
+}
+
+function promptHasReferenceToken(index) {
+  return new RegExp(`@image-${index}(?!\\d)`).test(promptDraft());
+}
+
+async function applyClipboardImages(request, destination, assets) {
+  const context = request.context;
+  const extraCount = request.unusedFileCount || 0;
+  let message = '';
+  if (destination.kind === 'create') {
+    const previous = state.createRef;
+    await setCreateImageGuideAsset(assets[0], context.guideMode,
+      () => assertClipboardImageDestination(request, destination));
+    releaseClipboardAssetUrl(previous, assets[0]);
+    message = destination.targetAsset ? 'Pasted image replaced the current image guide' : 'Pasted image added as the image guide';
+    requestAnimationFrame(() => flashClipboardPasteDestination($('#createImageGuideFilled')));
+  } else if (destination.kind === 'region') {
+    const region = state.regions.find((entry) => entry.id === context.regionId);
+    if (!region) throw new Error('The selected region is no longer available.');
+    const replacing = !!region.refImageName;
+    const previous = region.refAsset || { url: region.refUrl };
+    state.activeRegionId = region.id;
+    setRegionReference(assets[0], { announce: false });
+    releaseClipboardAssetUrl(previous, assets[0]);
+    message = replacing ? 'Pasted image replaced this region reference' : 'Pasted image added to this region';
+    requestAnimationFrame(() => flashClipboardPasteDestination($('#regionRefPreview')));
+  } else if (destination.kind === 'edit') {
+    const slots = destination.slots.slice(0, assets.length);
+    const previous = slots.map((slot) => state.refs[slot]);
+    if (slots.includes(0)) clearKreaMask(true, { preservePromptComposer: true });
+    slots.forEach((slot, index) => { state.refs[slot] = assets[index]; });
+    state.editRefSlots = Math.max(state.editRefSlots, ...slots.map((slot) => slot + 1));
+    renderRefs({ preservePromptComposer: true });
+    let caret = clipboardPasteAnchorRange(request.anchor);
+    slots.forEach((slot, index) => {
+      releaseClipboardAssetUrl(previous[index], assets[index]);
+      if (caret && !promptHasReferenceToken(slot + 1)) {
+        caret = insertPromptReference(slot + 1, caret, { ensureSeparator: true, preserveSelection: true });
+      }
+    });
+    saveForm();
+    requestAnimationFrame(() => slots.forEach((slot) => {
+      flashClipboardPasteDestination($(`#refRow .ref-slot[data-ref-index="${slot}"]`));
+    }));
+    message = slots.length === 1
+      ? `Pasted as Edit input ${slots[0] + 1}`
+      : `Pasted ${slots.length} images as Edit inputs ${slots.map((slot) => slot + 1).join(', ')}`;
+  } else if (destination.kind === 'video-face') {
+    const previousFace = state.vidFace;
+    const previousFrame = state.vidRef;
+    state.vidFace = Object.assign({}, assets[0], { label: 'Pasted image' });
+    state.vidRef = null;
+    releaseClipboardAssetUrl(previousFace, assets[0]);
+    releaseClipboardAssetUrl(previousFrame, assets[0]);
+    renderVidAttach();
+    updateVideoPanels();
+    saveForm();
+    message = destination.targetFace ? 'Pasted image replaced the Face ID reference' : 'Pasted image added as the Face ID reference';
+    requestAnimationFrame(() => flashClipboardPasteDestination($('#vidFaceThumb')));
+  } else if (destination.kind === 'video') {
+    const previousFrame = state.vidRef;
+    const previousFace = state.vidFace;
+    state.vidRef = assets[0];
+    state.vidFace = null;
+    releaseClipboardAssetUrl(previousFrame, assets[0]);
+    releaseClipboardAssetUrl(previousFace, assets[0]);
+    renderVidAttach();
+    updateVideoPanels();
+    maybeCreateAutomaticMotionPrompt();
+    saveForm();
+    const role = context.engine === 'scail' ? 'reference image' : 'first frame';
+    message = destination.targetFrame ? `Pasted image replaced the ${role}` : `Pasted image added as the ${role}`;
+    requestAnimationFrame(() => flashClipboardPasteDestination($('#vidAttachThumb')));
+  }
+  const failedCount = request.failedFileCount || 0;
+  if (failedCount) message += ` · ${failedCount} unreadable image${failedCount === 1 ? '' : 's'} skipped`;
+  if (extraCount) message += ` · ${extraCount} extra image${extraCount === 1 ? '' : 's'} not added`;
+  announceClipboardImagePaste(message);
+}
+
+async function processClipboardImagePaste(request) {
+  assertClipboardPasteContext(request);
+  const destination = await resolveClipboardImageDestination(request.context, request.files.length);
+  if (!destination) return;
+  assertClipboardPasteContext(request);
+  snapshotClipboardImageDestination(request.context, destination);
+  const limit = destination.kind === 'edit' ? destination.slots.length : destination.limit;
+  const assets = [];
+  const failures = [];
+  let attemptedCount = 0;
+  let committed = false;
+  try {
+    for (let index = 0; index < request.files.length && assets.length < limit; index += 1) {
+      assertClipboardPasteContext(request);
+      attemptedCount += 1;
+      try {
+        assets.push(await uploadClipboardImage(request.files[index], index));
+      } catch (error) {
+        failures.push(error);
+      }
+      assertClipboardImageDestination(request, destination);
+    }
+    request.unusedFileCount = Math.max(0, request.files.length - attemptedCount);
+    if (!assets.length) throw failures[0] || new Error('No usable clipboard image was found.');
+    request.failedFileCount = failures.length;
+    assertClipboardImageDestination(request, destination);
+    await applyClipboardImages(request, destination, assets);
+    committed = true;
+  } finally {
+    if (!committed) assets.forEach((asset) => releaseClipboardAssetUrl(asset));
+  }
+}
+
+function handlePromptClipboardImagePaste(event) {
+  const files = clipboardImageFiles(event.clipboardData);
+  if (!files.length) return;
+  event.preventDefault();
+  const context = clipboardPasteContext();
+  const caption = clipboardImageCaption(event.clipboardData);
+  const promptRange = promptComposerRange(null, { preferLive: true });
+  const anchor = insertClipboardPasteAnchor(promptRange, caption);
+  const request = { files, context, anchor };
+  clipboardImagePastePending += 1;
+  $('#promptComposer').setAttribute('aria-busy', 'true');
+  clipboardImagePasteQueue = clipboardImagePasteQueue
+    .then(() => processClipboardImagePaste(request))
+    .catch((error) => announceClipboardImagePaste(
+      error.message || 'Could not add the pasted image',
+      error.code !== 'clipboard_context_changed',
+    ))
+    .finally(() => {
+      if (request.anchor?.isConnected) request.anchor.remove();
+      clipboardImagePastePending = Math.max(0, clipboardImagePastePending - 1);
+      if (!clipboardImagePastePending) {
+        $('#promptComposer').removeAttribute('aria-busy');
+      }
+    });
 }
 
 async function usePreviousGenerations(assets) {
@@ -3708,7 +4176,9 @@ let teachCreateGuideAfterUpload = false;
 let createGuideTeachingIntentKey = '';
 
 async function setCreateImageGuideAsset(asset, mode = 'image') {
-  state.createRef = await prepareCreateImageGuideAsset(asset);
+  const prepared = await prepareCreateImageGuideAsset(asset);
+  arguments[2]?.();
+  state.createRef = prepared;
   clearCreateDepthPreview();
   state.createGuideMode = ['image', 'depth', 'style'].includes(mode) ? mode : 'image';
   state.createGuideActive = true;
@@ -4711,7 +5181,7 @@ async function uploadRegionReference(file) {
   } catch (e) { toast(e.message, true); }
 }
 
-function setRegionReference(asset) {
+function setRegionReference(asset, { announce = true } = {}) {
   const region = selectedRegion();
   if (!region || !asset) return;
   region.refImageName = asset.name;
@@ -4719,10 +5189,11 @@ function setRegionReference(asset) {
   region.refAsset = asset;
   renderRegionEditor();
   saveForm();
-  toast('Region reference added');
+  if (announce) toast('Region reference added');
 }
 
 function clearKreaMask(silent) {
+  const options = arguments[1] || {};
   cancelSmartMaskRequest();
   invalidateProcessedMask();
   state.kreaMask = null;
@@ -4743,7 +5214,7 @@ function clearKreaMask(silent) {
   if (cutout) cutout.getContext('2d').clearRect(0, 0, cutout.width || 1, cutout.height || 1);
   if (state.refs[0] && state.refs[0].displayUrl) {
     delete state.refs[0].displayUrl;
-    renderRefs();
+    renderRefs(options.preservePromptComposer ? { preservePromptComposer: true } : {});
   }
   renderKreaMaskBoxes();
   renderSmartMaskPoints();
@@ -6934,6 +7405,7 @@ $('#promptComposer').addEventListener('beforeinput', (event) => {
     openPromptMentionPicker();
   }
 });
+$('#promptComposer').addEventListener('paste', handlePromptClipboardImagePaste);
 $('#promptComposer').addEventListener('input', syncPromptDraftFromComposer);
 $('#promptComposer').addEventListener('keyup', capturePromptSelection);
 $('#promptComposer').addEventListener('mouseup', capturePromptSelection);
@@ -12154,7 +12626,7 @@ $('#loraPresetsBtn').addEventListener('click', () => {
 /* Reference images (edit mode)                                        */
 /* ------------------------------------------------------------------ */
 
-function renderRefs() {
+function renderRefs({ preservePromptComposer = false } = {}) {
   const row = $('#refRow');
   row.innerHTML = '';
   // Begin with one source image. Multi-reference engines reveal additional
@@ -12225,7 +12697,7 @@ function renderRefs() {
   const add = $('#addEditReference');
   if (add) add.hidden = visibleSlots >= maxSlots;
   if (state.view === 'edit') renderEditAspects();
-  renderPromptComposer();
+  if (!preservePromptComposer) renderPromptComposer();
   schedulePromptIntentHint();
 }
 
@@ -22696,7 +23168,7 @@ $('#firstRunTutorial').addEventListener('keydown', (event) => {
 /* Guided UI tutorial                                                  */
 /* ------------------------------------------------------------------ */
 
-const GUIDED_TOUR_VERSION = 3;
+const GUIDED_TOUR_VERSION = 4;
 const GUIDED_TOUR_STEPS = [
   {
     id: 'side-panel',
@@ -22821,6 +23293,69 @@ const GUIDED_TOUR_STEPS = [
     prepare: () => prepareGuidedTourImage(false),
   },
   {
+    id: 'edit-workspace',
+    target: '[data-primary-mode="edit"]',
+    advanceOn: '[data-primary-mode="edit"]',
+    title: 'Open the Edit workspace',
+    copy: 'Edit starts with an existing image and a prompt describing what should change.',
+    motion: 'tap',
+    demo: 'Tap Edit to open its image tools',
+    actionLabel: 'Tap Edit',
+    scroll: false,
+    prepare: () => prepareGuidedTourImage(false),
+  },
+  {
+    id: 'edit-inputs',
+    target: '#refPanel',
+    title: 'Add one or more images',
+    copy: 'Input 1 is the image to change. Multi-image models let + add Inputs 2 and 3 as references, and filled inputs can be dragged to reorder them.',
+    motion: 'tap',
+    simulateOn: () => $('#addEditReference').hidden ? '#refRow .ref-slot:first-child' : '#addEditReference',
+    demo: 'Use + to add another reference image',
+    prepare: prepareGuidedTourEdit,
+  },
+  {
+    id: 'edit-mentions',
+    target: '#promptPanel',
+    title: 'Reference an image with @',
+    copy: 'Type @ in the prompt and choose an Input token. Naming @image-1 or @image-2 tells the model exactly which image an instruction refers to.',
+    motion: 'type',
+    simulateOn: '#promptComposer',
+    simulationText: 'Keep @image-1 and use the colors from @image-2.',
+    demo: 'Type @ to choose a numbered input',
+    prepare: prepareGuidedTourEdit,
+  },
+  {
+    id: 'edit-preserve',
+    target: () => $('#editComposite').hidden ? '#refPanel' : '#editComposite',
+    title: 'Protect unchanged areas',
+    copy: 'Preserve keeps untouched parts of Input 1 exact by placing them back over the result. Turn it off when the model should freely redraw the whole frame.',
+    motion: 'tap',
+    simulateOn: () => $('#editComposite').hidden ? '#editModelHeader' : '#editComposite',
+    demo: 'Toggle Preserve when the selected model supports it',
+    prepare: prepareGuidedTourEdit,
+  },
+  {
+    id: 'edit-expand',
+    target: '#editOutpaintControl',
+    title: 'Expand beyond the frame',
+    copy: 'Expand is outpainting. Choose a wider or taller Resolution, position the source, and Mix Studio generates the new surrounding canvas.',
+    motion: 'tap',
+    simulateOn: '#editOutpaintToggle',
+    demo: 'Turn on Expand to continue the background',
+    prepare: prepareGuidedTourEdit,
+  },
+  {
+    id: 'edit-area',
+    target: () => $('#kreaMaskTools').hidden ? '#editModelPanel' : '#kreaMaskTools',
+    title: 'Edit one area with inpainting',
+    copy: 'Supported models expose Edit area; Krea 2 calls it Fill area. Mark a subject or object with Smart, Brush, or Box so only that region can change.',
+    motion: 'tap',
+    simulateOn: () => $('#kreaMaskTools').hidden ? '#editModelHeader' : '#kreaMaskBtn',
+    demo: 'Open Edit area or choose an inpainting model',
+    prepare: prepareGuidedTourEdit,
+  },
+  {
     id: 'open-library',
     target: '[data-primary-mode="gallery"]',
     advanceOn: '[data-primary-mode="gallery"]',
@@ -22863,9 +23398,23 @@ function prepareGuidedTourLoras() {
   renderLoras();
 }
 
+function prepareGuidedTourEdit() {
+  if ($('#appDrawer').classList.contains('show')) closeAppDrawer();
+  if (state.view !== 'edit') setView('edit');
+  if (state.editOutpaint) {
+    state.editOutpaint = false;
+    renderRefs();
+    updateVideoPanels();
+  }
+}
+
 function prepareGuidedTourLibrary() {
   if (state.view !== 'gallery') setView('gallery');
 }
+
+const EDIT_CONTEXTUAL_GUIDE_IDS = Object.freeze([
+  'edit-inputs', 'edit-mentions', 'edit-preserve', 'edit-expand', 'edit-area',
+]);
 
 const CONTEXTUAL_GUIDES = {
   'first-image-prompt': {
@@ -22975,6 +23524,72 @@ const CONTEXTUAL_GUIDES = {
     motion: 'swipe-up',
     simulateOn: '.lora-card:not(.add), .lora-card.add',
     demo: 'Add, tap, or hold a LoRA card',
+  },
+  'edit-inputs': {
+    id: 'edit-inputs',
+    target: '#refPanel',
+    kicker: 'Edit basics · 1 of 5',
+    title: 'Add more than one image',
+    copy: 'Input 1 is the image to change. On multi-image models, + adds Inputs 2 and 3 as references; drag filled inputs to reorder them.',
+    motion: 'tap',
+    simulateOn: () => $('#addEditReference').hidden ? '#refRow .ref-slot:first-child' : '#addEditReference',
+    demo: 'Use + to add another reference',
+    next: 'edit-mentions',
+  },
+  'edit-mentions': {
+    id: 'edit-mentions',
+    target: '#promptPanel',
+    kicker: 'Edit basics · 2 of 5',
+    title: 'Name images with @',
+    copy: 'Type @ in the prompt and choose a numbered Input. Tokens such as @image-1 and @image-2 tell the model which image each instruction means.',
+    motion: 'type',
+    simulateOn: '#promptComposer',
+    simulationText: 'Keep @image-1 and use the colors from @image-2.',
+    demo: 'Type @ to choose an input',
+    next: 'edit-preserve',
+  },
+  'edit-preserve': {
+    id: 'edit-preserve',
+    target: () => $('#editComposite').hidden ? '#refPanel' : '#editComposite',
+    kicker: 'Edit basics · 3 of 5',
+    title: 'Protect what should not change',
+    copy: 'Preserve keeps untouched parts of Input 1 exact by placing them back over the result. Turn it off when the model should freely redraw the whole frame.',
+    motion: 'tap',
+    simulateOn: () => $('#editComposite').hidden ? '#editModelHeader' : '#editComposite',
+    demo: 'Toggle Preserve when available',
+    next: 'edit-expand',
+  },
+  'edit-expand': {
+    id: 'edit-expand',
+    target: '#editOutpaintControl',
+    kicker: 'Edit basics · 4 of 5',
+    title: 'Continue beyond the frame',
+    copy: 'Expand is outpainting. Choose a wider or taller Resolution, position the source, and Mix Studio generates the new surrounding canvas.',
+    media: {
+      type: 'compare',
+      before: '/guides/outpaint-source.jpg', after: '/guides/outpaint-wide.jpg',
+      beforeAlt: 'Square source image before outpainting', afterAlt: 'Wide result after outpainting',
+      beforeLabel: 'Source', afterLabel: 'Expanded',
+    },
+    motion: 'tap',
+    simulateOn: '#editOutpaintToggle',
+    demo: 'Turn on Expand to outpaint',
+    next: 'edit-area',
+  },
+  'edit-area': {
+    id: 'edit-area',
+    target: () => $('#kreaMaskTools').hidden ? '#editModelPanel' : '#kreaMaskTools',
+    kicker: 'Edit basics · 5 of 5',
+    title: 'Edit one area with inpainting',
+    copy: 'Supported models expose Edit area; Krea 2 calls it Fill area. Mark a subject or object with Smart, Brush, or Box so only that region can change.',
+    media: {
+      type: 'image', src: '/guides/inpaint-face.jpg',
+      alt: 'A character changed inside a fixed scene while the surrounding image remains unchanged',
+      label: 'Mark an area → change only that area',
+    },
+    motion: 'tap',
+    simulateOn: () => $('#kreaMaskTools').hidden ? '#editModelHeader' : '#kreaMaskBtn',
+    demo: 'Open Edit area or choose an inpainting model',
   },
   'library-basics': {
     id: 'library-basics',
@@ -23641,8 +24256,8 @@ function renderGuidedTourSetting() {
   const tipsEnabled = contextualGuidesEnabled();
   $('#guidedTourStart').textContent = completed ? 'Replay tutorial' : (hasOlderTour ? 'See what’s new' : 'Start tutorial');
   $('#guidedTourSettingStatus').textContent = completed
-    ? 'Completed · replay the side panel, prompt, LoRA, and Library walkthrough anytime.'
-    : (hasOlderTour ? 'Updated · now covers side panel access, LoRAs, model modes, and Library actions.' : 'Optional walkthrough · start it whenever you want.');
+    ? 'Completed · replay the Create, Edit, LoRA, and Library walkthrough anytime.'
+    : (hasOlderTour ? 'Updated · now covers side panel access plus Edit inputs, @ references, Preserve, Expand, and inpainting.' : 'Optional walkthrough · start it whenever you want.');
   $('#guidedTipsToggle').setAttribute('aria-checked', String(tipsEnabled));
 }
 
@@ -23869,6 +24484,25 @@ function dismissContextualGuide() {
   if (['prompt-entry', 'library-basics'].includes(id)) scheduleContextualGuide('side-panel-access', 720);
 }
 
+function acknowledgeContextualGuide() {
+  const guide = contextualGuide;
+  if (!guide || guide.advanceOn || guide.id.startsWith('first-image-')) return dismissContextualGuide();
+  const next = contextualGuideValue(guide.next);
+  const intentKey = contextualGuideIntentKey;
+  if (intentKey) dismissedIntentGuides.add(intentKey);
+  localStorage.setItem(contextualGuideSeenKey(guide.id), 'seen');
+  hideContextualGuide({ keepSequence: !!next, restoreFocus: !next });
+  schedulePromptIntentHint();
+  if (next) {
+    contextualGuideRetryTimer = setTimeout(() => {
+      contextualGuideRetryTimer = null;
+      showNextContextualGuide(next, intentKey);
+    }, 120);
+  } else if (['prompt-entry', 'library-basics'].includes(guide.id)) {
+    scheduleContextualGuide('side-panel-access', 720);
+  }
+}
+
 function cancelContextualGuide(id) {
   clearTimeout(contextualGuideRetryTimer);
   contextualGuideRetryTimer = null;
@@ -24054,6 +24688,7 @@ function startGuidedTour() {
     directorComposerMode: state.directorComposerMode,
     directorChoosingWorkflow,
     lorasExpanded: $('#loraPanel').classList.contains('expanded'),
+    editOutpaint: state.editOutpaint,
     resolutionExpanded: $('#resPanel').classList.contains('expanded'),
     scrollX: window.scrollX,
     scrollY: window.scrollY,
@@ -24090,7 +24725,7 @@ function finishGuidedTour(completed = false) {
   stopGuidedTourTargetObservation();
   if (completed) {
     localStorage.setItem(guidedTourStorageKey(), guidedTourCompletionValue());
-    ['side-panel-access', 'prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics'].forEach((id) => {
+    ['side-panel-access', 'prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics', ...EDIT_CONTEXTUAL_GUIDE_IDS].forEach((id) => {
       localStorage.setItem(contextualGuideSeenKey(id), 'seen');
     });
   }
@@ -24104,6 +24739,7 @@ function finishGuidedTour(completed = false) {
   $('#guidedTourCard').setAttribute('aria-modal', 'true');
   document.body.classList.remove('guided-tour-open');
   if (restore) {
+    state.editOutpaint = restore.editOutpaint;
     setLorasExpanded(restore.lorasExpanded);
     if (restore.view === 'create') setView('create', { createMode: restore.createMode });
     else setView(restore.view);
@@ -24126,7 +24762,7 @@ function finishGuidedTour(completed = false) {
 function advanceGuidedTour(direction) {
   if (contextualGuide) {
     if (contextualGuide.advanceOn) return;
-    return dismissContextualGuide();
+    return acknowledgeContextualGuide();
   }
   const next = guidedTourIndex + direction;
   if (next >= GUIDED_TOUR_STEPS.length) return finishGuidedTour(true);

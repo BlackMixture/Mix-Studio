@@ -617,8 +617,10 @@
     <div class="prompt-box">
       <textarea id="prompt" class="prompt-source" aria-hidden="true" tabindex="-1"></textarea>
       <div class="qwen-prompt-text" id="qwenTextPromptPane">
-        <div class="qwen-prompt-text-inner"><div class="prompt-composer" id="promptComposer" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Prompt" data-placeholder="Describe your image…" spellcheck="true"></div></div>
+        <div class="qwen-prompt-text-inner"><div class="prompt-composer" id="promptComposer" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Prompt" aria-describedby="promptPasteHint" data-placeholder="Describe your image…" spellcheck="true"></div></div>
       </div>
+      <span class="sr-only" id="promptPasteHint">Paste an image here to add it to the active workflow input.</span>
+      <span class="sr-only" id="clipboardPasteStatus" role="status" aria-live="polite"></span>
       <button class="enhance-btn on" id="enhanceBtn" aria-label="Prompt enhance" title="Prompt enhance (Qwen3-VL)">
         <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 2l1.9 5.4L19 9l-5.1 1.6L12 16l-1.9-5.4L5 9l5.1-1.6L12 2Zm7 11 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1 1-2.7ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z"/></svg>
       </button>
@@ -2169,7 +2171,7 @@
             <span class="guided-tour-setting-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 4h14v11H9l-4 4V4Zm3 4h8M8 11h5"/></svg>
             </span>
-            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for the side panel, prompts, LoRAs, modes, and Library.</small></span>
+            <span class="guided-tour-setting-copy"><strong>Guided UI tutorial</strong><small id="guidedTourSettingStatus">Optional walkthrough for Create, Edit, LoRAs, and Library.</small></span>
             <button id="guidedTourStart" type="button">Start tutorial</button>
             <button class="settings-media-toggle guided-tips-toggle" id="guidedTipsToggle" type="button" role="switch" aria-checked="true">
               <span class="settings-media-toggle-copy"><strong>Contextual tips</strong><small>Show one-time help when a control first becomes useful.</small></span>

@@ -26,7 +26,7 @@ test('Advanced Settings can replay an accessible guided UI tutorial', () => {
   assert.match(app, /Updated · now covers side panel access/);
   assert.match(app, /event\.key === 'Escape'/);
   assert.match(app, /event\.key !== 'Tab'/);
-  assert.match(html, /Optional walkthrough for the side panel, prompts, LoRAs, modes, and Library/);
+  assert.match(html, /Optional walkthrough for Create, Edit, LoRAs, and Library/);
   assert.equal((app.match(/startGuidedTour\(\)/g) || []).length, 1, 'the tutorial is declared but never started automatically');
 });
 
@@ -117,7 +117,7 @@ test('basic contextual tips appear where prompting, models, LoRAs, and Library t
 });
 
 test('the expanded tutorial is versioned and restores the workspace it temporarily opens', () => {
-  assert.match(app, /const GUIDED_TOUR_VERSION = 3/);
+  assert.match(app, /const GUIDED_TOUR_VERSION = 4/);
   assert.match(app, /stored === 'complete'/);
   assert.match(app, /hasOlderTour \? 'See what’s new'/);
   assert.match(app, /guidedTourRestoreState = \{[\s\S]{0,220}view: state\.view[\s\S]{0,220}lorasExpanded/);
@@ -183,7 +183,7 @@ test('outcome guides use real examples and require the highlighted action to adv
   assert.doesNotMatch(app, /id: 'create-guide-upload'/);
   assert.match(app, /advanceOn: '#createImageGuideToggle'/);
   assert.match(app, /intent\.id === 'prompt-missing-reference' && state\.createRef[\s\S]{0,220}guideId = 'create-guide-choices'/);
-  assert.match(app, /function setCreateImageGuideAsset\(asset, mode = 'image'\)[\s\S]{0,900}showNextContextualGuide\('create-guide-choices'/);
+  assert.match(app, /function setCreateImageGuideAsset\(asset, mode = 'image'\)[\s\S]{0,1800}showNextContextualGuide\('create-guide-choices'/);
   assert.match(app, /advanceOn: '\[data-guide-mode\]'/);
   assert.match(app, /advanceOn: '#vidModelHeader'[\s\S]{0,120}next: 'video-scail-model'/);
   assert.match(app, /function advanceContextualGuideFromAction\(guide, action\)/);
