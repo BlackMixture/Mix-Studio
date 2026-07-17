@@ -2232,34 +2232,6 @@ wideRegionResolutionQuery.addEventListener('change', () => {
   updateVideoPanels();
 });
 
-let desktopLibraryCollapseTimer = null;
-function syncDesktopLibraryExpansion(expanded, focusedResult) {
-  const body = document.body;
-  const wasExpanded = body.classList.contains('desktop-library-expanded');
-  const isCollapsing = body.classList.contains('desktop-library-collapsing');
-  if (expanded) {
-    clearTimeout(desktopLibraryCollapseTimer);
-    desktopLibraryCollapseTimer = null;
-    body.classList.remove('desktop-library-collapsing');
-    body.classList.add('desktop-library-expanded');
-    return;
-  }
-  if (wasExpanded && desktopWorkspaceActive() && !focusedResult) {
-    if (isCollapsing) return;
-    body.classList.add('desktop-library-collapsing');
-    const finish = () => {
-      desktopLibraryCollapseTimer = null;
-      body.classList.remove('desktop-library-expanded', 'desktop-library-collapsing');
-    };
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
-    else desktopLibraryCollapseTimer = setTimeout(finish, 360);
-    return;
-  }
-  clearTimeout(desktopLibraryCollapseTimer);
-  desktopLibraryCollapseTimer = null;
-  body.classList.remove('desktop-library-expanded', 'desktop-library-collapsing');
-}
-
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
@@ -2286,7 +2258,7 @@ function syncNavigation() {
     if (active) $('#createTabPill').style.transform = `translateX(${index * 100}%)`;
   });
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
-  syncDesktopLibraryExpansion(libraryExpanded, focusedResult);
+  document.body.classList.toggle('desktop-library-expanded', libraryExpanded);
   renderAppDrawerNavigation();
   requestIconTooltipScan();
 }
