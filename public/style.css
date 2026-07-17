@@ -4296,8 +4296,17 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(transparent, rgba(0,0,0,0.88) 34%);
   pointer-events: none;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 180ms ease, transform 220ms var(--ease);
 }
 .generate-dock > * { pointer-events: auto; }
+body.gallery-selection-active .generate-dock {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(24px);
+}
+body.gallery-selection-active .generate-dock > * { pointer-events: none; }
 .generate-inner { max-width: 720px; margin: 0 auto; }
 .btn-generate {
   position: relative;

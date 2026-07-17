@@ -19956,17 +19956,24 @@ function toggleSelect(id) {
   if (!state.selected.size) exitSelect();
   else updateSelectBar();
 }
+function setSelectionUiActive(active) {
+  const isActive = !!active;
+  $('#selectBar').hidden = !isActive;
+  document.body.classList.toggle('gallery-selection-active', isActive);
+}
 function exitSelect() {
   cancelContextualGuide('gallery-selection-actions');
-  if (!state.selectMode && !state.selected.size) { $('#selectBar').hidden = true; return; }
+  if (!state.selectMode && !state.selected.size) { setSelectionUiActive(false); return; }
   state.selectMode = false;
   state.selected = new Set();
   dockSelectionConsole();
-  $('#selectBar').hidden = true;
+  setSelectionUiActive(false);
   syncSelectionVisuals();
 }
 function updateSelectBar() {
-  $('#selectBar').hidden = false;
+  const active = state.selectMode && state.selected.size > 0;
+  setSelectionUiActive(active);
+  if (!active) return;
   const included = expandedGallerySelection();
   $('#selCount').textContent = included.length > state.selected.size
     ? `${state.selected.size} selected · ${included.length} generations included`

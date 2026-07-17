@@ -47,10 +47,14 @@ test('selection bar exposes save, group, ungroup, composite, move, delete, and s
   assert.match(app, /filter\(\(button\) => button && !button\.hidden\)/);
   assert.match(app, /buttons\.slice\(visible\)\.forEach\(\(button\) => more\.appendChild\(button\)\)/);
   assert.match(app, /function restoreSelectionActions\(\)/);
+  assert.match(app, /function setSelectionUiActive\(active\)/);
+  assert.match(app, /document\.body\.classList\.toggle\('gallery-selection-active', isActive\)/);
+  assert.match(app, /const active = state\.selectMode && state\.selected\.size > 0;[\s\S]{0,100}setSelectionUiActive\(active\);[\s\S]{0,60}if \(!active\) return;/);
   assert.match(app, /classList\.contains\('is-expanded'\)\) scheduleSelectionInsightsRefresh\(\)/);
   assert.match(app, /generationTimingComplete === false \? '~' : ''/);
   assert.match(app, /selectBarSwipe\.height > target \* 0\.46/);
   assert.match(css, /\.select-bar\.is-expanded \{[^}]*background: #000/);
+  assert.match(css, /body\.gallery-selection-active \.generate-dock \{[\s\S]*opacity: 0;[\s\S]*pointer-events: none;[\s\S]*transform: translateY\(24px\)/);
   assert.match(css, /\.select-bar\.is-expanded \{[^}]*--selection-detail-height: min\(360px, 50dvh\)/);
   assert.match(css, /\.select-bar \{[\s\S]*background: #000/);
   assert.match(css, /\.select-bar\.is-expanded \.selection-console-details \{[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain/);
