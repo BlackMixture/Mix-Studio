@@ -5538,14 +5538,6 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   display: grid;
   gap: 6px;
 }
-.lb-media-tier-label {
-  color: rgba(226,232,255,0.42);
-  font-size: 9px;
-  font-weight: 850;
-  letter-spacing: 0.115em;
-  line-height: 1;
-  text-transform: uppercase;
-}
 .lb-media-options {
   min-width: 0;
   display: flex;
@@ -10150,13 +10142,13 @@ body.sheet-open {
     grid-column: 1;
     grid-row: 2;
     min-width: 0;
-    max-height: 138px;
+    max-height: none;
     display: grid;
     align-items: stretch;
     gap: 8px;
     overflow-x: hidden;
-    overflow-y: auto;
-    padding: 8px 22px 2px;
+    overflow-y: visible;
+    padding: 8px 22px 9px;
     scrollbar-width: none;
   }
   #lightbox .lb-media:empty { display: none; }
@@ -10176,6 +10168,7 @@ body.sheet-open {
     touch-action: pan-x;
     user-select: none;
   }
+  #lightbox .lb-media-generations .lb-media-options > :first-child { margin-left: auto; }
   #lightbox .lb-media-options.is-dragging { cursor: grabbing; }
   #lightbox .lb-media-options::-webkit-scrollbar { height: 4px; }
   #lightbox .lb-media-options::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(226,232,255,.22); }
@@ -10210,6 +10203,28 @@ body.sheet-open {
   #lightbox #lbActions .action-btn { min-height: 40px; }
   #lightbox #lbActions .action-btn.primary:not(.icon-only) { flex: 0 0 auto; justify-content: center; }
   #lightbox .lb-float-btn { top: 26px; right: 26px; }
+
+  /* Multi-select belongs to the Library rail while a result is focused. This
+     keeps its grabber, details and actions from covering the active result. */
+  body.desktop-focused-result .select-bar {
+    left: auto;
+    right: 0;
+    z-index: 68;
+    width: var(--studio-right-width);
+    max-width: var(--studio-right-width);
+    padding-inline: 8px;
+    border-right: 0;
+    border-radius: 22px 0 0 0;
+    transform: none;
+  }
+  body.desktop-focused-result .select-bar-main { max-width: none; }
+  body.desktop-focused-result .select-bar .select-count {
+    min-width: 0;
+    max-width: 94px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
   @keyframes focusedWorkspaceIn {
     from { opacity: 1; clip-path: inset(0 0 0 var(--studio-left-width)); }

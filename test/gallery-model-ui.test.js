@@ -78,14 +78,18 @@ test('gallery performance controls can disable video previews and build an idle 
 });
 
 test('focused media switchers separate parent generations from their media', () => {
-  assert.match(app, /makeMediaTier\('lb-media-generations', 'Generations'\)/);
-  assert.match(app, /function lightboxGroupThumbnailMarkup\(item, index\)/);
+  assert.match(app, /makeMediaTier\('lb-media-generations', strengthHuntGroup \? 'Strength Hunt generations' : 'Generations'\)/);
+  assert.match(app, /function lightboxGroupThumbnailMarkup\(item, index, active = false\)/);
   assert.match(app, /class="lb-group-thumb-image"/);
-  assert.match(app, /class="lb-group-thumb-image"[^>]*loading="lazy"/);
+  assert.match(app, /class="lb-group-thumb-image"[^>]*loading="eager"[^>]*decoding="async"[^>]*fetchpriority="\$\{active \? 'high' : 'auto'\}"/);
+  assert.match(app, /function preloadLightboxGroupThumbnails\(items, activeId = ''\)/);
+  assert.match(app, /image\.fetchPriority = item\.id === activeId \? 'high' : 'auto'/);
+  assert.match(app, /card\.addEventListener\('pointerenter', warmGroupThumbnails, \{ once: true, passive: true \}\)/);
+  assert.match(app, /card\.addEventListener\('pointerdown',[\s\S]*preloadLightboxGroupThumbnails\(entry\.items, it\.id\)/);
   assert.match(app, /class="lb-group-thumb-number"[^>]*>\$\{number\}/);
   assert.match(app, /if \(generationItems\.length > 1\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
-  assert.match(app, /`Generation \$\{generationIndex \+ 1\} media`/);
+  assert.doesNotMatch(app, /lb-media-tier-label/);
   assert.match(app, /lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}/);
   assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked, 'video'\)\)/);
   assert.match(app, /className = 'chip' \+ /);
@@ -93,6 +97,7 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(app, /lb-media-like/);
   assert.match(app, /vid\.load\(\)/);
   assert.match(css, /\.chip-row\.lb-media \{[\s\S]*display: grid/);
+  assert.doesNotMatch(css, /\.lb-media-tier-label/);
   assert.match(css, /\.lb-media \.chip\.active/);
   assert.match(css, /\.lb-media-generations \.chip/);
   assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*width: var\(--lb-group-chip-width\)/);

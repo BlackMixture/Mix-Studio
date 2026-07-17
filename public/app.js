@@ -17196,11 +17196,30 @@ function strengthHuntItemLabel(item) {
   return item.strengthHunt.label || 'Strength Hunt';
 }
 
-function lightboxGroupThumbnailMarkup(item, index) {
+const lightboxGroupThumbnailPreloads = new Map();
+
+function preloadLightboxGroupThumbnails(items, activeId = '') {
+  (items || []).forEach((item) => {
+    const thumbnail = item && (item.upscaled || item.file);
+    if (!thumbnail) return;
+    const source = `/images/${encodeURIComponent(thumbnail)}`;
+    if (lightboxGroupThumbnailPreloads.has(source)) return;
+    const image = new Image();
+    image.decoding = 'async';
+    image.fetchPriority = item.id === activeId ? 'high' : 'auto';
+    const release = () => lightboxGroupThumbnailPreloads.delete(source);
+    image.addEventListener('load', release, { once: true });
+    image.addEventListener('error', release, { once: true });
+    lightboxGroupThumbnailPreloads.set(source, image);
+    image.src = source;
+  });
+}
+
+function lightboxGroupThumbnailMarkup(item, index, active = false) {
   const thumbnail = item && (item.upscaled || item.file);
   const number = index + 1;
   return `${thumbnail
-    ? `<img class="lb-group-thumb-image" src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="lazy" draggable="false" />`
+    ? `<img class="lb-group-thumb-image" src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="eager" decoding="async" fetchpriority="${active ? 'high' : 'auto'}" draggable="false" />`
     : '<span class="lb-group-thumb-fallback" aria-hidden="true"></span>'}
     ${item?.angleView ? `<span class="angle-group-glyph lb-group-thumb-glyph" aria-hidden="true">${angleViewGlyph(item)}</span>` : ''}
     <span class="lb-group-thumb-number" aria-hidden="true">${number}</span>`;
@@ -18161,6 +18180,11 @@ function renderGrid() {
     card.dataset.groupItemIds = entry.items.map((groupItem) => groupItem.id).join(',');
     card.dataset.media = latestVideo ? latestVideo.id : 'image';
     card.draggable = false;
+    if (entry.items.length > 1) {
+      const warmGroupThumbnails = () => preloadLightboxGroupThumbnails(entry.items, it.id);
+      card.addEventListener('pointerenter', warmGroupThumbnails, { once: true, passive: true });
+      card.addEventListener('focusin', warmGroupThumbnails, { once: true });
+    }
     card.classList.toggle('desktop-drag-source', desktopWorkspaceActive());
     if (state.selected.has(it.id)) card.classList.add('selected');
 
@@ -18172,6 +18196,7 @@ function renderGrid() {
     let pointerId = null;
     let desktopPointerCandidate = null;
     card.addEventListener('pointerdown', (e) => {
+      if (entry.items.length > 1) preloadLightboxGroupThumbnails(entry.items, it.id);
       lpFired = false;
       pointerId = e.pointerId;
       startXY = [e.clientX, e.clientY];
@@ -19819,6 +19844,7 @@ function openLightbox(id, mediaSel) {
   const generationIndex = generationItems.findIndex((item) => item.id === it.id);
   const angleItems = generationItems.length > 1 ? [] : angleGroupItems(it);
   const angleIndex = angleItems.findIndex((item) => item.id === it.id);
+  preloadLightboxGroupThumbnails(generationItems.length > 1 ? generationItems : angleItems, it.id);
   const videos = Array.isArray(it.videos) ? it.videos : [];
   const composites = Array.isArray(it.composites) ? it.composites : [];
   let sel = mediaSel;
@@ -19872,17 +19898,14 @@ function openLightbox(id, mediaSel) {
   // media switcher keeps attached composites with the image they describe.
   const mrow = $('#lbMedia');
   mrow.innerHTML = '';
-  const makeMediaTier = (className, label, ariaLabel = label) => {
+  const makeMediaTier = (className, ariaLabel) => {
     const tier = document.createElement('div');
     tier.className = `lb-media-tier ${className}`;
     tier.setAttribute('role', 'group');
     tier.setAttribute('aria-label', ariaLabel);
-    const tierLabel = document.createElement('span');
-    tierLabel.className = 'lb-media-tier-label';
-    tierLabel.textContent = label;
     const options = document.createElement('div');
     options.className = 'lb-media-options';
-    tier.append(tierLabel, options);
+    tier.appendChild(options);
     mrow.appendChild(tier);
     return options;
   };
@@ -19892,7 +19915,7 @@ function openLightbox(id, mediaSel) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'chip angle-group-chip lb-group-thumb-chip' + (angleItem.id === it.id ? ' active' : '');
-      button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index);
+      button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index, angleItem.id === it.id);
       const groupName = activeGalleryGroup(angleItem)?.name || '';
       const angleLabel = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
       button.title = groupName ? `${groupName} · ${angleLabel}` : angleLabel;
@@ -19903,15 +19926,14 @@ function openLightbox(id, mediaSel) {
   }
   if (generationItems.length > 1) {
     const strengthHuntGroup = generationItems.some((item) => item.strengthHunt);
-    const generationOptions = makeMediaTier('lb-media-generations', 'Generations');
-    if (strengthHuntGroup) generationOptions.previousElementSibling.textContent = 'Strength Hunt';
+    const generationOptions = makeMediaTier('lb-media-generations', strengthHuntGroup ? 'Strength Hunt generations' : 'Generations');
     generationItems.forEach((groupItem, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'chip generation-group-chip lb-group-thumb-chip' + (groupItem.id === it.id ? ' active' : '');
       const huntLabel = strengthHuntItemLabel(groupItem);
       if (huntLabel) button.classList.add('strength-hunt-chip');
-      button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index);
+      button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index, groupItem.id === it.id);
       const groupName = activeGalleryGroup(groupItem)?.name || '';
       const generationLabel = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
       button.title = groupName ? `${groupName} · ${generationLabel}` : generationLabel;

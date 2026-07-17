@@ -145,9 +145,9 @@ test('grouped desktop results use the mobile parent and attached-media hierarchy
   assert.match(app, /revealHorizontalSelection\(picker, activeChoice\)/);
   assert.doesNotMatch(app, /function focusDesktopStagePicker/);
   assert.doesNotMatch(app, /function restoreDesktopStagePickerHome/);
-  assert.match(app, /if \(generationItems\.length > 1\) \{[\s\S]*makeMediaTier\('lb-media-generations', 'Generations'\)/);
+  assert.match(app, /if \(generationItems\.length > 1\) \{[\s\S]*makeMediaTier\('lb-media-generations', strengthHuntGroup \? 'Strength Hunt generations' : 'Generations'\)/);
   assert.match(app, /makeMediaTier\(`lb-media-assets\$\{groupedGeneration \? ' nested' : ''\}`/);
-  assert.match(app, /lightboxGroupThumbnailMarkup\(groupItem, index\)/);
+  assert.match(app, /lightboxGroupThumbnailMarkup\(groupItem, index, groupItem\.id === it\.id\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
   assert.match(app, /desktopWorkspaceQuery\.addEventListener\('change',[\s\S]*openLightbox\(state\.currentItem\.id, media\)/);
   assert.match(app, /if \(!\$\('#lightbox'\)\?\.classList\.contains\('show'\)\) renderDesktopStage\(\)/);
@@ -167,9 +167,11 @@ test('grouped desktop results use the mobile parent and attached-media hierarchy
   assert.doesNotMatch(css, /desktop-stage-picker\.focused|focusedGroupChoiceExpand/);
   assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*--lb-group-chip-width: 48px;[\s\S]*height: 48px;/);
   assert.match(css, /\.lb-group-thumb-image,[\s\S]*width: 40px;[\s\S]*height: 40px;/);
-  assert.match(css, /#lightbox \.lb-media \{[\s\S]*max-height: 138px;[\s\S]*display: grid;[\s\S]*overflow-y: auto;/);
+  assert.match(css, /#lightbox \.lb-media \{[\s\S]*max-height: none;[\s\S]*display: grid;[\s\S]*overflow-y: visible;[\s\S]*padding: 8px 22px 9px;/);
   assert.match(css, /#lightbox \.lb-media-options \{[\s\S]*width: 100%;[\s\S]*overflow-x: auto;/);
+  assert.match(css, /#lightbox \.lb-media-generations \.lb-media-options > :first-child \{ margin-left: auto; \}/);
   assert.match(css, /\.lb-media-assets\.nested::before,[\s\S]*\.lb-media-assets\.nested::after/);
+  assert.match(css, /body\.desktop-focused-result \.select-bar \{[\s\S]*right: 0;[\s\S]*width: var\(--studio-right-width\);[\s\S]*transform: none;/);
 });
 
 test('desktop image action opens the full destination menu', () => {
