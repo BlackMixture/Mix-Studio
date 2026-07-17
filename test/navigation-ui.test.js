@@ -32,7 +32,20 @@ test('desktop Library navigation expands the gallery into the full workspace', (
   assert.match(css, /#view-gallery \{[\s\S]*position: absolute;[\s\S]*width: calc\(var\(--studio-right-width\) \+ 1px\)/);
   assert.match(css, /body\.desktop-library-expanded #view-gallery \{[\s\S]*width: 100%/);
   assert.match(css, /#view-gallery \{ transition: width 360ms/);
-  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(220px, 1fr\)\)/);
+  assert.match(css, /body\.desktop-library-expanded #view-gallery \.grid \{[\s\S]*repeat\(auto-fill, minmax\(clamp\(150px, 28cqw, 220px\), 1fr\)\)/);
+});
+
+test('desktop Library transitions preserve the visible item and animate grid reflow', () => {
+  assert.match(app, /function captureDesktopGalleryScrollAnchor\(\)/);
+  assert.match(app, /function continuousDesktopGalleryScrollAnchor\(\)/);
+  assert.match(app, /function restoreDesktopGalleryScrollAnchor\(anchor\)/);
+  assert.match(app, /function captureDesktopGalleryLayoutTransition\(\)/);
+  assert.match(app, /libraryWasExpanded !== libraryExpanded[\s\S]*captureDesktopGalleryLayoutTransition\(\)/);
+  assert.match(app, /classList\.toggle\('desktop-library-expanded', libraryExpanded\);[\s\S]*startDesktopGalleryLayoutTransition\(galleryLayoutSnapshot\)/);
+  assert.match(app, /id === motion\.anchor\?\.id \|\| reducedMotion \|\| columns === motion\.columns[\s\S]*card\.animate\(\[[\s\S]*translate: `\$\{dx\}px \$\{dy\}px`/);
+  assert.match(app, /desktopGalleryScrollContinuity = \{ anchor: motion\.anchor, scrollTop: panel\.scrollTop \}/);
+  assert.match(css, /#view-gallery\.gallery-layout-transitioning \{ overflow-anchor: none; \}/);
+  assert.match(css, /#view-gallery \.card\.gallery-layout-reflowing \{[\s\S]*will-change: translate, transform/);
 });
 
 test('focused results temporarily present Library navigation without changing the underlying mode', () => {

@@ -2233,10 +2233,147 @@ wideRegionResolutionQuery.addEventListener('change', () => {
   updateVideoPanels();
 });
 
+let desktopGalleryLayoutMotion = null;
+let desktopGalleryScrollContinuity = null;
+
+function galleryElementContentTop(element, panel) {
+  let top = 0;
+  let current = element;
+  while (current && current !== panel) {
+    top += current.offsetTop || 0;
+    current = current.offsetParent;
+  }
+  if (current === panel) return top;
+  return panel.scrollTop + element.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+}
+
+function captureDesktopGalleryScrollAnchor() {
+  if (!desktopWorkspaceActive()) return null;
+  const panel = $('#view-gallery');
+  const bounds = panel.getBoundingClientRect();
+  const visible = $$('#galleryGrid .card').map((card) => ({ card, rect: card.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.bottom > bounds.top + 1 && rect.top < bounds.bottom - 1)
+    .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+  const card = visible[0]?.card;
+  return {
+    id: card?.dataset.id || '',
+    offset: card ? galleryElementContentTop(card, panel) - panel.scrollTop : 0,
+    scrollTop: panel.scrollTop,
+  };
+}
+
+function continuousDesktopGalleryScrollAnchor() {
+  const panel = $('#view-gallery');
+  const continuity = desktopGalleryScrollContinuity;
+  if (!continuity || Math.abs(panel.scrollTop - continuity.scrollTop) > 1.5) return null;
+  const escapedId = continuity.anchor.id && window.CSS?.escape ? CSS.escape(continuity.anchor.id) : '';
+  const card = escapedId ? $(`#galleryGrid .card[data-id="${escapedId}"]`) : null;
+  if (!card) return null;
+  const bounds = panel.getBoundingClientRect();
+  const rect = card.getBoundingClientRect();
+  return rect.bottom > bounds.top + 1 && rect.top < bounds.bottom - 1 ? continuity.anchor : null;
+}
+
+function restoreDesktopGalleryScrollAnchor(anchor) {
+  if (!anchor) return;
+  const panel = $('#view-gallery');
+  const escapedId = anchor.id && window.CSS?.escape ? CSS.escape(anchor.id) : '';
+  const card = escapedId ? $(`#galleryGrid .card[data-id="${escapedId}"]`) : null;
+  const next = card ? galleryElementContentTop(card, panel) - anchor.offset : anchor.scrollTop;
+  if (Number.isFinite(next) && Math.abs(panel.scrollTop - next) > 0.5) panel.scrollTop = Math.max(0, next);
+}
+
+function desktopGalleryColumnCount(grid = $('#galleryGrid')) {
+  const columns = getComputedStyle(grid).gridTemplateColumns;
+  return columns && columns !== 'none' ? columns.split(/\s+/).filter(Boolean).length : 0;
+}
+
+function captureDesktopGalleryLayoutTransition() {
+  if (!desktopWorkspaceActive()) return null;
+  const panel = $('#view-gallery');
+  const bounds = panel.getBoundingClientRect();
+  const buffer = Math.max(240, bounds.height * 0.75);
+  const cards = $$('#galleryGrid .card').filter((card) => {
+    const rect = card.getBoundingClientRect();
+    return rect.bottom > bounds.top - buffer && rect.top < bounds.bottom + buffer;
+  });
+  return {
+    anchor: desktopGalleryLayoutMotion?.anchor
+      || continuousDesktopGalleryScrollAnchor()
+      || captureDesktopGalleryScrollAnchor(),
+    ids: cards.map((card) => card.dataset.id).filter(Boolean),
+    positions: new Map(cards.map((card) => [card.dataset.id, { left: card.offsetLeft, top: card.offsetTop }])),
+    columns: desktopGalleryColumnCount(),
+  };
+}
+
+function stopDesktopGalleryLayoutTransition() {
+  if (desktopGalleryLayoutMotion?.frame) cancelAnimationFrame(desktopGalleryLayoutMotion.frame);
+  desktopGalleryLayoutMotion = null;
+  const panel = $('#view-gallery');
+  panel.classList.remove('gallery-layout-transitioning');
+  $$('#galleryGrid .gallery-layout-reflowing').forEach((card) => {
+    card.getAnimations().filter((animation) => animation.id === 'gallery-layout-reflow').forEach((animation) => animation.cancel());
+    card.classList.remove('gallery-layout-reflowing');
+  });
+}
+
+function startDesktopGalleryLayoutTransition(snapshot) {
+  if (!snapshot) return;
+  stopDesktopGalleryLayoutTransition();
+  const panel = $('#view-gallery');
+  const grid = $('#galleryGrid');
+  const motion = { ...snapshot, started: performance.now(), frame: 0 };
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  desktopGalleryLayoutMotion = motion;
+  panel.classList.add('gallery-layout-transitioning');
+
+  const tick = (now) => {
+    if (desktopGalleryLayoutMotion !== motion) return;
+    restoreDesktopGalleryScrollAnchor(motion.anchor);
+    const columns = desktopGalleryColumnCount(grid);
+    const nextPositions = new Map();
+    motion.ids.forEach((id) => {
+      const escapedId = window.CSS?.escape ? CSS.escape(id) : '';
+      const card = escapedId ? $(`#galleryGrid .card[data-id="${escapedId}"]`) : null;
+      if (!card) return;
+      const current = { left: card.offsetLeft, top: card.offsetTop };
+      nextPositions.set(id, current);
+      const previous = motion.positions.get(id);
+      if (id === motion.anchor?.id || reducedMotion || columns === motion.columns || !previous || typeof card.animate !== 'function') return;
+      const dx = previous.left - current.left;
+      const dy = previous.top - current.top;
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      card.classList.add('gallery-layout-reflowing');
+      const animation = card.animate([
+        { translate: `${dx}px ${dy}px` },
+        { translate: '0 0' },
+      ], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)', composite: 'add' });
+      animation.id = 'gallery-layout-reflow';
+      animation.finished.catch(() => {}).finally(() => {
+        if (!card.getAnimations().some((active) => active.id === 'gallery-layout-reflow')) card.classList.remove('gallery-layout-reflowing');
+      });
+    });
+    motion.positions = nextPositions;
+    motion.columns = columns;
+    if (now - motion.started < 440) motion.frame = requestAnimationFrame(tick);
+    else {
+      restoreDesktopGalleryScrollAnchor(motion.anchor);
+      desktopGalleryScrollContinuity = { anchor: motion.anchor, scrollTop: panel.scrollTop };
+      panel.classList.remove('gallery-layout-transitioning');
+      if (desktopGalleryLayoutMotion === motion) desktopGalleryLayoutMotion = null;
+    }
+  };
+  motion.frame = requestAnimationFrame(tick);
+}
+
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
   const libraryExpanded = desktopWorkspaceActive() && state.view === 'gallery' && !focusedResult;
+  const libraryWasExpanded = document.body.classList.contains('desktop-library-expanded');
+  const galleryLayoutSnapshot = libraryWasExpanded !== libraryExpanded
+    ? captureDesktopGalleryLayoutTransition() : null;
   const workspaceObscured = focusedResult || libraryExpanded;
   const primaryMode = focusedResult ? 'gallery' : (createActive ? 'create' : state.view);
   primaryTabButtons.forEach((button, index) => {
@@ -2260,6 +2397,7 @@ function syncNavigation() {
   });
   document.body.dataset.uiMode = createActive ? state.createMode : (state.view === 'gallery' ? 'library' : state.view);
   document.body.classList.toggle('desktop-library-expanded', libraryExpanded);
+  if (galleryLayoutSnapshot) startDesktopGalleryLayoutTransition(galleryLayoutSnapshot);
   renderAppDrawerNavigation();
   requestIconTooltipScan();
 }
