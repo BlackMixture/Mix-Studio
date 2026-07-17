@@ -5264,6 +5264,24 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .lightbox-swipe-preview { will-change: transform, opacity; }
 #lbImg,
 #lbVideo { z-index: 2; }
+#lbImg {
+  cursor: zoom-in;
+  transform-origin: var(--lightbox-zoom-x, 50%) var(--lightbox-zoom-y, 50%);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+.lightbox-img-wrap:not(.is-swiping):not(.is-settling) #lbImg {
+  transition: transform 220ms var(--ease);
+}
+#lbImg.lightbox-zoomed {
+  cursor: zoom-out;
+  transform: scale(2);
+}
+#lbImg:focus-visible {
+  outline: 2px solid rgba(var(--mode-rgb), .78);
+  outline-offset: -4px;
+}
 .lightbox-reference-preview {
   z-index: 3;
   pointer-events: none;
@@ -5338,6 +5356,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   #lbImg,
   #lbVideo,
   .lightbox-swipe-preview { will-change: auto; }
+  .lightbox-img-wrap:not(.is-swiping):not(.is-settling) #lbImg { transition-duration: 1ms; }
   .like-burst.pop > svg,
   .like-burst.pop .like-burst-ring,
   .like-burst.pop .like-burst-particle,

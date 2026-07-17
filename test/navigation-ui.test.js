@@ -304,7 +304,8 @@ test('gallery media supports profile-scoped likes by double tap and a likes-only
   assert.match(html, /id="lightboxLikeBurst"/);
   assert.doesNotMatch(html, /<script src="\/lottie_light\.min\.js"><\/script>/);
   assert.match(app, /function handleGalleryTap\(item, card\)/);
-  assert.match(app, /function handleLightboxTap\(\)/);
+  assert.match(app, /function handleLightboxTap\(event\)/);
+  assert.match(app, /if \(lightboxTap\?\.timer\) clearTimeout\(lightboxTap\.timer\)/);
   assert.match(app, /function handleLightboxVideoPointerUp\(event\)/);
   assert.match(app, /lightboxVideoTapUsesControls\(event\)/);
   assert.match(app, /setVideoLiked\(item, video, !video\.liked, \$\('#lightboxLikeBurst'\)\)/);

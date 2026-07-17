@@ -27,7 +27,7 @@ test('focused gallery swipe directly moves current and neighboring media', () =>
 });
 
 test('focused gallery arrow keys traverse every visible generation without closing', () => {
-  assert.match(html, /id="lightbox"[^>]*aria-keyshortcuts="ArrowLeft ArrowRight"/);
+  assert.match(html, /id="lightbox"[^>]*aria-keyshortcuts="Escape ArrowLeft ArrowRight"/);
   assert.match(app, /function focusedGalleryItemMedia\(item, media\)/);
   assert.match(app, /function openFocusedGalleryItem\(item, media\)/);
   assert.match(app, /function navigateFocusedGallery\(direction\)/);
@@ -35,8 +35,8 @@ test('focused gallery arrow keys traverse every visible generation without closi
   assert.match(app, /entry\.generationGroupId[\s\S]*generationGroupItems\(entry\.item\)[\s\S]*entry\.angleGroupId[\s\S]*angleGroupItems\(entry\.item\)/);
   assert.match(app, /desktopWorkspaceActive\(\) && \$\('#lightbox'\)\.classList\.contains\('show'\)\) selectDesktopLibraryItem\(item, selectedMedia\)/);
   assert.match(app, /openFocusedGalleryItem\(target\);/);
-  assert.match(app, /\['ArrowLeft', 'ArrowRight'\]\.includes\(event\.key\)[\s\S]*!\$\('#lightbox'\)\.classList\.contains\('show'\)/);
-  assert.match(app, /target\?\.closest\('input, textarea, select, option, video, audio, \[contenteditable="true"\], \[role="slider"\]'\)/);
+  assert.match(app, /\['Escape', 'ArrowLeft', 'ArrowRight'\]\.includes\(event\.key\)[\s\S]*!\$\('#lightbox'\)\.classList\.contains\('show'\)/);
+  assert.match(app, /target\?\.closest\('input, textarea, select, option, \[contenteditable="true"\], \[role="slider"\]'\)/);
   assert.match(app, /navigateFocusedGallery\(event\.key === 'ArrowRight' \? 1 : -1\)/);
 
   const start = app.indexOf('function galleryEntryNavigationItems(entry)');
@@ -71,4 +71,35 @@ test('focused gallery arrow keys traverse every visible generation without closi
   assert.equal(resolveMedia(videoItem), 'director-video');
   assert.equal(resolveMedia(videoItem, 'image'), 'image');
   assert.equal(resolveMedia({}, undefined), 'image');
+});
+
+test('focused gallery images zoom by click or keyboard and reset across navigation', () => {
+  assert.match(html, /id="lbImg"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-label="Zoom in image"[^>]*aria-pressed="false"[^>]*aria-keyshortcuts="Enter Space"[^>]*draggable="false"/);
+  assert.match(app, /const lightboxZoomState = \{ active: false, x: 50, y: 50 \}/);
+  assert.match(app, /function lightboxZoomOrigin\(image, clientX, clientY\)/);
+  assert.match(app, /function toggleLightboxZoom\(clientX, clientY\)/);
+  assert.match(app, /tap\.timer = setTimeout\([\s\S]*toggleLightboxZoom\(tap\.clientX, tap\.clientY\)[\s\S]*310\)/);
+  assert.match(app, /if \(lightboxTap\?\.timer\) clearTimeout\(lightboxTap\.timer\)/);
+  assert.ok((app.match(/clearLightboxTap\(\);\n  resetLightboxZoom\(\);/g) || []).length >= 2);
+  assert.match(app, /if \(lightboxZoomState\.active && e\.target === \$\('#lbImg'\)\) return/);
+  assert.match(app, /\$\('#lbImg'\)\.addEventListener\('keydown',[\s\S]*\['Enter', ' '\]\.includes\(event\.key\)[\s\S]*toggleLightboxZoom\(\)/);
+  assert.match(css, /#lbImg \{[\s\S]*cursor: zoom-in;[\s\S]*transform-origin: var\(--lightbox-zoom-x, 50%\) var\(--lightbox-zoom-y, 50%\)/);
+  assert.match(css, /#lbImg\.lightbox-zoomed \{[\s\S]*cursor: zoom-out;[\s\S]*transform: scale\(2\)/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*lightbox-img-wrap:not\(\.is-swiping\):not\(\.is-settling\) #lbImg/);
+
+  const start = app.indexOf('function lightboxZoomOrigin(image, clientX, clientY)');
+  const end = app.indexOf('function renderLightboxZoom()', start);
+  const originSource = app.slice(start, end);
+  const resolveOrigin = new Function(`${originSource}\nreturn lightboxZoomOrigin;`)();
+  const image = { getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 200 }) };
+  assert.deepEqual(resolveOrigin(image, 200, 150), { x: 25, y: 50 });
+  assert.deepEqual(resolveOrigin(image, -100, 500), { x: 0, y: 100 });
+  assert.deepEqual(resolveOrigin(image), { x: 50, y: 50 });
+});
+
+test('Escape closes only the focused gallery layer and the close button unwinds history', () => {
+  assert.match(app, /if \(event\.key === 'Escape'\) \{\n    closeLightbox\(\);\n    return;/);
+  assert.match(app, /\|\| \$\('#compare'\)\.classList\.contains\('show'\)[\s\S]*\|\| \$\('\.sheet\.show'\)[\s\S]*\|\| \$\('#appDrawer'\)\.classList\.contains\('show'\)[\s\S]*\|\| actionMenuEl/);
+  assert.match(app, /event\.key === 'Escape' && \$\('#appDrawer'\)\.classList\.contains\('show'\)[\s\S]*event\.preventDefault\(\)[\s\S]*closeAppDrawer\(\)/);
+  assert.match(app, /\$\('#lbClose'\)\.addEventListener\('click', \(\) => closeLightbox\(\)\)/);
 });

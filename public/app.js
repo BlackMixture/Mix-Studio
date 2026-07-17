@@ -1386,7 +1386,10 @@ $$('[data-drawer-view]').forEach((button) => button.addEventListener('click', ()
   closeAppDrawer();
 }));
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && $('#appDrawer').classList.contains('show')) closeAppDrawer();
+  if (event.key === 'Escape' && $('#appDrawer').classList.contains('show')) {
+    event.preventDefault();
+    closeAppDrawer();
+  }
 });
 
 $('#appUpdateBtn').addEventListener('click', async () => {
@@ -17440,8 +17443,62 @@ let lightboxVideoTap = null;
 let lightboxVideoPointer = null;
 let suppressLightboxVideoClick = false;
 let lightboxSwipeSuppressTap = false;
+const lightboxZoomState = { active: false, x: 50, y: 50 };
 let likeAnimationDataPromise = null;
 let likeAnimationRuntimePromise = null;
+
+function lightboxZoomOrigin(image, clientX, clientY) {
+  const rect = image.getBoundingClientRect();
+  const x = Number.isFinite(clientX) && rect.width
+    ? ((clientX - rect.left) / rect.width) * 100
+    : 50;
+  const y = Number.isFinite(clientY) && rect.height
+    ? ((clientY - rect.top) / rect.height) * 100
+    : 50;
+  return {
+    x: Math.max(0, Math.min(100, x)),
+    y: Math.max(0, Math.min(100, y)),
+  };
+}
+
+function renderLightboxZoom() {
+  const image = $('#lbImg');
+  const wrap = image.closest('.lightbox-img-wrap');
+  image.classList.toggle('lightbox-zoomed', lightboxZoomState.active);
+  wrap.classList.toggle('image-zoomed', lightboxZoomState.active);
+  image.style.setProperty('--lightbox-zoom-x', `${lightboxZoomState.x}%`);
+  image.style.setProperty('--lightbox-zoom-y', `${lightboxZoomState.y}%`);
+  image.setAttribute('aria-pressed', String(lightboxZoomState.active));
+  image.setAttribute('aria-label', lightboxZoomState.active ? 'Zoom out image' : 'Zoom in image');
+}
+
+function resetLightboxZoom() {
+  lightboxZoomState.active = false;
+  lightboxZoomState.x = 50;
+  lightboxZoomState.y = 50;
+  renderLightboxZoom();
+}
+
+function toggleLightboxZoom(clientX, clientY) {
+  const image = $('#lbImg');
+  const wrap = image.closest('.lightbox-img-wrap');
+  if (image.hidden || wrap.classList.contains('reference-preview-active')) return false;
+  if (lightboxZoomState.active) {
+    resetLightboxZoom();
+    return false;
+  }
+  const origin = lightboxZoomOrigin(image, clientX, clientY);
+  lightboxZoomState.active = true;
+  lightboxZoomState.x = origin.x;
+  lightboxZoomState.y = origin.y;
+  renderLightboxZoom();
+  return true;
+}
+
+function clearLightboxTap() {
+  if (lightboxTap?.timer) clearTimeout(lightboxTap.timer);
+  lightboxTap = null;
+}
 
 function loadLikeAnimationData() {
   if (!likeAnimationDataPromise) {
@@ -17730,31 +17787,49 @@ function handleGalleryTap(item, card) {
     timer: setTimeout(() => {
       if (galleryTap && galleryTap.itemId === item.id) {
         galleryTap = null;
-        openLightbox(item.id, card.dataset.media || 'image');
+        const media = card.dataset.media || 'image';
+        if (desktopWorkspaceActive()) void selectDesktopLibraryItem(item, media);
+        openLightbox(item.id, media);
       }
     }, 260),
   };
 }
 
-function handleLightboxTap() {
+function handleLightboxTap(event) {
   if (lightboxSwipeSuppressTap) return;
   const item = state.currentItem;
   if (!item) return;
   const selectedVideo = state.currentMedia && state.currentMedia.type === 'video'
     ? (item.videos || []).find((video) => video.id === state.currentMedia.id)
     : null;
-  const mediaId = selectedVideo ? selectedVideo.id : 'image';
+  const mediaId = selectedVideo
+    ? selectedVideo.id
+    : (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : 'image');
   const now = Date.now();
   if (lightboxTap && lightboxTap.itemId === item.id && lightboxTap.mediaId === mediaId && now - lightboxTap.time < 300) {
-    lightboxTap = null;
+    clearLightboxTap();
     if (selectedVideo) setVideoLiked(item, selectedVideo, !selectedVideo.liked, $('#lightboxLikeBurst'));
     else toggleItemLike(item, $('#lightboxLikeBurst'));
     return;
   }
-  lightboxTap = { itemId: item.id, mediaId, time: now };
-  setTimeout(() => {
-    if (lightboxTap && lightboxTap.itemId === item.id && lightboxTap.mediaId === mediaId) lightboxTap = null;
-  }, 320);
+  clearLightboxTap();
+  const tap = {
+    itemId: item.id,
+    mediaId,
+    time: now,
+    clientX: event?.clientX,
+    clientY: event?.clientY,
+    timer: null,
+  };
+  tap.timer = setTimeout(() => {
+    if (lightboxTap !== tap) return;
+    lightboxTap = null;
+    if (!$('#lightbox').classList.contains('show')
+      || state.currentItem?.id !== tap.itemId
+      || (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : (state.currentMedia?.id || 'image')) !== tap.mediaId) return;
+    toggleLightboxZoom(tap.clientX, tap.clientY);
+  }, 310);
+  lightboxTap = tap;
 }
 
 function lightboxVideoTapUsesControls(event) {
@@ -18293,6 +18368,8 @@ function preloadLightboxNeighbors(item) {
 function openLightbox(id, mediaSel) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
+  clearLightboxTap();
+  resetLightboxZoom();
   resetLightboxSwipeVisuals();
   const freshOpen = !$('#lightbox').classList.contains('show');
   if (freshOpen) {
@@ -18823,6 +18900,8 @@ function openLightbox(id, mediaSel) {
 function closeLightbox(fromPop) {
   const returnFocus = lightboxReturnFocus;
   lightboxReturnFocus = null;
+  clearLightboxTap();
+  resetLightboxZoom();
   closeActionMenu();
   resetLightboxSwipeVisuals();
   restoreDesktopStagePickerHome();
@@ -18923,6 +19002,12 @@ $('#likesFilter').addEventListener('click', () => {
   renderGrid();
 });
 $('#lbImg').addEventListener('click', handleLightboxTap);
+$('#lbImg').addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  event.preventDefault();
+  clearLightboxTap();
+  toggleLightboxZoom();
+});
 $('#lbVideo').addEventListener('pointerdown', handleLightboxVideoPointerDown);
 $('#lbVideo').addEventListener('pointerup', handleLightboxVideoPointerUp);
 $('#lbVideo').addEventListener('pointercancel', () => { lightboxVideoPointer = null; });
@@ -19038,12 +19123,12 @@ $('#animateGo').addEventListener('click', async () => {
     state.pendingGalleryRequests.delete(requestKey);
   }
 });
-$('#lbClose').addEventListener('click', closeLightbox);
+$('#lbClose').addEventListener('click', () => closeLightbox());
 $('#lbCompareBtn').addEventListener('click', () => {
   if (state.currentItem && state.currentItem.upscaled) openCompare(state.currentItem);
 });
 document.addEventListener('keydown', (event) => {
-  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)
+  if (!['Escape', 'ArrowLeft', 'ArrowRight'].includes(event.key)
     || event.defaultPrevented
     || event.isComposing
     || event.altKey
@@ -19053,10 +19138,16 @@ document.addEventListener('keydown', (event) => {
     || !$('#lightbox').classList.contains('show')
     || $('#compare').classList.contains('show')
     || $('.sheet.show')
+    || $('#appDrawer').classList.contains('show')
     || actionMenuEl) return;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest('input, textarea, select, option, video, audio, [contenteditable="true"], [role="slider"]')) return;
+  if (target?.closest('input, textarea, select, option, [contenteditable="true"], [role="slider"]')) return;
+  if (event.key !== 'Escape' && target?.closest('video, audio')) return;
   event.preventDefault();
+  if (event.key === 'Escape') {
+    closeLightbox();
+    return;
+  }
   navigateFocusedGallery(event.key === 'ArrowRight' ? 1 : -1);
 });
 
@@ -19148,6 +19239,7 @@ document.addEventListener('keydown', (event) => {
 
   wrap.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
+    if (lightboxZoomState.active && e.target === $('#lbImg')) return;
     if (e.target.tagName === 'VIDEO') {
       // allow swiping on the video body, but not over the control bar
       const r = e.target.getBoundingClientRect();
