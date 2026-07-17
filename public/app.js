@@ -16364,6 +16364,7 @@ function setGenerationNameInput(item, media = null) {
   input.dataset.initialValue = display;
   input.disabled = false;
   input.setAttribute('aria-label', item.name ? `Rename ${item.name}` : `Name ${fallback}`);
+  input.title = item.name ? `Rename generation: ${item.name}` : `Name generation: ${fallback}`;
 }
 
 function setGalleryGroupNameInput(input, item, group = activeGalleryGroup(item)) {
@@ -16376,9 +16377,12 @@ function setGalleryGroupNameInput(input, item, group = activeGalleryGroup(item))
   input.dataset.itemId = item.id;
   input.dataset.groupType = group.type;
   input.dataset.groupId = group.id;
+  input.dataset.groupMembers = JSON.stringify(group.items.map((member) => String(member.id)).sort());
   input.dataset.initialValue = group.name;
   input.disabled = false;
   input.setAttribute('aria-label', group.name ? `Rename group ${group.name}` : 'Name this gallery group');
+  input.title = group.name || 'Untitled group';
+  input.parentElement.title = group.name ? `Rename gallery group: ${group.name}` : 'Name this gallery group';
   return group;
 }
 
@@ -16395,6 +16399,7 @@ function setLightboxGroupNameInput(item) {
     delete input.dataset.itemId;
     delete input.dataset.groupType;
     delete input.dataset.groupId;
+    delete input.dataset.groupMembers;
     delete input.dataset.initialValue;
     return null;
   }
@@ -16457,8 +16462,35 @@ $('#lbTitle').addEventListener('keydown', (event) => {
 $('#lbTitle').addEventListener('blur', (event) => saveGenerationNameInput(event.currentTarget));
 
 let galleryGroupNameSaveSequence = 0;
+const galleryGroupNameSaveQueues = new Map();
 function galleryGroupNameEditToken(input) {
-  return [input.dataset.itemId, input.dataset.groupType, input.dataset.groupId, input.dataset.initialValue].join('\u0000');
+  return [
+    input.dataset.itemId,
+    input.dataset.groupType,
+    input.dataset.groupId,
+    input.dataset.groupMembers,
+    input.dataset.initialValue,
+  ].join('\u0000');
+}
+
+function queueGalleryGroupNameSave(groupType, groupId, action) {
+  const key = `${groupType}:${groupId}`;
+  const queued = (galleryGroupNameSaveQueues.get(key) || Promise.resolve())
+    .catch(() => {})
+    .then(action);
+  galleryGroupNameSaveQueues.set(key, queued);
+  queued.finally(() => {
+    if (galleryGroupNameSaveQueues.get(key) === queued) galleryGroupNameSaveQueues.delete(key);
+  }).catch(() => {});
+  return queued;
+}
+
+function setSavedGalleryGroupNameInput(input, name) {
+  input.value = name;
+  input.dataset.initialValue = name;
+  input.setAttribute('aria-label', name ? `Rename group ${name}` : 'Name this gallery group');
+  input.title = name || 'Untitled group';
+  input.parentElement.title = name ? `Rename gallery group: ${name}` : 'Name this gallery group';
 }
 
 function applyGalleryGroupName(groupType, groupId, name) {
@@ -16477,10 +16509,9 @@ function applyGalleryGroupName(groupType, groupId, name) {
 
 function syncGalleryGroupNameInputs(groupType, groupId, name, source) {
   [$('#desktopStageGroupName'), $('#lbGroupTitle')].forEach((input) => {
-    if (!input || input === source || document.activeElement === input) return;
+    if (!input || input === source || document.activeElement === input || input.dataset.saveToken) return;
     if (input.dataset.groupType !== groupType || String(input.dataset.groupId || '') !== String(groupId)) return;
-    input.value = name;
-    input.dataset.initialValue = name;
+    setSavedGalleryGroupNameInput(input, name);
   });
 }
 
@@ -16492,33 +16523,63 @@ async function saveGalleryGroupNameInput(input) {
   if (typed === initialValue) return;
   const groupType = input.dataset.groupType;
   const groupId = input.dataset.groupId;
+  const memberIds = (() => {
+    try { return JSON.parse(input.dataset.groupMembers || '[]'); }
+    catch { return []; }
+  })();
   const editToken = galleryGroupNameEditToken(input);
   const saveToken = String(++galleryGroupNameSaveSequence);
   input.dataset.saveToken = saveToken;
   input.classList.add('saving');
   input.setAttribute('aria-busy', 'true');
   try {
-    const updated = await api('/api/item/' + encodeURIComponent(item.id) + '/group', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: typed, groupType, groupId }),
+    const updated = await queueGalleryGroupNameSave(groupType, groupId, async () => {
+      const currentItem = state.items.find((entry) => entry.id === item.id);
+      const currentGroup = activeGalleryGroup(currentItem);
+      const currentMemberIds = currentGroup?.items.map((member) => String(member.id)).sort() || [];
+      if (!currentGroup
+        || currentGroup.type !== groupType
+        || String(currentGroup.id) !== String(groupId)
+        || currentMemberIds.length !== memberIds.length
+        || currentMemberIds.some((id, index) => id !== memberIds[index])) {
+        throw new Error('This gallery group changed before its name could be saved');
+      }
+      const response = await api('/api/item/' + encodeURIComponent(item.id) + '/group', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: typed,
+          groupType,
+          groupId,
+          expectedName: currentGroup.name,
+          memberIds: currentMemberIds,
+        }),
+      });
+      if (response.groupType !== groupType || String(response.groupId) !== String(groupId)) {
+        throw new Error('This gallery group changed before its name could be saved');
+      }
+      applyGalleryGroupName(groupType, groupId, String(response.name || ''));
+      return response;
     });
-    if (updated.groupType !== groupType || String(updated.groupId) !== String(groupId)) {
-      throw new Error('This gallery group changed before its name could be saved');
-    }
     const savedName = String(updated.name || '');
-    applyGalleryGroupName(groupType, groupId, savedName);
-    if (galleryGroupNameEditToken(input) === editToken
-      && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed) {
-      input.value = savedName;
-      input.dataset.initialValue = savedName;
+    const stillCurrentEdit = galleryGroupNameEditToken(input) === editToken
+      && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed;
+    const navigatedWithinGroup = input.dataset.saveToken === saveToken
+      && input.dataset.groupType === groupType
+      && String(input.dataset.groupId || '') === String(groupId)
+      && document.activeElement !== input;
+    if (stillCurrentEdit || navigatedWithinGroup) {
+      setSavedGalleryGroupNameInput(input, savedName);
     }
     syncGalleryGroupNameInputs(groupType, groupId, savedName, input);
     renderGrid();
   } catch (error) {
     if (galleryGroupNameEditToken(input) === editToken
       && input.value.replace(/\s+/g, ' ').trim().slice(0, 80) === typed) {
-      input.value = initialValue;
+      const currentItem = state.items.find((entry) => entry.id === item.id);
+      const currentGroup = activeGalleryGroup(currentItem);
+      setSavedGalleryGroupNameInput(input, currentGroup?.type === groupType
+        && String(currentGroup.id) === String(groupId) ? currentGroup.name : initialValue);
     }
     toast(error.message, true);
   } finally {
@@ -16554,7 +16615,37 @@ wireInlineNameInput($('#desktopStageGroupName'), saveGalleryGroupNameInput);
 wireInlineNameInput($('#lbGroupTitle'), saveGalleryGroupNameInput);
 
 function librarySearchText(it) {
+  return librarySearchTextWithGroups(it);
+}
+
+function libraryGroupNameIndex(items = state.items) {
+  const generationGroups = new Map();
+  const angleGroups = new Map();
+  const collect = (groups, id, name) => {
+    if (!id) return;
+    const key = String(id);
+    const current = groups.get(key) || { count: 0, name: '' };
+    current.count += 1;
+    if (!current.name) current.name = String(name || '').trim();
+    groups.set(key, current);
+  };
+  items.forEach((item) => {
+    collect(generationGroups, item.generationGroupId, item.generationGroupName);
+    collect(angleGroups, item.angleGroupId, item.angleGroupName);
+  });
+  const names = new Map();
+  items.forEach((item) => {
+    const generation = item.generationGroupId && generationGroups.get(String(item.generationGroupId));
+    const angle = item.angleGroupId && angleGroups.get(String(item.angleGroupId));
+    const active = generation?.count > 1 ? generation : (angle?.count > 1 ? angle : null);
+    names.set(item, active?.name || '');
+  });
+  return names;
+}
+
+function librarySearchTextWithGroups(it, groupNames = null) {
   const folder = state.folders.find((entry) => entry.id === it.folder);
+  const groupName = groupNames ? groupNames.get(it) : activeGalleryGroup(it)?.name;
   const loras = (it.loras || []).map((lora) => lora && lora.name).filter(Boolean);
   const regions = (it.regions || []).flatMap((region) => [region && region.description, region && region.lora]).filter(Boolean);
   const videoText = (it.videos || []).flatMap((video) => {
@@ -16562,8 +16653,7 @@ function librarySearchText(it) {
     return [info.engine, info.motionPrompt, info.refinedMotionPrompt];
   }).filter(Boolean);
   return [
-    it.generationGroupName,
-    it.angleGroupName,
+    groupName,
     it.name,
     it.prompt,
     it.refinedPrompt,
@@ -16579,20 +16669,21 @@ function librarySearchText(it) {
   ].filter(Boolean).join(' ').toLocaleLowerCase();
 }
 
-function matchesLibrarySearch(it, query) {
+function matchesLibrarySearch(it, query, groupNames = null) {
   const terms = String(query || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return true;
-  const text = librarySearchText(it);
+  const text = librarySearchTextWithGroups(it, groupNames);
   return terms.every((term) => text.includes(term));
 }
 
 function visibleItems() {
+  const groupNames = libraryGroupNameIndex(state.items);
   const eligible = state.items.filter((it) => {
     if (state.activeFolder !== 'all' && it.folder !== state.activeFolder) return false;
     const hasVideos = it.videos && it.videos.length;
     if (state.mediaFilter === 'videos' && !hasVideos) return false;
     if (state.mediaFilter === 'images' && hasVideos) return false;
-    return matchesLibrarySearch(it, state.libraryQuery);
+    return matchesLibrarySearch(it, state.libraryQuery, groupNames);
   });
   let arr = eligible.filter((it) => {
     if (state.likesOnly && !it.liked) {
@@ -16611,8 +16702,8 @@ function visibleItems() {
   }
   if (state.sortMode === 'old') arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   else if (state.sortMode === 'az') arr.sort((a, b) => (
-    a.generationGroupName || a.angleGroupName || a.name || a.file || a.prompt || ''
-  ).localeCompare(b.generationGroupName || b.angleGroupName || b.name || b.file || b.prompt || ''));
+    groupNames.get(a) || a.name || a.file || a.prompt || ''
+  ).localeCompare(groupNames.get(b) || b.name || b.file || b.prompt || ''));
   else if (state.sortMode === 'active') arr.sort((a, b) => itemActivity(b) - itemActivity(a));
   else arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return arr;
@@ -19401,8 +19492,8 @@ function openLightbox(id, mediaSel) {
   if (generationItems.length > 1 && strengthHuntItemLabel(it)) {
     focusedPosition = `${strengthHuntItemLabel(it)} · ${generationIndex + 1} of ${generationItems.length}`;
   }
-  if (activeGroup?.name) focusedPosition = `${activeGroup.name} · ${activeGroup.position}`;
-  $('#lbTitle').title = focusedPosition;
+  if (activeGroup) $('#lbGroupTitle').title = `${activeGroup.name || 'Untitled group'} · ${activeGroup.position}`;
+  else $('#lbTitle').title = focusedPosition;
   $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
 
   // media switcher keeps attached composites with the image they describe.

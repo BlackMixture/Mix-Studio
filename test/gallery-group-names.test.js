@@ -30,6 +30,8 @@ test('group names normalize and update only same-profile members', () => {
     profileId: 'p1',
     groupType: 'generation',
     groupId: 'shared',
+    expectedName: '',
+    memberIds: ['a', 'b'],
     name: '  Neon\nStudies\u0000  ',
     visibleIds: new Set(['a', 'b']),
   });
@@ -55,6 +57,8 @@ test('blank names clear the active name field without erasing an underlying angl
     profileId: 'p1',
     groupType: 'generation',
     groupId: 'manual',
+    expectedName: 'Mixed set',
+    memberIds: ['a', 'b'],
     name: '   ',
   });
   assert.equal(result.name, '');
@@ -70,16 +74,33 @@ test('stale, hidden, foreign, and singleton group updates do not mutate data', (
     { id: 'solo', profileId: 'p1', generationGroupId: 'solo-group' },
   ];
   assert.equal(updateGalleryGroupName(items, {
-    anchor: items[0], profileId: 'p2', groupType: 'angle', groupId: 'angles', name: 'Nope',
+    anchor: items[0], profileId: 'p2', groupType: 'angle', groupId: 'angles', expectedName: '', memberIds: ['a', 'b'], name: 'Nope',
   }).reason, 'missing');
   assert.equal(updateGalleryGroupName(items, {
-    anchor: items[0], profileId: 'p1', groupType: 'generation', groupId: 'angles', name: 'Nope',
+    anchor: items[0], profileId: 'p1', groupType: 'generation', groupId: 'angles', expectedName: '', memberIds: ['a', 'b'], name: 'Nope',
   }).reason, 'stale');
   assert.equal(updateGalleryGroupName(items, {
-    anchor: items[0], profileId: 'p1', groupType: 'angle', groupId: 'angles', name: 'Nope', visibleIds: new Set(['a']),
+    anchor: items[0], profileId: 'p1', groupType: 'angle', groupId: 'angles', expectedName: '', memberIds: ['a', 'b'], name: 'Nope', visibleIds: new Set(['a']),
   }).reason, 'locked');
   assert.equal(updateGalleryGroupName(items, {
-    anchor: items[2], profileId: 'p1', groupType: 'generation', groupId: 'solo-group', name: 'Nope',
+    anchor: items[2], profileId: 'p1', groupType: 'generation', groupId: 'solo-group', expectedName: '', memberIds: ['solo'], name: 'Nope',
   }).reason, 'not_grouped');
   assert.equal(items.some((item) => item.angleGroupName || item.generationGroupName), false);
+});
+
+test('stale names and memberships cannot overwrite a newer group state', () => {
+  const items = [
+    { id: 'a', profileId: 'p1', generationGroupId: 'group', generationGroupName: 'Current' },
+    { id: 'b', profileId: 'p1', generationGroupId: 'group', generationGroupName: 'Current' },
+  ];
+  assert.equal(updateGalleryGroupName(items, {
+    anchor: items[0], profileId: 'p1', groupType: 'generation', groupId: 'group',
+    expectedName: 'Older', memberIds: ['a', 'b'], name: 'Overwrite',
+  }).reason, 'stale');
+  assert.equal(updateGalleryGroupName(items, {
+    anchor: items[0], profileId: 'p1', groupType: 'generation', groupId: 'group',
+    expectedName: 'Current', memberIds: ['a'], name: 'Overwrite',
+  }).reason, 'stale');
+  assert.equal(items[0].generationGroupName, 'Current');
+  assert.equal(items[1].generationGroupName, 'Current');
 });

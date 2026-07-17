@@ -21,7 +21,7 @@ test('Library search filters useful generation metadata and preserves existing f
   assert.match(app, /function librarySearchText\(it\)/);
   assert.match(app, /it\.prompt,[\s\S]*it\.refinedPrompt,[\s\S]*folder && folder\.name,[\s\S]*\.\.\.loras,[\s\S]*\.\.\.regions,[\s\S]*\.\.\.videoText/);
   assert.match(app, /return terms\.every\(\(term\) => text\.includes\(term\)\)/);
-  assert.match(app, /state\.activeFolder !== 'all'[\s\S]*state\.mediaFilter === 'videos'[\s\S]*matchesLibrarySearch\(it, state\.libraryQuery\)/);
+  assert.match(app, /state\.activeFolder !== 'all'[\s\S]*state\.mediaFilter === 'videos'[\s\S]*matchesLibrarySearch\(it, state\.libraryQuery, groupNames\)/);
 });
 
 test('Library search supports clear, escape, and a contextual empty state', () => {

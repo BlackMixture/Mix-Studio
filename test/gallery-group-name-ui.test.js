@@ -35,8 +35,12 @@ test('focused desktop and mobile keep group and generation names separate', () =
 
 test('group naming saves with stale identity protection and safe keyboard behavior', () => {
   assert.match(app, /\/api\/item\/.*encodeURIComponent\(item\.id\).*\/group/);
-  assert.match(app, /JSON\.stringify\(\{ name: typed, groupType, groupId \}\)/);
-  assert.match(app, /updated\.groupType !== groupType \|\| String\(updated\.groupId\) !== String\(groupId\)/);
+  assert.match(app, /expectedName: currentGroup\.name,[\s\S]*memberIds: currentMemberIds/);
+  assert.match(app, /queueGalleryGroupNameSave\(groupType, groupId/);
+  assert.match(app, /document\.activeElement === input \|\| input\.dataset\.saveToken/);
+  assert.match(app, /setAttribute\('aria-label', name \? `Rename group \$\{name\}` : 'Name this gallery group'\)/);
+  assert.match(app, /const navigatedWithinGroup = input\.dataset\.saveToken === saveToken/);
+  assert.match(app, /response\.groupType !== groupType \|\| String\(response\.groupId\) !== String\(groupId\)/);
   assert.match(app, /galleryGroupNameEditToken\(input\) === editToken/);
   assert.match(app, /if \(event\.isComposing\) return/);
   assert.match(app, /event\.key === 'Escape'[\s\S]*event\.stopPropagation\(\)[\s\S]*dataset\.initialValue/);
@@ -50,11 +54,14 @@ test('manual, Strength Hunt, and camera groups resolve independently', () => {
   assert.match(app, /item\.strengthHunt \? 'Strength Hunt' : 'Generation group'/);
   assert.match(app, /type: 'angle'[\s\S]*nameKey: 'angleGroupName'/);
   assert.match(app, /kindLabel: 'Camera group'/);
+  assert.match(server, /const inheritedAngleGroupName = job\.params\.angleGroupId/);
+  assert.match(server, /angleGroupName: inheritedAngleGroupName \|\| undefined/);
 });
 
 test('named groups are visible, searchable, sortable, and safely rendered in Library', () => {
-  assert.match(app, /it\.generationGroupName,[\s\S]*it\.angleGroupName,[\s\S]*it\.name/);
-  assert.match(app, /a\.generationGroupName \|\| a\.angleGroupName \|\| a\.name/);
+  assert.match(app, /function libraryGroupNameIndex\(items = state\.items\)/);
+  assert.match(app, /const groupName = groupNames \? groupNames\.get\(it\) : activeGalleryGroup\(it\)\?\.name/);
+  assert.match(app, /groupNames\.get\(a\) \|\| a\.name/);
   assert.match(app, /groupName\.textContent = galleryGroupName/);
   assert.match(app, /card\.setAttribute\('aria-label', `\$\{galleryGroupName\}, \$\{galleryGroup\.items\.length\} results`\)/);
   assert.match(css, /\.gallery-group-name \{[\s\S]*text-overflow: ellipsis/);
@@ -64,7 +71,11 @@ test('profile-scoped group endpoint handles privacy, stale state, and lifecycle 
   assert.match(server, /itemGroupRoute = route\.match\(\/\^\\\/api\\\/item\\\/\(\[\\w\]\+\)\\\/group\$\//);
   assert.match(server, /visible\.find\(\(item\) => item\.id === itemGroupRoute\[1\]\)/);
   assert.match(server, /visibleIds: new Set\(visible\.map\(\(item\) => String\(item\.id\)\)\)/);
+  assert.match(server, /expectedName: body\.expectedName/);
+  assert.match(server, /memberIds: body\.memberIds/);
   assert.match(server, /Unlock the gallery before renaming this group/);
+  assert.match(server, /Unlock the gallery before regrouping these generations/);
+  assert.match(server, /Unlock the gallery before ungrouping this group/);
   assert.match(server, /delete item\.generationGroupName/);
   assert.match(server, /updateGalleryGroupName\(db\.items/);
 });

@@ -1956,6 +1956,13 @@ async function completeJob(pid) {
         await fsp.writeFile(path.join(IMAGES, sourceFile), sbuf);
       } catch { /* source copy is best-effort */ }
     }
+    // Resolve this immediately before insertion so a rename that lands while
+    // output/source files are downloading is inherited by the late result.
+    const inheritedAngleGroupName = job.params.angleGroupId
+      ? normalizeGenerationName(db.items.find((item) => item.profileId === job.profileId
+        && item.angleGroupId === job.params.angleGroupId
+        && item.angleGroupName)?.angleGroupName)
+      : '';
     const item = {
       id,
       file: fname,
@@ -1979,6 +1986,7 @@ async function completeJob(pid) {
       angleView: job.params.qwenAngle || undefined,
       anglePrompt: job.params.anglePrompt || undefined,
       angleGroupId: job.params.angleGroupId || undefined,
+      angleGroupName: inheritedAngleGroupName || undefined,
       editAspectOverride: job.params.mode === 'edit' ? !!job.params.editAspectOverride : undefined,
       editOutpaint: job.params.mode === 'edit' && job.params.editOutpaint ? {
         position: normalizeOutpaintPosition(job.params.editOutpaintPosition),
@@ -6753,6 +6761,12 @@ async function handleApi(req, res, url) {
     const byId = new Map(visible.map((item) => [item.id, item]));
     const requested = ids.map((id) => byId.get(id)).filter(Boolean);
     if (requested.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
+    const visibleIds = new Set(visible.map((item) => String(item.id)));
+    const profileItems = db.items.filter((item) => item.profileId === req.profile.id);
+    const connectedMembers = expandGalleryGroupSelection(profileItems, ids);
+    if (connectedMembers.some((item) => !visibleIds.has(String(item.id)))) {
+      return json(res, 401, { error: 'Unlock the gallery before regrouping these generations' });
+    }
     const items = body.includeGroups === true
       ? expandGalleryGroupSelection(visible, ids)
       : requested;
@@ -6776,6 +6790,11 @@ async function handleApi(req, res, url) {
     if (requested.length !== ids.length) return json(res, 404, { error: 'One or more selected generations are unavailable' });
     const groupIds = new Set(requested.map((item) => item.generationGroupId).filter(Boolean));
     if (!groupIds.size) return json(res, 409, { error: 'The selected generations are not grouped' });
+    const visibleIds = new Set(visible.map((item) => String(item.id)));
+    const fullMembers = db.items.filter((item) => item.profileId === req.profile.id && groupIds.has(item.generationGroupId));
+    if (fullMembers.some((item) => !visibleIds.has(String(item.id)))) {
+      return json(res, 401, { error: 'Unlock the gallery before ungrouping this group' });
+    }
     let changed = 0;
     for (const item of db.items) {
       if (item.profileId === req.profile.id && groupIds.has(item.generationGroupId)) {
@@ -7046,8 +7065,18 @@ async function handleApi(req, res, url) {
   const likeRoute = route.match(/^\/api\/item\/([\w]+)\/like$/);
   if (itemGroupRoute && req.method === 'PATCH') {
     const body = await readJsonBody(req);
-    if (!Object.prototype.hasOwnProperty.call(body, 'name')) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)
+      || !Object.prototype.hasOwnProperty.call(body, 'name') || typeof body.name !== 'string') {
       return json(res, 400, { error: 'Group name is required' });
+    }
+    if (!['generation', 'angle'].includes(body.groupType)
+      || typeof body.groupId !== 'string'
+      || typeof body.expectedName !== 'string'
+      || !Array.isArray(body.memberIds)
+      || body.memberIds.length < 2
+      || body.memberIds.length > 250
+      || body.memberIds.some((id) => typeof id !== 'string' || !id)) {
+      return json(res, 400, { error: 'Valid group identity is required' });
     }
     const unlocked = isPrivateUnlocked(req);
     const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
@@ -7058,6 +7087,8 @@ async function handleApi(req, res, url) {
       profileId: req.profile.id,
       groupType: body.groupType,
       groupId: body.groupId,
+      expectedName: body.expectedName,
+      memberIds: body.memberIds,
       name: body.name,
       visibleIds: new Set(visible.map((item) => String(item.id))),
     });
