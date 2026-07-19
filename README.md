@@ -51,7 +51,7 @@ Flux 2 Klein 4B/9B, Qwen Image Edit 2511, and Krea 2 accept prompt-based edits, 
 
 Add up to three Edit inputs, then type `@` to insert a specific image as a prompt token. In this Flux Klein 9B edit, `@Image 1` supplies the character, `@Image 2` supplies the jacket, and `@Image 3` supplies the forest setting.
 
-![Mix Studio Edit workspace with three reference images addressed by @Image prompt tokens](docs/download/media/edit-reference-mentions.png)
+![Current Mix Studio Edit workspace with three reference images addressed by @Image prompt tokens](docs/download/media/edit-reference-mentions.png)
 
 | “Make the man an old black man with a gold chain and a hat” | “Make the rose into a gun” |
 | --- | --- |

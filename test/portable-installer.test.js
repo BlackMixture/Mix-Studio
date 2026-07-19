@@ -202,7 +202,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.doesNotMatch(page, /edit-reference-mentions\.gif/);
   assert.match(page, /Use @ to assign a role to each input/);
   assert.match(page, /@Image 1<\/strong> supplies the character/);
-  assert.ok(fs.statSync(path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.png')).size < 512 * 1024);
+  assert.ok(fs.statSync(path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.png')).size < 768 * 1024);
   assert.match(page, /data-loop-end="2"/);
   assert.match(page, /region-island\.png/);
   assert.match(page, /Snow biome/);

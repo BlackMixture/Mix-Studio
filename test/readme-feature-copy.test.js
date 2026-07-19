@@ -8,6 +8,12 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 
+function pngDimensions(file) {
+  const buffer = fs.readFileSync(file);
+  assert.equal(buffer.toString('ascii', 1, 4), 'PNG');
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
 test('README feature descriptions are technical, current, and free of em dashes', () => {
   assert.doesNotMatch(readme, /—/);
   assert.doesNotMatch(readme, /flawlessly|killer workflow|why it is awesome|ultimate creative toolkit/i);
@@ -62,5 +68,6 @@ test('README demonstrates static @-addressed multi-reference editing after the c
   assert.ok(readme.indexOf('### Edit: localized and multi-reference changes') > readme.indexOf('### Video'));
   const screenshot = path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.png');
   assert.ok(fs.existsSync(screenshot));
-  assert.ok(fs.statSync(screenshot).size < 512 * 1024, 'reference screenshot stays below 512 KB');
+  assert.deepEqual(pngDimensions(screenshot), { width: 1920, height: 1080 });
+  assert.ok(fs.statSync(screenshot).size < 768 * 1024, 'reference screenshot stays below 768 KB');
 });
