@@ -198,6 +198,10 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /ltx-dreamscape\.mp4", previewEnd: 3/);
   assert.doesNotMatch(page, /Shark breach/);
   assert.match(page, /edit-aging-motion\.mp4/);
+  assert.match(page, /edit-reference-mentions\.gif/);
+  assert.match(page, /Use @ to assign a role to each input/);
+  assert.match(page, /@Image 1<\/strong> supplies the character/);
+  assert.ok(fs.statSync(path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.gif')).size < 768 * 1024);
   assert.match(page, /data-loop-end="2"/);
   assert.match(page, /region-island\.png/);
   assert.match(page, /Snow biome/);

@@ -51,3 +51,12 @@ test('README regional prompting uses a lightweight animated bounding-box map', (
   assert.ok(fs.existsSync(animation));
   assert.ok(fs.statSync(animation).size < 1024 * 1024, 'regional GIF stays below 1 MB');
 });
+
+test('README demonstrates lightweight @-addressed multi-reference editing', () => {
+  assert.match(readme, /type `@` to insert a specific image as a prompt token/);
+  assert.match(readme, /`@Image 1` supplies the character/);
+  assert.match(readme, /docs\/download\/media\/edit-reference-mentions\.gif/);
+  const animation = path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.gif');
+  assert.ok(fs.existsSync(animation));
+  assert.ok(fs.statSync(animation).size < 768 * 1024, 'reference GIF stays below 768 KB');
+});

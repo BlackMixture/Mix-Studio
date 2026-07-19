@@ -14,6 +14,10 @@ Everything below was generated locally in Mix Studio, with most jobs submitted f
 
 Flux 2 Klein 4B/9B, Qwen Image Edit 2511, and Krea 2 accept prompt-based edits, multiple references, masks, and expanded canvases. Preserve and compositing controls determine which source pixels are restored after generation.
 
+Add up to three Edit inputs, then type `@` to insert a specific image as a prompt token. In this Flux Klein 9B edit, `@Image 1` supplies the character, `@Image 2` supplies the jacket, and `@Image 3` supplies the forest setting.
+
+![Animated Mix Studio edit showing three reference images addressed with @Image prompt tokens and combined into one result](docs/download/media/edit-reference-mentions.gif)
+
 | “Make the man an old black man with a gold chain and a hat” | “Make the rose into a gun” |
 | --- | --- |
 | ![Aging edit, scene preserved](docs/download/media/edit-aging.jpg) | ![Rose to revolver edit](docs/download/media/edit-rose-gun.jpg) |
