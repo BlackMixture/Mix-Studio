@@ -10,22 +10,6 @@ Generations run through **ComfyUI** on the Windows desktop; use the same respons
 
 Everything below was generated locally in Mix Studio, with most jobs submitted from a phone. More examples, including autoplaying video, are on the **[showcase and download page](https://blackmixture.github.io/Mix-Studio/)**.
 
-### Edit: localized and multi-reference changes
-
-Flux 2 Klein 4B/9B, Qwen Image Edit 2511, and Krea 2 accept prompt-based edits, multiple references, masks, and expanded canvases. Preserve and compositing controls determine which source pixels are restored after generation.
-
-Add up to three Edit inputs, then type `@` to insert a specific image as a prompt token. In this Flux Klein 9B edit, `@Image 1` supplies the character, `@Image 2` supplies the jacket, and `@Image 3` supplies the forest setting.
-
-![Animated Mix Studio edit showing three reference images addressed with @Image prompt tokens and combined into one result](docs/download/media/edit-reference-mentions.gif)
-
-| “Make the man an old black man with a gold chain and a hat” | “Make the rose into a gun” |
-| --- | --- |
-| ![Aging edit, scene preserved](docs/download/media/edit-aging.jpg) | ![Rose to revolver edit](docs/download/media/edit-rose-gun.jpg) |
-
-| “Make this a 3D render. Wireframe draft view.” | Mask inpainting: paint the face so only the selected area changes |
-| --- | --- |
-| ![Photo to wireframe render](docs/download/media/edit-wireframe.jpg) | ![Inpainted face swap via character LoRA](docs/download/media/inpaint-face.jpg) |
-
 ### Outpaint: extend the canvas
 
 A square generation continued into a seamless 21:9 interior.
@@ -60,6 +44,22 @@ Click a link to play the file, or see the videos looping on the [showcase page](
 | --- | --- |
 | [**SCAIL 2 motion transfer**: a phone clip of a hand drives motion in a generated fantasy scene](docs/download/media/scail-hand-fantasy.mp4) | [**SCAIL 2 motion transfer**: a dog-walk clip drives a mech and robot-dog scene](docs/download/media/scail-mech-dog.mp4) |
 | [**LTX 2.3 Face ID lipsync**: a reference image and voice recording condition one talking-video job](docs/download/media/lipsync-talking.mp4) | [**LTX 2.3 image-to-video**: a still image, motion prompt, and generated audio produce a video](docs/download/media/ltx-shark.mp4) |
+
+### Edit: localized and multi-reference changes
+
+Flux 2 Klein 4B/9B, Qwen Image Edit 2511, and Krea 2 accept prompt-based edits, multiple references, masks, and expanded canvases. Preserve and compositing controls determine which source pixels are restored after generation.
+
+Add up to three Edit inputs, then type `@` to insert a specific image as a prompt token. In this Flux Klein 9B edit, `@Image 1` supplies the character, `@Image 2` supplies the jacket, and `@Image 3` supplies the forest setting.
+
+![Mix Studio Edit workspace with three reference images addressed by @Image prompt tokens](docs/download/media/edit-reference-mentions.png)
+
+| “Make the man an old black man with a gold chain and a hat” | “Make the rose into a gun” |
+| --- | --- |
+| ![Aging edit, scene preserved](docs/download/media/edit-aging.jpg) | ![Rose to revolver edit](docs/download/media/edit-rose-gun.jpg) |
+
+| “Make this a 3D render. Wireframe draft view.” | Mask inpainting: paint the face so only the selected area changes |
+| --- | --- |
+| ![Photo to wireframe render](docs/download/media/edit-wireframe.jpg) | ![Inpainted face swap via character LoRA](docs/download/media/inpaint-face.jpg) |
 
 ## Inside the app
 
@@ -105,7 +105,7 @@ Search image, video, and uploaded-asset collections. Folders, named groups, save
 
 Inspect generated media with group navigation, prompt and model metadata, reuse actions, and documentation export without leaving the Library context.
 
-![Lightbox with outpainted knight and full generation metadata](docs/download/mix-studio-lightbox.png)
+![Focused Library result with group thumbnails, resizable generation metadata, and centered action controls](docs/download/mix-studio-lightbox.png)
 
 ### Upscale comparison
 

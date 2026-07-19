@@ -34,6 +34,8 @@ test('README workspace showcase uses headings, body copy, and full-width screens
   assert.equal((section.match(/^!\[[^\]]+\]\(docs\/download\/mix-studio-[^)]+\)$/gm) || []).length, 10);
   assert.match(section, /LTX 2\.3, Director, Face ID, LTX Edit, 10Eros, Wan 2\.2, and SCAIL 2/);
   assert.match(section, /Multiple inputs, masks, outpainting, preserve controls, and sequential edits/);
+  assert.match(section, /Focused Library result with group thumbnails, resizable generation metadata, and centered action controls/);
+  assert.ok(fs.statSync(path.join(root, 'docs', 'download', 'mix-studio-lightbox.png')).size < 768 * 1024, 'focused view screenshot stays below 768 KB');
 });
 
 test('README local screenshots and showcase media resolve to checked-in files', () => {
@@ -52,11 +54,13 @@ test('README regional prompting uses a lightweight animated bounding-box map', (
   assert.ok(fs.statSync(animation).size < 1024 * 1024, 'regional GIF stays below 1 MB');
 });
 
-test('README demonstrates lightweight @-addressed multi-reference editing', () => {
+test('README demonstrates static @-addressed multi-reference editing after the core showcase', () => {
   assert.match(readme, /type `@` to insert a specific image as a prompt token/);
   assert.match(readme, /`@Image 1` supplies the character/);
-  assert.match(readme, /docs\/download\/media\/edit-reference-mentions\.gif/);
-  const animation = path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.gif');
-  assert.ok(fs.existsSync(animation));
-  assert.ok(fs.statSync(animation).size < 768 * 1024, 'reference GIF stays below 768 KB');
+  assert.match(readme, /docs\/download\/media\/edit-reference-mentions\.png/);
+  assert.doesNotMatch(readme, /edit-reference-mentions\.gif/);
+  assert.ok(readme.indexOf('### Edit: localized and multi-reference changes') > readme.indexOf('### Video'));
+  const screenshot = path.join(root, 'docs', 'download', 'media', 'edit-reference-mentions.png');
+  assert.ok(fs.existsSync(screenshot));
+  assert.ok(fs.statSync(screenshot).size < 512 * 1024, 'reference screenshot stays below 512 KB');
 });
