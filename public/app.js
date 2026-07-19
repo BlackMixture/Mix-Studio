@@ -27105,8 +27105,8 @@ async function startSetupDependencies(components) {
   if (difficult.length) {
     const names = difficult.map((id) => labels.get(id) || id).join(', ');
     const confirmed = await askConfirm({
-      title: 'This setup may exceed the PC',
-      message: `${names} ${difficult.length === 1 ? 'is' : 'are'} rated difficult on this PC and may run very slowly or fail with an out-of-memory error.`,
+      title: 'Below the guided hardware tier',
+      message: `${names} ${difficult.length === 1 ? 'is' : 'are'} below the guided offload tier on this PC. Installation is still available, but generation may be very slow or fail with an out-of-memory error.`,
       confirmLabel: 'Install anyway',
       danger: true,
     });

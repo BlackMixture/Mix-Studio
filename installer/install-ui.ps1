@@ -496,7 +496,7 @@ function Write-HardwareProfile {
 function Confirm-HardwareWarnings {
   $Difficult = @(Get-SelectedHardwareWarnings 'difficult')
   if (-not $Difficult.Count) { return $true }
-  $Message = "The following selected workflows are rated difficult on this PC and may run very slowly or fail with an out-of-memory error:`n`n" + ($Difficult -join "`n`n") + "`n`nContinue anyway?"
+  $Message = "The following selected workflows are below the guided offload tier on this PC. Installation is still available, but generation may be very slow or fail with an out-of-memory error:`n`n" + ($Difficult -join "`n`n") + "`n`nContinue anyway?"
   $Choice = [System.Windows.MessageBox]::Show($Message, 'Hardware warning', [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
   return $Choice -eq [System.Windows.MessageBoxResult]::Yes
 }

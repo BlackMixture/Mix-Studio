@@ -43,6 +43,7 @@ test('setup and advanced settings expose the low VRAM route', () => {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   assert.match(html, /id="setupVramProfile"/);
   assert.match(html, /id="setVramProfile"/);
+  assert.equal((html.match(/Low VRAM · 4–12 GB/g) || []).length, 2);
   assert.match(server, /applyLowVramImageLimits/);
   assert.match(server, /low_vram_confirmation/);
   assert.match(server, /lowVramChoice === 'safe'/);

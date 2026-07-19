@@ -12,6 +12,7 @@ const {
   QUICK_SETUP_COMPONENTS,
   combinedHardwareFit,
   componentHardwareGuidance,
+  featureHardwareFit,
   normalizeOptionalDirectory,
   normalizeSetupUrl,
   portableSetupConfig,
@@ -112,8 +113,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /id="benchmarks"/);
   assert.match(page, /Benchmarked by workflow/);
   assert.match(page, /Top model by job/);
-  assert.match(page, /VRAM requirements/);
-  assert.match(page, /VRAM capacity only/);
+  assert.match(page, /VRAM guidance/);
+  assert.match(page, /does not enforce a VRAM cutoff/);
   assert.match(page, /A clean, responsive AI workspace built on ComfyUI\./);
   assert.match(page, /Run highly tuned image and video workflows flawlessly from your desktop or your phone\./);
   assert.match(page, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
@@ -232,7 +233,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Leading models\. Optimized settings\./);
   assert.match(page, /workflow-tested defaults/);
   assert.match(page, /detects GPU memory and system RAM/);
-  assert.match(page, /difficult choice/);
+  assert.match(page, /below-tier choice/);
   assert.match(page, /already registered through ComfyUI/);
   assert.match(page, /reveal, zoom, and pan/);
   assert.match(page, /tailscale\.com\/download/);
@@ -343,7 +344,7 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
   assert.match(discovery, /registeredModelNames/);
   assert.match(hardware, /nvidia-smi\.exe/);
   assert.match(hardware, /minimumVramGb/);
-  assert.match(hardware, /Difficult on this PC/);
+  assert.match(hardware, /Below guided tier/);
   assert.match(image.label, /depth/i);
   assert.match(image.label, /style/i);
   assert.match(image.label, /SeedVR2/i);
@@ -406,11 +407,24 @@ test('hardware guidance rates recommended, offload, and difficult model families
   const limited = componentHardwareGuidance(manifest, info(12, 24));
   const fourGb = componentHardwareGuidance(manifest, info(4, 24));
   const difficult = componentHardwareGuidance(manifest, info(8, 16));
+  const eightGbVideo = componentHardwareGuidance(manifest, info(8, 48));
+  const belowVideoTier = featureHardwareFit(
+    manifest.features.find((feature) => feature.id === 'video.ltx'),
+    info(4, 64),
+  );
   assert.equal(recommended.image.level, 'recommended');
   assert.equal(limited.image.level, 'limited');
   assert.equal(fourGb.klein4.level, 'limited');
   assert.equal(fourGb.image.level, 'difficult');
   assert.equal(combinedHardwareFit(['klein4'], fourGb).level, 'limited');
+  assert.equal(eightGbVideo.video.level, 'limited');
+  assert.equal(eightGbVideo.eros.level, 'limited');
+  assert.equal(eightGbVideo.wan.level, 'limited');
+  assert.equal(eightGbVideo.scail.level, 'limited');
+  assert.match(eightGbVideo.video.detail, /8 GB is an experimental tier/);
+  assert.equal(belowVideoTier.level, 'difficult');
+  assert.equal(belowVideoTier.label, 'Below guided tier');
+  assert.match(belowVideoTier.detail, /Installation remains available/);
   assert.equal(difficult.image.level, 'difficult');
   assert.equal(combinedHardwareFit(QUICK_SETUP_COMPONENTS, difficult).level, 'difficult');
 });

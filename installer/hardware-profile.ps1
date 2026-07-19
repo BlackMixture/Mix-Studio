@@ -135,7 +135,7 @@ function Get-MixStudioFeatureFit($Feature, $Hardware) {
   $RecommendedMemory = [double](Get-MixStudioProperty $Rules 'recommendedRamGb' $MinMemory)
   $AutoSelect = [string](Get-MixStudioProperty $Rules 'autoSelect' 'recommended')
   $Variant = [string](Get-MixStudioProperty $Feature 'variant' 'Curated model variant')
-  $Requirements = "$MinVram GB VRAM minimum; $RecommendedVram GB recommended"
+  $Requirements = "$MinVram GB guided VRAM tier; $RecommendedVram GB recommended"
 
   if (-not $Available) {
     return [pscustomobject]@{
@@ -158,12 +158,12 @@ function Get-MixStudioFeatureFit($Feature, $Hardware) {
   $BelowRecommended = $Vram -lt $RecommendedVram -or ($Memory -gt 0 -and $Memory -lt $RecommendedMemory)
   if ($BelowMinimum) {
     $Issues = @()
-    if ($Vram -lt $MinVram) { $Issues += "$MinVram GB VRAM minimum; detected $Vram GB" }
-    if ($Memory -gt 0 -and $Memory -lt $MinMemory) { $Issues += "$MinMemory GB system RAM minimum; detected $Memory GB" }
+    if ($Vram -lt $MinVram) { $Issues += "$MinVram GB guided VRAM tier; detected $Vram GB" }
+    if ($Memory -gt 0 -and $Memory -lt $MinMemory) { $Issues += "$MinMemory GB guided system RAM tier; detected $Memory GB" }
     return [pscustomobject]@{
       level = 'difficult'
-      label = 'Difficult on this PC'
-      detail = "$Variant | $($Issues -join '. '). Heavy offload, very long runs, or out-of-memory errors are likely."
+      label = 'Below guided tier'
+      detail = "$Variant | $($Issues -join '. '). Installation remains available, but heavy offload, very long runs, or out-of-memory errors are likely."
       recommendedDefault = $false
     }
   }

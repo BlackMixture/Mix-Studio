@@ -9,15 +9,19 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('GitHub-facing pages describe the 4 GB Klein FP8 entry route and bounded Krea route', () => {
+test('GitHub-facing pages describe open low-VRAM tiers without promising every workflow will fit', () => {
   const readme = read('README.md');
   const download = read('docs/download/index.html');
   const portable = read('docs/portable-install.md');
   const server = read('server.js');
 
-  assert.match(readme, /minimum supported tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
+  assert.match(readme, /does not enforce a VRAM cutoff/);
+  assert.match(readme, /lowest guided offload tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
   assert.match(readme, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
-  assert.match(readme, /Krea 2 image route retains its \*\*8 GB VRAM\*\* minimum/);
+  assert.match(readme, /Krea 2 image route uses \*\*8 GB VRAM\*\* as its guided offload tier/);
+  assert.match(readme, /Video workflows now use \*\*8 GB VRAM with at least 48 GB of system RAM\*\* as an experimental offload tier/);
+  assert.match(readme, /not a promise that every duration and resolution will fit/);
+  assert.match(readme, /warns before a below-tier install or generation and lets the user continue unchanged/);
   assert.match(readme, /ComfyUI 0\.27\.0 or newer/);
   assert.match(readme, /never silently changes a request/);
   assert.match(readme, /Krea 2 INT8 ConvRot is not GGUF/);
@@ -29,16 +33,20 @@ test('GitHub-facing pages describe the 4 GB Klein FP8 entry route and bounded Kr
   assert.match(download, /--axis-position:16\.667%">4 GB/);
   assert.match(download, /--axis-position:33\.333%">8 GB/);
   assert.match(download, /Can I use a 4 GB GPU\?/);
+  assert.match(download, /Can I generate video with 8 GB of VRAM\?/);
+  assert.match(download, /Offload tier · Recommended/);
 
   assert.match(portable, /## Low-VRAM setup/);
+  assert.match(portable, /no enforced VRAM cutoff/);
   assert.match(portable, /lowest guided tier is 4 GB of VRAM through Flux 2 Klein 4B FP8/);
+  assert.match(portable, /LTX 2\.3, LTX Edit, 10Eros, Wan 2\.2 14B, and SCAIL 2 use 8 GB VRAM with at least 48 GB system RAM as an experimental offload tier/);
   assert.match(portable, /flux-2-klein-4b-fp8\.safetensors/);
   assert.match(portable, /standard diffusion loader/);
   assert.match(portable, /third-party GGUF weights must be downloaded and selected manually/);
   assert.match(server, /klein4Unet: 'flux-2-klein-4b-fp8\.safetensors'/);
 });
 
-test('the installer manifest keeps Klein and Krea hardware guidance aligned with the public pages', () => {
+test('the installer manifest keeps image and experimental video offload tiers aligned with the public pages', () => {
   const manifest = JSON.parse(read('installer/feature-manifest.json'));
   const core = manifest.features.find((feature) => feature.id === 'core.image');
   const klein4 = manifest.features.find((feature) => feature.id === 'edit.klein4');
@@ -50,6 +58,12 @@ test('the installer manifest keeps Klein and Krea hardware guidance aligned with
   assert.equal(core.hardware.recommendedVramGb, 16);
   assert.match(core.variant, /native INT8 ConvRot/);
   assert.match(kreaEdit.variant, /FP8 or native INT8 ConvRot/);
+  for (const id of ['video.ltx', 'video.ltxEdit', 'video.eros', 'video.wan', 'video.scail']) {
+    const feature = manifest.features.find((entry) => entry.id === id);
+    assert.equal(feature.hardware.minimumVramGb, 8, `${id} exposes the experimental 8 GB tier`);
+    assert.equal(feature.hardware.recommendedVramGb, 24, `${id} retains the practical 24 GB recommendation`);
+    assert.equal(feature.hardware.minimumRamGb, 48, `${id} requires substantial RAM for the offload tier`);
+  }
 });
 
 test('setup gates Krea INT8 installation and generation on the compatible ComfyUI core', () => {
