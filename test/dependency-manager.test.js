@@ -17,6 +17,7 @@ const {
   NODE_PACKS,
   availableComponents,
   cleanRelative,
+  dependencyModelPlan,
   downloadAsset,
   filterProtectedRuntimeRequirements,
   huggingFaceAccessUrl,
@@ -58,9 +59,22 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.ltxDirector[0][2], /Lightricks\/LTX-2\.3-22b-IC-LoRA-Ingredients/);
   assert.match(MODEL_ASSETS.krea2Outpaint[0][2], /conradlocke\/krea2-identity-edit/);
   assert.equal(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[1], 'loras');
+  assert.match(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4Unet')[2], /FLUX\.2-klein-4b-fp8\/resolve\/main\/flux-2-klein-4b-fp8\.safetensors/);
   assert.match(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[2], /f2k_4B_consist_20260314\.safetensors/);
   assert.equal(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[1], 'loras');
   assert.match(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[2], /f2k_9B_lcs_consist_20260415\.safetensors/);
+});
+
+test('fresh Klein 4B setup installs FP8 while preserving an existing BF16 selection', () => {
+  const fresh = dependencyModelPlan(['klein4'], {});
+  const freshUnet = fresh.assets.find((asset) => asset[0] === 'klein4Unet');
+  assert.match(freshUnet[2], /FLUX\.2-klein-4b-fp8/);
+  assert.match(freshUnet[2], /flux-2-klein-4b-fp8\.safetensors/);
+
+  const existing = dependencyModelPlan(['klein4'], { klein4Unet: 'flux-2-klein-4b.safetensors' });
+  const existingUnet = existing.assets.find((asset) => asset[0] === 'klein4Unet');
+  assert.match(existingUnet[2], /FLUX\.2-klein-4B/);
+  assert.match(existingUnet[2], /flux-2-klein-4b\.safetensors/);
 });
 
 test('automatic Director node installs use the reviewed commit while compatible checkouts are reused', async () => {

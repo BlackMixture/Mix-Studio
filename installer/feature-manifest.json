@@ -17,8 +17,8 @@
       "id": "edit.klein4",
       "label": "Klein 4B Edit + Outpaint",
       "default": false,
-      "variant": "Klein 4B BF16; configured GGUF files use the GGUF loader",
-      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
+      "variant": "Klein 4B FP8 with system-RAM offload; configured GGUF files use the GGUF loader",
+      "hardware": { "minimumVramGb": 4, "recommendedVramGb": 16, "minimumRamGb": 24, "recommendedRamGb": 32, "autoSelect": "supported" },
       "models": ["flux-2-klein-4b", "qwen-3-4b", "flux2-vae", "klein-4b-consistency-lora"],
       "nodes": ["Flux2Scheduler", "ReferenceLatent", "KJNodes outpaint", "ComfyUI-GGUF"]
     },

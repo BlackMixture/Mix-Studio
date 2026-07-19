@@ -16,6 +16,7 @@ const {
 const root = path.join(__dirname, '..');
 
 test('VRAM profile recommends the guarded route through 12 GB', () => {
+  assert.equal(recommendedVramProfile({ vramGb: 4 }), 'low');
   assert.equal(recommendedVramProfile({ vramGb: 8 }), 'low');
   assert.equal(recommendedVramProfile({ gpu: { vramGb: 12 } }), 'low');
   assert.equal(recommendedVramProfile({ vramGb: 16 }), 'standard');

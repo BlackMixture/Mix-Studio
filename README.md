@@ -97,17 +97,21 @@ When the user first presses Generate, Mix Studio checks the exact workflow they 
 
 ### GPU memory and quantized models
 
-Mix Studio targets Windows PCs with NVIDIA GPUs. Its curated Krea 2 image route is intended to run with **8 GB of VRAM** when current ComfyUI, adequate system RAM, and model offloading are available; 16 GB remains the recommendation. On detected 8–12 GB systems, setup selects the Low VRAM profile and recommends the official Krea 2 INT8 ConvRot weights. Native INT8 ConvRot requires ComfyUI 0.27.0 or newer, which Generation setup verifies before installing or running that variant. FP8 remains a visible fallback instead of blocking an otherwise compatible workflow.
+Mix Studio targets Windows PCs with NVIDIA GPUs. The minimum supported tier is **4 GB of VRAM** through the Flux 2 Klein 4B FP8 edit route with current ComfyUI, at least 24 GB of system RAM, and model/encoder offloading. This is an offloaded route rather than a claim that the complete pipeline remains resident in 4 GB: [ComfyUI's reference workflow](https://docs.comfy.org/tutorials/flux/flux-2-klein) measures the distilled FP8 pipeline at about 8.4 GB without that constraint. Expect a 4 GB run to be slower.
+
+The curated Krea 2 image route retains its **8 GB VRAM** minimum and 16 GB recommendation. On detected 4–12 GB systems, setup selects the Low VRAM profile; for Krea 2 it recommends the official INT8 ConvRot weights. Native INT8 ConvRot requires ComfyUI 0.27.0 or newer, which Generation setup verifies before installing or running that variant. FP8 remains a visible fallback instead of blocking an otherwise compatible workflow.
 
 Low VRAM mode never silently changes a request. If an image exceeds roughly one megapixel or batch one, Mix Studio asks whether to use the safer values or continue unchanged.
 
 | Workflow family | Minimum VRAM | Recommended VRAM | Guided model route |
 | --- | ---: | ---: | --- |
+| Flux 2 Klein 4B edit | 4 GB | 16 GB | Official FP8 checkpoint with system-RAM offload |
 | Krea 2 image and Krea-based edit | 8 GB | 16 GB | FP8, or native INT8 ConvRot below 16 GB |
-| Flux 2 Klein 4B edit | 12 GB | 16 GB | BF16 with offload |
 | Klein 9B, Qwen Edit, and current video workflows | 16 GB | 24 GB | Curated BF16/FP8 variants |
 
-Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in the supported Klein, Qwen, Wan, and SCAIL graphs. Guided setup currently installs that loader but does not download third-party GGUF weights or quantized text encoders; select those files manually. LTX 2.3 and 10Eros use combined audio/video checkpoints and cannot use a transformer-only GGUF file as a drop-in replacement. Krea 2 INT8 ConvRot is not GGUF and uses ComfyUI's standard diffusion loader.
+These are guided ratings for Mix Studio's curated defaults, not hard compatibility caps. Adequate system RAM, lower resolution or duration, ComfyUI offloading, and manually configured quantized weights can let some larger image and video workflows run below their listed tier, with slower generation and a greater risk of running out of memory. Mix Studio warns before a below-minimum run and lets the user continue unchanged.
+
+Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in the supported Klein, Qwen, Wan, and SCAIL graphs. Guided setup currently installs that loader but does not download third-party GGUF weights or quantized text encoders; select those files manually. LTX 2.3 and 10Eros use combined audio/video checkpoints and cannot use a transformer-only GGUF file as a drop-in replacement, though ComfyUI can still offload parts of those pipelines to system RAM. Krea 2 INT8 ConvRot is not GGUF and uses ComfyUI's standard diffusion loader.
 
 ### Manual Git install
 
@@ -218,7 +222,7 @@ Mix Studio thrives on community collaboration. If you have spent hours dialing i
 
 ### What We Look For
 
-- **Performance:** The workflow needs to run efficiently. We benchmark everything on our Dell workstation, but submissions should document a practical memory tier: an 8 GB route where the model allows it, plus sensible 12 GB, 16 GB, or 24 GB targets for heavier workflows.
+- **Performance:** The workflow needs to run efficiently. We benchmark everything on our Dell workstation, but submissions should document a practical memory tier: a 4 GB offloaded or quantized route where the model allows it, plus sensible 8 GB, 12 GB, 16 GB, or 24 GB targets for heavier workflows.
 - **Stability:** We prioritize pipelines that deliver consistent results without requiring constant node tweaking.
 - **Practicality:** The best workflows solve a specific creative problem for artists, like clean motion transfer, precise inpainting, or perfect text rendering.
 

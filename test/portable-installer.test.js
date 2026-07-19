@@ -404,9 +404,13 @@ test('hardware guidance rates recommended, offload, and difficult model families
   });
   const recommended = componentHardwareGuidance(manifest, info(24, 64));
   const limited = componentHardwareGuidance(manifest, info(12, 24));
+  const fourGb = componentHardwareGuidance(manifest, info(4, 24));
   const difficult = componentHardwareGuidance(manifest, info(8, 16));
   assert.equal(recommended.image.level, 'recommended');
   assert.equal(limited.image.level, 'limited');
+  assert.equal(fourGb.klein4.level, 'limited');
+  assert.equal(fourGb.image.level, 'difficult');
+  assert.equal(combinedHardwareFit(['klein4'], fourGb).level, 'limited');
   assert.equal(difficult.image.level, 'difficult');
   assert.equal(combinedHardwareFit(QUICK_SETUP_COMPONENTS, difficult).level, 'difficult');
 });

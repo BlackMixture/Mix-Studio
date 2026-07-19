@@ -9,31 +9,43 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('GitHub-facing pages describe the bounded 8 GB Krea route', () => {
+test('GitHub-facing pages describe the 4 GB Klein FP8 entry route and bounded Krea route', () => {
   const readme = read('README.md');
   const download = read('docs/download/index.html');
   const portable = read('docs/portable-install.md');
+  const server = read('server.js');
 
-  assert.match(readme, /curated Krea 2 image route is intended to run with \*\*8 GB of VRAM\*\*/);
+  assert.match(readme, /minimum supported tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
+  assert.match(readme, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
+  assert.match(readme, /Krea 2 image route retains its \*\*8 GB VRAM\*\* minimum/);
   assert.match(readme, /ComfyUI 0\.27\.0 or newer/);
   assert.match(readme, /never silently changes a request/);
   assert.match(readme, /Krea 2 INT8 ConvRot is not GGUF/);
   assert.doesNotMatch(readme, /scale well for users with 16 GB to 24 GB of VRAM/);
 
-  assert.match(download, /Krea 2 requires 8 GB minimum and recommends 16 GB/);
+  assert.match(download, /Klein 4B FP8 supports a 4 GB offloaded route/);
+  assert.match(download, /--minimum:16\.667%/);
   assert.match(download, /--minimum:33\.333%/);
-  assert.match(download, /<b>8 GB<\/b>/);
-  assert.match(download, /Can I use an 8 GB GPU\?/);
+  assert.match(download, /--axis-position:16\.667%">4 GB/);
+  assert.match(download, /--axis-position:33\.333%">8 GB/);
+  assert.match(download, /Can I use a 4 GB GPU\?/);
 
   assert.match(portable, /## Low-VRAM setup/);
+  assert.match(portable, /lowest guided tier is 4 GB of VRAM through Flux 2 Klein 4B FP8/);
+  assert.match(portable, /flux-2-klein-4b-fp8\.safetensors/);
   assert.match(portable, /standard diffusion loader/);
   assert.match(portable, /third-party GGUF weights must be downloaded and selected manually/);
+  assert.match(server, /klein4Unet: 'flux-2-klein-4b-fp8\.safetensors'/);
 });
 
-test('the installer manifest keeps Krea hardware guidance aligned with the public pages', () => {
+test('the installer manifest keeps Klein and Krea hardware guidance aligned with the public pages', () => {
   const manifest = JSON.parse(read('installer/feature-manifest.json'));
   const core = manifest.features.find((feature) => feature.id === 'core.image');
+  const klein4 = manifest.features.find((feature) => feature.id === 'edit.klein4');
   const kreaEdit = manifest.features.find((feature) => feature.id === 'edit.krea2');
+  assert.equal(klein4.hardware.minimumVramGb, 4);
+  assert.equal(klein4.hardware.minimumRamGb, 24);
+  assert.match(klein4.variant, /Klein 4B FP8 with system-RAM offload/);
   assert.equal(core.hardware.minimumVramGb, 8);
   assert.equal(core.hardware.recommendedVramGb, 16);
   assert.match(core.variant, /native INT8 ConvRot/);
