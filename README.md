@@ -61,25 +61,65 @@ Click a link to play the file, or see the videos looping on the [showcase page](
 
 These screenshots show the desktop layout. The same Node.js server provides a touch layout for phones and tablets.
 
-| **Create**<br>Text-to-image with reference, depth, and style guidance, LoRAs, resolution controls, queue state, and recent outputs | **Region**<br>Aspect-correct boxes with independent prompts, LoRAs, and reference images, assembled into one Krea 2 graph |
-| --- | --- |
-| ![Create workspace with prompt, generation stage, and recent work](docs/download/mix-studio-create.png) | ![Region editor with three color-coded prompt boxes on the canvas](docs/download/mix-studio-region.png) |
+### Create
 
-| **Edit**<br>Flux 2 Klein, Qwen, and Krea 2 routes with multiple inputs, masks, outpainting, preserve controls, and sequential edits | **Video**<br>Routes for LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2, with frame, audio, source-video, and motion inputs |
-| --- | --- |
-| ![Edit workspace restoring a Flux Klein 9B signature edit](docs/download/mix-studio-edit.png) | ![LTX 2.3 video workspace with motion prompt, last frame, and audio waveform](docs/download/mix-studio-video.png) |
+Build Krea 2 images with reference, depth, or style guidance. The workspace keeps LoRAs, resolution controls, queue state, the active result, and recent outputs visible together.
 
-| **SCAIL 2 motion transfer**<br>A reference image and trimmed driving video feed SAM3 tracking, with stable-chunk and Infinity generation modes | **Library**<br>Searchable image, video, and upload collections with folders, named groups, saved settings, and source relationships |
-| --- | --- |
-| ![SCAIL 2 motion-transfer workspace with driving video and creative direction](docs/download/mix-studio-scail.png) | ![Library grid with model and duration badges](docs/download/mix-studio-library.png) |
+![Create workspace with prompt, generation stage, and recent work](docs/download/mix-studio-create.png)
 
-| **Focused result view**<br>Generated media, group navigation, prompt and model metadata, reuse actions, and documentation export | **Upscale comparison**<br>Synchronized pan and zoom with a movable original-to-upscaled reveal divider |
-| --- | --- |
-| ![Lightbox with outpainted knight and full generation metadata](docs/download/mix-studio-lightbox.png) | ![Detail comparison viewer with reveal divider](docs/download/mix-studio-compare.png) |
+### Region
 
-| **Profiles**<br>Profile-scoped galleries, folders, presets, form state, and optional PIN access | **Generation setup**<br>ComfyUI connection, hardware rating, model discovery, custom-node checks, and per-workflow installation status |
-| --- | --- |
-| ![Netflix-style profile picker](docs/download/mix-studio-profiles.png) | ![Desktop Dependencies card reporting every node group ready](docs/download/mix-studio-dependencies.png) |
+Define aspect-correct boxes with independent prompts, LoRA stacks, and optional reference images. The server assembles the regions into one Krea 2 graph.
+
+![Region editor with three color-coded prompt boxes on the canvas](docs/download/mix-studio-region.png)
+
+### Edit
+
+Route edits through Flux 2 Klein, Qwen Image Edit, or Krea 2. Multiple inputs, masks, outpainting, preserve controls, and sequential edits remain available in the same workspace.
+
+![Edit workspace restoring a Flux Klein 9B signature edit](docs/download/mix-studio-edit.png)
+
+### Video
+
+Use LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 with the frame, audio, source-video, and motion inputs supported by each route.
+
+![LTX 2.3 video workspace with motion prompt, last frame, and audio waveform](docs/download/mix-studio-video.png)
+
+### SCAIL 2 motion transfer
+
+Feed a reference image and trimmed driving video into SAM3 tracking, then generate through stable-chunk or Infinity modes with explicit overlap controls.
+
+![SCAIL 2 motion-transfer workspace with driving video and creative direction](docs/download/mix-studio-scail.png)
+
+### Library
+
+Search image, video, and uploaded-asset collections. Folders, named groups, saved settings, model metadata, and source relationships remain attached to each result.
+
+![Library grid with model and duration badges](docs/download/mix-studio-library.png)
+
+### Focused result view
+
+Inspect generated media with group navigation, prompt and model metadata, reuse actions, and documentation export without leaving the Library context.
+
+![Lightbox with outpainted knight and full generation metadata](docs/download/mix-studio-lightbox.png)
+
+### Upscale comparison
+
+Compare the source and upscaled result with synchronized pan and zoom plus a movable reveal divider.
+
+![Detail comparison viewer with reveal divider](docs/download/mix-studio-compare.png)
+
+### Profiles
+
+Keep galleries, folders, presets, and form state scoped to each profile, with optional PIN access for private workspaces.
+
+![Profile picker for separate local workspaces](docs/download/mix-studio-profiles.png)
+
+### Generation setup
+
+Inspect the ComfyUI connection, hardware rating, discovered models, custom-node checks, and installation status for each workflow family.
+
+![Generation setup reporting dependency readiness](docs/download/mix-studio-dependencies.png)
 
 Short clips of the UI in motion: [region prompting](docs/download/media/ui-region-demo.mp4) · [before/after reveal](docs/download/media/ui-compare-demo.mp4)
 

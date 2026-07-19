@@ -19,16 +19,21 @@ test('README feature descriptions are technical, current, and free of em dashes'
   ]) assert.match(readme, new RegExp(feature));
 });
 
-test('README screenshot grid describes the controls shown by each workspace', () => {
+test('README workspace showcase uses headings, body copy, and full-width screenshots', () => {
   const start = readme.indexOf('## Inside the app');
   const end = readme.indexOf('## Portable Windows install', start);
   const section = readme.slice(start, end);
 
-  for (const workspace of ['Create', 'Region', 'Edit', 'Video', 'SCAIL 2 motion transfer', 'Library']) {
-    assert.match(section, new RegExp(`\\*\\*${workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\*\\*`));
+  for (const workspace of [
+    'Create', 'Region', 'Edit', 'Video', 'SCAIL 2 motion transfer', 'Library',
+    'Focused result view', 'Upscale comparison', 'Profiles', 'Generation setup',
+  ]) {
+    assert.match(section, new RegExp(`^### ${workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
   }
+  assert.doesNotMatch(section, /^\|/m);
+  assert.equal((section.match(/^!\[[^\]]+\]\(docs\/download\/mix-studio-[^)]+\)$/gm) || []).length, 10);
   assert.match(section, /LTX 2\.3, Director, Face ID, LTX Edit, 10Eros, Wan 2\.2, and SCAIL 2/);
-  assert.match(section, /multiple inputs, masks, outpainting, preserve controls, and sequential edits/);
+  assert.match(section, /Multiple inputs, masks, outpainting, preserve controls, and sequential edits/);
 });
 
 test('README local screenshots and showcase media resolve to checked-in files', () => {
