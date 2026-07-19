@@ -391,6 +391,23 @@ function promptForGeneration() {
   return expandPromptLoraTriggers(promptDraft().replace(/@image-(\d+)/g, 'image $1'));
 }
 
+function rehydratePromptReferences(value, references = []) {
+  const available = [0, 1, 2].map((index) => !!references[index]);
+  if (!available.some(Boolean)) return String(value || '');
+  return String(value || '').replace(/(?:@|\b)image(?:\s+|-)([1-3])\b/gi, (match, index) => (
+    available[Number(index) - 1] ? `@image-${index}` : match
+  ));
+}
+
+function reusableItemPrompt(item, useEnhanced = false) {
+  const value = useEnhanced && item.refinedPrompt
+    ? item.refinedPrompt
+    : (item.promptTemplate || item.prompt || '');
+  return item.mode === 'edit'
+    ? rehydratePromptReferences(value, Array.isArray(item.refImages) ? item.refImages : [])
+    : value;
+}
+
 function refForPromptToken(index) {
   return state.refs[Number(index) - 1] || null;
 }
@@ -2165,6 +2182,7 @@ function loadForm() {
     } else if (f.prompt) {
       state.prompts.create = f.prompt; // legacy single-prompt storage
     }
+    state.prompts.edit = rehydratePromptReferences(state.prompts.edit, state.refs);
     state.customDims = !!f.customDims;
     if (f.width) state.width = f.width;
     if (f.height) state.height = f.height;
@@ -15053,6 +15071,7 @@ $('#generateBtn').addEventListener('click', async () => {
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit' ? nativePreserve : undefined,
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
+    promptTemplate: mode === 'edit' ? promptDraft().trim() : undefined,
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
     editOutpaintOffsetX: outpaintActive ? editOutpaintGeometry().offsetX : undefined,
@@ -21718,7 +21737,7 @@ async function reuseItem(it, useEnhanced) {
   }
   const targetView = it.mode === 'edit' ? 'edit' : 'create';
   const restoringEdit = targetView === 'edit';
-  const restoredPrompt = useEnhanced ? (it.refinedPrompt || it.prompt || '') : (it.prompt || '');
+  const restoredPrompt = reusableItemPrompt(it, useEnhanced);
   const restoredRegions = Array.isArray(it.regions) ? it.regions.map((region) => Object.assign({}, region, {
     description: useEnhanced
       ? (region.refinedDescription || region.description || '')

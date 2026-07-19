@@ -1596,6 +1596,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
       regions: Array.isArray(job.params.regions) && job.params.regions.length
         ? normalizeRegions(job.params.regions) : undefined,
       prompt: job.params.prompt,
+      promptTemplate: job.params.promptTemplate,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
       width: dims.w || job.params.width,
@@ -1688,6 +1689,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     },
     profileId: job.profileId,
     prompt: job.params.prompt,
+    promptTemplate: job.params.promptTemplate,
     refinedPrompt: job.refinedPrompt || textOut,
     width: documentation.width,
     height: documentation.height,
@@ -2028,6 +2030,7 @@ async function completeJob(pid) {
       regions: Array.isArray(job.params.regions) && job.params.regions.length
         ? normalizeRegions(job.params.regions) : undefined,
       prompt: job.params.prompt,
+      promptTemplate: job.params.promptTemplate,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
       width: (pngDims(buf) || {}).w || job.params.width,
@@ -5280,6 +5283,9 @@ async function handleApi(req, res, url) {
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
+    p.promptTemplate = p.mode === 'edit'
+      ? String(p.promptTemplate || '').trim().slice(0, 8000) || undefined
+      : undefined;
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
     p.editOutpaintScale = p.editOutpaint ? clampInt(p.editOutpaintScale, 45, 100, 100) : undefined;
     p.editOutpaintFeather = p.editOutpaint ? clampInt(p.editOutpaintFeather, 0, 25, 12) : undefined;
