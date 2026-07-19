@@ -16405,9 +16405,11 @@ function desktopStageChoices(item) {
   return choices;
 }
 
-function revealHorizontalSelection(scroller, selected) {
+function revealHorizontalSelection(scroller, selected, previousScrollLeft = null, preservePosition = false) {
   if (!scroller || !selected) return;
   requestAnimationFrame(() => {
+    if (Number.isFinite(previousScrollLeft)) scroller.scrollLeft = previousScrollLeft;
+    if (preservePosition) return;
     const left = selected.offsetLeft;
     const right = left + selected.offsetWidth;
     if (left < scroller.scrollLeft) scroller.scrollLeft = left;
@@ -17686,7 +17688,37 @@ function lightboxGroupThumbnailMarkup(item, index, active = false) {
     ? `<img class="lb-group-thumb-image" src="/images/${encodeURIComponent(thumbnail)}" alt="" loading="eager" decoding="async" fetchpriority="${active ? 'high' : 'auto'}" draggable="false" />`
     : '<span class="lb-group-thumb-fallback" aria-hidden="true"></span>'}
     ${item?.angleView ? `<span class="angle-group-glyph lb-group-thumb-glyph" aria-hidden="true">${angleViewGlyph(item)}</span>` : ''}
-    <span class="lb-group-thumb-number" aria-hidden="true">${number}</span>`;
+    <span class="lb-group-thumb-number" aria-hidden="true">${number}</span>
+    ${lightboxGroupMediaSummaryMarkup(item)}`;
+}
+
+function lightboxGroupMediaCounts(item) {
+  return {
+    videos: Array.isArray(item?.videos) ? item.videos.length : 0,
+    composites: Array.isArray(item?.composites) ? item.composites.length : 0,
+  };
+}
+
+function lightboxGroupMediaDescription(item) {
+  const { videos, composites } = lightboxGroupMediaCounts(item);
+  if (!videos && !composites) return 'Image only';
+  return [
+    'Image',
+    videos ? `${videos} video${videos === 1 ? '' : 's'}` : '',
+    composites ? `${composites} composite${composites === 1 ? '' : 's'}` : '',
+  ].filter(Boolean).join(', ');
+}
+
+function lightboxGroupMediaSummaryMarkup(item) {
+  const { videos, composites } = lightboxGroupMediaCounts(item);
+  const imageIcon = '<span class="lb-group-media-stat is-image"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><circle cx="5.5" cy="6.5" r="1"/><path d="m3.5 11 3-3 2.2 2 1.4-1.4 2.4 2.4"/></svg></span>';
+  const videoIcon = videos
+    ? `<span class="lb-group-media-stat is-video"><svg viewBox="0 0 16 16"><path d="m6 4 6 4-6 4Z"/></svg><b>${videos}</b></span>`
+    : '';
+  const compositeIcon = composites
+    ? `<span class="lb-group-media-stat is-composite"><svg viewBox="0 0 16 16"><rect x="2" y="5" width="9" height="8" rx="1.5"/><path d="M5 5V3.5A1.5 1.5 0 0 1 6.5 2H12a1.5 1.5 0 0 1 1.5 1.5V9A1.5 1.5 0 0 1 12 10.5h-1"/></svg><b>${composites}</b></span>`
+    : '';
+  return `<span class="lb-group-media-summary${videos || composites ? ' has-extras' : ' image-only'}" aria-hidden="true">${imageIcon}${videoIcon}${compositeIcon}</span>`;
 }
 
 function angleViewLabel(item) {
@@ -17724,11 +17756,11 @@ function focusedGalleryItemMedia(item, media) {
   return media || latestGalleryVideo(item)?.id || 'image';
 }
 
-function openFocusedGalleryItem(item, media) {
+function openFocusedGalleryItem(item, media, options = {}) {
   if (!item) return;
   const selectedMedia = focusedGalleryItemMedia(item, media);
   if (desktopWorkspaceActive() && $('#lightbox').classList.contains('show')) selectDesktopLibraryItem(item, selectedMedia);
-  else openLightbox(item.id, selectedMedia);
+  else openLightbox(item.id, selectedMedia, options);
 }
 
 function navigateFocusedGallery(direction) {
@@ -20447,38 +20479,44 @@ function openLightbox(id, mediaSel, options = {}) {
   const mrow = $('#lbMedia');
   const headerContext = $('#lbHeaderContext');
   const headerMedia = $('#lbHeaderMedia');
+  const mediaScrollPositions = new Map();
+  $$('#lbMedia .lb-media-options, #lbHeaderMedia').forEach((options) => {
+    const key = options.dataset.scrollKey;
+    if (key) mediaScrollPositions.set(key, options.scrollLeft);
+  });
   mrow.innerHTML = '';
   headerMedia.innerHTML = '';
   headerMedia.hidden = true;
-  const makeMediaTier = (className, ariaLabel) => {
+  const makeMediaTier = (className, ariaLabel, scrollKey = className) => {
     const tier = document.createElement('div');
     tier.className = `lb-media-tier ${className}`;
     tier.setAttribute('role', 'group');
     tier.setAttribute('aria-label', ariaLabel);
     const options = document.createElement('div');
     options.className = 'lb-media-options';
+    options.dataset.scrollKey = scrollKey;
     tier.appendChild(options);
     mrow.appendChild(tier);
     return options;
   };
   if (angleItems.length > 1) {
-    const angleOptions = makeMediaTier('lb-media-generations', 'Camera variations');
+    const angleOptions = makeMediaTier('lb-media-generations', 'Camera variations', `angles:${it.angleGroupId}`);
     angleItems.forEach((angleItem, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'chip angle-group-chip lb-group-thumb-chip' + (angleItem.id === it.id ? ' active' : '');
       button.innerHTML = lightboxGroupThumbnailMarkup(angleItem, index, angleItem.id === it.id);
       const groupName = activeGalleryGroup(angleItem)?.name || '';
-      const angleLabel = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}`;
+      const angleLabel = `Variation ${index + 1} of ${angleItems.length}: ${angleViewLabel(angleItem)}. ${lightboxGroupMediaDescription(angleItem)}`;
       button.title = groupName ? `${groupName} · ${angleLabel}` : angleLabel;
       button.setAttribute('aria-label', button.title);
-      button.addEventListener('click', () => openFocusedGalleryItem(angleItem, 'image'));
+      button.addEventListener('click', () => openFocusedGalleryItem(angleItem, 'image', { preserveGroupScroll: true }));
       angleOptions.appendChild(button);
     });
   }
   if (generationItems.length > 1) {
     const strengthHuntGroup = generationItems.some((item) => item.strengthHunt);
-    const generationOptions = makeMediaTier('lb-media-generations', strengthHuntGroup ? 'Strength Hunt generations' : 'Generations');
+    const generationOptions = makeMediaTier('lb-media-generations', strengthHuntGroup ? 'Strength Hunt generations' : 'Generations', `generations:${it.generationGroupId}`);
     generationItems.forEach((groupItem, index) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -20487,10 +20525,10 @@ function openLightbox(id, mediaSel, options = {}) {
       if (huntLabel) button.classList.add('strength-hunt-chip');
       button.innerHTML = lightboxGroupThumbnailMarkup(groupItem, index, groupItem.id === it.id);
       const groupName = activeGalleryGroup(groupItem)?.name || '';
-      const generationLabel = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length}`;
+      const generationLabel = `${huntLabel || `Generation ${index + 1}`} · ${index + 1} of ${generationItems.length} · ${lightboxGroupMediaDescription(groupItem)}`;
       button.title = groupName ? `${groupName} · ${generationLabel}` : generationLabel;
       button.setAttribute('aria-label', button.title);
-      button.addEventListener('click', () => openFocusedGalleryItem(groupItem, 'image'));
+      button.addEventListener('click', () => openFocusedGalleryItem(groupItem, 'image', { preserveGroupScroll: true }));
       generationOptions.appendChild(button);
     });
   }
@@ -20500,9 +20538,10 @@ function openLightbox(id, mediaSel, options = {}) {
     if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
     const mediaOptions = desktopWorkspaceActive()
       ? headerMedia
-      : makeMediaTier('lb-media-assets', mediaLabel);
+      : makeMediaTier('lb-media-assets', mediaLabel, `assets:${it.id}`);
     if (mediaOptions === headerMedia) {
       headerMedia.setAttribute('aria-label', mediaLabel);
+      headerMedia.dataset.scrollKey = `assets:${it.id}`;
       headerMedia.hidden = false;
     }
     const mediaGlyph = (kind) => kind === 'video'
@@ -20522,9 +20561,17 @@ function openLightbox(id, mediaSel, options = {}) {
     videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked, 'video'));
   }
   headerContext.hidden = !activeGroup && headerMedia.hidden;
-  $$('#lbMedia .lb-media-options, #lbHeaderMedia').forEach((options) => {
-    wireHorizontalScroller(options);
-    revealHorizontalSelection(options, options.querySelector('.active'));
+  $$('#lbMedia .lb-media-options, #lbHeaderMedia').forEach((mediaOptionsElement) => {
+    wireHorizontalScroller(mediaOptionsElement);
+    const scrollKey = mediaOptionsElement.dataset.scrollKey;
+    const preserveGroupPosition = options.preserveGroupScroll === true
+      && (scrollKey?.startsWith('generations:') || scrollKey?.startsWith('angles:'));
+    revealHorizontalSelection(
+      mediaOptionsElement,
+      mediaOptionsElement.querySelector('.active'),
+      mediaScrollPositions.get(scrollKey),
+      preserveGroupPosition,
+    );
   });
 
   const meta = [];

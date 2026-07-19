@@ -78,7 +78,7 @@ test('gallery performance controls can disable video previews and build an idle 
 });
 
 test('focused media switchers separate parent generations from their media', () => {
-  assert.match(app, /makeMediaTier\('lb-media-generations', strengthHuntGroup \? 'Strength Hunt generations' : 'Generations'\)/);
+  assert.match(app, /makeMediaTier\('lb-media-generations', strengthHuntGroup \? 'Strength Hunt generations' : 'Generations', `generations:\$\{it\.generationGroupId\}`\)/);
   assert.match(app, /function lightboxGroupThumbnailMarkup\(item, index, active = false\)/);
   assert.match(app, /class="lb-group-thumb-image"/);
   assert.match(app, /class="lb-group-thumb-image"[^>]*loading="eager"[^>]*decoding="async"[^>]*fetchpriority="\$\{active \? 'high' : 'auto'\}"/);
@@ -87,10 +87,17 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(app, /card\.addEventListener\('pointerenter', warmGroupThumbnails, \{ once: true, passive: true \}\)/);
   assert.match(app, /card\.addEventListener\('pointerdown',[\s\S]*preloadLightboxGroupThumbnails\(entry\.items, it\.id\)/);
   assert.match(app, /class="lb-group-thumb-number"[^>]*>\$\{number\}/);
+  assert.match(app, /function lightboxGroupMediaCounts\(item\)/);
+  assert.match(app, /function lightboxGroupMediaDescription\(item\)/);
+  assert.match(app, /function lightboxGroupMediaSummaryMarkup\(item\)/);
+  assert.match(app, /return 'Image only'/);
+  assert.match(app, /class="lb-group-media-stat is-video"/);
+  assert.match(app, /class="lb-group-media-stat is-composite"/);
+  assert.match(app, /generationLabel = `[\s\S]*lightboxGroupMediaDescription\(groupItem\)/);
   assert.match(app, /if \(generationItems\.length > 1\)/);
   assert.doesNotMatch(app, /lb-group-thumb-copy|lb-group-thumb-label/);
   assert.doesNotMatch(app, /lb-media-tier-label/);
-  assert.match(app, /const mediaOptions = desktopWorkspaceActive\(\)[\s\S]*\? headerMedia[\s\S]*: makeMediaTier\('lb-media-assets', mediaLabel\)/);
+  assert.match(app, /const mediaOptions = desktopWorkspaceActive\(\)[\s\S]*\? headerMedia[\s\S]*: makeMediaTier\('lb-media-assets', mediaLabel, `assets:\$\{it\.id\}`\)/);
   assert.match(app, /if \(mediaOptions === headerMedia\)[\s\S]*headerMedia\.setAttribute\('aria-label', mediaLabel\)/);
   assert.match(app, /mediaOptions\.appendChild\(b\)/);
   assert.match(app, /videos\.forEach\(\(v, i\) => mkChip\(`Video \$\{i \+ 1\}`, v\.id, !!v\.liked, 'video'\)\)/);
@@ -103,10 +110,29 @@ test('focused media switchers separate parent generations from their media', () 
   assert.match(css, /\.lb-media \.chip\.active/);
   assert.match(css, /\.lb-media-generations \.chip/);
   assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*width: var\(--lb-group-chip-width\)/);
-  assert.match(css, /\.lb-group-thumb-image,[\s\S]*width: 40px;[\s\S]*object-fit: cover/);
+  assert.match(css, /\.lb-media-generations \.lb-group-thumb-chip \{[\s\S]*--lb-group-chip-width: 58px;[\s\S]*height: 66px;/);
+  assert.match(css, /\.lb-group-thumb-image,[\s\S]*width: 48px;[\s\S]*height: 46px;[\s\S]*object-fit: cover/);
   assert.match(css, /\.lb-group-thumb-number \{[\s\S]*font-size: 9px/);
+  assert.match(css, /\.lb-group-media-summary \{[\s\S]*bottom: 2px;[\s\S]*height: 14px;/);
+  assert.match(css, /\.lb-group-media-stat\.is-video \{ color: #f4a3ad; \}/);
+  assert.match(css, /\.lb-group-media-stat\.is-composite \{ color: #aabaf1; \}/);
   assert.match(css, /\.lb-header-context \{/);
   assert.match(css, /\.lb-header-media \.chip\.active/);
   assert.match(css, /\.lb-media-kind-icon/);
   assert.match(css, /\.lb-media-like/);
+});
+
+test('focused group navigation preserves the strip position while selecting later items', () => {
+  assert.match(app, /function revealHorizontalSelection\(scroller, selected, previousScrollLeft = null, preservePosition = false\)/);
+  assert.match(app, /if \(Number\.isFinite\(previousScrollLeft\)\) scroller\.scrollLeft = previousScrollLeft/);
+  assert.match(app, /if \(preservePosition\) return/);
+  assert.match(app, /function openFocusedGalleryItem\(item, media, options = \{\}\)/);
+  assert.match(app, /openLightbox\(item\.id, selectedMedia, options\)/);
+  assert.ok((app.match(/openFocusedGalleryItem\([^\n]*\{ preserveGroupScroll: true \}\)/g) || []).length >= 2);
+  assert.match(app, /const mediaScrollPositions = new Map\(\)/);
+  assert.match(app, /mediaScrollPositions\.set\(key, options\.scrollLeft\)/);
+  assert.match(app, /options\.dataset\.scrollKey = scrollKey/);
+  assert.match(app, /const preserveGroupPosition = options\.preserveGroupScroll === true/);
+  assert.match(app, /scrollKey\?\.startsWith\('generations:'\) \|\| scrollKey\?\.startsWith\('angles:'\)/);
+  assert.match(app, /mediaScrollPositions\.get\(scrollKey\),[\s\S]*preserveGroupPosition/);
 });

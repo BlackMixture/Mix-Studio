@@ -5624,23 +5624,23 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   color: #fff;
 }
 .lb-media-generations .lb-group-thumb-chip {
-  --lb-group-chip-width: 48px;
+  --lb-group-chip-width: 58px;
   position: relative;
   width: var(--lb-group-chip-width);
-  height: 48px;
-  min-height: 48px;
+  height: 66px;
+  min-height: 66px;
   flex: 0 0 var(--lb-group-chip-width);
   justify-content: center;
   gap: 0;
-  padding: 3px;
+  padding: 3px 3px 17px;
   overflow: hidden;
   transition: border-color 160ms var(--ease), background 160ms var(--ease), transform 160ms var(--ease);
 }
 .lb-group-thumb-image,
 .lb-group-thumb-fallback {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 48px;
+  height: 46px;
+  flex: 0 0 48px;
   display: grid;
   place-items: center;
   border-radius: 8px;
@@ -5666,7 +5666,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .lb-group-thumb-number {
   position: absolute;
   right: 2px;
-  bottom: 2px;
+  top: 2px;
   z-index: 1;
   min-width: 17px;
   height: 17px;
@@ -5682,6 +5682,47 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   line-height: 1;
   pointer-events: none;
 }
+.lb-group-media-summary {
+  position: absolute;
+  z-index: 2;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 5px;
+  background: rgba(0,0,0,.92);
+  color: rgba(236,241,255,.72);
+  pointer-events: none;
+}
+.lb-group-media-summary.has-extras { color: #fff; }
+.lb-group-media-stat {
+  min-width: 11px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 7px;
+  font-weight: 950;
+  line-height: 1;
+}
+.lb-group-media-stat svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lb-group-media-stat.is-video { color: #f4a3ad; }
+.lb-group-media-stat.is-video svg { fill: currentColor; stroke: none; }
+.lb-group-media-stat.is-composite { color: #aabaf1; }
+.lb-group-media-stat b { font: inherit; }
 .lb-media-assets { position: relative; }
 .lb-media-assets .chip {
   min-height: 31px;

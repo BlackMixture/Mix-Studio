@@ -29,7 +29,7 @@ test('focused gallery swipe directly moves current and neighboring media', () =>
 test('focused gallery arrow keys traverse every visible generation without closing', () => {
   assert.match(html, /id="lightbox"[^>]*aria-keyshortcuts="Escape ArrowLeft ArrowRight"/);
   assert.match(app, /function focusedGalleryItemMedia\(item, media\)/);
-  assert.match(app, /function openFocusedGalleryItem\(item, media\)/);
+  assert.match(app, /function openFocusedGalleryItem\(item, media, options = \{\}\)/);
   assert.match(app, /function navigateFocusedGallery\(direction\)/);
   assert.match(app, /galleryEntries\(visibleItems\(\)\)\.flatMap\(galleryEntryNavigationItems\)/);
   assert.match(app, /entry\.generationGroupId[\s\S]*generationGroupItems\(entry\.item\)[\s\S]*entry\.angleGroupId[\s\S]*angleGroupItems\(entry\.item\)/);
