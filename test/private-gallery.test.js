@@ -91,6 +91,22 @@ test('locked folders use app sheets instead of native password and action prompt
   assert.doesNotMatch(app, /type lock, unlock, merge, or delete/);
 });
 
+test('custom folders expose device-aware locking help', () => {
+  const helper = app.slice(
+    app.indexOf('function folderActionHelpText()'),
+    app.indexOf('function closeFolderPicker()'),
+  );
+  assert.match(helper, /\(hover: none\), \(pointer: coarse\)/);
+  assert.match(helper, /Press and hold a custom folder for actions, including Lock folder/);
+  assert.match(helper, /Right-click a custom folder for actions, including Lock folder/);
+
+  const renderer = app.slice(app.indexOf('function renderFolders()'), app.indexOf('function closeFolderPicker()'));
+  assert.match(renderer, /picker\.title = `Choose a folder\. \$\{actionHelp\}`/);
+  assert.match(renderer, /picker\.setAttribute\('aria-description', actionHelp\)/);
+  assert.match(renderer, /btn\.title = actionHelp/);
+  assert.match(renderer, /btn\.setAttribute\('aria-description', actionHelp\)/);
+});
+
 test('new folders finish refreshing before they can be locked', () => {
   const handler = app.match(/\$\('#folderAddBtn'\)\?\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/)?.[1] || '';
   assert.match(handler, /const folder = await api\('\/api\/folders'/);

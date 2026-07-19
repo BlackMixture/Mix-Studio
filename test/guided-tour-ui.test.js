@@ -116,6 +116,21 @@ test('basic contextual tips appear where prompting, models, LoRAs, and Library t
   assert.match(html, />Contextual tips<[\s\S]{0,120}Show one-time help when a control first becomes useful/);
 });
 
+test('Library help explains how to lock folders on pointer and touch devices', () => {
+  const tourStart = app.indexOf("    id: 'library-folder-actions',");
+  const tourStep = app.slice(tourStart, tourStart + 760);
+  assert.ok(tourStart >= 0, 'the full tour should include folder actions');
+  assert.match(tourStep, /target: '\.folder-picker'/);
+  assert.match(tourStep, /Right-click a custom folder/);
+  assert.match(tourStep, /press and hold it on a touch screen/);
+  assert.match(tourStep, /padlock button shows or hides locked folders/);
+
+  const contextualStart = app.indexOf("  'library-basics': {");
+  const contextualGuide = app.slice(contextualStart, contextualStart + 900);
+  assert.match(contextualGuide, /folderActionHelpText\(\)/);
+  assert.match(contextualGuide, /padlock button only shows or hides locked folders/);
+});
+
 test('the expanded tutorial is versioned and restores the workspace it temporarily opens', () => {
   assert.match(app, /const GUIDED_TOUR_VERSION = 4/);
   assert.match(app, /stored === 'complete'/);

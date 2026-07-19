@@ -16057,6 +16057,10 @@ function renderFolders() {
   ];
   const active = chips.find((folder) => folder.id === state.activeFolder) || chips[0];
   $('#folderPickerLabel').textContent = active.name;
+  const actionHelp = folderActionHelpText();
+  const picker = $('#folderPickerTrigger');
+  picker.title = `Choose a folder. ${actionHelp}`;
+  picker.setAttribute('aria-description', actionHelp);
   for (const f of chips) {
     const btn = document.createElement('button');
     btn.className = 'folder-chip' + (state.activeFolder === f.id ? ' active' : '');
@@ -16082,6 +16086,8 @@ function renderFolders() {
       renderGrid();
     });
     if (f.id !== 'all' && !f.virtual) {
+      btn.title = actionHelp;
+      btn.setAttribute('aria-description', actionHelp);
       let timer = null;
       btn.addEventListener('contextmenu', (e) => { e.preventDefault(); folderActions(f); });
       btn.addEventListener('touchstart', () => { timer = setTimeout(() => folderActions(f), 700); }, { passive: true });
@@ -16089,6 +16095,13 @@ function renderFolders() {
     }
     row.appendChild(btn);
   }
+}
+
+function folderActionHelpText() {
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  return touchFirst
+    ? 'Press and hold a custom folder for actions, including Lock folder.'
+    : 'Right-click a custom folder for actions, including Lock folder.';
 }
 
 function closeFolderPicker() {
@@ -24761,6 +24774,16 @@ const GUIDED_TOUR_STEPS = [
     prepare: prepareGuidedTourLibrary,
   },
   {
+    id: 'library-folder-actions',
+    target: '.folder-picker',
+    title: 'Lock or manage a folder',
+    copy: 'Right-click a custom folder—or press and hold it on a touch screen—to choose Lock folder. The padlock button shows or hides locked folders; it does not lock the selected folder.',
+    motion: 'press',
+    simulateOn: '#folderPickerTrigger',
+    demo: 'Open Folders, then right-click or press and hold one',
+    prepare: prepareGuidedTourLibrary,
+  },
+  {
     id: 'library-selection',
     target: () => $('#galleryGrid .card') ? '#galleryGrid' : '.folder-picker',
     title: 'Select and group results',
@@ -24983,7 +25006,7 @@ const CONTEXTUAL_GUIDES = {
     title: () => state.activeFolder === 'uploaded-assets' ? 'Reuse uploaded assets' : 'Find and organize results',
     copy: () => state.activeFolder === 'uploaded-assets'
       ? 'Filter previous image, video, and audio uploads here. Delete an unused asset from its card; files used by saved generations stay protected.'
-      : 'Search prompts, LoRAs, and folders, then filter or sort the grid. Hold any result when you want to act on several at once.',
+      : `Search, filter, or sort the grid. ${folderActionHelpText()} The padlock button only shows or hides locked folders. Hold any result when you want to act on several at once.`,
     motion: 'tap',
     simulateOn: 'input:not([type="hidden"]), button',
     demo: 'Search, filter, or hold a result',
