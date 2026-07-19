@@ -232,7 +232,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /lipsync audio/);
   assert.match(page, /Leading models\. Optimized settings\./);
   assert.match(page, /workflow-tested defaults/);
-  assert.match(page, /detects GPU memory and system RAM/);
+  assert.match(page, /detects GPU memory/);
+  assert.match(page, /does not enforce a system RAM requirement/);
   assert.match(page, /below-tier choice/);
   assert.match(page, /already registered through ComfyUI/);
   assert.match(page, /reveal, zoom, and pan/);
@@ -344,6 +345,7 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
   assert.match(discovery, /registeredModelNames/);
   assert.match(hardware, /nvidia-smi\.exe/);
   assert.match(hardware, /minimumVramGb/);
+  assert.doesNotMatch(hardware, /minimumRamGb|recommendedRamGb/);
   assert.match(hardware, /Below guided tier/);
   assert.match(image.label, /depth/i);
   assert.match(image.label, /style/i);
@@ -358,7 +360,8 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
     assert.ok(feature.hardware, `${feature.id} includes hardware guidance`);
     assert.ok(feature.hardware.minimumVramGb > 0, `${feature.id} has a minimum VRAM value`);
     assert.ok(feature.hardware.recommendedVramGb >= feature.hardware.minimumVramGb, `${feature.id} has a valid recommended VRAM value`);
-    assert.ok(feature.hardware.recommendedRamGb >= feature.hardware.minimumRamGb, `${feature.id} has a valid recommended RAM value`);
+    assert.equal('minimumRamGb' in feature.hardware, false, `${feature.id} has no system RAM minimum`);
+    assert.equal('recommendedRamGb' in feature.hardware, false, `${feature.id} has no system RAM recommendation`);
   }
   assert.deepEqual(dependencyCli.selectedComponents(
     { features: [{ id: 'core.image', required: true }, { id: 'video.ltx' }, { id: 'video.wan' }, { id: 'video.scail' }] },
@@ -396,7 +399,7 @@ test('standalone dependency setup gates only Krea INT8 on incompatible ComfyUI',
   }), null);
 });
 
-test('hardware guidance rates recommended, offload, and difficult model families', () => {
+test('hardware guidance rates model families by VRAM without enforcing system RAM', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
   const info = (vram, ram) => ({
     gpu: { available: true, devices: [{ name: 'RTX Test', memoryBytes: vram * (1024 ** 3) }] },
@@ -406,8 +409,9 @@ test('hardware guidance rates recommended, offload, and difficult model families
   const recommended = componentHardwareGuidance(manifest, info(24, 64));
   const limited = componentHardwareGuidance(manifest, info(12, 24));
   const fourGb = componentHardwareGuidance(manifest, info(4, 24));
-  const difficult = componentHardwareGuidance(manifest, info(8, 16));
-  const eightGbVideo = componentHardwareGuidance(manifest, info(8, 48));
+  const difficult = componentHardwareGuidance(manifest, info(4, 16));
+  const eightGbVideo = componentHardwareGuidance(manifest, info(8, 8));
+  const lowRamRecommended = componentHardwareGuidance(manifest, info(24, 4));
   const belowVideoTier = featureHardwareFit(
     manifest.features.find((feature) => feature.id === 'video.ltx'),
     info(4, 64),
@@ -422,6 +426,8 @@ test('hardware guidance rates recommended, offload, and difficult model families
   assert.equal(eightGbVideo.wan.level, 'limited');
   assert.equal(eightGbVideo.scail.level, 'limited');
   assert.match(eightGbVideo.video.detail, /8 GB is an experimental tier/);
+  assert.equal(lowRamRecommended.video.level, 'recommended');
+  assert.doesNotMatch(lowRamRecommended.video.detail, /system RAM recommendation|guided system RAM tier/);
   assert.equal(belowVideoTier.level, 'difficult');
   assert.equal(belowVideoTier.label, 'Below guided tier');
   assert.match(belowVideoTier.detail, /Installation remains available/);

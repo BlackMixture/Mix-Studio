@@ -128,11 +128,8 @@ function Get-MixStudioFeatureFit($Feature, $Hardware) {
   $Gpu = Get-MixStudioProperty $Hardware 'gpu' ([pscustomobject]@{})
   $Available = [bool](Get-MixStudioProperty $Gpu 'available' $false)
   $Vram = [double](Get-MixStudioProperty $Gpu 'vramGb' 0)
-  $Memory = [double](Get-MixStudioProperty $Hardware 'memoryGb' 0)
   $MinVram = [double](Get-MixStudioProperty $Rules 'minimumVramGb' 0)
   $RecommendedVram = [double](Get-MixStudioProperty $Rules 'recommendedVramGb' $MinVram)
-  $MinMemory = [double](Get-MixStudioProperty $Rules 'minimumRamGb' 0)
-  $RecommendedMemory = [double](Get-MixStudioProperty $Rules 'recommendedRamGb' $MinMemory)
   $AutoSelect = [string](Get-MixStudioProperty $Rules 'autoSelect' 'recommended')
   $Variant = [string](Get-MixStudioProperty $Feature 'variant' 'Curated model variant')
   $Requirements = "$MinVram GB guided VRAM tier; $RecommendedVram GB recommended"
@@ -154,16 +151,13 @@ function Get-MixStudioFeatureFit($Feature, $Hardware) {
     }
   }
 
-  $BelowMinimum = $Vram -lt $MinVram -or ($Memory -gt 0 -and $Memory -lt $MinMemory)
-  $BelowRecommended = $Vram -lt $RecommendedVram -or ($Memory -gt 0 -and $Memory -lt $RecommendedMemory)
+  $BelowMinimum = $Vram -lt $MinVram
+  $BelowRecommended = $Vram -lt $RecommendedVram
   if ($BelowMinimum) {
-    $Issues = @()
-    if ($Vram -lt $MinVram) { $Issues += "$MinVram GB guided VRAM tier; detected $Vram GB" }
-    if ($Memory -gt 0 -and $Memory -lt $MinMemory) { $Issues += "$MinMemory GB guided system RAM tier; detected $Memory GB" }
     return [pscustomobject]@{
       level = 'difficult'
       label = 'Below guided tier'
-      detail = "$Variant | $($Issues -join '. '). Installation remains available, but heavy offload, very long runs, or out-of-memory errors are likely."
+      detail = "$Variant | $MinVram GB guided VRAM tier; detected $Vram GB. Installation remains available, but heavy offload, very long runs, or out-of-memory errors are likely."
       recommendedDefault = $false
     }
   }
@@ -181,7 +175,7 @@ function Get-MixStudioFeatureFit($Feature, $Hardware) {
   return [pscustomobject]@{
     level = 'recommended'
     label = 'Recommended for this PC'
-    detail = "$Variant | Meets the $RecommendedVram GB VRAM and $RecommendedMemory GB RAM recommendation."
+    detail = "$Variant | Meets the $RecommendedVram GB VRAM recommendation."
     recommendedDefault = $AutoSelect -ne 'never'
   }
 }

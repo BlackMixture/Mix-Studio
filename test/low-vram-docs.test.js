@@ -19,7 +19,8 @@ test('GitHub-facing pages describe open low-VRAM tiers without promising every w
   assert.match(readme, /lowest guided offload tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
   assert.match(readme, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
   assert.match(readme, /Krea 2 image route uses \*\*8 GB VRAM\*\* as its guided offload tier/);
-  assert.match(readme, /Video workflows now use \*\*8 GB VRAM with at least 48 GB of system RAM\*\* as an experimental offload tier/);
+  assert.match(readme, /Video workflows use \*\*8 GB VRAM\*\* as an experimental offload tier/);
+  assert.match(readme, /System RAM is not an installer requirement/);
   assert.match(readme, /not a promise that every duration and resolution will fit/);
   assert.match(readme, /warns before a below-tier install or generation and lets the user continue unchanged/);
   assert.match(readme, /ComfyUI 0\.27\.0 or newer/);
@@ -35,11 +36,13 @@ test('GitHub-facing pages describe open low-VRAM tiers without promising every w
   assert.match(download, /Can I use a 4 GB GPU\?/);
   assert.match(download, /Can I generate video with 8 GB of VRAM\?/);
   assert.match(download, /Offload tier · Recommended/);
+  assert.match(download, /does not enforce a VRAM cutoff or system RAM requirement/);
 
   assert.match(portable, /## Low-VRAM setup/);
   assert.match(portable, /no enforced VRAM cutoff/);
   assert.match(portable, /lowest guided tier is 4 GB of VRAM through Flux 2 Klein 4B FP8/);
-  assert.match(portable, /LTX 2\.3, LTX Edit, 10Eros, Wan 2\.2 14B, and SCAIL 2 use 8 GB VRAM with at least 48 GB system RAM as an experimental offload tier/);
+  assert.match(portable, /LTX 2\.3, LTX Edit, 10Eros, Wan 2\.2 14B, and SCAIL 2 use 8 GB VRAM as an experimental offload tier/);
+  assert.match(portable, /System RAM is not used as an installation requirement/);
   assert.match(portable, /flux-2-klein-4b-fp8\.safetensors/);
   assert.match(portable, /standard diffusion loader/);
   assert.match(portable, /third-party GGUF weights must be downloaded and selected manually/);
@@ -52,7 +55,6 @@ test('the installer manifest keeps image and experimental video offload tiers al
   const klein4 = manifest.features.find((feature) => feature.id === 'edit.klein4');
   const kreaEdit = manifest.features.find((feature) => feature.id === 'edit.krea2');
   assert.equal(klein4.hardware.minimumVramGb, 4);
-  assert.equal(klein4.hardware.minimumRamGb, 24);
   assert.match(klein4.variant, /Klein 4B FP8 with system-RAM offload/);
   assert.equal(core.hardware.minimumVramGb, 8);
   assert.equal(core.hardware.recommendedVramGb, 16);
@@ -62,7 +64,10 @@ test('the installer manifest keeps image and experimental video offload tiers al
     const feature = manifest.features.find((entry) => entry.id === id);
     assert.equal(feature.hardware.minimumVramGb, 8, `${id} exposes the experimental 8 GB tier`);
     assert.equal(feature.hardware.recommendedVramGb, 24, `${id} retains the practical 24 GB recommendation`);
-    assert.equal(feature.hardware.minimumRamGb, 48, `${id} requires substantial RAM for the offload tier`);
+  }
+  for (const feature of manifest.features) {
+    assert.equal('minimumRamGb' in feature.hardware, false, `${feature.id} has no system RAM minimum`);
+    assert.equal('recommendedRamGb' in feature.hardware, false, `${feature.id} has no system RAM recommendation`);
   }
 });
 
