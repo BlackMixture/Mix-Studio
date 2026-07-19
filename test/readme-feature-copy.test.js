@@ -43,3 +43,11 @@ test('README local screenshots and showcase media resolve to checked-in files', 
     assert.ok(fs.existsSync(path.join(root, relative)), `missing README media: ${relative}`);
   }
 });
+
+test('README regional prompting uses a lightweight animated bounding-box map', () => {
+  assert.match(readme, /docs\/download\/media\/region-island-map\.gif/);
+  assert.doesNotMatch(readme, /!\[[^\]]*Two-biome island[^\]]*\]\(docs\/download\/media\/region-island\.png\)/);
+  const animation = path.join(root, 'docs', 'download', 'media', 'region-island-map.gif');
+  assert.ok(fs.existsSync(animation));
+  assert.ok(fs.statSync(animation).size < 1024 * 1024, 'regional GIF stays below 1 MB');
+});

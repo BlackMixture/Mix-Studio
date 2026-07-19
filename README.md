@@ -32,7 +32,7 @@ A square generation continued into a seamless 21:9 interior.
 
 Each box carries its own prompt (and optionally its own LoRA and reference image). Here, separate ocean, island, snow-biome, and lava-volcano regions resolve into one coherent generation.
 
-![Two-biome island composed with four regional prompts](docs/download/media/region-island.png)
+![Animated region map showing ocean, island, snow-biome, and lava-volcano bounding boxes before the final generation](docs/download/media/region-island-map.gif)
 
 ### Depth guide: retain the source structure
 
