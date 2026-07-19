@@ -36,7 +36,7 @@ test('desktop panel widths drive navigation, workspace, focused expansion, and D
   assert.match(css, /body\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px calc\(100% - var\(--studio-right-width\) - 2px\) var\(--studio-right-width\)/);
   assert.match(css, /body\.director-open\.desktop-focused-result \.studio-workspace \{[\s\S]*grid-template-columns: 0px minmax\(420px,1fr\) var\(--studio-right-width\)/);
   assert.match(css, /\.desktop-stage \.generate-dock \{[\s\S]*position: relative;[\s\S]*width: auto/);
-  assert.match(css, /body\.director-open \.director-summary \{[\s\S]*width: var\(--studio-left-width\)/);
+  assert.match(css, /body\.director-open \.director-workspace \.director-summary \{[\s\S]*left: calc\(var\(--studio-left-width\) \+ 1px\);[\s\S]*right: calc\(var\(--studio-right-width\) \+ 1px\);[\s\S]*width: auto/);
 });
 
 test('panel resizing supports pointer capture, keyboard control, reset, persistence, and safe clamping', () => {

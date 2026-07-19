@@ -431,6 +431,8 @@ test('Director has a compact full-sequence or selected-range generation footer',
   assert.match(app, /button\.textContent = project\.extensionSource \? 'Generate Extension' : 'Generate Video'/);
   assert.match(css, /\.director-summary\s*\{[^}]*position:\s*sticky;[^}]*bottom:/);
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.director-summary\s*\{\s*position:\s*static;\s*bottom:\s*auto/);
+  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open \.director-workspace \.director-summary\s*\{[^}]*left:\s*calc\(var\(--studio-left-width\) \+ 1px\);[^}]*right:\s*calc\(var\(--studio-right-width\) \+ 1px\);/);
+  assert.match(css, /body\.director-open \.director-workspace \.director-summary \.btn-generate\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none;/);
 });
 
 test('Director generation uses the shared progress card and queue lifecycle', () => {

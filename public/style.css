@@ -11988,7 +11988,11 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
     max-width: none;
     padding: 0 0 104px;
   }
-  body.director-open #desktopStage { display: grid; grid-column: 2; }
+  body.director-open #desktopStage {
+    display: grid;
+    grid-column: 2;
+    padding-bottom: 88px;
+  }
   body.director-open #view-gallery {
     display: block;
     grid-column: 3;
@@ -12082,23 +12086,46 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
     background: #050507;
     box-shadow: 0 -24px 80px rgba(0,0,0,.78);
   }
-  body.director-open .director-summary {
+  body.director-open .director-workspace .director-summary {
+    box-sizing: border-box;
     position: fixed;
     z-index: 25;
-    left: 0;
+    left: calc(var(--studio-left-width) + 1px);
+    right: calc(var(--studio-right-width) + 1px);
     bottom: 0;
-    width: var(--studio-left-width);
+    width: auto;
     margin: 0;
-    padding: 9px 10px 13px;
+    padding: 9px 22px 13px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    justify-self: stretch;
     border-radius: 0;
-    border-width: 1px 1px 0 0;
-    gap: 8px;
-    background: rgba(3,4,7,.97);
+    border-width: 1px 0 0;
+    gap: 6px;
+    background: linear-gradient(180deg, rgba(1,2,4,.8), rgba(1,2,4,.98) 30%);
     box-shadow: 0 -18px 42px rgba(0,0,0,.4);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
   }
-  body.director-open .director-summary span { display: none; }
-  body.director-open .director-summary strong { font-size: 9px; }
-  body.director-open .director-summary .btn-generate { width: auto; min-width: 142px; max-width: 176px; min-height: 44px; padding-inline: 12px; font-size: 12px; }
+  body.director-open .director-workspace .director-summary > div {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+  }
+  body.director-open .director-workspace .director-summary span { display: none; }
+  body.director-open .director-workspace .director-summary strong { color: var(--muted); font-size: 9px; }
+  body.director-open .director-workspace .director-summary .btn-generate {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 44px;
+    padding-inline: 18px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 720px) {
