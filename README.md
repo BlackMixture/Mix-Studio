@@ -1,6 +1,6 @@
 # Mix Studio
 
-A clean, responsive AI workspace built on ComfyUI. Run highly tuned image and video workflows flawlessly from your desktop or your phone. Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2.3, Wan 2.2, and SCAIL 2.
+Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated graph builders cover Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2.
 
 Generations run through **ComfyUI** on the Windows desktop; use the same responsive workspace from your phone on the same Wi-Fi or through Tailscale. Zero app dependencies: one Node.js server, vanilla JS frontend, no build step.
 
@@ -8,33 +8,33 @@ Generations run through **ComfyUI** on the Windows desktop; use the same respons
 
 ## Showcase
 
-Everything below was generated locally in Mix Studio — most of it from a phone. More examples (including autoplaying video) on the **[showcase & download page](https://blackmixture.github.io/Mix-Studio/)**.
+Everything below was generated locally in Mix Studio, with most jobs submitted from a phone. More examples, including autoplaying video, are on the **[showcase and download page](https://blackmixture.github.io/Mix-Studio/)**.
 
-### Edit — describe the change, keep the scene
+### Edit: localized and multi-reference changes
 
-Multi-model editing (Flux 2 Klein 4B/9B, Qwen Image Edit 2511, Krea 2): one sentence in, the rest of the photo stays put.
+Flux 2 Klein 4B/9B, Qwen Image Edit 2511, and Krea 2 accept prompt-based edits, multiple references, masks, and expanded canvases. Preserve and compositing controls determine which source pixels are restored after generation.
 
 | “Make the man an old black man with a gold chain and a hat” | “Make the rose into a gun” |
 | --- | --- |
 | ![Aging edit, scene preserved](docs/download/media/edit-aging.jpg) | ![Rose to revolver edit](docs/download/media/edit-rose-gun.jpg) |
 
-| “Make this a 3D render. Wireframe draft view.” | Mask inpainting — paint the face, only the face changes |
+| “Make this a 3D render. Wireframe draft view.” | Mask inpainting: paint the face so only the selected area changes |
 | --- | --- |
 | ![Photo to wireframe render](docs/download/media/edit-wireframe.jpg) | ![Inpainted face swap via character LoRA](docs/download/media/inpaint-face.jpg) |
 
-### Outpaint — extend the canvas
+### Outpaint: extend the canvas
 
 A square generation continued into a seamless 21:9 interior.
 
 ![Outpainted cabin, square to widescreen](docs/download/media/outpaint-wide.jpg)
 
-### Regional prompting — draw boxes, direct the scene
+### Regional prompting: assign prompts to bounded areas
 
 Each box carries its own prompt (and optionally its own LoRA and reference image). Here, separate ocean, island, snow-biome, and lava-volcano regions resolve into one coherent generation.
 
 ![Two-biome island composed with four regional prompts](docs/download/media/region-island.png)
 
-### Depth guide — new image, same 3D structure
+### Depth guide: retain the source structure
 
 Depth Anything V3 extracts the structure of a source image; a Krea 2 Control LoRA locks the generation to it. Source → depth map → result:
 
@@ -50,34 +50,34 @@ One reference image steers composition and mood for an entirely new subject.
 
 ### Video
 
-Click to play — or see them looping on the [showcase page](https://blackmixture.github.io/Mix-Studio/).
+Click a link to play the file, or see the videos looping on the [showcase page](https://blackmixture.github.io/Mix-Studio/).
 
 | | |
 | --- | --- |
-| [**SCAIL 2 motion transfer** — a phone clip of a hand becomes a fantasy world, motion intact](docs/download/media/scail-hand-fantasy.mp4) | [**SCAIL 2** — dog-walk clip re-rendered as a mech walking a robot dog](docs/download/media/scail-mech-dog.mp4) |
-| [**Face ID lipsync** — one selfie + one voice recording = identity-locked talking video (LTX 2.3)](docs/download/media/lipsync-talking.mp4) | [**LTX 2.3 image-to-video** — a still generation brought to life with audio](docs/download/media/ltx-shark.mp4) |
+| [**SCAIL 2 motion transfer**: a phone clip of a hand drives motion in a generated fantasy scene](docs/download/media/scail-hand-fantasy.mp4) | [**SCAIL 2 motion transfer**: a dog-walk clip drives a mech and robot-dog scene](docs/download/media/scail-mech-dog.mp4) |
+| [**LTX 2.3 Face ID lipsync**: a reference image and voice recording condition one talking-video job](docs/download/media/lipsync-talking.mp4) | [**LTX 2.3 image-to-video**: a still image, motion prompt, and generated audio produce a video](docs/download/media/ltx-shark.mp4) |
 
 ## Inside the app
 
-The desktop workspace — the same server drives the phone layout.
+These screenshots show the desktop layout. The same Node.js server provides a touch layout for phones and tablets.
 
-| Create — build, watch, and browse in one screen | Region — draw boxes, direct the scene |
+| **Create**<br>Text-to-image with reference, depth, and style guidance, LoRAs, resolution controls, queue state, and recent outputs | **Region**<br>Aspect-correct boxes with independent prompts, LoRAs, and reference images, assembled into one Krea 2 graph |
 | --- | --- |
 | ![Create workspace with prompt, generation stage, and recent work](docs/download/mix-studio-create.png) | ![Region editor with three color-coded prompt boxes on the canvas](docs/download/mix-studio-region.png) |
 
-| Edit — one sentence in, the scene stays put | Video — LTX 2.3 with end frame and audio attached |
+| **Edit**<br>Flux 2 Klein, Qwen, and Krea 2 routes with multiple inputs, masks, outpainting, preserve controls, and sequential edits | **Video**<br>Routes for LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2, with frame, audio, source-video, and motion inputs |
 | --- | --- |
 | ![Edit workspace restoring a Flux Klein 9B signature edit](docs/download/mix-studio-edit.png) | ![LTX 2.3 video workspace with motion prompt, last frame, and audio waveform](docs/download/mix-studio-video.png) |
 
-| SCAIL 2 — motion transfer workspace | Library — search, folders, and grouped videos |
+| **SCAIL 2 motion transfer**<br>A reference image and trimmed driving video feed SAM3 tracking, with stable-chunk and Infinity generation modes | **Library**<br>Searchable image, video, and upload collections with folders, named groups, saved settings, and source relationships |
 | --- | --- |
 | ![SCAIL 2 motion-transfer workspace with driving video and creative direction](docs/download/mix-studio-scail.png) | ![Library grid with model and duration badges](docs/download/mix-studio-library.png) |
 
-| Lightbox — the full generation recipe | Compare — original ↔ upscaled reveal |
+| **Focused result view**<br>Generated media, group navigation, prompt and model metadata, reuse actions, and documentation export | **Upscale comparison**<br>Synchronized pan and zoom with a movable original-to-upscaled reveal divider |
 | --- | --- |
 | ![Lightbox with outpainted knight and full generation metadata](docs/download/mix-studio-lightbox.png) | ![Detail comparison viewer with reveal divider](docs/download/mix-studio-compare.png) |
 
-| Profiles — who's creating? | Desktop Dependencies — everything green |
+| **Profiles**<br>Profile-scoped galleries, folders, presets, form state, and optional PIN access | **Generation setup**<br>ComfyUI connection, hardware rating, model discovery, custom-node checks, and per-workflow installation status |
 | --- | --- |
 | ![Netflix-style profile picker](docs/download/mix-studio-profiles.png) | ![Desktop Dependencies card reporting every node group ready](docs/download/mix-studio-dependencies.png) |
 
@@ -133,8 +133,8 @@ Optional anonymous product analytics use PostHog and remain disabled unless a pu
 
 The console prints two URLs:
 
-   - `Local:  http://localhost:3300` — on the desktop
-   - `Phone:  http://192.168.x.x:3300` — open on your phone (same Wi-Fi)
+   - `Local:  http://localhost:3300`: open on the desktop
+   - `Phone:  http://192.168.x.x:3300`: open on a phone connected to the same Wi-Fi
 
 On the phone, use **Add to Home Screen** for an app-like fullscreen experience.
 
@@ -177,29 +177,53 @@ The owner can also choose **Restart app** from the same menu. It checks both Mix
 
 ## Features
 
-**Profiles** — Netflix-style profile picker with avatars and optional PINs. Every profile has its own gallery, folders, history, LoRA presets, Face ID library, and form state. The first profile owns profile management. Signed-cookie sessions; rolling db backups (boot + every 30 min).
+### Image and regional generation
 
-**Create (text-to-image)** — Krea 2 Turbo by default, with a Raw checkpoint switch (Raw starts with the Turbo LoRA at 0.6/12 steps and can fall back to full 52-step CFG sampling); optional image-to-image guidance with either pixel influence or **Depth Anything V3 structural control**; generation-safe or native source-size matching; ✨ prompt enhance via Qwen3-VL; collapsible resolution selector with live aspect glyph; camera-settings helper; image→prompt vision tool; **regional prompting**: draw boxes on an aspect-true canvas, per-region prompt/LoRA/reference, no general prompt required, gallery hold-preview + color-coded annotated PNG export.
+- **Krea 2 text-to-image**: Turbo is the default route. Raw can use the Turbo LoRA at 12 steps or the full 52-step CFG path.
+- **Image guidance**: a source image can condition composition and color, visual style, or three-dimensional structure. Depth guidance runs Depth Anything V3 and applies the Krea 2 Control LoRA.
+- **Prompt tools**: Qwen3-VL provides prompt revision and image-to-prompt analysis. Camera and lens controls produce a reusable prompt fragment.
+- **Regional generation**: an aspect-correct editor assigns a prompt, LoRA stack, and optional reference image to each box. The server builds one Krea2RegionalMultiLoRAV3 graph and can export the annotated region map.
+- **Resolution and batching**: presets expose exact output dimensions, seed, batch size, and generation-safe or native source matching. Low VRAM requests retain user control and require confirmation before safer settings are substituted.
 
-**Edit** — Flux 2 Klein 4B/9B multi-reference editing (numbered slots: "the jacket from image 2"), Qwen Image Edit 2511 with Fast/Quality sampling, camera variations for Qwen and Klein, sequential sentence-by-sentence edits, **Krea2 mask inpainting** (paint the mask, denoise = change strength, mask preview on the slot), draggable source-placement outpainting across every Edit model, organic subject-preserve masks, automatic SeedVR2 detail refinement for large Native Preserve canvases, Krea 2 reference editing, KleinEditComposite preserve-unchanged, hold-to-compare original.
+### Editing
 
-**Video** — five engines with per-engine contextual controls:
-- **LTX 2.3**: two-stage, 25 fps, generates audio, t2v/i2v, end frames, audio-driven with waveform trimming, motion freedom
-- **LTX Face ID**: reference-to-video identity preservation (Best-FaceID + BFS overlap node), 24 fps, named face library, **your-own-voice lipsync** — attach a recording and it is frozen into the audio latent (`SetLatentNoiseMask 0.0`) so the joint AV denoise syncs the lips to it; leave audio off and the model invents a voice from a scripted line in the prompt
-- **10Eros DMD**: Echo sampler, reference conditioning, sigma presets
-- **Wan 2.2**: 14B dual-expert i2v, 4-step or full quality
-- **SCAIL 2**: motion transfer from a driving video (SAM3 tracking), trim UI, first-frame→Edit, chunked/Infinity long-video modes
-- Plus: RIFE 32/48 fps interpolation (16 fps engines), RTX 4K pass, side-by-side comparison export, per-video reuse (restores settings *and* input assets)
+- **Model routes**: Flux 2 Klein 4B/9B, Qwen Image Edit 2511, and Krea 2 have separate graph builders and model-specific sampling controls.
+- **Multiple inputs**: numbered reference slots can be reordered and addressed from the prompt with tokens such as `@image-1` and `@image-2`.
+- **Localized edits**: SAM3 text and point selection, brush masks, and boxes feed masked edit graphs. Krea 2 uses `VAEEncode` plus `SetLatentNoiseMask` for flow-model-compatible inpainting.
+- **Canvas expansion**: outpainting supports source placement, optional organic preserve masks, and source-pixel compositing after generation.
+- **Edit sets**: sequential mode runs prompt sentences in order, and camera variation mode creates grouped view, elevation, and framing variants. Focused results retain original-to-result comparison and saved input settings.
 
-**LoRAs** — card grid shared by every tab: tap to toggle, hold-and-slide to adjust strength, thumbnails, searchable picker (also used for region LoRAs), server-stored presets.
+### Video generation, editing, and motion transfer
 
-**Gallery** — folders with PIN-locked privates (items can be dropped in without unlocking; viewing requires the PIN), folder merge, animated sort and date controls, search, long-press + drag-sweep multi-select, selection insights, ZIP/group/composite actions, shareable documentation PNGs, searchable gallery source picker, optional browser preview cache, improved inline video playback, full-page swipe viewer, videos grouped under their source image, queue viewer with per-profile history and GPU health, and optional mirroring to a desktop export folder.
+- **LTX 2.3**: two-stage text-to-video and image-to-video generation with first and last frames, joint audio generation, uploaded audio, waveform trimming, and motion controls.
+- **LTX Director**: Extend continues an existing clip, Keyframes arranges images, clips, and directions as a storyboard, and Timeline places story, audio, and motion segments at explicit frame ranges. Projects can be saved as JSON.
+- **LTX Face ID**: Best-FaceID and BFS overlap conditioning preserve a reference identity. An uploaded voice is encoded into the audio latent with a zero noise mask for lipsync.
+- **LTX Edit**: an experimental source-video route applies a literal edit prompt to uploaded or generated footage.
+- **10Eros DMD**: reference-conditioned generation with the Echo sampler and selectable sigma presets.
+- **Wan 2.2**: dual-expert image-to-video sampling with fast and full-quality paths.
+- **SCAIL 2**: a driving video and reference image feed SAM3 tracking and WanSCAILToVideo. Stable chunks and Infinity modes extend the supported duration while retaining overlap controls.
+- **Video processing**: compatible outputs can run RIFE interpolation, RTX 4K upscaling, source extension, and side-by-side comparison. Reuse restores both settings and input assets.
 
-**Upscale** — SeedVR2 (selectable attention backend) and Ultimate SD Upscale, with a before/after detail viewer that supports reveal, pan, pinch or wheel zoom, 1:1, and fit controls.
+### LoRAs and parameter comparison
 
-**Responsive workflow feedback** — animated image and video previews keep the stage active while ComfyUI works, with progress labels and ETA estimates. System settings report GPU, CPU, memory, OS, and storage status without leaving the app.
+- LoRA stacks are stored separately for Create, Edit, Video, and regional inputs. Cards support enable state, exact or gesture-based strength changes, thumbnails, search, trigger phrases, and profile-scoped presets.
+- **Strength Hunt** keeps the prompt and seed fixed while stepping one or two selected LoRAs from 0 to each LoRA's configured maximum in 0.2 increments. The server submits the comparison as one queue job, saves every individual output, and adds a labeled square or matrix documentation image to the same gallery group.
 
-**Remote maintenance** — the owner can update or safely restart the desktop app from a phone. Updates require a clean checkout; updates and manual restarts both wait for idle Mix Studio and ComfyUI queues.
+### Library, reusable assets, and output records
+
+- The Library indexes images, videos, audio uploads, prompts, LoRAs, model metadata, duration, generation time, folders, likes, and user-defined group names.
+- Generated images, attached videos, Strength Hunts, camera variants, and manual groups retain their parent and child hierarchy. Miniature group navigation and previous or next controls work in both the center stage and focused view.
+- Focused images support wheel zoom and drag or trackpad pan. The action row can reuse media in another workflow, save original files, build documentation images, extend video, upscale, compare, group, move, or delete.
+- Uploaded image, video, and audio assets remain available as reusable workflow inputs in an Uploaded assets collection. Unused assets can be moved to the recoverable trash from the Library.
+- Custom folders support merge and optional PIN locking. Search, date navigation, sort, drag-sweep multi-select, ZIP export, composites, and optional desktop-folder mirroring operate on profile-scoped records.
+
+### Upscaling, queue state, and system operation
+
+- **Upscaling**: SeedVR2 and Ultimate SD Upscale support target-resolution and multiplier modes. The comparison viewer synchronizes pan and zoom and provides reveal, 1:1, and fit controls.
+- **Queue**: each ComfyUI prompt is tracked with node-specific progress, overall progress for multi-stage jobs, ETA estimates, duration, thumbnail, cancellation, reordering, history, and GPU health. Strength Hunts remain one logical queue item.
+- **Profiles**: signed-cookie sessions isolate gallery items, folders, history, LoRA presets, Face ID records, and saved form state. Profiles can use an optional PIN, and the first profile owns administrative actions.
+- **Generation setup**: hardware detection, ComfyUI registry scanning, model discovery, custom-node checks, precision selection, and low-VRAM recommendations run before a missing workflow is submitted.
+- **Maintenance and recovery**: the owner can update or restart Mix Studio and ComfyUI only while both queues are idle. The database is backed up at boot and every 30 minutes, and deleted media is moved to `data/trash/` before permanent removal.
 
 ComfyUI's disaster-recovery copies are organized under `ComfyUI/output/MixStudio/<profile-name>_<profile-id>/`, with separate prefixes for images, edits, videos, upscales, posters, and composites. Existing files in the legacy `ComfyUI/output/KreaStudio/` folder are left untouched.
 
@@ -209,38 +233,36 @@ All model filenames and the ComfyUI URL are editable in **Advanced Settings**; c
 
 ## Where things live
 
-- `data/db.json` — all metadata (items, folders, profiles, presets, faces) · `data/backups/` — rolling snapshots
-- `data/images/`, `data/videos/` — media · `data/faces/`, `data/avatars/`, `data/lorathumbs/` — thumbnails
-- `data/settings.json` — model config · `data/auth_secret.txt` — session signing secret
-- `data/trash/` — recoverable media from deleted gallery items, videos, and profiles; the owner can permanently clear it from **Advanced Settings → System → Trash**
+- `data/db.json`: item, folder, profile, preset, and face metadata; `data/backups/`: rolling database snapshots
+- `data/images/`, `data/videos/`: generated media; `data/faces/`, `data/avatars/`, `data/lorathumbs/`: reusable thumbnails and identity images
+- `data/settings.json`: model and connection configuration; `data/auth_secret.txt`: session-signing secret
+- `data/trash/`: recoverable media from deleted gallery items, videos, and profiles; the owner can permanently clear it from **Advanced Settings → System → Trash**
 
 `data/` is deliberately not in git. Private folders are lightweight UI privacy: locked folders hide their items from gallery responses, but files remain on disk.
 
 ## Contribute a Workflow
 
-Mix Studio thrives on community collaboration. If you have spent hours dialing in a killer ComfyUI workflow that produces amazing results, we want to see it! We are always looking for new pipelines to benchmark and potentially include in the next release.
+Workflow contributions are evaluated for API-format graph compatibility, repeatable output, dependency scope, and whether the controls can be represented clearly in the existing interface.
 
 ### What We Look For
 
-- **Performance:** The workflow needs to run efficiently. We benchmark everything on our Dell workstation, but submissions should document a practical memory tier: a 4 GB offloaded or quantized route where the model allows it, plus sensible 8 GB, 12 GB, 16 GB, or 24 GB targets for heavier workflows.
-- **Stability:** We prioritize pipelines that deliver consistent results without requiring constant node tweaking.
-- **Practicality:** The best workflows solve a specific creative problem for artists, like clean motion transfer, precise inpainting, or perfect text rendering.
+- **Performance:** Document a practical memory tier, including a 4 GB offloaded or quantized route when the model supports one, plus appropriate 8 GB, 12 GB, 16 GB, or 24 GB targets for larger workflows.
+- **Stability:** Include fixed node and model versions where behavior depends on a specific upstream implementation.
+- **Scope:** Identify the user task, required inputs, exposed controls, output types, and how the workflow should behave in the queue and Library.
 
 ### How to Submit
 
-You can share your custom workflows with the community in two ways:
+Submit a workflow through one of these routes:
 
-- **[GitHub Discussions](https://github.com/BlackMixture/Mix-Studio/discussions):** The easiest way to share. Just drop your ComfyUI JSON file in our Discussions tab.
-- **[Pull Requests](https://github.com/BlackMixture/Mix-Studio/pulls):** If you are familiar with the Mix Studio codebase and know exactly how your workflow integrates into the UI, feel free to open a PR directly.
+- **[GitHub Discussions](https://github.com/BlackMixture/Mix-Studio/discussions):** Share a ComfyUI JSON graph for technical review before implementation.
+- **[Pull Requests](https://github.com/BlackMixture/Mix-Studio/pulls):** Submit the graph builder, UI controls, dependency manifest entries, and tests together when the integration is already implemented.
 
 When you submit, please include:
 
-- A brief explanation of what the workflow does and why it is awesome.
-- A list of all required models and custom nodes.
-- Your estimated VRAM requirements and generation times.
-- A few example images or videos of the output.
-
-Let's build the ultimate creative toolkit together!
+- A concise description of the workflow and intended use case.
+- All model files, encoders, VAEs, LoRAs, and custom nodes, including tested versions.
+- Tested VRAM, system RAM, resolution or duration, and generation time.
+- Example inputs, outputs, and the original ComfyUI workflow JSON.
 
 ## License
 
@@ -252,12 +274,12 @@ The GPL applies to Mix Studio's source code and documentation unless a file says
 
 ## Acknowledgments & Attribution
 
-Mix Studio is built on the incredible work of the open-source AI community. We want to extend our deepest gratitude to the creators and researchers who power these workflows:
+Mix Studio depends on ComfyUI, open model releases, and community workflow implementations.
 
-**ComfyUI:** The node-based backbone that makes this entire pipeline possible.
+**ComfyUI:** Executes the API-format graphs built by the Mix Studio server.
 
-**Model Creators:** Huge thanks to Black Forest Labs (Flux 2), Lightricks (LTX 2.3), Krea AI, and the Wan team for pushing the boundaries of local generation.
+**Model creators:** Black Forest Labs (Flux 2), Lightricks (LTX 2.3), Krea AI, and the Wan team provide the primary image and video model families used by the curated workflows.
 
-**Community Workflows:** Thank you to the creators of SCAIL 2, 10Eros, SeedVR2, Ultimate SD, and Depth Anything V3 for the specialized tools and fine-tunes.
+**Community projects:** SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3, and the required ComfyUI custom-node projects supply specialized conditioning, tracking, sampling, and upscaling components.
 
-**Hardware Partner:** A special thank you to **Dell** for generously sponsoring the Dell Pro Max T2 Tower used to develop, benchmark, and stress-test this project. The system is powered by an **NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM**.
+**Hardware:** Dell provided the Dell Pro Max T2 Tower used for development and high-memory benchmarking. The test system contains an **NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM**.

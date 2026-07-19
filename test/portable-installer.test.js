@@ -49,19 +49,19 @@ test('standalone installer downloads the official Git checkout before opening th
 
 test('README presents the product positioning, contributions, and hardware credits', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-  assert.match(readme, /A clean, responsive AI workspace built on ComfyUI\./);
-  assert.match(readme, /Run highly tuned image and video workflows flawlessly from your desktop or your phone\./);
-  assert.match(readme, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
+  assert.match(readme, /Mix Studio is a local web interface that builds and submits ComfyUI API graphs/);
+  assert.match(readme, /image generation, regional prompting, image editing, video generation, motion transfer, and upscaling/);
+  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2\.3, Wan 2\.2, 10Eros, and SCAIL 2/);
   assert.match(readme, /## Acknowledgments & Attribution/);
   assert.match(readme, /## Contribute a Workflow/);
   assert.match(readme, /### What We Look For/);
   assert.match(readme, /### How to Submit/);
   assert.match(readme, /github\.com\/BlackMixture\/Mix-Studio\/discussions/);
   assert.match(readme, /github\.com\/BlackMixture\/Mix-Studio\/pulls/);
-  assert.match(readme, /\*\*ComfyUI:\*\* The node-based backbone/);
+  assert.match(readme, /\*\*ComfyUI:\*\* Executes the API-format graphs built by the Mix Studio server/);
   assert.match(readme, /Black Forest Labs \(Flux 2\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
-  assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD, and Depth Anything V3/);
-  assert.match(readme, /\*\*Dell\*\* for generously sponsoring the Dell Pro Max T2 Tower/);
+  assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3/);
+  assert.match(readme, /Dell provided the Dell Pro Max T2 Tower/);
   assert.match(readme, /\*\*NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM\*\*/);
 });
 
