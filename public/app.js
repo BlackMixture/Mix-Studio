@@ -20390,6 +20390,154 @@ async function saveImageComposite(item, type) {
 
 let resetLightboxSwipeVisuals = () => {};
 let lightboxReturnFocus = null;
+const LIGHTBOX_META_COLLAPSED = 36;
+const LIGHTBOX_META_DEFAULT = 144;
+const lightboxMetaLayout = {
+  height: LIGHTBOX_META_DEFAULT,
+  lastExpanded: LIGHTBOX_META_DEFAULT,
+  active: null,
+  resizeFrame: 0,
+  suppressClick: false,
+};
+
+function lightboxMetaStorageKey() {
+  return profileStorageKey('ks-lightbox-meta-layout') || 'ks-lightbox-meta-layout-anonymous';
+}
+
+function lightboxMetaMaxHeight() {
+  return Math.max(
+    LIGHTBOX_META_DEFAULT,
+    Math.min(420, Math.round(window.innerHeight * 0.44), Math.max(LIGHTBOX_META_DEFAULT, window.innerHeight - 260)),
+  );
+}
+
+function clampLightboxMetaHeight(value) {
+  return Math.max(LIGHTBOX_META_COLLAPSED, Math.min(lightboxMetaMaxHeight(), Math.round(Number(value) || LIGHTBOX_META_DEFAULT)));
+}
+
+function applyLightboxMetaHeight(value = lightboxMetaLayout.height, { persist = false, remember = true } = {}) {
+  const panel = $('#lbMetaPanel');
+  const handle = $('#lbMetaHandle');
+  if (!panel || !handle) return;
+  const height = clampLightboxMetaHeight(value);
+  const collapsed = height <= LIGHTBOX_META_COLLAPSED;
+  lightboxMetaLayout.height = height;
+  if (!collapsed && remember) lightboxMetaLayout.lastExpanded = height;
+  panel.style.setProperty('--lightbox-meta-height', `${height}px`);
+  panel.classList.toggle('is-collapsed', collapsed);
+  handle.setAttribute('aria-valuemin', String(LIGHTBOX_META_COLLAPSED));
+  handle.setAttribute('aria-valuemax', String(lightboxMetaMaxHeight()));
+  handle.setAttribute('aria-valuenow', String(height));
+  handle.setAttribute('aria-valuetext', collapsed ? 'Generation info, hidden' : `Generation info, ${height} pixels`);
+  handle.setAttribute('aria-expanded', String(!collapsed));
+  handle.setAttribute('aria-label', collapsed ? 'Show or resize generation info' : 'Hide or resize generation info');
+  handle.title = collapsed
+    ? 'Drag up or click to show generation info'
+    : 'Drag up or down to resize generation info · click to hide';
+  if (persist) {
+    try {
+      localStorage.setItem(lightboxMetaStorageKey(), JSON.stringify({
+        version: 1,
+        height,
+        lastExpanded: lightboxMetaLayout.lastExpanded,
+      }));
+    } catch { /* layout persistence is optional */ }
+  }
+}
+
+function restoreLightboxMetaLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(lightboxMetaStorageKey()) || 'null');
+    if (saved?.version === 1) {
+      lightboxMetaLayout.height = clampLightboxMetaHeight(saved.height);
+      lightboxMetaLayout.lastExpanded = Math.max(
+        LIGHTBOX_META_DEFAULT,
+        clampLightboxMetaHeight(saved.lastExpanded || LIGHTBOX_META_DEFAULT),
+      );
+    }
+  } catch { /* use the default height */ }
+  applyLightboxMetaHeight();
+}
+
+function setLightboxMetaHeight(value, { persist = false, remember = true } = {}) {
+  applyLightboxMetaHeight(value, { persist, remember });
+}
+
+function finishLightboxMetaResize(event = null) {
+  const active = lightboxMetaLayout.active;
+  if (!active || (event && event.pointerId != null && event.pointerId !== active.pointerId)) return;
+  lightboxMetaLayout.active = null;
+  if (lightboxMetaLayout.resizeFrame) cancelAnimationFrame(lightboxMetaLayout.resizeFrame);
+  lightboxMetaLayout.resizeFrame = 0;
+  let height = Number.isFinite(active.pendingHeight) ? clampLightboxMetaHeight(active.pendingHeight) : lightboxMetaLayout.height;
+  if (height < LIGHTBOX_META_COLLAPSED + 38) height = LIGHTBOX_META_COLLAPSED;
+  else if (Math.abs(height - LIGHTBOX_META_DEFAULT) <= 12) height = LIGHTBOX_META_DEFAULT;
+  lightboxMetaLayout.suppressClick = active.moved;
+  active.panel.classList.remove('is-dragging');
+  document.body.classList.remove('lightbox-meta-resizing');
+  try {
+    if (active.handle.hasPointerCapture(active.pointerId)) active.handle.releasePointerCapture(active.pointerId);
+  } catch { /* pointer capture may already be released */ }
+  setLightboxMetaHeight(height, { persist: true });
+}
+
+function wireLightboxMetaResizer() {
+  const panel = $('#lbMetaPanel');
+  const handle = $('#lbMetaHandle');
+  if (!panel || !handle) return;
+  handle.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || lightboxMetaLayout.active) return;
+    event.preventDefault();
+    lightboxMetaLayout.active = {
+      panel,
+      handle,
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: lightboxMetaLayout.height,
+      pendingHeight: lightboxMetaLayout.height,
+      moved: false,
+    };
+    panel.classList.add('is-dragging');
+    document.body.classList.add('lightbox-meta-resizing');
+    try { handle.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  });
+  handle.addEventListener('pointermove', (event) => {
+    const active = lightboxMetaLayout.active;
+    if (!active || event.pointerId !== active.pointerId) return;
+    const delta = active.startY - event.clientY;
+    active.pendingHeight = active.startHeight + delta;
+    if (Math.abs(delta) > 5) active.moved = true;
+    if (lightboxMetaLayout.resizeFrame) cancelAnimationFrame(lightboxMetaLayout.resizeFrame);
+    lightboxMetaLayout.resizeFrame = requestAnimationFrame(() => {
+      lightboxMetaLayout.resizeFrame = 0;
+      setLightboxMetaHeight(active.pendingHeight, { remember: false });
+    });
+  });
+  handle.addEventListener('pointerup', finishLightboxMetaResize);
+  handle.addEventListener('pointercancel', finishLightboxMetaResize);
+  handle.addEventListener('lostpointercapture', finishLightboxMetaResize);
+  handle.addEventListener('click', () => {
+    if (lightboxMetaLayout.suppressClick) {
+      lightboxMetaLayout.suppressClick = false;
+      return;
+    }
+    const collapsed = lightboxMetaLayout.height <= LIGHTBOX_META_COLLAPSED;
+    setLightboxMetaHeight(collapsed ? lightboxMetaLayout.lastExpanded : LIGHTBOX_META_COLLAPSED, { persist: true });
+  });
+  handle.addEventListener('keydown', (event) => {
+    const step = event.shiftKey ? 56 : 24;
+    let next = lightboxMetaLayout.height;
+    if (event.key === 'Home') next = LIGHTBOX_META_COLLAPSED;
+    else if (event.key === 'End') next = lightboxMetaMaxHeight();
+    else if (event.key === 'ArrowUp') next = next <= LIGHTBOX_META_COLLAPSED ? lightboxMetaLayout.lastExpanded : next + step;
+    else if (event.key === 'ArrowDown') next = next <= LIGHTBOX_META_COLLAPSED + step ? LIGHTBOX_META_COLLAPSED : next - step;
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
+    setLightboxMetaHeight(next, { persist: true });
+  });
+  window.addEventListener('resize', () => applyLightboxMetaHeight());
+}
 
 function preloadLightboxNeighbors(item) {
   [-1, 1].forEach((direction) => {
@@ -20438,6 +20586,7 @@ function openLightbox(id, mediaSel, options = {}) {
     syncNavigation();
   }
   $('#lightbox').classList.add('show');
+  applyLightboxMetaHeight();
 
   const vid = $('#lbVideo');
   const referencePreview = $('#lbReferenceImg');
@@ -20977,6 +21126,7 @@ function closeLightbox(fromPop) {
   closeActionMenu();
   resetLightboxSwipeVisuals();
   cancelDesktopSharedFocusTransition();
+  finishLightboxMetaResize();
   $('#lightbox').classList.remove('show');
   const restoreDesktopNavigation = document.body.classList.contains('desktop-focused-result');
   document.body.classList.remove('desktop-focused-result');
@@ -27750,6 +27900,8 @@ restoreGenerationTuning(generationTuningMode(state.view));
 restoreDesktopPanelLayout();
 restoreGalleryZoom();
 wireDesktopPanelResizers();
+restoreLightboxMetaLayout();
+wireLightboxMetaResizer();
 // The complete feature tour remains available from Advanced Settings. The
 // smaller first-image offer waits for auth, readiness, and Library state below.
 markEngineRow('editEngineRow', state.editEngine);

@@ -1395,7 +1395,17 @@
     <button class="lb-float-btn" id="lbCompareBtn" hidden>⇋ Compare</button>
   </div>
   <div class="chip-row lb-media" id="lbMedia"></div>
-  <div class="lightbox-meta" id="lbMeta"></div>
+  <div class="lightbox-meta-panel" id="lbMetaPanel">
+    <button class="lightbox-meta-handle" id="lbMetaHandle" type="button" role="separator"
+            aria-label="Resize generation info" aria-controls="lbMeta" aria-orientation="horizontal"
+            aria-valuemin="36" aria-valuemax="420" aria-valuenow="144" aria-valuetext="Generation info, 144 pixels"
+            aria-expanded="true" aria-keyshortcuts="ArrowUp ArrowDown Home End Enter Space"
+            title="Drag up or down to resize generation info · click to collapse">
+      <span class="lightbox-meta-grip" aria-hidden="true"></span>
+      <span class="lightbox-meta-collapsed-label">Generation info</span>
+    </button>
+    <div class="lightbox-meta" id="lbMeta"></div>
+  </div>
   <div class="action-row" id="lbActions"></div>
 </div>
 

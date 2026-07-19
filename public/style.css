@@ -5774,10 +5774,75 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   max-width: min(38vw, 390px);
   padding: 1px;
 }
+.lightbox-meta-panel {
+  --lightbox-meta-height: 144px;
+  flex: 0 0 var(--lightbox-meta-height);
+  height: var(--lightbox-meta-height);
+  min-height: 36px;
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr);
+  overflow: hidden;
+  border-top: 1px solid rgba(255,255,255,.055);
+  background: #000;
+  transition: height 180ms var(--ease), flex-basis 180ms var(--ease);
+}
+body.lightbox-meta-resizing,
+body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none !important; }
+.lightbox-meta-panel.is-dragging { transition: none; }
+.lightbox-meta-handle {
+  position: relative;
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-2);
+  cursor: ns-resize;
+  touch-action: none;
+}
+.lightbox-meta-grip {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(226,232,255,.28);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.32);
+  transition: width 150ms var(--ease), background 150ms var(--ease), box-shadow 150ms var(--ease);
+}
+.lightbox-meta-handle:hover .lightbox-meta-grip,
+.lightbox-meta-handle:focus-visible .lightbox-meta-grip,
+.lightbox-meta-panel.is-dragging .lightbox-meta-grip {
+  width: 54px;
+  background: rgba(226,232,255,.7);
+  box-shadow: 0 0 0 1px rgba(var(--mode-rgb),.28), 0 0 16px rgba(var(--mode-rgb),.14);
+}
+.lightbox-meta-handle:focus-visible { outline: 2px solid rgba(var(--mode-rgb),.72); outline-offset: -4px; }
+.lightbox-meta-collapsed-label {
+  position: absolute;
+  left: calc(50% + 38px);
+  opacity: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transform: translateY(2px);
+  transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+  pointer-events: none;
+}
+.lightbox-meta-panel.is-collapsed .lightbox-meta-collapsed-label { opacity: 1; transform: none; }
+.lightbox-meta-panel.is-collapsed .lightbox-meta { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .lightbox-meta-panel,
+  .lightbox-meta-grip,
+  .lightbox-meta-collapsed-label { transition-duration: 1ms; }
+}
 .lightbox-meta {
-  padding: 12px 18px 6px;
+  min-height: 0;
+  padding: 0 18px 6px;
   font-size: 12.5px; color: var(--muted); line-height: 1.5;
-  max-height: 20vh; overflow-y: auto;
+  overflow-y: auto;
 }
 .lightbox-meta b { color: var(--ink-soft); }
 .lightbox-meta-copy {
@@ -10397,16 +10462,19 @@ body.sheet-open {
   #lightbox .lb-media-options::-webkit-scrollbar { height: 4px; }
   #lightbox .lb-media-options::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(226,232,255,.22); }
   #lightbox .lightbox-meta {
-    grid-column: 1;
-    grid-row: 4;
-    max-height: 118px;
     min-height: 0;
-    padding: 12px 22px 6px;
+    max-height: none;
+    padding: 0 22px 6px;
     overflow-y: auto;
     border-bottom: 0;
     color: rgba(226,232,255,.62);
     font-size: 12.5px;
     line-height: 1.65;
+  }
+  #lightbox .lightbox-meta-panel {
+    grid-column: 1;
+    grid-row: 4;
+    min-height: 36px;
   }
   #lightbox #lbActions {
     grid-column: 1;
@@ -10427,7 +10495,7 @@ body.sheet-open {
   #lightbox #lbActions .action-btn { min-height: 40px; }
   #lightbox #lbActions .action-btn.primary:not(.icon-only) { flex: 0 0 auto; justify-content: center; }
   #lightbox .lb-float-btn { top: 26px; right: 26px; }
-  body.desktop-focus-from-library #lightbox.show .lightbox-meta,
+  body.desktop-focus-from-library #lightbox.show .lightbox-meta-panel,
   body.desktop-focus-from-library #lightbox.show #lbActions {
     animation: focusedDetailsFastIn 90ms 38ms cubic-bezier(.2,.8,.2,1) both;
   }
