@@ -4277,11 +4277,17 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   .adv-summary svg { transition-duration: 1ms; transition-delay: 0s; }
 }
 .field label { display: block; font-size: 11px; font-weight: 800; color: var(--muted-2); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
-.field input, .field select {
+.field input, .field select, .field textarea {
   width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--line);
   border-radius: var(--radius-sm); padding: 10px 12px; color: var(--ink);
   font-size: 14px; font-weight: 600; outline: none;
 }
+.field textarea { min-height: 66px; resize: vertical; line-height: 1.4; }
+.field textarea:focus { border-color: rgba(var(--mode-rgb),.55); box-shadow: 0 0 0 3px rgba(var(--mode-rgb),.08); }
+.negative-prompt-field label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.negative-prompt-field label small { color: var(--muted-2); font-size: 9px; font-weight: 650; text-align: right; text-transform: none; letter-spacing: 0; }
+.negative-prompt-field.unsupported textarea { opacity: .48; cursor: not-allowed; }
+.negative-prompt-field.unsupported label small { color: #d1a278; }
 .seed-wrap { display: flex; gap: 8px; }
 .seed-wrap input { flex: 1; }
 .seed-wrap .icon-btn { flex: 0 0 auto; height: auto; }

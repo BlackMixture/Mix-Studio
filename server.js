@@ -60,6 +60,7 @@ const {
   promptEnhanceParts,
   regionPromptEnhanceParts,
 } = require('./lib/prompt-enhance');
+const { combineNegativePrompts, normalizeNegativePrompt } = require('./lib/negative-prompt');
 const {
   buildDepthMapNodes,
   buildDepthPreviewGraph,
@@ -1596,6 +1597,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
       regions: Array.isArray(job.params.regions) && job.params.regions.length
         ? normalizeRegions(job.params.regions) : undefined,
       prompt: job.params.prompt,
+      negativePrompt: job.params.negativePrompt || undefined,
       promptTemplate: job.params.promptTemplate,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
@@ -1689,6 +1691,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     },
     profileId: job.profileId,
     prompt: job.params.prompt,
+    negativePrompt: job.params.negativePrompt || undefined,
     promptTemplate: job.params.promptTemplate,
     refinedPrompt: job.refinedPrompt || textOut,
     width: documentation.width,
@@ -1808,6 +1811,7 @@ async function completeJob(pid) {
         mode: 'video',
         profileId: job.profileId,
         prompt: job.videoInfo.motionPrompt,
+        negativePrompt: job.videoInfo.negativePrompt || undefined,
         refinedPrompt: null,
         enhance: !!job.videoInfo.enhance,
         width: job.videoInfo.width,
@@ -2030,6 +2034,7 @@ async function completeJob(pid) {
       regions: Array.isArray(job.params.regions) && job.params.regions.length
         ? normalizeRegions(job.params.regions) : undefined,
       prompt: job.params.prompt,
+      negativePrompt: job.params.negativePrompt || undefined,
       promptTemplate: job.params.promptTemplate,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
@@ -2344,7 +2349,9 @@ async function buildT2I(p) {
 
   const textSource = p.enhancedText || p.prompt;
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip, text: textSource } };
-  graph.neg = { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos', 0] } };
+  graph.neg = p.negativePrompt
+    ? { class_type: 'CLIPTextEncode', inputs: { clip, text: p.negativePrompt } }
+    : { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['pos', 0] } };
   const depthGuide = p.imageGuideMode === 'depth' && !!p.imageName;
   const styleGuide = p.imageGuideMode === 'style' && !!p.imageName;
   const latentInput = buildKrea2LatentInput(Object.assign({}, p, { imageName: depthGuide || styleGuide ? '' : p.imageName }));
@@ -2712,7 +2719,7 @@ async function buildEditQwen(p, refNames) {
 
   const qwenPrompt = p.anglePrompt || p.qwenAnglePrompt || p.prompt;
   const encodeInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.maskImageName ? localizedEditPrompt(qwenPrompt) : qwenPrompt };
-  const negInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: '' };
+  const negInputs = { clip: ['clip', 0], vae: ['vae', 0], prompt: p.negativePrompt || '' };
   refNames.slice(0, 3).forEach((name, idx) => {
     const i = idx + 1;
     graph['img' + i] = { class_type: 'LoadImage', inputs: { image: name } };
@@ -3255,7 +3262,7 @@ async function buildAnimate(imageName, opts) {
     }
   }
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: promptSource } };
-  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: LTX_NEGATIVE } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: combineNegativePrompts(LTX_NEGATIVE, opts.negativePrompt) } };
   graph.cond = {
     class_type: 'LTXVConditioning',
     inputs: { positive: ['pos', 0], negative: ['neg', 0], frame_rate: opts.fps },
@@ -3606,7 +3613,7 @@ async function buildAnimateFaceId(faceName, opts) {
     promptSource = ['refine', 0];
   }
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: promptSource } };
-  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: LTX_NEGATIVE } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['te_lora', 1], text: combineNegativePrompts(LTX_NEGATIVE, opts.negativePrompt) } };
   graph.cond = {
     class_type: 'LTXVConditioning',
     inputs: { positive: ['pos', 0], negative: ['neg', 0], frame_rate: opts.fps },
@@ -4009,7 +4016,7 @@ async function buildAnimateWan(imageName, opts) {
 
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.wanClip, type: 'wan', device: 'default' } };
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: opts.prompt } };
-  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: WAN_NEGATIVE } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: combineNegativePrompts(WAN_NEGATIVE, opts.negativePrompt) } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.wanVae } };
   graph.img = { class_type: 'LoadImage', inputs: { image: imageName } };
   graph.i2v = {
@@ -4129,7 +4136,7 @@ async function buildAnimateScail(imageName, opts) {
 
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.wanClip, type: 'wan', device: 'default' } };
   graph.pos = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: opts.prompt } };
-  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: SCAIL_NEGATIVE } };
+  graph.neg = { class_type: 'CLIPTextEncode', inputs: { clip: ['clip', 0], text: combineNegativePrompts(SCAIL_NEGATIVE, opts.negativePrompt) } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.wanVae } };
 
   // Reference image, scaled to ~0.5 MP /32
@@ -5283,6 +5290,7 @@ async function handleApi(req, res, url) {
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
+    p.negativePrompt = normalizeNegativePrompt(p.negativePrompt);
     p.promptTemplate = p.mode === 'edit'
       ? String(p.promptTemplate || '').trim().slice(0, 8000) || undefined
       : undefined;
@@ -5492,6 +5500,7 @@ async function handleApi(req, res, url) {
       } else {
         p.steps = 4; p.cfg = 1; p.denoise = null;
       }
+      if (p.editEngine !== 'qwen' || p.qwenQuality !== 'quality') p.negativePrompt = '';
       // Pixel compositing needs identical source/output dimensions. A custom
       // output ratio intentionally changes the canvas, so retain the edit
       // itself but skip the incompatible preservation pass.
@@ -5858,6 +5867,12 @@ async function handleApi(req, res, url) {
   if (route === '/api/animate' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const engine = ['wan', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
+    // Every video route except Wan Full Quality is fixed at CFG 1 (or
+    // explicitly zeroes negative conditioning), so a negative prompt cannot
+    // influence sampling there. Do not silently retain a placebo setting.
+    const negativePrompt = engine === 'wan' && body.fast === false
+      ? normalizeNegativePrompt(body.negativePrompt)
+      : '';
     if (settings.features[VIDEO_FEATURES[engine]] === false) {
       return json(res, 400, { error: 'This video model was not installed on this machine.' });
     }
@@ -6042,6 +6057,7 @@ async function handleApi(req, res, url) {
       : [];
     const opts = {
       prompt,
+      negativePrompt,
       cameraMotionPhrase: selectedCameraMotionPhrase,
       cameraMotionPromptBase,
       cameraMotionGuideNames,
@@ -6088,6 +6104,7 @@ async function handleApi(req, res, url) {
         engine,
         seconds: opts.seconds,
         motionPrompt: userMotionPrompt || suppliedMotionPrompt || (engine === 'scail' ? 'Motion copied from driving video' : motionPrompt),
+        negativePrompt: opts.negativePrompt || undefined,
         enhance: enhance && !!suppliedMotionPrompt,
         frames: (opts.frames - 1) * smooth + 1, fps: opts.fps * smooth,
         exactFrameCount: true,

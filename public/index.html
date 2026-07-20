@@ -1159,6 +1159,10 @@
                 <button class="icon-btn" id="seedDice" title="Random seed" aria-label="Random seed"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="16" cy="8" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="8" cy="16" r="1.25" fill="currentColor"/><circle cx="16" cy="16" r="1.25" fill="currentColor"/></svg></button>
               </div>
             </div>
+            <div class="field field-span negative-prompt-field" id="negativePromptField">
+              <label for="negativePromptInput">Negative prompt <small id="negativePromptHint">Describe elements to avoid</small></label>
+              <textarea id="negativePromptInput" rows="2" maxlength="4000" aria-describedby="negativePromptHint" placeholder="Things you do not want in the result"></textarea>
+            </div>
             <div class="field" id="advancedStepsField">
               <label>Steps</label>
               <input id="stepsInput" type="number" inputmode="numeric" value="8" min="1" max="100" />

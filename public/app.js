@@ -3004,6 +3004,7 @@ function updateVideoPanels() {
   $('#advancedCfgField').hidden = isVideo;
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
   $('#videoAdvancedNote').hidden = !isVideo;
+  renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   renderLoras();
   schedulePromptIntentHint();
@@ -7977,6 +7978,7 @@ function renderQwenQuality() {
     cfg.title = 'Double-tap to reset to your default';
     if (wasLocked && state.view === 'edit') restoreGenerationTuning('edit');
   }
+  renderNegativePromptControl();
 }
 
 function syncEditSamplingRow() {
@@ -9548,6 +9550,41 @@ function generationTuningMode(view = state.view) {
   return null;
 }
 
+function negativePromptAvailability(view = state.view) {
+  if (view === 'create') return { supported: true, hint: 'Most effective above CFG 1' };
+  if (view === 'video') {
+    if (state.vidEngine === 'wan' && $('#vidQuality')?.classList.contains('active')) {
+      return { supported: true, hint: 'Available with Wan Full Quality' };
+    }
+    if (state.vidEngine === 'wan') return { supported: false, hint: 'Wan Fast uses CFG 1' };
+    if (state.vidEngine === 'eros') return { supported: false, hint: '10Eros uses zero-negative conditioning' };
+    return { supported: false, hint: 'This video workflow uses fixed CFG 1' };
+  }
+  if (view === 'edit') {
+    return state.editEngine === 'qwen' && state.qwenQuality !== 'fast'
+      ? { supported: true, hint: 'Available with Qwen Quality' }
+      : { supported: false, hint: state.editEngine === 'qwen' ? 'Qwen Fast uses CFG 1' : 'Not supported by this Edit model' };
+  }
+  return { supported: false, hint: 'Not available in this mode' };
+}
+
+function renderNegativePromptControl() {
+  const field = $('#negativePromptField');
+  const input = $('#negativePromptInput');
+  const hint = $('#negativePromptHint');
+  if (!field || !input || !hint) return;
+  const availability = negativePromptAvailability();
+  input.disabled = !availability.supported;
+  field.classList.toggle('unsupported', !availability.supported);
+  hint.textContent = availability.hint;
+}
+
+function negativePromptForGeneration() {
+  return negativePromptAvailability().supported
+    ? String($('#negativePromptInput')?.value || '').trim().slice(0, 4000)
+    : '';
+}
+
 function defaultGenerationTuning(mode) {
   if (mode === 'video') {
     return {
@@ -9556,6 +9593,7 @@ function defaultGenerationTuning(mode) {
       batch: 1,
       denoise: undefined,
       seed: state.userDefaults.seed.mode === 'fixed' ? String(state.userDefaults.seed.value) : '',
+      negativePrompt: '',
     };
   }
   const defaults = state.userDefaults[mode] || state.userDefaults.create;
@@ -9565,6 +9603,7 @@ function defaultGenerationTuning(mode) {
     batch: Number(defaults.batch),
     denoise: mode === 'edit' ? Number(state.userDefaults.edit.denoise) : undefined,
     seed: state.userDefaults.seed.mode === 'fixed' ? String(state.userDefaults.seed.value) : '',
+    negativePrompt: '',
   };
 }
 
@@ -9582,6 +9621,7 @@ function normalizeGenerationTuning(mode, value) {
     batch: Math.round(number(value.batch, 1, 8, defaults.batch)),
     denoise: mode === 'edit' ? number(value.denoise, 0.1, 1, defaults.denoise) : undefined,
     seed: /^\d+$/.test(seed) ? seed : '',
+    negativePrompt: String(value.negativePrompt ?? '').slice(0, 4000),
   };
 }
 
@@ -9595,6 +9635,7 @@ function captureGenerationTuning(mode = generationTuningMode()) {
     batch: $('#batchInput').value || previous.batch,
     denoise: mode === 'edit' ? $('#denoiseInput').value : undefined,
     seed: $('#seedInput').value,
+    negativePrompt: $('#negativePromptInput').value,
   });
 }
 
@@ -9605,10 +9646,12 @@ function restoreGenerationTuning(mode = generationTuningMode()) {
   $('#cfgInput').value = tuning.cfg;
   $('#batchInput').value = tuning.batch;
   $('#seedInput').value = tuning.seed;
+  $('#negativePromptInput').value = tuning.negativePrompt || '';
   if (mode === 'edit') {
     $('#denoiseInput').value = tuning.denoise;
     $('#denoiseVal').textContent = Number(tuning.denoise).toFixed(2);
   }
+  renderNegativePromptControl();
   renderKrea2Mode();
 }
 
@@ -13334,6 +13377,10 @@ Object.entries(generationResetControls).forEach(([id, key]) => {
   });
 });
 $('#stepsInput').addEventListener('input', renderKrea2Mode);
+$('#negativePromptInput').addEventListener('change', () => {
+  captureGenerationTuning();
+  saveForm();
+});
 
 /* ---- LoRA presets (stored server-side, shared across devices) ---- */
 let presetSaveLoras = [];
@@ -14543,7 +14590,10 @@ $('#vidDriveFrameChip').addEventListener('click', () => {
     { label: 'Depth guide', detail: 'Preserve camera and scene structure', icon: 'depth', tone: 'reuse', action: () => useDriveFirstFrame('depth') },
   ], { menuTitle: 'Use first frame', tone: 'image' });
 });
-$('#vidQuality').addEventListener('click', () => $('#vidQuality').classList.toggle('active'));
+$('#vidQuality').addEventListener('click', () => {
+  $('#vidQuality').classList.toggle('active');
+  renderNegativePromptControl();
+});
 $('#animQuality').addEventListener('click', () => $('#animQuality').classList.toggle('active'));
 
 const MODEL_ORDER_CONFIG = {
@@ -14934,6 +14984,7 @@ $('#generateBtn').addEventListener('click', async () => {
     const batch = Math.max(1, Math.min(8, Number($('#batchInput').value) || 1));
     const body = {
       prompt,
+      negativePrompt: negativePromptForGeneration(),
       autoMotionPrompt,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
@@ -15071,6 +15122,7 @@ $('#generateBtn').addEventListener('click', async () => {
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit' ? nativePreserve : undefined,
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
+    negativePrompt: negativePromptForGeneration(),
     promptTemplate: mode === 'edit' ? promptDraft().trim() : undefined,
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
@@ -16745,6 +16797,7 @@ function captureDesktopInputSetup() {
       cfg: $('#cfgInput').value,
       batch: $('#batchInput').value,
       denoise: $('#denoiseInput').value,
+      negativePrompt: $('#negativePromptInput').value,
       duration: $('#vidDur').value,
       motionFreedom: $('#vidFree').value,
       fourK: $('#vid4k').classList.contains('active'),
@@ -16798,6 +16851,9 @@ function restoreDesktopInputSetup(snapshot) {
   $('#cfgInput').value = controls.cfg ?? 1;
   $('#batchInput').value = controls.batch ?? 1;
   $('#denoiseInput').value = controls.denoise ?? .4;
+  $('#negativePromptInput').value = controls.negativePrompt
+    ?? state.generationTuning[generationTuningMode()]?.negativePrompt
+    ?? '';
   $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
   $('#vidDur').value = controls.duration ?? state.userDefaults.video.duration;
   $('#vidFree').value = controls.motionFreedom ?? state.userDefaults.video.motionFreedom;
@@ -20763,6 +20819,7 @@ function openLightbox(id, mediaSel, options = {}) {
     const videoHeight = recordedVideoWidth > 0 && recordedVideoHeight > 0 ? recordedVideoHeight : fallbackVideoHeight;
     if (videoWidth > 0 && videoHeight > 0) meta.push(`<b>Size:</b> ${videoWidth}×${videoHeight}`);
     meta.push(copyableMeta('Motion', info.motionPrompt || ''));
+    if (info.negativePrompt) meta.push(copyableMeta('Negative prompt', info.negativePrompt));
     if (info.refinedMotionPrompt) meta.push(copyableMeta('Enhanced motion', info.refinedMotionPrompt));
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
@@ -20776,6 +20833,7 @@ function openLightbox(id, mediaSel, options = {}) {
     if (model) meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
     if (it.editEngine === 'qwen') meta.push(`<b>Sampling:</b> ${it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4) ? 'Fast' : 'Quality'}`);
     meta.push(copyableMeta('Prompt', it.prompt || ''));
+    if (it.negativePrompt) meta.push(copyableMeta('Negative prompt', it.negativePrompt));
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
     if (it.strengthHunt) {
@@ -21825,6 +21883,7 @@ async function reuseItem(it, useEnhanced) {
   }
 
   $('#seedInput').value = it.seed !== undefined && it.seed !== null ? String(it.seed) : '';
+  $('#negativePromptInput').value = String(it.negativePrompt || '');
   if (it.steps !== undefined && it.steps !== null) $('#stepsInput').value = it.steps;
   if (it.cfg !== undefined && it.cfg !== null) $('#cfgInput').value = it.cfg;
   if (it.batch !== undefined && it.batch !== null) $('#batchInput').value = it.batch;
@@ -21840,6 +21899,7 @@ async function reuseItem(it, useEnhanced) {
     cfg: $('#cfgInput').value,
     batch: $('#batchInput').value,
     denoise: restoringEdit ? $('#denoiseInput').value : undefined,
+    negativePrompt: $('#negativePromptInput').value,
   });
 
   if (!options.preserveLightbox) closeLightbox();
@@ -21977,7 +22037,9 @@ async function reuseVideo(it, v) {
     batch: 1,
     steps: 1,
     cfg: 1,
+    negativePrompt: info.negativePrompt || '',
   });
+  $('#negativePromptInput').value = state.generationTuning.video.negativePrompt || '';
   state.enhance = !!info.enhance;
   renderEnhance();
   $('#vid4k').classList.toggle('active', !!info.fourK);
@@ -22299,6 +22361,7 @@ function documentationMetadata(item) {
   add('model', 'Model', galleryImageModelLabel(item));
   const prompt = documentationAnglePrompt(item) || item.refinedPrompt || item.prompt;
   add('prompt', 'Prompt', prompt);
+  add('negativePrompt', 'Negative prompt', item.negativePrompt);
   if (item.prompt && prompt && prompt !== item.prompt) add('originalPrompt', 'Original prompt', item.prompt);
   if (hasDocumentationValue(item.width) && hasDocumentationValue(item.height)) add('size', 'Size', `${item.width} × ${item.height}`);
   add('seed', 'Seed', item.seed);
