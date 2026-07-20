@@ -4286,8 +4286,6 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .field textarea:focus { border-color: rgba(var(--mode-rgb),.55); box-shadow: 0 0 0 3px rgba(var(--mode-rgb),.08); }
 .negative-prompt-field label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .negative-prompt-field label small { color: var(--muted-2); font-size: 9px; font-weight: 650; text-align: right; text-transform: none; letter-spacing: 0; }
-.negative-prompt-field.unsupported textarea { opacity: .48; cursor: not-allowed; }
-.negative-prompt-field.unsupported label small { color: #d1a278; }
 .seed-wrap { display: flex; gap: 8px; }
 .seed-wrap input { flex: 1; }
 .seed-wrap .icon-btn { flex: 0 0 auto; height: auto; }

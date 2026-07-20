@@ -9574,8 +9574,8 @@ function renderNegativePromptControl() {
   const hint = $('#negativePromptHint');
   if (!field || !input || !hint) return;
   const availability = negativePromptAvailability();
+  field.hidden = !availability.supported;
   input.disabled = !availability.supported;
-  field.classList.toggle('unsupported', !availability.supported);
   hint.textContent = availability.hint;
 }
 
