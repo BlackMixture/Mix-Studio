@@ -33,17 +33,28 @@ test('desktop library groups drill into the rail and return to grouped results',
   assert.match(html, /id="libraryGroupFocus"[^>]*hidden/);
   assert.match(html, /id="libraryGroupBack"[^>]*aria-label="Back to grouped library"/);
   assert.match(app, /libraryGroupFocus: null/);
-  assert.match(app, /function openDesktopLibraryGroup\(group\)/);
+  assert.match(app, /function openDesktopLibraryGroup\(group, sourceCard = null\)/);
   assert.match(app, /function closeDesktopLibraryGroup\(\)/);
   assert.match(app, /focusedGroup \? orderedLibraryGroupFocusItems\(focusedGroup\) : visibleItems\(\)/);
   assert.match(app, /function orderedLibraryGroupFocusItems\(group\)/);
   assert.match(app, /return items\.reverse\(\)/);
   assert.match(app, /items\.map\(\(item\) => \(\{ item, items: \[item\] \}\)\)/);
-  assert.match(app, /if \(!openDesktopLibraryGroup\(galleryGroup\)\) toggleItemLike\(item, card\)/);
+  assert.match(app, /if \(!openDesktopLibraryGroup\(galleryGroup, card\)\) toggleItemLike\(item, card\)/);
   assert.match(app, /galleryGroupType === focus\.type/);
   assert.match(app, /galleryGroupId === String\(focus\.id\)/);
   assert.match(app, /\$\('#libraryGroupBack'\)\.addEventListener\('click', closeDesktopLibraryGroup\)/);
   assert.match(css, /#view-gallery\.library-group-focused \.library-search,[\s\S]*\.folder-picker \{ display: none; \}/);
+});
+
+test('desktop group members unfold from their grouped thumbnail', () => {
+  assert.match(app, /function startDesktopLibraryGroupExpansion\(source\)/);
+  assert.match(app, /const expansionSource = captureDesktopSharedFocusSource\(sourceCard\)/);
+  assert.match(app, /\.slice\(0, 12\)/);
+  assert.match(app, /card\.animate\(\[[\s\S]*translate\(\$\{dx\}px, \$\{dy\}px\) scale\(\$\{scaleX\}, \$\{scaleY\}\)/);
+  assert.match(app, /delay: Math\.min\(index \* 10, 70\)/);
+  assert.match(app, /window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches/);
+  assert.match(css, /#view-gallery\.library-group-expansion-pending #galleryGrid \.card \{ opacity: 0; \}/);
+  assert.match(css, /#view-gallery \.card\.library-group-expanding \{[\s\S]*transform-origin: top left;[\s\S]*will-change: transform, opacity, border-radius/);
 });
 
 test('full Library taps use a fast shared-origin focused transition on desktop and tablet layouts', () => {

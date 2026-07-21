@@ -17732,9 +17732,97 @@ function orderedLibraryGroupFocusItems(group) {
   return items.reverse();
 }
 
-function openDesktopLibraryGroup(group) {
+let desktopLibraryGroupExpansionMotion = null;
+
+function stopDesktopLibraryGroupExpansion() {
+  const motion = desktopLibraryGroupExpansionMotion;
+  desktopLibraryGroupExpansionMotion = null;
+  if (motion?.frame) cancelAnimationFrame(motion.frame);
+  (motion?.animations || []).forEach((animation) => animation.cancel());
+  const panel = $('#view-gallery');
+  panel.classList.remove('library-group-expansion-pending', 'library-group-transitioning');
+  $$('#galleryGrid .library-group-expanding').forEach((card) => card.classList.remove('library-group-expanding'));
+}
+
+function startDesktopLibraryGroupExpansion(source) {
+  const panel = $('#view-gallery');
+  const finishFocus = () => requestAnimationFrame(() => $('#libraryGroupBack').focus({ preventScroll: true }));
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!source || reducedMotion || typeof panel.animate !== 'function') {
+    panel.classList.remove('library-group-expansion-pending');
+    finishFocus();
+    return;
+  }
+  const motion = { frame: 0, animations: [] };
+  desktopLibraryGroupExpansionMotion = motion;
+  motion.frame = requestAnimationFrame(() => {
+    motion.frame = 0;
+    if (desktopLibraryGroupExpansionMotion !== motion) return;
+    if (!state.libraryGroupFocus) {
+      stopDesktopLibraryGroupExpansion();
+      return;
+    }
+    const bounds = panel.getBoundingClientRect();
+    const cards = $$('#galleryGrid .card').filter((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.bottom > bounds.top - 24 && rect.top < bounds.bottom + 80;
+    }).slice(0, 12);
+    cards.forEach((card, index) => {
+      const target = card.getBoundingClientRect();
+      if (target.width < 2 || target.height < 2) return;
+      const dx = source.rect.left - target.left;
+      const dy = source.rect.top - target.top;
+      const scaleX = source.rect.width / target.width;
+      const scaleY = source.rect.height / target.height;
+      card.classList.add('library-group-expanding');
+      const animation = card.animate([
+        {
+          opacity: 0.18,
+          transform: `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`,
+          borderRadius: source.radius,
+        },
+        { opacity: 1, transform: 'translate(0, 0) scale(1, 1)', borderRadius: getComputedStyle(card).borderRadius },
+      ], {
+        duration: 210,
+        delay: Math.min(index * 10, 70),
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+        fill: 'both',
+      });
+      animation.id = 'library-group-expand';
+      motion.animations.push(animation);
+    });
+    const focusBar = $('#libraryGroupFocus');
+    const headerAnimation = focusBar.animate([
+      { opacity: 0, transform: 'translateY(-4px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ], {
+      duration: 150,
+      delay: 35,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+      fill: 'both',
+    });
+    headerAnimation.id = 'library-group-header-in';
+    motion.animations.push(headerAnimation);
+    panel.classList.add('library-group-transitioning');
+    panel.classList.remove('library-group-expansion-pending');
+    Promise.all(motion.animations.map((animation) => animation.finished.catch(() => {}))).then(() => {
+      if (desktopLibraryGroupExpansionMotion !== motion) return;
+      desktopLibraryGroupExpansionMotion = null;
+      panel.classList.remove('library-group-transitioning');
+      cards.forEach((card) => card.classList.remove('library-group-expanding'));
+      finishFocus();
+    });
+  });
+}
+
+function openDesktopLibraryGroup(group, sourceCard = null) {
   if (!desktopWorkspaceActive() || !group || group.items.length < 2) return false;
   const panel = $('#view-gallery');
+  stopDesktopLibraryGroupExpansion();
+  const expansionSource = captureDesktopSharedFocusSource(sourceCard);
+  if (expansionSource && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    panel.classList.add('library-group-expansion-pending');
+  }
   state.libraryGroupFocus = {
     type: group.type,
     id: String(group.id),
@@ -17744,13 +17832,14 @@ function openDesktopLibraryGroup(group) {
   galleryTap = null;
   renderGrid();
   panel.scrollTop = 0;
-  requestAnimationFrame(() => $('#libraryGroupBack').focus({ preventScroll: true }));
+  startDesktopLibraryGroupExpansion(expansionSource);
   return true;
 }
 
 function closeDesktopLibraryGroup() {
   const focus = state.libraryGroupFocus;
   if (!focus) return;
+  stopDesktopLibraryGroupExpansion();
   state.libraryGroupFocus = null;
   renderGrid();
   const panel = $('#view-gallery');
@@ -19029,7 +19118,7 @@ function handleDesktopGalleryTap(item, card, galleryGroup = null) {
   if (galleryTap && galleryTap.itemId === item.id && now - galleryTap.time < 300) {
     clearTimeout(galleryTap.timer);
     galleryTap = null;
-    if (!openDesktopLibraryGroup(galleryGroup)) toggleItemLike(item, card);
+    if (!openDesktopLibraryGroup(galleryGroup, card)) toggleItemLike(item, card);
     return;
   }
   if (galleryTap) clearTimeout(galleryTap.timer);

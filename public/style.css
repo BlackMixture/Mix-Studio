@@ -4783,6 +4783,14 @@ body.gallery-selection-active .generate-dock > * { pointer-events: none; }
 .library-group-focus-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-group-focus-copy strong { color: var(--ink); font-size: 11.5px; font-weight: 800; }
 .library-group-focus-copy small { color: var(--muted-2); font-size: 9.5px; font-weight: 750; }
+#view-gallery.library-group-expansion-pending .library-group-focus,
+#view-gallery.library-group-expansion-pending #galleryGrid .card { opacity: 0; }
+#view-gallery.library-group-transitioning { overflow-anchor: none; }
+#view-gallery .card.library-group-expanding {
+  z-index: 3;
+  transform-origin: top left;
+  will-change: transform, opacity, border-radius;
+}
 .folder-chip {
   width: 100%;
   display: flex;
