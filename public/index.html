@@ -2114,11 +2114,21 @@
 
       <section class="setup-pane active" id="setupPaneConnect" role="tabpanel" aria-labelledby="setupTabConnect" data-setup-pane="connect">
         <header class="setup-pane-head"><span>Connection</span><h3 id="setupConnectHeading">Connect ComfyUI</h3><p id="setupConnectCopy">Choose the easiest option for the generation computer.</p></header>
+        <div class="setup-start-card" id="setupStartCard" data-state="idle" hidden>
+          <span class="setup-start-visual" aria-hidden="true"><i></i><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg></span>
+          <span class="setup-start-copy"><strong id="setupStartTitle">ComfyUI is installed</strong><small id="setupStartCopy">Start it here and Mix Studio will find the local port automatically.</small></span>
+          <span class="setup-start-actions"><button id="setupStartComfy" type="button">Start ComfyUI</button><button id="setupFindComfy" type="button">Find running ComfyUI</button></span>
+        </div>
+        <div class="setup-endpoint-choices" id="setupEndpointChoices" hidden>
+          <strong>Choose the running ComfyUI</strong>
+          <small>Choose the verified local server this app should use.</small>
+          <div id="setupEndpointChoiceList"></div>
+        </div>
         <p class="setup-detected" id="setupDetectedPath">Looking for ComfyUI…</p>
         <div class="setup-choice-list" id="setupConnectionChoices">
           <button class="setup-choice setup-choice-blue" id="setupUseDetected" type="button">
             <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/></svg></span>
-            <span><strong>Use detected</strong><small>Connect to the ComfyUI already found.</small></span><i aria-hidden="true">›</i>
+            <span><strong>Use detected folder</strong><small>Save the ComfyUI folder already found.</small></span><i aria-hidden="true">›</i>
           </button>
           <button class="setup-choice setup-choice-violet" id="setupBrowseComfy" type="button">
             <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
@@ -2126,7 +2136,7 @@
           </button>
           <button class="setup-choice setup-choice-red" id="setupInstallComfy" type="button">
             <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg></span>
-            <span><strong>Install ComfyUI</strong><small>Use the official Windows installer.</small></span><i aria-hidden="true">›</i>
+            <span><strong>Install ComfyUI</strong><small>Open Comfy Desktop or install the official app.</small></span><i aria-hidden="true">›</i>
           </button>
         </div>
         <button class="setup-disclosure" id="setupGuideToggle" type="button" aria-expanded="false" aria-controls="setupFullGuide"><span>Connection details</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg></button>
@@ -2180,11 +2190,34 @@
           <div class="setup-status" id="setupWorkflowStatus"><span aria-hidden="true"></span><div><strong>Current workflow</strong><small id="setupWorkflowStatusCopy">Checking…</small></div></div>
         </div>
         <p class="setup-finish-note" id="setupFinishNote">Your prompt is saved while setup is open.</p>
+        <section class="phone-access-card" id="phoneAccessCard">
+          <button class="phone-access-toggle" id="phoneAccessToggle" type="button" aria-expanded="false" aria-controls="phoneAccessGuide">
+            <span><strong>Use Mix Studio on your phone</strong><small id="phoneAccessStatus">Optional · works on the same Wi-Fi or through Tailscale</small></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+          </button>
+          <div class="phone-access-guide" id="phoneAccessGuide" hidden>
+            <div class="phone-access-animation" aria-hidden="true">
+              <span class="phone-access-device desktop"><i></i></span><span class="phone-access-signal"><i></i><i></i><i></i></span><span class="phone-access-device phone"><i></i></span>
+            </div>
+            <div class="phone-access-copy">
+              <h4 id="phoneAccessTitle">Open Mix Studio on your phone</h4>
+              <p id="phoneAccessDescription">Install Tailscale on this Windows PC and your phone, sign in to the same tailnet, then open the private address below.</p>
+              <ol><li>Install Tailscale on both devices.</li><li>Sign in to the same Tailscale network.</li><li>Open the Mix Studio address on your phone.</li></ol>
+            </div>
+            <div class="phone-access-url" id="phoneAccessUrl" hidden><code></code><button id="phoneAccessCopy" type="button">Copy address</button></div>
+            <div class="phone-access-actions">
+              <a id="tailscaleInstallDesktop" href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Install Tailscale</a>
+              <a id="tailscaleInstallPhone" href="https://tailscale.com/docs/install" target="_blank" rel="noopener noreferrer">Phone setup guide</a>
+              <button id="phoneAccessShare" type="button" hidden>Share address</button>
+            </div>
+            <small class="phone-access-security">Tailscale keeps access private to your tailnet. Keep profile PINs enabled for shared devices. Mix Studio does not use Tailscale Funnel.</small>
+          </div>
+        </section>
       </section>
     </div>
 
     <footer class="setup-footer">
-      <button class="setup-cancel" id="setupCancel" type="button">Not now</button>
+      <button class="setup-cancel" id="setupCancel" type="button" hidden>Stop setup</button>
       <span>Your prompt is saved</span>
       <div><button class="setup-back" id="setupBack" type="button" hidden>Back</button><button class="setup-next" id="setupNext" type="button">Continue</button></div>
     </footer>
@@ -2245,6 +2278,12 @@
             <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
             <span class="generation-setup-entry-copy"><strong>Generation setup</strong><small id="generationSetupSettingsCopy">Connection, models, and workflow requirements.</small></span>
             <span class="generation-setup-entry-status" id="generationSetupSettingsStatus">Checking</span>
+            <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <button class="generation-setup-entry phone-access-entry" id="phoneAccessOpen" type="button" data-state="ready" aria-describedby="phoneAccessSettingsCopy">
+            <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 3h4M11 18h2"/></svg></span>
+            <span class="generation-setup-entry-copy"><strong>Phone access</strong><small id="phoneAccessSettingsCopy">Same Wi-Fi and private Tailscale access.</small></span>
+            <span class="generation-setup-entry-status" id="phoneAccessSettingsStatus">Guide</span>
             <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </button>
           <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
@@ -2700,7 +2739,7 @@
     <div class="first-run-tutorial-kicker">Your first creation</div>
     <h2 id="firstRunTutorialTitle">Make your first image</h2>
     <img id="firstRunTutorialImage" src="/guides/first-image-superdog.png" alt="A joyful dog in a colorful cape flying through a blue sky" />
-    <p id="firstRunTutorialCopy">Follow a quick, hands-on walkthrough from prompt to finished image. If generation setup is still needed, we’ll help with that first.</p>
+    <p id="firstRunTutorialCopy">Your generation computer is ready. Follow a quick, hands-on walkthrough from prompt to finished image.</p>
     <div class="first-run-tutorial-actions">
       <button class="first-run-tutorial-show" id="firstRunTutorialShow" type="button">Show me how</button>
       <button class="first-run-tutorial-skip" id="firstRunTutorialSkip" type="button">Skip</button>

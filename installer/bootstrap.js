@@ -28,9 +28,34 @@ function existingObject(value) {
 function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path) {
   const appData = String(env.APPDATA || '').trim();
   if (!appData) return '';
+  const registryFile = pathImpl.join(appData, 'Comfy Desktop', 'installations.json');
+  try {
+    const records = JSON.parse(fsImpl.readFileSync(registryFile, 'utf8'));
+    if (Array.isArray(records)) {
+      const sorted = records
+        .filter((record) => record && typeof record === 'object' && record.sourceId !== 'cloud')
+        .sort((left, right) => String(right.lastLaunchedAt || right.createdAt || '')
+          .localeCompare(String(left.lastLaunchedAt || left.createdAt || '')));
+      for (const record of sorted) {
+        const installPath = String(record.installPath || '').trim();
+        const adoptedBase = String(record.adoptedBaseDir || '').trim();
+        const base = adoptedBase || (installPath ? pathImpl.join(installPath, 'ComfyUI') : '');
+        const python = String(record.adoptedPythonPath || '').trim()
+          || (base ? pathImpl.join(base, '.venv', 'Scripts', 'python.exe') : '');
+        if (base && python && fsImpl.existsSync(base) && fsImpl.existsSync(python)) return base;
+      }
+    }
+  } catch { /* current Comfy Desktop has not registered an installation */ }
   const config = readJson(pathImpl.join(appData, 'ComfyUI', 'config.json'), fsImpl);
   const base = String(config.basePath || config.base_path || '').trim();
-  return base && fsImpl.existsSync(base) ? base : '';
+  if (!base || !fsImpl.existsSync(base)) return '';
+  const pythonCandidates = [
+    pathImpl.join(base, '.venv', 'Scripts', 'python.exe'),
+    pathImpl.join(base, 'venv', 'Scripts', 'python.exe'),
+    pathImpl.join(pathImpl.dirname(base), 'python_embeded', 'python.exe'),
+    pathImpl.join(base, 'python_embeded', 'python.exe'),
+  ];
+  return pythonCandidates.some((candidate) => fsImpl.existsSync(candidate)) ? base : '';
 }
 
 function portableBootstrapConfig(root, options = {}) {

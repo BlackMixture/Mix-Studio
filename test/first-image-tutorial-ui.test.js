@@ -59,6 +59,35 @@ test('the first-run offer waits for both identity and readiness regardless of bo
   assert.match(functionBody('refreshGallery'), /maybeShowFirstRunTutorial\(\)/);
 });
 
+test('a fresh workspace completes generation setup before offering the first-image tutorial', () => {
+  const maybe = functionBody('maybeShowFirstRunTutorial');
+  assert.match(maybe, /firstImageTutorialReady\(\)/);
+  assert.match(maybe, /openInitialSetup\(\{[\s\S]{0,360}components:\s*\[['"]image['"]\][\s\S]{0,180}firstRun:\s*true/);
+  assert.ok(maybe.indexOf('firstImageTutorialReady()') < maybe.indexOf("localStorage.setItem(key, 'offered')"),
+    'the tutorial must not be recorded or shown before setup readiness is known');
+  assert.match(app, /firstRunTutorialAfterSetupProfile\s*===\s*state\.profile\?\.id/);
+  assert.match(app, /queueMicrotask\(maybeShowFirstRunTutorial\)/,
+    'finishing auto-opened setup should immediately advance to the tutorial offer');
+});
+
+test('first-run setup takes priority over contextual tips', () => {
+  const blocker = functionBody('freshFirstRunWorkspacePending', 'firstImageTutorialBlocksContextualGuides');
+  assert.match(blocker, /state\.profileIsOwner/);
+  assert.match(blocker, /localStorage\.getItem\(formKey\(\)\)/);
+  assert.match(blocker, /state\.items\.length/);
+  assert.match(functionBody('firstImageTutorialBlocksContextualGuides', 'hideFirstRunTutorial'), /freshFirstRunWorkspacePending\(\)/);
+  assert.match(functionBody('maybeShowFirstRunTutorial', 'firstImageTutorialReady'), /cancelContextualGuide\(\)/);
+  assert.match(functionBody('openInitialSetup', 'setupComponentLabelMap'), /cancelContextualGuide\(\)/);
+});
+
+test('closing setup returns an interrupted tutorial to a resumable offer', () => {
+  const close = functionBody('closeGenerationSetup', 'setupGenerationReady');
+  assert.match(close, /firstImageTutorialAwaitingSetup\s*=\s*false/);
+  assert.match(close, /firstImageTutorialPhase\s*=\s*['"]/);
+  assert.match(close, /localStorage\.setItem\(key,\s*['"]offered['"]\)/);
+  assert.doesNotMatch(close, /firstImageTutorialPhase\s*=\s*['"]paused['"]/);
+});
+
 test('Show me how conditionally visits the existing image-workflow setup before teaching generation', () => {
   const start = functionBody('startFirstImageTutorial', 'finishFirstImageTutorial');
   assert.match(start, /lastMeta/);

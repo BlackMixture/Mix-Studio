@@ -19,7 +19,8 @@ const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-c
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { nativeInt8Compatibility, nativeInt8CompatibilityError } = require('./lib/comfy-compatibility');
 const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponents } = require('./lib/dependency-installer');
-const { restartComfy, restartStatus } = require('./lib/comfy-restart');
+const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
+const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
 const {
   EDIT_FEATURES,
@@ -179,7 +180,7 @@ const {
   mergeStrengthHuntGraphs,
 } = require('./lib/strength-hunt');
 const { streamStoredZip } = require('./lib/zip-stream');
-const { mobileAccessAddresses } = require('./lib/mobile-access');
+const { mobileAccessAddresses, mobileAccessSummary } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const {
   buildKrea2ModelLoader,
@@ -621,6 +622,15 @@ let comfyCompatibilitySnapshot = null;
 let comfyCompatibilityAt = 0;
 let comfySetupProcess = null;
 let comfySetupCancelRequested = false;
+let comfyStartRunning = false;
+let comfyStartState = {
+  state: 'idle',
+  phase: 'idle',
+  message: 'ComfyUI has not been started from Mix Studio.',
+  error: null,
+  matches: [],
+  updatedAt: Date.now(),
+};
 let comfySetupState = {
   state: 'idle',
   phase: 'idle',
@@ -672,6 +682,11 @@ function updateComfySetupState(patch) {
   broadcast('comfySetup', comfySetupState);
 }
 
+function updateComfyStartState(patch) {
+  comfyStartState = Object.assign({}, comfyStartState, patch, { updatedAt: Date.now() });
+  broadcast('comfyStart', comfyStartState);
+}
+
 async function getSetupHardwareInfo(force = false) {
   if (!force && setupHardwareSnapshot && Date.now() - setupHardwareAt < 5 * 60 * 1000) return setupHardwareSnapshot;
   setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA });
@@ -689,6 +704,7 @@ async function activeVramProfile() {
 }
 
 function applySetupConnection(values) {
+  const previousUrl = settings.comfyUrl;
   const config = portableSetupConfig(ROOT, RUNTIME, values);
   writePortableSetupConfig(ROOT, config);
   RUNTIME = resolveRuntimeConfig(ROOT);
@@ -698,6 +714,7 @@ function applySetupConnection(values) {
   objectInfoAt = 0;
   comfyCompatibilitySnapshot = null;
   comfyCompatibilityAt = 0;
+  if (previousUrl !== settings.comfyUrl) resetComfyTransport();
   return config;
 }
 
@@ -712,7 +729,7 @@ function startOfficialComfySetup() {
   updateComfySetupState({
     state: 'running',
     phase: 'starting',
-    message: 'Preparing the signed official ComfyUI Desktop installer…',
+    message: 'Preparing the signed official Comfy Desktop installer…',
     error: null,
   });
   const child = spawn(powershell, [
@@ -848,6 +865,37 @@ async function waitForComfyReconnect(timeoutMs = 120_000) {
     } catch { await pause(1500); }
   }
   return false;
+}
+
+async function discoverLocalComfy(options = {}) {
+  return discoverComfyEndpoints(settings.comfyUrl, {
+    env: process.env,
+    platform: process.platform,
+    timeoutMs: options.timeoutMs || 1000,
+    skipProcessQuery: options.skipProcessQuery === true,
+  });
+}
+
+function adoptComfyEndpoint(url) {
+  const detected = sam3InstallStatus(RUNTIME);
+  const comfyPath = RUNTIME.comfy.path || detected.basePath || '';
+  const modelsPath = RUNTIME.comfy.modelsPath || (comfyPath ? path.join(comfyPath, 'models') : '');
+  applySetupConnection({ url, path: comfyPath, modelsPath });
+  objectInfoCache = null;
+  objectInfoAt = 0;
+  return settings.comfyUrl;
+}
+
+async function waitForStartedComfy(timeoutMs = 5 * 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    const discovery = await discoverLocalComfy({ timeoutMs: 900, skipProcessQuery: attempt++ % 4 !== 0 });
+    if (discovery.url) return discovery;
+    if (discovery.ambiguous) return discovery;
+    await pause(1500);
+  }
+  return { url: '', matches: [], ambiguous: false, checked: 0, timedOut: true };
 }
 
 function trackJob(pid, job) {
@@ -1375,6 +1423,25 @@ async function queuePrompt(graph, options = {}) {
 let ws = null;
 let wsTimer = null;
 let lastPreviewAt = 0;
+
+function resetComfyTransport() {
+  clearTimeout(wsTimer);
+  wsTimer = null;
+  if (ws) {
+    try {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
+    } catch { /* the next job will create a fresh transport */ }
+  }
+  ws = null;
+  objectInfoCache = null;
+  objectInfoAt = 0;
+  comfyCompatibilitySnapshot = null;
+  comfyCompatibilityAt = 0;
+}
 
 function ensureWs() {
   if (typeof WebSocket === 'undefined') return; // Node < 22 -> polling fallback
@@ -4536,6 +4603,8 @@ const REQUIRED_CLASSES = {
 
 async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
+  const launch = startStatus(RUNTIME);
+  const mobileAccess = mobileAccessSummary(os.networkInterfaces(), PORT);
   const hardwareInfoValue = await getSetupHardwareInfo();
   const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
   const krea2Recommendation = recommendedKrea2Variant(hardwareProfile);
@@ -4566,6 +4635,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       effective: resolveVramProfile(settings.vramProfile, hardwareProfile),
     },
     restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
+    mobileAccess,
     components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label, fit: guidance[id] || null })),
     comfy: {
       connected,
@@ -4575,12 +4645,14 @@ async function setupStatusPayload(forceCompatibility = false) {
       url: settings.comfyUrl,
       configuredPath: RUNTIME.comfy.path || '',
       detectedPath: detected.basePath || '',
+      partialPath: detected.partialPath || '',
       modelsPath: RUNTIME.comfy.modelsPath || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
       pythonReady: !!detected.pythonPath,
       canInstallDependencies: detected.canInstall,
       dependencyReason: detected.reason || '',
       canInstallOfficial: process.platform === 'win32',
       install: comfySetupState,
+      start: Object.assign({}, launch, comfyStartState, { running: comfyStartRunning }),
     },
   };
 }
@@ -4870,6 +4942,40 @@ async function handleApi(req, res, url) {
       return json(res, 400, { error: String(error.message || error) });
     }
   }
+  if (route === '/api/setup/comfy/discover' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can discover the generation desktop' });
+    try {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const discovery = await discoverLocalComfy({ timeoutMs: 1000 });
+      const requested = String(body.url || '').trim();
+      let selected = discovery.url;
+      if (requested) {
+        const matched = discovery.matches.find((entry) => entry.url === requested);
+        if (!matched || !(await probeComfyUrl(requested, { timeoutMs: 1000 }))) {
+          return json(res, 400, { error: 'That address is not a running ComfyUI server.' });
+        }
+        selected = matched.url;
+      }
+      if (selected) adoptComfyEndpoint(selected);
+      const publicDiscovery = {
+        url: selected || '',
+        ambiguous: !selected && discovery.ambiguous,
+        checked: discovery.checked,
+        matches: discovery.matches.map((entry) => ({
+          url: entry.url,
+          source: entry.source,
+          installationName: entry.installationName || '',
+        })),
+      };
+      return json(res, 200, {
+        ok: !!selected,
+        discovery: publicDiscovery,
+        status: await setupStatusPayload(),
+      });
+    } catch (error) {
+      return json(res, 500, { error: String(error.message || error) });
+    }
+  }
   if (route === '/api/setup/browse' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can choose generation folders' });
     if (dependencyInstallRunning || comfySetupProcess || comfyRestartRunning) return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
@@ -5106,6 +5212,87 @@ async function handleApi(req, res, url) {
       dependencyInstallController.abort();
     }
     return json(res, 202, { ok: true, install: dependencyInstallState });
+  }
+
+  if (route === '/api/comfy/start' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can start ComfyUI' });
+    if (dependencyInstallRunning || comfyRestartRunning || comfyStartRunning || comfySetupProcess) {
+      return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
+    }
+    try {
+      await assertDesktopIsIdle();
+      const alreadyRunning = await discoverLocalComfy({ timeoutMs: 900 });
+      if (alreadyRunning.url) {
+        adoptComfyEndpoint(alreadyRunning.url);
+        updateComfyStartState({
+          state: 'complete', phase: 'connected', message: 'ComfyUI was already running. Mix Studio connected automatically.',
+          error: null, matches: [],
+        });
+        return json(res, 200, { ok: true, alreadyRunning: true, status: await setupStatusPayload() });
+      }
+      if (alreadyRunning.ambiguous) {
+        const matches = alreadyRunning.matches.map((entry) => ({ url: entry.url, installationName: entry.installationName || '' }));
+        updateComfyStartState({
+          state: 'choice', phase: 'choose', message: 'More than one running ComfyUI was found. Choose the one Mix Studio should use.',
+          error: null, matches,
+        });
+        return json(res, 200, { ok: false, needsChoice: true, matches, status: await setupStatusPayload() });
+      }
+      const launch = startStatus(RUNTIME);
+      if (!launch.canStart) return json(res, 409, { error: launch.reason || 'ComfyUI start is not configured for this machine.' });
+      comfyStartRunning = true;
+      updateComfyStartState({
+        state: 'running',
+        phase: 'opening',
+        message: launch.kind === 'desktop'
+          ? `Comfy Desktop is opening.${launch.installationName ? ` Choose ${launch.installationName} and press Play if it does not start automatically.` : ' Press Play on the installed ComfyUI if it does not start automatically.'}`
+          : 'Starting portable ComfyUI and finding its local port…',
+        error: null,
+        matches: [],
+      });
+      await startComfy(RUNTIME, (phase, message) => updateComfyStartState({ state: 'running', phase, message, error: null }));
+      if (launch.kind === 'desktop') {
+        updateComfyStartState({
+          state: 'running', phase: 'desktop',
+          message: `Comfy Desktop is open.${launch.installationName ? ` Choose ${launch.installationName} and press Play.` : ' Press Play on the ComfyUI installation.'} Mix Studio will connect automatically.`,
+        });
+      }
+      (async () => {
+        try {
+          const discovery = await waitForStartedComfy();
+          if (discovery.url) {
+            adoptComfyEndpoint(discovery.url);
+            updateComfyStartState({
+              state: 'complete', phase: 'connected', message: `Connected to ComfyUI at ${discovery.url}.`, error: null, matches: [],
+            });
+          } else if (discovery.ambiguous) {
+            updateComfyStartState({
+              state: 'choice', phase: 'choose', message: 'More than one running ComfyUI was found. Choose which one to use.',
+              error: null,
+              matches: discovery.matches.map((entry) => ({ url: entry.url, installationName: entry.installationName || '' })),
+            });
+          } else {
+            updateComfyStartState({
+              state: 'error', phase: 'timeout',
+              message: 'ComfyUI has not started yet. Open Comfy Desktop, press Play, then choose Find running ComfyUI.',
+              error: 'ComfyUI startup timed out.', matches: [],
+            });
+          }
+        } catch (error) {
+          updateComfyStartState({
+            state: 'error', phase: 'error', message: 'Mix Studio could not finish starting ComfyUI.',
+            error: String(error.message || error), matches: [],
+          });
+        } finally {
+          comfyStartRunning = false;
+        }
+      })();
+      return json(res, 202, { ok: true, start: Object.assign({}, launch, comfyStartState, { running: true }) });
+    } catch (error) {
+      comfyStartRunning = false;
+      updateComfyStartState({ state: 'error', phase: 'error', message: 'Mix Studio could not start ComfyUI.', error: String(error.message || error), matches: [] });
+      return json(res, 500, { error: String(error.message || error) });
+    }
   }
 
   if (route === '/api/comfy/restart' && req.method === 'POST') {

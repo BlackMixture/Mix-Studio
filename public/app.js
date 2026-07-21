@@ -24761,6 +24761,8 @@ const FIRST_IMAGE_TUTORIAL_STEPS = [
 let firstRunTutorialPreviousFocus = null;
 let firstImageTutorialPhase = '';
 let firstImageTutorialAwaitingSetup = false;
+let firstRunSetupPromptedProfile = '';
+let firstRunTutorialAfterSetupProfile = '';
 let firstImageTutorialJobId = '';
 let firstImageTutorialItemId = '';
 let firstImageTutorialTypingTimer = null;
@@ -24773,10 +24775,21 @@ function firstImageTutorialIsTerminal(value = localStorage.getItem(firstRunTutor
   return ['complete', 'skipped', 'existing'].includes(value);
 }
 
+function freshFirstRunWorkspacePending() {
+  const key = firstRunTutorialStorageKey();
+  if (!key || !state.profile || !state.profileIsOwner) return false;
+  if (firstImageTutorialIsTerminal(localStorage.getItem(key))) return false;
+  return !localStorage.getItem(formKey())
+    && !state.items.length
+    && Number(state.profile.itemCount || 0) === 0;
+}
+
 function firstImageTutorialBlocksContextualGuides() {
   const offer = $('#firstRunTutorial');
   const stored = localStorage.getItem(firstRunTutorialStorageKey());
-  return !!(offer && !offer.hidden) || ['active', 'offered'].includes(stored) && !!firstImageTutorialPhase;
+  return freshFirstRunWorkspacePending()
+    || !!(offer && !offer.hidden)
+    || ['active', 'offered'].includes(stored) && !!firstImageTutorialPhase;
 }
 
 function hideFirstRunTutorial() {
@@ -24810,7 +24823,21 @@ function maybeShowFirstRunTutorial() {
     localStorage.setItem(key, 'existing');
     return;
   }
-  if (firstImageTutorialPhase || !$('#guidedTour').hidden || $$('.sheet.show').length) return;
+  if (firstImageTutorialPhase || guidedTourIndex >= 0 || $$('.sheet.show').length) return;
+  cancelContextualGuide();
+  if (!firstImageTutorialReady()) {
+    firstRunTutorialAfterSetupProfile = state.profile.id;
+    if (firstRunSetupPromptedProfile === state.profile.id) return;
+    firstRunSetupPromptedProfile = state.profile.id;
+    openInitialSetup({
+      components: ['image'],
+      firstRun: true,
+      message: lastMeta?.ok
+        ? 'Install the image starter, then Mix Studio will show you how to make your first image.'
+        : 'Connect or start ComfyUI, then install the image starter. Mix Studio will handle the local port automatically.',
+    }).catch((error) => toast(error.message, true));
+    return;
+  }
   if (!stored) localStorage.setItem(key, 'offered');
   showFirstRunTutorial();
 }
@@ -27028,6 +27055,8 @@ let setupActiveStep = 'connect';
 let setupStepTouched = false;
 let setupKrea2VariantOverride = '';
 let setupOperationDiagnostic = '';
+let setupDiscoveredMatches = [];
+let setupFirstRun = false;
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
@@ -27125,6 +27154,11 @@ function setSetupCustomExpanded(expanded) {
   $('#setupCustomPanel').hidden = !expanded;
 }
 
+function setPhoneAccessExpanded(expanded) {
+  $('#phoneAccessToggle').setAttribute('aria-expanded', String(expanded));
+  $('#phoneAccessGuide').hidden = !expanded;
+}
+
 function setSetupStep(step, options = {}) {
   if (!SETUP_STEPS.includes(step)) return;
   setupActiveStep = step;
@@ -27152,28 +27186,40 @@ function closeGenerationSetup(options = {}) {
   clearTimeout(setupPollTimer);
   $('#initialSetupSheet').classList.remove('show');
   syncSheetScrollLock();
+  if (options.deliberate && !options.completed && !setupGenerationReady()) {
+    toast('Generation setup is still needed. Press Generate or open Advanced Settings to continue.');
+  }
   if (options.pauseTutorial && firstImageTutorialAwaitingSetup) {
     firstImageTutorialAwaitingSetup = false;
-    firstImageTutorialPhase = 'paused';
+    firstImageTutorialPhase = '';
+    const key = firstRunTutorialStorageKey();
+    if (key && !firstImageTutorialIsTerminal()) localStorage.setItem(key, 'offered');
   }
+}
+
+function setupGenerationReady() {
+  if (!setupViewStatus?.comfy?.connected) return false;
+  const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
+  if (setupNativeInt8Blocked(compatibilityComponents)) return false;
+  const missing = setupContextComponents.length
+    ? missingSetupComponents(setupContextComponents)
+    : dependencyMissingLabels();
+  return !missing.length;
 }
 
 function renderSetupFooter() {
   if (!setupViewStatus) return;
   const comfy = setupViewStatus.comfy || {};
   const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
+  const startBusy = !!comfy.start?.running || comfy.start?.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
-  const busy = officialBusy || dependencyBusy;
+  const busy = officialBusy || dependencyBusy || startBusy;
   const cancellable = officialBusy || ['running', 'cancelling'].includes(setupDependencyState?.state);
-  const contextMissing = missingSetupComponents(setupContextComponents);
-  const allMissing = dependencyMissingLabels();
-  const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
-  const workflowReady = !!comfy.connected
-    && !setupNativeInt8Blocked(compatibilityComponents)
-    && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  const workflowReady = setupGenerationReady();
   const restartRequired = !!setupDependencyState?.restartRequired;
   const cancel = $('#setupCancel');
-  cancel.textContent = cancellable ? 'Stop setup' : 'Not now';
+  cancel.textContent = 'Stop setup';
+  cancel.hidden = !cancellable;
   cancel.classList.toggle('stopping', cancellable);
   cancel.disabled = comfy.install?.state === 'cancelling' || setupDependencyState?.state === 'cancelling';
   const next = $('#setupNext');
@@ -27184,24 +27230,33 @@ function renderSetupFooter() {
     next.textContent = 'Review';
     next.disabled = busy || (!workflowReady && !restartRequired);
   } else {
-    next.textContent = workflowReady ? 'Done' : 'Close';
-    next.disabled = busy;
+    next.textContent = workflowReady ? 'Done' : 'Complete setup';
+    next.disabled = busy || !workflowReady;
   }
 }
 
 async function openInitialSetup(options = {}) {
+  cancelContextualGuide();
   setupContextComponents = [...new Set((options.components || []).filter(Boolean))];
   setupKrea2VariantOverride = '';
+  setupDiscoveredMatches = [];
+  setupFirstRun = options.firstRun === true;
   setupStepTouched = false;
   setupActiveStep = 'connect';
   setSetupGuideExpanded(false);
   setSetupCustomExpanded(false);
+  setPhoneAccessExpanded(false);
   $('#setupIntro').textContent = options.message
     || 'Connect ComfyUI, install a workflow, and check that it is ready.';
   $('#initialSetupSheet').classList.add('show');
   setSetupStep('connect');
   syncSheetScrollLock();
   await refreshSetupStatus();
+  if (!setupViewStatus?.comfy?.connected) await discoverComfyFromSetup({ silent: true });
+  if (options.step && SETUP_STEPS.includes(options.step)) {
+    setSetupStep(options.step, { user: true });
+    if (options.phoneGuide) setPhoneAccessExpanded(true);
+  }
 }
 
 function setupComponentLabelMap() {
@@ -27262,29 +27317,77 @@ function renderDependencyAccess(containerSelector, linkSelector, installState) {
   return accessUrl;
 }
 
+function renderSetupEndpointChoices(matches = []) {
+  const unique = [];
+  for (const entry of matches || []) {
+    const url = String(entry?.url || '').trim();
+    if (!url || unique.some((candidate) => candidate.url === url)) continue;
+    unique.push({ url, installationName: String(entry.installationName || '').trim() });
+  }
+  const container = $('#setupEndpointChoices');
+  container.hidden = unique.length === 0;
+  $('#setupEndpointChoiceList').innerHTML = unique.map((entry) => `<button type="button" data-comfy-endpoint="${escapeHtml(entry.url)}">${escapeHtml(entry.installationName || entry.url)}</button>`).join('');
+}
+
+function renderPhoneAccess() {
+  const access = setupViewStatus?.mobileAccess || {};
+  const url = access.tailscaleUrl || access.localUrl || '';
+  const usingTailscale = !!access.tailscaleUrl && window.location.hostname === (() => {
+    try { return new URL(access.tailscaleUrl).hostname; } catch { return ''; }
+  })();
+  $('#phoneAccessUrl').hidden = !url;
+  $('#phoneAccessUrl code').textContent = url;
+  $('#phoneAccessCopy').dataset.url = url;
+  $('#phoneAccessShare').dataset.url = url;
+  $('#phoneAccessShare').hidden = !url || typeof navigator.share !== 'function';
+  if (usingTailscale) {
+    $('#phoneAccessStatus').textContent = 'Connected privately through Tailscale';
+    $('#phoneAccessTitle').textContent = 'This device is connected';
+    $('#phoneAccessDescription').textContent = 'This browser is using the private Tailscale address. Share it only with devices on your tailnet.';
+  } else if (access.tailscaleDetected) {
+    $('#phoneAccessStatus').textContent = 'Tailscale detected · private phone address ready';
+    $('#phoneAccessTitle').textContent = 'Your private phone address is ready';
+    $('#phoneAccessDescription').textContent = 'Install Tailscale on your phone, sign in to the same tailnet, then open the address below.';
+  } else if (access.localUrl) {
+    $('#phoneAccessStatus').textContent = 'Same-Wi-Fi address ready · add Tailscale for access away from home';
+    $('#phoneAccessTitle').textContent = 'Try the same Wi-Fi now';
+    $('#phoneAccessDescription').textContent = 'The address below works while both devices are on this network. Install Tailscale on the PC and phone for private access from anywhere.';
+  } else {
+    $('#phoneAccessStatus').textContent = 'Install Tailscale on this PC and your phone';
+    $('#phoneAccessTitle').textContent = 'Set up private phone access';
+    $('#phoneAccessDescription').textContent = 'Install Tailscale on both devices and sign in to the same tailnet. Mix Studio will show the private address here after it detects the connection.';
+  }
+  if ($('#phoneAccessSettingsCopy')) $('#phoneAccessSettingsCopy').textContent = access.tailscaleDetected
+    ? 'Private Tailscale address is ready for your phone.'
+    : (access.localUrl ? 'Same-Wi-Fi access is ready; Tailscale works away from home.' : 'Set up private phone access with Tailscale.');
+  if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = access.tailscaleDetected ? 'Ready' : 'Guide';
+}
+
 function renderInitialSetup() {
   if (!setupViewStatus) return;
   const comfy = setupViewStatus.comfy || {};
   const install = comfy.install || {};
+  const start = comfy.start || {};
   const dependency = setupDependencyState || lastMeta?.dependencies?.install || { state: 'idle' };
   const officialBusy = ['running', 'cancelling'].includes(install.state);
+  const startBusy = !!start.running || start.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(dependency.state);
-  const busy = officialBusy || dependencyBusy;
+  const busy = officialBusy || dependencyBusy || startBusy;
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const int8Blocked = setupNativeInt8Blocked(compatibilityComponents);
+  const incompleteComfy = !!comfy.partialPath && !comfy.detectedPath;
   const comfyCard = $('#setupComfyStatus');
   comfyCard.classList.toggle('ready', !!comfy.connected && !int8Blocked);
   comfyCard.classList.toggle('attention', !comfy.connected || int8Blocked);
   $('#setupComfyStatusCopy').textContent = comfy.connected
     ? (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`)
-    : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed');
+    : (incompleteComfy ? 'Incomplete · finish in Comfy Desktop'
+      : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed'));
 
   const contextMissing = missingSetupComponents(setupContextComponents);
   const allMissing = dependencyMissingLabels();
   const workflowCard = $('#setupWorkflowStatus');
-  const workflowReady = !!comfy.connected
-    && !int8Blocked
-    && (setupContextComponents.length ? !contextMissing.length : !allMissing.length);
+  const workflowReady = setupGenerationReady();
   const restartRequired = !!dependency.restartRequired;
   workflowCard.classList.toggle('ready', workflowReady);
   workflowCard.classList.toggle('attention', !workflowReady);
@@ -27296,7 +27399,8 @@ function renderInitialSetup() {
 
   const connectReady = !!comfy.connected;
   const installReady = workflowReady || restartRequired;
-  $('#setupTabConnectStatus').textContent = connectReady ? 'Connected' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed');
+  $('#setupTabConnectStatus').textContent = connectReady ? 'Connected'
+    : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed'));
   $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || allMissing.length || setupContextComponents.length || 1} needed`);
   $('#setupTabFinishStatus').textContent = workflowReady ? 'Ready' : (restartRequired ? 'Restart' : 'Waiting');
   $('#setupTabConnect').classList.toggle('complete', connectReady);
@@ -27340,19 +27444,41 @@ function renderInitialSetup() {
   if (document.activeElement !== $('#setupComfyUrl')) $('#setupComfyUrl').value = comfy.url || 'http://127.0.0.1:8188';
   if (document.activeElement !== $('#setupComfyPath') && !$('#setupComfyPath').value) $('#setupComfyPath').value = pathValue;
   if (document.activeElement !== $('#setupModelsPath') && !$('#setupModelsPath').value) $('#setupModelsPath').value = modelsValue;
+  const canOfferStart = !comfy.connected && (start.canStart || startBusy || ['error', 'choice'].includes(start.state));
+  const startCard = $('#setupStartCard');
+  startCard.hidden = !canOfferStart;
+  startCard.dataset.state = start.state || (start.canStart ? 'idle' : 'error');
+  const desktopStart = start.kind === 'desktop';
+  $('#setupStartTitle').textContent = startBusy ? 'Waiting for ComfyUI'
+    : (start.state === 'error' ? 'ComfyUI has not connected yet'
+      : (desktopStart ? 'Comfy Desktop is installed' : 'ComfyUI is ready to start'));
+  const startMessage = start.state && start.state !== 'idle' ? start.message : '';
+  $('#setupStartCopy').textContent = startMessage || (desktopStart
+    ? `${start.installationName ? `Open Comfy Desktop and press Play on ${start.installationName}. ` : 'Open Comfy Desktop and press Play on the installed ComfyUI. '}Mix Studio will find the port automatically.`
+    : 'Start the detected portable installation. Mix Studio will find its local port automatically.');
+  $('#setupStartComfy').textContent = desktopStart ? 'Open Comfy Desktop' : 'Start ComfyUI';
+  $('#setupStartComfy').disabled = busy || !start.canStart || !state.profileIsOwner;
+  $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
+  const endpointMatches = setupDiscoveredMatches.length ? setupDiscoveredMatches : (start.matches || []);
+  renderSetupEndpointChoices(endpointMatches);
+  $('#setupDetectedPath').dataset.state = incompleteComfy ? 'incomplete' : (comfy.connected || comfy.detectedPath ? 'ready' : 'needed');
   $('#setupDetectedPath').textContent = comfy.connected
-    ? 'ComfyUI is connected on this computer.'
-    : (comfy.detectedPath ? 'ComfyUI was found on this computer.' : (comfy.configuredPath ? 'A saved ComfyUI connection is available.' : 'ComfyUI has not been connected yet.'));
-  const nodeSetupActive = ['running', 'cancelling', 'restarting', 'error'].includes(dependency.state);
+    ? `ComfyUI is connected${comfy.url ? ` at ${comfy.url}` : ' on this computer'}.`
+    : (incompleteComfy
+      ? `An incomplete ComfyUI installation was found${comfy.partialPath ? ` at ${comfy.partialPath}` : ''}. Open Comfy Desktop and finish creating the installation, or install again.`
+      : (comfy.detectedPath ? 'An initialized ComfyUI installation was found on this computer.' : (comfy.configuredPath ? 'A saved ComfyUI connection is available.' : 'ComfyUI has not been connected yet.')));
+  const nodeSetupActive = ['running', 'cancelling', 'restarting'].includes(dependency.state);
   const connectionChoicesHidden = !!comfy.connected || nodeSetupActive;
   $('#setupConnectionChoices').hidden = connectionChoicesHidden;
+  $('#setupConnectionChoices').classList.toggle('start-offered', canOfferStart);
+  $('#setupUseDetected').hidden = canOfferStart;
   $('#setupConnectHeading').textContent = comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI');
   $('#setupConnectCopy').textContent = comfy.connected
     ? 'Connection details are available below if a path changes.'
-    : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Choose the easiest option for the generation computer.');
+    : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Start a detected installation or choose another location. Mix Studio finds the port automatically.');
   $('#setupUseDetected').disabled = busy || !comfy.detectedPath || !state.profileIsOwner;
   $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial || !state.profileIsOwner;
-  $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Downloads the signed official ComfyUI Desktop installer' : 'Available when Mix Studio is running on Windows';
+  $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Opens the official Comfy Desktop app or downloads its signed installer' : 'Available when Mix Studio is running on Windows';
   $('#setupSaveConnection').disabled = busy || !state.profileIsOwner;
   const canBrowse = setupViewStatus.platform === 'win32' && state.profileIsOwner && !busy;
   $('#setupBrowseComfy').disabled = !canBrowse;
@@ -27364,6 +27490,7 @@ function renderInitialSetup() {
   $('#setupBrowseComfy').title = browseTitle;
   $('#setupBrowseComfyDetails').title = browseTitle;
   $('#setupBrowseModels').title = browseTitle;
+  renderPhoneAccess();
 
   const missing = dependencyMissingLabels();
   const selected = syncDependencySelection(missing);
@@ -27428,7 +27555,9 @@ function renderInitialSetup() {
 
   let recommendedStep = !comfy.connected ? 'connect' : (installReady ? 'finish' : 'install');
   if (officialBusy) recommendedStep = 'connect';
+  if (startBusy) recommendedStep = 'connect';
   if (dependencyBusy) recommendedStep = 'install';
+  if (setupFirstRun && recommendedStep === 'finish' && !setupStepTouched) setPhoneAccessExpanded(true);
   if (!setupStepTouched || (setupActiveStep === 'install' && (workflowReady || restartRequired))) {
     setSetupStep(recommendedStep);
   } else {
@@ -27440,14 +27569,19 @@ function scheduleSetupPoll() {
   clearTimeout(setupPollTimer);
   if (!$('#initialSetupSheet').classList.contains('show')) return;
   const comfyBusy = ['running', 'cancelling'].includes(setupViewStatus?.comfy?.install?.state);
+  const comfyStartBusy = !!setupViewStatus?.comfy?.start?.running || setupViewStatus?.comfy?.start?.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
-  if (!comfyBusy && !dependencyBusy && !setupPendingComponents.length) return;
+  if (!comfyBusy && !comfyStartBusy && !dependencyBusy && !setupPendingComponents.length) return;
   setupPollTimer = setTimeout(() => refreshSetupStatus(), 1000);
 }
 
 async function refreshSetupStatus(forceCompatibility = false) {
   try {
     setupViewStatus = await api(`/api/setup/status${forceCompatibility ? '?refresh=1' : ''}`);
+    if (setupViewStatus.comfy?.connected) setupDiscoveredMatches = [];
+    else if (Array.isArray(setupViewStatus.comfy?.start?.matches) && setupViewStatus.comfy.start.matches.length) {
+      setupDiscoveredMatches = setupViewStatus.comfy.start.matches;
+    }
     if (['error', 'cancelled'].includes(setupViewStatus.comfy?.install?.state)) setupPendingComponents = [];
     setupDependencyState = await api('/api/dependencies/status').catch(() => setupDependencyState);
     if (['error', 'cancelled'].includes(setupDependencyState?.state)) setupAutoRestart = false;
@@ -27477,6 +27611,54 @@ async function refreshSetupStatus(forceCompatibility = false) {
   scheduleSetupPoll();
 }
 
+async function discoverComfyFromSetup(options = {}) {
+  const button = $('#setupFindComfy');
+  const previous = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Looking…';
+  try {
+    const result = await api('/api/setup/comfy/discover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options.url ? { url: options.url } : {}),
+    });
+    setupViewStatus = result.status || setupViewStatus;
+    setupDiscoveredMatches = result.discovery?.ambiguous ? (result.discovery.matches || []) : [];
+    if (result.ok) {
+      setupDiscoveredMatches = [];
+      await loadMeta(true);
+      if (!options.silent) toast(`Connected to ComfyUI at ${result.discovery.url}`);
+    } else if (!options.silent && !result.discovery?.ambiguous) {
+      toast('No running ComfyUI was found yet. Start it, then try again.');
+    }
+    renderInitialSetup();
+    return result;
+  } catch (error) {
+    if (!options.silent) toast(error.message, true);
+    return null;
+  } finally {
+    button.textContent = previous;
+    button.disabled = false;
+  }
+}
+
+async function startComfyFromSetup() {
+  const button = $('#setupStartComfy');
+  button.disabled = true;
+  try {
+    const result = await api('/api/comfy/start', { method: 'POST' });
+    if (result.status) setupViewStatus = result.status;
+    else if (result.start && setupViewStatus?.comfy) setupViewStatus.comfy.start = result.start;
+    setupDiscoveredMatches = result.matches || result.status?.comfy?.start?.matches || [];
+    if (result.alreadyRunning) await loadMeta(true);
+    renderInitialSetup();
+    scheduleSetupPoll();
+    return result;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function saveSetupConnection(pathOverride) {
   const pathValue = String(pathOverride || $('#setupComfyPath').value || '').trim();
   const result = await api('/api/setup/connection', {
@@ -27496,10 +27678,25 @@ async function saveSetupConnection(pathOverride) {
 }
 
 async function startOfficialComfyFromSetup() {
-  const result = await api('/api/setup/comfy/install', { method: 'POST' });
-  if (setupViewStatus?.comfy) setupViewStatus.comfy.install = result.install;
-  renderInitialSetup();
-  scheduleSetupPoll();
+  const previous = setupViewStatus?.comfy?.install;
+  if (setupViewStatus?.comfy) {
+    setupViewStatus.comfy.install = {
+      state: 'running',
+      phase: 'starting',
+      message: 'Opening Comfy Desktop on the generation computer…',
+    };
+    renderInitialSetup();
+  }
+  try {
+    const result = await api('/api/setup/comfy/install', { method: 'POST' });
+    if (setupViewStatus?.comfy) setupViewStatus.comfy.install = result.install;
+    renderInitialSetup();
+    scheduleSetupPoll();
+  } catch (error) {
+    if (setupViewStatus?.comfy) setupViewStatus.comfy.install = previous;
+    renderInitialSetup();
+    throw error;
+  }
 }
 
 async function startSetupDependencies(components) {
@@ -27595,8 +27792,20 @@ $('#setupKrea2Variant').addEventListener('change', async () => {
 $('#setupGuideToggle').addEventListener('click', () => {
   setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');
 });
+$('#setupStartComfy').addEventListener('click', async () => {
+  try { await startComfyFromSetup(); }
+  catch (error) { toast(error.message, true); }
+});
+$('#setupFindComfy').addEventListener('click', () => discoverComfyFromSetup());
+$('#setupEndpointChoiceList').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-comfy-endpoint]');
+  if (button) discoverComfyFromSetup({ url: button.dataset.comfyEndpoint });
+});
 $('#setupCustomToggle').addEventListener('click', () => {
   setSetupCustomExpanded($('#setupCustomToggle').getAttribute('aria-expanded') !== 'true');
+});
+$('#phoneAccessToggle').addEventListener('click', () => {
+  setPhoneAccessExpanded($('#phoneAccessToggle').getAttribute('aria-expanded') !== 'true');
 });
 $$('[data-setup-tab]').forEach((tab) => {
   tab.addEventListener('click', () => setSetupStep(tab.dataset.setupTab, { user: true }));
@@ -27714,12 +27923,21 @@ $('#setupBack').addEventListener('click', () => {
 $('#setupNext').addEventListener('click', async () => {
   const index = SETUP_STEPS.indexOf(setupActiveStep);
   if (index >= SETUP_STEPS.length - 1) {
+    if (!setupGenerationReady()) return;
     const resumeTutorial = firstImageTutorialAwaitingSetup && firstImageTutorialReady();
-    closeGenerationSetup({ pauseTutorial: !resumeTutorial });
+    const showFirstRunOffer = firstRunTutorialAfterSetupProfile === state.profile?.id;
+    closeGenerationSetup({ pauseTutorial: !resumeTutorial, completed: true });
     if (resumeTutorial) await resumeFirstImageTutorialAfterSetup();
+    else if (showFirstRunOffer) {
+      firstRunTutorialAfterSetupProfile = '';
+      firstImageTutorialPhase = '';
+      queueMicrotask(maybeShowFirstRunTutorial);
+    }
     return;
   }
-  setSetupStep(SETUP_STEPS[index + 1], { user: true });
+  const nextStep = SETUP_STEPS[index + 1];
+  setSetupStep(nextStep, { user: true });
+  if (nextStep === 'finish' && setupFirstRun) setPhoneAccessExpanded(true);
 });
 $('#setupCancel').addEventListener('click', async () => {
   const officialState = setupViewStatus?.comfy?.install?.state;
@@ -27738,11 +27956,27 @@ $('#setupCancel').addEventListener('click', async () => {
   }
   setupPendingComponents = [];
   setupAutoRestart = false;
-  closeGenerationSetup({ pauseTutorial: true });
+  await refreshSetupStatus().catch(() => {});
 });
 $('#dependencyOpenSetup').addEventListener('click', () => {
   $('#settingsSheet').classList.remove('show');
   openInitialSetup();
+});
+$('#phoneAccessOpen').addEventListener('click', () => {
+  $('#settingsSheet').classList.remove('show');
+  openInitialSetup({ step: 'finish', phoneGuide: true, message: 'Review private phone access or update the generation computer.' });
+});
+$('#phoneAccessCopy').addEventListener('click', async () => {
+  const url = $('#phoneAccessCopy').dataset.url;
+  if (!url) return;
+  try { await copyTextToClipboard(url); toast('Phone address copied'); }
+  catch { toast('Could not copy the phone address', true); }
+});
+$('#phoneAccessShare').addEventListener('click', async () => {
+  const url = $('#phoneAccessShare').dataset.url;
+  if (!url || typeof navigator.share !== 'function') return;
+  try { await navigator.share({ title: 'Mix Studio', text: 'Open Mix Studio on a device in this Tailscale network.', url }); }
+  catch (error) { if (error?.name !== 'AbortError') toast(error.message, true); }
 });
 
 function renderGenerationSetupEntry() {
@@ -28127,10 +28361,12 @@ function renderHealth() {
 
 $$('.sheet').forEach((sheet) => {
   const closeSheet = () => {
-    if (sheet.id === 'initialSetupSheet') closeGenerationSetup({ pauseTutorial: true });
+    if (sheet.id === 'initialSetupSheet') closeGenerationSetup({ pauseTutorial: true, deliberate: true });
     else sheet.classList.remove('show');
   };
-  sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet && sheet.id !== 'initialSetupSheet') closeSheet();
+  });
   sheet.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
   new MutationObserver(syncSheetScrollLock).observe(sheet, { attributes: true, attributeFilter: ['class'] });
 });

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { portableBootstrapConfig } = require('../installer/bootstrap');
+const { desktopComfyPath, portableBootstrapConfig } = require('../installer/bootstrap');
 const dependencyCli = require('../installer/install-dependencies');
 const {
   QUICK_SETUP_COMPONENTS,
@@ -292,6 +292,31 @@ test('minimal bootstrap preserves an uninstalled gallery and opens setup in app'
   }
 });
 
+test('bootstrap recognizes current Comfy Desktop instances and ignores incomplete folders', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-desktop-'));
+  const appData = path.join(temp, 'app-data');
+  const installRoot = path.join(temp, 'ComfyUI-Installs', 'main');
+  const comfyRoot = path.join(installRoot, 'ComfyUI');
+  const python = path.join(comfyRoot, '.venv', 'Scripts', 'python.exe');
+  const registryDir = path.join(appData, 'Comfy Desktop');
+  fs.mkdirSync(registryDir, { recursive: true });
+  fs.mkdirSync(comfyRoot, { recursive: true });
+  fs.writeFileSync(path.join(registryDir, 'installations.json'), JSON.stringify([{
+    id: 'main',
+    installPath: installRoot,
+    sourceId: 'comfyorg',
+    createdAt: '2026-07-21T00:00:00.000Z',
+  }]));
+  try {
+    assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), '');
+    fs.mkdirSync(path.dirname(python), { recursive: true });
+    fs.writeFileSync(python, '');
+    assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), comfyRoot);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test('generation setup lives in the web app and gates only a generation attempt', () => {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
@@ -301,6 +326,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
     'initialSetupSheet', 'setupTabConnect', 'setupTabInstall', 'setupTabFinish',
     'setupPaneConnect', 'setupPaneInstall', 'setupPaneFinish', 'setupQuickStart',
     'setupCurrentWorkflow', 'setupFullGuide', 'setupInstallComfy', 'setupUseDetected',
+    'setupStartCard', 'setupStartComfy', 'setupFindComfy', 'setupEndpointChoices',
     'setupBrowseComfy', 'setupBrowseComfyDetails', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
     'setupHardwareSummary', 'setupShowDetails', 'setupDependencyAccess', 'setupDependencyAccessLink',
     'setupCancel', 'setupBack', 'setupNext',
@@ -314,6 +340,8 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /function setSetupStep\(step/);
   assert.match(app, /\/api\/setup\/browse/);
   assert.match(app, /\/api\/setup\/comfy\/cancel/);
+  assert.match(app, /\/api\/setup\/comfy\/discover/);
+  assert.match(app, /\/api\/comfy\/start/);
   assert.match(app, /\/api\/dependencies\/cancel/);
   assert.match(app, /function conciseSetupError\(value\)/);
   assert.match(app, /renderDependencyAccess\('#setupDependencyAccess', '#setupDependencyAccessLink', operationState\)/);
@@ -321,16 +349,24 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /showErrorDetail\(setupOperationDiagnostic, 'Setup diagnostic'\)/);
   assert.match(app, /quick\.hidden = !!setupContextComponents\.length \|\| !quickMissing\.length/);
   assert.match(app, /connectionChoicesHidden = !!comfy\.connected \|\| nodeSetupActive/);
+  assert.match(app, /e\.target === sheet && sheet\.id !== 'initialSetupSheet'/);
+  assert.match(app, /Generation setup is still needed\. Press Generate or open Advanced Settings to continue\./);
+  assert.match(app, /cancel\.hidden = !cancellable/);
+  assert.match(app, /next\.disabled = busy \|\| !workflowReady/);
   assert.match(style, /\.setup-input-row \{[^}]*grid-template-columns: minmax\(0,1fr\) 40px/);
   assert.match(app, /askConfirm\(\{[\s\S]{0,360}out-of-memory error/);
   assert.match(app, /setupAutoRestart[\s\S]{0,900}\/api\/comfy\/restart/);
   assert.match(style, /\.setup-panel \{[\s\S]{0,500}background: #000;/);
+  assert.match(style, /\.setup-sheet \{[\s\S]{0,180}align-items: center/);
+  assert.match(style, /@keyframes setupDialogIn/);
   assert.match(style, /\.setup-stage \{[\s\S]{0,180}overflow-y: auto/);
   assert.match(server, /\/api\/setup\/status/);
   assert.match(server, /\/api\/setup\/connection/);
   assert.match(server, /\/api\/setup\/browse/);
   assert.match(server, /\/api\/setup\/comfy\/install/);
   assert.match(server, /\/api\/setup\/comfy\/cancel/);
+  assert.match(server, /\/api\/setup\/comfy\/discover/);
+  assert.match(server, /\/api\/comfy\/start/);
   assert.match(server, /taskkill[\s\S]{0,120}'\/T'[\s\S]{0,80}'\/F'/);
   assert.match(server, /Only the owner profile can configure the generation desktop/);
 });
@@ -342,10 +378,13 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
   const ltx = manifest.features.find((feature) => feature.id === 'video.ltx');
   const image = manifest.features.find((feature) => feature.id === 'core.image');
-  assert.match(helper, /https:\/\/download\.comfy\.org\/windows\/nsis\/x64/);
+  assert.match(helper, /https:\/\/dl\.todesktop\.com\/241130tqe9q3y/);
   assert.match(helper, /Get-AuthenticodeSignature/);
   assert.match(helper, /SignatureStatus\]::Valid/);
   assert.match(helper, /Get-ComfyDesktopBase/);
+  assert.match(helper, /Comfy Desktop\\installations\.json/);
+  assert.match(helper, /Comfy Desktop\\Comfy Desktop\.exe/);
+  assert.match(helper, /create or finish an installation/);
   assert.match(discovery, /\/object_info/);
   assert.match(discovery, /extra_model_paths\.yaml/);
   assert.match(discovery, /registeredModelNames/);
