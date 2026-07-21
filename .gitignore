@@ -11,7 +11,7 @@ node_modules/
 # Machine-specific helper scripts and scratch probes
 *.bat
 !start.bat
-!install.bat
+!install_MixStudio.bat
 !uninstall.bat
 check*.txt
 check*.json

@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/pages.yml
       - docs/download/**
-      - install.bat
+      - install_MixStudio.bat
       - public/modatory-logo.svg
       - docs/download/mix-studio-wordmark.svg
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
         run: |
           mkdir -p _site
           cp docs/download/index.html _site/index.html
-          cp install.bat _site/install.bat
+          cp install_MixStudio.bat _site/install_MixStudio.bat
           cp public/modatory-logo.svg _site/modatory-logo.svg
           cp docs/download/mix-studio-wordmark.svg _site/mix-studio-wordmark.svg
           cp docs/download/mix-studio-create.webp _site/mix-studio-create.webp

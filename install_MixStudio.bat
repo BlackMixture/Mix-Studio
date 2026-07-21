@@ -6,7 +6,7 @@ cd /d "%~dp0"
 if exist "%~dp0installer\bootstrap.js" goto run_app
 
 set "MIX_STUDIO_REPO=https://github.com/BlackMixture/Mix-Studio.git"
-set "MIX_STUDIO_HOME=%USERPROFILE%\Mix Studio"
+set "MIX_STUDIO_HOME=%~dp0Mix Studio"
 set "GIT_EXE="
 
 echo.
@@ -45,9 +45,9 @@ echo Downloading Mix Studio...
 if errorlevel 1 goto clone_failed
 
 :launch_downloaded
-if not exist "%MIX_STUDIO_HOME%\install.bat" goto clone_failed
+if not exist "%MIX_STUDIO_HOME%\install_MixStudio.bat" goto clone_failed
 echo Opening Mix Studio...
-start "" "%MIX_STUDIO_HOME%\install.bat"
+start "" "%MIX_STUDIO_HOME%\install_MixStudio.bat"
 exit /b 0
 
 :run_app

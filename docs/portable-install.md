@@ -6,8 +6,8 @@ The bootstrap is intentionally small. It gets the Mix Studio web app running fir
 
 ## New machine
 
-1. Open `https://blackmixture.github.io/Mix-Studio/` on Windows and download `install.bat`.
-2. Run the downloaded file. It installs Git through `winget` when necessary and clones the official repository into `%USERPROFILE%\Mix Studio`.
+1. Open `https://blackmixture.github.io/Mix-Studio/` on Windows and download `install_MixStudio.bat` into the parent folder where you want Mix Studio installed.
+2. Run the downloaded file. It installs Git through `winget` when necessary and clones the official repository into a `Mix Studio` folder beside the installer. For example, running `D:\AI\install_MixStudio.bat` installs the app at `D:\AI\Mix Studio`.
 3. The downloaded checkout installs or updates Node.js LTS when Node 22+ is unavailable, prepares `install.json`, starts `start.bat`, and opens `http://127.0.0.1:3300/`.
 4. Mix Studio creates one open **Owner** profile on a fresh installation and shows the normal workspace. Rename the profile or add a PIN later from the profile menu.
 5. Enter a prompt and press **Generate**. If that workflow needs ComfyUI, a model, or a node, the **Generation setup** panel opens without discarding the prompt.
@@ -33,7 +33,7 @@ Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configu
 
 ComfyUI, model files, galleries, and generation work remain on the Windows machine. The phone sends requests and displays the Mix Studio interface over the private Tailscale connection; public port forwarding is not required.
 
-For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/Mix-Studio.git`, then launch `install.bat` from that checkout.
+For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/Mix-Studio.git`, then launch `install_MixStudio.bat` from that checkout.
 
 The installer is intentionally idempotent. Rerunning it preserves the existing `data/` location and ComfyUI connection, refreshes the minimal bootstrap metadata atomically, starts the app, and opens the browser. Generation setup is always available later from **Advanced Settings → General**.
 
@@ -47,7 +47,7 @@ All are machine-specific and ignored by Git. The installer does not delete or re
 
 ## Uninstalling
 
-Double-click `uninstall.bat` in the checkout. After confirmation it moves managed profiles, settings, uploads, and generations to `%LOCALAPPDATA%\Mix Studio\data`, preserves the previous ComfyUI connection, and removes the entire checkout. This leaves `%USERPROFILE%\Mix Studio` available for a clean downloader reinstall. The next bootstrap reconnects the preserved data and ComfyUI paths. The uninstaller never removes ComfyUI, shared model folders, mirrored exports, arbitrary external data paths, or Node.js.
+Double-click `uninstall.bat` in the checkout. After confirmation it moves managed profiles, settings, uploads, and generations to `%LOCALAPPDATA%\Mix Studio\data`, preserves the previous ComfyUI connection, and removes the entire checkout. This leaves the original installation location available for a clean downloader reinstall. The next bootstrap reconnects the preserved data and ComfyUI paths. The uninstaller never removes ComfyUI, shared model folders, mirrored exports, arbitrary external data paths, or Node.js.
 
 For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout, Mix Studio's managed local or preserved data folder, and its preserved setup profile. Arbitrary external data, export, ComfyUI, and model paths are not touched.
 

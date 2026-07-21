@@ -21,7 +21,7 @@ const {
 const root = path.resolve(__dirname, '..');
 
 test('portable installer starts the web app before generation setup', () => {
-  const launcher = fs.readFileSync(path.join(root, 'install.bat'), 'utf8');
+  const launcher = fs.readFileSync(path.join(root, 'install_MixStudio.bat'), 'utf8');
   const start = fs.readFileSync(path.join(root, 'start.bat'), 'utf8');
   assert.match(launcher, /if exist "%~dp0installer\\bootstrap\.js" goto run_app/i);
   assert.match(launcher, /winget (install|upgrade) --id OpenJS\.NodeJS\.LTS/i);
@@ -36,12 +36,13 @@ test('portable installer starts the web app before generation setup', () => {
 });
 
 test('standalone installer downloads the official Git checkout before opening the app', () => {
-  const launcher = fs.readFileSync(path.join(root, 'install.bat'), 'utf8');
+  const launcher = fs.readFileSync(path.join(root, 'install_MixStudio.bat'), 'utf8');
   assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
   assert.match(launcher, /winget install --id Git\.Git/);
   assert.match(launcher, /clone --branch main --single-branch/);
-  assert.match(launcher, /%USERPROFILE%\\Mix Studio/);
-  assert.match(launcher, /start "" "%MIX_STUDIO_HOME%\\install\.bat"/i);
+  assert.match(launcher, /set "MIX_STUDIO_HOME=%~dp0Mix Studio"/i);
+  assert.doesNotMatch(launcher, /%USERPROFILE%\\Mix Studio/);
+  assert.match(launcher, /start "" "%MIX_STUDIO_HOME%\\install_MixStudio\.bat"/i);
   assert.match(launcher, /target folder already exists but is not a Mix Studio Git checkout/i);
   assert.match(launcher, /prepare_existing_target/);
   assert.match(launcher, /Preserving gallery data left by an earlier uninstall/);
@@ -73,7 +74,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   const localWordmark = fs.readFileSync(path.join(root, 'docs', 'download', 'mix-studio-wordmark.svg'), 'utf8');
   const localSources = [...page.matchAll(/\ssrc="\.\/([^"?#]+)"/g)].map((match) => match[1]);
   assert.match(page, /Download for Windows/);
-  assert.match(page, /href="\.\/install\.bat" download="install\.bat"/);
+  assert.match(page, /href="\.\/install_MixStudio\.bat" download="install_MixStudio\.bat"/);
   assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 4);
   assert.match(page, /macOS support coming soon/);
   assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
@@ -245,7 +246,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /tailscale\.com\/download/);
   assert.match(page, /Your studio/);
   assert.doesNotMatch(page, /—/);
-  assert.match(workflow, /cp install\.bat _site\/install\.bat/);
+  assert.match(workflow, /cp install_MixStudio\.bat _site\/install_MixStudio\.bat/);
   assert.match(workflow, /cp docs\/download\/mix-studio-wordmark\.svg _site\/mix-studio-wordmark\.svg/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.webp _site\/mix-studio-create\.webp/);
   assert.match(workflow, /cp docs\/download\/comfyui-logo\.svg _site\/comfyui-logo\.svg/);

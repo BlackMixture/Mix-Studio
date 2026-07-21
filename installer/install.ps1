@@ -180,7 +180,7 @@ function Install-ComfyDesktop {
     if ($Base -and (Test-ComfyEnvironmentReady $Base)) { return $Base }
     Start-Sleep -Seconds 2
   }
-  throw 'ComfyUI Desktop was installed, but initialization was not completed within 30 minutes. Finish its setup, then run install.bat again; the completed installation will be detected.'
+  throw 'ComfyUI Desktop was installed, but initialization was not completed within 30 minutes. Finish its setup, then run install_MixStudio.bat again; the completed installation will be detected.'
 }
 
 $HardwareProfile = if ($HardwareProfileFile) {
@@ -197,10 +197,10 @@ Write-Host '  Your gallery and settings are preserved. Setup never deletes data.
 
 Write-Step 'Checking the portable checkout'
 if (-not (Test-Path (Join-Path $Root '.git'))) {
-  throw "This folder is not a Git checkout. Install Git, run 'git clone https://github.com/BlackMixture/Mix-Studio.git', then double-click install.bat inside that folder. A ZIP download cannot use in-app updates."
+  throw "This folder is not a Git checkout. Install Git, run 'git clone https://github.com/BlackMixture/Mix-Studio.git', then double-click install_MixStudio.bat inside that folder. A ZIP download cannot use in-app updates."
 }
 if ($null -eq (Get-Command git -ErrorAction SilentlyContinue)) {
-  throw 'Git is not installed or is not on PATH. Install Git for Windows, then run install.bat again.'
+  throw 'Git is not installed or is not on PATH. Install Git for Windows, then run install_MixStudio.bat again.'
 }
 $Branch = (& git -C $Root rev-parse --abbrev-ref HEAD 2>$null).Trim()
 if (-not $Branch -or $Branch -eq 'HEAD') {
@@ -220,10 +220,10 @@ if ($NodeMajor -lt 22) {
   if ($CanUseWinget -and (Read-YesNo 'Node.js 22+ is required. Install the current Node.js LTS with winget?' $true)) {
     & winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -ne 0) { throw 'Node.js installation failed. Install Node.js 22+ manually and run setup again.' }
-    Write-Host 'Node.js was installed. Close this window, then run install.bat again so Windows can refresh PATH.' -ForegroundColor Yellow
+    Write-Host 'Node.js was installed. Close this window, then run install_MixStudio.bat again so Windows can refresh PATH.' -ForegroundColor Yellow
     exit 10
   }
-  throw 'Node.js 22+ is required. Install it from https://nodejs.org and run install.bat again.'
+  throw 'Node.js 22+ is required. Install it from https://nodejs.org and run install_MixStudio.bat again.'
 }
 Write-Host "Node.js $NodeVersion" -ForegroundColor Green
 
