@@ -1214,7 +1214,6 @@
   <div class="desktop-stage-shell">
     <header class="desktop-stage-head">
       <div class="desktop-stage-heading">
-        <span class="desktop-stage-kicker" id="desktopStageKicker">Generation</span>
         <h1 id="desktopStageTitle">Ready to create</h1>
         <label class="desktop-group-name-field" id="desktopStageGroupNameField" for="desktopStageGroupName" title="Rename gallery group" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16.5-.8 3.3 3.3-.8L18 8.5 15.5 6 5 16.5Z"/><path d="m14 7.5 2.5 2.5"/></svg>
@@ -1350,6 +1349,16 @@
       <svg class="privacy-lock-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
     </button>
     <div class="folder-row" id="folderRow" role="listbox" aria-label="Gallery folders" aria-hidden="true" inert></div>
+  </div>
+  <div class="library-group-focus" id="libraryGroupFocus" hidden>
+    <button class="library-group-back" id="libraryGroupBack" type="button" aria-label="Back to grouped library">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg>
+      <span>Back</span>
+    </button>
+    <span class="library-group-focus-copy">
+      <strong id="libraryGroupFocusTitle">Gallery group</strong>
+      <small id="libraryGroupFocusCount">0 results</small>
+    </span>
   </div>
   <div class="grid" id="galleryGrid"></div>
   <section class="uploaded-assets-library" id="uploadedAssetsLibrary" aria-labelledby="uploadedAssetsTitle" hidden>

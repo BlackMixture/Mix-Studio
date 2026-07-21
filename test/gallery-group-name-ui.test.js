@@ -12,13 +12,13 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('desktop stage separates editable group identity from member position', () => {
-  assert.match(html, /id="desktopStageKicker"/);
+  assert.doesNotMatch(html, /id="desktopStageKicker"/);
   assert.match(html, /id="desktopStageGroupNameField"[^>]*hidden/);
   assert.match(html, /id="desktopStageGroupName"[^>]*maxlength="80"[^>]*placeholder="Untitled group"/);
   assert.match(html, /id="desktopStageGroupName"[^>]*autocomplete="one-time-code"[^>]*data-form-type="other"[^>]*data-1p-ignore[^>]*data-lpignore="true"/);
   assert.match(html, /id="desktopStagePosition"[^>]*hidden/);
   assert.match(app, /const galleryGroup = activeGalleryGroup\(item\)/);
-  assert.match(app, /kicker\.textContent = `\$\{galleryGroup\.kindLabel\} · \$\{galleryGroup\.items\.length\} results`/);
+  assert.doesNotMatch(app, /desktopStageKicker|kicker\.textContent/);
   assert.match(app, /position\.textContent = galleryGroup\.position/);
   assert.match(css, /\.desktop-group-name-field input:focus/);
   assert.match(css, /\.desktop-group-name-field:focus-within > svg \{[\s\S]*width: 17px;[\s\S]*opacity: 1;/);

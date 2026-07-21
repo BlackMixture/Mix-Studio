@@ -29,6 +29,23 @@ test('desktop library cards load their media and saved settings into the workspa
   assert.match(css, /\.card\.desktop-active:not\(\.selected\)/);
 });
 
+test('desktop library groups drill into the rail and return to grouped results', () => {
+  assert.match(html, /id="libraryGroupFocus"[^>]*hidden/);
+  assert.match(html, /id="libraryGroupBack"[^>]*aria-label="Back to grouped library"/);
+  assert.match(app, /libraryGroupFocus: null/);
+  assert.match(app, /function openDesktopLibraryGroup\(group\)/);
+  assert.match(app, /function closeDesktopLibraryGroup\(\)/);
+  assert.match(app, /focusedGroup \? orderedLibraryGroupFocusItems\(focusedGroup\) : visibleItems\(\)/);
+  assert.match(app, /function orderedLibraryGroupFocusItems\(group\)/);
+  assert.match(app, /return items\.reverse\(\)/);
+  assert.match(app, /items\.map\(\(item\) => \(\{ item, items: \[item\] \}\)\)/);
+  assert.match(app, /if \(!openDesktopLibraryGroup\(galleryGroup\)\) toggleItemLike\(item, card\)/);
+  assert.match(app, /galleryGroupType === focus\.type/);
+  assert.match(app, /galleryGroupId === String\(focus\.id\)/);
+  assert.match(app, /\$\('#libraryGroupBack'\)\.addEventListener\('click', closeDesktopLibraryGroup\)/);
+  assert.match(css, /#view-gallery\.library-group-focused \.library-search,[\s\S]*\.folder-picker \{ display: none; \}/);
+});
+
 test('full Library taps use a fast shared-origin focused transition on desktop and tablet layouts', () => {
   const fullLibraryTap = app.match(/function handleGalleryTap\(item, card\) \{[\s\S]*?\n\}/)?.[0] || '';
   assert.match(fullLibraryTap, /desktopWorkspaceActive\(\) && document\.body\.classList\.contains\('desktop-library-expanded'\)/);

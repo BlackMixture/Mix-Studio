@@ -140,6 +140,7 @@ const state = {
   galleryZoom: 3,
   likesOnly: false,
   libraryQuery: '',
+  libraryGroupFocus: null,
   mediaPreferences: {
     videoPreviews: true,
     previewCache: false,
@@ -16595,7 +16596,6 @@ function renderDesktopStage(item, mediaSel) {
   const progress = $('#desktopStageProgress');
   const info = $('#desktopStageInfo');
   const clear = $('#desktopStageClear');
-  const kicker = $('#desktopStageKicker');
   const title = $('#desktopStageTitle');
   const groupNameField = $('#desktopStageGroupNameField');
   const position = $('#desktopStagePosition');
@@ -16612,7 +16612,6 @@ function renderDesktopStage(item, mediaSel) {
     info.dataset.itemId = '';
     info.dataset.media = '';
     setDesktopStageMedia();
-    kicker.textContent = 'Generation';
     title.hidden = false;
     title.textContent = 'Ready to create';
     groupNameField.hidden = true;
@@ -16644,14 +16643,12 @@ function renderDesktopStage(item, mediaSel) {
   });
   const galleryGroup = activeGalleryGroup(item);
   if (galleryGroup) {
-    kicker.textContent = `${galleryGroup.kindLabel} · ${galleryGroup.items.length} results`;
     title.hidden = true;
     groupNameField.hidden = false;
     position.hidden = false;
     position.textContent = galleryGroup.position;
     setGalleryGroupNameInput($('#desktopStageGroupName'), item, galleryGroup);
   } else {
-    kicker.textContent = 'Generation';
     title.hidden = false;
     groupNameField.hidden = true;
     position.hidden = true;
@@ -16686,7 +16683,6 @@ function renderDesktopStageGenerating(statusText = 'Working…') {
   $('#desktopStageInfo').dataset.media = '';
   $('#desktopStageClear').hidden = true;
   $('#desktopStageStatus').hidden = false;
-  $('#desktopStageKicker').textContent = 'Generation';
   $('#desktopStageTitle').hidden = false;
   $('#desktopStageGroupNameField').hidden = true;
   $('#desktopStagePosition').hidden = true;
@@ -17711,6 +17707,63 @@ function activeGalleryGroup(item) {
   return null;
 }
 
+function resolvedLibraryGroupFocus() {
+  const focus = state.libraryGroupFocus;
+  if (!focus) return null;
+  const idKey = focus.type === 'angle' ? 'angleGroupId' : 'generationGroupId';
+  const item = state.items.find((candidate) => String(candidate[idKey] || '') === String(focus.id));
+  const group = activeGalleryGroup(item);
+  if (!group || group.type !== focus.type || String(group.id) !== String(focus.id)) {
+    state.libraryGroupFocus = null;
+    return null;
+  }
+  return { ...focus, ...group };
+}
+
+function orderedLibraryGroupFocusItems(group) {
+  const items = [...(group?.items || [])];
+  if (state.sortMode === 'old') return items;
+  if (state.sortMode === 'active') return items.sort((a, b) => itemActivity(b) - itemActivity(a));
+  if (state.sortMode === 'az') {
+    return items.sort((a, b) => (
+      strengthHuntItemLabel(a) || a.name || a.file || a.prompt || ''
+    ).localeCompare(strengthHuntItemLabel(b) || b.name || b.file || b.prompt || ''));
+  }
+  return items.reverse();
+}
+
+function openDesktopLibraryGroup(group) {
+  if (!desktopWorkspaceActive() || !group || group.items.length < 2) return false;
+  const panel = $('#view-gallery');
+  state.libraryGroupFocus = {
+    type: group.type,
+    id: String(group.id),
+    scrollTop: panel.scrollTop,
+  };
+  if (galleryTap) clearTimeout(galleryTap.timer);
+  galleryTap = null;
+  renderGrid();
+  panel.scrollTop = 0;
+  requestAnimationFrame(() => $('#libraryGroupBack').focus({ preventScroll: true }));
+  return true;
+}
+
+function closeDesktopLibraryGroup() {
+  const focus = state.libraryGroupFocus;
+  if (!focus) return;
+  state.libraryGroupFocus = null;
+  renderGrid();
+  const panel = $('#view-gallery');
+  panel.scrollTop = Number(focus.scrollTop) || 0;
+  requestAnimationFrame(() => {
+    const card = [...$$('#galleryGrid .card')].find((candidate) => (
+      candidate.dataset.galleryGroupType === focus.type
+      && candidate.dataset.galleryGroupId === String(focus.id)
+    ));
+    if (card) card.focus({ preventScroll: true });
+  });
+}
+
 function strengthHuntStrengthLabel(value) {
   const strength = Math.round((Number(value) || 0) * 100) / 100;
   return Number.isInteger(strength * 10) ? strength.toFixed(1) : strength.toFixed(2);
@@ -17822,7 +17875,12 @@ function galleryEntryNavigationItems(entry) {
 }
 
 function galleryNavigationTarget(item, direction) {
-  const sequence = galleryEntries(visibleItems()).flatMap(galleryEntryNavigationItems);
+  const focusedGroup = typeof resolvedLibraryGroupFocus === 'function'
+    ? resolvedLibraryGroupFocus()
+    : null;
+  const sequence = focusedGroup
+    ? orderedLibraryGroupFocusItems(focusedGroup)
+    : galleryEntries(visibleItems()).flatMap(galleryEntryNavigationItems);
   const index = sequence.findIndex((candidate) => candidate.id === item?.id);
   return index < 0 ? null : (sequence[index + direction] || null);
 }
@@ -18647,7 +18705,16 @@ function stopGallerySelectionDrag(event) {
 function renderGrid() {
   const grid = $('#galleryGrid');
   syncLibraryCollectionControls();
-  const showingUploads = state.activeFolder === 'uploaded-assets';
+  const focusedGroup = resolvedLibraryGroupFocus();
+  const groupFocusBar = $('#libraryGroupFocus');
+  const galleryPanel = $('#view-gallery');
+  galleryPanel.classList.toggle('library-group-focused', !!focusedGroup);
+  groupFocusBar.hidden = !focusedGroup;
+  if (focusedGroup) {
+    $('#libraryGroupFocusTitle').textContent = focusedGroup.name || focusedGroup.kindLabel;
+    $('#libraryGroupFocusCount').textContent = `${focusedGroup.items.length} results`;
+  }
+  const showingUploads = !focusedGroup && state.activeFolder === 'uploaded-assets';
   grid.hidden = showingUploads;
   $('#uploadedAssetsLibrary').hidden = !showingUploads;
   if (showingUploads) {
@@ -18662,8 +18729,10 @@ function renderGrid() {
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   releasePreviewCacheObjectUrls();
   grid.innerHTML = '';
-  const items = visibleItems();
-  const entries = galleryEntries(items);
+  const items = focusedGroup ? orderedLibraryGroupFocusItems(focusedGroup) : visibleItems();
+  const entries = focusedGroup
+    ? items.map((item) => ({ item, items: [item] }))
+    : galleryEntries(items);
   const dateItemIds = new Map();
   items.forEach((item) => {
     const key = galleryDateKey(item.createdAt);
@@ -18671,17 +18740,17 @@ function renderGrid() {
     dateItemIds.get(key).push(item.id);
   });
   $('#galleryEmpty').classList.toggle('hidden', entries.length > 0);
-  const query = state.libraryQuery.trim();
+  const query = focusedGroup ? '' : state.libraryQuery.trim();
   $('#galleryEmpty').textContent = query ? `No matches for “${query}”` : 'Nothing here yet';
-  $('#gallerySearchStatus').textContent = query
-    ? `${entries.length} matching generation${entries.length === 1 ? '' : 's'}`
-    : '';
-  $('#gallerySearchSelectAll').hidden = !query || !items.length;
+  $('#gallerySearchStatus').textContent = focusedGroup
+    ? `${items.length} generations in ${focusedGroup.name || focusedGroup.kindLabel}`
+    : (query ? `${entries.length} matching generation${entries.length === 1 ? '' : 's'}` : '');
+  $('#gallerySearchSelectAll').hidden = !!focusedGroup || !query || !items.length;
   let previousDate = '';
-  const showDates = state.sortMode !== 'az';
+  const showDates = !focusedGroup && state.sortMode !== 'az';
   for (const entry of entries) {
     const it = entry.item;
-    const galleryGroup = activeGalleryGroup(it);
+    const galleryGroup = focusedGroup ? null : activeGalleryGroup(it);
     const galleryGroupName = galleryGroup?.name || '';
     const dateKey = galleryDateKey(it.createdAt);
     if (showDates && dateKey !== previousDate) {
@@ -18769,10 +18838,18 @@ function renderGrid() {
       b.textContent = 'Before + after';
       card.appendChild(b);
     }
-    const groupCount = (entry.angleGroupId || entry.generationGroupId) && entry.items.length > 1
+    const groupCount = !focusedGroup && (entry.angleGroupId || entry.generationGroupId) && entry.items.length > 1
       ? entry.items.length
-      : (it.videos && it.videos.length > 1 ? it.videos.length : 0);
-    if (groupCount) {
+      : (!focusedGroup && it.videos && it.videos.length > 1 ? it.videos.length : 0);
+    if (focusedGroup) {
+      const memberIndex = focusedGroup.items.findIndex((member) => member.id === it.id) + 1;
+      const badge = document.createElement('span');
+      badge.className = 'badge generation-count-badge library-group-member-badge';
+      badge.textContent = String(memberIndex);
+      badge.title = `${memberIndex} of ${focusedGroup.items.length}`;
+      card.appendChild(badge);
+      card.setAttribute('aria-label', `${focusedGroup.name || focusedGroup.kindLabel}, generation ${memberIndex} of ${focusedGroup.items.length}`);
+    } else if (groupCount) {
       const badge = document.createElement('span');
       badge.className = 'badge generation-count-badge' + (entry.angleGroupId ? ' angle-group-badge' : '');
       badge.textContent = String(groupCount);
@@ -18788,6 +18865,9 @@ function renderGrid() {
       card.setAttribute('aria-label', `${galleryGroupName}, ${galleryGroup.items.length} results`);
       card.title = `${galleryGroupName} · ${galleryGroup.items.length} results`;
     }
+    if (galleryGroup && desktopWorkspaceActive()) {
+      card.title = `${galleryGroupName ? `${galleryGroupName} · ` : ''}${galleryGroup.items.length} results · Double-click to view group`;
+    }
     if (entry.items.some(itemHasLike)) {
       const badge = document.createElement('span');
       badge.className = 'badge liked-badge';
@@ -18802,6 +18882,10 @@ function renderGrid() {
     }
     card.dataset.id = it.id;
     card.dataset.groupItemIds = entry.items.map((groupItem) => groupItem.id).join(',');
+    if (galleryGroup) {
+      card.dataset.galleryGroupType = galleryGroup.type;
+      card.dataset.galleryGroupId = String(galleryGroup.id);
+    }
     card.dataset.media = latestVideo ? latestVideo.id : 'image';
     card.draggable = false;
     if (entry.items.length > 1) {
@@ -18896,7 +18980,7 @@ function renderGrid() {
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
-      else if (desktopWorkspaceActive() && ($('#lightbox').classList.contains('show') || state.view !== 'gallery')) handleDesktopGalleryTap(it, card);
+      else if (desktopWorkspaceActive() && ($('#lightbox').classList.contains('show') || state.view !== 'gallery')) handleDesktopGalleryTap(it, card, galleryGroup);
       else handleGalleryTap(it, card);
     });
     grid.appendChild(card);
@@ -18940,12 +19024,12 @@ async function selectDesktopLibraryItem(item, media = 'image') {
   }
 }
 
-function handleDesktopGalleryTap(item, card) {
+function handleDesktopGalleryTap(item, card, galleryGroup = null) {
   const now = Date.now();
   if (galleryTap && galleryTap.itemId === item.id && now - galleryTap.time < 300) {
     clearTimeout(galleryTap.timer);
     galleryTap = null;
-    toggleItemLike(item, card);
+    if (!openDesktopLibraryGroup(galleryGroup)) toggleItemLike(item, card);
     return;
   }
   if (galleryTap) clearTimeout(galleryTap.timer);
@@ -18958,6 +19042,8 @@ function handleDesktopGalleryTap(item, card) {
   };
   selectDesktopLibraryItem(item, card.dataset.media || 'image');
 }
+
+$('#libraryGroupBack').addEventListener('click', closeDesktopLibraryGroup);
 
 let desktopGalleryDrag = null;
 const DESKTOP_GALLERY_DROP_SELECTOR = [
