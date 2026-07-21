@@ -102,7 +102,7 @@ test('mobile source preview keeps its primary action in the visible panel', () =
 
 test('previous-generation image choices preserve the complete source frame', () => {
   assert.match(styleCss, /\.asset-picker-thumb img \{[\s\S]*?width: auto;[\s\S]*?height: auto;[\s\S]*?max-width: 100%;[\s\S]*?max-height: 100%;[\s\S]*?object-fit: contain !important;/);
-  assert.match(styleCss, /\.asset-picker-preview-current img \{[\s\S]*?width: auto;[\s\S]*?height: auto;[\s\S]*?max-width: 100%;[\s\S]*?max-height: 100%;[\s\S]*?object-fit: contain !important;/);
+  assert.match(styleCss, /\.asset-picker-preview-current img \{[\s\S]*?position: absolute;[\s\S]*?inset: 0;[\s\S]*?width: 100% !important;[\s\S]*?height: 100% !important;[\s\S]*?object-fit: contain !important;/);
   assert.match(styleCss, /\.ref-slot img \{[^}]*object-fit: contain !important;[^}]*object-position: center;/);
 });
 
