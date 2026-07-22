@@ -139,7 +139,7 @@
       </section>
       <footer class="app-drawer-credit" aria-label="Credits">
         <span>Created by Nate &amp; Chriselle Dwarika</span>
-        <span>&copy; Black Mixture</span>
+        <span>Black Mixture &copy;</span>
       </footer>
       </div>
       <span class="app-drawer-scroll-fade app-drawer-scroll-fade-top" aria-hidden="true"></span>
@@ -2274,6 +2274,9 @@
         <button id="settingsTabSystem" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneSystem" data-settings-tab="system" tabindex="-1">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3v2H8v-2h3v-2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v9h14V6H5Z"/></svg><span>System</span>
         </button>
+        <button id="settingsTabCommunity" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneCommunity" data-settings-tab="community" tabindex="-1">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-1a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-7 3C4.9 13 2 14.8 2 17v3h13v-3c0-2.2-2.9-4-6.5-4Zm7.2-1c-.8 0-1.6.1-2.3.3 2.1 1 3.6 2.7 3.6 4.7v3h5v-3c0-2.8-2.8-5-6.3-5Z"/></svg><span>Community</span>
+        </button>
       </nav>
 
       <div class="settings-content">
@@ -2551,6 +2554,37 @@
           <div class="field">
             <label>Prompt-enhance system prompt</label>
             <textarea class="settings-system-prompt" id="setSysPrompt" rows="12"></textarea>
+          </div>
+        </section>
+
+        <section class="settings-pane community-pane" id="settingsPaneCommunity" role="tabpanel" aria-labelledby="settingsTabCommunity" data-settings-pane="community" hidden>
+          <div class="settings-pane-head"><h4>Black Mixture Community</h4><p>Follow the work, learn new techniques, and get the latest Mix Studio resources.</p></div>
+          <div class="community-links" aria-label="Black Mixture links">
+            <a class="community-link community-link-youtube" href="https://www.youtube.com/blackmixture" target="_blank" rel="noopener noreferrer">
+              <span class="community-link-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M21.6 7.2a2.8 2.8 0 0 0-2-2C17.9 4.7 12 4.7 12 4.7s-5.9 0-7.6.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.7.5 7.6.5 7.6.5s5.9 0 7.6-.5a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8ZM10 15.1V8.9l5.3 3.1-5.3 3.1Z"/></svg></span>
+              <span class="community-link-copy"><strong>YouTube</strong><small>Videos and tutorials</small></span>
+              <svg class="community-link-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            </a>
+            <a class="community-link community-link-patreon" href="https://www.patreon.com/BlackMixture" target="_blank" rel="noopener noreferrer">
+              <span class="community-link-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 3h3.7v18H4V3Zm11.2 0a6.8 6.8 0 1 1 0 13.6 6.8 6.8 0 0 1 0-13.6Z"/></svg></span>
+              <span class="community-link-copy"><strong>Patreon</strong><small>Workflows, beta features &amp; resources</small></span>
+              <svg class="community-link-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            </a>
+            <a class="community-link community-link-instagram" href="https://www.instagram.com/blackmixture" target="_blank" rel="noopener noreferrer">
+              <span class="community-link-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4Z"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.4" cy="6.7" r="1.1" fill="currentColor"/></svg></span>
+              <span class="community-link-copy"><strong>Instagram</strong><small>Artwork and studio updates</small></span>
+              <svg class="community-link-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            </a>
+            <a class="community-link community-link-discord" href="https://discord.gg/n2N7Hgvn7n" target="_blank" rel="noopener noreferrer">
+              <span class="community-link-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M18.9 5.3A16 16 0 0 0 15 4.1l-.5 1a14.4 14.4 0 0 0-5 0l-.5-1a16 16 0 0 0-3.9 1.2C2.6 9 2 12.5 2.3 15.9a15.5 15.5 0 0 0 4.8 2.5l1.2-1.6c-.7-.3-1.4-.6-2-1l.5-.4c3.8 1.8 7.9 1.8 11.6 0l.6.4c-.7.4-1.4.7-2.1 1l1.2 1.6a15.5 15.5 0 0 0 4.8-2.5c.4-4-.7-7.4-4-10.6ZM9 14.2c-1.2 0-2.1-1-2.1-2.2S7.8 9.8 9 9.8s2.1 1 2.1 2.2-.9 2.2-2.1 2.2Zm6 0c-1.2 0-2.1-1-2.1-2.2s.9-2.2 2.1-2.2 2.1 1 2.1 2.2-.9 2.2-2.1 2.2Z"/></svg></span>
+              <span class="community-link-copy"><strong>Discord</strong><small>Join the Black Mixture community</small></span>
+              <svg class="community-link-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            </a>
+            <a class="community-link community-link-website" href="https://www.blackmixture.com" target="_blank" rel="noopener noreferrer">
+              <span class="community-link-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 12h17M12 3c2.2 2.5 3.3 5.5 3.3 9S14.2 18.5 12 21c-2.2-2.5-3.3-5.5-3.3-9S9.8 5.5 12 3Z" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
+              <span class="community-link-copy"><strong>Website</strong><small>Visit Black Mixture</small></span>
+              <svg class="community-link-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            </a>
           </div>
         </section>
       </div>

@@ -26853,7 +26853,7 @@ document.addEventListener('scroll', () => {
 renderGuidedTourSetting();
 
 let settingsActiveTab = 'general';
-const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions', 'system'];
+const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions', 'system', 'community'];
 
 function setSettingsTab(name, focus = false) {
   if (!settingsTabNames.includes(name)) name = 'general';

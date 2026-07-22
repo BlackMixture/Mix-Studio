@@ -10,9 +10,9 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
-test('advanced settings are split into four accessible side tabs', () => {
+test('advanced settings are split into accessible side tabs', () => {
   assert.match(html, /class="settings-tabs"[^>]+role="tablist"[^>]+aria-orientation="vertical"/);
-  for (const name of ['General', 'Image', 'Video', 'System']) {
+  for (const name of ['General', 'Image', 'Video', 'System', 'Community']) {
     assert.match(html, new RegExp(`id="settingsTab${name}"[^>]+role="tab"[^>]+aria-controls="settingsPane${name}"`));
     assert.match(html, new RegExp(`id="settingsPane${name}"[^>]+role="tabpanel"[^>]+aria-labelledby="settingsTab${name}"`));
   }
@@ -20,11 +20,23 @@ test('advanced settings are split into four accessible side tabs', () => {
   assert.match(html, /id="settingsPaneImage"[^>]+data-settings-pane="image" hidden>/);
   assert.match(html, /id="settingsPaneVideo"[^>]+data-settings-pane="video" hidden>/);
   assert.match(html, /id="settingsPaneSystem"[^>]+data-settings-pane="system" hidden>/);
+  assert.match(html, /id="settingsPaneCommunity"[^>]+data-settings-pane="community" hidden>/);
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<\/section>/)?.[1] || '';
   assert.doesNotMatch(drawer, /Update channel/);
   assert.match(systemPane, /settings-update-info[\s\S]*id="settingsUpdatesBtn"[\s\S]*Release updates[\s\S]*id="settingsUpdatesStatus"[\s\S]*Installed[\s\S]*id="settingsAppVersion"/);
   assert.match(app, /renderAppRelease\(lastMeta\.app \|\| \{\}\)/);
+});
+
+test('community settings link to each official Black Mixture destination', () => {
+  const pane = html.match(/id="settingsPaneCommunity"([\s\S]*?)<\/section>/)?.[1] || '';
+  assert.match(pane, /https:\/\/www\.youtube\.com\/blackmixture/);
+  assert.match(pane, /https:\/\/www\.patreon\.com\/BlackMixture/);
+  assert.match(pane, /https:\/\/www\.instagram\.com\/blackmixture/);
+  assert.match(pane, /https:\/\/discord\.gg\/n2N7Hgvn7n/);
+  assert.match(pane, /https:\/\/www\.blackmixture\.com/);
+  assert.equal((pane.match(/target="_blank" rel="noopener noreferrer"/g) || []).length, 5);
+  assert.match(css, /button\[data-settings-tab="community"\] \{ --settings-tab-rgb: 255, 91, 126; \}/);
 });
 
 test('model settings retain one field each and follow logical pipeline groups', () => {

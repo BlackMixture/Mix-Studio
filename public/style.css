@@ -8940,6 +8940,7 @@ body.sheet-open {
 .settings-tabs button[data-settings-tab="defaults"] { --settings-tab-rgb: 255, 183, 77; }
 .settings-tabs button[data-settings-tab="suggestions"] { --settings-tab-rgb: 57, 189, 164; }
 .settings-tabs button[data-settings-tab="system"] { --settings-tab-rgb: 169, 102, 255; }
+.settings-tabs button[data-settings-tab="community"] { --settings-tab-rgb: 255, 91, 126; }
 .settings-tabs button.active {
   color: var(--ink);
   background: linear-gradient(145deg, rgba(var(--settings-tab-rgb), 0.22), rgba(var(--settings-tab-rgb), 0.07));
@@ -8981,6 +8982,54 @@ body.sheet-open {
   font-weight: 600;
   line-height: 1.45;
 }
+.community-links {
+  display: grid;
+  gap: 10px;
+}
+.community-link {
+  --community-rgb: 255, 91, 126;
+  min-width: 0;
+  min-height: 76px;
+  padding: 12px 13px;
+  border: 1px solid rgba(var(--community-rgb), .25);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(var(--community-rgb), .12), rgba(var(--community-rgb), .035));
+  color: var(--ink);
+  text-decoration: none;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.community-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(var(--community-rgb), .52);
+  background: linear-gradient(145deg, rgba(var(--community-rgb), .18), rgba(var(--community-rgb), .055));
+}
+.community-link:focus-visible {
+  outline: 2px solid rgba(var(--community-rgb), .75);
+  outline-offset: 2px;
+}
+.community-link-youtube { --community-rgb: 255, 45, 45; }
+.community-link-patreon { --community-rgb: 255, 111, 97; }
+.community-link-instagram { --community-rgb: 225, 48, 108; }
+.community-link-discord { --community-rgb: 88, 101, 242; }
+.community-link-website { --community-rgb: 91, 141, 239; }
+.community-link-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: rgba(var(--community-rgb), .16);
+  color: rgb(var(--community-rgb));
+  display: grid;
+  place-items: center;
+}
+.community-link-icon svg { width: 23px; height: 23px; }
+.community-link-copy { min-width: 0; display: grid; gap: 4px; }
+.community-link-copy strong { font-size: 13px; font-weight: 900; }
+.community-link-copy small { color: var(--muted); font-size: 10.5px; font-weight: 650; line-height: 1.35; }
+.community-link-arrow { width: 17px; height: 17px; fill: none; stroke: var(--muted-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .settings-group + .settings-group {
   margin-top: 22px;
   padding-top: 18px;
