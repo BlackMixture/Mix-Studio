@@ -109,7 +109,7 @@ test('SAM3 completion keeps the job alive until its mask output is verified', ()
   assert.match(serverJs, /if \(job\.kind === 'smartMask'\) \{[\s\S]*?if \(job\.completing\) return;/);
   assert.match(serverJs, /SAM3 finished without a mask image/);
   assert.match(serverJs, /SAM3 selection timed out after 8 minutes/);
-  assert.match(serverJs, /kind: 'smartMask', text: 'Queued Smart Select/);
+  assert.match(serverJs, /kind: 'smartMask',[\s\S]*?text: 'Queued Smart Select/);
   assert.match(labels, /LoadSAM3Model: 'Loading SAM3/);
   assert.match(labels, /SAM3Segmentation: 'Tracing selected object/);
 });

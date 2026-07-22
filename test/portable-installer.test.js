@@ -16,6 +16,7 @@ const {
   normalizeOptionalDirectory,
   normalizeSetupUrl,
   portableSetupConfig,
+  recommendedQuickSetup,
 } = require('../lib/setup-guide');
 
 const root = path.resolve(__dirname, '..');
@@ -39,13 +40,21 @@ test('standalone installer downloads the official Git checkout before opening th
   const launcher = fs.readFileSync(path.join(root, 'install_MixStudio.bat'), 'utf8');
   assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
   assert.match(launcher, /winget install --id Git\.Git/);
-  assert.match(launcher, /clone --branch main --single-branch/);
+  assert.match(launcher, /clone --depth 1 --branch main --single-branch/);
   assert.match(launcher, /set "MIX_STUDIO_HOME=%~dp0Mix Studio"/i);
+  assert.match(launcher, /set "MIX_STUDIO_STAGE=%~dp0Mix Studio\.download"/i);
   assert.doesNotMatch(launcher, /%USERPROFILE%\\Mix Studio/);
   assert.match(launcher, /start "" "%MIX_STUDIO_HOME%\\install_MixStudio\.bat"/i);
   assert.match(launcher, /target folder already exists but is not a Mix Studio Git checkout/i);
+  assert.match(launcher, /validate_checkout/i);
+  assert.match(launcher, /remote get-url origin/i);
+  assert.match(launcher, /quarantine_incomplete_checkout/i);
+  assert.match(launcher, /verify_writable_destination/i);
+  assert.match(launcher, /set "MIX_STUDIO_GIT=%GIT_EXE%"/i);
   assert.match(launcher, /prepare_existing_target/);
   assert.match(launcher, /Preserving gallery data left by an earlier uninstall/);
+  assert.match(launcher, /The preserved data copy did not verify/);
+  assert.match(launcher, /Mix Studio User Data/i);
   assert.match(launcher, /LOCALAPPDATA%\\Mix Studio\\data/);
 });
 
@@ -278,7 +287,7 @@ test('minimal bootstrap preserves an uninstalled gallery and opens setup in app'
   }));
   try {
     const config = portableBootstrapConfig(checkout, {
-      env: { LOCALAPPDATA: localAppData },
+      env: { LOCALAPPDATA: localAppData, MIX_STUDIO_GIT: 'C:\\Program Files\\Git\\cmd\\git.exe' },
       now: '2026-07-13T00:00:00.000Z',
     });
     assert.equal(config.dataDir, preservedData);
@@ -287,6 +296,56 @@ test('minimal bootstrap preserves an uninstalled gallery and opens setup in app'
     assert.equal(config.customValue, 'preserved');
     assert.equal(config.setup.experience, 'in-app');
     assert.equal(config.update.provider, 'git');
+    assert.equal(config.update.gitPath, 'C:\\Program Files\\Git\\cmd\\git.exe');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap reconnects a preserved relative data directory outside the new checkout', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-bootstrap-relative-'));
+  const checkout = path.join(temp, 'new-checkout');
+  const localAppData = path.join(temp, 'local-app-data');
+  const preservedRoot = path.join(localAppData, 'Mix Studio User Data');
+  const preservedData = path.join(preservedRoot, 'data');
+  fs.mkdirSync(checkout, { recursive: true });
+  fs.mkdirSync(preservedData, { recursive: true });
+  fs.writeFileSync(path.join(preservedRoot, 'install.json'), JSON.stringify({
+    dataDir: 'data',
+    customValue: 'relative-preserved',
+  }));
+  try {
+    const config = portableBootstrapConfig(checkout, {
+      env: { LOCALAPPDATA: localAppData },
+      now: '2026-07-21T00:00:00.000Z',
+    });
+    assert.equal(config.dataDir, preservedData);
+    assert.equal(config.customValue, 'relative-preserved');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap replaces a missing preserved absolute data path with the current preservation folder', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-bootstrap-missing-absolute-'));
+  const checkout = path.join(temp, 'new-checkout');
+  const localAppData = path.join(temp, 'local-app-data');
+  const preservedRoot = path.join(localAppData, 'Mix Studio User Data');
+  const preservedData = path.join(preservedRoot, 'data');
+  const missingAbsoluteData = path.join(temp, 'retired-drive', 'data');
+  fs.mkdirSync(checkout, { recursive: true });
+  fs.mkdirSync(preservedData, { recursive: true });
+  fs.writeFileSync(path.join(preservedRoot, 'install.json'), JSON.stringify({
+    dataDir: missingAbsoluteData,
+    customValue: 'absolute-preserved',
+  }));
+  try {
+    const config = portableBootstrapConfig(checkout, {
+      env: { LOCALAPPDATA: localAppData },
+      now: '2026-07-21T00:00:00.000Z',
+    });
+    assert.equal(config.dataDir, preservedData);
+    assert.equal(config.customValue, 'absolute-preserved');
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -298,6 +357,7 @@ test('bootstrap recognizes current Comfy Desktop instances and ignores incomplet
   const installRoot = path.join(temp, 'ComfyUI-Installs', 'main');
   const comfyRoot = path.join(installRoot, 'ComfyUI');
   const python = path.join(comfyRoot, '.venv', 'Scripts', 'python.exe');
+  const main = path.join(comfyRoot, 'main.py');
   const registryDir = path.join(appData, 'Comfy Desktop');
   fs.mkdirSync(registryDir, { recursive: true });
   fs.mkdirSync(comfyRoot, { recursive: true });
@@ -311,7 +371,16 @@ test('bootstrap recognizes current Comfy Desktop instances and ignores incomplet
     assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), '');
     fs.mkdirSync(path.dirname(python), { recursive: true });
     fs.writeFileSync(python, '');
+    assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), '');
+    fs.writeFileSync(main, '');
     assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), comfyRoot);
+    fs.writeFileSync(path.join(registryDir, 'installations.json'), JSON.stringify([{
+      id: 'main',
+      installPath: installRoot,
+      sourceId: 'comfyorg',
+      status: 'installing',
+    }]));
+    assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), '');
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -347,7 +416,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /renderDependencyAccess\('#setupDependencyAccess', '#setupDependencyAccessLink', operationState\)/);
   assert.match(app, /This model needs Hugging Face access before installation can continue\./);
   assert.match(app, /showErrorDetail\(setupOperationDiagnostic, 'Setup diagnostic'\)/);
-  assert.match(app, /quick\.hidden = !!setupContextComponents\.length \|\| !quickMissing\.length/);
+  assert.match(app, /quick\.hidden = \(!quickMissing\.length\)[\s\S]{0,120}quickPreset\.id !== 'low-vram-klein4'/);
   assert.match(app, /connectionChoicesHidden = !!comfy\.connected \|\| nodeSetupActive/);
   assert.match(app, /e\.target === sheet && sheet\.id !== 'initialSetupSheet'/);
   assert.match(app, /Generation setup is still needed\. Press Generate or open Advanced Settings to continue\./);
@@ -355,6 +424,8 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /next\.disabled = busy \|\| !workflowReady/);
   assert.match(style, /\.setup-input-row \{[^}]*grid-template-columns: minmax\(0,1fr\) 40px/);
   assert.match(app, /askConfirm\(\{[\s\S]{0,360}out-of-memory error/);
+  assert.match(app, /title: 'Use the 4 GB starter\?'/);
+  assert.match(app, /switchEditEngine\('klein4'\)/);
   assert.match(app, /setupAutoRestart[\s\S]{0,900}\/api\/comfy\/restart/);
   assert.match(style, /\.setup-panel \{[\s\S]{0,500}background: #000;/);
   assert.match(style, /\.setup-sheet \{[\s\S]{0,180}align-items: center/);
@@ -371,20 +442,55 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(server, /Only the owner profile can configure the generation desktop/);
 });
 
+test('generation setup recommends the 4 GB edit starter only below 8 GB VRAM', () => {
+  const gib = 1024 ** 3;
+  const fourGb = recommendedQuickSetup({
+    gpu: { available: true, devices: [{ name: 'Small GPU', memoryBytes: 4 * gib }] },
+  });
+  assert.equal(fourGb.id, 'low-vram-klein4');
+  assert.deepEqual(fourGb.components, ['klein4', 'editoutpaint']);
+  assert.deepEqual(fourGb.destination, { view: 'edit', engine: 'klein4' });
+
+  const eightGb = recommendedQuickSetup({
+    gpu: { available: true, devices: [{ name: 'Larger GPU', memoryBytes: 8 * gib }] },
+  });
+  assert.equal(eightGb.id, 'krea2-image');
+  assert.deepEqual(eightGb.components, QUICK_SETUP_COMPONENTS);
+  assert.deepEqual(eightGb.components, ['image']);
+  assert.doesNotMatch(eightGb.detail, /with depth, style, regional tools/);
+});
+
 test('in-app setup installs official ComfyUI and curated dependency groups', () => {
   const helper = fs.readFileSync(path.join(root, 'installer', 'install-comfy.ps1'), 'utf8');
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const hardware = fs.readFileSync(path.join(root, 'installer', 'hardware-profile.ps1'), 'utf8');
   const discovery = fs.readFileSync(path.join(root, 'installer', 'model-discovery.js'), 'utf8');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
   const ltx = manifest.features.find((feature) => feature.id === 'video.ltx');
   const image = manifest.features.find((feature) => feature.id === 'core.image');
-  assert.match(helper, /https:\/\/dl\.todesktop\.com\/241130tqe9q3y/);
+  assert.match(helper, /https:\/\/download\.comfy\.org\/windows\/nsis\/x64/);
   assert.match(helper, /Get-AuthenticodeSignature/);
   assert.match(helper, /SignatureStatus\]::Valid/);
+  assert.match(helper, /Test-ExpectedComfyPublisher/);
+  assert.match(helper, /Drip Artificial Inc/);
+  assert.match(helper, /Comfy Org/);
+  assert.match(helper, /ToDesktop/);
+  assert.match(helper, /Test-ExpectedComfyProduct/);
+  assert.match(helper, /VersionInfo\.ProductName/);
+  assert.doesNotMatch(helper, /Thumbprint/);
   assert.match(helper, /Get-ComfyDesktopBase/);
+  assert.match(helper, /Test-ComfyDesktopRecordInstalled/);
+  assert.match(helper, /Test-ComfyCore/);
+  assert.match(helper, /state = 'installed'/);
+  assert.doesNotMatch(helper, /url = 'http:\/\/127\.0\.0\.1:8188'/);
   assert.match(helper, /Comfy Desktop\\installations\.json/);
   assert.match(helper, /Comfy Desktop\\Comfy Desktop\.exe/);
   assert.match(helper, /create or finish an installation/);
+  assert.match(server, /discoverComfyEndpoints\('',/);
+  assert.match(server, /applySetupConnection\(\{ path: result\.path, modelsPath: result\.modelsPath, clearUrl: true \}\)/);
+  assert.match(server, /discoverComfyEndpoints\('', \{[\s\S]{0,220}expectedBasePath: result\.path/);
+  assert.match(server, /waitForStartedComfy\(5 \* 60_000, expectedBasePath\)/);
+  assert.match(server, /state: 'installed', phase:/);
   assert.match(discovery, /\/object_info/);
   assert.match(discovery, /extra_model_paths\.yaml/);
   assert.match(discovery, /registeredModelNames/);
@@ -509,13 +615,34 @@ test('portable checkout has a conservative uninstaller entry point', () => {
   assert.match(uninstaller, /ComfyUI.*Node\.js.*never removed/i);
   assert.match(uninstaller, /-RemoveData/);
   assert.match(uninstaller, /Type DELETE to continue/);
+  assert.match(uninstaller, /-RemoveData requires an interactive typed DELETE confirmation/);
+  assert.match(uninstaller, /Get-ManagedDataRemovalPaths/);
+  assert.match(uninstaller, /data-backup-/);
+  assert.match(uninstaller, /FileAttributes\]::ReparsePoint/);
+  const managedPathCheck = uninstaller.slice(
+    uninstaller.indexOf('function Test-ManagedDataPath'),
+    uninstaller.indexOf('function Get-ManagedDataRemovalPaths'),
+  );
+  assert.match(managedPathCheck, /Test-SamePath \$Candidate \$LocalData/);
+  assert.match(managedPathCheck, /Test-SamePath \$Candidate \$PreservedData/);
+  assert.match(managedPathCheck, /Test-SamePath \$Candidate \$LegacyPreservedData/);
+  assert.doesNotMatch(managedPathCheck, /Test-PathInsideRoot/);
   assert.match(uninstaller, /Preserve-DataOutsideCheckout/);
-  assert.match(uninstaller, /LOCALAPPDATA.*Mix Studio\\data/);
+  assert.match(uninstaller, /Move-DirectoryVerified/);
+  assert.match(uninstaller, /The preserved data copy did not verify/);
+  assert.match(uninstaller, /Mix Studio User Data/);
+  assert.match(uninstaller, /LegacyPreservedData/);
   assert.match(uninstaller, /mirrored export files are never removed/i);
-  assert.match(uninstaller, /Copy-Item -LiteralPath \$InstallFile -Destination \$PreservedInstall/);
-  assert.match(uninstaller, /Remove-Item -LiteralPath \$PreservedInstall -Force/);
+  assert.match(uninstaller, /Write-PreservedInstall \$Install \$KeptData/);
+  assert.match(uninstaller, /NotePropertyName 'dataDir'/);
+  assert.match(uninstaller, /foreach \(\$SetupProfile in \(@\(\$PreservedInstall, \$LegacyPreservedInstall\)/);
   assert.match(uninstaller, /preserved setup profile will be removed/i);
   assert.match(uninstaller, /Start-Process -FilePath \$PowerShell/);
+  assert.match(uninstaller, /-WorkingDirectory \$CleanupStatusRoot/);
+  assert.match(uninstaller, /for \(`\$Attempt = 1; `\$Attempt -le 10/);
+  assert.match(uninstaller, /Mix Studio uninstall incomplete/);
+  assert.match(uninstaller, /Cleanup status will be recorded/);
   assert.match(bootstrap, /preservedData/);
   assert.match(bootstrap, /preservedInstallFile/);
+  assert.match(bootstrap, /Mix Studio User Data/);
 });

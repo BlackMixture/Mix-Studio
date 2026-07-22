@@ -7,6 +7,9 @@ if exist "%~dp0installer\bootstrap.js" goto run_app
 
 set "MIX_STUDIO_REPO=https://github.com/BlackMixture/Mix-Studio.git"
 set "MIX_STUDIO_HOME=%~dp0Mix Studio"
+set "MIX_STUDIO_STAGE=%~dp0Mix Studio.download"
+set "MIX_STUDIO_PRESERVED_ROOT=%LOCALAPPDATA%\Mix Studio User Data"
+set "MIX_STUDIO_PRESERVED_DATA=%MIX_STUDIO_PRESERVED_ROOT%\data"
 set "GIT_EXE="
 
 echo.
@@ -15,8 +18,7 @@ echo   This will download the official repository to:
 echo   %MIX_STUDIO_HOME%
 echo.
 
-where git.exe >nul 2>nul
-if not errorlevel 1 set "GIT_EXE=git.exe"
+for /f "delims=" %%G in ('where git.exe 2^>nul') do if not defined GIT_EXE set "GIT_EXE=%%G"
 if not defined GIT_EXE call :find_git
 
 if not defined GIT_EXE (
@@ -29,20 +31,42 @@ if not defined GIT_EXE (
 )
 
 if not defined GIT_EXE goto git_install_failed
+set "MIX_STUDIO_GIT=%GIT_EXE%"
+call :verify_writable_destination
+if errorlevel 1 goto destination_not_writable
 
-if exist "%MIX_STUDIO_HOME%\.git\" goto launch_downloaded
+if exist "%MIX_STUDIO_HOME%\.git\" (
+  call :validate_checkout "%MIX_STUDIO_HOME%"
+  if errorlevel 1 goto checkout_origin_invalid
+  if exist "%MIX_STUDIO_HOME%\install_MixStudio.bat" if exist "%MIX_STUDIO_HOME%\server.js" if exist "%MIX_STUDIO_HOME%\installer\bootstrap.js" goto launch_downloaded
+  if exist "%MIX_STUDIO_HOME%\data\" goto incomplete_checkout_with_data
+  call :quarantine_incomplete_checkout
+  if errorlevel 1 goto target_in_use
+)
 if exist "%MIX_STUDIO_HOME%\" (
   dir /b "%MIX_STUDIO_HOME%" 2>nul | findstr . >nul
-  if errorlevel 1 goto download_mix_studio
+  if errorlevel 1 rmdir "%MIX_STUDIO_HOME%" >nul 2>nul
+)
+if exist "%MIX_STUDIO_HOME%\" (
   call :prepare_existing_target
   if errorlevel 2 goto preserved_data_in_use
   if errorlevel 1 goto target_in_use
 )
 
 :download_mix_studio
+call :quarantine_stale_stage
+if errorlevel 1 goto staging_in_use
 echo Downloading Mix Studio...
-"%GIT_EXE%" clone --branch main --single-branch "%MIX_STUDIO_REPO%" "%MIX_STUDIO_HOME%"
-if errorlevel 1 goto clone_failed
+"%GIT_EXE%" clone --depth 1 --branch main --single-branch "%MIX_STUDIO_REPO%" "%MIX_STUDIO_STAGE%"
+if errorlevel 1 goto cleanup_failed_clone
+call :validate_checkout "%MIX_STUDIO_STAGE%"
+if errorlevel 1 goto cleanup_invalid_clone
+if not exist "%MIX_STUDIO_STAGE%\install_MixStudio.bat" goto cleanup_invalid_clone
+if not exist "%MIX_STUDIO_STAGE%\server.js" goto cleanup_invalid_clone
+if not exist "%MIX_STUDIO_STAGE%\installer\bootstrap.js" goto cleanup_invalid_clone
+if exist "%MIX_STUDIO_HOME%\" goto staging_target_race
+move "%MIX_STUDIO_STAGE%" "%MIX_STUDIO_HOME%" >nul 2>nul
+if errorlevel 1 goto staging_promote_failed
 
 :launch_downloaded
 if not exist "%MIX_STUDIO_HOME%\install_MixStudio.bat" goto clone_failed
@@ -51,6 +75,10 @@ start "" "%MIX_STUDIO_HOME%\install_MixStudio.bat"
 exit /b 0
 
 :run_app
+set "GIT_EXE="
+for /f "delims=" %%G in ('where git.exe 2^>nul') do if not defined GIT_EXE set "GIT_EXE=%%G"
+if not defined GIT_EXE call :find_git
+if defined GIT_EXE set "MIX_STUDIO_GIT=%GIT_EXE%"
 set "NODE_EXE="
 set "NODE_MAJOR=0"
 call :find_node
@@ -120,16 +148,133 @@ exit /b 0
 for /f "delims=" %%V in ('""%NODE_EXE%" -p "process.versions.node.split('.')[0]""') do set "NODE_MAJOR=%%V"
 exit /b 0
 
+:verify_writable_destination
+set "MIX_STUDIO_WRITE_PROBE=%~dp0.mix-studio-write-%RANDOM%-%RANDOM%"
+mkdir "%MIX_STUDIO_WRITE_PROBE%" >nul 2>nul
+if errorlevel 1 exit /b 1
+> "%MIX_STUDIO_WRITE_PROBE%\write.test" echo Mix Studio
+if not exist "%MIX_STUDIO_WRITE_PROBE%\write.test" goto writable_probe_failed
+rmdir "%MIX_STUDIO_WRITE_PROBE%" >nul 2>nul
+if exist "%MIX_STUDIO_WRITE_PROBE%\" exit /b 1
+exit /b 0
+
+:writable_probe_failed
+rmdir /s /q "%MIX_STUDIO_WRITE_PROBE%" >nul 2>nul
+exit /b 1
+
+:validate_checkout
+set "CHECKOUT_PATH=%~1"
+set "CHECKOUT_ORIGIN="
+for /f "delims=" %%O in ('""%GIT_EXE%" -C "%CHECKOUT_PATH%" remote get-url origin 2^>nul"') do if not defined CHECKOUT_ORIGIN set "CHECKOUT_ORIGIN=%%O"
+if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/Mix-Studio.git" exit /b 0
+if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/Mix-Studio" exit /b 0
+if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/Mix-Studio/" exit /b 0
+if /I "%CHECKOUT_ORIGIN%"=="git@github.com:BlackMixture/Mix-Studio.git" exit /b 0
+if /I "%CHECKOUT_ORIGIN%"=="ssh://git@github.com/BlackMixture/Mix-Studio.git" exit /b 0
+if /I "%CHECKOUT_ORIGIN%"=="ssh://git@github.com/BlackMixture/Mix-Studio" exit /b 0
+if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/KreaStudio.git" goto migrate_legacy_checkout
+if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/KreaStudio" goto migrate_legacy_checkout
+if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/KreaStudio/" goto migrate_legacy_checkout
+if /I "%CHECKOUT_ORIGIN%"=="git@github.com:BlackMixture/KreaStudio.git" goto migrate_legacy_checkout
+if /I "%CHECKOUT_ORIGIN%"=="ssh://git@github.com/BlackMixture/KreaStudio.git" goto migrate_legacy_checkout
+if /I "%CHECKOUT_ORIGIN%"=="ssh://git@github.com/BlackMixture/KreaStudio" goto migrate_legacy_checkout
+exit /b 1
+
+:migrate_legacy_checkout
+"%GIT_EXE%" -C "%CHECKOUT_PATH%" remote set-url origin "%MIX_STUDIO_REPO%" >nul 2>nul
+exit /b %ERRORLEVEL%
+
+:quarantine_incomplete_checkout
+set "MIX_STUDIO_INCOMPLETE=%~dp0Mix Studio.incomplete-%RANDOM%-%RANDOM%"
+move "%MIX_STUDIO_HOME%" "%MIX_STUDIO_INCOMPLETE%" >nul 2>nul
+if errorlevel 1 exit /b 1
+echo An incomplete checkout was kept at:
+echo %MIX_STUDIO_INCOMPLETE%
+exit /b 0
+
+:quarantine_stale_stage
+if not exist "%MIX_STUDIO_STAGE%\" exit /b 0
+set "MIX_STUDIO_STALE_STAGE=%~dp0Mix Studio.download.incomplete-%RANDOM%-%RANDOM%"
+move "%MIX_STUDIO_STAGE%" "%MIX_STUDIO_STALE_STAGE%" >nul 2>nul
+if errorlevel 1 exit /b 1
+echo A previous interrupted download was kept at:
+echo %MIX_STUDIO_STALE_STAGE%
+exit /b 0
+
 :prepare_existing_target
 if not exist "%MIX_STUDIO_HOME%\data\" exit /b 1
 for /f "delims=" %%F in ('dir /b /a "%MIX_STUDIO_HOME%" 2^>nul') do if /I not "%%F"=="data" exit /b 1
-if exist "%LOCALAPPDATA%\Mix Studio\data\" exit /b 2
+if exist "%MIX_STUDIO_PRESERVED_DATA%\" exit /b 2
+if exist "%LOCALAPPDATA%\Mix Studio\data\" if /I not "%MIX_STUDIO_HOME%\data"=="%LOCALAPPDATA%\Mix Studio\data" exit /b 2
 echo Preserving gallery data left by an earlier uninstall...
-if not exist "%LOCALAPPDATA%\Mix Studio\" mkdir "%LOCALAPPDATA%\Mix Studio" >nul 2>nul
-move "%MIX_STUDIO_HOME%\data" "%LOCALAPPDATA%\Mix Studio\data" >nul
+if not exist "%MIX_STUDIO_PRESERVED_ROOT%\" mkdir "%MIX_STUDIO_PRESERVED_ROOT%" >nul 2>nul
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "$ErrorActionPreference = 'Stop'; $source = Join-Path $env:MIX_STUDIO_HOME 'data'; $dest = $env:MIX_STUDIO_PRESERVED_DATA; if ([IO.Path]::GetPathRoot($source).Equals([IO.Path]::GetPathRoot($dest), [StringComparison]::OrdinalIgnoreCase)) { Move-Item -LiteralPath $source -Destination $dest } else { $temp = $dest + '.importing'; if (Test-Path -LiteralPath $temp) { throw 'A previous data transfer is still present.' }; Copy-Item -LiteralPath $source -Destination $temp -Recurse -Force; $sf = @(Get-ChildItem -LiteralPath $source -Recurse -Force -File); $df = @(Get-ChildItem -LiteralPath $temp -Recurse -Force -File); $sd = @(Get-ChildItem -LiteralPath $source -Recurse -Force -Directory); $dd = @(Get-ChildItem -LiteralPath $temp -Recurse -Force -Directory); if ($sf.Count -ne $df.Count -or $sd.Count -ne $dd.Count -or [long](($sf | Measure-Object Length -Sum).Sum) -ne [long](($df | Measure-Object Length -Sum).Sum)) { throw 'The preserved data copy did not verify.' }; Move-Item -LiteralPath $temp -Destination $dest; Remove-Item -LiteralPath $source -Recurse -Force }; if ((Test-Path -LiteralPath $source) -or -not (Test-Path -LiteralPath $dest)) { exit 1 }" >nul 2>nul
 if errorlevel 1 exit /b 2
 rmdir "%MIX_STUDIO_HOME%" >nul 2>nul
 exit /b 0
+
+:cleanup_failed_clone
+if exist "%MIX_STUDIO_STAGE%\" rmdir /s /q "%MIX_STUDIO_STAGE%" >nul 2>nul
+goto clone_failed
+
+:cleanup_invalid_clone
+if exist "%MIX_STUDIO_STAGE%\" rmdir /s /q "%MIX_STUDIO_STAGE%" >nul 2>nul
+goto clone_invalid
+
+:staging_target_race
+echo.
+echo The target folder appeared while Mix Studio was downloading. Nothing was overwritten.
+echo The completed download remains at:
+echo %MIX_STUDIO_STAGE%
+pause
+exit /b 1
+
+:staging_promote_failed
+echo.
+echo Mix Studio downloaded successfully, but Windows could not move it into the target folder.
+echo The completed download remains at:
+echo %MIX_STUDIO_STAGE%
+pause
+exit /b 1
+
+:destination_not_writable
+echo.
+echo Mix Studio cannot create folders beside this installer:
+echo %~dp0
+echo Move the installer to a writable folder, such as Documents or another drive, then run it again.
+pause
+exit /b 1
+
+:checkout_origin_invalid
+echo.
+echo The existing Mix Studio folder is a Git checkout from a different repository:
+echo %MIX_STUDIO_HOME%
+echo Nothing was changed. Move or rename that folder, then run this installer again.
+pause
+exit /b 1
+
+:incomplete_checkout_with_data
+echo.
+echo The existing Mix Studio checkout is incomplete and contains gallery data.
+echo Nothing was moved or overwritten. Preserve or back up this folder before retrying:
+echo %MIX_STUDIO_HOME%
+pause
+exit /b 1
+
+:staging_in_use
+echo.
+echo A previous download could not be moved aside:
+echo %MIX_STUDIO_STAGE%
+echo Close programs using that folder, then run this installer again.
+pause
+exit /b 1
+
+:clone_invalid
+echo.
+echo GitHub returned an incomplete or unexpected Mix Studio checkout.
+echo The incomplete download was removed and the existing installation was not changed.
+pause
+exit /b 1
 
 :git_required
 echo.
@@ -158,7 +303,8 @@ echo.
 echo Mix Studio found both an old data-only checkout and an existing preserved data folder.
 echo Nothing was overwritten. Move or rename one of these folders, then run this file again:
 echo %MIX_STUDIO_HOME%\data
-echo %LOCALAPPDATA%\Mix Studio\data
+echo %MIX_STUDIO_PRESERVED_DATA%
+echo Legacy location: %LOCALAPPDATA%\Mix Studio\data
 pause
 exit /b 1
 

@@ -179,7 +179,7 @@ test('FFmpeg resolver falls back to imageio-ffmpeg in the ComfyUI Python environ
   const base = path.resolve('/tmp/mixstudio-comfy');
   const python = path.join(base, '.venv', 'Scripts', 'python.exe');
   const bundled = path.join(base, '.venv', 'ffmpeg', 'ffmpeg.exe');
-  const found = new Set([base, path.join(base, 'models'), python, bundled]);
+  const found = new Set([base, path.join(base, 'models'), path.join(base, 'main.py'), python, bundled]);
   const calls = [];
   const result = await resolveFfmpegExecutable({ comfy: { path: base } }, {
     env: {},

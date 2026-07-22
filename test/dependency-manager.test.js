@@ -19,16 +19,26 @@ const {
   cleanRelative,
   dependencyModelPlan,
   downloadAsset,
+  ensureDownloadDiskSpace,
   filterProtectedRuntimeRequirements,
   huggingFaceAccessUrl,
+  installComponents,
   installNodePack,
   looksLikeCustomNodeFolder,
   modelIsRegistered,
   protectedRuntimeConstraints,
   requirementsArgs,
   sameRepo,
+  validateModelFile,
 } = require('../lib/dependency-installer');
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
+
+function safetensorsFixture() {
+  const metadata = Buffer.from('{"__metadata__":{}}', 'utf8');
+  const header = Buffer.alloc(8);
+  header.writeBigUInt64LE(BigInt(metadata.length));
+  return Buffer.concat([header, metadata]);
+}
 
 test('dependency catalog covers every enabled image and video family', () => {
   for (const component of ['image', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
@@ -38,6 +48,10 @@ test('dependency catalog covers every enabled image and video family', () => {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
+  assert.ok(Object.entries(NODE_PACKS).filter(([id]) => id !== 'regional')
+    .every(([, pack]) => /^[a-f0-9]{40}$/.test(pack.ref)), 'public custom nodes use immutable commits');
+  assert.equal(NODE_PACKS.regional.automaticInstall, false);
+  assert.match(COMPONENTS.regional.label, /manual node required/i);
   assert.ok(availableComponents().includes('smartmask'));
   assert.equal(MODEL_ASSETS.krea2Depth[0][1], 'loras');
   assert.match(MODEL_ASSETS.krea2Depth[0][2], /Patil\/Krea-2-depth-controlnet/);
@@ -65,6 +79,72 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[2], /f2k_9B_lcs_consist_20260415\.safetensors/);
 });
 
+test('the unavailable regional source fails before changing ComfyUI and reuses a manual install', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-regional-source-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.regional.folder);
+  const commands = [];
+  try {
+    await assert.rejects(
+      installNodePack(NODE_PACKS.regional, {
+        customNodesPath, basePath: rootDir, pythonPath: 'python',
+      }, () => {}, {
+        run: async (...args) => { commands.push(args); return ''; },
+      }),
+      (error) => error.code === 'dependency_node_source_unavailable'
+        && error.failedNode === NODE_PACKS.regional.folder
+        && /will not substitute an unreviewed custom node/.test(error.message)
+    );
+    assert.equal(commands.length, 0);
+    assert.equal(fs.existsSync(customNodesPath), false);
+
+    fs.mkdirSync(nodePath, { recursive: true });
+    fs.writeFileSync(path.join(nodePath, '__init__.py'), '# trusted manual regional-node fixture\n');
+    const reports = [];
+    await installNodePack(NODE_PACKS.regional, {
+      customNodesPath, basePath: rootDir, pythonPath: 'python',
+    }, (phase, message, detail) => reports.push({ phase, message, detail }), {
+      run: async (...args) => { commands.push(args); return ''; },
+    });
+    assert.equal(commands.length, 0);
+    assert.equal(reports[0].phase, 'existing-node');
+    assert.equal(reports[0].detail.unmanaged, true);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('a mixed advanced install preflights the unavailable regional source before other work', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-regional-preflight-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const pythonPath = path.join(rootDir, '.venv', 'bin', 'python');
+  const commands = [];
+  let fetched = false;
+  try {
+    fs.mkdirSync(customNodesPath, { recursive: true });
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(path.join(rootDir, 'main.py'), '# ComfyUI fixture\n');
+    fs.writeFileSync(pythonPath, '');
+    await assert.rejects(
+      installComponents({
+        runtime: { dataDir: path.join(rootDir, 'data'), comfy: { path: rootDir, modelsPath: path.join(rootDir, 'models') } },
+        settings: {},
+        components: ['smartmask', 'regional'],
+        options: {
+          run: async (...args) => { commands.push(args); return ''; },
+          fetch: async () => { fetched = true; throw new Error('should not fetch'); },
+        },
+      }),
+      (error) => error.code === 'dependency_node_source_unavailable'
+    );
+    assert.equal(commands.length, 0);
+    assert.equal(fetched, false);
+    assert.equal(fs.existsSync(path.join(customNodesPath, NODE_PACKS.sam3.folder)), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('fresh Klein 4B setup installs FP8 while preserving an existing BF16 selection', () => {
   const fresh = dependencyModelPlan(['klein4'], {});
   const freshUnet = fresh.assets.find((asset) => asset[0] === 'klein4Unet');
@@ -81,20 +161,39 @@ test('automatic Director node installs use the reviewed commit while compatible 
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-director-node-'));
   const customNodesPath = path.join(rootDir, 'custom_nodes');
   const nodePath = path.join(customNodesPath, NODE_PACKS.whatdreamscost.folder);
+  const gitExecutable = path.join(rootDir, 'Git', 'cmd', 'git.exe');
   const commands = [];
   try {
+    await installNodePack(NODE_PACKS.whatdreamscost, {
+      customNodesPath, basePath: rootDir, pythonPath: 'python',
+    }, () => {}, {
+      gitExecutable,
+      existsSync: (target) => target === path.join(nodePath, 'requirements.txt') ? false : fs.existsSync(target),
+      run: async (command, args) => {
+        commands.push([command, args]);
+        if (command === gitExecutable && args[0] === 'clone') fs.mkdirSync(path.join(nodePath, '.git'), { recursive: true });
+        return '';
+      },
+    });
+    assert.deepEqual(commands[0], [gitExecutable, ['clone', NODE_PACKS.whatdreamscost.repo, nodePath]]);
+    assert.deepEqual(commands[1], [gitExecutable, ['-C', nodePath, 'checkout', '--detach', NODE_PACKS.whatdreamscost.ref]]);
+
+    commands.length = 0;
     await installNodePack(NODE_PACKS.whatdreamscost, {
       customNodesPath, basePath: rootDir, pythonPath: 'python',
     }, () => {}, {
       existsSync: (target) => target === path.join(nodePath, 'requirements.txt') ? false : fs.existsSync(target),
       run: async (command, args) => {
         commands.push([command, args]);
-        if (command === 'git' && args[0] === 'clone') fs.mkdirSync(path.join(nodePath, '.git'), { recursive: true });
+        if (args.includes('get-url')) return NODE_PACKS.whatdreamscost.repo;
+        if (args.includes('rev-parse')) return NODE_PACKS.whatdreamscost.ref;
         return '';
       },
     });
-    assert.deepEqual(commands[0], ['git', ['clone', NODE_PACKS.whatdreamscost.repo, nodePath]]);
-    assert.deepEqual(commands[1], ['git', ['-C', nodePath, 'checkout', '--detach', NODE_PACKS.whatdreamscost.ref]]);
+    assert.deepEqual(commands, [
+      ['git', ['-C', nodePath, 'remote', 'get-url', 'origin']],
+      ['git', ['-C', nodePath, 'rev-parse', 'HEAD']],
+    ]);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -264,7 +363,7 @@ test('models in discovered external roots are reused while ComfyUI is stopped', 
   let fetched = false;
   try {
     fs.mkdirSync(path.dirname(existing), { recursive: true });
-    fs.writeFileSync(existing, 'existing model fixture');
+    fs.writeFileSync(existing, safetensorsFixture());
     const result = await downloadAsset(
       ['unet', 'diffusion_models', 'https://example.test/krea2_turbo_fp8_scaled.safetensors'],
       destinationRoot,
@@ -279,6 +378,55 @@ test('models in discovered external roots are reused while ComfyUI is stopped', 
     assert.equal(result.externalRoot, true);
     assert.equal(result.destination, existing);
     assert.equal(fetched, false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('model downloads verify disk space, byte counts, and model headers before installation', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-model-integrity-'));
+  try {
+    const valid = path.join(rootDir, 'valid.safetensors');
+    const invalid = path.join(rootDir, 'invalid.safetensors');
+    const gguf = path.join(rootDir, 'model.gguf');
+    fs.writeFileSync(valid, safetensorsFixture());
+    fs.writeFileSync(invalid, '<html>download denied</html>');
+    fs.writeFileSync(gguf, Buffer.from('GGUFfixture'));
+    assert.equal((await validateModelFile(valid)).valid, true);
+    assert.equal((await validateModelFile(invalid)).valid, false);
+    assert.equal((await validateModelFile(gguf)).valid, true);
+
+    await assert.rejects(
+      ensureDownloadDiskSpace(rootDir, 1024, {
+        statfs: async () => ({ bavail: 1, bsize: 1024 }),
+      }),
+      (error) => error.code === 'dependency_disk_space'
+    );
+
+    const bytes = safetensorsFixture();
+    await assert.rejects(
+      downloadAsset(
+        ['unet', 'diffusion_models', 'https://example.test/model.safetensors'],
+        rootDir,
+        { unet: 'downloaded.safetensors' },
+        () => {},
+        {
+          statfs: async () => ({ bavail: 10 ** 9, bsize: 4096 }),
+          fetch: async () => ({
+            ok: true,
+            headers: { get: (name) => name === 'content-length' ? String(bytes.length + 4) : '' },
+            body: { getReader: () => {
+              let sent = false;
+              return { read: async () => sent ? { done: true } : (sent = true, { done: false, value: bytes }) };
+            } },
+          }),
+        }
+      ),
+      (error) => error.code === 'dependency_download_incomplete'
+    );
+    const destination = path.join(rootDir, 'diffusion_models', 'downloaded.safetensors');
+    assert.equal(fs.existsSync(destination), false);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part`), false);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }

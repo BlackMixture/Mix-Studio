@@ -16,7 +16,7 @@ const {
   sam3InstallStatus,
 } = require('../lib/sam3-installer');
 
-test('Comfy Desktop registry prefers initialized installations and reports partial ones separately', () => {
+test('Comfy Desktop registry requires installed status, main.py, and Python before it is ready', () => {
   const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'mix-comfy-registry-'));
   const appData = path.join(temp, 'app-data');
   const installRoot = path.join(temp, 'installations', 'primary');
@@ -24,9 +24,12 @@ test('Comfy Desktop registry prefers initialized installations and reports parti
   const python = path.join(base, '.venv', 'Scripts', 'python.exe');
   const registryDir = path.join(appData, 'Comfy Desktop');
   fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(python, '');
   fs.mkdirSync(registryDir, { recursive: true });
   fs.writeFileSync(path.join(registryDir, 'installations.json'), JSON.stringify([{
-    id: 'primary', installPath: installRoot, sourceId: 'comfyorg', createdAt: '2026-07-21T00:00:00.000Z',
+    id: 'primary', status: 'installing', installPath: installRoot, sourceId: 'comfyorg', createdAt: '2026-07-21T00:00:00.000Z',
   }]));
   const options = { env: { APPDATA: appData }, home: path.join(temp, 'missing'), fsImpl: fs };
   try {
@@ -37,10 +40,35 @@ test('Comfy Desktop registry prefers initialized installations and reports parti
     assert.equal(partial.basePath, '');
     assert.equal(partial.partialPath, base);
     assert.match(partial.reason, /incomplete ComfyUI installation/i);
-    fs.mkdirSync(path.dirname(python), { recursive: true });
-    fs.writeFileSync(python, '');
+    fs.writeFileSync(path.join(registryDir, 'installations.json'), JSON.stringify([{
+      id: 'primary', status: 'installed', installPath: installRoot, sourceId: 'comfyorg', createdAt: '2026-07-21T00:00:00.000Z',
+    }]));
+    fs.rmSync(path.join(base, 'main.py'));
+    assert.equal(findComfyBase({}, options), '');
+    assert.equal(findPartialComfyBase({}, options), base);
+    fs.writeFileSync(path.join(base, 'main.py'), '');
     assert.equal(findComfyBase({}, options), base);
     assert.equal(sam3InstallStatus({}, options).canInstall, true);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('Comfy Desktop registry surfaces an in-progress installation before ComfyUI files exist', () => {
+  const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'mix-comfy-installing-'));
+  const appData = path.join(temp, 'app-data');
+  const installRoot = path.join(temp, 'installations', 'pending');
+  const base = path.join(installRoot, 'ComfyUI');
+  const registryDir = path.join(appData, 'Comfy Desktop');
+  fs.mkdirSync(installRoot, { recursive: true });
+  fs.mkdirSync(registryDir, { recursive: true });
+  fs.writeFileSync(path.join(registryDir, 'installations.json'), JSON.stringify([{
+    id: 'pending', status: 'installing', installPath: installRoot, sourceId: 'comfyorg',
+  }]));
+  try {
+    const options = { env: { APPDATA: appData }, home: path.join(temp, 'missing'), fsImpl: fs };
+    assert.equal(findComfyBase({}, options), '');
+    assert.equal(findPartialComfyBase({}, options), base);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -49,7 +77,7 @@ test('Comfy Desktop registry prefers initialized installations and reports parti
 test('SAM3 installer locates the configured ComfyUI base and its private Python', () => {
   const base = path.resolve('/tmp/mixbox-comfy');
   const python = path.join(base, '.venv', 'Scripts', 'python.exe');
-  const found = new Set([base, path.join(base, 'models'), python]);
+  const found = new Set([base, path.join(base, 'models'), path.join(base, 'main.py'), python]);
   const existsSync = (file) => found.has(path.resolve(file));
   const runtime = { comfy: { path: base } };
   assert.equal(findComfyBase(runtime, { existsSync, env: {}, home: '/missing' }), base);
@@ -66,7 +94,8 @@ test('SAM3 installer updates a fixed upstream checkout and uses the ComfyUI envi
   const python = path.join(base, '.venv', 'Scripts', 'python.exe');
   const requirements = path.join(nodePath, 'requirements.txt');
   const installScript = path.join(nodePath, 'install.py');
-  const found = new Set([base, customNodes, path.join(base, 'models'), python, nodePath, path.join(nodePath, '.git'), requirements, installScript]);
+  const gitExecutable = path.join(base, 'tools', 'git.exe');
+  const found = new Set([base, customNodes, path.join(base, 'models'), path.join(base, 'main.py'), python, nodePath, path.join(nodePath, '.git'), requirements, installScript]);
   const existsSync = (file) => found.has(path.resolve(file));
   const calls = [];
   const fsImpl = {
@@ -74,7 +103,7 @@ test('SAM3 installer updates a fixed upstream checkout and uses the ComfyUI envi
     mkdirSync() {},
     readFileSync: fs.readFileSync,
   };
-  const result = await installSam3({ comfy: { path: base } }, {
+  const result = await installSam3({ comfy: { path: base }, update: { gitExecutable } }, {
     existsSync,
     fsImpl,
     env: {},
@@ -89,6 +118,8 @@ test('SAM3 installer updates a fixed upstream checkout and uses the ComfyUI envi
   assert.deepEqual(calls[1].args, ['-C', nodePath, 'pull', '--ff-only']);
   assert.deepEqual(calls[2].args, ['-m', 'pip', 'install', '--upgrade-strategy', 'only-if-needed', '-r', requirements]);
   assert.deepEqual(calls[3].args, [installScript]);
+  assert.equal(calls[0].command, gitExecutable);
+  assert.equal(calls[1].command, gitExecutable);
   assert.equal(calls[2].command, python);
   assert.equal(SAM3_REPO_URL, 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git');
   assert.equal(isOfficialSam3Remote('git@github.com:PozzettiAndrea/ComfyUI-SAM3.git'), true);

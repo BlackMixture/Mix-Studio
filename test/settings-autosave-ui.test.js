@@ -40,7 +40,7 @@ test('a pending app restart appears contextually beside the close button', () =>
   assert.match(app, /button\.hidden = !settingsAppRestartRequired \|\| !state\.profileIsOwner/);
   assert.match(app, /\$\('#settingsRestartApply'\)\.addEventListener\('click'/);
   assert.match(app, /api\('\/api\/app\/restart', \{ method: 'POST' \}\)/);
-  assert.match(app, /await waitForAppRestart\(\)/);
+  assert.match(app, /await waitForAppRestart\(previousInstanceId \|\| result\.instanceId\)/);
 });
 
 test('only a changed ComfyUI URL currently requests a Mix Studio restart', () => {

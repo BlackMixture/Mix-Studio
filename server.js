@@ -200,6 +200,7 @@ const {
   QUICK_SETUP_COMPONENTS,
   combinedHardwareFit,
   componentHardwareGuidance,
+  recommendedQuickSetup,
   portableSetupConfig,
   setupHardwareProfile,
   writePortableSetupConfig,
@@ -225,6 +226,8 @@ const {
   defaultOpenProfile,
   adoptOrphans,
   hasOrphans,
+  isLoopbackAddress,
+  createLoginThrottle,
 } = require('./lib/profiles');
 
 const ROOT = __dirname;
@@ -433,7 +436,7 @@ function isPrivateUnlocked(req) {
 
 function privateCookie(value, maxAge) {
   const encoded = encodeURIComponent(value || '');
-  return `${PRIVATE_COOKIE}=${encoded}; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+  return `${PRIVATE_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
 /** Video track dimensions from an MP4 buffer (tkhd box). Needed to build
@@ -521,6 +524,21 @@ try {
   AUTH_SECRET = crypto.randomBytes(24).toString('hex');
   fs.writeFileSync(AUTH_SECRET_FILE, AUTH_SECRET);
 }
+const profileLoginThrottle = createLoginThrottle();
+
+function rotateAuthSecret() {
+  AUTH_SECRET = crypto.randomBytes(24).toString('hex');
+  fs.writeFileSync(AUTH_SECRET_FILE, AUTH_SECRET);
+  // EventSource connections authenticate only during the initial request.
+  // Close them when profile credentials change so a revoked browser cannot
+  // keep receiving profile-scoped events with an old cookie.
+  if (typeof sseClients !== 'undefined') {
+    for (const res of sseClients.keys()) {
+      try { res.end(); } catch { /* noop */ }
+    }
+    sseClients.clear();
+  }
+}
 if (!db.loraThumbs || typeof db.loraThumbs !== 'object') db.loraThumbs = {};
 if (!Array.isArray(db.profiles)) db.profiles = [];
 {
@@ -552,17 +570,35 @@ function backupDb(tag) {
 backupDb('boot');
 setInterval(() => backupDb(''), 30 * 60 * 1000);
 
+function requestAddress(req) {
+  return String(req?.socket?.remoteAddress || req?.connection?.remoteAddress || '');
+}
+
+function isLoopbackRequest(req) {
+  return isLoopbackAddress(requestAddress(req));
+}
+
 function currentProfile(req) {
   const cookies = parseCookies(req.headers.cookie);
   const id = parseProfileToken(cookies[PROFILE_COOKIE], AUTH_SECRET);
-  if (id) return db.profiles.find((p) => p.id === id) || null;
+  if (id) {
+    const signed = db.profiles.find((p) => p.id === id) || null;
+    // Cookies issued before remote access was locked must not preserve an
+    // open, no-PIN profile over the network. Loopback keeps the frictionless
+    // desktop workspace; remote browsers must sign in to a PIN-protected one.
+    if (signed && !isLoopbackRequest(req) && !signed.pinHash) return null;
+    return signed;
+  }
   const fallback = defaultOpenProfile(db);
-  if (fallback) req.usedDefaultProfile = true;
-  return fallback;
+  if (fallback && isLoopbackRequest(req)) {
+    req.usedDefaultProfile = true;
+    return fallback;
+  }
+  return null;
 }
 
 function profileCookie(token, maxAge) {
-  return `${PROFILE_COOKIE}=${encodeURIComponent(token || '')}; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+  return `${PROFILE_COOKIE}=${encodeURIComponent(token || '')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
 // One-time repair: recorded dims can differ from the actual file (edit
@@ -600,10 +636,26 @@ function pushHistory(entry) {
 /* SSE                                                                 */
 /* ------------------------------------------------------------------ */
 
-const sseClients = new Set();
+const sseClients = new Map();
+
+function eventProfileId(data) {
+  if (!data || typeof data !== 'object') return '';
+  if (data.profileId) return String(data.profileId);
+  if (data.item?.profileId) return String(data.item.profileId);
+  if (Array.isArray(data.items)) {
+    const item = data.items.find((entry) => entry?.profileId);
+    if (item) return String(item.profileId);
+  }
+  return '';
+}
+
 function broadcast(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of sseClients) { try { res.write(payload); } catch { /* noop */ } }
+  const profileId = eventProfileId(data);
+  for (const [res, clientProfileId] of sseClients) {
+    if (profileId && profileId !== clientProfileId) continue;
+    try { res.write(payload); } catch { /* noop */ }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -611,17 +663,24 @@ function broadcast(event, data) {
 /* ------------------------------------------------------------------ */
 
 const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
+// A boot-scoped id lets browsers distinguish the old process from the
+// replacement process even when a restart is too fast to produce a failed
+// network request.
+const SERVER_INSTANCE_ID = crypto.randomBytes(12).toString('hex');
 const jobs = new Map(); // promptId -> job
 const queueHealthState = { lowGpuSince: null };
 let dependencyInstallRunning = false;
 let dependencyInstallController = null;
 let comfyRestartRunning = false;
+let appUpdateRunning = false;
+let appUpdateRestartWaitTimer = null;
 let setupHardwareSnapshot = null;
 let setupHardwareAt = 0;
 let comfyCompatibilitySnapshot = null;
 let comfyCompatibilityAt = 0;
 let comfySetupProcess = null;
 let comfySetupCancelRequested = false;
+let comfySetupExpectedBasePath = '';
 let comfyStartRunning = false;
 let comfyStartState = {
   state: 'idle',
@@ -706,6 +765,10 @@ async function activeVramProfile() {
 function applySetupConnection(values) {
   const previousUrl = settings.comfyUrl;
   const config = portableSetupConfig(ROOT, RUNTIME, values);
+  // Installation completion can intentionally leave endpoint selection
+  // pending. portableSetupConfig normally supplies the conventional 8188
+  // default, which would make an unrelated local ComfyUI look selected.
+  if (values.clearUrl === true) config.comfy.url = '';
   writePortableSetupConfig(ROOT, config);
   RUNTIME = resolveRuntimeConfig(ROOT);
   settings.comfyUrl = config.comfy.url;
@@ -726,6 +789,7 @@ function startOfficialComfySetup() {
   const resultFile = path.join(DATA, 'comfy-setup-result.json');
   try { fs.unlinkSync(resultFile); } catch { /* no previous result */ }
   comfySetupCancelRequested = false;
+  comfySetupExpectedBasePath = '';
   updateComfySetupState({
     state: 'running',
     phase: 'starting',
@@ -769,17 +833,49 @@ function startOfficialComfySetup() {
       fsp.unlink(resultFile).catch(() => {});
       return;
     }
-    try {
-      if (code !== 0) throw new Error(stderr.trim() || `Official ComfyUI setup exited with code ${code}.`);
-      const result = loadJson(resultFile, {});
-      if (!result.path) throw new Error('ComfyUI finished, but its installation folder was not reported.');
-      applySetupConnection({ path: result.path, modelsPath: result.modelsPath, url: result.url });
-      updateComfySetupState({ state: 'complete', phase: 'complete', message: 'ComfyUI Desktop is connected. Mix Studio can install models and nodes now.', error: null });
-    } catch (error) {
-      updateComfySetupState({ state: 'error', phase: 'error', message: 'ComfyUI setup needs attention.', error: String(error.message || error) });
-    } finally {
-      fsp.unlink(resultFile).catch(() => {});
-    }
+    void (async () => {
+      try {
+        if (code !== 0) throw new Error(stderr.trim() || `Official ComfyUI setup exited with code ${code}.`);
+        const result = loadJson(resultFile, {});
+        if (!result.path || result.state !== 'installed') {
+          throw new Error('ComfyUI finished, but no completed installation folder was reported.');
+        }
+        // Save the completed installation without preserving an endpoint from
+        // another portable/Desktop instance. Comfy Desktop may allocate a
+        // different port for each installation.
+        applySetupConnection({ path: result.path, modelsPath: result.modelsPath, clearUrl: true });
+        const discovery = await discoverComfyEndpoints('', {
+          env: process.env,
+          platform: process.platform,
+          timeoutMs: 1200,
+          expectedBasePath: result.path,
+        });
+        if (discovery.url) {
+          applySetupConnection({ path: result.path, modelsPath: result.modelsPath, url: discovery.url });
+          comfySetupExpectedBasePath = '';
+          updateComfySetupState({ state: 'complete', phase: 'connected', message: `ComfyUI Desktop is connected at ${discovery.url}.`, error: null });
+        } else {
+          comfySetupExpectedBasePath = result.path;
+          if (discovery.ambiguous) {
+            updateComfyStartState({
+              state: 'choice', phase: 'choose', message: 'A running ComfyUI was found, but Mix Studio could not verify that it belongs to this installation. Choose it explicitly or start the new Comfy Desktop installation.', error: null,
+              matches: discovery.matches.map((entry) => ({ url: entry.url, installationName: entry.installationName || '' })),
+            });
+          }
+          updateComfySetupState({
+            state: 'installed', phase: discovery.ambiguous ? 'choose' : 'installed',
+            message: discovery.ambiguous
+              ? 'Comfy Desktop is installed. Choose the running instance Mix Studio should use.'
+              : 'Comfy Desktop is installed. Open its ComfyUI instance and press Play; Mix Studio will find the port automatically.',
+            error: null,
+          });
+        }
+      } catch (error) {
+        updateComfySetupState({ state: 'error', phase: 'error', message: 'ComfyUI setup needs attention.', error: String(error.message || error) });
+      } finally {
+        fsp.unlink(resultFile).catch(() => {});
+      }
+    })();
   });
 }
 
@@ -842,14 +938,19 @@ function registeredModelNames(info) {
 }
 
 async function assertDesktopIsIdle() {
-  if (jobs.size) throw new Error('Wait for the Mix Studio queue to finish before changing desktop dependencies.');
+  const busy = (message) => {
+    const error = new Error(message);
+    error.code = 'desktop_busy';
+    return error;
+  };
+  if (jobs.size) throw busy('Wait for the Mix Studio queue to finish before changing desktop dependencies.');
   try {
     const queue = await (await comfyFetch('/queue')).json();
     if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
-      throw new Error('Wait for the ComfyUI queue to finish before changing desktop dependencies.');
+      throw busy('Wait for the ComfyUI queue to finish before changing desktop dependencies.');
     }
   } catch (error) {
-    if (/Wait for the ComfyUI queue/.test(String(error.message || error))) throw error;
+    if (error?.code === 'desktop_busy') throw error;
     // A stopped ComfyUI instance is recoverable during dependency installation.
   }
 }
@@ -873,6 +974,7 @@ async function discoverLocalComfy(options = {}) {
     platform: process.platform,
     timeoutMs: options.timeoutMs || 1000,
     skipProcessQuery: options.skipProcessQuery === true,
+    expectedBasePath: options.expectedBasePath || '',
   });
 }
 
@@ -886,15 +988,20 @@ function adoptComfyEndpoint(url) {
   return settings.comfyUrl;
 }
 
-async function waitForStartedComfy(timeoutMs = 5 * 60_000) {
+async function waitForStartedComfy(timeoutMs = 5 * 60_000, expectedBasePath = '') {
   const deadline = Date.now() + timeoutMs;
   let attempt = 0;
+  let lastDiscovery = null;
   while (Date.now() < deadline) {
-    const discovery = await discoverLocalComfy({ timeoutMs: 900, skipProcessQuery: attempt++ % 4 !== 0 });
+    const discovery = await discoverLocalComfy({ timeoutMs: 900, skipProcessQuery: attempt++ % 4 !== 0, expectedBasePath });
+    lastDiscovery = discovery;
     if (discovery.url) return discovery;
-    if (discovery.ambiguous) return discovery;
+    // While starting a known Desktop installation, an unrelated running
+    // ComfyUI is not evidence that the requested installation has started.
+    if (discovery.ambiguous && !expectedBasePath) return discovery;
     await pause(1500);
   }
+  if (lastDiscovery?.ambiguous) return Object.assign({}, lastDiscovery, { timedOut: true });
   return { url: '', matches: [], ambiguous: false, checked: 0, timedOut: true };
 }
 
@@ -1423,6 +1530,7 @@ async function queuePrompt(graph, options = {}) {
 let ws = null;
 let wsTimer = null;
 let lastPreviewAt = 0;
+let activeWsPromptId = '';
 
 function resetComfyTransport() {
   clearTimeout(wsTimer);
@@ -1437,6 +1545,7 @@ function resetComfyTransport() {
     } catch { /* the next job will create a fresh transport */ }
   }
   ws = null;
+  activeWsPromptId = '';
   objectInfoCache = null;
   objectInfoAt = 0;
   comfyCompatibilitySnapshot = null;
@@ -1490,6 +1599,7 @@ function handleWsMessage(msg) {
     const phase = progressDetailsForJob(job, d.node ?? null, d.value, d.max);
     broadcast('progress', {
       jobId: pid,
+      profileId: job.profileId,
       value: d.value,
       max: d.max,
       nodeId: d.node ?? null,
@@ -1498,10 +1608,12 @@ function handleWsMessage(msg) {
     });
   } else if (msg.type === 'executing' && pid && jobs.has(pid)) {
     const job = jobs.get(pid);
+    activeWsPromptId = d.node === null ? '' : pid;
     if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();
     if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
     else broadcast('status', {
       jobId: pid,
+      profileId: job.profileId,
       kind: job.kind,
       text: nodeLabel(pid, d.node),
       itemId: job.itemId || null,
@@ -1525,9 +1637,13 @@ function handleWsBinary(buf) {
   if (!preview) return;
   const now = Date.now();
   if (now - lastPreviewAt < 450) return;
+  const jobId = preview.metadata?.prompt_id || activeWsPromptId;
+  const job = jobs.get(jobId);
+  if (!job) return;
   lastPreviewAt = now;
   broadcast('preview', {
-    jobId: preview.metadata?.prompt_id || null,
+    jobId,
+    profileId: job.profileId,
     dataUrl: `data:${preview.mime};base64,${preview.image.toString('base64')}`,
   });
 }
@@ -1808,7 +1924,7 @@ async function completeJob(pid) {
     if (!hist) return failJob(pid, 'SAM3 finished but ComfyUI did not return its history entry. Try again after ComfyUI is idle.');
     const files = findOutputFiles(hist.outputs || {}, /\.(png|jpg|jpeg|webp)$/i);
     if (!files.length) return failJob(pid, 'SAM3 finished without a mask image. Check the ComfyUI console for the SAM3 node error.');
-    broadcast('status', { jobId: pid, kind: 'smartMask', text: 'Reading selected mask…', itemId: null });
+    broadcast('status', { jobId: pid, kind: 'smartMask', profileId: job.profileId, text: 'Reading selected mask…', itemId: null });
     const dataUrls = await Promise.all(files.map(async (entry) => {
       const buf = await downloadOutput(entry);
       const ext = path.extname(entry.filename).toLowerCase();
@@ -1816,7 +1932,7 @@ async function completeJob(pid) {
       return `data:${mime};base64,${buf.toString('base64')}`;
     }));
     jobs.delete(pid);
-    broadcast('status', { jobId: pid, kind: 'smartMask', text: 'Mask ready', itemId: null });
+    broadcast('status', { jobId: pid, kind: 'smartMask', profileId: job.profileId, text: 'Mask ready', itemId: null });
     job.resolve({ dataUrl: dataUrls[0], dataUrls });
     return;
   }
@@ -1849,7 +1965,13 @@ async function completeJob(pid) {
     if (!vids.length) return failJob(pid, 'ComfyUI produced no video file');
     let buf = await downloadOutput(vids[vids.length - 1]);
     if (job.extensionJoin) {
-      broadcast('status', { jobId: pid, kind: 'video', text: 'Joining video extension…', itemId: job.itemId || null });
+      broadcast('status', {
+        jobId: pid,
+        profileId: job.profileId,
+        kind: 'video',
+        text: 'Joining video extension…',
+        itemId: job.itemId || null,
+      });
       try {
         buf = await joinVideoExtension(Object.assign({}, job.extensionJoin, { tailBuffer: buf }));
         durationMs = jobDurationMs(job);
@@ -2144,6 +2266,7 @@ async function completeJob(pid) {
       broadcast('sequenceStep', {
         jobId: pid,
         nextJobId: next.pid,
+        profileId: job.profileId,
         items: created,
         completedStep: editSequence.index + 1,
         nextStep: editSequence.index + 2,
@@ -4518,6 +4641,10 @@ function serveFile(res, file, range) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404); res.end('not found'); return; }
     const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const dataFile = file === DATA || file.startsWith(DATA + path.sep);
+    const cacheHeaders = dataFile
+      ? { 'Cache-Control': 'private, max-age=31536000, immutable', Vary: 'Cookie' }
+      : { 'Cache-Control': 'no-cache' };
     // Range support so <video> can seek
     if (range) {
       const m = range.match(/bytes=(\d*)-(\d*)/);
@@ -4529,6 +4656,7 @@ function serveFile(res, file, range) {
           'Content-Range': `bytes ${start}-${end}/${st.size}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': end - start + 1,
+          ...cacheHeaders,
         });
         fs.createReadStream(file, { start, end }).pipe(res);
         return;
@@ -4538,10 +4666,62 @@ function serveFile(res, file, range) {
       'Content-Type': mime,
       'Content-Length': st.size,
       'Accept-Ranges': 'bytes',
-      'Cache-Control': file.includes(DATA) ? 'public, max-age=31536000, immutable' : 'no-cache',
+      ...cacheHeaders,
     });
     fs.createReadStream(file).pipe(res);
   });
+}
+
+function safeMediaPath(root, encodedName) {
+  let decoded;
+  try { decoded = decodeURIComponent(String(encodedName || '')); } catch { return null; }
+  if (!decoded || decoded.includes('\0')) return null;
+  const file = path.resolve(root, decoded);
+  if (file === root || !file.startsWith(root + path.sep)) return null;
+  return {
+    file,
+    name: path.relative(root, file).split(path.sep).join('/'),
+  };
+}
+
+function storedMediaName(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function itemImageFiles(item) {
+  const files = new Set([item?.file, item?.upscaled, item?.sourceFile]
+    .map(storedMediaName).filter(Boolean));
+  for (const composite of item?.composites || []) {
+    const file = storedMediaName(composite?.file);
+    if (file) files.add(file);
+  }
+  for (const layout of Object.values(item?.strengthHunt?.layouts || {})) {
+    const file = storedMediaName(layout?.file);
+    if (file) files.add(file);
+  }
+  return files;
+}
+
+function canAccessProfileMedia(req, profile, kind, fileName) {
+  if (!profile) return false;
+  const requested = storedMediaName(fileName);
+  if (!requested) return false;
+  if (kind === 'face') {
+    return db.faces.some((face) => (
+      face.profileId === profile.id && storedMediaName(face.file) === requested
+    ));
+  }
+  const visibleItems = galleryView(db, isPrivateUnlocked(req)).items
+    .filter((item) => item.profileId === profile.id);
+  if (kind === 'video') {
+    return visibleItems.some((item) => (item.videos || []).some((video) => (
+      storedMediaName(video?.file) === requested
+    )));
+  }
+  if (kind === 'image') {
+    return visibleItems.some((item) => itemImageFiles(item).has(requested));
+  }
+  return false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -4604,12 +4784,20 @@ const REQUIRED_CLASSES = {
 async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
   const launch = startStatus(RUNTIME);
-  const mobileAccess = mobileAccessSummary(os.networkInterfaces(), PORT);
+  const ownerHasPin = !!db.profiles[0]?.pinHash;
+  const discoveredMobileAccess = mobileAccessSummary(os.networkInterfaces(), PORT);
+  const mobileAccess = Object.assign({}, discoveredMobileAccess, {
+    requiresOwnerPin: !ownerHasPin,
+    remoteAccessReady: ownerHasPin,
+    tailscaleUrl: ownerHasPin ? discoveredMobileAccess.tailscaleUrl : '',
+    localUrl: ownerHasPin ? discoveredMobileAccess.localUrl : '',
+  });
   const hardwareInfoValue = await getSetupHardwareInfo();
   const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
   const krea2Recommendation = recommendedKrea2Variant(hardwareProfile);
   const vramRecommendation = recommendedVramProfile(hardwareProfile);
   const guidance = componentHardwareGuidance(SETUP_FEATURE_MANIFEST, hardwareInfoValue);
+  const quickSetup = recommendedQuickSetup(hardwareInfoValue);
   let connected = false;
   let connectionError = '';
   try {
@@ -4624,8 +4812,9 @@ async function setupStatusPayload(forceCompatibility = false) {
   return {
     appReady: true,
     platform: process.platform,
-    quickComponents: QUICK_SETUP_COMPONENTS,
-    quickFit: combinedHardwareFit(QUICK_SETUP_COMPONENTS, guidance),
+    quickComponents: quickSetup.components,
+    quickSetup,
+    quickFit: combinedHardwareFit(quickSetup.components, guidance),
     hardware: hardwareProfile,
     modelRecommendations: { krea2: krea2Recommendation },
     modelVariants: { krea2: settings.krea2ModelVariant },
@@ -4669,6 +4858,11 @@ async function handleApi(req, res, url) {
   const profile = currentProfile(req);
   req.profile = profile;
 
+  if (appUpdateRunning && req.method !== 'GET' && route !== '/api/update') {
+    res.setHeader('Retry-After', '5');
+    return json(res, 503, { error: 'Mix Studio is applying an update. Try again after it reconnects.', code: 'app_updating' });
+  }
+
   if (route === '/api/me') {
     if (!profile) return json(res, 401, { error: 'Not signed in', code: 'auth' });
     if (req.usedDefaultProfile) {
@@ -4680,6 +4874,11 @@ async function handleApi(req, res, url) {
     return json(res, 200, { profiles: db.profiles.map((p) => publicProfile(p, db)) });
   }
   if (route === '/api/profiles' && req.method === 'POST') {
+    const owner = db.profiles[0];
+    const ownerSignedIn = !!(profile && owner && profile.id === owner.id);
+    if (!isLoopbackRequest(req) && !ownerSignedIn) {
+      return json(res, 403, { error: 'Create profiles from the generation computer or while signed in as the Owner.' });
+    }
     const body = await readJsonBody(req);
     const name = String(body.name || '').trim().slice(0, 30);
     if (!name) return json(res, 400, { error: 'Profile name required' });
@@ -4703,8 +4902,29 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const target = db.profiles.find((p) => p.id === profLogin[1]);
     if (!target) return json(res, 404, { error: 'Profile not found' });
+    if (!target.pinHash && !isLoopbackRequest(req)) {
+      return json(res, 403, {
+        error: 'Remote access is locked until the Owner adds a PIN from the generation computer.',
+        code: 'remote_pin_required',
+      });
+    }
+    const throttleKey = `${requestAddress(req)}:${target.id}`;
+    const allowance = profileLoginThrottle.check(throttleKey);
+    if (!allowance.allowed) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil(allowance.retryAfterMs / 1000))));
+      return json(res, 429, { error: 'Too many incorrect PIN attempts. Wait before trying again.', code: 'pin_rate_limited' });
+    }
     if (!verifyPin(target, String(body.pin || ''))) {
+      const blocked = profileLoginThrottle.fail(throttleKey);
+      if (!blocked.allowed) res.setHeader('Retry-After', String(Math.max(1, Math.ceil(blocked.retryAfterMs / 1000))));
       return json(res, 401, { error: 'Wrong PIN' });
+    }
+    profileLoginThrottle.success(throttleKey);
+    if (!String(target.pinHash || '').startsWith('scrypt$')) {
+      const upgraded = hashPin(String(body.pin || ''));
+      target.pinSalt = upgraded.salt;
+      target.pinHash = upgraded.hash;
+      saveDb();
     }
     res.setHeader('Set-Cookie', profileCookie(signProfileId(target.id, AUTH_SECRET), 60 * 60 * 24 * 365));
     return json(res, 200, { profile: publicProfile(target, db) });
@@ -4754,6 +4974,10 @@ async function handleApi(req, res, url) {
         target.pinSalt = null;
         target.pinHash = null; // clear PIN
       }
+      // A PIN change revokes cookies issued under the previous access policy.
+      // The caller receives a replacement cookie below; other devices sign in again.
+      rotateAuthSecret();
+      res.setHeader('Set-Cookie', profileCookie(signProfileId(profile.id, AUTH_SECRET), 60 * 60 * 24 * 365));
     }
     saveDb();
     return json(res, 200, { profile: publicProfile(target, db) });
@@ -4799,9 +5023,10 @@ async function handleApi(req, res, url) {
     if (profile && profile.id === target.id) res.setHeader('Set-Cookie', profileCookie('', 0));
     return json(res, 200, { ok: true, profiles: db.profiles.map((p) => publicProfile(p, db)) });
   }
-  // Everything else needs a signed-in profile ( /api/meta and /api/events
-  // stay open so the connection dot and picker work pre-login).
-  if (!profile && route !== '/api/meta' && route !== '/api/events') {
+  // Everything else needs a signed-in profile. Metadata stays available for
+  // the pre-login connection indicator, but live events can contain prompts,
+  // previews, and completed gallery records and are always profile-scoped.
+  if (!profile && route !== '/api/meta') {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
   }
 
@@ -4811,7 +5036,7 @@ async function handleApi(req, res, url) {
       'X-Accel-Buffering': 'no',
     });
     res.write('retry: 2000\n\n');
-    sseClients.add(res);
+    sseClients.set(res, profile.id);
     const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* noop */ } }, 25000);
     req.on('close', () => { clearInterval(ping); sseClients.delete(res); });
     return;
@@ -4853,25 +5078,38 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/update' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update Mix Studio' });
-    if (jobs.size) return json(res, 409, { error: 'Wait for the Mix Studio queue to finish before updating' });
-
-    // ComfyUI can contain jobs submitted outside this server. Restarting while
-    // one is active would lose Mix Studio's completion tracking, so check both.
+    if (appUpdateRunning) return json(res, 409, { error: 'A Mix Studio update is already running', code: 'app_updating' });
+    appUpdateRunning = true;
+    let keepMaintenanceUntilRestart = false;
     try {
-      const queue = await (await comfyFetch('/queue')).json();
-      if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
-        return json(res, 409, { error: 'Wait for the ComfyUI queue to finish before updating' });
+      // Enter maintenance before the first queue check so another browser
+      // cannot submit work while the network-bound fast-forward is running.
+      await assertDesktopIsIdle();
+      const update = await updateFromGit(ROOT, {
+        channel: RUNTIME.update.channel,
+        gitExecutable: RUNTIME.update.gitExecutable,
+      });
+      // ComfyUI can receive work outside Mix Studio. Check it again directly
+      // before scheduling a process restart. If that race occurs after Git has
+      // already updated the checkout, keep maintenance active and restart as
+      // soon as the external queue becomes idle instead of stranding the new
+      // files under the old server process.
+      let waitingForIdle = false;
+      if (update.updated && update.restartRequired) {
+        try {
+          await assertDesktopIsIdle();
+        } catch (error) {
+          if (error?.code !== 'desktop_busy') throw error;
+          waitingForIdle = true;
+        }
+        keepMaintenanceUntilRestart = true;
       }
-    } catch {
-      // An offline ComfyUI instance has no active inference to protect.
-    }
-
-    try {
-      const update = await updateFromGit(ROOT);
       json(res, 200, {
         ok: true,
         updated: update.updated,
         restarting: update.updated && update.restartRequired,
+        waitingForIdle,
+        instanceId: SERVER_INSTANCE_ID,
         branch: update.branch,
         version: update.release.version || update.after.slice(0, 7),
         previousVersion: update.releaseBefore.version || update.before.slice(0, 7),
@@ -4879,16 +5117,21 @@ async function handleApi(req, res, url) {
         revision: update.after.slice(0, 7),
         changedFiles: update.changedFiles,
       });
-      if (update.updated && update.restartRequired) scheduleServerRestart();
+      if (update.updated && update.restartRequired) {
+        if (waitingForIdle) scheduleServerRestartWhenIdle();
+        else scheduleServerRestart();
+      }
       return;
     } catch (e) {
-      const status = ['update_dirty', 'update_branch'].includes(e.code) ? 409 : 500;
+      const status = ['desktop_busy', 'update_dirty', 'update_branch', 'update_channel', 'update_origin'].includes(e.code) ? 409 : 500;
       const payload = { error: String(e.message || e), code: e.code || 'update_failed' };
       if (e.code === 'update_dirty' && Array.isArray(e.dirtyFiles)) {
         payload.dirtyFiles = e.dirtyFiles;
         payload.dirtyFileCount = Number.isFinite(e.dirtyFileCount) ? e.dirtyFileCount : e.dirtyFiles.length;
       }
       return json(res, status, payload);
+    } finally {
+      if (!keepMaintenanceUntilRestart) appUpdateRunning = false;
     }
   }
 
@@ -4899,7 +5142,7 @@ async function handleApi(req, res, url) {
     } catch (error) {
       return json(res, 409, { error: String(error.message || error) });
     }
-    json(res, 202, { ok: true, restarting: true });
+    json(res, 202, { ok: true, restarting: true, instanceId: SERVER_INSTANCE_ID });
     scheduleServerRestart();
     return;
   }
@@ -4936,6 +5179,7 @@ async function handleApi(req, res, url) {
         modelsPath: String(body.modelsPath || '').trim() || (requestedPath ? path.join(requestedPath, 'models') : ''),
         url: body.url || settings.comfyUrl,
       });
+      comfySetupExpectedBasePath = '';
       updateComfySetupState({ state: 'complete', phase: 'connected', message: 'ComfyUI location saved. Checking models and nodes…', error: null });
       return json(res, 200, await setupStatusPayload());
     } catch (error) {
@@ -4946,7 +5190,10 @@ async function handleApi(req, res, url) {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can discover the generation desktop' });
     try {
       const body = await readJsonBody(req).catch(() => ({}));
-      const discovery = await discoverLocalComfy({ timeoutMs: 1000 });
+      const launch = startStatus(RUNTIME);
+      const expectedBasePath = String(comfySetupExpectedBasePath
+        || (launch.kind === 'desktop' ? launch.basePath : '') || '').trim();
+      const discovery = await discoverLocalComfy({ timeoutMs: 1000, expectedBasePath });
       const requested = String(body.url || '').trim();
       let selected = discovery.url;
       if (requested) {
@@ -4956,7 +5203,12 @@ async function handleApi(req, res, url) {
         }
         selected = matched.url;
       }
-      if (selected) adoptComfyEndpoint(selected);
+      if (selected) {
+        adoptComfyEndpoint(selected);
+        comfySetupExpectedBasePath = '';
+        updateComfySetupState({ state: 'complete', phase: 'connected', message: `ComfyUI is connected at ${selected}.`, error: null });
+        updateComfyStartState({ state: 'complete', phase: 'connected', message: `Connected to ComfyUI at ${selected}.`, error: null, matches: [] });
+      }
       const publicDiscovery = {
         url: selected || '',
         ambiguous: !selected && discovery.ambiguous,
@@ -5047,7 +5299,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/meta') {
-    const app = readAppRelease(ROOT);
+    const app = Object.assign(readAppRelease(ROOT), { instanceId: SERVER_INSTANCE_ID });
     try {
       const info = await getObjectInfo(url.searchParams.has('refresh'), { signal: AbortSignal.timeout(6000) });
       const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];
@@ -5221,16 +5473,20 @@ async function handleApi(req, res, url) {
     }
     try {
       await assertDesktopIsIdle();
-      const alreadyRunning = await discoverLocalComfy({ timeoutMs: 900 });
+      const launch = startStatus(RUNTIME);
+      const expectedBasePath = String(comfySetupExpectedBasePath
+        || (launch.kind === 'desktop' ? launch.basePath : '') || '').trim();
+      const alreadyRunning = await discoverLocalComfy({ timeoutMs: 900, expectedBasePath });
       if (alreadyRunning.url) {
         adoptComfyEndpoint(alreadyRunning.url);
+        comfySetupExpectedBasePath = '';
         updateComfyStartState({
           state: 'complete', phase: 'connected', message: 'ComfyUI was already running. Mix Studio connected automatically.',
           error: null, matches: [],
         });
         return json(res, 200, { ok: true, alreadyRunning: true, status: await setupStatusPayload() });
       }
-      if (alreadyRunning.ambiguous) {
+      if (alreadyRunning.ambiguous && !expectedBasePath) {
         const matches = alreadyRunning.matches.map((entry) => ({ url: entry.url, installationName: entry.installationName || '' }));
         updateComfyStartState({
           state: 'choice', phase: 'choose', message: 'More than one running ComfyUI was found. Choose the one Mix Studio should use.',
@@ -5238,7 +5494,6 @@ async function handleApi(req, res, url) {
         });
         return json(res, 200, { ok: false, needsChoice: true, matches, status: await setupStatusPayload() });
       }
-      const launch = startStatus(RUNTIME);
       if (!launch.canStart) return json(res, 409, { error: launch.reason || 'ComfyUI start is not configured for this machine.' });
       comfyStartRunning = true;
       updateComfyStartState({
@@ -5259,9 +5514,10 @@ async function handleApi(req, res, url) {
       }
       (async () => {
         try {
-          const discovery = await waitForStartedComfy();
+          const discovery = await waitForStartedComfy(5 * 60_000, expectedBasePath);
           if (discovery.url) {
             adoptComfyEndpoint(discovery.url);
+            comfySetupExpectedBasePath = '';
             updateComfyStartState({
               state: 'complete', phase: 'connected', message: `Connected to ComfyUI at ${discovery.url}.`, error: null, matches: [],
             });
@@ -5468,7 +5724,13 @@ async function handleApi(req, res, url) {
           reject: (error) => { clearTimeout(timer); reject(error); },
         });
         ensureWs();
-        broadcast('status', { jobId: pid, kind: 'smartMask', text: 'Queued Smart Select…', itemId: null });
+        broadcast('status', {
+          jobId: pid,
+          profileId: req.profile.id,
+          kind: 'smartMask',
+          text: 'Queued Smart Select…',
+          itemId: null,
+        });
       })().catch(reject);
     });
     return json(res, 200, result);
@@ -6862,7 +7124,7 @@ async function handleApi(req, res, url) {
     for (const pid of clearedJobs) {
       cancelJob(pid, 'Stopped by hard reset');
     }
-    broadcast('queueReset', { reset, clearedJobs: clearedJobs.length });
+    broadcast('queueReset', { profileId: req.profile.id, reset, clearedJobs: clearedJobs.length });
     return json(res, 200, { ok: true, reset, clearedJobs: clearedJobs.length });
   }
 
@@ -7505,34 +7767,46 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     if (url.pathname.startsWith('/images/')) {
-      const file = path.normalize(path.join(IMAGES, url.pathname.slice(8)));
-      if (!file.startsWith(IMAGES)) { res.writeHead(403); return res.end(); }
-      return serveFile(res, file, req.headers.range);
+      const profile = currentProfile(req);
+      if (!profile) return json(res, 401, { error: 'Sign in to view generated media', code: 'auth' });
+      const media = safeMediaPath(IMAGES, url.pathname.slice(8));
+      if (!media || !canAccessProfileMedia(req, profile, 'image', media.name)) {
+        res.writeHead(404); return res.end('not found');
+      }
+      return serveFile(res, media.file, req.headers.range);
     }
     if (url.pathname.startsWith('/videos/')) {
-      const file = path.normalize(path.join(VIDEOS, url.pathname.slice(8)));
-      if (!file.startsWith(VIDEOS)) { res.writeHead(403); return res.end(); }
-      return serveFile(res, file, req.headers.range);
+      const profile = currentProfile(req);
+      if (!profile) return json(res, 401, { error: 'Sign in to view generated media', code: 'auth' });
+      const media = safeMediaPath(VIDEOS, url.pathname.slice(8));
+      if (!media || !canAccessProfileMedia(req, profile, 'video', media.name)) {
+        res.writeHead(404); return res.end('not found');
+      }
+      return serveFile(res, media.file, req.headers.range);
     }
     if (url.pathname.startsWith('/faces/')) {
-      const file = path.normalize(path.join(FACES, url.pathname.slice(7)));
-      if (!file.startsWith(FACES)) { res.writeHead(403); return res.end(); }
-      return serveFile(res, file, req.headers.range);
+      const profile = currentProfile(req);
+      if (!profile) return json(res, 401, { error: 'Sign in to view profile media', code: 'auth' });
+      const media = safeMediaPath(FACES, url.pathname.slice(7));
+      if (!media || !canAccessProfileMedia(req, profile, 'face', media.name)) {
+        res.writeHead(404); return res.end('not found');
+      }
+      return serveFile(res, media.file, req.headers.range);
     }
     if (url.pathname.startsWith('/avatars/')) {
-      const file = path.normalize(path.join(AVATARS, url.pathname.slice(9)));
-      if (!file.startsWith(AVATARS)) { res.writeHead(403); return res.end(); }
-      return serveFile(res, file, req.headers.range);
+      const media = safeMediaPath(AVATARS, url.pathname.slice(9));
+      if (!media) { res.writeHead(404); return res.end('not found'); }
+      return serveFile(res, media.file, req.headers.range);
     }
     if (url.pathname.startsWith('/lorathumbs/')) {
-      const file = path.normalize(path.join(LORATHUMBS, url.pathname.slice(12)));
-      if (!file.startsWith(LORATHUMBS)) { res.writeHead(403); return res.end(); }
-      return serveFile(res, file, req.headers.range);
+      const media = safeMediaPath(LORATHUMBS, url.pathname.slice(12));
+      if (!media) { res.writeHead(404); return res.end('not found'); }
+      return serveFile(res, media.file, req.headers.range);
     }
     let p = url.pathname === '/' ? '/index.html' : url.pathname;
-    const file = path.normalize(path.join(PUBLIC, p));
-    if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
-    return serveFile(res, file);
+    const publicFile = safeMediaPath(PUBLIC, p.replace(/^\//, ''));
+    if (!publicFile) { res.writeHead(404); return res.end('not found'); }
+    return serveFile(res, publicFile.file);
   } catch (e) {
     const cancelled = e && e.code === 'job_cancelled';
     if (!cancelled) console.error('[error]', req.method, url.pathname, e.message);
@@ -7560,14 +7834,38 @@ function launchDetachedReplacement() {
   child.unref();
 }
 
+function scheduleServerRestartWhenIdle() {
+  if (restartScheduled || appUpdateRestartWaitTimer) return;
+  const check = async () => {
+    appUpdateRestartWaitTimer = null;
+    try {
+      await assertDesktopIsIdle();
+      scheduleServerRestart();
+    } catch (error) {
+      const retryMs = error?.code === 'desktop_busy' ? 2000 : 5000;
+      if (error?.code !== 'desktop_busy') {
+        console.error('[update] could not verify the desktop queue before restart:', error.message);
+      }
+      appUpdateRestartWaitTimer = setTimeout(check, retryMs);
+      appUpdateRestartWaitTimer.unref();
+    }
+  };
+  appUpdateRestartWaitTimer = setTimeout(check, 1000);
+  appUpdateRestartWaitTimer.unref();
+}
+
 function scheduleServerRestart() {
   if (restartScheduled) return;
+  if (appUpdateRestartWaitTimer) {
+    clearTimeout(appUpdateRestartWaitTimer);
+    appUpdateRestartWaitTimer = null;
+  }
   restartScheduled = true;
   broadcast('appRestarting', {});
   setTimeout(() => {
     const restartMode = process.env.MIXBOX_RESTART_MODE || process.env.KREASTUDIO_RESTART_MODE;
     if (restartMode !== 'batch') launchDetachedReplacement();
-    for (const client of sseClients) {
+    for (const client of sseClients.keys()) {
       try { client.end(); } catch { /* noop */ }
     }
     server.close(() => process.exit(75));
@@ -7579,10 +7877,14 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  * Mix Studio running');
   console.log(`    Local:   http://localhost:${PORT}`);
-  for (const entry of mobileAccessAddresses(os.networkInterfaces())) {
-    const label = entry.tailscale ? 'Tailscale' : 'Phone';
-    const note = entry.tailscale ? 'private phone access' : entry.name;
-    console.log(`    ${(label + ':').padEnd(11)}http://${entry.address}:${PORT}   (${note})`);
+  if (db.profiles[0]?.pinHash) {
+    for (const entry of mobileAccessAddresses(os.networkInterfaces())) {
+      const label = entry.tailscale ? 'Tailscale' : 'Phone';
+      const note = entry.tailscale ? 'private phone access' : entry.name;
+      console.log(`    ${(label + ':').padEnd(11)}http://${entry.address}:${PORT}   (${note})`);
+    }
+  } else {
+    console.log('    Phone:   locked until the Owner adds a profile PIN');
   }
   console.log(`    ComfyUI: ${settings.comfyUrl}`);
   if (typeof WebSocket === 'undefined') {

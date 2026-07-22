@@ -2,17 +2,20 @@
 
 Mix Studio uses a portable Git checkout on Windows. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
 
-The bootstrap is intentionally small. It gets the Mix Studio web app running first, then leaves ComfyUI, models, and custom-node setup inside the app. The in-app guide can launch the signed official ComfyUI Desktop installer, detect an initialized environment, and install the curated groups used by Mix Studio's workflow-tested defaults from `installer/feature-manifest.json`.
+The bootstrap is intentionally small. It gets the Mix Studio web app running first, then leaves ComfyUI, models, and custom-node setup inside the app. On an unconfigured installation, the centered setup panel opens automatically. It can start a detected portable or Desktop environment, launch the signed official ComfyUI Desktop installer, discover a live endpoint, and install the curated groups used by Mix Studio's workflow-tested defaults from `installer/feature-manifest.json`.
 
 ## New machine
 
 1. Open `https://blackmixture.github.io/Mix-Studio/` on Windows and download `install_MixStudio.bat` into the parent folder where you want Mix Studio installed.
 2. Run the downloaded file. It installs Git through `winget` when necessary and clones the official repository into a `Mix Studio` folder beside the installer. For example, running `D:\AI\install_MixStudio.bat` installs the app at `D:\AI\Mix Studio`.
 3. The downloaded checkout installs or updates Node.js LTS when Node 22+ is unavailable, prepares `install.json`, starts `start.bat`, and opens `http://127.0.0.1:3300/`.
-4. Mix Studio creates one open **Owner** profile on a fresh installation and shows the normal workspace. Rename the profile or add a PIN later from the profile menu.
-5. Enter a prompt and press **Generate**. If that workflow needs ComfyUI, a model, or a node, the **Generation setup** panel opens without discarding the prompt.
-6. Choose **Quick setup** for the recommended image starter, **Install this workflow** for only the current generation, or **Full setup guide** for individual control. The full guide can use a detected ComfyUI installation, accept a manual URL and folders, or launch the signed official ComfyUI Desktop installer.
-7. Review the detected NVIDIA GPU and VRAM. Each family is labeled recommended, capable with offload, or below the guided tier. A below-tier choice requires explicit confirmation but remains installable. Existing model files registered by ComfyUI are reused.
+4. Mix Studio creates the **Owner** profile and opens Generation setup automatically when no working ComfyUI connection is configured. Add an Owner PIN before enabling access from another device.
+5. Start a detected ComfyUI installation, launch the official ComfyUI Desktop installer, or enter an endpoint and folders manually. Mix Studio searches live endpoints, including non-default ports, and does not report a connection ready until it verifies the server.
+6. Choose **Quick setup** for the core files required by the recommended image starter, **Install this workflow** for only the current generation, or **Full setup guide** for individual control. Depth, style, regional prompting, masks, and upscaling are opt-in. Existing model files registered by ComfyUI are reused.
+7. Review the detected NVIDIA GPU and VRAM. Each family is labeled recommended, capable with offload, or below the guided tier. A below-tier choice requires explicit confirmation but remains installable.
+8. Complete setup to continue into the first-generation tutorial. The tutorial is offered only after the connection and starter workflow are ready.
+
+The reviewed public source for `ComfyUI-Krea2Regional-MultiLoRA` is currently unavailable, so the dependency installer does not guess at a replacement. It reuses a valid existing copy. On a fresh machine, selecting Regional Prompting stops before any other dependency changes and identifies the expected `custom_nodes\ComfyUI-Krea2Regional-MultiLoRA` folder for a trusted manual installation. Deselect that group to install unrelated advanced capabilities separately.
 
 ## Low-VRAM setup
 
@@ -26,28 +29,29 @@ Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configu
 
 ## Phone-first access with Tailscale
 
-1. Install [Tailscale](https://tailscale.com/download) on the Windows generation machine and the phone.
-2. Sign both devices into the same tailnet.
-3. Start Mix Studio on Windows and find the `Phone:` URL associated with the Tailscale network adapter in the terminal output.
-4. Open that address on the phone with port `3300`, then add it to the home screen for app-like access.
+1. Add a PIN to the Owner profile before sharing the studio with another device.
+2. Open the **Phone access card** on the setup Finish step. It lists reachable same-Wi-Fi and Tailscale addresses without requiring the terminal.
+3. For access away from home, use the card's links to install [Tailscale](https://tailscale.com/download) on the Windows generation machine and the phone, then sign both devices into the same tailnet.
+4. Refresh the card, select the private Tailscale address, and use **Copy or share** to send it to the phone.
+5. Open the address on the phone, then add it to the home screen for app-like access.
 
 ComfyUI, model files, galleries, and generation work remain on the Windows machine. The phone sends requests and displays the Mix Studio interface over the private Tailscale connection; public port forwarding is not required.
 
 For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/Mix-Studio.git`, then launch `install_MixStudio.bat` from that checkout.
 
-The installer is intentionally idempotent. Rerunning it preserves the existing `data/` location and ComfyUI connection, refreshes the minimal bootstrap metadata atomically, starts the app, and opens the browser. Generation setup is always available later from **Advanced Settings → General**.
+The installer is intentionally idempotent. Rerunning it preserves the existing `data/` location and ComfyUI connection, refreshes the minimal bootstrap metadata atomically, starts the app, and opens the browser. Generation setup is always available later from **Advanced Settings → General**, and the Phone access card can be reopened from its Finish step.
 
 ## Files setup creates
 
 - `install.json`: portable-install metadata, Git update channel, data location, ComfyUI/model paths, and the in-app setup mode.
-- `data/settings.json`: the ComfyUI URL and app settings. A fresh installation also receives the open Owner profile in `data/db.json`.
+- `data/settings.json`: the ComfyUI URL and app settings. A fresh installation also receives the Owner profile in `data/db.json`; remote sign-in remains locked until that Owner has a PIN.
 - `data/dependency-backups/`: `pip freeze` snapshots created before custom-node Python requirements are changed.
 
 All are machine-specific and ignored by Git. The installer does not delete or replace `data/db.json` or any media directory.
 
 ## Uninstalling
 
-Double-click `uninstall.bat` in the checkout. After confirmation it moves managed profiles, settings, uploads, and generations to `%LOCALAPPDATA%\Mix Studio\data`, preserves the previous ComfyUI connection, and removes the entire checkout. This leaves the original installation location available for a clean downloader reinstall. The next bootstrap reconnects the preserved data and ComfyUI paths. The uninstaller never removes ComfyUI, shared model folders, mirrored exports, arbitrary external data paths, or Node.js.
+Double-click `uninstall.bat` in the checkout. After confirmation it moves managed profiles, settings, uploads, and generations to `%LOCALAPPDATA%\Mix Studio User Data\data`, preserves the previous ComfyUI connection, and removes the entire checkout. This leaves the original installation location available for a clean downloader reinstall. The next bootstrap reconnects the preserved data and ComfyUI paths. The uninstaller never removes ComfyUI, shared model folders, mirrored exports, arbitrary external data paths, or Node.js.
 
 For a full local removal, run `uninstall.bat -RemoveData` and type `DELETE` when prompted. This deletes the checkout, Mix Studio's managed local or preserved data folder, and its preserved setup profile. Arbitrary external data, export, ComfyUI, and model paths are not touched.
 
@@ -62,6 +66,8 @@ The optional local models path additionally lets Mix Studio discover LoRA metada
 ## Updates
 
 After sign-in, Mix Studio checks the official `BlackMixture/Mix-Studio` GitHub Releases channel for a newer stable semantic version. The server caches successful checks for one hour, and an open browser checks again every six hours. Release notes appear in the Updates inbox; optional browser alerts work while Mix Studio is open. No GitHub credential is shipped with the app, so only maintainers of the official repository can publish notifications.
+
+Each release uses the semantic version and date in `release.json` plus a matching `v<version>` Git tag. GitHub Actions checks server and browser syntax and runs the complete Node test suite on Node 22 for both Linux and Windows. A mismatched release tag fails validation, and the download page deploy waits for the same checks.
 
 The owner-only **Update app** action runs the equivalent of:
 

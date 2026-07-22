@@ -33,7 +33,11 @@ function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path) {
     const records = JSON.parse(fsImpl.readFileSync(registryFile, 'utf8'));
     if (Array.isArray(records)) {
       const sorted = records
-        .filter((record) => record && typeof record === 'object' && record.sourceId !== 'cloud')
+        .filter((record) => {
+          if (!record || typeof record !== 'object' || record.sourceId === 'cloud') return false;
+          const status = String(record.status || '').trim().toLowerCase();
+          return !status || status === 'installed';
+        })
         .sort((left, right) => String(right.lastLaunchedAt || right.createdAt || '')
           .localeCompare(String(left.lastLaunchedAt || left.createdAt || '')));
       for (const record of sorted) {
@@ -42,7 +46,8 @@ function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path) {
         const base = adoptedBase || (installPath ? pathImpl.join(installPath, 'ComfyUI') : '');
         const python = String(record.adoptedPythonPath || '').trim()
           || (base ? pathImpl.join(base, '.venv', 'Scripts', 'python.exe') : '');
-        if (base && python && fsImpl.existsSync(base) && fsImpl.existsSync(python)) return base;
+        const main = base ? pathImpl.join(base, 'main.py') : '';
+        if (base && python && fsImpl.existsSync(main) && fsImpl.existsSync(python)) return base;
       }
     }
   } catch { /* current Comfy Desktop has not registered an installation */ }
@@ -55,7 +60,8 @@ function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path) {
     pathImpl.join(pathImpl.dirname(base), 'python_embeded', 'python.exe'),
     pathImpl.join(base, 'python_embeded', 'python.exe'),
   ];
-  return pythonCandidates.some((candidate) => fsImpl.existsSync(candidate)) ? base : '';
+  return fsImpl.existsSync(pathImpl.join(base, 'main.py'))
+    && pythonCandidates.some((candidate) => fsImpl.existsSync(candidate)) ? base : '';
 }
 
 function portableBootstrapConfig(root, options = {}) {
@@ -67,16 +73,68 @@ function portableBootstrapConfig(root, options = {}) {
   const localData = pathImpl.join(root, 'data');
   const localConfig = readJson(localInstallFile, fsImpl);
   const localAppData = String(env.LOCALAPPDATA || '').trim();
-  const preservedInstallFile = localAppData ? pathImpl.join(localAppData, 'Mix Studio', 'install.json') : '';
-  const preservedData = localAppData ? pathImpl.join(localAppData, 'Mix Studio', 'data') : '';
-  const preservedConfig = preservedInstallFile ? readJson(preservedInstallFile, fsImpl) : {};
-  const source = Object.keys(localConfig).length ? localConfig : preservedConfig;
+  const preservedCandidates = localAppData ? [
+    pathImpl.join(localAppData, 'Mix Studio User Data'),
+    pathImpl.join(localAppData, 'Mix Studio'),
+  ].map((preservedRoot) => {
+    const installFile = pathImpl.join(preservedRoot, 'install.json');
+    const config = readJson(installFile, fsImpl);
+    const configuredData = String(config.dataDir || '').trim();
+    const configuredDataPath = configuredData
+      ? (pathImpl.isAbsolute(configuredData) ? configuredData : pathImpl.join(preservedRoot, configuredData))
+      : '';
+    return {
+      root: preservedRoot,
+      installFile,
+      data: pathImpl.join(preservedRoot, 'data'),
+      config,
+      configuredDataPath,
+    };
+  }) : [];
+  const preserved = preservedCandidates.find((candidate) => (
+    Object.keys(candidate.config).length
+      && candidate.configuredDataPath
+      && fsImpl.existsSync(candidate.configuredDataPath)
+  )) || preservedCandidates.find((candidate) => (
+    fsImpl.existsSync(candidate.data) && Object.keys(candidate.config).length
+  )) || preservedCandidates.find((candidate) => fsImpl.existsSync(candidate.data))
+    || preservedCandidates.find((candidate) => Object.keys(candidate.config).length)
+    || { root: '', installFile: '', data: '', config: {}, configuredDataPath: '' };
+  const preservedInstallFile = preserved.installFile;
+  const preservedData = preserved.data;
+  const preservedConfig = preserved.config;
+  const hasLocalConfig = Object.keys(localConfig).length > 0;
+  const source = hasLocalConfig ? localConfig : preservedConfig;
   const sourceComfy = existingObject(source.comfy);
   const detectedComfy = desktopComfyPath(env, fsImpl, pathImpl);
   const comfyPath = String(sourceComfy.path || detectedComfy || '').trim();
   const modelsPath = String(sourceComfy.modelsPath || (comfyPath ? pathImpl.join(comfyPath, 'models') : '')).trim();
-  const dataDir = source.dataDir
-    || ((!fsImpl.existsSync(localData) && preservedData && fsImpl.existsSync(preservedData)) ? preservedData : 'data');
+  const configuredDataDir = String(source.dataDir || '').trim();
+  let dataDir = configuredDataDir || 'data';
+  if (!hasLocalConfig && configuredDataDir && !pathImpl.isAbsolute(configuredDataDir)
+      && preserved.configuredDataPath && fsImpl.existsSync(preserved.configuredDataPath)) {
+    dataDir = preserved.configuredDataPath;
+  } else if (!hasLocalConfig && configuredDataDir && pathImpl.isAbsolute(configuredDataDir)
+      && !fsImpl.existsSync(configuredDataDir)
+      && preservedData && fsImpl.existsSync(preservedData)) {
+    // An older checkout may have preserved an absolute path before that drive
+    // or folder disappeared. Prefer the known current preservation folder over
+    // reconnecting the new install to a dead location.
+    dataDir = preservedData;
+  } else if (!hasLocalConfig && preservedData && fsImpl.existsSync(preservedData)
+      && (!configuredDataDir || !pathImpl.isAbsolute(configuredDataDir))) {
+    dataDir = preservedData;
+  } else if (!configuredDataDir && !fsImpl.existsSync(localData)
+      && preservedData && fsImpl.existsSync(preservedData)) {
+    dataDir = preservedData;
+  }
+  const sourceUpdate = existingObject(source.update);
+  const gitPath = String(env.MIX_STUDIO_GIT || sourceUpdate.gitPath || '').trim();
+  const update = Object.assign({}, sourceUpdate, {
+    provider: 'git',
+    channel: String(sourceUpdate.channel || 'main'),
+  });
+  if (gitPath) update.gitPath = gitPath;
 
   return Object.assign({}, source, {
     schemaVersion: 1,
@@ -85,10 +143,7 @@ function portableBootstrapConfig(root, options = {}) {
     dataDir,
     createdAt: source.createdAt || now,
     updatedAt: now,
-    update: Object.assign({}, existingObject(source.update), {
-      provider: 'git',
-      channel: String(existingObject(source.update).channel || 'main'),
-    }),
+    update,
     comfy: Object.assign({}, sourceComfy, {
       mode: comfyPath ? String(sourceComfy.mode || 'external') : 'unconfigured',
       path: comfyPath,

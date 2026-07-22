@@ -1,0 +1,83 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node 22 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Check server syntax
+        run: node --check server.js
+
+      - name: Check browser application syntax
+        run: node --check public/app.js
+
+      - name: Validate release metadata
+        run: >-
+          node -e "const release = require('./release.json');
+          if (!/^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$/.test(release.version || ''))
+          throw new Error('release.json version must be semantic');
+          const releasedAt = String(release.releasedAt || '');
+          const parsed = new Date(releasedAt + 'T00:00:00.000Z');
+          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(releasedAt) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== releasedAt)
+          throw new Error('release.json releasedAt must be a valid YYYY-MM-DD date');"
+
+      - name: Match release tag to manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          node -e "const release = require('./release.json');
+          if (process.env.RELEASE_TAG !== 'v' + release.version)
+          throw new Error(process.env.RELEASE_TAG + ' does not match release.json v' + release.version);"
+
+      - name: Check PowerShell installer syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem installer -Filter '*.ps1' -File | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+            foreach ($parseError in $parseErrors) {
+              Write-Error "$($_.Name): $($parseError.Message)"
+              $failed = $true
+            }
+          }
+          if ($failed) { throw 'One or more installer scripts contain PowerShell syntax errors.' }
+
+      - name: Run tests
+        run: node --test

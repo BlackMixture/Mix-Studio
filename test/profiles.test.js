@@ -12,15 +12,48 @@ const {
   defaultOpenProfile,
   adoptOrphans,
   hasOrphans,
+  isLoopbackAddress,
+  createLoginThrottle,
 } = require('../lib/profiles');
 
 test('pin hashing verifies correct pin and rejects wrong pin', () => {
   const { salt, hash } = hashPin('4321');
+  assert.match(hash, /^scrypt\$/);
   const profile = { pinSalt: salt, pinHash: hash };
   assert.equal(verifyPin(profile, '4321'), true);
   assert.equal(verifyPin(profile, '0000'), false);
   assert.equal(verifyPin(profile, ''), false);
   assert.equal(verifyPin({ pinHash: null }, ''), true); // open profile
+});
+
+test('legacy PIN hashes remain valid while new hashes use scrypt', () => {
+  const salt = 'legacy-salt';
+  const pinHash = require('node:crypto').createHash('sha256').update(`${salt}:4321`).digest('hex');
+  assert.equal(verifyPin({ pinSalt: salt, pinHash }, '4321'), true);
+  assert.equal(verifyPin({ pinSalt: salt, pinHash }, '9999'), false);
+});
+
+test('loopback detection does not treat LAN or Tailscale peers as local', () => {
+  assert.equal(isLoopbackAddress('127.0.0.1'), true);
+  assert.equal(isLoopbackAddress('::1'), true);
+  assert.equal(isLoopbackAddress('::ffff:127.0.0.1'), true);
+  assert.equal(isLoopbackAddress('192.168.1.20'), false);
+  assert.equal(isLoopbackAddress('100.90.8.7'), false);
+});
+
+test('PIN attempts are rate limited and reset after successful login', () => {
+  let time = 1000;
+  const throttle = createLoginThrottle({ maxAttempts: 3, windowMs: 1000, blockMs: 5000, now: () => time });
+  assert.equal(throttle.check('peer').allowed, true);
+  throttle.fail('peer');
+  throttle.fail('peer');
+  assert.equal(throttle.fail('peer').allowed, false);
+  assert.equal(throttle.check('peer').allowed, false);
+  time += 5001;
+  assert.equal(throttle.check('peer').allowed, true);
+  throttle.fail('peer');
+  throttle.success('peer');
+  assert.equal(throttle.check('peer').allowed, true);
 });
 
 test('profile tokens round-trip and reject tampering', () => {

@@ -47,7 +47,23 @@ test('portable install metadata can reuse an existing ComfyUI and shared models'
   assert.equal(runtime.update.channel, 'main');
   assert.equal(runtime.comfy.path, path.resolve(root, 'D:/AI/ComfyUI'));
   assert.equal(runtime.comfy.modelsPath, path.resolve(root, 'E:/SharedModels'));
-  assert.deepEqual(publicRuntimeConfig(runtime).update, runtime.update);
+  assert.deepEqual(publicRuntimeConfig(runtime).update, { provider: 'git', channel: 'main' });
+  assert.equal(runtime.update.gitExecutable, '');
+});
+
+test('a bundled Git executable is retained server-side but never exposed publicly', () => {
+  const root = path.resolve('/apps/Mix Studio');
+  const installFile = path.join(root, 'install.json');
+  const io = fakeFs({
+    [installFile]: {
+      installMode: 'portable',
+      update: { provider: 'git', channel: 'main', gitPath: 'tools/git.exe' },
+    },
+    [path.join(root, '.git')]: true,
+  });
+  const runtime = resolveRuntimeConfig(root, { env: {}, ...io });
+  assert.equal(runtime.update.gitExecutable, path.resolve(root, 'tools/git.exe'));
+  assert.deepEqual(publicRuntimeConfig(runtime).update, { provider: 'git', channel: 'main' });
 });
 
 test('environment overrides let a launcher choose data and shared models explicitly', () => {

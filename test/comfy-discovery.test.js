@@ -81,3 +81,83 @@ test('a failed remote URL is never silently replaced by a local ComfyUI', async 
   assert.equal(result.matches[0].url, 'http://127.0.0.1:8188');
 });
 
+test('post-install discovery selects only the Desktop port lock tied to the expected installation', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-correlated-'));
+  const registry = path.join(temp, 'Comfy Desktop');
+  const expectedInstall = path.join(temp, 'installed-here');
+  const otherInstall = path.join(temp, 'portable-elsewhere');
+  fs.mkdirSync(path.join(registry, 'port-locks'), { recursive: true });
+  fs.writeFileSync(path.join(registry, 'installations.json'), JSON.stringify([
+    { id: 'new-install', name: 'New install', status: 'installed', installPath: expectedInstall },
+    { id: 'other-install', name: 'Other install', status: 'installed', installPath: otherInstall },
+  ]));
+  fs.writeFileSync(path.join(registry, 'port-locks', 'port-8190.json'), JSON.stringify({
+    installationName: 'New install', timestamp: '2026-07-21T12:00:00Z',
+  }));
+  fs.writeFileSync(path.join(registry, 'port-locks', 'port-8188.json'), JSON.stringify({
+    installationName: 'Other install', timestamp: '2026-07-21T11:00:00Z',
+  }));
+  try {
+    const result = await discoverComfyEndpoints('', {
+      platform: 'win32', env: { APPDATA: temp }, fsImpl: fs, pathApi: path,
+      expectedBasePath: path.join(expectedInstall, 'ComfyUI'),
+      skipProcessQuery: true, defaultPorts: [],
+      fetchImpl: async () => comfyResponse(),
+    });
+    assert.equal(result.url, 'http://127.0.0.1:8190');
+    assert.equal(result.expectedRecordFound, true);
+    assert.deepEqual(result.correlatedMatches, ['http://127.0.0.1:8190']);
+    assert.equal(result.matches.length, 2);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('post-install discovery requires an explicit choice when only an unrelated ComfyUI is running', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-unrelated-'));
+  const registry = path.join(temp, 'Comfy Desktop');
+  const expectedInstall = path.join(temp, 'installed-here');
+  fs.mkdirSync(path.join(registry, 'port-locks'), { recursive: true });
+  fs.writeFileSync(path.join(registry, 'installations.json'), JSON.stringify([
+    { id: 'new-install', name: 'New install', status: 'installed', installPath: expectedInstall },
+  ]));
+  fs.writeFileSync(path.join(registry, 'port-locks', 'port-8188.json'), JSON.stringify({
+    installationName: 'Old portable', timestamp: '2026-07-21T12:00:00Z',
+  }));
+  try {
+    const result = await discoverComfyEndpoints('', {
+      platform: 'win32', env: { APPDATA: temp }, fsImpl: fs, pathApi: path,
+      expectedBasePath: path.join(expectedInstall, 'ComfyUI'),
+      skipProcessQuery: true, defaultPorts: [],
+      fetchImpl: async () => comfyResponse(),
+    });
+    assert.equal(result.url, '');
+    assert.equal(result.ambiguous, true);
+    assert.equal(result.matches.length, 1);
+    assert.deepEqual(result.correlatedMatches, []);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('an explicit launch port in the matching Desktop record can correlate without a port lock', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-record-port-'));
+  const registry = path.join(temp, 'Comfy Desktop');
+  const expectedInstall = path.join(temp, 'installed-here');
+  fs.mkdirSync(registry, { recursive: true });
+  fs.writeFileSync(path.join(registry, 'installations.json'), JSON.stringify([
+    { id: 'new-install', name: 'New install', status: 'installed', installPath: expectedInstall, launchArgs: '--port 9020' },
+  ]));
+  try {
+    const result = await discoverComfyEndpoints('', {
+      platform: 'win32', env: { APPDATA: temp }, fsImpl: fs, pathApi: path,
+      expectedBasePath: path.join(expectedInstall, 'ComfyUI'),
+      skipProcessQuery: true, defaultPorts: [],
+      fetchImpl: async () => comfyResponse(),
+    });
+    assert.equal(result.url, 'http://127.0.0.1:9020');
+    assert.deepEqual(result.correlatedMatches, ['http://127.0.0.1:9020']);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});

@@ -76,7 +76,7 @@ const state = {
   editEngineDefault: 'klein9',
   videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
-  appRelease: { version: '', releasedAt: null, revision: '' },
+  appRelease: { version: '', releasedAt: null, revision: '', instanceId: '' },
   officialRelease: null,
   officialInstalledVersion: '',
   officialReleaseUpdateAvailable: false,
@@ -1592,6 +1592,7 @@ function renderAppRelease(release = {}) {
     version: String(release.version || ''),
     releasedAt: release.releasedAt || null,
     revision: String(release.revision || ''),
+    instanceId: String(release.instanceId || ''),
   };
   const label = formatAppVersion(state.appRelease.version, state.appRelease.revision);
   const drawer = $('#appVersionLabel');
@@ -1629,19 +1630,31 @@ function renderAppUpdateAccess() {
   renderOfficialRelease();
 }
 
-async function waitForAppRestart() {
+async function waitForAppRestart(previousInstanceId = '') {
+  const previous = String(previousInstanceId || '');
+  let sawOffline = false;
   await new Promise((resolve) => setTimeout(resolve, 2000));
-  for (let attempt = 0; attempt < 45; attempt += 1) {
+  // A pulled update can wait behind an external ComfyUI job. Keep watching
+  // long enough for a slow generation, and only reload after a new server
+  // process answers instead of mistaking the still-running old process for
+  // the completed restart.
+  for (let attempt = 0; attempt < 900; attempt += 1) {
     try {
       const response = await fetch(`/api/meta?update-restart=${Date.now()}`, { cache: 'no-store' });
       if (response.ok) {
-        location.reload();
-        return;
+        const meta = await response.json();
+        const instanceId = String(meta?.app?.instanceId || '');
+        if ((previous && instanceId && instanceId !== previous) || (!previous && sawOffline)) {
+          location.reload();
+          return;
+        }
+      } else {
+        sawOffline = true;
       }
-    } catch { /* server is between processes */ }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch { sawOffline = true; }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error('The update installed, but the app did not come back online. Start Mix Studio on the desktop.');
+  throw new Error('The update installed, but Mix Studio did not restart after the active queue finished. Start Mix Studio on the desktop.');
 }
 
 $('#appMenuBtn').addEventListener('click', openAppDrawer);
@@ -1719,6 +1732,7 @@ $('#appUpdateBtn').addEventListener('click', async () => {
   label.textContent = 'Checking for updates…';
   setAppUpdateStatus('Connecting to GitHub and checking the current branch…');
   try {
+    const previousInstanceId = state.appRelease.instanceId;
     const result = await api('/api/update', { method: 'POST' });
     const versionLabel = renderAppRelease(result);
     button.classList.remove('busy');
@@ -1729,9 +1743,11 @@ $('#appUpdateBtn').addEventListener('click', async () => {
       return;
     }
     if (result.restarting) {
-      label.textContent = 'Restarting Mix Studio…';
-      setAppUpdateStatus(`Updated to ${versionLabel}. Waiting for the desktop app to restart…`, 'good');
-      await waitForAppRestart();
+      label.textContent = result.waitingForIdle ? 'Waiting for the queue…' : 'Restarting Mix Studio…';
+      setAppUpdateStatus(result.waitingForIdle
+        ? `Updated to ${versionLabel}. The active ComfyUI job will finish before Mix Studio restarts…`
+        : `Updated to ${versionLabel}. Waiting for the desktop app to restart…`, 'good');
+      await waitForAppRestart(previousInstanceId || result.instanceId);
       return;
     }
     label.textContent = 'Update installed';
@@ -1755,8 +1771,9 @@ $('#appRestartBtn').addEventListener('click', async () => {
   label.textContent = 'Restarting Mix Studio…';
   setAppUpdateStatus('Checking both queues, then restarting Mix Studio…');
   try {
-    await api('/api/app/restart', { method: 'POST' });
-    await waitForAppRestart();
+    const previousInstanceId = state.appRelease.instanceId;
+    const result = await api('/api/app/restart', { method: 'POST' });
+    await waitForAppRestart(previousInstanceId || result.instanceId);
   } catch (error) {
     button.classList.remove('busy');
     appRestartRunning = false;
@@ -26997,8 +27014,9 @@ $('#settingsRestartApply').addEventListener('click', async () => {
     settingsAppRestartRunning = true;
     renderSettingsRestartAction();
     setSettingsSaveStatus('Restarting…', 'saving');
-    await api('/api/app/restart', { method: 'POST' });
-    await waitForAppRestart();
+    const previousInstanceId = state.appRelease.instanceId;
+    const result = await api('/api/app/restart', { method: 'POST' });
+    await waitForAppRestart(previousInstanceId || result.instanceId);
   } catch (error) {
     settingsAppRestartRunning = false;
     renderSettingsRestartAction();
@@ -27057,6 +27075,7 @@ let setupKrea2VariantOverride = '';
 let setupOperationDiagnostic = '';
 let setupDiscoveredMatches = [];
 let setupFirstRun = false;
+let setupLowVramStarterSelected = false;
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
@@ -27241,6 +27260,7 @@ async function openInitialSetup(options = {}) {
   setupKrea2VariantOverride = '';
   setupDiscoveredMatches = [];
   setupFirstRun = options.firstRun === true;
+  setupLowVramStarterSelected = false;
   setupStepTouched = false;
   setupActiveStep = 'connect';
   setSetupGuideExpanded(false);
@@ -27331,7 +27351,8 @@ function renderSetupEndpointChoices(matches = []) {
 
 function renderPhoneAccess() {
   const access = setupViewStatus?.mobileAccess || {};
-  const url = access.tailscaleUrl || access.localUrl || '';
+  const requiresOwnerPin = access.requiresOwnerPin === true;
+  const url = requiresOwnerPin ? '' : (access.tailscaleUrl || access.localUrl || '');
   const usingTailscale = !!access.tailscaleUrl && window.location.hostname === (() => {
     try { return new URL(access.tailscaleUrl).hostname; } catch { return ''; }
   })();
@@ -27340,7 +27361,12 @@ function renderPhoneAccess() {
   $('#phoneAccessCopy').dataset.url = url;
   $('#phoneAccessShare').dataset.url = url;
   $('#phoneAccessShare').hidden = !url || typeof navigator.share !== 'function';
-  if (usingTailscale) {
+  $('#phoneAccessSecure').hidden = !requiresOwnerPin || !state.profileIsOwner;
+  if (requiresOwnerPin) {
+    $('#phoneAccessStatus').textContent = 'Add an Owner PIN before sharing access';
+    $('#phoneAccessTitle').textContent = 'Secure phone access first';
+    $('#phoneAccessDescription').textContent = 'Mix Studio keeps remote browsers locked while the Owner profile has no PIN. Add one on this computer, then the private address will appear here.';
+  } else if (usingTailscale) {
     $('#phoneAccessStatus').textContent = 'Connected privately through Tailscale';
     $('#phoneAccessTitle').textContent = 'This device is connected';
     $('#phoneAccessDescription').textContent = 'This browser is using the private Tailscale address. Share it only with devices on your tailnet.';
@@ -27357,10 +27383,12 @@ function renderPhoneAccess() {
     $('#phoneAccessTitle').textContent = 'Set up private phone access';
     $('#phoneAccessDescription').textContent = 'Install Tailscale on both devices and sign in to the same tailnet. Mix Studio will show the private address here after it detects the connection.';
   }
-  if ($('#phoneAccessSettingsCopy')) $('#phoneAccessSettingsCopy').textContent = access.tailscaleDetected
-    ? 'Private Tailscale address is ready for your phone.'
-    : (access.localUrl ? 'Same-Wi-Fi access is ready; Tailscale works away from home.' : 'Set up private phone access with Tailscale.');
-  if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = access.tailscaleDetected ? 'Ready' : 'Guide';
+  if ($('#phoneAccessSettingsCopy')) $('#phoneAccessSettingsCopy').textContent = requiresOwnerPin
+    ? 'Add an Owner PIN before another device can connect.'
+    : (access.tailscaleDetected
+      ? 'Private Tailscale address is ready for your phone.'
+      : (access.localUrl ? 'Same-Wi-Fi access is ready; Tailscale works away from home.' : 'Set up private phone access with Tailscale.'));
+  if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = requiresOwnerPin ? 'Secure' : (access.tailscaleDetected ? 'Ready' : 'Guide');
 }
 
 function renderInitialSetup() {
@@ -27428,7 +27456,7 @@ function renderInitialSetup() {
   }
   const effectiveVramProfile = vramProfile.effective || vramProfile.recommended || 'standard';
   $('#setupVramProfileCopy').textContent = effectiveVramProfile === 'low'
-    ? 'Recommends safer 8–12 GB settings before generation, with an explicit bypass.'
+    ? 'Uses the 4–12 GB guided route and asks before applying safer generation settings.'
     : 'Uses standard image limits for GPUs with more memory.';
   $('#setupVramProfile').disabled = busy || !state.profileIsOwner;
   if (document.activeElement !== $('#setupKrea2Variant')) $('#setupKrea2Variant').value = selectedKrea2;
@@ -27509,16 +27537,19 @@ function renderInitialSetup() {
   const currentFit = setupFitForComponents(requiredNow);
   const componentLabels = setupComponentLabelMap();
   const quickMissing = missingSetupComponents(setupViewStatus.quickComponents || []);
-  quick.querySelector('span').textContent = quickFit.label
-    ? `Image starter · ${quickFit.label}`
-    : 'A useful image starter.';
+  const quickPreset = setupViewStatus.quickSetup || {};
+  quick.querySelector('strong').textContent = quickPreset.label ? `Recommended: ${quickPreset.label}` : 'Recommended setup';
+  quick.querySelector('span').textContent = quickPreset.detail
+    ? `${quickPreset.detail}${quickFit.label ? ` · ${quickFit.label}` : ''}`
+    : (quickFit.label ? `Image starter · ${quickFit.label}` : 'A useful image starter.');
   current.querySelector('strong').textContent = requiredNow.length === 1
     ? (componentLabels.get(requiredNow[0]) || 'Current workflow')
     : 'Current workflow';
   current.querySelector('span').textContent = currentFit
     ? `Only missing for this generation · ${currentFit.label}`
     : 'Install only what this generation needs.';
-  quick.hidden = !!setupContextComponents.length || !quickMissing.length;
+  quick.hidden = (!quickMissing.length)
+    || (!!setupContextComponents.length && quickPreset.id !== 'low-vram-klein4');
   quick.disabled = busy || !state.profileIsOwner;
   current.hidden = !setupContextComponents.length || workflowReady;
   current.disabled = busy || !state.profileIsOwner;
@@ -27823,8 +27854,26 @@ $$('[data-setup-tab]').forEach((tab) => {
 });
 $('#setupQuickStart').addEventListener('click', async () => {
   try {
+    const quickSetup = setupViewStatus?.quickSetup || {};
+    const quickComponents = setupViewStatus?.quickComponents || [];
+    if (quickSetup.id === 'low-vram-klein4') {
+      const confirmed = await askConfirm({
+        title: 'Use the 4 GB starter?',
+        message: 'This installs Flux Klein 4B Edit with FP8 weights instead of the larger Krea 2 image starter. It uses ComfyUI offloading and may be slow, but it is the safer guided route for this GPU. Add an input image after setup to make your first edit.',
+        confirmLabel: 'Use 4 GB starter',
+      });
+      if (!confirmed) return;
+      setupContextComponents = [...quickComponents];
+      setupLowVramStarterSelected = true;
+      firstRunTutorialAfterSetupProfile = '';
+      firstImageTutorialAwaitingSetup = false;
+      firstImageTutorialPhase = '';
+      const tutorialKey = firstRunTutorialStorageKey();
+      if (tutorialKey && !firstImageTutorialIsTerminal()) localStorage.setItem(tutorialKey, 'skipped');
+      renderInitialSetup();
+    }
     setupAutoRestart = true;
-    const started = await startSetupDependencies(setupViewStatus?.quickComponents || []);
+    const started = await startSetupDependencies(quickComponents);
     if (!started) setupAutoRestart = false;
   }
   catch (error) { setupAutoRestart = false; toast(error.message, true); }
@@ -27924,10 +27973,23 @@ $('#setupNext').addEventListener('click', async () => {
   const index = SETUP_STEPS.indexOf(setupActiveStep);
   if (index >= SETUP_STEPS.length - 1) {
     if (!setupGenerationReady()) return;
+    const useLowVramStarter = setupLowVramStarterSelected
+      && setupViewStatus?.quickSetup?.id === 'low-vram-klein4';
     const resumeTutorial = firstImageTutorialAwaitingSetup && firstImageTutorialReady();
     const showFirstRunOffer = firstRunTutorialAfterSetupProfile === state.profile?.id;
     closeGenerationSetup({ pauseTutorial: !resumeTutorial, completed: true });
-    if (resumeTutorial) await resumeFirstImageTutorialAfterSetup();
+    if (useLowVramStarter) {
+      setView('edit');
+      captureGenerationTuning('edit');
+      switchEditEngine('klein4');
+      markEngineRow('editEngineRow', 'klein4');
+      renderRefs();
+      updateVideoPanels();
+      renderLoras();
+      saveForm();
+      setupLowVramStarterSelected = false;
+      toast('Flux Klein 4B is ready. Add an input image to make your first edit.');
+    } else if (resumeTutorial) await resumeFirstImageTutorialAfterSetup();
     else if (showFirstRunOffer) {
       firstRunTutorialAfterSetupProfile = '';
       firstImageTutorialPhase = '';
@@ -27965,6 +28027,11 @@ $('#dependencyOpenSetup').addEventListener('click', () => {
 $('#phoneAccessOpen').addEventListener('click', () => {
   $('#settingsSheet').classList.remove('show');
   openInitialSetup({ step: 'finish', phoneGuide: true, message: 'Review private phone access or update the generation computer.' });
+});
+$('#phoneAccessSecure').addEventListener('click', () => {
+  closeGenerationSetup();
+  openProfileEdit();
+  requestAnimationFrame(() => $('#pePin').focus({ preventScroll: true }));
 });
 $('#phoneAccessCopy').addEventListener('click', async () => {
   const url = $('#phoneAccessCopy').dataset.url;

@@ -10,6 +10,7 @@ const {
   parseDirtyStatus,
   readAppRelease,
   restartRequiredForFiles,
+  isOfficialOrigin,
   updateFromGit,
 } = require('../lib/app-update');
 
@@ -38,10 +39,10 @@ function writeRelease(root, release) {
   fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify(release));
 }
 
-test('the checked-in release manifest identifies Mix Studio 1.0.0', () => {
+test('the checked-in release manifest identifies Mix Studio 1.0.1', () => {
   assert.deepEqual(readAppRelease(path.join(__dirname, '..')), {
-    version: '1.0.0',
-    releasedAt: '2026-07-15',
+    version: '1.0.1',
+    releasedAt: '2026-07-21',
   });
 });
 
@@ -57,6 +58,10 @@ test('release metadata accepts SemVer and rejects ambiguous version labels', () 
     version: '1.0.1',
     releasedAt: null,
   });
+  assert.equal(normalizeAppRelease({ version: '1.0.1', releasedAt: '2024-02-29' }).releasedAt, '2024-02-29');
+  for (const invalidDate of ['2026-02-29', '2026-02-30', '2026-04-31', '2026-13-01']) {
+    assert.equal(normalizeAppRelease({ version: '1.0.1', releasedAt: invalidDate }).releasedAt, null, invalidDate);
+  }
 });
 
 test('release metadata is read from disk on every call and safely handles missing files', (t) => {
@@ -107,6 +112,34 @@ test('a legacy KreaStudio origin migrates to Mix-Studio before pulling', async (
   const result = await updateFromGit('/app', { runGit: fake.runGit });
   assert.equal(result.originMigrated, true);
   assert.deepEqual(fake.calls[3], ['remote', 'set-url', 'origin', 'https://github.com/BlackMixture/Mix-Studio.git']);
+});
+
+test('a legacy ssh URL migrates using the same origin normalization', async () => {
+  const fake = gitSequence(['', 'main\n', 'ssh://git@github.com/BlackMixture/KreaStudio.git\n', '', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
+  const result = await updateFromGit('/app', { runGit: fake.runGit });
+  assert.equal(result.originMigrated, true);
+  assert.deepEqual(fake.calls[3], ['remote', 'set-url', 'origin', 'https://github.com/BlackMixture/Mix-Studio.git']);
+});
+
+test('automatic updates reject an unexpected branch before fetching', async () => {
+  const fake = gitSequence(['', 'feature/local\n']);
+  await assert.rejects(
+    updateFromGit('/app', { runGit: fake.runGit, channel: 'main' }),
+    (error) => error.code === 'update_channel'
+  );
+  assert.equal(fake.calls.length, 2);
+});
+
+test('automatic updates reject a non-official origin', async () => {
+  const fake = gitSequence(['', 'main\n', 'https://example.com/some/fork.git\n']);
+  await assert.rejects(
+    updateFromGit('/app', { runGit: fake.runGit }),
+    (error) => error.code === 'update_origin'
+  );
+  assert.equal(isOfficialOrigin('git@github.com:BlackMixture/Mix-Studio.git'), true);
+  assert.equal(isOfficialOrigin('ssh://git@github.com/BlackMixture/Mix-Studio.git'), true);
+  assert.equal(isOfficialOrigin('ssh://git@github.com:22/BlackMixture/Mix-Studio.git'), true);
+  assert.equal(isOfficialOrigin('https://github.com/elsewhere/Mix-Studio.git'), false);
 });
 
 test('server and library updates require a restart', () => {
@@ -167,7 +200,7 @@ test('update and meta APIs expose semantic releases independently of ComfyUI rea
   assert.match(updateRoute, /payload\.dirtyFileCount/);
 
   const metaRoute = server.slice(server.indexOf("route === '/api/meta'"), server.indexOf("route === '/api/input'"));
-  assert.match(metaRoute, /const app = readAppRelease\(ROOT\)/);
+  assert.match(metaRoute, /const app = Object\.assign\(readAppRelease\(ROOT\), \{ instanceId: SERVER_INSTANCE_ID \}\)/);
   assert.ok((metaRoute.match(/\bapp,/g) || []).length >= 2, 'both connected and offline metadata should include the app release');
 });
 
@@ -179,7 +212,7 @@ test('owner can restart Mix Studio safely from the app drawer', () => {
   assert.match(html, /id="appRestartBtn"[\s\S]*stroke="currentColor"/);
   assert.doesNotMatch(html, /restartBrandGradient/);
   assert.match(app, /api\/app\/restart/);
-  assert.match(app, /waitForAppRestart\(\)/);
+  assert.match(app, /waitForAppRestart\(previousInstanceId \|\| result\.instanceId\)/);
   assert.match(app, /Restarting Mix Studio…/);
   assert.doesNotMatch(app, /Mix Studioâ/);
 });

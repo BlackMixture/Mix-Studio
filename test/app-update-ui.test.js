@@ -116,10 +116,62 @@ test('drawer selections use black borders against the drawer canvas', () => {
 
 test('the update flow pulls safely and waits for a conditional restart', () => {
   assert.match(server, /route === '\/api\/update'/);
-  assert.match(server, /updateFromGit\(ROOT\)/);
-  assert.match(server, /jobs\.size/);
+  assert.match(server, /updateFromGit\(ROOT,\s*\{/);
+  assert.match(server, /await assertDesktopIsIdle\(\)/);
+  assert.match(server, /appUpdateRunning/);
   assert.match(app, /waitForAppRestart/);
   assert.match(app, /api\('\/api\/update'/);
+});
+
+test('an external ComfyUI job that starts after the pull delays, but does not strand, the restart', () => {
+  const idleCheck = server.slice(
+    server.indexOf('async function assertDesktopIsIdle()'),
+    server.indexOf('const pause =', server.indexOf('async function assertDesktopIsIdle()')),
+  );
+  assert.match(idleCheck, /code\s*=\s*'desktop_busy'/);
+
+  const updateRoute = server.slice(
+    server.indexOf("if (route === '/api/update'"),
+    server.indexOf("if (route === '/api/app/restart'"),
+  );
+  assert.match(updateRoute, /waitingForIdle/);
+  assert.match(updateRoute, /desktop_busy/);
+  assert.match(updateRoute, /scheduleServerRestartWhenIdle\(\)/);
+  assert.match(updateRoute, /keepMaintenanceUntilRestart\s*=\s*true/);
+  assert.match(updateRoute, /restarting:\s*update\.updated\s*&&\s*update\.restartRequired/);
+  assert.match(updateRoute, /waitingForIdle[,\s]/);
+  assert.match(updateRoute, /desktop_busy[\s\S]{0,180}409|409[\s\S]{0,180}desktop_busy/);
+
+  const delayedRestart = server.slice(
+    server.indexOf('function scheduleServerRestartWhenIdle('),
+    server.indexOf('function scheduleServerRestart(', server.indexOf('function scheduleServerRestartWhenIdle(')),
+  );
+  assert.match(delayedRestart, /assertDesktopIsIdle\(\)/);
+  assert.match(delayedRestart, /desktop_busy/);
+  assert.match(delayedRestart, /scheduleServerRestart\(\)/);
+  assert.match(delayedRestart, /setTimeout/);
+});
+
+test('restart polling waits for a new server instance instead of reloading the still-running process', () => {
+  assert.match(server, /SERVER_INSTANCE_ID\s*=\s*crypto\.randomBytes/);
+  assert.match(server, /instanceId:\s*SERVER_INSTANCE_ID/);
+
+  const releaseRenderer = app.slice(app.indexOf('function renderAppRelease('), app.indexOf('\nfunction renderAppUpdateAccess('));
+  assert.match(releaseRenderer, /instanceId:\s*String\(release\.instanceId/);
+
+  const restartWait = app.slice(app.indexOf('async function waitForAppRestart('), app.indexOf("$('#appMenuBtn')", app.indexOf('async function waitForAppRestart(')));
+  assert.match(restartWait, /previousInstanceId/);
+  assert.match(restartWait, /meta\?\.app\?\.instanceId|meta\.app\?\.instanceId|meta\.app\.instanceId/);
+  assert.match(restartWait, /instanceId\s*!==\s*(?:previousInstanceId|previous)/);
+
+  const updateHandler = app.slice(app.indexOf("$('#appUpdateBtn').addEventListener"), app.indexOf("$('#appRestartBtn').addEventListener"));
+  assert.match(updateHandler, /previousInstanceId\s*=\s*state\.appRelease\.instanceId/);
+  assert.match(updateHandler, /waitForAppRestart\(previousInstanceId \|\| result\.instanceId\)/);
+  assert.match(updateHandler, /waitingForIdle/);
+
+  const restartHandler = app.slice(app.indexOf("$('#appRestartBtn').addEventListener"), app.indexOf('\nfunction round32'));
+  assert.match(restartHandler, /previousInstanceId\s*=\s*state\.appRelease\.instanceId/);
+  assert.match(restartHandler, /waitForAppRestart\(previousInstanceId \|\| result\.instanceId\)/);
 });
 
 test('semantic app versions are visible in the drawer and System settings', () => {
