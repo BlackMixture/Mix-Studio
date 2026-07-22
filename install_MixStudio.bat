@@ -154,8 +154,8 @@ mkdir "%MIX_STUDIO_WRITE_PROBE%" >nul 2>nul
 if errorlevel 1 exit /b 1
 > "%MIX_STUDIO_WRITE_PROBE%\write.test" echo Mix Studio
 if not exist "%MIX_STUDIO_WRITE_PROBE%\write.test" goto writable_probe_failed
+del /f /q "%MIX_STUDIO_WRITE_PROBE%\write.test" >nul 2>nul
 rmdir "%MIX_STUDIO_WRITE_PROBE%" >nul 2>nul
-if exist "%MIX_STUDIO_WRITE_PROBE%\" exit /b 1
 exit /b 0
 
 :writable_probe_failed

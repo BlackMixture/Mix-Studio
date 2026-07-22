@@ -50,6 +50,8 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.match(launcher, /remote get-url origin/i);
   assert.match(launcher, /quarantine_incomplete_checkout/i);
   assert.match(launcher, /verify_writable_destination/i);
+  assert.match(launcher, /del \/f \/q "%MIX_STUDIO_WRITE_PROBE%\\write\.test"[\s\S]{0,160}rmdir "%MIX_STUDIO_WRITE_PROBE%"/i);
+  assert.doesNotMatch(launcher, /if exist "%MIX_STUDIO_WRITE_PROBE%\\" exit \/b 1/i);
   assert.match(launcher, /set "MIX_STUDIO_GIT=%GIT_EXE%"/i);
   assert.match(launcher, /prepare_existing_target/);
   assert.match(launcher, /Preserving gallery data left by an earlier uninstall/);
