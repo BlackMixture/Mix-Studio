@@ -4,6 +4,7 @@ title Mix Studio Installer
 cd /d "%~dp0"
 
 if /I "%~1"=="--verify-checkout" goto verify_checkout_cli
+if /I "%~1"=="--verify-node" goto verify_node_cli
 if exist "%~dp0installer\bootstrap.js" goto run_app
 
 set "MIX_STUDIO_REPO=https://github.com/BlackMixture/Mix-Studio.git"
@@ -39,6 +40,8 @@ if errorlevel 1 goto destination_not_writable
 if exist "%MIX_STUDIO_HOME%\.git\" (
   call :validate_checkout "%MIX_STUDIO_HOME%"
   if errorlevel 1 goto checkout_origin_invalid
+  if not exist "%MIX_STUDIO_HOME%\data\" call :refresh_unconfigured_checkout
+  if errorlevel 1 goto checkout_refresh_failed
   if exist "%MIX_STUDIO_HOME%\install_MixStudio.bat" if exist "%MIX_STUDIO_HOME%\server.js" if exist "%MIX_STUDIO_HOME%\installer\bootstrap.js" goto launch_downloaded
   if exist "%MIX_STUDIO_HOME%\data\" goto incomplete_checkout_with_data
   call :quarantine_incomplete_checkout
@@ -146,8 +149,27 @@ if not defined NODE_EXE for /f "delims=" %%N in ('where node.exe 2^>nul') do if 
 exit /b 0
 
 :read_node_major
-for /f "delims=" %%V in ('""%NODE_EXE%" -p "process.versions.node.split('.')[0]""') do set "NODE_MAJOR=%%V"
+set "NODE_MAJOR="
+set "NODE_VERSION_FILE=%TEMP%\mix-studio-node-version-%RANDOM%-%RANDOM%.txt"
+"%NODE_EXE%" -p "process.versions.node.split('.')[0]" >"%NODE_VERSION_FILE%" 2>nul
+if errorlevel 1 goto node_version_read_failed
+set /p "NODE_MAJOR="<"%NODE_VERSION_FILE%"
+del /f /q "%NODE_VERSION_FILE%" >nul 2>nul
+if not defined NODE_MAJOR goto node_version_read_failed
 exit /b 0
+
+:node_version_read_failed
+del /f /q "%NODE_VERSION_FILE%" >nul 2>nul
+set "NODE_MAJOR=0"
+exit /b 1
+
+:verify_node_cli
+set "NODE_EXE=%~2"
+set "NODE_MAJOR=0"
+call :read_node_major
+if errorlevel 1 exit /b 1
+if %NODE_MAJOR% GEQ 22 exit /b 0
+exit /b 1
 
 :verify_checkout_cli
 set "GIT_EXE=%~2"
@@ -197,6 +219,11 @@ exit /b 1
 
 :migrate_legacy_checkout
 "%GIT_EXE%" -C "%CHECKOUT_PATH%" remote set-url origin "%MIX_STUDIO_REPO%" >nul 2>nul
+exit /b %ERRORLEVEL%
+
+:refresh_unconfigured_checkout
+echo Refreshing the unfinished first-time setup...
+"%GIT_EXE%" -C "%MIX_STUDIO_HOME%" pull --ff-only origin main
 exit /b %ERRORLEVEL%
 
 :quarantine_incomplete_checkout
@@ -265,6 +292,15 @@ echo.
 echo The existing Mix Studio folder is a Git checkout from a different repository:
 echo %MIX_STUDIO_HOME%
 echo Nothing was changed. Move or rename that folder, then run this installer again.
+pause
+exit /b 1
+
+:checkout_refresh_failed
+echo.
+echo Mix Studio was downloaded, but its unfinished first-time setup could not be refreshed.
+echo Nothing was overwritten. Check your internet connection, then run this installer again.
+echo Existing download:
+echo %MIX_STUDIO_HOME%
 pause
 exit /b 1
 

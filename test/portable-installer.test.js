@@ -49,10 +49,17 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.match(launcher, /validate_checkout/i);
   assert.match(launcher, /remote get-url origin/i);
   assert.match(launcher, /--verify-checkout/i);
+  assert.match(launcher, /--verify-node/i);
   assert.match(launcher, /set "CHECKOUT_ORIGIN_FILE=%TEMP%\\mix-studio-origin-/i);
   assert.match(launcher, /remote get-url origin >"%CHECKOUT_ORIGIN_FILE%" 2>nul/i);
   assert.doesNotMatch(launcher, /for \/f[^\r\n]*remote get-url origin/i);
+  assert.match(launcher, /set "NODE_VERSION_FILE=%TEMP%\\mix-studio-node-version-/i);
+  assert.match(launcher, /process\.versions\.node\.split\('\.'\)\[0\]" >"%NODE_VERSION_FILE%" 2>nul/i);
+  assert.doesNotMatch(launcher, /for \/f[^\r\n]*process\.versions\.node/i);
   assert.match(launcher, /quarantine_incomplete_checkout/i);
+  assert.match(launcher, /if not exist "%MIX_STUDIO_HOME%\\data\\" call :refresh_unconfigured_checkout/i);
+  assert.match(launcher, /pull --ff-only origin main/i);
+  assert.match(launcher, /unfinished first-time setup could not be refreshed/i);
   assert.match(launcher, /verify_writable_destination/i);
   assert.match(launcher, /del \/f \/q "%MIX_STUDIO_WRITE_PROBE%\\write\.test"[\s\S]{0,160}rmdir "%MIX_STUDIO_WRITE_PROBE%"/i);
   assert.doesNotMatch(launcher, /if exist "%MIX_STUDIO_WRITE_PROBE%\\" exit \/b 1/i);

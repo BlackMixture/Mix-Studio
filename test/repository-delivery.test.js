@@ -30,8 +30,9 @@ test('quality runs the complete Node 22 checks on Linux and Windows', () => {
   assert.match(quality, /node --check public\/app\.js/);
   assert.match(quality, /Check PowerShell installer syntax/);
   assert.match(quality, /Language\.Parser]::ParseFile/);
-  assert.match(quality, /Smoke test installer checkout validation/);
+  assert.match(quality, /Smoke test installer batch helpers/);
   assert.match(quality, /install_MixStudio\.bat --verify-checkout/);
+  assert.match(quality, /install_MixStudio\.bat --verify-node/);
   assert.match(quality, /node --test/);
   assert.match(quality, /RELEASE_TAG/);
   assert.match(quality, /release\.json/);
