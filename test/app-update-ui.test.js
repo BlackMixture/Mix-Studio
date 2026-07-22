@@ -63,10 +63,12 @@ test('advanced settings live in the app drawer instead of the top bar', () => {
   assert.match(app, /\$\('#settingsBtn'\)\.addEventListener\('click', async \(\) => \{\s*closeAppDrawer\(\)/);
 });
 
-test('app credits stay subtle and discoverable in the drawer footer', () => {
+test('app credits live in Advanced Settings instead of the drawer footer', () => {
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
-  assert.match(drawer, /<footer class="app-drawer-credit" aria-label="Credits">[\s\S]*Created by Nate &amp; Chriselle Dwarika[\s\S]*Black Mixture &copy;/);
-  assert.match(css, /\.app-drawer-credit \{[\s\S]*color: var\(--muted-2\);[\s\S]*font-size: 9\.5px;/);
+  const community = html.match(/id="settingsPaneCommunity"([\s\S]*?)<\/section>/)?.[1] || '';
+  assert.doesNotMatch(drawer, /Created by Nate &amp; Chriselle Dwarika|Black Mixture &copy;/);
+  assert.match(community, /<footer class="community-credit" aria-label="Credits">[\s\S]*Created by Nate &amp; Chriselle Dwarika[\s\S]*Black Mixture &copy;/);
+  assert.match(css, /\.community-credit \{[\s\S]*color: var\(--muted-2\);[\s\S]*text-align: center;/);
 });
 
 test('app drawer mirrors primary navigation and Create submodes', () => {
