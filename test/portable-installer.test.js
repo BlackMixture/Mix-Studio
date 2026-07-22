@@ -443,6 +443,12 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /\/api\/comfy\/start/);
   assert.match(app, /\/api\/dependencies\/cancel/);
   assert.match(app, /function conciseSetupError\(value\)/);
+  assert.match(app, /const missing = missingSetupComponents\(compatibilityComponents\)/,
+    'setup readiness should follow the starter or requested workflow, not every available component');
+  assert.match(app, /Ready · \$\{additionalMissing\.length\} more workflows available/);
+  assert.match(app, /Krea 2 Image is installed\. Add other workflows only when you need them\./);
+  assert.match(app, /starterComponents\.has\(entry\.id\)/,
+    'setup should preselect only the starter or explicitly requested workflow');
   assert.match(app, /renderDependencyAccess\('#setupDependencyAccess', '#setupDependencyAccessLink', operationState\)/);
   assert.match(app, /This model needs Hugging Face access before installation can continue\./);
   assert.match(app, /showErrorDetail\(setupOperationDiagnostic, 'Setup diagnostic'\)/);

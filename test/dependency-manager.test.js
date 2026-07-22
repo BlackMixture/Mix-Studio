@@ -523,6 +523,10 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(html, /id="dependencyAccess"/);
   assert.match(html, /id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"/);
   assert.match(app, /function renderDependencyManager\(\)/);
+  assert.match(app, /function imageGenerationReady\(\)/);
+  assert.match(app, /Image generation is ready\. \$\{missing\.length\} additional workflow/);
+  assert.match(app, /dependencySelectedComponents = new Set\(\)/,
+    'additional workflows should require an intentional selection');
   assert.match(app, /function dependencyAccessUrl\(installState\)/);
   assert.match(app, /function renderDependencyAccess\(containerSelector, linkSelector, installState\)/);
   assert.match(app, /value\.protocol !== 'https:' \|\| value\.hostname\.toLowerCase\(\) !== 'huggingface\.co'/);

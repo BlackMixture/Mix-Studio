@@ -27084,16 +27084,12 @@ function dependencyMissingLabels() {
   });
 }
 
-function requiredDependencyMissingLabels() {
-  return dependencyMissingLabels().filter((entry) => !entry.optional);
-}
-
 function syncDependencySelection(missing) {
   const ids = missing.map((entry) => entry.id);
   const key = [...ids].sort().join('|');
   if (key !== dependencySelectionKey) {
     dependencySelectionKey = key;
-    dependencySelectedComponents = new Set(missing.filter((entry) => !entry.optional).map((entry) => entry.id));
+    dependencySelectedComponents = new Set();
   } else {
     dependencySelectedComponents = new Set([...dependencySelectedComponents].filter((id) => ids.includes(id)));
   }
@@ -27209,6 +27205,13 @@ function missingSetupComponents(required) {
   return unique.filter((id) => missing.has(id));
 }
 
+function imageGenerationReady() {
+  if (!lastMeta?.ok || missingSetupComponents(['image']).length) return false;
+  if (lastMeta?.models?.krea2?.clipType?.ok !== true) return false;
+  return lastMeta?.krea2?.modelVariant !== 'int8-convrot'
+    || lastMeta?.krea2?.nativeInt8?.supported === true;
+}
+
 async function ensureGenerationSetup() {
   const required = generationSetupComponents();
   if (!lastMeta?.ok) await loadMeta(true);
@@ -27294,9 +27297,7 @@ function setupGenerationReady() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   if (setupKrea2CoreBlocked(compatibilityComponents)) return false;
   if (setupNativeInt8Blocked(compatibilityComponents)) return false;
-  const missing = setupContextComponents.length
-    ? missingSetupComponents(setupContextComponents)
-    : requiredDependencyMissingLabels();
+  const missing = missingSetupComponents(compatibilityComponents);
   return !missing.length;
 }
 
@@ -27345,6 +27346,7 @@ async function openInitialSetup(options = {}) {
   setSetupGuideExpanded(false);
   setSetupCustomExpanded(false);
   setPhoneAccessExpanded(false);
+  $('#setupTitle').textContent = 'Get ready to generate';
   $('#setupIntro').textContent = options.message
     || 'Connect ComfyUI, install a workflow, and check that it is ready.';
   $('#initialSetupSheet').classList.add('show');
@@ -27378,10 +27380,12 @@ function syncSetupComponentSelection(components, missingIds) {
   const key = `${readinessKnown ? [...missingIds].sort().join('|') : 'unknown'}::${[...installableIds].sort().join('|')}`;
   if (key !== setupComponentSelectionKey) {
     setupComponentSelectionKey = key;
+    const starterComponents = new Set(setupContextComponents.length
+      ? setupContextComponents
+      : (setupViewStatus?.quickComponents || []));
     const defaults = readinessKnown
-      ? entries.filter((entry) => missingIds.includes(entry.id)
-        && (!entry.optional || setupContextComponents.includes(entry.id))).map((entry) => entry.id)
-      : (setupContextComponents.length ? setupContextComponents : (setupViewStatus?.quickComponents || []));
+      ? entries.filter((entry) => missingIds.includes(entry.id) && starterComponents.has(entry.id)).map((entry) => entry.id)
+      : [...starterComponents];
     setupSelectedComponents = new Set(defaults.filter((id) => installableIds.has(id)));
   } else {
     setupSelectedComponents = new Set([...setupSelectedComponents].filter((id) => installableIds.has(id)));
@@ -27519,29 +27523,38 @@ function renderInitialSetup() {
     : (incompleteComfy ? 'Incomplete · finish in Comfy Desktop'
       : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed'));
 
-  const contextMissing = missingSetupComponents(setupContextComponents);
+  const activeWorkflowComponents = setupContextComponents.length
+    ? setupContextComponents
+    : (setupViewStatus.quickComponents || []);
+  const contextMissing = missingSetupComponents(activeWorkflowComponents);
   const allMissing = dependencyMissingLabels();
-  const requiredMissing = allMissing.filter((entry) => !entry.optional);
+  const additionalMissing = allMissing.filter((entry) => !activeWorkflowComponents.includes(entry.id));
   const workflowCard = $('#setupWorkflowStatus');
   const workflowReady = setupGenerationReady();
   const restartRequired = !!dependency.restartRequired;
+  if (!setupContextComponents.length && workflowReady) {
+    $('#setupTitle').textContent = 'Ready to generate';
+    $('#setupIntro').textContent = 'Krea 2 Image is installed. Add other workflows only when you need them.';
+  }
   workflowCard.classList.toggle('ready', workflowReady);
   workflowCard.classList.toggle('attention', !workflowReady);
+  $('#setupWorkflowStatus strong').textContent = setupContextComponents.length ? 'Current workflow' : 'Image generation';
   $('#setupWorkflowStatusCopy').textContent = krea2CoreBlocked
     ? 'ComfyUI update needed for Krea 2'
     : (int8Blocked
     ? 'ComfyUI update needed for Krea INT8'
     : (setupContextComponents.length
       ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
-      : (comfy.connected ? (requiredMissing.length ? `${requiredMissing.length} needed`
-        : (allMissing.length ? `Ready · ${allMissing.length} optional` : 'Ready')) : 'Waiting for ComfyUI')));
+      : (comfy.connected ? (workflowReady
+        ? (additionalMissing.length ? `Ready · ${additionalMissing.length} more workflows available` : 'Ready')
+        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI')));
 
   const connectReady = !!comfy.connected && !krea2CoreBlocked;
   const installReady = workflowReady || restartRequired;
   $('#setupTabConnectStatus').textContent = krea2CoreBlocked ? 'Update core'
     : (connectReady ? 'Connected'
     : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed')));
-  $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || requiredMissing.length || setupContextComponents.length || 1} needed`);
+  $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || activeWorkflowComponents.length || 1} needed`);
   $('#setupTabFinishStatus').textContent = workflowReady ? 'Ready' : (restartRequired ? 'Restart' : 'Waiting');
   $('#setupTabConnect').classList.toggle('complete', connectReady);
   $('#setupTabInstall').classList.toggle('complete', installReady);
@@ -27753,7 +27766,7 @@ function renderInitialSetup() {
   $('#setupCheckAgain').disabled = busy;
 
   $('#setupFinishNote').textContent = workflowReady
-    ? 'Ready to generate.'
+    ? (additionalMissing.length ? 'Ready to generate. Other workflows can be added whenever you need them.' : 'Ready to generate.')
     : (restartRequired ? 'Restart ComfyUI, then check again.' : 'Complete the highlighted step first.');
 
   let recommendedStep = !comfy.connected ? 'connect' : (installReady ? 'finish' : 'install');
@@ -28260,7 +28273,7 @@ function renderGenerationSetupEntry() {
   const dependency = lastMeta?.dependencies || {};
   const install = dependency.install || {};
   const missing = dependencyMissingLabels();
-  const requiredMissing = missing.filter((entry) => !entry.optional);
+  const imageReady = imageGenerationReady();
   const busy = ['running', 'cancelling', 'restarting'].includes(install.state);
   let stateName = 'checking';
   let statusText = 'Checking';
@@ -28283,16 +28296,16 @@ function renderGenerationSetupEntry() {
     stateName = 'attention';
     statusText = 'Review';
     copyText = 'The last setup operation needs attention.';
-  } else if (requiredMissing.length) {
+  } else if (!imageReady) {
     stateName = 'attention';
-    statusText = `${requiredMissing.length} missing`;
-    copyText = 'Add only the models and nodes needed for your workflows.';
+    statusText = 'Image setup';
+    copyText = 'Install the image starter before generating.';
   } else {
     stateName = 'ready';
     statusText = 'Ready';
     copyText = missing.length
-      ? `${missing.length} optional workflow${missing.length === 1 ? '' : 's'} available to install.`
-      : 'ComfyUI and all enabled workflow requirements are ready.';
+      ? `Image generation is ready. ${missing.length} additional workflow${missing.length === 1 ? '' : 's'} available.`
+      : 'Image generation and all installed workflows are ready.';
   }
   entry.dataset.state = stateName;
   status.textContent = statusText;
@@ -28306,7 +28319,7 @@ function renderDependencyManager() {
   const dependency = (lastMeta && lastMeta.dependencies) || {};
   const installState = dependency.install || { state: 'idle', phase: 'idle' };
   const missing = dependencyMissingLabels();
-  const requiredMissing = missing.filter((entry) => !entry.optional);
+  const imageReady = imageGenerationReady();
   const badge = $('#dependencyManagerBadge');
   const status = $('#dependencyManagerStatus');
   const progress = $('#dependencyProgress');
@@ -28324,7 +28337,7 @@ function renderDependencyManager() {
   const selectedCount = selected.size;
   const busy = ['running', 'cancelling', 'restarting'].includes(installState.state);
   const cancellable = installState.state === 'running' || installState.state === 'cancelling';
-  const ready = !!lastMeta?.ok && !requiredMissing.length && !busy;
+  const ready = imageReady && !busy;
   card.classList.toggle('ready', ready);
   card.classList.toggle('installing', busy);
   list.innerHTML = missing.map((entry) => `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(entry.label)}"${busy || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}</button>`).join('');
@@ -28362,8 +28375,8 @@ function renderDependencyManager() {
   } else if (ready) {
     badge.textContent = 'Ready';
     status.textContent = missing.length
-      ? `${missing.length} optional workflow${missing.length === 1 ? ' is' : 's are'} available to install.`
-      : 'Every enabled Mix Studio model and node group is ready.';
+      ? `Image generation is ready. ${missing.length} additional workflow${missing.length === 1 ? ' is' : 's are'} available when needed.`
+      : 'Image generation and every installed workflow are ready.';
   } else if (installState.restartRequired) {
     badge.textContent = 'Restart needed';
     const restartInfo = dependency.restart || {};
