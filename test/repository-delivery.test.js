@@ -33,7 +33,8 @@ test('quality runs the complete Node 22 checks on Linux and Windows', () => {
   assert.match(quality, /node --test/);
   assert.match(quality, /RELEASE_TAG/);
   assert.match(quality, /release\.json/);
-  assert.match(quality, /toISOString\(\)\.slice\(0, 10\) !== releasedAt/);
+  assert.match(quality, /normalizeAppRelease/);
+  assert.match(quality, /release\.releasedAt !== String\(raw\.releasedAt/);
 });
 
 test('the download deployment cannot run before repository quality passes', () => {
