@@ -3,6 +3,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 title Mix Studio Installer
 cd /d "%~dp0"
 
+if /I "%~1"=="--verify-checkout" goto verify_checkout_cli
 if exist "%~dp0installer\bootstrap.js" goto run_app
 
 set "MIX_STUDIO_REPO=https://github.com/BlackMixture/Mix-Studio.git"
@@ -148,6 +149,12 @@ exit /b 0
 for /f "delims=" %%V in ('""%NODE_EXE%" -p "process.versions.node.split('.')[0]""') do set "NODE_MAJOR=%%V"
 exit /b 0
 
+:verify_checkout_cli
+set "GIT_EXE=%~2"
+set "MIX_STUDIO_REPO=https://github.com/BlackMixture/Mix-Studio.git"
+call :validate_checkout "%~3"
+exit /b %ERRORLEVEL%
+
 :verify_writable_destination
 set "MIX_STUDIO_WRITE_PROBE=%~dp0.mix-studio-write-%RANDOM%-%RANDOM%"
 mkdir "%MIX_STUDIO_WRITE_PROBE%" >nul 2>nul
@@ -165,7 +172,11 @@ exit /b 1
 :validate_checkout
 set "CHECKOUT_PATH=%~1"
 set "CHECKOUT_ORIGIN="
-for /f "delims=" %%O in ('""%GIT_EXE%" -C "%CHECKOUT_PATH%" remote get-url origin 2^>nul"') do if not defined CHECKOUT_ORIGIN set "CHECKOUT_ORIGIN=%%O"
+set "CHECKOUT_ORIGIN_FILE=%TEMP%\mix-studio-origin-%RANDOM%-%RANDOM%.txt"
+"%GIT_EXE%" -C "%CHECKOUT_PATH%" remote get-url origin >"%CHECKOUT_ORIGIN_FILE%" 2>nul
+if errorlevel 1 goto checkout_origin_read_failed
+set /p "CHECKOUT_ORIGIN="<"%CHECKOUT_ORIGIN_FILE%"
+del /f /q "%CHECKOUT_ORIGIN_FILE%" >nul 2>nul
 if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/Mix-Studio.git" exit /b 0
 if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/Mix-Studio" exit /b 0
 if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/Mix-Studio/" exit /b 0
@@ -178,6 +189,10 @@ if /I "%CHECKOUT_ORIGIN%"=="https://github.com/BlackMixture/KreaStudio/" goto mi
 if /I "%CHECKOUT_ORIGIN%"=="git@github.com:BlackMixture/KreaStudio.git" goto migrate_legacy_checkout
 if /I "%CHECKOUT_ORIGIN%"=="ssh://git@github.com/BlackMixture/KreaStudio.git" goto migrate_legacy_checkout
 if /I "%CHECKOUT_ORIGIN%"=="ssh://git@github.com/BlackMixture/KreaStudio" goto migrate_legacy_checkout
+exit /b 1
+
+:checkout_origin_read_failed
+del /f /q "%CHECKOUT_ORIGIN_FILE%" >nul 2>nul
 exit /b 1
 
 :migrate_legacy_checkout

@@ -79,5 +79,12 @@ jobs:
           }
           if ($failed) { throw 'One or more installer scripts contain PowerShell syntax errors.' }
 
+      - name: Smoke test installer checkout validation
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          if not exist "%ProgramFiles%\Git\cmd\git.exe" exit /b 1
+          call install_MixStudio.bat --verify-checkout "%ProgramFiles%\Git\cmd\git.exe" "%GITHUB_WORKSPACE%"
+
       - name: Run tests
         run: node --test

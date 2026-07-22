@@ -48,6 +48,10 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.match(launcher, /target folder already exists but is not a Mix Studio Git checkout/i);
   assert.match(launcher, /validate_checkout/i);
   assert.match(launcher, /remote get-url origin/i);
+  assert.match(launcher, /--verify-checkout/i);
+  assert.match(launcher, /set "CHECKOUT_ORIGIN_FILE=%TEMP%\\mix-studio-origin-/i);
+  assert.match(launcher, /remote get-url origin >"%CHECKOUT_ORIGIN_FILE%" 2>nul/i);
+  assert.doesNotMatch(launcher, /for \/f[^\r\n]*remote get-url origin/i);
   assert.match(launcher, /quarantine_incomplete_checkout/i);
   assert.match(launcher, /verify_writable_destination/i);
   assert.match(launcher, /del \/f \/q "%MIX_STUDIO_WRITE_PROBE%\\write\.test"[\s\S]{0,160}rmdir "%MIX_STUDIO_WRITE_PROBE%"/i);
