@@ -461,6 +461,20 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 #fullscreenBtn[aria-pressed="true"] .fullscreen-exit-icon { display: block; }
 .app-drawer-label { flex: 1 1 auto; font-size: 14px; font-weight: 750; }
 .app-drawer-action small { color: var(--muted); font-size: 11px; font-weight: 700; }
+.app-drawer-credit {
+  margin: 0 10px 4px;
+  padding: 14px 4px 2px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  border-top: 1px solid rgba(226,232,255,.06);
+  color: var(--muted-2);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+.app-drawer-credit span:last-child { color: rgba(226,232,255,.34); white-space: nowrap; }
 .updates-unread-dot {
   width: 7px;
   height: 7px;

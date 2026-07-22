@@ -63,6 +63,12 @@ test('advanced settings live in the app drawer instead of the top bar', () => {
   assert.match(app, /\$\('#settingsBtn'\)\.addEventListener\('click', async \(\) => \{\s*closeAppDrawer\(\)/);
 });
 
+test('app credits stay subtle and discoverable in the drawer footer', () => {
+  const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
+  assert.match(drawer, /<footer class="app-drawer-credit" aria-label="Credits">[\s\S]*Created by Nate &amp; Chriselle Dwarika[\s\S]*&copy; Black Mixture/);
+  assert.match(css, /\.app-drawer-credit \{[\s\S]*color: var\(--muted-2\);[\s\S]*font-size: 9\.5px;/);
+});
+
 test('app drawer mirrors primary navigation and Create submodes', () => {
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   assert.match(drawer, /id="drawerCreateBtn"[^>]*aria-controls="drawerCreateModes"/);
