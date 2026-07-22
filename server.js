@@ -5336,12 +5336,23 @@ async function handleApi(req, res, url) {
       const missingComponents = missingDependencyComponentIds(missing, models);
       const compatibility = await getComfyCompatibility(url.searchParams.has('refresh'));
       if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
+        const checkedComponents = Array.isArray(dependencyInstallState.components)
+          ? dependencyInstallState.components.filter(Boolean)
+          : [];
+        const checkedMissingComponents = checkedComponents.length
+          ? checkedComponents.filter((component) => missingComponents.includes(component))
+          : missingComponents;
+        const checkedMissingLabels = checkedMissingComponents.map((component) => (
+          DEPENDENCY_COMPONENTS[component]?.label || component
+        ));
         updateDependencyInstallState({
           state: 'complete',
           phase: 'checked',
-          message: missingComponents.length
-            ? 'ComfyUI was checked after restart. Some workflow dependencies still need attention.'
+          message: checkedMissingComponents.length
+            ? `ComfyUI was checked after restart. Still needed: ${checkedMissingLabels.join(', ')}.`
             : 'ComfyUI was checked after restart. Installed dependencies are ready.',
+          checkedComponents,
+          checkedMissingComponents,
           restartRequired: false,
           error: null,
           ...EMPTY_DEPENDENCY_FAILURE,

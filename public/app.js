@@ -27610,6 +27610,10 @@ function renderInitialSetup() {
     const entries = category.components.map((id) => byId.get(id)).filter(Boolean);
     if (!entries.length) return '';
     const installedCount = readinessKnown ? entries.filter((entry) => !missingSet.has(entry.id)).length : 0;
+    const selectableEntries = entries.filter((entry) => entry.installable !== false
+      && (!readinessKnown || missingSet.has(entry.id)));
+    const categorySelected = selectableEntries.length > 0
+      && selectableEntries.every((entry) => selected.has(entry.id));
     const rows = entries.map((entry) => {
       const fit = fitByComponent.get(entry.id);
       const installed = readinessKnown && !missingSet.has(entry.id);
@@ -27621,7 +27625,10 @@ function renderInitialSetup() {
       return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements'))}</small></span><span class="setup-component-state">${status}</span></label>`;
     }).join('');
     const count = readinessKnown ? `${installedCount} of ${entries.length} installed` : `${entries.length} workflows`;
-    return `<section class="setup-component-group" data-component-category="${category.id}"><header><span><strong>${category.label}</strong><small>${category.description}</small></span><em>${count}</em></header><div>${rows}</div></section>`;
+    const action = selectableEntries.length
+      ? `<button type="button" data-component-category-toggle="${category.id}" aria-label="${categorySelected ? 'Clear' : 'Select all'} ${category.label} components">${categorySelected ? 'Clear' : 'Select all'}</button>`
+      : '<button type="button" disabled>All installed</button>';
+    return `<section class="setup-component-group" data-component-category="${category.id}"><header><span><strong>${category.label}</strong><small>${category.description}</small></span><span class="setup-component-group-actions"><em>${count}</em>${action}</span></header><div>${rows}</div></section>`;
   }).join('');
   $('#setupComponentEmpty').hidden = !!components.length;
   $('#setupInstallSelected').disabled = busy || !selected.size || !comfy.canInstallDependencies;
@@ -27658,15 +27665,23 @@ function renderInitialSetup() {
   if (['running', 'cancelling', 'error', 'cancelled'].includes(install.state)) operationState = install;
   else if (dependency.state && dependency.state !== 'idle') operationState = dependency;
   operation.hidden = !operationState;
+  const restartInfo = setupViewStatus.restart || lastMeta?.dependencies?.restart || {};
+  const restartNeeded = !!dependency.restartRequired;
+  operation.classList.toggle('restart-needed', restartNeeded);
   setupOperationDiagnostic = operationState?.error ? String(operationState.error) : '';
   $('#setupShowDetails').hidden = !setupOperationDiagnostic;
   const setupAccessUrl = renderDependencyAccess('#setupDependencyAccess', '#setupDependencyAccessLink', operationState);
   if (operationState) {
-    $('#setupOperationTitle').textContent = operationState.state === 'error' ? 'Setup needs attention'
-      : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up'));
-    $('#setupOperationCopy').textContent = operationState.error
+    $('#setupOperationTitle').textContent = restartNeeded ? 'Restart ComfyUI to finish'
+      : (operationState.state === 'error' ? 'Setup needs attention'
+        : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up')));
+    $('#setupOperationCopy').textContent = restartNeeded
+      ? (restartInfo.kind === 'desktop'
+        ? 'Downloads are complete. In Comfy Desktop, stop and start this installation, then return here and press Check again.'
+        : 'Downloads are complete. Restart ComfyUI so it can register the installed models and nodes.')
+      : (operationState.error
       ? (setupAccessUrl ? 'This model needs Hugging Face access before installation can continue.' : conciseSetupError(operationState.error))
-      : (operationState.message || 'Working…');
+      : (operationState.message || 'Working…'));
     const progress = dependencyProgressMetrics(operationState);
     const progressTrack = $('#setupOperationProgress');
     progressTrack.classList.toggle('indeterminate', !progress.determinate && operationState.state === 'running');
@@ -27683,8 +27698,8 @@ function renderInitialSetup() {
     }
     progressTrack.setAttribute('aria-valuetext', progress.label || operationState.message || 'Setup in progress');
   }
-  const restartInfo = setupViewStatus.restart || lastMeta?.dependencies?.restart || {};
-  $('#setupRestartComfy').hidden = !dependency.restartRequired;
+  $('#setupRestartComfy').hidden = !restartNeeded || !restartInfo.canRestart;
+  $('#setupRestartComfy').textContent = 'Restart ComfyUI now';
   $('#setupRestartComfy').disabled = busy || !restartInfo.canRestart;
   $('#setupCheckAgain').disabled = busy;
 
@@ -28050,6 +28065,30 @@ $('#setupComponentList').addEventListener('change', (event) => {
   if (option.checked) setupSelectedComponents.add(id);
   else setupSelectedComponents.delete(id);
   renderInitialSetup();
+});
+$('#setupComponentList').addEventListener('click', (event) => {
+  const toggle = event.target.closest('[data-component-category-toggle]');
+  if (!toggle || toggle.disabled) return;
+  const category = SETUP_COMPONENT_CATEGORIES.find((entry) => entry.id === toggle.dataset.componentCategoryToggle);
+  if (!category) return;
+  const components = new Map((setupViewStatus?.components || []).map((entry) => [entry.id, entry]));
+  const missingIds = setupMissingComponentIds();
+  const missing = Array.isArray(missingIds) ? new Set(missingIds) : null;
+  const selectable = category.components.filter((id) => {
+    const component = components.get(id);
+    return component && component.installable !== false && (!missing || missing.has(id));
+  });
+  if (!selectable.length) return;
+  const shouldClear = selectable.every((id) => setupSelectedComponents.has(id));
+  selectable.forEach((id) => {
+    if (shouldClear) setupSelectedComponents.delete(id);
+    else setupSelectedComponents.add(id);
+  });
+  const stage = $('#initialSetupSheet .setup-stage');
+  const scrollTop = stage?.scrollTop || 0;
+  renderInitialSetup();
+  if (stage) stage.scrollTop = scrollTop;
+  requestAnimationFrame(() => $(`[data-component-category-toggle="${category.id}"]`)?.focus());
 });
 $('#setupInstallSelected').addEventListener('click', async () => {
   try {

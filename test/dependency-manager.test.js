@@ -505,6 +505,9 @@ test('ComfyUI restart is owner-only, queue-safe, and reports reconnect state', (
 
 test('an explicit post-restart check clears stale restart-required state', () => {
   assert.match(server, /url\.searchParams\.has\('afterRestart'\)/);
+  assert.match(server, /dependencyInstallState\.components/);
+  assert.match(server, /checkedComponents\.filter\(\(component\) => missingComponents\.includes\(component\)\)/);
+  assert.match(server, /Still needed: \$\{checkedMissingLabels\.join\(', '\)\}/);
   assert.match(server, /restartRequired: false/);
   assert.match(app, /loadMeta\(true, true\)/);
 });

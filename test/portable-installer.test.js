@@ -431,6 +431,9 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /label: 'Edit'/);
   assert.match(app, /label: 'Video'/);
   assert.match(app, /input type="checkbox" data-component/);
+  assert.match(app, /data-component-category-toggle/);
+  assert.match(app, /selectable\.every\(\(id\) => setupSelectedComponents\.has\(id\)\)/);
+  assert.match(app, /setupSelectedComponents\.delete\(id\)/);
   assert.match(app, /selectedSetupDependencyIds/);
   assert.match(server, /function dependencyComponentInfo\(id, fit = null\)/);
   assert.match(server, /installable: !unavailableNode/);
@@ -458,6 +461,10 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(style, /\.setup-sheet \{[\s\S]{0,180}align-items: center/);
   assert.match(style, /@keyframes setupDialogIn/);
   assert.match(style, /\.setup-stage \{[\s\S]{0,180}overflow-y: auto/);
+  assert.match(style, /\.setup-component-group-actions button/);
+  assert.match(style, /\.setup-operation\.restart-needed \{/);
+  assert.match(app, /Restart ComfyUI to finish/);
+  assert.match(app, /In Comfy Desktop, stop and start this installation/);
   assert.match(server, /\/api\/setup\/status/);
   assert.match(server, /\/api\/setup\/connection/);
   assert.match(server, /\/api\/setup\/browse/);
