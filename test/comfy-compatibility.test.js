@@ -6,15 +6,31 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {
+  KREA2_MIN_VERSION,
   NATIVE_INT8_MIN_VERSION,
   compareVersions,
   detectNativeInt8Compatibility,
+  krea2ClipCompatibility,
+  krea2ClipCompatibilityError,
   nativeInt8Compatibility,
   nativeInt8CompatibilityError,
   normalizeVersion,
+  objectInfoComboChoices,
   versionFromInstall,
   versionFromSystemStats,
 } = require('../lib/comfy-compatibility');
+
+test('Krea 2 support is read from the connected CLIPLoader schema', () => {
+  assert.equal(KREA2_MIN_VERSION, '0.26.0');
+  const legacy = { CLIPLoader: { input: { required: { type: [['stable_diffusion', 'qwen_image']] } } } };
+  const current = { CLIPLoader: { input: { required: { type: [['stable_diffusion', 'krea2']] } } } };
+  const dynamic = { CLIPLoader: { input: { required: { type: ['COMBO', { options: ['krea2'] }] } } } };
+  assert.deepEqual(objectInfoComboChoices(legacy, 'CLIPLoader', 'type'), ['stable_diffusion', 'qwen_image']);
+  assert.equal(krea2ClipCompatibility(legacy, '0.25.1').supported, false);
+  assert.equal(krea2ClipCompatibility(current, '0.26.0').supported, true);
+  assert.equal(krea2ClipCompatibility(dynamic, '0.27.0').supported, true);
+  assert.match(krea2ClipCompatibilityError(krea2ClipCompatibility(legacy, '0.25.1')), /Update ComfyUI/);
+});
 
 test('ComfyUI versions are normalized and compared for native INT8 support', () => {
   assert.equal(NATIVE_INT8_MIN_VERSION, '0.27.0');

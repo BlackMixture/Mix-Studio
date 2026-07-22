@@ -19,6 +19,7 @@ test('GitHub-facing pages describe open low-VRAM tiers without promising every w
   assert.match(readme, /lowest guided offload tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
   assert.match(readme, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
   assert.match(readme, /Krea 2 image route uses \*\*8 GB VRAM\*\* as its guided offload tier/);
+  assert.match(readme, /Krea 2 support requires ComfyUI 0\.26\.0 or newer/);
   assert.match(readme, /Video workflows use \*\*8 GB VRAM\*\* as an experimental offload tier/);
   assert.match(readme, /System RAM is not an installer requirement/);
   assert.match(readme, /not a promise that every duration and resolution will fit/);
@@ -42,6 +43,7 @@ test('GitHub-facing pages describe open low-VRAM tiers without promising every w
   assert.match(portable, /no enforced VRAM cutoff/);
   assert.match(portable, /lowest guided tier is 4 GB of VRAM through Flux 2 Klein 4B FP8/);
   assert.match(portable, /LTX 2\.3, LTX Edit, 10Eros, Wan 2\.2 14B, and SCAIL 2 use 8 GB VRAM as an experimental offload tier/);
+  assert.match(portable, /Krea 2 requires ComfyUI 0\.26\.0 or newer/);
   assert.match(portable, /System RAM is not used as an installation requirement/);
   assert.match(portable, /flux-2-klein-4b-fp8\.safetensors/);
   assert.match(portable, /standard diffusion loader/);
@@ -85,6 +87,20 @@ test('setup gates Krea INT8 installation and generation on the compatible ComfyU
   assert.match(app, /or select FP8/);
   assert.match(html, /id="setupKrea2Variant"/);
   assert.match(app, /modelVariants: \{ krea2: \$\('#setKrea2ModelVariant'\)\.value \}/);
+});
+
+test('setup rejects Krea 2 before ComfyUI exposes the required CLIP type', () => {
+  const server = read('server.js');
+  const app = read('public/app.js');
+  const html = read('public/index.html');
+  assert.match(server, /krea2ClipCompatibility/);
+  assert.match(server, /code: 'comfy_krea2_update_required'/);
+  assert.match(server, /clipType:\s*\{ name: settings\.clipType, ok: krea2Core\.supported === true \}/);
+  assert.match(app, /function setupKrea2CoreBlocked\(/);
+  assert.match(app, /ComfyUI 0\.26\.0\+ required/);
+  assert.match(app, /if \(krea2CoreBlocked\) recommendedStep = 'connect'/);
+  assert.match(app, /next\.disabled = busy \|\| !comfy\.connected \|\| krea2CoreBlocked/);
+  assert.match(html, /id="setupCoreUpdate"[\s\S]*Update ComfyUI before using Krea 2/);
 });
 
 test('setup preserves an explicit Krea precision instead of replacing it with hardware guidance', () => {

@@ -17,7 +17,13 @@ const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
-const { nativeInt8Compatibility, nativeInt8CompatibilityError } = require('./lib/comfy-compatibility');
+const {
+  krea2ClipCompatibility,
+  krea2ClipCompatibilityError,
+  nativeInt8Compatibility,
+  nativeInt8CompatibilityError,
+  objectInfoComboChoices,
+} = require('./lib/comfy-compatibility');
 const { COMPONENTS: DEPENDENCY_COMPONENTS, NODE_PACKS: DEPENDENCY_NODE_PACKS, availableComponents, installComponents } = require('./lib/dependency-installer');
 const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
 const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
@@ -582,12 +588,7 @@ function currentProfile(req) {
   const cookies = parseCookies(req.headers.cookie);
   const id = parseProfileToken(cookies[PROFILE_COOKIE], AUTH_SECRET);
   if (id) {
-    const signed = db.profiles.find((p) => p.id === id) || null;
-    // Cookies issued before remote access was locked must not preserve an
-    // open, no-PIN profile over the network. Loopback keeps the frictionless
-    // desktop workspace; remote browsers must sign in to a PIN-protected one.
-    if (signed && !isLoopbackRequest(req) && !signed.pinHash) return null;
-    return signed;
+    return db.profiles.find((p) => p.id === id) || null;
   }
   const fallback = defaultOpenProfile(db);
   if (fallback && isLoopbackRequest(req)) {
@@ -1141,13 +1142,7 @@ async function getObjectInfo(force, fetchOptions) {
 }
 
 function comboList(info, cls, field) {
-  const spec = info[cls]?.input?.required?.[field] || info[cls]?.input?.optional?.[field];
-  if (!Array.isArray(spec)) return [];
-  if (Array.isArray(spec[0])) return spec[0];
-  // Recent ComfyUI releases serialize DynamicCombo inputs as
-  // ['COMBO', { options: [...] }] instead of putting choices in slot 0.
-  // Accept both API shapes so installed models are not reported missing.
-  return spec[0] === 'COMBO' && Array.isArray(spec[1]?.options) ? spec[1].options : [];
+  return objectInfoComboChoices(info, cls, field);
 }
 
 function modelStatus(info, cls, field, name, fallbackList) {
@@ -1193,6 +1188,7 @@ function configuredModelsStatus(info) {
   const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
     : comboList(info, 'LoraLoader', 'lora_name');
+  const krea2Core = krea2ClipCompatibility(info);
   return {
     krea2: {
       label: 'Krea 2',
@@ -1200,6 +1196,7 @@ function configuredModelsStatus(info) {
       raw: diffusionModelStatus(info, settings.krea2RawUnet),
       turboLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.krea2TurboLora, loraList),
       clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.clip),
+      clipType: { name: settings.clipType, ok: krea2Core.supported === true },
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.vae),
     },
     krea2Depth: {
@@ -1448,9 +1445,16 @@ async function nodeFromOrdered(classType, ordered, links = {}, overrides = {}) {
 /** Drop input keys the installed node class doesn't know about (core-node drift). */
 async function filterInputs(graph) {
   const info = await getObjectInfo();
+  const krea2Compatibility = krea2ClipCompatibility(info);
   for (const node of Object.values(graph)) {
     const def = info[node.class_type];
     if (!def) continue;
+    if (node.class_type === 'CLIPLoader' && node.inputs?.type === 'krea2'
+      && krea2Compatibility.supported !== true) {
+      const error = new Error(krea2ClipCompatibilityError(krea2Compatibility));
+      error.code = 'comfy_krea2_update_required';
+      throw error;
+    }
     const known = new Set([
       ...Object.keys(def.input?.required || {}),
       ...Object.keys(def.input?.optional || {}),
@@ -4787,6 +4791,10 @@ const REQUIRED_CLASSES = {
   scailinfinity: ['WanSCAILInfinity'],
 };
 
+const KREA2_DEPENDENCY_COMPONENTS = new Set([
+  'image', 'krea2raw', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style',
+]);
+
 function dependencyComponentInfo(id, fit = null) {
   const component = DEPENDENCY_COMPONENTS[id] || {};
   const unavailableNode = (component.nodes || [])
@@ -4804,16 +4812,24 @@ function dependencyComponentInfo(id, fit = null) {
   };
 }
 
+function setupDependencyComponentInfo(id, fit, krea2Core) {
+  const component = dependencyComponentInfo(id, fit);
+  if (krea2Core && krea2Core.supported !== true && KREA2_DEPENDENCY_COMPONENTS.has(id)) {
+    component.installable = false;
+    component.blockedBy = 'comfy-core';
+    component.installReason = krea2ClipCompatibilityError(krea2Core);
+  }
+  return component;
+}
+
 async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
   const launch = startStatus(RUNTIME);
   const ownerHasPin = !!db.profiles[0]?.pinHash;
   const discoveredMobileAccess = mobileAccessSummary(os.networkInterfaces(), PORT);
   const mobileAccess = Object.assign({}, discoveredMobileAccess, {
-    requiresOwnerPin: !ownerHasPin,
-    remoteAccessReady: ownerHasPin,
-    tailscaleUrl: ownerHasPin ? discoveredMobileAccess.tailscaleUrl : '',
-    localUrl: ownerHasPin ? discoveredMobileAccess.localUrl : '',
+    pinProtected: ownerHasPin,
+    remoteAccessReady: !!(discoveredMobileAccess.tailscaleUrl || discoveredMobileAccess.localUrl),
   });
   const hardwareInfoValue = await getSetupHardwareInfo();
   const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
@@ -4823,8 +4839,9 @@ async function setupStatusPayload(forceCompatibility = false) {
   const quickSetup = recommendedQuickSetup(hardwareInfoValue);
   let connected = false;
   let connectionError = '';
+  let info = null;
   try {
-    await getObjectInfo(false, { signal: AbortSignal.timeout(4000) });
+    info = await getObjectInfo(forceCompatibility, { signal: AbortSignal.timeout(4000) });
     connected = true;
   } catch (error) {
     connectionError = String(error.message || error);
@@ -4832,6 +4849,9 @@ async function setupStatusPayload(forceCompatibility = false) {
   const compatibility = connected
     ? await getComfyCompatibility(forceCompatibility, detected.basePath)
     : nativeInt8Compatibility(null, detected.basePath);
+  const krea2Core = connected
+    ? krea2ClipCompatibility(info, compatibility.version)
+    : krea2ClipCompatibility(null, compatibility.version);
   return {
     appReady: true,
     platform: process.platform,
@@ -4848,11 +4868,12 @@ async function setupStatusPayload(forceCompatibility = false) {
     },
     restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
     mobileAccess,
-    components: availableComponents().map((id) => dependencyComponentInfo(id, guidance[id] || null)),
+    components: availableComponents().map((id) => setupDependencyComponentInfo(id, guidance[id] || null, connected ? krea2Core : null)),
     comfy: {
       connected,
       connectionError,
       version: compatibility.version,
+      krea2: krea2Core,
       nativeInt8: compatibility,
       url: settings.comfyUrl,
       configuredPath: RUNTIME.comfy.path || '',
@@ -4894,7 +4915,15 @@ async function handleApi(req, res, url) {
     return json(res, 200, { profile: publicProfile(profile, db) });
   }
   if (route === '/api/profiles' && req.method === 'GET') {
-    return json(res, 200, { profiles: db.profiles.map((p) => publicProfile(p, db)) });
+    const remote = !isLoopbackRequest(req);
+    return json(res, 200, {
+      profiles: db.profiles.map((p) => publicProfile(p, db)),
+      access: {
+        remote,
+        ownerHasPin: !!db.profiles[0]?.pinHash,
+        hasOpenProfiles: db.profiles.some((entry) => !entry.pinHash),
+      },
+    });
   }
   if (route === '/api/profiles' && req.method === 'POST') {
     const owner = db.profiles[0];
@@ -4925,12 +4954,6 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const target = db.profiles.find((p) => p.id === profLogin[1]);
     if (!target) return json(res, 404, { error: 'Profile not found' });
-    if (!target.pinHash && !isLoopbackRequest(req)) {
-      return json(res, 403, {
-        error: 'Remote access is locked until the Owner adds a PIN from the generation computer.',
-        code: 'remote_pin_required',
-      });
-    }
     const throttleKey = `${requestAddress(req)}:${target.id}`;
     const allowance = profileLoginThrottle.check(throttleKey);
     if (!allowance.allowed) {
@@ -4943,7 +4966,7 @@ async function handleApi(req, res, url) {
       return json(res, 401, { error: 'Wrong PIN' });
     }
     profileLoginThrottle.success(throttleKey);
-    if (!String(target.pinHash || '').startsWith('scrypt$')) {
+    if (target.pinHash && !String(target.pinHash).startsWith('scrypt$')) {
       const upgraded = hashPin(String(body.pin || ''));
       target.pinSalt = upgraded.salt;
       target.pinHash = upgraded.hash;
@@ -5629,7 +5652,25 @@ async function handleApi(req, res, url) {
     const modelVariants = { krea2: krea2Variant };
     const components = [...new Set(requested.filter((id) => Object.prototype.hasOwnProperty.call(DEPENDENCY_COMPONENTS, id)))];
     if (!components.length) return json(res, 400, { error: 'Choose at least one missing model or node group to install.' });
-    const installsKrea2 = components.some((id) => (DEPENDENCY_COMPONENTS[id].models || []).includes('image'));
+    const installsKrea2 = components.some((id) => KREA2_DEPENDENCY_COMPONENTS.has(id));
+    if (installsKrea2) {
+      try {
+        const info = await getObjectInfo(true, { signal: AbortSignal.timeout(4000) });
+        const coreCompatibility = await getComfyCompatibility(true);
+        const krea2Compatibility = krea2ClipCompatibility(info, coreCompatibility.version);
+        if (krea2Compatibility.supported !== true) {
+          return json(res, 409, {
+            error: krea2ClipCompatibilityError(krea2Compatibility),
+            code: 'comfy_krea2_update_required',
+            compatibility: krea2Compatibility,
+          });
+        }
+      } catch (error) {
+        if (error?.code === 'comfy_krea2_update_required') throw error;
+        // A stopped ComfyUI can still receive dependency files on disk. The
+        // capability is checked again after it restarts.
+      }
+    }
     if (installsKrea2 && krea2Variant === 'int8-convrot') {
       const compatibility = await getComfyCompatibility(true);
       if (compatibility.supported !== true) {
@@ -5867,6 +5908,23 @@ async function handleApi(req, res, url) {
     p.editMaskInvert = p.editMaskInvert === true;
     p.maskInfluence = maskInfluence(p.maskInfluence);
     p.maskExpand = maskExpand(p.maskExpand);
+    if (p.mode === 'edit') {
+      const editEngines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
+      p.editEngine = editEngines.includes(p.editEngine) ? p.editEngine : 'klein4';
+    }
+    const usesKrea2Model = p.mode !== 'edit' || ['krea2', 'krea2ref'].includes(p.editEngine);
+    if (usesKrea2Model) {
+      const info = await getObjectInfo();
+      const coreCompatibility = await getComfyCompatibility();
+      const krea2Compatibility = krea2ClipCompatibility(info, coreCompatibility.version);
+      if (krea2Compatibility.supported !== true) {
+        return json(res, 409, {
+          error: krea2ClipCompatibilityError(krea2Compatibility),
+          code: 'comfy_krea2_update_required',
+          compatibility: krea2Compatibility,
+        });
+      }
+    }
 
     let refined = null;
     if (p.mode !== 'edit') {
@@ -5910,8 +5968,6 @@ async function handleApi(req, res, url) {
       : (p.imageName ? [p.imageName] : []);
     if (p.mode !== 'edit') p.editSequence = undefined;
     if (p.mode === 'edit') {
-      const engines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
-      p.editEngine = engines.includes(p.editEngine) ? p.editEngine : 'klein4';
       if (settings.features[EDIT_FEATURES[p.editEngine]] === false) {
         return json(res, 400, { error: 'This edit model was not installed on this machine.' });
       }
@@ -5989,7 +6045,6 @@ async function handleApi(req, res, url) {
       // itself but skip the incompatible preservation pass.
       if (p.editAspectOverride && !p.editOutpaint) p.composite = false;
     }
-    const usesKrea2Model = p.mode !== 'edit' || ['krea2', 'krea2ref'].includes(p.editEngine);
     if (usesKrea2Model && settings.krea2ModelVariant === 'int8-convrot') {
       const compatibility = await getComfyCompatibility();
       if (compatibility.supported !== true) {
@@ -7843,11 +7898,12 @@ const server = http.createServer(async (req, res) => {
     return serveFile(res, publicFile.file);
   } catch (e) {
     const cancelled = e && e.code === 'job_cancelled';
+    const setupRequired = e && e.code === 'comfy_krea2_update_required';
     if (!cancelled) console.error('[error]', req.method, url.pathname, e.message);
     if (!res.headersSent) {
-      json(res, cancelled ? 409 : 500, {
+      json(res, cancelled || setupRequired ? 409 : 500, {
         error: String(e.message || e),
-        code: cancelled ? 'job_cancelled' : undefined,
+        code: cancelled ? 'job_cancelled' : (setupRequired ? e.code : undefined),
       });
     }
   }
@@ -7911,15 +7967,12 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  * Mix Studio running');
   console.log(`    Local:   http://localhost:${PORT}`);
-  if (db.profiles[0]?.pinHash) {
-    for (const entry of mobileAccessAddresses(os.networkInterfaces())) {
-      const label = entry.tailscale ? 'Tailscale' : 'Phone';
-      const note = entry.tailscale ? 'private phone access' : entry.name;
-      console.log(`    ${(label + ':').padEnd(11)}http://${entry.address}:${PORT}   (${note})`);
-    }
-  } else {
-    console.log('    Phone:   locked until the Owner adds a profile PIN');
+  for (const entry of mobileAccessAddresses(os.networkInterfaces())) {
+    const label = entry.tailscale ? 'Tailscale' : 'Phone';
+    const note = entry.tailscale ? 'private phone access' : entry.name;
+    console.log(`    ${(label + ':').padEnd(11)}http://${entry.address}:${PORT}   (${note})`);
   }
+  console.log(`    Profile PIN: ${db.profiles[0]?.pinHash ? 'enabled' : 'not set (optional)'}`);
   console.log(`    ComfyUI: ${settings.comfyUrl}`);
   if (typeof WebSocket === 'undefined') {
     console.log('    Note: Node < 22 detected - live progress disabled (polling fallback).');

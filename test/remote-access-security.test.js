@@ -18,15 +18,14 @@ function sourceSection(startNeedle, endNeedle) {
   return server.slice(start, end);
 }
 
-test('an open Owner workspace is local-only until a PIN is set', () => {
+test('a PIN-less Owner can be explicitly selected remotely while local fallback stays local', () => {
   const currentProfile = sourceSection('function currentProfile(', 'function profileCookie(');
   assert.match(currentProfile, /fallback\s*&&\s*isLoopbackRequest\(req\)/);
-  assert.match(
-    currentProfile,
-    /if\s*\(id\)\s*\{[\s\S]*db\.profiles\.find[\s\S]*!isLoopbackRequest\(req\)[\s\S]*!\w+\.pinHash[\s\S]*return null/,
-    'a valid old cookie must not make a remote PIN-less profile accessible',
-  );
-  assert.match(server, /Remote access is locked until the Owner adds a PIN/);
+  assert.doesNotMatch(currentProfile, /signed\s*&&\s*!isLoopbackRequest\(req\)/);
+  assert.doesNotMatch(server, /code:\s*'remote_pin_required'/);
+  assert.match(server, /ownerHasPin:\s*!!db\.profiles\[0\]\?\.pinHash/);
+  assert.match(server, /hasOpenProfiles:\s*db\.profiles\.some\(\(entry\) => !entry\.pinHash\)/);
+  assert.match(server, /if \(target\.pinHash && !String\(target\.pinHash\)\.startsWith\('scrypt\$'\)\)/);
   assert.match(server, /Create profiles from the generation computer or while signed in as the Owner/);
   assert.match(server, /createLoginThrottle\(\)/);
 });
@@ -74,11 +73,12 @@ test('generated media is restricted to visible records owned by the signed-in pr
   }
 });
 
-test('phone access requires an Owner PIN before addresses can be copied', () => {
-  assert.match(html, /id="phoneAccessSecure"[^>]*hidden[^>]*>Add Owner PIN/);
-  assert.match(server, /requiresOwnerPin:\s*!ownerHasPin/);
-  assert.match(server, /tailscaleUrl:\s*ownerHasPin\s*\?/);
-  assert.match(app, /const requiresOwnerPin = access\.requiresOwnerPin === true/);
+test('phone access works without a PIN and offers PIN protection as an option', () => {
+  assert.match(html, /id="phoneAccessSecure"[^>]*hidden[^>]*>Add optional PIN/);
+  assert.match(server, /pinProtected:\s*ownerHasPin/);
+  assert.doesNotMatch(server, /tailscaleUrl:\s*ownerHasPin\s*\?/);
+  assert.match(app, /const pinProtected = access\.pinProtected === true/);
+  assert.match(app, /const url = access\.tailscaleUrl \|\| access\.localUrl/);
   assert.match(app, /phoneAccessSecure[\s\S]{0,240}openProfileEdit\(\)/);
 });
 

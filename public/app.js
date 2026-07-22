@@ -623,6 +623,7 @@ function openPromptMentionPicker() {
 
 let profileGateOpen = false;
 let gateProfiles = [];
+let profileGateAccess = { remote: false, ownerHasPin: false, hasOpenProfiles: false };
 
 let appDialogResolver = null;
 let appDialogOptions = null;
@@ -753,11 +754,19 @@ async function showProfileGate() {
   if (profileGateOpen) return;
   profileGateOpen = true;
   $('#profileGate').hidden = false;
+  await refreshGateProfiles();
+  closeProfileCreate();
+}
+
+async function refreshGateProfiles() {
   try {
     const r = await fetch('/api/profiles').then((x) => x.json());
     gateProfiles = r.profiles || [];
-  } catch { gateProfiles = []; }
-  closeProfileCreate();
+    profileGateAccess = Object.assign({ remote: false, ownerHasPin: false, hasOpenProfiles: false }, r.access || {});
+  } catch {
+    gateProfiles = [];
+    profileGateAccess = { remote: false, ownerHasPin: false, hasOpenProfiles: false };
+  }
   renderGateTiles();
 }
 
@@ -780,6 +789,7 @@ function openProfileCreate() {
 function renderGateTiles() {
   const list = $('#profileList');
   list.innerHTML = '';
+  $('#profileRemoteNotice').hidden = !(profileGateAccess.remote && profileGateAccess.hasOpenProfiles);
   gateProfiles.forEach((p, i) => {
     const tile = document.createElement('button');
     tile.className = 'profile-tile';
@@ -787,6 +797,7 @@ function renderGateTiles() {
     tile.addEventListener('click', () => loginProfile(p));
     list.appendChild(tile);
   });
+  if (profileGateAccess.remote) return;
   const add = document.createElement('button');
   add.className = 'profile-tile add';
   add.innerHTML = '<span class="tile-img">＋</span><span class="tile-name">Add profile</span>';
@@ -15259,7 +15270,7 @@ $('#generateBtn').addEventListener('click', async () => {
   } catch (e) {
     setGenerating(false);
     if (!firstImageTutorialJobId) retryFirstImageTutorialGeneration();
-    if (e.code === 'comfy_int8_update_required') {
+    if (e.code === 'comfy_int8_update_required' || e.code === 'comfy_krea2_update_required') {
       await openInitialSetup({
         components: generationSetupComponents(),
         message: e.message,
@@ -23925,7 +23936,7 @@ $('#upscaleGo').addEventListener('click', async () => {
   } catch (e) {
     state.upscaling.delete(it.id);
     renderGrid();
-    if (e.code === 'comfy_int8_update_required') {
+    if (e.code === 'comfy_int8_update_required' || e.code === 'comfy_krea2_update_required') {
       await openInitialSetup({ components: ['image', 'ultimateupscale'], message: e.message });
     } else {
       toast(e.message, true);
@@ -27137,6 +27148,21 @@ function setupNativeInt8Blocked(components) {
     && setupViewStatus?.comfy?.nativeInt8?.supported !== true;
 }
 
+function setupKrea2CoreBlocked(components) {
+  const requested = (components || []).filter(Boolean);
+  return setupViewStatus?.comfy?.connected === true
+    && requested.some((id) => KREA2_MODEL_COMPONENTS.has(id))
+    && setupViewStatus?.comfy?.krea2?.supported !== true;
+}
+
+function setupKrea2CoreMessage() {
+  const compatibility = setupViewStatus?.comfy?.krea2 || {};
+  const minimum = compatibility.minimumVersion || '0.26.0';
+  return compatibility.version
+    ? `Update ComfyUI ${compatibility.version} to ${minimum} or newer for Krea 2. Restart ComfyUI, then press Check again.`
+    : `Update ComfyUI to ${minimum} or newer for Krea 2. Restart ComfyUI, then press Check again.`;
+}
+
 function setupNativeInt8Message() {
   const compatibility = setupViewStatus?.comfy?.nativeInt8 || {};
   const minimum = compatibility.minimumVersion || '0.27.0';
@@ -27190,15 +27216,19 @@ async function ensureGenerationSetup() {
   const nativeInt8Blocked = lastMeta?.krea2?.modelVariant === 'int8-convrot'
     && lastMeta?.krea2?.nativeInt8?.supported !== true
     && required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
-  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked) return true;
+  const krea2CoreBlocked = required.some((id) => KREA2_MODEL_COMPONENTS.has(id))
+    && lastMeta?.models?.krea2?.clipType?.ok !== true;
+  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked) return true;
   saveForm();
   await openInitialSetup({
     components: missing.length ? missing : required,
-    message: nativeInt8Blocked
+    message: krea2CoreBlocked
+      ? 'Update ComfyUI to 0.26.0 or newer before using Krea 2.'
+      : (nativeInt8Blocked
       ? 'Update ComfyUI for Krea 2 INT8 ConvRot, or choose the compatible FP8 route.'
       : (lastMeta?.ok
       ? 'This workflow needs a few desktop tools before it can run.'
-      : 'Connect ComfyUI, then install what this workflow needs.'),
+      : 'Connect ComfyUI, then install what this workflow needs.')),
   });
   return false;
 }
@@ -27262,6 +27292,7 @@ function closeGenerationSetup(options = {}) {
 function setupGenerationReady() {
   if (!setupViewStatus?.comfy?.connected) return false;
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
+  if (setupKrea2CoreBlocked(compatibilityComponents)) return false;
   if (setupNativeInt8Blocked(compatibilityComponents)) return false;
   const missing = setupContextComponents.length
     ? missingSetupComponents(setupContextComponents)
@@ -27272,6 +27303,8 @@ function setupGenerationReady() {
 function renderSetupFooter() {
   if (!setupViewStatus) return;
   const comfy = setupViewStatus.comfy || {};
+  const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
+  const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
   const startBusy = !!comfy.start?.running || comfy.start?.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
@@ -27286,8 +27319,8 @@ function renderSetupFooter() {
   cancel.disabled = comfy.install?.state === 'cancelling' || setupDependencyState?.state === 'cancelling';
   const next = $('#setupNext');
   if (setupActiveStep === 'connect') {
-    next.textContent = 'Continue';
-    next.disabled = busy || !comfy.connected;
+    next.textContent = krea2CoreBlocked ? 'Update ComfyUI first' : 'Continue';
+    next.disabled = busy || !comfy.connected || krea2CoreBlocked;
   } else if (setupActiveStep === 'install') {
     next.textContent = 'Review';
     next.disabled = busy || (!workflowReady && !restartRequired);
@@ -27427,8 +27460,8 @@ function renderSetupEndpointChoices(matches = []) {
 
 function renderPhoneAccess() {
   const access = setupViewStatus?.mobileAccess || {};
-  const requiresOwnerPin = access.requiresOwnerPin === true;
-  const url = requiresOwnerPin ? '' : (access.tailscaleUrl || access.localUrl || '');
+  const pinProtected = access.pinProtected === true;
+  const url = access.tailscaleUrl || access.localUrl || '';
   const usingTailscale = !!access.tailscaleUrl && window.location.hostname === (() => {
     try { return new URL(access.tailscaleUrl).hostname; } catch { return ''; }
   })();
@@ -27437,34 +27470,28 @@ function renderPhoneAccess() {
   $('#phoneAccessCopy').dataset.url = url;
   $('#phoneAccessShare').dataset.url = url;
   $('#phoneAccessShare').hidden = !url || typeof navigator.share !== 'function';
-  $('#phoneAccessSecure').hidden = !requiresOwnerPin || !state.profileIsOwner;
-  if (requiresOwnerPin) {
-    $('#phoneAccessStatus').textContent = 'Add an Owner PIN before sharing access';
-    $('#phoneAccessTitle').textContent = 'Secure phone access first';
-    $('#phoneAccessDescription').textContent = 'Mix Studio keeps remote browsers locked while the Owner profile has no PIN. Add one on this computer, then the private address will appear here.';
-  } else if (usingTailscale) {
+  $('#phoneAccessSecure').hidden = pinProtected || !state.profileIsOwner;
+  if (usingTailscale) {
     $('#phoneAccessStatus').textContent = 'Connected privately through Tailscale';
     $('#phoneAccessTitle').textContent = 'This device is connected';
-    $('#phoneAccessDescription').textContent = 'This browser is using the private Tailscale address. Share it only with devices on your tailnet.';
+    $('#phoneAccessDescription').textContent = `This browser is using the private Tailscale address. ${pinProtected ? 'The Owner profile is PIN-protected.' : 'No profile PIN is set, so any device on your tailnet can select Owner.'}`;
   } else if (access.tailscaleDetected) {
-    $('#phoneAccessStatus').textContent = 'Tailscale detected · private phone address ready';
+    $('#phoneAccessStatus').textContent = `Tailscale detected · ${pinProtected ? 'PIN protected' : 'no profile PIN'}`;
     $('#phoneAccessTitle').textContent = 'Your private phone address is ready';
-    $('#phoneAccessDescription').textContent = 'Install Tailscale on your phone, sign in to the same tailnet, then open the address below.';
+    $('#phoneAccessDescription').textContent = `Install Tailscale on your phone, sign in to the same tailnet, then open the address below. ${pinProtected ? 'Enter the Owner PIN when prompted.' : 'A PIN is optional, but anyone on your tailnet can use Owner while it is unset.'}`;
   } else if (access.localUrl) {
-    $('#phoneAccessStatus').textContent = 'Same-Wi-Fi address ready · add Tailscale for access away from home';
+    $('#phoneAccessStatus').textContent = `Same-Wi-Fi address ready · ${pinProtected ? 'PIN protected' : 'no profile PIN'}`;
     $('#phoneAccessTitle').textContent = 'Try the same Wi-Fi now';
-    $('#phoneAccessDescription').textContent = 'The address below works while both devices are on this network. Install Tailscale on the PC and phone for private access from anywhere.';
+    $('#phoneAccessDescription').textContent = `The address below works while both devices are on this network. ${pinProtected ? 'The Owner profile is PIN-protected.' : 'A PIN is optional, but anyone who can reach this address can use Owner.'} Install Tailscale for private access away from home.`;
   } else {
     $('#phoneAccessStatus').textContent = 'Install Tailscale on this PC and your phone';
     $('#phoneAccessTitle').textContent = 'Set up private phone access';
     $('#phoneAccessDescription').textContent = 'Install Tailscale on both devices and sign in to the same tailnet. Mix Studio will show the private address here after it detects the connection.';
   }
-  if ($('#phoneAccessSettingsCopy')) $('#phoneAccessSettingsCopy').textContent = requiresOwnerPin
-    ? 'Add an Owner PIN before another device can connect.'
-    : (access.tailscaleDetected
-      ? 'Private Tailscale address is ready for your phone.'
-      : (access.localUrl ? 'Same-Wi-Fi access is ready; Tailscale works away from home.' : 'Set up private phone access with Tailscale.'));
-  if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = requiresOwnerPin ? 'Secure' : (access.tailscaleDetected ? 'Ready' : 'Guide');
+  if ($('#phoneAccessSettingsCopy')) $('#phoneAccessSettingsCopy').textContent = access.tailscaleDetected
+    ? `Private Tailscale address is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.`
+    : (access.localUrl ? `Same-Wi-Fi access is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.` : 'Set up private phone access with Tailscale.');
+  if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = access.tailscaleDetected || access.localUrl ? 'Ready' : 'Guide';
 }
 
 function renderInitialSetup() {
@@ -27478,13 +27505,17 @@ function renderInitialSetup() {
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(dependency.state);
   const busy = officialBusy || dependencyBusy || startBusy;
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
+  const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const int8Blocked = setupNativeInt8Blocked(compatibilityComponents);
+  const comfyCompatibilityBlocked = krea2CoreBlocked || int8Blocked;
   const incompleteComfy = !!comfy.partialPath && !comfy.detectedPath;
   const comfyCard = $('#setupComfyStatus');
-  comfyCard.classList.toggle('ready', !!comfy.connected && !int8Blocked);
-  comfyCard.classList.toggle('attention', !comfy.connected || int8Blocked);
+  comfyCard.classList.toggle('ready', !!comfy.connected && !comfyCompatibilityBlocked);
+  comfyCard.classList.toggle('attention', !comfy.connected || comfyCompatibilityBlocked);
   $('#setupComfyStatusCopy').textContent = comfy.connected
-    ? (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`)
+    ? (krea2CoreBlocked
+      ? `Update to ${comfy.krea2?.minimumVersion || '0.26.0'}+ for Krea 2`
+      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`))
     : (incompleteComfy ? 'Incomplete · finish in Comfy Desktop'
       : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed'));
 
@@ -27496,17 +27527,20 @@ function renderInitialSetup() {
   const restartRequired = !!dependency.restartRequired;
   workflowCard.classList.toggle('ready', workflowReady);
   workflowCard.classList.toggle('attention', !workflowReady);
-  $('#setupWorkflowStatusCopy').textContent = int8Blocked
+  $('#setupWorkflowStatusCopy').textContent = krea2CoreBlocked
+    ? 'ComfyUI update needed for Krea 2'
+    : (int8Blocked
     ? 'ComfyUI update needed for Krea INT8'
     : (setupContextComponents.length
       ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
       : (comfy.connected ? (requiredMissing.length ? `${requiredMissing.length} needed`
-        : (allMissing.length ? `Ready · ${allMissing.length} optional` : 'Ready')) : 'Waiting for ComfyUI'));
+        : (allMissing.length ? `Ready · ${allMissing.length} optional` : 'Ready')) : 'Waiting for ComfyUI')));
 
-  const connectReady = !!comfy.connected;
+  const connectReady = !!comfy.connected && !krea2CoreBlocked;
   const installReady = workflowReady || restartRequired;
-  $('#setupTabConnectStatus').textContent = connectReady ? 'Connected'
-    : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed'));
+  $('#setupTabConnectStatus').textContent = krea2CoreBlocked ? 'Update core'
+    : (connectReady ? 'Connected'
+    : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed')));
   $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || requiredMissing.length || setupContextComponents.length || 1} needed`);
   $('#setupTabFinishStatus').textContent = workflowReady ? 'Ready' : (restartRequired ? 'Restart' : 'Waiting');
   $('#setupTabConnect').classList.toggle('complete', connectReady);
@@ -27519,7 +27553,9 @@ function renderInitialSetup() {
   $('#setupHardwareCopy').textContent = hardware.gpuAvailable
     ? `${hardware.gpuName || 'NVIDIA GPU'}${hardware.vramGb ? ` · ${hardware.vramGb} GB VRAM` : ' · VRAM unavailable'}${hardware.memoryGb ? ` · ${hardware.memoryGb} GB RAM` : ''}`
     : 'No NVIDIA GPU detected';
-  $('#setupHardwareFit').textContent = int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available');
+  $('#setupHardwareFit').textContent = krea2CoreBlocked
+    ? 'Update ComfyUI for Krea 2'
+    : (int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available'));
   $('#setupHardwareSummary').title = quickFit.detail || 'Recommendations match the generation computer.';
   $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
   const recommendedKrea2 = setupViewStatus.modelRecommendations?.krea2;
@@ -27528,6 +27564,7 @@ function renderInitialSetup() {
     $('#setupHardwareSummary').title += ` This GPU recommends ${recommendedKrea2 === 'int8-convrot' ? 'the optimized INT8 ConvRot format' : 'FP8'}; the current setup selection is ${selectedKrea2 === 'int8-convrot' ? 'INT8 ConvRot' : 'FP8'}.`;
   }
   if (int8Blocked) $('#setupHardwareSummary').title += ` ${setupNativeInt8Message()}`;
+  if (krea2CoreBlocked) $('#setupHardwareSummary').title += ` ${setupKrea2CoreMessage()}`;
   const vramProfile = setupViewStatus.vramProfile || {};
   if (document.activeElement !== $('#setupVramProfile')) {
     $('#setupVramProfile').value = vramProfile.configured || 'auto';
@@ -27538,11 +27575,13 @@ function renderInitialSetup() {
     : 'Uses standard image limits for GPUs with more memory.';
   $('#setupVramProfile').disabled = busy || !state.profileIsOwner;
   if (document.activeElement !== $('#setupKrea2Variant')) $('#setupKrea2Variant').value = selectedKrea2;
-  $('#setupKrea2VariantCopy').textContent = selectedKrea2 === 'int8-convrot'
+  $('#setupKrea2VariantCopy').textContent = krea2CoreBlocked
+    ? setupKrea2CoreMessage()
+    : (selectedKrea2 === 'int8-convrot'
     ? (int8Blocked ? setupNativeInt8Message() : 'Selected native INT8; FP8 remains available.')
     : (recommendedKrea2 === 'int8-convrot'
       ? 'FP8 is selected. Native INT8 is recommended for this GPU and remains available.'
-      : 'Selected the standard FP8 route.');
+      : 'Selected the standard FP8 route.'));
   $('#setupKrea2Variant').disabled = busy || !state.profileIsOwner;
 
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
@@ -27565,6 +27604,11 @@ function renderInitialSetup() {
   $('#setupStartComfy').textContent = desktopStart ? 'Open Comfy Desktop' : 'Start ComfyUI';
   $('#setupStartComfy').disabled = busy || !start.canStart || !state.profileIsOwner;
   $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
+  $('#setupCoreUpdate').hidden = !krea2CoreBlocked;
+  $('#setupCoreUpdateCopy').textContent = start.kind === 'desktop'
+    ? `${setupKrea2CoreMessage()} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
+    : `${setupKrea2CoreMessage()} For Portable, run update\\update_comfyui.bat from the portable folder.`;
+  $('#setupCoreUpdateCheck').disabled = busy;
   const endpointMatches = setupDiscoveredMatches.length ? setupDiscoveredMatches : (start.matches || []);
   renderSetupEndpointChoices(endpointMatches);
   $('#setupDetectedPath').dataset.state = incompleteComfy ? 'incomplete' : (comfy.connected || comfy.detectedPath ? 'ready' : 'needed');
@@ -27578,10 +27622,13 @@ function renderInitialSetup() {
   $('#setupConnectionChoices').hidden = connectionChoicesHidden;
   $('#setupConnectionChoices').classList.toggle('start-offered', canOfferStart);
   $('#setupUseDetected').hidden = canOfferStart;
-  $('#setupConnectHeading').textContent = comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI');
-  $('#setupConnectCopy').textContent = comfy.connected
+  $('#setupConnectHeading').textContent = krea2CoreBlocked ? 'ComfyUI update needed'
+    : (comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI'));
+  $('#setupConnectCopy').textContent = krea2CoreBlocked
+    ? 'Mix Studio reached ComfyUI, but this core is too old for Krea 2.'
+    : (comfy.connected
     ? 'Connection details are available below if a path changes.'
-    : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Start a detected installation or choose another location. Mix Studio finds the port automatically.');
+    : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Start a detected installation or choose another location. Mix Studio finds the port automatically.'));
   $('#setupUseDetected').disabled = busy || !comfy.detectedPath || !state.profileIsOwner;
   $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial || !state.profileIsOwner;
   $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Opens the official Comfy Desktop app or downloads its signed installer' : 'Available when Mix Studio is running on Windows';
@@ -27618,11 +27665,13 @@ function renderInitialSetup() {
       const fit = fitByComponent.get(entry.id);
       const installed = readinessKnown && !missingSet.has(entry.id);
       const unavailable = entry.installable === false && !installed;
+      const coreUpdate = entry.blockedBy === 'comfy-core' && !installed;
       const checked = installed || selected.has(entry.id);
       const disabled = installed || unavailable || busy || !state.profileIsOwner;
-      const status = installed ? 'Installed' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked')));
+      const status = installed ? 'Installed' : (coreUpdate ? 'Update ComfyUI' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked'))));
       const detail = entry.installReason || fit?.detail || entry.label;
-      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements'))}</small></span><span class="setup-component-state">${status}</span></label>`;
+      const readinessLabel = coreUpdate ? 'ComfyUI 0.26.0+ required' : (fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements'));
+      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(readinessLabel)}</small></span><span class="setup-component-state">${status}</span></label>`;
     }).join('');
     const count = readinessKnown ? `${installedCount} of ${entries.length} installed` : `${entries.length} workflows`;
     const action = selectableEntries.length
@@ -27708,6 +27757,7 @@ function renderInitialSetup() {
     : (restartRequired ? 'Restart ComfyUI, then check again.' : 'Complete the highlighted step first.');
 
   let recommendedStep = !comfy.connected ? 'connect' : (installReady ? 'finish' : 'install');
+  if (krea2CoreBlocked) recommendedStep = 'connect';
   if (officialBusy) recommendedStep = 'connect';
   if (startBusy) recommendedStep = 'connect';
   if (dependencyBusy) recommendedStep = 'install';
@@ -27884,6 +27934,11 @@ async function startSetupDependencies(components) {
     setSetupStep('connect', { user: true });
     setSetupGuideExpanded(true);
     toast(setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.', true);
+    return false;
+  }
+  if (setupKrea2CoreBlocked(requested)) {
+    setSetupStep('connect', { user: true });
+    toast(setupKrea2CoreMessage(), true);
     return false;
   }
   if (setupNativeInt8Blocked(requested)) {
@@ -28106,6 +28161,10 @@ $('#setupRestartComfy').addEventListener('click', async () => {
   } catch (error) { toast(error.message, true); }
 });
 $('#setupCheckAgain').addEventListener('click', async () => {
+  await loadMeta(true, true);
+  await refreshSetupStatus(true);
+});
+$('#setupCoreUpdateCheck').addEventListener('click', async () => {
   await loadMeta(true, true);
   await refreshSetupStatus(true);
 });

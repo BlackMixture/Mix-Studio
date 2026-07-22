@@ -20,3 +20,13 @@ test('profile gate keeps creation behind Add profile and shows PIN entry above t
   assert.match(app, /if \(sheet\.contains\(document\.activeElement\)\) document\.activeElement\.blur\(\)/);
   assert.match(app, /async function loginProfile\(p\) \{\s*closeProfileCreate\(\)/);
 });
+
+test('remote profile selection allows a PIN-less Owner with a clear privacy notice', () => {
+  assert.match(html, /id="profileRemoteNotice"[\s\S]*PIN protection is optional[\s\S]*You can continue without one/);
+  assert.match(css, /\.profile-remote-notice\[hidden\] \{ display: none; \}/);
+  assert.match(app, /profileGateAccess = \{ remote: false, ownerHasPin: false, hasOpenProfiles: false \}/);
+  assert.match(app, /profileGateAccess\.remote && profileGateAccess\.hasOpenProfiles/);
+  assert.doesNotMatch(app, /remote-locked/);
+  assert.doesNotMatch(app, /remote_pin_required/);
+  assert.match(app, /if \(profileGateAccess\.remote\) return;[\s\S]*profile-tile add/);
+});

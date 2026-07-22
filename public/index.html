@@ -1908,6 +1908,12 @@
 <div class="profile-gate" id="profileGate" hidden>
   <div class="gate-inner">
     <h2 class="gate-title">Who's creating?</h2>
+    <section class="profile-remote-notice" id="profileRemoteNotice" aria-live="polite" hidden>
+      <span class="profile-remote-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.2c0 4.6 3.1 8 7.5 9.8 4.4-1.8 7.5-5.2 7.5-9.8V6L12 3Zm0 5v5m0 3h.01"/></svg>
+      </span>
+      <span><strong>PIN protection is optional</strong><small>You can continue without one. Anyone who can reach this Mix Studio address can open a profile that has no PIN; protected profiles ask for theirs.</small></span>
+    </section>
     <div class="profile-tiles" id="profileList"></div>
   </div>
   <div class="profile-new" id="profileNewForm" hidden>
@@ -2122,6 +2128,11 @@
           <span class="setup-start-copy"><strong id="setupStartTitle">ComfyUI is installed</strong><small id="setupStartCopy">Start it here and Mix Studio will find the local port automatically.</small></span>
           <span class="setup-start-actions"><button id="setupStartComfy" type="button">Start ComfyUI</button><button id="setupFindComfy" type="button">Find running ComfyUI</button></span>
         </div>
+        <div class="setup-core-update" id="setupCoreUpdate" role="status" hidden>
+          <span class="setup-core-update-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg></span>
+          <span><strong>Update ComfyUI before using Krea 2</strong><small id="setupCoreUpdateCopy">The connected core does not include the Krea 2 loader yet.</small></span>
+          <span class="setup-core-update-actions"><a href="https://docs.comfy.org/installation/update_comfyui" target="_blank" rel="noopener noreferrer">Update guide</a><button id="setupCoreUpdateCheck" type="button">Check again</button></span>
+        </div>
         <div class="setup-endpoint-choices" id="setupEndpointChoices" hidden>
           <strong>Choose the running ComfyUI</strong>
           <small>Choose the verified local server this app should use.</small>
@@ -2210,12 +2221,12 @@
             </div>
             <div class="phone-access-url" id="phoneAccessUrl" hidden><code></code><button id="phoneAccessCopy" type="button">Copy address</button></div>
             <div class="phone-access-actions">
-              <button id="phoneAccessSecure" type="button" hidden>Add Owner PIN</button>
+              <button id="phoneAccessSecure" type="button" hidden>Add optional PIN</button>
               <a id="tailscaleInstallDesktop" href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Install Tailscale</a>
               <a id="tailscaleInstallPhone" href="https://tailscale.com/docs/install" target="_blank" rel="noopener noreferrer">Phone setup guide</a>
               <button id="phoneAccessShare" type="button" hidden>Share address</button>
             </div>
-            <small class="phone-access-security">Tailscale keeps access private to your tailnet. Keep profile PINs enabled for shared devices. Mix Studio does not use Tailscale Funnel.</small>
+            <small class="phone-access-security">Tailscale keeps access private to your tailnet. A profile PIN is optional and adds protection on shared networks or devices. Mix Studio does not use Tailscale Funnel.</small>
           </div>
         </section>
       </section>
