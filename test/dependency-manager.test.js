@@ -41,10 +41,10 @@ function safetensorsFixture() {
 }
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -53,6 +53,10 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(NODE_PACKS.regional.automaticInstall, false);
   assert.match(COMPONENTS.regional.label, /manual node required/i);
   assert.ok(availableComponents().includes('smartmask'));
+  assert.equal(COMPONENTS.krea2raw.optional, true);
+  assert.deepEqual(COMPONENTS.krea2raw.models, ['krea2Raw']);
+  assert.equal(MODEL_ASSETS.image.some((asset) => asset[0] === 'krea2RawUnet'), false);
+  assert.ok(MODEL_ASSETS.krea2Raw.some((asset) => asset[0] === 'krea2RawUnet'));
   assert.equal(MODEL_ASSETS.krea2Depth[0][1], 'loras');
   assert.match(MODEL_ASSETS.krea2Depth[0][2], /Patil\/Krea-2-depth-controlnet/);
   assert.equal(MODEL_ASSETS.krea2Depth[1][1], 'depthanything3');

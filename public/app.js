@@ -4639,7 +4639,7 @@ function renderKrea2Mode() {
   if (state.krea2Turbo) {
     $('#kreaModelSummary').textContent = `Krea 2 · fast · ${steps} steps`;
   } else if (rawStatus && !rawStatus.ok) {
-    $('#kreaModelSummary').textContent = 'Raw model missing · configure in Settings';
+    $('#kreaModelSummary').textContent = 'Raw · optional download needed';
   } else {
     const lora = state.krea2RawTurboLora;
     $('#kreaModelSummary').textContent = lora && lora.on
@@ -4774,13 +4774,7 @@ function managedLoraChanged(lora) {
 
 $('#kreaTurboToggle').addEventListener('click', () => {
   const nextTurbo = !state.krea2Turbo;
-  if (!nextTurbo) {
-    const rawStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.raw;
-    if (rawStatus && !rawStatus.ok) {
-      toast('Krea 2 Raw is not installed — configure the Raw UNET in Advanced Settings', true);
-      return;
-    }
-  }
+  const rawStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.raw;
   state.krea2Turbo = nextTurbo;
   if (state.krea2Turbo) detachKrea2RawTurboLora();
   else {
@@ -4788,8 +4782,9 @@ $('#kreaTurboToggle').addEventListener('click', () => {
     const loraStatus = lastMeta && lastMeta.models && lastMeta.models.krea2 && lastMeta.models.krea2.turboLora;
     if (loraStatus && !loraStatus.ok) {
       lora.on = false;
-      toast('Turbo LoRA is not installed — Raw will use the current sampling settings', true);
     }
+    if (rawStatus && !rawStatus.ok) toast('Krea 2 Raw is optional and will be offered when you generate.');
+    else if (loraStatus && !loraStatus.ok) toast('Turbo LoRA is not installed — Raw will use the current sampling settings', true);
   }
   renderKrea2Mode();
   renderLoras();
@@ -27071,8 +27066,15 @@ function dependencyProgressMetrics(installState) {
 
 function dependencyMissingLabels() {
   const dependency = lastMeta && lastMeta.dependencies;
-  const labels = new Map(((dependency && dependency.components) || []).map((entry) => [entry.id, entry.label]));
-  return ((dependency && dependency.missingComponents) || []).map((id) => ({ id, label: labels.get(id) || id }));
+  const components = new Map(((dependency && dependency.components) || []).map((entry) => [entry.id, entry]));
+  return ((dependency && dependency.missingComponents) || []).map((id) => {
+    const component = components.get(id) || {};
+    return { id, label: component.label || id, optional: component.optional === true };
+  });
+}
+
+function requiredDependencyMissingLabels() {
+  return dependencyMissingLabels().filter((entry) => !entry.optional);
 }
 
 function syncDependencySelection(missing) {
@@ -27080,7 +27082,7 @@ function syncDependencySelection(missing) {
   const key = [...ids].sort().join('|');
   if (key !== dependencySelectionKey) {
     dependencySelectionKey = key;
-    dependencySelectedComponents = new Set(ids);
+    dependencySelectedComponents = new Set(missing.filter((entry) => !entry.optional).map((entry) => entry.id));
   } else {
     dependencySelectedComponents = new Set([...dependencySelectedComponents].filter((id) => ids.includes(id)));
   }
@@ -27110,9 +27112,9 @@ let setupSelectedComponents = new Set();
 let setupKnownMissingComponents = null;
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
-const KREA2_MODEL_COMPONENTS = new Set(['image', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
+const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
 const SETUP_COMPONENT_CATEGORIES = [
-  { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
+  { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
   { id: 'video', label: 'Video', description: 'LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
 ];
@@ -27167,6 +27169,7 @@ function generationSetupComponents() {
     return [...components];
   }
   components.add(state.createMode === 'region' ? 'regional' : 'image');
+  if (state.createMode === 'image' && state.krea2Turbo === false) components.add('krea2raw');
   if (state.createMode === 'image' && state.createGuideActive && state.createRef && state.createGuideMode === 'depth') components.add('krea2depth');
   if (state.createMode === 'image' && state.createGuideActive && state.createRef && state.createGuideMode === 'style') components.add('krea2style');
   if (state.createUpscaleEnabled) components.add('upscale');
@@ -27262,7 +27265,7 @@ function setupGenerationReady() {
   if (setupNativeInt8Blocked(compatibilityComponents)) return false;
   const missing = setupContextComponents.length
     ? missingSetupComponents(setupContextComponents)
-    : dependencyMissingLabels();
+    : requiredDependencyMissingLabels();
   return !missing.length;
 }
 
@@ -27343,7 +27346,8 @@ function syncSetupComponentSelection(components, missingIds) {
   if (key !== setupComponentSelectionKey) {
     setupComponentSelectionKey = key;
     const defaults = readinessKnown
-      ? missingIds
+      ? entries.filter((entry) => missingIds.includes(entry.id)
+        && (!entry.optional || setupContextComponents.includes(entry.id))).map((entry) => entry.id)
       : (setupContextComponents.length ? setupContextComponents : (setupViewStatus?.quickComponents || []));
     setupSelectedComponents = new Set(defaults.filter((id) => installableIds.has(id)));
   } else {
@@ -27486,6 +27490,7 @@ function renderInitialSetup() {
 
   const contextMissing = missingSetupComponents(setupContextComponents);
   const allMissing = dependencyMissingLabels();
+  const requiredMissing = allMissing.filter((entry) => !entry.optional);
   const workflowCard = $('#setupWorkflowStatus');
   const workflowReady = setupGenerationReady();
   const restartRequired = !!dependency.restartRequired;
@@ -27495,13 +27500,14 @@ function renderInitialSetup() {
     ? 'ComfyUI update needed for Krea INT8'
     : (setupContextComponents.length
       ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
-      : (comfy.connected ? (allMissing.length ? `${allMissing.length} available` : 'Ready') : 'Waiting for ComfyUI'));
+      : (comfy.connected ? (requiredMissing.length ? `${requiredMissing.length} needed`
+        : (allMissing.length ? `Ready · ${allMissing.length} optional` : 'Ready')) : 'Waiting for ComfyUI'));
 
   const connectReady = !!comfy.connected;
   const installReady = workflowReady || restartRequired;
   $('#setupTabConnectStatus').textContent = connectReady ? 'Connected'
     : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed'));
-  $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || allMissing.length || setupContextComponents.length || 1} needed`);
+  $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || requiredMissing.length || setupContextComponents.length || 1} needed`);
   $('#setupTabFinishStatus').textContent = workflowReady ? 'Ready' : (restartRequired ? 'Restart' : 'Waiting');
   $('#setupTabConnect').classList.toggle('complete', connectReady);
   $('#setupTabInstall').classList.toggle('complete', installReady);
@@ -28156,6 +28162,7 @@ function renderGenerationSetupEntry() {
   const dependency = lastMeta?.dependencies || {};
   const install = dependency.install || {};
   const missing = dependencyMissingLabels();
+  const requiredMissing = missing.filter((entry) => !entry.optional);
   const busy = ['running', 'cancelling', 'restarting'].includes(install.state);
   let stateName = 'checking';
   let statusText = 'Checking';
@@ -28178,14 +28185,16 @@ function renderGenerationSetupEntry() {
     stateName = 'attention';
     statusText = 'Review';
     copyText = 'The last setup operation needs attention.';
-  } else if (missing.length) {
+  } else if (requiredMissing.length) {
     stateName = 'attention';
-    statusText = `${missing.length} missing`;
+    statusText = `${requiredMissing.length} missing`;
     copyText = 'Add only the models and nodes needed for your workflows.';
   } else {
     stateName = 'ready';
     statusText = 'Ready';
-    copyText = 'ComfyUI and all enabled workflow requirements are ready.';
+    copyText = missing.length
+      ? `${missing.length} optional workflow${missing.length === 1 ? '' : 's'} available to install.`
+      : 'ComfyUI and all enabled workflow requirements are ready.';
   }
   entry.dataset.state = stateName;
   status.textContent = statusText;
@@ -28199,6 +28208,7 @@ function renderDependencyManager() {
   const dependency = (lastMeta && lastMeta.dependencies) || {};
   const installState = dependency.install || { state: 'idle', phase: 'idle' };
   const missing = dependencyMissingLabels();
+  const requiredMissing = missing.filter((entry) => !entry.optional);
   const badge = $('#dependencyManagerBadge');
   const status = $('#dependencyManagerStatus');
   const progress = $('#dependencyProgress');
@@ -28216,7 +28226,7 @@ function renderDependencyManager() {
   const selectedCount = selected.size;
   const busy = ['running', 'cancelling', 'restarting'].includes(installState.state);
   const cancellable = installState.state === 'running' || installState.state === 'cancelling';
-  const ready = !!lastMeta?.ok && !missing.length && !busy;
+  const ready = !!lastMeta?.ok && !requiredMissing.length && !busy;
   card.classList.toggle('ready', ready);
   card.classList.toggle('installing', busy);
   list.innerHTML = missing.map((entry) => `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(entry.label)}"${busy || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}</button>`).join('');
@@ -28252,8 +28262,10 @@ function renderDependencyManager() {
     badge.textContent = 'Offline';
     status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
   } else if (ready) {
-    badge.textContent = 'Green';
-    status.textContent = 'Every enabled Mix Studio model and node group is ready.';
+    badge.textContent = 'Ready';
+    status.textContent = missing.length
+      ? `${missing.length} optional workflow${missing.length === 1 ? ' is' : 's are'} available to install.`
+      : 'Every enabled Mix Studio model and node group is ready.';
   } else if (installState.restartRequired) {
     badge.textContent = 'Restart needed';
     const restartInfo = dependency.restart || {};
@@ -28273,8 +28285,8 @@ function renderDependencyManager() {
 
   cancel.hidden = !cancellable || !state.profileIsOwner;
   cancel.textContent = installState.state === 'cancelling' ? 'Cancelling…' : 'Cancel download';
-  install.hidden = ready || !state.profileIsOwner || busy;
-  repair.hidden = ready || !state.profileIsOwner || busy;
+  install.hidden = !missing.length || !state.profileIsOwner || busy;
+  repair.hidden = !missing.length || !state.profileIsOwner || busy;
   install.textContent = `${installState.state === 'error' ? 'Retry selected' : 'Install selected'}${selectedCount ? ` (${selectedCount})` : ''}`;
   install.disabled = busy || !selectedCount || !dependency.canInstall || !state.profileIsOwner;
   repair.textContent = 'Repair selected';

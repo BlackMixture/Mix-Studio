@@ -1199,6 +1199,8 @@ function configuredModelsStatus(info) {
       turbo: diffusionModelStatus(info, settings.unet),
       raw: diffusionModelStatus(info, settings.krea2RawUnet),
       turboLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.krea2TurboLora, loraList),
+      clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.clip),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.vae),
     },
     krea2Depth: {
       label: 'Krea 2 Depth',
@@ -1316,7 +1318,11 @@ function missingDependencyComponentIds(missing, models) {
   for (const [group, classes] of Object.entries(missing || {})) {
     if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
   }
-  const modelToComponent = { krea2: 'image', krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const krea2 = models?.krea2 || {};
+  const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
+  if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
+  if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
+  const modelToComponent = { krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -4789,6 +4795,7 @@ function dependencyComponentInfo(id, fit = null) {
   return {
     id,
     label: component.label || id,
+    optional: component.optional === true,
     fit,
     installable: !unavailableNode,
     installReason: unavailableNode

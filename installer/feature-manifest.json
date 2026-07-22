@@ -10,7 +10,7 @@
       "required": true,
       "variant": "Krea 2 FP8 or native INT8 ConvRot with dynamic VRAM offloading + SeedVR2 FP8",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "autoSelect": "always" },
-      "models": ["krea2-turbo", "krea2-raw", "krea2-turbo-lora", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae", "seedvr2-7b", "seedvr2-vae"],
+      "models": ["krea2-turbo", "krea2-depth-control-lora", "depth-anything-v3-large", "qwen3-vl", "qwen-image-vae", "seedvr2-7b", "seedvr2-vae"],
       "nodes": ["core", "TextGenerate", "ComfyUI-Krea2-StyleTransfer", "comfyui-krea2-controlnet", "ComfyUI-DepthAnythingV3", "ComfyUI-SeedVR2_VideoUpscaler"]
     },
     {

@@ -46,12 +46,15 @@ test('server selects Raw weights and records the model mode for reuse', () => {
   assert.match(server, /krea2RawTurboLora: job\.params\.mode === 't2i'/);
 });
 
-test('Raw model and Turbo LoRA are configurable and included in fresh installs', () => {
+test('Raw model and Turbo LoRA are configurable but remain an explicit optional install', () => {
   assert.match(html, /id="setKrea2RawUnet"/);
   assert.match(html, /id="setKrea2TurboLora"/);
   assert.match(app, /setKrea2RawUnet/);
   assert.match(app, /setKrea2TurboLora/);
   const core = manifest.features.find((feature) => feature.id === 'core.image');
-  assert.ok(core.models.includes('krea2-raw'));
-  assert.ok(core.models.includes('krea2-turbo-lora'));
+  assert.equal(core.models.includes('krea2-raw'), false);
+  assert.equal(core.models.includes('krea2-turbo-lora'), false);
+  assert.match(app, /state\.krea2Turbo === false\) components\.add\('krea2raw'\)/);
+  assert.match(app, /Krea 2 Raw is optional and will be offered when you generate/);
+  assert.match(server, /if \(krea2\.raw && !krea2\.raw\.ok\) ids\.add\('krea2raw'\)/);
 });

@@ -57,15 +57,26 @@ test('official INT8 ConvRot uses ComfyUI native quantization through the standar
   assert.equal(buildKrea2ModelLoader(krea2VariantSettings('fp8')).class_type, 'UNETLoader');
 });
 
-test('dependency plan downloads matching Comfy-Org INT8 assets without renaming FP8 files', () => {
+test('core image dependency plan downloads Turbo INT8 without pulling optional Raw assets', () => {
   const plan = dependencyModelPlan(['image'], {}, { modelVariants: { krea2: 'int8-convrot' } });
   const turbo = plan.assets.find((asset) => asset[0] === 'unet');
   const raw = plan.assets.find((asset) => asset[0] === 'krea2RawUnet');
   assert.match(turbo[2], /Comfy-Org\/Krea-2\/resolve\/main\/diffusion_models\/krea2_turbo_int8_convrot\.safetensors$/);
-  assert.match(raw[2], /krea2_raw_int8_convrot\.safetensors$/);
+  assert.equal(raw, undefined);
+  assert.equal(plan.assets.some((asset) => asset[0] === 'krea2TurboLora'), false);
   assert.equal(plan.effectiveSettings.unet, 'krea2_turbo_int8_convrot.safetensors');
   assert.equal(plan.settingUpdates.krea2ModelVariant, 'int8-convrot');
   assert.equal(NODE_PACKS.int8Fast, undefined);
+});
+
+test('optional Raw dependency plan downloads the matching checkpoint and Turbo LoRA only when selected', () => {
+  const plan = dependencyModelPlan(['krea2Raw'], {}, { modelVariants: { krea2: 'int8-convrot' } });
+  const raw = plan.assets.find((asset) => asset[0] === 'krea2RawUnet');
+  assert.match(raw[2], /krea2_raw_int8_convrot\.safetensors$/);
+  assert.ok(plan.assets.some((asset) => asset[0] === 'krea2TurboLora'));
+  assert.equal(plan.assets.some((asset) => asset[0] === 'unet'), false);
+  assert.equal(plan.settingUpdates.krea2RawUnet, 'krea2_raw_int8_convrot.safetensors');
+  assert.equal(plan.settingUpdates.unet, undefined);
 });
 
 test('dependency plan preserves manually configured Krea model filenames unless a variant is requested', () => {
