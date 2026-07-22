@@ -479,6 +479,8 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /await assertDesktopIsIdle\(\)/);
   assert.match(server, /qwenedit: \['qwen'\]/);
   assert.match(server, /klein: \['klein4', 'klein9'\]/);
+  assert.match(server, /NODE_PACKS: DEPENDENCY_NODE_PACKS/);
+  assert.match(server, /dependencyComponentInfo\(id/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /downloadTotal/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /settings\[settingKey\] \|\| defaultFilename \|\| sourceName/);
 });
@@ -523,6 +525,8 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(app, /function scheduleDependencyPoll\(\)/);
   assert.match(app, /Repair selected/);
   assert.match(app, /formatDependencyBytes/);
+  assert.match(app, /dependencyProgressMetrics/);
+  assert.match(app, /progressMetrics\.label/);
   assert.match(app, /selectedDependencyIds/);
   assert.match(app, /\/api\/dependencies\/cancel/);
   assert.match(app, /restart\.hidden = !state\.profileIsOwner/);

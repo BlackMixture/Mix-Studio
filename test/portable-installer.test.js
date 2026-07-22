@@ -411,6 +411,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
     'setupStartCard', 'setupStartComfy', 'setupFindComfy', 'setupEndpointChoices',
     'setupBrowseComfy', 'setupBrowseComfyDetails', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
     'setupHardwareSummary', 'setupShowDetails', 'setupDependencyAccess', 'setupDependencyAccessLink',
+    'setupOperationProgress', 'setupOperationProgressLabel',
     'setupCancel', 'setupBack', 'setupNext',
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -420,6 +421,19 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /async function ensureGenerationSetup\(\)/);
   assert.match(app, /if \(!\(await ensureGenerationSetup\(\)\)\) return/);
   assert.match(app, /function setSetupStep\(step/);
+  assert.match(app, /stepChanged \|\| options\.resetScroll/);
+  assert.match(app, /setSetupStep\('connect', \{ resetScroll: true \}\)/);
+  assert.match(app, /function dependencyProgressMetrics\(installState\)/);
+  assert.match(app, /downloaded \/ downloadTotal/);
+  assert.match(app, /setupOperationProgressLabel/);
+  assert.match(app, /SETUP_COMPONENT_CATEGORIES/);
+  assert.match(app, /label: 'Image'/);
+  assert.match(app, /label: 'Edit'/);
+  assert.match(app, /label: 'Video'/);
+  assert.match(app, /input type="checkbox" data-component/);
+  assert.match(app, /selectedSetupDependencyIds/);
+  assert.match(server, /function dependencyComponentInfo\(id, fit = null\)/);
+  assert.match(server, /installable: !unavailableNode/);
   assert.match(app, /\/api\/setup\/browse/);
   assert.match(app, /\/api\/setup\/comfy\/cancel/);
   assert.match(app, /\/api\/setup\/comfy\/discover/);

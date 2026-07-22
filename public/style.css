@@ -7964,9 +7964,31 @@ body.sheet-open {
 .setup-actions span { color: #7c869c; font-size: 9px; line-height: 1.35; }
 .setup-primary { border: 1px solid rgba(164,123,255,.5); background: #0d0917; box-shadow: none; color: #eee8ff; }
 .setup-secondary { border: 1px solid rgba(255,255,255,.14); background: #050607; color: #e5e9f1; }
-.setup-component-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin: 0; }
-.setup-component-option { min-width: 0; padding: 10px 11px; border: 1px solid rgba(255,255,255,.11); border-radius: 8px; background: #030405; }
+.setup-component-help { margin: 0; color: #778197; font-size: 9px; line-height: 1.45; }
+.setup-component-list { display: grid; gap: 15px; margin: 0; }
+.setup-component-group { display: grid; gap: 8px; }
+.setup-component-group > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-bottom: 7px; border-bottom: 1px solid rgba(255,255,255,.09); }
+.setup-component-group > header > span { min-width: 0; display: grid; gap: 2px; }
+.setup-component-group > header strong { color: #e7ebf3; font-size: 12px; }
+.setup-component-group > header small { color: #707a8f; font-size: 8px; line-height: 1.35; }
+.setup-component-group > header em { flex: 0 0 auto; color: #7e889d; font-size: 8px; font-style: normal; font-weight: 800; white-space: nowrap; }
+.setup-component-group > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.setup-component-option { min-width: 0; display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 10px 11px; border: 1px solid rgba(255,255,255,.11); border-radius: 8px; background: #030405; cursor: pointer; }
+.setup-component-option input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.setup-component-option:focus-within { outline: 2px solid rgba(164,123,255,.7); outline-offset: 2px; }
+.setup-component-check { width: 16px; height: 16px; display: grid; place-items: center; border: 1px solid #596175; border-radius: 4px; background: #000; }
 .setup-component-option.selected { border-color: rgba(164,123,255,.58); background: rgba(164,123,255,.08); }
+.setup-component-option.selected .setup-component-check { border-color: #aa87ff; background: #7654cd; }
+.setup-component-option.selected .setup-component-check::after { content: ""; width: 7px; height: 4px; border: solid #fff; border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
+.setup-component-option.installed { border-color: rgba(85,213,138,.25); background: rgba(85,213,138,.045); cursor: default; }
+.setup-component-option.installed .setup-component-check { border-color: #55d58a; background: #236b41; }
+.setup-component-option.unavailable { opacity: .62; cursor: not-allowed; }
+.setup-component-copy { min-width: 0; display: grid; gap: 2px; }
+.setup-component-copy strong { overflow: hidden; color: #d9deea; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.setup-component-copy small { overflow: hidden; color: #727c90; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.setup-component-state { color: #8e99ad; font-size: 7px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.setup-component-option.installed .setup-component-state { color: #76d99b; }
+.setup-component-option.selected:not(.installed) .setup-component-state { color: #bfaaff; }
 .setup-component-empty { margin: 0; padding: 7px 0; border-radius: 0; background: transparent; color: #778197; }
 .setup-install-selected { width: 100%; min-height: 40px; margin: 0; border: 1px solid rgba(164,123,255,.52); border-radius: 8px; background: #0d0917; color: #d6c9ff; font-size: 10px; font-weight: 850; }
 .setup-ready-list { border-top: 1px solid rgba(255,255,255,.1); }
@@ -8013,6 +8035,9 @@ body.sheet-open {
 .phone-access-entry { margin-top: 8px; }
 .setup-operation { margin: 14px 2px 0; padding: 12px 0; border: 0; border-block: 1px solid color-mix(in srgb, var(--setup-accent) 38%, transparent); border-radius: 0; background: transparent; }
 .setup-operation > div:first-child { margin-bottom: 8px; }
+.setup-operation-meter { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; }
+.setup-operation-meter .dependency-progress { grid-column: auto; }
+.setup-operation-progress-label { min-width: 116px; color: #aeb8cb !important; font-size: 9px !important; font-variant-numeric: tabular-nums; font-weight: 800; text-align: right !important; white-space: nowrap; }
 .setup-operation-actions button { border-radius: 8px; background: #050607; }
 .setup-footer { min-height: 58px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; border-top: 1px solid rgba(255,255,255,.11); background: #000; }
 .setup-footer > span { color: #626c80; font-size: 9px; }
@@ -8040,7 +8065,7 @@ body.sheet-open {
   .setup-start-card { grid-template-columns: 36px minmax(0,1fr); align-items: start; }
   .setup-start-actions { grid-column: 1 / -1; justify-content: stretch; }
   .setup-start-actions button { min-height: 44px; flex: 1 1 150px; }
-  .setup-choice-list, .setup-actions, .setup-component-list { grid-template-columns: 1fr; }
+  .setup-choice-list, .setup-actions, .setup-component-group > div { grid-template-columns: 1fr; }
   .setup-choice-list.start-offered { grid-template-columns: 1fr; }
   .setup-choice { min-height: 74px; align-items: center; padding: 11px 10px; }
   .setup-choice small { font-size: 8px; }
@@ -8051,6 +8076,8 @@ body.sheet-open {
   .setup-hardware strong { white-space: normal; }
   .setup-operation > div:first-child { align-items: flex-start; flex-direction: column; gap: 4px; }
   .setup-operation span { text-align: left; }
+  .setup-operation-meter { grid-template-columns: 1fr; gap: 6px; }
+  .setup-operation-progress-label { min-width: 0; text-align: left !important; }
   .setup-footer { grid-template-columns: auto 1fr; gap: 8px; }
   .setup-footer > span { display: none; }
   .setup-footer > div { min-width: 0; grid-column: 2; }

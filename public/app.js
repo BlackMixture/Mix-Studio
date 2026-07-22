@@ -27040,6 +27040,35 @@ function formatDependencyBytes(value) {
   return `${(bytes / (1024 ** power)).toFixed(power ? 1 : 0)} ${units[power]}`;
 }
 
+function dependencyProgressMetrics(installState) {
+  const phase = String(installState?.phase || '');
+  const downloaded = Math.max(0, Number(installState?.downloaded || 0));
+  const downloadTotal = Math.max(0, Number(installState?.downloadTotal || 0));
+  if (phase === 'downloading-model' && downloadTotal > 0) {
+    const ratio = Math.max(0, Math.min(1, downloaded / downloadTotal));
+    return {
+      determinate: true,
+      percent: ratio * 100,
+      label: `${Math.floor(ratio * 100)}% · ${formatDependencyBytes(downloaded)} of ${formatDependencyBytes(downloadTotal)}`,
+    };
+  }
+  if (phase === 'downloading-model' && downloaded > 0) {
+    return { determinate: false, percent: 0, label: `${formatDependencyBytes(downloaded)} downloaded` };
+  }
+  const completed = Math.max(0, Number(installState?.completed || 0));
+  const total = Math.max(0, Number(installState?.total || 0));
+  if (total > 0) {
+    const ratio = Math.max(0, Math.min(1, completed / total));
+    return {
+      determinate: true,
+      percent: ratio * 100,
+      label: `${Math.floor(ratio * 100)}% · ${Math.min(completed, total)} of ${total} items`,
+    };
+  }
+  if (installState?.state === 'complete') return { determinate: true, percent: 100, label: '100%' };
+  return { determinate: false, percent: 0, label: '' };
+}
+
 function dependencyMissingLabels() {
   const dependency = lastMeta && lastMeta.dependencies;
   const labels = new Map(((dependency && dependency.components) || []).map((entry) => [entry.id, entry.label]));
@@ -27076,9 +27105,17 @@ let setupOperationDiagnostic = '';
 let setupDiscoveredMatches = [];
 let setupFirstRun = false;
 let setupLowVramStarterSelected = false;
+let setupComponentSelectionKey = '';
+let setupSelectedComponents = new Set();
+let setupKnownMissingComponents = null;
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
+const SETUP_COMPONENT_CATEGORIES = [
+  { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
+  { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
+  { id: 'video', label: 'Video', description: 'LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
+];
 
 function setupSelectedKrea2Variant() {
   if (setupKrea2VariantOverride) return setupKrea2VariantOverride;
@@ -27180,6 +27217,7 @@ function setPhoneAccessExpanded(expanded) {
 
 function setSetupStep(step, options = {}) {
   if (!SETUP_STEPS.includes(step)) return;
+  const stepChanged = setupActiveStep !== step;
   setupActiveStep = step;
   if (options.user) setupStepTouched = true;
   $('#initialSetupSheet .setup-panel').dataset.setupStep = step;
@@ -27198,7 +27236,9 @@ function setSetupStep(step, options = {}) {
   $('#setupBack').hidden = index === 0;
   if (options.focus) $(`[data-setup-tab="${step}"]`)?.focus();
   renderSetupFooter();
-  $('#initialSetupSheet .setup-stage')?.scrollTo({ top: 0, behavior: options.user ? 'smooth' : 'auto' });
+  if (stepChanged || options.resetScroll) {
+    $('#initialSetupSheet .setup-stage')?.scrollTo({ top: 0, behavior: options.user ? 'smooth' : 'auto' });
+  }
 }
 
 function closeGenerationSetup(options = {}) {
@@ -27261,6 +27301,9 @@ async function openInitialSetup(options = {}) {
   setupDiscoveredMatches = [];
   setupFirstRun = options.firstRun === true;
   setupLowVramStarterSelected = false;
+  setupComponentSelectionKey = '';
+  setupSelectedComponents = new Set();
+  setupKnownMissingComponents = null;
   setupStepTouched = false;
   setupActiveStep = 'connect';
   setSetupGuideExpanded(false);
@@ -27269,7 +27312,7 @@ async function openInitialSetup(options = {}) {
   $('#setupIntro').textContent = options.message
     || 'Connect ComfyUI, install a workflow, and check that it is ready.';
   $('#initialSetupSheet').classList.add('show');
-  setSetupStep('connect');
+  setSetupStep('connect', { resetScroll: true });
   syncSheetScrollLock();
   await refreshSetupStatus();
   if (!setupViewStatus?.comfy?.connected) await discoverComfyFromSetup({ silent: true });
@@ -27285,6 +27328,35 @@ function setupComponentLabelMap() {
 
 function setupComponentFitMap() {
   return new Map(((setupViewStatus && setupViewStatus.components) || []).map((entry) => [entry.id, entry.fit]));
+}
+
+function setupMissingComponentIds() {
+  if (lastMeta?.ok) setupKnownMissingComponents = dependencyMissingLabels().map((entry) => entry.id);
+  return Array.isArray(setupKnownMissingComponents) ? [...setupKnownMissingComponents] : null;
+}
+
+function syncSetupComponentSelection(components, missingIds) {
+  const entries = Array.isArray(components) ? components : [];
+  const installableIds = new Set(entries.filter((entry) => entry.installable !== false).map((entry) => entry.id));
+  const readinessKnown = Array.isArray(missingIds);
+  const key = `${readinessKnown ? [...missingIds].sort().join('|') : 'unknown'}::${[...installableIds].sort().join('|')}`;
+  if (key !== setupComponentSelectionKey) {
+    setupComponentSelectionKey = key;
+    const defaults = readinessKnown
+      ? missingIds
+      : (setupContextComponents.length ? setupContextComponents : (setupViewStatus?.quickComponents || []));
+    setupSelectedComponents = new Set(defaults.filter((id) => installableIds.has(id)));
+  } else {
+    setupSelectedComponents = new Set([...setupSelectedComponents].filter((id) => installableIds.has(id)));
+  }
+  return setupSelectedComponents;
+}
+
+function selectedSetupDependencyIds() {
+  const installable = new Set((setupViewStatus?.components || [])
+    .filter((entry) => entry.installable !== false)
+    .map((entry) => entry.id));
+  return [...setupSelectedComponents].filter((id) => installable.has(id));
 }
 
 function setupFitForComponents(components) {
@@ -27520,16 +27592,34 @@ function renderInitialSetup() {
   $('#setupBrowseModels').title = browseTitle;
   renderPhoneAccess();
 
-  const missing = dependencyMissingLabels();
-  const selected = syncDependencySelection(missing);
+  const components = setupViewStatus.components || [];
+  const missingIds = setupMissingComponentIds();
+  const readinessKnown = Array.isArray(missingIds);
+  const missingSet = new Set(missingIds || []);
+  const selected = syncSetupComponentSelection(components, missingIds);
   const fitByComponent = setupComponentFitMap();
   const list = $('#setupComponentList');
-  list.innerHTML = missing.map((entry) => {
-    const fit = fitByComponent.get(entry.id);
-    return `<button class="setup-component-option${selected.has(entry.id) ? ' selected' : ''}" type="button" data-component="${escapeHtml(entry.id)}" data-fit="${escapeHtml(fit?.level || 'unknown')}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(fit?.detail || entry.label)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(fit?.label || 'Check requirements')}</small></button>`;
+  const byId = new Map(components.map((entry) => [entry.id, entry]));
+  list.innerHTML = SETUP_COMPONENT_CATEGORIES.map((category) => {
+    const entries = category.components.map((id) => byId.get(id)).filter(Boolean);
+    if (!entries.length) return '';
+    const installedCount = readinessKnown ? entries.filter((entry) => !missingSet.has(entry.id)).length : 0;
+    const rows = entries.map((entry) => {
+      const fit = fitByComponent.get(entry.id);
+      const installed = readinessKnown && !missingSet.has(entry.id);
+      const unavailable = entry.installable === false && !installed;
+      const checked = installed || selected.has(entry.id);
+      const disabled = installed || unavailable || busy || !state.profileIsOwner;
+      const status = installed ? 'Installed' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked')));
+      const detail = entry.installReason || fit?.detail || entry.label;
+      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements'))}</small></span><span class="setup-component-state">${status}</span></label>`;
+    }).join('');
+    const count = readinessKnown ? `${installedCount} of ${entries.length} installed` : `${entries.length} workflows`;
+    return `<section class="setup-component-group" data-component-category="${category.id}"><header><span><strong>${category.label}</strong><small>${category.description}</small></span><em>${count}</em></header><div>${rows}</div></section>`;
   }).join('');
-  $('#setupComponentEmpty').hidden = !!missing.length;
+  $('#setupComponentEmpty').hidden = !!components.length;
   $('#setupInstallSelected').disabled = busy || !selected.size || !comfy.canInstallDependencies;
+  $('#setupInstallSelected').textContent = `Install selected components${selected.size ? ` (${selected.size})` : ''}`;
 
   const quick = $('#setupQuickStart');
   const current = $('#setupCurrentWorkflow');
@@ -27571,9 +27661,21 @@ function renderInitialSetup() {
     $('#setupOperationCopy').textContent = operationState.error
       ? (setupAccessUrl ? 'This model needs Hugging Face access before installation can continue.' : conciseSetupError(operationState.error))
       : (operationState.message || 'Working…');
-    const total = Number(operationState.total || 0);
-    const completed = Number(operationState.completed || 0);
-    $('#setupOperationFill').style.width = total > 0 ? `${Math.max(3, Math.min(100, (completed / total) * 100))}%` : (operationState.state === 'complete' ? '100%' : '34%');
+    const progress = dependencyProgressMetrics(operationState);
+    const progressTrack = $('#setupOperationProgress');
+    progressTrack.classList.toggle('indeterminate', !progress.determinate && operationState.state === 'running');
+    $('#setupOperationFill').style.width = progress.determinate ? `${progress.percent}%` : '40%';
+    $('#setupOperationProgressLabel').textContent = progress.label || (operationState.state === 'running' ? 'Starting…' : '');
+    if (progress.determinate) {
+      progressTrack.setAttribute('aria-valuemin', '0');
+      progressTrack.setAttribute('aria-valuemax', '100');
+      progressTrack.setAttribute('aria-valuenow', String(Math.round(progress.percent)));
+    } else {
+      progressTrack.removeAttribute('aria-valuemin');
+      progressTrack.removeAttribute('aria-valuemax');
+      progressTrack.removeAttribute('aria-valuenow');
+    }
+    progressTrack.setAttribute('aria-valuetext', progress.label || operationState.message || 'Setup in progress');
   }
   const restartInfo = setupViewStatus.restart || lastMeta?.dependencies?.restart || {};
   $('#setupRestartComfy').hidden = !dependency.restartRequired;
@@ -27768,7 +27870,7 @@ async function startSetupDependencies(components) {
     toast(setupNativeInt8Message(), true);
     return false;
   }
-  const available = new Set((setupViewStatus.components || []).map((entry) => entry.id));
+  const available = new Set((setupViewStatus.components || []).filter((entry) => entry.installable !== false).map((entry) => entry.id));
   const filtered = requested.filter((id) => available.has(id));
   if (!filtered.length) {
     toast('No installable components were selected.', true);
@@ -27935,18 +28037,18 @@ $('#setupSaveConnection').addEventListener('click', async () => {
   try { await saveSetupConnection(); toast('ComfyUI connection saved'); }
   catch (error) { toast(error.message, true); }
 });
-$('#setupComponentList').addEventListener('click', (event) => {
-  const option = event.target.closest('[data-component]');
+$('#setupComponentList').addEventListener('change', (event) => {
+  const option = event.target.closest('input[data-component]');
   if (!option || option.disabled) return;
   const id = option.dataset.component;
-  if (dependencySelectedComponents.has(id)) dependencySelectedComponents.delete(id);
-  else dependencySelectedComponents.add(id);
+  if (option.checked) setupSelectedComponents.add(id);
+  else setupSelectedComponents.delete(id);
   renderInitialSetup();
 });
 $('#setupInstallSelected').addEventListener('click', async () => {
   try {
     setupAutoRestart = false;
-    await startSetupDependencies(selectedDependencyIds());
+    await startSetupDependencies(selectedSetupDependencyIds());
   }
   catch (error) { toast(error.message, true); }
 });
@@ -28126,19 +28228,17 @@ function renderDependencyManager() {
   restart.disabled = busy;
   check.disabled = busy;
   progress.hidden = !busy;
-  progress.classList.toggle('indeterminate', busy && !(Number(installState.total) > 0));
-  if (busy && Number(installState.total) > 0) {
-    const pct = Math.max(3, Math.min(100, (Number(installState.completed || 0) / Number(installState.total)) * 100));
-    fill.style.width = `${pct}%`;
+  const progressMetrics = dependencyProgressMetrics(installState);
+  progress.classList.toggle('indeterminate', busy && !progressMetrics.determinate);
+  if (busy && progressMetrics.determinate) {
+    fill.style.width = `${progressMetrics.percent}%`;
   } else {
     fill.style.width = '0';
   }
 
   if (busy) {
     badge.textContent = installState.state === 'restarting' ? 'Restarting' : (installState.state === 'cancelling' ? 'Cancelling' : 'Installing');
-    const transfer = installState.phase === 'downloading-model' && installState.downloaded
-      ? ` ${formatDependencyBytes(installState.downloaded)}${installState.downloadTotal ? ` / ${formatDependencyBytes(installState.downloadTotal)}` : ''}`
-      : '';
+    const transfer = progressMetrics.label ? ` · ${progressMetrics.label}` : '';
     status.textContent = `${installState.message || 'Working…'}${transfer}`;
   } else if (installState.state === 'cancelled') {
     badge.textContent = 'Cancelled';

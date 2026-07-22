@@ -18,7 +18,7 @@ const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { nativeInt8Compatibility, nativeInt8CompatibilityError } = require('./lib/comfy-compatibility');
-const { COMPONENTS: DEPENDENCY_COMPONENTS, availableComponents, installComponents } = require('./lib/dependency-installer');
+const { COMPONENTS: DEPENDENCY_COMPONENTS, NODE_PACKS: DEPENDENCY_NODE_PACKS, availableComponents, installComponents } = require('./lib/dependency-installer');
 const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
 const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
@@ -4781,6 +4781,22 @@ const REQUIRED_CLASSES = {
   scailinfinity: ['WanSCAILInfinity'],
 };
 
+function dependencyComponentInfo(id, fit = null) {
+  const component = DEPENDENCY_COMPONENTS[id] || {};
+  const unavailableNode = (component.nodes || [])
+    .map((nodeId) => DEPENDENCY_NODE_PACKS[nodeId])
+    .find((pack) => pack?.automaticInstall === false);
+  return {
+    id,
+    label: component.label || id,
+    fit,
+    installable: !unavailableNode,
+    installReason: unavailableNode
+      ? `${unavailableNode.label} requires a reviewed manual installation because ${unavailableNode.unavailableReason || 'automatic installation is unavailable'}.`
+      : '',
+  };
+}
+
 async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
   const launch = startStatus(RUNTIME);
@@ -4825,7 +4841,7 @@ async function setupStatusPayload(forceCompatibility = false) {
     },
     restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
     mobileAccess,
-    components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label, fit: guidance[id] || null })),
+    components: availableComponents().map((id) => dependencyComponentInfo(id, guidance[id] || null)),
     comfy: {
       connected,
       connectionError,
@@ -5335,7 +5351,7 @@ async function handleApi(req, res, url) {
           canInstall: installStatus.canInstall,
           reason: installStatus.reason,
           restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
-          components: availableComponents().map((id) => ({ id, label: DEPENDENCY_COMPONENTS[id].label })),
+          components: availableComponents().map((id) => dependencyComponentInfo(id)),
           missingComponents,
           install: dependencyInstallState,
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
