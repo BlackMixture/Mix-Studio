@@ -42,7 +42,7 @@ function writeRelease(root, release) {
 test('the checked-in release manifest identifies Mix Studio 1.0.1', () => {
   assert.deepEqual(readAppRelease(path.join(__dirname, '..')), {
     version: '1.0.1',
-    releasedAt: '2026-07-21',
+    releasedAt: '2026-07-22',
   });
 });
 
