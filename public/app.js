@@ -2957,6 +2957,16 @@ createTabButtons.forEach((button) => button.addEventListener('click', () => {
 }));
 
 function genLabel() {
+  const setupAction = currentGenerationSetupAction();
+  const generateButton = $('#generateBtn');
+  if (generateButton) {
+    generateButton.classList.toggle('setup-needed', !!setupAction);
+    if (setupAction) generateButton.dataset.setupAction = setupAction;
+    else delete generateButton.dataset.setupAction;
+  }
+  if (setupAction === 'install') return 'Install workflow';
+  if (setupAction === 'update') return 'Update ComfyUI';
+  if (setupAction === 'connect') return 'Set up generation';
   const activeCount = state.activeJobs.size + state.motionPromptRequestsPending;
   if (activeCount) {
     return `➕ Add to Queue · ${activeCount} active`;
@@ -14964,6 +14974,11 @@ $('#editComposite').addEventListener('click', () => {
   saveForm();
 });
 $('#generateBtn').addEventListener('click', async () => {
+  if (currentGenerationSetupAction()) {
+    await ensureGenerationSetup();
+    $('#genLbl').textContent = genLabel();
+    return;
+  }
   const rawPrompt = promptForGeneration().trim();
   const prompt = state.view === 'video' ? cameraMotionPromptForEngine(rawPrompt) : rawPrompt;
   const promptIntent = currentPromptIntent();
@@ -27122,6 +27137,7 @@ let setupLowVramStarterSelected = false;
 let setupComponentSelectionKey = '';
 let setupSelectedComponents = new Set();
 let setupKnownMissingComponents = null;
+let setupReturnToSettings = false;
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
@@ -27217,6 +27233,18 @@ function imageGenerationReady() {
     || lastMeta?.krea2?.nativeInt8?.supported === true;
 }
 
+function currentGenerationSetupAction() {
+  if (!lastMeta) return '';
+  const required = generationSetupComponents();
+  if (!lastMeta.ok) return 'connect';
+  const requiresKrea2 = required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
+  if (requiresKrea2 && lastMeta?.models?.krea2?.clipType?.ok !== true) return 'update';
+  if (requiresKrea2
+    && lastMeta?.krea2?.modelVariant === 'int8-convrot'
+    && lastMeta?.krea2?.nativeInt8?.supported !== true) return 'update';
+  return missingSetupComponents(required).length ? 'install' : '';
+}
+
 async function ensureGenerationSetup() {
   const required = generationSetupComponents();
   if (!lastMeta?.ok) await loadMeta(true);
@@ -27285,6 +27313,8 @@ function setSetupStep(step, options = {}) {
 function closeGenerationSetup(options = {}) {
   clearTimeout(setupPollTimer);
   $('#initialSetupSheet').classList.remove('show');
+  setupReturnToSettings = false;
+  $('#setupReturnSettings').hidden = true;
   syncSheetScrollLock();
   if (options.deliberate && !options.completed && !setupGenerationReady()) {
     toast('Generation setup is still needed. Press Generate or open Advanced Settings to continue.');
@@ -27338,6 +27368,8 @@ function renderSetupFooter() {
 
 async function openInitialSetup(options = {}) {
   cancelContextualGuide();
+  setupReturnToSettings = options.returnToSettings === true;
+  $('#setupReturnSettings').hidden = !setupReturnToSettings;
   setupContextComponents = [...new Set((options.components || []).filter(Boolean))];
   setupKrea2VariantOverride = '';
   setupDiscoveredMatches = [];
@@ -27467,6 +27499,67 @@ function renderSetupEndpointChoices(matches = []) {
   $('#setupEndpointChoiceList').innerHTML = unique.map((entry) => `<button type="button" data-comfy-endpoint="${escapeHtml(entry.url)}">${escapeHtml(entry.installationName || entry.url)}</button>`).join('');
 }
 
+function createPhoneAccessQrSvg(url) {
+  const QrCode = window.qrcodegen?.QrCode;
+  if (!QrCode || !url) return null;
+  const qr = QrCode.encodeText(url, QrCode.Ecc.MEDIUM);
+  const border = 4;
+  const dimension = qr.size + border * 2;
+  const namespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(namespace, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${dimension} ${dimension}`);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'QR code for the Mix Studio phone address');
+  svg.setAttribute('shape-rendering', 'crispEdges');
+  svg.setAttribute('focusable', 'false');
+
+  const background = document.createElementNS(namespace, 'rect');
+  background.setAttribute('width', '100%');
+  background.setAttribute('height', '100%');
+  background.setAttribute('fill', '#fff');
+  svg.append(background);
+
+  let pathData = '';
+  for (let y = 0; y < qr.size; y++) {
+    let x = 0;
+    while (x < qr.size) {
+      if (!qr.getModule(x, y)) {
+        x++;
+        continue;
+      }
+      const start = x;
+      while (x < qr.size && qr.getModule(x, y)) x++;
+      const length = x - start;
+      pathData += `M${start + border} ${y + border}h${length}v1h-${length}z`;
+    }
+  }
+  const modules = document.createElementNS(namespace, 'path');
+  modules.setAttribute('d', pathData);
+  modules.setAttribute('fill', '#000');
+  svg.append(modules);
+  return svg;
+}
+
+function renderPhoneAccessQr(url) {
+  const figure = $('#phoneAccessQr');
+  const code = $('#phoneAccessQrCode');
+  const animation = $('#phoneAccessAnimation');
+  if (!figure || !code || !animation) return;
+  code.replaceChildren();
+  figure.hidden = true;
+  animation.hidden = false;
+  if (!url) return;
+  try {
+    const svg = createPhoneAccessQrSvg(url);
+    if (!svg) return;
+    code.append(svg);
+    figure.hidden = false;
+    animation.hidden = true;
+  } catch (error) {
+    console.warn('Could not create phone access QR code', error);
+  }
+}
+
 function renderPhoneAccess() {
   const access = setupViewStatus?.mobileAccess || {};
   const pinProtected = access.pinProtected === true;
@@ -27480,6 +27573,7 @@ function renderPhoneAccess() {
   $('#phoneAccessShare').dataset.url = url;
   $('#phoneAccessShare').hidden = !url || typeof navigator.share !== 'function';
   $('#phoneAccessSecure').hidden = pinProtected || !state.profileIsOwner;
+  renderPhoneAccessQr(url);
   if (usingTailscale) {
     $('#phoneAccessStatus').textContent = 'Connected privately through Tailscale';
     $('#phoneAccessTitle').textContent = 'This device is connected';
@@ -27712,12 +27806,15 @@ function renderInitialSetup() {
   quick.querySelector('span').textContent = quickPreset.detail
     ? `${quickPreset.detail}${quickFit.label ? ` · ${quickFit.label}` : ''}`
     : (quickFit.label ? `Image starter · ${quickFit.label}` : 'A useful image starter.');
-  current.querySelector('strong').textContent = requiredNow.length === 1
+  const currentTitle = requiredNow.length === 1
     ? (componentLabels.get(requiredNow[0]) || 'Current workflow')
     : 'Current workflow';
-  current.querySelector('span').textContent = currentFit
+  current.querySelector('.setup-workflow-title').textContent = currentTitle;
+  current.querySelector('.setup-workflow-detail').textContent = currentFit
     ? `Only missing for this generation · ${currentFit.label}`
     : 'Install only what this generation needs.';
+  current.querySelector('.setup-workflow-verb').textContent = busy ? 'Installing…' : 'Install';
+  current.setAttribute('aria-label', `Install ${currentTitle} for this generation`);
   quick.hidden = (!quickMissing.length)
     || (!!setupContextComponents.length && quickPreset.id !== 'low-vram-klein4');
   quick.disabled = busy || !state.profileIsOwner;
@@ -27726,6 +27823,7 @@ function renderInitialSetup() {
   const setupActions = quick.closest('.setup-actions');
   setupActions.hidden = quick.hidden && current.hidden;
   setupActions.classList.toggle('single', quick.hidden !== current.hidden);
+  setupActions.classList.toggle('has-current', !current.hidden);
 
   const operation = $('#setupOperation');
   let operationState = null;
@@ -28246,11 +28344,24 @@ $('#setupCancel').addEventListener('click', async () => {
 });
 $('#dependencyOpenSetup').addEventListener('click', () => {
   $('#settingsSheet').classList.remove('show');
-  openInitialSetup();
+  openInitialSetup({ returnToSettings: true });
 });
 $('#phoneAccessOpen').addEventListener('click', () => {
   $('#settingsSheet').classList.remove('show');
-  openInitialSetup({ step: 'finish', phoneGuide: true, message: 'Review private phone access or update the generation computer.' });
+  openInitialSetup({
+    step: 'finish',
+    phoneGuide: true,
+    returnToSettings: true,
+    message: 'Review private phone access or update the generation computer.',
+  });
+});
+$('#setupReturnSettings').addEventListener('click', () => {
+  if (!setupReturnToSettings) return;
+  closeGenerationSetup();
+  setSettingsTab(settingsActiveTab);
+  $('#settingsSheet').classList.add('show');
+  renderHealth();
+  syncSheetScrollLock();
 });
 $('#phoneAccessSecure').addEventListener('click', () => {
   closeGenerationSetup();
@@ -28502,12 +28613,14 @@ async function loadMeta(refresh, afterRestart = false) {
     renderLoras();
     renderSam3Dependency();
     renderDependencyManager();
+    $('#genLbl').textContent = genLabel();
     scheduleDependencyPoll();
   } catch {
     state.connOk = false;
     $('#connDot').className = 'conn-dot bad';
     renderSam3Dependency();
     renderDependencyManager();
+    $('#genLbl').textContent = genLabel();
   } finally {
     firstRunTutorialMetaLoaded = true;
     maybeShowFirstRunTutorial();

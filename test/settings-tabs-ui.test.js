@@ -72,7 +72,8 @@ test('advanced settings exposes generation setup as a dedicated status entry', (
   assert.match(generalPane, /id="generationSetupSettingsStatus"/);
   assert.doesNotMatch(html.match(/id="dependencyManagerCard"([\s\S]*?)<\/section>/)?.[1] || '', /id="dependencyOpenSetup"/);
   assert.match(app, /function renderGenerationSetupEntry\(\)/);
-  assert.match(app, /openInitialSetup\(\)/);
+  assert.match(app, /openInitialSetup\(\{ returnToSettings: true \}\)/);
+  assert.match(html, /id="setupReturnSettings"[^>]*hidden/);
   assert.match(css, /\.generation-setup-entry \{[\s\S]*grid-template-columns: 40px minmax\(0, 1fr\) auto 18px/);
 });
 

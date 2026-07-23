@@ -2084,7 +2084,16 @@
 <!-- generation setup -->
 <div class="sheet setup-sheet" id="initialSetupSheet">
   <div class="sheet-panel setup-panel" role="dialog" aria-modal="true" aria-labelledby="setupTitle" data-setup-step="connect">
-    <h3 class="sheet-title"><span>Generation setup</span><button data-close aria-label="Close generation setup">✕</button></h3>
+    <h3 class="sheet-title">
+      <span>Generation setup</span>
+      <span class="setup-title-actions">
+        <button class="setup-return-settings" id="setupReturnSettings" type="button" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          <span>Back to settings</span>
+        </button>
+        <button class="setup-close" data-close aria-label="Close generation setup">✕</button>
+      </span>
+    </h3>
     <div class="setup-heading">
       <span class="setup-kicker">Three short steps</span>
       <h2 id="setupTitle">Get ready to generate</h2>
@@ -2185,8 +2194,12 @@
           </select>
         </label>
         <div class="setup-actions">
-          <button class="setup-primary" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
-          <button class="setup-secondary" id="setupCurrentWorkflow" type="button"><strong>Current workflow</strong><span>Install only what this generation needs.</span></button>
+          <button class="setup-workflow-install" id="setupCurrentWorkflow" type="button">
+            <span class="setup-workflow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg></span>
+            <span class="setup-workflow-copy"><small>Required for this generation</small><strong class="setup-workflow-title">Current workflow</strong><span class="setup-workflow-detail">Install only what this generation needs.</span></span>
+            <span class="setup-workflow-verb">Install</span>
+          </button>
+          <button class="setup-secondary setup-recommended" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
         </div>
         <button class="setup-disclosure" id="setupCustomToggle" type="button" aria-expanded="false" aria-controls="setupCustomPanel"><span>Choose components</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg></button>
         <div class="setup-custom-panel" id="setupCustomPanel" hidden>
@@ -2211,8 +2224,14 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
           </button>
           <div class="phone-access-guide" id="phoneAccessGuide" hidden>
-            <div class="phone-access-animation" aria-hidden="true">
-              <span class="phone-access-device desktop"><i></i></span><span class="phone-access-signal"><i></i><i></i><i></i></span><span class="phone-access-device phone"><i></i></span>
+            <div class="phone-access-visual">
+              <div class="phone-access-animation" id="phoneAccessAnimation" aria-hidden="true">
+                <span class="phone-access-device desktop"><i></i></span><span class="phone-access-signal"><i></i><i></i><i></i></span><span class="phone-access-device phone"><i></i></span>
+              </div>
+              <figure class="phone-access-qr" id="phoneAccessQr" hidden>
+                <div id="phoneAccessQrCode"></div>
+                <figcaption>Scan with your phone</figcaption>
+              </figure>
             </div>
             <div class="phone-access-copy">
               <h4 id="phoneAccessTitle">Open Mix Studio on your phone</h4>
@@ -2858,6 +2877,7 @@
 <script src="/progress-eta.js"></script>
 <script src="/job-reconciliation.js"></script>
 <script src="/analytics.js"></script>
+<script src="/qrcodegen.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

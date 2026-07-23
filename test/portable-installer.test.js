@@ -412,17 +412,32 @@ test('generation setup lives in the web app and gates only a generation attempt'
     'setupBrowseComfy', 'setupBrowseComfyDetails', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
     'setupHardwareSummary', 'setupShowDetails', 'setupDependencyAccess', 'setupDependencyAccessLink',
     'setupOperationProgress', 'setupOperationProgressLabel',
-    'setupCancel', 'setupBack', 'setupNext',
+    'setupCancel', 'setupBack', 'setupNext', 'setupReturnSettings',
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.match(html, /id="setupReturnSettings"[^>]*hidden/);
+  assert.match(html, /class="setup-workflow-install" id="setupCurrentWorkflow"/);
+  assert.match(html, /Required for this generation/);
   assert.match(html, /class="setup-tabs" role="tablist"/);
   assert.equal((html.match(/role="tabpanel"/g) || []).length >= 3, true);
   assert.match(app, /async function ensureGenerationSetup\(\)/);
   assert.match(app, /if \(!\(await ensureGenerationSetup\(\)\)\) return/);
+  assert.match(app, /function currentGenerationSetupAction\(\)/);
+  assert.match(app, /if \(setupAction === 'install'\) return 'Install workflow'/);
+  assert.match(app, /if \(setupAction === 'update'\) return 'Update ComfyUI'/);
+  assert.match(app, /if \(setupAction === 'connect'\) return 'Set up generation'/);
+  assert.ok(
+    app.indexOf('if (currentGenerationSetupAction()) {') < app.indexOf('const rawPrompt = promptForGeneration().trim()'),
+    'generation setup should open before prompt validation when the workflow is unavailable'
+  );
   assert.match(app, /function setSetupStep\(step/);
   assert.match(app, /stepChanged \|\| options\.resetScroll/);
   assert.match(app, /setSetupStep\('connect', \{ resetScroll: true \}\)/);
+  assert.match(app, /setupReturnToSettings = options\.returnToSettings === true/);
+  assert.match(app, /openInitialSetup\(\{ returnToSettings: true \}\)/);
+  assert.match(app, /phoneGuide: true,[\s\S]{0,100}returnToSettings: true/);
+  assert.match(app, /\$\('#setupReturnSettings'\)\.addEventListener\('click',[\s\S]{0,260}setSettingsTab\(settingsActiveTab\)[\s\S]{0,160}\$\('#settingsSheet'\)\.classList\.add\('show'\)/);
   assert.match(app, /function dependencyProgressMetrics\(installState\)/);
   assert.match(app, /downloaded \/ downloadTotal/);
   assert.match(app, /setupOperationProgressLabel/);
@@ -468,6 +483,8 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(style, /@keyframes setupDialogIn/);
   assert.match(style, /\.setup-stage \{[\s\S]{0,180}overflow-y: auto/);
   assert.match(style, /\.setup-component-group-actions button/);
+  assert.match(style, /\.setup-workflow-install \{[^}]*grid-column: 1 \/ -1[^}]*min-height: 94px/s);
+  assert.match(style, /\.btn-generate\.setup-needed \{/);
   assert.match(style, /\.setup-operation\.restart-needed \{/);
   assert.match(app, /Restart ComfyUI to finish/);
   assert.match(app, /In Comfy Desktop, stop and start this installation/);
