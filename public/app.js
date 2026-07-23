@@ -24024,7 +24024,7 @@ function mediaPreferenceControlValue(id) {
 }
 
 const SETTINGS_SERVER_CONTROL_IDS = new Set([
-  'setComfy', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
+  'setComfy', 'setHfToken', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
   'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
   'setKlein4Unet', 'setKlein4Clip', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
@@ -24056,6 +24056,7 @@ let settingsAppRestartRunning = false;
 function settingsPayload() {
   return {
     comfyUrl: $('#setComfy').value,
+    hfToken: $('#setHfToken').value,
     galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
     vramProfile: $('#setVramProfile').value,
     krea2ModelVariant: $('#setKrea2ModelVariant').value,
@@ -26931,6 +26932,10 @@ $('#settingsBtn').addEventListener('click', async () => {
   try {
     const s = await api('/api/settings');
     $('#setComfy').value = s.comfyUrl;
+    $('#setHfToken').value = '';
+    $('#setHfToken').placeholder = s.hfTokenConfigured
+      ? 'Saved · paste a new token to replace it'
+      : 'Paste an hf_ read token';
     $('#galleryPasswordInput').value = s.galleryPassword || '1234';
     $('#setVramProfile').value = s.vramProfile || 'auto';
     $('#setKrea2ModelVariant').value = s.krea2ModelVariant || (/int8.*convrot|convrot.*int8/i.test(s.unet || '') ? 'int8-convrot' : 'fp8');
@@ -28624,7 +28629,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

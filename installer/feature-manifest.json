@@ -84,7 +84,7 @@
       "variant": "10Eros FP8 mixed; 8 GB is an experimental tier with aggressive offload",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
       "models": ["10eros", "ltx-dmd", "gemma-3"],
-      "nodes": ["EchoDMDSampler", "KJNodes"]
+      "nodes": ["EchoDMDSampler", "10S-Comfy-nodes", "KJNodes"]
     },
     {
       "id": "video.wan",
@@ -104,6 +104,15 @@
       "dependsOn": ["video.wan"],
       "models": ["scail2", "sam3.1", "clip-vision-h", "pusa"],
       "nodes": ["WanSCAILToVideo", "SAM3_VideoTrack", "comfyui-scail2-infinity", "ComfyUI-GGUF"]
+    },
+    {
+      "id": "video.rife",
+      "label": "RIFE Frame Interpolation",
+      "default": false,
+      "variant": "RIFE 4.x interpolation for Increase FPS",
+      "hardware": { "minimumVramGb": 4, "recommendedVramGb": 8, "autoSelect": "supported" },
+      "models": [],
+      "nodes": ["ComfyUI-Frame-Interpolation", "RIFE VFI"]
     }
   ]
 }

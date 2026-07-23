@@ -3,8 +3,12 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const {
+  MODEL_FILE_RE,
+  modelChoice,
+  registeredModelNames,
+} = require('../lib/model-loader');
 
-const MODEL_FILE_RE = /\.(?:safetensors|ckpt|pt|pth|bin|gguf|onnx)$/i;
 const MODEL_PATH_KEYS = new Set([
   'checkpoints', 'configs', 'vae', 'loras', 'upscale_models', 'embeddings',
   'hypernetworks', 'controlnet', 'clip', 'clip_vision', 'style_models',
@@ -20,25 +24,8 @@ function argument(argv, name) {
   return index >= 0 ? argv[index + 1] || '' : '';
 }
 
-function modelChoice(value) {
-  return typeof value === 'string' && MODEL_FILE_RE.test(value.trim());
-}
-
 function collectRegisteredModelNames(info) {
-  const names = new Set();
-  for (const cls of Object.values(info || {})) {
-    const inputs = cls && typeof cls === 'object' ? cls.input || {} : {};
-    for (const group of [inputs.required, inputs.optional]) {
-      for (const spec of Object.values(group || {})) {
-        if (!Array.isArray(spec)) continue;
-        const choices = Array.isArray(spec[0])
-          ? spec[0]
-          : (spec[0] === 'COMBO' && Array.isArray(spec[1]?.options) ? spec[1].options : []);
-        for (const choice of choices) if (modelChoice(choice)) names.add(choice.trim());
-      }
-    }
-  }
-  return [...names].sort((left, right) => left.localeCompare(right));
+  return registeredModelNames(info);
 }
 
 function stripYamlScalar(value) {

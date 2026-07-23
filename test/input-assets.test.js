@@ -56,4 +56,7 @@ test('uploaded inputs are stored locally, streamed to ComfyUI, and served with r
   assert.match(serverSource, /const durable = inputAssetPath\(INPUTS, comfyName\)/);
   assert.match(serverSource, /return serveFile\(res, local, req\.headers\.range\)/);
   assert.match(serverSource, /older inputs fall back to ComfyUI/);
+  assert.match(serverSource, /for \(let attempt = 0; attempt < 2; attempt \+= 1\) \{\s*const upload = await multipartFileUpload\(file, filename\)/);
+  assert.match(serverSource, /Could not upload \$\{filename\} to ComfyUI: \$\{String\(error\.message \|\| error\)\}/);
+  assert.match(serverSource, /wrapped\.code = 'comfy_connection_failed'/);
 });

@@ -46,7 +46,7 @@ test('a pending app restart appears contextually beside the close button', () =>
 test('only a changed ComfyUI URL currently requests a Mix Studio restart', () => {
   assert.match(server, /const APP_RESTART_SETTINGS_AT_BOOT = Object\.freeze\(\{ comfyUrl: settings\.comfyUrl \}\)/);
   assert.match(server, /function settingsRequireAppRestart\(\) \{\s*return settings\.comfyUrl !== APP_RESTART_SETTINGS_AT_BOOT\.comfyUrl;\s*\}/);
-  assert.match(server, /function settingsResponse\(\) \{\s*return Object\.assign\(\{\}, settings, \{ appRestartRequired: settingsRequireAppRestart\(\) \}\);\s*\}/);
+  assert.match(server, /function settingsResponse\(\) \{[\s\S]*hfTokenConfigured:[\s\S]*delete response\.hfToken;\s*return response;\s*\}/);
   const getRoute = server.slice(server.indexOf("route === '/api/settings' && req.method === 'GET'"), server.indexOf("route === '/api/setup/status'"));
   const postRoute = server.slice(server.indexOf("route === '/api/settings' && req.method === 'POST'"), server.indexOf("route === '/api/meta'"));
   assert.match(getRoute, /settingsResponse\(\)/);

@@ -20,12 +20,14 @@ const {
   dependencyModelPlan,
   downloadAsset,
   ensureDownloadDiskSpace,
+  ensureUv,
   filterProtectedRuntimeRequirements,
   huggingFaceAccessUrl,
   installComponents,
   installNodePack,
   looksLikeCustomNodeFolder,
   modelIsRegistered,
+  patchLtxVideoKornia,
   protectedRuntimeConstraints,
   requirementsArgs,
   sameRepo,
@@ -41,17 +43,20 @@ function safetensorsFixture() {
 }
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
   for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
-  assert.ok(Object.entries(NODE_PACKS).filter(([id]) => id !== 'regional')
-    .every(([, pack]) => /^[a-f0-9]{40}$/.test(pack.ref)), 'public custom nodes use immutable commits');
-  assert.equal(NODE_PACKS.regional.automaticInstall, false);
-  assert.match(COMPONENTS.regional.label, /manual node required/i);
+  assert.ok(Object.values(NODE_PACKS)
+    .every((pack) => /^[a-f0-9]{40}$/.test(pack.ref)), 'public custom nodes use immutable commits');
+  assert.match(NODE_PACKS.regional.repo, /CliffNodes\/Krea2-Multi-Character-Lora-Node/);
+  assert.equal(NODE_PACKS.regional.allowCompatibleMirror, true);
+  assert.match(NODE_PACKS.eros.repo, /TenStrip\/10S-Comfy-nodes/);
+  assert.deepEqual(COMPONENTS.eros.nodes, ['eros', 'kjnodes']);
+  assert.deepEqual(COMPONENTS.rife.nodes, ['rife']);
   assert.ok(availableComponents().includes('smartmask'));
   assert.equal(COMPONENTS.krea2raw.optional, true);
   assert.deepEqual(COMPONENTS.krea2raw.models, ['krea2Raw']);
@@ -69,6 +74,13 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(NODE_PACKS.ltxvideo.folder, 'ComfyUI-LTXVideo');
   assert.match(NODE_PACKS.ltxvideo.repo, /Lightricks\/ComfyUI-LTXVideo/);
   assert.match(MODEL_ASSETS.ltxCamera[0][2], /Cseti\/LTX2\.3-22B_IC-LoRA-Cameraman_v2/);
+  assert.match(MODEL_ASSETS.upscale[0][2], /AInVFX\/SeedVR2_comfyUI/);
+  assert.match(MODEL_ASSETS.upscale[1][2], /numz\/SeedVR2_comfyUI/);
+  assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxGemmaLora')[2], /Comfy-Org\/ltx-2/);
+  assert.match(MODEL_ASSETS.ltxEdit[0][2], /Alissonerdx\/EditAnything/);
+  assert.ok(MODEL_ASSETS.wan.filter((asset) => /Unet$/.test(asset[0]))
+    .every((asset) => /Comfy-Org\/Wan_2\.2_ComfyUI_Repackaged/.test(asset[2])));
+  assert.match(MODEL_ASSETS.eros.find((asset) => asset[0] === 'erosTextEncoder')[2], /gemma_3_12B_it_heretic_fp8_e4m3fn/);
   assert.deepEqual(COMPONENTS.ltxcamera.nodes, ['ltxvideo', 'vhs']);
   assert.deepEqual(COMPONENTS.ltxdirector.nodes, ['whatdreamscost', 'ltxvideo', 'kjnodes', 'vhs']);
   assert.equal(COMPONENTS.video.nodes.includes('whatdreamscost'), false);
@@ -83,67 +95,70 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[2], /f2k_9B_lcs_consist_20260415\.safetensors/);
 });
 
-test('the unavailable regional source fails before changing ComfyUI and reuses a manual install', async () => {
+test('regional prompting installs the reviewed mirror and reuses a compatible legacy checkout', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-regional-source-'));
   const customNodesPath = path.join(rootDir, 'custom_nodes');
-  const nodePath = path.join(customNodesPath, NODE_PACKS.regional.folder);
+  const preferredPath = path.join(customNodesPath, NODE_PACKS.regional.folder);
+  const legacyPath = path.join(customNodesPath, NODE_PACKS.regional.compatibleFolders[0]);
   const commands = [];
   try {
-    await assert.rejects(
-      installNodePack(NODE_PACKS.regional, {
-        customNodesPath, basePath: rootDir, pythonPath: 'python',
-      }, () => {}, {
-        run: async (...args) => { commands.push(args); return ''; },
-      }),
-      (error) => error.code === 'dependency_node_source_unavailable'
-        && error.failedNode === NODE_PACKS.regional.folder
-        && /will not substitute an unreviewed custom node/.test(error.message)
-    );
-    assert.equal(commands.length, 0);
-    assert.equal(fs.existsSync(customNodesPath), false);
+    await installNodePack(NODE_PACKS.regional, {
+      customNodesPath, basePath: rootDir, pythonPath: 'python',
+    }, () => {}, {
+      run: async (command, args) => {
+        commands.push([command, args]);
+        if (args[0] === 'clone') fs.mkdirSync(path.join(preferredPath, '.git'), { recursive: true });
+        return '';
+      },
+    });
+    assert.deepEqual(commands, [
+      ['git', ['clone', NODE_PACKS.regional.repo, preferredPath]],
+      ['git', ['-C', preferredPath, 'checkout', '--detach', NODE_PACKS.regional.ref]],
+    ]);
 
-    fs.mkdirSync(nodePath, { recursive: true });
-    fs.writeFileSync(path.join(nodePath, '__init__.py'), '# trusted manual regional-node fixture\n');
+    fs.rmSync(preferredPath, { recursive: true, force: true });
+    fs.mkdirSync(path.join(legacyPath, '.git'), { recursive: true });
+    fs.writeFileSync(path.join(legacyPath, 'krea2_regional_multilora_v3.py'),
+      'class Krea2RegionalMultiLoRAV3:\n    pass\nNODE_CLASS_MAPPINGS = {}\n');
+    commands.length = 0;
     const reports = [];
     await installNodePack(NODE_PACKS.regional, {
       customNodesPath, basePath: rootDir, pythonPath: 'python',
     }, (phase, message, detail) => reports.push({ phase, message, detail }), {
-      run: async (...args) => { commands.push(args); return ''; },
+      run: async (command, args) => {
+        commands.push([command, args]);
+        if (args.includes('get-url')) return 'https://github.com/legacy/compatible-regional-node.git';
+        return '';
+      },
     });
-    assert.equal(commands.length, 0);
+    assert.equal(commands.length, 1);
     assert.equal(reports[0].phase, 'existing-node');
-    assert.equal(reports[0].detail.unmanaged, true);
+    assert.equal(reports[0].detail.compatibleMirror, true);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
 });
 
-test('a mixed advanced install preflights the unavailable regional source before other work', async () => {
-  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-regional-preflight-'));
-  const customNodesPath = path.join(rootDir, 'custom_nodes');
-  const pythonPath = path.join(rootDir, '.venv', 'bin', 'python');
+test('uv is bootstrapped into the ComfyUI Python environment with a clear failure code', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-uv-bootstrap-'));
+  const pythonPath = path.join(rootDir, 'python.exe');
   const commands = [];
-  let fetched = false;
   try {
-    fs.mkdirSync(customNodesPath, { recursive: true });
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(path.join(rootDir, 'main.py'), '# ComfyUI fixture\n');
-    fs.writeFileSync(pythonPath, '');
+    const result = await ensureUv({ pythonPath, basePath: rootDir }, () => {}, {
+      existsSync: () => false,
+      run: async (...args) => { commands.push(args); return ''; },
+    });
+    assert.equal(result, path.join(rootDir, 'uv.exe'));
+    assert.deepEqual(commands[0][0], pythonPath);
+    assert.deepEqual(commands[0][1], ['-m', 'pip', 'install', '--upgrade-strategy', 'only-if-needed', 'uv']);
+
     await assert.rejects(
-      installComponents({
-        runtime: { dataDir: path.join(rootDir, 'data'), comfy: { path: rootDir, modelsPath: path.join(rootDir, 'models') } },
-        settings: {},
-        components: ['smartmask', 'regional'],
-        options: {
-          run: async (...args) => { commands.push(args); return ''; },
-          fetch: async () => { fetched = true; throw new Error('should not fetch'); },
-        },
+      ensureUv({ pythonPath, basePath: rootDir }, () => {}, {
+        existsSync: () => false,
+        run: async () => { throw new Error('pip is unavailable'); },
       }),
-      (error) => error.code === 'dependency_node_source_unavailable'
+      (error) => error.code === 'dependency_uv_missing' && /pip is unavailable/.test(error.message)
     );
-    assert.equal(commands.length, 0);
-    assert.equal(fetched, false);
-    assert.equal(fs.existsSync(path.join(customNodesPath, NODE_PACKS.sam3.folder)), false);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -210,6 +225,71 @@ test('dependency paths stay inside ComfyUI model folders and trusted repos compa
   assert.equal(sameRepo('https://github.com/example/other.git', 'https://github.com/PozzettiAndrea/ComfyUI-SAM3.git'), false);
   assert.equal(modelIsRegistered('krea2_turbo_fp8_scaled.safetensors', new Set(['Krea2_Turbo_FP8_Scaled.safetensors'])), true);
   assert.equal(modelIsRegistered('Wan2.1\\model.safetensors', new Set(['wan2.1/model.safetensors'])), true);
+  assert.equal(modelIsRegistered('model.safetensors', new Set(['shared/models/model.safetensors'])), true);
+  assert.equal(modelIsRegistered('model.safetensors', new Set(['a/model.safetensors', 'b/model.safetensors'])), false);
+});
+
+test('reviewed model mirrors and Hugging Face tokens are used without exposing the token', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-model-fallback-'));
+  const bytes = safetensorsFixture();
+  const urls = [];
+  const headers = [];
+  try {
+    const result = await downloadAsset(
+      ['ltxGemmaLora', 'loras', 'https://huggingface.co/example/model/resolve/main/primary.safetensors', 'model.safetensors', ['https://huggingface.co/example/model/resolve/main/fallback.safetensors']],
+      rootDir,
+      {},
+      () => {},
+      {
+        hfToken: 'hf_test_secret',
+        fetch: async (url, options) => {
+          urls.push(url);
+          headers.push(options.headers);
+          if (urls.length === 1) return { ok: false, status: 404, body: null, text: async () => 'gone' };
+          let sent = false;
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: (name) => name === 'content-length' ? String(bytes.length) : '' },
+            body: { getReader: () => ({ read: async () => sent ? { done: true } : (sent = true, { done: false, value: bytes }) }) },
+          };
+        },
+      }
+    );
+    assert.equal(result.skipped, false);
+    assert.deepEqual(urls, [
+      'https://huggingface.co/example/model/resolve/main/primary.safetensors',
+      'https://huggingface.co/example/model/resolve/main/fallback.safetensors',
+    ]);
+    assert.equal(headers[0].Authorization, 'Bearer hf_test_secret');
+    assert.equal(headers[1].Authorization, 'Bearer hf_test_secret');
+    assert.match(server, /delete response\.hfToken/);
+    assert.match(server, /hfTokenConfigured: !!String\(settings\.hfToken/);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('LTXVideo is patched for the kornia 0.8.3 pad relocation', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-ltx-kornia-'));
+  const file = path.join(rootDir, 'pyramid_blending.py');
+  try {
+    fs.writeFileSync(file, [
+      'import torch',
+      'from kornia.geometry.transform.pyramid import (',
+      '    pyrdown,',
+      '    pad,',
+      ')',
+      '',
+    ].join('\r\n'));
+    assert.equal(await patchLtxVideoKornia(rootDir), true);
+    const patched = fs.readFileSync(file, 'utf8');
+    assert.match(patched, /from torch\.nn\.functional import pad/);
+    assert.doesNotMatch(patched, /^\s+pad,$/m);
+    assert.equal(await patchLtxVideoKornia(rootDir), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test('gated Hugging Face downloads expose only their reviewed repository access page', async () => {
@@ -481,6 +561,9 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /\.\.\.EMPTY_DEPENDENCY_FAILURE/);
   assert.match(server, /broadcast\('dependencyInstall'/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
+  assert.match(server, /const socketStale = socketOpen && Date\.now\(\) - lastWsMessageAt > 15_000/);
+  assert.match(server, /needsTextReconciliation[\s\S]*\['enhance', 'motionPrompt', 'smartMask'\]/);
+  assert.match(server, /comfyFetch\(`\/history\/\$\{pid\}`\)/);
   assert.match(server, /qwenedit: \['qwen'\]/);
   assert.match(server, /klein: \['klein4', 'klein9'\]/);
   assert.match(server, /NODE_PACKS: DEPENDENCY_NODE_PACKS/);
@@ -564,7 +647,9 @@ test('node installs preserve unrelated ComfyUI packages and make a repair explic
 });
 
 test('model readiness accepts ComfyUI DynamicCombo option lists', () => {
-  assert.match(server, /spec\[0\] === 'COMBO' && Array\.isArray\(spec\[1\]\?\.options\)/);
+  const loader = fs.readFileSync(path.join(root, 'lib', 'model-loader.js'), 'utf8');
+  assert.match(loader, /spec\[0\] === 'COMBO' && Array\.isArray\(spec\[1\]\?\.options\)/);
+  assert.match(server, /adoptRegisteredModelPaths\(info\)/);
   assert.match(server, /consistencyLora: modelStatus\(info, 'LoraLoaderModelOnly', 'lora_name', settings\.klein4ConsistencyLora/);
   assert.match(server, /consistencyLora: modelStatus\(info, 'LoraLoaderModelOnly', 'lora_name', settings\.klein9ConsistencyLora/);
 });
