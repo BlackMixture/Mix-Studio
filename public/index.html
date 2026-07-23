@@ -2111,7 +2111,7 @@
         </div>
         <div class="dependency-access" id="setupDependencyAccess" hidden>
           <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
-          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Sign in and accept or request access. This installer also needs an HF_TOKEN from that account.</small></span>
+          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then add a read token in Settings → General → Hugging Face token.</small></span>
           <a class="dependency-access-link" id="setupDependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
         </div>
         <div class="setup-operation-actions">
@@ -2306,6 +2306,11 @@
             <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </button>
           <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
+          <div class="field">
+            <label>Hugging Face token</label>
+            <input id="setHfToken" type="password" autocomplete="new-password" placeholder="Paste an hf_ read token" />
+            <small>Some gated downloads require both accepting the model license on Hugging Face and a read token here. The saved token is never returned to the browser.</small>
+          </div>
           <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
           <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
           <div class="dependency-card" id="sam3DependencyCard">
@@ -2332,7 +2337,7 @@
             <div class="dependency-progress" id="dependencyProgress" hidden><span id="dependencyProgressFill"></span></div>
             <div class="dependency-access" id="dependencyAccess" hidden>
               <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
-              <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Sign in and accept or request access. This installer also needs an HF_TOKEN from that account.</small></span>
+              <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then paste a read token in Settings → General → Hugging Face token.</small></span>
               <a class="dependency-access-link" id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
             </div>
             <div class="dependency-selection-head" id="dependencySelectionHead" hidden>

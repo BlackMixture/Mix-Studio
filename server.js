@@ -195,7 +195,14 @@ const {
   normalizeKrea2Variant,
   recommendedKrea2Variant,
 } = require('./lib/krea2-model');
-const { diffusionModelInput, diffusionModelLoader } = require('./lib/model-loader');
+const {
+  diffusionModelInput,
+  diffusionModelLoader,
+  modelChoice,
+  normalizeModelPath,
+  registeredModelNames,
+  resolveRegisteredModelName,
+} = require('./lib/model-loader');
 const {
   applyLowVramImageLimits,
   normalizeVramProfile,
@@ -289,6 +296,7 @@ User's Input:`;
 
 const DEFAULT_SETTINGS = {
   comfyUrl: RUNTIME.comfy.url || 'http://127.0.0.1:8188',
+  hfToken: '',
   unet: 'krea2_turbo_fp8_scaled.safetensors',
   krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
   krea2ModelVariant: 'fp8',
@@ -333,7 +341,7 @@ const DEFAULT_SETTINGS = {
   wanHighLora: 'wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors',
   wanLowLora: 'wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors',
   erosCkpt: '10Eros_v1.2_fp8mixed_learned.safetensors',
-  erosTextEncoder: 'gemma-3-12b-it-ablit-norms-biproj-fp8mixed.safetensors',
+  erosTextEncoder: 'gemma_3_12B_it_heretic_fp8_e4m3fn.safetensors',
   erosDmdLora: 'LTX2.3_DMD_reshaped_r256.safetensors',
   erosSigmasFirst: '',
   erosSigmasUpscale: '',
@@ -387,7 +395,12 @@ function settingsRequireAppRestart() {
 }
 
 function settingsResponse() {
-  return Object.assign({}, settings, { appRestartRequired: settingsRequireAppRestart() });
+  const response = Object.assign({}, settings, {
+    hfTokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
+    appRestartRequired: settingsRequireAppRestart(),
+  });
+  delete response.hfToken;
+  return response;
 }
 
 function seedVr2ModelDirs() {
@@ -921,23 +934,6 @@ function browseGenerationFolder(kind) {
   });
 }
 
-function registeredModelNames(info) {
-  const names = new Set();
-  for (const cls of Object.values(info || {})) {
-    const inputs = cls?.input || {};
-    for (const group of [inputs.required, inputs.optional]) {
-      for (const spec of Object.values(group || {})) {
-        if (!Array.isArray(spec)) continue;
-        const choices = Array.isArray(spec[0])
-          ? spec[0]
-          : (spec[0] === 'COMBO' && Array.isArray(spec[1]?.options) ? spec[1].options : []);
-        for (const choice of choices) if (typeof choice === 'string') names.add(choice);
-      }
-    }
-  }
-  return names;
-}
-
 async function assertDesktopIsIdle() {
   const busy = (message) => {
     const error = new Error(message);
@@ -1092,7 +1088,19 @@ async function queueHealth(running, pending) {
 
 async function comfyFetch(p, opts) {
   const url = settings.comfyUrl.replace(/\/$/, '') + p;
-  const res = await fetch(url, opts);
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (error) {
+    const detail = String(error?.cause?.message || error?.message || error || 'connection failed');
+    const wrapped = new Error(
+      `Could not reach ComfyUI for ${String(opts?.method || 'GET').toUpperCase()} ${p}: ${detail}. `
+      + `Check that ComfyUI is running at ${settings.comfyUrl}.`
+    );
+    wrapped.code = 'comfy_connection_failed';
+    wrapped.cause = error;
+    throw wrapped;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`ComfyUI ${p} -> ${res.status} ${text.slice(0, 400)}`);
@@ -1138,7 +1146,22 @@ async function getObjectInfo(force, fetchOptions) {
   const res = await comfyFetch('/object_info', fetchOptions);
   objectInfoCache = await res.json();
   objectInfoAt = Date.now();
+  adoptRegisteredModelPaths(objectInfoCache);
   return objectInfoCache;
+}
+
+function adoptRegisteredModelPaths(info) {
+  const available = registeredModelNames(info);
+  let changed = false;
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (!modelChoice(settings[key])) continue;
+    const resolved = resolveRegisteredModelName(settings[key], available);
+    if (!resolved || normalizeModelPath(resolved) === normalizeModelPath(settings[key])) continue;
+    settings[key] = resolved;
+    changed = true;
+  }
+  if (changed) saveJsonSync(SETTINGS_FILE, settings);
+  return changed;
 }
 
 function comboList(info, cls, field) {
@@ -1147,7 +1170,8 @@ function comboList(info, cls, field) {
 
 function modelStatus(info, cls, field, name, fallbackList) {
   const list = fallbackList || comboList(info, cls, field);
-  return { name, ok: !name || list.includes(name) };
+  const resolved = resolveRegisteredModelName(name, list);
+  return { name: resolved || name, ok: !name || !!resolved };
 }
 
 function diffusionModelStatus(info, name) {
@@ -1157,7 +1181,8 @@ function diffusionModelStatus(info, name) {
 
 function modelStatusAny(info, name, choices, fallbackList) {
   const list = fallbackList || choices.flatMap(([cls, field]) => comboList(info, cls, field));
-  return { name, ok: !name || list.includes(name) };
+  const resolved = resolveRegisteredModelName(name, list);
+  return { name: resolved || name, ok: !name || !!resolved };
 }
 
 function scailInfinityStatus(info) {
@@ -1168,7 +1193,7 @@ function scailInfinityStatus(info) {
     node: { name: 'WanSCAILInfinity', ok: !!info.WanSCAILInfinity },
     pusa: {
       name: settings.scailPusaLora,
-      ok: !!settings.scailPusaLora && loraList.includes(settings.scailPusaLora),
+      ok: !!settings.scailPusaLora && !!resolveRegisteredModelName(settings.scailPusaLora, loraList),
     },
   };
 }
@@ -1301,6 +1326,7 @@ function missingDependencyComponentIds(missing, models) {
     ltxdirector: ['ltxdirector'],
     videoedit: ['videoedit'],
     video4k: ['video4k'],
+    rife: ['rife'],
     wan: ['wan'],
     eros: ['eros'],
     scail: ['scail'],
@@ -1475,11 +1501,21 @@ async function uploadToComfy(buffer, filename) {
   );
   const mid = Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n--${boundary}--\r\n`);
   const body = Buffer.concat([head, buffer, mid]);
-  const res = await comfyFetch('/upload/image', {
-    method: 'POST',
-    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-    body,
-  });
+  let res;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      res = await comfyFetch('/upload/image', {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body,
+      });
+      break;
+    } catch (error) {
+      if (error?.code !== 'comfy_connection_failed' || attempt > 0) throw error;
+      resetComfyTransport();
+      await pause(750);
+    }
+  }
   const json = await res.json();
   return (json.subfolder ? json.subfolder + '/' : '') + json.name;
 }
@@ -1502,18 +1538,29 @@ async function uploadCameraMotionGuides(value) {
 }
 
 async function uploadFileToComfy(file, filename) {
-  const upload = await multipartFileUpload(file, filename);
-  const res = await comfyFetch('/upload/image', {
-    method: 'POST',
-    headers: {
-      'Content-Type': `multipart/form-data; boundary=${upload.boundary}`,
-      'Content-Length': String(upload.contentLength),
-    },
-    body: upload.body,
-    duplex: 'half',
-  });
-  const result = await res.json();
-  return (result.subfolder ? result.subfolder + '/' : '') + result.name;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const upload = await multipartFileUpload(file, filename);
+    try {
+      const res = await comfyFetch('/upload/image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${upload.boundary}`,
+          'Content-Length': String(upload.contentLength),
+        },
+        body: upload.body,
+        duplex: 'half',
+      });
+      const result = await res.json();
+      return (result.subfolder ? result.subfolder + '/' : '') + result.name;
+    } catch (error) {
+      if (error?.code !== 'comfy_connection_failed' || attempt > 0) {
+        throw new Error(`Could not upload ${filename} to ComfyUI: ${String(error.message || error)}`, { cause: error });
+      }
+      resetComfyTransport();
+      await pause(750);
+    }
+  }
+  throw new Error(`Could not upload ${filename} to ComfyUI.`);
 }
 
 async function queuePrompt(graph, options = {}) {
@@ -1541,6 +1588,7 @@ let ws = null;
 let wsTimer = null;
 let lastPreviewAt = 0;
 let activeWsPromptId = '';
+let lastWsMessageAt = 0;
 
 function resetComfyTransport() {
   clearTimeout(wsTimer);
@@ -1556,6 +1604,7 @@ function resetComfyTransport() {
   }
   ws = null;
   activeWsPromptId = '';
+  lastWsMessageAt = 0;
   objectInfoCache = null;
   objectInfoAt = 0;
   comfyCompatibilitySnapshot = null;
@@ -1569,11 +1618,13 @@ function ensureWs() {
   try { ws = new WebSocket(url); } catch { return scheduleWsRetry(); }
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
+    lastWsMessageAt = Date.now();
     // ComfyUI 0.27 sends sampler previews through PREVIEW_IMAGE_WITH_METADATA
     // only after this first-message capability negotiation.
     try { ws.send(JSON.stringify({ type: 'feature_flags', data: { supports_preview_metadata: true } })); } catch { /* noop */ }
   };
   ws.onmessage = async (ev) => {
+    lastWsMessageAt = Date.now();
     if (typeof ev.data === 'string') {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       handleWsMessage(msg);
@@ -2297,7 +2348,15 @@ async function completeJob(pid) {
 /* Polling fallback: no native WebSocket (Node < 22) OR the WS connection is down. */
 setInterval(async () => {
   if (!jobs.size) return;
-  if (typeof WebSocket !== 'undefined' && ws && ws.readyState === 1) return;
+  const socketOpen = typeof WebSocket !== 'undefined' && ws && ws.readyState === 1;
+  const socketStale = socketOpen && Date.now() - lastWsMessageAt > 15_000;
+  const needsTextReconciliation = [...jobs.values()]
+    .some((job) => ['enhance', 'motionPrompt', 'smartMask'].includes(job.kind));
+  if (socketOpen && !socketStale && !needsTextReconciliation) return;
+  if (socketStale) {
+    resetComfyTransport();
+    ensureWs();
+  }
   for (const pid of [...jobs.keys()]) {
     try {
       const hist = (await (await comfyFetch(`/history/${pid}`)).json())[pid];
@@ -2848,7 +2907,13 @@ async function buildEditKrea2Ref(p, refNames) {
     }
   } catch { /* fall back to the selected output size */ }
 
-  const rebalanceInputs = { text: p.prompt, clip: ['clip', 0] };
+  const rebalanceInputs = {
+    text: p.prompt,
+    clip: ['clip', 0],
+    refocus_strength: 0.8,
+    guidance_strength: 0.5,
+    enable_split: true,
+  };
   refNames.slice(0, 4).forEach((name, i) => {
     const k = i + 1;
     graph[`ref${k}`] = { class_type: 'LoadImage', inputs: { image: name } };
@@ -4776,6 +4841,7 @@ const REQUIRED_CLASSES = {
     'VHS_LoadVideo', 'ImageBatch'],
   videoedit: ['VHS_LoadVideo', 'LTXVAddGuide'],
   video4k: ['RTXVideoSuperResolution'],
+  rife: ['RIFE VFI'],
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
   eros: ['CheckpointLoaderSimple', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
@@ -5336,6 +5402,7 @@ async function handleApi(req, res, url) {
       settings.krea2ModelVariant = body.krea2ModelVariant;
     }
     if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
+    if (body.clearHfToken === true) settings.hfToken = '';
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
     settings = normalizeSettings(settings);
     saveJsonSync(SETTINGS_FILE, settings);
@@ -5702,7 +5769,13 @@ async function handleApi(req, res, url) {
           runtime: RUNTIME,
           settings,
           components,
-          options: { repair, signal: installController.signal, availableModelNames, modelVariants },
+          options: {
+            repair,
+            signal: installController.signal,
+            availableModelNames,
+            modelVariants,
+            hfToken: settings.hfToken,
+          },
           report: (phase, message, detail) => {
             if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
           },
@@ -5742,7 +5815,7 @@ async function handleApi(req, res, url) {
       try {
         const result = await installComponents({
           runtime: RUNTIME, settings, components: ['smartmask'],
-          options: { signal: installController.signal },
+          options: { signal: installController.signal, hfToken: settings.hfToken },
           report: (phase, message, detail) => {
             if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
           },

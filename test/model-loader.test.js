@@ -5,7 +5,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { diffusionModelInput, diffusionModelLoader, isGgufModel } = require('../lib/model-loader');
+const {
+  diffusionModelInput,
+  diffusionModelLoader,
+  isGgufModel,
+  registeredModelNames,
+  resolveRegisteredModelName,
+} = require('../lib/model-loader');
 
 const root = path.join(__dirname, '..');
 
@@ -22,6 +28,23 @@ test('diffusion model loader selects the node required by the file format', () =
   assert.deepEqual(diffusionModelInput('model.gguf'), {
     className: 'UnetLoaderGGUF', field: 'unet_name',
   });
+});
+
+test('registered model paths resolve unique subfoldered basenames', () => {
+  const names = registeredModelNames({
+    UNETLoader: { input: { required: { unet_name: [['krea\\krea2.safetensors'], {}] } } },
+    LoraLoader: { input: { required: { lora_name: ['COMBO', { options: ['Krea\\turbo.safetensors'] }] } } },
+  });
+  assert.deepEqual(names, ['krea\\krea2.safetensors', 'Krea\\turbo.safetensors']);
+  assert.equal(resolveRegisteredModelName('krea2.safetensors', names), 'krea\\krea2.safetensors');
+  assert.equal(resolveRegisteredModelName('KREA/turbo.safetensors', names), 'Krea\\turbo.safetensors');
+  assert.equal(resolveRegisteredModelName('missing.safetensors', names), '');
+});
+
+test('ambiguous duplicate basenames are not selected automatically', () => {
+  const names = ['first\\shared.safetensors', 'second/shared.safetensors'];
+  assert.equal(resolveRegisteredModelName('shared.safetensors', names), '');
+  assert.equal(resolveRegisteredModelName('second/shared.safetensors', names), 'second/shared.safetensors');
 });
 
 test('image and video graph builders route configured GGUF models through UnetLoaderGGUF', () => {
