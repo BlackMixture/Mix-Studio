@@ -422,33 +422,33 @@ test('Director gives instant keyframes usable controls without changing frame pr
   assert.match(app, /requestAnimationFrame\(directorRevealSelection\)/);
 });
 
-test('Director has a compact full-sequence or selected-range generation footer', () => {
+test('Director keeps compact sequence metadata beside the shared generation dock', () => {
   assert.match(html, /<footer[^>]*class="[^"]*director-summary[^"]*"/);
   assert.match(html, /id="directorSummaryLabel"/);
-  assert.match(html, /id="directorGenerate"[^>]*>\s*Generate Video\s*<\/button>/);
+  assert.doesNotMatch(html, /id="directorGenerate"/);
   assert.match(app, /directorSummaryLabel/);
   assert.match(app, /(?:Full sequence|Selected range)/);
-  assert.match(app, /button\.textContent = project\.extensionSource \? 'Generate Extension' : 'Generate Video'/);
-  assert.match(css, /\.director-summary\s*\{[^}]*position:\s*sticky;[^}]*bottom:/);
-  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.director-summary\s*\{\s*position:\s*static;\s*bottom:\s*auto/);
-  assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open \.director-workspace \.director-summary\s*\{[^}]*left:\s*calc\(var\(--studio-left-width\) \+ 1px\);[^}]*right:\s*calc\(var\(--studio-right-width\) \+ 1px\);/);
-  assert.match(css, /body\.director-open \.director-workspace \.director-summary \.btn-generate\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none;/);
+  assert.match(app, /if \(state\.directorOpen\) return state\.directorProject\?\.extensionSource \? 'Generate Extension' : 'Generate Video'/);
+  assert.match(css, /\.director-summary\s*\{[^}]*position:\s*static;[^}]*background:\s*transparent/);
+  assert.doesNotMatch(css, /\.director-summary \.btn-generate/);
 });
 
 test('Director generation uses the shared progress card and queue lifecycle', () => {
   assert.match(app, /function setDirectorProgressLocation\(inDirector\)/);
-  assert.match(app, /if \(inDirector\)[\s\S]{0,220}summary\.before\(preview\)[\s\S]{0,160}director-live-preview/);
+  assert.match(app, /if \(preview\.parentElement !== home\) home\.insertBefore\(preview, home\.firstElementChild\)/);
+  assert.match(app, /preview\.classList\.remove\('director-live-preview'\)/);
   assert.match(app, /function openDirectorMode[\s\S]{0,1300}setDirectorProgressLocation\(true\)/);
   assert.match(app, /function closeDirectorMode[\s\S]{0,700}setDirectorProgressLocation\(false\)/);
   assert.match(app, /async function generateDirector\(\)[\s\S]{0,900}setGenerating\(true, 'Queued…'\)[\s\S]{0,1100}queueRefreshSoon\(\)/);
   assert.match(app, /async function generateDirector\(\)[\s\S]{0,1900}catch \(requestError\) \{[\s\S]{0,100}setGenerating\(false\)/);
-  assert.match(css, /\.director-workspace > \.director-live-preview\s*\{[^}]*grid-row:\s*6;[^}]*width:\s*min\(100%,720px\)/);
-  assert.match(css, /\.director-summary\s*\{[^}]*grid-row:\s*7/);
+  assert.match(app, /\$\('#generateBtn'\)\.addEventListener\('click', async \(\) => \{[\s\S]{0,300}if \(state\.directorOpen\) \{[\s\S]{0,80}await generateDirector\(\)/);
+  assert.match(app, /async function generateDirector\(\)[\s\S]{0,700}const button = \$\('#generateBtn'\)/);
+  assert.doesNotMatch(css, /\.director-workspace > \.director-live-preview/);
 });
 
 test('Director reuses the desktop creation surface alongside the Library rail', () => {
   assert.doesNotMatch(css, /\.director-open #desktopStage[^\n{]*\{\s*display:\s*none/);
-  assert.match(css, /\.director-open #genDock\s*\{\s*display:\s*none !important;/);
+  assert.doesNotMatch(css, /\.director-open #genDock\s*\{\s*display:\s*none/);
   assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open \.studio-workspace\s*\{[^}]*grid-template-columns:\s*var\(--studio-left-width\) minmax\(420px,1fr\) var\(--studio-right-width\)/);
   assert.match(css, /@media \(min-width: 1180px\)[\s\S]*body\.director-open #view-create\s*\{[^}]*grid-column:\s*1;/);
   assert.match(css, /body\.director-open #desktopStage\s*\{[^}]*display:\s*grid;[^}]*grid-column:\s*2;/);

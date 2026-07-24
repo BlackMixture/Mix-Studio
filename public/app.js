@@ -2975,6 +2975,7 @@ function genLabel() {
   }
   if (editOutpaintActive()) return 'Generate Expand';
   if (state.view === 'edit' && state.editEngine === 'krea2' && hasEditMask()) return 'Generate Fill';
+  if (state.directorOpen) return state.directorProject?.extensionSource ? 'Generate Extension' : 'Generate Video';
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
@@ -11326,7 +11327,10 @@ function wireDirectorKeyframeDrag(card, list) {
 function directorRefreshGenerationValidation() {
   const error = directorOverlapError(state.directorProject);
   if ($('#directorValidation')) $('#directorValidation').textContent = error;
-  if ($('#directorGenerate')) $('#directorGenerate').disabled = !!error;
+  if (state.directorOpen) {
+    $('#generateBtn').disabled = !!error;
+    $('#genLbl').textContent = genLabel();
+  }
   if ($('#directorPromptValidation')) $('#directorPromptValidation').textContent = error === 'Add an overall or timed direction.' ? error : '';
 }
 
@@ -11657,6 +11661,7 @@ function renderDirector() {
   if (!project || !state.directorOpen) return;
   $('#directorWorkspace').classList.toggle('choosing-workflow', directorChoosingWorkflow);
   $('#directorWorkflowChooser').hidden = !directorChoosingWorkflow;
+  $('#genDock').style.display = directorChoosingWorkflow ? 'none' : '';
   if (!['extend', 'keyframes', 'timeline'].includes(state.directorComposerMode)) state.directorComposerMode = 'timeline';
   const extension = project.extensionSource;
   const extensionEntry = directorExtensionVideo(extension);
@@ -11735,8 +11740,8 @@ function renderDirector() {
   if ($('#directorInspectorValidation')) $('#directorInspectorValidation').textContent = inspectorVisible ? selectedMediaError : '';
   if ($('#directorValidationInline')) $('#directorValidationInline').textContent = directionError || (inspectorVisible && selectedMediaError) ? '' : error;
   $('#directorValidation').textContent = error;
-  $('#directorGenerate').disabled = !!error;
-  $('#directorGenerate').textContent = extension ? 'Generate Extension' : 'Generate Video';
+  $('#generateBtn').disabled = !!error;
+  $('#genLbl').textContent = genLabel();
   if (directorNeedsRangeScroll) {
     directorNeedsRangeScroll = false;
     requestAnimationFrame(() => {
@@ -11779,7 +11784,7 @@ function openDirectorMode(project, options = {}) {
   renderDirectorModelChoices();
   setDirectorModelExpanded(false);
   directorUseComfortableTimelineScale();
-  $('#genDock').style.display = 'none';
+  $('#genDock').style.display = '';
   renderDirector();
   saveDirectorProject();
   directorCheckAssets();
@@ -12004,6 +12009,8 @@ function closeDirectorMode() {
   $('#directorWorkspace').hidden = true;
   document.body.classList.remove('director-open');
   if (state.view !== 'gallery') $('#genDock').style.display = '';
+  $('#generateBtn').disabled = false;
+  $('#genLbl').textContent = genLabel();
   saveForm();
 }
 
@@ -12609,9 +12616,9 @@ async function generateDirector() {
   const activeLoras = directorLoras()
     .filter((lora) => lora.on && lora.name)
     .map((lora) => ({ name: lora.name, strength: Number(lora.strength), on: true }));
-  const button = $('#directorGenerate');
+  const button = $('#generateBtn');
   button.disabled = true;
-  button.textContent = 'Queueing…';
+  $('#genLbl').textContent = 'Queueing…';
   try {
     setGenerating(true, 'Queued…');
     const baseSeed = project.output.seed === '' ? Math.floor(Math.random() * 0x7fffffff) : Number(project.output.seed);
@@ -12638,23 +12645,17 @@ async function generateDirector() {
     if (Array.isArray(requestError.missingAssets)) requestError.missingAssets.forEach((name) => directorMissingAssets.add(name));
     toast(requestError.message, true);
   } finally {
-    button.textContent = project.extensionSource ? 'Generate Extension' : 'Generate Video';
     renderDirector();
   }
 }
 
 function setDirectorProgressLocation(inDirector) {
   const preview = $('#livePreview');
-  const summary = $('#directorSummary');
   const home = $('#genDock .generate-inner');
-  if (!preview || !summary || !home) return;
-  if (inDirector) {
-    if (preview.parentElement !== $('#directorWorkspace')) summary.before(preview);
-    preview.classList.add('director-live-preview');
-  } else {
-    if (preview.parentElement !== home) home.insertBefore(preview, home.firstElementChild);
-    preview.classList.remove('director-live-preview');
-  }
+  if (!preview || !home) return;
+  if (preview.parentElement !== home) home.insertBefore(preview, home.firstElementChild);
+  preview.classList.remove('director-live-preview');
+  document.body.classList.toggle('director-shared-generate', inDirector);
 }
 
 function setDirectorDisclosure(buttonId, panelId, open) {
@@ -12857,7 +12858,6 @@ $('#directorSmoothRow').addEventListener('click', (event) => {
 });
 for (const id of ['directorFourK', 'directorContinueAudio', 'directorInpaintAudio', 'directorOverrideAudio']) wireDirectorToggle(id, directorUpdateProjectFields);
 wireDirectorToggle('directorSnap');
-$('#directorGenerate').addEventListener('click', generateDirector);
 $('#directorExportBtn').addEventListener('click', () => {
   directorCloseSheet('directorProjectMenuSheet');
   const blob = new Blob([`${JSON.stringify(directorSerializableProject(), null, 2)}\n`], { type: 'application/json' });
@@ -13900,6 +13900,7 @@ function dismissLivePreview(direction = 1) {
   preview.style.opacity = '0';
   livePreviewDismissTimer = setTimeout(() => {
     preview.classList.remove('show');
+    document.body.classList.remove('live-preview-visible');
     resetLivePreviewMotion();
   }, 180);
 }
@@ -14981,6 +14982,10 @@ $('#generateBtn').addEventListener('click', async () => {
     $('#genLbl').textContent = genLabel();
     return;
   }
+  if (state.directorOpen) {
+    await generateDirector();
+    return;
+  }
   const rawPrompt = promptForGeneration().trim();
   const prompt = state.view === 'video' ? cameraMotionPromptForEngine(rawPrompt) : rawPrompt;
   const promptIntent = currentPromptIntent();
@@ -15304,6 +15309,7 @@ function setGenerating(on, statusText) {
     $('#liveStatusText').onclick = null;
     renderDesktopStageGenerating(statusText || 'Working…');
     $('#livePreview').classList.add('show');
+    document.body.classList.add('live-preview-visible');
     startLivePreviewSimulation(state.view === 'video' ? 'video' : 'image');
     $('#liveStatusText').innerHTML = `<span class="spin"></span> ${statusText || 'Working…'}`;
     $('#livePct').textContent = '';

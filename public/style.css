@@ -492,6 +492,14 @@ html:-webkit-full-screen { background: #000; }
   transition: transform 260ms var(--ease);
 }
 @media (max-width: 760px) {
+  #view-create {
+    transition:
+      transform 260ms var(--ease),
+      padding-bottom 220ms var(--ease);
+  }
+  body.live-preview-visible #view-create {
+    padding-bottom: calc(190px + env(safe-area-inset-bottom));
+  }
   .side-menu-icon {
     width: 44px;
     height: 44px;
@@ -11864,7 +11872,6 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
 .director-workspace.choosing-workflow .director-layout,
 .director-workspace.choosing-workflow .director-summary { display: none !important; }
 .director-open #view-create > :not(.director-workspace) { display: none !important; }
-.director-open #genDock { display: none !important; }
 .director-workspace {
   width: min(100%, 1240px); min-width: 0; min-height: calc(100dvh - 86px); margin: 0 auto; padding: 12px 12px 96px;
   display: grid; grid-template-rows: auto auto auto auto minmax(min-content,1fr) auto auto; color: var(--ink);
@@ -12269,24 +12276,14 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
 .director-inspector-actions .danger { margin-left: auto; color: #ffaaa3; }
 .director-project-settings { margin: 0; padding: 0; border: 0; }
 .director-summary {
-  grid-row: 7; align-self: end; position: sticky; z-index: 20; bottom: max(8px, env(safe-area-inset-bottom)); margin-top: 14px; padding: 8px 9px 8px 13px;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  background: rgba(5,5,7,.94); backdrop-filter: blur(18px);
+  grid-row: 7; align-self: end; position: static; margin-top: 14px; padding: 4px;
+  display: block; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none;
 }
 .director-summary > div { min-width: 0; display: grid; gap: 2px; }
 .director-summary span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .director-summary strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .director-summary small { overflow: hidden; max-width: 55ch; color: #ff9c93; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .director-summary small:empty { display: none; }
-.director-summary .btn-generate { flex: 0 0 auto; width: auto; min-width: 178px; max-width: 240px; min-height: 45px; padding-inline: 20px; }
-.director-workspace > .director-live-preview {
-  grid-row: 6;
-  width: min(100%,720px);
-  margin: 14px auto 0;
-  justify-self: center;
-  align-self: end;
-  box-shadow: 0 16px 44px rgba(0,0,0,.44);
-}
 
 /* Director progressive-disclosure sheets */
 .director-sheet-panel { max-width: 560px; padding: 18px 18px calc(24px + env(safe-area-inset-bottom)); background: #050507; }
@@ -12389,7 +12386,7 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
   body.director-open #desktopStage {
     display: grid;
     grid-column: 2;
-    padding-bottom: 88px;
+    padding-bottom: 0;
   }
   body.director-open #view-gallery {
     display: block;
@@ -12484,46 +12481,6 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
     background: #050507;
     box-shadow: 0 -24px 80px rgba(0,0,0,.78);
   }
-  body.director-open .director-workspace .director-summary {
-    box-sizing: border-box;
-    position: fixed;
-    z-index: 25;
-    left: calc(var(--studio-left-width) + 1px);
-    right: calc(var(--studio-right-width) + 1px);
-    bottom: 0;
-    width: auto;
-    margin: 0;
-    padding: 9px 22px 13px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: center;
-    justify-self: stretch;
-    border-radius: 0;
-    border-width: 1px 0 0;
-    gap: 6px;
-    background: linear-gradient(180deg, rgba(1,2,4,.8), rgba(1,2,4,.98) 30%);
-    box-shadow: 0 -18px 42px rgba(0,0,0,.4);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-  }
-  body.director-open .director-workspace .director-summary > div {
-    min-width: 0;
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 8px;
-    text-align: center;
-  }
-  body.director-open .director-workspace .director-summary span { display: none; }
-  body.director-open .director-workspace .director-summary strong { color: var(--muted); font-size: 9px; }
-  body.director-open .director-workspace .director-summary .btn-generate {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    min-height: 44px;
-    padding-inline: 18px;
-    font-size: 12px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -12599,10 +12556,9 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
     background: #050507; box-shadow: 0 -24px 80px rgba(0,0,0,.78);
   }
   .director-inspector.show { animation: sheetUp 240ms var(--ease); }
-  .director-summary { position: static; bottom: auto; padding: 7px 7px 7px 11px; gap: 8px; }
+  .director-summary { padding: 4px; }
   .director-summary span { display: none; }
   .director-summary strong { font-size: 10px; }
-  .director-summary .btn-generate { width: auto; min-width: 145px; max-width: 180px; min-height: 44px; padding-inline: 14px; font-size: 13px; }
   .director-sheet-panel { max-height: min(90vh,820px); max-height: min(90dvh,820px); padding-inline: 15px; }
   .director-modal-sheet { padding: 10px; }
   .director-settings-panel { width: 100%; max-height: calc(100dvh - 20px); padding: 16px; border-radius: 18px; }
@@ -12618,7 +12574,6 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
   .director-primary-buttons { gap: 5px; }
   .director-primary-buttons button { padding-inline: 9px; }
   .director-summary strong { max-width: 118px; }
-  .director-summary .btn-generate { min-width: 138px; }
   .director-inspector-actions button { min-width: calc(50% - 4px); }
 }
 

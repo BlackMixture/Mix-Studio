@@ -254,9 +254,9 @@ test('Generate occupies the middle stage and animates away with focused results'
   assert.match(css, /\.desktop-stage-shell \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\) auto auto/);
   assert.match(app, /actions\.hidden = !item/);
   assert.match(app, /const item = open\?\.dataset\.itemId && state\.items\.find/);
-  assert.match(css, /body\.director-open \.director-workspace \.director-summary \{[\s\S]*position: fixed;[\s\S]*left: calc\(var\(--studio-left-width\) \+ 1px\);[\s\S]*right: calc\(var\(--studio-right-width\) \+ 1px\);[\s\S]*width: auto/);
-  assert.match(css, /body\.director-open #desktopStage \{[\s\S]*grid-column: 2;[\s\S]*padding-bottom: 88px/);
-  assert.match(css, /body\.director-open \.director-workspace \.director-summary \.btn-generate \{[\s\S]*width: 100%;[\s\S]*max-width: none/);
+  assert.doesNotMatch(css, /\.director-open #genDock\s*\{\s*display:\s*none/);
+  assert.match(css, /body\.director-open #desktopStage \{[\s\S]*grid-column: 2;[\s\S]*padding-bottom: 0/);
+  assert.match(app, /if \(preview\.parentElement !== home\) home\.insertBefore\(preview, home\.firstElementChild\)/);
 });
 
 test('focused gallery and desktop information rail use true black surfaces', () => {
