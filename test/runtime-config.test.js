@@ -3,7 +3,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const { resolveRuntimeConfig, publicAnalyticsConfig, publicRuntimeConfig } = require('../lib/runtime-config');
+const {
+  DEFAULT_POSTHOG_HOST,
+  DEFAULT_POSTHOG_KEY,
+  resolveRuntimeConfig,
+  publicAnalyticsConfig,
+  publicRuntimeConfig,
+} = require('../lib/runtime-config');
 
 function fakeFs(files = {}) {
   const normalized = new Map(Object.entries(files).map(([file, value]) => [path.resolve(file), value]));
@@ -93,14 +99,33 @@ test('a portable copy without Git clearly reports updates as unavailable', () =>
   assert.equal(runtime.update.provider, 'unavailable');
 });
 
-test('analytics stays disabled until a PostHog project key is configured', () => {
+test('analytics uses the public Mix Studio PostHog project for fresh installs', () => {
   const root = path.resolve('/work/mixbox');
   const runtime = resolveRuntimeConfig(root, { env: {}, ...fakeFs({}) });
   assert.deepEqual(publicAnalyticsConfig(runtime), {
-    enabled: false,
+    enabled: true,
     provider: 'posthog',
-    key: '',
-    host: '',
+    key: DEFAULT_POSTHOG_KEY,
+    host: DEFAULT_POSTHOG_HOST,
+  });
+});
+
+test('a portable install can override the bundled PostHog project', () => {
+  const root = path.resolve('/apps/Mix Studio');
+  const installFile = path.join(root, 'install.json');
+  const runtime = resolveRuntimeConfig(root, {
+    env: {},
+    ...fakeFs({
+      [installFile]: {
+        analytics: { key: 'phc_portable_project', host: 'https://eu.i.posthog.com' },
+      },
+    }),
+  });
+  assert.deepEqual(publicAnalyticsConfig(runtime), {
+    enabled: true,
+    provider: 'posthog',
+    key: 'phc_portable_project',
+    host: 'https://eu.i.posthog.com',
   });
 });
 

@@ -1,10 +1,54 @@
-# Mix Studio
+<p align="center">
+  <img src="docs/download/modatory-logo.svg" width="72" alt="" />
+</p>
+<h1 align="center">
+  <img src="docs/download/mix-studio-wordmark.svg" width="390" alt="Mix Studio" />
+</h1>
 
-Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated graph builders cover Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2.
+<p align="center"><strong>The cleanest, responsive AI workspace.</strong><br />Run highly tuned image and video workflows flawlessly from your desktop or your phone. Built on ComfyUI.</p>
 
-Generations run through **ComfyUI** on the Windows desktop; use the same responsive workspace from your phone on the same Wi-Fi or through Tailscale. Zero app dependencies: one Node.js server, vanilla JS frontend, no build step.
+<p align="center">
+  <a href="https://blackmixture.github.io/Mix-Studio/"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows-4285F4?style=flat-square&amp;logo=windows11&amp;logoColor=white" /></a>
+  <a href="https://github.com/BlackMixture/Mix-Studio/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/BlackMixture/Mix-Studio?style=flat-square&amp;label=release" /></a>
+  <a href="https://github.com/BlackMixture/Mix-Studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/BlackMixture/Mix-Studio?style=flat-square&amp;logo=github" /></a>
+  <a href="LICENSE"><img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-34A853?style=flat-square" /></a>
+</p>
 
-> Working on this codebase (human or AI agent)? **Read `AGENTS.md` first.**
+![Mix Studio Create workspace running a curated Krea 2 workflow](docs/download/mix-studio-create.webp)
+
+Mix Studio turns a local **ComfyUI** installation into a focused interface for image generation, regional prompting, editing, video, motion transfer, upscaling, and library management. It builds the API graphs for curated Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2 workflows, so you can create without rebuilding node graphs for every job.
+
+- **Create from anywhere:** use the same touch-friendly workspace on the Windows desktop, a phone on the same Wi-Fi, or privately through Tailscale.
+- **Keep the power of ComfyUI:** reuse your installation, models, custom nodes, queue, and disaster-recovery outputs.
+- **Stay local and in control:** prompts, inputs, generated media, profiles, and galleries remain on your computer.
+- **No frontend toolchain:** one zero-dependency Node.js server, vanilla JavaScript, and no build step.
+
+## Quick setup
+
+### Windows installer
+
+1. Open the **[Mix Studio download page](https://blackmixture.github.io/Mix-Studio/)** and save `install_MixStudio.bat`.
+2. Put the installer in the parent folder where you want Mix Studio to live, then run it. For example, placing it in `D:\AI` creates `D:\AI\Mix Studio`.
+3. Mix Studio installs Git and Node.js when needed, opens in your browser, detects an existing ComfyUI installation, and guides you through any missing workflow files.
+
+The setup reuses compatible models and custom nodes already registered with ComfyUI. Start with **Quick setup** for the recommended image workflow, or install only the workflow family you want to use.
+
+> **Hardware:** Windows with an NVIDIA GPU is the supported path. A 4 GB offloaded edit route is available; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for the larger video workflows. See [GPU memory and quantized models](#gpu-memory-and-quantized-models) for the full matrix.
+
+Prefer the command line? See the [manual Git install](#manual-git-install). Do not use GitHub's **Download ZIP** if you want in-app updates.
+
+## Features
+
+| | |
+| --- | --- |
+| **Image generation** | Krea 2 Turbo and Raw with exact resolution, seed, batching, LoRAs, prompt enhancement, reference, style, and depth guidance. |
+| **Regional prompting** | Draw aspect-correct regions with independent prompts, LoRA stacks, and reference images, then generate one coherent result. |
+| **Image editing** | Flux 2 Klein, Qwen Image Edit, and Krea 2 with multiple references, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
+| **Video and motion** | LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 motion transfer with audio and frame controls. |
+| **Upscale and compare** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
+| **Creative library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
+| **Desktop and phone** | A responsive interface served from the generation computer, with local Wi-Fi and private Tailscale access. |
+| **Guided operation** | Hardware-aware setup, dependency checks, model reuse, queue progress, cancellation, updates, backups, and recovery tools. |
 
 ## Showcase
 
@@ -127,7 +171,7 @@ Inspect the ComfyUI connection, hardware rating, discovered models, custom-node 
 
 Short clips of the UI in motion: [region prompting](docs/download/media/ui-region-demo.mp4) · [before/after reveal](docs/download/media/ui-compare-demo.mp4)
 
-## Portable Windows install
+## Installation and hardware details
 
 This project is distributed as a portable Git checkout rather than a packaged executable. That keeps installation transparent for advanced users and lets the owner-only **Update app** button safely run a fast-forward Git update.
 
@@ -182,7 +226,7 @@ Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in
 
 The bootstrap writes ignored, machine-specific configuration to `install.json`. Changes made in Generation setup update the ComfyUI connection atomically and merge the URL into `data/settings.json`. Setup never resets `data/db.json`, profiles, gallery media, folders, prompts, or presets.
 
-Optional anonymous product analytics use PostHog and remain disabled unless a public project key is configured. Set `MIXBOX_POSTHOG_KEY` and, for EU Cloud, `MIXBOX_POSTHOG_HOST=https://eu.i.posthog.com` before starting the server, or add an `analytics` object with `key` and HTTPS `host` fields to the ignored `install.json`. The browser SDK uses memory-only persistence, disables autocapture, page views, session replay, surveys, and person profiles, and sends only `App_Launched` plus `Generation_Started` with a public model label. Users see a first-run notice and can disable or re-enable analytics under **Settings → General**. In PostHog, also set **Settings → Project → General → IP data capture** to discard client IP addresses; this server-side project setting is required because browser code cannot prevent a network peer from receiving an IP address.
+Anonymous product analytics use the app's public PostHog project by default. Operators can override the project with `MIXBOX_POSTHOG_KEY` and `MIXBOX_POSTHOG_HOST`, or with an `analytics` object containing `key` and HTTPS `host` fields in the ignored `install.json`. The browser SDK uses memory-only persistence, disables autocapture, page views, session replay, surveys, and person profiles, and sends only `App_Launched` plus `Generation_Started` with a public model label. Users see a first-run notice and can disable or re-enable analytics under **Settings → General**. In PostHog, **Settings → Project → General → IP data capture** must be set to discard client IP addresses; this server-side project setting is required because browser code cannot prevent a network peer from receiving an IP address.
 
 After the Owner has a PIN, the console prints local network URLs and Generation setup's **Phone access card** presents the usable addresses inside the app:
 
@@ -228,7 +272,7 @@ Every user-facing release is associated with the semantic version in `release.js
 
 The owner can also choose **Restart app** from the same menu. It checks both Mix Studio and ComfyUI queues before restarting the Node server, and is available because `start.bat` launches the server in restart-aware mode.
 
-## Features
+## Detailed capabilities
 
 ### Image and regional generation
 

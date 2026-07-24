@@ -11749,6 +11749,65 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
   .telemetry-toast { animation: none; }
   .telemetry-toast-disable { transition-duration: 1ms; }
 }
+.support-prompt {
+  position: relative;
+  width: min(92vw, 460px);
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgba(226,232,255,.14);
+  border-radius: 17px;
+  background: #000;
+  box-shadow: 0 18px 52px rgba(0,0,0,.68), 0 0 0 1px rgba(255,255,255,.02) inset;
+  pointer-events: auto;
+  animation: telemetryToastIn 180ms var(--ease);
+}
+.support-prompt-copy { min-width: 0; display: grid; gap: 5px; padding-right: 24px; }
+.support-prompt-copy strong { color: var(--ink); font-size: 13px; font-weight: 900; letter-spacing: -.015em; }
+.support-prompt-copy small { color: var(--muted); font-size: 10px; font-weight: 650; line-height: 1.5; }
+.support-prompt-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted-2);
+  font-size: 20px;
+  line-height: 1;
+}
+.support-prompt-actions { display: flex; align-items: center; gap: 8px; }
+.support-prompt-actions a,
+.support-prompt-actions button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink-soft);
+  font-size: 9.5px;
+  font-weight: 850;
+  text-decoration: none;
+}
+.support-prompt-actions .support-prompt-github { flex: 1; border-color: rgba(226,232,255,.24); background: rgba(255,255,255,.07); }
+.support-prompt-actions .support-prompt-patreon { flex: 1; border-color: rgba(255,111,97,.34); background: rgba(255,111,97,.1); color: #ffd7d2; }
+.support-prompt-actions .support-prompt-later { border: 0; background: transparent; color: var(--muted-2); }
+.support-prompt-close:hover,
+.support-prompt-later:hover { background: rgba(255,255,255,.05); color: var(--ink-soft) !important; }
+@media (max-width: 520px) {
+  .support-prompt-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .support-prompt-actions a { min-height: 44px; }
+  .support-prompt-actions .support-prompt-later { grid-column: 1 / -1; min-height: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .support-prompt { animation: none; }
+}
 .toast.upload-progress {
   width: min(92vw, 360px);
   display: grid;
