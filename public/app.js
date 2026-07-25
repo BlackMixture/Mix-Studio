@@ -8510,15 +8510,64 @@ $('#promptClear').addEventListener('click', () => {
   schedulePromptIntentHint(0);
 });
 
+let activePromptPresetCategoryId = 'camera';
+
+function focusPromptPresetCategory(id) {
+  requestAnimationFrame(() => {
+    const button = $$('#promptPresetCategoryNav [data-preset-category-tab]')
+      .find((item) => item.dataset.presetCategoryTab === id);
+    button?.focus({ preventScroll: true });
+  });
+}
+
 function renderCameraPicker() {
   const container = $('#promptPresetCategories');
   if (!container || !CameraSettings) return;
+  const categories = promptPresetCatalog();
+  if (!categories.some((category) => category.id === activePromptPresetCategoryId)) {
+    activePromptPresetCategoryId = categories[0]?.id || '';
+  }
+  const categoryNav = $('#promptPresetCategoryNav');
+  categoryNav.replaceChildren();
+  categories.forEach((category, index) => {
+    const active = category.id === activePromptPresetCategoryId;
+    const applied = !!selectedPromptPreset(category.id);
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'preset-category-tab' + (active ? ' active' : '');
+    tab.dataset.presetCategoryTab = category.id;
+    tab.dataset.applied = String(applied);
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(active));
+    tab.setAttribute('aria-controls', `promptPresetPanel-${category.id}`);
+    tab.setAttribute('aria-label', `${category.label}${applied ? ', preset applied' : ''}`);
+    tab.innerHTML = `<span>${escapeHtml(category.label)}</span><i aria-hidden="true">✓</i>`;
+    tab.addEventListener('click', () => {
+      activePromptPresetCategoryId = category.id;
+      renderCameraPicker();
+    });
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? categories.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + categories.length) % categories.length;
+      activePromptPresetCategoryId = categories[next].id;
+      renderCameraPicker();
+      focusPromptPresetCategory(activePromptPresetCategoryId);
+    });
+    categoryNav.appendChild(tab);
+  });
+  $('#promptPresetImportBtn').hidden = !state.promptPacksCanManage;
   container.replaceChildren();
-  for (const category of promptPresetCatalog()) {
+  for (const category of categories) {
     const selected = selectedPromptPreset(category.id);
     const section = document.createElement('section');
     section.className = 'preset-category';
     section.dataset.presetCategory = category.id;
+    section.id = `promptPresetPanel-${category.id}`;
+    section.hidden = category.id !== activePromptPresetCategoryId;
+    section.setAttribute('role', 'tabpanel');
     const headingId = `promptPresetCategory-${category.id}`;
     section.setAttribute('aria-labelledby', headingId);
     section.innerHTML = `
@@ -27382,6 +27431,13 @@ $('#addonChooseBtn').addEventListener('click', (event) => {
   event.stopPropagation();
   if (state.promptPacksCanManage) $('#addonFileInput').click();
 });
+$('#promptPresetImportBtn').addEventListener('click', () => {
+  if (!state.promptPacksCanManage) {
+    toast('Switch to the owner profile to import Mix Packs');
+    return;
+  }
+  $('#addonFileInput').click();
+});
 $('#addonDropZone').addEventListener('click', () => {
   if (state.promptPacksCanManage) $('#addonFileInput').click();
 });
@@ -27391,7 +27447,14 @@ $('#addonDropZone').addEventListener('keydown', (event) => {
   $('#addonFileInput').click();
 });
 $('#addonFileInput').addEventListener('change', () => {
-  inspectPromptPackFile($('#addonFileInput').files?.[0]);
+  const file = $('#addonFileInput').files?.[0];
+  if (!file) return;
+  if ($('#cameraSheet').classList.contains('show')) {
+    $('#cameraSheet').classList.remove('show');
+    setSettingsTab('addons');
+    $('#settingsBtn').click();
+  }
+  inspectPromptPackFile(file);
 });
 ['dragenter', 'dragover'].forEach((type) => $('#addonDropZone').addEventListener(type, (event) => {
   if (!state.promptPacksCanManage) return;

@@ -21,6 +21,7 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(appJs, /cameraPromptBtn'\)\.hidden = state\.view !== 'create'/);
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="promptPresetCategories"/);
+  assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="tablist"/);
   assert.match(appJs, /promptPresetCatalog/);
   assert.match(appJs, /section\.dataset\.presetCategory = category\.id/);
   assert.match(appJs, /querySelector\('\.camera-preset-grid'\)/);
@@ -38,6 +39,16 @@ test('camera sheet uses visual presets instead of individual camera controls', (
   assert.match(appJs, /className = 'camera-preset-card'/);
   assert.match(appJs, /setAttribute\('role', 'checkbox'\)/);
   assert.match(appJs, /setAttribute\('aria-checked'/);
+});
+
+test('visual presets switch categories from an accessible responsive header rail', () => {
+  assert.match(appJs, /activePromptPresetCategoryId/);
+  assert.match(appJs, /tab\.setAttribute\('role', 'tab'\)/);
+  assert.match(appJs, /tab\.setAttribute\('aria-selected'/);
+  assert.match(appJs, /section\.hidden = category\.id !== activePromptPresetCategoryId/);
+  assert.match(appJs, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
+  assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*overflow-x:\s*auto/s);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-picker-toolbar/);
 });
 
 test('sheets lock background scrolling while dialogs are open', () => {

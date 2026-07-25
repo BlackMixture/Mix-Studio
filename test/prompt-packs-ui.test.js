@@ -18,9 +18,19 @@ test('Advanced Settings exposes a responsive owner-managed add-ons installer', (
   assert.match(indexHtml, /accept="\.mixpack"/);
   assert.match(indexHtml, /id="addonInspection"/);
   assert.match(indexHtml, /id="addonPackList"/);
+  assert.match(indexHtml, /id="promptPresetImportBtn"/);
   assert.match(appJs, /Only the owner|owner profile|promptPacksCanManage/);
   assert.match(appJs, /dataTransfer\?\.files\?\.\[0\]/);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.addon-pack-card/);
+});
+
+test('Visual Presets lets the owner import a Mix Pack through the reviewed Add-ons flow', () => {
+  assert.match(indexHtml, /Import Mix Pack/);
+  assert.match(appJs, /promptPresetImportBtn'\)\.hidden = !state\.promptPacksCanManage/);
+  assert.match(appJs, /promptPresetImportBtn'\)\.addEventListener\('click'/);
+  assert.match(appJs, /cameraSheet'\)\.classList\.remove\('show'\)/);
+  assert.match(appJs, /setSettingsTab\('addons'\)/);
+  assert.match(appJs, /inspectPromptPackFile\(file\)/);
 });
 
 test('prompt pack routes stage review, require owner writes, and whitelist served assets', () => {
