@@ -15,6 +15,8 @@ test('Advanced Settings exposes profile defaults and contextual suggestions', ()
   assert.match(html, /id="defaultSeedMode"/);
   assert.match(html, /id="defaultCreateCfg"/);
   assert.match(html, /id="defaultEditDenoise"/);
+  assert.match(html, /id="defaultKrea2EditSteps"[^>]*min="8"[^>]*max="12"/);
+  assert.match(html, /id="defaultKrea2EditCfg"[^>]*min="1"[^>]*max="5"/);
   assert.match(html, /id="defaultVideoMotion"/);
   assert.match(html, /id="defaultVideoDuration"[^>]*step="0\.1"/);
   assert.match(html, /id="contextPreferenceList"/);
@@ -44,6 +46,8 @@ test('saved defaults are applied to image, edit, and video controls', () => {
   assert.match(app, /#seedInput'\)\.value = tuning\.seed/);
   assert.match(app, /#vidDur'\)\.value = d\.video\.duration/);
   assert.match(app, /#vidFree'\)\.value = d\.video\.motionFreedom/);
+  assert.match(app, /function applyKrea2IdentityEditSamplingPreset\(\)/);
+  assert.match(app, /krea2Edit: \{ steps: Number\(\$\('#defaultKrea2EditSteps'\)\.value\), cfg: Number\(\$\('#defaultKrea2EditCfg'\)\.value\) \}/);
 });
 
 test('image sampling values persist by mode and expose quick default controls', () => {

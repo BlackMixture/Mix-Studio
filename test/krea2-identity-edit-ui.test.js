@@ -39,6 +39,17 @@ test('Identity Edit and Remix are separate engines with their intended input lim
   assert.match(server, /if \(p\.editEngine === 'krea2remix'\) return buildEditKrea2Remix\(p, refNames\)/);
 });
 
+test('Krea 2 Edit applies a configurable sampling preset without warning on its automatic LoRA', () => {
+  assert.match(html, /id="defaultKrea2EditSteps"[^>]*value="10"/);
+  assert.match(html, /id="defaultKrea2EditCfg"[^>]*value="1"/);
+  assert.match(app, /function krea2IdentityEditSamplingPreset\(\)/);
+  assert.match(app, /function applyKrea2IdentityEditSamplingPreset\(\)/);
+  assert.match(app, /applyKrea2IdentityEditSamplingPreset\(\);[\s\S]{0,120}renderLoras\(\)/);
+  assert.match(app, /\['krea2', 'krea2ref', 'krea2remix'\]\.includes\(state\.editEngine\)/);
+  assert.match(app, /l\.name && !l\.managed && !allowed\.has/);
+  assert.match(server, /p\.steps = clampInt\(p\.steps, 8, 12, 10\); p\.cfg = clampNum\(p\.cfg, 1, 5, 1\)/);
+});
+
 test('dependency setup uses the latest full-rank Identity Edit v1.2 model and node revision', () => {
   assert.match(dependencies, /krea2_identity_edit_v1_2\.safetensors/);
   assert.match(dependencies, /7e68e90983b25e64dd02ac5d0c10593ea72a4cde/);

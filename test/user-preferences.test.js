@@ -7,8 +7,20 @@ test('generation defaults are safe and preserve legacy behavior', () => {
   const defaults = normalizeGenerationDefaults();
   assert.equal(defaults.create.steps, 12);
   assert.equal(defaults.edit.denoise, 0.4);
+  assert.deepEqual(defaults.krea2Edit, { steps: 10, cfg: 1 });
   assert.equal(defaults.video.duration, 5);
   assert.equal(defaults.seed.mode, 'random');
+});
+
+test('Krea 2 Edit presets stay within the supported sampling range', () => {
+  assert.deepEqual(
+    normalizeGenerationDefaults({ krea2Edit: { steps: 99, cfg: 20 } }).krea2Edit,
+    { steps: 12, cfg: 5 }
+  );
+  assert.deepEqual(
+    normalizeGenerationDefaults({ krea2Edit: { steps: 2, cfg: 0 } }).krea2Edit,
+    { steps: 8, cfg: 1 }
+  );
 });
 
 test('video duration defaults preserve supported tenth-second precision', () => {

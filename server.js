@@ -6154,7 +6154,7 @@ async function handleApi(req, res, url) {
           return json(res, 400, { error: 'Krea2 Fill needs a source image' });
         }
       } else if (p.editEngine === 'krea2ref') {
-        p.steps = clampInt(p.steps, 8, 12, 10); p.cfg = 1; p.denoise = null;
+        p.steps = clampInt(p.steps, 8, 12, 10); p.cfg = clampNum(p.cfg, 1, 5, 1); p.denoise = null;
       } else if (p.editEngine === 'krea2remix') {
         p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null;
       } else if (p.editEngine === 'qwen') {

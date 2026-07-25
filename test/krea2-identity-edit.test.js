@@ -25,6 +25,7 @@ test('identity edit uses the v1.2 dual-conditioning pixel path', () => {
     height: 768,
     seed: 12,
     steps: 10,
+    cfg: 1.8,
     batch: 2,
     krea2RefBoost: 4,
     loras: [{ name: 'style.safetensors', strength: 0.7, on: true }],
@@ -46,7 +47,7 @@ test('identity edit uses the v1.2 dual-conditioning pixel path', () => {
   assert.equal(graph.negative.inputs.prompt, '');
   assert.equal(graph.positive.inputs.grounding_px, 768);
   assert.equal(graph.sampler.inputs.steps, 10);
-  assert.equal(graph.sampler.inputs.cfg, 1);
+  assert.equal(graph.sampler.inputs.cfg, 1.8);
   assert.equal(graph.sampler.inputs.scheduler, 'simple');
   assert.equal(graph.latent.inputs.batch_size, 2);
   assert.equal(graph.source_b.inputs.image, 'person.png');

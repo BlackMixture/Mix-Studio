@@ -35,6 +35,8 @@ test('classifies Qwen edit LoRAs from key patterns', () => {
 test('unknown LoRAs are allowed by context filters', () => {
   assert.equal(classifyLora({ name: 'mystery.safetensors', metadata: {}, keys: [] }), 'unknown');
   assert.deepEqual(compatibleCategoriesForContext('edit', 'klein9'), ['klein9', 'unknown']);
+  assert.deepEqual(compatibleCategoriesForContext('edit', 'krea2ref'), ['krea2', 'unknown']);
+  assert.deepEqual(compatibleCategoriesForContext('edit', 'krea2remix'), ['krea2', 'unknown']);
 });
 
 test('warning lists incompatible selected LoRAs', () => {
@@ -44,5 +46,22 @@ test('warning lists incompatible selected LoRAs', () => {
     'edit',
     'qwen'
   );
+  assert.match(warning, /portrait/);
+});
+
+test('warning ignores app-managed workflow LoRAs', () => {
+  const warning = loraCompatibilityWarning(
+    [
+      { name: 'krea2_identity_edit_v1_2.safetensors', on: true, managed: 'edit-workflow-auto' },
+      { name: 'portrait.safetensors', on: true },
+    ],
+    {
+      'krea2_identity_edit_v1_2.safetensors': { category: 'klein4' },
+      'portrait.safetensors': { category: 'klein4' },
+    },
+    'edit',
+    'krea2ref'
+  );
+  assert.doesNotMatch(warning, /identity_edit/);
   assert.match(warning, /portrait/);
 });

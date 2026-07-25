@@ -154,6 +154,7 @@ const state = {
   userDefaults: {
     create: { steps: 12, cfg: 1, batch: 1 },
     edit: { steps: 4, cfg: 1, batch: 1, denoise: 0.4 },
+    krea2Edit: { steps: 10, cfg: 1 },
     video: { duration: 5, motionFreedom: 35 },
     seed: { mode: 'random', value: 0 },
   },
@@ -8024,6 +8025,23 @@ function renderQwenQuality() {
   renderNegativePromptControl();
 }
 
+function krea2IdentityEditSamplingPreset() {
+  const preset = state.userDefaults.krea2Edit || {};
+  const steps = Number(preset.steps);
+  const cfg = Number(preset.cfg);
+  return {
+    steps: Number.isFinite(steps) ? Math.round(Math.max(8, Math.min(12, steps))) : 10,
+    cfg: Number.isFinite(cfg) ? Math.max(1, Math.min(5, cfg)) : 1,
+  };
+}
+
+function applyKrea2IdentityEditSamplingPreset() {
+  if (state.view !== 'edit' || state.editEngine !== 'krea2ref') return;
+  const preset = krea2IdentityEditSamplingPreset();
+  $('#stepsInput').value = String(preset.steps);
+  $('#cfgInput').value = String(preset.cfg);
+}
+
 function krea2RefBoostTone(value) {
   if (value < 2.5) return 'Creative';
   if (value < 6) return 'Balanced';
@@ -9482,7 +9500,7 @@ function compatibleLoraCategories() {
   if (state.view === 'edit') {
     if (state.editEngine === 'qwen') return ['qwen-edit', 'unknown'];
     if (state.editEngine === 'klein9') return ['klein9', 'unknown'];
-    if (state.editEngine === 'krea2') return ['krea2', 'unknown'];
+    if (['krea2', 'krea2ref', 'krea2remix'].includes(state.editEngine)) return ['krea2', 'unknown'];
     return ['klein4', 'unknown'];
   }
   return ['krea2', 'unknown'];
@@ -9496,7 +9514,7 @@ function loraOptionsFor(selected) {
 
 function incompatibleSelectedLoras() {
   const allowed = new Set(compatibleLoraCategories());
-  return curLoras().filter((l) => l && l.on && l.name && !allowed.has(loraCategory(l.name)));
+  return curLoras().filter((l) => l && l.on && l.name && !l.managed && !allowed.has(loraCategory(l.name)));
 }
 
 function loraContextProfile(name) {
@@ -9618,6 +9636,7 @@ function generationDefaultsFromControls() {
   return {
     create: { steps: Number($('#defaultCreateSteps').value), cfg: Number($('#defaultCreateCfg').value), batch: Number($('#defaultCreateBatch').value) },
     edit: { steps: Number($('#defaultEditSteps').value), cfg: Number($('#defaultEditCfg').value), batch: Number($('#defaultEditBatch').value), denoise: Number($('#defaultEditDenoise').value) },
+    krea2Edit: { steps: Number($('#defaultKrea2EditSteps').value), cfg: Number($('#defaultKrea2EditCfg').value) },
     video: { duration: Number($('#defaultVideoDuration').value), motionFreedom: Number($('#defaultVideoMotion').value) },
     seed: { mode: $('#defaultSeedMode .active')?.dataset.seedMode || 'random', value: Number($('#defaultSeedValue').value) || 0 },
   };
@@ -9757,6 +9776,9 @@ function renderGenerationDefaults() {
   $('#defaultEditCfg').value = d.edit.cfg;
   $('#defaultEditBatch').value = d.edit.batch;
   $('#defaultEditDenoise').value = d.edit.denoise;
+  const krea2Edit = d.krea2Edit || { steps: 10, cfg: 1 };
+  $('#defaultKrea2EditSteps').value = krea2Edit.steps;
+  $('#defaultKrea2EditCfg').value = krea2Edit.cfg;
   $('#defaultVideoDuration').value = d.video.duration;
   $('#defaultVideoMotion').value = d.video.motionFreedom;
   $('#defaultSeedValue').value = d.seed.value;
@@ -9777,7 +9799,10 @@ function applyCurrentGenerationDefaults() {
   if (!mode) return;
   state.generationTuning[mode] = defaultGenerationTuning(mode);
   restoreGenerationTuning(mode);
-  if (mode === 'edit') renderQwenQuality();
+  if (mode === 'edit') {
+    renderQwenQuality();
+    applyKrea2IdentityEditSamplingPreset();
+  }
   if (mode === 'video') {
     $('#vidDur').value = state.userDefaults.video.duration;
     $('#vidFree').value = state.userDefaults.video.motionFreedom;
@@ -15016,11 +15041,6 @@ wireEngineRow('animEngineRow', (engine) => {
 wireEngineRow('editEngineRow', (engine) => {
   captureGenerationTuning('edit');
   switchEditEngine(engine);
-  if (engine === 'krea2ref') {
-    const steps = Number($('#stepsInput').value);
-    if (!Number.isFinite(steps) || steps < 8 || steps > 12) $('#stepsInput').value = '10';
-    $('#cfgInput').value = '1';
-  }
   if (engine === 'krea2' && Number($('#denoiseInput').value) <= 0.5) {
     // Keep enough source signal for the new content to inherit its surroundings.
     $('#denoiseInput').value = 0.78;
@@ -15028,6 +15048,7 @@ wireEngineRow('editEngineRow', (engine) => {
   }
   renderRefs();
   updateVideoPanels();
+  applyKrea2IdentityEditSamplingPreset();
   renderLoras();
   saveForm();
   setTimeout(() => setEditModelExpanded(false), 120);
@@ -24138,6 +24159,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
 const SETTINGS_PREFERENCE_CONTROL_IDS = new Set([
   'defaultSeedValue', 'defaultCreateSteps', 'defaultCreateCfg', 'defaultCreateBatch',
   'defaultEditSteps', 'defaultEditCfg', 'defaultEditBatch', 'defaultEditDenoise',
+  'defaultKrea2EditSteps', 'defaultKrea2EditCfg',
   'defaultVideoDuration', 'defaultVideoMotion',
 ]);
 

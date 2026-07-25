@@ -9685,6 +9685,13 @@ body.sheet-open {
 .settings-panel .field input:focus { border-color: rgba(66,133,244,0.5); }
 .settings-default-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .settings-default-grid h5 { grid-column: 1 / -1; }
+.settings-default-note {
+  grid-column: 1 / -1;
+  margin: -3px 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .settings-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 4px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 13px; background: #050609; }
 .settings-segment button { min-height: 36px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 850; }
 .settings-segment button.active { color: #fff; border-color: rgba(255,183,77,.56); background: rgba(255,183,77,.1); }
