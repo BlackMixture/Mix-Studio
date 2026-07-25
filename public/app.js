@@ -8362,7 +8362,7 @@ function renderCameraPicker() {
     btn.type = 'button';
     btn.className = 'camera-preset-card' + (selected ? ' active' : '');
     btn.dataset.presetId = combo.id;
-    btn.setAttribute('role', 'radio');
+    btn.setAttribute('role', 'checkbox');
     btn.setAttribute('aria-checked', selected ? 'true' : 'false');
     btn.innerHTML = `
       <span class="camera-preset-image">
@@ -8376,19 +8376,19 @@ function renderCameraPicker() {
     const image = btn.querySelector('img');
     image.addEventListener('error', () => btn.classList.add('image-missing'), { once: true });
     btn.addEventListener('click', () => {
-      state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera: combo.id });
+      const camera = state.promptPresetSelections.camera === combo.id ? null : combo.id;
+      state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera });
+      applyCameraPrompt();
       renderCameraPicker();
-      saveForm();
     });
     grid.appendChild(btn);
   }
   const combo = CameraSettings.cameraCombo(selectedId);
-  $('#cameraPresetCategoryState').textContent = combo ? '1 selected' : 'Optional';
-  $('#cameraPresetSelection').textContent = combo ? combo.label : 'None';
+  $('#cameraPresetCategoryState').textContent = combo ? 'Applied' : 'Optional';
+  $('#cameraPresetSelection').textContent = combo ? combo.label : 'No preset applied';
   $('#cameraPresetPreview').textContent = combo
     ? CameraSettings.cameraPresetPromptPhrase(combo.id)
-    : 'No camera language will be added to the prompt.';
-  $('#cameraPresetClear').disabled = !combo;
+    : 'Choose a thumbnail to add its camera language to your prompt.';
 }
 
 function openCameraPicker() {
@@ -8408,17 +8408,10 @@ function applyCameraPrompt() {
   updatePromptClear();
   renderPromptSuggestions();
   saveForm();
-  $('#cameraSheet').classList.remove('show');
   toast(selectedId ? 'Camera preset applied' : 'Camera preset removed');
 }
 
 $('#cameraPromptBtn').addEventListener('click', openCameraPicker);
-$('#cameraPresetClear').addEventListener('click', () => {
-  state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera: null });
-  renderCameraPicker();
-  saveForm();
-});
-$('#cameraApply').addEventListener('click', applyCameraPrompt);
 
 /* ------------------------------------------------------------------ */
 /* Video camera motion                                                 */

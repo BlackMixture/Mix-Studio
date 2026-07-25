@@ -1619,7 +1619,7 @@
       <div>
         <span class="preset-picker-eyebrow">Visual presets</span>
         <h3>Shape the look</h3>
-        <p>Choose one preset from each category. Your selections combine in the prompt.</p>
+        <p>Check a preset to apply it. Selections from different categories combine in the prompt.</p>
       </div>
       <button class="preset-picker-close" data-close type="button" aria-label="Close visual presets">✕</button>
     </header>
@@ -1628,27 +1628,21 @@
       <section class="preset-category" data-preset-category="camera" aria-labelledby="cameraPresetCategoryTitle">
         <header class="preset-category-head">
           <div>
-            <span>Category 01</span>
             <h4 id="cameraPresetCategoryTitle">Camera</h4>
           </div>
           <span class="preset-category-state" id="cameraPresetCategoryState">1 selected</span>
         </header>
-        <div class="camera-preset-grid" id="cameraPresetGrid" role="radiogroup" aria-label="Camera presets"></div>
+        <div class="camera-preset-grid" id="cameraPresetGrid" role="group" aria-label="Camera presets"></div>
       </section>
     </div>
 
     <div class="preset-selection-summary" aria-live="polite">
       <div>
-        <span>Selected look</span>
+        <span>Applied look</span>
         <strong id="cameraPresetSelection">Cinematic ARRI</strong>
       </div>
       <p id="cameraPresetPreview"></p>
     </div>
-
-    <footer class="preset-picker-actions">
-      <button class="preset-clear" id="cameraPresetClear" type="button">No camera preset</button>
-      <button class="sheet-cta" id="cameraApply" type="button">Apply presets</button>
-    </footer>
   </div>
 </div>
 

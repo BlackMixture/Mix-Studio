@@ -23,7 +23,6 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(indexHtml, /id="promptPresetCategories"/);
   assert.match(indexHtml, /id="cameraPresetGrid"/);
   assert.match(indexHtml, /data-preset-category="camera"/);
-  assert.match(indexHtml, /id="cameraApply"/);
   assert.match(appJs, /renderCameraPicker/);
   assert.match(appJs, /promptPresetSelections/);
   assert.match(appJs, /cameraPresetPromptPhrase/);
@@ -31,11 +30,12 @@ test('prompt tools expose the camera settings picker', () => {
 });
 
 test('camera sheet uses visual presets instead of individual camera controls', () => {
+  assert.doesNotMatch(indexHtml, /Category 01/);
   assert.doesNotMatch(indexHtml, /data-camera-wheel=/);
   assert.doesNotMatch(indexHtml, /id="cameraWheelBoard"/);
   assert.match(indexHtml, /class="camera-preset-grid"/);
   assert.match(appJs, /className = 'camera-preset-card'/);
-  assert.match(appJs, /setAttribute\('role', 'radio'\)/);
+  assert.match(appJs, /setAttribute\('role', 'checkbox'\)/);
   assert.match(appJs, /setAttribute\('aria-checked'/);
 });
 
@@ -52,10 +52,14 @@ test('camera cards expose clear selected and missing-image states', () => {
   assert.match(styleCss, /\.camera-preset-card\.image-missing img/);
 });
 
-test('camera presets can be cleared without removing future category selections', () => {
-  assert.match(indexHtml, /id="cameraPresetClear"/);
-  assert.match(appJs, /Object\.assign\(\{\}, state\.promptPresetSelections, \{ camera: null \}\)/);
+test('camera cards apply immediately and toggle off without a dedicated action row', () => {
+  assert.doesNotMatch(indexHtml, /id="cameraPresetClear"/);
+  assert.doesNotMatch(indexHtml, /id="cameraApply"/);
+  assert.doesNotMatch(indexHtml, /class="preset-picker-actions"/);
+  assert.match(appJs, /state\.promptPresetSelections\.camera === combo\.id \? null : combo\.id/);
+  assert.match(appJs, /btn\.addEventListener\('click',[\s\S]*applyCameraPrompt\(\)/);
   assert.match(appJs, /applyCameraPresetPrompt\(promptDraft\(\), selectedId\)/);
+  assert.doesNotMatch(appJs, /cameraApply'\)\.addEventListener/);
 });
 
 test('camera dialog uses dark surfaces consistent with the app chrome', () => {
