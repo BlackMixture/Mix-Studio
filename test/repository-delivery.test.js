@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const quality = fs.readFileSync(path.join(root, '.github', 'workflows', 'quality.yml'), 'utf8');
 const pages = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+const operations = fs.readFileSync(path.join(root, 'docs', 'installation-and-operations.md'), 'utf8');
 const portable = fs.readFileSync(path.join(root, 'docs', 'portable-install.md'), 'utf8');
 const download = fs.readFileSync(path.join(root, 'docs', 'download', 'index.html'), 'utf8');
 const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
@@ -65,8 +66,8 @@ test('install documentation follows the automatic setup and in-app phone flow', 
     assert.match(copy, /setup/i);
     assert.match(copy, /Tailscale/);
   }
-  assert.match(readme, /unconfigured installation[\s\S]{0,160}opens automatically/i);
-  assert.match(readme, /Phone access card/);
+  assert.match(operations, /unconfigured installation[\s\S]{0,160}opens automatically/i);
+  assert.match(operations, /Phone access card/);
   assert.match(portable, /opens automatically/i);
   assert.match(portable, /Copy or share/);
   assert.match(download, /opens setup automatically/i);

@@ -11,22 +11,27 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('GitHub-facing pages describe open low-VRAM tiers without promising every workflow will fit', () => {
   const readme = read('README.md');
+  const operations = read('docs/installation-and-operations.md');
   const download = read('docs/download/index.html');
   const portable = read('docs/portable-install.md');
   const server = read('server.js');
 
-  assert.match(readme, /does not enforce a VRAM cutoff/);
-  assert.match(readme, /lowest guided offload tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
-  assert.match(readme, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
-  assert.match(readme, /Krea 2 image route uses \*\*8 GB VRAM\*\* as its guided offload tier/);
-  assert.match(readme, /Krea 2 support requires ComfyUI 0\.26\.0 or newer/);
-  assert.match(readme, /Video workflows use \*\*8 GB VRAM\*\* as an experimental offload tier/);
-  assert.match(readme, /System RAM is not an installer requirement/);
-  assert.match(readme, /not a promise that every duration and resolution will fit/);
-  assert.match(readme, /warns before a below-tier install or generation and lets the user continue unchanged/);
-  assert.match(readme, /ComfyUI 0\.27\.0 or newer/);
-  assert.match(readme, /never silently changes a request/);
-  assert.match(readme, /Krea 2 INT8 ConvRot is not GGUF/);
+  assert.match(readme, /4 GB offloaded edit workflow/);
+  assert.match(readme, /\[Installation and operations\]\(docs\/installation-and-operations\.md\)/);
+  assert.doesNotMatch(readme, /Krea 2 INT8 ConvRot is not GGUF/);
+
+  assert.match(operations, /does not enforce a VRAM cutoff/);
+  assert.match(operations, /lowest guided offload tier is \*\*4 GB of VRAM\*\* through the Flux 2 Klein 4B FP8 edit route/);
+  assert.match(operations, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
+  assert.match(operations, /Krea 2 image route uses \*\*8 GB VRAM\*\* as its guided offload tier/);
+  assert.match(operations, /Krea 2 requires ComfyUI 0\.26\.0 or newer/);
+  assert.match(operations, /Video workflows use \*\*8 GB VRAM\*\* as an experimental offload tier/);
+  assert.match(operations, /System RAM is not an installer requirement/);
+  assert.match(operations, /not guarantees that every resolution or duration will fit/);
+  assert.match(operations, /warns before a below-tier install or generation and lets the user continue unchanged/);
+  assert.match(operations, /ComfyUI 0\.27\.0 or newer/);
+  assert.match(operations, /never silently changes a request/);
+  assert.match(operations, /Krea 2 INT8 ConvRot is not GGUF/);
   assert.doesNotMatch(readme, /scale well for users with 16 GB to 24 GB of VRAM/);
 
   assert.match(download, /Klein 4B FP8 supports a 4 GB offloaded route/);

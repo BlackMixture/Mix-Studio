@@ -71,17 +71,19 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.match(launcher, /LOCALAPPDATA%\\Mix Studio\\data/);
 });
 
-test('README presents the product positioning, contributions, and hardware credits', () => {
+test('README presents the product positioning and credits while contribution details stay focused', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const contributing = fs.readFileSync(path.join(root, 'CONTRIBUTING.md'), 'utf8');
   assert.match(readme, /Mix Studio is a local web interface that builds and submits ComfyUI API graphs/);
   assert.match(readme, /image generation, regional prompting, image editing, video generation, motion transfer, and upscaling/);
   assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2\.3, Wan 2\.2, 10Eros, and SCAIL 2/);
   assert.match(readme, /## Acknowledgments & Attribution/);
-  assert.match(readme, /## Contribute a Workflow/);
-  assert.match(readme, /### What We Look For/);
-  assert.match(readme, /### How to Submit/);
-  assert.match(readme, /github\.com\/BlackMixture\/Mix-Studio\/discussions/);
-  assert.match(readme, /github\.com\/BlackMixture\/Mix-Studio\/pulls/);
+  assert.match(readme, /\[Contributing\]\(CONTRIBUTING\.md\)/);
+  assert.match(contributing, /## Contribute a workflow/);
+  assert.match(contributing, /### What we look for/);
+  assert.match(contributing, /### How to submit/);
+  assert.match(contributing, /github\.com\/BlackMixture\/Mix-Studio\/discussions/);
+  assert.match(contributing, /github\.com\/BlackMixture\/Mix-Studio\/pulls/);
   assert.match(readme, /\*\*ComfyUI:\*\* Executes the API-format graphs built by the Mix Studio server/);
   assert.match(readme, /Black Forest Labs \(Flux 2\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
   assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3/);
