@@ -5267,6 +5267,15 @@ async function handleApi(req, res, url) {
     }
   }
 
+  const promptPackInspectionRoute = route.match(/^\/api\/addons\/inspect\/([0-9a-f-]{36})$/i);
+  if (promptPackInspectionRoute && req.method === 'DELETE') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can manage add-on reviews' });
+    return json(res, 200, {
+      ok: true,
+      discarded: promptPackInspections.delete(promptPackInspectionRoute[1]),
+    });
+  }
+
   if (route === '/api/addons/install' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install add-ons' });
     try {

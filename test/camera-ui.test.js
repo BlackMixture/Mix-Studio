@@ -64,7 +64,7 @@ test('camera cards expose clear selected and missing-image states', () => {
   assert.match(styleCss, /\.camera-preset-card\.image-missing img/);
 });
 
-test('the applied camera phrase is color coded without changing its plain prompt value', () => {
+test('an applied preset becomes a thumbnail card without changing its plain prompt value', () => {
   assert.match(appJs, /function makePromptPresetToken/);
   assert.match(appJs, /token\.className = 'prompt-preset-token'/);
   assert.match(appJs, /token\.contentEditable = 'false'/);
@@ -72,6 +72,14 @@ test('the applied camera phrase is color coded without changing its plain prompt
   assert.match(appJs, /el\.classList\.contains\('prompt-preset-token'\)/);
   assert.match(styleCss, /\.prompt-preset-token\s*{/);
   assert.match(appJs, /dataset\.presetAccent/);
+  assert.match(appJs, /image\.src = preset\.thumbnail/);
+  assert.match(appJs, /label\.textContent = preset\.label/);
+  assert.match(appJs, /remove\.dataset\.removePromptPreset/);
+  assert.match(appJs, /function makePromptPresetSeparator/);
+  assert.match(appJs, /el\.classList\.contains\('prompt-preset-separator'\)/);
+  assert.match(appJs, /separator\?\.remove\(\)/);
+  assert.match(styleCss, /\.prompt-preset-token > img/);
+  assert.match(styleCss, /\.prompt-preset-token-copy/);
   assert.match(styleCss, /\.prompt-preset-token\[data-preset-accent="violet"\]/);
 });
 

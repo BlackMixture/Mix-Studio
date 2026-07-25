@@ -15,12 +15,19 @@ test('Advanced Settings exposes a responsive owner-managed add-ons installer', (
   assert.match(indexHtml, /data-settings-tab="addons"/);
   assert.match(indexHtml, /id="settingsPaneAddons"/);
   assert.match(indexHtml, /id="addonDropZone"/);
-  assert.match(indexHtml, /accept="\.mixpack"/);
+  assert.match(indexHtml, /accept="\.mixpack" multiple/);
   assert.match(indexHtml, /id="addonInspection"/);
+  assert.match(indexHtml, /id="addonInspectionList"/);
+  assert.match(indexHtml, /id="addonInstallAll"/);
   assert.match(indexHtml, /id="addonPackList"/);
   assert.match(indexHtml, /id="promptPresetImportBtn"/);
   assert.match(appJs, /Only the owner|owner profile|promptPacksCanManage/);
-  assert.match(appJs, /dataTransfer\?\.files\?\.\[0\]/);
+  assert.match(appJs, /inspectPromptPackFiles\(event\.dataTransfer\?\.files\)/);
+  assert.match(appJs, /MAX_PENDING_PROMPT_PACKS = 5/);
+  assert.match(appJs, /installAllInspectedPromptPacks/);
+  assert.match(appJs, /addonFileInput'\)\.value = ''/);
+  assert.match(appJs, /install\.disabled = promptPackBusy/);
+  assert.match(appJs, /promptPackInspections = promptPackInspections\.filter/);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.addon-pack-card/);
 });
 
@@ -30,13 +37,15 @@ test('Visual Presets lets the owner import a Mix Pack through the reviewed Add-o
   assert.match(appJs, /promptPresetImportBtn'\)\.addEventListener\('click'/);
   assert.match(appJs, /cameraSheet'\)\.classList\.remove\('show'\)/);
   assert.match(appJs, /setSettingsTab\('addons'\)/);
-  assert.match(appJs, /inspectPromptPackFile\(file\)/);
+  assert.match(appJs, /inspectPromptPackFiles\(files\)/);
 });
 
 test('prompt pack routes stage review, require owner writes, and whitelist served assets', () => {
   assert.match(serverJs, /route === '\/api\/addons\/inspect'/);
   assert.match(serverJs, /readBody\(req, MAX_PROMPT_PACK_BYTES\)/);
   assert.match(serverJs, /promptPackInspections\.set/);
+  assert.match(serverJs, /promptPackInspectionRoute/);
+  assert.match(serverJs, /promptPackInspections\.delete\(promptPackInspectionRoute\[1\]\)/);
   assert.match(serverJs, /route === '\/api\/addons\/install'/);
   assert.match(serverJs, /Only the owner profile can install add-ons/);
   assert.match(serverJs, /serializePromptPackMutation/);
@@ -51,4 +60,14 @@ test('installed categories merge into Visual Presets and keep semantic prompt to
   assert.match(appJs, /activePromptPresetTokens/);
   assert.match(appJs, /promptPresetSelectionPayload/);
   assert.match(indexHtml, /different categories combine/i);
+});
+
+test('Visual Presets browses named Mix Packs with representative thumbnails before categories', () => {
+  assert.match(indexHtml, /id="promptPresetPackNav"[^>]*role="tablist"/);
+  assert.match(appJs, /function promptPresetPackCatalog/);
+  assert.match(appJs, /className = 'preset-pack-tab'/);
+  assert.match(appJs, /promptPresetPackThumbnail\(pack\)/);
+  assert.match(appJs, /activePromptPresetPackId/);
+  assert.match(styleCss, /\.preset-pack-tab-thumb img/);
+  assert.match(styleCss, /\.preset-pack-tabs\s*{[^}]*overflow-x:\s*auto/s);
 });

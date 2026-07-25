@@ -121,6 +121,18 @@ test('owner can review, install, serve, disable, and recoverably remove a prompt
   assert.equal(inspected.body.pack.id, 'api-style-pack');
   assert.ok(inspected.body.inspectionId);
 
+  const discardedReview = await jsonRequest(base, '/api/addons/inspect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': 'discarded-style-pack.mixpack' },
+    body: testPackBuffer(),
+  });
+  assert.equal(discardedReview.response.status, 200);
+  const discarded = await jsonRequest(base, `/api/addons/inspect/${discardedReview.body.inspectionId}`, {
+    method: 'DELETE',
+  });
+  assert.equal(discarded.response.status, 200);
+  assert.equal(discarded.body.discarded, true);
+
   const installed = await jsonRequest(base, '/api/addons/install', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

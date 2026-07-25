@@ -1623,14 +1623,18 @@
       </div>
       <button class="preset-picker-close" data-close type="button" aria-label="Close visual presets">✕</button>
       <div class="preset-picker-toolbar">
-        <div class="preset-category-selector">
-          <span class="preset-category-selector-label">Category</span>
-          <div class="preset-category-tabs" id="promptPresetCategoryNav" role="tablist" aria-label="Visual preset categories"></div>
+        <div class="preset-pack-selector">
+          <span class="preset-category-selector-label">Mix Packs</span>
+          <div class="preset-pack-tabs" id="promptPresetPackNav" role="tablist" aria-label="Mix Pack collections"></div>
         </div>
         <button class="preset-pack-import" id="promptPresetImportBtn" type="button" hidden aria-label="Import a Mix Pack preset collection">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 18v1h14v-1"/></svg>
           <span>Import Mix Pack</span>
         </button>
+      </div>
+      <div class="preset-category-selector" id="promptPresetCategorySelector" hidden>
+        <span class="preset-category-selector-label">Category</span>
+        <div class="preset-category-tabs" id="promptPresetCategoryNav" role="tablist" aria-label="Categories in the selected Mix Pack"></div>
       </div>
     </header>
 
@@ -2507,28 +2511,42 @@
 
         <section class="settings-pane addons-pane" id="settingsPaneAddons" role="tabpanel" aria-labelledby="settingsTabAddons" data-settings-pane="addons" hidden>
           <div class="settings-pane-head"><h4>Add-ons</h4><p>Install visual preset packs with thumbnails and prompt styles. Packs are available to every profile on this Mix Studio.</p></div>
-          <input id="addonFileInput" type="file" accept=".mixpack" hidden />
+          <input id="addonFileInput" type="file" accept=".mixpack" multiple hidden />
           <div class="addon-drop-zone" id="addonDropZone" role="button" tabindex="0" aria-describedby="addonDropNote">
             <span class="addon-drop-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
             </span>
-            <span class="addon-drop-copy"><strong>Drop a preset pack here</strong><small id="addonDropNote">Mix Studio reviews the contents before anything is installed.</small></span>
-            <button id="addonChooseBtn" type="button">Choose .mixpack</button>
+            <span class="addon-drop-copy"><strong>Drop Mix Packs here</strong><small id="addonDropNote">Choose up to five. Mix Studio reviews every pack before installation.</small></span>
+            <button id="addonChooseBtn" type="button">Choose Mix Packs</button>
           </div>
 
-          <section class="addon-inspection" id="addonInspection" hidden aria-live="polite">
-            <div class="addon-inspection-preview" id="addonInspectionPreview" aria-hidden="true"></div>
-            <div class="addon-inspection-copy">
-              <span class="addon-kicker">Ready to install</span>
-              <h5 id="addonInspectionName">Preset pack</h5>
-              <p id="addonInspectionDescription"></p>
-              <div class="addon-inspection-meta" id="addonInspectionMeta"></div>
-            </div>
-            <div class="addon-inspection-actions">
-              <button class="addon-secondary-action" id="addonInspectionCancel" type="button">Cancel</button>
-              <button class="addon-primary-action" id="addonInspectionInstall" type="button">Install pack</button>
-            </div>
+          <section class="addon-review-queue" id="addonInspection" hidden aria-live="polite">
+            <header class="addon-review-head">
+              <div>
+                <span class="addon-kicker">Reviewed locally</span>
+                <h5>Ready to install</h5>
+                <p id="addonReviewStatus">No packs waiting</p>
+              </div>
+              <button class="addon-primary-action" id="addonInstallAll" type="button">Install all</button>
+            </header>
+            <div class="addon-inspection-list" id="addonInspectionList"></div>
           </section>
+
+          <template id="addonInspectionTemplate">
+            <article class="addon-inspection">
+              <div class="addon-inspection-preview" aria-hidden="true"></div>
+              <div class="addon-inspection-copy">
+                <span class="addon-kicker">Ready to install</span>
+                <h5>Preset pack</h5>
+                <p></p>
+                <div class="addon-inspection-meta"></div>
+              </div>
+              <div class="addon-inspection-actions">
+                <button class="addon-secondary-action" data-addon-review-remove type="button">Remove</button>
+                <button class="addon-primary-action" data-addon-review-install type="button">Install</button>
+              </div>
+            </article>
+          </template>
 
           <div class="addon-section-head">
             <div><h5>Installed packs</h5><p id="addonPackStatus">Loading add-ons…</p></div>

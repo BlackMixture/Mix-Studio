@@ -478,49 +478,75 @@ function builtinCameraPresets() {
   }));
 }
 
-function promptPresetCatalog() {
-  const categories = new Map();
-  const addCategory = (source, pack) => {
-    if (!categories.has(source.id)) {
-      categories.set(source.id, {
-        id: source.id,
-        label: source.label,
-        description: source.description || '',
-        accent: source.accent || 'violet',
-        presets: [],
-      });
-    }
-    const category = categories.get(source.id);
-    for (const preset of source.presets || []) {
-      category.presets.push({
-        category: source.id,
-        categoryLabel: category.label,
-        categoryDescription: category.description,
-        accent: source.accent || category.accent,
-        packId: pack.id,
-        packName: pack.name,
-        presetId: preset.id,
-        label: preset.label,
-        note: preset.note || '',
-        value: preset.promptText,
-        thumbnail: preset.thumbnail,
-        thumbnailAlt: `${preset.label} preset preview`,
-      });
-    }
-  };
+function promptPresetPackCatalog() {
+  const packs = [];
   const cameras = builtinCameraPresets();
   if (cameras.length) {
-    categories.set('camera', {
-      id: 'camera',
-      label: 'Camera',
-      description: cameras[0].categoryDescription,
-      accent: 'cyan',
-      presets: cameras,
+    packs.push({
+      id: 'mix-studio-camera',
+      name: 'Camera Presets',
+      author: 'Mix Studio',
+      version: 'Built in',
+      description: 'Six camera looks included with Mix Studio.',
+      builtin: true,
+      categories: [{
+        id: 'camera',
+        label: 'Camera',
+        description: cameras[0].categoryDescription,
+        accent: 'cyan',
+        presets: cameras,
+      }],
     });
   }
   for (const pack of state.promptPacks || []) {
     if (pack.enabled === false) continue;
-    for (const category of pack.categories || []) addCategory(category, pack);
+    packs.push({
+      id: pack.id,
+      name: pack.name,
+      author: pack.author,
+      version: pack.version,
+      description: pack.description || '',
+      builtin: false,
+      categories: (pack.categories || []).map((source) => ({
+        id: source.id,
+        label: source.label,
+        description: source.description || '',
+        accent: source.accent || 'violet',
+        presets: (source.presets || []).map((preset) => ({
+          category: source.id,
+          categoryLabel: source.label,
+          categoryDescription: source.description || '',
+          accent: source.accent || 'violet',
+          packId: pack.id,
+          packName: pack.name,
+          presetId: preset.id,
+          label: preset.label,
+          note: preset.note || '',
+          value: preset.promptText,
+          thumbnail: preset.thumbnail,
+          thumbnailAlt: `${preset.label} preset preview`,
+        })),
+      })),
+    });
+  }
+  return packs;
+}
+
+function promptPresetCatalog() {
+  const categories = new Map();
+  for (const pack of promptPresetPackCatalog()) {
+    for (const source of pack.categories) {
+      if (!categories.has(source.id)) {
+        categories.set(source.id, {
+          id: source.id,
+          label: source.label,
+          description: source.description,
+          accent: source.accent,
+          presets: [],
+        });
+      }
+      categories.get(source.id).presets.push(...source.presets);
+    }
   }
   return [...categories.values()];
 }
@@ -575,6 +601,8 @@ function activePromptPresetTokens() {
       categoryLabel: preset.categoryLabel,
       accent: preset.accent,
       presetId: preset.presetId,
+      label: preset.label,
+      thumbnail: preset.thumbnail,
       value: preset.value,
     }));
 }
@@ -587,9 +615,38 @@ function makePromptPresetToken(preset) {
   token.dataset.presetId = preset.presetId;
   token.dataset.presetAccent = preset.accent || 'violet';
   token.dataset.promptValue = preset.value;
-  token.title = `${preset.categoryLabel || 'Visual'} preset · change from Visual presets`;
-  token.textContent = preset.value;
+  token.title = `${preset.label || 'Visual preset'} · change from Visual Presets`;
+  if (preset.thumbnail) {
+    const image = document.createElement('img');
+    image.src = preset.thumbnail;
+    image.alt = '';
+    image.addEventListener('error', () => token.classList.add('image-missing'), { once: true });
+    token.appendChild(image);
+  }
+  const copy = document.createElement('span');
+  copy.className = 'prompt-preset-token-copy';
+  const label = document.createElement('b');
+  label.textContent = preset.label || 'Visual preset';
+  const category = document.createElement('small');
+  category.textContent = preset.categoryLabel || 'Visual preset';
+  copy.append(label, category);
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'prompt-preset-remove';
+  remove.dataset.removePromptPreset = preset.category;
+  remove.setAttribute('aria-label', `Remove ${preset.label || 'visual preset'} from prompt`);
+  remove.textContent = '×';
+  token.append(copy, remove);
   return token;
+}
+
+function makePromptPresetSeparator(value) {
+  const separator = document.createElement('span');
+  separator.className = 'prompt-preset-separator';
+  separator.contentEditable = 'false';
+  separator.dataset.promptValue = value;
+  separator.setAttribute('aria-hidden', 'true');
+  return separator;
 }
 
 function escapePromptPattern(value) {
@@ -609,12 +666,16 @@ function renderPromptComposer() {
   const pattern = `(@image-\\d+|@lora-trigger\\[[^\\]]+\\]|@lora-trigger-[^\\s,;:!?]+${presetPattern ? `|${presetPattern}` : ''})`;
   const parts = value.split(new RegExp(pattern, 'g'));
   composer.replaceChildren();
-  parts.forEach((part) => {
+  parts.forEach((part, index) => {
     const refMatch = /^@image-(\d+)$/.exec(part);
     const loraMatch = /^@lora-trigger(?:\[[^\]]+\]|-[^\s,;:!?]+)$/.test(part);
+    const betweenPresets = /^\s*,\s*$/.test(part)
+      && presetByValue.has(parts[index - 1])
+      && presetByValue.has(parts[index + 1]);
     if (refMatch) composer.appendChild(makePromptReferenceToken(refMatch[1]));
     else if (loraMatch) composer.appendChild(makePromptLoraTriggerToken(loraNameFromTriggerToken(part)));
     else if (presetByValue.has(part)) composer.appendChild(makePromptPresetToken(presetByValue.get(part)));
+    else if (betweenPresets) composer.appendChild(makePromptPresetSeparator(part));
     else if (part) composer.appendChild(document.createTextNode(part));
   });
 }
@@ -626,6 +687,7 @@ function composerNodeText(node, root) {
   if (el.classList.contains('prompt-ref-token')) return `@image-${el.dataset.refIndex}`;
   if (el.classList.contains('prompt-lora-token')) return loraTriggerToken(el.dataset.loraName);
   if (el.classList.contains('prompt-preset-token')) return el.dataset.promptValue || el.textContent || '';
+  if (el.classList.contains('prompt-preset-separator')) return el.dataset.promptValue || ', ';
   if (el.tagName === 'BR') return '\n';
   const text = [...el.childNodes].map((child) => composerNodeText(child, root)).join('');
   return el !== root && /^(DIV|P)$/.test(el.tagName) ? `${text}\n` : text;
@@ -8493,9 +8555,17 @@ $('#promptComposer').addEventListener('input', syncPromptDraftFromComposer);
 $('#promptComposer').addEventListener('keyup', capturePromptSelection);
 $('#promptComposer').addEventListener('mouseup', capturePromptSelection);
 $('#promptComposer').addEventListener('click', (event) => {
-  const remove = event.target.closest('[data-remove-prompt-ref], [data-remove-prompt-lora]');
+  const remove = event.target.closest('[data-remove-prompt-ref], [data-remove-prompt-lora], [data-remove-prompt-preset]');
   if (!remove) return;
-  const token = remove.closest('.prompt-ref-token, .prompt-lora-token');
+  const token = remove.closest('.prompt-ref-token, .prompt-lora-token, .prompt-preset-token');
+  if (token.classList.contains('prompt-preset-token')) {
+    const separator = token.previousElementSibling?.classList.contains('prompt-preset-separator')
+      ? token.previousElementSibling
+      : token.nextElementSibling?.classList.contains('prompt-preset-separator')
+        ? token.nextElementSibling
+        : null;
+    separator?.remove();
+  }
   token.remove();
   syncPromptDraftFromComposer();
   $('#promptComposer').focus();
@@ -8510,7 +8580,31 @@ $('#promptClear').addEventListener('click', () => {
   schedulePromptIntentHint(0);
 });
 
+let activePromptPresetPackId = 'mix-studio-camera';
 let activePromptPresetCategoryId = 'camera';
+
+function promptPresetPackHasSelection(pack) {
+  return Object.keys(state.promptPresetSelections || {})
+    .map((categoryId) => selectedPromptPreset(categoryId))
+    .some((preset) => preset?.packId === pack.id);
+}
+
+function promptPresetPackThumbnail(pack) {
+  const source = pack.categories
+    .flatMap((category) => category.presets || [])
+    .find((preset) => preset.thumbnail)?.thumbnail;
+  return source
+    ? `<img src="${escapeHtml(source)}" alt="" loading="lazy">`
+    : '<span aria-hidden="true">M</span>';
+}
+
+function focusPromptPresetPack(id) {
+  requestAnimationFrame(() => {
+    const button = $$('#promptPresetPackNav [data-preset-pack-tab]')
+      .find((item) => item.dataset.presetPackTab === id);
+    button?.focus({ preventScroll: true });
+  });
+}
 
 function focusPromptPresetCategory(id) {
   requestAnimationFrame(() => {
@@ -8523,15 +8617,59 @@ function focusPromptPresetCategory(id) {
 function renderCameraPicker() {
   const container = $('#promptPresetCategories');
   if (!container || !CameraSettings) return;
-  const categories = promptPresetCatalog();
+  const packs = promptPresetPackCatalog();
+  if (!packs.some((pack) => pack.id === activePromptPresetPackId)) {
+    activePromptPresetPackId = packs[0]?.id || '';
+  }
+  const activePack = packs.find((pack) => pack.id === activePromptPresetPackId);
+  const categories = activePack?.categories || [];
   if (!categories.some((category) => category.id === activePromptPresetCategoryId)) {
     activePromptPresetCategoryId = categories[0]?.id || '';
   }
+  const packNav = $('#promptPresetPackNav');
+  packNav.replaceChildren();
+  packs.forEach((pack, index) => {
+    const active = pack.id === activePromptPresetPackId;
+    const applied = promptPresetPackHasSelection(pack);
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'preset-pack-tab' + (active ? ' active' : '');
+    tab.dataset.presetPackTab = pack.id;
+    tab.dataset.applied = String(applied);
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(active));
+    tab.setAttribute('aria-controls', 'promptPresetCategories');
+    tab.setAttribute('aria-label', `${pack.name}${applied ? ', preset applied' : ''}`);
+    tab.innerHTML = `
+      <span class="preset-pack-tab-thumb">${promptPresetPackThumbnail(pack)}</span>
+      <span class="preset-pack-tab-copy">
+        <strong>${escapeHtml(pack.name)}</strong>
+        <small>${escapeHtml(promptPackCategoryLabel(pack))}</small>
+      </span>
+      <i aria-hidden="true">✓</i>`;
+    tab.addEventListener('click', () => {
+      activePromptPresetPackId = pack.id;
+      activePromptPresetCategoryId = pack.categories[0]?.id || '';
+      renderCameraPicker();
+    });
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? packs.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + packs.length) % packs.length;
+      activePromptPresetPackId = packs[next].id;
+      activePromptPresetCategoryId = packs[next].categories[0]?.id || '';
+      renderCameraPicker();
+      focusPromptPresetPack(activePromptPresetPackId);
+    });
+    packNav.appendChild(tab);
+  });
   const categoryNav = $('#promptPresetCategoryNav');
   categoryNav.replaceChildren();
   categories.forEach((category, index) => {
     const active = category.id === activePromptPresetCategoryId;
-    const applied = !!selectedPromptPreset(category.id);
+    const applied = selectedPromptPreset(category.id)?.packId === activePromptPresetPackId;
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = 'preset-category-tab' + (active ? ' active' : '');
@@ -8559,9 +8697,11 @@ function renderCameraPicker() {
     categoryNav.appendChild(tab);
   });
   $('#promptPresetImportBtn').hidden = !state.promptPacksCanManage;
+  $('#promptPresetCategorySelector').hidden = categories.length < 2;
   container.replaceChildren();
   for (const category of categories) {
     const selected = selectedPromptPreset(category.id);
+    const selectedInPack = selected?.packId === activePromptPresetPackId;
     const section = document.createElement('section');
     section.className = 'preset-category';
     section.dataset.presetCategory = category.id;
@@ -8576,7 +8716,9 @@ function renderCameraPicker() {
           <h4 id="${escapeHtml(headingId)}">${escapeHtml(category.label)}</h4>
           ${category.description ? `<p>${escapeHtml(category.description)}</p>` : ''}
         </div>
-        <span class="preset-category-state">${selected ? 'Applied' : 'Optional'}</span>
+        <span class="preset-category-state" data-state="${selectedInPack ? 'applied' : selected ? 'other' : 'optional'}">${
+  selectedInPack ? 'Applied' : selected ? `Using ${escapeHtml(selected.packName || 'another pack')}` : 'Optional'
+}</span>
       </header>
       <div class="camera-preset-grid" role="group" aria-label="${escapeHtml(category.label)} presets"></div>`;
     const grid = section.querySelector('.camera-preset-grid');
@@ -27121,8 +27263,11 @@ document.addEventListener('scroll', () => {
 }, true);
 renderGuidedTourSetting();
 
-let promptPackInspection = null;
+const MAX_PENDING_PROMPT_PACKS = 5;
+let promptPackInspections = [];
 let promptPackBusy = false;
+let promptPackInstallingId = '';
+let promptPackBatchInstalling = false;
 
 function promptPackPresetCount(pack) {
   return (pack?.categories || []).reduce((total, category) => total + (category.presets || []).length, 0);
@@ -27217,15 +27362,8 @@ function renderPromptPacks() {
   drop.setAttribute('aria-disabled', String(!owner));
   $('#addonChooseBtn').hidden = !owner;
   $('#addonDropNote').textContent = owner
-    ? 'Mix Studio reviews the contents before anything is installed.'
+    ? 'Choose up to five. Mix Studio reviews every pack before installation.'
     : 'Switch to the owner profile to install or manage machine-wide packs.';
-}
-
-function clearPromptPackInspection() {
-  promptPackInspection = null;
-  $('#addonInspection').hidden = true;
-  $('#addonInspectionPreview').replaceChildren();
-  $('#addonFileInput').value = '';
 }
 
 function reconcilePromptPackSelections(pack, packId = pack?.id) {
@@ -27259,27 +27397,211 @@ function reconcilePromptPackSelections(pack, packId = pack?.id) {
   saveForm();
 }
 
+function renderPromptPackInspectionQueue() {
+  const section = $('#addonInspection');
+  const list = $('#addonInspectionList');
+  const installAll = $('#addonInstallAll');
+  if (!section || !list || !installAll) return;
+  section.hidden = promptPackInspections.length === 0;
+  list.replaceChildren();
+  $('#addonReviewStatus').textContent = promptPackInspections.length
+    ? `${promptPackInspections.length} Mix Pack${promptPackInspections.length === 1 ? '' : 's'} waiting`
+    : 'No packs waiting';
+  installAll.hidden = promptPackInspections.length < 2;
+  installAll.disabled = promptPackBusy;
+  installAll.textContent = promptPackBatchInstalling
+    ? `Installing ${promptPackInspections.length}…`
+    : `Install all ${promptPackInspections.length}`;
+  for (const result of promptPackInspections) {
+    const pack = result.pack || {};
+    const current = result.current;
+    const card = $('#addonInspectionTemplate').content.firstElementChild.cloneNode(true);
+    card.dataset.addonInspection = result.inspectionId;
+    card.querySelector('.addon-inspection-preview').innerHTML = addonMosaicMarkup(
+      (result.previews || []).map((preview) => preview.src),
+      pack.name,
+    );
+    card.querySelector('.addon-inspection-copy h5').textContent = pack.name || 'Preset pack';
+    card.querySelector('.addon-inspection-copy > p').textContent = pack.description
+      || `${promptPackCategoryLabel(pack)} presets by ${pack.author || 'Unknown author'}.`;
+    const status = current
+      ? `Installed ${current.version} · this file ${pack.version}`
+      : 'New pack';
+    card.querySelector('.addon-inspection-meta').innerHTML = [
+      escapeHtml(pack.author || 'Unknown author'),
+      escapeHtml(status),
+      `${Number(result.presetCount) || promptPackPresetCount(pack)} presets`,
+      addonFormatBytes(result.bytes),
+    ].map((value) => `<span>${value}</span>`).join('');
+    const remove = card.querySelector('[data-addon-review-remove]');
+    const install = card.querySelector('[data-addon-review-install]');
+    remove.dataset.addonReviewRemove = result.inspectionId;
+    install.dataset.addonReviewInstall = result.inspectionId;
+    remove.disabled = promptPackBusy;
+    install.disabled = promptPackBusy;
+    install.textContent = promptPackInstallingId === result.inspectionId
+      ? (current ? 'Updating…' : 'Installing…')
+      : (current ? 'Update' : 'Install');
+    list.appendChild(card);
+  }
+}
+
 function renderPromptPackInspection(result) {
-  promptPackInspection = result;
-  const pack = result.pack || {};
-  const current = result.current;
-  const previews = (result.previews || []).map((preview) => preview.src);
-  $('#addonInspectionPreview').innerHTML = addonMosaicMarkup(previews, pack.name);
-  $('#addonInspectionName').textContent = pack.name || 'Preset pack';
-  $('#addonInspectionDescription').textContent = pack.description
-    || `${promptPackCategoryLabel(pack)} presets by ${pack.author || 'Unknown author'}.`;
-  const status = current
-    ? `Installed ${current.version} · this file ${pack.version}`
-    : 'New pack';
-  $('#addonInspectionMeta').innerHTML = [
-    escapeHtml(pack.author || 'Unknown author'),
-    escapeHtml(status),
-    `${Number(result.presetCount) || promptPackPresetCount(pack)} presets`,
-    addonFormatBytes(result.bytes),
-  ].map((value) => `<span>${value}</span>`).join('');
-  $('#addonInspectionInstall').textContent = current ? 'Update pack' : 'Install pack';
-  $('#addonInspection').hidden = false;
-  $('#addonInspection').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  promptPackInspections = [
+    ...promptPackInspections.filter((entry) => (
+      entry.inspectionId !== result.inspectionId && entry.pack?.id !== result.pack?.id
+    )),
+    result,
+  ].slice(-MAX_PENDING_PROMPT_PACKS);
+  renderPromptPackInspectionQueue();
+}
+
+function promptPackFileIssue(file) {
+  if (!file || !/\.mixpack$/i.test(file.name || '')) return 'Choose a .mixpack preset pack';
+  if (file.size > 32 * 1024 * 1024) return 'Preset packs must be 32 MB or smaller';
+  return '';
+}
+
+async function inspectPromptPackFiles(fileList) {
+  if (!state.promptPacksCanManage || promptPackBusy) return;
+  const files = [...(fileList || [])].filter(Boolean);
+  if (!files.length) return;
+  const available = Math.max(0, MAX_PENDING_PROMPT_PACKS - promptPackInspections.length);
+  if (!available) {
+    toast('Install or remove a reviewed pack before adding another', true);
+    $('#addonFileInput').value = '';
+    return;
+  }
+  const pending = files.slice(0, available);
+  if (files.length > pending.length) {
+    toast(`Review queue holds up to ${MAX_PENDING_PROMPT_PACKS} Mix Packs`, true);
+  }
+  promptPackBusy = true;
+  $('#addonDropZone').classList.add('loading');
+  renderPromptPackInspectionQueue();
+  let reviewed = 0;
+  try {
+    for (let index = 0; index < pending.length; index += 1) {
+      const file = pending[index];
+      const issue = promptPackFileIssue(file);
+      if (issue) {
+        toast(`${file?.name || 'File'}: ${issue}`, true);
+        continue;
+      }
+      $('#addonDropNote').textContent = `Reviewing ${index + 1} of ${pending.length}…`;
+      try {
+        const result = await api('/api/addons/inspect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'X-Filename': encodeURIComponent(file.name || 'preset-pack.mixpack'),
+          },
+          body: await file.arrayBuffer(),
+        });
+        renderPromptPackInspection(result);
+        reviewed += 1;
+      } catch (error) {
+        toast(`${file.name}: ${error.message || 'This preset pack could not be opened'}`, true);
+      }
+    }
+  } finally {
+    promptPackBusy = false;
+    $('#addonFileInput').value = '';
+    $('#addonDropZone').classList.remove('loading');
+    renderPromptPacks();
+    renderPromptPackInspectionQueue();
+    if (reviewed) $('#addonInspection').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+async function discardPromptPackInspection(inspectionId) {
+  if (!inspectionId || promptPackBusy) return;
+  promptPackInspections = promptPackInspections.filter((entry) => entry.inspectionId !== inspectionId);
+  renderPromptPackInspectionQueue();
+  try {
+    await api(`/api/addons/inspect/${encodeURIComponent(inspectionId)}`, { method: 'DELETE' });
+  } catch { /* Staged reviews also expire automatically. */ }
+}
+
+async function requestPromptPackInstallation(inspection, allowDowngrade = false) {
+  try {
+    return await api('/api/addons/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inspectionId: inspection.inspectionId,
+        replace: !!inspection.current,
+        allowDowngrade,
+      }),
+    });
+  } catch (error) {
+    if (error.code === 'prompt_pack_downgrade' && !allowDowngrade) {
+      const approved = await askConfirm({
+        title: `Install an older version of ${inspection.pack?.name || 'this pack'}?`,
+        message: 'This replaces a newer installed pack. The current version will move to recoverable trash.',
+        confirmLabel: 'Install older version',
+        danger: true,
+      });
+      if (approved) return requestPromptPackInstallation(inspection, true);
+      return null;
+    }
+    toast(`${inspection.pack?.name || 'Preset pack'}: ${error.message || 'could not be installed'}`, true);
+    return null;
+  }
+}
+
+function acceptInstalledPromptPack(inspection, result) {
+  promptPackInspections = promptPackInspections.filter((entry) => entry.inspectionId !== inspection.inspectionId);
+  reconcilePromptPackSelections(result.pack);
+}
+
+async function refreshPromptPacksAfterInstall() {
+  state.promptPacksLoaded = false;
+  await loadPromptPacks({ force: true });
+  renderCameraPicker();
+}
+
+async function installInspectedPromptPack(inspectionId) {
+  const inspection = promptPackInspections.find((entry) => entry.inspectionId === inspectionId);
+  if (!inspection || promptPackBusy) return;
+  promptPackBusy = true;
+  promptPackInstallingId = inspectionId;
+  renderPromptPackInspectionQueue();
+  try {
+    const result = await requestPromptPackInstallation(inspection);
+    if (!result) return;
+    acceptInstalledPromptPack(inspection, result);
+    await refreshPromptPacksAfterInstall();
+    toast(`${result.pack?.name || inspection.pack?.name || 'Preset pack'} installed`);
+  } finally {
+    promptPackBusy = false;
+    promptPackInstallingId = '';
+    renderPromptPackInspectionQueue();
+  }
+}
+
+async function installAllInspectedPromptPacks() {
+  if (!promptPackInspections.length || promptPackBusy) return;
+  promptPackBusy = true;
+  promptPackBatchInstalling = true;
+  let installed = 0;
+  try {
+    for (const inspection of [...promptPackInspections]) {
+      promptPackInstallingId = inspection.inspectionId;
+      renderPromptPackInspectionQueue();
+      const result = await requestPromptPackInstallation(inspection);
+      if (!result) continue;
+      acceptInstalledPromptPack(inspection, result);
+      installed += 1;
+    }
+    if (installed) await refreshPromptPacksAfterInstall();
+    if (installed) toast(`${installed} Mix Pack${installed === 1 ? '' : 's'} installed`);
+  } finally {
+    promptPackBusy = false;
+    promptPackInstallingId = '';
+    promptPackBatchInstalling = false;
+    renderPromptPackInspectionQueue();
+  }
 }
 
 async function loadPromptPacks(options = {}) {
@@ -27298,85 +27620,6 @@ async function loadPromptPacks(options = {}) {
     state.promptPacksLoaded = false;
     $('#addonPackStatus').textContent = error.message || 'Could not load add-ons';
     $('#addonPackList').innerHTML = '<div class="addon-pack-empty">Add-ons are temporarily unavailable.</div>';
-  }
-}
-
-async function inspectPromptPackFile(file) {
-  if (!state.promptPacksCanManage || promptPackBusy) return;
-  if (!file || !/\.mixpack$/i.test(file.name || '')) {
-    toast('Choose a .mixpack preset pack');
-    return;
-  }
-  if (file.size > 32 * 1024 * 1024) {
-    toast('Preset packs must be 32 MB or smaller');
-    return;
-  }
-  promptPackBusy = true;
-  $('#addonDropZone').classList.add('loading');
-  $('#addonDropNote').textContent = 'Reviewing pack contents…';
-  try {
-    const result = await api('/api/addons/inspect', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'X-Filename': encodeURIComponent(file.name || 'preset-pack.mixpack'),
-      },
-      body: await file.arrayBuffer(),
-    });
-    renderPromptPackInspection(result);
-  } catch (error) {
-    clearPromptPackInspection();
-    toast(error.message || 'This preset pack could not be opened');
-  } finally {
-    promptPackBusy = false;
-    $('#addonDropZone').classList.remove('loading');
-    renderPromptPacks();
-  }
-}
-
-async function installInspectedPromptPack(allowDowngrade = false) {
-  if (!promptPackInspection || promptPackBusy) return;
-  promptPackBusy = true;
-  const button = $('#addonInspectionInstall');
-  button.disabled = true;
-  button.textContent = promptPackInspection.current ? 'Updating…' : 'Installing…';
-  try {
-    const result = await api('/api/addons/install', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inspectionId: promptPackInspection.inspectionId,
-        replace: !!promptPackInspection.current,
-        allowDowngrade,
-      }),
-    });
-    const name = result.pack?.name || promptPackInspection.pack?.name || 'Preset pack';
-    reconcilePromptPackSelections(result.pack);
-    clearPromptPackInspection();
-    state.promptPacksLoaded = false;
-    await loadPromptPacks({ force: true });
-    renderCameraPicker();
-    toast(`${name} installed`);
-  } catch (error) {
-    if (error.code === 'prompt_pack_downgrade' && !allowDowngrade) {
-      const approved = await askConfirm({
-        title: 'Install an older version?',
-        message: 'This replaces a newer installed pack. The current version will move to recoverable trash.',
-        confirmLabel: 'Install older version',
-        danger: true,
-      });
-      promptPackBusy = false;
-      button.disabled = false;
-      if (approved) return installInspectedPromptPack(true);
-    } else {
-      toast(error.message || 'Preset pack could not be installed');
-    }
-  } finally {
-    promptPackBusy = false;
-    if (promptPackInspection) {
-      button.disabled = false;
-      button.textContent = promptPackInspection.current ? 'Update pack' : 'Install pack';
-    }
   }
 }
 
@@ -27447,14 +27690,14 @@ $('#addonDropZone').addEventListener('keydown', (event) => {
   $('#addonFileInput').click();
 });
 $('#addonFileInput').addEventListener('change', () => {
-  const file = $('#addonFileInput').files?.[0];
-  if (!file) return;
+  const files = [...($('#addonFileInput').files || [])];
+  if (!files.length) return;
   if ($('#cameraSheet').classList.contains('show')) {
     $('#cameraSheet').classList.remove('show');
     setSettingsTab('addons');
     $('#settingsBtn').click();
   }
-  inspectPromptPackFile(file);
+  inspectPromptPackFiles(files);
 });
 ['dragenter', 'dragover'].forEach((type) => $('#addonDropZone').addEventListener(type, (event) => {
   if (!state.promptPacksCanManage) return;
@@ -27468,10 +27711,18 @@ $('#addonDropZone').addEventListener('drop', (event) => {
   if (!state.promptPacksCanManage) return;
   event.preventDefault();
   $('#addonDropZone').classList.remove('dragging');
-  inspectPromptPackFile(event.dataTransfer?.files?.[0]);
+  inspectPromptPackFiles(event.dataTransfer?.files);
 });
-$('#addonInspectionCancel').addEventListener('click', clearPromptPackInspection);
-$('#addonInspectionInstall').addEventListener('click', () => installInspectedPromptPack());
+$('#addonInstallAll').addEventListener('click', installAllInspectedPromptPacks);
+$('#addonInspectionList').addEventListener('click', (event) => {
+  const install = event.target.closest('[data-addon-review-install]');
+  if (install) {
+    installInspectedPromptPack(install.dataset.addonReviewInstall);
+    return;
+  }
+  const remove = event.target.closest('[data-addon-review-remove]');
+  if (remove) discardPromptPackInspection(remove.dataset.addonReviewRemove);
+});
 $('#addonPackList').addEventListener('click', (event) => {
   const toggle = event.target.closest('[data-addon-toggle]');
   if (toggle) {
