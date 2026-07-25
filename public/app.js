@@ -27926,7 +27926,8 @@ let dependencySelectedComponents = new Set();
 
 function formatDependencyBytes(value) {
   const bytes = Number(value || 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   const power = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   return `${(bytes / (1024 ** power)).toFixed(power ? 1 : 0)} ${units[power]}`;
@@ -27937,7 +27938,11 @@ function dependencyProgressMetrics(installState) {
   const downloaded = Math.max(0, Number(installState?.downloaded || 0));
   const downloadTotal = Math.max(0, Number(installState?.downloadTotal || 0));
   if (phase === 'downloading-model' && installState?.downloadMethod === 'hf-xet' && downloaded <= 0) {
-    return { determinate: false, percent: 0, label: 'Accelerated transfer' };
+    const startedAt = Math.max(0, Number(installState?.downloadStartedAt || installState?.updatedAt || 0));
+    const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+    const size = downloadTotal > 0 ? ` · ${formatDependencyBytes(downloadTotal)}` : '';
+    const active = elapsed > 0 ? ` · active ${elapsed}s` : '';
+    return { determinate: false, percent: 0, label: `Preparing accelerated transfer${size}${active}` };
   }
   if (phase === 'downloading-model' && downloadTotal > 0) {
     const ratio = Math.max(0, Math.min(1, downloaded / downloadTotal));

@@ -311,6 +311,9 @@ test('large Hugging Face models use isolated Xet acceleration before the HTTP fa
     assert.equal(commands[0].command, 'uv.exe');
     assert.equal(commands[0].args.includes('hf'), true);
     assert.equal(reports.some((entry) => entry.detail?.downloadMethod === 'hf-xet'), true);
+    assert.equal(reports.some((entry) => entry.detail?.downloadMethod === 'hf-xet'
+      && entry.detail.downloaded === bytes.length
+      && entry.detail.downloadTotal === bytes.length), true);
     assert.deepEqual(fs.readFileSync(result.destination), bytes);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
