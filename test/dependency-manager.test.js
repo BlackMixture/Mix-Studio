@@ -271,6 +271,185 @@ test('reviewed model mirrors and Hugging Face tokens are used without exposing t
   }
 });
 
+test('large Hugging Face models use isolated Xet acceleration before the HTTP fallback', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-model-xet-'));
+  const bytes = safetensorsFixture();
+  const reports = [];
+  let initialBodyCancelled = false;
+  const commands = [];
+  try {
+    const result = await downloadAsset(
+      ['scailUnet', 'diffusion_models', 'https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/model.safetensors'],
+      rootDir,
+      { scailUnet: 'model.safetensors' },
+      (phase, message, detail) => reports.push({ phase, message, detail }),
+      {
+        uvExecutable: 'uv.exe',
+        hfAccelerationThreshold: 0,
+        statfs: async () => ({ bavail: 10 ** 9, bsize: 4096 }),
+        fetch: async () => ({
+          ok: true,
+          status: 200,
+          headers: { get: (name) => name === 'content-length' ? String(bytes.length) : '' },
+          body: {
+            cancel: async () => { initialBodyCancelled = true; },
+            getReader: () => { throw new Error('HTTP body should not be consumed after Xet succeeds'); },
+          },
+        }),
+        run: async (command, args, options) => {
+          commands.push({ command, args, options });
+          const staging = args[args.indexOf('--local-dir') + 1];
+          const remoteFile = args[args.indexOf('Comfy-Org/SCAIL-2') + 1];
+          const output = path.join(staging, ...remoteFile.split('/'));
+          fs.mkdirSync(path.dirname(output), { recursive: true });
+          fs.writeFileSync(output, bytes);
+        },
+      }
+    );
+    assert.equal(result.skipped, false);
+    assert.equal(initialBodyCancelled, true);
+    assert.equal(commands[0].command, 'uv.exe');
+    assert.equal(commands[0].args.includes('hf'), true);
+    assert.equal(reports.some((entry) => entry.detail?.downloadMethod === 'hf-xet'), true);
+    assert.deepEqual(fs.readFileSync(result.destination), bytes);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('Xet failures fall back to the resumable HTTP downloader', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-model-xet-fallback-'));
+  const bytes = safetensorsFixture();
+  let fetchCount = 0;
+  let cancelledInitialBody = false;
+  const reports = [];
+  try {
+    const result = await downloadAsset(
+      ['scailUnet', 'diffusion_models', 'https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/model.safetensors'],
+      rootDir,
+      { scailUnet: 'model.safetensors' },
+      (phase, message, detail) => reports.push({ phase, message, detail }),
+      {
+        uvExecutable: 'uv.exe',
+        hfAccelerationThreshold: 0,
+        downloadAttempts: 2,
+        downloadRetryDelayMs: 0,
+        statfs: async () => ({ bavail: 10 ** 9, bsize: 4096 }),
+        fetch: async () => {
+          fetchCount += 1;
+          let sent = false;
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: (name) => name === 'content-length' ? String(bytes.length) : '' },
+            body: {
+              cancel: async () => { cancelledInitialBody = true; },
+              getReader: () => ({
+                read: async () => sent
+                  ? { done: true }
+                  : (sent = true, { done: false, value: bytes }),
+              }),
+            },
+          };
+        },
+        run: async () => { throw new Error('Xet endpoint blocked'); },
+      }
+    );
+    assert.equal(cancelledInitialBody, true);
+    assert.equal(fetchCount, 2);
+    assert.equal(reports.some((entry) => entry.phase === 'download-fallback'
+      && entry.detail?.downloadMethod === 'http-resume'), true);
+    assert.deepEqual(fs.readFileSync(result.destination), bytes);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('interrupted HTTP model downloads resume from the saved byte range', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-model-resume-'));
+  const bytes = safetensorsFixture();
+  const split = Math.max(10, Math.floor(bytes.length / 2));
+  const url = 'https://example.test/model.safetensors';
+  const asset = ['unet', 'diffusion_models', url];
+  const settings = { unet: 'model.safetensors' };
+  try {
+    await assert.rejects(
+      downloadAsset(asset, rootDir, settings, () => {}, {
+        downloadAttempts: 1,
+        downloadRetryDelayMs: 0,
+        statfs: async () => ({ bavail: 10 ** 9, bsize: 4096 }),
+        fetch: async () => {
+          let read = false;
+          return {
+            ok: true,
+            status: 200,
+            headers: {
+              get: (name) => {
+                if (name === 'content-length') return String(bytes.length);
+                if (name === 'etag') return '"fixture-etag"';
+                return '';
+              },
+            },
+            body: {
+              getReader: () => ({
+                read: async () => {
+                  if (!read) {
+                    read = true;
+                    return { done: false, value: bytes.subarray(0, split) };
+                  }
+                  throw new Error('connection reset');
+                },
+              }),
+            },
+          };
+        },
+      }),
+      (error) => error.code === 'dependency_download_incomplete' && error.resumableBytes === split
+    );
+
+    const destination = path.join(rootDir, 'diffusion_models', 'model.safetensors');
+    assert.equal(fs.statSync(`${destination}.mixbox.part`).size, split);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part.json`), true);
+
+    let requestedHeaders = null;
+    const result = await downloadAsset(asset, rootDir, settings, () => {}, {
+      downloadAttempts: 1,
+      downloadRetryDelayMs: 0,
+      statfs: async () => ({ bavail: 10 ** 9, bsize: 4096 }),
+      fetch: async (_requestedUrl, options) => {
+        requestedHeaders = options.headers;
+        let sent = false;
+        return {
+          ok: true,
+          status: 206,
+          headers: {
+            get: (name) => {
+              if (name === 'content-length') return String(bytes.length - split);
+              if (name === 'content-range') return `bytes ${split}-${bytes.length - 1}/${bytes.length}`;
+              if (name === 'etag') return '"fixture-etag"';
+              return '';
+            },
+          },
+          body: {
+            getReader: () => ({
+              read: async () => sent
+                ? { done: true }
+                : (sent = true, { done: false, value: bytes.subarray(split) }),
+            }),
+          },
+        };
+      },
+    });
+    assert.equal(requestedHeaders.Range, `bytes=${split}-`);
+    assert.equal(requestedHeaders['If-Range'], '"fixture-etag"');
+    assert.deepEqual(fs.readFileSync(result.destination), bytes);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part`), false);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part.json`), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('LTXVideo is patched for the kornia 0.8.3 pad relocation', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-ltx-kornia-'));
   const file = path.join(rootDir, 'pyramid_blending.py');
@@ -496,6 +675,8 @@ test('model downloads verify disk space, byte counts, and model headers before i
         { unet: 'downloaded.safetensors' },
         () => {},
         {
+          downloadAttempts: 1,
+          downloadRetryDelayMs: 0,
           statfs: async () => ({ bavail: 10 ** 9, bsize: 4096 }),
           fetch: async () => ({
             ok: true,
@@ -511,7 +692,8 @@ test('model downloads verify disk space, byte counts, and model headers before i
     );
     const destination = path.join(rootDir, 'diffusion_models', 'downloaded.safetensors');
     assert.equal(fs.existsSync(destination), false);
-    assert.equal(fs.existsSync(`${destination}.mixbox.part`), false);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part`), true);
+    assert.equal(fs.existsSync(`${destination}.mixbox.part.json`), true);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -558,6 +740,7 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /updateDependencyInstallState\(/);
   assert.match(server, /function dependencyFailureState\(error\)/);
   assert.match(server, /accessUrl: error\?\.accessUrl \|\| null/);
+  assert.match(server, /resumableBytes: Math\.max\(0, Number\(error\?\.resumableBytes \|\| 0\)\)/);
   assert.match(server, /errorCode: error\?\.code \|\| null/);
   assert.match(server, /\.\.\.EMPTY_DEPENDENCY_FAILURE/);
   assert.match(server, /broadcast\('dependencyInstall'/);
@@ -569,6 +752,7 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /klein: \['klein4', 'klein9'\]/);
   assert.match(server, /NODE_PACKS: DEPENDENCY_NODE_PACKS/);
   assert.match(server, /dependencyComponentInfo\(id/);
+  assert.match(app, /installState\?\.downloadMethod === 'hf-xet'/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /downloadTotal/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /settings\[settingKey\] \|\| defaultFilename \|\| sourceName/);
 });

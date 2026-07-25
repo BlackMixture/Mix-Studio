@@ -28,6 +28,12 @@ test('advanced settings are split into accessible side tabs', () => {
   assert.match(app, /renderAppRelease\(lastMeta\.app \|\| \{\}\)/);
 });
 
+test('Hugging Face token guidance uses the quiet settings note treatment', () => {
+  const generalPane = html.match(/id="settingsPaneGeneral"([\s\S]*?)<section class="settings-pane" id="settingsPaneImage"/)?.[1] || '';
+  assert.match(generalPane, /id="setHfToken"[\s\S]*<div class="settings-note">Gated models may require access approval and a read token\.<\/div>/);
+  assert.doesNotMatch(generalPane, /Some gated downloads require both/);
+});
+
 test('community settings link to each official Black Mixture destination', () => {
   const pane = html.match(/id="settingsPaneCommunity"([\s\S]*?)<\/section>/)?.[1] || '';
   assert.match(pane, /https:\/\/www\.youtube\.com\/blackmixture/);

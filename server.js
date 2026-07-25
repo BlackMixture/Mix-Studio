@@ -731,6 +731,7 @@ let dependencyInstallState = {
   failedModel: null,
   failedSettingKey: null,
   statusCode: null,
+  resumableBytes: 0,
   updatedAt: Date.now(),
 };
 
@@ -740,6 +741,7 @@ const EMPTY_DEPENDENCY_FAILURE = Object.freeze({
   failedModel: null,
   failedSettingKey: null,
   statusCode: null,
+  resumableBytes: 0,
 });
 
 function dependencyFailureState(error) {
@@ -749,6 +751,7 @@ function dependencyFailureState(error) {
     failedModel: error?.failedModel || null,
     failedSettingKey: error?.settingKey || null,
     statusCode: Number.isFinite(error?.statusCode) ? error.statusCode : null,
+    resumableBytes: Math.max(0, Number(error?.resumableBytes || 0)),
   };
 }
 

@@ -150,3 +150,11 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(app, /drawerButton\.hidden = !state\.officialReleaseUpdateAvailable/);
   assert.match(app, /\$\('#settingsUpdatesBtn'\)\.addEventListener\('click', openUpdatesSheet\)/);
 });
+
+test('release status never labels an older public release as installed or current', () => {
+  assert.match(app, /const installedTag = installedVersion \? `v\$\{installedVersion\.replace\(\/\^v\/i, ''\)\}` : ''/);
+  assert.match(app, /const latestMatchesInstalled = !!installedVersion && latest\?\.version === installedVersion\.replace\(\/\^v\/i, ''\)/);
+  assert.match(app, /`\$\{installedTag \|\| latest\.tagName\} is current`/);
+  assert.match(app, /latestMatchesInstalled \? '<span class="update-entry-installed">Installed<\/span>' : ''/);
+  assert.match(app, /This installation is newer than the latest published GitHub release\./);
+});

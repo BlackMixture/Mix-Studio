@@ -1135,6 +1135,9 @@ function renderOfficialRelease() {
   const drawerButton = $('#updatesBtn');
   const settingsButton = $('#settingsUpdatesBtn');
   const settingsStatus = $('#settingsUpdatesStatus');
+  const installedVersion = String(state.officialInstalledVersion || '').trim();
+  const installedTag = installedVersion ? `v${installedVersion.replace(/^v/i, '')}` : '';
+  const latestMatchesInstalled = !!installedVersion && latest?.version === installedVersion.replace(/^v/i, '');
   const setReleaseStatus = (text, stateName) => {
     $('#updatesDrawerStatus').textContent = text;
     if (settingsStatus) settingsStatus.textContent = text;
@@ -1177,14 +1180,16 @@ function renderOfficialRelease() {
   }
 
   setReleaseStatus(
-    state.officialReleaseUpdateAvailable ? `${latest.tagName} available` : `${latest.tagName} is current`,
+    state.officialReleaseUpdateAvailable
+      ? `${latest.tagName} available`
+      : `${installedTag || latest.tagName} is current`,
     state.officialReleaseUpdateAvailable ? 'available' : 'current',
   );
   const publishedLabel = formatUpdateDate(latest.publishedAt);
   list.innerHTML = `
     <article class="update-entry${unread ? ' new' : ''}">
       <div class="update-entry-head"><strong>${escapeHtml(latest.title)}</strong>${publishedLabel ? `<time datetime="${escapeHtml(latest.publishedAt)}">${escapeHtml(publishedLabel)}</time>` : ''}</div>
-      <span class="update-entry-version">${escapeHtml(latest.tagName || `v${latest.version}`)}</span>${state.officialReleaseUpdateAvailable ? '' : '<span class="update-entry-installed">Installed</span>'}
+      <span class="update-entry-version">${escapeHtml(latest.tagName || `v${latest.version}`)}</span>${latestMatchesInstalled ? '<span class="update-entry-installed">Installed</span>' : ''}
       <p>${escapeHtml(latest.notes || 'Open the official release page to see the complete notes.')}</p>
     </article>`;
   actions.hidden = false;
@@ -1193,7 +1198,11 @@ function renderOfficialRelease() {
   install.disabled = appUpdateRunning;
   installStatus.textContent = state.officialReleaseUpdateAvailable
     ? (state.profileIsOwner ? 'The update installs only when both queues are idle.' : 'Switch to the owner profile to install this update.')
-    : (state.officialReleaseError ? 'Showing the last successful GitHub check.' : 'This installation matches the latest stable release.');
+    : state.officialReleaseError
+      ? 'Showing the last successful GitHub check.'
+      : latestMatchesInstalled
+        ? 'This installation matches the latest stable release.'
+        : 'This installation is newer than the latest published GitHub release.';
 }
 
 function markLatestReleaseSeen() {
@@ -27174,6 +27183,9 @@ function dependencyProgressMetrics(installState) {
   const phase = String(installState?.phase || '');
   const downloaded = Math.max(0, Number(installState?.downloaded || 0));
   const downloadTotal = Math.max(0, Number(installState?.downloadTotal || 0));
+  if (phase === 'downloading-model' && installState?.downloadMethod === 'hf-xet' && downloaded <= 0) {
+    return { determinate: false, percent: 0, label: 'Accelerated transfer' };
+  }
   if (phase === 'downloading-model' && downloadTotal > 0) {
     const ratio = Math.max(0, Math.min(1, downloaded / downloadTotal));
     return {
