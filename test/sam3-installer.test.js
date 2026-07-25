@@ -9,6 +9,7 @@ const {
   SAM3_REPO_URL,
   comfyDesktopInstallations,
   findComfyBase,
+  findComfyDataBase,
   findPartialComfyBase,
   findComfyPython,
   installSam3,
@@ -49,6 +50,45 @@ test('Comfy Desktop registry requires installed status, main.py, and Python befo
     fs.writeFileSync(path.join(base, 'main.py'), '');
     assert.equal(findComfyBase({}, options), base);
     assert.equal(sam3InstallStatus({}, options).canInstall, true);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('Comfy Desktop adopted bases receive custom nodes instead of the source checkout', () => {
+  const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'mix-comfy-adopted-'));
+  const appData = path.join(temp, 'app-data');
+  const installRoot = path.join(temp, 'desktop-install');
+  const sourceBase = path.join(installRoot, 'ComfyUI');
+  const adoptedBase = path.join(temp, 'adopted-base');
+  const python = path.join(adoptedBase, '.venv', 'Scripts', 'python.exe');
+  const registryDir = path.join(appData, 'Comfy Desktop');
+  fs.mkdirSync(sourceBase, { recursive: true });
+  fs.mkdirSync(path.join(adoptedBase, 'models'), { recursive: true });
+  fs.mkdirSync(path.join(adoptedBase, 'custom_nodes'), { recursive: true });
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.mkdirSync(registryDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceBase, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  fs.writeFileSync(path.join(registryDir, 'installations.json'), JSON.stringify([{
+    id: 'adopted',
+    status: 'installed',
+    sourceId: 'comfyorg',
+    installPath: installRoot,
+    adoptedBaseDir: adoptedBase,
+    adoptedPythonPath: python,
+  }]));
+  const runtime = { comfy: { path: adoptedBase, modelsPath: path.join(adoptedBase, 'models') } };
+  const options = { env: { APPDATA: appData }, home: path.join(temp, 'missing'), fsImpl: fs };
+  try {
+    assert.equal(findComfyBase(runtime, options), sourceBase);
+    assert.equal(findComfyDataBase(runtime, options), adoptedBase);
+    const status = sam3InstallStatus(runtime, options);
+    assert.equal(status.sourcePath, sourceBase);
+    assert.equal(status.basePath, adoptedBase);
+    assert.equal(status.customNodesPath, path.join(adoptedBase, 'custom_nodes'));
+    assert.equal(status.pythonPath, python);
+    assert.equal(status.canInstall, true);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
