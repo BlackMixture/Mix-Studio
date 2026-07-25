@@ -1,0 +1,47 @@
+{
+  "purpose": "Mix Studio camera preset picker thumbnails",
+  "generatedAt": "2026-07-25",
+  "model": "Krea 2",
+  "basePrompt": "A reflective metallic ball in a field of green grass",
+  "settings": {
+    "seed": 25072026,
+    "width": 1024,
+    "height": 1024,
+    "steps": 12,
+    "cfg": 1,
+    "enhance": false,
+    "loras": []
+  },
+  "presets": [
+    {
+      "id": "cinematic-arri",
+      "file": "cinematic-arri.jpg",
+      "promptSuffix": "shot on ARRI Alexa 35, premium spherical prime lens, 35mm, f/4, 1/125s shutter, ISO 400"
+    },
+    {
+      "id": "dslr-portrait",
+      "file": "dslr-portrait.jpg",
+      "promptSuffix": "shot on Canon EOS 80D DSLR, Canon EF photo zoom lens, 85mm, f/2.8, 1/250s shutter, ISO 200"
+    },
+    {
+      "id": "red-product",
+      "file": "red-product.jpg",
+      "promptSuffix": "shot on RED Komodo cinema camera, premium spherical prime lens, 50mm, f/5.6, 1/125s shutter, ISO 400"
+    },
+    {
+      "id": "iphone-natural",
+      "file": "iphone-natural.jpg",
+      "promptSuffix": "shot on iPhone computational camera, phone wide-angle lens, 24mm, f/2, 1/60s shutter, ISO 100"
+    },
+    {
+      "id": "vintage-film",
+      "file": "vintage-film.jpg",
+      "promptSuffix": "shot on vintage 35mm film SLR, premium spherical prime lens, 50mm, f/2.8, 1/125s shutter, ISO 800"
+    },
+    {
+      "id": "macro-detail",
+      "file": "macro-detail.jpg",
+      "promptSuffix": "shot on Sony VENICE cinema camera, macro lens, 100mm, f/8, 1/250s shutter, ISO 400"
+    }
+  ]
+}

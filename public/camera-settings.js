@@ -41,12 +41,16 @@
       id: 'cinematic-arri',
       label: 'Cinematic ARRI',
       note: 'clean studio cinema',
+      thumbnail: '/assets/camera-presets/cinematic-arri.jpg',
+      thumbnailAlt: 'Reflective metallic ball in grass photographed with a clean cinematic ARRI look',
       settings: DEFAULT_CAMERA_SETTINGS,
     },
     {
       id: 'dslr-portrait',
       label: 'DSLR Portrait',
       note: 'soft background',
+      thumbnail: '/assets/camera-presets/dslr-portrait.jpg',
+      thumbnailAlt: 'Reflective metallic ball in grass photographed with a soft DSLR portrait look',
       settings: {
         camera: 'canon80d',
         lens: 'photo-zoom',
@@ -60,6 +64,8 @@
       id: 'red-product',
       label: 'RED Product',
       note: 'crisp commercial',
+      thumbnail: '/assets/camera-presets/red-product.jpg',
+      thumbnailAlt: 'Reflective metallic ball in grass photographed with a crisp RED commercial look',
       settings: {
         camera: 'redkomodo',
         lens: 'spherical-prime',
@@ -73,6 +79,8 @@
       id: 'iphone-natural',
       label: 'iPhone Natural',
       note: 'casual realism',
+      thumbnail: '/assets/camera-presets/iphone-natural.jpg',
+      thumbnailAlt: 'Reflective metallic ball in grass photographed with a natural iPhone look',
       settings: {
         camera: 'iphone',
         lens: 'phone-wide',
@@ -86,6 +94,8 @@
       id: 'vintage-film',
       label: 'Vintage Film',
       note: '35mm texture',
+      thumbnail: '/assets/camera-presets/vintage-film.jpg',
+      thumbnailAlt: 'Reflective metallic ball in grass photographed with a textured vintage film look',
       settings: {
         camera: 'filmslr',
         lens: 'spherical-prime',
@@ -99,6 +109,8 @@
       id: 'macro-detail',
       label: 'Macro Detail',
       note: 'close focus',
+      thumbnail: '/assets/camera-presets/macro-detail.jpg',
+      thumbnailAlt: 'Reflective metallic ball in grass photographed with a close macro detail look',
       settings: {
         camera: 'sonyvenice',
         lens: 'macro',
@@ -107,6 +119,17 @@
         shutter: '1/250',
         iso: '400',
       },
+    },
+  ];
+
+  const DEFAULT_CAMERA_PRESET_ID = 'cinematic-arri';
+  const PROMPT_PRESET_CATEGORIES = [
+    {
+      id: 'camera',
+      label: 'Camera',
+      description: 'Choose one photographic treatment.',
+      selectionMode: 'single',
+      presets: CAMERA_COMBOS,
     },
   ];
 
@@ -148,6 +171,37 @@
     return normalizeSettings(Object.assign({}, currentSettings || {}, combo.settings));
   }
 
+  function cameraComboIdForSettings(settings) {
+    const normalized = normalizeSettings(settings);
+    const keys = ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso'];
+    const combo = CAMERA_COMBOS.find((item) => {
+      const candidate = normalizeSettings(item.settings);
+      return keys.every((key) => candidate[key] === normalized[key]);
+    });
+    return combo ? combo.id : null;
+  }
+
+  function cameraCombo(comboId) {
+    return CAMERA_COMBOS.find((item) => item.id === comboId) || null;
+  }
+
+  function normalizeCameraPresetId(comboId, legacySettings) {
+    if (comboId === null) return null;
+    if (cameraCombo(comboId)) return comboId;
+    return cameraComboIdForSettings(legacySettings) || DEFAULT_CAMERA_PRESET_ID;
+  }
+
+  function cameraPresetPromptPhrase(comboId) {
+    const combo = cameraCombo(comboId);
+    return combo ? cameraPromptPhrase(combo.settings) : '';
+  }
+
+  function applyCameraPresetPrompt(prompt, comboId) {
+    const combo = cameraCombo(comboId);
+    if (!combo) return stripCameraPrompt(prompt);
+    return applyCameraPrompt(prompt, combo.settings);
+  }
+
   return {
     CAMERA_PRESETS,
     LENS_PRESETS,
@@ -157,9 +211,16 @@
     SHUTTERS,
     ISOS,
     DEFAULT_CAMERA_SETTINGS,
+    DEFAULT_CAMERA_PRESET_ID,
+    PROMPT_PRESET_CATEGORIES,
     normalizeSettings,
     cameraPromptPhrase,
     applyCameraPrompt,
     applyCameraCombo,
+    cameraCombo,
+    cameraComboIdForSettings,
+    normalizeCameraPresetId,
+    cameraPresetPromptPhrase,
+    applyCameraPresetPrompt,
   };
 });

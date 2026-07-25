@@ -8,9 +8,15 @@ const {
   LENS_PRESETS,
   CAMERA_COMBOS,
   DEFAULT_CAMERA_SETTINGS,
+  DEFAULT_CAMERA_PRESET_ID,
+  PROMPT_PRESET_CATEGORIES,
   applyCameraCombo,
   cameraPromptPhrase,
   applyCameraPrompt,
+  cameraComboIdForSettings,
+  normalizeCameraPresetId,
+  cameraPresetPromptPhrase,
+  applyCameraPresetPrompt,
 } = require('../public/camera-settings');
 
 test('camera settings expose practical camera and lens choices', () => {
@@ -37,6 +43,17 @@ test('camera settings include recommended combos for common aesthetics', () => {
       iso: '200',
     }
   );
+});
+
+test('camera presets expose visual assets and a reusable category definition', () => {
+  assert.equal(DEFAULT_CAMERA_PRESET_ID, 'cinematic-arri');
+  assert.equal(PROMPT_PRESET_CATEGORIES[0].id, 'camera');
+  assert.equal(PROMPT_PRESET_CATEGORIES[0].selectionMode, 'single');
+  assert.equal(PROMPT_PRESET_CATEGORIES[0].presets, CAMERA_COMBOS);
+  for (const combo of CAMERA_COMBOS) {
+    assert.match(combo.thumbnail, /^\/assets\/camera-presets\/[a-z-]+\.jpg$/);
+    assert.ok(combo.thumbnailAlt);
+  }
 });
 
 test('cameraPromptPhrase builds a natural image prompt fragment', () => {
@@ -70,4 +87,15 @@ test('applyCameraPrompt appends once and replaces previous camera settings', () 
     second,
     'cinematic portrait, shot on Canon EOS 80D DSLR, Canon EF photo zoom lens, 50mm, f/2.8, 1/250s shutter, ISO 200'
   );
+});
+
+test('camera preset selection migrates legacy settings and applies or clears its prompt phrase', () => {
+  assert.equal(cameraComboIdForSettings(applyCameraCombo('dslr-portrait')), 'dslr-portrait');
+  assert.equal(normalizeCameraPresetId('not-a-preset', applyCameraCombo('iphone-natural')), 'iphone-natural');
+  assert.equal(normalizeCameraPresetId(null, DEFAULT_CAMERA_SETTINGS), null);
+  assert.match(cameraPresetPromptPhrase('macro-detail'), /^shot on Sony VENICE/);
+
+  const applied = applyCameraPresetPrompt('reflective ball', 'red-product');
+  assert.match(applied, /reflective ball, shot on RED Komodo/);
+  assert.equal(applyCameraPresetPrompt(applied, null), 'reflective ball');
 });

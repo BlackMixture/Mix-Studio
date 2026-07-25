@@ -159,7 +159,9 @@ const state = {
     seed: { mode: 'random', value: 0 },
   },
   generationTuning: { create: null, edit: null, video: null },
-  cameraSettings: CameraSettings ? Object.assign({}, CameraSettings.DEFAULT_CAMERA_SETTINGS) : {},
+  promptPresetSelections: {
+    camera: CameraSettings ? CameraSettings.DEFAULT_CAMERA_PRESET_ID : null,
+  },
   showAllLoras: true,
   activeJobs: new Set(),
   activeJobSequences: new Map(), // prompt id -> sequential edit id
@@ -1925,7 +1927,7 @@ function saveForm() {
       editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
       videoEngineOrder: state.videoEngineOrder, videoEngineDefault: state.videoEngineDefault,
-      cameraSettings: state.cameraSettings,
+      promptPresetSelections: state.promptPresetSelections,
       videoCameraMotions: state.videoCameraMotions,
       videoCameraMotionPhrase: state.videoCameraMotionPhrase,
       videoCameraGuide: serializeWorkspaceAsset(state.videoCameraGuide),
@@ -2206,8 +2208,12 @@ function loadForm() {
     // Older form state treated inversion as an export-time toggle. The mask
     // editor now applies inversion directly to the visible mask canvas.
     state.kreaMaskInvert = false;
-    if (f.cameraSettings && CameraSettings) {
-      state.cameraSettings = CameraSettings.normalizeSettings(f.cameraSettings);
+    if (CameraSettings) {
+      const savedPresetSelections = f.promptPresetSelections && typeof f.promptPresetSelections === 'object'
+        ? f.promptPresetSelections : {};
+      state.promptPresetSelections = {
+        camera: CameraSettings.normalizeCameraPresetId(savedPresetSelections.camera, f.cameraSettings),
+      };
     }
     if (CameraMotion) {
       state.videoCameraMotions = CameraMotion.normalizeCameraMotions(f.videoCameraMotions);
@@ -8341,173 +8347,48 @@ $('#promptClear').addEventListener('click', () => {
   schedulePromptIntentHint(0);
 });
 
-const CAMERA_WHEEL_KEYS = ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso'];
-const cameraWheelScrollTimers = {};
-let cameraWheelSyncing = false;
-
-function clearCameraWheelScrollTimers() {
-  Object.keys(cameraWheelScrollTimers).forEach((key) => {
-    clearTimeout(cameraWheelScrollTimers[key]);
-    delete cameraWheelScrollTimers[key];
-  });
-}
-
-function setCameraSetting(key, value) {
-  if (!CameraSettings) return;
-  state.cameraSettings = CameraSettings.normalizeSettings(Object.assign({}, state.cameraSettings, { [key]: value }));
-  renderCameraPicker();
-  saveForm();
-}
-
-function updateCameraPreview() {
-  const preview = $('#cameraPreview');
-  if (preview) preview.textContent = CameraSettings.cameraPromptPhrase(state.cameraSettings);
-}
-
-function cameraMatchesSettings(settings) {
-  const current = CameraSettings.normalizeSettings(state.cameraSettings);
-  const next = CameraSettings.normalizeSettings(settings);
-  return ['camera', 'lens', 'focalLength', 'aperture', 'shutter', 'iso']
-    .every((key) => current[key] === next[key]);
-}
-
-function applyCameraCombo(comboId) {
-  if (!CameraSettings) return;
-  state.cameraSettings = CameraSettings.applyCameraCombo(comboId, state.cameraSettings);
-  renderCameraPicker();
-  saveForm();
-}
-
-function renderCameraCombos() {
-  const row = $('#cameraComboGrid');
-  if (!row || !CameraSettings) return;
-  row.innerHTML = '';
-  for (const combo of CameraSettings.CAMERA_COMBOS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'camera-combo' + (cameraMatchesSettings(combo.settings) ? ' active' : '');
-    btn.innerHTML = `<b>${escapeHtml(combo.label)}</b><span>${escapeHtml(combo.note || '')}</span>`;
-    btn.addEventListener('click', () => applyCameraCombo(combo.id));
-    row.appendChild(btn);
-  }
-}
-
-function updateCameraWheelActiveState(key) {
-  const wheel = $(`[data-camera-wheel="${key}"]`);
-  if (!wheel) return;
-  wheel.querySelectorAll('.camera-wheel-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.value === state.cameraSettings[key]);
-  });
-}
-
-function cameraWheelOptions(key) {
-  if (key === 'camera') {
-    return CameraSettings.CAMERA_PRESETS.map((item) => ({
-      value: item.id,
-      label: item.label,
-      sub: item.tag || '',
-    }));
-  }
-  if (key === 'lens') {
-    return CameraSettings.LENS_PRESETS.map((item) => ({
-      value: item.id,
-      label: item.label,
-      sub: item.tag || '',
-    }));
-  }
-  if (key === 'focalLength') {
-    return CameraSettings.FOCAL_LENGTHS.map((value) => ({ value, label: value, sub: 'mm' }));
-  }
-  if (key === 'aperture') {
-    return CameraSettings.APERTURES.map((value) => ({ value, label: `f/${value}`, sub: 'aperture' }));
-  }
-  if (key === 'shutter') {
-    return CameraSettings.SHUTTERS.map((value) => ({ value, label: `${value}s`, sub: 'shutter' }));
-  }
-  if (key === 'iso') {
-    return CameraSettings.ISOS.map((value) => ({ value, label: `ISO ${value}`, sub: 'sensitivity' }));
-  }
-  return [];
-}
-
-function selectCameraWheelFromScroll(list) {
-  const items = [...list.querySelectorAll('.camera-wheel-item')];
-  if (!items.length) return null;
-  const listRect = list.getBoundingClientRect();
-  const center = listRect.top + (listRect.height / 2);
-  let closest = items[0];
-  let closestDistance = Infinity;
-  for (const item of items) {
-    const rect = item.getBoundingClientRect();
-    const itemCenter = rect.top + (rect.height / 2);
-    const distance = Math.abs(itemCenter - center);
-    if (distance < closestDistance) {
-      closest = item;
-      closestDistance = distance;
-    }
-  }
-  return closest.dataset.value || null;
-}
-
-function commitCameraWheelScroll(key, list) {
-  if (!CameraSettings) return;
-  const value = selectCameraWheelFromScroll(list);
-  if (!value || state.cameraSettings[key] === value) return;
-  state.cameraSettings = CameraSettings.normalizeSettings(Object.assign({}, state.cameraSettings, { [key]: value }));
-  updateCameraWheelActiveState(key);
-  renderCameraCombos();
-  updateCameraPreview();
-  saveForm();
-}
-
-function centerCameraWheels() {
-  clearCameraWheelScrollTimers();
-  cameraWheelSyncing = true;
-  requestAnimationFrame(() => {
-    $$('.camera-wheel-list').forEach((list) => {
-      const active = list.querySelector('.camera-wheel-item.active');
-      if (!active) return;
-      list.scrollTop = Math.max(0, active.offsetTop - ((list.clientHeight - active.clientHeight) / 2));
-    });
-    setTimeout(() => {
-      cameraWheelSyncing = false;
-    }, 140);
-  });
-}
-
-function renderCameraWheel(key) {
-  const wheel = $(`[data-camera-wheel="${key}"]`);
-  if (!wheel || !CameraSettings) return;
-  const list = wheel.querySelector('.camera-wheel-list');
-  if (!list) return;
-  list.innerHTML = '';
-  for (const option of cameraWheelOptions(key)) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.dataset.value = option.value;
-    btn.className = 'camera-wheel-item' + (state.cameraSettings[key] === option.value ? ' active' : '');
-    btn.innerHTML = `<b>${escapeHtml(option.label)}</b><span>${escapeHtml(option.sub || '')}</span>`;
-    btn.addEventListener('click', () => setCameraSetting(key, option.value));
-    list.appendChild(btn);
-  }
-  if (list.dataset.cameraScrollWired !== '1') {
-    list.dataset.cameraScrollWired = '1';
-    list.addEventListener('scroll', () => {
-      if (cameraWheelSyncing) return;
-      clearTimeout(cameraWheelScrollTimers[key]);
-      cameraWheelScrollTimers[key] = setTimeout(() => commitCameraWheelScroll(key, list), 90);
-    }, { passive: true });
-  }
-}
-
 function renderCameraPicker() {
   if (!CameraSettings) return;
-  state.cameraSettings = CameraSettings.normalizeSettings(state.cameraSettings);
-  clearCameraWheelScrollTimers();
-  renderCameraCombos();
-  CAMERA_WHEEL_KEYS.forEach(renderCameraWheel);
-  updateCameraPreview();
-  centerCameraWheels();
+  const grid = $('#cameraPresetGrid');
+  if (!grid) return;
+  const selectedId = CameraSettings.normalizeCameraPresetId(
+    state.promptPresetSelections && state.promptPresetSelections.camera
+  );
+  state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera: selectedId });
+  grid.innerHTML = '';
+  for (const combo of CameraSettings.CAMERA_COMBOS) {
+    const selected = selectedId === combo.id;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'camera-preset-card' + (selected ? ' active' : '');
+    btn.dataset.presetId = combo.id;
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', selected ? 'true' : 'false');
+    btn.innerHTML = `
+      <span class="camera-preset-image">
+        <img src="${escapeHtml(combo.thumbnail)}" alt="${escapeHtml(combo.thumbnailAlt || '')}" loading="lazy">
+        <span class="camera-preset-check" aria-hidden="true">✓</span>
+      </span>
+      <span class="camera-preset-copy">
+        <strong>${escapeHtml(combo.label)}</strong>
+        <small>${escapeHtml(combo.note || '')}</small>
+      </span>`;
+    const image = btn.querySelector('img');
+    image.addEventListener('error', () => btn.classList.add('image-missing'), { once: true });
+    btn.addEventListener('click', () => {
+      state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera: combo.id });
+      renderCameraPicker();
+      saveForm();
+    });
+    grid.appendChild(btn);
+  }
+  const combo = CameraSettings.cameraCombo(selectedId);
+  $('#cameraPresetCategoryState').textContent = combo ? '1 selected' : 'Optional';
+  $('#cameraPresetSelection').textContent = combo ? combo.label : 'None';
+  $('#cameraPresetPreview').textContent = combo
+    ? CameraSettings.cameraPresetPromptPhrase(combo.id)
+    : 'No camera language will be added to the prompt.';
+  $('#cameraPresetClear').disabled = !combo;
 }
 
 function openCameraPicker() {
@@ -8518,7 +8399,8 @@ function openCameraPicker() {
 
 function applyCameraPrompt() {
   if (!CameraSettings) return;
-  const value = CameraSettings.applyCameraPrompt(promptDraft(), state.cameraSettings);
+  const selectedId = state.promptPresetSelections && state.promptPresetSelections.camera;
+  const value = CameraSettings.applyCameraPresetPrompt(promptDraft(), selectedId);
   setPromptDraft(value);
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
     state.prompts[state.view] = value;
@@ -8527,10 +8409,15 @@ function applyCameraPrompt() {
   renderPromptSuggestions();
   saveForm();
   $('#cameraSheet').classList.remove('show');
-  toast('Camera settings added');
+  toast(selectedId ? 'Camera preset applied' : 'Camera preset removed');
 }
 
 $('#cameraPromptBtn').addEventListener('click', openCameraPicker);
+$('#cameraPresetClear').addEventListener('click', () => {
+  state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera: null });
+  renderCameraPicker();
+  saveForm();
+});
 $('#cameraApply').addEventListener('click', applyCameraPrompt);
 
 /* ------------------------------------------------------------------ */

@@ -8,6 +8,7 @@ const path = require('node:path');
 const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
+const cameraAssetsDir = path.join(__dirname, '..', 'public', 'assets', 'camera-presets');
 
 test('prompt tools expose the camera settings picker', () => {
   assert.match(indexHtml, /id="cameraPromptBtn"/);
@@ -19,27 +20,23 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(styleCss, /\.prompt-camera-btn\s*\{[^}]*position:\s*absolute[^}]*right:\s*56px/s);
   assert.match(appJs, /cameraPromptBtn'\)\.hidden = state\.view !== 'create'/);
   assert.match(indexHtml, /id="cameraSheet"/);
-  assert.match(indexHtml, /id="cameraComboGrid"/);
-  assert.match(indexHtml, /id="cameraWheelBoard"/);
+  assert.match(indexHtml, /id="promptPresetCategories"/);
+  assert.match(indexHtml, /id="cameraPresetGrid"/);
+  assert.match(indexHtml, /data-preset-category="camera"/);
   assert.match(indexHtml, /id="cameraApply"/);
   assert.match(appJs, /renderCameraPicker/);
-  assert.match(appJs, /renderCameraCombos/);
-  assert.match(appJs, /renderCameraWheel/);
-  assert.match(appJs, /applyCameraCombo/);
+  assert.match(appJs, /promptPresetSelections/);
+  assert.match(appJs, /cameraPresetPromptPhrase/);
   assert.match(appJs, /applyCameraPrompt/);
 });
 
-test('camera sheet uses compact wheel controls instead of stacked setting grids', () => {
-  assert.doesNotMatch(indexHtml, /id="cameraCameraGrid"/);
-  assert.doesNotMatch(indexHtml, /id="cameraLensGrid"/);
-  assert.doesNotMatch(indexHtml, /id="cameraFocalRow"/);
-  assert.doesNotMatch(indexHtml, /id="cameraSettingGrid"/);
-  assert.match(indexHtml, /data-camera-wheel="camera"/);
-  assert.match(indexHtml, /data-camera-wheel="lens"/);
-  assert.match(indexHtml, /data-camera-wheel="focalLength"/);
-  assert.match(indexHtml, /data-camera-wheel="aperture"/);
-  assert.match(indexHtml, /data-camera-wheel="shutter"/);
-  assert.match(indexHtml, /data-camera-wheel="iso"/);
+test('camera sheet uses visual presets instead of individual camera controls', () => {
+  assert.doesNotMatch(indexHtml, /data-camera-wheel=/);
+  assert.doesNotMatch(indexHtml, /id="cameraWheelBoard"/);
+  assert.match(indexHtml, /class="camera-preset-grid"/);
+  assert.match(appJs, /className = 'camera-preset-card'/);
+  assert.match(appJs, /setAttribute\('role', 'radio'\)/);
+  assert.match(appJs, /setAttribute\('aria-checked'/);
 });
 
 test('sheets lock background scrolling while dialogs are open', () => {
@@ -49,40 +46,37 @@ test('sheets lock background scrolling while dialogs are open', () => {
   assert.match(styleCss, /position:\s*fixed/);
 });
 
-test('camera wheels highlight the selected item instead of mismatched overlay boxes', () => {
-  assert.doesNotMatch(styleCss, /\.camera-wheel::after/);
-  assert.match(styleCss, /\.camera-wheel-item\.active/);
-  assert.match(styleCss, /\.camera-wheel-item\.active\s*{[^}]*background:/s);
+test('camera cards expose clear selected and missing-image states', () => {
+  assert.match(styleCss, /\.camera-preset-card\.active/);
+  assert.match(styleCss, /\.camera-preset-card\.active \.camera-preset-check/);
+  assert.match(styleCss, /\.camera-preset-card\.image-missing img/);
 });
 
-test('camera wheels support scroll-to-select, not tap-only selection', () => {
-  assert.match(appJs, /selectCameraWheelFromScroll/);
-  assert.match(appJs, /commitCameraWheelScroll/);
-  assert.match(appJs, /clearCameraWheelScrollTimers/);
-  assert.match(appJs, /cameraWheelSyncing/);
-  assert.match(appJs, /addEventListener\('scroll'/);
-  assert.match(appJs, /if \(cameraWheelSyncing\) return/);
+test('camera presets can be cleared without removing future category selections', () => {
+  assert.match(indexHtml, /id="cameraPresetClear"/);
+  assert.match(appJs, /Object\.assign\(\{\}, state\.promptPresetSelections, \{ camera: null \}\)/);
+  assert.match(appJs, /applyCameraPresetPrompt\(promptDraft\(\), selectedId\)/);
 });
 
 test('camera dialog uses dark surfaces consistent with the app chrome', () => {
-  assert.match(styleCss, /\.camera-panel\s*{[^}]*background:\s*#000/s);
-  assert.match(styleCss, /\.camera-preview\s*{[^}]*background:\s*#000/s);
-  assert.match(styleCss, /\.camera-wheel\s*{[^}]*background:\s*#000/s);
-  assert.doesNotMatch(styleCss, /\.camera-wheel\s*{[^}]*rgba\(255,\s*255,\s*255,\s*0\.07\)/s);
+  assert.match(styleCss, /\.camera-panel\s*{[^}]*#030407/s);
+  assert.match(styleCss, /\.camera-preset-card\s*{[^}]*background:\s*#07090e/s);
+  assert.match(styleCss, /\.preset-picker-head\s*{[^}]*border-bottom:/s);
 });
 
-test('camera dialog uses a black canvas with colored section dots', () => {
-  assert.match(styleCss, /\.camera-panel\s*{[^}]*background:\s*#000/s);
-  assert.match(styleCss, /\.camera-preview\s*{[^}]*background:\s*#000/s);
-  assert.match(styleCss, /\.camera-combo\s*{[^}]*background:\s*#000/s);
-  assert.match(styleCss, /\.camera-wheel\s*{[^}]*background:\s*#000/s);
-  assert.match(styleCss, /\.camera-wheel-label::before\s*{[^}]*background:\s*var\(--section-dot\)/s);
-  assert.match(styleCss, /\.camera-wheel\[data-camera-wheel="camera"\]\s*{[^}]*--section-dot:/s);
-  assert.match(styleCss, /\.camera-wheel\[data-camera-wheel="lens"\]\s*{[^}]*--section-dot:/s);
-  assert.match(styleCss, /\.camera-wheel\[data-camera-wheel="focalLength"\]\s*{[^}]*--section-dot:/s);
-  assert.match(styleCss, /\.camera-wheel\[data-camera-wheel="aperture"\]\s*{[^}]*--section-dot:/s);
-  assert.match(styleCss, /\.camera-wheel\[data-camera-wheel="shutter"\]\s*{[^}]*--section-dot:/s);
-  assert.match(styleCss, /\.camera-wheel\[data-camera-wheel="iso"\]\s*{[^}]*--section-dot:/s);
+test('camera preset grid adapts from three desktop columns to two mobile columns', () => {
+  assert.match(styleCss, /\.camera-preset-grid\s*{[^}]*grid-template-columns:\s*repeat\(3,/s);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.camera-preset-grid\s*{[^}]*repeat\(2,/);
+});
+
+test('every camera preset thumbnail is packaged with the app', () => {
+  const cameraSettings = require('../public/camera-settings');
+  for (const combo of cameraSettings.CAMERA_COMBOS) {
+    const file = path.join(__dirname, '..', 'public', combo.thumbnail);
+    assert.ok(fs.existsSync(file), `${combo.id} thumbnail should exist`);
+    assert.ok(fs.statSync(file).size > 20_000, `${combo.id} thumbnail should not be an empty placeholder`);
+  }
+  assert.ok(fs.existsSync(path.join(cameraAssetsDir, 'manifest.json')));
 });
 
 test('camera shared script loads before the app script', () => {
