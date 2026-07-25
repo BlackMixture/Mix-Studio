@@ -21,19 +21,20 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(appJs, /cameraPromptBtn'\)\.hidden = state\.view !== 'create'/);
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="promptPresetCategories"/);
-  assert.match(indexHtml, /id="cameraPresetGrid"/);
-  assert.match(indexHtml, /data-preset-category="camera"/);
+  assert.match(appJs, /promptPresetCatalog/);
+  assert.match(appJs, /section\.dataset\.presetCategory = category\.id/);
+  assert.match(appJs, /querySelector\('\.camera-preset-grid'\)/);
   assert.match(appJs, /renderCameraPicker/);
   assert.match(appJs, /promptPresetSelections/);
   assert.match(appJs, /cameraPresetPromptPhrase/);
-  assert.match(appJs, /applyCameraPrompt/);
+  assert.match(appJs, /applyPromptPresetSelection/);
 });
 
 test('camera sheet uses visual presets instead of individual camera controls', () => {
   assert.doesNotMatch(indexHtml, /Category 01/);
   assert.doesNotMatch(indexHtml, /data-camera-wheel=/);
   assert.doesNotMatch(indexHtml, /id="cameraWheelBoard"/);
-  assert.match(indexHtml, /class="camera-preset-grid"/);
+  assert.match(appJs, /class="camera-preset-grid"/);
   assert.match(appJs, /className = 'camera-preset-card'/);
   assert.match(appJs, /setAttribute\('role', 'checkbox'\)/);
   assert.match(appJs, /setAttribute\('aria-checked'/);
@@ -59,16 +60,17 @@ test('the applied camera phrase is color coded without changing its plain prompt
   assert.match(appJs, /dataset\.promptValue/);
   assert.match(appJs, /el\.classList\.contains\('prompt-preset-token'\)/);
   assert.match(styleCss, /\.prompt-preset-token\s*{/);
-  assert.match(styleCss, /\.prompt-preset-token\[data-preset-category="camera"\]/);
+  assert.match(appJs, /dataset\.presetAccent/);
+  assert.match(styleCss, /\.prompt-preset-token\[data-preset-accent="violet"\]/);
 });
 
 test('camera cards apply immediately and toggle off without a dedicated action row', () => {
   assert.doesNotMatch(indexHtml, /id="cameraPresetClear"/);
   assert.doesNotMatch(indexHtml, /id="cameraApply"/);
   assert.doesNotMatch(indexHtml, /class="preset-picker-actions"/);
-  assert.match(appJs, /state\.promptPresetSelections\.camera === combo\.id \? null : combo\.id/);
-  assert.match(appJs, /btn\.addEventListener\('click',[\s\S]*applyCameraPrompt\(\)/);
-  assert.match(appJs, /applyCameraPresetPrompt\(promptDraft\(\), selectedId\)/);
+  assert.match(appJs, /applyPromptPresetSelection\(category\.id, active \? null : preset\)/);
+  assert.match(appJs, /state\.promptPresetSelections = Object\.assign/);
+  assert.match(appJs, /CameraSettings\.applyCameraPresetPrompt\(value, null\)/);
   assert.doesNotMatch(appJs, /cameraApply'\)\.addEventListener/);
 });
 

@@ -46,7 +46,7 @@ For manual Git setup, detailed VRAM guidance, shared-model discovery, phone acce
 | **Upscale** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
 | **Library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
 
-Mix Studio also includes LoRA presets and **Strength Hunt**, guided Generation setup, live queue progress and cancellation, automatic database backups, and a responsive desktop and phone interface.
+Mix Studio also includes thumbnail-based Visual Presets, installable prompt preset packs, LoRA presets and **Strength Hunt**, guided Generation setup, live queue progress and cancellation, automatic database backups, and a responsive desktop and phone interface.
 
 ## Showcase
 

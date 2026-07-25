@@ -246,6 +246,17 @@ const {
   isLoopbackAddress,
   createLoginThrottle,
 } = require('./lib/profiles');
+const {
+  MAX_PROMPT_PACK_BYTES,
+  inspectPromptPackBuffer,
+  installPromptPack,
+  listInstalledPromptPacks,
+  promptPackInspectionSummary,
+  publicPromptPack,
+  readInstalledPromptPack,
+  removePromptPack,
+  setPromptPackEnabled,
+} = require('./lib/prompt-packs');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
@@ -258,18 +269,41 @@ const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
 const INPUTS = path.join(DATA, 'inputs');
 const TRASH_ROOT = path.join(DATA, 'trash');
+const PROMPT_PACKS = path.join(DATA, 'addons', 'prompt-packs');
+const PROMPT_PACK_TRASH = path.join(TRASH_ROOT, 'addons', 'prompt-packs');
 const PORT = Number(process.env.PORT || 3300);
 
 fs.mkdirSync(IMAGES, { recursive: true });
 fs.mkdirSync(VIDEOS, { recursive: true });
 fs.mkdirSync(INPUTS, { recursive: true });
 fs.mkdirSync(TRASH_ROOT, { recursive: true });
+fs.mkdirSync(PROMPT_PACKS, { recursive: true });
 const FACES = path.join(DATA, 'faces');
 fs.mkdirSync(FACES, { recursive: true });
 const AVATARS = path.join(DATA, 'avatars');
 fs.mkdirSync(AVATARS, { recursive: true });
 const LORATHUMBS = path.join(DATA, 'lorathumbs');
 fs.mkdirSync(LORATHUMBS, { recursive: true });
+
+const PROMPT_PACK_INSPECTION_TTL = 15 * 60 * 1000;
+const MAX_PROMPT_PACK_INSPECTIONS = 5;
+const promptPackInspections = new Map();
+let promptPackMutation = Promise.resolve();
+
+function prunePromptPackInspections(now = Date.now()) {
+  for (const [id, entry] of promptPackInspections) {
+    if (now - entry.createdAt > PROMPT_PACK_INSPECTION_TTL) promptPackInspections.delete(id);
+  }
+  while (promptPackInspections.size >= MAX_PROMPT_PACK_INSPECTIONS) {
+    promptPackInspections.delete(promptPackInspections.keys().next().value);
+  }
+}
+
+function serializePromptPackMutation(task) {
+  const next = promptPackMutation.then(task, task);
+  promptPackMutation = next.catch(() => {});
+  return next;
+}
 
 /* ------------------------------------------------------------------ */
 /* Settings                                                            */
@@ -4730,6 +4764,16 @@ function json(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(body);
 }
+
+function promptPackErrorResponse(res, error) {
+  const code = error?.code || 'invalid_prompt_pack';
+  const status = code === 'prompt_pack_too_large' ? 413
+    : code === 'prompt_pack_not_found' ? 404
+      : ['prompt_pack_exists', 'prompt_pack_downgrade', 'prompt_pack_inspection_expired'].includes(code) ? 409
+        : 400;
+  return json(res, status, { error: String(error?.message || error || 'Prompt pack could not be processed'), code });
+}
+
 function readBody(req, limit = 64 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -5186,6 +5230,118 @@ async function handleApi(req, res, url) {
   // previews, and completed gallery records and are always profile-scoped.
   if (!profile && route !== '/api/meta') {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
+  }
+
+  if (route === '/api/addons' && req.method === 'GET') {
+    const packs = await listInstalledPromptPacks(PROMPT_PACKS);
+    return json(res, 200, {
+      canManage: isAdmin(),
+      packs: packs.map((pack) => publicPromptPack(pack, '/api/addons')),
+    });
+  }
+
+  if (route === '/api/addons/inspect' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install add-ons' });
+    try {
+      const buffer = await readBody(req, MAX_PROMPT_PACK_BYTES);
+      const inspected = inspectPromptPackBuffer(buffer);
+      prunePromptPackInspections();
+      const inspectionId = crypto.randomUUID();
+      promptPackInspections.set(inspectionId, {
+        inspected,
+        createdAt: Date.now(),
+        filename: String(req.headers['x-filename'] || '').slice(0, 180),
+      });
+      const current = await readInstalledPromptPack(PROMPT_PACKS, inspected.manifest.id);
+      return json(res, 200, {
+        inspectionId,
+        ...promptPackInspectionSummary(inspected),
+        current,
+      });
+    } catch (error) {
+      if (String(error?.message || '') === 'Body too large') {
+        error.code = 'prompt_pack_too_large';
+        error.message = 'Prompt pack exceeds the 32 MB limit';
+      }
+      return promptPackErrorResponse(res, error);
+    }
+  }
+
+  if (route === '/api/addons/install' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can install add-ons' });
+    try {
+      const body = await readJsonBody(req);
+      prunePromptPackInspections();
+      const staged = promptPackInspections.get(String(body.inspectionId || ''));
+      if (!staged || Date.now() - staged.createdAt > PROMPT_PACK_INSPECTION_TTL) {
+        const error = new Error('This add-on review expired. Choose the .mixpack again.');
+        error.code = 'prompt_pack_inspection_expired';
+        throw error;
+      }
+      const pack = await serializePromptPackMutation(() => installPromptPack(
+        PROMPT_PACKS,
+        PROMPT_PACK_TRASH,
+        staged.inspected,
+        {
+          replace: body.replace === true,
+          allowDowngrade: body.allowDowngrade === true,
+        },
+      ));
+      promptPackInspections.delete(String(body.inspectionId || ''));
+      return json(res, 200, { ok: true, pack: publicPromptPack(pack, '/api/addons') });
+    } catch (error) {
+      return promptPackErrorResponse(res, error);
+    }
+  }
+
+  const promptPackEnabled = route.match(/^\/api\/addons\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/enabled$/);
+  if (promptPackEnabled && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can manage add-ons' });
+    try {
+      const body = await readJsonBody(req);
+      const pack = await serializePromptPackMutation(() => setPromptPackEnabled(
+        PROMPT_PACKS,
+        promptPackEnabled[1],
+        body.enabled === true,
+      ));
+      return json(res, 200, { ok: true, pack: publicPromptPack(pack, '/api/addons') });
+    } catch (error) {
+      return promptPackErrorResponse(res, error);
+    }
+  }
+
+  const promptPackRoute = route.match(/^\/api\/addons\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)$/);
+  if (promptPackRoute && req.method === 'DELETE') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can remove add-ons' });
+    try {
+      const removed = await serializePromptPackMutation(() => removePromptPack(
+        PROMPT_PACKS,
+        PROMPT_PACK_TRASH,
+        promptPackRoute[1],
+      ));
+      return json(res, 200, {
+        ok: true,
+        removed: { id: removed.pack.id, name: removed.pack.name, version: removed.pack.version },
+        recoverable: true,
+      });
+    } catch (error) {
+      return promptPackErrorResponse(res, error);
+    }
+  }
+
+  const promptPackAsset = route.match(/^\/api\/addons\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/assets\/([^/]+)$/);
+  if (promptPackAsset && req.method === 'GET') {
+    let filename = '';
+    try { filename = decodeURIComponent(promptPackAsset[2]); } catch { /* handled below */ }
+    const pack = await readInstalledPromptPack(PROMPT_PACKS, promptPackAsset[1]);
+    const allowed = pack?.categories.some((category) => (
+      category.presets.some((preset) => preset.thumbnailFile === filename)
+    ));
+    if (!allowed || filename !== path.basename(filename)) {
+      res.writeHead(404);
+      return res.end('not found');
+    }
+    return serveFile(res, path.join(PROMPT_PACKS, pack.id, filename), req.headers.range);
   }
 
   if (route === '/api/events') {

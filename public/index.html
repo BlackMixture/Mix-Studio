@@ -1624,24 +1624,14 @@
       <button class="preset-picker-close" data-close type="button" aria-label="Close visual presets">✕</button>
     </header>
 
-    <div class="preset-category-list" id="promptPresetCategories">
-      <section class="preset-category" data-preset-category="camera" aria-labelledby="cameraPresetCategoryTitle">
-        <header class="preset-category-head">
-          <div>
-            <h4 id="cameraPresetCategoryTitle">Camera</h4>
-          </div>
-          <span class="preset-category-state" id="cameraPresetCategoryState">1 selected</span>
-        </header>
-        <div class="camera-preset-grid" id="cameraPresetGrid" role="group" aria-label="Camera presets"></div>
-      </section>
-    </div>
+    <div class="preset-category-list" id="promptPresetCategories"></div>
 
-    <div class="preset-selection-summary" aria-live="polite">
+    <div class="preset-selection-summary" id="promptPresetSummary" aria-live="polite">
       <div>
-        <span>Applied look</span>
-        <strong id="cameraPresetSelection">Cinematic ARRI</strong>
+        <span>Applied looks</span>
+        <strong id="promptPresetSelection">No presets applied</strong>
       </div>
-      <p id="cameraPresetPreview"></p>
+      <p id="promptPresetPreview">Choose a thumbnail to add its visual language to your prompt.</p>
     </div>
   </div>
 </div>
@@ -2302,6 +2292,9 @@
         <button id="settingsTabSuggestions" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneSuggestions" data-settings-tab="suggestions" tabindex="-1">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 1 4 12.7V18H8v-3.3A7 7 0 0 1 12 2Zm-2 18h4v2h-4v-2Zm2-16a5 5 0 0 0-2.8 9.1l.8.6V16h4v-2.3l.8-.6A5 5 0 0 0 12 4Z"/></svg><span>Suggestions</span>
         </button>
+        <button id="settingsTabAddons" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneAddons" data-settings-tab="addons" tabindex="-1">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm12.5 0a1.5 1.5 0 0 1 1.5 1.5V16h1.5a1.5 1.5 0 0 1 0 3H18v1.5a1.5 1.5 0 0 1-3 0V19h-1.5a1.5 1.5 0 0 1 0-3H15v-1.5a1.5 1.5 0 0 1 1.5-1.5Z"/></svg><span>Add-ons</span>
+        </button>
         <button id="settingsTabSystem" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneSystem" data-settings-tab="system" tabindex="-1">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3v2H8v-2h3v-2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v9h14V6H5Z"/></svg><span>System</span>
         </button>
@@ -2500,6 +2493,38 @@
         <section class="settings-pane" id="settingsPaneSuggestions" role="tabpanel" aria-labelledby="settingsTabSuggestions" data-settings-pane="suggestions" hidden>
           <div class="settings-pane-head"><h4>Contextual Suggestions</h4><p>Edit the prompt phrase and default strength learned for each LoRA, or disable its suggestion.</p></div>
           <div class="context-preference-list" id="contextPreferenceList"></div>
+        </section>
+
+        <section class="settings-pane addons-pane" id="settingsPaneAddons" role="tabpanel" aria-labelledby="settingsTabAddons" data-settings-pane="addons" hidden>
+          <div class="settings-pane-head"><h4>Add-ons</h4><p>Install visual preset packs with thumbnails and prompt styles. Packs are available to every profile on this Mix Studio.</p></div>
+          <input id="addonFileInput" type="file" accept=".mixpack" hidden />
+          <div class="addon-drop-zone" id="addonDropZone" role="button" tabindex="0" aria-describedby="addonDropNote">
+            <span class="addon-drop-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+            </span>
+            <span class="addon-drop-copy"><strong>Drop a preset pack here</strong><small id="addonDropNote">Mix Studio reviews the contents before anything is installed.</small></span>
+            <button id="addonChooseBtn" type="button">Choose .mixpack</button>
+          </div>
+
+          <section class="addon-inspection" id="addonInspection" hidden aria-live="polite">
+            <div class="addon-inspection-preview" id="addonInspectionPreview" aria-hidden="true"></div>
+            <div class="addon-inspection-copy">
+              <span class="addon-kicker">Ready to install</span>
+              <h5 id="addonInspectionName">Preset pack</h5>
+              <p id="addonInspectionDescription"></p>
+              <div class="addon-inspection-meta" id="addonInspectionMeta"></div>
+            </div>
+            <div class="addon-inspection-actions">
+              <button class="addon-secondary-action" id="addonInspectionCancel" type="button">Cancel</button>
+              <button class="addon-primary-action" id="addonInspectionInstall" type="button">Install pack</button>
+            </div>
+          </section>
+
+          <div class="addon-section-head">
+            <div><h5>Installed packs</h5><p id="addonPackStatus">Loading add-ons…</p></div>
+            <span class="addon-safe-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 12 2.2 2.2 4.8-5M12 3l7 3v5c0 4.4-2.8 8.1-7 10-4.2-1.9-7-5.6-7-10V6l7-3Z"/></svg>Prompt-only</span>
+          </div>
+          <div class="addon-pack-list" id="addonPackList"></div>
         </section>
 
         <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
