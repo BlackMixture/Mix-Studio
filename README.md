@@ -5,7 +5,7 @@
   <img src="docs/download/mix-studio-wordmark.svg" width="390" alt="Mix Studio" />
 </h1>
 
-<p align="center"><strong>A clean, responsive AI workspace.</strong><br />Run curated image and video workflows from your desktop or phone. Built on ComfyUI.</p>
+<p align="center"><strong>The cleanest, responsive AI workspace.</strong><br />Run curated image and video workflows from your desktop or phone. Built on ComfyUI.</p>
 
 <p align="center">
   <a href="https://blackmixture.github.io/Mix-Studio/"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows-4285F4?style=flat-square&amp;logo=windows11&amp;logoColor=white" /></a>
