@@ -147,6 +147,7 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.doesNotMatch(html, /id="updatePublisher"|id="updatePublishBtn"|Push update/);
   assert.match(css, /\.update-notice \{[\s\S]*position: fixed/);
   assert.match(css, /\.updates-release-actions \{[\s\S]*justify-content: flex-end/);
+  assert.match(css, /\.updates-release-actions \[hidden\] \{ display: none; \}/);
   assert.match(app, /drawerButton\.hidden = !state\.officialReleaseUpdateAvailable/);
   assert.match(app, /\$\('#settingsUpdatesBtn'\)\.addEventListener\('click', openUpdatesSheet\)/);
 });
