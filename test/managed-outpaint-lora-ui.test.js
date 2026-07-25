@@ -16,7 +16,7 @@ test('Klein outpaint injects its managed LoRA into the normal adjustable stack',
   assert.match(app, /managed = 'klein-outpaint-consistency'/);
   assert.match(app, /function syncEditAutomaticLora\(\)/);
   assert.match(app, /managed = 'edit-workflow-auto'/);
-  assert.match(app, /'krea2-outpaint': 'krea2_identity_edit_v1_1_r128\.safetensors'/);
+  assert.match(app, /'krea2-outpaint': 'krea2_identity_edit_v1_2\.safetensors'/);
   assert.match(app, /'qwen-lightning': 'Qwen-Image-Edit-2511-Lightning-4steps-V1\.0-bf16\.safetensors'/);
   assert.match(app, /stack\.splice\(0, stack\.length, managed, \.\.\.others\)/);
   assert.match(app, /syncKleinOutpaintConsistencyLora\(\);\s*syncEditAutomaticLora\(\);\s*const arr = curLoras\(\)/);

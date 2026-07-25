@@ -156,7 +156,8 @@ test('edit model choices settle into place and Preserve unchanged has its own to
   assert.match(html, /title="Preserve unchanged areas"/);
   assert.match(css, /\.preserve-icon\[aria-pressed="true"\]/);
   assert.match(app, /#editComposite'\)\.addEventListener\('click'/);
-  assert.match(html, /data-engine="krea2ref"[^>]*data-task-label="Reference Remix"[^>]*data-model-label="Krea 2 Edit"[^>]*><b>Krea 2 Edit<\/b><small>Reference Remix<\/small>/);
+  assert.match(html, /data-engine="krea2ref"[^>]*data-task-label="Identity Editing"[^>]*data-model-label="Krea 2 Edit"[^>]*><b>Krea 2 Edit<\/b><small>Identity Editing<\/small>/);
+  assert.match(html, /data-engine="krea2remix"[^>]*data-task-label="Reference Remix"[^>]*data-model-label="Krea 2 Remix"[^>]*><b>Krea 2 Remix<\/b><small>Reference Remix<\/small>/);
   assert.match(html, /data-engine="krea2"[^>]*data-task-label="Inpaint \+ Outpaint"[^>]*data-model-label="Krea 2"[^>]*><b>Krea 2<\/b><small>Inpaint \+ Outpaint<\/small>/);
 });
 

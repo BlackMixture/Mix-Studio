@@ -69,7 +69,7 @@
     if (route === '/api/upscale') return payload.engine === 'ultimate' ? 'Ultimate SD' : 'SeedVR2';
     if (route !== '/api/generate') return '';
     if (payload.mode !== 'edit') return payload.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo';
-    return { klein4: 'Flux Klein 4B', klein9: 'Flux Klein 9B', qwen: 'Qwen Edit', krea2ref: 'Krea 2 Edit', krea2: 'Krea 2' }[payload.editEngine] || 'Flux Klein 9B';
+    return { klein4: 'Flux Klein 4B', klein9: 'Flux Klein 9B', qwen: 'Qwen Edit', krea2ref: 'Krea 2 Edit', krea2remix: 'Krea 2 Remix', krea2: 'Krea 2' }[payload.editEngine] || 'Flux Klein 9B';
   }
 
   function installPostHogStub(win, host) {

@@ -27,7 +27,7 @@ test('README feature descriptions are technical, current, and free of em dashes'
 
 test('README workspace showcase uses headings, body copy, and full-width screenshots', () => {
   const start = readme.indexOf('## Inside the app');
-  const end = readme.indexOf('## Portable Windows install', start);
+  const end = readme.indexOf('## Installation and hardware details', start);
   const section = readme.slice(start, end);
 
   for (const workspace of [

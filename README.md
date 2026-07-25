@@ -5,7 +5,7 @@
   <img src="docs/download/mix-studio-wordmark.svg" width="390" alt="Mix Studio" />
 </h1>
 
-<p align="center"><strong>The cleanest, responsive AI workspace.</strong><br />Run highly tuned image and video workflows flawlessly from your desktop or your phone. Built on ComfyUI.</p>
+<p align="center"><strong>The cleanest, responsive AI workspace.</strong><br />Run highly tuned image and video workflows from your desktop or your phone. Built on ComfyUI.</p>
 
 <p align="center">
   <a href="https://blackmixture.github.io/Mix-Studio/"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows-4285F4?style=flat-square&amp;logo=windows11&amp;logoColor=white" /></a>
@@ -16,7 +16,7 @@
 
 ![Mix Studio Create workspace running a curated Krea 2 workflow](docs/download/mix-studio-create.webp)
 
-Mix Studio turns a local **ComfyUI** installation into a focused interface for image generation, regional prompting, editing, video, motion transfer, upscaling, and library management. It builds the API graphs for curated Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2 workflows, so you can create without rebuilding node graphs for every job.
+Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2. Krea 2 editing includes Identity Edit v1.2 and the multi-reference Krea 2 Remix workflow, so you can create without rebuilding node graphs for every job.
 
 - **Create from anywhere:** use the same touch-friendly workspace on the Windows desktop, a phone on the same Wi-Fi, or privately through Tailscale.
 - **Keep the power of ComfyUI:** reuse your installation, models, custom nodes, queue, and disaster-recovery outputs.

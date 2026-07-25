@@ -33,7 +33,7 @@ test('every Edit model exposes one compact outpaint mode with a live placement p
   assert.match(app, /It stays at native resolution/);
   assert.match(app, /100% · no added canvas/);
   assert.match(app, /function renderEditOutpaint\(\)/);
-  assert.match(app, /const OUTPAINT_EDIT_ENGINES = new Set\(EDIT_ENGINES\)/);
+  assert.match(app, /const OUTPAINT_EDIT_ENGINES = new Set\(EDIT_ENGINES\.filter\(\(engine\) => engine !== 'krea2remix'\)\)/);
   assert.match(app, /Generate Expand/);
 });
 
@@ -68,7 +68,7 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.match(app, /editOutpaintFeather: outpaintActive \? state\.editOutpaintFeather/);
   assert.match(app, /editOutpaintMaskOffset: outpaintActive \? state\.editOutpaintMaskOffset/);
   assert.match(app, /const nativePreserve = mode === 'edit'[\s\S]{0,140}\$\('#editComposite'\)\.getAttribute\('aria-pressed'\) === 'true'/);
-  assert.match(app, /preserve\.hidden = localizedActive \|\| \(!outpaint && \(kreaEdit \|\| kreaRef\)\)/);
+  assert.match(app, /preserve\.hidden = localizedActive \|\| \(!outpaint && \(kreaEdit \|\| kreaRef \|\| kreaRemix\)\)/);
   assert.match(app, /state\.editSequential = false;\s*\$\('#editComposite'\)\.setAttribute\('aria-pressed', 'true'\)/);
   assert.match(app, /Native preserve/);
   assert.match(css, /\.edit-outpaint-source img \{[^}]*object-fit: contain/);
@@ -79,7 +79,7 @@ test('outpaint requests use one source, custom output dimensions, and incompatib
   assert.doesNotMatch(server, /p\.editOutpaintRefine = plan\.needsRefine && refine\.ready && !!p\.postUpscale/);
   assert.match(app, /refineNeeded: nativePreserve && finalWidth \* finalHeight > 2_000_000/);
   assert.match(app, /SeedVR2 detail upscale/);
-  assert.match(app, /state\.refs\.slice\(0, state\.editEngine === 'krea2' \|\| outpaintActive \? 1 : 3\)/);
+  assert.match(app, /state\.refs\.slice\(0, editReferenceCapacity\(\)\)/);
   assert.match(app, /return editOutpaintActive\(\)[\s\S]{0,100}OUTPAINT_EDIT_ENGINES/);
   assert.match(server, /p\.editEngine === 'krea2ref' && p\.editOutpaint/);
   assert.match(server, /p\.editOutpaint && p\.editEngine === 'qwen'/);

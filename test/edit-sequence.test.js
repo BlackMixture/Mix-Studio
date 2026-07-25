@@ -8,8 +8,8 @@ const {
   supportsSequentialEdit,
 } = require('../lib/edit-sequence');
 
-test('sequential edits are limited to Klein, Qwen Edit, and Krea 2 Edit', () => {
-  for (const engine of ['klein4', 'klein9', 'qwen', 'krea2ref']) assert.equal(supportsSequentialEdit(engine), true);
+test('sequential edits are limited to Klein, Qwen Edit, and the Krea edit engines', () => {
+  for (const engine of ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix']) assert.equal(supportsSequentialEdit(engine), true);
   for (const engine of ['krea2', 't2i', 'wan', '']) assert.equal(supportsSequentialEdit(engine), false);
 });
 

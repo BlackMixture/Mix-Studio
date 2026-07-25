@@ -114,7 +114,7 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
       clip: 'qwen3vl.safetensors',
       clipType: 'krea2',
       vae: 'qwen_image_vae.safetensors',
-      krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+      krea2OutpaintLora: 'krea2_identity_edit_v1_2.safetensors',
       seedvr2Dit: 'seedvr2.safetensors',
       seedvr2Vae: 'seedvr2-vae.safetensors',
     },
@@ -150,7 +150,12 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   assert.equal(graph.positive.inputs.grounding_px, 768);
   assert.equal(graph.model_patch.class_type, 'Krea2EditModelPatch');
   assert.deepEqual(graph.model_patch.inputs.model, ['user_lora_1', 0]);
-  assert.equal(graph.sampler.inputs.steps, 8);
+  assert.deepEqual(graph.model_patch.inputs.vae, ['vae', 0]);
+  assert.deepEqual(graph.model_patch.inputs.source_image, ['scaled_source', 0]);
+  assert.equal(graph.model_patch.inputs.fit_mode, 'fit');
+  assert.equal(graph.model_patch.inputs.ref_boost, 4);
+  assert.equal(graph.model_patch.inputs.ref_boost_a, 1);
+  assert.equal(graph.sampler.inputs.steps, 10);
   assert.equal(graph.sampler.inputs.cfg, 1);
   assert.equal(graph.sampler.inputs.scheduler, 'simple');
   assert.equal(graph.latent.inputs.batch_size, 2);
@@ -166,11 +171,11 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   const adjusted = buildKrea2OutpaintGraph({
     settings: {
       unet: 'krea2_turbo.safetensors', clip: 'qwen3vl.safetensors', clipType: 'krea2',
-      vae: 'qwen_image_vae.safetensors', krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+      vae: 'qwen_image_vae.safetensors', krea2OutpaintLora: 'krea2_identity_edit_v1_2.safetensors',
     },
     imageName: 'source.png', width: 1344, height: 768,
     padding: { left: 0, top: 0, right: 220, bottom: 0 },
-    loras: [{ name: 'krea2_identity_edit_v1_1_r128.safetensors', strength: 0.55, on: true }],
+    loras: [{ name: 'krea2_identity_edit_v1_2.safetensors', strength: 0.55, on: true }],
   });
   assert.equal(adjusted.identity_lora.inputs.strength_model, 0.55);
   assert.equal(adjusted.user_lora_1, undefined);
@@ -178,11 +183,11 @@ test('Krea 2 outpaint follows the grounded identity-edit workflow', () => {
   const disabled = buildKrea2OutpaintGraph({
     settings: {
       unet: 'krea2_turbo.safetensors', clip: 'qwen3vl.safetensors', clipType: 'krea2',
-      vae: 'qwen_image_vae.safetensors', krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+      vae: 'qwen_image_vae.safetensors', krea2OutpaintLora: 'krea2_identity_edit_v1_2.safetensors',
     },
     imageName: 'source.png', width: 1344, height: 768,
     padding: { left: 0, top: 0, right: 220, bottom: 0 },
-    loras: [{ name: 'krea2_identity_edit_v1_1_r128.safetensors', strength: 1, on: false }],
+    loras: [{ name: 'krea2_identity_edit_v1_2.safetensors', strength: 1, on: false }],
   });
   assert.equal(disabled.identity_lora, undefined);
   assert.deepEqual(disabled.model_patch.inputs.model, ['unet', 0]);

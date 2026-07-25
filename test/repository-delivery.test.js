@@ -11,6 +11,7 @@ const pages = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 const portable = fs.readFileSync(path.join(root, 'docs', 'portable-install.md'), 'utf8');
 const download = fs.readFileSync(path.join(root, 'docs', 'download', 'index.html'), 'utf8');
+const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
 
 test('release metadata is stable semantic JSON with a real release date', () => {
   const release = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8'));
@@ -19,6 +20,15 @@ test('release metadata is stable semantic JSON with a real release date', () => 
   const parsed = new Date(`${release.releasedAt}T00:00:00.000Z`);
   assert.ok(!Number.isNaN(parsed.getTime()));
   assert.equal(parsed.toISOString().slice(0, 10), release.releasedAt);
+});
+
+test('the current release has user-facing Krea 2 Edit and Remix notes', () => {
+  const release = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8'));
+  assert.match(changelog, new RegExp(`^## ${release.version.replaceAll('.', '\\.')} - ${release.releasedAt}$`, 'm'));
+  assert.match(changelog, /Krea 2 Edit/);
+  assert.match(changelog, /Identity Edit v1\.2/);
+  assert.match(changelog, /Reference boost/);
+  assert.match(changelog, /Krea 2 Remix/);
 });
 
 test('quality runs the complete Node 22 checks on Linux and Windows', () => {

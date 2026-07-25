@@ -433,6 +433,13 @@ test('Director keeps compact sequence metadata beside the shared generation dock
   assert.doesNotMatch(css, /\.director-summary \.btn-generate/);
 });
 
+test('streamlined Director modes dock sequence metadata inside the setup card', () => {
+  assert.match(css, /\.director-workspace\[data-composer-mode="extend"\] \.director-preset,[\s\S]{0,240}grid-column:\s*1[\s\S]{0,120}margin-bottom:\s*0[\s\S]{0,80}padding-bottom:\s*67px/);
+  assert.match(css, /\.director-workspace\[data-composer-mode="extend"\] \.director-summary,[\s\S]{0,280}grid-row:\s*4;\s*grid-column:\s*1[\s\S]{0,180}padding:\s*0 28px 26px/);
+  assert.match(css, /\.director-workspace\[data-composer-mode="extend"\] \.director-summary > div,[\s\S]{0,280}border-top:\s*1px solid var\(--line\)/);
+  assert.match(css, /@media \(max-width:\s*720px\)[\s\S]*?\.director-workspace\[data-composer-mode="extend"\] \.director-summary small,[\s\S]{0,200}grid-column:\s*1 \/ -1/);
+});
+
 test('Director generation uses the shared progress card and queue lifecycle', () => {
   assert.match(app, /function setDirectorProgressLocation\(inDirector\)/);
   assert.match(app, /if \(preview\.parentElement !== home\) home\.insertBefore\(preview, home\.firstElementChild\)/);

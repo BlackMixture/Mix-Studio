@@ -10,8 +10,8 @@ const JobReconciliation = window.KreaJobReconciliation;
 const Analytics = window.KreaAnalytics;
 const SupportPrompt = window.KreaSupportPrompt;
 const progressEta = ProgressEta.createProgressEtaTracker();
-const EDIT_MODEL_ORDER_VERSION = 2;
-const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2']);
+const EDIT_MODEL_ORDER_VERSION = 3;
+const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
 // Keep every local workspace write bound to the profile that loaded this
 // document. Profile transitions update localStorage before the old page exits,
 // so consulting the live key during pagehide can otherwise copy one profile's
@@ -64,6 +64,7 @@ const state = {
   qwenAngleElevations: [],
   qwenAngleDistances: [],
   qwenQuality: 'quality',
+  krea2RefBoost: 4,
   prompts: { create: '', edit: '', video: '' }, // per-tab prompt text
   loras: [],                 // {name, strength, on} - Create tab (Krea 2)
   videoLoras: [],            // {name, strength, on} - Video tab (LTX/Wan)
@@ -218,11 +219,11 @@ const QWEN_ANGLE_DISTANCES = [
   { id: 'wide shot', label: 'Wide' },
 ];
 const EDIT_ENGINES = [...DEFAULT_EDIT_ENGINE_ORDER];
-const OUTPAINT_EDIT_ENGINES = new Set(EDIT_ENGINES);
+const OUTPAINT_EDIT_ENGINES = new Set(EDIT_ENGINES.filter((engine) => engine !== 'krea2remix'));
 const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
-const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref']);
+const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
-const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref' };
+const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref', krea2remix: 'edit.krea2remix' };
 const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
 const VIDEO_ENGINES = Object.keys(VIDEO_FEATURES);
 
@@ -1992,6 +1993,7 @@ function saveForm() {
       qwenAngleElevations: state.qwenAngleElevations,
       qwenAngleDistances: state.qwenAngleDistances,
       qwenQuality: state.qwenQuality,
+      krea2RefBoost: state.krea2RefBoost,
       generationTuning: state.generationTuning,
     }));
   } catch { /* noop */ }
@@ -2040,6 +2042,8 @@ function loadForm() {
     state.qwenAngleDistances = Array.isArray(f.qwenAngleDistances)
       ? [...new Set(f.qwenAngleDistances.filter((id) => QWEN_ANGLE_DISTANCES.some((option) => option.id === id)))] : [];
     state.qwenQuality = f.qwenQuality === 'fast' ? 'fast' : 'quality';
+    state.krea2RefBoost = Number.isFinite(Number(f.krea2RefBoost))
+      ? Math.max(0, Math.min(12, Number(f.krea2RefBoost))) : 4;
     state.loras = Array.isArray(f.loras) ? f.loras : [];
     state.videoLoras = Array.isArray(f.videoLoras) ? f.videoLoras : [];
     state.loraTriggers = f.loraTriggers && typeof f.loraTriggers === 'object' ? Object.fromEntries(
@@ -3019,6 +3023,7 @@ function updateVideoPanels() {
   renderQwenAngleTool();
   renderQwenAngleMode();
   renderQwenQuality();
+  renderKrea2RefBoost();
   renderEditModelSummary();
   renderEditSequence();
   regionWorkspace.hidden = !isRegion;
@@ -3680,7 +3685,7 @@ function clipboardPasteContext() {
     };
   }
   if (state.view === 'edit') {
-    const capacity = state.editEngine === 'krea2' || editOutpaintActive() ? 1 : state.refs.length;
+    const capacity = editReferenceCapacity();
     return {
       kind: 'edit', key: `edit:${state.editEngine}:${editOutpaintActive() ? 'expand' : 'standard'}`,
       capacity,
@@ -4600,7 +4605,7 @@ const DEFAULT_KLEIN_OUTPAINT_LORAS = {
   klein9: 'f2k_9B_lcs_consist_20260415.safetensors',
 };
 const DEFAULT_EDIT_AUTOMATIC_LORAS = {
-  'krea2-outpaint': 'krea2_identity_edit_v1_1_r128.safetensors',
+  'krea2-outpaint': 'krea2_identity_edit_v1_2.safetensors',
   'qwen-lightning': 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
 };
 
@@ -4729,8 +4734,8 @@ function syncKleinOutpaintConsistencyLora() {
 
 function activeEditAutomaticLoraSpec() {
   if (state.view !== 'edit') return null;
-  if (state.editEngine === 'krea2' && state.editOutpaint) {
-    const status = lastMeta?.models?.krea2Outpaint?.lora;
+  if (state.editEngine === 'krea2ref' || (state.editEngine === 'krea2' && state.editOutpaint)) {
+    const status = lastMeta?.models?.krea2IdentityEdit?.lora;
     return {
       key: 'krea2-outpaint',
       name: status?.name || DEFAULT_EDIT_AUTOMATIC_LORAS['krea2-outpaint'],
@@ -6092,11 +6097,12 @@ function syncEditAreaChrome() {
   const active = supported && hasEditMask();
   const kreaEdit = state.view === 'edit' && state.editEngine === 'krea2';
   const kreaRef = state.view === 'edit' && state.editEngine === 'krea2ref';
+  const kreaRemix = state.view === 'edit' && state.editEngine === 'krea2remix';
   $('#kreaMaskTools').hidden = !supported;
   const outpaint = editOutpaintActive();
   const localizedActive = active && !outpaint;
   const preserve = $('#editComposite');
-  preserve.hidden = localizedActive || (!outpaint && (kreaEdit || kreaRef));
+  preserve.hidden = localizedActive || (!outpaint && (kreaEdit || kreaRef || kreaRemix));
   const preserveLabel = outpaint ? 'Keep the source at native resolution and blend the generated border' : 'Preserve unchanged areas';
   preserve.setAttribute('aria-label', preserveLabel);
   preserve.title = preserveLabel;
@@ -8018,6 +8024,19 @@ function renderQwenQuality() {
   renderNegativePromptControl();
 }
 
+function renderKrea2RefBoost() {
+  const active = state.view === 'edit'
+    && (state.editEngine === 'krea2ref' || (state.editEngine === 'krea2' && state.editOutpaint));
+  const field = $('#krea2RefBoostField');
+  const input = $('#krea2RefBoost');
+  if (!field || !input) return;
+  field.hidden = !active;
+  const value = Math.max(0, Math.min(12, Number(state.krea2RefBoost) || 0));
+  state.krea2RefBoost = value;
+  input.value = String(value);
+  $('#krea2RefBoostVal').textContent = value.toFixed(2);
+}
+
 function syncEditSamplingRow() {
   const row = $('#editSamplingRow');
   if (!row) return;
@@ -8036,6 +8055,12 @@ $('#qwenQualityControl').addEventListener('click', (event) => {
   renderLoras();
   saveForm();
 });
+
+$('#krea2RefBoost').addEventListener('input', (event) => {
+  state.krea2RefBoost = Math.max(0, Math.min(12, Number(event.target.value) || 0));
+  $('#krea2RefBoostVal').textContent = state.krea2RefBoost.toFixed(2);
+});
+$('#krea2RefBoost').addEventListener('change', saveForm);
 
 function selectedQwenAngleViews() {
   const views = QWEN_ANGLE_VIEWS
@@ -10279,6 +10304,7 @@ function prettyLora(name) { return name.replace(/\.safetensors$/i, '').split(/[\
 function editEngineLabel(engine) {
   if (engine === 'krea2') return 'Krea2';
   if (engine === 'krea2ref') return 'Krea 2 Edit';
+  if (engine === 'krea2remix') return 'Krea 2 Remix';
   if (engine === 'qwen') return 'Qwen Edit';
   if (engine === 'klein9') return 'Flux Klein 9B';
   return 'Flux Klein 4B';
@@ -10332,8 +10358,12 @@ const EDIT_ENGINE_TASKS = {
     copy: 'Combine references and create multi-angle image sets.',
   },
   krea2ref: {
-    task: 'Reference Remix', model: 'Krea 2 Edit',
-    copy: 'Rebuild the scene from reference identity and composition.',
+    task: 'Identity Editing', model: 'Krea 2 Edit',
+    copy: 'Edit or restage a subject while holding identity and reference detail.',
+  },
+  krea2remix: {
+    task: 'Reference Remix', model: 'Krea 2 Remix',
+    copy: 'Rebuild a scene from several identity, style, and composition references.',
   },
   krea2: {
     task: 'Inpaint + Outpaint', model: 'Krea 2',
@@ -13539,13 +13569,18 @@ $('#loraPresetsBtn').addEventListener('click', () => {
 /* Reference images (edit mode)                                        */
 /* ------------------------------------------------------------------ */
 
+function editReferenceCapacity() {
+  if (state.editEngine === 'krea2' || editOutpaintActive()) return 1;
+  if (state.editEngine === 'krea2ref') return 2;
+  return state.refs.length;
+}
+
 function renderRefs({ preservePromptComposer = false } = {}) {
   const row = $('#refRow');
   row.innerHTML = '';
   // Begin with one source image. Multi-reference engines reveal additional
   // slots only when requested, keeping this flow aligned with Create.
-  const kreaEdit = state.editEngine === 'krea2';
-  const maxSlots = kreaEdit || (OUTPAINT_EDIT_ENGINES.has(state.editEngine) && state.editOutpaint) ? 1 : state.refs.length;
+  const maxSlots = editReferenceCapacity();
   const populatedSlots = state.refs.reduce((highest, ref, index) => ref ? Math.max(highest, index + 1) : highest, 1);
   const requestedSlots = Math.max(1, Math.min(3, Math.round(Number(state.editRefSlots) || 1)));
   const visibleSlots = Math.max(1, Math.min(maxSlots, Math.max(requestedSlots, populatedSlots)));
@@ -13559,6 +13594,13 @@ function renderRefs({ preservePromptComposer = false } = {}) {
     num.className = 'ref-num';
     num.textContent = String(idx + 1);
     slot.appendChild(num);
+    if (state.editEngine === 'krea2ref') {
+      const role = document.createElement('span');
+      role.className = 'ref-role';
+      role.textContent = idx === 0 ? 'Source / scene' : 'Subject';
+      slot.appendChild(role);
+      slot.setAttribute('aria-label', `${role.textContent} input ${idx + 1}`);
+    }
     if (ref) {
       const img = document.createElement('img');
       img.src = (idx === 0 && ref.displayUrl) || ref.url;
@@ -13615,7 +13657,7 @@ function renderRefs({ preservePromptComposer = false } = {}) {
 }
 
 $('#addEditReference').addEventListener('click', () => {
-  const maxSlots = state.editEngine === 'krea2' || editOutpaintActive() ? 1 : state.refs.length;
+  const maxSlots = editReferenceCapacity();
   if (state.editRefSlots >= maxSlots) return;
   state.editRefSlots += 1;
   renderRefs();
@@ -13789,7 +13831,7 @@ async function galleryItemEditReference(item) {
 
 async function useAsRef(item) {
   try {
-    const capacity = state.editEngine === 'krea2' || editOutpaintActive() ? 1 : state.refs.length;
+    const capacity = editReferenceCapacity();
     const occupied = state.refs.slice(0, capacity)
       .map((reference, index) => ({ reference, index }))
       .filter(({ reference }) => reference);
@@ -14956,6 +14998,11 @@ wireEngineRow('animEngineRow', (engine) => {
 wireEngineRow('editEngineRow', (engine) => {
   captureGenerationTuning('edit');
   switchEditEngine(engine);
+  if (engine === 'krea2ref') {
+    const steps = Number($('#stepsInput').value);
+    if (!Number.isFinite(steps) || steps < 8 || steps > 12) $('#stepsInput').value = '10';
+    $('#cfgInput').value = '1';
+  }
   if (engine === 'krea2' && Number($('#denoiseInput').value) <= 0.5) {
     // Keep enough source signal for the new content to inherit its surroundings.
     $('#denoiseInput').value = 0.78;
@@ -15164,6 +15211,9 @@ $('#generateBtn').addEventListener('click', async () => {
     mode,
     editEngine: mode === 'edit' ? state.editEngine : undefined,
     qwenQuality: mode === 'edit' && state.editEngine === 'qwen' ? state.qwenQuality : undefined,
+    krea2RefBoost: mode === 'edit'
+      && (state.editEngine === 'krea2ref' || (state.editEngine === 'krea2' && outpaintActive))
+      ? state.krea2RefBoost : undefined,
     krea2Turbo: !krea2Raw,
     krea2RawTurboLora: krea2Raw ? state.krea2RawTurboLora : undefined,
     composite: mode === 'edit' ? nativePreserve : undefined,
@@ -15198,7 +15248,7 @@ $('#generateBtn').addEventListener('click', async () => {
     seed: seedRaw === '' ? undefined : Number(seedRaw),
     loras: mode === 'edit' ? state.editLoras : state.loras,
     refImages: mode === 'edit'
-      ? state.refs.slice(0, state.editEngine === 'krea2' || outpaintActive ? 1 : 3).filter(Boolean).map((r) => r.name)
+      ? state.refs.slice(0, editReferenceCapacity()).filter(Boolean).map((r) => r.name)
       : [],
     imageName: createImageGuideName,
     imageGuideMode: createImageGuide ? state.createGuideMode : undefined,
@@ -16801,7 +16851,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'editAspectOverride', 'editAspect', 'editMp', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather', 'editOutpaintMaskOffset',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
-  'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality',
+  'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality', 'krea2RefBoost',
   'prompts', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs', 'promptSourceImage', 'promptAssistantUseSource',
   'createRef', 'createImageGuideOpen', 'createGuideMode', 'createGuideActive', 'createMatchSource', 'createMatchNative',
   'createInfluence', 'createDepthStrength', 'createStyleStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
@@ -21053,6 +21103,9 @@ function openLightbox(id, mediaSel, options = {}) {
     const model = galleryImageModelLabel(it);
     if (model) meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
     if (it.editEngine === 'qwen') meta.push(`<b>Sampling:</b> ${it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4) ? 'Fast' : 'Quality'}`);
+    if (it.editEngine === 'krea2ref' && Number.isFinite(Number(it.krea2RefBoost))) {
+      meta.push(`<b>Reference fidelity:</b> ${Number(it.krea2RefBoost).toFixed(2)}`);
+    }
     meta.push(copyableMeta('Prompt', it.prompt || ''));
     if (it.negativePrompt) meta.push(copyableMeta('Negative prompt', it.negativePrompt));
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
@@ -21878,7 +21931,7 @@ function restoredLoraList(loras) {
 }
 
 function restoredEditEngine(engine) {
-  return ['qwen', 'klein9', 'krea2', 'krea2ref'].includes(engine) ? engine : 'klein4';
+  return ['qwen', 'klein9', 'krea2', 'krea2ref', 'krea2remix'].includes(engine) ? engine : 'klein4';
 }
 
 function restoredEditAspect(width, height) {
@@ -22076,11 +22129,14 @@ async function reuseItem(it, useEnhanced) {
       ? Math.max(0, Math.min(25, Math.round(Number(it.editOutpaint.feather)))) : 12;
     state.editOutpaintMaskOffset = Number.isFinite(Number(it.editOutpaint?.maskOffset))
       ? Math.max(-15, Math.min(15, Math.round(Number(it.editOutpaint.maskOffset)))) : 0;
-    state.editRefSlots = Math.max(1, Math.min(3, (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
+    state.editRefSlots = Math.max(1, Math.min(editReferenceCapacity(),
+      (Array.isArray(it.refImages) ? it.refImages.filter(Boolean).length : 0) || 1));
     if (state.editEngine === 'qwen') {
       state.qwenQuality = it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4)
         ? 'fast' : 'quality';
     }
+    state.krea2RefBoost = Number.isFinite(Number(it.krea2RefBoost))
+      ? Math.max(0, Math.min(12, Number(it.krea2RefBoost))) : 4;
     state.editLoras = restoredLoraList(it.loras);
     state.editLorasByEngine[state.editEngine] = state.editLoras;
     state.editAspectOverride = it.editAspectOverride === true;
@@ -27148,10 +27204,10 @@ let setupKnownMissingComponents = null;
 let setupReturnToSettings = false;
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
-const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style']);
+const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style']);
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
-  { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
+  { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
   { id: 'video', label: 'Video', description: 'LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
@@ -27210,7 +27266,7 @@ function generationSetupComponents() {
     return [...components];
   }
   if (state.view === 'edit') {
-    components.add({ klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', krea2: 'image', krea2ref: 'krea2ref' }[state.editEngine] || 'image');
+    components.add({ klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', krea2: 'image', krea2ref: 'krea2ref', krea2remix: 'krea2remix' }[state.editEngine] || 'image');
     if (state.editOutpaint) components.add(state.editEngine === 'krea2'
       ? 'krea2outpaint'
       : (state.editEngine === 'krea2ref' ? 'krea2outpaint' : 'editoutpaint'));
@@ -28750,7 +28806,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Edit (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

@@ -27,8 +27,8 @@ test('LTX Director stays pinned beside LTX without becoming a reorderable engine
 });
 
 test('Model orders and defaults persist in profile-scoped form state', () => {
-  assert.match(app, /const EDIT_MODEL_ORDER_VERSION = 2;/);
-  assert.match(app, /const DEFAULT_EDIT_ENGINE_ORDER = Object\.freeze\(\['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2'\]\)/);
+  assert.match(app, /const EDIT_MODEL_ORDER_VERSION = 3;/);
+  assert.match(app, /const DEFAULT_EDIT_ENGINE_ORDER = Object\.freeze\(\['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2'\]\)/);
   assert.match(app, /editModelOrderVersion: EDIT_MODEL_ORDER_VERSION/);
   assert.match(app, /editEngineOrder: state\.editEngineOrder, editEngineDefault: state\.editEngineDefault/);
   assert.match(app, /videoEngineOrder: state\.videoEngineOrder, videoEngineDefault: state\.videoEngineDefault/);

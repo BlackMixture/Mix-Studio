@@ -576,9 +576,9 @@ test('in-app setup installs official ComfyUI and curated dependency groups', () 
     { 'video.ltx': true, 'video.wan': true, 'video.scail': true },
   ), ['image', 'krea2depth', 'krea2style', 'upscale', 'video', 'faceid', 'wan', 'scail', 'scailinfinity']);
   assert.deepEqual(dependencyCli.selectedComponents(
-    { features: [{ id: 'core.image', required: true }, { id: 'edit.klein4' }, { id: 'edit.klein9' }, { id: 'edit.qwen' }, { id: 'edit.krea2' }, { id: 'edit.krea2ref' }] },
-    { 'edit.klein4': true, 'edit.klein9': true, 'edit.qwen': true, 'edit.krea2': true, 'edit.krea2ref': true },
-  ), ['image', 'krea2depth', 'krea2style', 'upscale', 'klein4', 'editoutpaint', 'klein9', 'smartmask', 'qwen', 'regional', 'krea2ref', 'krea2outpaint']);
+    { features: [{ id: 'core.image', required: true }, { id: 'edit.klein4' }, { id: 'edit.klein9' }, { id: 'edit.qwen' }, { id: 'edit.krea2' }, { id: 'edit.krea2ref' }, { id: 'edit.krea2remix' }] },
+    { 'edit.klein4': true, 'edit.klein9': true, 'edit.qwen': true, 'edit.krea2': true, 'edit.krea2ref': true, 'edit.krea2remix': true },
+  ), ['image', 'krea2depth', 'krea2style', 'upscale', 'klein4', 'editoutpaint', 'klein9', 'smartmask', 'qwen', 'regional', 'krea2ref', 'krea2outpaint', 'krea2remix']);
   assert.deepEqual(dependencyCli.combineDiscovery(
     { registeredModelNames: ['a.safetensors'], modelRoots: ['D:/Models'], preferredModelsPath: 'D:/Models' },
     { registeredModelNames: ['a.safetensors', 'b.safetensors'], modelRoots: ['E:/Models'] },

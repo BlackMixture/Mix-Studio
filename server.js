@@ -83,6 +83,10 @@ const {
   normalizeOutpaintPosition,
 } = require('./lib/krea2-outpaint');
 const {
+  buildKrea2IdentityEditGraph,
+  normalizeIdentityEditDimensions,
+} = require('./lib/krea2-identity-edit');
+const {
   buildKleinOutpaintGraph,
   buildQwenOutpaintGraph,
   buildKrea2MaskedOutpaintGraph,
@@ -303,7 +307,7 @@ const DEFAULT_SETTINGS = {
   vramProfile: 'auto',
   krea2TurboLora: 'krea2_turbo_lora_rank_64_bf16.safetensors',
   krea2DepthLora: 'depth-control-lora.safetensors',
-  krea2OutpaintLora: 'krea2_identity_edit_v1_1_r128.safetensors',
+  krea2OutpaintLora: 'krea2_identity_edit_v1_2.safetensors',
   depthAnythingV3Model: 'da3_large.safetensors',
   clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
   clipType: 'krea2',
@@ -380,6 +384,9 @@ function normalizeSettings(s) {
   if (!s.klein9Clip) s.klein9Clip = DEFAULT_SETTINGS.klein9Clip;
   if (!s.kleinUnet) s.kleinUnet = s.klein4Unet;
   if (!s.kleinClip) s.kleinClip = s.klein4Clip;
+  if (/^krea2_identity_edit_v1(?:_1)?(?:_r(?:64|128))?\.safetensors$/i.test(String(s.krea2OutpaintLora || ''))) {
+    s.krea2OutpaintLora = DEFAULT_SETTINGS.krea2OutpaintLora;
+  }
   s.galleryPassword = galleryPassword(s);
   try { s.exportDir = normalizeExportDirectory(s.exportDir); } catch { s.exportDir = ''; }
   s.smartFilenames = s.smartFilenames !== false;
@@ -1229,8 +1236,8 @@ function configuredModelsStatus(info) {
       lora: modelStatus(info, 'Krea2ControlLoRALoader', 'lora_name', settings.krea2DepthLora, loraList),
       depthModel: modelStatus(info, 'DownloadAndLoadDepthAnythingV3Model', 'model', settings.depthAnythingV3Model),
     },
-    krea2Outpaint: {
-      label: 'Krea 2 Expand',
+    krea2IdentityEdit: {
+      label: 'Krea 2 Identity Edit',
       lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.krea2OutpaintLora, loraList),
     },
     klein4: {
@@ -1316,6 +1323,7 @@ function missingDependencyComponentIds(missing, models) {
   const nodeToComponent = {
     regional: ['regional'],
     krea2ref: ['krea2ref'],
+    krea2remix: ['krea2remix'],
     krea2outpaint: ['krea2outpaint'],
     editoutpaint: ['editoutpaint'],
     smartmask: ['smartmask'],
@@ -1345,7 +1353,7 @@ function missingDependencyComponentIds(missing, models) {
   const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
   if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
   if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
-  const modelToComponent = { krea2Depth: 'krea2depth', krea2Outpaint: 'krea2outpaint', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -1835,6 +1843,8 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       qwenQuality: job.params.mode === 'edit' && job.params.editEngine === 'qwen'
         ? normalizeQwenEditQuality(job.params.qwenQuality) : undefined,
+      krea2RefBoost: job.params.mode === 'edit' && job.params.editEngine === 'krea2ref'
+        ? job.params.krea2RefBoost : undefined,
       sourceFile,
       sourceItemId: job.params.sourceItemId || null,
       profileId: job.profileId,
@@ -1876,7 +1886,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     });
   }
   const model = job.params.mode === 'edit'
-    ? ({ qwen: 'Qwen Edit', klein9: 'Flux Klein 9B', krea2: 'Krea 2', krea2ref: 'Krea 2 Edit' }[job.params.editEngine] || 'Flux Klein 4B')
+    ? ({ qwen: 'Qwen Edit', klein9: 'Flux Klein 9B', krea2: 'Krea 2', krea2ref: 'Krea 2 Edit', krea2remix: 'Krea 2 Remix' }[job.params.editEngine] || 'Flux Klein 4B')
     : (job.params.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo');
   const documentationInfo = {
     columns: plan.columns,
@@ -2242,6 +2252,8 @@ async function completeJob(pid) {
       editEngine: job.params.mode === 'edit' ? (job.params.editEngine || 'klein4') : undefined,
       qwenQuality: job.params.mode === 'edit' && job.params.editEngine === 'qwen'
         ? normalizeQwenEditQuality(job.params.qwenQuality) : undefined,
+      krea2RefBoost: job.params.mode === 'edit' && ['krea2ref', 'krea2'].includes(job.params.editEngine)
+        ? job.params.krea2RefBoost : undefined,
       editSequence: job.params.editSequence ? {
         id: job.params.editSequence.id,
         index: job.params.editSequence.index,
@@ -2806,6 +2818,7 @@ async function buildEditKrea2Outpaint(p, refNames) {
     imageName: refNames[0],
     padding,
     groundingPx: 768,
+    krea2RefBoost: p.krea2RefBoost,
   })));
 }
 
@@ -2878,34 +2891,62 @@ async function buildEditKrea2MaskedOutpaint(p, refNames) {
   })));
 }
 
-/* Edit (Krea2 Ref): the nova452 Conditioning-Rebalance technique — the
+async function matchKrea2ReferenceDimensions(p, refNames) {
+  let width = p.width || 1024;
+  let height = p.height || 1024;
+  if (!p.editAspectOverride) try {
+    const parts = String(refNames[0]).split('/');
+    const filename = parts.pop();
+    const subfolder = parts.join('/');
+    const response = await comfyFetch(`/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=input`);
+    const dims = imageDims(Buffer.from(await response.arrayBuffer()));
+    if (dims && dims.w && dims.h) {
+      const scale = Math.sqrt((1.3 * 1024 * 1024) / (dims.w * dims.h));
+      width = Math.max(256, Math.round((dims.w * scale) / 16) * 16);
+      height = Math.max(256, Math.round((dims.h * scale) / 16) * 16);
+    }
+  } catch { /* fall back to the selected output size */ }
+  const normalized = normalizeIdentityEditDimensions(width, height);
+  p.width = normalized.width;
+  p.height = normalized.height;
+  return normalized;
+}
+
+async function buildEditKrea2Identity(p, refNames) {
+  const info = await getObjectInfo();
+  const requiredNodes = ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'LoraLoaderModelOnly'];
+  const missingNodes = requiredNodes.filter((className) => !info[className]);
+  if (missingNodes.length) {
+    throw new Error(`Krea 2 Edit needs its Identity Edit nodes installed: ${missingNodes.join(', ')}`);
+  }
+  const loraList = comboList(info, 'LoraLoaderModelOnly', 'lora_name').length
+    ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
+    : comboList(info, 'LoraLoader', 'lora_name');
+  const assetKey = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  if (!loraList.some((name) => assetKey(name) === assetKey(settings.krea2OutpaintLora))) {
+    throw new Error(`Krea 2 Edit needs the Identity Edit LoRA in ComfyUI loras: ${settings.krea2OutpaintLora}`);
+  }
+  await matchKrea2ReferenceDimensions(p, refNames);
+  return filterInputs(buildKrea2IdentityEditGraph(Object.assign({}, p, {
+    settings,
+    refNames: refNames.slice(0, 2),
+    groundingPx: 768,
+  })));
+}
+
+/* Edit (Krea2 Remix): the nova452 Conditioning-Rebalance technique — the
  * instruction and up to 4 reference images are fused by Krea2EditRebalance
  * into a single conditioning (IP-Adapter-like identity/composition
  * preservation), sampled cfg-free on the Krea2 turbo model from an EMPTY
  * latent (the refs steer content; nothing is latent-copied). */
-async function buildEditKrea2Ref(p, refNames) {
+async function buildEditKrea2Remix(p, refNames) {
   const graph = {};
   graph.unet = buildKrea2ModelLoader(settings, settings.unet);
   const model = chainModelLoras(graph, ['unet', 0], p.loras, 'kelora');
   graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
   graph.vae = { class_type: 'VAELoader', inputs: { vae_name: settings.vae } };
 
-  // Match the first reference by default; an explicit Edit-tab output ratio
-  // overrides it when the user is combining multiple references.
-  let W = p.width || 1024;
-  let H = p.height || 1024;
-  if (!p.editAspectOverride) try {
-    const parts = String(refNames[0]).split('/');
-    const fn = parts.pop();
-    const sub = parts.join('/');
-    const r = await comfyFetch(`/view?filename=${encodeURIComponent(fn)}&subfolder=${encodeURIComponent(sub)}&type=input`);
-    const dims = imageDims(Buffer.from(await r.arrayBuffer()));
-    if (dims && dims.w && dims.h) {
-      const s = Math.sqrt((1.3 * 1024 * 1024) / (dims.w * dims.h));
-      W = Math.max(256, Math.round((dims.w * s) / 16) * 16);
-      H = Math.max(256, Math.round((dims.h * s) / 16) * 16);
-    }
-  } catch { /* fall back to the selected output size */ }
+  const { width, height } = await matchKrea2ReferenceDimensions(p, refNames);
 
   const rebalanceInputs = {
     text: p.prompt,
@@ -2931,7 +2972,7 @@ async function buildEditKrea2Ref(p, refNames) {
   };
   graph.latent = {
     class_type: 'EmptySD3LatentImage',
-    inputs: { width: W, height: H, batch_size: p.batch || 1 },
+    inputs: { width, height, batch_size: p.batch || 1 },
   };
   graph.samp = {
     class_type: 'SamplerCustomAdvanced',
@@ -3142,10 +3183,11 @@ async function buildGenerationGraph(p, refNames) {
   if (p.mode === 'edit') {
     if (p.editOutpaint && p.editEngine === 'qwen') return buildEditQwenOutpaint(p, refNames);
     if (p.editOutpaint && (p.editEngine === 'klein4' || p.editEngine === 'klein9')) return buildEditKleinOutpaint(p, refNames);
-    if (p.editOutpaint && p.editEngine === 'krea2') return buildEditKrea2MaskedOutpaint(p, refNames);
+    if (p.editOutpaint && p.editEngine === 'krea2') return buildEditKrea2Outpaint(p, refNames);
     if (p.editEngine === 'qwen') return buildEditQwen(p, refNames);
     if (p.editEngine === 'krea2ref' && p.editOutpaint) return buildEditKrea2Outpaint(p, refNames);
-    if (p.editEngine === 'krea2ref') return buildEditKrea2Ref(p, refNames);
+    if (p.editEngine === 'krea2ref') return buildEditKrea2Identity(p, refNames);
+    if (p.editEngine === 'krea2remix') return buildEditKrea2Remix(p, refNames);
     if (p.editEngine === 'krea2' && p.maskImageName) return buildKrea2Inpaint(p, refNames);
     if (p.editEngine === 'krea2') return hasActiveRegions(p.regions) ? buildRegionalT2I(p) : buildT2I(p);
     return buildEdit(p, refNames);
@@ -4819,7 +4861,8 @@ const REQUIRED_CLASSES = {
     'SetLatentNoiseMask', 'ImageCompositeMasked'],
   regional: ['Ideogram4PromptBuilderKJ', 'Krea2RegionalMultiLoRAV3'],
   faceid: ['LTXIdentityOverlapConditioning', 'ImageResizeKJv2', 'TextGenerate'],
-  krea2ref: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
+  krea2ref: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'LoraLoaderModelOnly'],
+  krea2remix: ['Krea2EditRebalance', 'BasicGuider', 'BasicScheduler', 'SamplerCustomAdvanced'],
   krea2outpaint: ['Krea2EditModelPatch', 'Krea2EditGroundedEncode', 'ImagePadForOutpaint', 'ColorMatch', 'ImageToMask', 'SolidMask', 'FeatherMask'],
   editoutpaint: ['ImagePadForOutpaint', 'DrawMaskOnImage', 'ColorMatch', 'ImageToMask', 'SolidMask', 'FeatherMask'],
   krea2inpaint: ['LoadImage', 'ImageToMask', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask',
@@ -4858,7 +4901,7 @@ const REQUIRED_CLASSES = {
 };
 
 const KREA2_DEPENDENCY_COMPONENTS = new Set([
-  'image', 'krea2raw', 'regional', 'krea2ref', 'krea2outpaint', 'krea2depth', 'krea2style',
+  'image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style',
 ]);
 
 function dependencyComponentInfo(id, fit = null) {
@@ -5891,6 +5934,7 @@ async function handleApi(req, res, url) {
     p.promptTemplate = p.mode === 'edit'
       ? String(p.promptTemplate || '').trim().slice(0, 8000) || undefined
       : undefined;
+    p.krea2RefBoost = p.mode === 'edit' ? clampNum(p.krea2RefBoost, 0, 20, 4) : undefined;
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
     p.editOutpaintScale = p.editOutpaint ? clampInt(p.editOutpaintScale, 45, 100, 100) : undefined;
     p.editOutpaintFeather = p.editOutpaint ? clampInt(p.editOutpaintFeather, 0, 25, 12) : undefined;
@@ -5982,10 +6026,10 @@ async function handleApi(req, res, url) {
     p.maskInfluence = maskInfluence(p.maskInfluence);
     p.maskExpand = maskExpand(p.maskExpand);
     if (p.mode === 'edit') {
-      const editEngines = ['qwen', 'klein9', 'krea2', 'krea2ref'];
+      const editEngines = ['qwen', 'klein9', 'krea2', 'krea2ref', 'krea2remix'];
       p.editEngine = editEngines.includes(p.editEngine) ? p.editEngine : 'klein4';
     }
-    const usesKrea2Model = p.mode !== 'edit' || ['krea2', 'krea2ref'].includes(p.editEngine);
+    const usesKrea2Model = p.mode !== 'edit' || ['krea2', 'krea2ref', 'krea2remix'].includes(p.editEngine);
     if (usesKrea2Model) {
       const info = await getObjectInfo();
       const coreCompatibility = await getComfyCompatibility();
@@ -6037,7 +6081,9 @@ async function handleApi(req, res, url) {
     }
 
     const refNames = p.mode === 'edit'
-      ? (Array.isArray(p.refImages) ? p.refImages.filter(Boolean).slice(0, 3) : [])
+      ? (Array.isArray(p.refImages)
+        ? p.refImages.filter(Boolean).slice(0, p.editEngine === 'krea2ref' ? 2 : 3)
+        : [])
       : (p.imageName ? [p.imageName] : []);
     if (p.mode !== 'edit') p.editSequence = undefined;
     if (p.mode === 'edit') {
@@ -6048,8 +6094,11 @@ async function handleApi(req, res, url) {
       if (p.editOutpaint && sequenceRequested) {
         return json(res, 400, { error: 'Expand and sequential edits must be generated separately' });
       }
+      if (p.editOutpaint && p.editEngine === 'krea2remix') {
+        return json(res, 400, { error: 'Krea 2 Remix does not support Expand; use Krea 2 Edit for identity-aware expansion' });
+      }
       if (sequenceRequested && !supportsSequentialEdit(p.editEngine)) {
-        return json(res, 400, { error: 'Sequential edits are available with Klein 4B, Klein 9B, Qwen Edit, and Krea 2 Edit only' });
+        return json(res, 400, { error: 'Sequential edits are available with Klein 4B, Klein 9B, Qwen Edit, Krea 2 Edit, and Krea 2 Remix only' });
       }
       p.editSequence = normalizeEditSequence(p.editSequence, p.editEngine) || undefined;
       if (sequenceRequested && !p.editSequence) {
@@ -6078,8 +6127,9 @@ async function handleApi(req, res, url) {
       if (p.qwenAngle && !refNames.length) {
         return json(res, 400, { error: 'Camera variations need a source image in reference slot 1' });
       }
-      if ((p.editEngine === 'qwen' || p.editEngine === 'krea2ref') && !refNames.length) {
-        return json(res, 400, { error: `${p.editEngine === 'qwen' ? 'Qwen Edit' : 'Krea 2 Edit'} needs at least one reference image` });
+      if (['qwen', 'krea2ref', 'krea2remix'].includes(p.editEngine) && !refNames.length) {
+        const label = p.editEngine === 'qwen' ? 'Qwen Edit' : (p.editEngine === 'krea2remix' ? 'Krea 2 Remix' : 'Krea 2 Edit');
+        return json(res, 400, { error: `${label} needs at least one reference image` });
       }
       if (p.editOutpaint && !refNames.length) {
         return json(res, 400, { error: 'Expand needs a source image in reference slot 1' });
@@ -6104,7 +6154,9 @@ async function handleApi(req, res, url) {
           return json(res, 400, { error: 'Krea2 Fill needs a source image' });
         }
       } else if (p.editEngine === 'krea2ref') {
-        p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null; // turbo: 8 steps
+        p.steps = clampInt(p.steps, 8, 12, 10); p.cfg = 1; p.denoise = null;
+      } else if (p.editEngine === 'krea2remix') {
+        p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null;
       } else if (p.editEngine === 'qwen') {
         p.qwenQuality = normalizeQwenEditQuality(p.qwenQuality);
         const preset = qwenEditPreset(p.qwenQuality);

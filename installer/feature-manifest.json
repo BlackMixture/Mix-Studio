@@ -51,12 +51,21 @@
     },
     {
       "id": "edit.krea2ref",
-      "label": "Krea 2 Edit + Identity Outpaint",
+      "label": "Krea 2 Identity Edit + Outpaint",
       "default": true,
-      "variant": "Krea 2 FP8 or INT8 ConvRot + Identity Edit LoRA with offloading",
+      "variant": "Krea 2 FP8 or INT8 ConvRot + full-rank Identity Edit v1.2 LoRA with offloading",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "autoSelect": "supported" },
-      "models": ["krea2", "krea2-identity-edit-lora"],
-      "nodes": ["Krea2EditRebalance", "comfyui-krea2edit", "KJNodes outpaint"]
+      "models": ["krea2", "krea2-identity-edit-v1.2-lora"],
+      "nodes": ["Krea2EditModelPatch", "Krea2EditGroundedEncode", "comfyui-krea2edit", "KJNodes outpaint"]
+    },
+    {
+      "id": "edit.krea2remix",
+      "label": "Krea 2 Remix",
+      "default": true,
+      "variant": "Krea 2 FP8 or INT8 ConvRot with Conditioning Rebalance references",
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "autoSelect": "supported" },
+      "models": ["krea2"],
+      "nodes": ["Krea2EditRebalance", "ComfyUI-Conditioning-Rebalance"]
     },
     {
       "id": "video.ltx",

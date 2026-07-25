@@ -119,7 +119,7 @@ test('pasted images use the existing upload path and deterministic workflow dest
   );
   assert.match(routing, /const regionId = selectedRegion\(\)\?\.id[\s\S]*kind: 'region'[^\n]*regionId/);
   assert.match(routing, /kind: 'create'[^\n]*guideMode: state\.createGuideMode/);
-  assert.match(routing, /state\.editEngine === 'krea2' \|\| editOutpaintActive\(\) \? 1 : state\.refs\.length/);
+  assert.match(routing, /const capacity = editReferenceCapacity\(\)/);
   assert.match(routing, /const activeFace = state\.vidEngine === 'ltx' && !!state\.vidFace/);
   assert.match(routing, /state\.vidEngine === 'ltx-edit' \? 'unsupported' : \(activeFace \? 'video-face' : 'video'\)/);
   assert.match(routing, /setCreateImageGuideAsset\(assets\[0\], context\.guideMode,/);
