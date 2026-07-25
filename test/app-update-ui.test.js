@@ -11,7 +11,7 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-const modatoryLogo = fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8');
+const mixStudioLogo = fs.readFileSync(path.join(root, 'public', 'mix-studio-logo.svg'), 'utf8');
 
 function appFunction(name, nextName) {
   const start = app.indexOf(`function ${name}(`);
@@ -33,7 +33,7 @@ test('the logo mark opens a labeled mobile app drawer', () => {
   assert.match(css, /\.chip-row\.prompt-tools \{ margin-top: 6px; margin-bottom: -6px; \}/);
 });
 
-test('the installed web interface uses the Mix Studio name and Modatory logo', () => {
+test('the installed web interface uses the Mix Studio name and logo', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.webmanifest'), 'utf8'));
   assert.match(html, /apple-mobile-web-app-title" content="Mix Studio"/);
   assert.match(html, /<title>Mix Studio<\/title>/);
@@ -42,17 +42,19 @@ test('the installed web interface uses the Mix Studio name and Modatory logo', (
   assert.match(css, /\.drawer-wordmark-crop \{[^}]*width: 154px/);
   assert.equal(manifest.name, 'Mix Studio');
   assert.equal(manifest.short_name, 'Mix Studio');
-  assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/modatory-logo\.svg"/);
+  assert.equal(manifest.icons[0].src, '/mix-studio-logo.svg');
+  assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/mix-studio-logo\.svg"/);
   const wordmark = fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark-white-on-black.svg'), 'utf8');
   assert.match(wordmark, /<svg[^>]+viewBox="0 0 1310\.81 203\.85"/);
   assert.match(wordmark, /<g fill="#ffffff">/);
   assert.match(wordmark, /<path/g);
   assert.doesNotMatch(wordmark, /<text\b/);
   assert.match(css, /\.brand-wordmark img,[\s\S]*object-fit: contain;[\s\S]*object-position: left center;/);
-  assert.match(modatoryLogo, /viewBox="0 0 734\.42 753\.63"/);
-  assert.match(modatoryLogo, /#fdc302/);
-  assert.match(modatoryLogo, /#026cfc/);
-  assert.match(modatoryLogo, /#fb2026/);
+  assert.match(mixStudioLogo, /aria-label="Mix Studio logo"/);
+  assert.match(mixStudioLogo, /viewBox="0 0 734\.42 753\.63"/);
+  assert.match(mixStudioLogo, /#fdc302/);
+  assert.match(mixStudioLogo, /#026cfc/);
+  assert.match(mixStudioLogo, /#fb2026/);
 });
 
 test('advanced settings live in the app drawer instead of the top bar', () => {

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/download/modatory-logo.svg" width="72" alt="" />
+  <img src="docs/download/mix-studio-logo.svg" width="72" alt="" />
 </p>
 <h1 align="center">
   <img src="docs/download/mix-studio-wordmark.svg" width="390" alt="Mix Studio" />

@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="Mix Studio" />
 <title>Mix Studio</title>
 <link rel="manifest" href="/manifest.webmanifest" />
-<link rel="icon" href="/modatory-logo.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="/modatory-logo.svg" />
+<link rel="icon" href="/mix-studio-logo.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/mix-studio-logo.svg" />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -19,7 +19,7 @@
   <div class="brand">
     <button class="side-menu-trigger" id="appMenuBtn" type="button" aria-label="Open Mix Studio menu" aria-expanded="false" aria-controls="appDrawer">
       <span class="side-menu-icon" aria-hidden="true">
-        <img class="side-menu-mark side-menu-mark-logo" src="/modatory-logo.svg" alt="" />
+        <img class="side-menu-mark side-menu-mark-logo" src="/mix-studio-logo.svg" alt="" />
         <svg class="side-menu-mark side-menu-mark-menu" viewBox="0 0 64 64">
           <rect x="6" y="5" width="52" height="54" rx="17" fill="none" stroke="currentColor" stroke-width="8"/>
           <path d="M21 19.5v25" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
@@ -1175,11 +1175,26 @@
               <label>Batch</label>
               <input id="batchInput" type="number" inputmode="numeric" value="1" min="1" max="8" />
             </div>
-            <div class="field field-span" id="krea2RefBoostField" hidden>
-              <label for="krea2RefBoost">Reference fidelity <small>Higher values hold identity and appearance more strongly</small></label>
-              <div class="range-field">
-                <input id="krea2RefBoost" type="range" min="0" max="12" step="0.25" value="4" />
-                <span class="range-val" id="krea2RefBoostVal">4.00</span>
+            <div class="field field-span reference-fidelity-field" id="krea2RefBoostField" hidden>
+              <div class="reference-fidelity-heading">
+                <span class="reference-fidelity-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 18c.5-3.2 2.3-5 5.5-5s5 1.8 5.5 5M16 6h4v4M20 14v4h-4"/></svg>
+                </span>
+                <label for="krea2RefBoost">
+                  <b>Reference fidelity</b>
+                  <small id="krea2RefBoostHint">Identity and appearance lock</small>
+                </label>
+                <output class="reference-fidelity-value" for="krea2RefBoost">
+                  <strong id="krea2RefBoostVal">4.00</strong>
+                  <small id="krea2RefBoostTone">Balanced</small>
+                </output>
+              </div>
+              <div class="reference-fidelity-slider" id="krea2RefBoostSlider" style="--reference-progress: 33.333%;">
+                <input id="krea2RefBoost" type="range" min="0" max="12" step="0.25" value="4" aria-describedby="krea2RefBoostHint krea2RefBoostScale" />
+              </div>
+              <div class="reference-fidelity-scale" id="krea2RefBoostScale" aria-hidden="true">
+                <span>Creative</span>
+                <span>Faithful</span>
               </div>
             </div>
             <div class="field field-span scail-fps-field" id="vidScailFpsField" hidden>

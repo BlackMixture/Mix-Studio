@@ -90,7 +90,7 @@ test('modes drive color tokens and prompt input lighting', () => {
   assert.match(app, /document\.body\.dataset\.uiMode/);
 });
 
-test('primary navigation uses the neutral Modatory glow treatment', () => {
+test('primary navigation uses the neutral Mix Studio glow treatment', () => {
   assert.match(css, /\.primary-tabs \{ background: #000; \}/);
   assert.match(css, /\.primary-tabs \.tab::before \{ display: none; \}/);
   assert.match(css, /\.primary-tabs \.tab-pill \{[\s\S]*background: rgba\(255,255,255,0\.06\)/);

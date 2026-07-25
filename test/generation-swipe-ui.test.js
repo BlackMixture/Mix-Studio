@@ -27,7 +27,7 @@ test('swiping only hides progress and a new generation restores it', () => {
 test('mobile generation forms reserve scroll clearance while the progress card is visible', () => {
   assert.match(app, /classList\.add\('live-preview-visible'\)/);
   assert.match(app, /classList\.remove\('live-preview-visible'\)/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*body\.live-preview-visible #view-create \{[^}]*padding-bottom: calc\(190px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*body\.live-preview-visible #view-create \{[^}]*padding-bottom: calc\(166px \+ env\(safe-area-inset-bottom\)\)/);
 });
 
 test('image and video generations use stable Lottie simulations before yielding to real outputs', () => {

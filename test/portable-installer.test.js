@@ -94,7 +94,7 @@ test('README presents the product positioning and credits while contribution det
 test('GitHub Pages publishes the canonical installer from a branded download page', () => {
   const page = fs.readFileSync(path.join(root, 'docs', 'download', 'index.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'pages.yml'), 'utf8');
-  const localLogo = fs.readFileSync(path.join(root, 'docs', 'download', 'modatory-logo.svg'), 'utf8');
+  const localLogo = fs.readFileSync(path.join(root, 'docs', 'download', 'mix-studio-logo.svg'), 'utf8');
   const localWordmark = fs.readFileSync(path.join(root, 'docs', 'download', 'mix-studio-wordmark.svg'), 'utf8');
   const localSources = [...page.matchAll(/\ssrc="\.\/([^"?#]+)"/g)].map((match) => match[1]);
   assert.match(page, /Download for Windows/);
@@ -127,8 +127,8 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /https:\/\/www\.youtube\.com\/@blackmixture/);
   assert.match(page, /https:\/\/www\.instagram\.com\/blackmixture\//);
   assert.match(page, /Black Mixture © 2026/);
-  assert.match(page, /modatory-logo\.svg/);
-  assert.equal(localLogo, fs.readFileSync(path.join(root, 'public', 'modatory-logo.svg'), 'utf8'));
+  assert.match(page, /mix-studio-logo\.svg/);
+  assert.equal(localLogo, fs.readFileSync(path.join(root, 'public', 'mix-studio-logo.svg'), 'utf8'));
   assert.match(localWordmark, /fill="#ffffff"/);
   assert.doesNotMatch(localWordmark, /fill="#000000"/);
   for (const source of localSources) {

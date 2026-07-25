@@ -1,4 +1,4 @@
-/* KreaStudio front-end — mobile-first, Modatory design language */
+/* Mix Studio front-end: mobile-first Mix Studio design language */
 'use strict';
 
 const $ = (s) => document.querySelector(s);
@@ -1217,7 +1217,7 @@ function showSystemUpdateNotification(release) {
   try {
     const notice = new Notification(release.title, {
       body: officialReleaseSummary(release),
-      icon: '/modatory-logo.svg',
+      icon: '/mix-studio-logo.svg',
       tag: `mix-studio-update-${officialReleaseId(release)}`,
     });
     notice.onclick = () => {
@@ -8024,17 +8024,35 @@ function renderQwenQuality() {
   renderNegativePromptControl();
 }
 
+function krea2RefBoostTone(value) {
+  if (value < 2.5) return 'Creative';
+  if (value < 6) return 'Balanced';
+  if (value < 9) return 'Faithful';
+  return 'Locked';
+}
+
+function syncKrea2RefBoostUi(value) {
+  const input = $('#krea2RefBoost');
+  const slider = $('#krea2RefBoostSlider');
+  if (!input || !slider) return;
+  const normalized = Math.max(0, Math.min(12, Number(value) || 0));
+  const tone = krea2RefBoostTone(normalized);
+  input.value = String(normalized);
+  input.setAttribute('aria-valuetext', `${normalized.toFixed(2)}, ${tone}`);
+  slider.style.setProperty('--reference-progress', `${(normalized / 12) * 100}%`);
+  $('#krea2RefBoostVal').textContent = normalized.toFixed(2);
+  $('#krea2RefBoostTone').textContent = tone;
+}
+
 function renderKrea2RefBoost() {
   const active = state.view === 'edit'
     && (state.editEngine === 'krea2ref' || (state.editEngine === 'krea2' && state.editOutpaint));
   const field = $('#krea2RefBoostField');
-  const input = $('#krea2RefBoost');
-  if (!field || !input) return;
+  if (!field) return;
   field.hidden = !active;
   const value = Math.max(0, Math.min(12, Number(state.krea2RefBoost) || 0));
   state.krea2RefBoost = value;
-  input.value = String(value);
-  $('#krea2RefBoostVal').textContent = value.toFixed(2);
+  syncKrea2RefBoostUi(value);
 }
 
 function syncEditSamplingRow() {
@@ -8058,7 +8076,7 @@ $('#qwenQualityControl').addEventListener('click', (event) => {
 
 $('#krea2RefBoost').addEventListener('input', (event) => {
   state.krea2RefBoost = Math.max(0, Math.min(12, Number(event.target.value) || 0));
-  $('#krea2RefBoostVal').textContent = state.krea2RefBoost.toFixed(2);
+  syncKrea2RefBoostUi(state.krea2RefBoost);
 });
 $('#krea2RefBoost').addEventListener('change', saveForm);
 
