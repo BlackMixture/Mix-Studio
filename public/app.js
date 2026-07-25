@@ -457,17 +457,45 @@ function makePromptLoraTriggerToken(name) {
   return token;
 }
 
+function activeCameraPromptToken() {
+  if (!CameraSettings || state.view !== 'create') return null;
+  const presetId = state.promptPresetSelections && state.promptPresetSelections.camera;
+  const combo = CameraSettings.cameraCombo(presetId);
+  if (!combo) return null;
+  const value = CameraSettings.cameraPresetPromptPhrase(combo.id);
+  return value ? { category: 'camera', presetId: combo.id, value } : null;
+}
+
+function makePromptPresetToken(preset) {
+  const token = document.createElement('span');
+  token.className = 'prompt-preset-token';
+  token.contentEditable = 'false';
+  token.dataset.presetCategory = preset.category;
+  token.dataset.presetId = preset.presetId;
+  token.dataset.promptValue = preset.value;
+  token.title = `${preset.category === 'camera' ? 'Camera' : 'Visual'} preset · change from Visual presets`;
+  token.textContent = preset.value;
+  return token;
+}
+
+function escapePromptPattern(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function renderPromptComposer() {
   const composer = $('#promptComposer');
   if (!composer) return;
   const value = promptDraft();
-  const parts = value.split(/(@image-\d+|@lora-trigger\[[^\]]+\]|@lora-trigger-[^\s,;:!?]+)/g);
+  const preset = activeCameraPromptToken();
+  const presetPattern = preset && value.includes(preset.value) ? `|${escapePromptPattern(preset.value)}` : '';
+  const parts = value.split(new RegExp(`(@image-\\d+|@lora-trigger\\[[^\\]]+\\]|@lora-trigger-[^\\s,;:!?]+${presetPattern})`, 'g'));
   composer.replaceChildren();
   parts.forEach((part) => {
     const refMatch = /^@image-(\d+)$/.exec(part);
     const loraMatch = /^@lora-trigger(?:\[[^\]]+\]|-[^\s,;:!?]+)$/.test(part);
     if (refMatch) composer.appendChild(makePromptReferenceToken(refMatch[1]));
     else if (loraMatch) composer.appendChild(makePromptLoraTriggerToken(loraNameFromTriggerToken(part)));
+    else if (preset && part === preset.value) composer.appendChild(makePromptPresetToken(preset));
     else if (part) composer.appendChild(document.createTextNode(part));
   });
 }
@@ -478,6 +506,7 @@ function composerNodeText(node, root) {
   const el = node;
   if (el.classList.contains('prompt-ref-token')) return `@image-${el.dataset.refIndex}`;
   if (el.classList.contains('prompt-lora-token')) return loraTriggerToken(el.dataset.loraName);
+  if (el.classList.contains('prompt-preset-token')) return el.dataset.promptValue || el.textContent || '';
   if (el.tagName === 'BR') return '\n';
   const text = [...el.childNodes].map((child) => composerNodeText(child, root)).join('');
   return el !== root && /^(DIV|P)$/.test(el.tagName) ? `${text}\n` : text;
@@ -496,6 +525,10 @@ function setPromptDraft(value, { render = true } = {}) {
 
 function syncPromptDraftFromComposer() {
   setPromptDraft(promptDraftFromComposer(), { render: false });
+  const cameraPreset = activeCameraPromptToken();
+  if (cameraPreset && !promptDraft().includes(cameraPreset.value)) {
+    state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, { camera: null });
+  }
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
   updatePromptClear();
   renderPromptSuggestions();

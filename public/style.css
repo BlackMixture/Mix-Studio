@@ -853,6 +853,23 @@ html:-webkit-full-screen { background: #000; }
   color: var(--muted-2);
   pointer-events: none;
 }
+.prompt-preset-token {
+  display: inline;
+  color: #8bd4ff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(66, 203, 255, .28);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-shadow: 0 0 18px rgba(66, 203, 255, .16);
+}
+.prompt-preset-token[data-preset-category="camera"] {
+  color: #8bd4ff;
+}
+.prompt-composer:focus .prompt-preset-token {
+  color: #a9e1ff;
+  text-decoration-color: rgba(95, 210, 255, .44);
+}
 @media (max-width: 760px) {
   #view-create .prompt-composer {
     max-height: clamp(150px, 24dvh, 180px);

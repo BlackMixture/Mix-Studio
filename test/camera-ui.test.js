@@ -52,6 +52,16 @@ test('camera cards expose clear selected and missing-image states', () => {
   assert.match(styleCss, /\.camera-preset-card\.image-missing img/);
 });
 
+test('the applied camera phrase is color coded without changing its plain prompt value', () => {
+  assert.match(appJs, /function makePromptPresetToken/);
+  assert.match(appJs, /token\.className = 'prompt-preset-token'/);
+  assert.match(appJs, /token\.contentEditable = 'false'/);
+  assert.match(appJs, /dataset\.promptValue/);
+  assert.match(appJs, /el\.classList\.contains\('prompt-preset-token'\)/);
+  assert.match(styleCss, /\.prompt-preset-token\s*{/);
+  assert.match(styleCss, /\.prompt-preset-token\[data-preset-category="camera"\]/);
+});
+
 test('camera cards apply immediately and toggle off without a dedicated action row', () => {
   assert.doesNotMatch(indexHtml, /id="cameraPresetClear"/);
   assert.doesNotMatch(indexHtml, /id="cameraApply"/);
