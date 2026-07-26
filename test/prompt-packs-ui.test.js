@@ -73,7 +73,7 @@ test('installed categories merge into Visual Presets and keep semantic prompt to
   assert.match(appJs, /categories\.has\(source\.id\)/);
   assert.match(appJs, /activePromptPresetTokens/);
   assert.match(appJs, /promptPresetSelectionPayload/);
-  assert.match(indexHtml, /different categories combine/i);
+  assert.match(indexHtml, /id="promptPresetDialogTitle">Visual presets/);
 });
 
 test('Visual Presets browses named Mix Packs with representative thumbnails before categories', () => {
@@ -81,6 +81,9 @@ test('Visual Presets browses named Mix Packs with representative thumbnails befo
   assert.match(appJs, /function promptPresetPackCatalog/);
   assert.match(appJs, /className = 'preset-pack-tab'/);
   assert.match(appJs, /promptPresetPackThumbnail\(pack\)/);
+  assert.match(appJs, /function promptPresetPackSelection/);
+  assert.match(appJs, /selected\?\.thumbnail \|\| pack\.categories/);
+  assert.match(appJs, /activePromptPresetPackId = preset\.packId \|\| activePromptPresetPackId/);
   assert.match(appJs, /activePromptPresetPackId/);
   assert.match(styleCss, /\.preset-pack-tab-thumb img/);
   assert.match(styleCss, /\.preset-pack-tabs\s*{[^}]*overflow-x:\s*auto/s);

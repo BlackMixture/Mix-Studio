@@ -8994,6 +8994,7 @@ body.sheet-open {
   box-shadow: 0 0 0 2px rgba(66,133,244,.09);
 }
 @media (prefers-reduced-motion: reduce) {
+  .camera-panel { animation: none; }
   .preset-pack-tab-line.is-overflowing > span { animation: none !important; }
 }
 .preset-category-selector {

@@ -34,6 +34,8 @@ test('prompt tools expose the camera settings picker', () => {
 
 test('camera sheet uses visual presets instead of individual camera controls', () => {
   assert.doesNotMatch(indexHtml, /Category 01/);
+  assert.doesNotMatch(indexHtml, /Shape the look/);
+  assert.doesNotMatch(indexHtml, /Check a preset to apply it/);
   assert.doesNotMatch(indexHtml, /data-camera-wheel=/);
   assert.doesNotMatch(indexHtml, /id="cameraWheelBoard"/);
   assert.match(appJs, /class="camera-preset-grid"/);
@@ -75,11 +77,13 @@ test('an applied preset becomes a thumbnail card without changing its plain prom
   assert.match(appJs, /dataset\.presetAccent/);
   assert.match(appJs, /image\.src = preset\.thumbnail/);
   assert.match(appJs, /label\.textContent = preset\.label/);
+  assert.match(appJs, /open\.dataset\.openPromptPreset = preset\.presetId/);
+  assert.match(appJs, /openCameraPicker\(\{[\s\S]*packId: token\.dataset\.presetPack,[\s\S]*categoryId: token\.dataset\.presetCategory,[\s\S]*presetId: token\.dataset\.presetId/);
   assert.match(appJs, /remove\.dataset\.removePromptPreset/);
   assert.match(appJs, /function makePromptPresetSeparator/);
   assert.match(appJs, /el\.classList\.contains\('prompt-preset-separator'\)/);
   assert.match(appJs, /separator\?\.remove\(\)/);
-  assert.match(styleCss, /\.prompt-preset-token > img/);
+  assert.match(styleCss, /\.prompt-preset-open > img/);
   assert.match(styleCss, /\.prompt-preset-token-copy/);
   assert.match(styleCss, /\.prompt-preset-token\[data-preset-accent="violet"\]/);
 });
@@ -104,6 +108,9 @@ test('camera dialog uses dark surfaces consistent with the app chrome', () => {
   assert.match(styleCss, /\.camera-panel\s*{[^}]*#030407/s);
   assert.match(styleCss, /\.camera-preset-card\s*{[^}]*background:\s*#07090e/s);
   assert.match(styleCss, /\.preset-picker-head\s*{[^}]*border-bottom:/s);
+  assert.match(styleCss, /#cameraSheet\s*{[^}]*align-items:\s*center/s);
+  assert.match(styleCss, /\.camera-panel\s*{[^}]*border-radius:\s*24px/s);
+  assert.match(styleCss, /@keyframes presetDialogIn/);
 });
 
 test('camera preset grid adapts from three desktop columns to two mobile columns', () => {
