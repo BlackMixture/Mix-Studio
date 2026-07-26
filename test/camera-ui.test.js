@@ -8,6 +8,7 @@ const path = require('node:path');
 const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
+const cameraSettingsJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'camera-settings.js'), 'utf8');
 const cameraAssetsDir = path.join(__dirname, '..', 'public', 'assets', 'camera-presets');
 
 test('prompt tools expose the camera settings picker', () => {
@@ -91,6 +92,12 @@ test('camera cards apply immediately and toggle off without a dedicated action r
   assert.match(appJs, /state\.promptPresetSelections = Object\.assign/);
   assert.match(appJs, /CameraSettings\.applyCameraPresetPrompt\(value, null\)/);
   assert.doesNotMatch(appJs, /cameraApply'\)\.addEventListener/);
+});
+
+test('camera presets start unselected until the user applies one', () => {
+  assert.match(appJs, /promptPresetSelections:\s*\{\s*camera:\s*null/);
+  assert.match(cameraSettingsJs, /legacySettings && typeof legacySettings === 'object'/);
+  assert.match(cameraSettingsJs, /:\s*null;/);
 });
 
 test('camera dialog uses dark surfaces consistent with the app chrome', () => {

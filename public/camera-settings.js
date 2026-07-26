@@ -188,7 +188,9 @@
   function normalizeCameraPresetId(comboId, legacySettings) {
     if (comboId === null) return null;
     if (cameraCombo(comboId)) return comboId;
-    return cameraComboIdForSettings(legacySettings) || DEFAULT_CAMERA_PRESET_ID;
+    return legacySettings && typeof legacySettings === 'object'
+      ? cameraComboIdForSettings(legacySettings)
+      : null;
   }
 
   function cameraPresetPromptPhrase(comboId) {

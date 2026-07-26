@@ -1632,6 +1632,13 @@
           <span>Import Mix Pack</span>
         </button>
       </div>
+      <div class="preset-search" role="search">
+        <label class="sr-only" for="promptPresetSearch">Search packs and presets</label>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 4 4"/></svg>
+        <input id="promptPresetSearch" type="search" placeholder="Search packs and presets" autocomplete="off" spellcheck="false" aria-controls="promptPresetCategories">
+        <span id="promptPresetSearchStatus" aria-live="polite"></span>
+        <button id="promptPresetSearchClear" type="button" hidden aria-label="Clear preset search">✕</button>
+      </div>
       <div class="preset-category-selector" id="promptPresetCategorySelector" hidden>
         <span class="preset-category-selector-label">Category</span>
         <div class="preset-category-tabs" id="promptPresetCategoryNav" role="tablist" aria-label="Categories in the selected Mix Pack"></div>

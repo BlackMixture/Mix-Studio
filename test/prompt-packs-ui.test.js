@@ -70,4 +70,27 @@ test('Visual Presets browses named Mix Packs with representative thumbnails befo
   assert.match(appJs, /activePromptPresetPackId/);
   assert.match(styleCss, /\.preset-pack-tab-thumb img/);
   assert.match(styleCss, /\.preset-pack-tabs\s*{[^}]*overflow-x:\s*auto/s);
+  assert.match(appJs, /syncPromptPresetPackOverflow/);
+  assert.match(styleCss, /@keyframes preset-pack-label-scroll/);
+  assert.match(styleCss, /prefers-reduced-motion:\s*reduce/);
+});
+
+test('Visual Presets searches enabled packs, categories, and presets from one responsive field', () => {
+  assert.match(indexHtml, /id="promptPresetSearch"[^>]*type="search"/);
+  assert.match(indexHtml, /id="promptPresetSearchStatus"[^>]*aria-live="polite"/);
+  assert.match(indexHtml, /id="promptPresetSearchClear"/);
+  assert.match(appJs, /function promptPresetSearchEntries/);
+  assert.match(appJs, /pack\.name,[\s\S]*category\.label,[\s\S]*preset\.label,[\s\S]*preset\.value/);
+  assert.match(appJs, /className = 'preset-search-results'/);
+  assert.match(appJs, /context: `\$\{pack\.name\} · \$\{category\.label\}`/);
+  assert.match(appJs, /promptPresetSearchQuery = String\(event\.target\.value/);
+  assert.match(appJs, /event\.key !== 'Escape'/);
+  assert.match(styleCss, /\.preset-search:focus-within/);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-search/);
+});
+
+test('visual presets preserve the user scene and compose style instructions at generation time', () => {
+  assert.match(appJs, /if \(state\.view !== 'create'\) return expanded/);
+  assert.match(appJs, /for \(const preset of presets\) scene = stripAppliedPromptPreset/);
+  assert.match(appJs, /Visual treatment:/);
 });

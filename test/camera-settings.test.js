@@ -93,6 +93,7 @@ test('camera preset selection migrates legacy settings and applies or clears its
   assert.equal(cameraComboIdForSettings(applyCameraCombo('dslr-portrait')), 'dslr-portrait');
   assert.equal(normalizeCameraPresetId('not-a-preset', applyCameraCombo('iphone-natural')), 'iphone-natural');
   assert.equal(normalizeCameraPresetId(null, DEFAULT_CAMERA_SETTINGS), null);
+  assert.equal(normalizeCameraPresetId(undefined, undefined), null);
   assert.match(cameraPresetPromptPhrase('macro-detail'), /^shot on Sony VENICE/);
 
   const applied = applyCameraPresetPrompt('reflective ball', 'red-product');
