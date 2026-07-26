@@ -44,14 +44,14 @@ test('camera sheet uses visual presets instead of individual camera controls', (
   assert.match(appJs, /setAttribute\('aria-checked'/);
 });
 
-test('visual presets switch categories from an accessible responsive header rail', () => {
+test('Mix Packs switch categories from an accessible responsive header rail', () => {
   assert.match(appJs, /activePromptPresetCategoryId/);
   assert.match(appJs, /tab\.setAttribute\('role', 'tab'\)/);
   assert.match(appJs, /tab\.setAttribute\('aria-selected'/);
   assert.match(appJs, /section\.hidden = category\.id !== activePromptPresetCategoryId/);
   assert.match(appJs, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*overflow-x:\s*auto/s);
-  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-picker-toolbar/);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-picker-head/);
 });
 
 test('sheets lock background scrolling while dialogs are open', () => {

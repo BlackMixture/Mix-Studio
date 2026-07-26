@@ -34,7 +34,7 @@ test('Advanced Settings exposes a responsive owner-managed add-ons installer', (
   assert.match(indexHtml, /id="addonInspectionList"/);
   assert.match(indexHtml, /id="addonInstallAll"/);
   assert.match(indexHtml, /id="addonPackList"/);
-  assert.match(indexHtml, /id="promptPresetImportBtn"/);
+  assert.doesNotMatch(indexHtml, /id="promptPresetImportBtn"/);
   assert.match(appJs, /Only the owner|owner profile|promptPacksCanManage/);
   assert.match(appJs, /inspectPromptPackFiles\(event\.dataTransfer\?\.files\)/);
   assert.match(appJs, /MAX_PENDING_PROMPT_PACKS = 5/);
@@ -45,12 +45,11 @@ test('Advanced Settings exposes a responsive owner-managed add-ons installer', (
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.addon-pack-card/);
 });
 
-test('Visual Presets lets the owner import a Mix Pack through the reviewed Add-ons flow', () => {
-  assert.match(indexHtml, /Import Mix Pack/);
-  assert.match(appJs, /promptPresetImportBtn'\)\.hidden = !state\.promptPacksCanManage/);
-  assert.match(appJs, /promptPresetImportBtn'\)\.addEventListener\('click'/);
-  assert.match(appJs, /cameraSheet'\)\.classList\.remove\('show'\)/);
-  assert.match(appJs, /setSettingsTab\('addons'\)/);
+test('Mix Pack importing remains in the reviewed Add-ons flow instead of the picker', () => {
+  assert.doesNotMatch(indexHtml, /Import Mix Pack/);
+  assert.doesNotMatch(appJs, /promptPresetImportBtn/);
+  assert.match(indexHtml, /id="settingsPaneAddons"/);
+  assert.match(indexHtml, /id="addonChooseBtn"/);
   assert.match(appJs, /inspectPromptPackFiles\(files\)/);
 });
 
@@ -67,16 +66,16 @@ test('prompt pack routes stage review, require owner writes, and whitelist serve
   assert.match(serverJs, /preset\.thumbnailFile === filename/);
 });
 
-test('installed categories merge into Visual Presets and keep semantic prompt tokens', () => {
+test('installed categories merge into Mix Packs and keep semantic prompt tokens', () => {
   assert.match(appJs, /for \(const pack of state\.promptPacks/);
   assert.match(appJs, /if \(pack\.enabled === false\) continue/);
   assert.match(appJs, /categories\.has\(source\.id\)/);
   assert.match(appJs, /activePromptPresetTokens/);
   assert.match(appJs, /promptPresetSelectionPayload/);
-  assert.match(indexHtml, /id="promptPresetDialogTitle">Visual presets/);
+  assert.match(indexHtml, /id="promptPresetDialogTitle">Mix Packs/);
 });
 
-test('Visual Presets browses named Mix Packs with representative thumbnails before categories', () => {
+test('the picker browses named Mix Packs with representative thumbnails before categories', () => {
   assert.match(indexHtml, /id="promptPresetPackNav"[^>]*role="tablist"/);
   assert.match(appJs, /function promptPresetPackCatalog/);
   assert.match(appJs, /className = 'preset-pack-tab'/);
@@ -92,7 +91,7 @@ test('Visual Presets browses named Mix Packs with representative thumbnails befo
   assert.match(styleCss, /prefers-reduced-motion:\s*reduce/);
 });
 
-test('Visual Presets searches enabled packs, categories, and presets from one responsive field', () => {
+test('Mix Packs searches enabled packs, categories, and presets from one responsive field', () => {
   assert.match(indexHtml, /id="promptPresetSearch"[^>]*type="search"/);
   assert.match(indexHtml, /id="promptPresetSearchStatus"[^>]*aria-live="polite"/);
   assert.match(indexHtml, /id="promptPresetSearchClear"/);

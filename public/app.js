@@ -8856,7 +8856,6 @@ function renderCameraPicker() {
     });
     categoryNav.appendChild(tab);
   });
-  $('#promptPresetImportBtn').hidden = !state.promptPacksCanManage;
   $('#promptPresetCategorySelector').hidden = !!promptPresetSearchQuery || categories.length < 2;
   container.replaceChildren();
   if (promptPresetSearchQuery) {
@@ -27923,13 +27922,6 @@ async function removePromptPackFromUi(id) {
 $('#addonChooseBtn').addEventListener('click', (event) => {
   event.stopPropagation();
   if (state.promptPacksCanManage) $('#addonFileInput').click();
-});
-$('#promptPresetImportBtn').addEventListener('click', () => {
-  if (!state.promptPacksCanManage) {
-    toast('Switch to the owner profile to import Mix Packs');
-    return;
-  }
-  $('#addonFileInput').click();
 });
 $('#addonDropZone').addEventListener('click', () => {
   if (state.promptPacksCanManage) $('#addonFileInput').click();
