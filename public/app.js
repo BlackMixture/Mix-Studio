@@ -157,6 +157,7 @@ const state = {
     krea2Edit: { steps: 10, cfg: 1 },
     video: { duration: 5, motionFreedom: 35 },
     seed: { mode: 'random', value: 0 },
+    visualPresets: { useVisualTreatment: false, showCards: true },
   },
   generationTuning: { create: null, edit: null, video: null },
   promptPresetSelections: {
@@ -399,7 +400,9 @@ function expandPromptLoraTriggers(value) {
 
 function promptForGeneration() {
   const expanded = expandPromptLoraTriggers(promptDraft().replace(/@image-(\d+)/g, 'image $1'));
-  if (state.view !== 'create') return expanded;
+  if (state.view !== 'create' || state.userDefaults.visualPresets?.useVisualTreatment !== true) {
+    return expanded;
+  }
   const presets = activePromptPresetTokens().filter((preset) => (
     preset.value && expanded.includes(preset.value)
   ));
@@ -575,6 +578,7 @@ function promptPresetSelectionPayload(preset) {
     promptText: preset.value,
     accent: preset.accent || 'violet',
     categoryLabel: preset.categoryLabel || preset.category,
+    thumbnail: preset.thumbnail || '',
   };
 }
 
@@ -600,6 +604,7 @@ function selectedPromptPreset(categoryId) {
       presetId: raw.presetId || '',
       label: raw.label || 'Unavailable preset',
       value: raw.promptText,
+      thumbnail: raw.thumbnail || '',
       unavailable: true,
     };
   }
@@ -615,6 +620,7 @@ function activePromptPresetTokens() {
       category: preset.category,
       categoryLabel: preset.categoryLabel,
       accent: preset.accent,
+      packId: preset.packId,
       presetId: preset.presetId,
       label: preset.label,
       thumbnail: preset.thumbnail,
@@ -622,21 +628,68 @@ function activePromptPresetTokens() {
     }));
 }
 
+function promptPresetMetadataForGeneration() {
+  const value = promptDraft();
+  return activePromptPresetTokens()
+    .filter((preset) => preset.value && value.includes(preset.value))
+    .map((preset) => ({
+      category: preset.category,
+      categoryLabel: preset.categoryLabel,
+      accent: preset.accent,
+      packId: preset.packId,
+      presetId: preset.presetId,
+      label: preset.label,
+      promptText: preset.value,
+      thumbnail: preset.thumbnail || '',
+    }));
+}
+
+function promptPresetSelectionsForReuse(item, prompt) {
+  const value = String(prompt || '');
+  const selections = {};
+  for (const raw of Array.isArray(item?.promptPresets) ? item.promptPresets : []) {
+    if (!raw || !raw.category || !raw.promptText || !value.includes(raw.promptText)) continue;
+    selections[raw.category] = {
+      packId: raw.packId || '',
+      presetId: raw.presetId || '',
+      label: raw.label || 'Visual preset',
+      promptText: raw.promptText,
+      accent: raw.accent || 'violet',
+      categoryLabel: raw.categoryLabel || raw.category,
+      thumbnail: raw.thumbnail || '',
+    };
+  }
+  for (const category of promptPresetCatalog()) {
+    if (selections[category.id]) continue;
+    const matches = (category.presets || [])
+      .filter((preset) => preset.value && value.includes(preset.value))
+      .sort((left, right) => right.value.length - left.value.length);
+    if (matches[0]) selections[category.id] = promptPresetSelectionPayload(matches[0]);
+  }
+  return selections;
+}
+
 function makePromptPresetToken(preset) {
   const token = document.createElement('span');
   token.className = 'prompt-preset-token';
   token.contentEditable = 'false';
   token.dataset.presetCategory = preset.category;
+  token.dataset.presetPack = preset.packId || '';
   token.dataset.presetId = preset.presetId;
   token.dataset.presetAccent = preset.accent || 'violet';
   token.dataset.promptValue = preset.value;
   token.title = `${preset.label || 'Visual preset'} · change from Visual Presets`;
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'prompt-preset-open';
+  open.dataset.openPromptPreset = preset.presetId;
+  open.setAttribute('aria-label', `Open ${preset.label || 'visual preset'} in Visual Presets`);
   if (preset.thumbnail) {
     const image = document.createElement('img');
     image.src = preset.thumbnail;
     image.alt = '';
     image.addEventListener('error', () => token.classList.add('image-missing'), { once: true });
-    token.appendChild(image);
+    open.appendChild(image);
   }
   const copy = document.createElement('span');
   copy.className = 'prompt-preset-token-copy';
@@ -645,13 +698,14 @@ function makePromptPresetToken(preset) {
   const category = document.createElement('small');
   category.textContent = preset.categoryLabel || 'Visual preset';
   copy.append(label, category);
+  open.appendChild(copy);
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'prompt-preset-remove';
   remove.dataset.removePromptPreset = preset.category;
   remove.setAttribute('aria-label', `Remove ${preset.label || 'visual preset'} from prompt`);
   remove.textContent = '×';
-  token.append(copy, remove);
+  token.append(open, remove);
   return token;
 }
 
@@ -672,7 +726,9 @@ function renderPromptComposer() {
   const composer = $('#promptComposer');
   if (!composer) return;
   const value = promptDraft();
-  const presets = activePromptPresetTokens().filter((preset) => value.includes(preset.value));
+  const presets = state.userDefaults.visualPresets?.showCards === false
+    ? []
+    : activePromptPresetTokens().filter((preset) => value.includes(preset.value));
   const presetByValue = new Map(presets.map((preset) => [preset.value, preset]));
   const presetPattern = [...presetByValue.keys()]
     .sort((left, right) => right.length - left.length)
@@ -8571,7 +8627,18 @@ $('#promptComposer').addEventListener('keyup', capturePromptSelection);
 $('#promptComposer').addEventListener('mouseup', capturePromptSelection);
 $('#promptComposer').addEventListener('click', (event) => {
   const remove = event.target.closest('[data-remove-prompt-ref], [data-remove-prompt-lora], [data-remove-prompt-preset]');
-  if (!remove) return;
+  if (!remove) {
+    const openPreset = event.target.closest('[data-open-prompt-preset]');
+    const token = openPreset?.closest('.prompt-preset-token');
+    if (token) {
+      openCameraPicker({
+        packId: token.dataset.presetPack,
+        categoryId: token.dataset.presetCategory,
+        presetId: token.dataset.presetId,
+      });
+    }
+    return;
+  }
   const token = remove.closest('.prompt-ref-token, .prompt-lora-token, .prompt-preset-token');
   if (token.classList.contains('prompt-preset-token')) {
     const separator = token.previousElementSibling?.classList.contains('prompt-preset-separator')
@@ -8605,8 +8672,17 @@ function promptPresetPackHasSelection(pack) {
     .some((preset) => preset?.packId === pack.id);
 }
 
+function promptPresetPackSelection(pack) {
+  const activeCategorySelection = selectedPromptPreset(activePromptPresetCategoryId);
+  if (activeCategorySelection?.packId === pack.id) return activeCategorySelection;
+  return Object.keys(state.promptPresetSelections || {})
+    .map((categoryId) => selectedPromptPreset(categoryId))
+    .find((preset) => preset?.packId === pack.id) || null;
+}
+
 function promptPresetPackThumbnail(pack) {
-  const source = pack.categories
+  const selected = promptPresetPackSelection(pack);
+  const source = selected?.thumbnail || pack.categories
     .flatMap((category) => category.presets || [])
     .find((preset) => preset.thumbnail)?.thumbnail;
   return source
@@ -8887,12 +8963,36 @@ function createPromptPresetCard(preset, category, options = {}) {
   return button;
 }
 
-async function openCameraPicker() {
+function focusPromptPresetCard(packId, categoryId, presetId) {
+  requestAnimationFrame(() => {
+    const card = $$('#promptPresetCategories .camera-preset-card').find((candidate) => (
+      candidate.dataset.presetPack === packId
+      && candidate.dataset.presetId === presetId
+      && candidate.closest('[data-preset-category]')?.dataset.presetCategory === categoryId
+    ));
+    if (!card) return;
+    card.focus({ preventScroll: true });
+    card.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  });
+}
+
+async function openCameraPicker(options = {}) {
   if (!CameraSettings) return;
+  const packId = String(options.packId || '');
+  const categoryId = String(options.categoryId || '');
+  const presetId = String(options.presetId || '');
+  if (packId) activePromptPresetPackId = packId;
+  if (categoryId) activePromptPresetCategoryId = categoryId;
+  if (packId || categoryId || presetId) promptPresetSearchQuery = '';
   renderCameraPicker();
   $('#cameraSheet').classList.add('show');
   await loadPromptPacks();
+  if (packId && promptPresetPackCatalog().some((pack) => pack.id === packId)) {
+    activePromptPresetPackId = packId;
+    activePromptPresetCategoryId = categoryId || activePromptPresetCategoryId;
+  }
   renderCameraPicker();
+  if (packId && categoryId && presetId) focusPromptPresetCard(packId, categoryId, presetId);
 }
 
 function stripAppliedPromptPreset(prompt, phrase) {
@@ -8922,6 +9022,8 @@ function applyPromptPresetSelection(categoryId, preset) {
   if (preset?.value) {
     const base = value.trim().replace(/[\s,]+$/, '');
     value = base ? `${base}, ${preset.value}` : preset.value;
+    activePromptPresetPackId = preset.packId || activePromptPresetPackId;
+    activePromptPresetCategoryId = categoryId;
   }
   state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, {
     [categoryId]: promptPresetSelectionPayload(preset),
@@ -8938,7 +9040,7 @@ function applyPromptPresetSelection(categoryId, preset) {
   toast(preset ? `${categoryLabel} preset applied` : `${categoryLabel} preset removed`);
 }
 
-$('#cameraPromptBtn').addEventListener('click', openCameraPicker);
+$('#cameraPromptBtn').addEventListener('click', () => openCameraPicker());
 $('#promptPresetSearch').addEventListener('input', (event) => {
   promptPresetSearchQuery = String(event.target.value || '').trimStart();
   renderCameraPicker();
@@ -10065,6 +10167,10 @@ function generationDefaultsFromControls() {
     krea2Edit: { steps: Number($('#defaultKrea2EditSteps').value), cfg: Number($('#defaultKrea2EditCfg').value) },
     video: { duration: Number($('#defaultVideoDuration').value), motionFreedom: Number($('#defaultVideoMotion').value) },
     seed: { mode: $('#defaultSeedMode .active')?.dataset.seedMode || 'random', value: Number($('#defaultSeedValue').value) || 0 },
+    visualPresets: {
+      useVisualTreatment: mediaPreferenceControlValue('defaultPresetVisualTreatment'),
+      showCards: mediaPreferenceControlValue('defaultPresetCards'),
+    },
   };
 }
 
@@ -10208,6 +10314,8 @@ function renderGenerationDefaults() {
   $('#defaultVideoDuration').value = d.video.duration;
   $('#defaultVideoMotion').value = d.video.motionFreedom;
   $('#defaultSeedValue').value = d.seed.value;
+  setMediaPreferenceControl('defaultPresetVisualTreatment', d.visualPresets?.useVisualTreatment === true);
+  setMediaPreferenceControl('defaultPresetCards', d.visualPresets?.showCards !== false);
   $$('#defaultSeedMode button').forEach((button) => button.classList.toggle('active', button.dataset.seedMode === d.seed.mode));
   $('#defaultSeedValueField').hidden = d.seed.mode !== 'fixed';
 }
@@ -10246,6 +10354,7 @@ async function loadUserPreferences() {
     state.contextOverrides = prefs.contextOverrides || {};
     renderGenerationDefaults();
     applyGenerationDefaults();
+    renderPromptComposer();
   } catch { /* profile gate handles auth */ }
 }
 
@@ -10259,6 +10368,7 @@ async function saveUserPreferences(options = {}) {
   state.contextOverrides = prefs.contextOverrides;
   renderGenerationDefaults();
   applyGenerationDefaults();
+  renderPromptComposer();
   if (options.refreshContext !== false) await refreshLoraContext();
   else renderPromptSuggestions();
 }
@@ -15684,7 +15794,8 @@ $('#generateBtn').addEventListener('click', async () => {
     composite: mode === 'edit' ? nativePreserve : undefined,
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     negativePrompt: negativePromptForGeneration(),
-    promptTemplate: mode === 'edit' ? promptDraft().trim() : undefined,
+    promptTemplate: promptDraft().trim() || undefined,
+    promptPresets: mode === 't2i' ? promptPresetMetadataForGeneration() : undefined,
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
     editOutpaintOffsetX: outpaintActive ? editOutpaintGeometry().offsetX : undefined,
@@ -22535,6 +22646,10 @@ async function reuseItem(it, useEnhanced) {
   const targetView = it.mode === 'edit' ? 'edit' : 'create';
   const restoringEdit = targetView === 'edit';
   const restoredPrompt = reusableItemPrompt(it, useEnhanced);
+  if (!restoringEdit) {
+    if (!state.promptPacksLoaded) await loadPromptPacks();
+    state.promptPresetSelections = promptPresetSelectionsForReuse(it, restoredPrompt);
+  }
   const restoredRegions = Array.isArray(it.regions) ? it.regions.map((region) => Object.assign({}, region, {
     description: useEnhanced
       ? (region.refinedDescription || region.description || '')
@@ -27911,6 +28026,21 @@ $$('#defaultSeedMode button').forEach((button) => button.addEventListener('click
   $('#defaultSeedValueField').hidden = button.dataset.seedMode !== 'fixed';
   scheduleSettingsAutosave('preferences', 0);
 }));
+
+['defaultPresetVisualTreatment', 'defaultPresetCards'].forEach((id) => {
+  $('#' + id).addEventListener('click', () => {
+    const enabled = mediaPreferenceControlValue(id);
+    setMediaPreferenceControl(id, !enabled);
+    const preference = id === 'defaultPresetCards' ? 'showCards' : 'useVisualTreatment';
+    state.userDefaults.visualPresets = Object.assign({}, state.userDefaults.visualPresets, {
+      [preference]: !enabled,
+    });
+    if (id === 'defaultPresetCards') {
+      renderPromptComposer();
+    }
+    scheduleSettingsAutosave('preferences', 0);
+  });
+});
 
 function settingsAutosaveKindForControl(control) {
   if (!control || !control.id) return '';

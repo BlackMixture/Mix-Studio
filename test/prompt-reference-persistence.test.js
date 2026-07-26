@@ -35,10 +35,33 @@ test('saved edit prompts recover visual reference tokens for every available inp
   assert.equal(rehydrate('Use image 1', []), 'Use image 1');
 });
 
-test('generation results retain the tokenized editor prompt separately from the graph prompt', () => {
-  assert.match(app, /promptTemplate: mode === 'edit' \? promptDraft\(\)\.trim\(\) : undefined/);
+test('generation results retain the editor prompt separately from the graph prompt', () => {
+  assert.match(app, /promptTemplate: promptDraft\(\)\.trim\(\) \|\| undefined/);
   assert.match(app, /const restoredPrompt = reusableItemPrompt\(it, useEnhanced\)/);
   assert.match(app, /state\.prompts\.edit = rehydratePromptReferences\(state\.prompts\.edit, state\.refs\)/);
-  assert.match(server, /p\.promptTemplate = p\.mode === 'edit'[\s\S]*slice\(0, 8000\)/);
+  assert.match(server, /p\.promptTemplate = \(p\.mode === 'edit' \|\| p\.mode === 't2i'\)[\s\S]*slice\(0, 8000\)/);
   assert.ok((server.match(/promptTemplate: job\.params\.promptTemplate/g) || []).length >= 3);
+});
+
+test('saved visual preset metadata is bounded to prompt text and local thumbnails', () => {
+  const normalizePromptPresets = namedFunction(server, 'normalizePromptPresets');
+  const normalized = normalizePromptPresets([
+    {
+      category: 'style',
+      categoryLabel: 'Style',
+      packId: 'essentials',
+      presetId: 'ink',
+      label: 'Ink',
+      promptText: 'bold flat ink',
+      thumbnail: '/api/addons/prompt-packs/essentials/assets/ink.jpg',
+    },
+    {
+      category: 'lighting',
+      promptText: 'not present',
+      thumbnail: '//tracking.example/thumb.jpg',
+    },
+  ], 'A silver ball, bold flat ink');
+  assert.equal(normalized.length, 1);
+  assert.equal(normalized[0].label, 'Ink');
+  assert.equal(normalized[0].thumbnail, '/api/addons/prompt-packs/essentials/assets/ink.jpg');
 });

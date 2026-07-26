@@ -10,6 +10,18 @@ test('generation defaults are safe and preserve legacy behavior', () => {
   assert.deepEqual(defaults.krea2Edit, { steps: 10, cfg: 1 });
   assert.equal(defaults.video.duration, 5);
   assert.equal(defaults.seed.mode, 'random');
+  assert.deepEqual(defaults.visualPresets, { useVisualTreatment: false, showCards: true });
+});
+
+test('visual preset prompt and card preferences normalize independently', () => {
+  assert.deepEqual(
+    normalizeGenerationDefaults({ visualPresets: { useVisualTreatment: true, showCards: false } }).visualPresets,
+    { useVisualTreatment: true, showCards: false },
+  );
+  assert.deepEqual(
+    normalizeGenerationDefaults({ visualPresets: { useVisualTreatment: 'yes', showCards: 'no' } }).visualPresets,
+    { useVisualTreatment: false, showCards: true },
+  );
 });
 
 test('Krea 2 Edit presets stay within the supported sampling range', () => {

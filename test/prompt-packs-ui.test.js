@@ -4,12 +4,26 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const appJs = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const serverJs = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const styleCss = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+
+function namedFunction(source, name, context = {}) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `${name} is defined`);
+  const bodyStart = source.indexOf('{', start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    else if (source[index] === '}') depth -= 1;
+    if (depth === 0) return vm.runInNewContext(`(${source.slice(start, index + 1)})`, context);
+  }
+  throw new Error(`${name} has no closing brace`);
+}
 
 test('Advanced Settings exposes a responsive owner-managed add-ons installer', () => {
   assert.match(indexHtml, /data-settings-tab="addons"/);
@@ -89,8 +103,36 @@ test('Visual Presets searches enabled packs, categories, and presets from one re
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-search/);
 });
 
-test('visual presets preserve the user scene and compose style instructions at generation time', () => {
-  assert.match(appJs, /if \(state\.view !== 'create'\) return expanded/);
+test('visual preset prompt composition is profile-configurable and defaults to the original direct format', () => {
+  assert.match(indexHtml, /id="defaultPresetVisualTreatment"[^>]*aria-checked="false"/);
+  assert.match(indexHtml, /id="defaultPresetCards"[^>]*aria-checked="true"/);
+  assert.match(appJs, /state\.userDefaults\.visualPresets\?\.useVisualTreatment !== true/);
   assert.match(appJs, /for \(const preset of presets\) scene = stripAppliedPromptPreset/);
   assert.match(appJs, /Visual treatment:/);
+  assert.match(appJs, /state\.userDefaults\.visualPresets\?\.showCards === false/);
+  assert.match(appJs, /renderPromptComposer\(\);[\s\S]*scheduleSettingsAutosave\('preferences', 0\)/);
+});
+
+test('visual treatment changes only the submitted prompt when explicitly enabled', () => {
+  const context = {
+    state: { view: 'create', userDefaults: { visualPresets: { useVisualTreatment: false } } },
+    promptDraft: () => 'A silver ball in grass, bold flat ink',
+    expandPromptLoraTriggers: (value) => value,
+    activePromptPresetTokens: () => [{ value: 'bold flat ink' }],
+    stripAppliedPromptPreset: (value, phrase) => value.replace(`, ${phrase}`, ''),
+  };
+  const compose = namedFunction(appJs, 'promptForGeneration', context);
+  assert.equal(compose(), 'A silver ball in grass, bold flat ink');
+  context.state.userDefaults.visualPresets.useVisualTreatment = true;
+  assert.equal(compose(), 'A silver ball in grass. Visual treatment: bold flat ink.');
+});
+
+test('gallery reuse restores preset card metadata and can infer older saved prompts', () => {
+  assert.match(appJs, /promptPresets: mode === 't2i' \? promptPresetMetadataForGeneration\(\) : undefined/);
+  assert.match(appJs, /function promptPresetSelectionsForReuse/);
+  assert.match(appJs, /Array\.isArray\(item\?\.promptPresets\)/);
+  assert.match(appJs, /for \(const category of promptPresetCatalog\(\)\)/);
+  assert.match(appJs, /state\.promptPresetSelections = promptPresetSelectionsForReuse\(it, restoredPrompt\)/);
+  assert.match(serverJs, /function normalizePromptPresets/);
+  assert.ok((serverJs.match(/promptPresets: job\.params\.promptPresets/g) || []).length >= 3);
 });

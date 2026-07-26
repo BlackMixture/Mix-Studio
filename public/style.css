@@ -861,8 +861,8 @@ html:-webkit-full-screen { background: #000; }
   max-width: min(240px, 72vw);
   height: 34px;
   margin: 2px 4px 2px 0;
-  padding: 2px 5px 2px 3px;
-  gap: 7px;
+  padding: 2px 5px 2px 2px;
+  gap: 3px;
   overflow: hidden;
   border: 1px solid rgba(var(--prompt-preset-color), .5);
   border-radius: 9px;
@@ -877,14 +877,32 @@ html:-webkit-full-screen { background: #000; }
 .prompt-preset-token[data-preset-accent="rose"] { --prompt-preset-color: 255, 133, 183; }
 .prompt-preset-token[data-preset-accent="amber"] { --prompt-preset-color: 255, 199, 108; }
 .prompt-preset-token[data-preset-accent="green"] { --prompt-preset-color: 119, 224, 157; }
-.prompt-preset-token > img {
+.prompt-preset-open {
+  min-width: 0;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.prompt-preset-open:focus-visible {
+  outline: 1px solid rgba(var(--prompt-preset-color), .9);
+  outline-offset: 1px;
+}
+.prompt-preset-open > img {
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
   border-radius: 6px;
   object-fit: cover;
 }
-.prompt-preset-token.image-missing > img { display: none; }
+.prompt-preset-token.image-missing .prompt-preset-open > img { display: none; }
 .prompt-preset-token-copy {
   min-width: 0;
   display: grid;
@@ -8028,6 +8046,10 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   display: none; align-items: flex-end; justify-content: center;
   overscroll-behavior: contain;
 }
+#cameraSheet {
+  align-items: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
 #appDialogSheet { z-index: 220; }
 #errorDetailSheet { z-index: 220; }
 .sheet.show { display: flex; }
@@ -8515,16 +8537,24 @@ body.sheet-open {
 .camera-panel {
   width: min(920px, calc(100vw - 28px));
   max-width: 920px;
-  max-height: min(900px, calc(100dvh - 28px));
+  max-height: min(860px, calc(100dvh - 32px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 0;
+  border-bottom: 1px solid rgba(226,232,255,0.12);
+  border-radius: 24px;
   background:
     radial-gradient(70% 42% at 100% 0%, rgba(66,133,244,.12), transparent 72%),
     radial-gradient(52% 42% at 0% 100%, rgba(179,108,255,.08), transparent 76%),
     #030407;
   border-color: rgba(226,232,255,0.12);
+  box-shadow: 0 34px 110px rgba(0,0,0,.72), 0 0 48px rgba(66,133,244,.09);
+  animation: presetDialogIn 240ms var(--ease);
+}
+@keyframes presetDialogIn {
+  from { opacity: 0; transform: translateY(12px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .camera-motion-panel {
   width: min(860px, 100%);
@@ -8835,12 +8865,12 @@ body.sheet-open {
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
-  gap: 18px 20px;
-  align-items: start;
-  padding: 24px 26px 20px;
+  gap: 14px 20px;
+  align-items: center;
+  padding: 18px 26px 18px;
   border-bottom: 1px solid rgba(226,232,255,.09);
 }
-.preset-picker-copy { min-width: 0; }
+.preset-picker-copy { min-width: 0; align-self: center; }
 .preset-picker-eyebrow,
 .preset-category-head span,
 .preset-selection-summary span {
@@ -8849,19 +8879,6 @@ body.sheet-open {
   font-weight: 900;
   letter-spacing: .13em;
   text-transform: uppercase;
-}
-.preset-picker-head h3 {
-  margin: 5px 0 6px;
-  color: #f8faff;
-  font-size: 24px;
-  line-height: 1.08;
-}
-.preset-picker-head p {
-  max-width: 560px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 .preset-picker-close {
   width: 40px;
@@ -10394,12 +10411,11 @@ body.sheet-open {
   .scail-advanced { grid-template-columns: 1fr; }
   .camera-panel {
     width: calc(100vw - 12px);
-    max-height: calc(100dvh - 12px);
-    border-radius: 22px 22px 18px 18px;
+    max-height: calc(100dvh - 24px);
+    border-radius: 20px;
   }
-  .preset-picker-head { padding: 18px 16px 15px; gap: 12px; }
-  .preset-picker-head h3 { font-size: 21px; }
-  .preset-picker-head p { font-size: 11px; }
+  #cameraSheet { padding: 12px 6px; }
+  .preset-picker-head { padding: 14px 16px; gap: 11px; }
   .preset-picker-toolbar { gap: 8px; }
   .preset-search {
     min-height: 40px;

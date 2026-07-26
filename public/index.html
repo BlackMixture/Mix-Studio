@@ -1614,12 +1614,10 @@
 
 <!-- camera settings sheet -->
 <div class="sheet" id="cameraSheet">
-  <div class="sheet-panel camera-panel">
+  <div class="sheet-panel camera-panel" role="dialog" aria-modal="true" aria-labelledby="promptPresetDialogTitle">
     <header class="preset-picker-head">
       <div class="preset-picker-copy">
-        <span class="preset-picker-eyebrow">Visual presets</span>
-        <h3>Shape the look</h3>
-        <p>Check a preset to apply it. Selections from different categories combine in the prompt.</p>
+        <span class="preset-picker-eyebrow" id="promptPresetDialogTitle">Visual presets</span>
       </div>
       <button class="preset-picker-close" data-close type="button" aria-label="Close visual presets">✕</button>
       <div class="preset-picker-toolbar">
@@ -2504,6 +2502,16 @@
             <p class="settings-default-note">Applied when switching to Krea 2 Edit. Recommended: 10 steps · CFG 1.</p>
             <div class="field"><label>Steps</label><input id="defaultKrea2EditSteps" type="number" min="8" max="12" step="1" value="10" /></div>
             <div class="field"><label>CFG</label><input id="defaultKrea2EditCfg" type="number" min="1" max="5" step="0.1" value="1" /></div>
+          </div>
+          <div class="settings-group"><h5>Visual Presets</h5>
+            <button class="settings-media-toggle" id="defaultPresetVisualTreatment" type="button" role="switch" aria-checked="false">
+              <span class="settings-media-toggle-copy"><strong>Use “Visual treatment:” format</strong><small>Send the scene first, followed by “Visual treatment:” and the selected preset. Off keeps the original direct prompt format.</small></span>
+              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+            </button>
+            <button class="settings-media-toggle" id="defaultPresetCards" type="button" role="switch" aria-checked="true">
+              <span class="settings-media-toggle-copy"><strong>Show preset cards in prompts</strong><small>Display applied looks as thumbnail cards. Off shows the full preset wording without changing what is generated.</small></span>
+              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+            </button>
           </div>
           <div class="settings-group settings-default-grid"><h5>Video</h5>
             <div class="field"><label>Duration</label><input id="defaultVideoDuration" type="number" min="1" max="60" step="0.1" value="5" /></div>

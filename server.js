@@ -1890,6 +1890,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
       prompt: job.params.prompt,
       negativePrompt: job.params.negativePrompt || undefined,
       promptTemplate: job.params.promptTemplate,
+      promptPresets: job.params.promptPresets,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
       width: dims.w || job.params.width,
@@ -1984,6 +1985,7 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     prompt: job.params.prompt,
     negativePrompt: job.params.negativePrompt || undefined,
     promptTemplate: job.params.promptTemplate,
+    promptPresets: job.params.promptPresets,
     refinedPrompt: job.refinedPrompt || textOut,
     width: documentation.width,
     height: documentation.height,
@@ -2335,6 +2337,7 @@ async function completeJob(pid) {
       prompt: job.params.prompt,
       negativePrompt: job.params.negativePrompt || undefined,
       promptTemplate: job.params.promptTemplate,
+      promptPresets: job.params.promptPresets,
       refinedPrompt: job.refinedPrompt || textOut,
       enhance: !!job.params.enhance,
       width: (pngDims(buf) || {}).w || job.params.width,
@@ -6099,8 +6102,11 @@ async function handleApi(req, res, url) {
     const p = await readJsonBody(req);
     p.prompt = String(p.prompt || '').trim();
     p.negativePrompt = normalizeNegativePrompt(p.negativePrompt);
-    p.promptTemplate = p.mode === 'edit'
+    p.promptTemplate = (p.mode === 'edit' || p.mode === 't2i')
       ? String(p.promptTemplate || '').trim().slice(0, 8000) || undefined
+      : undefined;
+    p.promptPresets = p.mode === 't2i'
+      ? normalizePromptPresets(p.promptPresets, [p.promptTemplate, p.prompt].filter(Boolean).join('\n'))
       : undefined;
     p.krea2RefBoost = p.mode === 'edit' ? clampNum(p.krea2RefBoost, 0, 20, 4) : undefined;
     p.editOutpaint = p.mode === 'edit' && p.editOutpaint === true;
@@ -8138,6 +8144,32 @@ function clampInt(v, min, max, dflt) {
 function clampNum(v, min, max, dflt) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt;
+}
+
+function normalizePromptPresets(value, prompt) {
+  const sourcePrompt = String(prompt || '');
+  return (Array.isArray(value) ? value : []).slice(0, 16)
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => {
+      const promptText = String(entry.promptText || '').trim().slice(0, 8000);
+      if (!promptText || !sourcePrompt.includes(promptText)) return null;
+      const thumbnail = String(entry.thumbnail || '').trim().slice(0, 1000);
+      const safeThumbnail = thumbnail.startsWith('/assets/camera-presets/')
+        || thumbnail.startsWith('/api/addons/')
+        ? thumbnail
+        : '';
+      return {
+        category: String(entry.category || '').trim().slice(0, 120),
+        categoryLabel: String(entry.categoryLabel || '').trim().slice(0, 160),
+        accent: String(entry.accent || 'violet').trim().slice(0, 40),
+        packId: String(entry.packId || '').trim().slice(0, 160),
+        presetId: String(entry.presetId || '').trim().slice(0, 160),
+        label: String(entry.label || 'Visual preset').trim().slice(0, 240),
+        promptText,
+        thumbnail: safeThumbnail,
+      };
+    })
+    .filter((entry) => entry && entry.category);
 }
 
 /* ------------------------------------------------------------------ */
