@@ -44,7 +44,7 @@ test('camera sheet uses visual presets instead of individual camera controls', (
   assert.match(appJs, /setAttribute\('aria-checked'/);
 });
 
-test('Mix Packs switch categories from an accessible responsive header rail', () => {
+test('Mix Pack details switch categories from an accessible responsive header rail', () => {
   assert.match(appJs, /activePromptPresetCategoryId/);
   assert.match(appJs, /tab\.setAttribute\('role', 'tab'\)/);
   assert.match(appJs, /tab\.setAttribute\('aria-selected'/);
@@ -88,26 +88,50 @@ test('an applied preset becomes a thumbnail card without changing its plain prom
   assert.match(styleCss, /\.prompt-preset-token\[data-preset-accent="violet"\]/);
 });
 
-test('camera cards apply immediately and toggle off without a dedicated action row', () => {
+test('camera cards apply immediately and toggle independently without a dedicated action row', () => {
   assert.doesNotMatch(indexHtml, /id="cameraPresetClear"/);
   assert.doesNotMatch(indexHtml, /id="cameraApply"/);
   assert.doesNotMatch(indexHtml, /class="preset-picker-actions"/);
-  assert.match(appJs, /applyPromptPresetSelection\(category\.id, active \? null : preset\)/);
+  assert.match(appJs, /applyPromptPresetSelection\(category\.id, preset\)/);
+  assert.match(appJs, /const next = active[\s\S]*current\.filter[\s\S]*\[\.\.\.current, preset\]/);
   assert.match(appJs, /state\.promptPresetSelections = Object\.assign/);
-  assert.match(appJs, /CameraSettings\.applyCameraPresetPrompt\(value, null\)/);
+  assert.match(appJs, /stripAppliedPromptPreset\(value, preset\.value\)/);
   assert.doesNotMatch(appJs, /cameraApply'\)\.addEventListener/);
 });
 
-test('camera presets start unselected until the user applies one', () => {
-  assert.match(appJs, /promptPresetSelections:\s*\{\s*camera:\s*null/);
+test('camera presets start unselected and omit redundant optional state', () => {
+  assert.match(appJs, /promptPresetSelections:\s*\{\s*camera:\s*\[\]/);
   assert.match(cameraSettingsJs, /legacySettings && typeof legacySettings === 'object'/);
   assert.match(cameraSettingsJs, /:\s*null;/);
+  assert.doesNotMatch(appJs, /data-state="optional"/);
+  assert.doesNotMatch(appJs, /another pack'\)\}` : 'Optional'/);
+  assert.doesNotMatch(styleCss, /\.preset-category-state\[data-state="optional"\]/);
+  assert.match(appJs, /data-state="applied"/);
+  assert.match(appJs, /data-state="other"/);
+});
+
+test('Mix Packs use a pack landing grid and removable applied-look thumbnails', () => {
+  assert.match(indexHtml, /id="promptPresetPackBrowser"/);
+  assert.match(indexHtml, /id="promptPresetPackDetail" hidden/);
+  assert.match(indexHtml, /id="promptPresetPackBack"/);
+  assert.match(indexHtml, /id="promptPresetSelectionList"/);
+  assert.doesNotMatch(indexHtml, /Choose a thumbnail to add its visual language/);
+  assert.match(appJs, /promptPresetPackView = 'catalog'/);
+  assert.match(appJs, /promptPresetPackView = 'detail'/);
+  assert.match(appJs, /className = 'preset-pack-card'/);
+  assert.match(appJs, /className = 'preset-selection-chip'/);
+  assert.match(appJs, /applyPromptPresetSelection\(preset\.category, preset\)/);
+  assert.doesNotMatch(appJs, /<i aria-hidden="true">✓<\/i>/);
+  assert.doesNotMatch(styleCss, /\.preset-category-tab i/);
+  assert.match(styleCss, /\.preset-pack-grid\s*{[^}]*grid-template-columns:\s*repeat\(2,/s);
+  assert.match(styleCss, /\.preset-pack-card-media\s*{[^}]*aspect-ratio:\s*4\s*\/\s*3/s);
+  assert.match(styleCss, /\.preset-pack-card-media img\s*{[^}]*object-fit:\s*contain/s);
 });
 
 test('camera dialog uses dark surfaces consistent with the app chrome', () => {
   assert.match(styleCss, /\.camera-panel\s*{[^}]*#030407/s);
   assert.match(styleCss, /\.camera-preset-card\s*{[^}]*background:\s*#07090e/s);
-  assert.match(styleCss, /\.preset-picker-head\s*{[^}]*border-bottom:/s);
+  assert.doesNotMatch(styleCss, /\.preset-picker-head\s*{[^}]*border-bottom:/s);
   assert.match(styleCss, /#cameraSheet\s*{[^}]*align-items:\s*center/s);
   assert.match(styleCss, /\.camera-panel\s*{[^}]*border-radius:\s*24px/s);
   assert.match(styleCss, /@keyframes presetDialogIn/);

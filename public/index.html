@@ -1620,13 +1620,33 @@
         <span class="preset-picker-eyebrow" id="promptPresetDialogTitle">Mix Packs</span>
       </div>
       <button class="preset-picker-close" data-close type="button" aria-label="Close Mix Packs">✕</button>
-      <div class="preset-pack-selector">
-        <div class="preset-pack-tabs" id="promptPresetPackNav" role="tablist" aria-label="Mix Pack collections"></div>
-      </div>
+    </header>
+
+    <section class="preset-pack-browser" id="promptPresetPackBrowser" aria-labelledby="promptPresetPackBrowserTitle">
+      <header class="preset-pack-browser-head">
+        <div>
+          <h3 id="promptPresetPackBrowserTitle">Choose a Mix Pack</h3>
+          <p>Open a collection to browse its categories and presets.</p>
+        </div>
+      </header>
+      <div class="preset-pack-grid" id="promptPresetPackNav" role="list" aria-label="Mix Pack collections"></div>
+    </section>
+
+    <section class="preset-pack-detail" id="promptPresetPackDetail" hidden>
+      <header class="preset-pack-detail-head">
+        <button class="preset-pack-back" id="promptPresetPackBack" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          <span>All packs</span>
+        </button>
+        <div class="preset-pack-detail-copy">
+          <strong id="promptPresetPackTitle"></strong>
+          <span id="promptPresetPackDescription"></span>
+        </div>
+      </header>
       <div class="preset-search" role="search">
-        <label class="sr-only" for="promptPresetSearch">Search packs and presets</label>
+        <label class="sr-only" for="promptPresetSearch">Search this Mix Pack</label>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 4 4"/></svg>
-        <input id="promptPresetSearch" type="search" placeholder="Search packs and presets" autocomplete="off" spellcheck="false" aria-controls="promptPresetCategories">
+        <input id="promptPresetSearch" type="search" placeholder="Search this pack" autocomplete="off" spellcheck="false" aria-controls="promptPresetCategories">
         <span id="promptPresetSearchStatus" aria-live="polite"></span>
         <button id="promptPresetSearchClear" type="button" hidden aria-label="Clear preset search">✕</button>
       </div>
@@ -1634,17 +1654,17 @@
         <span class="preset-category-selector-label">Category</span>
         <div class="preset-category-tabs" id="promptPresetCategoryNav" role="tablist" aria-label="Categories in the selected Mix Pack"></div>
       </div>
-    </header>
 
-    <div class="preset-category-list" id="promptPresetCategories"></div>
+      <div class="preset-category-list" id="promptPresetCategories"></div>
 
-    <div class="preset-selection-summary" id="promptPresetSummary" aria-live="polite">
-      <div>
-        <span>Applied looks</span>
-        <strong id="promptPresetSelection">No presets applied</strong>
+      <div class="preset-selection-summary" id="promptPresetSummary" aria-live="polite">
+        <div class="preset-selection-summary-head">
+          <span class="preset-selection-kicker">Applied looks</span>
+          <strong id="promptPresetSelection">No presets applied</strong>
+        </div>
+        <div class="preset-selection-list" id="promptPresetSelectionList" aria-label="Applied presets" hidden></div>
       </div>
-      <p id="promptPresetPreview">Choose a thumbnail to add its visual language to your prompt.</p>
-    </div>
+    </section>
   </div>
 </div>
 

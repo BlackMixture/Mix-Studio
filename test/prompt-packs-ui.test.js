@@ -75,23 +75,24 @@ test('installed categories merge into Mix Packs and keep semantic prompt tokens'
   assert.match(indexHtml, /id="promptPresetDialogTitle">Mix Packs/);
 });
 
-test('the picker browses named Mix Packs with representative thumbnails before categories', () => {
-  assert.match(indexHtml, /id="promptPresetPackNav"[^>]*role="tablist"/);
+test('the picker opens on named Mix Pack cards before showing a pack detail page', () => {
+  assert.match(indexHtml, /id="promptPresetPackNav"[^>]*role="list"/);
+  assert.match(indexHtml, /id="promptPresetPackBrowser"/);
+  assert.match(indexHtml, /id="promptPresetPackDetail" hidden/);
   assert.match(appJs, /function promptPresetPackCatalog/);
-  assert.match(appJs, /className = 'preset-pack-tab'/);
+  assert.match(appJs, /className = 'preset-pack-card'/);
   assert.match(appJs, /promptPresetPackThumbnail\(pack\)/);
   assert.match(appJs, /function promptPresetPackSelection/);
   assert.match(appJs, /selected\?\.thumbnail \|\| pack\.categories/);
   assert.match(appJs, /activePromptPresetPackId = preset\.packId \|\| activePromptPresetPackId/);
   assert.match(appJs, /activePromptPresetPackId/);
-  assert.match(styleCss, /\.preset-pack-tab-thumb img/);
-  assert.match(styleCss, /\.preset-pack-tabs\s*{[^}]*overflow-x:\s*auto/s);
-  assert.match(appJs, /syncPromptPresetPackOverflow/);
-  assert.match(styleCss, /@keyframes preset-pack-label-scroll/);
+  assert.match(styleCss, /\.preset-pack-card-media img/);
+  assert.match(styleCss, /\.preset-pack-grid\s*{[^}]*repeat\(2,/s);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-pack-grid\s*{[^}]*grid-template-columns:\s*1fr/s);
   assert.match(styleCss, /prefers-reduced-motion:\s*reduce/);
 });
 
-test('Mix Packs searches enabled packs, categories, and presets from one responsive field', () => {
+test('Mix Pack details search the selected pack from one responsive field', () => {
   assert.match(indexHtml, /id="promptPresetSearch"[^>]*type="search"/);
   assert.match(indexHtml, /id="promptPresetSearchStatus"[^>]*aria-live="polite"/);
   assert.match(indexHtml, /id="promptPresetSearchClear"/);
@@ -99,6 +100,7 @@ test('Mix Packs searches enabled packs, categories, and presets from one respons
   assert.match(appJs, /pack\.name,[\s\S]*category\.label,[\s\S]*preset\.label,[\s\S]*preset\.value/);
   assert.match(appJs, /className = 'preset-search-results'/);
   assert.match(appJs, /context: `\$\{pack\.name\} · \$\{category\.label\}`/);
+  assert.match(appJs, /promptPresetSearchEntries\(activePack \? \[activePack\] : \[\]/);
   assert.match(appJs, /promptPresetSearchQuery = String\(event\.target\.value/);
   assert.match(appJs, /event\.key !== 'Escape'/);
   assert.match(styleCss, /\.preset-search:focus-within/);
@@ -127,6 +129,38 @@ test('visual treatment changes only the submitted prompt when explicitly enabled
   assert.equal(compose(), 'A silver ball in grass, bold flat ink');
   context.state.userDefaults.visualPresets.useVisualTreatment = true;
   assert.equal(compose(), 'A silver ball in grass. Visual treatment: bold flat ink.');
+});
+
+test('preset selection state preserves multiple choices from the same category', () => {
+  const key = namedFunction(appJs, 'promptPresetSelectionKey');
+  const state = {
+    promptPresetSelections: {
+      style: [
+        { packId: 'atlas', presetId: 'anime', promptText: 'cinematic anime' },
+        { packId: 'atlas', presetId: 'print', promptText: 'retro print' },
+      ],
+    },
+  };
+  const catalog = [{
+    id: 'style',
+    presets: [
+      { category: 'style', packId: 'atlas', presetId: 'anime', value: 'cinematic anime' },
+      { category: 'style', packId: 'atlas', presetId: 'print', value: 'retro print' },
+    ],
+  }];
+  const rawSelections = namedFunction(appJs, 'rawPromptPresetSelections', { state });
+  const selected = namedFunction(appJs, 'selectedPromptPresets', {
+    state,
+    promptPresetCatalog: () => catalog,
+    promptPresetSelectionKey: key,
+    rawPromptPresetSelections: rawSelections,
+    CameraSettings: null,
+    builtinCameraPresets: () => [],
+  });
+  assert.deepEqual(
+    Array.from(selected('style'), (preset) => preset.presetId),
+    ['anime', 'print'],
+  );
 });
 
 test('gallery reuse restores preset card metadata and can infer older saved prompts', () => {

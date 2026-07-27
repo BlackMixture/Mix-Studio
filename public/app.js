@@ -161,7 +161,7 @@ const state = {
   },
   generationTuning: { create: null, edit: null, video: null },
   promptPresetSelections: {
-    camera: null,
+    camera: [],
   },
   promptPacks: [],
   promptPacksCanManage: false,
@@ -582,39 +582,62 @@ function promptPresetSelectionPayload(preset) {
   };
 }
 
-function selectedPromptPreset(categoryId) {
+function promptPresetSelectionKey(preset) {
+  return [
+    String(preset?.packId || ''),
+    String(preset?.presetId || ''),
+    String(preset?.value || preset?.promptText || ''),
+  ].join('\u0000');
+}
+
+function rawPromptPresetSelections(categoryId) {
   const raw = state.promptPresetSelections && state.promptPresetSelections[categoryId];
-  if (!raw) return null;
-  if (categoryId === 'camera' && typeof raw === 'string' && CameraSettings) {
-    const combo = CameraSettings.cameraCombo(raw);
-    return builtinCameraPresets().find((preset) => preset.presetId === combo?.id) || null;
-  }
-  const presetId = typeof raw === 'object' ? raw.presetId : '';
-  const packId = typeof raw === 'object' ? raw.packId : '';
-  const available = promptPresetCatalog()
-    .find((category) => category.id === categoryId)?.presets
-    .find((preset) => preset.presetId === presetId && (!packId || preset.packId === packId));
-  if (available) return available;
-  if (typeof raw === 'object' && raw.promptText) {
-    return {
-      category: categoryId,
-      categoryLabel: raw.categoryLabel || categoryId,
-      accent: raw.accent || 'violet',
-      packId: raw.packId || '',
-      presetId: raw.presetId || '',
-      label: raw.label || 'Unavailable preset',
-      value: raw.promptText,
-      thumbnail: raw.thumbnail || '',
-      unavailable: true,
-    };
-  }
-  return null;
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw.filter(Boolean) : [raw];
+}
+
+function selectedPromptPresets(categoryId) {
+  const catalog = promptPresetCatalog()
+    .find((category) => category.id === categoryId)?.presets || [];
+  const resolved = rawPromptPresetSelections(categoryId).map((raw) => {
+    if (categoryId === 'camera' && typeof raw === 'string' && CameraSettings) {
+      const combo = CameraSettings.cameraCombo(raw);
+      return builtinCameraPresets().find((preset) => preset.presetId === combo?.id) || null;
+    }
+    const presetId = typeof raw === 'object' ? raw.presetId : '';
+    const packId = typeof raw === 'object' ? raw.packId : '';
+    const available = catalog.find((preset) => (
+      preset.presetId === presetId && (!packId || preset.packId === packId)
+    ));
+    if (available) return available;
+    if (typeof raw === 'object' && raw.promptText) {
+      return {
+        category: categoryId,
+        categoryLabel: raw.categoryLabel || categoryId,
+        accent: raw.accent || 'violet',
+        packId: raw.packId || '',
+        presetId: raw.presetId || '',
+        label: raw.label || 'Unavailable preset',
+        value: raw.promptText,
+        thumbnail: raw.thumbnail || '',
+        unavailable: true,
+      };
+    }
+    return null;
+  }).filter(Boolean);
+  return resolved.filter((preset, index) => (
+    resolved.findIndex((candidate) => promptPresetSelectionKey(candidate) === promptPresetSelectionKey(preset)) === index
+  ));
+}
+
+function allSelectedPromptPresets() {
+  return Object.keys(state.promptPresetSelections || {})
+    .flatMap((categoryId) => selectedPromptPresets(categoryId));
 }
 
 function activePromptPresetTokens() {
   if (state.view !== 'create') return [];
-  return Object.keys(state.promptPresetSelections || {})
-    .map((category) => selectedPromptPreset(category))
+  return allSelectedPromptPresets()
     .filter((preset) => preset?.value)
     .map((preset) => ({
       category: preset.category,
@@ -647,9 +670,17 @@ function promptPresetMetadataForGeneration() {
 function promptPresetSelectionsForReuse(item, prompt) {
   const value = String(prompt || '');
   const selections = {};
+  const addSelection = (categoryId, selection) => {
+    if (!selection) return;
+    const existing = selections[categoryId] || [];
+    const key = promptPresetSelectionKey(selection);
+    if (!existing.some((candidate) => promptPresetSelectionKey(candidate) === key)) {
+      selections[categoryId] = [...existing, selection];
+    }
+  };
   for (const raw of Array.isArray(item?.promptPresets) ? item.promptPresets : []) {
     if (!raw || !raw.category || !raw.promptText || !value.includes(raw.promptText)) continue;
-    selections[raw.category] = {
+    addSelection(raw.category, {
       packId: raw.packId || '',
       presetId: raw.presetId || '',
       label: raw.label || 'Visual preset',
@@ -657,14 +688,13 @@ function promptPresetSelectionsForReuse(item, prompt) {
       accent: raw.accent || 'violet',
       categoryLabel: raw.categoryLabel || raw.category,
       thumbnail: raw.thumbnail || '',
-    };
+    });
   }
   for (const category of promptPresetCatalog()) {
-    if (selections[category.id]) continue;
     const matches = (category.presets || [])
       .filter((preset) => preset.value && value.includes(preset.value))
       .sort((left, right) => right.value.length - left.value.length);
-    if (matches[0]) selections[category.id] = promptPresetSelectionPayload(matches[0]);
+    for (const match of matches) addSelection(category.id, promptPresetSelectionPayload(match));
   }
   return selections;
 }
@@ -779,13 +809,20 @@ function syncPromptDraftFromComposer() {
   setPromptDraft(promptDraftFromComposer(), { render: false });
   const selections = Object.assign({}, state.promptPresetSelections);
   let selectionsChanged = false;
-  for (const preset of activePromptPresetTokens()) {
-    if (!promptDraft().includes(preset.value)) {
-      selections[preset.category] = null;
-      selectionsChanged = true;
+  if (state.view === 'create') {
+    for (const categoryId of Object.keys(selections)) {
+      const current = selectedPromptPresets(categoryId);
+      const remaining = current.filter((preset) => promptDraft().includes(preset.value));
+      if (remaining.length !== current.length) {
+        selections[categoryId] = remaining.map(promptPresetSelectionPayload);
+        selectionsChanged = true;
+      }
+    }
+    if (selectionsChanged) {
+      state.promptPresetSelections = selections;
+      renderCameraPicker();
     }
   }
-  if (selectionsChanged) state.promptPresetSelections = selections;
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
   updatePromptClear();
   renderPromptSuggestions();
@@ -2502,13 +2539,26 @@ function loadForm() {
       const savedPresetSelections = f.promptPresetSelections && typeof f.promptPresetSelections === 'object'
         ? f.promptPresetSelections : {};
       const savedCamera = savedPresetSelections.camera;
-      const cameraId = CameraSettings.normalizeCameraPresetId(
-        typeof savedCamera === 'object' ? savedCamera?.presetId : savedCamera,
-        Object.prototype.hasOwnProperty.call(f, 'cameraSettings') ? f.cameraSettings : undefined,
+      const normalizedSelections = Object.fromEntries(
+        Object.entries(savedPresetSelections).map(([categoryId, raw]) => [
+          categoryId,
+          Array.isArray(raw) ? raw.filter(Boolean) : (raw ? [raw] : []),
+        ]),
       );
-      const cameraPreset = builtinCameraPresets().find((preset) => preset.presetId === cameraId);
-      state.promptPresetSelections = Object.assign({}, savedPresetSelections, {
-        camera: promptPresetSelectionPayload(cameraPreset),
+      const savedCameraEntries = Array.isArray(savedCamera)
+        ? savedCamera
+        : (savedCamera ? [savedCamera] : []);
+      const cameraCandidates = savedCameraEntries.length ? savedCameraEntries : [undefined];
+      const cameraPresets = cameraCandidates
+        .map((entry) => CameraSettings.normalizeCameraPresetId(
+          typeof entry === 'object' ? entry?.presetId : entry,
+          Object.prototype.hasOwnProperty.call(f, 'cameraSettings') ? f.cameraSettings : undefined,
+        ))
+        .map((cameraId) => builtinCameraPresets().find((preset) => preset.presetId === cameraId))
+        .filter(Boolean)
+        .map(promptPresetSelectionPayload);
+      state.promptPresetSelections = Object.assign({}, normalizedSelections, {
+        camera: cameraPresets,
       });
     }
     if (CameraMotion) {
@@ -8665,19 +8715,13 @@ $('#promptClear').addEventListener('click', () => {
 let activePromptPresetPackId = 'mix-studio-camera';
 let activePromptPresetCategoryId = 'camera';
 let promptPresetSearchQuery = '';
-
-function promptPresetPackHasSelection(pack) {
-  return Object.keys(state.promptPresetSelections || {})
-    .map((categoryId) => selectedPromptPreset(categoryId))
-    .some((preset) => preset?.packId === pack.id);
-}
+let promptPresetPackView = 'catalog';
 
 function promptPresetPackSelection(pack) {
-  const activeCategorySelection = selectedPromptPreset(activePromptPresetCategoryId);
-  if (activeCategorySelection?.packId === pack.id) return activeCategorySelection;
-  return Object.keys(state.promptPresetSelections || {})
-    .map((categoryId) => selectedPromptPreset(categoryId))
-    .find((preset) => preset?.packId === pack.id) || null;
+  const activeCategorySelection = selectedPromptPresets(activePromptPresetCategoryId)
+    .find((preset) => preset?.packId === pack.id);
+  if (activeCategorySelection) return activeCategorySelection;
+  return allSelectedPromptPresets().find((preset) => preset?.packId === pack.id) || null;
 }
 
 function promptPresetPackThumbnail(pack) {
@@ -8688,17 +8732,6 @@ function promptPresetPackThumbnail(pack) {
   return source
     ? `<img src="${escapeHtml(source)}" alt="" loading="lazy">`
     : '<span aria-hidden="true">M</span>';
-}
-
-function syncPromptPresetPackOverflow() {
-  $$('#promptPresetPackNav .preset-pack-tab-line').forEach((line) => {
-    const content = line.firstElementChild;
-    if (!content) return;
-    const overflow = Math.max(0, Math.ceil(content.scrollWidth - line.clientWidth));
-    line.classList.toggle('is-overflowing', overflow > 2);
-    line.style.setProperty('--preset-pack-overflow', `${overflow}px`);
-    line.style.setProperty('--preset-pack-scroll-duration', `${Math.min(12, Math.max(5, 4 + overflow / 18))}s`);
-  });
 }
 
 function normalizedPromptPresetSearch(value) {
@@ -8746,6 +8779,44 @@ function syncPromptPresetSearchControl(resultCount = null, packCount = 0) {
     : '';
 }
 
+function renderPromptPresetSummary() {
+  const summary = $('#promptPresetSummary');
+  const list = $('#promptPresetSelectionList');
+  if (!summary || !list) return;
+  const applied = allSelectedPromptPresets().filter((preset) => preset?.value);
+  summary.classList.toggle('has-selections', applied.length > 0);
+  $('#promptPresetSelection').textContent = applied.length
+    ? (applied.length === 1 ? applied[0].label : `${applied.length} presets`)
+    : 'No presets applied';
+  list.hidden = applied.length === 0;
+  list.replaceChildren();
+  for (const preset of applied) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'preset-selection-chip';
+    remove.dataset.presetAccent = preset.accent || 'violet';
+    remove.title = `Remove ${preset.label || 'visual preset'}`;
+    remove.setAttribute('aria-label', `Remove ${preset.label || 'visual preset'}`);
+    if (preset.thumbnail) {
+      const image = document.createElement('img');
+      image.src = preset.thumbnail;
+      image.alt = '';
+      image.addEventListener('error', () => remove.classList.add('image-missing'), { once: true });
+      remove.appendChild(image);
+    }
+    const fallback = document.createElement('span');
+    fallback.className = 'preset-selection-chip-fallback';
+    fallback.textContent = String(preset.label || 'P').slice(0, 1);
+    const dismiss = document.createElement('span');
+    dismiss.className = 'preset-selection-chip-remove';
+    dismiss.setAttribute('aria-hidden', 'true');
+    dismiss.textContent = '×';
+    remove.append(fallback, dismiss);
+    remove.addEventListener('click', () => applyPromptPresetSelection(preset.category, preset));
+    list.appendChild(remove);
+  }
+}
+
 function clearPromptPresetSearch(options = {}) {
   if (!promptPresetSearchQuery && !$('#promptPresetSearch')?.value) return;
   promptPresetSearchQuery = '';
@@ -8782,53 +8853,66 @@ function renderCameraPicker() {
   if (!categories.some((category) => category.id === activePromptPresetCategoryId)) {
     activePromptPresetCategoryId = categories[0]?.id || '';
   }
+  const browser = $('#promptPresetPackBrowser');
+  const detail = $('#promptPresetPackDetail');
+  browser.hidden = promptPresetPackView !== 'catalog';
+  detail.hidden = promptPresetPackView !== 'detail';
   const packNav = $('#promptPresetPackNav');
   packNav.replaceChildren();
   packs.forEach((pack, index) => {
-    const active = pack.id === activePromptPresetPackId;
-    const applied = promptPresetPackHasSelection(pack);
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'preset-pack-tab' + (active ? ' active' : '');
-    tab.dataset.presetPackTab = pack.id;
-    tab.dataset.applied = String(applied);
-    tab.setAttribute('role', 'tab');
-    tab.setAttribute('aria-selected', String(active));
-    tab.setAttribute('aria-controls', 'promptPresetCategories');
-    tab.setAttribute('aria-label', `${pack.name}${applied ? ', preset applied' : ''}`);
-    tab.innerHTML = `
-      <span class="preset-pack-tab-thumb">${promptPresetPackThumbnail(pack)}</span>
-      <span class="preset-pack-tab-copy">
-        <strong class="preset-pack-tab-line"><span>${escapeHtml(pack.name)}</span></strong>
-        <small class="preset-pack-tab-line"><span>${escapeHtml(promptPackCategoryLabel(pack))}</span></small>
+    const appliedCount = allSelectedPromptPresets()
+      .filter((preset) => preset?.packId === pack.id).length;
+    const item = document.createElement('div');
+    item.className = 'preset-pack-grid-item';
+    item.setAttribute('role', 'listitem');
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'preset-pack-card';
+    card.dataset.presetPackTab = pack.id;
+    card.setAttribute('aria-label', `Open ${pack.name}${appliedCount ? `, ${appliedCount} preset${appliedCount === 1 ? '' : 's'} applied` : ''}`);
+    card.innerHTML = `
+      <span class="preset-pack-card-media">${promptPresetPackThumbnail(pack)}</span>
+      <span class="preset-pack-card-copy">
+        <strong>${escapeHtml(pack.name)}</strong>
+        <small>${escapeHtml(promptPackCategoryLabel(pack))}</small>
+        <span>${appliedCount
+    ? `${appliedCount} preset${appliedCount === 1 ? '' : 's'} applied`
+    : `${pack.categories.length} categor${pack.categories.length === 1 ? 'y' : 'ies'}`}</span>
       </span>
-      <i aria-hidden="true">✓</i>`;
-    tab.addEventListener('click', () => {
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`;
+    card.addEventListener('click', () => {
       promptPresetSearchQuery = '';
       activePromptPresetPackId = pack.id;
       activePromptPresetCategoryId = pack.categories[0]?.id || '';
+      promptPresetPackView = 'detail';
       renderCameraPicker();
+      $('#promptPresetPackBack')?.focus({ preventScroll: true });
     });
-    tab.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    card.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
-      promptPresetSearchQuery = '';
+      const step = event.key === 'ArrowUp' ? -2 : event.key === 'ArrowDown' ? 2 : event.key === 'ArrowLeft' ? -1 : 1;
       const next = event.key === 'Home' ? 0
         : event.key === 'End' ? packs.length - 1
-          : (index + (event.key === 'ArrowRight' ? 1 : -1) + packs.length) % packs.length;
-      activePromptPresetPackId = packs[next].id;
-      activePromptPresetCategoryId = packs[next].categories[0]?.id || '';
-      renderCameraPicker();
-      focusPromptPresetPack(activePromptPresetPackId);
+          : (index + step + packs.length) % packs.length;
+      focusPromptPresetPack(packs[next].id);
     });
-    packNav.appendChild(tab);
+    item.appendChild(card);
+    packNav.appendChild(item);
   });
-  requestAnimationFrame(syncPromptPresetPackOverflow);
+  if (promptPresetPackView === 'catalog') {
+    container.replaceChildren();
+    return;
+  }
+  $('#promptPresetPackTitle').textContent = activePack?.name || '';
+  $('#promptPresetPackDescription').textContent = activePack?.description
+    || `${activePack?.categories?.length || 0} categor${activePack?.categories?.length === 1 ? 'y' : 'ies'}`;
   const categoryNav = $('#promptPresetCategoryNav');
   categoryNav.replaceChildren();
   categories.forEach((category, index) => {
     const active = category.id === activePromptPresetCategoryId;
-    const applied = selectedPromptPreset(category.id)?.packId === activePromptPresetPackId;
+    const applied = selectedPromptPresets(category.id)
+      .some((preset) => preset?.packId === activePromptPresetPackId);
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = 'preset-category-tab' + (active ? ' active' : '');
@@ -8838,7 +8922,7 @@ function renderCameraPicker() {
     tab.setAttribute('aria-selected', String(active));
     tab.setAttribute('aria-controls', `promptPresetPanel-${category.id}`);
     tab.setAttribute('aria-label', `${category.label}${applied ? ', preset applied' : ''}`);
-    tab.innerHTML = `<span>${escapeHtml(category.label)}</span><i aria-hidden="true">✓</i>`;
+    tab.innerHTML = `<span>${escapeHtml(category.label)}</span>`;
     tab.addEventListener('click', () => {
       promptPresetSearchQuery = '';
       activePromptPresetCategoryId = category.id;
@@ -8859,8 +8943,7 @@ function renderCameraPicker() {
   $('#promptPresetCategorySelector').hidden = !!promptPresetSearchQuery || categories.length < 2;
   container.replaceChildren();
   if (promptPresetSearchQuery) {
-    const entries = promptPresetSearchEntries(packs, promptPresetSearchQuery);
-    const matchingPacks = new Set(entries.map((entry) => entry.pack.id));
+    const entries = promptPresetSearchEntries(activePack ? [activePack] : [], promptPresetSearchQuery);
     const section = document.createElement('section');
     section.className = 'preset-search-results';
     section.setAttribute('role', 'region');
@@ -8870,7 +8953,7 @@ function renderCameraPicker() {
         <header class="preset-category-head preset-search-results-head">
           <div>
             <h4>Search results</h4>
-            <p>Matches across every enabled Mix Pack.</p>
+            <p>Matches in ${escapeHtml(activePack?.name || 'this Mix Pack')}.</p>
           </div>
         </header>
         <div class="camera-preset-grid preset-search-grid" role="group" aria-label="Matching presets"></div>`;
@@ -8891,12 +8974,13 @@ function renderCameraPicker() {
       section.querySelector('button').addEventListener('click', () => clearPromptPresetSearch());
     }
     container.appendChild(section);
-    syncPromptPresetSearchControl(entries.length, matchingPacks.size);
+    syncPromptPresetSearchControl(entries.length);
   } else {
     syncPromptPresetSearchControl();
     for (const category of categories) {
-      const selected = selectedPromptPreset(category.id);
-      const selectedInPack = selected?.packId === activePromptPresetPackId;
+      const selected = selectedPromptPresets(category.id);
+      const selectedInPack = selected.filter((preset) => preset.packId === activePromptPresetPackId);
+      const selectedElsewhere = selected.filter((preset) => preset.packId !== activePromptPresetPackId);
       const section = document.createElement('section');
       section.className = 'preset-category';
       section.dataset.presetCategory = category.id;
@@ -8911,9 +8995,13 @@ function renderCameraPicker() {
             <h4 id="${escapeHtml(headingId)}">${escapeHtml(category.label)}</h4>
             ${category.description ? `<p>${escapeHtml(category.description)}</p>` : ''}
           </div>
-          <span class="preset-category-state" data-state="${selectedInPack ? 'applied' : selected ? 'other' : 'optional'}">${
-  selectedInPack ? 'Applied' : selected ? `Using ${escapeHtml(selected.packName || 'another pack')}` : 'Optional'
-}</span>
+          ${selectedInPack.length
+    ? `<span class="preset-category-state" data-state="applied">${selectedInPack.length === 1 ? 'Applied' : `${selectedInPack.length} applied`}</span>`
+    : selectedElsewhere.length
+      ? `<span class="preset-category-state" data-state="other">${selectedElsewhere.length === 1
+        ? `Using ${escapeHtml(selectedElsewhere[0].packName || 'another pack')}`
+        : `Using ${selectedElsewhere.length} from other packs`}</span>`
+      : ''}
         </header>
         <div class="camera-preset-grid" role="group" aria-label="${escapeHtml(category.label)} presets"></div>`;
       const grid = section.querySelector('.camera-preset-grid');
@@ -8921,20 +9009,13 @@ function renderCameraPicker() {
       container.appendChild(section);
     }
   }
-  const applied = Object.keys(state.promptPresetSelections || {})
-    .map((category) => selectedPromptPreset(category))
-    .filter(Boolean);
-  $('#promptPresetSelection').textContent = applied.length
-    ? applied.map((preset) => preset.label).join(' + ')
-    : 'No presets applied';
-  $('#promptPresetPreview').textContent = applied.length
-    ? applied.map((preset) => preset.value).join(' · ')
-    : 'Choose a thumbnail to add its visual language to your prompt.';
+  renderPromptPresetSummary();
 }
 
 function createPromptPresetCard(preset, category, options = {}) {
-  const selected = selectedPromptPreset(category.id);
-  const active = selected?.presetId === preset.presetId && selected?.packId === preset.packId;
+  const active = selectedPromptPresets(category.id).some((selected) => (
+    selected.presetId === preset.presetId && selected.packId === preset.packId
+  ));
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'camera-preset-card' + (active ? ' active' : '');
@@ -8957,7 +9038,7 @@ function createPromptPresetCard(preset, category, options = {}) {
   const image = button.querySelector('img');
   image.addEventListener('error', () => button.classList.add('image-missing'), { once: true });
   button.addEventListener('click', () => {
-    applyPromptPresetSelection(category.id, active ? null : preset);
+    applyPromptPresetSelection(category.id, preset);
   });
   return button;
 }
@@ -8980,6 +9061,7 @@ async function openCameraPicker(options = {}) {
   const packId = String(options.packId || '');
   const categoryId = String(options.categoryId || '');
   const presetId = String(options.presetId || '');
+  promptPresetPackView = packId || categoryId || presetId ? 'detail' : 'catalog';
   if (packId) activePromptPresetPackId = packId;
   if (categoryId) activePromptPresetCategoryId = categoryId;
   if (packId || categoryId || presetId) promptPresetSearchQuery = '';
@@ -9011,21 +9093,24 @@ function stripAppliedPromptPreset(prompt, phrase) {
 }
 
 function applyPromptPresetSelection(categoryId, preset) {
-  const previous = selectedPromptPreset(categoryId);
+  if (!preset) return;
+  const current = selectedPromptPresets(categoryId);
+  const key = promptPresetSelectionKey(preset);
+  const active = current.some((candidate) => promptPresetSelectionKey(candidate) === key);
   let value = promptDraft();
-  if (categoryId === 'camera' && CameraSettings) {
-    value = CameraSettings.applyCameraPresetPrompt(value, null);
-  } else if (previous?.value) {
-    value = stripAppliedPromptPreset(value, previous.value);
-  }
-  if (preset?.value) {
+  if (active) {
+    value = stripAppliedPromptPreset(value, preset.value);
+  } else if (preset.value) {
     const base = value.trim().replace(/[\s,]+$/, '');
-    value = base ? `${base}, ${preset.value}` : preset.value;
+    value = base && !base.includes(preset.value) ? `${base}, ${preset.value}` : (base || preset.value);
     activePromptPresetPackId = preset.packId || activePromptPresetPackId;
     activePromptPresetCategoryId = categoryId;
   }
+  const next = active
+    ? current.filter((candidate) => promptPresetSelectionKey(candidate) !== key)
+    : [...current, preset];
   state.promptPresetSelections = Object.assign({}, state.promptPresetSelections, {
-    [categoryId]: promptPresetSelectionPayload(preset),
+    [categoryId]: next.map(promptPresetSelectionPayload),
   });
   setPromptDraft(value);
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) {
@@ -9035,11 +9120,19 @@ function applyPromptPresetSelection(categoryId, preset) {
   renderPromptSuggestions();
   saveForm();
   renderCameraPicker();
-  const categoryLabel = preset?.categoryLabel || previous?.categoryLabel || 'Visual';
-  toast(preset ? `${categoryLabel} preset applied` : `${categoryLabel} preset removed`);
+  const categoryLabel = preset.categoryLabel || 'Visual';
+  toast(`${categoryLabel} preset ${active ? 'removed' : 'applied'}`);
 }
 
 $('#cameraPromptBtn').addEventListener('click', () => openCameraPicker());
+$('#promptPresetPackBack').addEventListener('click', () => {
+  promptPresetSearchQuery = '';
+  promptPresetPackView = 'catalog';
+  renderCameraPicker();
+  requestAnimationFrame(() => {
+    $('#promptPresetPackNav .preset-pack-card')?.focus({ preventScroll: true });
+  });
+});
 $('#promptPresetSearch').addEventListener('input', (event) => {
   promptPresetSearchQuery = String(event.target.value || '').trimStart();
   renderCameraPicker();
@@ -27620,25 +27713,32 @@ function reconcilePromptPackSelections(pack, packId = pack?.id) {
   const selections = Object.assign({}, state.promptPresetSelections);
   let changed = false;
   for (const [categoryId, raw] of Object.entries(selections)) {
-    if (!raw || typeof raw !== 'object' || raw.packId !== packId) continue;
     const category = pack?.categories?.find((entry) => entry.id === categoryId);
-    const preset = category?.presets?.find((entry) => entry.id === raw.presetId);
-    if (preset && preset.promptText === raw.promptText) {
-      selections[categoryId] = promptPresetSelectionPayload({
+    const entries = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    let categoryChanged = false;
+    const next = entries.flatMap((selection) => {
+      if (!selection || typeof selection !== 'object' || selection.packId !== packId) return [selection];
+      const preset = category?.presets?.find((entry) => entry.id === selection.presetId);
+      changed = true;
+      categoryChanged = true;
+      if (!preset || preset.promptText !== selection.promptText) {
+        // Keep the existing words in the prompt, but detach them from a pack
+        // that is disabled, removed, or changed underneath the selection.
+        return [];
+      }
+      return [promptPresetSelectionPayload({
         category: categoryId,
         categoryLabel: category.label,
         accent: category.accent,
         packId: pack.id,
+        packName: pack.name,
         presetId: preset.id,
         label: preset.label,
         value: preset.promptText,
-      });
-    } else {
-      // Keep the existing words in the prompt, but detach them from a pack
-      // that is disabled, removed, or changed underneath the selection.
-      selections[categoryId] = null;
-    }
-    changed = true;
+        thumbnail: preset.thumbnail,
+      })];
+    });
+    if (categoryChanged) selections[categoryId] = next.filter(Boolean);
   }
   if (!changed) return;
   state.promptPresetSelections = selections;
