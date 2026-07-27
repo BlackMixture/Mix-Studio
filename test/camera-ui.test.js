@@ -22,7 +22,7 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(appJs, /cameraPromptBtn'\)\.hidden = state\.view !== 'create'/);
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="promptPresetCategories"/);
-  assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="tablist"/);
+  assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"/);
   assert.match(appJs, /promptPresetCatalog/);
   assert.match(appJs, /section\.dataset\.presetCategory = category\.id/);
   assert.match(appJs, /querySelector\('\.camera-preset-grid'\)/);
@@ -44,13 +44,15 @@ test('camera sheet uses visual presets instead of individual camera controls', (
   assert.match(appJs, /setAttribute\('aria-checked'/);
 });
 
-test('Mix Pack details switch categories from an accessible responsive header rail', () => {
+test('Mix Pack details filter an all-category section list from an accessible pill rail', () => {
   assert.match(appJs, /activePromptPresetCategoryId/);
-  assert.match(appJs, /tab\.setAttribute\('role', 'tab'\)/);
-  assert.match(appJs, /tab\.setAttribute\('aria-selected'/);
-  assert.match(appJs, /section\.hidden = category\.id !== activePromptPresetCategoryId/);
+  assert.match(appJs, /\{ id: 'all', label: 'All' \}/);
+  assert.match(appJs, /tab\.setAttribute\('aria-pressed'/);
+  assert.match(appJs, /activePromptPresetCategoryId !== 'all'/);
+  assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
   assert.match(appJs, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*overflow-x:\s*auto/s);
+  assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*border-radius:\s*999px/s);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-picker-head/);
 });
 
@@ -123,9 +125,11 @@ test('Mix Packs use a pack landing grid and removable applied-look thumbnails', 
   assert.match(appJs, /applyPromptPresetSelection\(preset\.category, preset\)/);
   assert.doesNotMatch(appJs, /<i aria-hidden="true">✓<\/i>/);
   assert.doesNotMatch(styleCss, /\.preset-category-tab i/);
-  assert.match(styleCss, /\.preset-pack-grid\s*{[^}]*grid-template-columns:\s*repeat\(2,/s);
+  assert.match(styleCss, /\.preset-pack-grid\s*{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(styleCss, /\.preset-pack-card-media\s*{[^}]*aspect-ratio:\s*4\s*\/\s*3/s);
   assert.match(styleCss, /\.preset-pack-card-media img\s*{[^}]*object-fit:\s*contain/s);
+  assert.match(appJs, /function syncPromptPresetPackNameOverflow/);
+  assert.match(styleCss, /@keyframes preset-pack-name-scroll/);
 });
 
 test('camera dialog uses dark surfaces consistent with the app chrome', () => {

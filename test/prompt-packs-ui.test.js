@@ -87,8 +87,10 @@ test('the picker opens on named Mix Pack cards before showing a pack detail page
   assert.match(appJs, /activePromptPresetPackId = preset\.packId \|\| activePromptPresetPackId/);
   assert.match(appJs, /activePromptPresetPackId/);
   assert.match(styleCss, /\.preset-pack-card-media img/);
-  assert.match(styleCss, /\.preset-pack-grid\s*{[^}]*repeat\(2,/s);
-  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-pack-grid\s*{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(styleCss, /\.preset-pack-grid\s*{[^}]*repeat\(3,/s);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-pack-grid\s*{[^}]*grid-template-columns:\s*repeat\(2,/s);
+  assert.match(appJs, /syncPromptPresetPackNameOverflow/);
+  assert.match(styleCss, /@keyframes preset-pack-name-scroll/);
   assert.match(styleCss, /prefers-reduced-motion:\s*reduce/);
 });
 
@@ -105,6 +107,19 @@ test('Mix Pack details search the selected pack from one responsive field', () =
   assert.match(appJs, /event\.key !== 'Escape'/);
   assert.match(styleCss, /\.preset-search:focus-within/);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-search/);
+});
+
+test('Mix Pack detail categories default to All and behave as pill filters', () => {
+  assert.match(indexHtml, /preset-category-selector-label">Filter</);
+  assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"[^>]*aria-label="Filter presets by category"/);
+  assert.match(appJs, /let activePromptPresetCategoryId = 'all'/);
+  assert.match(appJs, /const categoryFilters = \[\s*\{ id: 'all', label: 'All' \}/);
+  assert.match(appJs, /tab\.setAttribute\('aria-pressed', String\(active\)\)/);
+  assert.match(appJs, /section\.hidden = activePromptPresetCategoryId !== 'all'/);
+  assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
+  assert.match(styleCss, /\.preset-category-tab\s*{[^}]*border-radius:\s*999px/s);
+  assert.match(styleCss, /\.preset-category-tab\.active\s*{[^}]*background:\s*#1b2030/s);
+  assert.match(styleCss, /\.preset-category:not\(\[hidden\]\) ~ \.preset-category:not\(\[hidden\]\)/);
 });
 
 test('visual preset prompt composition is profile-configurable and defaults to the original direct format', () => {
