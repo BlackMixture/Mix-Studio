@@ -207,3 +207,49 @@ test('gallery reuse restores preset card metadata and can infer older saved prom
   assert.match(serverJs, /function normalizePromptPresets/);
   assert.ok((serverJs.match(/promptPresets: job\.params\.promptPresets/g) || []).length >= 3);
 });
+
+test('preset cards recover from their exact prompt text after transient selection-state loss', () => {
+  const key = namedFunction(appJs, 'promptPresetSelectionKey');
+  const payload = namedFunction(appJs, 'promptPresetSelectionPayload');
+  const catalog = [{
+    id: 'style',
+    presets: [{
+      category: 'style',
+      categoryLabel: 'Style',
+      accent: 'rose',
+      packId: 'atlas',
+      presetId: 'paper',
+      label: 'Torn Paper',
+      value: 'layered torn-paper collage',
+      thumbnail: '/api/addons/atlas/paper.webp',
+    }],
+  }];
+  const reuse = namedFunction(appJs, 'promptPresetSelectionsForReuse', {
+    promptPresetSelectionKey: key,
+    promptPresetCatalog: () => catalog,
+    promptPresetSelectionPayload: payload,
+  });
+  const signature = namedFunction(appJs, 'promptPresetSelectionStateSignature', {
+    promptPresetSelectionKey: key,
+  });
+  const state = { view: 'create', promptPresetSelections: {} };
+  const reconcile = namedFunction(appJs, 'reconcilePromptPresetSelectionsWithPrompt', {
+    state,
+    promptDraft: () => 'A fox, layered torn-paper collage',
+    selectedPromptPresets: () => [],
+    promptPresetSelectionPayload: payload,
+    promptPresetSelectionsForReuse: reuse,
+    promptPresetSelectionStateSignature: signature,
+  });
+  assert.equal(reconcile('A fox, layered torn-paper collage'), true);
+  assert.equal(state.promptPresetSelections.style[0].presetId, 'paper');
+  assert.equal(state.promptPresetSelections.style[0].label, 'Torn Paper');
+});
+
+test('desktop input history and form reset keep preset identity aligned with the prompt', () => {
+  assert.match(appJs, /'prompts', 'promptPresetSelections', 'loras'/);
+  assert.match(appJs, /state\.promptPresetSelections = \{ camera: \[\] \};[\s\S]*state\.regions = \[\]/);
+  assert.match(appJs, /function renderPromptComposer\(\)[\s\S]*reconcilePromptPresetSelectionsWithPrompt\(value\)/);
+  assert.match(appJs, /function promptPresetMetadataForGeneration\(\)[\s\S]*reconcilePromptPresetSelectionsWithPrompt\(value\)/);
+  assert.match(appJs, /const restoredPresetCards = reconcilePromptPresetSelectionsWithPrompt\(\)/);
+});

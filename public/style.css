@@ -6290,6 +6290,85 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
 .lightbox-meta-copy:active { transform: scale(.99); }
 .lightbox-meta-copy.copied { color: #fff; border-color: rgba(var(--mode-rgb),.34); background: rgba(var(--mode-rgb),.09); }
 .lightbox-meta-copy.copied svg { opacity: 1; transform: scale(1.12); }
+.lightbox-preset-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+.lightbox-preset-meta > b {
+  flex: 0 0 auto;
+  padding-top: 7px;
+}
+.lightbox-preset-list {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lightbox-preset-chip {
+  --lightbox-preset-rgb: 190, 145, 255;
+  min-width: 0;
+  max-width: min(230px, 100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px 3px 3px;
+  border: 1px solid rgba(var(--lightbox-preset-rgb),.26);
+  border-radius: 9px;
+  background: rgba(var(--lightbox-preset-rgb),.075);
+  color: var(--ink-soft);
+  line-height: 1;
+}
+.lightbox-preset-chip[data-preset-accent="blue"] { --lightbox-preset-rgb: 125, 166, 255; }
+.lightbox-preset-chip[data-preset-accent="rose"] { --lightbox-preset-rgb: 255, 133, 183; }
+.lightbox-preset-chip[data-preset-accent="amber"] { --lightbox-preset-rgb: 255, 199, 108; }
+.lightbox-preset-chip[data-preset-accent="green"] { --lightbox-preset-rgb: 119, 224, 157; }
+.lightbox-preset-chip > img,
+.lightbox-preset-chip > i {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.lightbox-preset-chip > i {
+  background:
+    radial-gradient(circle at 34% 34%, rgba(255,255,255,.54) 0 8%, transparent 9%),
+    linear-gradient(135deg, rgba(var(--lightbox-preset-rgb),.85), rgba(var(--lightbox-preset-rgb),.16));
+}
+.lightbox-preset-chip.image-missing::before {
+  content: "";
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(var(--lightbox-preset-rgb),.82), rgba(var(--lightbox-preset-rgb),.14));
+}
+.lightbox-preset-chip > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.lightbox-preset-chip strong,
+.lightbox-preset-chip small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lightbox-preset-chip strong { color: #f4f6fb; font-size: 11px; font-weight: 850; }
+.lightbox-preset-chip small {
+  color: rgba(var(--lightbox-preset-rgb),.82);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+@media (max-width: 520px) {
+  .lightbox-preset-meta { display: grid; gap: 5px; }
+  .lightbox-preset-meta > b { padding-top: 0; }
+  .lightbox-preset-chip { max-width: min(100%, 250px); }
+}
 .action-row {
   display: flex; gap: 8px; overflow-x: auto;
   padding: 10px 16px calc(24px + env(safe-area-inset-bottom));

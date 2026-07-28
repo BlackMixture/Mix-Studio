@@ -37,6 +37,15 @@ test('documentation metadata omits unavailable values and exposes saved generati
   assert.match(app, /documentationBuilderState\.selected/);
 });
 
+test('generation info and documentation identify the Mix Pack presets used', () => {
+  assert.match(app, /function promptPresetsForItem\(item\)/);
+  assert.match(app, /function promptPresetGenerationInfoMarkup\(presets\)/);
+  assert.match(app, /meta\.push\(promptPresetGenerationInfoMarkup\(usedPromptPresets\)\)/);
+  assert.match(app, /add\('promptPresets', 'Mix Pack presets', promptPresetNames\(promptPresets\)\.join\(', '\)\)/);
+  assert.match(css, /\.lightbox-preset-meta/);
+  assert.match(css, /\.lightbox-preset-chip/);
+});
+
 test('prompt control represents the prompt used for generation', () => {
   assert.match(app, /const prompt = documentationAnglePrompt\(item\) \|\| item\.refinedPrompt \|\| item\.prompt/);
   assert.match(app, /add\('prompt', 'Prompt', prompt\)/);

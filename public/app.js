@@ -653,6 +653,7 @@ function activePromptPresetTokens() {
 
 function promptPresetMetadataForGeneration() {
   const value = promptDraft();
+  reconcilePromptPresetSelectionsWithPrompt(value);
   return activePromptPresetTokens()
     .filter((preset) => preset.value && value.includes(preset.value))
     .map((preset) => ({
@@ -670,6 +671,7 @@ function promptPresetMetadataForGeneration() {
 function promptPresetSelectionsForReuse(item, prompt) {
   const value = String(prompt || '');
   const selections = {};
+  const identifiedPromptTexts = new Set();
   const addSelection = (categoryId, selection) => {
     if (!selection) return;
     const existing = selections[categoryId] || [];
@@ -680,6 +682,7 @@ function promptPresetSelectionsForReuse(item, prompt) {
   };
   for (const raw of Array.isArray(item?.promptPresets) ? item.promptPresets : []) {
     if (!raw || !raw.category || !raw.promptText || !value.includes(raw.promptText)) continue;
+    identifiedPromptTexts.add(raw.promptText);
     addSelection(raw.category, {
       packId: raw.packId || '',
       presetId: raw.presetId || '',
@@ -692,11 +695,84 @@ function promptPresetSelectionsForReuse(item, prompt) {
   }
   for (const category of promptPresetCatalog()) {
     const matches = (category.presets || [])
-      .filter((preset) => preset.value && value.includes(preset.value))
+      .filter((preset) => preset.value && value.includes(preset.value) && !identifiedPromptTexts.has(preset.value))
       .sort((left, right) => right.value.length - left.value.length);
-    for (const match of matches) addSelection(category.id, promptPresetSelectionPayload(match));
+    for (const match of matches) {
+      addSelection(category.id, promptPresetSelectionPayload(match));
+      identifiedPromptTexts.add(match.value);
+    }
   }
   return selections;
+}
+
+function promptPresetSelectionStateSignature(selections) {
+  return JSON.stringify(Object.entries(selections || {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([categoryId, raw]) => [
+      categoryId,
+      (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+        .filter(Boolean)
+        .map((selection) => ({
+          packId: String(selection?.packId || ''),
+          presetId: String(selection?.presetId || ''),
+          promptText: String(selection?.promptText || selection?.value || ''),
+          label: String(selection?.label || ''),
+          categoryLabel: String(selection?.categoryLabel || ''),
+          accent: String(selection?.accent || ''),
+          thumbnail: String(selection?.thumbnail || ''),
+        }))
+        .sort((left, right) => promptPresetSelectionKey(left).localeCompare(promptPresetSelectionKey(right))),
+    ]));
+}
+
+function reconcilePromptPresetSelectionsWithPrompt(prompt = promptDraft()) {
+  if (state.view !== 'create') return false;
+  const remembered = [];
+  for (const categoryId of Object.keys(state.promptPresetSelections || {})) {
+    selectedPromptPresets(categoryId).forEach((preset) => {
+      remembered.push(Object.assign({ category: categoryId }, promptPresetSelectionPayload(preset)));
+    });
+  }
+  const next = promptPresetSelectionsForReuse({ promptPresets: remembered }, prompt);
+  if (promptPresetSelectionStateSignature(next) === promptPresetSelectionStateSignature(state.promptPresetSelections)) {
+    return false;
+  }
+  state.promptPresetSelections = next;
+  return true;
+}
+
+function promptPresetsForItem(item) {
+  const prompt = String(item?.promptTemplate || item?.prompt || '');
+  const selections = promptPresetSelectionsForReuse(item, prompt);
+  return Object.entries(selections).flatMap(([category, entries]) => (
+    entries.map((entry) => Object.assign({ category }, entry))
+  ));
+}
+
+function promptPresetNames(presets) {
+  return (Array.isArray(presets) ? presets : []).map((preset) => {
+    const label = String(preset?.label || 'Visual preset').trim();
+    const category = String(preset?.categoryLabel || '').trim();
+    return category && category.toLowerCase() !== label.toLowerCase()
+      ? `${label} (${category})`
+      : label;
+  }).filter(Boolean);
+}
+
+function promptPresetGenerationInfoMarkup(presets) {
+  if (!Array.isArray(presets) || !presets.length) return '';
+  const cards = presets.map((preset) => {
+    const label = String(preset?.label || 'Visual preset').trim();
+    const category = String(preset?.categoryLabel || 'Mix Pack').trim();
+    const thumbnail = String(preset?.thumbnail || '').trim();
+    return `<span class="lightbox-preset-chip" data-preset-accent="${escapeHtml(preset?.accent || 'violet')}">
+      ${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="">` : '<i aria-hidden="true"></i>'}
+      <span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(category)}</small></span>
+    </span>`;
+  }).join('');
+  return `<div class="lightbox-preset-meta" role="group" aria-label="Mix Pack presets used">
+    <b>Mix Pack presets:</b><span class="lightbox-preset-list">${cards}</span>
+  </div>`;
 }
 
 function makePromptPresetToken(preset) {
@@ -756,6 +832,7 @@ function renderPromptComposer() {
   const composer = $('#promptComposer');
   if (!composer) return;
   const value = promptDraft();
+  reconcilePromptPresetSelectionsWithPrompt(value);
   const presets = state.userDefaults.visualPresets?.showCards === false
     ? []
     : activePromptPresetTokens().filter((preset) => value.includes(preset.value));
@@ -8704,6 +8781,7 @@ $('#promptComposer').addEventListener('click', (event) => {
 });
 $('#promptClear').addEventListener('click', () => {
   setPromptDraft('');
+  state.promptPresetSelections = { camera: [] };
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = '';
   updatePromptClear();
   renderPromptSuggestions();
@@ -17725,7 +17803,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality', 'krea2RefBoost',
-  'prompts', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs', 'promptSourceImage', 'promptAssistantUseSource',
+  'prompts', 'promptPresetSelections', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs', 'promptSourceImage', 'promptAssistantUseSource',
   'createRef', 'createImageGuideOpen', 'createGuideMode', 'createGuideActive', 'createMatchSource', 'createMatchNative',
   'createInfluence', 'createDepthStrength', 'createStyleStrength', 'createDepthPreview', 'createDepthPreviewShown', 'krea2Turbo', 'krea2RawTurboLora',
   'regions', 'activeRegionId', 'kreaMask', 'kreaMaskPreview', 'kreaMaskDirty', 'kreaMaskErase', 'kreaMaskTool', 'kreaMaskKind',
@@ -17909,6 +17987,7 @@ function resetActiveGenerationForm() {
     syncCameraMotionTool();
   } else {
     state.loras = [];
+    state.promptPresetSelections = { camera: [] };
     state.regions = [];
     state.activeRegionId = null;
     state.promptSourceImage = null;
@@ -21974,12 +22053,14 @@ function openLightbox(id, mediaSel, options = {}) {
     } else if (info.seed != null) meta.push(copyableMeta('Seed', info.seed));
   } else {
     const model = galleryImageModelLabel(it);
+    const usedPromptPresets = promptPresetsForItem(it);
     if (model) meta.push(`<b>Model:</b> ${escapeHtml(model)}`);
     if (it.editEngine === 'qwen') meta.push(`<b>Sampling:</b> ${it.qwenQuality === 'fast' || (it.qwenQuality == null && Number(it.steps) <= 4) ? 'Fast' : 'Quality'}`);
     if (it.editEngine === 'krea2ref' && Number.isFinite(Number(it.krea2RefBoost))) {
       meta.push(`<b>Reference fidelity:</b> ${Number(it.krea2RefBoost).toFixed(2)}`);
     }
     meta.push(copyableMeta('Prompt', it.prompt || ''));
+    if (usedPromptPresets.length) meta.push(promptPresetGenerationInfoMarkup(usedPromptPresets));
     if (it.negativePrompt) meta.push(copyableMeta('Negative prompt', it.negativePrompt));
     if (selComposite) meta.push(`<b>Composite:</b> ${escapeHtml(selComposite.label || 'Before + after')}`);
     else if (it.mode === 'composite' && it.compositeInfo) meta.push(`<b>Composite:</b> ${escapeHtml(it.compositeInfo.label || 'Saved composite')}`);
@@ -22007,6 +22088,12 @@ function openLightbox(id, mediaSel, options = {}) {
     }
   }
   $('#lbMeta').innerHTML = meta.join('<br>');
+  $$('#lbMeta .lightbox-preset-chip img').forEach((image) => {
+    image.addEventListener('error', () => {
+      image.hidden = true;
+      image.closest('.lightbox-preset-chip')?.classList.add('image-missing');
+    }, { once: true });
+  });
   $$('#lbMeta [data-copy-meta]').forEach((button) => button.addEventListener('click', async () => {
     const copy = metaCopyValues[Number(button.dataset.copyMeta)];
     if (!copy) return;
@@ -23515,6 +23602,8 @@ function documentationMetadata(item) {
   add('model', 'Model', galleryImageModelLabel(item));
   const prompt = documentationAnglePrompt(item) || item.refinedPrompt || item.prompt;
   add('prompt', 'Prompt', prompt);
+  const promptPresets = promptPresetsForItem(item);
+  if (promptPresets.length) add('promptPresets', 'Mix Pack presets', promptPresetNames(promptPresets).join(', '));
   add('negativePrompt', 'Negative prompt', item.negativePrompt);
   if (item.prompt && prompt && prompt !== item.prompt) add('originalPrompt', 'Original prompt', item.prompt);
   if (hasDocumentationValue(item.width) && hasDocumentationValue(item.height)) add('size', 'Size', `${item.width} × ${item.height}`);
@@ -28173,7 +28262,12 @@ async function loadPromptPacks(options = {}) {
     state.promptPacks = Array.isArray(result.packs) ? result.packs : [];
     state.promptPacksCanManage = result.canManage === true;
     state.promptPacksLoaded = true;
+    const restoredPresetCards = reconcilePromptPresetSelectionsWithPrompt();
     renderPromptPacks();
+    if (restoredPresetCards) {
+      renderPromptComposer();
+      saveForm();
+    }
     if ($('#cameraSheet')?.classList.contains('show')) renderCameraPicker();
   } catch (error) {
     state.promptPacksLoaded = false;
