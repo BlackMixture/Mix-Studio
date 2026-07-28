@@ -8858,6 +8858,36 @@ function focusPromptPresetCategory(id) {
   });
 }
 
+function syncPromptPresetCategoryOverflow() {
+  const rail = $('#promptPresetCategoryRail');
+  const nav = $('#promptPresetCategoryNav');
+  if (!rail || !nav) return;
+  const maxScroll = Math.max(0, nav.scrollWidth - nav.clientWidth);
+  const canScrollPrev = maxScroll > 2 && nav.scrollLeft > 4;
+  const canScrollNext = maxScroll > 2 && nav.scrollLeft < maxScroll - 4;
+  rail.classList.toggle('can-scroll-prev', canScrollPrev);
+  rail.classList.toggle('can-scroll-next', canScrollNext);
+  [
+    [$('#promptPresetCategoryPrev'), canScrollPrev],
+    [$('#promptPresetCategoryNext'), canScrollNext],
+  ].forEach(([button, available]) => {
+    if (!button) return;
+    button.disabled = !available;
+    button.tabIndex = available ? 0 : -1;
+    button.setAttribute('aria-hidden', String(!available));
+  });
+}
+
+function scrollPromptPresetCategories(direction) {
+  const nav = $('#promptPresetCategoryNav');
+  if (!nav) return;
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  nav.scrollBy({
+    left: direction * Math.max(120, Math.round(nav.clientWidth * .72)),
+    behavior: reduceMotion ? 'auto' : 'smooth',
+  });
+}
+
 function syncPromptPresetCategoryIndicator(options = {}) {
   const nav = $('#promptPresetCategoryNav');
   const indicator = nav?.querySelector('.preset-category-filter-indicator');
@@ -8876,6 +8906,7 @@ function syncPromptPresetCategoryIndicator(options = {}) {
     left: Math.max(0, centered),
     behavior: animate ? 'smooth' : 'auto',
   });
+  syncPromptPresetCategoryOverflow();
 }
 
 function setPromptPresetCategoryFilter(categoryId, options = {}) {
@@ -9008,8 +9039,11 @@ function renderCameraPicker() {
     });
     categoryNav.appendChild(tab);
   });
-  syncPromptPresetCategoryIndicator({ animate: false });
   $('#promptPresetCategorySelector').hidden = !!promptPresetSearchQuery || categories.length === 0;
+  requestAnimationFrame(() => {
+    syncPromptPresetCategoryIndicator({ animate: false });
+    syncPromptPresetCategoryOverflow();
+  });
   container.replaceChildren();
   if (promptPresetSearchQuery) {
     const entries = promptPresetSearchEntries(activePack ? [activePack] : [], promptPresetSearchQuery);
@@ -9194,7 +9228,13 @@ function applyPromptPresetSelection(categoryId, preset) {
 }
 
 $('#cameraPromptBtn').addEventListener('click', () => openCameraPicker());
-window.addEventListener('resize', syncPromptPresetPackNameOverflow);
+window.addEventListener('resize', () => {
+  syncPromptPresetPackNameOverflow();
+  syncPromptPresetCategoryOverflow();
+});
+$('#promptPresetCategoryNav').addEventListener('scroll', syncPromptPresetCategoryOverflow, { passive: true });
+$('#promptPresetCategoryPrev').addEventListener('click', () => scrollPromptPresetCategories(-1));
+$('#promptPresetCategoryNext').addEventListener('click', () => scrollPromptPresetCategories(1));
 $('#promptPresetPackBack').addEventListener('click', () => {
   promptPresetSearchQuery = '';
   promptPresetPackView = 'catalog';

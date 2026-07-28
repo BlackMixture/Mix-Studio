@@ -23,6 +23,8 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="promptPresetCategories"/);
   assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"/);
+  assert.match(indexHtml, /id="promptPresetCategoryPrev"[^>]*aria-label="Show previous category filters"/);
+  assert.match(indexHtml, /id="promptPresetCategoryNext"[^>]*aria-label="Show more category filters"/);
   assert.match(appJs, /promptPresetCatalog/);
   assert.match(appJs, /section\.dataset\.presetCategory = category\.id/);
   assert.match(appJs, /querySelector\('\.camera-preset-grid'\)/);
@@ -52,10 +54,14 @@ test('Mix Pack details filter an all-category section list from an accessible pi
   assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
   assert.match(appJs, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
   assert.match(appJs, /function syncPromptPresetCategoryIndicator/);
+  assert.match(appJs, /function syncPromptPresetCategoryOverflow/);
+  assert.match(appJs, /function scrollPromptPresetCategories/);
   assert.match(appJs, /function setPromptPresetCategoryFilter/);
   assert.match(appJs, /behavior: animate \? 'smooth' : 'auto'/);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*overflow-x:\s*auto/s);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*border-radius:\s*999px/s);
+  assert.match(styleCss, /\.preset-category-rail\.can-scroll-next \.preset-category-scroll-next/);
+  assert.match(styleCss, /\.preset-category-rail\.can-scroll-prev::before/);
   assert.match(styleCss, /\.preset-category-filter-indicator\.is-ready\s*{[^}]*transition:/s);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-picker-head/);
 });
