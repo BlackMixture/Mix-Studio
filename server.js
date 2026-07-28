@@ -806,7 +806,14 @@ function updateComfyStartState(patch) {
 
 async function getSetupHardwareInfo(force = false) {
   if (!force && setupHardwareSnapshot && Date.now() - setupHardwareAt < 5 * 60 * 1000) return setupHardwareSnapshot;
-  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA });
+  // ComfyUI reports the device it actually generates on (CUDA, ROCm, or MPS),
+  // which covers remote installs and vendors local probing misses.
+  let comfyStats = null;
+  try {
+    const response = await comfyFetch('/system_stats', { signal: AbortSignal.timeout(3000) });
+    comfyStats = await response.json();
+  } catch { /* offline ComfyUI still yields local hardware detection */ }
+  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA, comfyStats });
   setupHardwareAt = Date.now();
   return setupHardwareSnapshot;
 }
@@ -5602,7 +5609,7 @@ async function handleApi(req, res, url) {
   }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {
-      return json(res, 200, await hardwareInfo({ exportPath: settings.exportDir || DATA }));
+      return json(res, 200, await getSetupHardwareInfo(true));
     } catch (error) {
       return json(res, 500, { error: String(error.message || error) });
     }

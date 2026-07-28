@@ -32,6 +32,8 @@ test('Krea 2 recommends INT8 ConvRot below 16 GB VRAM and FP8 otherwise', () => 
   assert.equal(recommendedKrea2Variant({ vramGb: 16 }), 'fp8');
   assert.equal(recommendedKrea2Variant({ vramGb: 24 }), 'fp8');
   assert.equal(recommendedKrea2Variant({}), 'fp8');
+  assert.equal(recommendedKrea2Variant({ vramGb: 16, gpuVendor: 'amd' }), 'int8-convrot');
+  assert.equal(recommendedKrea2Variant({ vramGb: 24, gpuVendor: 'nvidia' }), 'fp8');
 });
 
 test('Krea 2 variant inference recognizes manually selected ConvRot files', () => {
