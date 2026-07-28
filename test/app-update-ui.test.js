@@ -42,7 +42,8 @@ test('the installed web interface uses the Mix Studio name and logo', () => {
   assert.match(css, /\.drawer-wordmark-crop \{[^}]*width: 154px/);
   assert.equal(manifest.name, 'Mix Studio');
   assert.equal(manifest.short_name, 'Mix Studio');
-  assert.equal(manifest.icons[0].src, '/mix-studio-logo.svg');
+  assert.equal(manifest.icons[0].src, '/app-icon-192.png');
+  assert.ok(manifest.icons.some((icon) => icon.src === '/icon.svg' && icon.type === 'image/svg+xml'));
   assert.match(html, /<img class="side-menu-mark side-menu-mark-logo" src="\/mix-studio-logo\.svg"/);
   const wordmark = fs.readFileSync(path.join(root, 'public', 'mix-studio-wordmark-white-on-black.svg'), 'utf8');
   assert.match(wordmark, /<svg[^>]+viewBox="0 0 1310\.81 203\.85"/);

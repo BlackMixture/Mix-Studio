@@ -78,7 +78,7 @@ test('phone access works without a PIN and offers PIN protection as an option', 
   assert.match(server, /pinProtected:\s*ownerHasPin/);
   assert.doesNotMatch(server, /tailscaleUrl:\s*ownerHasPin\s*\?/);
   assert.match(app, /const pinProtected = access\.pinProtected === true/);
-  assert.match(app, /const url = access\.tailscaleUrl \|\| access\.localUrl/);
+  assert.match(app, /const url = access\.secureUrl \|\| access\.tailscaleUrl \|\| access\.localUrl/);
   assert.match(app, /phoneAccessSecure[\s\S]{0,240}openProfileEdit\(\)/);
 });
 

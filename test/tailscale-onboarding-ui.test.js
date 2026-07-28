@@ -17,7 +17,7 @@ test('setup includes an optional, replayable phone access guide', () => {
   for (const id of [
     'phoneAccessCard', 'phoneAccessToggle', 'phoneAccessGuide', 'phoneAccessStatus',
     'phoneAccessUrl', 'phoneAccessCopy', 'phoneAccessShare', 'tailscaleInstallDesktop',
-    'tailscaleInstallPhone', 'phoneAccessOpen', 'phoneAccessAnimation', 'phoneAccessQr',
+    'tailscaleInstallPhone', 'phoneAccessOpen', 'phoneAccessAnimation', 'phoneAccessQr', 'phoneAccessHttps',
     'phoneAccessQrCode',
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, /href="https:\/\/tailscale\.com\/download"[^>]*target="_blank"/);
@@ -48,6 +48,9 @@ test('phone access status comes from the authenticated setup payload', () => {
   assert.match(server, /mobileAccess,/);
   assert.match(app, /setupViewStatus\?\.mobileAccess/);
   assert.match(app, /access\.tailscaleUrl\s*\|\|\s*access\.localUrl/);
+  assert.match(app, /access\.secureUrl\s*\|\|\s*access\.tailscaleUrl\s*\|\|\s*access\.localUrl/);
+  assert.match(app, /\/api\/mobile-access\/enable-https/);
+  assert.match(server, /enableTailscaleHttps\(PORT\)/);
 });
 
 test('the animated phone guide fits phones and honors reduced motion', () => {

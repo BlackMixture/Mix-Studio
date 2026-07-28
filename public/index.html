@@ -4,13 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#000000" />
+<meta name="application-name" content="Mix Studio" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Mix Studio" />
 <title>Mix Studio</title>
 <link rel="manifest" href="/manifest.webmanifest" />
-<link rel="icon" href="/mix-studio-logo.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="/mix-studio-logo.svg" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="icon" href="/app-icon-192.png" type="image/png" sizes="192x192" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -108,6 +111,13 @@
           </span>
           <span class="app-drawer-label">Full screen</span>
           <small>Hide browser controls</small>
+        </button>
+        <button class="app-drawer-action" id="installAppBtn" type="button" hidden aria-hidden="true">
+          <span class="app-drawer-action-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z"/></svg>
+          </span>
+          <span class="app-drawer-label">Install Mix Studio</span>
+          <small>Add to this device</small>
         </button>
         <button class="app-drawer-action" id="appUpdateBtn" type="button" disabled>
           <span class="app-drawer-action-icon" aria-hidden="true">
@@ -2278,12 +2288,13 @@
             </div>
             <div class="phone-access-url" id="phoneAccessUrl" hidden><code></code><button id="phoneAccessCopy" type="button">Copy address</button></div>
             <div class="phone-access-actions">
+              <button id="phoneAccessHttps" type="button" hidden>Enable phone app install</button>
               <button id="phoneAccessSecure" type="button" hidden>Add optional PIN</button>
               <a id="tailscaleInstallDesktop" href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Install Tailscale</a>
               <a id="tailscaleInstallPhone" href="https://tailscale.com/docs/install" target="_blank" rel="noopener noreferrer">Phone setup guide</a>
               <button id="phoneAccessShare" type="button" hidden>Share address</button>
             </div>
-            <small class="phone-access-security">Tailscale keeps access private to your tailnet. A profile PIN is optional and adds protection on shared networks or devices. Mix Studio does not use Tailscale Funnel.</small>
+            <small class="phone-access-security" id="phoneAccessSecurity">Tailscale keeps access private to your tailnet. A profile PIN is optional and adds protection on shared networks or devices. Mix Studio does not use Tailscale Funnel.</small>
           </div>
         </section>
       </section>
@@ -2981,6 +2992,7 @@
 <script src="/analytics.js"></script>
 <script src="/support-prompt.js"></script>
 <script src="/qrcodegen.js"></script>
+<script src="/pwa.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

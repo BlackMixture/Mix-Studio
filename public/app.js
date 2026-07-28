@@ -28869,9 +28869,12 @@ function renderPhoneAccessQr(url) {
 function renderPhoneAccess() {
   const access = setupViewStatus?.mobileAccess || {};
   const pinProtected = access.pinProtected === true;
-  const url = access.tailscaleUrl || access.localUrl || '';
-  const usingTailscale = !!access.tailscaleUrl && window.location.hostname === (() => {
-    try { return new URL(access.tailscaleUrl).hostname; } catch { return ''; }
+  const url = access.secureUrl || access.tailscaleUrl || access.localUrl || '';
+  const usingSecureTailscale = !!access.secureUrl && window.location.hostname === (() => {
+    try { return new URL(access.secureUrl).hostname; } catch { return ''; }
+  })();
+  const usingTailscale = !!(access.secureUrl || access.tailscaleUrl) && window.location.hostname === (() => {
+    try { return new URL(access.secureUrl || access.tailscaleUrl).hostname; } catch { return ''; }
   })();
   $('#phoneAccessUrl').hidden = !url;
   $('#phoneAccessUrl code').textContent = url;
@@ -28879,11 +28882,23 @@ function renderPhoneAccess() {
   $('#phoneAccessShare').dataset.url = url;
   $('#phoneAccessShare').hidden = !url || typeof navigator.share !== 'function';
   $('#phoneAccessSecure').hidden = pinProtected || !state.profileIsOwner;
+  const httpsButton = $('#phoneAccessHttps');
+  httpsButton.hidden = !state.profileIsOwner || !access.tailscaleDetected || !!access.secureUrl || access.httpsConflict;
+  httpsButton.disabled = access.httpsAvailable !== true;
+  httpsButton.textContent = access.httpsAvailable === true ? 'Enable phone app install' : 'Secure phone address unavailable';
   renderPhoneAccessQr(url);
-  if (usingTailscale) {
+  if (usingSecureTailscale) {
+    $('#phoneAccessStatus').textContent = 'Connected through installable Tailscale HTTPS';
+    $('#phoneAccessTitle').textContent = 'Mix Studio can be installed on this phone';
+    $('#phoneAccessDescription').textContent = `Open Chrome’s menu and choose Install app or Add to Home screen. ${pinProtected ? 'The Owner profile is PIN-protected.' : 'No profile PIN is set, so any device on your tailnet can select Owner.'}`;
+  } else if (access.secureUrl) {
+    $('#phoneAccessStatus').textContent = `Installable phone address ready · ${pinProtected ? 'PIN protected' : 'no profile PIN'}`;
+    $('#phoneAccessTitle').textContent = 'Your installable phone address is ready';
+    $('#phoneAccessDescription').textContent = `Scan the QR code, then use Chrome’s menu to install Mix Studio. ${pinProtected ? 'Enter the Owner PIN when prompted.' : 'A PIN is optional, but anyone on your tailnet can use Owner while it is unset.'}`;
+  } else if (usingTailscale) {
     $('#phoneAccessStatus').textContent = 'Connected privately through Tailscale';
     $('#phoneAccessTitle').textContent = 'This device is connected';
-    $('#phoneAccessDescription').textContent = `This browser is using the private Tailscale address. ${pinProtected ? 'The Owner profile is PIN-protected.' : 'No profile PIN is set, so any device on your tailnet can select Owner.'}`;
+    $('#phoneAccessDescription').textContent = `This browser is using the private Tailscale address. Enable the secure phone address before installing Mix Studio. ${pinProtected ? 'The Owner profile is PIN-protected.' : 'No profile PIN is set, so any device on your tailnet can select Owner.'}`;
   } else if (access.tailscaleDetected) {
     $('#phoneAccessStatus').textContent = `Tailscale detected · ${pinProtected ? 'PIN protected' : 'no profile PIN'}`;
     $('#phoneAccessTitle').textContent = 'Your private phone address is ready';
@@ -28897,8 +28912,16 @@ function renderPhoneAccess() {
     $('#phoneAccessTitle').textContent = 'Set up private phone access';
     $('#phoneAccessDescription').textContent = 'Install Tailscale on both devices and sign in to the same tailnet. Mix Studio will show the private address here after it detects the connection.';
   }
+  const security = $('#phoneAccessSecurity');
+  if (security) {
+    security.textContent = access.secureUrl
+      ? 'This private HTTPS address is available only inside your tailnet and lets supported browsers install Mix Studio. Mix Studio does not use Tailscale Funnel.'
+      : (access.httpsConflict
+        ? 'Tailscale Serve already forwards another local app, so Mix Studio did not replace it. Existing Tailscale access still works in the browser.'
+        : 'Browser installation requires a private HTTPS address. Enabling it uses Tailscale Serve inside your tailnet; it does not make Mix Studio public or use Tailscale Funnel.');
+  }
   if ($('#phoneAccessSettingsCopy')) $('#phoneAccessSettingsCopy').textContent = access.tailscaleDetected
-    ? `Private Tailscale address is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.`
+    ? `${access.secureUrl ? 'Installable private HTTPS address' : 'Private Tailscale address'} is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.`
     : (access.localUrl ? `Same-Wi-Fi access is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.` : 'Set up private phone access with Tailscale.');
   if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = access.tailscaleDetected || access.localUrl ? 'Ready' : 'Guide';
 }
@@ -29673,6 +29696,25 @@ $('#phoneAccessSecure').addEventListener('click', () => {
   closeGenerationSetup();
   openProfileEdit();
   requestAnimationFrame(() => $('#pePin').focus({ preventScroll: true }));
+});
+$('#phoneAccessHttps').addEventListener('click', async () => {
+  const button = $('#phoneAccessHttps');
+  button.disabled = true;
+  button.textContent = 'Enabling secure address…';
+  try {
+    const result = await api('/api/mobile-access/enable-https', { method: 'POST' });
+    if (setupViewStatus) setupViewStatus.mobileAccess = result.mobileAccess || setupViewStatus.mobileAccess;
+    renderPhoneAccess();
+    toast('Installable phone address is ready');
+  } catch (error) {
+    if (error?.details?.approvalUrl) {
+      window.open(error.details.approvalUrl, '_blank', 'noopener,noreferrer');
+      toast('Approve Tailscale HTTPS, then press the button again');
+    } else {
+      toast(error.message || 'Could not enable the installable phone address', true);
+    }
+    await refreshSetupStatus().catch(() => {});
+  }
 });
 $('#phoneAccessCopy').addEventListener('click', async () => {
   const url = $('#phoneAccessCopy').dataset.url;

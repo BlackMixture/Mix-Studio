@@ -472,6 +472,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 #updatesBtn.has-unread .app-drawer-action-icon { color: #b8ccff; background: rgba(66,133,244,.11); }
 #updatesBtn.has-unread #updatesDrawerStatus { color: #a9c1ff; }
 #updatesBtn[hidden] { display: none; }
+#installAppBtn[hidden] { display: none; }
 .app-drawer-action.busy svg { animation: updateSpin 900ms linear infinite; }
 @keyframes updateSpin { to { transform: rotate(360deg); } }
 html:fullscreen,
@@ -8429,9 +8430,11 @@ body.sheet-open {
 .phone-access-url[hidden] { display: none; }
 .phone-access-url code { min-width: 0; overflow: hidden; padding: 10px 11px; border: 1px solid rgba(85,213,138,.27); border-radius: 8px; background: rgba(85,213,138,.06); color: #a8e9c0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .phone-access-url button, .phone-access-actions a, .phone-access-actions button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: #050607; color: #d4dbe7; font-size: 9px; font-weight: 900; text-decoration: none; }
+.phone-access-actions [hidden] { display: none; }
 .phone-access-url button { border-color: rgba(85,213,138,.34); color: #a8e9c0; }
 .phone-access-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; }
-.phone-access-actions a:first-child { border-color: rgba(88,165,255,.42); color: #b8d8ff; }
+#phoneAccessHttps { border-color: rgba(85,213,138,.42); color: #a8e9c0; }
+#tailscaleInstallDesktop { border-color: rgba(88,165,255,.42); color: #b8d8ff; }
 .phone-access-security { grid-column: 1 / -1; color: #687287; font-size: 8px; line-height: 1.45; }
 .phone-access-entry { margin-top: 8px; }
 .setup-operation { margin: 14px 2px 0; padding: 12px 0; border: 0; border-block: 1px solid color-mix(in srgb, var(--setup-accent) 38%, transparent); border-radius: 0; background: transparent; }

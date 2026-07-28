@@ -191,7 +191,12 @@ const {
   mergeStrengthHuntGraphs,
 } = require('./lib/strength-hunt');
 const { streamStoredZip } = require('./lib/zip-stream');
-const { mobileAccessAddresses, mobileAccessSummary } = require('./lib/mobile-access');
+const {
+  enableTailscaleHttps,
+  mobileAccessAddresses,
+  mobileAccessSummary,
+  tailscaleHttpsStatus,
+} = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const {
   buildKrea2ModelLoader,
@@ -4982,11 +4987,34 @@ function setupDependencyComponentInfo(id, fit, krea2Core) {
   return component;
 }
 
+let mobileAccessStatusCache = null;
+let mobileAccessStatusExpiresAt = 0;
+
+async function currentMobileAccessStatus(force = false) {
+  if (!force && mobileAccessStatusCache && Date.now() < mobileAccessStatusExpiresAt) {
+    return mobileAccessStatusCache;
+  }
+  const discovered = mobileAccessSummary(os.networkInterfaces(), PORT);
+  const https = discovered.tailscaleDetected
+    ? await tailscaleHttpsStatus(PORT)
+    : { available: false, configured: false, secureUrl: '', reason: 'Tailscale is not connected.' };
+  mobileAccessStatusCache = Object.assign({}, discovered, {
+    secureUrl: https.secureUrl || '',
+    installableUrl: https.secureUrl || '',
+    httpsAvailable: https.available === true,
+    httpsConfigured: https.configured === true,
+    httpsConflict: https.conflict === true,
+    httpsReason: https.reason || '',
+  });
+  mobileAccessStatusExpiresAt = Date.now() + 15_000;
+  return mobileAccessStatusCache;
+}
+
 async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
   const launch = startStatus(RUNTIME);
   const ownerHasPin = !!db.profiles[0]?.pinHash;
-  const discoveredMobileAccess = mobileAccessSummary(os.networkInterfaces(), PORT);
+  const discoveredMobileAccess = await currentMobileAccessStatus(forceCompatibility);
   const mobileAccess = Object.assign({}, discoveredMobileAccess, {
     pinProtected: ownerHasPin,
     remoteAccessReady: !!(discoveredMobileAccess.tailscaleUrl || discoveredMobileAccess.localUrl),
@@ -5494,6 +5522,21 @@ async function handleApi(req, res, url) {
   }
   if (route === '/api/setup/status' && req.method === 'GET') {
     return json(res, 200, await setupStatusPayload(url.searchParams.has('refresh')));
+  }
+  if (route === '/api/mobile-access/enable-https' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure phone access' });
+    try {
+      await enableTailscaleHttps(PORT);
+      mobileAccessStatusCache = null;
+      mobileAccessStatusExpiresAt = 0;
+      return json(res, 200, { mobileAccess: await currentMobileAccessStatus(true) });
+    } catch (error) {
+      return json(res, error?.code === 'tailscale_serve_conflict' ? 409 : 400, {
+        error: String(error?.message || error || 'Could not enable secure phone access'),
+        code: error?.code || 'tailscale_https_failed',
+        approvalUrl: error?.approvalUrl || '',
+      });
+    }
   }
   if (route === '/api/setup/vram-profile' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can configure the generation computer' });
