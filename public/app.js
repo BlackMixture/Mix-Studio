@@ -25076,6 +25076,20 @@ async function emptyTrashFromSettings() {
 $('#previewCacheClear').addEventListener('click', clearPreviewCache);
 $('#trashEmpty').addEventListener('click', emptyTrashFromSettings);
 
+// SageAttention and Flash Attention builds target CUDA; on AMD (ROCm) and
+// Apple GPUs only PyTorch SDPA is valid, so the other choices are hidden.
+const svNvidiaOnlyAttention = new Set(['sageattn_2', 'sageattn_3', 'flash_attn_2', 'flash_attn_3']);
+
+function applySvAttnVendorFilter(vendor) {
+  const nonNvidia = !!vendor && vendor !== 'nvidia';
+  $$('#svAttnList [role="option"]').forEach((option) => {
+    const restricted = nonNvidia && svNvidiaOnlyAttention.has(option.dataset.attention);
+    option.hidden = restricted;
+    option.style.display = restricted ? 'none' : '';
+  });
+  if (nonNvidia && svNvidiaOnlyAttention.has($('#setSvAttn').value)) setSvAttnValue('sdpa');
+}
+
 function setSvAttnValue(value) {
   const next = svAttentionOptions[value] ? value : 'sdpa';
   const copy = svAttentionOptions[next];
@@ -28276,6 +28290,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setDit').value = s.seedvr2Dit;
     $('#setSvVae').value = s.seedvr2Vae;
     setSvAttnValue(s.seedvr2Attention || 'sdpa');
+    applySvAttnVendorFilter(s.gpuVendor || '');
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';

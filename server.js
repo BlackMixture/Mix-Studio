@@ -46,6 +46,7 @@ const { comfyResetRequests } = require('./lib/comfy-reset');
 const {
   assessQueueHealth,
   parseNvidiaSmiCsv,
+  parseRocmSmiUseJson,
 } = require('./lib/queue-health');
 const { classifyLora } = require('./lib/lora-compat');
 const { buildLoraContext } = require('./lib/lora-context');
@@ -439,6 +440,9 @@ function settingsResponse() {
   const response = Object.assign({}, settings, {
     hfTokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
     appRestartRequired: settingsRequireAppRestart(),
+    // From the cached hardware snapshot; GET /api/settings refreshes it first
+    // so vendor-gated controls (attention modes) can filter correctly.
+    gpuVendor: setupHardwareProfile(setupHardwareSnapshot || {}).gpuVendor || '',
   });
   delete response.hfToken;
   return response;
@@ -1109,8 +1113,16 @@ function readGpuStats() {
       ['--query-gpu=utilization.gpu,memory.used,memory.total,power.draw', '--format=csv,noheader,nounits'],
       { timeout: 4000 },
       (err, stdout) => {
-        if (err) return resolve(null);
-        resolve(parseNvidiaSmiCsv(stdout));
+        if (!err) return resolve(parseNvidiaSmiCsv(stdout));
+        execFile(
+          'rocm-smi',
+          ['--showuse', '--showmeminfo', 'vram', '--json'],
+          { timeout: 4000 },
+          (rocmErr, rocmStdout) => {
+            if (rocmErr) return resolve(null);
+            resolve(parseRocmSmiUseJson(rocmStdout));
+          }
+        );
       }
     );
   });
@@ -5496,6 +5508,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/settings' && req.method === 'GET') {
+    await getSetupHardwareInfo().catch(() => null);
     return json(res, 200, settingsResponse());
   }
   if (route === '/api/setup/status' && req.method === 'GET') {
