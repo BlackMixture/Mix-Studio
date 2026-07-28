@@ -38,6 +38,8 @@ test('Advanced Settings exposes a responsive owner-managed add-ons installer', (
   assert.match(appJs, /Only the owner|owner profile|promptPacksCanManage/);
   assert.match(appJs, /inspectPromptPackFiles\(event\.dataTransfer\?\.files\)/);
   assert.match(appJs, /MAX_PENDING_PROMPT_PACKS = 5/);
+  assert.match(appJs, /MAX_PROMPT_PACK_FILE_BYTES = 64 \* 1024 \* 1024/);
+  assert.match(appJs, /Preset packs must be \$\{MAX_PROMPT_PACK_FILE_BYTES \/ \(1024 \* 1024\)\} MB or smaller/);
   assert.match(appJs, /installAllInspectedPromptPacks/);
   assert.match(appJs, /addonFileInput'\)\.value = ''/);
   assert.match(appJs, /install\.disabled = promptPackBusy/);

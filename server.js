@@ -5271,7 +5271,7 @@ async function handleApi(req, res, url) {
     } catch (error) {
       if (String(error?.message || '') === 'Body too large') {
         error.code = 'prompt_pack_too_large';
-        error.message = 'Prompt pack exceeds the 32 MB limit';
+        error.message = `Prompt pack exceeds the ${MAX_PROMPT_PACK_BYTES / (1024 * 1024)} MB limit`;
       }
       return promptPackErrorResponse(res, error);
     }

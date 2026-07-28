@@ -27676,6 +27676,7 @@ document.addEventListener('scroll', () => {
 renderGuidedTourSetting();
 
 const MAX_PENDING_PROMPT_PACKS = 5;
+const MAX_PROMPT_PACK_FILE_BYTES = 64 * 1024 * 1024;
 let promptPackInspections = [];
 let promptPackBusy = false;
 let promptPackInstallingId = '';
@@ -27877,7 +27878,9 @@ function renderPromptPackInspection(result) {
 
 function promptPackFileIssue(file) {
   if (!file || !/\.mixpack$/i.test(file.name || '')) return 'Choose a .mixpack preset pack';
-  if (file.size > 32 * 1024 * 1024) return 'Preset packs must be 32 MB or smaller';
+  if (file.size > MAX_PROMPT_PACK_FILE_BYTES) {
+    return `Preset packs must be ${MAX_PROMPT_PACK_FILE_BYTES / (1024 * 1024)} MB or smaller`;
+  }
   return '';
 }
 

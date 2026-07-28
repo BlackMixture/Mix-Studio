@@ -8,6 +8,10 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
+  MAX_PROMPT_PACK_ASSET_BYTES,
+  MAX_PROMPT_PACK_BYTES,
+  MAX_PROMPT_PACK_PRESETS,
+  MAX_PROMPT_PACK_THUMBNAIL_BYTES,
   PROMPT_PACK_FORMAT,
   comparePackVersions,
   inspectPromptPackBuffer,
@@ -62,6 +66,25 @@ test('prompt packs validate a bounded declarative style pack and generate safe a
   assert.match(inspected.manifest.fingerprint, /^[a-f0-9]{64}$/);
 });
 
+test('prompt pack limits support 200-preset atlases and their larger thumbnail budget', () => {
+  assert.equal(MAX_PROMPT_PACK_PRESETS, 200);
+  assert.equal(MAX_PROMPT_PACK_BYTES, 64 * 1024 * 1024);
+  assert.equal(MAX_PROMPT_PACK_ASSET_BYTES, 48 * 1024 * 1024);
+  assert.equal(MAX_PROMPT_PACK_THUMBNAIL_BYTES, 1024 * 1024);
+
+  const maximum = pack();
+  maximum.categories[0].presets = Array.from({ length: MAX_PROMPT_PACK_PRESETS }, (_, index) => ({
+    id: `style-${index}`,
+    label: `Style ${index}`,
+    promptText: `style ${index}`,
+    thumbnail: { mime: 'image/jpeg', data: thumbnail.toString('base64') },
+  }));
+  const inspected = inspectPromptPackBuffer(encoded(maximum));
+  assert.equal(inspected.presetCount, 200);
+  assert.ok(inspected.assetBytes > 24 * 1024 * 1024);
+  assert.ok(inspected.bytes > 32 * 1024 * 1024);
+});
+
 test('prompt packs reject code-oriented types, unsafe IDs, unsupported images, and excess presets', () => {
   assert.throws(
     () => inspectPromptPackBuffer(encoded(pack({ type: 'javascript' }))),
@@ -78,13 +101,13 @@ test('prompt packs reject code-oriented types, unsafe IDs, unsupported images, a
   };
   assert.throws(() => inspectPromptPackBuffer(encoded(svg)), /JPEG, PNG, or WebP/);
   const oversized = pack();
-  oversized.categories[0].presets = Array.from({ length: 101 }, (_, index) => ({
+  oversized.categories[0].presets = Array.from({ length: 201 }, (_, index) => ({
     id: `style-${index}`,
     label: `Style ${index}`,
     promptText: `style ${index}`,
     thumbnail: { mime: 'image/jpeg', data: thumbnail.toString('base64') },
   }));
-  assert.throws(() => inspectPromptPackBuffer(encoded(oversized)), /100-preset limit/);
+  assert.throws(() => inspectPromptPackBuffer(encoded(oversized)), /200-preset limit/);
 });
 
 test('prompt pack semantic versions compare updates and downgrades', () => {
