@@ -23,8 +23,9 @@ test('prompt tools expose the camera settings picker', () => {
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="promptPresetCategories"/);
   assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"/);
-  assert.match(indexHtml, /id="promptPresetCategoryPrev"[^>]*aria-label="Show previous category filters"/);
-  assert.match(indexHtml, /id="promptPresetCategoryNext"[^>]*aria-label="Show more category filters"/);
+  assert.match(indexHtml, /id="promptPresetCategoryRail"[^>]*role="navigation"[^>]*aria-label="Mix Pack sections"/);
+  assert.match(indexHtml, /id="promptPresetCategoryPrev"[^>]*aria-label="Show previous Mix Pack sections"/);
+  assert.match(indexHtml, /id="promptPresetCategoryNext"[^>]*aria-label="Show more Mix Pack sections"/);
   assert.match(appJs, /promptPresetCatalog/);
   assert.match(appJs, /section\.dataset\.presetCategory = category\.id/);
   assert.match(appJs, /querySelector\('\.camera-preset-grid'\)/);
@@ -46,17 +47,26 @@ test('camera sheet uses visual presets instead of individual camera controls', (
   assert.match(appJs, /setAttribute\('aria-checked'/);
 });
 
-test('Mix Pack details filter an all-category section list from an accessible pill rail', () => {
+test('Mix Pack category rail navigates a continuous section list and follows manual scrolling', () => {
+  assert.match(indexHtml, /<span class="preset-category-selector-label">Sections<\/span>/);
   assert.match(appJs, /activePromptPresetCategoryId/);
   assert.match(appJs, /\{ id: 'all', label: 'All' \}/);
-  assert.match(appJs, /tab\.setAttribute\('aria-pressed'/);
-  assert.match(appJs, /activePromptPresetCategoryId !== 'all'/);
+  assert.match(appJs, /tab\.setAttribute\('aria-current', 'location'\)/);
   assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
+  assert.doesNotMatch(appJs, /section\.hidden = activePromptPresetCategoryId/);
   assert.match(appJs, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
   assert.match(appJs, /function syncPromptPresetCategoryIndicator/);
   assert.match(appJs, /function syncPromptPresetCategoryOverflow/);
   assert.match(appJs, /function scrollPromptPresetCategories/);
-  assert.match(appJs, /function setPromptPresetCategoryFilter/);
+  assert.match(appJs, /function activatePromptPresetCategory/);
+  assert.match(appJs, /function navigatePromptPresetCategory/);
+  assert.match(appJs, /function syncPromptPresetCategoryFromScroll/);
+  assert.match(appJs, /function schedulePromptPresetCategoryScrollSync/);
+  assert.match(appJs, /promptPresetCategoryNavigationTarget/);
+  assert.match(appJs, /function cancelPromptPresetCategoryNavigation/);
+  assert.match(appJs, /promptPresetCategories'\)\.addEventListener\('scroll', schedulePromptPresetCategoryScrollSync/);
+  assert.match(appJs, /promptPresetCategories'\)\.addEventListener\('pointerdown', cancelPromptPresetCategoryNavigation/);
+  assert.match(appJs, /list\.scrollTo\(\{[\s\S]*behavior: options\.animate === false \|\| reduceMotion \? 'auto' : 'smooth'/);
   assert.match(appJs, /behavior: animate \? 'smooth' : 'auto'/);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*overflow-x:\s*auto/s);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*border-radius:\s*999px/s);

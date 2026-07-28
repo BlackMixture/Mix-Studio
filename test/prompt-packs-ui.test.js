@@ -122,14 +122,18 @@ test('Mix Pack details search the selected pack from one responsive field', () =
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-search/);
 });
 
-test('Mix Pack detail categories default to All and behave as pill filters', () => {
-  assert.match(indexHtml, /preset-category-selector-label">Filter</);
-  assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"[^>]*aria-label="Filter presets by category"/);
+test('Mix Pack detail categories use scroll-aware section navigation', () => {
+  assert.match(indexHtml, /preset-category-selector-label">Sections</);
+  assert.match(indexHtml, /id="promptPresetCategoryRail"[^>]*role="navigation"[^>]*aria-label="Mix Pack sections"/);
+  assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"[^>]*aria-label="Navigate Mix Pack sections"/);
   assert.match(appJs, /let activePromptPresetCategoryId = 'all'/);
   assert.match(appJs, /const categoryFilters = \[\s*\{ id: 'all', label: 'All' \}/);
-  assert.match(appJs, /tab\.setAttribute\('aria-pressed', String\(active\)\)/);
-  assert.match(appJs, /section\.hidden = activePromptPresetCategoryId !== 'all'/);
+  assert.match(appJs, /tab\.setAttribute\('aria-current', 'location'\)/);
+  assert.doesNotMatch(appJs, /section\.hidden = activePromptPresetCategoryId/);
   assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
+  assert.match(appJs, /function navigatePromptPresetCategory/);
+  assert.match(appJs, /function syncPromptPresetCategoryFromScroll/);
+  assert.match(appJs, /promptPresetCategories'\)\.addEventListener\('scroll', schedulePromptPresetCategoryScrollSync/);
   assert.match(styleCss, /\.preset-category-tab\s*{[^}]*border-radius:\s*999px/s);
   assert.match(appJs, /categoryIndicator\.className = 'preset-category-filter-indicator'/);
   assert.match(appJs, /indicator\.style\.transform = `translateX\(\$\{active\.offsetLeft\}px\)`/);

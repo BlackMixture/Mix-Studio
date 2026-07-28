@@ -8716,6 +8716,9 @@ let activePromptPresetPackId = 'mix-studio-camera';
 let activePromptPresetCategoryId = 'all';
 let promptPresetSearchQuery = '';
 let promptPresetPackView = 'catalog';
+let promptPresetCategoryScrollFrame = 0;
+let promptPresetCategoryNavigationTarget = '';
+let promptPresetCategoryNavigationTimer = 0;
 
 function promptPresetPackSelection(pack) {
   const activeCategorySelection = selectedPromptPresets(activePromptPresetCategoryId)
@@ -8909,25 +8912,95 @@ function syncPromptPresetCategoryIndicator(options = {}) {
   syncPromptPresetCategoryOverflow();
 }
 
-function setPromptPresetCategoryFilter(categoryId, options = {}) {
+function activatePromptPresetCategory(categoryId, options = {}) {
   const nextId = String(categoryId || 'all');
-  const sections = $$('#promptPresetCategories .preset-category');
-  const valid = nextId === 'all'
-    || sections.some((section) => section.dataset.presetCategory === nextId);
+  const valid = nextId === 'all' || $$('#promptPresetCategoryNav [data-preset-category-tab]')
+    .some((button) => button.dataset.presetCategoryTab === nextId);
   activePromptPresetCategoryId = valid ? nextId : 'all';
   $$('#promptPresetCategoryNav [data-preset-category-tab]').forEach((button) => {
     const active = button.dataset.presetCategoryTab === activePromptPresetCategoryId;
     button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', String(active));
+    if (active) button.setAttribute('aria-current', 'location');
+    else button.removeAttribute('aria-current');
   });
-  sections.forEach((section) => {
-    section.hidden = activePromptPresetCategoryId !== 'all'
-      && section.dataset.presetCategory !== activePromptPresetCategoryId;
-  });
-  const list = $('#promptPresetCategories');
-  if (list && options.resetScroll !== false) list.scrollTop = 0;
   syncPromptPresetCategoryIndicator({ animate: options.animate !== false });
   if (options.focus) focusPromptPresetCategory(activePromptPresetCategoryId);
+}
+
+function cancelPromptPresetCategoryNavigation() {
+  promptPresetCategoryNavigationTarget = '';
+  clearTimeout(promptPresetCategoryNavigationTimer);
+  promptPresetCategoryNavigationTimer = 0;
+}
+
+function navigatePromptPresetCategory(categoryId, options = {}) {
+  const list = $('#promptPresetCategories');
+  if (!list) return;
+  const nextId = String(categoryId || 'all');
+  const target = nextId === 'all'
+    ? null
+    : $$('#promptPresetCategories .preset-category')
+      .find((section) => section.dataset.presetCategory === nextId);
+  activatePromptPresetCategory(target ? nextId : 'all', options);
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const top = target
+    ? list.scrollTop + target.getBoundingClientRect().top - list.getBoundingClientRect().top
+    : 0;
+  cancelPromptPresetCategoryNavigation();
+  if (options.animate !== false && !reduceMotion) {
+    promptPresetCategoryNavigationTarget = target ? nextId : 'all';
+    promptPresetCategoryNavigationTimer = window.setTimeout(() => {
+      cancelPromptPresetCategoryNavigation();
+      schedulePromptPresetCategoryScrollSync();
+    }, 700);
+  }
+  list.scrollTo({
+    top: Math.max(0, top),
+    behavior: options.animate === false || reduceMotion ? 'auto' : 'smooth',
+  });
+}
+
+function syncPromptPresetCategoryFromScroll(options = {}) {
+  const list = $('#promptPresetCategories');
+  const sections = $$('#promptPresetCategories .preset-category');
+  if (!list || !sections.length || promptPresetSearchQuery) return;
+  if (promptPresetCategoryNavigationTarget) {
+    const target = promptPresetCategoryNavigationTarget === 'all'
+      ? null
+      : sections.find((section) => (
+        section.dataset.presetCategory === promptPresetCategoryNavigationTarget
+      ));
+    const reached = target
+      ? Math.abs(target.getBoundingClientRect().top - list.getBoundingClientRect().top) <= 10
+        || (target === sections.at(-1)
+          && list.scrollTop + list.clientHeight >= list.scrollHeight - 4)
+      : list.scrollTop <= 8;
+    if (!reached) return;
+    cancelPromptPresetCategoryNavigation();
+  }
+  let nextId = 'all';
+  if (list.scrollTop > 8) {
+    const atEnd = list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
+    if (atEnd) {
+      nextId = sections.at(-1).dataset.presetCategory;
+    } else {
+      const threshold = list.getBoundingClientRect().top + Math.min(96, list.clientHeight * .22);
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top > threshold) break;
+        nextId = section.dataset.presetCategory;
+      }
+    }
+  }
+  if (nextId === activePromptPresetCategoryId && options.force !== true) return;
+  activatePromptPresetCategory(nextId, { animate: options.animate !== false });
+}
+
+function schedulePromptPresetCategoryScrollSync() {
+  cancelAnimationFrame(promptPresetCategoryScrollFrame);
+  promptPresetCategoryScrollFrame = requestAnimationFrame(() => {
+    promptPresetCategoryScrollFrame = 0;
+    syncPromptPresetCategoryFromScroll();
+  });
 }
 
 function renderCameraPicker() {
@@ -8939,10 +9012,18 @@ function renderCameraPicker() {
   }
   const activePack = packs.find((pack) => pack.id === activePromptPresetPackId);
   const categories = activePack?.categories || [];
+  const previousCategoryPackId = container.dataset.promptPresetPack || '';
+  const hadCategoryContent = !!container.querySelector('.preset-category');
+  const previousCategoryScrollTop = hadCategoryContent ? container.scrollTop : 0;
+  if (previousCategoryPackId && previousCategoryPackId !== activePack?.id) {
+    cancelPromptPresetCategoryNavigation();
+  }
   if (activePromptPresetCategoryId !== 'all'
     && !categories.some((category) => category.id === activePromptPresetCategoryId)) {
     activePromptPresetCategoryId = 'all';
   }
+  const requestedCategoryId = activePromptPresetCategoryId;
+  container.dataset.promptPresetPack = activePack?.id || '';
   const browser = $('#promptPresetPackBrowser');
   const detail = $('#promptPresetPackDetail');
   browser.hidden = promptPresetPackView !== 'catalog';
@@ -9021,13 +9102,15 @@ function renderCameraPicker() {
     tab.className = 'preset-category-tab' + (active ? ' active' : '');
     tab.dataset.presetCategoryTab = filter.id;
     tab.dataset.applied = String(applied);
-    tab.setAttribute('aria-pressed', String(active));
-    tab.setAttribute('aria-controls', 'promptPresetCategories');
+    if (active) tab.setAttribute('aria-current', 'location');
+    tab.setAttribute('aria-controls', filter.id === 'all'
+      ? 'promptPresetCategories'
+      : `promptPresetPanel-${filter.id}`);
     tab.setAttribute('aria-label', `${filter.label}${applied ? ', includes an applied preset' : ''}`);
     tab.innerHTML = `<span>${escapeHtml(filter.label)}</span>`;
     tab.addEventListener('click', () => {
       promptPresetSearchQuery = '';
-      setPromptPresetCategoryFilter(filter.id, { focus: true });
+      navigatePromptPresetCategory(filter.id, { focus: true });
     });
     tab.addEventListener('keydown', (event) => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -9035,15 +9118,11 @@ function renderCameraPicker() {
       const next = event.key === 'Home' ? 0
         : event.key === 'End' ? categoryFilters.length - 1
           : (index + (event.key === 'ArrowRight' ? 1 : -1) + categoryFilters.length) % categoryFilters.length;
-      setPromptPresetCategoryFilter(categoryFilters[next].id, { focus: true });
+      navigatePromptPresetCategory(categoryFilters[next].id, { focus: true });
     });
     categoryNav.appendChild(tab);
   });
   $('#promptPresetCategorySelector').hidden = !!promptPresetSearchQuery || categories.length === 0;
-  requestAnimationFrame(() => {
-    syncPromptPresetCategoryIndicator({ animate: false });
-    syncPromptPresetCategoryOverflow();
-  });
   container.replaceChildren();
   if (promptPresetSearchQuery) {
     const entries = promptPresetSearchEntries(activePack ? [activePack] : [], promptPresetSearchQuery);
@@ -9088,8 +9167,6 @@ function renderCameraPicker() {
       section.className = 'preset-category';
       section.dataset.presetCategory = category.id;
       section.id = `promptPresetPanel-${category.id}`;
-      section.hidden = activePromptPresetCategoryId !== 'all'
-        && category.id !== activePromptPresetCategoryId;
       section.setAttribute('role', 'region');
       const headingId = `promptPresetCategory-${category.id}`;
       section.setAttribute('aria-labelledby', headingId);
@@ -9114,6 +9191,20 @@ function renderCameraPicker() {
     }
   }
   renderPromptPresetSummary();
+  requestAnimationFrame(() => {
+    syncPromptPresetCategoryOverflow();
+    if (promptPresetSearchQuery) return;
+    const canRestoreScroll = previousCategoryPackId === activePack?.id && hadCategoryContent;
+    if (canRestoreScroll) {
+      container.scrollTop = previousCategoryScrollTop;
+      syncPromptPresetCategoryFromScroll({ force: true, animate: false });
+    } else if (requestedCategoryId !== 'all') {
+      navigatePromptPresetCategory(requestedCategoryId, { animate: false });
+    } else {
+      container.scrollTop = 0;
+      activatePromptPresetCategory('all', { animate: false });
+    }
+  });
 }
 
 function createPromptPresetCard(preset, category, options = {}) {
@@ -9233,6 +9324,10 @@ window.addEventListener('resize', () => {
   syncPromptPresetCategoryOverflow();
 });
 $('#promptPresetCategoryNav').addEventListener('scroll', syncPromptPresetCategoryOverflow, { passive: true });
+$('#promptPresetCategories').addEventListener('scroll', schedulePromptPresetCategoryScrollSync, { passive: true });
+$('#promptPresetCategories').addEventListener('pointerdown', cancelPromptPresetCategoryNavigation, { passive: true });
+$('#promptPresetCategories').addEventListener('touchstart', cancelPromptPresetCategoryNavigation, { passive: true });
+$('#promptPresetCategories').addEventListener('wheel', cancelPromptPresetCategoryNavigation, { passive: true });
 $('#promptPresetCategoryPrev').addEventListener('click', () => scrollPromptPresetCategories(-1));
 $('#promptPresetCategoryNext').addEventListener('click', () => scrollPromptPresetCategories(1));
 $('#promptPresetPackBack').addEventListener('click', () => {
