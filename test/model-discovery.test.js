@@ -64,14 +64,15 @@ test('combines ComfyUI registry discovery with existing model roots', async () =
   assert.deepEqual(result.configFiles, ['/comfy/extra_model_paths.yaml']);
 });
 
-test('manual model folder remains the preferred destination after discovery', async () => {
+test('manual model folder remains the preferred destination and a searchable root after discovery', async () => {
   const result = await discoverModels({
     comfyUrl: '',
     comfyPath: 'C:\\ComfyUI',
     modelsPath: 'E:\\Shared Models',
     pathApi: path.win32,
     env: {},
-    fsApi: { existsSync: () => false, readFileSync: () => '' },
+    fsApi: { existsSync: (file) => file === 'E:\\Shared Models', readFileSync: () => '' },
   });
   assert.equal(result.preferredModelsPath, 'E:\\Shared Models');
+  assert.deepEqual(result.modelRoots, ['E:\\Shared Models']);
 });

@@ -25,6 +25,7 @@ const {
   objectInfoComboChoices,
 } = require('./lib/comfy-compatibility');
 const { COMPONENTS: DEPENDENCY_COMPONENTS, NODE_PACKS: DEPENDENCY_NODE_PACKS, availableComponents, installComponents } = require('./lib/dependency-installer');
+const { discoverModels } = require('./installer/model-discovery');
 const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
 const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
 const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
@@ -5983,7 +5984,20 @@ async function handleApi(req, res, url) {
       return json(res, 409, { error: String(error.message || error) });
     }
     let availableModelNames = [];
-    try { availableModelNames = [...registeredModelNames(await getObjectInfo())]; } catch { /* ComfyUI may be stopped during installation. */ }
+    try {
+      availableModelNames = [...registeredModelNames(
+        await getObjectInfo(true, { signal: AbortSignal.timeout(4000) }),
+      )];
+    } catch { /* ComfyUI may be stopped during installation. */ }
+    let availableModelRoots = [RUNTIME.comfy.modelsPath].filter(Boolean);
+    try {
+      const discovery = await discoverModels({
+        comfyUrl: '',
+        comfyPath: RUNTIME.comfy.path,
+        modelsPath: RUNTIME.comfy.modelsPath,
+      });
+      availableModelRoots = [...new Set([...availableModelRoots, ...discovery.modelRoots])];
+    } catch { /* The primary configured model root remains available. */ }
     const installController = new AbortController();
     dependencyInstallController = installController;
     dependencyInstallRunning = true;
@@ -6002,6 +6016,7 @@ async function handleApi(req, res, url) {
             repair,
             signal: installController.signal,
             availableModelNames,
+            availableModelRoots,
             modelVariants,
             hfToken: settings.hfToken,
           },

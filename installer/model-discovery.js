@@ -173,6 +173,9 @@ async function discoverModels(options = {}) {
   const manualModelsPath = String(options.modelsPath || '').trim();
   const roots = new Set();
   const configFiles = [];
+  if (manualModelsPath && fsApi.existsSync(manualModelsPath)) {
+    roots.add(pathApi.normalize(manualModelsPath));
+  }
   if (comfyPath) {
     const standardRoot = pathApi.join(comfyPath, 'models');
     if (fsApi.existsSync(standardRoot)) roots.add(pathApi.normalize(standardRoot));

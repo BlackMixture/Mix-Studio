@@ -21,6 +21,7 @@ const {
   downloadAsset,
   ensureDownloadDiskSpace,
   ensureUv,
+  findExistingModelByBasename,
   filterProtectedRuntimeRequirements,
   huggingFaceAccessUrl,
   installComponents,
@@ -82,6 +83,11 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.ok(MODEL_ASSETS.wan.filter((asset) => /Unet$/.test(asset[0]))
     .every((asset) => /Comfy-Org\/Wan_2\.2_ComfyUI_Repackaged/.test(asset[2])));
   assert.match(MODEL_ASSETS.eros.find((asset) => asset[0] === 'erosTextEncoder')[2], /gemma_3_12B_it_heretic_fp8_e4m3fn/);
+  const scailLora = MODEL_ASSETS.scail.find((asset) => asset[0] === 'scailLora');
+  assert.match(scailLora[2], /lightx2v\/Wan2\.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/);
+  assert.match(scailLora[2], /Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64\.safetensors/);
+  assert.equal(scailLora[4].length, 1);
+  assert.match(scailLora[4][0], /lightx2v\/Wan2\.1-I2V-14B-720P-StepDistill-CfgDistill-Lightx2v/);
   assert.deepEqual(COMPONENTS.ltxcamera.nodes, ['ltxvideo', 'vhs']);
   assert.deepEqual(COMPONENTS.ltxdirector.nodes, ['whatdreamscost', 'ltxvideo', 'kjnodes', 'vhs']);
   assert.equal(COMPONENTS.video.nodes.includes('whatdreamscost'), false);
@@ -601,6 +607,41 @@ test('registered ComfyUI models are reused even when they live outside the confi
   }
 });
 
+test('manual models in a different subfolder are reused while ComfyUI is offline', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-manual-model-'));
+  const filename = 'Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors';
+  const existing = path.join(rootDir, 'loras', 'Downloaded', filename);
+  let fetched = false;
+  try {
+    fs.mkdirSync(path.dirname(existing), { recursive: true });
+    fs.writeFileSync(existing, safetensorsFixture());
+    const discovered = await findExistingModelByBasename(
+      [rootDir],
+      'loras',
+      path.join('Wan2.1', filename),
+    );
+    assert.equal(discovered, existing);
+
+    const result = await downloadAsset(
+      ['scailLora', 'loras', `https://example.test/${filename}`],
+      rootDir,
+      { scailLora: path.join('Wan2.1', filename) },
+      () => {},
+      {
+        availableModelNames: [],
+        availableModelRoots: [rootDir],
+        fetch: async () => { fetched = true; throw new Error('should not fetch'); },
+      },
+    );
+    assert.equal(result.skipped, true);
+    assert.equal(result.discovered, true);
+    assert.equal(result.destination, existing);
+    assert.equal(fetched, false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('a missing manually configured GGUF is never filled with safetensors bytes', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-gguf-format-'));
   let fetched = false;
@@ -748,6 +789,9 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /\.\.\.EMPTY_DEPENDENCY_FAILURE/);
   assert.match(server, /broadcast\('dependencyInstall'/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
+  assert.match(server, /getObjectInfo\(true, \{ signal: AbortSignal\.timeout\(4000\) \}\)/);
+  assert.match(server, /const discovery = await discoverModels\(/);
+  assert.match(server, /availableModelRoots,/);
   assert.match(server, /const socketStale = socketOpen && Date\.now\(\) - lastWsMessageAt > 15_000/);
   assert.match(server, /needsTextReconciliation[\s\S]*\['enhance', 'motionPrompt', 'smartMask'\]/);
   assert.match(server, /comfyFetch\(`\/history\/\$\{pid\}`\)/);
