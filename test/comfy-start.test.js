@@ -249,3 +249,26 @@ test('comfyui-desktop-2 installs are detected from settings.json and stay app-ma
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('Linux Desktop apps are found through their XDG desktop entry launch command', () => {
+  const { findComfyDesktopApp } = require('../lib/comfy-restart');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-xdg-'));
+  const apps = path.join(temp, '.local', 'share', 'applications');
+  const wrapper = path.join(temp, 'comfyui-amd.sh');
+  fs.mkdirSync(apps, { recursive: true });
+  fs.writeFileSync(wrapper, '#!/bin/sh\n');
+  fs.writeFileSync(path.join(apps, 'comfy.desktop'), [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=Comfy Desktop',
+    `Exec=${wrapper} --no-sandbox %U`,
+    'StartupWMClass=comfyui-desktop-2',
+  ].join('\n'));
+  try {
+    const found = findComfyDesktopApp({ platform: 'linux', env: {}, home: temp, fsImpl: fs });
+    assert.equal(found, `${wrapper} --no-sandbox`);
+    assert.equal(findComfyDesktopApp({ platform: 'linux', env: {}, home: path.join(temp, 'none'), fsImpl: fs }), '');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
