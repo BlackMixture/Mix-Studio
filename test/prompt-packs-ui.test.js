@@ -53,6 +53,17 @@ test('Mix Pack importing remains in the reviewed Add-ons flow instead of the pic
   assert.match(appJs, /inspectPromptPackFiles\(files\)/);
 });
 
+test('Mix Pack management clearly upgrades newer versions and permanently deletes removed packs', () => {
+  assert.match(appJs, /data-addon-remove="\$\{escapeHtml\(pack\.id\)\}">Delete</);
+  assert.match(appJs, /title: `Permanently delete \$\{pack\.name\}\?`/);
+  assert.match(appJs, /This cannot be undone/);
+  assert.match(appJs, /result\.operation === 'updated'/);
+  assert.match(serverJs, /versionChange: current/);
+  assert.match(serverJs, /operation: current \? 'updated' : 'installed'/);
+  assert.match(serverJs, /deleted: true,[\s\S]*recoverable: false/);
+  assert.doesNotMatch(appJs, /files move to recoverable trash/);
+});
+
 test('prompt pack routes stage review, require owner writes, and whitelist served assets', () => {
   assert.match(serverJs, /route === '\/api\/addons\/inspect'/);
   assert.match(serverJs, /readBody\(req, MAX_PROMPT_PACK_BYTES\)/);
@@ -118,7 +129,10 @@ test('Mix Pack detail categories default to All and behave as pill filters', () 
   assert.match(appJs, /section\.hidden = activePromptPresetCategoryId !== 'all'/);
   assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
   assert.match(styleCss, /\.preset-category-tab\s*{[^}]*border-radius:\s*999px/s);
-  assert.match(styleCss, /\.preset-category-tab\.active\s*{[^}]*background:\s*#1b2030/s);
+  assert.match(appJs, /categoryIndicator\.className = 'preset-category-filter-indicator'/);
+  assert.match(appJs, /indicator\.style\.transform = `translateX\(\$\{active\.offsetLeft\}px\)`/);
+  assert.match(styleCss, /\.preset-category-filter-indicator\s*{[^}]*background:\s*#1b2030/s);
+  assert.match(styleCss, /\.preset-category-tab\.active\s*{[^}]*background:\s*transparent/s);
   assert.match(styleCss, /\.preset-category:not\(\[hidden\]\) ~ \.preset-category:not\(\[hidden\]\)/);
 });
 

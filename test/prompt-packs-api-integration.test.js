@@ -12,14 +12,14 @@ const test = require('node:test');
 const root = path.join(__dirname, '..');
 const thumbnail = fs.readFileSync(path.join(root, 'public', 'assets', 'camera-presets', 'cinematic-arri.jpg'));
 
-function testPackBuffer() {
+function testPackBuffer(version = '1.0.0') {
   return Buffer.from(JSON.stringify({
     format: 'mix-studio.prompt-preset-pack',
     formatVersion: 1,
     type: 'prompt-presets',
     id: 'api-style-pack',
     name: 'API Style Pack',
-    version: '1.0.0',
+    version,
     author: 'Mix Studio',
     description: 'End-to-end fixture',
     categories: [{
@@ -83,7 +83,7 @@ async function jsonRequest(base, route, options = {}) {
   return { response, body };
 }
 
-test('owner can review, install, serve, disable, and recoverably remove a prompt pack', async (t) => {
+test('owner can review, install, upgrade, serve, disable, and permanently delete a prompt pack', async (t) => {
   const dataDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'mixstudio-addon-api-'));
   let port;
   try {
@@ -139,7 +139,25 @@ test('owner can review, install, serve, disable, and recoverably remove a prompt
     body: JSON.stringify({ inspectionId: inspected.body.inspectionId }),
   });
   assert.equal(installed.response.status, 200);
+  assert.equal(installed.body.operation, 'installed');
   assert.match(installed.body.pack.categories[0].presets[0].thumbnail, /\/api\/addons\/api-style-pack\/assets\//);
+
+  const upgradeReview = await jsonRequest(base, '/api/addons/inspect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': 'api-style-pack-1.1.0.mixpack' },
+    body: testPackBuffer('1.1.0'),
+  });
+  assert.equal(upgradeReview.response.status, 200);
+  assert.equal(upgradeReview.body.versionChange, 'upgrade');
+  const upgraded = await jsonRequest(base, '/api/addons/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inspectionId: upgradeReview.body.inspectionId }),
+  });
+  assert.equal(upgraded.response.status, 200);
+  assert.equal(upgraded.body.operation, 'updated');
+  assert.equal(upgraded.body.previousVersion, '1.0.0');
+  assert.equal(upgraded.body.pack.version, '1.1.0');
 
   const assetResponse = await fetch(`${base}${installed.body.pack.categories[0].presets[0].thumbnail}`);
   assert.equal(assetResponse.status, 200);
@@ -156,6 +174,8 @@ test('owner can review, install, serve, disable, and recoverably remove a prompt
 
   const removed = await jsonRequest(base, '/api/addons/api-style-pack', { method: 'DELETE' });
   assert.equal(removed.response.status, 200);
-  assert.equal(removed.body.recoverable, true);
-  assert.ok((await fsp.readdir(path.join(dataDirectory, 'trash', 'addons', 'prompt-packs'))).length);
+  assert.equal(removed.body.deleted, true);
+  assert.equal(removed.body.recoverable, false);
+  await assert.rejects(fsp.access(path.join(dataDirectory, 'addons', 'prompt-packs', 'api-style-pack')));
+  await assert.rejects(fsp.access(path.join(dataDirectory, 'trash', 'addons', 'prompt-packs')));
 });

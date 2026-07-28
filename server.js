@@ -248,6 +248,7 @@ const {
 } = require('./lib/profiles');
 const {
   MAX_PROMPT_PACK_BYTES,
+  comparePackVersions,
   inspectPromptPackBuffer,
   installPromptPack,
   listInstalledPromptPacks,
@@ -270,7 +271,6 @@ const VIDEOS = path.join(DATA, 'videos');
 const INPUTS = path.join(DATA, 'inputs');
 const TRASH_ROOT = path.join(DATA, 'trash');
 const PROMPT_PACKS = path.join(DATA, 'addons', 'prompt-packs');
-const PROMPT_PACK_TRASH = path.join(TRASH_ROOT, 'addons', 'prompt-packs');
 const PORT = Number(process.env.PORT || 3300);
 
 fs.mkdirSync(IMAGES, { recursive: true });
@@ -5260,6 +5260,13 @@ async function handleApi(req, res, url) {
         inspectionId,
         ...promptPackInspectionSummary(inspected),
         current,
+        versionChange: current
+          ? (comparePackVersions(inspected.manifest.version, current.version) > 0
+            ? 'upgrade'
+            : comparePackVersions(inspected.manifest.version, current.version) < 0
+              ? 'downgrade'
+              : 'same')
+          : 'new',
       });
     } catch (error) {
       if (String(error?.message || '') === 'Body too large') {
@@ -5290,17 +5297,25 @@ async function handleApi(req, res, url) {
         error.code = 'prompt_pack_inspection_expired';
         throw error;
       }
-      const pack = await serializePromptPackMutation(() => installPromptPack(
-        PROMPT_PACKS,
-        PROMPT_PACK_TRASH,
-        staged.inspected,
-        {
+      const installed = await serializePromptPackMutation(async () => {
+        const current = await readInstalledPromptPack(PROMPT_PACKS, staged.inspected.manifest.id);
+        const pack = await installPromptPack(PROMPT_PACKS, staged.inspected, {
           replace: body.replace === true,
           allowDowngrade: body.allowDowngrade === true,
-        },
-      ));
+        });
+        return {
+          pack,
+          operation: current ? 'updated' : 'installed',
+          previousVersion: current?.version || '',
+        };
+      });
       promptPackInspections.delete(String(body.inspectionId || ''));
-      return json(res, 200, { ok: true, pack: publicPromptPack(pack, '/api/addons') });
+      return json(res, 200, {
+        ok: true,
+        operation: installed.operation,
+        previousVersion: installed.previousVersion,
+        pack: publicPromptPack(installed.pack, '/api/addons'),
+      });
     } catch (error) {
       return promptPackErrorResponse(res, error);
     }
@@ -5328,13 +5343,13 @@ async function handleApi(req, res, url) {
     try {
       const removed = await serializePromptPackMutation(() => removePromptPack(
         PROMPT_PACKS,
-        PROMPT_PACK_TRASH,
         promptPackRoute[1],
       ));
       return json(res, 200, {
         ok: true,
         removed: { id: removed.pack.id, name: removed.pack.name, version: removed.pack.version },
-        recoverable: true,
+        deleted: true,
+        recoverable: false,
       });
     } catch (error) {
       return promptPackErrorResponse(res, error);

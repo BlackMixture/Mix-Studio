@@ -51,8 +51,12 @@ test('Mix Pack details filter an all-category section list from an accessible pi
   assert.match(appJs, /activePromptPresetCategoryId !== 'all'/);
   assert.match(appJs, /section\.setAttribute\('role', 'region'\)/);
   assert.match(appJs, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
+  assert.match(appJs, /function syncPromptPresetCategoryIndicator/);
+  assert.match(appJs, /function setPromptPresetCategoryFilter/);
+  assert.match(appJs, /behavior: animate \? 'smooth' : 'auto'/);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*overflow-x:\s*auto/s);
   assert.match(styleCss, /\.preset-category-tabs\s*{[^}]*border-radius:\s*999px/s);
+  assert.match(styleCss, /\.preset-category-filter-indicator\.is-ready\s*{[^}]*transition:/s);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.preset-picker-head/);
 });
 

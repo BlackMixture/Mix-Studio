@@ -94,53 +94,52 @@ test('prompt pack semantic versions compare updates and downgrades', () => {
   assert.equal(comparePackVersions('1.0.0', '1.0.0-beta.1'), 1);
 });
 
-test('prompt packs install atomically, preserve their enabled state across updates, and serve public asset URLs', async (t) => {
+test('newer prompt packs update atomically, preserve enabled state, and do not retain the old version', async (t) => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mix-packs-'));
-  const trash = path.join(root, '.trash');
   t.after(() => fsp.rm(root, { recursive: true, force: true }));
   const first = inspectPromptPackBuffer(encoded());
-  const installed = await installPromptPack(root, trash, first, { now: 100 });
+  const installed = await installPromptPack(root, first, { now: 100 });
   assert.equal(installed.version, '1.0.0');
   assert.equal((await listInstalledPromptPacks(root)).length, 1);
   await setPromptPackEnabled(root, installed.id, false);
 
   const updateSource = pack({ version: '1.1.0' });
-  const updated = await installPromptPack(root, trash, inspectPromptPackBuffer(encoded(updateSource)), {
-    replace: true,
-    now: 200,
-  });
+  const updated = await installPromptPack(root, inspectPromptPackBuffer(encoded(updateSource)), { now: 200 });
   assert.equal(updated.enabled, false);
   assert.equal(updated.installedAt, 100);
   assert.equal(updated.updatedAt, 200);
-  assert.equal((await fsp.readdir(trash)).length, 1);
+  assert.deepEqual(
+    (await fsp.readdir(root)).filter((entry) => entry.startsWith('.update-backup-')),
+    [],
+  );
   const publicPack = publicPromptPack(updated, '/api/addons');
   assert.match(publicPack.categories[0].presets[0].thumbnail, /^\/api\/addons\/black-mixture-styles\/assets\/style-neo-noir\.jpg\?v=[a-f0-9]+$/);
 });
 
-test('prompt pack replacement needs confirmation and downgrades need a separate confirmation', async (t) => {
+test('same-version replacement needs confirmation while newer versions upgrade automatically', async (t) => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mix-packs-'));
-  const trash = path.join(root, '.trash');
   t.after(() => fsp.rm(root, { recursive: true, force: true }));
-  await installPromptPack(root, trash, inspectPromptPackBuffer(encoded(pack({ version: '2.0.0' }))));
+  await installPromptPack(root, inspectPromptPackBuffer(encoded(pack({ version: '2.0.0' }))));
+  const upgraded = await installPromptPack(root, inspectPromptPackBuffer(encoded(pack({ version: '2.1.0' }))));
+  assert.equal(upgraded.version, '2.1.0');
   await assert.rejects(
-    installPromptPack(root, trash, inspectPromptPackBuffer(encoded(pack({ version: '2.1.0' })))),
+    installPromptPack(root, inspectPromptPackBuffer(encoded(pack({ version: '2.1.0' })))),
     (error) => error.code === 'prompt_pack_exists'
   );
   await assert.rejects(
-    installPromptPack(root, trash, inspectPromptPackBuffer(encoded(pack({ version: '1.0.0' }))), { replace: true }),
+    installPromptPack(root, inspectPromptPackBuffer(encoded(pack({ version: '1.0.0' }))), { replace: true }),
     (error) => error.code === 'prompt_pack_downgrade'
   );
 });
 
-test('removing a prompt pack moves it into recoverable trash', async (t) => {
+test('removing a prompt pack permanently deletes its directory', async (t) => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mix-packs-'));
-  const trash = path.join(root, '.trash');
   t.after(() => fsp.rm(root, { recursive: true, force: true }));
   const inspected = inspectPromptPackBuffer(encoded());
-  await installPromptPack(root, trash, inspected);
-  const removed = await removePromptPack(root, trash, inspected.manifest.id, 500);
+  await installPromptPack(root, inspected);
+  const removed = await removePromptPack(root, inspected.manifest.id);
   assert.equal(removed.pack.id, inspected.manifest.id);
+  assert.equal(removed.deleted, true);
   assert.equal(await readInstalledPromptPack(root, inspected.manifest.id), null);
-  assert.match(path.basename(removed.trashPath), /^500_black-mixture-styles_1\.0\.0_[a-f0-9]{8}$/);
-  assert.ok(fs.existsSync(path.join(removed.trashPath, 'manifest.json')));
+  assert.equal(fs.existsSync(path.join(root, inspected.manifest.id)), false);
 });

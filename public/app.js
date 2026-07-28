@@ -8858,6 +8858,47 @@ function focusPromptPresetCategory(id) {
   });
 }
 
+function syncPromptPresetCategoryIndicator(options = {}) {
+  const nav = $('#promptPresetCategoryNav');
+  const indicator = nav?.querySelector('.preset-category-filter-indicator');
+  const active = nav?.querySelector('[data-preset-category-tab].active');
+  if (!nav || !indicator || !active) return;
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const animate = options.animate !== false && !reduceMotion;
+  indicator.style.width = `${active.offsetWidth}px`;
+  indicator.style.transform = `translateX(${active.offsetLeft}px)`;
+  if (!indicator.classList.contains('is-ready')) {
+    indicator.getBoundingClientRect();
+    indicator.classList.add('is-ready');
+  }
+  const centered = active.offsetLeft - ((nav.clientWidth - active.offsetWidth) / 2);
+  nav.scrollTo({
+    left: Math.max(0, centered),
+    behavior: animate ? 'smooth' : 'auto',
+  });
+}
+
+function setPromptPresetCategoryFilter(categoryId, options = {}) {
+  const nextId = String(categoryId || 'all');
+  const sections = $$('#promptPresetCategories .preset-category');
+  const valid = nextId === 'all'
+    || sections.some((section) => section.dataset.presetCategory === nextId);
+  activePromptPresetCategoryId = valid ? nextId : 'all';
+  $$('#promptPresetCategoryNav [data-preset-category-tab]').forEach((button) => {
+    const active = button.dataset.presetCategoryTab === activePromptPresetCategoryId;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  sections.forEach((section) => {
+    section.hidden = activePromptPresetCategoryId !== 'all'
+      && section.dataset.presetCategory !== activePromptPresetCategoryId;
+  });
+  const list = $('#promptPresetCategories');
+  if (list && options.resetScroll !== false) list.scrollTop = 0;
+  syncPromptPresetCategoryIndicator({ animate: options.animate !== false });
+  if (options.focus) focusPromptPresetCategory(activePromptPresetCategoryId);
+}
+
 function renderCameraPicker() {
   const container = $('#promptPresetCategories');
   if (!container || !CameraSettings) return;
@@ -8930,7 +8971,10 @@ function renderCameraPicker() {
   $('#promptPresetPackDescription').textContent = activePack?.description
     || `${activePack?.categories?.length || 0} categor${activePack?.categories?.length === 1 ? 'y' : 'ies'}`;
   const categoryNav = $('#promptPresetCategoryNav');
-  categoryNav.replaceChildren();
+  const categoryIndicator = document.createElement('span');
+  categoryIndicator.className = 'preset-category-filter-indicator';
+  categoryIndicator.setAttribute('aria-hidden', 'true');
+  categoryNav.replaceChildren(categoryIndicator);
   const categoryFilters = [
     { id: 'all', label: 'All' },
     ...categories.map((category) => ({ id: category.id, label: category.label, category })),
@@ -8952,10 +8996,7 @@ function renderCameraPicker() {
     tab.innerHTML = `<span>${escapeHtml(filter.label)}</span>`;
     tab.addEventListener('click', () => {
       promptPresetSearchQuery = '';
-      activePromptPresetCategoryId = filter.id;
-      renderCameraPicker();
-      $('#promptPresetCategories').scrollTop = 0;
-      focusPromptPresetCategory(activePromptPresetCategoryId);
+      setPromptPresetCategoryFilter(filter.id, { focus: true });
     });
     tab.addEventListener('keydown', (event) => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -8963,13 +9004,11 @@ function renderCameraPicker() {
       const next = event.key === 'Home' ? 0
         : event.key === 'End' ? categoryFilters.length - 1
           : (index + (event.key === 'ArrowRight' ? 1 : -1) + categoryFilters.length) % categoryFilters.length;
-      activePromptPresetCategoryId = categoryFilters[next].id;
-      renderCameraPicker();
-      $('#promptPresetCategories').scrollTop = 0;
-      focusPromptPresetCategory(activePromptPresetCategoryId);
+      setPromptPresetCategoryFilter(categoryFilters[next].id, { focus: true });
     });
     categoryNav.appendChild(tab);
   });
+  syncPromptPresetCategoryIndicator({ animate: false });
   $('#promptPresetCategorySelector').hidden = !!promptPresetSearchQuery || categories.length === 0;
   container.replaceChildren();
   if (promptPresetSearchQuery) {
@@ -27713,7 +27752,7 @@ function renderAddonPackCard(pack) {
       <div class="addon-pack-actions">
         ${builtIn ? '<span class="addon-pack-label">Always available</span>' : `
           <button class="addon-pack-toggle" type="button" role="switch" aria-checked="${enabled}" data-addon-toggle="${escapeHtml(pack.id)}">${enabled ? 'Enabled' : 'Disabled'}</button>
-          <button class="addon-pack-remove" type="button" data-addon-remove="${escapeHtml(pack.id)}">Remove</button>
+          <button class="addon-pack-remove" type="button" data-addon-remove="${escapeHtml(pack.id)}">Delete</button>
         `}
       </div>
     </article>`;
@@ -27918,7 +27957,7 @@ async function requestPromptPackInstallation(inspection, allowDowngrade = false)
     if (error.code === 'prompt_pack_downgrade' && !allowDowngrade) {
       const approved = await askConfirm({
         title: `Install an older version of ${inspection.pack?.name || 'this pack'}?`,
-        message: 'This replaces a newer installed pack. The current version will move to recoverable trash.',
+        message: 'This replaces the newer installed version. The replacement cannot be undone from Mix Studio.',
         confirmLabel: 'Install older version',
         danger: true,
       });
@@ -27952,7 +27991,9 @@ async function installInspectedPromptPack(inspectionId) {
     if (!result) return;
     acceptInstalledPromptPack(inspection, result);
     await refreshPromptPacksAfterInstall();
-    toast(`${result.pack?.name || inspection.pack?.name || 'Preset pack'} installed`);
+    toast(result.operation === 'updated'
+      ? `${result.pack?.name || inspection.pack?.name || 'Preset pack'} updated to ${result.pack?.version || inspection.pack?.version}`
+      : `${result.pack?.name || inspection.pack?.name || 'Preset pack'} installed`);
   } finally {
     promptPackBusy = false;
     promptPackInstallingId = '';
@@ -28029,9 +28070,9 @@ async function removePromptPackFromUi(id) {
   const pack = state.promptPacks.find((entry) => entry.id === id);
   if (!pack) return;
   const approved = await askConfirm({
-    title: `Remove ${pack.name}?`,
-    message: 'The pack will disappear from Visual Presets. Existing prompt text stays unchanged, and the files move to recoverable trash.',
-    confirmLabel: 'Remove pack',
+    title: `Permanently delete ${pack.name}?`,
+    message: 'The pack and its thumbnails will be deleted from this computer. Existing prompt text stays unchanged. This cannot be undone.',
+    confirmLabel: 'Delete pack',
     danger: true,
   });
   if (!approved) return;
@@ -28042,9 +28083,9 @@ async function removePromptPackFromUi(id) {
     state.promptPacksLoaded = false;
     await loadPromptPacks({ force: true });
     renderCameraPicker();
-    toast(`${pack.name} removed`);
+    toast(`${pack.name} deleted`);
   } catch (error) {
-    toast(error.message || 'Could not remove the preset pack');
+    toast(error.message || 'Could not delete the preset pack');
   } finally {
     promptPackBusy = false;
   }
