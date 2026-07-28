@@ -16,7 +16,7 @@ const { execFile, spawn } = require('child_process');
 const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
-const { sam3InstallStatus } = require('./lib/sam3-installer');
+const { sam3InstallStatus, desktopSharedModelsDir } = require('./lib/sam3-installer');
 const {
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
@@ -453,7 +453,8 @@ function seedVr2ModelDirs() {
     process.env.KREASTUDIO_SEEDVR2_DIR,
     process.env.COMFYUI_SEEDVR2_DIR,
   ];
-  const modelRoot = process.env.COMFYUI_MODEL_ROOT || RUNTIME.comfy.modelsPath;
+  const modelRoot = process.env.COMFYUI_MODEL_ROOT || RUNTIME.comfy.modelsPath
+    || desktopSharedModelsDir(RUNTIME.comfy.path, process.env);
   if (modelRoot) {
     roots.push(path.join(modelRoot, 'SEEDVR2'), path.join(modelRoot, 'seedvr2'));
   }
@@ -1033,7 +1034,11 @@ async function discoverLocalComfy(options = {}) {
 function adoptComfyEndpoint(url) {
   const detected = sam3InstallStatus(RUNTIME);
   const comfyPath = RUNTIME.comfy.path || detected.basePath || '';
-  const modelsPath = RUNTIME.comfy.modelsPath || (comfyPath ? path.join(comfyPath, 'models') : '');
+  // A Desktop-managed installation can declare a shared models directory
+  // (its download target); honor it before assuming <base>/models.
+  const modelsPath = RUNTIME.comfy.modelsPath
+    || desktopSharedModelsDir(comfyPath, process.env)
+    || (comfyPath ? path.join(comfyPath, 'models') : '');
   applySetupConnection({ url, path: comfyPath, modelsPath });
   objectInfoCache = null;
   objectInfoAt = 0;
@@ -5057,7 +5062,9 @@ async function setupStatusPayload(forceCompatibility = false) {
       configuredPath: RUNTIME.comfy.path || '',
       detectedPath: detected.basePath || '',
       partialPath: detected.partialPath || '',
-      modelsPath: RUNTIME.comfy.modelsPath || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
+      modelsPath: RUNTIME.comfy.modelsPath
+        || desktopSharedModelsDir(detected.basePath, process.env)
+        || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
       pythonReady: !!detected.pythonPath,
       canInstallDependencies: detected.canInstall,
       dependencyReason: detected.reason || '',

@@ -272,3 +272,30 @@ test('Linux Desktop apps are found through their XDG desktop entry launch comman
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('Desktop shared-models directories become the preferred download target', () => {
+  const { comfyDesktop2Installations, desktopSharedModelsDir } = require('../lib/sam3-installer');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-shared-models-'));
+  const appData = path.join(temp, 'app-data');
+  const installDir = path.join(temp, 'installs');
+  const base = path.join(installDir, 'ComfyUI', 'ComfyUI');
+  const nasModels = path.join(temp, 'nas-models');
+  fs.mkdirSync(path.join(appData, 'comfyui-desktop-2'), { recursive: true });
+  fs.mkdirSync(base, { recursive: true });
+  fs.mkdirSync(nasModels, { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(path.join(appData, 'comfyui-desktop-2', 'settings.json'), JSON.stringify({
+    installDir,
+    modelsDirs: [path.join(temp, 'missing-nas'), nasModels],
+  }));
+  const env = { APPDATA: appData };
+  try {
+    const records = comfyDesktop2Installations(env, fs);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].modelsDir, nasModels, 'unreachable dirs are skipped, reachable one adopted');
+    assert.equal(desktopSharedModelsDir(base, env, fs), nasModels);
+    assert.equal(desktopSharedModelsDir(path.join(temp, 'elsewhere'), env, fs), '');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
