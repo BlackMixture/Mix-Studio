@@ -148,6 +148,9 @@ test('camera dialog uses dark surfaces consistent with the app chrome', () => {
 test('camera preset grid adapts from three desktop columns to two mobile columns', () => {
   assert.match(styleCss, /\.camera-preset-grid\s*{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.camera-preset-grid\s*{[^}]*repeat\(2,/);
+  assert.match(styleCss, /\.camera-preset-image\s*{[^}]*aspect-ratio:\s*1\s*\/\s*1/s);
+  assert.match(styleCss, /\.camera-preset-image img\s*{[^}]*object-fit:\s*contain/s);
+  assert.doesNotMatch(styleCss, /\.camera-preset-card:hover img\s*{[^}]*transform:\s*scale/s);
 });
 
 test('every camera preset thumbnail is packaged with the app', () => {
