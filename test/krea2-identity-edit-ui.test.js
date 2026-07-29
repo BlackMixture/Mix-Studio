@@ -37,6 +37,8 @@ test('Identity Edit and Remix are separate engines with their intended input lim
   assert.match(app, /role\.textContent = idx === 0 \? 'Source \/ scene' : 'Subject'/);
   assert.match(server, /if \(p\.editEngine === 'krea2ref'\) return buildEditKrea2Identity\(p, refNames\)/);
   assert.match(server, /if \(p\.editEngine === 'krea2remix'\) return buildEditKrea2Remix\(p, refNames\)/);
+  assert.match(server, /const rebalanceInputs = \{[\s\S]*refocus_strength: 0\.8,[\s\S]*guidance_strength: 0\.5,[\s\S]*enable_split: true,[\s\S]*steering: 1,[\s\S]*layer_multiplier: 1,[\s\S]*enable_step: true,/);
+  assert.match(server, /Conditioning-Rebalance renamed these controls[\s\S]*filterInputs\(\) retains only the fields supported/);
 });
 
 test('Krea 2 Edit applies a configurable sampling preset without warning on its automatic LoRA', () => {

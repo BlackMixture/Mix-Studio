@@ -138,6 +138,8 @@ test('regional text-to-image graph uses Krea2 regional node and Ideogram prompt 
   assert.equal(graph.prompt_builder.class_type, 'Ideogram4PromptBuilderKJ');
   assert.equal(graph.prompt_builder.inputs.import_mode, 'when empty');
   assert.equal(graph.prompt_builder.inputs.output_format, 'compact');
+  assert.equal(graph.prompt_builder.inputs.coord_mode, 'normalized');
+  assert.equal(graph.prompt_builder.inputs.bbox_order, 'yx');
   assert.deepEqual(graph.regional.inputs.bboxes, ['prompt_builder', 2]);
   assert.equal(graph.regional.class_type, 'Krea2RegionalMultiLoRAV3');
   assert.equal(graph.regional.inputs.split_mode, 'bbox');
@@ -215,6 +217,9 @@ test('Krea2 inpaint can condition directly on the surrounding source image', () 
   assert.equal(graph.pos.inputs.refocus_strength, 0.8);
   assert.equal(graph.pos.inputs.guidance_strength, 0.5);
   assert.equal(graph.pos.inputs.enable_split, true);
+  assert.equal(graph.pos.inputs.steering, 1);
+  assert.equal(graph.pos.inputs.layer_multiplier, 1);
+  assert.equal(graph.pos.inputs.enable_step, true);
   assert.deepEqual(graph.composite.inputs.destination, ['source', 0]);
   assert.deepEqual(graph.composite.inputs.mask, ['grow_mask', 0]);
 });

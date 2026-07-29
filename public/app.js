@@ -1081,6 +1081,7 @@ function openAppDialog(options = {}) {
     if (inputOptions.min != null) input.min = String(inputOptions.min); else input.removeAttribute('min');
     if (inputOptions.max != null) input.max = String(inputOptions.max); else input.removeAttribute('max');
     if (inputOptions.step != null) input.step = String(inputOptions.step); else input.removeAttribute('step');
+    if (inputOptions.inputMode) input.inputMode = String(inputOptions.inputMode); else input.removeAttribute('inputmode');
     input.autocomplete = inputOptions.autocomplete || 'off';
   }
 
@@ -10975,7 +10976,10 @@ function wireLoraCard(card, l, idx, arr) {
         const v = await askText({
           title: 'LoRA strength',
           confirmLabel: 'Set strength',
-          input: { label: 'Strength · 0 to 2', value: l.strength, type: 'number' },
+          input: {
+            label: 'Strength · 0 to 2', value: l.strength, type: 'number',
+            min: 0, max: 2, step: 0.05, inputMode: 'decimal',
+          },
         });
         if (v == null) return;
         l.strength = Math.max(0, Math.min(2, Number(v) || 0));

@@ -772,6 +772,11 @@ let dependencyInstallState = {
   failedSettingKey: null,
   statusCode: null,
   resumableBytes: 0,
+  failedNode: null,
+  nodePath: null,
+  actualRepo: null,
+  expectedRepo: null,
+  nodeFailures: [],
   updatedAt: Date.now(),
 };
 
@@ -782,6 +787,11 @@ const EMPTY_DEPENDENCY_FAILURE = Object.freeze({
   failedSettingKey: null,
   statusCode: null,
   resumableBytes: 0,
+  failedNode: null,
+  nodePath: null,
+  actualRepo: null,
+  expectedRepo: null,
+  nodeFailures: [],
 });
 
 function dependencyFailureState(error) {
@@ -792,6 +802,11 @@ function dependencyFailureState(error) {
     failedSettingKey: error?.settingKey || null,
     statusCode: Number.isFinite(error?.statusCode) ? error.statusCode : null,
     resumableBytes: Math.max(0, Number(error?.resumableBytes || 0)),
+    failedNode: error?.failedNode || null,
+    nodePath: error?.nodePath || null,
+    actualRepo: error?.actualRepo || null,
+    expectedRepo: error?.expectedRepo || null,
+    nodeFailures: Array.isArray(error?.nodeFailures) ? error.nodeFailures : [],
   };
 }
 
@@ -2997,9 +3012,14 @@ async function buildEditKrea2Remix(p, refNames) {
   const rebalanceInputs = {
     text: p.prompt,
     clip: ['clip', 0],
+    // Conditioning-Rebalance renamed these controls. Keep both schemas here;
+    // filterInputs() retains only the fields supported by the installed node.
     refocus_strength: 0.8,
     guidance_strength: 0.5,
     enable_split: true,
+    steering: 1,
+    layer_multiplier: 1,
+    enable_step: true,
   };
   refNames.slice(0, 4).forEach((name, i) => {
     const k = i + 1;
@@ -6073,7 +6093,26 @@ async function handleApi(req, res, url) {
           saveJsonSync(SETTINGS_FILE, settings);
         }
         objectInfoCache = null;
-        updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null, ...EMPTY_DEPENDENCY_FAILURE });
+        if (result.failures?.length) {
+          const firstFailure = result.failures[0];
+          updateDependencyInstallState({
+            ...EMPTY_DEPENDENCY_FAILURE,
+            state: 'error',
+            phase: 'partial-complete',
+            message: `Installed compatible dependencies; ${result.failures.length} node pack${result.failures.length === 1 ? '' : 's'} need attention.`,
+            restartRequired: result.restartRequired,
+            environmentSnapshot: result.environmentSnapshot || null,
+            error: result.failures.map((failure) => failure.message).join('\n'),
+            errorCode: firstFailure.code,
+            failedNode: firstFailure.failedNode || null,
+            nodePath: firstFailure.nodePath || null,
+            actualRepo: firstFailure.actualRepo || null,
+            expectedRepo: firstFailure.expectedRepo || null,
+            nodeFailures: result.failures,
+          });
+        } else {
+          updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null, ...EMPTY_DEPENDENCY_FAILURE });
+        }
       } catch (error) {
         if (installController.signal.aborted || error?.code === 'dependency_cancelled' || error?.name === 'AbortError') {
           updateDependencyInstallState({ state: 'cancelled', phase: 'cancelled', message: 'Dependency installation cancelled. Finished files were kept; partial downloads were removed.', error: null, ...EMPTY_DEPENDENCY_FAILURE });

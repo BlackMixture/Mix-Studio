@@ -136,6 +136,11 @@ async function main() {
     settings.vramProfile = recommendedVramProfile(install.hardware || {});
   }
   writeJsonAtomic(settingsFile, settings);
+  if (result.failures?.length) {
+    const error = new Error(`Some selected workflows need attention:\n${result.failures.map((failure) => `- ${failure.message}`).join('\n')}`);
+    error.code = 'dependency_partial_failure';
+    throw error;
+  }
 }
 
 if (require.main === module) {

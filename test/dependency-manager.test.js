@@ -25,6 +25,7 @@ const {
   filterProtectedRuntimeRequirements,
   huggingFaceAccessUrl,
   installComponents,
+  installNodeRequirements,
   installNodePack,
   looksLikeCustomNodeFolder,
   modelIsRegistered,
@@ -865,6 +866,72 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(css, /\.dependency-access\[hidden\]/);
   assert.match(css, /\.dependency-access-link:focus-visible/);
   assert.match(css, /@keyframes dependencyProgress/);
+});
+
+test('custom-node requirements fall back to uv for pip-less and broken portable environments', async () => {
+  for (const pipMessage of [
+    'No module named pip',
+    "No such file or directory: 'D:\\\\a\\\\ComfyUI\\\\cu130_python_deps\\\\numpy.whl'",
+  ]) {
+    const calls = [];
+    const reports = [];
+    await installNodeRequirements(
+      { pythonPath: 'comfy-python', basePath: 'ComfyUI' },
+      'requirements.txt',
+      false,
+      (phase, message) => reports.push([phase, message]),
+      {
+        run: async (command, args) => {
+          calls.push([command, args]);
+          if (args[1] === 'pip') throw new Error(pipMessage);
+          return '';
+        },
+      }
+    );
+    assert.deepEqual(calls[0], ['comfy-python', ['-m', 'pip', 'install', '--upgrade-strategy', 'only-if-needed', '-r', 'requirements.txt']]);
+    assert.deepEqual(calls[1], ['comfy-python', ['-m', 'uv', 'pip', 'install', '--python', 'comfy-python', '-r', 'requirements.txt']]);
+    assert.equal(reports[0][0], 'requirements-fallback');
+  }
+});
+
+test('one conflicting node pack does not block unrelated selected workflows', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-node-isolation-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const pythonPath = path.join(rootDir, '.venv', 'Scripts', 'python.exe');
+  const conflictPath = path.join(customNodesPath, NODE_PACKS.krea2Edit.folder);
+  try {
+    fs.mkdirSync(path.join(conflictPath, '.git'), { recursive: true });
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, 'models'), { recursive: true });
+    fs.writeFileSync(path.join(rootDir, 'main.py'), '');
+    fs.writeFileSync(pythonPath, '');
+    const availableModelNames = MODEL_ASSETS.image.map((asset) => asset[2].split('/').pop());
+    const result = await installComponents({
+      runtime: { comfy: { path: rootDir, modelsPath: path.join(rootDir, 'models') } },
+      settings: {},
+      components: ['krea2ref', 'image'],
+      options: {
+        disableHfAcceleration: true,
+        availableModelNames,
+        run: async (_command, args) => args.includes('get-url') ? 'https://github.com/example/unreviewed-krea-edit.git' : '',
+        fetch: async () => { throw new Error('registered models must not download'); },
+      },
+    });
+    assert.deepEqual(result.components, ['image']);
+    assert.deepEqual(result.requestedComponents, ['krea2ref', 'image']);
+    assert.equal(result.failures.length, 1);
+    assert.equal(result.failures[0].code, 'dependency_node_source_mismatch');
+    assert.equal(result.failures[0].nodePath, conflictPath);
+    assert.equal(result.failures[0].actualRepo, 'https://github.com/example/unreviewed-krea-edit.git');
+    assert.equal(result.completed, MODEL_ASSETS.image.length);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('exact LoRA strength entry accepts decimal values', () => {
+  assert.match(app, /label: 'Strength · 0 to 2'[\s\S]{0,180}min: 0, max: 2, step: 0\.05, inputMode: 'decimal'/);
+  assert.match(app, /inputOptions\.inputMode[\s\S]{0,100}input\.inputMode/);
 });
 
 test('node installs preserve unrelated ComfyUI packages and make a repair explicit', () => {
