@@ -16,7 +16,7 @@ const { execFile, spawn } = require('child_process');
 const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
-const { sam3InstallStatus } = require('./lib/sam3-installer');
+const { sam3InstallStatus, desktopSharedModelsDir } = require('./lib/sam3-installer');
 const {
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
@@ -47,6 +47,7 @@ const { comfyResetRequests } = require('./lib/comfy-reset');
 const {
   assessQueueHealth,
   parseNvidiaSmiCsv,
+  parseRocmSmiUseJson,
 } = require('./lib/queue-health');
 const { classifyLora } = require('./lib/lora-compat');
 const { buildLoraContext } = require('./lib/lora-context');
@@ -445,6 +446,9 @@ function settingsResponse() {
   const response = Object.assign({}, settings, {
     hfTokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
     appRestartRequired: settingsRequireAppRestart(),
+    // From the cached hardware snapshot; GET /api/settings refreshes it first
+    // so vendor-gated controls (attention modes) can filter correctly.
+    gpuVendor: setupHardwareProfile(setupHardwareSnapshot || {}).gpuVendor || '',
   });
   delete response.hfToken;
   return response;
@@ -455,7 +459,8 @@ function seedVr2ModelDirs() {
     process.env.KREASTUDIO_SEEDVR2_DIR,
     process.env.COMFYUI_SEEDVR2_DIR,
   ];
-  const modelRoot = process.env.COMFYUI_MODEL_ROOT || RUNTIME.comfy.modelsPath;
+  const modelRoot = process.env.COMFYUI_MODEL_ROOT || RUNTIME.comfy.modelsPath
+    || desktopSharedModelsDir(RUNTIME.comfy.path, process.env);
   if (modelRoot) {
     roots.push(path.join(modelRoot, 'SEEDVR2'), path.join(modelRoot, 'seedvr2'));
   }
@@ -812,7 +817,14 @@ function updateComfyStartState(patch) {
 
 async function getSetupHardwareInfo(force = false) {
   if (!force && setupHardwareSnapshot && Date.now() - setupHardwareAt < 5 * 60 * 1000) return setupHardwareSnapshot;
-  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA });
+  // ComfyUI reports the device it actually generates on (CUDA, ROCm, or MPS),
+  // which covers remote installs and vendors local probing misses.
+  let comfyStats = null;
+  try {
+    const response = await comfyFetch('/system_stats', { signal: AbortSignal.timeout(3000) });
+    comfyStats = await response.json();
+  } catch { /* offline ComfyUI still yields local hardware detection */ }
+  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA, comfyStats });
   setupHardwareAt = Date.now();
   return setupHardwareSnapshot;
 }
@@ -1028,7 +1040,11 @@ async function discoverLocalComfy(options = {}) {
 function adoptComfyEndpoint(url) {
   const detected = sam3InstallStatus(RUNTIME);
   const comfyPath = RUNTIME.comfy.path || detected.basePath || '';
-  const modelsPath = RUNTIME.comfy.modelsPath || (comfyPath ? path.join(comfyPath, 'models') : '');
+  // A Desktop-managed installation can declare a shared models directory
+  // (its download target); honor it before assuming <base>/models.
+  const modelsPath = RUNTIME.comfy.modelsPath
+    || desktopSharedModelsDir(comfyPath, process.env)
+    || (comfyPath ? path.join(comfyPath, 'models') : '');
   applySetupConnection({ url, path: comfyPath, modelsPath });
   objectInfoCache = null;
   objectInfoAt = 0;
@@ -1108,8 +1124,16 @@ function readGpuStats() {
       ['--query-gpu=utilization.gpu,memory.used,memory.total,power.draw', '--format=csv,noheader,nounits'],
       { timeout: 4000 },
       (err, stdout) => {
-        if (err) return resolve(null);
-        resolve(parseNvidiaSmiCsv(stdout));
+        if (!err) return resolve(parseNvidiaSmiCsv(stdout));
+        execFile(
+          'rocm-smi',
+          ['--showuse', '--showmeminfo', 'vram', '--json'],
+          { timeout: 4000 },
+          (rocmErr, rocmStdout) => {
+            if (rocmErr) return resolve(null);
+            resolve(parseRocmSmiUseJson(rocmStdout));
+          }
+        );
       }
     );
   });
@@ -5067,7 +5091,9 @@ async function setupStatusPayload(forceCompatibility = false) {
       configuredPath: RUNTIME.comfy.path || '',
       detectedPath: detected.basePath || '',
       partialPath: detected.partialPath || '',
-      modelsPath: RUNTIME.comfy.modelsPath || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
+      modelsPath: RUNTIME.comfy.modelsPath
+        || desktopSharedModelsDir(detected.basePath, process.env)
+        || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
       pythonReady: !!detected.pythonPath,
       canInstallDependencies: detected.canInstall,
       dependencyReason: detected.reason || '',
@@ -5518,6 +5544,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/settings' && req.method === 'GET') {
+    await getSetupHardwareInfo().catch(() => null);
     return json(res, 200, settingsResponse());
   }
   if (route === '/api/setup/status' && req.method === 'GET') {
@@ -5646,7 +5673,7 @@ async function handleApi(req, res, url) {
   }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {
-      return json(res, 200, await hardwareInfo({ exportPath: settings.exportDir || DATA }));
+      return json(res, 200, await getSetupHardwareInfo(true));
     } catch (error) {
       return json(res, 500, { error: String(error.message || error) });
     }

@@ -179,3 +179,123 @@ test('restart kills only a verified ComfyUI listener before relaunching portable
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('Linux source installs can start and restart ComfyUI without Windows tooling', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-linux-restart-'));
+  const base = path.join(temp, 'ComfyUI');
+  const python = path.join(base, '.venv', 'bin', 'python');
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  const options = { platform: 'linux', env: {}, home: path.join(temp, 'missing'), fsImpl: fs };
+  try {
+    const runtime = { comfy: { path: base, url: 'http://127.0.0.1:8188' } };
+    const start = startStatus(runtime, options);
+    assert.equal(start.kind, 'python');
+    assert.equal(start.canStart, true);
+    assert.equal(start.pythonPath, python);
+    const restart = restartStatus(runtime, options);
+    assert.equal(restart.canRestart, true);
+    assert.equal(restart.kind, 'python');
+    const killed = [];
+    let launched = null;
+    let lookups = 0;
+    await restartComfy(runtime, () => {}, Object.assign({}, options, {
+      run: async (command, args) => {
+        if (command === 'lsof') {
+          lookups += 1;
+          return lookups === 1 ? '77\n' : '';
+        }
+        if (command === 'ps') return `77 1 ${python} ${path.join(base, 'main.py')} --port 8188`;
+        return '';
+      },
+      kill: (pid, signal) => killed.push([pid, signal]),
+      pause: async () => {},
+      spawn(status) { launched = status; },
+    }));
+    assert.deepEqual(killed, [[77, 'SIGTERM']]);
+    assert.equal(launched.kind, 'python');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('comfyui-desktop-2 installs are detected from settings.json and stay app-managed', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-desktop2-'));
+  const appData = path.join(temp, 'app-data');
+  const installDir = path.join(temp, 'ComfyUI-Installs');
+  const base = path.join(installDir, 'ComfyUI', 'ComfyUI');
+  const python = path.join(base, '.venv', 'bin', 'python');
+  fs.mkdirSync(path.join(appData, 'comfyui-desktop-2'), { recursive: true });
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  fs.writeFileSync(path.join(appData, 'comfyui-desktop-2', 'settings.json'), JSON.stringify({ installDir }));
+  const options = { platform: 'linux', env: { APPDATA: appData }, home: path.join(temp, 'missing'), fsImpl: fs };
+  try {
+    const runtime = { comfy: { path: base, url: 'http://127.0.0.1:8188' } };
+    const start = startStatus(runtime, options);
+    assert.equal(start.kind, 'desktop');
+    assert.equal(start.installationName, 'ComfyUI');
+    assert.equal(start.requiresUserAction, true);
+    assert.equal(start.canStart, false);
+    assert.match(start.reason, /ComfyUI Desktop app/);
+    const restart = restartStatus(runtime, options);
+    assert.equal(restart.canRestart, false);
+    assert.match(restart.reason, /Comfy Desktop/i);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('Linux Desktop apps are found through their XDG desktop entry launch command', () => {
+  const { findComfyDesktopApp } = require('../lib/comfy-restart');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-xdg-'));
+  const apps = path.join(temp, '.local', 'share', 'applications');
+  const wrapper = path.join(temp, 'comfyui-amd.sh');
+  fs.mkdirSync(apps, { recursive: true });
+  fs.writeFileSync(wrapper, '#!/bin/sh\n');
+  fs.writeFileSync(path.join(apps, 'comfy.desktop'), [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=Comfy Desktop',
+    `Exec=${wrapper} --no-sandbox %U`,
+    'StartupWMClass=comfyui-desktop-2',
+  ].join('\n'));
+  try {
+    const found = findComfyDesktopApp({ platform: 'linux', env: {}, home: temp, fsImpl: fs });
+    assert.equal(found, `${wrapper} --no-sandbox`);
+    assert.equal(findComfyDesktopApp({ platform: 'linux', env: {}, home: path.join(temp, 'none'), fsImpl: fs }), '');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('Desktop shared-models directories become the preferred download target', () => {
+  const { comfyDesktop2Installations, desktopSharedModelsDir } = require('../lib/sam3-installer');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-shared-models-'));
+  const appData = path.join(temp, 'app-data');
+  const installDir = path.join(temp, 'installs');
+  const base = path.join(installDir, 'ComfyUI', 'ComfyUI');
+  const nasModels = path.join(temp, 'nas-models');
+  fs.mkdirSync(path.join(appData, 'comfyui-desktop-2'), { recursive: true });
+  fs.mkdirSync(base, { recursive: true });
+  fs.mkdirSync(nasModels, { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(path.join(appData, 'comfyui-desktop-2', 'settings.json'), JSON.stringify({
+    installDir,
+    modelsDirs: [path.join(temp, 'missing-nas'), nasModels],
+  }));
+  const env = { APPDATA: appData };
+  try {
+    const records = comfyDesktop2Installations(env, fs);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].modelsDir, nasModels, 'unreachable dirs are skipped, reachable one adopted');
+    assert.equal(desktopSharedModelsDir(base, env, fs), nasModels);
+    assert.equal(desktopSharedModelsDir(path.join(temp, 'elsewhere'), env, fs), '');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});

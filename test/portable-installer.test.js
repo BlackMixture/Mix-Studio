@@ -645,6 +645,31 @@ test('hardware guidance rates model families by VRAM without enforcing system RA
   assert.equal(combinedHardwareFit(QUICK_SETUP_COMPONENTS, difficult).level, 'difficult');
 });
 
+test('hardware guidance rates AMD and Apple GPUs by VRAM instead of rejecting them', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
+  const info = (device) => ({
+    gpu: { available: !!device, devices: device ? [device] : [] },
+    memory: { totalBytes: 64 * (1024 ** 3) },
+    disk: { freeBytes: 500 * (1024 ** 3) },
+  });
+  const imageFeature = manifest.features.find((feature) => feature.id === 'core.image');
+  const amd = featureHardwareFit(imageFeature, info({
+    name: 'AMD Radeon RX 6800', memoryBytes: 16 * (1024 ** 3), vendor: 'amd',
+  }));
+  assert.equal(amd.level, 'recommended');
+  assert.match(amd.detail, /AMD GPU detected/);
+  assert.match(amd.detail, /ROCm/);
+  const apple = featureHardwareFit(imageFeature, info({
+    name: 'Apple M4 Pro GPU', memoryBytes: 48 * (1024 ** 3), memoryKind: 'unified', vendor: 'apple',
+  }));
+  assert.equal(apple.level, 'recommended');
+  assert.match(apple.detail, /Apple Silicon detected/);
+  const none = featureHardwareFit(imageFeature, info(null));
+  assert.equal(none.level, 'difficult');
+  assert.equal(none.label, 'No supported GPU');
+  assert.match(none.detail, /No NVIDIA or AMD GPU was detected/);
+});
+
 test('portable setup validates connection input and preserves machine settings', () => {
   assert.equal(normalizeSetupUrl('http://127.0.0.1:8188/'), 'http://127.0.0.1:8188');
   assert.throws(() => normalizeSetupUrl('ftp://example.test'), /http:\/\/ or https:\/\//);

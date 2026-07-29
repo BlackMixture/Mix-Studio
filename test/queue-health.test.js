@@ -9,6 +9,7 @@ const {
   assessQueueHealth,
   formatDurationMs,
   parseNvidiaSmiCsv,
+  parseRocmSmiUseJson,
 } = require('../lib/queue-health');
 
 const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
@@ -108,4 +109,33 @@ test('queue sheet supports clearing history, gallery navigation, and drag reorde
   assert.match(styleCss, /\.sheet-panel\.queue-drag-scroll-lock \{[\s\S]*overflow-y: hidden;[\s\S]*touch-action: none;/);
   assert.match(appJs, /\/api\/queue\/history\/clear/);
   assert.match(appJs, /\/api\/queue\/reorder/);
+});
+
+test('parses rocm-smi utilization JSON and picks the largest-VRAM card', () => {
+  const sample = JSON.stringify({
+    card0: { 'GPU use (%)': '3', 'VRAM Total Memory (B)': '536870912', 'VRAM Total Used Memory (B)': '20967424' },
+    card1: { 'GPU use (%)': '97', 'VRAM Total Memory (B)': '17163091968', 'VRAM Total Used Memory (B)': '15032385536' },
+  });
+  assert.deepEqual(parseRocmSmiUseJson(sample), {
+    utilization: 97,
+    memoryUsedMb: 14336,
+    memoryTotalMb: 16368,
+    powerDrawW: null,
+  });
+  assert.equal(parseRocmSmiUseJson('not json'), null);
+  assert.equal(parseRocmSmiUseJson('{}'), null);
+});
+
+test('queue health falls back to rocm-smi when nvidia-smi is unavailable', () => {
+  const readGpuStats = serverJs.slice(serverJs.indexOf('function readGpuStats'), serverJs.indexOf('async function queueHealth'));
+  assert.match(readGpuStats, /nvidia-smi/);
+  assert.match(readGpuStats, /rocm-smi/);
+  assert.match(readGpuStats, /parseRocmSmiUseJson/);
+});
+
+test('attention modes that require CUDA are hidden on non-NVIDIA GPUs', () => {
+  assert.match(appJs, /const svNvidiaOnlyAttention = new Set\(\['sageattn_2', 'sageattn_3', 'flash_attn_2', 'flash_attn_3'\]\)/);
+  assert.match(appJs, /function applySvAttnVendorFilter\(vendor\)/);
+  assert.match(appJs, /applySvAttnVendorFilter\(s\.gpuVendor \|\| ''\)/);
+  assert.match(serverJs, /gpuVendor: setupHardwareProfile\(setupHardwareSnapshot \|\| \{\}\)\.gpuVendor \|\| ''/);
 });

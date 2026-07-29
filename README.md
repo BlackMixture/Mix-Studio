@@ -31,7 +31,7 @@ Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remi
 2. Put the installer in the parent folder where you want Mix Studio to live, then run it. For example, placing it in `D:\AI` creates `D:\AI\Mix Studio`.
 3. Mix Studio opens in your browser, detects an existing ComfyUI installation, and guides you through the files required by the workflows you choose.
 
-Windows with an NVIDIA GPU is the supported path. The lowest guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
+Windows with an NVIDIA GPU is the primary supported path, and AMD GPUs (via ROCm, on Windows or Linux) are supported experimentally with an existing ComfyUI installation. The lowest guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
 
 For manual Git setup, detailed VRAM guidance, shared-model discovery, phone access, troubleshooting, and uninstall behavior, see **[Installation and operations](docs/installation-and-operations.md)**. Do not use GitHub's **Download ZIP** if you want in-app updates.
 

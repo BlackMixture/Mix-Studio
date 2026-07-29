@@ -4,7 +4,7 @@ This guide contains the setup, hardware, networking, update, and maintenance det
 
 ## Supported installation
 
-Mix Studio's supported path is a Windows PC with an NVIDIA GPU and an existing or newly installed ComfyUI environment. The application is distributed as a portable Git checkout rather than a packaged executable. This keeps the installation transparent and lets the owner-only updater fast-forward the checkout without touching user data.
+Mix Studio's primary supported path is a Windows PC with an NVIDIA GPU and an existing or newly installed ComfyUI environment. AMD GPUs are supported experimentally through ROCm on Windows and Linux: point Mix Studio at an existing ComfyUI installation that uses ROCm PyTorch (ComfyUI Desktop's "AMD ROCm" install option, or a manual install with ROCm wheels), and the setup guide will rate workflows by detected VRAM. On Radeon GPUs the FP8 variants remain the recommended default: although pre-RDNA4 cards dequantize FP8 in software, the native INT8 path currently benchmarks slower than FP8 on RDNA (Comfy-Org/ComfyUI#14777). The application is distributed as a portable Git checkout rather than a packaged executable. This keeps the installation transparent and lets the owner-only updater fast-forward the checkout without touching user data.
 
 ### One-file setup
 
