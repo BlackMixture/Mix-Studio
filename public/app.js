@@ -9,6 +9,7 @@ const ProgressEta = window.KreaProgressEta;
 const JobReconciliation = window.KreaJobReconciliation;
 const Analytics = window.KreaAnalytics;
 const SupportPrompt = window.KreaSupportPrompt;
+const ReleaseNotes = window.MixStudioReleaseNotes;
 const progressEta = ProgressEta.createProgressEtaTracker();
 const EDIT_MODEL_ORDER_VERSION = 3;
 const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
@@ -1593,11 +1594,14 @@ function renderOfficialRelease() {
     state.officialReleaseUpdateAvailable ? 'available' : 'current',
   );
   const publishedLabel = formatUpdateDate(latest.publishedAt);
+  const releaseNotesHtml = ReleaseNotes?.toHtml
+    ? ReleaseNotes.toHtml(latest.notes || 'Open the official release page to see the complete notes.')
+    : `<p>${escapeHtml(latest.notes || 'Open the official release page to see the complete notes.')}</p>`;
   list.innerHTML = `
     <article class="update-entry${unread ? ' new' : ''}">
       <div class="update-entry-head"><strong>${escapeHtml(latest.title)}</strong>${publishedLabel ? `<time datetime="${escapeHtml(latest.publishedAt)}">${escapeHtml(publishedLabel)}</time>` : ''}</div>
       <span class="update-entry-version">${escapeHtml(latest.tagName || `v${latest.version}`)}</span>${latestMatchesInstalled ? '<span class="update-entry-installed">Installed</span>' : ''}
-      <p>${escapeHtml(latest.notes || 'Open the official release page to see the complete notes.')}</p>
+      <div class="update-entry-notes">${releaseNotesHtml}</div>
     </article>`;
   actions.hidden = false;
   $('#updatesReleaseLink').href = latest.url;
