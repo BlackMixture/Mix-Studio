@@ -4,10 +4,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+
+test('empty LTX audio recognizes ComfyUI numeric union widgets', () => {
+  const source = server.match(/function isWidgetSpec\(spec\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(source);
+  const isWidgetSpec = vm.runInNewContext(`(${source})`);
+
+  assert.equal(isWidgetSpec(['FLOAT,INT', { default: 25 }]), true);
+  assert.equal(isWidgetSpec(['SAM3_TRACK_DATA,MASK', {}]), false);
+});
 
 test('Face ID freezes an uploaded voice into the audio latent (identity-locked lipsync)', () => {
   // The shared frozen-audio chain: LoadAudio → LTXVAudioVAEEncode →

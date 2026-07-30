@@ -1505,7 +1505,8 @@ function isWidgetSpec(spec) {
   const t = spec[0];
   if (Array.isArray(t)) return true; // combo
   if (typeof t === 'string' && t.startsWith('COMFY_') && t.includes('COMBO')) return true; // V3 DynamicCombo
-  return ['INT', 'FLOAT', 'STRING', 'BOOLEAN', 'COMBO'].includes(t);
+  const widgetTypes = ['INT', 'FLOAT', 'STRING', 'BOOLEAN', 'COMBO'];
+  return typeof t === 'string' && t.split(',').every((type) => widgetTypes.includes(type));
 }
 
 /**
