@@ -164,6 +164,10 @@ test('visual treatment changes only the submitted prompt when explicitly enabled
   assert.equal(compose(), 'A silver ball in grass, bold flat ink');
   context.state.userDefaults.visualPresets.useVisualTreatment = true;
   assert.equal(compose(), 'A silver ball in grass. Visual treatment: bold flat ink.');
+  context.state.view = 'edit';
+  assert.equal(compose(), 'A silver ball in grass. Visual treatment: bold flat ink.');
+  context.state.view = 'video';
+  assert.equal(compose(), 'A silver ball in grass. Visual treatment: bold flat ink.');
 });
 
 test('preset selection state preserves multiple choices from the same category', () => {
@@ -199,12 +203,14 @@ test('preset selection state preserves multiple choices from the same category',
 });
 
 test('gallery reuse restores preset card metadata and can infer older saved prompts', () => {
-  assert.match(appJs, /promptPresets: mode === 't2i' \? promptPresetMetadataForGeneration\(\) : undefined/);
+  assert.ok((appJs.match(/promptPresets: promptPresetMetadataForGeneration\(\)/g) || []).length >= 2);
   assert.match(appJs, /function promptPresetSelectionsForReuse/);
   assert.match(appJs, /Array\.isArray\(item\?\.promptPresets\)/);
   assert.match(appJs, /for \(const category of promptPresetCatalog\(\)\)/);
   assert.match(appJs, /state\.promptPresetSelections = promptPresetSelectionsForReuse\(it, restoredPrompt\)/);
   assert.match(serverJs, /function normalizePromptPresets/);
+  assert.match(serverJs, /p\.mode === 't2i' \|\| p\.mode === 'edit'/);
+  assert.match(serverJs, /promptPresets = normalizePromptPresets\([\s\S]*body\.promptPresets/);
   assert.ok((serverJs.match(/promptPresets: job\.params\.promptPresets/g) || []).length >= 3);
 });
 

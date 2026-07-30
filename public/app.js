@@ -401,7 +401,7 @@ function expandPromptLoraTriggers(value) {
 
 function promptForGeneration() {
   const expanded = expandPromptLoraTriggers(promptDraft().replace(/@image-(\d+)/g, 'image $1'));
-  if (state.view !== 'create' || state.userDefaults.visualPresets?.useVisualTreatment !== true) {
+  if (state.userDefaults.visualPresets?.useVisualTreatment !== true) {
     return expanded;
   }
   const presets = activePromptPresetTokens().filter((preset) => (
@@ -637,7 +637,6 @@ function allSelectedPromptPresets() {
 }
 
 function activePromptPresetTokens() {
-  if (state.view !== 'create') return [];
   return allSelectedPromptPresets()
     .filter((preset) => preset?.value)
     .map((preset) => ({
@@ -727,7 +726,6 @@ function promptPresetSelectionStateSignature(selections) {
 }
 
 function reconcilePromptPresetSelectionsWithPrompt(prompt = promptDraft()) {
-  if (state.view !== 'create') return false;
   const remembered = [];
   for (const categoryId of Object.keys(state.promptPresetSelections || {})) {
     selectedPromptPresets(categoryId).forEach((preset) => {
@@ -743,7 +741,7 @@ function reconcilePromptPresetSelectionsWithPrompt(prompt = promptDraft()) {
 }
 
 function promptPresetsForItem(item) {
-  const prompt = String(item?.promptTemplate || item?.prompt || '');
+  const prompt = String(item?.promptTemplate || item?.prompt || item?.motionPrompt || '');
   const selections = promptPresetSelectionsForReuse(item, prompt);
   return Object.entries(selections).flatMap(([category, entries]) => (
     entries.map((entry) => Object.assign({ category }, entry))
@@ -887,19 +885,17 @@ function syncPromptDraftFromComposer() {
   setPromptDraft(promptDraftFromComposer(), { render: false });
   const selections = Object.assign({}, state.promptPresetSelections);
   let selectionsChanged = false;
-  if (state.view === 'create') {
-    for (const categoryId of Object.keys(selections)) {
-      const current = selectedPromptPresets(categoryId);
-      const remaining = current.filter((preset) => promptDraft().includes(preset.value));
-      if (remaining.length !== current.length) {
-        selections[categoryId] = remaining.map(promptPresetSelectionPayload);
-        selectionsChanged = true;
-      }
+  for (const categoryId of Object.keys(selections)) {
+    const current = selectedPromptPresets(categoryId);
+    const remaining = current.filter((preset) => promptDraft().includes(preset.value));
+    if (remaining.length !== current.length) {
+      selections[categoryId] = remaining.map(promptPresetSelectionPayload);
+      selectionsChanged = true;
     }
-    if (selectionsChanged) {
-      state.promptPresetSelections = selections;
-      renderCameraPicker();
-    }
+  }
+  if (selectionsChanged) {
+    state.promptPresetSelections = selections;
+    renderCameraPicker();
   }
   if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
   updatePromptClear();
@@ -3474,7 +3470,7 @@ function updateVideoPanels() {
   if (!isRegion) setRegionResolutionExpanded(false);
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
   $('#createPromptTools').hidden = state.view !== 'create';
-  $('#cameraPromptBtn').hidden = state.view !== 'create';
+  $('#cameraPromptBtn').hidden = false;
   $('#videoPromptTools').hidden = !isVideo || state.vidEngine === 'scail';
   syncCameraMotionTool();
   renderKrea2Mode();
@@ -16052,6 +16048,8 @@ $('#generateBtn').addEventListener('click', async () => {
     const batch = Math.max(1, Math.min(8, Number($('#batchInput').value) || 1));
     const body = {
       prompt,
+      promptTemplate: promptDraft().trim() || undefined,
+      promptPresets: promptPresetMetadataForGeneration(),
       negativePrompt: negativePromptForGeneration(),
       autoMotionPrompt,
       engine: state.vidEngine,
@@ -16195,7 +16193,7 @@ $('#generateBtn').addEventListener('click', async () => {
     prompt: sequenceSteps.length ? sequenceSteps[0] : prompt,
     negativePrompt: negativePromptForGeneration(),
     promptTemplate: promptDraft().trim() || undefined,
-    promptPresets: mode === 't2i' ? promptPresetMetadataForGeneration() : undefined,
+    promptPresets: promptPresetMetadataForGeneration(),
     editOutpaint: outpaintActive || undefined,
     editOutpaintPosition: outpaintActive ? state.editOutpaintPosition : undefined,
     editOutpaintOffsetX: outpaintActive ? editOutpaintGeometry().offsetX : undefined,
@@ -22059,6 +22057,7 @@ function openLightbox(id, mediaSel, options = {}) {
   };
   if (selVideo) {
     const info = selVideo.info || {};
+    const usedPromptPresets = promptPresetsForItem(info);
     const model = videoEngineLabel(info.engine);
     const workflowModel = info.workflow === 'director' ? videoEngineLabel(info.engine, info) : model;
     meta.push(`<b>Model:</b> ${escapeHtml(workflowModel)}`);
@@ -22070,6 +22069,7 @@ function openLightbox(id, mediaSel, options = {}) {
     const videoHeight = recordedVideoWidth > 0 && recordedVideoHeight > 0 ? recordedVideoHeight : fallbackVideoHeight;
     if (videoWidth > 0 && videoHeight > 0) meta.push(`<b>Size:</b> ${videoWidth}×${videoHeight}`);
     meta.push(copyableMeta('Motion', info.motionPrompt || ''));
+    if (usedPromptPresets.length) meta.push(promptPresetGenerationInfoMarkup(usedPromptPresets));
     if (info.negativePrompt) meta.push(copyableMeta('Negative prompt', info.negativePrompt));
     if (info.refinedMotionPrompt) meta.push(copyableMeta('Enhanced motion', info.refinedMotionPrompt));
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
@@ -23058,10 +23058,8 @@ async function reuseItem(it, useEnhanced) {
   const targetView = it.mode === 'edit' ? 'edit' : 'create';
   const restoringEdit = targetView === 'edit';
   const restoredPrompt = reusableItemPrompt(it, useEnhanced);
-  if (!restoringEdit) {
-    if (!state.promptPacksLoaded) await loadPromptPacks();
-    state.promptPresetSelections = promptPresetSelectionsForReuse(it, restoredPrompt);
-  }
+  if (!state.promptPacksLoaded) await loadPromptPacks();
+  state.promptPresetSelections = promptPresetSelectionsForReuse(it, restoredPrompt);
   const restoredRegions = Array.isArray(it.regions) ? it.regions.map((region) => Object.assign({}, region, {
     description: useEnhanced
       ? (region.refinedDescription || region.description || '')
@@ -24170,6 +24168,7 @@ async function loadDocumentationVideoInputs(item, video) {
 
 function documentationVideoDetails(item, video, inputMedia = [], resultMedia = null) {
   const info = video.info || {};
+  const promptPresets = promptPresetsForItem(info);
   const prompt = info.refinedMotionPrompt || info.motionPrompt || item.refinedPrompt || item.prompt || 'Untitled generation';
   const width = info.width || info.srcWidth || item.width;
   const height = info.height || info.srcHeight || item.height;
@@ -24204,6 +24203,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
     ['Options', options],
+    ['Mix Pack presets', promptPresetNames(promptPresets).join(', ')],
     ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
     ['Generated in', info.durationMs ? formatDuration(info.durationMs) : ''],
   ].filter(([, value]) => hasDocumentationValue(value));

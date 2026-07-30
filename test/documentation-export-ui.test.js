@@ -42,6 +42,7 @@ test('generation info and documentation identify the Mix Pack presets used', () 
   assert.match(app, /function promptPresetGenerationInfoMarkup\(presets\)/);
   assert.match(app, /meta\.push\(promptPresetGenerationInfoMarkup\(usedPromptPresets\)\)/);
   assert.match(app, /add\('promptPresets', 'Mix Pack presets', promptPresetNames\(promptPresets\)\.join\(', '\)\)/);
+  assert.match(app, /\['Mix Pack presets', promptPresetNames\(promptPresets\)\.join\(', '\)\]/);
   assert.match(css, /\.lightbox-preset-meta/);
   assert.match(css, /\.lightbox-preset-chip/);
 });

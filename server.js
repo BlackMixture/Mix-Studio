@@ -2154,6 +2154,8 @@ async function completeJob(pid) {
         profileId: job.profileId,
         prompt: job.videoInfo.motionPrompt,
         negativePrompt: job.videoInfo.negativePrompt || undefined,
+        promptTemplate: job.videoInfo.promptTemplate,
+        promptPresets: job.videoInfo.promptPresets,
         refinedPrompt: null,
         enhance: !!job.videoInfo.enhance,
         width: job.videoInfo.width,
@@ -6233,7 +6235,7 @@ async function handleApi(req, res, url) {
     p.promptTemplate = (p.mode === 'edit' || p.mode === 't2i')
       ? String(p.promptTemplate || '').trim().slice(0, 8000) || undefined
       : undefined;
-    p.promptPresets = p.mode === 't2i'
+    p.promptPresets = (p.mode === 't2i' || p.mode === 'edit')
       ? normalizePromptPresets(p.promptPresets, [p.promptTemplate, p.prompt].filter(Boolean).join('\n'))
       : undefined;
     p.krea2RefBoost = p.mode === 'edit' ? clampNum(p.krea2RefBoost, 0, 20, 4) : undefined;
@@ -6848,6 +6850,11 @@ async function handleApi(req, res, url) {
     const suppliedPrompt = engine === 'scail'
       ? stripCameraMotionPhrase(String(body.prompt || '').trim(), blockedCameraMotionPhrase)
       : String(body.prompt || '').trim();
+    const promptTemplate = String(body.promptTemplate || '').trim().slice(0, 8000) || undefined;
+    const promptPresets = normalizePromptPresets(
+      body.promptPresets,
+      [promptTemplate, suppliedPrompt].filter(Boolean).join('\n'),
+    );
     let suppliedMotionPrompt = ensureCameraMotionPrompt(suppliedPrompt, cameraMotions);
     const userMotionPrompt = suppliedMotionPrompt;
     const autoMotionRequested = body.autoMotionPrompt === true;
@@ -7070,6 +7077,8 @@ async function handleApi(req, res, url) {
         seconds: opts.seconds,
         motionPrompt: userMotionPrompt || suppliedMotionPrompt || (engine === 'scail' ? 'Motion copied from driving video' : motionPrompt),
         negativePrompt: opts.negativePrompt || undefined,
+        promptTemplate,
+        promptPresets,
         enhance: enhance && !!suppliedMotionPrompt,
         frames: (opts.frames - 1) * smooth + 1, fps: opts.fps * smooth,
         exactFrameCount: true,

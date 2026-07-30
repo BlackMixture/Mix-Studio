@@ -11,15 +11,16 @@ const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css
 const cameraSettingsJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'camera-settings.js'), 'utf8');
 const cameraAssetsDir = path.join(__dirname, '..', 'public', 'assets', 'camera-presets');
 
-test('prompt tools expose the camera settings picker', () => {
+test('prompt tools expose Mix Packs in the shared Create, Edit, and video prompt', () => {
   assert.match(indexHtml, /id="cameraPromptBtn"/);
   const promptBox = indexHtml.slice(indexHtml.indexOf('<div class="prompt-box">'), indexHtml.indexOf('<div class="prompt-intent-hint"'));
   const createTools = indexHtml.slice(indexHtml.indexOf('id="createPromptTools"'), indexHtml.indexOf('id="videoPromptTools"'));
-  assert.match(promptBox, /class="prompt-camera-btn"[^>]*id="cameraPromptBtn"[^>]*aria-label="Camera framing settings"/);
-  assert.match(promptBox, /M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4/);
+  assert.match(promptBox, /class="prompt-camera-btn"[^>]*id="cameraPromptBtn"[^>]*aria-label="Mix Packs"/);
+  assert.match(promptBox, /<rect x="4" y="5" width="13" height="13" rx="2"\/>/);
   assert.doesNotMatch(createTools, /id="cameraPromptBtn"/);
   assert.match(styleCss, /\.prompt-camera-btn\s*\{[^}]*position:\s*absolute[^}]*right:\s*56px/s);
-  assert.match(appJs, /cameraPromptBtn'\)\.hidden = state\.view !== 'create'/);
+  assert.match(appJs, /cameraPromptBtn'\)\.hidden = false/);
+  assert.match(styleCss, /has\(\.prompt-camera-btn:not\(\[hidden\]\)\):has\(\.edit-sequence-btn:not\(\[hidden\]\)\)/);
   assert.match(indexHtml, /id="cameraSheet"/);
   assert.match(indexHtml, /id="promptPresetCategories"/);
   assert.match(indexHtml, /id="promptPresetCategoryNav"[^>]*role="group"/);

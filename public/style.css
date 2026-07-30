@@ -1113,6 +1113,9 @@ html:-webkit-full-screen { background: #000; }
 .prompt-clear[hidden] { display: none; }
 .qwen-angle-tool { position: absolute; top: 10px; right: 56px; }
 .prompt-box:has(.edit-sequence-btn:not([hidden])) .qwen-angle-tool { right: 102px; }
+.prompt-box:has(.prompt-camera-btn:not([hidden])):has(.edit-sequence-btn:not([hidden])) .edit-sequence-btn { right: 102px; }
+.prompt-box:has(.prompt-camera-btn:not([hidden])):has(.qwen-angle-tool:not([hidden])) .qwen-angle-tool { right: 102px; }
+.prompt-box:has(.prompt-camera-btn:not([hidden])):has(.edit-sequence-btn:not([hidden])):has(.qwen-angle-tool:not([hidden])) .qwen-angle-tool { right: 148px; }
 .qwen-angle-tool[hidden] { display: none; }
 .qwen-angle-trigger {
   position: relative;
@@ -1131,6 +1134,9 @@ html:-webkit-full-screen { background: #000; }
 .prompt-box:has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 98px; }
 .prompt-box:has(.edit-sequence-btn:not([hidden])) .prompt-composer { padding-right: 98px; }
 .prompt-box:has(.edit-sequence-btn:not([hidden])):has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 144px; }
+.prompt-box:has(.prompt-camera-btn:not([hidden])):has(.edit-sequence-btn:not([hidden])) .prompt-composer,
+.prompt-box:has(.prompt-camera-btn:not([hidden])):has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 144px; }
+.prompt-box:has(.prompt-camera-btn:not([hidden])):has(.edit-sequence-btn:not([hidden])):has(.qwen-angle-tool:not([hidden])) .prompt-composer { padding-right: 190px; }
 .qwen-angle-count {
   position: absolute;
   top: -6px;
