@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kept LoRA sliders and hold-drag strength controls within the practical `0–2` range while retaining exact manual entry from `-100` to `100`.
+
 ## 1.0.3 - 2026-07-30
 
 ### Generation and workflows

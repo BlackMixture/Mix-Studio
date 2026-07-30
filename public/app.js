@@ -5942,9 +5942,19 @@ function normalizeRegionStrength(value) {
   return normalizeLoraStrength(value);
 }
 
+const LORA_SLIDER_MIN = 0;
+const LORA_SLIDER_MAX = 2;
+
 function normalizeLoraStrength(value, fallback = 1) {
   const strength = Number(value);
   return Number.isFinite(strength) ? Math.max(-100, Math.min(100, strength)) : fallback;
+}
+
+function normalizeLoraSliderStrength(value, fallback = 1) {
+  const strength = Number(value);
+  return Number.isFinite(strength)
+    ? Math.max(LORA_SLIDER_MIN, Math.min(LORA_SLIDER_MAX, strength))
+    : fallback;
 }
 
 function loraStrengthHoldDelay(pointerType) {
@@ -6169,7 +6179,7 @@ function renderRegionLoraCard(region) {
     startY = event.clientY;
     lastY = event.clientY;
     pointerId = event.pointerId;
-    startStrength = normalizeRegionStrength(region.strength);
+    startStrength = normalizeLoraSliderStrength(region.strength);
     holdTimer = setTimeout(() => {
       adjusting = true;
       card.classList.add('adjusting');
@@ -6183,7 +6193,7 @@ function renderRegionLoraCard(region) {
     if (event.cancelable) event.preventDefault();
     if (adjusting) {
       const dy = startY - event.clientY;
-      region.strength = normalizeRegionStrength(Math.round((startStrength + dy / 90) * 20) / 20);
+      region.strength = normalizeLoraSliderStrength(Math.round((startStrength + dy / 90) * 20) / 20);
       strengthEl.textContent = region.strength.toFixed(2);
       adjustEl.textContent = region.strength.toFixed(2);
     } else {
@@ -6385,7 +6395,7 @@ function renderRegionEditor() {
   region.strength = normalizeRegionStrength(region.strength);
   syncRegionLoraDisclosure(region);
   renderRegionLoraCard(region);
-  $('#regionStrengthInput').value = String(region.strength);
+  $('#regionStrengthInput').value = String(normalizeLoraSliderStrength(region.strength));
   $('#regionStrengthVal').textContent = region.strength.toFixed(2);
   const hasRef = !!region.refImageName;
   $('#regionRefBtn').hidden = hasRef;
@@ -11030,7 +11040,7 @@ function wireLoraCard(card, l, idx, arr) {
     startY = e.clientY;
     lastY = e.clientY;
     pointerId = e.pointerId;
-    startStrength = Number(l.strength) || 0;
+    startStrength = normalizeLoraSliderStrength(l.strength, 0);
     holdTimer = setTimeout(() => {
       adjusting = true;
       card.classList.add('adjusting');
@@ -11044,7 +11054,7 @@ function wireLoraCard(card, l, idx, arr) {
     if (e.cancelable) e.preventDefault();
     if (adjusting) {
       const dy = startY - e.clientY; // up = stronger
-      l.strength = normalizeLoraStrength(Math.round((startStrength + dy / 40) * 20) / 20, 0);
+      l.strength = normalizeLoraSliderStrength(Math.round((startStrength + dy / 40) * 20) / 20, 0);
       adjustEl.textContent = l.strength.toFixed(2);
       strengthEl.textContent = l.strength.toFixed(2);
     } else {

@@ -20,6 +20,8 @@ test('LoRA cards use a shorter desktop hold while preserving touch-safe strength
   assert.match(regionLoraGesture, /loraStrengthHoldDelay\(event\.pointerType\)/);
   assert.match(stackLoraGesture, /loraStrengthHoldDelay\(e\.pointerType\)/);
   assert.match(stackLoraGesture, /const dy = startY - e\.clientY/);
+  assert.match(regionLoraGesture, /normalizeLoraSliderStrength\(Math\.round\(\(startStrength \+ dy \/ 90\)/);
+  assert.match(stackLoraGesture, /normalizeLoraSliderStrength\(Math\.round\(\(startStrength \+ dy \/ 40\)/);
   assert.match(app, /const distance = Math\.abs\(e\.clientY - startY\)[\s\S]*?distance > 8[\s\S]*?window\.scrollBy\(0, lastY - e\.clientY\)/);
   assert.match(stackLoraGesture, /holdTimer = setTimeout\(\(\) => \{[\s\S]*?\}, loraStrengthHoldDelay\(e\.pointerType\)\)/);
   assert.match(html, /hold and slide up or down to adjust strength/);
