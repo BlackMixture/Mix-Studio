@@ -81,6 +81,13 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxTextEncoder')[2], /Comfy-Org\/ltx-2\/resolve\/main\/split_files\/text_encoders\/gemma_3_12B_it_fp4_mixed\.safetensors/);
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxGemmaLora')[2], /Comfy-Org\/ltx-2/);
   assert.match(MODEL_ASSETS.ltxEdit[0][2], /Alissonerdx\/EditAnything/);
+  const qwenAngles = MODEL_ASSETS.qwen.find((asset) => asset[0] === 'qwenEditAnglesLora');
+  assert.match(qwenAngles[2], /fal\/Qwen-Image-Edit-2511-Multiple-Angles-LoRA\/resolve\/main\/qwen-image-edit-2511-multiple-angles-lora\.safetensors/);
+  assert.equal(qwenAngles[3], 'qwen_image_edit_2511_multiple-angles-lora.safetensors');
+  assert.doesNotMatch(qwenAngles[2], /art1455\/Qwen2511/);
+  const scailSam = MODEL_ASSETS.scail.find((asset) => asset[0] === 'scailSam');
+  assert.match(scailSam[2], /Comfy-Org\/sam3\.1\/resolve\/main\/checkpoints\/sam3\.1_multiplex_fp16\.safetensors/);
+  assert.doesNotMatch(scailSam[2], /Comfy-Org\/SCAIL-2/);
   assert.ok(MODEL_ASSETS.wan.filter((asset) => /Unet$/.test(asset[0]))
     .every((asset) => /Comfy-Org\/Wan_2\.2_ComfyUI_Repackaged/.test(asset[2])));
   assert.match(MODEL_ASSETS.eros.find((asset) => asset[0] === 'erosTextEncoder')[2], /gemma_3_12B_it_heretic_fp8_e4m3fn/);
