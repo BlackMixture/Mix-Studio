@@ -968,7 +968,7 @@
                 <div class="lora-grid region-lora-slot" id="regionLoraSlot"></div>
                 <div class="field" id="regionStrengthField" hidden>
                   <label>LoRA strength <span id="regionStrengthVal">1.00</span></label>
-                  <div class="range-field"><input id="regionStrengthInput" type="range" min="0" max="2" step="0.05" value="1" /></div>
+                  <div class="range-field"><input id="regionStrengthInput" type="range" min="-100" max="100" step="0.05" value="1" /></div>
                 </div>
               </div>
             </div>
@@ -2389,6 +2389,11 @@
             <label>Hugging Face token</label>
             <input id="setHfToken" type="password" autocomplete="new-password" placeholder="Paste an hf_ read token" />
             <div class="settings-note">Gated models may require access approval and a read token.</div>
+          </div>
+          <div class="field">
+            <label>Hugging Face download endpoint</label>
+            <input id="setHfEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="Official endpoint (default)" />
+            <div class="settings-note">Optional HTTPS mirror for networks that cannot reach huggingface.co. Access tokens are never sent to a custom endpoint.</div>
           </div>
           <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
           <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>

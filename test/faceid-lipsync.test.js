@@ -23,7 +23,7 @@ test('Face ID freezes an uploaded voice into the audio latent (identity-locked l
   // empty audio latent lets the model invent a voice from the prompt.
   const faceId = server.slice(server.indexOf('async function buildAnimateFaceId'), server.indexOf('buildAnimateEros'));
   assert.match(faceId, /if \(opts\.audioName\) \{\s*audioLatent = audioLatentNodes\(graph, opts\.audioName\);/);
-  assert.match(faceId, /'LTXVEmptyLatentAudio'/);
+  assert.match(faceId, /ltxEmptyAudioNode\(opts\.frames, opts\.fps\)/);
   assert.match(faceId, /class_type: 'LTXVConcatAVLatent',\s*inputs: \{ video_latent: \['latent1', 0\], audio_latent: audioLatent \}/);
   assert.match(faceId, /'LTXIdentityOverlapConditioning'/);
   assert.match(faceId, /class_type: 'LTXVSeparateAVLatent'/);

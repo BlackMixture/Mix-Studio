@@ -23,12 +23,14 @@ const {
   ensureUv,
   findExistingModelByBasename,
   filterProtectedRuntimeRequirements,
+  huggingFaceEndpointUrl,
   huggingFaceAccessUrl,
   installComponents,
   installNodeRequirements,
   installNodePack,
   looksLikeCustomNodeFolder,
   modelIsRegistered,
+  normalizeHuggingFaceEndpoint,
   patchLtxVideoKornia,
   protectedRuntimeConstraints,
   requirementsArgs,
@@ -283,6 +285,53 @@ test('reviewed model mirrors and Hugging Face tokens are used without exposing t
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+test('custom Hugging Face endpoints rewrite reviewed downloads without receiving access tokens', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-model-endpoint-'));
+  const bytes = safetensorsFixture();
+  const requests = [];
+  try {
+    const result = await downloadAsset(
+      ['unet', 'diffusion_models', 'https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/model.safetensors'],
+      rootDir,
+      { unet: 'model.safetensors' },
+      () => {},
+      {
+        hfEndpoint: 'https://models.example.test/hugging-face/',
+        hfToken: 'hf_private_token',
+        fetch: async (url, options) => {
+          requests.push({ url, headers: options.headers });
+          let sent = false;
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: (name) => name === 'content-length' ? String(bytes.length) : '' },
+            body: { getReader: () => ({ read: async () => sent ? { done: true } : (sent = true, { done: false, value: bytes }) }) },
+          };
+        },
+      }
+    );
+    assert.equal(result.skipped, false);
+    assert.equal(requests[0].url, 'https://models.example.test/hugging-face/Comfy-Org/Krea-2/resolve/main/diffusion_models/model.safetensors');
+    assert.equal(requests[0].headers.Authorization, undefined);
+    assert.equal(normalizeHuggingFaceEndpoint('http://models.example.test'), '');
+    assert.equal(normalizeHuggingFaceEndpoint('https://user:secret@models.example.test'), '');
+    assert.equal(huggingFaceEndpointUrl('https://example.com/model.safetensors', 'https://models.example.test'), 'https://example.com/model.safetensors');
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('dependency planning adopts a compatible Krea text encoder already registered by ComfyUI', () => {
+  const compatible = 'external/qwen3vl_4b_fp8_scaled.safetensors';
+  const plan = dependencyModelPlan(['image'], {
+    clip: 'Huihui-Qwen3-VL-4B-Instruct-abliterated-fp8_scaled.safetensors',
+  }, {
+    availableModelNames: [compatible],
+  });
+  assert.equal(plan.effectiveSettings.clip, compatible);
+  assert.equal(plan.settingUpdates.clip, compatible);
 });
 
 test('large Hugging Face models use isolated Xet acceleration before the HTTP fallback', async () => {
@@ -937,8 +986,14 @@ test('one conflicting node pack does not block unrelated selected workflows', as
 });
 
 test('exact LoRA strength entry accepts decimal values', () => {
-  assert.match(app, /label: 'Strength · 0 to 2'[\s\S]{0,180}min: 0, max: 2, step: 0\.05, inputMode: 'decimal'/);
+  assert.match(app, /label: 'Strength · -100 to 100'[\s\S]{0,180}min: -100, max: 100, step: 0\.05, inputMode: 'decimal'/);
+  assert.match(server, /strength: clampNum\(lora\.strength, -100, 100, 1\)/);
   assert.match(app, /inputOptions\.inputMode[\s\S]{0,100}input\.inputMode/);
+});
+
+test('connected portable setup asks for its local folder instead of launching ComfyUI Desktop', () => {
+  assert.match(app, /canInstallOfficial && !setupViewStatus\.comfy\?\.connected/);
+  assert.match(app, /ComfyUI is connected\. Choose its local ComfyUI folder/);
 });
 
 test('node installs preserve unrelated ComfyUI packages and make a repair explicit', () => {

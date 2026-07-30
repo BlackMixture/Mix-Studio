@@ -120,6 +120,7 @@ async function main() {
       availableModelRoots: discovery.modelRoots,
       modelVariants: { krea2: configuredVariant },
       hfToken: settings.hfToken,
+      hfEndpoint: settings.hfEndpoint,
     },
     report(phase, message, detail = {}) {
       const progress = Number.isFinite(detail.completed) && Number.isFinite(detail.total) && detail.total > 0

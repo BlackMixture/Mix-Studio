@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Workflow and setup fixes
+
+- Added negative LoRA strengths from `-100` to `100` across image, region, edit, and video workflows. Strength Hunt remains bounded to a magnitude of `2` so a high manual value cannot create an unexpectedly huge batch.
+- Updated LTX 2.3 video graphs to submit the current `frames_number`, `frame_rate`, and `batch_size` inputs required by `LTXVEmptyLatentAudio`.
+- Made ComfyUI's live model registry authoritative for compatible Krea 2 text encoders, including `qwen3vl_4b_fp8_scaled.safetensors`, so existing external models are reused and their saved filenames persist.
+- Added an optional Hugging Face download endpoint for networks that cannot reach `huggingface.co`. Tokens continue to be sent only to the official Hugging Face host.
+- Prevented Generation setup from launching the ComfyUI Desktop installer when it is already connected to a portable instance but still needs the local ComfyUI folder selected.
+
 ## 1.0.2 - 2026-07-24
 
 ### Krea 2 editing

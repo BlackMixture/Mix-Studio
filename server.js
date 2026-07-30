@@ -24,7 +24,13 @@ const {
   nativeInt8CompatibilityError,
   objectInfoComboChoices,
 } = require('./lib/comfy-compatibility');
-const { COMPONENTS: DEPENDENCY_COMPONENTS, NODE_PACKS: DEPENDENCY_NODE_PACKS, availableComponents, installComponents } = require('./lib/dependency-installer');
+const {
+  COMPONENTS: DEPENDENCY_COMPONENTS,
+  NODE_PACKS: DEPENDENCY_NODE_PACKS,
+  availableComponents,
+  installComponents,
+  normalizeHuggingFaceEndpoint,
+} = require('./lib/dependency-installer');
 const { discoverModels } = require('./installer/model-discovery');
 const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
 const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
@@ -212,6 +218,7 @@ const {
   normalizeModelPath,
   registeredModelNames,
   resolveRegisteredModelName,
+  resolveRegisteredModelSetting,
 } = require('./lib/model-loader');
 const {
   applyLowVramImageLimits,
@@ -341,6 +348,7 @@ User's Input:`;
 const DEFAULT_SETTINGS = {
   comfyUrl: RUNTIME.comfy.url || 'http://127.0.0.1:8188',
   hfToken: '',
+  hfEndpoint: '',
   unet: 'krea2_turbo_fp8_scaled.safetensors',
   krea2RawUnet: 'krea2_raw_fp8_scaled.safetensors',
   krea2ModelVariant: 'fp8',
@@ -418,6 +426,7 @@ function normalizeSettings(s) {
   normalizeSeedVr2Defaults(s);
   s.krea2ModelVariant = normalizeKrea2Variant(s.krea2ModelVariant, s);
   s.vramProfile = normalizeVramProfile(s.vramProfile);
+  s.hfEndpoint = normalizeHuggingFaceEndpoint(s.hfEndpoint);
   if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
   if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
   if (!s.klein9Unet) s.klein9Unet = DEFAULT_SETTINGS.klein9Unet;
@@ -1220,7 +1229,7 @@ function adoptRegisteredModelPaths(info) {
   let changed = false;
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
     if (!modelChoice(settings[key])) continue;
-    const resolved = resolveRegisteredModelName(settings[key], available);
+    const resolved = resolveRegisteredModelSetting(key, settings[key], available);
     if (!resolved || normalizeModelPath(resolved) === normalizeModelPath(settings[key])) continue;
     settings[key] = resolved;
     changed = true;
@@ -1532,6 +1541,19 @@ async function nodeFromOrdered(classType, ordered, links = {}, overrides = {}) {
   }
   for (const [k, v] of Object.entries(overrides)) if (!(k in inputs)) inputs[k] = v;
   return { class_type: classType, inputs };
+}
+
+async function ltxEmptyAudioNode(frames, frameRate) {
+  return nodeFromOrdered(
+    'LTXVEmptyLatentAudio',
+    [frames, frameRate, 1],
+    { audio_vae: ['audio_vae', 0] },
+    {
+      frames_number: frames,
+      frame_rate: frameRate,
+      batch_size: 1,
+    }
+  );
 }
 
 /** Drop input keys the installed node class doesn't know about (core-node drift). */
@@ -3761,11 +3783,7 @@ async function buildAnimate(imageName, opts) {
   if (opts.audioName) {
     audioLatent = audioLatentNodes(graph, opts.audioName);
   } else {
-    graph.audio_lat = await nodeFromOrdered(
-      'LTXVEmptyLatentAudio',
-      [opts.frames, opts.fps, 1],
-      { audio_vae: ['audio_vae', 0] }
-    );
+    graph.audio_lat = await ltxEmptyAudioNode(opts.frames, opts.fps);
     audioLatent = ['audio_lat', 0];
   }
   graph.concat1 = {
@@ -4002,11 +4020,7 @@ async function buildAnimateFaceId(faceName, opts) {
   if (opts.audioName) {
     audioLatent = audioLatentNodes(graph, opts.audioName);
   } else {
-    graph.audio_lat = await nodeFromOrdered(
-      'LTXVEmptyLatentAudio',
-      [opts.frames, opts.fps, 1],
-      { audio_vae: ['audio_vae', 0] }
-    );
+    graph.audio_lat = await ltxEmptyAudioNode(opts.frames, opts.fps);
     audioLatent = ['audio_lat', 0];
   }
   graph.concat1 = {
@@ -4234,11 +4248,7 @@ async function buildAnimateEros(imageName, opts) {
   if (opts.audioName) {
     audioLatent = audioLatentNodes(graph, opts.audioName);
   } else {
-    graph.audio_lat = await nodeFromOrdered(
-      'LTXVEmptyLatentAudio',
-      [opts.frames, opts.fps, 1],
-      { audio_vae: ['audio_vae', 0] }
-    );
+    graph.audio_lat = await ltxEmptyAudioNode(opts.frames, opts.fps);
     audioLatent = ['audio_lat', 0];
   }
   const i2v1Inputs = {
@@ -5694,6 +5704,7 @@ async function handleApi(req, res, url) {
     if (typeof body.krea2ModelVariant === 'string') {
       settings.krea2ModelVariant = body.krea2ModelVariant;
     }
+    if (typeof body.hfEndpoint === 'string') settings.hfEndpoint = body.hfEndpoint.trim();
     if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
     if (body.clearHfToken === true) settings.hfToken = '';
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
@@ -6082,6 +6093,7 @@ async function handleApi(req, res, url) {
             availableModelRoots,
             modelVariants,
             hfToken: settings.hfToken,
+            hfEndpoint: settings.hfEndpoint,
           },
           report: (phase, message, detail) => {
             if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
@@ -6141,7 +6153,11 @@ async function handleApi(req, res, url) {
       try {
         const result = await installComponents({
           runtime: RUNTIME, settings, components: ['smartmask'],
-          options: { signal: installController.signal, hfToken: settings.hfToken },
+          options: {
+            signal: installController.signal,
+            hfToken: settings.hfToken,
+            hfEndpoint: settings.hfEndpoint,
+          },
           report: (phase, message, detail) => {
             if (!installController.signal.aborted) updateDependencyInstallState(Object.assign({ state: 'running', phase, message }, detail || {}));
           },
@@ -6296,7 +6312,7 @@ async function handleApi(req, res, url) {
       .filter((lora) => lora && lora.name)
       .map((lora) => ({
         name: String(lora.name).slice(0, 512),
-        strength: clampNum(lora.strength, 0, 2, 1),
+        strength: clampNum(lora.strength, -100, 100, 1),
         on: lora.on !== false,
         strengthHunt: lora.strengthHunt === true,
       }));

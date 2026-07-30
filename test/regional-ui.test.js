@@ -175,10 +175,10 @@ test('reusing an enhanced regional generation can restore refined or original re
   assert.match(appJs, /enhance: useEnhanced \? false : region\.enhance !== false/);
 });
 
-test('regional LoRA strength is constrained to the usable zero-to-two range', () => {
-  assert.match(indexHtml, /id="regionStrengthInput"[^>]*min="0"[^>]*max="2"/);
+test('regional LoRA strength supports negative and high values', () => {
+  assert.match(indexHtml, /id="regionStrengthInput"[^>]*min="-100"[^>]*max="100"/);
   assert.match(appJs, /function normalizeRegionStrength\(value\)/);
-  assert.match(appJs, /Math\.max\(0, Math\.min\(2, strength\)\)/);
+  assert.match(appJs, /Math\.max\(-100, Math\.min\(100, strength\)\)/);
   assert.match(appJs, /strength: normalizeRegionStrength\(region\.strength\)/);
 });
 

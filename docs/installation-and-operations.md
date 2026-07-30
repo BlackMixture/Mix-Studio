@@ -83,7 +83,9 @@ Before node requirements change, Mix Studio saves a `pip freeze` snapshot under 
 
 Use **Repair missing tools** after an interrupted install or a custom-node dependency conflict. It reinstalls only the affected packs' declared Python packages, then asks for a ComfyUI restart. It does not reset profiles, gallery data, model files, or unrelated custom nodes.
 
-Some Hugging Face files require accepting a license before their download URL works. Accept the license on the model page first. If the provider also requires authentication, launch Mix Studio with an `HF_TOKEN` environment variable.
+Some Hugging Face files require accepting a license before their download URL works. Accept the license on the model page first. If the provider also requires authentication, add a read token under **Settings → General → Hugging Face token**, or launch Mix Studio with an `HF_TOKEN` environment variable.
+
+If the official Hugging Face host is unavailable on the current network, enter a trusted Hugging Face-compatible HTTPS base URL under **Settings → General → Hugging Face download endpoint**, or set `HF_ENDPOINT` before launching Mix Studio. The endpoint rewrites only reviewed `huggingface.co` model sources. Mix Studio never sends the configured Hugging Face token to a custom endpoint. Clear the field to return to the official host.
 
 The card exposes **Restart ComfyUI** for a configured Windows ComfyUI folder, but it refuses while either queue is active.
 

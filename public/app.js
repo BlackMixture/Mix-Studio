@@ -5935,8 +5935,12 @@ function selectedRegion() {
 }
 
 function normalizeRegionStrength(value) {
+  return normalizeLoraStrength(value);
+}
+
+function normalizeLoraStrength(value, fallback = 1) {
   const strength = Number(value);
-  return Number.isFinite(strength) ? Math.max(0, Math.min(2, strength)) : 1;
+  return Number.isFinite(strength) ? Math.max(-100, Math.min(100, strength)) : fallback;
 }
 
 function loraStrengthHoldDelay(pointerType) {
@@ -6126,7 +6130,10 @@ function renderRegionLoraCard(region) {
         const value = await askText({
           title: 'Region LoRA strength',
           confirmLabel: 'Set strength',
-          input: { label: 'Strength · 0 to 2', value: region.strength, type: 'number' },
+          input: {
+            label: 'Strength · -100 to 100', value: region.strength, type: 'number',
+            min: -100, max: 100, step: 0.05, inputMode: 'decimal',
+          },
         });
         if (value == null) return;
         region.strength = normalizeRegionStrength(value);
@@ -10944,7 +10951,7 @@ function wireLoraCard(card, l, idx, arr) {
       { label: 'Set thumbnail', icon: 'image', action: () => setLoraThumb(l.name) },
       state.view !== 'video' && !l.managed ? {
         label: l.strengthHunt ? 'Strength Hunt: On' : 'Strength Hunt: Off',
-        detail: l.strengthHunt ? 'Tap to remove this LoRA from the comparison' : 'Compare strengths from 0.2 through 2.0',
+        detail: l.strengthHunt ? 'Tap to remove this LoRA from the comparison' : `Compare from 0 to ${Number(l.strength).toFixed(2)} (maximum magnitude 2)`,
         icon: 'process',
         action: () => {
           if (!l.strengthHunt) {
@@ -10977,12 +10984,12 @@ function wireLoraCard(card, l, idx, arr) {
           title: 'LoRA strength',
           confirmLabel: 'Set strength',
           input: {
-            label: 'Strength · 0 to 2', value: l.strength, type: 'number',
-            min: 0, max: 2, step: 0.05, inputMode: 'decimal',
+            label: 'Strength · -100 to 100', value: l.strength, type: 'number',
+            min: -100, max: 100, step: 0.05, inputMode: 'decimal',
           },
         });
         if (v == null) return;
-        l.strength = Math.max(0, Math.min(2, Number(v) || 0));
+        l.strength = normalizeLoraStrength(v, 0);
         managedLoraChanged(l);
         renderLoras();
         saveForm();
@@ -11033,7 +11040,7 @@ function wireLoraCard(card, l, idx, arr) {
     if (e.cancelable) e.preventDefault();
     if (adjusting) {
       const dy = startY - e.clientY; // up = stronger
-      l.strength = Math.max(0, Math.min(2, Math.round((startStrength + dy / 90) * 20) / 20));
+      l.strength = normalizeLoraStrength(Math.round((startStrength + dy / 40) * 20) / 20, 0);
       adjustEl.textContent = l.strength.toFixed(2);
       strengthEl.textContent = l.strength.toFixed(2);
     } else {
@@ -12009,7 +12016,7 @@ function directorLoras() {
     .map((lora) => ({
       ...lora,
       name: String(lora.name).slice(0, 512),
-      strength: Number.isFinite(Number(lora.strength)) ? Math.max(0, Math.min(2, Number(lora.strength))) : 1,
+      strength: normalizeLoraStrength(lora.strength),
       on: lora.on !== false,
     }));
   return output.loras;
@@ -12035,13 +12042,13 @@ function renderDirectorLoras() {
     copy.append(name, stateLabel);
     const strength = document.createElement('input');
     strength.type = 'number';
-    strength.min = '0';
-    strength.max = '2';
+    strength.min = '-100';
+    strength.max = '100';
     strength.step = '0.05';
     strength.value = Number(lora.strength).toFixed(2);
     strength.setAttribute('aria-label', `${prettyLora(lora.name)} strength`);
     strength.addEventListener('change', () => {
-      lora.strength = Math.max(0, Math.min(2, Number(strength.value) || 0));
+      lora.strength = normalizeLoraStrength(strength.value, 0);
       strength.value = lora.strength.toFixed(2);
       saveDirectorProject();
     });
@@ -18911,13 +18918,16 @@ function strengthHuntStrengthLabel(value) {
 }
 
 function strengthHuntValues(maximum) {
-  const ceiling = Math.max(0, Math.min(2, Number(maximum) || 0));
+  const requested = Number(maximum) || 0;
+  const direction = requested < 0 ? -1 : 1;
+  const ceiling = Math.min(2, Math.abs(requested));
   const values = [0];
   for (let value = 0.2; value < ceiling - 0.001; value += 0.2) {
-    values.push(Math.round(value * 100) / 100);
+    values.push(direction * Math.round(value * 100) / 100);
   }
-  if (ceiling > 0 && Math.abs(values[values.length - 1] - ceiling) > 0.001) {
-    values.push(Math.round(ceiling * 100) / 100);
+  const endpoint = direction * ceiling;
+  if (ceiling > 0 && Math.abs(values[values.length - 1] - endpoint) > 0.001) {
+    values.push(direction * Math.round(ceiling * 100) / 100);
   }
   return values;
 }
@@ -25073,7 +25083,7 @@ function mediaPreferenceControlValue(id) {
 }
 
 const SETTINGS_SERVER_CONTROL_IDS = new Set([
-  'setComfy', 'setHfToken', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
+  'setComfy', 'setHfToken', 'setHfEndpoint', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
   'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
   'setKlein4Unet', 'setKlein4Clip', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
@@ -25107,6 +25117,7 @@ function settingsPayload() {
   return {
     comfyUrl: $('#setComfy').value,
     hfToken: $('#setHfToken').value,
+    hfEndpoint: $('#setHfEndpoint').value,
     galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
     vramProfile: $('#setVramProfile').value,
     krea2ModelVariant: $('#setKrea2ModelVariant').value,
@@ -28482,6 +28493,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setHfToken').placeholder = s.hfTokenConfigured
       ? 'Saved · paste a new token to replace it'
       : 'Paste an hf_ read token';
+    $('#setHfEndpoint').value = s.hfEndpoint || '';
     $('#galleryPasswordInput').value = s.galleryPassword || '1234';
     $('#setVramProfile').value = s.vramProfile || 'auto';
     $('#setKrea2ModelVariant').value = s.krea2ModelVariant || (/int8.*convrot|convrot.*int8/i.test(s.unet || '') ? 'int8-convrot' : 'fp8');
@@ -28986,6 +28998,9 @@ function setupFitForComponents(components) {
 
 function conciseSetupError(value) {
   const message = String(value || '');
+  if (/Could not download|fetch failed|reviewed sources were unavailable/i.test(message)) {
+    return 'The model host could not be reached. Check the connection or add a trusted HTTPS download endpoint in Settings → General, then retry.';
+  }
   if (/ResolutionImpossible|conflicting dependencies|dependency conflict/i.test(message)) {
     return 'Python packages could not be resolved. Retry the install; open Details if it happens again.';
   }
@@ -29604,14 +29619,16 @@ async function startSetupDependencies(components) {
     setupViewStatus = await api('/api/setup/status');
   }
   if (!setupViewStatus.comfy?.canInstallDependencies) {
-    if (setupViewStatus.comfy?.canInstallOfficial) {
+    if (setupViewStatus.comfy?.canInstallOfficial && !setupViewStatus.comfy?.connected) {
       setupPendingComponents = requested;
       await startOfficialComfyFromSetup();
       return true;
     }
     setSetupStep('connect', { user: true });
     setSetupGuideExpanded(true);
-    toast(setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.', true);
+    toast(setupViewStatus.comfy?.connected
+      ? 'ComfyUI is connected. Choose its local ComfyUI folder so Mix Studio can install files into the correct portable or Desktop installation.'
+      : (setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.'), true);
     return false;
   }
   if (setupKrea2CoreBlocked(requested)) {

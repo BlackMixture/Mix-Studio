@@ -71,6 +71,16 @@ test('Strength Hunt still reaches the global 2.0 safety ceiling', () => {
   assert.deepEqual(plan.variants[120].strengths, [2, 2]);
 });
 
+test('Strength Hunt steps from zero toward a negative current strength', () => {
+  const plan = buildStrengthHuntPlan([
+    lora('Negative.safetensors', { strength: -1, strengthHunt: true }),
+  ]);
+  assert.deepEqual(plan.variants.map((variant) => variant.strengths[0]), [0, -0.2, -0.4, -0.6, -0.8, -1]);
+  assert.equal(plan.variants[0].loras[0].on, false);
+  assert.equal(plan.variants[5].loras[0].on, true);
+  assert.equal(plan.axes[0].maxStrength, -1);
+});
+
 test('Strength Hunt graph merge shares identical nodes and keeps every save output', () => {
   const graph = (strength) => ({
     loader: { class_type: 'UNETLoader', inputs: { unet_name: 'model.safetensors' } },
