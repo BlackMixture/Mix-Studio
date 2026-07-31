@@ -19,6 +19,7 @@ const {
   cleanRelative,
   dependencyModelPlan,
   downloadAsset,
+  downloadStagingDirectory,
   ensureDownloadDiskSpace,
   ensureUv,
   findExistingModelByBasename,
@@ -37,6 +38,7 @@ const {
   sameRepo,
   validateModelFile,
 } = require('../lib/dependency-installer');
+const { parseHuggingFaceResolveUrl } = require('../lib/huggingface-download');
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
 
 function safetensorsFixture() {
@@ -381,6 +383,30 @@ test('large Hugging Face models use isolated Xet acceleration before the HTTP fa
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+test('Xet staging paths leave room for the Hugging Face cache under the Windows path limit', () => {
+  // huggingface_hub nests `.cache/huggingface/download/<repo sub-path>/<chunk>`
+  // inside the staging folder; the chunk name is roughly 110 characters.
+  const chunkName = `${'a'.repeat(28)}.${'b'.repeat(64)}.${'c'.repeat(8)}.incomplete`;
+  const modelsPath = 'C:\\ComfyUI\\models';
+  let longest = 0;
+  for (const assets of Object.values(MODEL_ASSETS)) {
+    for (const asset of assets) {
+      for (const url of [asset[2], ...(Array.isArray(asset[4]) ? asset[4] : [])]) {
+        const source = parseHuggingFaceResolveUrl(url);
+        if (!source) continue;
+        const staging = downloadStagingDirectory(modelsPath, asset[0], url);
+        const cached = path.win32.join(
+          staging, '.cache', 'huggingface', 'download',
+          ...source.filename.split('/').slice(0, -1), chunkName
+        );
+        longest = Math.max(longest, cached.length);
+      }
+    }
+  }
+  assert.ok(longest > 0, 'expected Hugging Face assets to stage downloads');
+  assert.ok(longest < 260, `staging path grew to ${longest} characters, past the Windows limit`);
 });
 
 test('Xet failures fall back to the resumable HTTP downloader', async () => {
