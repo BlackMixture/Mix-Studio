@@ -2160,8 +2160,8 @@ $('#appUpdateBtn').addEventListener('click', async () => {
   appUpdateRunning = true;
   button.disabled = true;
   button.classList.add('busy');
-  label.textContent = 'Checking for updates…';
-  setAppUpdateStatus('Connecting to GitHub and checking the current branch…');
+  label.textContent = 'Testing stable update…';
+  setAppUpdateStatus('Downloading the published release and running its safety checks…');
   try {
     const previousInstanceId = state.appRelease.instanceId;
     const result = await api('/api/update', { method: 'POST' });
@@ -25103,7 +25103,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setKlein4Unet', 'setKlein4Clip', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
   'setKlein9Unet', 'setKlein9Clip', 'setKlein9ConsistencyLora', 'setKlein9ConsistencyTrigger',
   'setKleinVae', 'setQeUnet', 'setQeClip', 'setQeLora', 'setQeAnglesLora',
-  'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
+  'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxVideoVae', 'setLtxLora',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
@@ -25163,6 +25163,7 @@ function settingsPayload() {
     seedvr2Attention: $('#setSvAttn').value,
     systemPrompt: $('#setSysPrompt').value,
     ltxCkpt: $('#setLtxCkpt').value,
+    ltxVideoVae: $('#setLtxVideoVae').value,
     ltxDistilledLora: $('#setLtxLora').value,
     ltxCameramanLora: $('#setLtxCameraLora').value,
     ltxEditLora: $('#setLtxEditLora').value,
@@ -28537,6 +28538,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     setSvAttnValue(s.seedvr2Attention || 'sdpa');
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
+    $('#setLtxVideoVae').value = s.ltxVideoVae || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';
     $('#setLtxCameraLora').value = s.ltxCameramanLora || '';
     $('#setLtxEditLora').value = s.ltxEditLora || '';

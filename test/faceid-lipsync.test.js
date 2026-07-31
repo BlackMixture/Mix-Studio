@@ -9,6 +9,22 @@ const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
+test('LTX-family workflows decode long videos in bounded temporal tiles', () => {
+  const ltx = server.slice(server.indexOf('async function buildAnimate(imageName'), server.indexOf('async function buildAnimateFaceId'));
+  const faceId = server.slice(server.indexOf('async function buildAnimateFaceId'), server.indexOf('async function buildAnimateEros'));
+  const eros = server.slice(server.indexOf('async function buildAnimateEros'), server.indexOf('buildAnimateWan'));
+
+  assert.match(ltx, /'VAEDecodeTiled',\s*\[768, 64, 64, 8\]/);
+  assert.match(faceId, /'VAEDecodeTiled',\s*\[768, 64, 64, 8\]/);
+  assert.match(eros, /'VAEDecodeTiled',\s*\[768, 64, 64, 8\]/);
+  for (const workflow of [ltx, faceId, eros]) {
+    assert.match(workflow, /graph\.video_vae = \{ class_type: 'VAELoader'/);
+    assert.match(workflow, /vae: \['video_vae', 0\]/);
+    assert.doesNotMatch(workflow, /vae: \['ckpt', 2\]/);
+  }
+  assert.doesNotMatch(eros, /graph\.decode = \{ class_type: 'VAEDecode'/);
+});
+
 test('Face ID freezes an uploaded voice into the audio latent (identity-locked lipsync)', () => {
   // The shared frozen-audio chain: LoadAudio → LTXVAudioVAEEncode →
   // SolidMask(0.0) → SetLatentNoiseMask. A 0.0 noise mask means the audio

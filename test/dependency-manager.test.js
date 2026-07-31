@@ -81,6 +81,7 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.upscale[0][2], /AInVFX\/SeedVR2_comfyUI/);
   assert.match(MODEL_ASSETS.upscale[1][2], /numz\/SeedVR2_comfyUI/);
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxTextEncoder')[2], /Comfy-Org\/ltx-2\/resolve\/main\/split_files\/text_encoders\/gemma_3_12B_it_fp4_mixed\.safetensors/);
+  assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxVideoVae')[2], /Kijai\/LTX2\.3_comfy\/resolve\/main\/vae\/LTX23_video_vae_bf16\.safetensors/);
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxGemmaLora')[2], /Comfy-Org\/ltx-2/);
   assert.match(MODEL_ASSETS.ltxEdit[0][2], /Alissonerdx\/EditAnything/);
   const qwenAngles = MODEL_ASSETS.qwen.find((asset) => asset[0] === 'qwenEditAnglesLora');
@@ -93,6 +94,7 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.ok(MODEL_ASSETS.wan.filter((asset) => /Unet$/.test(asset[0]))
     .every((asset) => /Comfy-Org\/Wan_2\.2_ComfyUI_Repackaged/.test(asset[2])));
   assert.match(MODEL_ASSETS.eros.find((asset) => asset[0] === 'erosTextEncoder')[2], /gemma_3_12B_it_heretic_fp8_e4m3fn/);
+  assert.match(MODEL_ASSETS.eros.find((asset) => asset[0] === 'erosDmdLora')[2], /TenStrip\/LTX2\.3_DMD_Lora/);
   const scailLora = MODEL_ASSETS.scail.find((asset) => asset[0] === 'scailLora');
   assert.match(scailLora[2], /lightx2v\/Wan2\.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/);
   assert.match(scailLora[2], /Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64\.safetensors/);

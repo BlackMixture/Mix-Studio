@@ -379,6 +379,7 @@ const DEFAULT_SETTINGS = {
   qwenEditLora: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
   qwenEditAnglesLora: 'qwen_image_edit_2511_multiple-angles-lora.safetensors',
   ltxCkpt: 'ltx-2.3-22b-dev-fp8.safetensors',
+  ltxVideoVae: 'LTX23_video_vae_bf16.safetensors',
   ltxDistilledLora: 'ltx-2.3-22b-distilled-lora-384.safetensors',
   ltxCameramanLora: 'LTX2.3-22B_IC-LoRA-Cameraman_v2_14000.safetensors',
   ltxEditLora: 'edit_anything_v1.1_r256.safetensors',
@@ -1337,6 +1338,7 @@ function configuredModelsStatus(info) {
     ltx: {
       label: 'LTX 2.3',
       checkpoint: modelStatus(info, 'CheckpointLoaderSimple', 'ckpt_name', settings.ltxCkpt),
+      videoVae: modelStatus(info, 'VAELoader', 'vae_name', settings.ltxVideoVae),
       distilled: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxDistilledLora, loraList),
       textEncoder: modelStatusAny(info, settings.ltxTextEncoder, [['LTXAVTextEncoderLoader', 'text_encoder']]),
       gemmaLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.ltxGemmaLora, loraList),
@@ -3594,6 +3596,7 @@ async function buildAnimate(imageName, opts) {
 
   // Models
   graph.ckpt = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.ltxCkpt } };
+  graph.video_vae = { class_type: 'VAELoader', inputs: { vae_name: settings.ltxVideoVae } };
   graph.model_lora = {
     class_type: 'LoraLoaderModelOnly',
     inputs: { model: ['ckpt', 0], lora_name: settings.ltxDistilledLora, strength_model: 0.5 },
@@ -3734,7 +3737,7 @@ async function buildAnimate(imageName, opts) {
     graph.camera_image_condition1 = await nodeFromOrdered(
       'LTXVImgToVideoConditionOnly',
       [0.5, !!opts.bypass],
-      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['latent1', 0] }
+      { vae: ['video_vae', 0], image: ['prep', 0], latent: ['latent1', 0] }
     );
     graph.camera_guide1 = await nodeFromOrdered(
       'LTXAddVideoICLoRAGuide',
@@ -3742,7 +3745,7 @@ async function buildAnimate(imageName, opts) {
       {
         positive: basePositive,
         negative: baseNegative,
-        vae: ['ckpt', 2],
+        vae: ['video_vae', 0],
         latent: ['camera_image_condition1', 0],
         image: cameraGuideSource,
       }
@@ -3754,7 +3757,7 @@ async function buildAnimate(imageName, opts) {
     graph.edit_guide1 = {
       class_type: 'LTXVAddGuide',
       inputs: {
-        positive: basePositive, negative: baseNegative, vae: ['ckpt', 2], latent: ['latent1', 0],
+        positive: basePositive, negative: baseNegative, vae: ['video_vae', 0], latent: ['latent1', 0],
         image: ['edit_source_base', 0], frame_idx: 0, strength: 1,
       },
     };
@@ -3765,7 +3768,7 @@ async function buildAnimate(imageName, opts) {
     graph.i2v1 = {
       class_type: 'LTXVImgToVideoInplaceKJ',
       inputs: {
-        vae: ['ckpt', 2], latent: ['latent1', 0],
+        vae: ['video_vae', 0], latent: ['latent1', 0],
         num_images: '2',
         'num_images.strength_1': 0.95, 'num_images.image_1': ['prep', 0], 'num_images.index_1': 0,
         'num_images.strength_2': 0.95, 'num_images.image_2': ['prep_end', 0], 'num_images.index_2': opts.frames - 1,
@@ -3776,7 +3779,7 @@ async function buildAnimate(imageName, opts) {
     graph.i2v1 = await nodeFromOrdered(
       'LTXVImgToVideoInplace',
       [0.95, !!opts.bypass],
-      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['latent1', 0] }
+      { vae: ['video_vae', 0], image: ['prep', 0], latent: ['latent1', 0] }
     );
     baseLatent = ['i2v1', 0];
   }
@@ -3812,7 +3815,7 @@ async function buildAnimate(imageName, opts) {
   graph.ups_model = { class_type: 'LatentUpscaleModelLoader', inputs: { model_name: settings.ltxUpscaler } };
   graph.ups = {
     class_type: 'LTXVLatentUpsampler',
-    inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['ckpt', 2] },
+    inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['video_vae', 0] },
   };
   let refinePositive;
   let refineNegative;
@@ -3825,7 +3828,7 @@ async function buildAnimate(imageName, opts) {
     graph.camera_image_condition2 = await nodeFromOrdered(
       'LTXVImgToVideoConditionOnly',
       [0.7, !!opts.bypass],
-      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['ups', 0] }
+      { vae: ['video_vae', 0], image: ['prep', 0], latent: ['ups', 0] }
     );
     refinePositive = ['camera_crop1', 0];
     refineNegative = ['camera_crop1', 1];
@@ -3840,7 +3843,7 @@ async function buildAnimate(imageName, opts) {
     graph.edit_guide2 = {
       class_type: 'LTXVAddGuide',
       inputs: {
-        positive: ['edit_crop1', 0], negative: ['edit_crop1', 1], vae: ['ckpt', 2], latent: ['ups', 0],
+        positive: ['edit_crop1', 0], negative: ['edit_crop1', 1], vae: ['video_vae', 0], latent: ['ups', 0],
         image: ['edit_source', 0], frame_idx: 0, strength: 1,
       },
     };
@@ -3851,7 +3854,7 @@ async function buildAnimate(imageName, opts) {
     graph.i2v2 = {
       class_type: 'LTXVImgToVideoInplaceKJ',
       inputs: {
-        vae: ['ckpt', 2], latent: ['ups', 0],
+        vae: ['video_vae', 0], latent: ['ups', 0],
         num_images: '2',
         'num_images.strength_1': 1, 'num_images.image_1': ['prep', 0], 'num_images.index_1': 0,
         'num_images.strength_2': 1, 'num_images.image_2': ['prep_end', 0], 'num_images.index_2': opts.frames - 1,
@@ -3862,7 +3865,7 @@ async function buildAnimate(imageName, opts) {
     graph.i2v2 = await nodeFromOrdered(
       'LTXVImgToVideoInplace',
       [1, !!opts.bypass],
-      { vae: ['ckpt', 2], image: ['prep', 0], latent: ['ups', 0] }
+      { vae: ['video_vae', 0], image: ['prep', 0], latent: ['ups', 0] }
     );
     refineLatent = ['i2v2', 0];
   }
@@ -3897,8 +3900,8 @@ async function buildAnimate(imageName, opts) {
   // Decode + mux
   graph.decode = await nodeFromOrdered(
     'VAEDecodeTiled',
-    [768, 64, 4096, 4],
-    { samples: ['sep2', 0], vae: ['ckpt', 2] }
+    [768, 64, 64, 8],
+    { samples: ['sep2', 0], vae: ['video_vae', 0] }
   );
   graph.audio_dec = {
     class_type: 'LTXVAudioVAEDecode',
@@ -3955,6 +3958,7 @@ async function buildAnimateFaceId(faceName, opts) {
 
   // Models: base ckpt -> distilled-1.1 @0.6 -> FaceID LoRA @1.0 -> user LoRAs
   graph.ckpt = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.ltxCkpt } };
+  graph.video_vae = { class_type: 'VAELoader', inputs: { vae_name: settings.ltxVideoVae } };
   graph.model_lora = {
     class_type: 'LoraLoaderModelOnly',
     inputs: { model: ['ckpt', 0], lora_name: settings.ltxFaceIdDistilledLora, strength_model: 0.6 },
@@ -4040,7 +4044,7 @@ async function buildAnimateFaceId(faceName, opts) {
       model: ltxModel,
       positive: ['cond', 0],
       negative: ['cond', 1],
-      vae: ['ckpt', 2],
+      vae: ['video_vae', 0],
       latent: ['concat1', 0],
       reference_face: ['face', 0],
     }
@@ -4069,8 +4073,8 @@ async function buildAnimateFaceId(faceName, opts) {
   };
   graph.decode = await nodeFromOrdered(
     'VAEDecodeTiled',
-    [768, 64, 4096, 4],
-    { samples: ['crop', 2], vae: ['ckpt', 2] }
+    [768, 64, 64, 8],
+    { samples: ['crop', 2], vae: ['video_vae', 0] }
   );
   graph.audio_dec = {
     class_type: 'LTXVAudioVAEDecode',
@@ -4149,8 +4153,10 @@ async function buildAnimateEros(imageName, opts) {
   const halfW = Math.max(64, Math.round(opts.W / 2 / 32) * 32);
   const halfH = Math.max(64, Math.round(opts.H / 2 / 32) * 32);
 
-  // Models (checkpoint provides transformer + video VAE + audio VAE)
+  // The checkpoint provides the transformer and audio VAE. A standalone video
+  // VAE lets ComfyUI release checkpoint dependencies before the tiled decode.
   graph.ckpt = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: settings.erosCkpt } };
+  graph.video_vae = { class_type: 'VAELoader', inputs: { vae_name: settings.ltxVideoVae } };
   graph.audio_vae = { class_type: 'LTXVAudioVAELoader', inputs: { ckpt_name: settings.erosCkpt } };
   graph.te = await nodeFromOrdered(
     'LTXAVTextEncoderLoader',
@@ -4254,7 +4260,7 @@ async function buildAnimateEros(imageName, opts) {
     audioLatent = ['audio_lat', 0];
   }
   const i2v1Inputs = {
-    vae: ['ckpt', 2], latent: ['latent1', 0],
+    vae: ['video_vae', 0], latent: ['latent1', 0],
     num_images: opts.endImageName ? '2' : '1',
     'num_images.strength_1': 1,
     'num_images.image_1': ['prep', 0],
@@ -4273,7 +4279,7 @@ async function buildAnimateEros(imageName, opts) {
   graph.ref1 = {
     class_type: 'LTXReferenceConditioning',
     inputs: {
-      model: erosModel, vae: ['ckpt', 2], image: ['resize_half', 0],
+      model: erosModel, vae: ['video_vae', 0], image: ['resize_half', 0],
       target_latent: ['i2v1', 0], strength: 1, position_mode: 'reference', verbose: false,
     },
   };
@@ -4294,10 +4300,10 @@ async function buildAnimateEros(imageName, opts) {
   graph.ups_model = { class_type: 'LatentUpscaleModelLoader', inputs: { model_name: settings.ltxUpscaler } };
   graph.ups = {
     class_type: 'LTXVLatentUpsampler',
-    inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['ckpt', 2] },
+    inputs: { samples: ['sep1', 0], upscale_model: ['ups_model', 0], vae: ['video_vae', 0] },
   };
   const i2v2Inputs = {
-    vae: ['ckpt', 2], latent: ['ups', 0],
+    vae: ['video_vae', 0], latent: ['ups', 0],
     num_images: opts.endImageName ? '2' : '1',
     'num_images.strength_1': 1,
     'num_images.image_1': ['resize_full', 0],
@@ -4316,7 +4322,7 @@ async function buildAnimateEros(imageName, opts) {
   graph.ref2 = {
     class_type: 'LTXReferenceConditioning',
     inputs: {
-      model: erosModel, vae: ['ckpt', 2], image: ['resize_full', 0],
+      model: erosModel, vae: ['video_vae', 0], image: ['resize_full', 0],
       target_latent: ['i2v2', 0], strength: 1, position_mode: 'reference', verbose: false,
     },
   };
@@ -4333,7 +4339,11 @@ async function buildAnimateEros(imageName, opts) {
   graph.sep2 = { class_type: 'LTXVSeparateAVLatent', inputs: { av_latent: ['second', 1] } };
 
   // Decode + mux
-  graph.decode = { class_type: 'VAEDecode', inputs: { samples: ['sep2', 0], vae: ['ckpt', 2] } };
+  graph.decode = await nodeFromOrdered(
+    'VAEDecodeTiled',
+    [768, 64, 64, 8],
+    { samples: ['sep2', 0], vae: ['video_vae', 0] }
+  );
   graph.audio_dec = {
     class_type: 'LTXVAudioVAEDecode',
     inputs: { samples: ['sep2', 1], audio_vae: ['audio_vae', 0] },
@@ -4961,7 +4971,7 @@ const REQUIRED_CLASSES = {
   smartmask: SAM3_MASK_CLASSES,
   upscale: ['SeedVR2LoadDiTModel', 'SeedVR2LoadVAEModel', 'SeedVR2VideoUpscaler'],
   ultimateupscale: ['UltimateSDUpscale', 'UpscaleModelLoader'],
-  video: ['CheckpointLoaderSimple', 'LoraLoaderModelOnly', 'LTXAVTextEncoderLoader', 'TextGenerateLTX2Prompt',
+  video: ['CheckpointLoaderSimple', 'VAELoader', 'LoraLoaderModelOnly', 'LTXAVTextEncoderLoader', 'TextGenerateLTX2Prompt',
     'LTXVConditioning', 'EmptyLTXVLatentVideo', 'LTXVImgToVideoInplace', 'LTXVAudioVAELoader',
     'LTXVEmptyLatentAudio', 'LTXVConcatAVLatent', 'LTXVSeparateAVLatent', 'RandomNoise', 'CFGGuider',
     'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
@@ -4975,11 +4985,11 @@ const REQUIRED_CLASSES = {
   rife: ['RIFE VFI'],
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
-  eros: ['CheckpointLoaderSimple', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
+  eros: ['CheckpointLoaderSimple', 'VAELoader', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
     'LTXVPreprocess', 'LTXReferenceEnable', 'LTXReferenceConditioning', 'LoraLoaderModelOnly',
     'EmptyLTXVLatentVideo', 'LTXVEmptyLatentAudio', 'LTXVImgToVideoInplaceKJ', 'LTXVConcatAVLatent',
     'EchoDMDSigmas', 'EchoDMDSigmaRemap', 'EchoDMDSampler', 'SamplerCustom', 'LTXVSeparateAVLatent',
-    'LatentUpscaleModelLoader', 'LTXVLatentUpsampler', 'ManualSigmas', 'VAEDecode', 'LTXVAudioVAEDecode',
+    'LatentUpscaleModelLoader', 'LTXVLatentUpsampler', 'ManualSigmas', 'VAEDecodeTiled', 'LTXVAudioVAEDecode',
     'CreateVideo', 'SaveVideo'],
   scail: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'CLIPVisionLoader', 'CLIPVisionEncode', 'CheckpointLoaderSimple', 'CLIPTextEncode', 'ImageScale',
@@ -5487,9 +5497,18 @@ async function handleApi(req, res, url) {
       // Enter maintenance before the first queue check so another browser
       // cannot submit work while the network-bound fast-forward is running.
       await assertDesktopIsIdle();
+      const installedRelease = readAppRelease(ROOT);
+      const publishedRelease = await officialReleaseChecker.check(installedRelease.version);
+      if (!publishedRelease.latest?.tagName) {
+        const error = new Error('No published stable Mix Studio release is available.');
+        error.code = 'update_release';
+        throw error;
+      }
       const update = await updateFromGit(ROOT, {
         channel: RUNTIME.update.channel,
         gitExecutable: RUNTIME.update.gitExecutable,
+        targetTag: publishedRelease.latest.tagName,
+        targetVersion: publishedRelease.latest.version,
       });
       // ComfyUI can receive work outside Mix Studio. Check it again directly
       // before scheduling a process restart. If that race occurs after Git has
@@ -5518,6 +5537,8 @@ async function handleApi(req, res, url) {
         releasedAt: update.release.releasedAt,
         revision: update.after.slice(0, 7),
         changedFiles: update.changedFiles,
+        tested: update.preflightPassed,
+        releaseTag: update.targetTag,
       });
       if (update.updated && update.restartRequired) {
         if (waitingForIdle) scheduleServerRestartWhenIdle();
@@ -5525,7 +5546,7 @@ async function handleApi(req, res, url) {
       }
       return;
     } catch (e) {
-      const status = ['desktop_busy', 'update_dirty', 'update_branch', 'update_channel', 'update_origin'].includes(e.code) ? 409 : 500;
+      const status = ['desktop_busy', 'update_dirty', 'update_branch', 'update_channel', 'update_origin', 'update_release', 'update_diverged'].includes(e.code) ? 409 : 500;
       const payload = { error: String(e.message || e), code: e.code || 'update_failed' };
       if (e.code === 'update_dirty' && Array.isArray(e.dirtyFiles)) {
         payload.dirtyFiles = e.dirtyFiles;

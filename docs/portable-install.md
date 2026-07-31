@@ -25,7 +25,7 @@ The curated Krea 2 image route uses 8 GB VRAM as its guided offload tier and rec
 
 Low VRAM mode is guidance, not a hidden cap. Image requests above roughly one megapixel or batch one receive a confirmation that offers safer settings or the exact original request. LTX 2.3, LTX Edit, 10Eros, Wan 2.2 14B, and SCAIL 2 use 8 GB VRAM as an experimental offload tier and recommend 24 GB VRAM. System RAM is not used as an installation requirement. Shorter duration, smaller frames, native ComfyUI offloading, and supported GGUF weights for Wan and SCAIL improve the chance of success. Hardware below the guided tier still receives an install-anyway option rather than a block.
 
-Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configured diffusion filename ends in `.gguf`, and their setup groups install ComfyUI-GGUF. Guided downloads still use the curated safetensors/FP8 files, so third-party GGUF weights must be downloaded and selected manually. The current LTX 2.3 and 10Eros graphs use combined checkpoints; transformer-only GGUF files are not drop-in replacements for those pipelines.
+Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configured diffusion filename ends in `.gguf`, and their setup groups install ComfyUI-GGUF. Guided downloads still use the curated safetensors/FP8 files, so third-party GGUF weights must be downloaded and selected manually. The current LTX 2.3 and 10Eros graphs use combined transformer and audio checkpoints plus a standalone video VAE; transformer-only GGUF files are not drop-in replacements for those pipelines.
 
 ## Phone-first access with Tailscale
 

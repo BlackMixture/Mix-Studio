@@ -59,13 +59,13 @@ Low VRAM mode never silently changes a request. If an image exceeds roughly one 
 | --- | ---: | ---: | --- |
 | Flux 2 Klein 4B edit | 4 GB | 16 GB | Official FP8 checkpoint with system-RAM offload |
 | Krea 2 image and Krea-based edit | 8 GB | 16 GB | FP8, or native INT8 ConvRot below 16 GB |
-| LTX 2.3, LTX Edit, and 10Eros | 8 GB | 24 GB | Combined FP8 checkpoints with aggressive offload |
+| LTX 2.3, LTX Edit, and 10Eros | 8 GB | 24 GB | FP8 checkpoints, standalone video VAE, and aggressive offload |
 | Wan 2.2 14B and SCAIL 2 | 8 GB | 24 GB | FP8, or manually configured GGUF diffusion weights |
 | Klein 9B and Qwen Edit | 16 GB | 24 GB | Curated BF16 or FP8 variants, or manually configured GGUF weights |
 
 Lower resolution or duration, ComfyUI offloading, and manually configured quantized weights can allow some workflows below their listed tier, with slower generation and a greater out-of-memory risk. Mix Studio warns before a below-tier install or generation and lets the user continue unchanged.
 
-Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in supported Klein, Qwen, Wan, and SCAIL graphs. Guided setup installs that loader but does not download third-party GGUF weights or quantized text encoders. LTX 2.3 and 10Eros use combined audio and video checkpoints and cannot use a transformer-only GGUF file as a drop-in replacement. Krea 2 INT8 ConvRot is not GGUF and uses ComfyUI's standard diffusion loader.
+Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in supported Klein, Qwen, Wan, and SCAIL graphs. Guided setup installs that loader but does not download third-party GGUF weights or quantized text encoders. LTX 2.3 and 10Eros use combined transformer and audio checkpoints plus a standalone BF16 video VAE for bounded temporal decoding; a transformer-only GGUF file is not a drop-in replacement. Krea 2 INT8 ConvRot is not GGUF and uses ComfyUI's standard diffusion loader.
 
 ## ComfyUI and shared models
 
@@ -119,7 +119,9 @@ Open Mix Studio's side menu and choose **Update app**. Updates require:
 - no uncommitted tracked application changes; and
 - idle Mix Studio and ComfyUI queues.
 
-Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side changes restart the Node process automatically. Frontend-only changes reload without a server restart.
+The updater installs the exact stable Git tag advertised by the official GitHub Release instead of pulling unreleased changes from the tip of `main`. Before changing the live branch, it checks the release out separately and runs the server and browser syntax checks plus the full automated test suite. A download, ancestry, or test failure leaves the installed revision unchanged.
+
+Machine-specific `install.json` and all `data/` content are ignored by Git, so normal updates do not replace profiles, settings, metadata, or generations. Server-side changes restart the Node process automatically. Frontend-only changes reload without a server restart. Keep development changes in a separate worktree and contribute reusable fixes upstream so the production checkout remains eligible for one-click fast-forward updates.
 
 Mix Studio checks the official `BlackMixture/Mix-Studio` GitHub Releases channel when a profile signs in and every six hours while the app stays open. A newer stable semantic version appears in the **Updates inbox** with release notes and an optional browser alert. The check is read-only, cached locally for one hour, and uses no bundled GitHub credentials. The local owner still decides when to install the update.
 

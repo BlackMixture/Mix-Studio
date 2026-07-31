@@ -50,7 +50,7 @@ test('model settings retain one field each and follow logical pipeline groups', 
     'setComfy', 'galleryPasswordInput', 'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
     'setKlein4Unet', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
     'setKlein9Unet', 'setKlein9ConsistencyLora', 'setKlein9ConsistencyTrigger', 'setQeUnet', 'setDit', 'setSvVae',
-    'setLtxCkpt', 'setWanHigh', 'setErosCkpt', 'setScailUnet', 'setSvAttn', 'setSysPrompt',
+    'setLtxCkpt', 'setLtxVideoVae', 'setWanHigh', 'setErosCkpt', 'setScailUnet', 'setSvAttn', 'setSysPrompt',
   ];
   for (const id of ids) {
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `${id} should appear once`);

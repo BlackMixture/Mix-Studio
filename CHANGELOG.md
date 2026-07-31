@@ -4,6 +4,8 @@
 
 - Kept LoRA sliders and hold-drag strength controls within the practical `0–2` range while retaining exact manual entry from `-100` to `100`.
 - Made Mix Packs available from Create, Edit, and video prompt fields, including preset-card persistence, gallery metadata, and image or video documentation exports.
+- Bounded temporal VAE decoding across LTX 2.3, Face ID, Director, and 10Eros, and moved video decoding to a standalone VAE so long renders can release checkpoint dependencies before decode.
+- Made the in-app updater preflight the exact published stable tag in a temporary worktree before changing the live installation.
 
 ## 1.0.3 - 2026-07-30
 

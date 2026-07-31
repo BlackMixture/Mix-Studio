@@ -185,6 +185,7 @@ test('Director graph inserts prompt relay and guide nodes into the existing two-
   };
   const settings = {
     ltxCkpt: 'ltx.safetensors',
+    ltxVideoVae: 'ltx-vae.safetensors',
     ltxDistilledLora: 'distilled.safetensors',
     ltxTextEncoder: 'gemma.safetensors',
     ltxGemmaLora: 'gemma-lora.safetensors',
@@ -204,6 +205,7 @@ test('Director graph inserts prompt relay and guide nodes into the existing two-
   assert.equal(graph.guide_base.class_type, 'LTXDirectorGuide');
   assert.equal(graph.guide_base.inputs.scale_by, 0.5);
   assert.equal(graph.guide_refine.inputs.scale_by, 1);
+  assert.equal(graph.video_vae.inputs.vae_name, 'ltx-vae.safetensors');
   assert.equal(graph.crop1.class_type, 'LTXDirectorCropGuides');
   assert.equal(graph.crop2.class_type, 'LTXDirectorCropGuides');
   assert.deepEqual(graph.samp1.inputs.noise, ['noise', 0]);
@@ -232,7 +234,7 @@ test('Director graph keeps LoRAs, guide audio override, smoothing, 4K, and poste
     W: 1280, H: 720, seed: 99, smooth: 2, fourK: true, makePoster: true,
     loras: [{ name: 'look.safetensors', strength: 0.8, on: true }], sigmasBase: '1,0', sigmasRefine: '0.5,0',
   }, {
-    ltxCkpt: 'ltx.safetensors', ltxDistilledLora: 'distilled.safetensors', ltxTextEncoder: 'gemma.safetensors',
+    ltxCkpt: 'ltx.safetensors', ltxVideoVae: 'ltx-vae.safetensors', ltxDistilledLora: 'distilled.safetensors', ltxTextEncoder: 'gemma.safetensors',
     ltxGemmaLora: 'gemma-lora.safetensors', ltxUpscaler: 'up.safetensors', ltxDirectorIcLora: 'ingredients.safetensors',
   }, helpers);
   assert.deepEqual(calls.loras, [{ name: 'look.safetensors', strength: 0.8, on: true }]);
@@ -243,6 +245,8 @@ test('Director graph keeps LoRAs, guide audio override, smoothing, 4K, and poste
   assert.equal(graph.vsr.class_type, 'RTXVideoSuperResolution');
   assert.deepEqual(graph.video.inputs.images, ['vsr', 0]);
   assert.equal(graph.video.inputs.fps, 48);
+  assert.deepEqual(graph.decode.inputs.ordered, [768, 64, 64, 8]);
+  assert.deepEqual(graph.decode.inputs.vae, ['video_vae', 0]);
   assert.equal(graph.poster_save.class_type, 'SaveImage');
 });
 
@@ -277,7 +281,7 @@ test('Director extension anchors both stages and emits a seam-trimmed tail for a
     loras: [], sigmasBase: '1,0', sigmasRefine: '0.5,0',
     extension: { videoName: 'source.mp4', sourceHasAudio: false, plan },
   }, {
-    ltxCkpt: 'ltx.safetensors', ltxDistilledLora: 'distilled.safetensors', ltxTextEncoder: 'gemma.safetensors',
+    ltxCkpt: 'ltx.safetensors', ltxVideoVae: 'ltx-vae.safetensors', ltxDistilledLora: 'distilled.safetensors', ltxTextEncoder: 'gemma.safetensors',
     ltxGemmaLora: 'gemma-lora.safetensors', ltxUpscaler: 'up.safetensors', ltxDirectorIcLora: 'ingredients.safetensors',
   }, helpers);
 

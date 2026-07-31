@@ -63,7 +63,7 @@ Curated workflow families include:
 - ComfyUI-Krea2Edit and Krea2-Regional-MultiLoRA
 - Flux 2 Klein 4B and 9B
 - Qwen Image Edit 2511
-- LTX 2.3, its spatial upscaler, and Gemma encoder
+- LTX 2.3, its standalone video VAE, spatial upscaler, and Gemma encoder
 - Wan 2.2, 10Eros, and SCAIL 2 with SAM3 multiplex and `clip_vision_h`
 - Best-FaceID LoRA and [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes)
 - SeedVR2, KJNodes, VideoHelperSuite, ComfyUI-Frame-Interpolation with RIFE, and Ultimate SD Upscale

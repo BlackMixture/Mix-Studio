@@ -11,6 +11,7 @@ const {
   readAppRelease,
   restartRequiredForFiles,
   isOfficialOrigin,
+  stableReleaseVersion,
   updateFromGit,
 } = require('../lib/app-update');
 
@@ -64,6 +65,12 @@ test('release metadata accepts SemVer and rejects ambiguous version labels', () 
   }
 });
 
+test('stable updates accept only exact v-prefixed semantic release tags', () => {
+  assert.equal(stableReleaseVersion('v1.2.3'), '1.2.3');
+  assert.equal(stableReleaseVersion('v2.0.0-beta.1'), '2.0.0-beta.1');
+  for (const tag of ['1.2.3', 'v1.2', 'latest', 'main', '']) assert.equal(stableReleaseVersion(tag), null);
+});
+
 test('release metadata is read from disk on every call and safely handles missing files', (t) => {
   const root = temporaryReleaseRoot(t);
   assert.deepEqual(readAppRelease(root), { version: null, releasedAt: null });
@@ -105,6 +112,71 @@ test('updates report the release metadata from before and after the fast-forward
   assert.deepEqual(result.release, releases[1]);
   assert.equal(result.restartRequired, false);
   assert.deepEqual(result.changedFiles, ['release.json', 'public/app.js']);
+});
+
+test('stable updates verify the exact published tag before fast-forwarding', async () => {
+  const fake = gitSequence([
+    '', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n',
+    '', 'bbb\n', 'aaa\n', 'Updating aaa..bbb\n', 'bbb\n', 'server.js\n',
+  ]);
+  const releases = [
+    { version: '1.0.2', releasedAt: '2026-07-24' },
+    { version: '1.0.3', releasedAt: '2026-07-30' },
+  ];
+  let releaseReads = 0;
+  const verified = [];
+  const result = await updateFromGit('/app', {
+    runGit: fake.runGit,
+    targetTag: 'v1.0.3',
+    targetVersion: '1.0.3',
+    readRelease: () => releases[releaseReads++],
+    verifyRelease: async (details) => verified.push(details),
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(result.preflightPassed, true);
+  assert.equal(result.targetTag, 'v1.0.3');
+  assert.deepEqual(verified, [{ root: '/app', target: 'bbb', expectedVersion: '1.0.3' }]);
+  assert.deepEqual(fake.calls[4], ['fetch', '--no-tags', 'origin', 'refs/tags/v1.0.3:refs/tags/v1.0.3']);
+  assert.deepEqual(fake.calls[5], ['rev-parse', 'refs/tags/v1.0.3^{commit}']);
+  assert.deepEqual(fake.calls[6], ['merge-base', 'aaa', 'bbb']);
+  assert.deepEqual(fake.calls[7], ['merge', '--ff-only', 'bbb']);
+});
+
+test('a failed stable-release preflight leaves the live branch untouched', async () => {
+  const fake = gitSequence([
+    '', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n',
+    '', 'bbb\n', 'aaa\n',
+  ]);
+  const error = new Error('tests failed');
+  error.code = 'update_preflight';
+  await assert.rejects(
+    updateFromGit('/app', {
+      runGit: fake.runGit,
+      targetTag: 'v1.0.3',
+      targetVersion: '1.0.3',
+      verifyRelease: async () => { throw error; },
+    }),
+    (caught) => caught.code === 'update_preflight'
+  );
+  assert.equal(fake.calls.some((args) => args[0] === 'merge'), false);
+});
+
+test('stable updates stop instead of guessing across divergent local commits', async () => {
+  const fake = gitSequence([
+    '', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n',
+    '', 'bbb\n', 'common\n',
+  ]);
+  await assert.rejects(
+    updateFromGit('/app', {
+      runGit: fake.runGit,
+      targetTag: 'v1.0.3',
+      targetVersion: '1.0.3',
+      verifyRelease: async () => assert.fail('diverged releases must not be tested'),
+    }),
+    (error) => error.code === 'update_diverged'
+  );
+  assert.equal(fake.calls.some((args) => args[0] === 'merge'), false);
 });
 
 test('a legacy KreaStudio origin migrates to Mix-Studio before pulling', async () => {
@@ -198,6 +270,9 @@ test('update and meta APIs expose semantic releases independently of ComfyUI rea
   assert.match(updateRoute, /revision:\s*update\.after\.slice\(0, 7\)/);
   assert.match(updateRoute, /payload\.dirtyFiles\s*=\s*e\.dirtyFiles/);
   assert.match(updateRoute, /payload\.dirtyFileCount/);
+  assert.match(updateRoute, /targetTag:\s*publishedRelease\.latest\.tagName/);
+  assert.match(updateRoute, /targetVersion:\s*publishedRelease\.latest\.version/);
+  assert.match(updateRoute, /tested:\s*update\.preflightPassed/);
 
   const metaRoute = server.slice(server.indexOf("route === '/api/meta'"), server.indexOf("route === '/api/input'"));
   assert.match(metaRoute, /const app = Object\.assign\(readAppRelease\(ROOT\), \{ instanceId: SERVER_INSTANCE_ID \}\)/);

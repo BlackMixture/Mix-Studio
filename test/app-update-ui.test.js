@@ -125,13 +125,15 @@ test('drawer selections use black borders against the drawer canvas', () => {
   assert.match(css, /\.app-drawer-create-item\.active \{[^}]*border-color: #000;/);
 });
 
-test('the update flow pulls safely and waits for a conditional restart', () => {
+test('the update flow pre-tests a stable release and waits for a conditional restart', () => {
   assert.match(server, /route === '\/api\/update'/);
   assert.match(server, /updateFromGit\(ROOT,\s*\{/);
+  assert.match(server, /publishedRelease\.latest\.tagName/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
   assert.match(server, /appUpdateRunning/);
   assert.match(app, /waitForAppRestart/);
   assert.match(app, /api\('\/api\/update'/);
+  assert.match(app, /Downloading the published release and running its safety checks/);
 });
 
 test('an external ComfyUI job that starts after the pull delays, but does not strand, the restart', () => {
