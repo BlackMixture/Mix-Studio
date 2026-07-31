@@ -45,9 +45,11 @@ function expandPathValue(value, env = process.env) {
     .replace(/^~(?=[\\/]|$)/, env.USERPROFILE || env.HOME || '~');
 }
 
+const BLOCK_SCALAR_RE = /^[|>][-+]?$/;
+
 function resolveConfiguredPath(value, basePath, configDir, pathApi = path, env = process.env) {
   const expanded = expandPathValue(stripYamlScalar(value), env);
-  if (!expanded || expanded === '|' || expanded === '>') return '';
+  if (!expanded || BLOCK_SCALAR_RE.test(expanded)) return '';
   if (pathApi.isAbsolute(expanded)) return pathApi.normalize(expanded);
   return pathApi.resolve(basePath || configDir, expanded);
 }
@@ -101,11 +103,12 @@ function parseExtraModelPaths(text, options = {}) {
       continue;
     }
     block = null;
-    const match = trimmed.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
+    // Comfy Desktop quotes every mapping key in its generated config.
+    const match = trimmed.match(/^(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_.-]+))\s*:\s*(.*)$/);
     if (!match) continue;
-    const key = match[1];
+    const key = match[1] || match[2] || match[3];
     const lowerKey = key.toLowerCase();
-    const value = stripYamlScalar(match[2]);
+    const value = stripYamlScalar(match[4]);
     if (indent === 0 && !value) {
       section = key;
       currentSection();
@@ -114,7 +117,7 @@ function parseExtraModelPaths(text, options = {}) {
     if (lowerKey === 'base_path') {
       currentSection().basePath = resolveConfiguredPath(value, '', configDir, pathApi, env);
     } else if (MODEL_PATH_KEYS.has(lowerKey)) {
-      if (value === '|' || value === '>') block = { indent, key: lowerKey };
+      if (BLOCK_SCALAR_RE.test(value)) block = { indent, key: lowerKey };
       else if (value) currentSection().entries.push({ key: lowerKey, value });
     }
   }
@@ -136,6 +139,11 @@ function parseExtraModelPaths(text, options = {}) {
   return { roots: [...roots], configuredPaths: [...new Set(configuredPaths)] };
 }
 
+// Comfy Desktop keeps its own model roots outside the ComfyUI checkout, under a
+// different filename, so those must be scanned as well as the classic configs.
+const DESKTOP_CONFIG_DIRS = ['Comfy Desktop', 'ComfyUI'];
+const DESKTOP_CONFIG_FILES = ['shared_model_paths.yaml', 'extra_models_config.yaml'];
+
 function candidateConfigFiles(comfyPath, env = process.env, pathApi = path) {
   const candidates = [];
   const add = (base) => {
@@ -145,7 +153,14 @@ function candidateConfigFiles(comfyPath, env = process.env, pathApi = path) {
   };
   add(comfyPath);
   if (comfyPath) add(pathApi.join(comfyPath, 'ComfyUI'));
-  if (env.APPDATA) add(pathApi.join(env.APPDATA, 'ComfyUI'));
+  if (env.APPDATA) {
+    add(pathApi.join(env.APPDATA, 'ComfyUI'));
+    for (const directory of DESKTOP_CONFIG_DIRS) {
+      for (const file of DESKTOP_CONFIG_FILES) {
+        candidates.push(pathApi.join(env.APPDATA, directory, file));
+      }
+    }
+  }
   return [...new Set(candidates)];
 }
 
@@ -163,6 +178,26 @@ async function registeredModelsFromComfy(comfyUrl, options = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** A ComfyUI checkout keeps an empty `models` tree even when every model lives
+ *  in a shared library, so a root that holds no model file must not win the
+ *  destination over one that does. */
+function rootHoldsModels(root, fsApi, pathApi) {
+  if (typeof fsApi.readdirSync !== 'function') return false;
+  const pending = [root];
+  for (let depth = 0; depth < 2 && pending.length; depth += 1) {
+    const directories = pending.splice(0, pending.length);
+    for (const directory of directories) {
+      let entries;
+      try { entries = fsApi.readdirSync(directory, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries) {
+        if (entry.isDirectory()) pending.push(pathApi.join(directory, entry.name));
+        else if (MODEL_FILE_RE.test(entry.name)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 async function discoverModels(options = {}) {
@@ -190,14 +225,19 @@ async function discoverModels(options = {}) {
   }
   const registry = await registeredModelsFromComfy(options.comfyUrl, options);
   const discoveredRoots = [...roots];
+  const populatedRoots = discoveredRoots.filter((root) => rootHoldsModels(root, fsApi, pathApi));
   return {
     schemaVersion: 1,
     detectedAt: new Date().toISOString(),
     registeredModelNames: registry.names,
     registeredModelCount: registry.names.length,
     modelRoots: discoveredRoots,
+    populatedModelRoots: populatedRoots,
     configFiles,
-    preferredModelsPath: manualModelsPath || discoveredRoots[0] || (comfyPath ? pathApi.join(comfyPath, 'models') : ''),
+    preferredModelsPath: manualModelsPath
+      || populatedRoots[0]
+      || discoveredRoots[0]
+      || (comfyPath ? pathApi.join(comfyPath, 'models') : ''),
     registryError: registry.error,
   };
 }
