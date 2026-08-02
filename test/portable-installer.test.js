@@ -36,6 +36,21 @@ test('portable installer starts the web app before generation setup', () => {
   assert.doesNotMatch(start, /MixBox Studio/);
 });
 
+test('macOS installer clones the official checkout and launches through the restart-aware command', () => {
+  const installer = fs.readFileSync(path.join(root, 'install_MixStudio.command'), 'utf8');
+  const start = fs.readFileSync(path.join(root, 'start.command'), 'utf8');
+  assert.match(installer, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
+  assert.match(installer, /clone --depth 1 --branch main --single-branch/);
+  assert.match(installer, /Node\.js 22 or newer/);
+  assert.match(installer, /installer\/bootstrap\.js/);
+  assert.match(installer, /exec \/bin\/zsh "\$MIX_STUDIO_HOME\/start\.command"/);
+  assert.match(start, /MIXBOX_RESTART_MODE=launcher/);
+  assert.match(start, /PYTORCH_ENABLE_MPS_FALLBACK/);
+  assert.match(start, /process\.versions\.node\.split/);
+  assert.match(start, /http:\/\/127\.0\.0\.1:\$\{PORT:-3300\}\//);
+  assert.match(start, /STATUS.*-eq 75/s);
+});
+
 test('standalone installer downloads the official Git checkout before opening the app', () => {
   const launcher = fs.readFileSync(path.join(root, 'install_MixStudio.bat'), 'utf8');
   assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
@@ -100,7 +115,10 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Download for Windows/);
   assert.match(page, /href="\.\/install_MixStudio\.bat" download="install_MixStudio\.bat"/);
   assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 4);
-  assert.match(page, /macOS support coming soon/);
+  assert.match(page, /Download for macOS/);
+  assert.match(page, /href="\.\/install_MixStudio\.command" download="install_MixStudio\.command"/);
+  assert.equal((page.match(/platform-icon platform-macos/g) || []).length, 4);
+  assert.doesNotMatch(page, /macOS (?:support|download) coming soon/);
   assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
   assert.doesNotMatch(page, /The installer gets you into Mix Studio before asking you to choose models or workflows\./);
   assert.match(page, /class="download quick-download"/);
@@ -271,6 +289,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Your studio/);
   assert.doesNotMatch(page, /—/);
   assert.match(workflow, /cp install_MixStudio\.bat _site\/install_MixStudio\.bat/);
+  assert.match(workflow, /cp install_MixStudio\.command _site\/install_MixStudio\.command/);
   assert.match(workflow, /cp docs\/download\/mix-studio-wordmark\.svg _site\/mix-studio-wordmark\.svg/);
   assert.match(workflow, /cp docs\/download\/mix-studio-create\.webp _site\/mix-studio-create\.webp/);
   assert.match(workflow, /cp docs\/download\/comfyui-logo\.svg _site\/comfyui-logo\.svg/);
@@ -396,6 +415,27 @@ test('bootstrap recognizes current Comfy Desktop instances and ignores incomplet
       status: 'installing',
     }]));
     assert.equal(desktopComfyPath({ APPDATA: appData }, fs, path), '');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap recognizes a source ComfyUI virtual environment on macOS', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-mac-bootstrap-'));
+  const home = path.join(temp, 'home');
+  const comfyRoot = path.join(home, 'ComfyUI');
+  const python = path.join(comfyRoot, '.venv', 'bin', 'python');
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.writeFileSync(path.join(comfyRoot, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  try {
+    assert.equal(desktopComfyPath({ HOME: home }, fs, path), comfyRoot);
+    const config = portableBootstrapConfig(path.join(temp, 'checkout'), {
+      env: { HOME: home },
+      now: '2026-08-02T00:00:00.000Z',
+    });
+    assert.equal(config.comfy.path, comfyRoot);
+    assert.equal(config.comfy.modelsPath, path.join(comfyRoot, 'models'));
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -643,6 +683,23 @@ test('hardware guidance rates model families by VRAM without enforcing system RA
   assert.match(belowVideoTier.detail, /Installation remains available/);
   assert.equal(difficult.image.level, 'difficult');
   assert.equal(combinedHardwareFit(QUICK_SETUP_COMPONENTS, difficult).level, 'difficult');
+});
+
+test('hardware guidance blocks incompatible Apple FP8 video families while retaining LTX', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
+  const apple = {
+    gpu: { available: true, devices: [{
+      name: 'Apple M4 Max', vendor: 'apple', backend: 'mps', memoryBytes: 64 * (1024 ** 3),
+    }] },
+    memory: { totalBytes: 64 * (1024 ** 3) },
+    disk: { freeBytes: 500 * (1024 ** 3) },
+  };
+  const guidance = componentHardwareGuidance(manifest, apple);
+  assert.equal(guidance.video.blocked, undefined);
+  for (const component of ['eros', 'wan', 'scail', 'scailinfinity']) {
+    assert.equal(guidance[component].blocked, true);
+    assert.match(guidance[component].detail, /Apple Metal/);
+  }
 });
 
 test('portable setup validates connection input and preserves machine settings', () => {

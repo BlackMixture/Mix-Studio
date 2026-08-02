@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -87,6 +87,12 @@ jobs:
           call install_MixStudio.bat --verify-checkout "%ProgramFiles%\Git\cmd\git.exe" "%GITHUB_WORKSPACE%"
           if errorlevel 1 exit /b 1
           call install_MixStudio.bat --verify-node "node.exe"
+
+      - name: Check macOS launchers
+        if: runner.os == 'macOS'
+        run: |
+          /bin/zsh -n install_MixStudio.command
+          /bin/zsh -n start.command
 
       - name: Run tests
         run: node --test

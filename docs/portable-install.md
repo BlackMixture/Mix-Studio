@@ -1,10 +1,10 @@
 # Portable installation and updates
 
-Mix Studio uses a portable Git checkout on Windows. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
+Mix Studio uses a portable Git checkout on Windows and macOS. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
 
 The bootstrap is intentionally small. It gets the Mix Studio web app running first, then leaves ComfyUI, models, and custom-node setup inside the app. On an unconfigured installation, the centered setup panel opens automatically. It can start a detected portable or Desktop environment, launch the signed official ComfyUI Desktop installer, discover a live endpoint, and install the curated groups used by Mix Studio's workflow-tested defaults from `installer/feature-manifest.json`.
 
-## New machine
+## New Windows machine
 
 1. Open `https://blackmixture.github.io/Mix-Studio/` on Windows and download `install_MixStudio.bat` into the parent folder where you want Mix Studio installed.
 2. Run the downloaded file. It installs Git through `winget` when necessary and clones the official repository into a `Mix Studio` folder beside the installer. For example, running `D:\AI\install_MixStudio.bat` installs the app at `D:\AI\Mix Studio`.
@@ -31,13 +31,23 @@ Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configu
 
 1. Add a PIN to the Owner profile before sharing the studio with another device.
 2. Open the **Phone access card** on the setup Finish step. It lists reachable same-Wi-Fi and Tailscale addresses without requiring the terminal.
-3. For access away from home, use the card's links to install [Tailscale](https://tailscale.com/download) on the Windows generation machine and the phone, then sign both devices into the same tailnet.
+3. For access away from home, use the card's links to install [Tailscale](https://tailscale.com/download) on the generation computer and the phone, then sign both devices into the same tailnet.
 4. Refresh the card, select the private Tailscale address, and use **Copy or share** to send it to the phone.
 5. Open the address on the phone, then add it to the home screen for app-like access.
 
-ComfyUI, model files, galleries, and generation work remain on the Windows machine. The phone sends requests and displays the Mix Studio interface over the private Tailscale connection; public port forwarding is not required.
+ComfyUI, model files, galleries, and generation work remain on the generation computer. The phone sends requests and displays the Mix Studio interface over the private Tailscale connection; public port forwarding is not required.
 
 For a manual installation, install Git for Windows and run `git clone https://github.com/BlackMixture/Mix-Studio.git`, then launch `install_MixStudio.bat` from that checkout.
+
+## New Apple Silicon Mac
+
+1. Install Git, Node.js 22 or newer, and source-based ComfyUI with a `.venv` or `venv` Python environment.
+2. Download `install_MixStudio.command` from the public download page.
+3. Run `zsh ~/Downloads/install_MixStudio.command` in Terminal. The script clones the official repository into `Mix Studio` beside the installer, writes the same portable metadata as Windows, starts `start.command`, and opens the local app.
+4. In Generation setup, select the ComfyUI folder containing `main.py`. Browse uses the native macOS folder picker, and model paths use POSIX separators.
+5. Start ComfyUI from setup. Mix Studio applies `--fp32-vae`, split cross-attention, and the safe MPS fallback environment automatically.
+
+Apple Metal uses the compatible workflow tier. Setup selects official BF16 LTX 2.3 weights and disables the curated FP8-only 10Eros, Wan 2.2, and SCAIL 2 engines. Large LTX refine requests receive an up-front memory warning with a safer duration instead of failing late during stage two.
 
 The installer is intentionally idempotent. Rerunning it preserves the existing `data/` location and ComfyUI connection, refreshes the minimal bootstrap metadata atomically, starts the app, and opens the browser. Generation setup is always available later from **Advanced Settings → General**, and the Phone access card can be reopened from its Finish step.
 
@@ -67,7 +77,7 @@ The optional local models path additionally lets Mix Studio discover LoRA metada
 
 After sign-in, Mix Studio checks the official `BlackMixture/Mix-Studio` GitHub Releases channel for a newer stable semantic version. The server caches successful checks for one hour, and an open browser checks again every six hours. Release notes appear in the Updates inbox; optional browser alerts work while Mix Studio is open. No GitHub credential is shipped with the app, so only maintainers of the official repository can publish notifications.
 
-Each release uses the semantic version and date in `release.json` plus a matching `v<version>` Git tag. GitHub Actions checks server and browser syntax and runs the complete Node test suite on Node 22 for both Linux and Windows. A mismatched release tag fails validation, and the download page deploy waits for the same checks.
+Each release uses the semantic version and date in `release.json` plus a matching `v<version>` Git tag. GitHub Actions checks server and browser syntax and runs the complete Node test suite on Node 22 for Linux, Windows, and macOS. A mismatched release tag fails validation, and the download page deploy waits for the same checks.
 
 The owner-only **Update app** action runs the equivalent of:
 
@@ -77,6 +87,6 @@ git pull --ff-only origin <current-branch>
 
 It refuses to update a detached HEAD or a checkout with modified tracked code. Because `data/` and `install.json` are ignored, updating code does not overwrite the local database, settings, uploads, generations, or ComfyUI paths.
 
-The owner-only **Restart app** action uses the restart-aware `start.bat` launcher. It refuses while either the Mix Studio queue or the connected ComfyUI queue is active.
+The owner-only **Restart app** action uses the restart-aware `start.bat` or `start.command` launcher. It refuses while either the Mix Studio queue or the connected ComfyUI queue is active.
 
 A ZIP archive is runnable after setup, but it has no Git metadata and therefore cannot use the in-app updater. A clone is the supported installation method.

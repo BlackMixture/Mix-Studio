@@ -74,6 +74,33 @@ test('Desktop-managed Comfy opens the official app instead of bypassing its Pyth
   }
 });
 
+test('macOS starts a source ComfyUI with Metal-safe launch settings', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-mac-start-'));
+  const base = path.join(temp, 'ComfyUI');
+  const python = path.join(base, '.venv', 'bin', 'python');
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  try {
+    const runtime = { comfy: { path: base, url: 'http://127.0.0.1:8188' } };
+    const options = { platform: 'darwin', env: {}, home: path.join(temp, 'missing'), fsImpl: fs };
+    const status = startStatus(runtime, options);
+    assert.equal(status.canStart, true);
+    assert.equal(status.kind, 'python');
+    assert.deepEqual(status.launchArgs, [
+      path.join(base, 'main.py'), '--listen', '127.0.0.1', '--port', '8188',
+      '--fp32-vae', '--use-split-cross-attention',
+    ]);
+    assert.deepEqual(status.launchEnv, { PYTORCH_ENABLE_MPS_FALLBACK: '1' });
+    let launched = null;
+    await startComfy(runtime, () => {}, Object.assign({}, options, { spawn(value) { launched = value; } }));
+    assert.equal(launched.pythonPath, python);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test('the Start API is owner-only, operation-safe, and separate from task-killing restart', () => {
   const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const startRoute = server.slice(server.indexOf("route === '/api/comfy/start'"), server.indexOf("route === '/api/comfy/restart'"));
@@ -175,6 +202,38 @@ test('restart kills only a verified ComfyUI listener before relaunching portable
     });
     assert.deepEqual(calls.find(([command]) => command === 'taskkill'), ['taskkill', ['/PID', '55', '/T', '/F']]);
     assert.equal(launched.kind, 'portable');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('macOS restart sends TERM only to the verified source ComfyUI listener', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-mac-restart-'));
+  const base = path.join(temp, 'ComfyUI');
+  const python = path.join(base, '.venv', 'bin', 'python');
+  const mainPy = path.join(base, 'main.py');
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.writeFileSync(mainPy, '');
+  fs.writeFileSync(python, '');
+  const calls = [];
+  let listenerChecks = 0;
+  let launched = null;
+  try {
+    await restartComfy({ comfy: { path: base, url: 'http://localhost:8188' } }, () => {}, {
+      platform: 'darwin', env: {}, home: path.join(temp, 'missing'), fsImpl: fs,
+      run: async (command, args) => {
+        calls.push([command, args]);
+        if (command === '/usr/sbin/lsof') return listenerChecks++ === 0 ? '77\n' : '';
+        if (command === '/bin/ps') return `77 ${python} ${mainPy} --port 8188`;
+        return '';
+      },
+      wait: async () => {},
+      spawn(status) { launched = status; },
+    });
+    assert.deepEqual(calls.find(([command]) => command === '/bin/kill'), ['/bin/kill', ['-TERM', '77']]);
+    assert.equal(calls.some(([command]) => command === 'taskkill'), false);
+    assert.deepEqual(launched.launchEnv, { PYTORCH_ENABLE_MPS_FALLBACK: '1' });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

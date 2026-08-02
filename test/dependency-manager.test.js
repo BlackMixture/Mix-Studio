@@ -23,6 +23,7 @@ const {
   ensureUv,
   findExistingModelByBasename,
   filterProtectedRuntimeRequirements,
+  filterRequirementsForEnvironment,
   huggingFaceEndpointUrl,
   huggingFaceAccessUrl,
   installComponents,
@@ -32,6 +33,7 @@ const {
   modelIsRegistered,
   normalizeHuggingFaceEndpoint,
   patchLtxVideoKornia,
+  patchBfsOptionalAudio,
   protectedRuntimeConstraints,
   requirementsArgs,
   sameRepo,
@@ -83,6 +85,8 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxTextEncoder')[2], /Comfy-Org\/ltx-2\/resolve\/main\/split_files\/text_encoders\/gemma_3_12B_it_fp4_mixed\.safetensors/);
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxGemmaLora')[2], /Comfy-Org\/ltx-2/);
   assert.match(MODEL_ASSETS.ltxEdit[0][2], /Alissonerdx\/EditAnything/);
+  assert.match(MODEL_ASSETS.faceid.find((asset) => asset[0] === 'ltxFaceIdLora')[2], /Alissonerdx\/LTX-Best-Face-ID\/resolve\/main\/Best_FaceID_v1\.0_LoRA\.safetensors/);
+  assert.match(MODEL_ASSETS.faceid.find((asset) => asset[0] === 'ltxFaceIdDistilledLora')[2], /Comfy-Org\/ltx-2\.3\/resolve\/main\/split_files\/loras\/ltx_2\.3_22b_distilled_1\.1_lora_dynamic_fro09_avg_rank_111_bf16\.safetensors/);
   const qwenAngles = MODEL_ASSETS.qwen.find((asset) => asset[0] === 'qwenEditAnglesLora');
   assert.match(qwenAngles[2], /fal\/Qwen-Image-Edit-2511-Multiple-Angles-LoRA\/resolve\/main\/qwen-image-edit-2511-multiple-angles-lora\.safetensors/);
   assert.equal(qwenAngles[3], 'qwen_image_edit_2511_multiple-angles-lora.safetensors');
@@ -90,6 +94,8 @@ test('dependency catalog covers every enabled image and video family', () => {
   const scailSam = MODEL_ASSETS.scail.find((asset) => asset[0] === 'scailSam');
   assert.match(scailSam[2], /Comfy-Org\/sam3\.1\/resolve\/main\/checkpoints\/sam3\.1_multiplex_fp16\.safetensors/);
   assert.doesNotMatch(scailSam[2], /Comfy-Org\/SCAIL-2/);
+  assert.match(MODEL_ASSETS.scail.find((asset) => asset[0] === 'scailPusaLora')[2], /Kijai\/WanVideo_comfy\/resolve\/main\/Pusa\/Wan21_PusaV1_LoRA_14B_rank512_bf16\.safetensors/);
+  assert.match(MODEL_ASSETS.scail.find((asset) => asset[0] === 'scailClipVision')[2], /Comfy-Org\/Wan_2\.1_ComfyUI_repackaged\/resolve\/main\/split_files\/clip_vision\/clip_vision_h\.safetensors/);
   assert.ok(MODEL_ASSETS.wan.filter((asset) => /Unet$/.test(asset[0]))
     .every((asset) => /Comfy-Org\/Wan_2\.2_ComfyUI_Repackaged/.test(asset[2])));
   assert.match(MODEL_ASSETS.eros.find((asset) => asset[0] === 'erosTextEncoder')[2], /gemma_3_12B_it_heretic_fp8_e4m3fn/);
@@ -191,6 +197,16 @@ test('fresh Klein 4B setup installs FP8 while preserving an existing BF16 select
   const existingUnet = existing.assets.find((asset) => asset[0] === 'klein4Unet');
   assert.match(existingUnet[2], /FLUX\.2-klein-4B/);
   assert.match(existingUnet[2], /flux-2-klein-4b\.safetensors/);
+});
+
+test('Apple LTX setup selects the official BF16 checkpoint', () => {
+  const plan = dependencyModelPlan(['ltx'], {
+    ltxCkpt: 'ltx-2.3-22b-dev-fp8.safetensors',
+  }, { gpuVendor: 'apple' });
+  const checkpoint = plan.assets.find((asset) => asset[0] === 'ltxCkpt');
+  assert.equal(plan.settingUpdates.ltxCkpt, 'ltx-2.3-22b-dev.safetensors');
+  assert.match(checkpoint[2], /Lightricks\/LTX-2\.3\/resolve\/main\/ltx-2\.3-22b-dev\.safetensors/);
+  assert.doesNotMatch(checkpoint[2], /LTX-2\.3-fp8/);
 });
 
 test('automatic Director node installs use the reviewed commit while compatible checkouts are reused', async () => {
@@ -846,7 +862,8 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /\.\.\.EMPTY_DEPENDENCY_FAILURE/);
   assert.match(server, /broadcast\('dependencyInstall'/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
-  assert.match(server, /getObjectInfo\(true, \{ signal: AbortSignal\.timeout\(4000\) \}\)/);
+  assert.match(server, /const COMFY_OBJECT_INFO_TIMEOUT_MS = 60_000/);
+  assert.match(server, /getObjectInfo\(true\)/);
   assert.match(server, /const discovery = await discoverModels\(/);
   assert.match(server, /availableModelRoots,/);
   assert.match(server, /const socketStale = socketOpen && Date\.now\(\) - lastWsMessageAt > 15_000/);
@@ -950,6 +967,16 @@ test('custom-node requirements fall back to uv for pip-less and broken portable 
   }
 });
 
+test('a loaded Windows OpenCV binary reports a specific retry path', async () => {
+  await assert.rejects(installNodeRequirements(
+    { pythonPath: 'comfy-python', basePath: 'ComfyUI' },
+    'requirements.txt',
+    false,
+    () => {},
+    { run: async () => { throw new Error("[WinError 5] Access is denied: 'cv2.pyd'"); } },
+  ), (error) => error.code === 'dependency_requirements_locked' && /stop ComfyUI completely/i.test(error.message));
+});
+
 test('one conflicting node pack does not block unrelated selected workflows', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-node-isolation-'));
   const customNodesPath = path.join(rootDir, 'custom_nodes');
@@ -1041,4 +1068,41 @@ test('repair requirements never reinstall ComfyUI runtime packages from PyPI', (
   assert.doesNotMatch(filtered, /torch|numpy|opencv/i);
   assert.match(filtered, /diffusers>=0.33.1/);
   assert.match(filtered, /omegaconf>=2.3.0/);
+});
+
+test('normal node installs preserve the OpenCV distribution already loaded by ComfyUI', () => {
+  const filtered = filterRequirementsForEnvironment([
+    'numpy>=2', 'opencv-python-headless>=4.9', 'color-matcher', 'torch',
+  ].join('\n'), [
+    'numpy==2.2.6', 'opencv-python==4.12.0.88', 'torch==2.11.0',
+  ].join('\n'));
+  assert.equal(filtered, 'color-matcher');
+});
+
+test('macOS BFS setup omits optional librosa without omitting Face ID requirements', () => {
+  const filtered = filterRequirementsForEnvironment([
+    'torch', 'numpy', 'librosa', 'opencv-python', 'insightface==0.7.3', 'onnxruntime',
+  ].join('\n'), '', { omitPackages: ['librosa'] });
+  assert.doesNotMatch(filtered, /librosa/);
+  assert.match(filtered, /insightface==0\.7\.3/);
+  assert.match(filtered, /onnxruntime/);
+});
+
+test('BFS optional audio import is guarded idempotently', async () => {
+  const nodePath = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-bfs-patch-'));
+  const init = path.join(nodePath, '__init__.py');
+  try {
+    fs.writeFileSync(init, [
+      'from .amv_guide_node import NODE_CLASS_MAPPINGS as AMV_NODE_CLASS_MAPPINGS',
+      'from .amv_guide_node import NODE_DISPLAY_NAME_MAPPINGS as AMV_NODE_DISPLAY_NAME_MAPPINGS',
+      'NODE_CLASS_MAPPINGS = {**AMV_NODE_CLASS_MAPPINGS}',
+    ].join('\n'));
+    assert.equal(await patchBfsOptionalAudio(nodePath), true);
+    const patched = fs.readFileSync(init, 'utf8');
+    assert.match(patched, /try:\n    from \.amv_guide_node/);
+    assert.match(patched, /AMV Guide node not loaded/);
+    assert.equal(await patchBfsOptionalAudio(nodePath), false);
+  } finally {
+    fs.rmSync(nodePath, { recursive: true, force: true });
+  }
 });

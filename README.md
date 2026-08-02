@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://blackmixture.github.io/Mix-Studio/"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows-4285F4?style=flat-square&amp;logo=windows11&amp;logoColor=white" /></a>
+  <a href="https://blackmixture.github.io/Mix-Studio/install_MixStudio.command"><img alt="Download for macOS" src="https://img.shields.io/badge/Download-macOS-111111?style=flat-square&amp;logo=apple&amp;logoColor=white" /></a>
   <a href="https://github.com/BlackMixture/Mix-Studio/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/BlackMixture/Mix-Studio?style=flat-square&amp;label=release" /></a>
   <a href="https://github.com/BlackMixture/Mix-Studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/BlackMixture/Mix-Studio?style=flat-square&amp;logo=github" /></a>
   <a href="LICENSE"><img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-34A853?style=flat-square" /></a>
@@ -20,18 +21,18 @@ Mix Studio is a local web interface that builds and submits ComfyUI API graphs f
 
 Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remix** workflow, with an advanced Reference boost control for stronger identity and subject guidance.
 
-- **Create from anywhere:** use the same touch-friendly workspace on the Windows desktop, a phone on the same Wi-Fi, or privately through Tailscale.
+- **Create from anywhere:** use the same touch-friendly workspace on the generation computer, a phone on the same Wi-Fi, or privately through Tailscale.
 - **Keep the power of ComfyUI:** reuse your installation, models, custom nodes, queue, and recovery outputs.
 - **Stay local and in control:** prompts, inputs, generated media, profiles, and galleries remain on your computer.
 - **Skip the node graph rebuilds:** work through focused controls while Mix Studio assembles the graph for each job.
 
 ## Quick setup
 
-1. Open the **[Mix Studio download page](https://blackmixture.github.io/Mix-Studio/)** and save `install_MixStudio.bat`.
-2. Put the installer in the parent folder where you want Mix Studio to live, then run it. For example, placing it in `D:\AI` creates `D:\AI\Mix Studio`.
+1. Open the **[Mix Studio download page](https://blackmixture.github.io/Mix-Studio/)** and choose the Windows or macOS installer.
+2. Put the installer in the parent folder where you want Mix Studio to live. Open the `.bat` on Windows, or run `zsh ~/Downloads/install_MixStudio.command` from Terminal on macOS.
 3. Mix Studio opens in your browser, detects an existing ComfyUI installation, and guides you through the files required by the workflows you choose.
 
-Windows with an NVIDIA GPU is the supported path. The lowest guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
+Windows with an NVIDIA GPU supports the full curated workflow set. Apple Silicon macOS is supported through a source-based ComfyUI environment: setup detects Metal and unified memory, starts ComfyUI with MPS-safe flags, selects the official BF16 LTX 2.3 checkpoint, and disables the FP8-only 10Eros, Wan 2.2, and SCAIL 2 routes. The lowest NVIDIA guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
 
 For manual Git setup, detailed VRAM guidance, shared-model discovery, phone access, troubleshooting, and uninstall behavior, see **[Installation and operations](docs/installation-and-operations.md)**. Do not use GitHub's **Download ZIP** if you want in-app updates.
 

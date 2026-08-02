@@ -31,7 +31,7 @@ test('installer manifest exposes optional edit and video components', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'installer', 'feature-manifest.json'), 'utf8'));
   const ids = manifest.features.map((feature) => feature.id);
   const optionalIds = manifest.features.filter((feature) => feature.required !== true).map((feature) => feature.id).sort();
-  assert.equal(manifest.target, 'windows-nvidia');
+  assert.equal(manifest.target, 'desktop-generation');
   assert.deepEqual(optionalIds, Object.keys(DEFAULT_FEATURES).sort());
   assert.ok(ids.includes('core.image'));
   assert.ok(ids.includes('edit.qwen'));

@@ -4,9 +4,9 @@ This guide contains the setup, hardware, networking, update, and maintenance det
 
 ## Supported installation
 
-Mix Studio's supported path is a Windows PC with an NVIDIA GPU and an existing or newly installed ComfyUI environment. The application is distributed as a portable Git checkout rather than a packaged executable. This keeps the installation transparent and lets the owner-only updater fast-forward the checkout without touching user data.
+Mix Studio supports Windows with NVIDIA for the complete curated workflow set and Apple Silicon macOS for the Metal-compatible workflow set. Both use a portable Git checkout rather than a packaged executable. This keeps the installation transparent and lets the owner-only updater fast-forward the checkout without touching user data.
 
-### One-file setup
+### Windows one-file setup
 
 1. Open the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/) and save `install_MixStudio.bat`.
 2. Put the installer in the parent folder where you want Mix Studio installed. For example, `D:\AI\install_MixStudio.bat` creates `D:\AI\Mix Studio`.
@@ -42,6 +42,22 @@ The reviewed public source for `ComfyUI-Krea2Regional-MultiLoRA` is currently un
 Do not use GitHub's **Download ZIP** if you want in-app updates. The updater requires a real Git checkout.
 
 The bootstrap writes ignored, machine-specific configuration to `install.json`. Generation setup merges the ComfyUI URL into `data/settings.json`. It does not reset `data/db.json`, profiles, gallery media, folders, prompts, or presets.
+
+### Apple Silicon macOS setup
+
+1. Install Git, Node.js 22 or newer, and a source-based ComfyUI environment with its Python virtual environment at `ComfyUI/.venv` or `ComfyUI/venv`.
+2. Download `install_MixStudio.command` from the [Mix Studio download page](https://blackmixture.github.io/Mix-Studio/).
+3. In Terminal, run `zsh ~/Downloads/install_MixStudio.command`. If the file was saved elsewhere, use its actual path. The script verifies Git and Node, clones the official checkout into a `Mix Studio` folder beside the installer, prepares the local configuration, starts the restart-aware server launcher, and opens the app.
+4. In Generation setup, use the detected ComfyUI source folder or **Browse computer** to select the folder containing `main.py`. Mix Studio recognizes `.venv/bin/python` and `venv/bin/python`, uses POSIX model paths, and can start or safely restart that local process.
+
+Mix Studio reads the connected ComfyUI device backend and applies an MPS-specific capability profile:
+
+- LTX 2.3 and LTX Edit use the official `ltx-2.3-22b-dev.safetensors` BF16 checkpoint. Generation setup selects it in place of the curated FP8 checkpoint.
+- 10Eros, Wan 2.2, and SCAIL 2 stay visible but unavailable because their curated FP8 routes are not compatible with Apple Metal.
+- Large two-stage LTX refine requests are rejected before queueing with a safe duration suggestion. Start with short clips and increase duration gradually.
+- Face ID remains installable without the optional BFS audio-guide dependency; an unavailable `librosa` import no longer prevents the identity-overlap node from loading.
+
+Mix Studio launches the configured source environment with `--listen 127.0.0.1 --fp32-vae --use-split-cross-attention` and `PYTORCH_ENABLE_MPS_FALLBACK=1`. It does not set PyTorch's high-watermark ratio to zero because removing that guard can let a generation consume memory needed by macOS. Unified memory is shared with macOS and other applications, so close memory-heavy applications before larger LTX runs.
 
 ## Hardware and VRAM
 
@@ -87,7 +103,7 @@ Some Hugging Face files require accepting a license before their download URL wo
 
 If the official Hugging Face host is unavailable on the current network, enter a trusted Hugging Face-compatible HTTPS base URL under **Settings → General → Hugging Face download endpoint**, or set `HF_ENDPOINT` before launching Mix Studio. The endpoint rewrites only reviewed `huggingface.co` model sources. Mix Studio never sends the configured Hugging Face token to a custom endpoint. Clear the field to return to the official host.
 
-The card exposes **Restart ComfyUI** for a configured Windows ComfyUI folder, but it refuses while either queue is active.
+The card exposes **Restart ComfyUI** for a configured local Windows or macOS source installation, but it refuses while either queue is active. On macOS it verifies that the listener command belongs to the configured `main.py`, sends `SIGTERM`, waits for the port to close, and only then starts the configured environment again.
 
 ## Phone and private remote access
 
@@ -100,7 +116,7 @@ Use **Copy** or **Share** to send the selected address to a phone. Add a PIN to 
 
 For private access away from home, install [Tailscale](https://tailscale.com/download) on both devices and sign them into the same tailnet. Refresh the Phone access card, then copy or share its Tailscale URL. The desktop continues to host ComfyUI, models, and media; the phone remains the control surface.
 
-If the phone cannot connect over the local network, allow Node through Windows Defender Firewall for private networks. Set a different application port with the `PORT` environment variable when required.
+If the phone cannot connect over the local network, allow Node through Windows Defender Firewall or macOS network security controls for private networks. Set a different application port with the `PORT` environment variable when required.
 
 ## Analytics and privacy
 
@@ -137,7 +153,7 @@ Every user-facing release uses the semantic version in `release.json` and a matc
 6. Tag that commit with the matching annotated Git tag and push the tag.
 7. Publish a GitHub Release for that tag with the changelog notes. This final step enables the public Updates inbox notification.
 
-Repository quality checks run on Node 22 for Linux and Windows. A release tag fails validation when it does not match `release.json`, and the download page cannot deploy until the same checks pass.
+Repository quality checks run on Node 22 for Linux, Windows, and macOS. A release tag fails validation when it does not match `release.json`, and the download page cannot deploy until the same checks pass.
 
 ## Restarting, uninstalling, and data safety
 

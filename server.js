@@ -204,6 +204,15 @@ const {
   tailscaleHttpsStatus,
 } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
+const { isWidgetSpec } = require('./lib/comfy-widget-spec');
+const { browseGenerationFolder } = require('./lib/folder-picker');
+const {
+  appleGenerationProfile,
+  configuredVideoEngineCapability,
+  configuredVideoEngineCapabilities,
+  dependencyComponentBlock,
+  ltxRefinePreflight,
+} = require('./lib/generation-capabilities');
 const {
   buildKrea2ModelLoader,
   effectiveKrea2Variant,
@@ -457,6 +466,15 @@ function settingsResponse() {
   });
   delete response.hfToken;
   return response;
+}
+
+function adoptDeviceCompatibleModelSettings(hardwareProfile = {}) {
+  if (!appleGenerationProfile(hardwareProfile)) return false;
+  const configured = normalizeModelPath(settings.ltxCkpt).split('/').pop();
+  if (configured && configured !== 'ltx-2.3-22b-dev-fp8.safetensors') return false;
+  settings.ltxCkpt = 'ltx-2.3-22b-dev.safetensors';
+  saveJsonSync(SETTINGS_FILE, settings);
+  return true;
 }
 
 function seedVr2ModelDirs() {
@@ -836,7 +854,12 @@ function updateComfyStartState(patch) {
 
 async function getSetupHardwareInfo(force = false) {
   if (!force && setupHardwareSnapshot && Date.now() - setupHardwareAt < 5 * 60 * 1000) return setupHardwareSnapshot;
-  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA });
+  let comfyStats = null;
+  try {
+    const response = await comfyFetch('/system_stats', { signal: AbortSignal.timeout(4000) });
+    comfyStats = await response.json();
+  } catch { /* local detection remains available while ComfyUI is offline */ }
+  setupHardwareSnapshot = await hardwareInfo({ exportPath: settings.exportDir || DATA, comfyStats });
   setupHardwareAt = Date.now();
   return setupHardwareSnapshot;
 }
@@ -982,30 +1005,6 @@ function stopOfficialComfySetup() {
     try { child.kill('SIGTERM'); } catch { /* process may already be gone */ }
   }
   return true;
-}
-
-function browseGenerationFolder(kind) {
-  if (process.platform !== 'win32') throw new Error('Folder browsing is available on the Windows generation computer. Enter the location manually here.');
-  const systemRoot = String(process.env.SystemRoot || 'C:\\Windows');
-  const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const description = kind === 'models' ? 'Choose the ComfyUI models folder' : 'Choose the ComfyUI folder';
-  const script = [
-    'Add-Type -AssemblyName System.Windows.Forms',
-    '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog',
-    `$dialog.Description = '${description}'`,
-    '$dialog.ShowNewFolderButton = $false',
-    'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }',
-  ].join('; ');
-  return new Promise((resolve, reject) => {
-    execFile(powershell, ['-NoProfile', '-STA', '-Command', script], {
-      windowsHide: true,
-      timeout: 10 * 60 * 1000,
-      maxBuffer: 64 * 1024,
-    }, (error, stdout) => {
-      if (error) return reject(error);
-      resolve(String(stdout || '').trim());
-    });
-  });
 }
 
 async function assertDesktopIsIdle() {
@@ -1215,10 +1214,33 @@ async function directorInputAssetAvailable(name) {
 
 let objectInfoCache = null;
 let objectInfoAt = 0;
-async function getObjectInfo(force, fetchOptions) {
+const COMFY_OBJECT_INFO_TIMEOUT_MS = 60_000;
+
+function comfyRequestTimedOut(error) {
+  for (let current = error; current; current = current.cause) {
+    if (['AbortError', 'TimeoutError'].includes(current?.name)) return true;
+    if (/timed?\s*out|timeout/i.test(String(current?.message || ''))) return true;
+  }
+  return false;
+}
+
+async function getObjectInfo(force, fetchOptions = {}) {
   if (!force && objectInfoCache && Date.now() - objectInfoAt < 5 * 60 * 1000) return objectInfoCache;
-  const res = await comfyFetch('/object_info', fetchOptions);
-  objectInfoCache = await res.json();
+  const options = Object.assign({}, fetchOptions);
+  if (!options.signal) options.signal = AbortSignal.timeout(COMFY_OBJECT_INFO_TIMEOUT_MS);
+  let res;
+  try {
+    res = await comfyFetch('/object_info', options);
+    objectInfoCache = await res.json();
+  } catch (error) {
+    if (!comfyRequestTimedOut(error)) throw error;
+    const wrapped = new Error(
+      'ComfyUI took longer than 60 seconds to describe its installed nodes. It may still be loading custom nodes; wait for the ComfyUI console to settle, then Check again.'
+    );
+    wrapped.code = 'comfy_object_info_timeout';
+    wrapped.cause = error;
+    throw wrapped;
+  }
   objectInfoAt = Date.now();
   adoptRegisteredModelPaths(objectInfoCache);
   return objectInfoCache;
@@ -1507,14 +1529,6 @@ async function loraMetadataMap(loras, force) {
   }
   loraInfoCache = { key, at: Date.now(), value };
   return value;
-}
-
-function isWidgetSpec(spec) {
-  if (!Array.isArray(spec)) return false;
-  const t = spec[0];
-  if (Array.isArray(t)) return true; // combo
-  if (typeof t === 'string' && t.startsWith('COMFY_') && t.includes('COMBO')) return true; // V3 DynamicCombo
-  return ['INT', 'FLOAT', 'STRING', 'BOOLEAN', 'COMBO'].includes(t);
 }
 
 /**
@@ -5011,6 +5025,11 @@ function dependencyComponentInfo(id, fit = null) {
 
 function setupDependencyComponentInfo(id, fit, krea2Core) {
   const component = dependencyComponentInfo(id, fit);
+  if (fit?.blocked) {
+    component.installable = false;
+    component.blockedBy = 'hardware';
+    component.installReason = fit.detail || 'This workflow is not supported on the connected generation device.';
+  }
   if (krea2Core && krea2Core.supported !== true && KREA2_DEPENDENCY_COMPONENTS.has(id)) {
     component.installable = false;
     component.blockedBy = 'comfy-core';
@@ -5053,6 +5072,7 @@ async function setupStatusPayload(forceCompatibility = false) {
   });
   const hardwareInfoValue = await getSetupHardwareInfo();
   const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
+  adoptDeviceCompatibleModelSettings(hardwareProfile);
   const krea2Recommendation = recommendedKrea2Variant(hardwareProfile);
   const vramRecommendation = recommendedVramProfile(hardwareProfile);
   const guidance = componentHardwareGuidance(SETUP_FEATURE_MANIFEST, hardwareInfoValue);
@@ -5061,7 +5081,7 @@ async function setupStatusPayload(forceCompatibility = false) {
   let connectionError = '';
   let info = null;
   try {
-    info = await getObjectInfo(forceCompatibility, { signal: AbortSignal.timeout(4000) });
+    info = await getObjectInfo(forceCompatibility);
     connected = true;
   } catch (error) {
     connectionError = String(error.message || error);
@@ -5079,6 +5099,7 @@ async function setupStatusPayload(forceCompatibility = false) {
     quickSetup,
     quickFit: combinedHardwareFit(quickSetup.components, guidance),
     hardware: hardwareProfile,
+    capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
     modelRecommendations: { krea2: krea2Recommendation },
     modelVariants: { krea2: settings.krea2ModelVariant },
     vramProfile: {
@@ -5678,7 +5699,7 @@ async function handleApi(req, res, url) {
   }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {
-      return json(res, 200, await hardwareInfo({ exportPath: settings.exportDir || DATA }));
+      return json(res, 200, await getSetupHardwareInfo(true));
     } catch (error) {
       return json(res, 500, { error: String(error.message || error) });
     }
@@ -5720,13 +5741,17 @@ async function handleApi(req, res, url) {
   if (route === '/api/meta') {
     const app = Object.assign(readAppRelease(ROOT), { instanceId: SERVER_INSTANCE_ID });
     try {
-      const info = await getObjectInfo(url.searchParams.has('refresh'), { signal: AbortSignal.timeout(6000) });
+      const info = await getObjectInfo(url.searchParams.has('refresh'));
       const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];
       const lorasInfo = await loraMetadataMap(loras, url.searchParams.has('refresh'));
       const missing = {};
       for (const [group, classes] of Object.entries(REQUIRED_CLASSES)) {
         missing[group] = classes.filter((c) => !info[c]);
       }
+      const hardwareInfoValue = await getSetupHardwareInfo(url.searchParams.has('refresh'));
+      const hardwareProfile = setupHardwareProfile(hardwareInfoValue);
+      adoptDeviceCompatibleModelSettings(hardwareProfile);
+      const hardwareGuidance = componentHardwareGuidance(SETUP_FEATURE_MANIFEST, hardwareInfoValue);
       const models = configuredModelsStatus(info);
       const installStatus = sam3InstallStatus(RUNTIME);
       const missingComponents = missingDependencyComponentIds(missing, models);
@@ -5765,7 +5790,7 @@ async function handleApi(req, res, url) {
           canInstall: installStatus.canInstall,
           reason: installStatus.reason,
           restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
-          components: availableComponents().map((id) => dependencyComponentInfo(id)),
+          components: availableComponents().map((id) => setupDependencyComponentInfo(id, hardwareGuidance[id] || null, null)),
           missingComponents,
           install: dependencyInstallState,
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
@@ -5781,6 +5806,7 @@ async function handleApi(req, res, url) {
           outpaintLora: settings.krea2OutpaintLora,
         },
         features: settings.features,
+        capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
         queue: jobs.size,
       });
     } catch (e) {
@@ -6025,10 +6051,22 @@ async function handleApi(req, res, url) {
     const modelVariants = { krea2: krea2Variant };
     const components = [...new Set(requested.filter((id) => Object.prototype.hasOwnProperty.call(DEPENDENCY_COMPONENTS, id)))];
     if (!components.length) return json(res, 400, { error: 'Choose at least one missing model or node group to install.' });
+    const hardwareProfile = setupHardwareProfile(await getSetupHardwareInfo());
+    adoptDeviceCompatibleModelSettings(hardwareProfile);
+    const hardwareBlocked = components
+      .map((id) => ({ id, reason: dependencyComponentBlock(id, hardwareProfile) }))
+      .find((entry) => entry.reason);
+    if (hardwareBlocked) {
+      return json(res, 409, {
+        error: hardwareBlocked.reason,
+        code: 'generation_device_unsupported',
+        component: hardwareBlocked.id,
+      });
+    }
     const installsKrea2 = components.some((id) => KREA2_DEPENDENCY_COMPONENTS.has(id));
     if (installsKrea2) {
       try {
-        const info = await getObjectInfo(true, { signal: AbortSignal.timeout(4000) });
+        const info = await getObjectInfo(true);
         const coreCompatibility = await getComfyCompatibility(true);
         const krea2Compatibility = krea2ClipCompatibility(info, coreCompatibility.version);
         if (krea2Compatibility.supported !== true) {
@@ -6062,7 +6100,7 @@ async function handleApi(req, res, url) {
     let availableModelNames = [];
     try {
       availableModelNames = [...registeredModelNames(
-        await getObjectInfo(true, { signal: AbortSignal.timeout(4000) }),
+        await getObjectInfo(true),
       )];
     } catch { /* ComfyUI may be stopped during installation. */ }
     let availableModelRoots = [RUNTIME.comfy.modelsPath].filter(Boolean);
@@ -6094,6 +6132,8 @@ async function handleApi(req, res, url) {
             availableModelNames,
             availableModelRoots,
             modelVariants,
+            gpuVendor: hardwareProfile.gpuVendor,
+            platform: process.platform,
             hfToken: settings.hfToken,
             hfEndpoint: settings.hfEndpoint,
           },
@@ -6843,6 +6883,16 @@ async function handleApi(req, res, url) {
     if (settings.features[VIDEO_FEATURES[engine]] === false) {
       return json(res, 400, { error: 'This video model was not installed on this machine.' });
     }
+    const generationHardwareProfile = setupHardwareProfile(await getSetupHardwareInfo());
+    adoptDeviceCompatibleModelSettings(generationHardwareProfile);
+    const engineCapability = configuredVideoEngineCapability(engine, generationHardwareProfile, settings);
+    if (!engineCapability.supported) {
+      return json(res, 409, {
+        error: engineCapability.reason,
+        code: 'generation_device_unsupported',
+        engine,
+      });
+    }
     const requestedCameraMotions = normalizeCameraMotions(body.cameraMotions);
     const blockedCameraMotionPhrase = engine === 'scail' ? cameraMotionPhrase(requestedCameraMotions) : '';
     const cameraMotions = engine === 'scail' ? [] : requestedCameraMotions;
@@ -6982,6 +7032,19 @@ async function handleApi(req, res, url) {
         cameraReferenceGuided ? LTX_CAMERA_MAX_SECONDS : (isLtxEdit ? 15 : LTX_MAX_SECONDS)
       );
       ({ W, H } = cameraReferenceGuided ? cameraMotionDims(srcW, srcH) : videoDims(srcW, srcH));
+    }
+
+    if ((engine === 'ltx' || isLtxEdit) && !faceImageName) {
+      const refinePreflight = ltxRefinePreflight({
+        width: W, height: H, frames, fps, profile: generationHardwareProfile,
+      });
+      if (!refinePreflight.ok) {
+        return json(res, 409, Object.assign({
+          error: refinePreflight.error,
+          code: 'ltx_refine_too_large',
+          engine,
+        }, refinePreflight));
+      }
     }
 
     const requestedSeed = Number(body.seed);
@@ -8416,7 +8479,7 @@ function scheduleServerRestart() {
   broadcast('appRestarting', {});
   setTimeout(() => {
     const restartMode = process.env.MIXBOX_RESTART_MODE || process.env.KREASTUDIO_RESTART_MODE;
-    if (restartMode !== 'batch') launchDetachedReplacement();
+    if (!['batch', 'launcher'].includes(restartMode)) launchDetachedReplacement();
     for (const client of sseClients.keys()) {
       try { client.end(); } catch { /* noop */ }
     }

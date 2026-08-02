@@ -145,6 +145,7 @@ test('automatic updates reject a non-official origin', async () => {
 test('server and library updates require a restart', () => {
   assert.equal(restartRequiredForFiles(['README.md', 'server.js']), true);
   assert.equal(restartRequiredForFiles(['lib/profiles.js']), true);
+  assert.equal(restartRequiredForFiles(['start.command']), true);
   assert.equal(restartRequiredForFiles(['public/index.html', 'test/foo.test.js']), false);
   assert.equal(restartRequiredForFiles(['release.json']), false);
 });
