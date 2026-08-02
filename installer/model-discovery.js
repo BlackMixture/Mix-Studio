@@ -8,6 +8,7 @@ const {
   modelChoice,
   registeredModelNames,
 } = require('../lib/model-loader');
+const { appDataRoots } = require('../lib/sam3-installer');
 
 const MODEL_PATH_KEYS = new Set([
   'checkpoints', 'configs', 'vae', 'loras', 'upscale_models', 'embeddings',
@@ -45,9 +46,11 @@ function expandPathValue(value, env = process.env) {
     .replace(/^~(?=[\\/]|$)/, env.USERPROFILE || env.HOME || '~');
 }
 
+const BLOCK_SCALAR_RE = /^[|>][-+]?$/;
+
 function resolveConfiguredPath(value, basePath, configDir, pathApi = path, env = process.env) {
   const expanded = expandPathValue(stripYamlScalar(value), env);
-  if (!expanded || expanded === '|' || expanded === '>') return '';
+  if (!expanded || BLOCK_SCALAR_RE.test(expanded)) return '';
   if (pathApi.isAbsolute(expanded)) return pathApi.normalize(expanded);
   return pathApi.resolve(basePath || configDir, expanded);
 }
@@ -101,11 +104,11 @@ function parseExtraModelPaths(text, options = {}) {
       continue;
     }
     block = null;
-    const match = trimmed.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
+    const match = trimmed.match(/^(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_.-]+))\s*:\s*(.*)$/);
     if (!match) continue;
-    const key = match[1];
+    const key = match[1] || match[2] || match[3];
     const lowerKey = key.toLowerCase();
-    const value = stripYamlScalar(match[2]);
+    const value = stripYamlScalar(match[4]);
     if (indent === 0 && !value) {
       section = key;
       currentSection();
@@ -114,7 +117,7 @@ function parseExtraModelPaths(text, options = {}) {
     if (lowerKey === 'base_path') {
       currentSection().basePath = resolveConfiguredPath(value, '', configDir, pathApi, env);
     } else if (MODEL_PATH_KEYS.has(lowerKey)) {
-      if (value === '|' || value === '>') block = { indent, key: lowerKey };
+      if (BLOCK_SCALAR_RE.test(value)) block = { indent, key: lowerKey };
       else if (value) currentSection().entries.push({ key: lowerKey, value });
     }
   }
@@ -136,7 +139,7 @@ function parseExtraModelPaths(text, options = {}) {
   return { roots: [...roots], configuredPaths: [...new Set(configuredPaths)] };
 }
 
-function candidateConfigFiles(comfyPath, env = process.env, pathApi = path) {
+function candidateConfigFiles(comfyPath, env = process.env, pathApi = path, platform = process.platform, home = '') {
   const candidates = [];
   const add = (base) => {
     if (!base) return;
@@ -145,8 +148,30 @@ function candidateConfigFiles(comfyPath, env = process.env, pathApi = path) {
   };
   add(comfyPath);
   if (comfyPath) add(pathApi.join(comfyPath, 'ComfyUI'));
-  if (env.APPDATA) add(pathApi.join(env.APPDATA, 'ComfyUI'));
+  for (const root of appDataRoots(env, pathApi, platform, home)) {
+    add(pathApi.join(root, 'ComfyUI'));
+    const desktop = pathApi.join(root, 'Comfy Desktop');
+    candidates.push(pathApi.join(desktop, 'shared_model_paths.yaml'));
+    candidates.push(pathApi.join(desktop, 'shared_model_paths.yml'));
+    candidates.push(pathApi.join(desktop, 'extra_models_config.yaml'));
+  }
   return [...new Set(candidates)];
+}
+
+function desktopDeclaredModelRoots(env, fsApi, pathApi, platform, home) {
+  const roots = [];
+  for (const root of appDataRoots(env, pathApi, platform, home)) {
+    const file = pathApi.join(root, 'comfyui-desktop-2', 'settings.json');
+    if (!fsApi.existsSync(file)) continue;
+    try {
+      const settings = JSON.parse(fsApi.readFileSync(file, 'utf8'));
+      for (const value of Array.isArray(settings.modelsDirs) ? settings.modelsDirs : []) {
+        const directory = String(value || '').trim();
+        if (directory && fsApi.existsSync(directory)) roots.push(pathApi.normalize(directory));
+      }
+    } catch { /* An invalid optional Desktop setting must not block setup. */ }
+  }
+  return [...new Set(roots)];
 }
 
 async function registeredModelsFromComfy(comfyUrl, options = {}) {
@@ -165,13 +190,38 @@ async function registeredModelsFromComfy(comfyUrl, options = {}) {
   }
 }
 
+function rootHoldsModels(root, fsApi = fs, pathApi = path) {
+  if (typeof fsApi.readdirSync !== 'function') return false;
+  let pending = [root];
+  let inspected = 0;
+  for (let depth = 0; depth < 2 && pending.length && inspected < 10_000; depth += 1) {
+    const directories = pending;
+    pending = [];
+    for (const directory of directories) {
+      let entries;
+      try { entries = fsApi.readdirSync(directory, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries) {
+        inspected += 1;
+        if (inspected > 10_000) break;
+        if (entry.isDirectory()) pending.push(pathApi.join(directory, entry.name));
+        else if (MODEL_FILE_RE.test(entry.name)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function discoverModels(options = {}) {
   const fsApi = options.fsApi || fs;
   const pathApi = options.pathApi || path;
   const env = options.env || process.env;
+  const platform = options.platform || process.platform;
+  const home = options.home || env.HOME || env.USERPROFILE || '';
   const comfyPath = String(options.comfyPath || '').trim();
   const manualModelsPath = String(options.modelsPath || '').trim();
   const roots = new Set();
+  const configuredRoots = [];
+  const desktopRoots = desktopDeclaredModelRoots(env, fsApi, pathApi, platform, home);
   const configFiles = [];
   if (manualModelsPath && fsApi.existsSync(manualModelsPath)) {
     roots.add(pathApi.normalize(manualModelsPath));
@@ -180,24 +230,37 @@ async function discoverModels(options = {}) {
     const standardRoot = pathApi.join(comfyPath, 'models');
     if (fsApi.existsSync(standardRoot)) roots.add(pathApi.normalize(standardRoot));
   }
-  for (const file of candidateConfigFiles(comfyPath, env, pathApi)) {
+  for (const root of desktopRoots) roots.add(root);
+  for (const file of candidateConfigFiles(comfyPath, env, pathApi, platform, home)) {
     if (!fsApi.existsSync(file)) continue;
     try {
       const parsed = parseExtraModelPaths(fsApi.readFileSync(file, 'utf8'), { configDir: pathApi.dirname(file), pathApi, env });
       configFiles.push(file);
-      for (const root of parsed.roots) if (fsApi.existsSync(root)) roots.add(pathApi.normalize(root));
+      for (const root of parsed.roots) {
+        if (!fsApi.existsSync(root)) continue;
+        const normalized = pathApi.normalize(root);
+        roots.add(normalized);
+        configuredRoots.push(normalized);
+      }
     } catch { /* An invalid optional config must not block setup. */ }
   }
   const registry = await registeredModelsFromComfy(options.comfyUrl, options);
   const discoveredRoots = [...roots];
+  const populatedRoots = discoveredRoots.filter((root) => rootHoldsModels(root, fsApi, pathApi));
   return {
     schemaVersion: 1,
     detectedAt: new Date().toISOString(),
     registeredModelNames: registry.names,
     registeredModelCount: registry.names.length,
     modelRoots: discoveredRoots,
+    populatedModelRoots: populatedRoots,
     configFiles,
-    preferredModelsPath: manualModelsPath || discoveredRoots[0] || (comfyPath ? pathApi.join(comfyPath, 'models') : ''),
+    preferredModelsPath: manualModelsPath
+      || populatedRoots[0]
+      || desktopRoots[0]
+      || configuredRoots[0]
+      || discoveredRoots[0]
+      || (comfyPath ? pathApi.join(comfyPath, 'models') : ''),
     registryError: registry.error,
   };
 }
@@ -224,9 +287,11 @@ module.exports = {
   collectRegisteredModelNames,
   commonDirectory,
   discoverModels,
+  desktopDeclaredModelRoots,
   inferredStandardRoot,
   modelChoice,
   parseExtraModelPaths,
   registeredModelsFromComfy,
   resolveConfiguredPath,
+  rootHoldsModels,
 };

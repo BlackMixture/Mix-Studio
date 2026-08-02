@@ -8,6 +8,8 @@ const path = require('node:path');
 const {
   parseComfyStatsDevices,
   parseNvidiaGpuCsv,
+  parseRocmSmiJson,
+  parseWindowsGpuJson,
   readDiskInfo,
   hardwareInfo,
 } = require('../lib/hardware-info');
@@ -31,6 +33,27 @@ test('reads Apple Metal identity from ComfyUI system stats', () => {
   }] }), [{
     name: 'Apple M4 Max', memoryBytes: 64 * 1024 ** 3, memoryKind: 'unified',
     driver: '', vendor: 'apple', backend: 'mps', source: 'comfyui',
+  }]);
+});
+
+test('parses AMD ROCm identity and filters unsupported Windows display adapters', () => {
+  assert.deepEqual(parseRocmSmiJson(JSON.stringify({
+    card0: {
+      'Card Series': 'AMD Radeon RX 6800',
+      'VRAM Total Memory (B)': '17179869184',
+      'GFX Version': 'gfx1030',
+    },
+  })), [{
+    name: 'AMD Radeon RX 6800', memoryBytes: 17179869184, driver: '',
+    vendor: 'amd', backend: 'rocm', arch: 'gfx1030',
+  }]);
+  assert.deepEqual(parseWindowsGpuJson(JSON.stringify([
+    { name: 'AMD Radeon RX 7900 XTX', memoryBytes: 24 * 1024 ** 3, driver: '32.0' },
+    { name: 'Intel Arc A770', memoryBytes: 16 * 1024 ** 3, driver: '31.0' },
+    { name: 'Microsoft Basic Display Adapter', memoryBytes: 4 * 1024 ** 3, driver: '' },
+  ])), [{
+    name: 'AMD Radeon RX 7900 XTX', memoryBytes: 24 * 1024 ** 3, driver: '32.0',
+    vendor: 'amd', backend: 'rocm',
   }]);
 });
 
@@ -90,6 +113,24 @@ test('reports the integrated Apple Silicon GPU with unified memory', async () =>
     vendor: 'apple',
     backend: 'mps',
   }]);
+});
+
+test('connected ComfyUI hardware stays authoritative over the local display GPU', async () => {
+  const info = await hardwareInfo({
+    exportPath: '/exports',
+    comfyStats: { devices: [{
+      name: 'hip:0 AMD Radeon RX 7900 XTX', type: 'hip', vram_total: 24 * 1024 ** 3,
+    }] },
+    osModule: {
+      cpus: () => [{ model: 'Local CPU' }], platform: () => 'linux',
+      totalmem: () => 32 * 1024 ** 3, freemem: () => 20 * 1024 ** 3,
+      release: () => '6.8', arch: () => 'x64',
+    },
+    fsPromises: { statfs: async () => ({ bsize: 4096, bavail: 100, blocks: 400 }) },
+    execFileFn: (_command, _args, _options, callback) => callback(null, 'NVIDIA Local GPU, 24576, 999.0'),
+  });
+  assert.equal(info.gpu.devices[0].vendor, 'amd');
+  assert.equal(info.gpu.devices[0].source, 'comfyui');
 });
 
 test('Advanced Settings presents hardware as one minimal System readout', () => {

@@ -39,6 +39,7 @@ function Get-MixStudioHardwareProfile {
             name = $Parts[0]
             vramGb = [Math]::Round($MemoryMb / 1024, 1)
             driver = if ($Parts.Count -ge 3) { $Parts[2] } else { '' }
+            vendor = 'nvidia'
             source = 'nvidia-smi'
           }
         }
@@ -48,11 +49,26 @@ function Get-MixStudioHardwareProfile {
 
   if (-not $Gpus.Count -and (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) {
     try {
-      foreach ($Controller in @(Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA' })) {
+      $RegistryAdapters = @()
+      try {
+        $RegistryAdapters = @(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0*' -ErrorAction SilentlyContinue |
+          Select-Object DriverDesc, 'HardwareInformation.qwMemorySize')
+      } catch {}
+      $Controllers = @(Get-CimInstance Win32_VideoController |
+        Where-Object { $_.Name -match 'NVIDIA|AMD|Radeon|Instinct' -and $_.Name -notmatch 'Microsoft Basic|Virtual|VNC|Remote|Parsec' })
+      foreach ($Controller in $Controllers) {
+        $MemoryBytes = [double]$Controller.AdapterRAM
+        foreach ($Adapter in $RegistryAdapters) {
+          if ($Adapter.DriverDesc -eq $Controller.Name -and $Adapter.'HardwareInformation.qwMemorySize') {
+            $MemoryBytes = [double][int64]$Adapter.'HardwareInformation.qwMemorySize'
+          }
+        }
+        $Vendor = if ($Controller.Name -match 'AMD|Radeon|Instinct') { 'amd' } else { 'nvidia' }
         $Gpus += [pscustomobject]@{
           name = [string]$Controller.Name
-          vramGb = ConvertTo-MixStudioGb $Controller.AdapterRAM
+          vramGb = ConvertTo-MixStudioGb $MemoryBytes
           driver = [string]$Controller.DriverVersion
+          vendor = $Vendor
           source = 'windows-video-controller'
         }
       }
@@ -93,9 +109,10 @@ function Get-MixStudioHardwareProfile {
     detectedAt = [DateTime]::UtcNow.ToString('o')
     gpu = [pscustomobject]@{
       available = $null -ne $PrimaryGpu
-      name = if ($PrimaryGpu) { [string]$PrimaryGpu.name } else { 'No NVIDIA GPU detected' }
+      name = if ($PrimaryGpu) { [string]$PrimaryGpu.name } else { 'No supported GPU detected' }
       vramGb = if ($PrimaryGpu) { [double]$PrimaryGpu.vramGb } else { 0 }
       driver = if ($PrimaryGpu) { [string]$PrimaryGpu.driver } else { '' }
+      vendor = if ($PrimaryGpu) { [string]$PrimaryGpu.vendor } else { '' }
       source = if ($PrimaryGpu) { [string]$PrimaryGpu.source } else { 'unavailable' }
       devices = @($Gpus)
     }
@@ -109,11 +126,11 @@ function Get-MixStudioHardwareProfile {
 function Get-MixStudioHardwareSummary($Hardware) {
   $Gpu = Get-MixStudioProperty $Hardware 'gpu' ([pscustomobject]@{})
   $Available = [bool](Get-MixStudioProperty $Gpu 'available' $false)
-  $Name = [string](Get-MixStudioProperty $Gpu 'name' 'No NVIDIA GPU detected')
+  $Name = [string](Get-MixStudioProperty $Gpu 'name' 'No supported GPU detected')
   $Vram = [double](Get-MixStudioProperty $Gpu 'vramGb' 0)
   $Memory = [double](Get-MixStudioProperty $Hardware 'memoryGb' 0)
   if (-not $Available) {
-    return "No NVIDIA GPU detected | $Memory GB system RAM"
+    return "No supported GPU detected | $Memory GB system RAM"
   }
   return "$Name | $Vram GB VRAM | $Memory GB system RAM"
 }
@@ -137,8 +154,8 @@ function Get-MixStudioFeatureFit($Feature, $Hardware) {
   if (-not $Available) {
     return [pscustomobject]@{
       level = 'difficult'
-      label = 'NVIDIA GPU required'
-      detail = "$Variant | No NVIDIA GPU was detected. This workflow is likely to fail."
+      label = 'Supported GPU required'
+      detail = "$Variant | No supported NVIDIA or AMD GPU was detected. This workflow is likely to fail."
       recommendedDefault = $false
     }
   }
