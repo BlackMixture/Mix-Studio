@@ -25546,7 +25546,7 @@ function renderHardwareInfo(info) {
     gpu.memoryBytes ? `${formatHardwareBytes(gpu.memoryBytes)} ${gpu.memoryKind === 'unified' ? 'unified memory' : 'VRAM'}` : '',
     gpu.driver ? `driver ${gpu.driver}` : '',
     gpuDevices.length > 1 ? `+${gpuDevices.length - 1} more` : '',
-  ].filter(Boolean).join(' · ') : 'No NVIDIA GPU reported by the system';
+  ].filter(Boolean).join(' · ') : 'No compatible GPU reported by the system';
   setHardwareRow('hardwareGpu', 'hardwareGpuDetail', gpu?.name || 'Unavailable', gpuDetail);
 
   const cores = Number(info?.cpu?.logicalCores) || 0;
@@ -29214,7 +29214,7 @@ function renderPhoneAccess() {
     $('#phoneAccessTitle').textContent = 'Try the same Wi-Fi now';
     $('#phoneAccessDescription').textContent = `The address below works while both devices are on this network. ${pinProtected ? 'The Owner profile is PIN-protected.' : 'A PIN is optional, but anyone who can reach this address can use Owner.'} Install Tailscale for private access away from home.`;
   } else {
-    $('#phoneAccessStatus').textContent = 'Install Tailscale on this PC and your phone';
+    $('#phoneAccessStatus').textContent = 'Install Tailscale on this computer and your phone';
     $('#phoneAccessTitle').textContent = 'Set up private phone access';
     $('#phoneAccessDescription').textContent = 'Install Tailscale on both devices and sign in to the same tailnet. Mix Studio will show the private address here after it detects the connection.';
   }
@@ -29230,6 +29230,12 @@ function renderPhoneAccess() {
     ? `${access.secureUrl ? 'Installable private HTTPS address' : 'Private Tailscale address'} is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.`
     : (access.localUrl ? `Same-Wi-Fi access is ready${pinProtected ? ' and PIN-protected' : '; profile PIN is optional'}.` : 'Set up private phone access with Tailscale.');
   if ($('#phoneAccessSettingsStatus')) $('#phoneAccessSettingsStatus').textContent = access.tailscaleDetected || access.localUrl ? 'Ready' : 'Guide';
+}
+
+function setupLocalPath(base, child) {
+  const root = String(base || '').replace(/[\\/]+$/, '');
+  if (!root) return '';
+  return `${root}${setupViewStatus?.platform === 'win32' ? '\\' : '/'}${child}`;
 }
 
 function renderInitialSetup() {
@@ -29297,9 +29303,10 @@ function renderInitialSetup() {
 
   const hardware = setupViewStatus.hardware || {};
   const quickFit = setupViewStatus.quickFit || {};
+  const generationMemoryName = hardware.gpuBackend === 'mps' ? 'unified memory' : 'VRAM';
   $('#setupHardwareCopy').textContent = hardware.gpuAvailable
-    ? `${hardware.gpuName || 'NVIDIA GPU'}${hardware.vramGb ? ` · ${hardware.vramGb} GB VRAM` : ' · VRAM unavailable'}${hardware.memoryGb ? ` · ${hardware.memoryGb} GB RAM` : ''}`
-    : 'No NVIDIA GPU detected';
+    ? `${hardware.gpuName || 'GPU'}${hardware.vramGb ? ` · ${hardware.vramGb} GB ${generationMemoryName}` : ` · ${generationMemoryName} unavailable`}${hardware.memoryGb && hardware.gpuBackend !== 'mps' ? ` · ${hardware.memoryGb} GB RAM` : ''}`
+    : 'No compatible GPU detected';
   $('#setupHardwareFit').textContent = krea2CoreBlocked
     ? 'Update ComfyUI for Krea 2'
     : (int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available'));
@@ -29332,7 +29339,9 @@ function renderInitialSetup() {
   $('#setupKrea2Variant').disabled = busy || !state.profileIsOwner;
 
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
-  const modelsValue = comfy.modelsPath || (pathValue ? `${pathValue.replace(/[\\/]+$/, '')}\\models` : '');
+  const modelsValue = comfy.modelsPath || setupLocalPath(pathValue, 'models');
+  $('#setupComfyPath').placeholder = setupViewStatus.platform === 'darwin' ? '/Users/you/ComfyUI' : 'C:\\ComfyUI';
+  $('#setupModelsPath').placeholder = setupViewStatus.platform === 'darwin' ? '/Users/you/ComfyUI/models' : 'C:\\ComfyUI\\models';
   if (document.activeElement !== $('#setupComfyUrl')) $('#setupComfyUrl').value = comfy.url || 'http://127.0.0.1:8188';
   if (document.activeElement !== $('#setupComfyPath') && !$('#setupComfyPath').value) $('#setupComfyPath').value = pathValue;
   if (document.activeElement !== $('#setupModelsPath') && !$('#setupModelsPath').value) $('#setupModelsPath').value = modelsValue;
@@ -29354,7 +29363,9 @@ function renderInitialSetup() {
   $('#setupCoreUpdate').hidden = !krea2CoreBlocked;
   $('#setupCoreUpdateCopy').textContent = start.kind === 'desktop'
     ? `${setupKrea2CoreMessage()} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
-    : `${setupKrea2CoreMessage()} For Portable, run update\\update_comfyui.bat from the portable folder.`;
+    : (setupViewStatus.platform === 'darwin'
+      ? `${setupKrea2CoreMessage()} Update the source checkout from Terminal, then restart ComfyUI.`
+      : `${setupKrea2CoreMessage()} For Portable, run update\\update_comfyui.bat from the portable folder.`);
   $('#setupCoreUpdateCheck').disabled = busy;
   const endpointMatches = setupDiscoveredMatches.length ? setupDiscoveredMatches : (start.matches || []);
   renderSetupEndpointChoices(endpointMatches);
@@ -29378,15 +29389,16 @@ function renderInitialSetup() {
     : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Start a detected installation or choose another location. Mix Studio finds the port automatically.'));
   $('#setupUseDetected').disabled = busy || !comfy.detectedPath || !state.profileIsOwner;
   $('#setupInstallComfy').disabled = busy || !comfy.canInstallOfficial || !state.profileIsOwner;
+  $('#setupInstallComfy').hidden = !comfy.canInstallOfficial;
   $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Opens the official Comfy Desktop app or downloads its signed installer' : 'Available when Mix Studio is running on Windows';
   $('#setupSaveConnection').disabled = busy || !state.profileIsOwner;
-  const canBrowse = setupViewStatus.platform === 'win32' && state.profileIsOwner && !busy;
+  const canBrowse = ['win32', 'darwin'].includes(setupViewStatus.platform) && state.profileIsOwner && !busy;
   $('#setupBrowseComfy').disabled = !canBrowse;
   $('#setupBrowseComfyDetails').disabled = !canBrowse;
   $('#setupBrowseModels').disabled = !canBrowse;
-  const browseTitle = setupViewStatus.platform === 'win32'
+  const browseTitle = ['win32', 'darwin'].includes(setupViewStatus.platform)
     ? 'Opens a folder picker on the generation computer'
-    : 'Browse opens on the Windows generation computer. Enter the path manually here.';
+    : 'Folder browsing is not available on this generation computer. Enter the absolute path manually here.';
   $('#setupBrowseComfy').title = browseTitle;
   $('#setupBrowseComfyDetails').title = browseTitle;
   $('#setupBrowseModels').title = browseTitle;
@@ -29622,7 +29634,7 @@ async function saveSetupConnection(pathOverride) {
     body: JSON.stringify({
       url: $('#setupComfyUrl').value.trim(),
       path: pathValue,
-      modelsPath: $('#setupModelsPath').value.trim() || (pathValue ? `${pathValue.replace(/[\\/]+$/, '')}\\models` : ''),
+      modelsPath: $('#setupModelsPath').value.trim() || setupLocalPath(pathValue, 'models'),
     }),
   });
   setupViewStatus = result;
@@ -29821,7 +29833,7 @@ $('#setupUseDetected').addEventListener('click', async () => {
     const detected = setupViewStatus?.comfy?.detectedPath;
     if (!detected) return;
     $('#setupComfyPath').value = detected;
-    $('#setupModelsPath').value = `${detected.replace(/[\\/]+$/, '')}\\models`;
+    $('#setupModelsPath').value = setupLocalPath(detected, 'models');
     await saveSetupConnection(detected);
   } catch (error) { toast(error.message, true); }
 });
@@ -29841,7 +29853,7 @@ async function browseSetupDirectory(kind, trigger) {
       $('#setupModelsPath').value = result.directory;
     } else {
       $('#setupComfyPath').value = result.directory;
-      $('#setupModelsPath').value = `${result.directory.replace(/[\\/]+$/, '')}\\models`;
+      $('#setupModelsPath').value = setupLocalPath(result.directory, 'models');
       await saveSetupConnection(result.directory);
     }
   } catch (error) {

@@ -205,7 +205,7 @@ const {
 } = require('./lib/mobile-access');
 const { hardwareInfo } = require('./lib/hardware-info');
 const { isWidgetSpec } = require('./lib/comfy-widget-spec');
-const { browseWindowsFolder } = require('./lib/windows-folder-picker');
+const { browseGenerationFolder } = require('./lib/folder-picker');
 const {
   appleGenerationProfile,
   configuredVideoEngineCapability,
@@ -1005,11 +1005,6 @@ function stopOfficialComfySetup() {
     try { child.kill('SIGTERM'); } catch { /* process may already be gone */ }
   }
   return true;
-}
-
-function browseGenerationFolder(kind) {
-  if (process.platform !== 'win32') throw new Error('Folder browsing is available on the Windows generation computer. Enter the location manually here.');
-  return browseWindowsFolder(kind);
 }
 
 async function assertDesktopIsIdle() {
@@ -8484,7 +8479,7 @@ function scheduleServerRestart() {
   broadcast('appRestarting', {});
   setTimeout(() => {
     const restartMode = process.env.MIXBOX_RESTART_MODE || process.env.KREASTUDIO_RESTART_MODE;
-    if (restartMode !== 'batch') launchDetachedReplacement();
+    if (!['batch', 'launcher'].includes(restartMode)) launchDetachedReplacement();
     for (const client of sseClients.keys()) {
       try { client.end(); } catch { /* noop */ }
     }

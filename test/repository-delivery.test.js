@@ -32,10 +32,10 @@ test('the current release has user-facing Krea 2 Edit and Remix notes', () => {
   assert.match(changelog, /Krea 2 Remix/);
 });
 
-test('quality runs the complete Node 22 checks on Linux and Windows', () => {
+test('quality runs the complete Node 22 checks on Linux, Windows, and macOS', () => {
   assert.match(quality, /workflow_call:/);
   assert.match(quality, /pull_request:/);
-  assert.match(quality, /os: \[ubuntu-latest, windows-latest\]/);
+  assert.match(quality, /os: \[ubuntu-latest, windows-latest, macos-latest\]/);
   assert.match(quality, /node-version: 22/);
   assert.match(quality, /node --check server\.js/);
   assert.match(quality, /node --check public\/app\.js/);
@@ -44,6 +44,9 @@ test('quality runs the complete Node 22 checks on Linux and Windows', () => {
   assert.match(quality, /Smoke test installer batch helpers/);
   assert.match(quality, /install_MixStudio\.bat --verify-checkout/);
   assert.match(quality, /install_MixStudio\.bat --verify-node/);
+  assert.match(quality, /Check macOS launchers/);
+  assert.match(quality, /zsh -n install_MixStudio\.command/);
+  assert.match(quality, /zsh -n start\.command/);
   assert.match(quality, /node --test/);
   assert.match(quality, /RELEASE_TAG/);
   assert.match(quality, /release\.json/);
