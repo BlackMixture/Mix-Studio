@@ -247,6 +247,16 @@ test('desktop image action opens the full destination menu', () => {
   assert.match(app, /label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
 });
 
+test('desktop image and depth guide actions finish in the complete Create Image workspace', () => {
+  const start = app.indexOf("async function useGalleryItemAsGuide(item, mode = 'image')");
+  const end = app.indexOf('function galleryImageDestinationActions', start);
+  const handoff = app.slice(start, end);
+  assert.match(handoff, /setCreateImageGuideAsset\(await galleryItemEditReference\(item\), mode\)/);
+  assert.match(handoff, /closeLightbox\(\)/);
+  assert.doesNotMatch(handoff, /setView\('image'\)|state\.view\s*=\s*'image'/);
+  assert.match(app, /function setCreateImageGuideAsset\(asset, mode = 'image'\)[\s\S]*setView\('create', \{ createMode: 'image' \}\)/);
+});
+
 test('Generate occupies the middle stage and animates away with focused results', () => {
   assert.match(css, /\.desktop-stage \{[\s\S]*grid-template-rows: minmax\(0, 1fr\) auto;/);
   assert.match(css, /\.desktop-stage \.generate-dock \{[\s\S]*position: relative;[\s\S]*left: auto;[\s\S]*right: auto;[\s\S]*width: auto;/);

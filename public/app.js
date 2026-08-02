@@ -14854,8 +14854,6 @@ async function useGalleryItemAsGuide(item, mode = 'image') {
   try {
     await setCreateImageGuideAsset(await galleryItemEditReference(item), mode);
     closeLightbox();
-    state.createMode = 'image';
-    setView('image');
     toast(mode === 'depth' ? 'Added as a depth guide' : 'Added as an image guide');
   } catch (error) { toast(error.message, true); }
 }
