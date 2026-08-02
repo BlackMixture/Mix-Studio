@@ -8158,6 +8158,25 @@ body.sheet-open {
   animation: sheetUp 260ms var(--ease);
 }
 @keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet.centered-dialog-sheet {
+  align-items: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+.sheet.centered-dialog-sheet > .sheet-panel {
+  max-height: min(90vh, 860px);
+  max-height: min(90dvh, 860px);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 28px 90px rgba(0,0,0,.72);
+  animation: centeredDialogIn 220ms var(--ease);
+}
+@keyframes centeredDialogIn {
+  from { transform: translateY(10px) scale(.985); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet.centered-dialog-sheet > .sheet-panel { animation-duration: 1ms; }
+}
 .sheet-title { font-weight: 900; font-size: 15px; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
 .sheet-title button { border: 0; background: transparent; color: var(--muted); font-size: 20px; font-weight: 900; }
 .setup-sheet {
