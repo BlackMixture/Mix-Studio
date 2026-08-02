@@ -869,6 +869,20 @@ function applySetupConnection(values) {
   return config;
 }
 
+/** Choosing a ComfyUI folder must not move the model destination away from a
+ *  shared library the user already filled — Comfy Desktop keeps its own models
+ *  folder empty when `extra_model_paths` style config points somewhere else. */
+async function connectedModelsPath(comfyPath) {
+  const fallback = comfyPath ? path.join(comfyPath, 'models') : '';
+  if (!comfyPath) return '';
+  try {
+    const discovery = await discoverModels({ comfyUrl: '', comfyPath });
+    return discovery.preferredModelsPath || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function startOfficialComfySetup() {
   const script = path.join(ROOT, 'installer', 'install-comfy.ps1');
   if (!fs.existsSync(script)) throw new Error('The official ComfyUI setup helper is missing from this checkout.');
@@ -5593,7 +5607,7 @@ async function handleApi(req, res, url) {
       const requestedPath = String(body.path || '').trim();
       applySetupConnection({
         path: requestedPath,
-        modelsPath: String(body.modelsPath || '').trim() || (requestedPath ? path.join(requestedPath, 'models') : ''),
+        modelsPath: String(body.modelsPath || '').trim() || await connectedModelsPath(requestedPath),
         url: body.url || settings.comfyUrl,
       });
       comfySetupExpectedBasePath = '';

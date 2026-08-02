@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const {
+  candidateConfigFiles,
   collectRegisteredModelNames,
   discoverModels,
   parseExtraModelPaths,
@@ -36,6 +37,27 @@ shared:
   loras: Lora
 `, { configDir: 'C:\\ComfyUI', pathApi: path.win32, env: {} });
   assert.ok(parsed.roots.includes('D:\\AI\\Models'));
+});
+
+test('reads the quoted keys and block scalars Comfy Desktop writes', () => {
+  const parsed = parseExtraModelPaths(`
+comfy.desktop_0:
+  base_path: 'C:\\diffusion\\models'
+  is_default: true
+  'checkpoints': 'checkpoints/'
+  'controlnet': |-
+    controlnet/
+    t2i_adapter/
+  'loras': 'loras/'
+`, { configDir: 'C:\\ComfyUI', pathApi: path.win32, env: {} });
+  assert.deepEqual(parsed.roots, ['C:\\diffusion\\models']);
+  assert.ok(parsed.configuredPaths.includes('C:\\diffusion\\models\\t2i_adapter'));
+});
+
+test('scans the Comfy Desktop shared model config alongside classic ComfyUI configs', () => {
+  const files = candidateConfigFiles('C:\\ComfyUI', { APPDATA: 'C:\\Roaming' }, path.win32);
+  assert.ok(files.includes('C:\\Roaming\\Comfy Desktop\\shared_model_paths.yaml'));
+  assert.ok(files.includes('C:\\ComfyUI\\extra_model_paths.yaml'));
 });
 
 test('combines ComfyUI registry discovery with existing model roots', async () => {
