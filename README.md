@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://blackmixture.github.io/Mix-Studio/"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows-4285F4?style=flat-square&amp;logo=windows11&amp;logoColor=white" /></a>
   <a href="https://blackmixture.github.io/Mix-Studio/install_MixStudio.command"><img alt="Download for macOS" src="https://img.shields.io/badge/Download-macOS-111111?style=flat-square&amp;logo=apple&amp;logoColor=white" /></a>
+  <a href="docs/installation-and-operations.md#linux-setup-nvidia-or-amd-rocm"><img alt="Linux setup guide" src="https://img.shields.io/badge/Setup-Linux-FCC624?style=flat-square&amp;logo=linux&amp;logoColor=111111" /></a>
   <a href="https://github.com/BlackMixture/Mix-Studio/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/BlackMixture/Mix-Studio?style=flat-square&amp;label=release" /></a>
   <a href="https://github.com/BlackMixture/Mix-Studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/BlackMixture/Mix-Studio?style=flat-square&amp;logo=github" /></a>
   <a href="LICENSE"><img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-34A853?style=flat-square" /></a>
@@ -28,11 +29,11 @@ Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remi
 
 ## Quick setup
 
-1. Open the **[Mix Studio download page](https://blackmixture.github.io/Mix-Studio/)** and choose the Windows or macOS installer.
-2. Put the installer in the parent folder where you want Mix Studio to live. Open the `.bat` on Windows, or run `zsh ~/Downloads/install_MixStudio.command` from Terminal on macOS.
+1. Open the **[Mix Studio download page](https://blackmixture.github.io/Mix-Studio/)** and choose the Windows or macOS installer, or follow the linked Linux setup.
+2. Open the `.bat` on Windows, run `zsh ~/Downloads/install_MixStudio.command` on macOS, or clone the repository and run `./start-mixstudio.sh` on Linux.
 3. Mix Studio opens in your browser, detects an existing ComfyUI installation, and guides you through the files required by the workflows you choose.
 
-Windows with an NVIDIA GPU supports the full curated workflow set. Apple Silicon macOS is supported through a source-based ComfyUI environment: setup detects Metal and unified memory, starts ComfyUI with MPS-safe flags, selects the official BF16 LTX 2.3 checkpoint, and disables the FP8-only 10Eros, Wan 2.2, and SCAIL 2 routes. The lowest NVIDIA guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
+Windows with NVIDIA supports the full curated workflow set. Linux with NVIDIA is supported through an existing source-based ComfyUI environment or an explicitly configured user service. Apple Silicon macOS uses a Metal-compatible subset with official BF16 LTX 2.3 weights. AMD ROCm on Windows or Linux is experimental and requires a working ROCm-enabled ComfyUI/PyTorch environment; Mix Studio detects AMD telemetry, keeps compatible FP8 routes, and replaces NVIDIA-only SeedVR2 attention modes with SDPA. The lowest discrete-GPU guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
 
 For manual Git setup, detailed VRAM guidance, shared-model discovery, phone access, troubleshooting, and uninstall behavior, see **[Installation and operations](docs/installation-and-operations.md)**. Do not use GitHub's **Download ZIP** if you want in-app updates.
 

@@ -53,12 +53,14 @@ const { comfyResetRequests } = require('./lib/comfy-reset');
 const {
   assessQueueHealth,
   parseNvidiaSmiCsv,
+  parseRocmSmiUseJson,
 } = require('./lib/queue-health');
 const { classifyLora } = require('./lib/lora-compat');
 const { buildLoraContext } = require('./lib/lora-context');
 const {
   DEFAULT_SEEDVR2_DIT,
   normalizeSeedVr2Defaults,
+  seedVr2AttentionForVendor,
   installedSeedVr2Models,
   seedVr2Profile,
   seedVr2DitInputs,
@@ -463,18 +465,28 @@ function settingsResponse() {
   const response = Object.assign({}, settings, {
     hfTokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
     appRestartRequired: settingsRequireAppRestart(),
+    gpuVendor: setupHardwareProfile(setupHardwareSnapshot || {}).gpuVendor || '',
   });
   delete response.hfToken;
   return response;
 }
 
 function adoptDeviceCompatibleModelSettings(hardwareProfile = {}) {
-  if (!appleGenerationProfile(hardwareProfile)) return false;
-  const configured = normalizeModelPath(settings.ltxCkpt).split('/').pop();
-  if (configured && configured !== 'ltx-2.3-22b-dev-fp8.safetensors') return false;
-  settings.ltxCkpt = 'ltx-2.3-22b-dev.safetensors';
-  saveJsonSync(SETTINGS_FILE, settings);
-  return true;
+  let changed = false;
+  if (appleGenerationProfile(hardwareProfile)) {
+    const configured = normalizeModelPath(settings.ltxCkpt).split('/').pop();
+    if (!configured || configured === 'ltx-2.3-22b-dev-fp8.safetensors') {
+      settings.ltxCkpt = 'ltx-2.3-22b-dev.safetensors';
+      changed = true;
+    }
+  }
+  const safeAttention = seedVr2AttentionForVendor(settings.seedvr2Attention, hardwareProfile.gpuVendor);
+  if (safeAttention !== settings.seedvr2Attention) {
+    settings.seedvr2Attention = safeAttention;
+    changed = true;
+  }
+  if (changed) saveJsonSync(SETTINGS_FILE, settings);
+  return changed;
 }
 
 function seedVr2ModelDirs() {
@@ -892,6 +904,24 @@ function applySetupConnection(values) {
   return config;
 }
 
+async function connectedModelsPath(comfyPath, existingModelsPath = '') {
+  const saved = String(existingModelsPath || '').trim();
+  if (saved) return saved;
+  const basePath = String(comfyPath || '').trim();
+  if (!basePath) return '';
+  const fallback = path.join(basePath, 'models');
+  try {
+    const discovery = await discoverModels({
+      comfyUrl: '',
+      comfyPath: basePath,
+      platform: process.platform,
+    });
+    return discovery.preferredModelsPath || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function startOfficialComfySetup() {
   const script = path.join(ROOT, 'installer', 'install-comfy.ps1');
   if (!fs.existsSync(script)) throw new Error('The official ComfyUI setup helper is missing from this checkout.');
@@ -1131,8 +1161,14 @@ function readGpuStats() {
       ['--query-gpu=utilization.gpu,memory.used,memory.total,power.draw', '--format=csv,noheader,nounits'],
       { timeout: 4000 },
       (err, stdout) => {
-        if (err) return resolve(null);
-        resolve(parseNvidiaSmiCsv(stdout));
+        const nvidia = err ? null : parseNvidiaSmiCsv(stdout);
+        if (nvidia) return resolve(nvidia);
+        execFile(
+          'rocm-smi',
+          ['--showuse', '--showmeminfo', 'vram', '--json'],
+          { timeout: 4000 },
+          (rocmError, rocmStdout) => resolve(rocmError ? null : parseRocmSmiUseJson(rocmStdout))
+        );
       }
     );
   });
@@ -3364,6 +3400,7 @@ async function buildUpscale(imageName, opts) {
   }
 
   const graph = {};
+  const gpuVendor = setupHardwareProfile(await getSetupHardwareInfo()).gpuVendor;
   const installedDitModels = installedSeedVr2Models(seedVr2ModelDirs());
   const profile = seedVr2Profile(settings, opts.profile || 'sharp', installedDitModels, opts.noise || 'low');
   opts.profile = profile.key;
@@ -3382,7 +3419,7 @@ async function buildUpscale(imageName, opts) {
   // (verified against /object_info via /api/debug/upscale).
   graph.dit = {
     class_type: 'SeedVR2LoadDiTModel',
-    inputs: seedVr2DitInputs(Object.assign({}, settings, { seedvr2Dit: profile.ditModel })),
+    inputs: seedVr2DitInputs(Object.assign({}, settings, { seedvr2Dit: profile.ditModel, gpuVendor })),
   };
   graph.svvae = {
     class_type: 'SeedVR2LoadVAEModel',
@@ -5092,6 +5129,7 @@ async function setupStatusPayload(forceCompatibility = false) {
   const krea2Core = connected
     ? krea2ClipCompatibility(info, compatibility.version)
     : krea2ClipCompatibility(null, compatibility.version);
+  const detectedModelsPath = await connectedModelsPath(detected.basePath || RUNTIME.comfy.path);
   return {
     appReady: true,
     platform: process.platform,
@@ -5120,7 +5158,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       configuredPath: RUNTIME.comfy.path || '',
       detectedPath: detected.basePath || '',
       partialPath: detected.partialPath || '',
-      modelsPath: RUNTIME.comfy.modelsPath || (detected.basePath ? path.join(detected.basePath, 'models') : ''),
+      modelsPath: RUNTIME.comfy.modelsPath || detectedModelsPath,
       pythonReady: !!detected.pythonPath,
       canInstallDependencies: detected.canInstall,
       dependencyReason: detected.reason || '',
@@ -5571,6 +5609,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/settings' && req.method === 'GET') {
+    await getSetupHardwareInfo().catch(() => null);
     return json(res, 200, settingsResponse());
   }
   if (route === '/api/setup/status' && req.method === 'GET') {
@@ -5612,9 +5651,13 @@ async function handleApi(req, res, url) {
       await assertDesktopIsIdle();
       const body = await readJsonBody(req);
       const requestedPath = String(body.path || '').trim();
+      const suppliedModelsPath = String(body.modelsPath || '').trim();
+      const existingModelsPath = Object.prototype.hasOwnProperty.call(body, 'modelsPath')
+        ? ''
+        : RUNTIME.comfy.modelsPath;
       applySetupConnection({
         path: requestedPath,
-        modelsPath: String(body.modelsPath || '').trim() || (requestedPath ? path.join(requestedPath, 'models') : ''),
+        modelsPath: suppliedModelsPath || await connectedModelsPath(requestedPath, existingModelsPath),
         url: body.url || settings.comfyUrl,
       });
       comfySetupExpectedBasePath = '';
@@ -5732,6 +5775,8 @@ async function handleApi(req, res, url) {
     if (body.clearHfToken === true) settings.hfToken = '';
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
     settings = normalizeSettings(settings);
+    const hardwareProfile = setupHardwareProfile(await getSetupHardwareInfo().catch(() => ({})));
+    settings.seedvr2Attention = seedVr2AttentionForVendor(settings.seedvr2Attention, hardwareProfile.gpuVendor);
     saveJsonSync(SETTINGS_FILE, settings);
     objectInfoCache = null;
     loraInfoCache = { key: '', at: 0, value: {} };

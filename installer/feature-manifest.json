@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": "Mix Studio",
   "target": "desktop-generation",
-  "notes": "The in-app Generation setup guide detects the connected generation device, selects compatible model variants where available, and reuses existing files. Users may override recommendations after reviewing difficulty warnings.",
+  "notes": "The in-app Generation setup guide detects the connected generation device, selects compatible model variants where available, and reuses existing files. NVIDIA provides the complete curated route, Apple Metal uses a compatible subset, and AMD ROCm is experimental with an existing compatible ComfyUI/PyTorch environment. Users may override recommendations after reviewing difficulty warnings.",
   "features": [
     {
       "id": "core.image",
@@ -71,7 +71,7 @@
       "id": "video.ltx",
       "label": "LTX 2.3 Video + Face ID",
       "default": false,
-      "variant": "LTX 2.3 22B FP8 on NVIDIA or official BF16 on Apple Silicon; 8 GB is an experimental tier with aggressive offload",
+      "variant": "LTX 2.3 22B FP8 on NVIDIA or experimental AMD ROCm, or official BF16 on Apple Silicon; 8 GB is an experimental tier with aggressive offload",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
       "models": ["ltx-2.3", "ltx-distilled", "gemma-3", "ltx-spatial-upscaler", "ltx-face-id", "ltx-face-id-distilled"],
       "nodes": ["VideoHelperSuite", "LTXV", "BFS Nodes", "KJNodes"]
@@ -80,7 +80,7 @@
       "id": "video.ltxEdit",
       "label": "LTX Edit Anything",
       "default": false,
-      "variant": "LTX 2.3 22B adapter using FP8 on NVIDIA or official BF16 on Apple Silicon; 8 GB is an experimental tier with aggressive offload",
+      "variant": "LTX 2.3 22B adapter using FP8 on NVIDIA or experimental AMD ROCm, or official BF16 on Apple Silicon; 8 GB is an experimental tier with aggressive offload",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
       "dependsOn": ["video.ltx"],
       "models": ["ltx-edit-anything"],

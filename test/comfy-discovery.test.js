@@ -161,3 +161,26 @@ test('an explicit launch port in the matching Desktop record can correlate witho
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('running ComfyUI ports are discovered from ps output on Linux and macOS', async () => {
+  const { runningComfyPorts } = require('../lib/comfy-discovery');
+  const ports = await runningComfyPorts({
+    platform: 'linux',
+    runProcessQuery: async (command, args) => {
+      assert.equal(command, 'ps');
+      assert.deepEqual(args, ['axo', 'args=']);
+      return [
+        '/usr/lib/systemd/systemd --user',
+        '/home/user/ComfyUI/.venv/bin/python /home/user/ComfyUI/main.py --port 8189',
+        '/opt/other/python /opt/other/main.py --port 9100',
+        'grep main.py',
+      ].join('\n');
+    },
+  });
+  assert.deepEqual(ports.sort(), [8189, 9100]);
+  const failed = await runningComfyPorts({
+    platform: 'darwin',
+    runProcessQuery: async () => { throw new Error('ps unavailable'); },
+  });
+  assert.deepEqual(failed, []);
+});

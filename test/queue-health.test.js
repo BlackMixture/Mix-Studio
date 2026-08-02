@@ -9,6 +9,7 @@ const {
   assessQueueHealth,
   formatDurationMs,
   parseNvidiaSmiCsv,
+  parseRocmSmiUseJson,
 } = require('../lib/queue-health');
 
 const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
@@ -23,6 +24,17 @@ test('parses nvidia-smi utilization and memory csv', () => {
     memoryTotalMb: 97887,
     powerDrawW: 599.94,
   });
+});
+
+test('parses ROCm utilization from the largest-VRAM AMD device', () => {
+  const sample = JSON.stringify({
+    card0: { 'GPU use (%)': '3', 'VRAM Total Memory (B)': '536870912', 'VRAM Total Used Memory (B)': '20967424' },
+    card1: { 'GPU use (%)': '97', 'VRAM Total Memory (B)': '17163091968', 'VRAM Total Used Memory (B)': '15032385536' },
+  });
+  assert.deepEqual(parseRocmSmiUseJson(sample), {
+    utilization: 97, memoryUsedMb: 14336, memoryTotalMb: 16368, powerDrawW: null,
+  });
+  assert.equal(parseRocmSmiUseJson('invalid'), null);
 });
 
 test('assesses running jobs as active when GPU is busy', () => {
@@ -65,6 +77,7 @@ test('server queue includes health and job timing fields', () => {
   assert.match(serverJs, /startedAt/);
   assert.match(serverJs, /finalizing/);
   assert.match(serverJs, /owned/);
+  assert.match(serverJs, /rocm-smi/);
 });
 
 test('browser reconciles generation state after suspension and SSE reconnects', () => {

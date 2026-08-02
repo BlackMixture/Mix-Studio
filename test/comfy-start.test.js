@@ -238,3 +238,98 @@ test('macOS restart sends TERM only to the verified source ComfyUI listener', as
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('Linux source installs start and restart without Windows tooling', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-linux-restart-'));
+  const base = path.join(temp, 'ComfyUI');
+  const python = path.join(base, '.venv', 'bin', 'python');
+  const mainPy = path.join(base, 'main.py');
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.writeFileSync(mainPy, '');
+  fs.writeFileSync(python, '');
+  const options = { platform: 'linux', env: {}, home: path.join(temp, 'missing'), fsImpl: fs };
+  try {
+    const runtime = { comfy: { path: base, url: 'http://127.0.0.1:8188' } };
+    const start = startStatus(runtime, options);
+    assert.equal(start.canStart, true);
+    assert.equal(start.kind, 'python');
+    assert.deepEqual(start.launchArgs, [mainPy, '--port', '8188']);
+    let launched = null;
+    const calls = [];
+    let listenerChecks = 0;
+    await restartComfy(runtime, () => {}, Object.assign({}, options, {
+      run: async (command, args) => {
+        calls.push([command, args]);
+        if (command === 'lsof') return listenerChecks++ === 0 ? '77\n' : '';
+        if (command === 'ps') return `77 ${python} ${mainPy} --port 8188`;
+        return '';
+      },
+      wait: async () => {},
+      spawn(status) { launched = status; },
+    }));
+    assert.deepEqual(calls.find(([command]) => command === '/bin/kill'), ['/bin/kill', ['-TERM', '77']]);
+    assert.equal(calls.some(([command]) => command === 'taskkill'), false);
+    assert.equal(launched.kind, 'python');
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('Linux systemd integration is explicit, validated, and never targets a remote ComfyUI', async () => {
+  const local = { comfy: { url: 'http://127.0.0.1:8188' } };
+  const env = { MIXBOX_COMFY_SERVICE: 'comfyui.service' };
+  const start = startStatus(local, { platform: 'linux', env, home: '/missing', existsSync: () => false, fsImpl: fs });
+  assert.equal(start.canStart, true);
+  assert.equal(start.kind, 'service');
+  const calls = [];
+  await startComfy(local, () => {}, {
+    platform: 'linux', env, home: '/missing', existsSync: () => false, fsImpl: fs,
+    run: async (command, args) => calls.push([command, args]),
+  });
+  await restartComfy(local, () => {}, {
+    platform: 'linux', env, home: '/missing', existsSync: () => false, fsImpl: fs,
+    run: async (command, args) => calls.push([command, args]),
+  });
+  assert.deepEqual(calls, [
+    ['systemctl', ['--user', 'start', 'comfyui.service']],
+    ['systemctl', ['--user', 'restart', 'comfyui.service']],
+  ]);
+  const remote = restartStatus({ comfy: { url: 'http://192.0.2.5:8188' } }, {
+    platform: 'linux', env, home: '/missing', existsSync: () => false, fsImpl: fs,
+  });
+  assert.equal(remote.canRestart, false);
+  assert.match(remote.reason, /another computer/i);
+  const invalid = startStatus(local, {
+    platform: 'linux', env: { MIXBOX_COMFY_SERVICE: 'comfyui.service; reboot' }, home: '/missing', existsSync: () => false, fsImpl: fs,
+  });
+  assert.equal(invalid.canStart, false);
+});
+
+test('Linux Desktop 2 installations stay app-managed instead of bypassing their launcher', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-comfy-desktop2-'));
+  const appData = path.join(temp, 'app-data');
+  const installDir = path.join(temp, 'installs');
+  const base = path.join(installDir, 'Primary', 'ComfyUI');
+  const python = path.join(base, '.venv', 'bin', 'python');
+  fs.mkdirSync(path.join(appData, 'comfyui-desktop-2'), { recursive: true });
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  fs.writeFileSync(path.join(appData, 'comfyui-desktop-2', 'settings.json'), JSON.stringify({ installDir }));
+  try {
+    const runtime = { comfy: { path: base, url: 'http://127.0.0.1:8188' } };
+    const status = startStatus(runtime, {
+      platform: 'linux', env: { XDG_CONFIG_HOME: appData }, home: temp, fsImpl: fs,
+    });
+    assert.equal(status.kind, 'desktop');
+    assert.equal(status.canStart, false);
+    assert.match(status.reason, /source-based ComfyUI folder|MIXBOX_COMFY_SERVICE/);
+    assert.equal(restartStatus(runtime, {
+      platform: 'linux', env: { XDG_CONFIG_HOME: appData }, home: temp, fsImpl: fs,
+    }).canRestart, false);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});

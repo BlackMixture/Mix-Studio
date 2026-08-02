@@ -51,6 +51,17 @@ test('macOS installer clones the official checkout and launches through the rest
   assert.match(start, /STATUS.*-eq 75/s);
 });
 
+test('Linux launcher validates Node and keeps model and service discovery explicit', () => {
+  const start = fs.readFileSync(path.join(root, 'start-mixstudio.sh'), 'utf8');
+  assert.match(start, /Node\.js 22 or newer/);
+  assert.match(start, /MIXBOX_RESTART_MODE=launcher/);
+  assert.match(start, /installer\/bootstrap\.js/);
+  assert.match(start, /STATUS.*-eq 75/s);
+  assert.match(start, /MIXBOX_COMFY_SERVICE=comfyui\.service/);
+  assert.doesNotMatch(start, /export COMFYUI_MODELS_DIR=/);
+  assert.doesNotMatch(start, /systemctl|\/bin\/sh -c|sh -c/);
+});
+
 test('standalone installer downloads the official Git checkout before opening the app', () => {
   const launcher = fs.readFileSync(path.join(root, 'install_MixStudio.bat'), 'utf8');
   assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
@@ -118,6 +129,10 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /Download for macOS/);
   assert.match(page, /href="\.\/install_MixStudio\.command" download="install_MixStudio\.command"/);
   assert.equal((page.match(/platform-icon platform-macos/g) || []).length, 4);
+  assert.match(page, /Linux setup/);
+  assert.match(page, /installation-and-operations\.md#linux-setup-nvidia-or-amd-rocm/);
+  assert.equal((page.match(/platform-icon platform-linux/g) || []).length, 4);
+  assert.match(page, /AMD ROCm on Windows or Linux is experimental/);
   assert.doesNotMatch(page, /macOS (?:support|download) coming soon/);
   assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
   assert.doesNotMatch(page, /The installer gets you into Mix Studio before asking you to choose models or workflows\./);
@@ -179,7 +194,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(footerMarkup, /Dell/);
   assert.match(footerMarkup, /Black Mixture/);
   assert.match(footerMarkup, /Mix Studio/);
-  assert.match(page, /Works with ComfyUI, Tailscale, and NVIDIA/);
+  assert.match(page, /Works with ComfyUI, Tailscale, NVIDIA, Apple Metal, and AMD ROCm/);
   assert.match(page, /Measured Timing/);
   assert.doesNotMatch(page, />12 min</);
   assert.doesNotMatch(page, />16 rec</);
@@ -700,6 +715,22 @@ test('hardware guidance blocks incompatible Apple FP8 video families while retai
     assert.equal(guidance[component].blocked, true);
     assert.match(guidance[component].detail, /Apple Metal/);
   }
+});
+
+test('hardware guidance rates AMD by VRAM and labels ROCm support experimental', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
+  const amd = {
+    gpu: { available: true, devices: [{
+      name: 'AMD Radeon RX 6800', vendor: 'amd', backend: 'rocm', memoryBytes: 16 * (1024 ** 3),
+    }] },
+    memory: { totalBytes: 64 * (1024 ** 3) },
+    disk: { freeBytes: 500 * (1024 ** 3) },
+  };
+  const imageFeature = manifest.features.find((feature) => feature.id === 'core.image');
+  const fit = featureHardwareFit(imageFeature, amd);
+  assert.equal(fit.level, 'recommended');
+  assert.match(fit.detail, /ROCm/);
+  assert.match(fit.detail, /experimental/);
 });
 
 test('portable setup validates connection input and preserves machine settings', () => {

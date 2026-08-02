@@ -25130,6 +25130,16 @@ const svAttentionOptions = {
   flash_attn_2: { label: 'Flash Attention 2', description: 'Flash Attention compatible GPUs' },
   flash_attn_3: { label: 'Flash Attention 3', description: 'Hopper generation and newer' },
 };
+const svNvidiaOnlyAttention = new Set(['sageattn_2', 'sageattn_3', 'flash_attn_2', 'flash_attn_3']);
+
+function applySvAttnVendorFilter(vendor) {
+  const normalizedVendor = String(vendor || '').toLowerCase();
+  const restrict = !!normalizedVendor && normalizedVendor !== 'nvidia';
+  $$('#svAttnList [role="option"]').forEach((option) => {
+    option.hidden = restrict && svNvidiaOnlyAttention.has(option.dataset.attention);
+  });
+  if (restrict && svNvidiaOnlyAttention.has($('#setSvAttn').value)) setSvAttnValue('sdpa');
+}
 
 function setMediaPreferenceControl(id, enabled) {
   const button = $('#' + id);
@@ -25406,10 +25416,10 @@ $('#svAttnTrigger').addEventListener('keydown', (event) => {
   event.preventDefault();
   setSvAttnPickerOpen(true, true);
   if (event.key === 'ArrowUp' || event.key === 'End') {
-    const options = $$('#svAttnList [role="option"]');
+    const options = $$('#svAttnList [role="option"]').filter((option) => !option.hidden);
     options[options.length - 1]?.focus();
   } else if (event.key === 'Home') {
-    $('#svAttnList [role="option"]')?.focus();
+    $$('#svAttnList [role="option"]').find((option) => !option.hidden)?.focus();
   }
 });
 const svAttnOptionButtons = $$('#svAttnList [role="option"]');
@@ -25429,10 +25439,12 @@ svAttnOptionButtons.forEach((option, index) => {
     }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
+    const visible = svAttnOptionButtons.filter((entry) => !entry.hidden);
+    const current = Math.max(0, visible.indexOf(option));
     const next = event.key === 'Home' ? 0
-      : event.key === 'End' ? svAttnOptionButtons.length - 1
-        : (index + (event.key === 'ArrowDown' ? 1 : -1) + svAttnOptionButtons.length) % svAttnOptionButtons.length;
-    svAttnOptionButtons[next].focus();
+      : event.key === 'End' ? visible.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + visible.length) % visible.length;
+    visible[next]?.focus();
   });
 });
 document.addEventListener('pointerdown', (event) => {
@@ -28579,6 +28591,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setDit').value = s.seedvr2Dit;
     $('#setSvVae').value = s.seedvr2Vae;
     setSvAttnValue(s.seedvr2Attention || 'sdpa');
+    applySvAttnVendorFilter(s.gpuVendor || '');
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';
@@ -29634,7 +29647,7 @@ async function saveSetupConnection(pathOverride) {
     body: JSON.stringify({
       url: $('#setupComfyUrl').value.trim(),
       path: pathValue,
-      modelsPath: $('#setupModelsPath').value.trim() || setupLocalPath(pathValue, 'models'),
+      modelsPath: $('#setupModelsPath').value.trim(),
     }),
   });
   setupViewStatus = result;
@@ -29833,7 +29846,7 @@ $('#setupUseDetected').addEventListener('click', async () => {
     const detected = setupViewStatus?.comfy?.detectedPath;
     if (!detected) return;
     $('#setupComfyPath').value = detected;
-    $('#setupModelsPath').value = setupLocalPath(detected, 'models');
+    $('#setupModelsPath').value = '';
     await saveSetupConnection(detected);
   } catch (error) { toast(error.message, true); }
 });
@@ -29853,7 +29866,7 @@ async function browseSetupDirectory(kind, trigger) {
       $('#setupModelsPath').value = result.directory;
     } else {
       $('#setupComfyPath').value = result.directory;
-      $('#setupModelsPath').value = setupLocalPath(result.directory, 'models');
+      $('#setupModelsPath').value = '';
       await saveSetupConnection(result.directory);
     }
   } catch (error) {

@@ -10,6 +10,7 @@ const {
   installedSeedVr2Models,
   seedVr2Profile,
   seedVr2DitInputs,
+  seedVr2AttentionForVendor,
   targetResolutionForUpscale,
   rtxVideoSuperResolutionNode,
   buildUltimateSdUpscaleGraph,
@@ -36,6 +37,17 @@ test('uses 7B-friendly SeedVR2 loader settings', () => {
   assert.equal(inputs.swap_io_components, true);
   assert.equal(inputs.offload_device, 'cpu');
   assert.equal(inputs.attention_mode, 'sageattn_2');
+});
+
+test('CUDA-only SeedVR2 attention falls back to SDPA on non-NVIDIA backends', () => {
+  assert.equal(seedVr2AttentionForVendor('sageattn_2', 'amd'), 'sdpa');
+  assert.equal(seedVr2AttentionForVendor('flash_attn_3', 'apple'), 'sdpa');
+  assert.equal(seedVr2AttentionForVendor('sageattn_2', 'nvidia'), 'sageattn_2');
+  assert.equal(seedVr2DitInputs({
+    seedvr2Dit: DEFAULT_SEEDVR2_DIT,
+    seedvr2Attention: 'flash_attn_2',
+    gpuVendor: 'amd',
+  }).attention_mode, 'sdpa');
 });
 
 test('sharp SeedVR2 profile prefers the sharp 7B model and low detail noise by default', () => {

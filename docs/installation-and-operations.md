@@ -4,7 +4,7 @@ This guide contains the setup, hardware, networking, update, and maintenance det
 
 ## Supported installation
 
-Mix Studio supports Windows with NVIDIA for the complete curated workflow set and Apple Silicon macOS for the Metal-compatible workflow set. Both use a portable Git checkout rather than a packaged executable. This keeps the installation transparent and lets the owner-only updater fast-forward the checkout without touching user data.
+Mix Studio supports Windows with NVIDIA for the complete curated workflow set, Linux with NVIDIA through a source-based ComfyUI environment, and Apple Silicon macOS for the Metal-compatible workflow set. AMD ROCm integration on Windows and Linux is experimental and requires an already working ROCm-enabled ComfyUI/PyTorch environment. Every platform uses a portable Git checkout rather than a packaged executable. This keeps the installation transparent and lets the owner-only updater fast-forward the checkout without touching user data.
 
 ### Windows one-file setup
 
@@ -59,6 +59,24 @@ Mix Studio reads the connected ComfyUI device backend and applies an MPS-specifi
 
 Mix Studio launches the configured source environment with `--listen 127.0.0.1 --fp32-vae --use-split-cross-attention` and `PYTORCH_ENABLE_MPS_FALLBACK=1`. It does not set PyTorch's high-watermark ratio to zero because removing that guard can let a generation consume memory needed by macOS. Unified memory is shared with macOS and other applications, so close memory-heavy applications before larger LTX runs.
 
+### Linux setup: NVIDIA or AMD ROCm
+
+1. Install Git, Node.js 22 or newer, and a source-based ComfyUI environment with `.venv/bin/python` or `venv/bin/python`. Confirm ComfyUI can generate successfully before connecting Mix Studio. AMD systems need a compatible ROCm-enabled PyTorch build; Mix Studio does not install or replace the GPU runtime.
+2. Clone the repository and start the app:
+
+   ```bash
+   git clone https://github.com/BlackMixture/Mix-Studio.git
+   cd Mix-Studio
+   ./start-mixstudio.sh
+   ```
+
+3. In Generation setup, select the ComfyUI folder containing `main.py`, or connect to an already running loopback endpoint. The launcher defaults `COMFYUI_PATH` to `$HOME/ComfyUI`; set it before launch when ComfyUI lives elsewhere.
+4. For an intentionally managed user service, set `MIXBOX_COMFY_SERVICE` to its validated unit name, such as `comfyui.service`. Mix Studio never guesses a service name and never manages a service for a remote ComfyUI endpoint.
+
+Linux process control uses argument-based launches without a shell, verifies that the local listener belongs to the configured ComfyUI source, sends `SIGTERM`, waits for the port to close, and only then starts it again. ComfyUI Desktop 2 installations remain app-managed unless the operator explicitly configures a service.
+
+NVIDIA uses the complete curated workflow set when the connected ComfyUI exposes the required nodes and models. AMD is an experimental compatibility path: connected ComfyUI device data, `rocm-smi`, Linux sysfs, or Windows display-controller data supplies the vendor and memory profile. Krea 2 stays on FP8 rather than the NVIDIA-oriented INT8 recommendation, and SeedVR2 falls back to SDPA when a saved CUDA-only attention mode is selected. Actual model and node compatibility still depends on the installed ROCm, PyTorch, and ComfyUI versions.
+
 ## Hardware and VRAM
 
 Mix Studio does not enforce a VRAM cutoff. Its ratings describe guided routes for the curated defaults, not guarantees that every resolution or duration will fit.
@@ -87,7 +105,7 @@ Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in
 
 For a new machine, the in-app guide downloads ComfyUI Desktop only from the official stable Windows endpoint and refuses to run it unless Windows reports a valid Authenticode signature. Existing Desktop and portable environments can be started from setup.
 
-Mix Studio discovers the live ComfyUI port rather than assuming `8188`. Manual URL, application-folder, and models-folder fields remain available. Setup scans the connected `/object_info` registry and common `extra_model_paths.yaml` files, reports what it finds, and skips recognized filenames before downloading. Existing files are not moved or duplicated.
+Mix Studio discovers the live ComfyUI port rather than assuming `8188`. Manual URL, application-folder, and models-folder fields remain available. Setup scans the connected `/object_info` registry, classic `extra_model_paths.yaml` files, Desktop shared-model configurations, and Desktop 2 declared model directories across Windows, macOS, and Linux. Quoted YAML keys and literal or folded block paths are supported. Existing files are reported and reused; they are not moved or duplicated.
 
 Reopen **Generation setup** from **Advanced Settings → General** to change the connection or add optional workflow families. Rerunning `install_MixStudio.bat` is safe and prepares and starts the existing checkout again.
 
@@ -103,7 +121,7 @@ Some Hugging Face files require accepting a license before their download URL wo
 
 If the official Hugging Face host is unavailable on the current network, enter a trusted Hugging Face-compatible HTTPS base URL under **Settings → General → Hugging Face download endpoint**, or set `HF_ENDPOINT` before launching Mix Studio. The endpoint rewrites only reviewed `huggingface.co` model sources. Mix Studio never sends the configured Hugging Face token to a custom endpoint. Clear the field to return to the official host.
 
-The card exposes **Restart ComfyUI** for a configured local Windows or macOS source installation, but it refuses while either queue is active. On macOS it verifies that the listener command belongs to the configured `main.py`, sends `SIGTERM`, waits for the port to close, and only then starts the configured environment again.
+The card exposes **Restart ComfyUI** for a configured local Windows, macOS, or Linux source installation, but it refuses while either queue is active. On macOS and Linux it verifies that the listener command belongs to the configured `main.py`, sends `SIGTERM`, waits for the port to close, and only then starts the configured environment again. Linux user-service control is available only when `MIXBOX_COMFY_SERVICE` is explicitly configured.
 
 ## Phone and private remote access
 
@@ -116,7 +134,7 @@ Use **Copy** or **Share** to send the selected address to a phone. Add a PIN to 
 
 For private access away from home, install [Tailscale](https://tailscale.com/download) on both devices and sign them into the same tailnet. Refresh the Phone access card, then copy or share its Tailscale URL. The desktop continues to host ComfyUI, models, and media; the phone remains the control surface.
 
-If the phone cannot connect over the local network, allow Node through Windows Defender Firewall or macOS network security controls for private networks. Set a different application port with the `PORT` environment variable when required.
+If the phone cannot connect over the local network, allow Node through Windows Defender Firewall, macOS network security controls, or the Linux host firewall for private networks. Set a different application port with the `PORT` environment variable when required.
 
 ## Analytics and privacy
 

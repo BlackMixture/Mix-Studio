@@ -1,6 +1,6 @@
 # Portable installation and updates
 
-Mix Studio uses a portable Git checkout on Windows and macOS. The application, installer, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
+Mix Studio uses a portable Git checkout on Windows, macOS, and Linux. The application, launcher, and updater remain readable and editable; profiles and generated media stay in the ignored `data/` directory.
 
 The bootstrap is intentionally small. It gets the Mix Studio web app running first, then leaves ComfyUI, models, and custom-node setup inside the app. On an unconfigured installation, the centered setup panel opens automatically. It can start a detected portable or Desktop environment, launch the signed official ComfyUI Desktop installer, discover a live endpoint, and install the curated groups used by Mix Studio's workflow-tested defaults from `installer/feature-manifest.json`.
 
@@ -49,6 +49,15 @@ For a manual installation, install Git for Windows and run `git clone https://gi
 
 Apple Metal uses the compatible workflow tier. Setup selects official BF16 LTX 2.3 weights and disables the curated FP8-only 10Eros, Wan 2.2, and SCAIL 2 engines. Large LTX refine requests receive an up-front memory warning with a safer duration instead of failing late during stage two.
 
+## New Linux machine
+
+1. Install Git, Node.js 22 or newer, and a working source-based ComfyUI environment with `.venv/bin/python` or `venv/bin/python`.
+2. Clone `https://github.com/BlackMixture/Mix-Studio.git`, enter the checkout, and run `./start-mixstudio.sh`.
+3. In Generation setup, select the ComfyUI folder containing `main.py` or enter a live loopback endpoint. Set `COMFYUI_PATH` before launching when ComfyUI is not under `$HOME/ComfyUI`.
+4. Optionally set `MIXBOX_COMFY_SERVICE=comfyui.service` when ComfyUI is deliberately managed as that user service. Mix Studio does not assume a unit name or run systemd commands for remote endpoints.
+
+NVIDIA uses the full curated workflow set when its ComfyUI dependencies are present. AMD ROCm is experimental and must already work in ComfyUI: Mix Studio detects AMD device and memory data, keeps Krea 2 on FP8, and changes NVIDIA-only SeedVR2 attention selections to SDPA. Mix Studio does not install ROCm, GPU drivers, or a platform-specific PyTorch build.
+
 The installer is intentionally idempotent. Rerunning it preserves the existing `data/` location and ComfyUI connection, refreshes the minimal bootstrap metadata atomically, starts the app, and opens the browser. Generation setup is always available later from **Advanced Settings → General**, and the Phone access card can be reopened from its Finish step.
 
 ## Files setup creates
@@ -69,7 +78,7 @@ Browser-installed shortcuts, form state, media preferences, and compressed previ
 
 ## Reusing models
 
-Mix Studio sends model filenames to the connected ComfyUI API. Generation setup reads `/object_info` and treats filenames already registered by ComfyUI as reusable even when they live outside the selected root. The dependency scanner also respects the configured ComfyUI and models folders. Guided downloads are placed under the detected or manually entered models folder. Setup never rewrites an existing ComfyUI path configuration or moves existing files.
+Mix Studio sends model filenames to the connected ComfyUI API. Generation setup reads `/object_info` and treats filenames already registered by ComfyUI as reusable even when they live outside the selected root. The dependency scanner also respects the configured ComfyUI and models folders, classic extra-model YAML, Desktop shared-model YAML, and Desktop 2 declared model directories on Windows, macOS, and Linux. Guided downloads are placed under the preferred detected or manually entered models folder. Setup never rewrites an existing ComfyUI path configuration or moves existing files.
 
 The optional local models path additionally lets Mix Studio discover LoRA metadata and SeedVR2 files directly. No model is copied merely to satisfy the portable app layout.
 
@@ -87,6 +96,6 @@ git pull --ff-only origin <current-branch>
 
 It refuses to update a detached HEAD or a checkout with modified tracked code. Because `data/` and `install.json` are ignored, updating code does not overwrite the local database, settings, uploads, generations, or ComfyUI paths.
 
-The owner-only **Restart app** action uses the restart-aware `start.bat` or `start.command` launcher. It refuses while either the Mix Studio queue or the connected ComfyUI queue is active.
+The owner-only **Restart app** action uses the restart-aware `start.bat`, `start.command`, or `start-mixstudio.sh` launcher. It refuses while either the Mix Studio queue or the connected ComfyUI queue is active.
 
 A ZIP archive is runnable after setup, but it has no Git metadata and therefore cannot use the in-app updater. A clone is the supported installation method.

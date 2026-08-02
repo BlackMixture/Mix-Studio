@@ -105,5 +105,7 @@ test('SeedVR2 attention uses an app-styled accessible picker instead of native s
   assert.match(app, /function setSvAttnValue\(value\)/);
   assert.match(app, /function setSvAttnPickerOpen\(open, focusOption = false\)/);
   assert.match(app, /setSvAttnValue\(s\.seedvr2Attention \|\| 'sdpa'\)/);
+  assert.match(app, /function applySvAttnVendorFilter\(vendor\)/);
+  assert.match(app, /applySvAttnVendorFilter\(s\.gpuVendor \|\| ''\)/);
   assert.match(app, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
 });
