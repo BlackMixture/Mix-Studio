@@ -128,10 +128,12 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.equal((page.match(/platform-icon platform-windows/g) || []).length, 4);
   assert.match(page, /Download for macOS/);
   assert.match(page, /href="\.\/install_MixStudio\.command" download="install_MixStudio\.command"/);
-  assert.equal((page.match(/platform-icon platform-macos/g) || []).length, 4);
+  assert.equal((page.match(/class="download-secondary" href="\.\/install_MixStudio\.command"/g) || []).length, 4);
+  assert.equal((page.match(/platform-icon platform-macos/g) || []).length, 0);
   assert.match(page, /Linux setup/);
   assert.match(page, /installation-and-operations\.md#linux-setup-nvidia-or-amd-rocm/);
-  assert.equal((page.match(/platform-icon platform-linux/g) || []).length, 4);
+  assert.equal((page.match(/class="download-secondary" href="https:\/\/github\.com\/BlackMixture\/Mix-Studio\/blob\/main\/docs\/installation-and-operations\.md#linux-setup-nvidia-or-amd-rocm"/g) || []).length, 4);
+  assert.equal((page.match(/platform-icon platform-linux/g) || []).length, 0);
   assert.match(page, /AMD ROCm on Windows or Linux is experimental/);
   assert.doesNotMatch(page, /macOS (?:support|download) coming soon/);
   assert.doesNotMatch(page, /Setup continues inside Mix Studio/);
