@@ -189,6 +189,7 @@ const state = {
   selected: new Set(),
   connOk: false,
   features: {},              // machine-level installer choices, all on by default
+  videoCapabilities: {},     // connected-device support reported by the server
 };
 
 const ASPECTS = [
@@ -249,25 +250,52 @@ function promoteEngineDefault(order, preferred, engines) {
 function featureEnabled(key) { return state.features[key] !== false; }
 function enabledEditEngines() { return normalizeEngineOrder(state.editEngineOrder, EDIT_ENGINES).filter((engine) => featureEnabled(EDIT_FEATURES[engine])); }
 function enabledVideoEngines() { return normalizeEngineOrder(state.videoEngineOrder, VIDEO_ENGINES).filter((engine) => featureEnabled(VIDEO_FEATURES[engine])); }
+function videoEngineCapability(engine) {
+  return state.videoCapabilities?.[engine] || { supported: true, reason: '' };
+}
+function videoEngineSupported(engine) { return videoEngineCapability(engine).supported !== false; }
+function supportedVideoEngines() { return enabledVideoEngines().filter(videoEngineSupported); }
+function capabilityEngineForButton(button) {
+  if (VIDEO_ENGINES.includes(button?.dataset?.engine)) return button.dataset.engine;
+  if (button?.matches?.('[data-director-entry]')) return 'ltx';
+  const feature = button?.dataset?.featureEngine;
+  return Object.keys(VIDEO_FEATURES).find((engine) => VIDEO_FEATURES[engine] === feature) || '';
+}
+function applyVideoCapability(button) {
+  const engine = capabilityEngineForButton(button);
+  if (!engine) return;
+  const capability = videoEngineCapability(engine);
+  button.disabled = capability.supported === false;
+  button.setAttribute('aria-disabled', String(button.disabled));
+  if (button.disabled) {
+    button.title = capability.reason || 'This video model is not supported on the connected generation device.';
+  } else if (button.title === button.dataset.capabilityReason) {
+    button.removeAttribute('title');
+  }
+  button.dataset.capabilityReason = capability.reason || '';
+}
 function supportsCurrentEditAngles() { return state.view === 'edit' && ANGLE_EDIT_ENGINES.has(state.editEngine); }
 
 function renderFeatureVisibility() {
   applySavedEngineOrders();
   const editEngines = enabledEditEngines();
   const videoEngines = enabledVideoEngines();
+  const supportedVideos = videoEngines.filter(videoEngineSupported);
   const hasEdit = editEngines.length > 0;
-  const hasVideo = videoEngines.length > 0;
+  const hasVideo = supportedVideos.length > 0;
   $$('[data-feature-engine]').forEach((button) => {
     button.hidden = !featureEnabled(button.dataset.featureEngine);
+    applyVideoCapability(button);
   });
   $$('[data-feature-view="edit"]').forEach((button) => { button.hidden = !hasEdit; });
   $$('[data-feature-view="video"]').forEach((button) => { button.hidden = !hasVideo; });
   $$('#animEngineRow .chip[data-engine]').forEach((button) => {
     button.hidden = !featureEnabled(VIDEO_FEATURES[button.dataset.engine]);
+    applyVideoCapability(button);
   });
   if (editEngines.length && !editEngines.includes(state.editEngine)) switchEditEngine(editEngines[0]);
-  if (videoEngines.length && !videoEngines.includes(state.vidEngine)) state.vidEngine = videoEngines[0];
-  if (videoEngines.length && !videoEngines.includes(state.animEngine)) state.animEngine = videoEngines[0];
+  if (supportedVideos.length && !supportedVideos.includes(state.vidEngine)) state.vidEngine = supportedVideos[0];
+  if (supportedVideos.length && !supportedVideos.includes(state.animEngine)) state.animEngine = supportedVideos[0];
   markEngineRow('editEngineRow', state.editEngine);
   markEngineRow('vidEngineRow', state.vidEngine);
   markEngineRow('animEngineRow', state.animEngine);
@@ -11397,7 +11425,13 @@ function renderEngineInfoList(kind = 'video') {
     button.dataset.engine = engine;
     button.classList.toggle('active', engine === current);
     button.setAttribute('aria-pressed', String(engine === current));
+    const capability = editing ? { supported: true, reason: '' } : videoEngineCapability(engine);
+    button.disabled = capability.supported === false;
     button.setAttribute('aria-label', `Use ${definition.model}${definition.experimental ? ' (experimental)' : ''} for ${definition.task}`);
+    if (button.disabled) {
+      button.setAttribute('aria-label', `${definition.model} is unavailable. ${capability.reason}`);
+      button.title = capability.reason;
+    }
     const hasPreview = !!definition.preview;
     button.classList.toggle('text-only', !hasPreview);
     if (hasPreview) button.appendChild(createEngineInfoPreview(definition.preview));
@@ -11414,10 +11448,16 @@ function renderEngineInfoList(kind = 'video') {
       badge.textContent = 'Experimental';
       titleRow.appendChild(badge);
     }
+    if (button.disabled) {
+      const badge = document.createElement('span');
+      badge.className = 'model-status-badge unsupported';
+      badge.textContent = 'Unavailable';
+      titleRow.appendChild(badge);
+    }
     const model = document.createElement('small');
     model.textContent = `${definition.task}${definition.detail ? ` · ${definition.detail}` : ''}`;
     const description = document.createElement('p');
-    description.textContent = definition.copy;
+    description.textContent = button.disabled ? capability.reason : definition.copy;
     copy.append(titleRow, model, description);
     const check = document.createElement('i');
     check.className = 'engine-info-check';
@@ -14699,7 +14739,7 @@ function pickRef(idx) {
 
 async function sendToVideoTab(item, role = 'start') {
   try {
-    const enabled = enabledVideoEngines();
+    const enabled = supportedVideoEngines();
     if (role === 'end' && !['ltx', 'eros'].includes(state.vidEngine)) {
       const endEngine = ['ltx', 'eros'].find((engine) => enabled.includes(engine));
       if (!endEngine) throw new Error('Enable LTX 2.3 or 10Eros to use a gallery image as the last frame');
@@ -15672,7 +15712,8 @@ function modelOrderButtons(rowId, visibleOnly = false) {
 
 function firstEnabledModel(config) {
   return normalizeEngineOrder(state[config.orderKey], config.engines)
-    .find((engine) => featureEnabled(config.features[engine]));
+    .find((engine) => featureEnabled(config.features[engine])
+      && (config.kind !== 'Video' || videoEngineSupported(engine)));
 }
 
 function syncModelOrderDefault(rowId) {
@@ -15690,6 +15731,7 @@ function syncModelOrderDefault(rowId) {
     button.setAttribute('aria-label', isDefault ? `${label}, default model` : label);
     button.setAttribute('aria-roledescription', 'draggable model');
     button.title = isDefault ? `${label} · default for the next session` : 'Hold and drag to reorder';
+    if (rowId === 'vidEngineRow') applyVideoCapability(button);
   });
 }
 
@@ -16024,6 +16066,10 @@ $('#generateBtn').addEventListener('click', async () => {
   if (outpaintActive && !editOutpaintGeometry().valid) return toast('Reduce Source on canvas below 100%, or choose a different Resolution ratio', true);
 
   if (state.view === 'video') {
+    const capability = videoEngineCapability(state.vidEngine);
+    if (capability.supported === false) {
+      return toast(capability.reason || 'This video model is not supported on the connected generation device.', true);
+    }
     const ltxEdit = state.vidEngine === 'ltx-edit';
     if (!ltxEdit && state.vidEngine !== 'ltx' && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
@@ -17992,7 +18038,7 @@ function resetActiveGenerationForm() {
     state.videoCameraMotions = [];
     state.videoCameraMotionPhrase = '';
     state.videoCameraGuide = null;
-    state.vidEngine = enabledVideoEngines()[0] || state.videoEngineDefault || 'ltx';
+    state.vidEngine = supportedVideoEngines()[0] || state.videoEngineDefault || 'ltx';
     $('#vidDriveVideo').removeAttribute('src');
     $('#vidDriveTrimChip').classList.remove('active');
     setAudioChipVisual($('#vidAudioChip'), false);
@@ -30217,6 +30263,7 @@ async function loadMeta(refresh, afterRestart = false) {
     state.metaLorasInfo = lastMeta.lorasInfo || {};
     state.loraThumbs = lastMeta.loraThumbs || {};
     state.features = lastMeta.features || {};
+    state.videoCapabilities = lastMeta.capabilities?.video || {};
     renderFeatureVisibility();
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
     renderKrea2Mode();

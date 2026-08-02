@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "product": "Mix Studio",
-  "target": "windows-nvidia",
-  "notes": "The in-app Generation setup guide detects NVIDIA VRAM, recommends curated model families that suit the machine, and reuses existing files. Users may override recommendations after reviewing difficulty warnings.",
+  "target": "desktop-generation",
+  "notes": "The in-app Generation setup guide detects the connected generation device, selects compatible model variants where available, and reuses existing files. Users may override recommendations after reviewing difficulty warnings.",
   "features": [
     {
       "id": "core.image",
@@ -71,7 +71,7 @@
       "id": "video.ltx",
       "label": "LTX 2.3 Video + Face ID",
       "default": false,
-      "variant": "LTX 2.3 22B FP8; 8 GB is an experimental tier with aggressive offload",
+      "variant": "LTX 2.3 22B FP8 on NVIDIA or official BF16 on Apple Silicon; 8 GB is an experimental tier with aggressive offload",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
       "models": ["ltx-2.3", "ltx-distilled", "gemma-3", "ltx-spatial-upscaler", "ltx-face-id", "ltx-face-id-distilled"],
       "nodes": ["VideoHelperSuite", "LTXV", "BFS Nodes", "KJNodes"]
@@ -80,7 +80,7 @@
       "id": "video.ltxEdit",
       "label": "LTX Edit Anything",
       "default": false,
-      "variant": "LTX 2.3 22B FP8 adapter; 8 GB is an experimental tier with aggressive offload",
+      "variant": "LTX 2.3 22B adapter using FP8 on NVIDIA or official BF16 on Apple Silicon; 8 GB is an experimental tier with aggressive offload",
       "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
       "dependsOn": ["video.ltx"],
       "models": ["ltx-edit-anything"],
@@ -91,7 +91,7 @@
       "label": "10Eros DMD",
       "default": false,
       "variant": "10Eros FP8 mixed; 8 GB is an experimental tier with aggressive offload",
-      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended", "unsupportedVendors": ["apple"], "unsupportedReason": "10Eros currently requires FP8 checkpoint and text-encoder operations that Apple Metal cannot execute." },
       "models": ["10eros", "ltx-dmd", "gemma-3"],
       "nodes": ["EchoDMDSampler", "10S-Comfy-nodes", "KJNodes"]
     },
@@ -100,7 +100,7 @@
       "label": "Wan 2.2 Video",
       "default": false,
       "variant": "Wan 2.2 14B FP8; 8 GB is an experimental offload tier and configured GGUF pairs use the GGUF loader",
-      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended", "unsupportedVendors": ["apple"], "unsupportedReason": "Wan 2.2 currently uses curated FP8 model and text-encoder files that Apple Metal cannot execute." },
       "models": ["wan2.2-high", "wan2.2-low", "umt5-xxl", "wan-vae", "wan-lightx2v"],
       "nodes": ["WanImageToVideo", "VideoHelperSuite", "ComfyUI-GGUF"]
     },
@@ -109,7 +109,7 @@
       "label": "SCAIL 2 Motion Transfer",
       "default": false,
       "variant": "SCAIL 2 14B FP8; 8 GB is an experimental offload tier and configured GGUF files use the GGUF loader",
-      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended" },
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 24, "autoSelect": "recommended", "unsupportedVendors": ["apple"], "unsupportedReason": "SCAIL 2 currently uses a curated FP8 Wan model that Apple Metal cannot execute." },
       "dependsOn": ["video.wan"],
       "models": ["scail2", "sam3.1", "clip-vision-h", "pusa"],
       "nodes": ["WanSCAILToVideo", "SAM3_VideoTrack", "comfyui-scail2-infinity", "ComfyUI-GGUF"]

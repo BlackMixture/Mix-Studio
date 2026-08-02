@@ -2231,6 +2231,9 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .engine-info-card:hover,
 .engine-info-card:focus-visible { border-color: rgba(var(--mode-rgb),.48); background: rgba(var(--mode-rgb),.07); }
 .engine-info-card.active { border-color: rgba(var(--mode-rgb),.62); background: rgba(var(--mode-rgb),.1); box-shadow: inset 0 0 0 1px rgba(var(--mode-rgb),.16); }
+.engine-info-card:disabled { cursor: not-allowed; opacity: .58; border-color: rgba(255,255,255,.08); }
+.engine-info-card:disabled:hover { background: rgba(255,255,255,.025); border-color: rgba(255,255,255,.08); }
+.model-status-badge.unsupported { color: #ffb1ad; border-color: rgba(255,93,87,.34); background: rgba(255,93,87,.12); }
 .engine-info-preview {
   position: relative;
   width: 100%;

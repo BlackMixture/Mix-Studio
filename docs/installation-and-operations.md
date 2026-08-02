@@ -43,6 +43,17 @@ Do not use GitHub's **Download ZIP** if you want in-app updates. The updater req
 
 The bootstrap writes ignored, machine-specific configuration to `install.json`. Generation setup merges the ComfyUI URL into `data/settings.json`. It does not reset `data/db.json`, profiles, gallery media, folders, prompts, or presets.
 
+### Apple Silicon field compatibility (experimental)
+
+The packaged installer remains Windows-only, but a manual Node.js 22 checkout can connect to a ComfyUI instance running on Apple Silicon. Mix Studio reads the connected ComfyUI device backend and applies an MPS-specific capability profile:
+
+- LTX 2.3 and LTX Edit use the official `ltx-2.3-22b-dev.safetensors` BF16 checkpoint. Generation setup selects it in place of the curated FP8 checkpoint.
+- 10Eros, Wan 2.2, and SCAIL 2 stay visible but unavailable because their curated FP8 routes are not compatible with Apple Metal.
+- Large two-stage LTX refine requests are rejected before queueing with a safe duration suggestion. Start with short clips and increase duration gradually.
+- Face ID remains installable without the optional BFS audio-guide dependency; an unavailable `librosa` import no longer prevents the identity-overlap node from loading.
+
+For the current ComfyUI MPS route, launch with `--fp32-vae --use-split-cross-attention`. On systems where Metal falls back for an unsupported operation, `PYTORCH_ENABLE_MPS_FALLBACK=1` can provide a slower CPU fallback. Unified memory is shared with macOS and other applications, so close memory-heavy applications before larger LTX runs.
+
 ## Hardware and VRAM
 
 Mix Studio does not enforce a VRAM cutoff. Its ratings describe guided routes for the curated defaults, not guarantees that every resolution or duration will fit.

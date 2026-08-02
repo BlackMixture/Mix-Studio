@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
+  parseComfyStatsDevices,
   parseNvidiaGpuCsv,
   readDiskInfo,
   hardwareInfo,
@@ -19,9 +20,18 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 test('parses NVIDIA GPU identity, VRAM, and driver information', () => {
   assert.deepEqual(parseNvidiaGpuCsv('NVIDIA GeForce RTX 5090, 32607, 576.80\nNVIDIA RTX A6000, 49140, 576.80'), [
-    { name: 'NVIDIA GeForce RTX 5090', memoryBytes: 32607 * 1024 * 1024, driver: '576.80' },
-    { name: 'NVIDIA RTX A6000', memoryBytes: 49140 * 1024 * 1024, driver: '576.80' },
+    { name: 'NVIDIA GeForce RTX 5090', memoryBytes: 32607 * 1024 * 1024, driver: '576.80', vendor: 'nvidia', backend: 'cuda' },
+    { name: 'NVIDIA RTX A6000', memoryBytes: 49140 * 1024 * 1024, driver: '576.80', vendor: 'nvidia', backend: 'cuda' },
   ]);
+});
+
+test('reads Apple Metal identity from ComfyUI system stats', () => {
+  assert.deepEqual(parseComfyStatsDevices({ devices: [{
+    name: 'mps:0 Apple M4 Max', type: 'mps', vram_total: 64 * 1024 ** 3,
+  }] }), [{
+    name: 'Apple M4 Max', memoryBytes: 64 * 1024 ** 3, memoryKind: 'unified',
+    driver: '', vendor: 'apple', backend: 'mps', source: 'comfyui',
+  }]);
 });
 
 test('reads free and total capacity from the configured export storage drive', async () => {
@@ -77,12 +87,14 @@ test('reports the integrated Apple Silicon GPU with unified memory', async () =>
     memoryBytes: 48 * 1024 ** 3,
     memoryKind: 'unified',
     driver: '',
+    vendor: 'apple',
+    backend: 'mps',
   }]);
 });
 
 test('Advanced Settings presents hardware as one minimal System readout', () => {
   assert.match(server, /route === '\/api\/hardware'/);
-  assert.match(server, /hardwareInfo\(\{ exportPath: settings\.exportDir \|\| DATA \}\)/);
+  assert.match(server, /getSetupHardwareInfo\(true\)/);
   assert.match(html, /class="settings-group hardware-group"/);
   for (const id of ['hardwareGpu', 'hardwareCpu', 'hardwareMemory', 'hardwareOs', 'hardwareDisk']) {
     assert.match(html, new RegExp(`id="${id}"`));

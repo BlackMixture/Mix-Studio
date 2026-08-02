@@ -645,6 +645,23 @@ test('hardware guidance rates model families by VRAM without enforcing system RA
   assert.equal(combinedHardwareFit(QUICK_SETUP_COMPONENTS, difficult).level, 'difficult');
 });
 
+test('hardware guidance blocks incompatible Apple FP8 video families while retaining LTX', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'installer', 'feature-manifest.json'), 'utf8'));
+  const apple = {
+    gpu: { available: true, devices: [{
+      name: 'Apple M4 Max', vendor: 'apple', backend: 'mps', memoryBytes: 64 * (1024 ** 3),
+    }] },
+    memory: { totalBytes: 64 * (1024 ** 3) },
+    disk: { freeBytes: 500 * (1024 ** 3) },
+  };
+  const guidance = componentHardwareGuidance(manifest, apple);
+  assert.equal(guidance.video.blocked, undefined);
+  for (const component of ['eros', 'wan', 'scail', 'scailinfinity']) {
+    assert.equal(guidance[component].blocked, true);
+    assert.match(guidance[component].detail, /Apple Metal/);
+  }
+});
+
 test('portable setup validates connection input and preserves machine settings', () => {
   assert.equal(normalizeSetupUrl('http://127.0.0.1:8188/'), 'http://127.0.0.1:8188');
   assert.throws(() => normalizeSetupUrl('ftp://example.test'), /http:\/\/ or https:\/\//);
