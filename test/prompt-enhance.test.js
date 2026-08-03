@@ -8,8 +8,10 @@ const {
   REGIONAL_PROMPT_INSTRUCTION,
   ENHANCE_TAIL,
   H3_PROMPT_CRAFT_INSTRUCTION,
+  H3_PROMPT_ENHANCE_INSTRUCTION,
   H3_MOTION_INSTRUCTION,
   cleanGeneratedPrompt,
+  h3PromptEnhanceParts,
   h3TimelineGuidance,
   motionPromptEnhanceParts,
   promptEnhanceParts,
@@ -78,7 +80,8 @@ test('H3 first-frame motion enhancement requests chronological motion and native
 
   assert.match(H3_MOTION_INSTRUCTION, /chronological/i);
   assert.match(H3_MOTION_INSTRUCTION, /native stereo audio/i);
-  assert.match(H3_MOTION_INSTRUCTION, /never invent dialogue/i);
+  assert.match(H3_MOTION_INSTRUCTION, /otherwise do not force dialogue/i);
+  assert.match(H3_MOTION_INSTRUCTION, /identified speaker and lip-sync direction/i);
   assert.match(H3_PROMPT_CRAFT_INSTRUCTION, /timestamped storyboard beats/i);
   assert.match(parts.instruction, /Duration plan for 12 seconds/);
   assert.match(parts.instruction, /up to four distinct camera angles and three motivated cuts/i);
@@ -91,6 +94,24 @@ test('H3 prompt planning scales cuts to duration instead of overstuffing short c
   assert.match(h3TimelineGuidance(5), /3-4 very short timestamped shots/i);
   assert.match(h3TimelineGuidance(10), /2-4 timestamped storyboard beats/i);
   assert.match(h3TimelineGuidance(15), /3-5 timestamped storyboard beats/i);
+});
+
+test('H3 prompt enhancement is duration-aware and preserves reference-mode inputs', () => {
+  const parts = h3PromptEnhanceParts(
+    'Use <Picture 1> for the host and <Audio 1> for the performance.',
+    { seconds: 10, mode: 'reference', hasImage: true },
+  );
+
+  assert.match(H3_PROMPT_ENHANCE_INSTRUCTION, /beginning, development, and ending/i);
+  assert.match(H3_PROMPT_ENHANCE_INSTRUCTION, /timestamped shots and cuts/i);
+  assert.match(H3_PROMPT_ENHANCE_INSTRUCTION, /dialogue is optional/i);
+  assert.match(H3_PROMPT_ENHANCE_INSTRUCTION, /identify who says each quoted line/i);
+  assert.match(parts.instruction, /visual reference is attached/i);
+  assert.match(parts.instruction, /2-4 timestamped storyboard beats/i);
+  assert.match(parts.instruction, /up to three distinct camera angles and two motivated cuts/i);
+  assert.match(parts.instruction, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
+  assert.match(parts.userInput, /<user_video_prompt>\nUse <Picture 1> for the host and <Audio 1> for the performance\.\n<\/user_video_prompt>/);
+  assert.ok(parts.userInput.endsWith(ENHANCE_TAIL));
 });
 
 test('video prompt revision preserves H3 reference tags and adds duration-aware shot craft', () => {

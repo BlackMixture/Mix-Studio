@@ -3634,7 +3634,7 @@ function updateVideoPanels() {
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidScailModeRow').hidden = !(isVideo && state.vidEngine === 'scail');
   renderScailChunkControls();
-  $('#enhanceBtn').hidden = isVideo && ['ltx-edit', 'h3'].includes(state.vidEngine);
+  $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
   if (!supportsCurrentEditAngles()) state.qwenAnglesMode = false;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || hasEditMask();
   renderQwenAngleTool();
@@ -8956,11 +8956,15 @@ $('#qwenAnglesToggleAll').addEventListener('click', () => {
 
 function renderEnhance() {
   const btn = $('#enhanceBtn');
+  const h3Video = state.view === 'video' && state.vidEngine === 'h3';
   const frameAwareVideo = state.view === 'video' && !!state.vidRef
     && !['ltx-edit'].includes(state.vidEngine);
   btn.classList.toggle('on', state.enhance);
+  btn.setAttribute('aria-pressed', String(state.enhance));
   btn.title = state.enhance
-    ? (frameAwareVideo ? 'Enhance with start frame + prompt: on' : 'Prompt enhance: on')
+    ? (h3Video
+      ? 'H3 prompt enhance: on · timed shots, camera, sound, and dialogue when appropriate'
+      : (frameAwareVideo ? 'Enhance with start frame + prompt: on' : 'Prompt enhance: on'))
     : 'Prompt enhance: off';
   btn.setAttribute('aria-label', btn.title);
 }
@@ -16491,12 +16495,13 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidExtras').hidden = wan || scail || ltxEdit || (h3 && state.vidH3Mode === 'reference');
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
-  $('#enhanceBtn').hidden = ltxEdit || h3;
+  $('#enhanceBtn').hidden = ltxEdit;
   renderScailChunkControls();
   syncVideoDurationLimit();
   renderVidDrive();
   renderVidFace();
   updateVideoPanels();
+  renderEnhance();
   saveForm();
   setTimeout(() => setVideoModelExpanded(false), 120);
 });
@@ -16632,7 +16637,7 @@ $('#generateBtn').addEventListener('click', async () => {
       preparedMotionPrompt: preparedAutoMotionPrompt,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
-      enhance: ltxEdit || state.vidEngine === 'h3' ? false : state.enhance,
+      enhance: ltxEdit ? false : state.enhance,
       fourK: $('#vid4k').classList.contains('active'),
       fast: !$('#vidQuality').classList.contains('active'),
       motionFreedom: Number($('#vidFree').value),
