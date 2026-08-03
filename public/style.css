@@ -6419,23 +6419,27 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
 .lightbox-meta-copy:active { transform: scale(.99); }
 .lightbox-meta-copy.copied { color: #fff; border-color: rgba(var(--mode-rgb),.34); background: rgba(var(--mode-rgb),.09); }
 .lightbox-meta-copy.copied svg { opacity: 1; transform: scale(1.12); }
-.lightbox-preset-meta {
+.lightbox-preset-meta,
+.lightbox-reference-meta {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   margin: 6px 0 4px;
 }
-.lightbox-preset-meta > b {
+.lightbox-preset-meta > b,
+.lightbox-reference-meta > b {
   flex: 0 0 auto;
   padding-top: 7px;
 }
-.lightbox-preset-list {
+.lightbox-preset-list,
+.lightbox-reference-list {
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.lightbox-preset-chip {
+.lightbox-preset-chip,
+.lightbox-reference-chip {
   --lightbox-preset-rgb: 190, 145, 255;
   min-width: 0;
   max-width: min(230px, 100%);
@@ -6453,20 +6457,40 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
 .lightbox-preset-chip[data-preset-accent="rose"] { --lightbox-preset-rgb: 255, 133, 183; }
 .lightbox-preset-chip[data-preset-accent="amber"] { --lightbox-preset-rgb: 255, 199, 108; }
 .lightbox-preset-chip[data-preset-accent="green"] { --lightbox-preset-rgb: 119, 224, 157; }
+.lightbox-reference-chip[data-reference-kind="image"] { --lightbox-preset-rgb: 139, 108, 255; }
+.lightbox-reference-chip[data-reference-kind="video"] { --lightbox-preset-rgb: 236, 92, 153; }
+.lightbox-reference-chip[data-reference-kind="audio"] { --lightbox-preset-rgb: 79, 195, 247; }
 .lightbox-preset-chip > img,
-.lightbox-preset-chip > i {
+.lightbox-preset-chip > i,
+.lightbox-reference-chip > img,
+.lightbox-reference-chip > video,
+.lightbox-reference-chip > i {
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
   border-radius: 6px;
   object-fit: cover;
 }
-.lightbox-preset-chip > i {
+.lightbox-preset-chip > i,
+.lightbox-reference-chip > i {
   background:
     radial-gradient(circle at 34% 34%, rgba(255,255,255,.54) 0 8%, transparent 9%),
     linear-gradient(135deg, rgba(var(--lightbox-preset-rgb),.85), rgba(var(--lightbox-preset-rgb),.16));
 }
-.lightbox-preset-chip.image-missing::before {
+.lightbox-reference-chip > i {
+  display: grid;
+  place-items: center;
+}
+.lightbox-reference-chip > i svg {
+  width: 16px;
+  fill: none;
+  stroke: rgba(255,255,255,.9);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lightbox-preset-chip.image-missing::before,
+.lightbox-reference-chip.image-missing::before {
   content: "";
   width: 28px;
   height: 28px;
@@ -6474,19 +6498,24 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   border-radius: 6px;
   background: linear-gradient(135deg, rgba(var(--lightbox-preset-rgb),.82), rgba(var(--lightbox-preset-rgb),.14));
 }
-.lightbox-preset-chip > span {
+.lightbox-preset-chip > span,
+.lightbox-reference-chip > span {
   min-width: 0;
   display: grid;
   gap: 4px;
 }
 .lightbox-preset-chip strong,
-.lightbox-preset-chip small {
+.lightbox-preset-chip small,
+.lightbox-reference-chip strong,
+.lightbox-reference-chip small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lightbox-preset-chip strong { color: #f4f6fb; font-size: 11px; font-weight: 850; }
-.lightbox-preset-chip small {
+.lightbox-preset-chip strong,
+.lightbox-reference-chip strong { color: #f4f6fb; font-size: 11px; font-weight: 850; }
+.lightbox-preset-chip small,
+.lightbox-reference-chip small {
   color: rgba(var(--lightbox-preset-rgb),.82);
   font-size: 8px;
   font-weight: 850;
@@ -6494,9 +6523,12 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   text-transform: uppercase;
 }
 @media (max-width: 520px) {
-  .lightbox-preset-meta { display: grid; gap: 5px; }
-  .lightbox-preset-meta > b { padding-top: 0; }
-  .lightbox-preset-chip { max-width: min(100%, 250px); }
+  .lightbox-preset-meta,
+  .lightbox-reference-meta { display: grid; gap: 5px; }
+  .lightbox-preset-meta > b,
+  .lightbox-reference-meta > b { padding-top: 0; }
+  .lightbox-preset-chip,
+  .lightbox-reference-chip { max-width: min(100%, 250px); }
 }
 .action-row {
   display: flex; gap: 8px; overflow-x: auto;

@@ -842,6 +842,50 @@ function promptPresetGenerationInfoMarkup(presets) {
   </div>`;
 }
 
+function h3GenerationReferenceDescriptors(info = {}) {
+  if (info?.engine !== 'h3' || info?.h3Mode !== 'reference' || !info?.h3References) return [];
+  const refs = info.h3References;
+  const kinds = [
+    ['images', 'image', 'Picture'],
+    ['videos', 'video', 'Video'],
+    ['audios', 'audio', 'Audio'],
+  ];
+  return kinds.flatMap(([collection, kind, inputName]) => (
+    (Array.isArray(refs[collection]) ? refs[collection] : []).map((asset, index) => {
+      const name = String(asset?.name || '').trim();
+      const fallbackLabel = name.split(/[\\/]/).pop() || `${inputName} ${index + 1}`;
+      return {
+        kind,
+        name,
+        assetLabel: String(asset?.label || fallbackLabel).trim() || fallbackLabel,
+        inputLabel: `${inputName} ${index + 1}`,
+        hasAudio: kind === 'video' && asset?.hasAudio === true,
+      };
+    }).filter((asset) => asset.name)
+  ));
+}
+
+function h3ReferenceGenerationInfoMarkup(info) {
+  const references = h3GenerationReferenceDescriptors(info);
+  if (!references.length) return '';
+  const icon = '<i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><path d="M9 9v6l6-3z"/></svg></i>';
+  const cards = references.map((reference) => {
+    const src = `/api/input?name=${encodeURIComponent(reference.name)}`;
+    const media = reference.kind === 'image'
+      ? `<img src="${escapeHtml(src)}" alt="">`
+      : (reference.kind === 'video'
+        ? `<video src="${escapeHtml(src)}" muted playsinline preload="metadata" aria-hidden="true"></video>`
+        : icon);
+    const inputLabel = reference.hasAudio ? `${reference.inputLabel} · embedded audio` : reference.inputLabel;
+    return `<span class="lightbox-reference-chip" data-reference-kind="${reference.kind}">
+      ${media}<span><strong>${escapeHtml(reference.assetLabel)}</strong><small>${escapeHtml(inputLabel)}</small></span>
+    </span>`;
+  }).join('');
+  return `<div class="lightbox-reference-meta" role="group" aria-label="H3 references used">
+    <b>References:</b><span class="lightbox-reference-list">${cards}</span>
+  </div>`;
+}
+
 function makePromptPresetToken(preset) {
   const token = document.createElement('span');
   token.className = 'prompt-preset-token';
@@ -22504,6 +22548,8 @@ function openLightbox(id, mediaSel, options = {}) {
     const videoHeight = recordedVideoWidth > 0 && recordedVideoHeight > 0 ? recordedVideoHeight : fallbackVideoHeight;
     if (videoWidth > 0 && videoHeight > 0) meta.push(`<b>Size:</b> ${videoWidth}×${videoHeight}`);
     meta.push(copyableMeta('Motion', info.motionPrompt || ''));
+    const h3ReferenceMarkup = h3ReferenceGenerationInfoMarkup(info);
+    if (h3ReferenceMarkup) meta.push(h3ReferenceMarkup);
     if (usedPromptPresets.length) meta.push(promptPresetGenerationInfoMarkup(usedPromptPresets));
     if (info.negativePrompt) meta.push(copyableMeta('Negative prompt', info.negativePrompt));
     if (info.refinedMotionPrompt) meta.push(copyableMeta('Enhanced motion', info.refinedMotionPrompt));
@@ -22551,10 +22597,10 @@ function openLightbox(id, mediaSel, options = {}) {
     }
   }
   $('#lbMeta').innerHTML = meta.join('<br>');
-  $$('#lbMeta .lightbox-preset-chip img').forEach((image) => {
-    image.addEventListener('error', () => {
-      image.hidden = true;
-      image.closest('.lightbox-preset-chip')?.classList.add('image-missing');
+  $$('#lbMeta .lightbox-preset-chip img, #lbMeta .lightbox-reference-chip img, #lbMeta .lightbox-reference-chip video').forEach((media) => {
+    media.addEventListener('error', () => {
+      media.hidden = true;
+      media.closest('.lightbox-preset-chip, .lightbox-reference-chip')?.classList.add('image-missing');
     }, { once: true });
   });
   $$('#lbMeta [data-copy-meta]').forEach((button) => button.addEventListener('click', async () => {
@@ -24548,13 +24594,17 @@ function documentationVideoInputSpecs(item, video) {
       fallbackSrc: name ? fallbackSrc : '',
     }, options));
   };
-  const addVideo = (label, name, accent, startAt = 0, duration = 0, src = '') => {
+  const addVideo = (label, name, accent, startAt = 0, duration = 0, src = '', options = {}) => {
     if (!name && !src) return;
-    specs.push({
+    specs.push(Object.assign({
       type: 'video', label, accent, src: name ? inputUrl(name) : src,
       startAt: Math.max(0, Number(startAt) || 0),
       duration: Math.max(0, Number(duration) || 0),
-    });
+    }, options));
+  };
+  const addAudio = (label, name, accent, options = {}) => {
+    if (!name) return;
+    specs.push(Object.assign({ type: 'audio', label, accent, src: inputUrl(name) }, options));
   };
 
   if (info.processed && info.parentVideoId) {
@@ -24565,6 +24615,17 @@ function documentationVideoInputSpecs(item, video) {
 
   if (engine === 'ltx-edit') {
     addVideo('Source Video', info.driveVideoName, '#00bcd4', info.driveStartSeconds, info.driveDurSeconds);
+    return specs;
+  }
+
+  if (engine === 'h3' && info.h3Mode === 'reference') {
+    h3GenerationReferenceDescriptors(info).forEach((reference) => {
+      const label = reference.assetLabel && reference.assetLabel !== reference.inputLabel
+        ? `${reference.inputLabel} · ${reference.assetLabel}` : reference.inputLabel;
+      if (reference.kind === 'image') addImage(label, reference.name, '#8b6cff', '', { reference: true });
+      else if (reference.kind === 'video') addVideo(label, reference.name, '#ec5c99', 0, 0, '', { reference: true });
+      else addAudio(label, reference.name, '#4fc3f7', { reference: true });
+    });
     return specs;
   }
 
@@ -24590,6 +24651,28 @@ function documentationVideoInputSpecs(item, video) {
 }
 
 function loadDocumentationMedia(spec, src = spec.src) {
+  if (spec.type === 'audio') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#080a10';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const bars = 34;
+    const seed = String(spec.label || '').split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+    for (let index = 0; index < bars; index += 1) {
+      const height = 34 + ((seed + index * 29) % 98);
+      const x = 58 + index * 15;
+      const y = (canvas.height - height) / 2;
+      ctx.fillStyle = index % 3 === 0 ? 'rgba(79,195,247,.92)' : 'rgba(139,108,255,.68)';
+      ctx.fillRect(x, y, 7, height);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    setDocumentationFont(ctx, 650, 18);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('AUDIO REFERENCE', 58, canvas.height - 34);
+    return Promise.resolve(canvas);
+  }
   if (spec.type === 'video') {
     const media = document.createElement('video');
     media.preload = 'auto';
@@ -24656,11 +24739,15 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.processed === 'interpolate' && 'Frame interpolation',
     info.processed === 'extend' && 'Video extension',
   ].filter(Boolean).join(', ');
+  const h3ReferenceSummary = h3GenerationReferenceDescriptors(info)
+    .map((reference) => `${reference.inputLabel}: ${reference.assetLabel}`)
+    .join(', ');
   const facts = [
     ['Model', videoEngineLabel(info.engine, info)],
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
+    ['H3 references', h3ReferenceSummary],
     ['Options', options],
     ['Mix Pack presets', promptPresetNames(promptPresets).join(', ')],
     ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
@@ -24674,12 +24761,15 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
 
 function documentationVideoInputBoxes(area, count, gap) {
   if (!count || !area.width || !area.height) return [];
-  const itemGap = count > 1 ? Math.max(6, Math.round(gap * .58)) : 0;
-  const itemHeight = (area.height - itemGap * (count - 1)) / count;
+  const columns = count > 8 ? 3 : (count > 3 ? 2 : 1);
+  const rows = Math.ceil(count / columns);
+  const itemGap = count > 1 ? Math.max(5, Math.round(gap * .46)) : 0;
+  const itemWidth = (area.width - itemGap * (columns - 1)) / columns;
+  const itemHeight = (area.height - itemGap * (rows - 1)) / rows;
   return Array.from({ length: count }, (_, index) => ({
-    x: area.x,
-    y: area.y + index * (itemHeight + itemGap),
-    width: area.width,
+    x: area.x + (index % columns) * (itemWidth + itemGap),
+    y: area.y + Math.floor(index / columns) * (itemHeight + itemGap),
+    width: itemWidth,
     height: itemHeight,
   }));
 }
@@ -24751,8 +24841,10 @@ function drawDocumentationVideoMedia(ctx, media, box, label, accent, { quiet = f
     ? Math.max(9, Math.min(12, Math.round(scaledFontSize * .78)))
     : Math.max(9, Math.min(14, scaledFontSize));
   setDocumentationFont(ctx, quiet ? 650 : 700, fontSize);
-  const labelWidth = ctx.measureText(label).width;
   const inset = Math.max(quiet ? 6 : 8, Math.round(fontSize * (quiet ? .58 : .72)));
+  const availableLabelWidth = Math.max(18, box.width - inset * 4.4);
+  const visibleLabel = truncateCanvasText(ctx, label, availableLabelWidth);
+  const labelWidth = ctx.measureText(visibleLabel).width;
   const badgeHeight = Math.round(fontSize * (quiet ? 1.72 : 1.9));
   const badgeWidth = labelWidth + inset * (quiet ? 2.05 : 2.35);
   ctx.fillStyle = quiet ? 'rgba(0,0,0,.62)' : 'rgba(0,0,0,.74)';
@@ -24761,7 +24853,7 @@ function drawDocumentationVideoMedia(ctx, media, box, label, accent, { quiet = f
   ctx.fillRect(box.x + inset * 1.45, box.y + inset + badgeHeight * .29, Math.max(2, fontSize * .15), badgeHeight * .42);
   ctx.fillStyle = quiet ? 'rgba(255,255,255,.86)' : '#fff';
   ctx.textBaseline = 'top';
-  ctx.fillText(label, box.x + inset * 2.05, box.y + inset + (badgeHeight - fontSize) * .42);
+  ctx.fillText(visibleLabel, box.x + inset * 2.05, box.y + inset + (badgeHeight - fontSize) * .42);
 }
 
 function drawDocumentationVideoStoryboard(ctx, inputMedia, box) {

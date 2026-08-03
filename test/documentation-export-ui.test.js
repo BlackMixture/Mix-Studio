@@ -47,6 +47,21 @@ test('generation info and documentation identify the Mix Pack presets used', () 
   assert.match(css, /\.lightbox-preset-chip/);
 });
 
+test('H3 R2V references persist in generation details and documentation exports', () => {
+  assert.match(app, /function h3GenerationReferenceDescriptors\(info = \{\}\)/);
+  assert.match(app, /function h3ReferenceGenerationInfoMarkup\(info\)/);
+  assert.match(app, /meta\.push\(h3ReferenceMarkup\)/);
+  assert.match(app, /class="lightbox-reference-chip"/);
+  assert.match(app, /engine === 'h3' && info\.h3Mode === 'reference'[\s\S]*h3GenerationReferenceDescriptors\(info\)/);
+  assert.match(app, /addImage\(label, reference\.name/);
+  assert.match(app, /addVideo\(label, reference\.name/);
+  assert.match(app, /addAudio\(label, reference\.name/);
+  assert.match(app, /spec\.type === 'audio'[\s\S]*AUDIO REFERENCE/);
+  assert.match(app, /\['H3 references', h3ReferenceSummary\]/);
+  assert.match(css, /\.lightbox-reference-meta/);
+  assert.match(css, /\.lightbox-reference-chip/);
+});
+
 test('prompt control represents the prompt used for generation', () => {
   assert.match(app, /const prompt = documentationAnglePrompt\(item\) \|\| item\.refinedPrompt \|\| item\.prompt/);
   assert.match(app, /add\('prompt', 'Prompt', prompt\)/);
