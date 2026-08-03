@@ -10687,6 +10687,12 @@ body.sheet-open {
 .settings-media-toggle[aria-checked="true"] { border-color: rgba(169,102,255,.42); background: rgba(169,102,255,.07); }
 .settings-media-toggle[aria-checked="true"] .settings-media-switch { border-color: rgba(169,102,255,.62); background: rgba(169,102,255,.18); }
 .settings-media-toggle[aria-checked="true"] .settings-media-switch i { transform: translateX(15px); background: #d9c5ff; }
+.h3-sage-field[hidden] { display: none; }
+.h3-sage-toggle { margin-top: 0; }
+.h3-sage-toggle[data-ready="false"][aria-checked="true"] {
+  border-color: rgba(255, 178, 94, .42);
+  background: rgba(255, 178, 94, .07);
+}
 .media-cache-status {
   margin-top: 9px;
   color: var(--muted-2);

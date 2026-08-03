@@ -17,6 +17,7 @@ const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
+const { probeSageAttention } = require('./lib/sage-attention');
 const {
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
@@ -1470,7 +1471,7 @@ function configuredModelsStatus(info) {
   };
 }
 
-function missingDependencyComponentIds(missing, models) {
+function missingDependencyComponentIds(missing, models, capabilities = {}) {
   const ids = new Set();
   const nodeToComponent = {
     regional: ['regional'],
@@ -1484,6 +1485,7 @@ function missingDependencyComponentIds(missing, models) {
     video: ['video'],
     h3: ['h3'],
     h3r2v: ['h3r2v'],
+    h3sage: ['h3sage'],
     ltxcamera: ['ltxcamera'],
     ltxdirector: ['ltxdirector'],
     videoedit: ['videoedit'],
@@ -1512,6 +1514,8 @@ function missingDependencyComponentIds(missing, models) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
   }
+  if (Object.prototype.hasOwnProperty.call(capabilities, 'sageAttention')
+    && capabilities.sageAttention?.ready !== true) ids.add('h3sage');
   return [...ids];
 }
 
@@ -5142,6 +5146,7 @@ const REQUIRED_CLASSES = {
     'KSamplerSelect', 'BasicScheduler', 'SamplerCustomAdvanced', 'VAEDecode', 'VAEDecodeAudio',
     'CreateVideo', 'SaveVideo', 'ImageFromBatch', 'SaveImage'],
   h3r2v: ['MiniMaxH3ReferenceToVideo', 'VHS_LoadVideo', 'VHS_LoadAudioUpload'],
+  h3sage: ['PathchSageAttentionKJ'],
   ltxdirector: ['LTXDirector', 'LTXDirectorGuide', 'LTXDirectorCropGuides'],
   ltxcamera: ['LTXICLoRALoaderModelOnly', 'LTXAddVideoICLoRAGuide', 'LTXVImgToVideoConditionOnly',
     'VHS_LoadVideo', 'ImageBatch'],
@@ -5166,7 +5171,7 @@ const REQUIRED_CLASSES = {
 const KREA2_DEPENDENCY_COMPONENTS = new Set([
   'image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style',
 ]);
-const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v']);
+const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3sage']);
 
 function dependencyComponentInfo(id, fit = null) {
   const component = DEPENDENCY_COMPONENTS[id] || {};
@@ -5185,7 +5190,7 @@ function dependencyComponentInfo(id, fit = null) {
   };
 }
 
-function setupDependencyComponentInfo(id, fit, krea2Core, h3Core) {
+function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, sageAttention = null) {
   const component = dependencyComponentInfo(id, fit);
   if (fit?.blocked) {
     component.installable = false;
@@ -5201,6 +5206,11 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core) {
     component.installable = false;
     component.blockedBy = 'comfy-core';
     component.installReason = minimaxH3CompatibilityError(h3Core);
+  }
+  if (id === 'h3sage' && sageAttention && sageAttention.ready !== true && sageAttention.installable !== true) {
+    component.installable = false;
+    component.blockedBy = 'sage-runtime';
+    component.installReason = sageAttention.reason || 'SageAttention cannot be installed automatically in this ComfyUI Python environment.';
   }
   return component;
 }
@@ -5260,6 +5270,18 @@ async function setupStatusPayload(forceCompatibility = false) {
     ? krea2ClipCompatibility(info, compatibility.version)
     : krea2ClipCompatibility(null, compatibility.version);
   const h3Core = minimaxH3Compatibility(connected ? info : null, compatibility.version);
+  const sageRuntime = await probeSageAttention(RUNTIME, {
+    status: detected,
+    force: forceCompatibility,
+  });
+  const sageAttention = Object.assign({}, sageRuntime, {
+    packageReady: sageRuntime.ready === true,
+    nodeReady: !!info?.PathchSageAttentionKJ,
+    ready: sageRuntime.ready === true && !!info?.PathchSageAttentionKJ,
+  });
+  if (sageRuntime.ready === true && !sageAttention.nodeReady) {
+    sageAttention.reason = 'ComfyUI-KJNodes is needed for the H3 SageAttention graph patch.';
+  }
   const detectedModelsPath = await connectedModelsPath(detected.basePath || RUNTIME.comfy.path);
   return {
     appReady: true,
@@ -5283,6 +5305,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       guidance[id] || null,
       connected ? krea2Core : null,
       h3Core,
+      sageAttention,
     )),
     comfy: {
       connected,
@@ -5290,6 +5313,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       version: compatibility.version,
       krea2: krea2Core,
       minimaxH3: h3Core,
+      sageAttention,
       nativeInt8: compatibility,
       url: settings.comfyUrl,
       configuredPath: RUNTIME.comfy.path || '',
@@ -5936,10 +5960,22 @@ async function handleApi(req, res, url) {
       const hardwareGuidance = componentHardwareGuidance(SETUP_FEATURE_MANIFEST, hardwareInfoValue);
       const models = configuredModelsStatus(info);
       const installStatus = sam3InstallStatus(RUNTIME);
-      const missingComponents = missingDependencyComponentIds(missing, models);
       const compatibility = await getComfyCompatibility(url.searchParams.has('refresh'));
       const krea2Core = krea2ClipCompatibility(info, compatibility.version);
       const h3Core = minimaxH3Compatibility(info, compatibility.version);
+      const sageRuntime = await probeSageAttention(RUNTIME, {
+        status: installStatus,
+        force: url.searchParams.has('refresh'),
+      });
+      const sageAttention = Object.assign({}, sageRuntime, {
+        packageReady: sageRuntime.ready === true,
+        nodeReady: !missing.h3sage.length,
+        ready: sageRuntime.ready === true && !missing.h3sage.length,
+      });
+      if (sageRuntime.ready === true && !sageAttention.nodeReady) {
+        sageAttention.reason = 'ComfyUI-KJNodes is needed for the H3 SageAttention graph patch.';
+      }
+      const missingComponents = missingDependencyComponentIds(missing, models, { sageAttention });
       if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
         const checkedComponents = Array.isArray(dependencyInstallState.components)
           ? dependencyInstallState.components.filter(Boolean)
@@ -5979,10 +6015,12 @@ async function handleApi(req, res, url) {
             hardwareGuidance[id] || null,
             krea2Core,
             h3Core,
+            sageAttention,
           )),
           missingComponents,
           install: dependencyInstallState,
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
+          sageAttention,
         },
         models,
         krea2: {
@@ -7092,6 +7130,7 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const engine = ['h3', 'wan', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
     const h3Mode = engine === 'h3' && body.h3Mode === 'reference' ? 'reference' : 'frames';
+    const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
     // Every video route except Wan Full Quality is fixed at CFG 1 (or
     // explicitly zeroes negative conditioning), so a negative prompt cannot
@@ -7122,6 +7161,24 @@ async function handleApi(req, res, url) {
           code: 'comfy_h3_update_required',
           compatibility: h3Compatibility,
         });
+      }
+      if (h3SageAttention) {
+        const sageRuntime = await probeSageAttention(RUNTIME, { status: sam3InstallStatus(RUNTIME) });
+        const nodeReady = !!info.PathchSageAttentionKJ;
+        if (!sageRuntime.ready || !nodeReady) {
+          return json(res, 409, {
+            error: !nodeReady
+              ? 'MiniMax H3 SageAttention needs the KJNodes patch node. Install the H3 SageAttention workflow, restart ComfyUI, and try again.'
+              : (sageRuntime.reason || 'SageAttention is not ready in the ComfyUI Python environment.'),
+            code: 'h3_sage_attention_unavailable',
+            component: 'h3sage',
+            sageAttention: Object.assign({}, sageRuntime, {
+              packageReady: sageRuntime.ready === true,
+              nodeReady,
+              ready: sageRuntime.ready === true && nodeReady,
+            }),
+          });
+        }
       }
       if (h3Mode === 'reference'
         && !h3References.images.length
@@ -7390,6 +7447,7 @@ async function handleApi(req, res, url) {
       smooth,
       loras: engine === 'h3' ? [] : (Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : []),
       mode: h3Mode,
+      sageAttention: h3SageAttention,
       firstImageName: engine === 'h3' && !bypass && h3Mode === 'frames' ? comfyName : null,
       references: h3References,
       refImageSize: body.h3RefImageSize === 'max' ? 'max' : 'match',
@@ -7437,6 +7495,7 @@ async function handleApi(req, res, url) {
         scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,
         scailChunkOverlap: engine === 'scail' ? selectedScailChunkOptions.overlapFrames : undefined,
         h3Mode: engine === 'h3' ? h3Mode : undefined,
+        attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
         h3RefImageSize: engine === 'h3' && h3Mode === 'reference' ? opts.refImageSize : undefined,
         h3References: engine === 'h3' && h3Mode === 'reference' ? h3References : undefined,
         // Asset names (ComfyUI input dir) so "Reuse" can restore them
@@ -7455,7 +7514,12 @@ async function handleApi(req, res, url) {
       },
     });
     ensureWs();
-    return json(res, 200, { jobId: pid, frames, engine });
+    return json(res, 200, {
+      jobId: pid,
+      frames,
+      engine,
+      attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
+    });
   }
 
   if ((route === '/api/video/upscale' || route === '/api/video/interpolate') && req.method === 'POST') {

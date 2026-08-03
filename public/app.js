@@ -124,6 +124,7 @@ const state = {
   kreaMaskViewMode: 'dim',
   vidRef: null,              // {name, url, w, h} - Video tab source image
   vidH3Mode: 'frames',       // frames | reference
+  vidH3SageAttention: true,
   vidH3RefImageSize: 'match',
   vidH3RefSlots: 1,
   vidH3References: { images: [], videos: [], audios: [] },
@@ -2503,6 +2504,7 @@ function saveForm() {
       loraTriggers: state.loraTriggers,
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       vidH3Mode: state.vidH3Mode,
+      vidH3SageAttention: state.vidH3SageAttention,
       vidH3RefImageSize: state.vidH3RefImageSize,
       vidH3RefSlots: state.vidH3RefSlots,
       vidH3References: Object.fromEntries(Object.entries(h3References())
@@ -2746,6 +2748,7 @@ function loadForm() {
     state.editRefSlots = Math.max(1, state.refs.reduce((count, ref, index) => ref ? Math.max(count, index + 1) : count, 1));
     state.vidRef = restoreWorkspaceAsset(f.vidRef);
     state.vidH3Mode = f.vidH3Mode === 'reference' ? 'reference' : 'frames';
+    state.vidH3SageAttention = f.vidH3SageAttention !== false;
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
     state.vidH3References = Object.fromEntries(['images', 'videos', 'audios'].map((kind) => [
       kind,
@@ -3610,6 +3613,32 @@ function genLabel() {
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
+function renderH3SageAttention() {
+  const field = $('#vidH3SageField');
+  const toggle = $('#vidH3SageToggle');
+  const status = $('#vidH3SageStatus');
+  if (!field || !toggle || !status) return;
+  const visible = state.view === 'video' && state.vidEngine === 'h3';
+  field.hidden = !visible;
+  const enabled = state.vidH3SageAttention !== false;
+  const capability = lastMeta?.dependencies?.sageAttention;
+  toggle.setAttribute('aria-checked', String(enabled));
+  toggle.dataset.ready = String(capability?.ready === true);
+  if (!enabled) {
+    status.textContent = 'Off · use standard PyTorch attention';
+    toggle.title = 'H3 will use the standard attention backend.';
+  } else if (capability?.ready === true) {
+    status.textContent = `Verified in ComfyUI${capability.sageVersion ? ` · SageAttention ${capability.sageVersion}` : ''}`;
+    toggle.title = 'The matching package, Triton runtime, CUDA kernel, and KJ graph patch are verified.';
+  } else if (capability) {
+    status.textContent = capability.reason || 'Install the H3 SageAttention workflow to enable acceleration';
+    toggle.title = status.textContent;
+  } else {
+    status.textContent = 'Verifying the ComfyUI runtime…';
+    toggle.title = status.textContent;
+  }
+}
+
 function updateVideoPanels() {
   const isVideo = state.view === 'video';
   const isEdit = state.view === 'edit';
@@ -3685,6 +3714,7 @@ function updateVideoPanels() {
   $('#advancedStepsField').hidden = isVideo;
   $('#advancedCfgField').hidden = isVideo;
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
+  renderH3SageAttention();
   $('#videoAdvancedNote').hidden = !isVideo;
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
@@ -3692,6 +3722,13 @@ function updateVideoPanels() {
   renderLoras();
   schedulePromptIntentHint();
 }
+
+$('#vidH3SageToggle').addEventListener('click', () => {
+  state.vidH3SageAttention = state.vidH3SageAttention === false;
+  renderH3SageAttention();
+  $('#genLbl').textContent = genLabel();
+  saveForm();
+});
 
 /* Shared source picker: every generation media dropzone can accept either a
    fresh device file or an existing image/video from the current gallery. */
@@ -16690,6 +16727,7 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
       h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
+      sageAttention: state.vidEngine === 'h3' ? state.vidH3SageAttention !== false : undefined,
       h3RefImageSize: h3Reference ? state.vidH3RefImageSize : undefined,
       h3References: h3Reference ? Object.fromEntries(Object.entries(h3References()).map(([kind, assets]) => [
         kind,
@@ -18466,7 +18504,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3SageAttention', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -18619,6 +18657,7 @@ function resetActiveGenerationForm() {
   } else if (mode === 'video') {
     state.vidRef = null;
     state.vidH3Mode = 'frames';
+    state.vidH3SageAttention = true;
     state.vidH3RefImageSize = 'match';
     state.vidH3RefSlots = 1;
     state.vidH3References = { images: [], videos: [], audios: [] };
@@ -22698,6 +22737,9 @@ function openLightbox(id, mediaSel, options = {}) {
     const model = videoEngineLabel(info.engine);
     const workflowModel = info.workflow === 'director' ? videoEngineLabel(info.engine, info) : model;
     meta.push(`<b>Model:</b> ${escapeHtml(workflowModel)}`);
+    if (info.attentionBackend) {
+      meta.push(`<b>Attention:</b> ${info.attentionBackend === 'sageattention' ? 'SageAttention (verified)' : 'Standard PyTorch'}`);
+    }
     const recordedVideoWidth = Math.round(Number(info.width));
     const recordedVideoHeight = Math.round(Number(info.height));
     const fallbackVideoWidth = Math.round(Number(it.width));
@@ -23901,6 +23943,7 @@ async function reuseVideo(it, v) {
   // Clear current attachments + their UI
   state.vidRef = null;
   state.vidH3Mode = engine === 'h3' && info.h3Mode === 'reference' ? 'reference' : 'frames';
+  state.vidH3SageAttention = engine === 'h3' ? info.attentionBackend !== 'standard' : true;
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
   state.vidH3RefSlots = 1;
   state.vidH3References = { images: [], videos: [], audios: [] };
@@ -24906,6 +24949,9 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
     ['H3 references', h3ReferenceSummary],
+    ['Attention', info.attentionBackend === 'sageattention'
+      ? 'SageAttention (verified)'
+      : (info.attentionBackend === 'standard' ? 'Standard PyTorch' : '')],
     ['Options', options],
     ['Mix Pack presets', promptPresetNames(promptPresets).join(', ')],
     ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
@@ -29442,7 +29488,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -29505,6 +29551,7 @@ function generationSetupComponents() {
   if (state.view === 'video') {
     const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
+    if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
     if (state.vidEngine === 'h3' && state.vidH3Mode === 'reference') components.add('h3r2v');
     if (state.directorOpen) components.add('ltxdirector');
     if (state.vidEngine === 'ltx-edit') components.add('video');
@@ -31004,6 +31051,7 @@ async function loadMeta(refresh, afterRestart = false) {
     renderLoras();
     renderSam3Dependency();
     renderDependencyManager();
+    renderH3SageAttention();
     $('#genLbl').textContent = genLabel();
     scheduleDependencyPoll();
   } catch {
@@ -31133,7 +31181,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3r2v: 'MiniMax H3 reference-input nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

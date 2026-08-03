@@ -10,6 +10,7 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const promptEnhance = fs.readFileSync(path.join(root, 'lib', 'prompt-enhance.js'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const H3Resolution = require('../public/h3-resolution');
 const { h3Dimensions } = require('../lib/video-workflows');
 const regexEscape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -27,6 +28,20 @@ test('MiniMax H3 resolution picker mirrors the backend native canvas', () => {
   assert.match(app, /\$\('#sizeSeg'\)\.hidden = h3Resolution;/);
   assert.match(app, /widthInput\.readOnly = h3Resolution;[\s\S]*heightInput\.readOnly = h3Resolution;/);
   assert.match(app, /`\$\{state\.aspect\} · H3 native · \$\{state\.width\} × \$\{state\.height\}`/);
+});
+
+test('MiniMax H3 offers verified SageAttention with an explicit standard-attention bypass', () => {
+  assert.match(html, /id="vidH3SageToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
+  assert.match(html, /id="vidH3SageStatus">Verifying the ComfyUI runtime/);
+  assert.match(app, /vidH3SageAttention: true/);
+  assert.match(app, /function renderH3SageAttention\(\)/);
+  assert.match(app, /sageAttention: state\.vidEngine === 'h3' \? state\.vidH3SageAttention !== false : undefined/);
+  assert.match(app, /if \(state\.vidEngine === 'h3' && state\.vidH3SageAttention !== false\) components\.add\('h3sage'\)/);
+  assert.match(app, /info\.attentionBackend === 'sageattention' \? 'SageAttention \(verified\)' : 'Standard PyTorch'/);
+  assert.match(css, /\.h3-sage-toggle\[data-ready="false"\]\[aria-checked="true"\]/);
+  assert.match(server, /const h3SageAttention = engine === 'h3' && body\.sageAttention !== false/);
+  assert.match(server, /code: 'h3_sage_attention_unavailable'/);
+  assert.match(server, /attentionBackend: engine === 'h3' \? \(opts\.sageAttention \? 'sageattention' : 'standard'\)/);
 });
 
 test('Video frame and media inputs use visual source cards', () => {

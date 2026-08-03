@@ -81,6 +81,25 @@ test('MiniMax H3 text-to-video does not synthesize placeholder keyframes', async
   assert.equal(graph.condition.inputs.last_frame, undefined);
 });
 
+test('MiniMax H3 SageAttention patches only the guider model and leaves scheduler calculation unchanged', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A storm rolls across the sea.', W: 1344, H: 768, frames: 124, seed: 7,
+    sageAttention: true,
+  }, settings);
+  assert.equal(graph.sage_attention.class_type, 'PathchSageAttentionKJ');
+  assert.deepEqual(graph.sage_attention.inputs, {
+    model: ['model', 0], sage_attention: 'auto', allow_compile: false,
+  });
+  assert.deepEqual(graph.guider.inputs.model, ['sage_attention', 0]);
+  assert.deepEqual(graph.scheduler.inputs.model, ['model', 0]);
+
+  const standard = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A storm rolls across the sea.', W: 1344, H: 768, frames: 124, seed: 7,
+  }, settings);
+  assert.equal(standard.sage_attention, undefined);
+  assert.deepEqual(standard.guider.inputs.model, ['model', 0]);
+});
+
 test('MiniMax H3 reference graph preserves official reference namespaces and media order', async () => {
   const calls = [];
   const graph = await buildMiniMaxH3Graph({
