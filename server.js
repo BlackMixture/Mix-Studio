@@ -78,6 +78,7 @@ const {
   motionPromptEnhanceParts,
   promptEnhanceParts,
   regionPromptEnhanceParts,
+  videoPromptRevisionParts,
 } = require('./lib/prompt-enhance');
 const { combineNegativePrompts, normalizeNegativePrompt } = require('./lib/negative-prompt');
 const {
@@ -2568,6 +2569,35 @@ function textGenInputs(seed, maxLength) {
   };
 }
 
+function armPromptJobDeadline(pid, reject, label) {
+  let stopped = false;
+  let timer = null;
+  const check = () => {
+    if (stopped) return;
+    const job = jobs.get(pid);
+    if (!job) return;
+    // Prompt tools share ComfyUI with long video generations. Waiting in the
+    // queue is not a failed prompt; only apply the short deadline once the
+    // text graph actually starts executing.
+    const base = job.startedAt || job.enqueuedAt || Date.now();
+    const limit = job.startedAt ? 5 * 60_000 : 20 * 60_000;
+    const remaining = limit - (Date.now() - base);
+    if (remaining <= 0) {
+      jobs.delete(pid);
+      reject(new Error(`${label} timed out`));
+      return;
+    }
+    timer = setTimeout(check, Math.min(30_000, remaining));
+  };
+  timer = setTimeout(check, 30_000);
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+}
+
+const motionPromptFlights = new Map();
+
 /** Vision pass: Qwen3-VL looks at the image and suggests a motion prompt. */
 function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', options = {}) {
   return new Promise((resolve, reject) => {
@@ -2580,27 +2610,43 @@ function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', o
         class_type: 'TextGenerate',
         inputs: Object.assign(
           { clip: ['clip', 0], image: ['img', 0], prompt: parts.instruction + parts.userInput },
-          textGenInputs(seed, 256)
+          textGenInputs(seed, String(options.engine || '').toLowerCase() === 'h3' ? 512 : 256)
         ),
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
       await filterInputs(graph);
-      const pid = await queuePrompt(graph, { profileId });
-      const timer = setTimeout(() => {
-        jobs.delete(pid);
-        reject(new Error('Motion prompt timed out (3 min)'));
-      }, 180000);
+      const pid = await queuePrompt(graph, { profileId, front: true });
+      let clearDeadline = () => {};
       trackJob(pid, {
         kind: 'motionPrompt',
         profileId,
         thumbnailName: comfyImageName,
         graph,
-        resolve: (t) => { clearTimeout(timer); resolve(t); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: (t) => { clearDeadline(); resolve(t); },
+        reject: (e) => { clearDeadline(); reject(e); },
       });
+      clearDeadline = armPromptJobDeadline(pid, reject, 'Motion prompt');
       ensureWs();
     })().catch(reject);
   });
+}
+
+function sharedMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', options = {}) {
+  const key = JSON.stringify([
+    profileId || '',
+    String(comfyImageName || ''),
+    String(userPrompt || '').trim(),
+    String(options.engine || ''),
+    Number(options.seconds) || 0,
+  ]);
+  const active = motionPromptFlights.get(key);
+  if (active) return active;
+  const flight = suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt, options)
+    .finally(() => {
+      if (motionPromptFlights.get(key) === flight) motionPromptFlights.delete(key);
+    });
+  motionPromptFlights.set(key, flight);
+  return flight;
 }
 
 /** Vision pass: Qwen3-VL writes a detailed prompt to recreate the image. */
@@ -2654,18 +2700,16 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
       await filterInputs(graph);
-      const pid = await queuePrompt(graph, { profileId: options.profileId });
-      const timer = setTimeout(() => {
-        jobs.delete(pid);
-        reject(new Error('Prompt enhance timed out (3 min)'));
-      }, 180000);
+      const pid = await queuePrompt(graph, { profileId: options.profileId, front: true });
+      let clearDeadline = () => {};
       trackJob(pid, {
         kind: 'enhance',
         profileId: options.profileId,
         graph,
-        resolve: (t) => { clearTimeout(timer); resolve(t); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: (t) => { clearDeadline(); resolve(t); },
+        reject: (e) => { clearDeadline(); reject(e); },
       });
+      clearDeadline = armPromptJobDeadline(pid, reject, 'Prompt enhance');
       ensureWs();
       if (statusText) broadcast('status', { jobId: 'pre', profileId: options.profileId, text: statusText });
     })().catch(reject);
@@ -2690,6 +2734,23 @@ function reviseImagePrompt(currentPrompt, changeRequest, seed, options = {}) {
     seed,
     'Revising prompt...',
     384,
+    options,
+  );
+}
+
+function reviseVideoPrompt(currentPrompt, changeRequest, seed, options = {}) {
+  const parts = videoPromptRevisionParts(currentPrompt, changeRequest, {
+    engine: options.engine,
+    seconds: options.seconds,
+    mode: options.mode,
+    hasImage: !!options.imageName,
+  });
+  parts.userInput += ENHANCE_TAIL;
+  return queueTextEnhancement(
+    parts,
+    seed,
+    'Revising video prompt...',
+    options.engine === 'h3' ? 640 : 384,
     options,
   );
 }
@@ -7048,6 +7109,7 @@ async function handleApi(req, res, url) {
     const userMotionPrompt = suppliedMotionPrompt;
     const autoMotionRequested = body.autoMotionPrompt === true
       && !(engine === 'h3' && h3Mode === 'reference');
+    const preparedMotionPrompt = body.preparedMotionPrompt === true && !!suppliedMotionPrompt;
     // SCAIL follows its driving clip, so a motion sentence is an optional
     // creative nudge rather than a prerequisite for a faithful transfer.
     if (!suppliedMotionPrompt && engine !== 'scail' && !autoMotionRequested) return json(res, 400, { error: 'Describe the motion first' });
@@ -7200,9 +7262,9 @@ async function handleApi(req, res, url) {
     // Edit Anything expects concise, literal editing instructions. Its author
     // specifically advises against the LTX prompt rewriter for this workflow.
     const enhance = isLtxEdit || engine === 'h3' ? false : body.enhance !== false;
-    let autoGeneratedMotion = false;
+    let autoGeneratedMotion = preparedMotionPrompt;
     if (autoMotionRequested) {
-      const suggested = await suggestMotionPrompt(comfyName, seed, req.profile.id, userMotionPrompt, { engine, seconds });
+      const suggested = await sharedMotionPrompt(comfyName, seed, req.profile.id, userMotionPrompt, { engine, seconds });
       suppliedMotionPrompt = cleanEnhancedText(suggested, userMotionPrompt || 'subtle natural movement with a steady camera');
       suppliedMotionPrompt = ensureCameraMotionPrompt(suppliedMotionPrompt, cameraMotions);
       motionPrompt = suppliedMotionPrompt;
@@ -7607,10 +7669,10 @@ async function handleApi(req, res, url) {
       comfyName = String(body.imageName);
     }
     if (!comfyName) return json(res, 400, { error: 'Attach a start frame first' });
-    let raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, { engine, seconds });
+    let raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, { engine, seconds });
     let prompt = cleanEnhancedText(raw, initialPrompt);
     if (!prompt) {
-      raw = await suggestMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, { engine, seconds });
+      raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, { engine, seconds });
       prompt = cleanEnhancedText(raw, initialPrompt);
     }
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable text' });
@@ -7641,12 +7703,17 @@ async function handleApi(req, res, url) {
     const changeRequest = String(body.changeRequest || '').trim().slice(0, 1200);
     const imageName = String(body.imageName || '').trim().slice(0, 500);
     if (!changeRequest) return json(res, 400, { error: 'Describe what you want to change' });
-    const raw = await reviseImagePrompt(
-      currentPrompt,
-      changeRequest,
-      Math.floor(Math.random() * 2 ** 31),
-      { imageName: imageName || undefined, profileId: req.profile.id },
-    );
+    const videoRevision = body.kind === 'video';
+    const revisionOptions = {
+      imageName: imageName || undefined,
+      profileId: req.profile.id,
+      engine: String(body.engine || '').trim().slice(0, 40),
+      seconds: clampNum(body.seconds, 1, 60, 5),
+      mode: body.h3Mode === 'reference' ? 'reference' : 'frames',
+    };
+    const raw = videoRevision
+      ? await reviseVideoPrompt(currentPrompt, changeRequest, Math.floor(Math.random() * 2 ** 31), revisionOptions)
+      : await reviseImagePrompt(currentPrompt, changeRequest, Math.floor(Math.random() * 2 ** 31), revisionOptions);
     const prompt = cleanEnhancedText(raw, currentPrompt || changeRequest);
     if (!prompt) return json(res, 500, { error: 'Prompt assistant returned no usable text' });
     return json(res, 200, { prompt });

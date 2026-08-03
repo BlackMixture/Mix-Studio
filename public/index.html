@@ -705,6 +705,10 @@
       </button>
     </div>
     <div class="chip-row prompt-tools video-prompt-tools" id="videoPromptTools" hidden>
+      <button class="chip video-revise-prompt" id="videoPromptAssistantBtn" type="button" aria-label="Revise video prompt" title="Revise video prompt with local AI" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 3h12a3 3 0 0 1 3 3v3h-2V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2v4l4.8-4H13v2h-1.5L4 23v-6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm14 8 1.05 2.95L22 15l-2.95 1.05L18 19l-1.05-2.95L14 15l2.95-1.05L18 11Z"/></svg>
+        <span>Revise prompt</span>
+      </button>
       <button class="chip video-camera-motion-trigger" id="videoCameraMotionBtn" type="button" aria-label="Camera motion" title="Camera motion" aria-haspopup="dialog" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 7.5h10.5a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Zm12.5 3 5-2.5v8l-5-2.5M6 4.5h5M5 19.5h10"/></svg>
         <span>Camera motion</span>
@@ -2828,10 +2832,10 @@
 <div class="sheet" id="promptAssistantSheet">
   <form class="sheet-panel prompt-assistant-panel" id="promptAssistantForm" role="dialog" aria-modal="true" aria-labelledby="promptAssistantTitle">
     <h3 class="sheet-title"><span id="promptAssistantTitle">Revise prompt</span><button data-close type="button" aria-label="Close prompt assistant">✕</button></h3>
-    <p class="prompt-assistant-copy">Say what should change. Mix Studio will rewrite the whole prompt, reconcile related details, and preserve everything else.</p>
+    <p class="prompt-assistant-copy" id="promptAssistantCopy">Say what should change. Mix Studio will rewrite the whole prompt, reconcile related details, and preserve everything else.</p>
     <div class="prompt-assistant-source" id="promptAssistantSource" hidden>
       <img id="promptAssistantSourceImg" alt="" />
-      <span><b>Use the source image for context</b><small>Your written request takes priority</small></span>
+      <span><b id="promptAssistantSourceTitle">Use the source image for context</b><small>Your written request takes priority</small></span>
       <button class="toggle on" id="promptAssistantSourceToggle" type="button" aria-pressed="true" aria-label="Use source image for context"></button>
     </div>
     <div class="prompt-assistant-starters" aria-label="Prompt revision starters">

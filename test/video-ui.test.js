@@ -304,29 +304,48 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(html, /id="vidMotionPromptLabel">Motion prompt/);
   assert.match(app, /#vidMotionPromptBtn'\)\.addEventListener\('click'/);
   assert.match(app, /api\('\/api\/motionprompt'/);
-  assert.match(app, /imageName: state\.vidRef\.name,[\s\S]{0,160}engine: state\.vidEngine,[\s\S]{0,100}seconds: Number\(\$\('#vidDur'\)\.value\) \|\| 5/);
-  assert.match(app, /state\.prompts\.video = res\.prompt/);
+  assert.match(app, /imageName: context\.imageName,[\s\S]{0,160}engine: context\.engine,[\s\S]{0,100}seconds: context\.seconds/);
+  assert.match(app, /state\.prompts\.video = preparedPrompt/);
   assert.match(app, /label\.textContent = 'Reading frame'/);
   assert.match(css, /\.motion-prompt-row \.frame-prompt-action \{/);
   assert.match(app, /const canSuggestMotion = !editAnything && !scail && !h3ReferenceModeActive\(\) && has/);
   assert.match(app, /#vidMotionPromptRow'\)\.hidden = !canSuggestMotion/);
   assert.match(server, /body\.imageName/);
-  assert.match(server, /suggestMotionPrompt\(comfyName/);
-  assert.match(server, /if \(!prompt\) \{[\s\S]*suggestMotionPrompt/);
+  assert.match(server, /sharedMotionPrompt\(comfyName/);
+  assert.match(server, /if \(!prompt\) \{[\s\S]*sharedMotionPrompt/);
 });
 
-test('automatic motion prompting can queue video work without waiting for prompt text', () => {
+test('automatic motion prompting prepares one shared prompt before queueing a video batch', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="vidAutoMotionToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
   assert.match(app, /vidAutoMotionPrompt: false/);
-  assert.match(app, /autoMotionPrompt,[\s\S]*Promise\.all\(requests\.map/);
+  assert.match(app, /preparedAutoMotionPrompt = true/);
+  assert.match(app, /autoMotionPrompt: autoMotionPrompt && !preparedAutoMotionPrompt/);
+  assert.match(app, /preparedMotionPrompt: preparedAutoMotionPrompt/);
+  assert.match(app, /Promise\.allSettled\(requests\.map/);
+  assert.match(app, /preparedMotionPromptCache/);
+  assert.match(app, /motionPromptRequest && motionPromptRequest\.key === key/);
   assert.match(app, /function maybeCreateAutomaticMotionPrompt\(\)/);
   assert.match(app, /classList\.toggle\('auto-armed', armed\)/);
   assert.match(app, /'Auto motion armed'/);
   assert.match(server, /if \(autoMotionRequested\)/);
   assert.match(app, /&& !h3ReferenceModeActive\(\);/);
-  assert.match(server, /suggestMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{ engine, seconds \}\)/);
+  assert.match(server, /sharedMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{ engine, seconds \}\)/);
+  assert.match(server, /const preparedMotionPrompt = body\.preparedMotionPrompt === true/);
+  assert.match(server, /queuePrompt\(graph, \{ profileId, front: true \}\)/);
   assert.match(server, /body\.autoMotionPrompt === true[\s\S]{0,100}!\(engine === 'h3' && h3Mode === 'reference'\)/);
+});
+
+test('Video exposes the shared prompt revision assistant with H3-aware context', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="videoPromptAssistantBtn"[^>]*aria-label="Revise video prompt"/);
+  assert.match(app, /#videoPromptAssistantBtn'\)\.addEventListener\('click', openPromptAssistant\)/);
+  assert.match(app, /kind: revisionView === 'video' \? 'video' : 'image'/);
+  assert.match(app, /h3Mode: revisionView === 'video' && state\.vidEngine === 'h3'/);
+  assert.match(app, /'Add shot beats'/);
+  assert.match(app, /#videoPromptTools'\)\.hidden = !isVideo/);
+  assert.match(server, /videoRevision[\s\S]*reviseVideoPrompt\(/);
+  assert.match(promptEnhance, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
 });
 
 test('video prompt enhancement combines the first frame with the initial motion idea', () => {

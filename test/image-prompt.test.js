@@ -59,5 +59,5 @@ test('local prompt assistant exposes iterative revision with optional source con
   assert.match(appJs, /api\('\/api\/prompt\/revise'/);
   assert.match(appJs, /currentPrompt: before,[\s\S]*changeRequest,[\s\S]*imageName:/);
   assert.match(appJs, /state\.enhance = false;[\s\S]*renderEnhance\(\)/);
-  assert.match(appJs, /state\.promptRevisionUndo = \{ before, after: revised \}/);
+  assert.match(appJs, /state\.promptRevisionUndo = \{ before, after: revised, view: revisionView \}/);
 });

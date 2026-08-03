@@ -3649,7 +3649,8 @@ function updateVideoPanels() {
     || state.vidEngine === 'ltx-edit' || (state.vidEngine === 'h3' && state.vidH3Mode === 'reference');
   $('#createPromptTools').hidden = state.view !== 'create';
   $('#cameraPromptBtn').hidden = false;
-  $('#videoPromptTools').hidden = !isVideo || state.vidEngine === 'scail' || state.vidEngine === 'h3';
+  $('#videoPromptTools').hidden = !isVideo;
+  $('#videoCameraMotionBtn').hidden = !isVideo || state.vidEngine === 'scail' || state.vidEngine === 'h3';
   syncCameraMotionTool();
   renderKrea2Mode();
   renderCreateImageGuide();
@@ -5815,11 +5816,20 @@ async function createPromptFromImageName(image) {
   toast('Prompt created · use Revise to change it');
 }
 
+function promptAssistantSourceImage() {
+  if (state.view !== 'video') return state.promptSourceImage;
+  if (h3ReferenceModeActive()) return h3References().images[0] || null;
+  return state.vidRef || null;
+}
+
 function renderPromptAssistantSource() {
-  const source = state.promptSourceImage;
+  const source = promptAssistantSourceImage();
   const row = $('#promptAssistantSource');
   row.hidden = !source;
   if (source) $('#promptAssistantSourceImg').src = source.url || `/api/input?name=${encodeURIComponent(source.name)}`;
+  $('#promptAssistantSourceTitle').textContent = state.view === 'video'
+    ? (h3ReferenceModeActive() ? 'Use Picture 1 for context' : 'Use the first frame for context')
+    : 'Use the source image for context';
   const toggle = $('#promptAssistantSourceToggle');
   const enabled = !!source && state.promptAssistantUseSource;
   toggle.classList.toggle('on', enabled);
@@ -5835,7 +5845,7 @@ function setPromptAssistantBusy(busy, message = '') {
   form.setAttribute('aria-busy', String(busy));
   $('#promptAssistantApply').disabled = busy;
   $('#promptAssistantInput').disabled = busy;
-  $('#promptAssistantSourceToggle').disabled = busy || !state.promptSourceImage;
+  $('#promptAssistantSourceToggle').disabled = busy || !promptAssistantSourceImage();
   $$('.prompt-assistant-starters button').forEach((button) => { button.disabled = busy; });
   const status = $('#promptAssistantStatus');
   status.hidden = !message;
@@ -5844,13 +5854,38 @@ function setPromptAssistantBusy(busy, message = '') {
 
 function openPromptAssistant() {
   const currentPrompt = promptDraft().trim();
-  $('#promptAssistantTitle').textContent = currentPrompt ? 'Revise prompt' : 'Build prompt';
+  const video = state.view === 'video';
+  $('#promptAssistantTitle').textContent = currentPrompt
+    ? (video ? 'Revise video prompt' : 'Revise prompt')
+    : (video ? 'Build video prompt' : 'Build prompt');
   $('#promptAssistantApply').textContent = currentPrompt ? 'Revise prompt' : 'Build prompt';
+  $('#promptAssistantCopy').textContent = video
+    ? 'Say what should change. Mix Studio will rewrite the complete video prompt while preserving continuity, timing, camera direction, audio, and reference tags.'
+    : 'Say what should change. Mix Studio will rewrite the whole prompt, reconcile related details, and preserve everything else.';
+  const starters = video ? [
+    ['Add shot beats', 'Restructure this as a coherent sequence with timestamped beats, purposeful camera angles, and only as many cuts as the duration can support.'],
+    ['Change camera', 'Keep the subject and action, but change the camera direction to '],
+    ['Improve motion', 'Make the subject movement, secondary motion, and transitions more specific and physically natural.'],
+    ['Shorten', 'Shorten this prompt while preserving its key action, continuity, camera direction, and audio.'],
+  ] : [
+    ['Change subject', 'Change the main subject to '],
+    ['Change colors', 'Change the color palette to '],
+    ['Remix', 'Keep the composition and visual style, but create a distinct new subject: '],
+    ['Shorten', 'Shorten this prompt and keep only the visual details that matter most.'],
+  ];
+  $$('.prompt-assistant-starters button').forEach((button, index) => {
+    const starter = starters[index];
+    button.textContent = starter[0];
+    button.dataset.promptRevision = starter[1];
+  });
+  $('#promptAssistantInput').placeholder = video
+    ? 'Add a low-angle close-up at 4 seconds, then cut wide as the subject turns. Keep the dialogue and end on the same action.'
+    : 'Change the woman to a man in a tailored navy suit, use teal and gold, and keep the lighting and composition.';
   if (!promptAssistantBusy) $('#promptAssistantInput').value = '';
   renderPromptAssistantSource();
   setPromptAssistantBusy(promptAssistantBusy, promptAssistantBusy ? 'Rewriting the complete prompt…' : '');
   const undo = state.promptRevisionUndo;
-  $('#promptAssistantUndo').hidden = !(undo && currentPrompt === undo.after);
+  $('#promptAssistantUndo').hidden = !(undo && undo.view === state.view && currentPrompt === undo.after);
   $('#promptAssistantSheet').classList.add('show');
   syncSheetScrollLock();
   setTimeout(() => $('#promptAssistantInput').focus(), 80);
@@ -5862,6 +5897,7 @@ function closePromptAssistant() {
 }
 
 $('#promptAssistantBtn').addEventListener('click', openPromptAssistant);
+$('#videoPromptAssistantBtn').addEventListener('click', openPromptAssistant);
 $('#promptAssistantSourceToggle').addEventListener('click', () => {
   state.promptAssistantUseSource = !state.promptAssistantUseSource;
   renderPromptAssistantSource();
@@ -5877,9 +5913,9 @@ $$('.prompt-assistant-starters [data-prompt-revision]').forEach((button) => {
 });
 $('#promptAssistantUndo').addEventListener('click', () => {
   const undo = state.promptRevisionUndo;
-  if (!undo || promptDraft().trim() !== undo.after) return;
+  if (!undo || undo.view !== state.view || promptDraft().trim() !== undo.after) return;
   checkpointDesktopInputSetup();
-  state.prompts.create = undo.before;
+  state.prompts[state.view] = undo.before;
   setPromptDraft(undo.before);
   state.promptRevisionUndo = null;
   updatePromptClear();
@@ -5898,7 +5934,8 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
     return;
   }
   const before = promptDraft().trim();
-  const source = state.promptAssistantUseSource ? state.promptSourceImage : null;
+  const revisionView = state.view;
+  const source = state.promptAssistantUseSource ? promptAssistantSourceImage() : null;
   setPromptAssistantBusy(true, before ? 'Rewriting the complete prompt…' : 'Building a generation-ready prompt…');
   checkpointDesktopInputSetup();
   try {
@@ -5909,15 +5946,19 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
         currentPrompt: before,
         changeRequest,
         imageName: source && source.name ? source.name : undefined,
+        kind: revisionView === 'video' ? 'video' : 'image',
+        engine: revisionView === 'video' ? state.vidEngine : undefined,
+        seconds: revisionView === 'video' ? Number($('#vidDur').value) || 5 : undefined,
+        h3Mode: revisionView === 'video' && state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
       }),
     });
     const revised = String(result.prompt || '').trim();
     if (!revised) throw new Error('Prompt assistant returned no usable text');
-    if (promptDraft().trim() !== before) {
+    if (state.view !== revisionView || promptDraft().trim() !== before) {
       throw new Error('The prompt changed while the revision was running. Review it and try again.');
     }
-    state.prompts.create = revised;
-    state.promptRevisionUndo = { before, after: revised };
+    state.prompts[revisionView] = revised;
+    state.promptRevisionUndo = { before, after: revised, view: revisionView };
     state.enhance = false;
     setPromptDraft(revised);
     updatePromptClear();
@@ -5927,7 +5968,7 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
     setPromptAssistantBusy(false);
     closePromptAssistant();
     $('#promptComposer').focus();
-    toast('Prompt revised · Enhance turned off');
+    toast(revisionView === 'video' ? 'Video prompt revised' : 'Prompt revised · Enhance turned off');
   } catch (error) {
     setPromptAssistantBusy(false, error.message || 'Could not revise this prompt');
     if (!isJobCancellation(error)) toast(error.message, true);
@@ -15661,33 +15702,86 @@ $('#vidAttachX').addEventListener('click', () => {
   updateVideoPanels();
   saveForm();
 });
+let preparedMotionPromptCache = null;
+let motionPromptRequest = null;
+
+function motionPromptContext(prompt) {
+  return {
+    imageName: state.vidRef ? state.vidRef.name : '',
+    engine: state.vidEngine,
+    seconds: Number($('#vidDur').value) || 5,
+    input: String(prompt || '').trim(),
+  };
+}
+
+function sameMotionPromptContext(left, right, includeInput = true) {
+  return !!left && !!right
+    && left.imageName === right.imageName
+    && left.engine === right.engine
+    && left.seconds === right.seconds
+    && (!includeInput || left.input === right.input);
+}
+
+async function requestMotionPromptFromFirstFrame(initialPrompt) {
+  const context = motionPromptContext(initialPrompt);
+  if (preparedMotionPromptCache
+    && sameMotionPromptContext(preparedMotionPromptCache, context, false)
+    && (context.input === preparedMotionPromptCache.input || context.input === preparedMotionPromptCache.output)) {
+    return preparedMotionPromptCache.output;
+  }
+  const key = JSON.stringify(context);
+  if (motionPromptRequest && motionPromptRequest.key === key) return motionPromptRequest.promise;
+
+  state.motionPromptRequestsPending += 1;
+  $('#genLbl').textContent = genLabel();
+  const promise = api('/api/motionprompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imageName: context.imageName,
+      prompt: context.input,
+      engine: context.engine,
+      seconds: context.seconds,
+    }),
+  }).then((res) => {
+    if (!res.prompt) throw new Error('Vision model returned no usable motion prompt');
+    preparedMotionPromptCache = Object.assign({}, context, { output: String(res.prompt).trim() });
+    return preparedMotionPromptCache.output;
+  });
+  motionPromptRequest = { key, promise };
+  try {
+    return await promise;
+  } finally {
+    if (motionPromptRequest && motionPromptRequest.promise === promise) motionPromptRequest = null;
+    state.motionPromptRequestsPending = Math.max(0, state.motionPromptRequestsPending - 1);
+    $('#genLbl').textContent = genLabel();
+  }
+}
+
 async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
   if (!state.vidRef || state.vidEngine === 'ltx-edit' || h3ReferenceModeActive()) return;
   const btn = $('#vidMotionPromptBtn');
   const label = $('#vidMotionPromptLabel');
+  const initialPrompt = promptDraft().trim();
   btn.disabled = true;
   btn.classList.add('is-loading');
   label.textContent = 'Reading frame';
   try {
     if (!automatic) toast('Reading the start frame…');
-    const res = await api('/api/motionprompt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageName: state.vidRef.name,
-        prompt: promptDraft().trim(),
-        engine: state.vidEngine,
-        seconds: Number($('#vidDur').value) || 5,
-      }),
-    });
-    if (!res.prompt) throw new Error('Vision model returned no usable motion prompt');
-    state.prompts.video = res.prompt;
-    setPromptDraft(res.prompt);
+    const preparedPrompt = await requestMotionPromptFromFirstFrame(initialPrompt);
+    const currentPrompt = promptDraft().trim();
+    if (currentPrompt !== initialPrompt && currentPrompt !== preparedPrompt) {
+      throw new Error('The prompt changed while Auto motion was reading the frame. Review it and try again.');
+    }
+    state.prompts.video = preparedPrompt;
+    setPromptDraft(preparedPrompt);
     updatePromptClear();
     saveForm();
     toast(automatic ? 'Motion prompt added automatically' : 'Motion prompt created from the start frame');
+    return preparedPrompt;
   } catch (e) {
     if (!isJobCancellation(e)) toast(e.message, true);
+    return '';
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-loading');
@@ -16466,7 +16560,8 @@ $('#generateBtn').addEventListener('click', async () => {
     return;
   }
   const rawPrompt = promptForGeneration().trim();
-  const prompt = state.view === 'video' ? cameraMotionPromptForEngine(rawPrompt) : rawPrompt;
+  let prompt = state.view === 'video' ? cameraMotionPromptForEngine(rawPrompt) : rawPrompt;
+  const promptTemplateBeforeAutoMotion = promptDraft().trim();
   const promptIntent = currentPromptIntent();
   if (promptIntent && offerPromptIntentGuide(promptIntent)) return;
   if (contextualGuide?.id === 'first-image-generate' && prompt === FIRST_IMAGE_TUTORIAL_PROMPT) {
@@ -16509,6 +16604,17 @@ $('#generateBtn').addEventListener('click', async () => {
       return toast('SCAIL 2 needs a motion video — attach the clip whose movement you want to copy', true);
     }
     if (!(await ensureGenerationSetup())) return;
+    let preparedAutoMotionPrompt = false;
+    if (autoMotionPrompt) {
+      setGenerating(true, 'Enhancing motion prompt…');
+      const prepared = await createMotionPromptFromFirstFrame({ automatic: true });
+      if (!prepared) {
+        setGenerating(false);
+        return;
+      }
+      prompt = cameraMotionPromptForEngine(prepared);
+      preparedAutoMotionPrompt = true;
+    }
     let vidAudioName;
     if (state.vidAudio && (state.vidEngine === 'ltx' || state.vidEngine === 'eros')) {
       try { vidAudioName = await ensureAudioUploaded(state.vidAudio); }
@@ -16519,10 +16625,11 @@ $('#generateBtn').addEventListener('click', async () => {
     const batch = Math.max(1, Math.min(8, Number($('#batchInput').value) || 1));
     const body = {
       prompt,
-      promptTemplate: promptDraft().trim() || undefined,
+      promptTemplate: promptTemplateBeforeAutoMotion || undefined,
       promptPresets: promptPresetMetadataForGeneration(),
       negativePrompt: negativePromptForGeneration(),
-      autoMotionPrompt,
+      autoMotionPrompt: autoMotionPrompt && !preparedAutoMotionPrompt,
+      preparedMotionPrompt: preparedAutoMotionPrompt,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
       enhance: ltxEdit || state.vidEngine === 'h3' ? false : state.enhance,
@@ -16569,13 +16676,10 @@ $('#generateBtn').addEventListener('click', async () => {
     };
     try {
       setGenerating(true, 'Queued…');
-      state.motionPromptRequestsPending += autoMotionPrompt ? batch : 0;
-      $('#genLbl').textContent = genLabel();
       const requests = Array.from({ length: batch }, (_, index) => Object.assign({}, body, {
         seed: baseSeed == null ? undefined : baseSeed + index,
       }));
-      const results = await Promise.all(requests.map(async (request) => {
-        try {
+      const settled = await Promise.allSettled(requests.map(async (request) => {
           const result = await api('/api/animate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -16583,14 +16687,16 @@ $('#generateBtn').addEventListener('click', async () => {
           });
           state.activeJobs.add(result.jobId);
           return result;
-        } finally {
-          if (request.autoMotionPrompt) state.motionPromptRequestsPending = Math.max(0, state.motionPromptRequestsPending - 1);
-          $('#genLbl').textContent = genLabel();
-        }
       }));
+      const results = settled.filter((result) => result.status === 'fulfilled').map((result) => result.value);
+      const failures = settled.filter((result) => result.status === 'rejected');
+      if (!results.length && failures.length) throw failures[0].reason;
       $('#genLbl').textContent = genLabel();
       queueRefreshSoon();
-      if (results.length > 1) toast(`${results.length} videos queued`);
+      if (failures.length) {
+        const detail = failures[0].reason && failures[0].reason.message ? ` · ${failures[0].reason.message}` : '';
+        toast(`${results.length} queued · ${failures.length} failed${detail}`, true);
+      } else if (results.length > 1) toast(`${results.length} videos queued`);
     } catch (e) {
       setGenerating(false);
       if (!isJobCancellation(e)) toast(e.message, true);

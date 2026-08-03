@@ -6761,6 +6761,7 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   .prompt-assistant-actions { grid-template-columns: .64fr 1.36fr; }
 }
 .video-prompt-tools { align-items: center; }
+.video-revise-prompt,
 .video-camera-motion-trigger {
   min-height: 38px;
   display: inline-flex;
@@ -6769,6 +6770,7 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   padding: 8px 12px;
   transition: color 180ms var(--ease), border-color 180ms var(--ease), background 180ms var(--ease), transform 150ms var(--ease);
 }
+.video-revise-prompt svg { flex: 0 0 auto; }
 .video-camera-motion-trigger svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .video-camera-motion-trigger:active { transform: scale(.97); }
 .video-camera-motion-trigger.active {

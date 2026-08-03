@@ -29,7 +29,7 @@ test('SCAIL hides Camera Motion without removing it from the other video engines
   assert.match(indexHtml, /id="videoPromptTools"[^>]*>[\s\S]*id="videoCameraMotionBtn"/);
   assert.match(
     appJs,
-    /\$\('#videoPromptTools'\)\.hidden = !isVideo \|\| state\.vidEngine === 'scail' \|\| state\.vidEngine === 'h3'/
+    /\$\('#videoCameraMotionBtn'\)\.hidden = !isVideo \|\| state\.vidEngine === 'scail' \|\| state\.vidEngine === 'h3'/
   );
   assert.match(appJs, /function cameraMotionAvailableForEngine\(engine = state\.vidEngine\) \{\s*return !\['h3', 'scail'\]\.includes\(engine\);\s*\}/);
   assert.match(appJs, /function openCameraMotionPicker\(\) \{\s*if \(!CameraMotion \|\| !cameraMotionAvailableForEngine\(\)\) return;/);
@@ -42,7 +42,7 @@ test('SCAIL generation requests do not submit saved Camera Motion selections', (
   );
   assert.match(appJs, /cameraMotions: cameraMotionsForEngine\(\)/);
   assert.match(appJs, /function cameraMotionPromptForEngine\(prompt, engine = state\.vidEngine\)[\s\S]{0,300}CameraMotion\.stripCameraMotionPhrase\(source, state\.videoCameraMotionPhrase\)/);
-  assert.match(appJs, /const prompt = state\.view === 'video' \? cameraMotionPromptForEngine\(rawPrompt\) : rawPrompt/);
+  assert.match(appJs, /let prompt = state\.view === 'video' \? cameraMotionPromptForEngine\(rawPrompt\) : rawPrompt/);
 });
 
 test('the animate endpoint defensively ignores Camera Motion from legacy SCAIL clients', () => {

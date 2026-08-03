@@ -7,11 +7,14 @@ const {
   CREATIVE_RESOLUTION_INSTRUCTION,
   REGIONAL_PROMPT_INSTRUCTION,
   ENHANCE_TAIL,
+  H3_PROMPT_CRAFT_INSTRUCTION,
   H3_MOTION_INSTRUCTION,
   cleanGeneratedPrompt,
+  h3TimelineGuidance,
   motionPromptEnhanceParts,
   promptEnhanceParts,
   regionPromptEnhanceParts,
+  videoPromptRevisionParts,
 } = require('../lib/prompt-enhance');
 
 test('creative enhancement resolves abstract requests into visible scenes', () => {
@@ -74,9 +77,32 @@ test('H3 first-frame motion enhancement requests chronological motion and native
   });
 
   assert.match(H3_MOTION_INSTRUCTION, /chronological/i);
-  assert.match(H3_MOTION_INSTRUCTION, /native audio/i);
-  assert.match(H3_MOTION_INSTRUCTION, /never invent speech/i);
-  assert.match(parts.instruction, /Requested duration: 12 seconds/);
+  assert.match(H3_MOTION_INSTRUCTION, /native stereo audio/i);
+  assert.match(H3_MOTION_INSTRUCTION, /never invent dialogue/i);
+  assert.match(H3_PROMPT_CRAFT_INSTRUCTION, /timestamped storyboard beats/i);
+  assert.match(parts.instruction, /Duration plan for 12 seconds/);
+  assert.match(parts.instruction, /up to four distinct camera angles and three motivated cuts/i);
   assert.match(parts.userInput, /<user_motion_idea>\nThe character waves, then turns toward the window\.\n<\/user_motion_idea>/);
   assert.ok(parts.userInput.endsWith(ENHANCE_TAIL));
+});
+
+test('H3 prompt planning scales cuts to duration instead of overstuffing short clips', () => {
+  assert.match(h3TimelineGuidance(5), /one continuous shot/i);
+  assert.match(h3TimelineGuidance(5), /3-4 very short timestamped shots/i);
+  assert.match(h3TimelineGuidance(10), /2-4 timestamped storyboard beats/i);
+  assert.match(h3TimelineGuidance(15), /3-5 timestamped storyboard beats/i);
+});
+
+test('video prompt revision preserves H3 reference tags and adds duration-aware shot craft', () => {
+  const parts = videoPromptRevisionParts(
+    'Use <Picture 1> as the hero and <Audio 1> as the soundtrack.',
+    'Add a low-angle reveal after the close-up.',
+    { engine: 'h3', seconds: 10, mode: 'reference', hasImage: true },
+  );
+
+  assert.match(parts.instruction, /source image is attached/i);
+  assert.match(parts.instruction, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
+  assert.match(parts.instruction, /up to three distinct camera angles and two motivated cuts/i);
+  assert.match(parts.userInput, /<current_prompt>[\s\S]*<Picture 1>[\s\S]*<Audio 1>[\s\S]*<\/current_prompt>/);
+  assert.match(parts.userInput, /<change_request>[\s\S]*low-angle reveal[\s\S]*<\/change_request>/);
 });
