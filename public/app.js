@@ -15371,9 +15371,6 @@ function renderH3References() {
       const role = document.createElement('span');
       role.className = 'ref-role';
       role.textContent = `${tag.replace(/[<>]/g, '')}${extraTag ? ` · ${extraTag.replace(/[<>]/g, '')}` : ''}`;
-      const name = document.createElement('span');
-      name.className = 'h3-reference-name';
-      name.textContent = asset.label || asset.name;
       const remove = document.createElement('button');
       remove.className = 'ref-x';
       remove.type = 'button';
@@ -15383,7 +15380,7 @@ function renderH3References() {
         event.stopPropagation();
         removeH3Reference(kind, index);
       });
-      slot.append(role, name, remove);
+      slot.append(role, remove);
       slot.setAttribute('aria-label', `${role.textContent}, ${asset.label || asset.name}`);
     } else {
       slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');

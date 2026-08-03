@@ -401,6 +401,7 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /<(?:\(\?:)?Picture\|Video\|Audio\) \\\\d\+>/);
   assert.match(app, /state\.view === 'edit' \|\| h3ReferenceModeActive\(\)[\s\S]{0,100}event\.data === '@'/);
   assert.match(app, /function renderPromptMentionPicker\(\)[\s\S]{0,760}h3PromptReferenceEntries\(\)/);
+  assert.doesNotMatch(app, /h3-reference-name/);
   assert.match(css, /\.h3-reference-grid \.ref-slot/);
   assert.match(css, /\.video-input-grid\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.prompt-h3-audio/);

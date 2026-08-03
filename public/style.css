@@ -1708,22 +1708,6 @@ html:-webkit-full-screen { background: #000; }
   color: #d9d3ff;
   font-size: 8px;
 }
-.h3-reference-grid .h3-reference-name {
-  position: absolute;
-  left: 7px;
-  right: 7px;
-  bottom: 7px;
-  z-index: 2;
-  overflow: hidden;
-  padding: 18px 7px 6px;
-  border-radius: 8px;
-  background: linear-gradient(transparent, rgba(0,0,0,.82));
-  color: rgba(255,255,255,.88);
-  font-size: 9px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .h3-reference-grid .h3-reference-audio-art {
   width: 46px;
   height: 46px;
