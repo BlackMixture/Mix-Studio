@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.1.0 - 2026-08-03
+
+- Added MiniMax H3 text-to-video, image-to-video, first/last-frame, and native-audio generation through ComfyUI's day-zero native nodes.
+- Added H3 Reference mode for prompt-addressable image, video, and audio inputs. Its separate Ref2VA model installs only when Reference mode is selected, so standard H3 users do not download it.
 - Kept LoRA sliders and hold-drag strength controls within the practical `0–2` range while retaining exact manual entry from `-100` to `100`.
 - Made Mix Packs available from Create, Edit, and video prompt fields, including preset-card persistence, gallery metadata, and image or video documentation exports.
 - Fixed desktop Image Guide and Depth Guide actions so they open the complete Create Image workspace instead of entering an invalid partial view.

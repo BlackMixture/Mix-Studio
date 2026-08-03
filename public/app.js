@@ -77,7 +77,7 @@ const state = {
   editEngine: 'klein9',
   editEngineOrder: [...DEFAULT_EDIT_ENGINE_ORDER],
   editEngineDefault: 'klein9',
-  videoEngineOrder: ['ltx', 'ltx-edit', 'eros', 'wan', 'scail'],
+  videoEngineOrder: ['ltx', 'h3', 'ltx-edit', 'eros', 'wan', 'scail'],
   videoEngineDefault: 'ltx',
   appRelease: { version: '', releasedAt: null, revision: '', instanceId: '' },
   officialRelease: null,
@@ -123,6 +123,9 @@ const state = {
   kreaMaskPreviewCutout: false,
   kreaMaskViewMode: 'dim',
   vidRef: null,              // {name, url, w, h} - Video tab source image
+  vidH3Mode: 'frames',       // frames | reference
+  vidH3RefImageSize: 'match',
+  vidH3References: { images: [], videos: [], audios: [] },
   directorOpen: false,
   directorProject: null,
   directorComposerMode: 'timeline',
@@ -233,7 +236,7 @@ const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref', krea2remix: 'edit.krea2remix' };
-const VIDEO_FEATURES = { ltx: 'video.ltx', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
+const VIDEO_FEATURES = { ltx: 'video.ltx', h3: 'video.h3', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
 const VIDEO_ENGINES = Object.keys(VIDEO_FEATURES);
 
 function normalizeEngineOrder(order, engines) {
@@ -2357,6 +2360,10 @@ function saveForm() {
       editAutomaticLoras: state.editAutomaticLoras,
       loraTriggers: state.loraTriggers,
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
+      vidH3Mode: state.vidH3Mode,
+      vidH3RefImageSize: state.vidH3RefImageSize,
+      vidH3References: Object.fromEntries(Object.entries(h3References())
+        .map(([kind, assets]) => [kind, assets.map(serializeWorkspaceAsset).filter(Boolean)])),
       editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
       videoEngineOrder: state.videoEngineOrder, videoEngineDefault: state.videoEngineDefault,
@@ -2595,6 +2602,13 @@ function loadForm() {
     state.promptAssistantUseSource = f.promptAssistantUseSource !== false;
     state.editRefSlots = Math.max(1, state.refs.reduce((count, ref, index) => ref ? Math.max(count, index + 1) : count, 1));
     state.vidRef = restoreWorkspaceAsset(f.vidRef);
+    state.vidH3Mode = f.vidH3Mode === 'reference' ? 'reference' : 'frames';
+    state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
+    state.vidH3References = Object.fromEntries(['images', 'videos', 'audios'].map((kind) => [
+      kind,
+      (Array.isArray(f.vidH3References?.[kind]) ? f.vidH3References[kind] : [])
+        .map(restoreWorkspaceAsset).filter(Boolean),
+    ]));
     state.vidEnd = restoreWorkspaceAsset(f.vidEnd);
     state.vidDrive = restoreWorkspaceAsset(f.vidDrive);
     state.vidFace = restoreWorkspaceAsset(f.vidFace);
@@ -3472,7 +3486,13 @@ function updateVideoPanels() {
   promptPanel.classList.toggle('scail-input-first', scailInputFirst);
   $('#promptLabel').textContent = isRegion ? 'Global prompt' : (scailInputFirst ? 'Creative direction · optional' : 'Prompt');
   $('#promptComposer').dataset.placeholder = isVideo
-    ? (state.vidEngine === 'ltx-edit' ? 'Describe the edit…' : (state.vidEngine === 'scail' ? 'Optional — add style or motion direction…' : 'Describe the motion…'))
+    ? (state.vidEngine === 'ltx-edit'
+      ? 'Describe the edit…'
+      : (state.vidEngine === 'scail'
+        ? 'Optional — add style or motion direction…'
+        : (state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
+          ? 'Use <Picture 1>, <Video 1>, or <Audio 1>, then describe the video and sound…'
+          : 'Describe the motion and sound…')))
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
       : (state.view === 'edit'
@@ -3485,7 +3505,7 @@ function updateVideoPanels() {
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidScailModeRow').hidden = !(isVideo && state.vidEngine === 'scail');
   renderScailChunkControls();
-  $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
+  $('#enhanceBtn').hidden = isVideo && ['ltx-edit', 'h3'].includes(state.vidEngine);
   if (!supportsCurrentEditAngles()) state.qwenAnglesMode = false;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || hasEditMask();
   renderQwenAngleTool();
@@ -3496,10 +3516,11 @@ function updateVideoPanels() {
   renderEditSequence();
   regionWorkspace.hidden = !isRegion;
   if (!isRegion) setRegionResolutionExpanded(false);
-  $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail' || state.vidEngine === 'ltx-edit';
+  $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail'
+    || state.vidEngine === 'ltx-edit' || (state.vidEngine === 'h3' && state.vidH3Mode === 'reference');
   $('#createPromptTools').hidden = state.view !== 'create';
   $('#cameraPromptBtn').hidden = false;
-  $('#videoPromptTools').hidden = !isVideo || state.vidEngine === 'scail';
+  $('#videoPromptTools').hidden = !isVideo || state.vidEngine === 'scail' || state.vidEngine === 'h3';
   syncCameraMotionTool();
   renderKrea2Mode();
   renderCreateImageGuide();
@@ -3510,7 +3531,7 @@ function updateVideoPanels() {
   renderEditUpscale();
   renderKreaMaskTools();
   $('#resPanel').hidden = state.view === 'edit'
-    || (isVideo && !!state.vidRef)
+    || (isVideo && !!state.vidRef && !(state.vidEngine === 'h3' && state.vidH3Mode === 'reference'))
     || (isRegion && !useSharedRegionResolution);
   $('.region-resolution-picker').hidden = useSharedRegionResolution;
   if (useSharedRegionResolution) setRegionResolutionExpanded(false);
@@ -3521,6 +3542,7 @@ function updateVideoPanels() {
   $('#videoAdvancedNote').hidden = !isVideo;
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
+  $('#loraPanel').closest('.panel').hidden = isVideo && state.vidEngine === 'h3';
   renderLoras();
   schedulePromptIntentHint();
 }
@@ -9495,7 +9517,7 @@ function cameraMotionReferenceSelected() {
 }
 
 function cameraMotionAvailableForEngine(engine = state.vidEngine) {
-  return engine !== 'scail';
+  return !['h3', 'scail'].includes(engine);
 }
 
 function cameraMotionsForEngine(engine = state.vidEngine) {
@@ -11319,6 +11341,12 @@ const VIDEO_ENGINE_TASKS = {
     detail: 'Text or image + audio',
     copy: 'Create from a prompt or first frame, with native audio and Face ID.',
     preview: { type: 'video', src: '/guides/ltx-motorcycle-highway.mp4' },
+  },
+  h3: {
+    task: 'Omni Video', model: 'MiniMax H3',
+    detail: 'Text, frames, references + stereo audio',
+    copy: 'Generate video and synced audio together from text, keyframes, or multimodal references.',
+    preview: { type: 'motion', tone: 'h3' },
   },
   'ltx-edit': {
     task: 'Video Editing', model: 'LTX Edit',
@@ -13977,6 +14005,10 @@ function videoDurationMax(engine) {
   return 15;
 }
 
+function videoDurationMin(engine) {
+  return engine === 'h3' ? 5 : 1;
+}
+
 const videoDurationInteraction = {
   pointerId: null,
   startX: 0,
@@ -13993,7 +14025,7 @@ const videoDurationInteraction = {
 };
 
 function clampVideoDurationInput(input, engine, { preserveRange = false } = {}) {
-  const min = Number(input.dataset.fullMin) || 1;
+  const min = videoDurationMin(engine);
   const step = Math.max(0.001, Number(input.dataset.fullStep) || Number(input.step) || 1);
   const rawMax = videoDurationMax(engine);
   const maxSteps = Math.max(0, Math.floor(((rawMax - min) / step) + 1e-8));
@@ -14740,12 +14772,12 @@ function pickRef(idx) {
 async function sendToVideoTab(item, role = 'start') {
   try {
     const enabled = supportedVideoEngines();
-    if (role === 'end' && !['ltx', 'eros'].includes(state.vidEngine)) {
-      const endEngine = ['ltx', 'eros'].find((engine) => enabled.includes(engine));
-      if (!endEngine) throw new Error('Enable LTX 2.3 or 10Eros to use a gallery image as the last frame');
+    if (role === 'end' && !['ltx', 'h3', 'eros'].includes(state.vidEngine)) {
+      const endEngine = ['ltx', 'h3', 'eros'].find((engine) => enabled.includes(engine));
+      if (!endEngine) throw new Error('Enable MiniMax H3, LTX 2.3, or 10Eros to use a gallery image as the last frame');
       state.vidEngine = endEngine;
     } else if (role === 'start' && state.vidEngine === 'ltx-edit') {
-      state.vidEngine = ['ltx', 'eros', 'wan', 'scail'].find((engine) => enabled.includes(engine)) || state.vidEngine;
+      state.vidEngine = ['ltx', 'h3', 'eros', 'wan', 'scail'].find((engine) => enabled.includes(engine)) || state.vidEngine;
     }
     const blob = await (await fetch('/images/' + item.file)).blob();
     const buf = await blob.arrayBuffer();
@@ -15022,11 +15054,145 @@ $('#denoiseInput').addEventListener('input', () => {
 });
 
 /* Video tab: inline source-image attachment */
+function h3References() {
+  if (!state.vidH3References || typeof state.vidH3References !== 'object') {
+    state.vidH3References = { images: [], videos: [], audios: [] };
+  }
+  for (const kind of ['images', 'videos', 'audios']) {
+    if (!Array.isArray(state.vidH3References[kind])) state.vidH3References[kind] = [];
+  }
+  return state.vidH3References;
+}
+
+function insertH3ReferenceTag(tag) {
+  const current = promptDraft();
+  setPromptDraft(`${current}${current && !/\s$/.test(current) ? ' ' : ''}${tag} `);
+  $('#promptComposer').focus({ preventScroll: true });
+  saveForm();
+}
+
+function renderH3References() {
+  const h3 = state.vidEngine === 'h3';
+  const referenceMode = h3 && state.vidH3Mode === 'reference';
+  $('#vidH3ModePanel').hidden = !h3;
+  $('#vidH3ReferencePanel').hidden = !referenceMode;
+  $('#vidStandardInputs').hidden = referenceMode;
+  $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => {
+    const active = button.dataset.h3Mode === state.vidH3Mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => {
+    const active = button.dataset.h3RefSize === state.vidH3RefImageSize;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('#vidH3ModeCopy').textContent = referenceMode
+    ? 'Guide identity, style, motion, camera, or voice with images, videos, and audio. H3 generates synced stereo audio.'
+    : 'Create from text, an optional first frame, or optional first and last frames. H3 generates synced stereo audio.';
+
+  const refs = h3References();
+  const list = $('#vidH3ReferenceList');
+  list.replaceChildren();
+  let audioIndex = 0;
+  const append = (kind, asset, index, tag, extraTag = '') => {
+    const item = document.createElement('div');
+    item.className = 'h3-reference-item';
+    const preview = document.createElement('span');
+    preview.className = 'h3-reference-preview';
+    if (kind === 'images') {
+      const image = document.createElement('img');
+      image.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
+      image.alt = '';
+      preview.appendChild(image);
+    } else if (kind === 'videos') {
+      const video = document.createElement('video');
+      video.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      preview.appendChild(video);
+    } else {
+      preview.textContent = '♫';
+    }
+    const copy = document.createElement('span');
+    copy.className = 'h3-reference-copy';
+    const label = document.createElement('b');
+    label.textContent = asset.label || asset.name;
+    const tags = document.createElement('span');
+    tags.className = 'h3-reference-tags';
+    [tag, extraTag].filter(Boolean).forEach((value) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'h3-reference-tag';
+      button.textContent = value;
+      button.addEventListener('click', () => insertH3ReferenceTag(value));
+      tags.appendChild(button);
+    });
+    copy.append(label, tags);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'h3-reference-remove';
+    remove.setAttribute('aria-label', `Remove ${asset.label || 'reference'}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      refs[kind].splice(index, 1);
+      renderH3References();
+      saveForm();
+    });
+    item.append(preview, copy, remove);
+    list.appendChild(item);
+  };
+  refs.images.forEach((asset, index) => append('images', asset, index, `<Picture ${index + 1}>`));
+  refs.videos.forEach((asset, index) => {
+    const audioTag = asset.hasAudio ? `<Audio ${++audioIndex}>` : '';
+    append('videos', asset, index, `<Video ${index + 1}>`, audioTag);
+  });
+  refs.audios.forEach((asset, index) => append('audios', asset, index, `<Audio ${++audioIndex}>`));
+  $('#vidH3AddImages').disabled = refs.images.length >= 9;
+  $('#vidH3AddVideo').disabled = refs.videos.length >= 3;
+  $('#vidH3AddAudio').disabled = refs.audios.length >= 3;
+}
+
+$$('#vidH3ModeRow [data-h3-mode]').forEach((button) => button.addEventListener('click', () => {
+  state.vidH3Mode = button.dataset.h3Mode === 'reference' ? 'reference' : 'frames';
+  renderVidAttach();
+  updateVideoPanels();
+  saveForm();
+}));
+$$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => button.addEventListener('click', () => {
+  state.vidH3RefImageSize = button.dataset.h3RefSize === 'max' ? 'max' : 'match';
+  renderH3References();
+  saveForm();
+}));
+$('#vidH3AddImages').addEventListener('click', () => {
+  pickUpload('image/*', (assets) => {
+    const values = Array.isArray(assets) ? assets : [assets];
+    h3References().images.push(...values.slice(0, 9 - h3References().images.length));
+    renderH3References();
+    saveForm();
+  }, 'Choose H3 reference images', { multiple: true });
+});
+$('#vidH3AddVideo').addEventListener('click', () => {
+  pickUpload('video/*', (asset) => {
+    if (h3References().videos.length < 3) h3References().videos.push(asset);
+    renderH3References();
+    saveForm();
+  }, 'Choose H3 reference video');
+});
+$('#vidH3AddAudio').addEventListener('click', () => {
+  pickUpload('audio/*', (asset) => {
+    if (h3References().audios.length < 3) h3References().audios.push(asset);
+    renderH3References();
+    saveForm();
+  }, 'Choose H3 reference audio');
+});
+
 function renderVidAttach() {
   const has = !!state.vidRef;
   const editAnything = state.vidEngine === 'ltx-edit';
   const scail = state.vidEngine === 'scail';
-  const canSuggestMotion = !editAnything && !scail && has;
+  const canSuggestMotion = !editAnything && !scail && state.vidEngine !== 'h3' && has;
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
   $('#vidMotionPromptRow').hidden = !canSuggestMotion;
@@ -15036,13 +15202,14 @@ function renderVidAttach() {
     $('#vidAttachDims').textContent = `${state.vidRef.w} × ${state.vidRef.h}`;
   }
   if (typeof updateSwapChip === 'function') updateSwapChip();
+  renderH3References();
   renderVidFace();
   schedulePromptIntentHint();
 }
 
 function syncVideoAutoMotionUi() {
   const armed = state.vidAutoMotionPrompt && !!state.vidRef
-    && !['ltx-edit', 'scail'].includes(state.vidEngine);
+    && !['h3', 'ltx-edit', 'scail'].includes(state.vidEngine);
   const toggle = $('#vidAutoMotionToggle');
   const action = $('#vidMotionPromptBtn');
   const label = $('#vidMotionPromptLabel');
@@ -15063,6 +15230,7 @@ function syncVideoAutoMotionUi() {
 /* LTX Face ID: a reference face whose identity drives a text-to-video gen */
 function renderVidFace() {
   const ltx = state.vidEngine === 'ltx';
+  const h3 = state.vidEngine === 'h3';
   const ltxEdit = state.vidEngine === 'ltx-edit';
   const ltxFamily = ltx || ltxEdit;
   const has = !!state.vidFace;
@@ -15083,8 +15251,10 @@ function renderVidFace() {
   // RIFE can smooth any LTX, Wan, or SCAIL output. Motion freedom stays
   // specific to standard LTX only.
   const wanOrScail = state.vidEngine === 'wan' || state.vidEngine === 'scail';
-  $('#vidFpsRow').hidden = !(ltxFamily || wanOrScail);
-  $('#vidFreeField').hidden = wanOrScail || ltxEdit || faceMode;
+  $('#vidFpsRow').hidden = h3 || !(ltxFamily || wanOrScail);
+  $('#vidFreeField').hidden = h3 || wanOrScail || ltxEdit || faceMode;
+  $('#vidAudioChip').hidden = h3;
+  $('#vidAudioTrim').hidden = h3 || !state.vidAudio;
   renderVideoFpsChoices();
   // Face ID + audio = frozen-audio lipsync: the joint AV denoise conforms the
   // face to the locked recording. Make the audio chip say so.
@@ -15968,18 +16138,19 @@ function wireEngineRow(rowId, noteWork) {
 }
 wireEngineRow('vidEngineRow', (engine) => {
   state.vidEngine = engine;
+  const h3 = engine === 'h3';
   const wan = engine === 'wan';
   const scail = engine === 'scail';
   const ltxEdit = engine === 'ltx-edit';
   const ltxFamily = engine === 'ltx' || ltxEdit;
-  $('#vidFreeField').hidden = wan || scail || ltxEdit;
+  $('#vidFreeField').hidden = h3 || wan || scail || ltxEdit;
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
-  $('#vidFpsRow').hidden = !(ltxFamily || wan || scail);
-  $('#vidExtras').hidden = wan || scail || ltxEdit;
+  $('#vidFpsRow').hidden = h3 || !(ltxFamily || wan || scail);
+  $('#vidExtras').hidden = wan || scail || ltxEdit || (h3 && state.vidH3Mode === 'reference');
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
-  $('#enhanceBtn').hidden = ltxEdit;
+  $('#enhanceBtn').hidden = ltxEdit || h3;
   renderScailChunkControls();
   syncVideoDurationLimit();
   renderVidDrive();
@@ -16003,11 +16174,14 @@ $('#directorModelOption').addEventListener('click', () => {
 });
 wireEngineRow('animEngineRow', (engine) => {
   state.animEngine = engine;
+  const h3 = engine === 'h3';
   const wan = engine === 'wan';
-  $('#animFreeField').hidden = wan;
+  $('#animFreeField').hidden = wan || h3;
   $('#animQuality').hidden = !wan;
   $('#animSigmaRow').hidden = engine !== 'eros';
   $('#animExtras').hidden = wan;
+  $('#animAudioChip').hidden = h3;
+  $('#animEnhance').hidden = h3;
   syncAnimateDurationLimit();
 });
 wireEngineRow('editEngineRow', (engine) => {
@@ -16058,7 +16232,7 @@ $('#generateBtn').addEventListener('click', async () => {
   const autoMotionPrompt = state.view === 'video'
     && state.vidAutoMotionPrompt
     && !!state.vidRef
-    && !['ltx-edit', 'scail'].includes(state.vidEngine);
+    && !['h3', 'ltx-edit', 'scail'].includes(state.vidEngine);
   const promptOptional = (state.view === 'video' && (state.vidEngine === 'scail' || autoMotionPrompt)) || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
@@ -16071,7 +16245,12 @@ $('#generateBtn').addEventListener('click', async () => {
       return toast(capability.reason || 'This video model is not supported on the connected generation device.', true);
     }
     const ltxEdit = state.vidEngine === 'ltx-edit';
-    if (!ltxEdit && state.vidEngine !== 'ltx' && !state.vidRef) {
+    const h3Reference = state.vidEngine === 'h3' && state.vidH3Mode === 'reference';
+    const h3ReferenceCount = Object.values(h3References()).reduce((count, assets) => count + assets.length, 0);
+    if (h3Reference && !h3ReferenceCount) {
+      return toast('MiniMax H3 Reference mode needs at least one image, video, or audio reference', true);
+    }
+    if (!ltxEdit && !['ltx', 'h3'].includes(state.vidEngine) && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
       return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 for text-to-video`, true);
     }
@@ -16098,7 +16277,7 @@ $('#generateBtn').addEventListener('click', async () => {
       autoMotionPrompt,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
-      enhance: ltxEdit ? false : state.enhance,
+      enhance: ltxEdit || state.vidEngine === 'h3' ? false : state.enhance,
       fourK: $('#vid4k').classList.contains('active'),
       fast: !$('#vidQuality').classList.contains('active'),
       motionFreedom: Number($('#vidFree').value),
@@ -16109,8 +16288,14 @@ $('#generateBtn').addEventListener('click', async () => {
       scailStableTracking: state.vidEngine === 'scail' ? state.vidScailStableTracking !== false : undefined,
       scailChunkFrames: state.vidEngine === 'scail' ? state.vidScailChunkFrames : undefined,
       scailChunkOverlap: state.vidEngine === 'scail' ? state.vidScailChunkOverlap : undefined,
-      sourceItemId: state.vidRef ? state.vidRef.srcItemId : undefined,
-      loras: state.videoLoras,
+      sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
+      loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
+      h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
+      h3RefImageSize: h3Reference ? state.vidH3RefImageSize : undefined,
+      h3References: h3Reference ? Object.fromEntries(Object.entries(h3References()).map(([kind, assets]) => [
+        kind,
+        assets.map((asset) => ({ name: asset.name, label: asset.label || '', hasAudio: asset.hasAudio === true })),
+      ])) : undefined,
       cameraMotions: cameraMotionsForEngine(),
       cameraGuideVideoName: cameraMotionReferenceActive() && state.videoCameraGuide ? state.videoCameraGuide.name : undefined,
       cameraGuideStartSeconds: cameraMotionReferenceActive() && state.videoCameraGuide
@@ -16124,10 +16309,14 @@ $('#generateBtn').addEventListener('click', async () => {
       driveStartSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.trimStart || 0 : undefined,
       driveDurSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive && state.vidDrive.dur
         ? Math.max(0.5, (state.vidDrive.trimEnd || state.vidDrive.dur) - (state.vidDrive.trimStart || 0)) : undefined,
-      endImageName: state.vidEnd ? state.vidEnd.name : undefined,
-      imageName: state.vidRef ? state.vidRef.name : undefined,
-      width: ltxEdit && state.vidDrive ? (state.vidDrive.w || state.width) : (state.vidRef ? state.vidRef.w : state.width),
-      height: ltxEdit && state.vidDrive ? (state.vidDrive.h || state.height) : (state.vidRef ? state.vidRef.h : state.height),
+      endImageName: state.vidEnd && !h3Reference ? state.vidEnd.name : undefined,
+      imageName: state.vidRef && !h3Reference ? state.vidRef.name : undefined,
+      width: ltxEdit && state.vidDrive
+        ? (state.vidDrive.w || state.width)
+        : (!h3Reference && state.vidRef ? state.vidRef.w : state.width),
+      height: ltxEdit && state.vidDrive
+        ? (state.vidDrive.h || state.height)
+        : (!h3Reference && state.vidRef ? state.vidRef.h : state.height),
       seed: baseSeed,
     };
     try {
@@ -17440,6 +17629,7 @@ function videoEngineLabel(engine, info) {
   if (info?.workflow === 'director') return 'LTX 2.3 Director';
   return {
     ltx: 'LTX 2.3',
+    h3: 'MiniMax H3',
     'ltx-edit': 'LTX Edit',
     eros: '10Eros DMD',
     wan: 'Wan 2.2',
@@ -17878,6 +18068,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
+  'vidH3Mode', 'vidH3RefImageSize', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -18029,6 +18220,9 @@ function resetActiveGenerationForm() {
     renderQwenAngleTool();
   } else if (mode === 'video') {
     state.vidRef = null;
+    state.vidH3Mode = 'frames';
+    state.vidH3RefImageSize = 'match';
+    state.vidH3References = { images: [], videos: [], audios: [] };
     state.vidEnd = null;
     state.vidDrive = null;
     state.vidFace = null;
@@ -22759,7 +22953,7 @@ $('#animateGo').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    toast('Video queued — LTX 2.3');
+    toast(`Video queued — ${videoEngineLabel(state.animEngine)}`);
   } catch (e) {
     state.animating.delete(it.id);
     renderGrid();
@@ -23267,7 +23461,7 @@ async function reuseItem(it, useEnhanced) {
 async function reuseVideo(it, v) {
   const options = arguments[2] || {};
   const info = v.info || {};
-  const engine = ['wan', 'eros', 'scail'].includes(info.engine) ? info.engine : 'ltx';
+  const engine = ['h3', 'wan', 'eros', 'scail'].includes(info.engine) ? info.engine : 'ltx';
   if (state.directorOpen && !(info.workflow === 'director' && info.directorProject)) closeDirectorMode();
   if (!options.preserveLightbox) closeLightbox();
   setView('video');
@@ -23305,6 +23499,9 @@ async function reuseVideo(it, v) {
 
   // Clear current attachments + their UI
   state.vidRef = null;
+  state.vidH3Mode = engine === 'h3' && info.h3Mode === 'reference' ? 'reference' : 'frames';
+  state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
+  state.vidH3References = { images: [], videos: [], audios: [] };
   state.vidEnd = null;
   state.vidDrive = null;
   state.vidFace = null;
@@ -23335,9 +23532,10 @@ async function reuseVideo(it, v) {
   // Prompt + toggles
   const reusedCameraMotions = CameraMotion ? CameraMotion.normalizeCameraMotions(info.cameraMotions) : [];
   const reusedCameraMotionPhrase = CameraMotion ? CameraMotion.cameraMotionPhrase(reusedCameraMotions) : '';
-  state.videoCameraMotions = engine === 'scail' ? [] : reusedCameraMotions;
-  state.videoCameraMotionPhrase = engine === 'scail' ? '' : reusedCameraMotionPhrase;
-  state.prompts.video = engine === 'scail' && CameraMotion
+  const canReuseCameraMotion = cameraMotionAvailableForEngine(engine);
+  state.videoCameraMotions = canReuseCameraMotion ? reusedCameraMotions : [];
+  state.videoCameraMotionPhrase = canReuseCameraMotion ? reusedCameraMotionPhrase : '';
+  state.prompts.video = !canReuseCameraMotion && CameraMotion
     ? CameraMotion.stripCameraMotionPhrase(info.motionPrompt || '', reusedCameraMotionPhrase)
     : (info.motionPrompt || '');
   setPromptDraft(state.prompts.video);
@@ -23374,7 +23572,7 @@ async function reuseVideo(it, v) {
   };
 
   // Source image
-  if (!info.t2v) {
+  if (!info.t2v && !(engine === 'h3' && state.vidH3Mode === 'reference')) {
     try {
       if (it.mode !== 'video') {
         // grouped under a real image item -> reuse the item image (keeps grouping)
@@ -23403,6 +23601,23 @@ async function reuseVideo(it, v) {
     state.height = info.height || 1280;
     renderAspects();
     renderDims();
+  }
+
+  if (engine === 'h3' && state.vidH3Mode === 'reference' && info.h3References) {
+    for (const kind of ['images', 'videos', 'audios']) {
+      for (const asset of Array.isArray(info.h3References[kind]) ? info.h3References[kind] : []) {
+        try {
+          const blob = await inputBlob(asset.name);
+          if (!reuseRequestCurrent(options)) return;
+          state.vidH3References[kind].push({
+            name: asset.name,
+            label: asset.label || `reused ${kind.slice(0, -1)} reference`,
+            hasAudio: asset.hasAudio === true,
+            url: URL.createObjectURL(blob),
+          });
+        } catch { missing.push(`H3 ${kind.slice(0, -1)} reference`); }
+      }
+    }
   }
 
   // Audio (already trimmed at original upload -> reused as-is, no re-upload)
@@ -25160,6 +25375,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
+  'setH3Unet', 'setH3RefUnet', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
   'setWanLowLora', 'setErosCkpt', 'setErosTe', 'setErosDmd', 'setErosSigF',
   'setErosSigU', 'setScailUnet', 'setScailLora', 'setScailPusaLora',
@@ -25226,6 +25442,11 @@ function settingsPayload() {
     ltxUpscaler: $('#setLtxUps').value,
     ltxFaceIdLora: $('#setFaceIdLora').value,
     ltxFaceIdDistilledLora: $('#setFaceIdDistilled').value,
+    h3Unet: $('#setH3Unet').value,
+    h3RefUnet: $('#setH3RefUnet').value,
+    h3Clip: $('#setH3Clip').value,
+    h3VideoVae: $('#setH3VideoVae').value,
+    h3AudioVae: $('#setH3AudioVae').value,
     wanHighUnet: $('#setWanHigh').value,
     wanLowUnet: $('#setWanLow').value,
     wanClip: $('#setWanClip').value,
@@ -28603,6 +28824,11 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setLtxUps').value = s.ltxUpscaler || '';
     $('#setFaceIdLora').value = s.ltxFaceIdLora || '';
     $('#setFaceIdDistilled').value = s.ltxFaceIdDistilledLora || '';
+    $('#setH3Unet').value = s.h3Unet || '';
+    $('#setH3RefUnet').value = s.h3RefUnet || '';
+    $('#setH3Clip').value = s.h3Clip || '';
+    $('#setH3VideoVae').value = s.h3VideoVae || '';
+    $('#setH3AudioVae').value = s.h3AudioVae || '';
     $('#setWanHigh').value = s.wanHighUnet || '';
     $('#setWanLow').value = s.wanLowUnet || '';
     $('#setWanClip').value = s.wanClip || '';
@@ -28766,7 +28992,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -28794,6 +29020,20 @@ function setupKrea2CoreBlocked(components) {
     && setupViewStatus?.comfy?.krea2?.supported !== true;
 }
 
+function setupH3CoreBlocked(components) {
+  const requested = (components || []).filter(Boolean);
+  return requested.some((id) => id === 'h3' || id === 'h3r2v')
+    && setupViewStatus?.comfy?.minimaxH3?.supported !== true;
+}
+
+function setupH3CoreMessage() {
+  const compatibility = setupViewStatus?.comfy?.minimaxH3 || {};
+  const minimum = compatibility.minimumVersion || '0.30.0';
+  return compatibility.version
+    ? `Update ComfyUI ${compatibility.version} to ${minimum} or newer for MiniMax H3. Restart ComfyUI, then press Check again.`
+    : `Start or update ComfyUI to ${minimum} or newer for MiniMax H3, restart it, then press Check again.`;
+}
+
 function setupKrea2CoreMessage() {
   const compatibility = setupViewStatus?.comfy?.krea2 || {};
   const minimum = compatibility.minimumVersion || '0.26.0';
@@ -28813,8 +29053,9 @@ function setupNativeInt8Message() {
 function generationSetupComponents() {
   const components = new Set();
   if (state.view === 'video') {
-    const byEngine = { ltx: 'video', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
+    const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
+    if (state.vidEngine === 'h3' && state.vidH3Mode === 'reference') components.add('h3r2v');
     if (state.directorOpen) components.add('ltxdirector');
     if (state.vidEngine === 'ltx-edit') components.add('video');
     if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
@@ -28860,6 +29101,8 @@ function currentGenerationSetupAction() {
   const required = generationSetupComponents();
   if (!lastMeta.ok) return 'connect';
   const requiresKrea2 = required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
+  const requiresH3 = required.some((id) => id === 'h3' || id === 'h3r2v');
+  if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
   if (requiresKrea2 && lastMeta?.models?.krea2?.clipType?.ok !== true) return 'update';
   if (requiresKrea2
     && lastMeta?.krea2?.modelVariant === 'int8-convrot'
@@ -28876,17 +29119,21 @@ async function ensureGenerationSetup() {
     && required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
   const krea2CoreBlocked = required.some((id) => KREA2_MODEL_COMPONENTS.has(id))
     && lastMeta?.models?.krea2?.clipType?.ok !== true;
-  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked) return true;
+  const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v')
+    && lastMeta?.minimaxH3?.supported !== true;
+  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked) return true;
   saveForm();
   await openInitialSetup({
     components: missing.length ? missing : required,
-    message: krea2CoreBlocked
+    message: h3CoreBlocked
+      ? 'Update ComfyUI to 0.30.0 or newer before using MiniMax H3.'
+      : (krea2CoreBlocked
       ? 'Update ComfyUI to 0.26.0 or newer before using Krea 2.'
       : (nativeInt8Blocked
       ? 'Update ComfyUI for Krea 2 INT8 ConvRot, or choose the compatible FP8 route.'
       : (lastMeta?.ok
       ? 'This workflow needs a few desktop tools before it can run.'
-      : 'Connect ComfyUI, then install what this workflow needs.')),
+      : 'Connect ComfyUI, then install what this workflow needs.'))),
   });
   return false;
 }
@@ -28953,6 +29200,7 @@ function setupGenerationReady() {
   if (!setupViewStatus?.comfy?.connected) return false;
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   if (setupKrea2CoreBlocked(compatibilityComponents)) return false;
+  if (setupH3CoreBlocked(compatibilityComponents)) return false;
   if (setupNativeInt8Blocked(compatibilityComponents)) return false;
   const missing = missingSetupComponents(compatibilityComponents);
   return !missing.length;
@@ -28963,6 +29211,7 @@ function renderSetupFooter() {
   const comfy = setupViewStatus.comfy || {};
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
+  const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
   const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
   const startBusy = !!comfy.start?.running || comfy.start?.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
@@ -28977,8 +29226,8 @@ function renderSetupFooter() {
   cancel.disabled = comfy.install?.state === 'cancelling' || setupDependencyState?.state === 'cancelling';
   const next = $('#setupNext');
   if (setupActiveStep === 'connect') {
-    next.textContent = krea2CoreBlocked ? 'Update ComfyUI first' : 'Continue';
-    next.disabled = busy || !comfy.connected || krea2CoreBlocked;
+    next.textContent = krea2CoreBlocked || h3CoreBlocked ? 'Update ComfyUI first' : 'Continue';
+    next.disabled = busy || !comfy.connected || krea2CoreBlocked || h3CoreBlocked;
   } else if (setupActiveStep === 'install') {
     next.textContent = 'Review';
     next.disabled = busy || (!workflowReady && !restartRequired);
@@ -29263,16 +29512,19 @@ function renderInitialSetup() {
   const busy = officialBusy || dependencyBusy || startBusy;
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
+  const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
   const int8Blocked = setupNativeInt8Blocked(compatibilityComponents);
-  const comfyCompatibilityBlocked = krea2CoreBlocked || int8Blocked;
+  const comfyCompatibilityBlocked = krea2CoreBlocked || h3CoreBlocked || int8Blocked;
   const incompleteComfy = !!comfy.partialPath && !comfy.detectedPath;
   const comfyCard = $('#setupComfyStatus');
   comfyCard.classList.toggle('ready', !!comfy.connected && !comfyCompatibilityBlocked);
   comfyCard.classList.toggle('attention', !comfy.connected || comfyCompatibilityBlocked);
   $('#setupComfyStatusCopy').textContent = comfy.connected
-    ? (krea2CoreBlocked
+    ? (h3CoreBlocked
+      ? `Update to ${comfy.minimaxH3?.minimumVersion || '0.30.0'}+ for MiniMax H3`
+      : (krea2CoreBlocked
       ? `Update to ${comfy.krea2?.minimumVersion || '0.26.0'}+ for Krea 2`
-      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`))
+      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`)))
     : (incompleteComfy ? 'Incomplete · finish in Comfy Desktop'
       : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed'));
 
@@ -29292,7 +29544,9 @@ function renderInitialSetup() {
   workflowCard.classList.toggle('ready', workflowReady);
   workflowCard.classList.toggle('attention', !workflowReady);
   $('#setupWorkflowStatus strong').textContent = setupContextComponents.length ? 'Current workflow' : 'Image generation';
-  $('#setupWorkflowStatusCopy').textContent = krea2CoreBlocked
+  $('#setupWorkflowStatusCopy').textContent = h3CoreBlocked
+    ? 'ComfyUI update needed for MiniMax H3'
+    : (krea2CoreBlocked
     ? 'ComfyUI update needed for Krea 2'
     : (int8Blocked
     ? 'ComfyUI update needed for Krea INT8'
@@ -29300,11 +29554,11 @@ function renderInitialSetup() {
       ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
       : (comfy.connected ? (workflowReady
         ? (additionalMissing.length ? `Ready · ${additionalMissing.length} more workflows available` : 'Ready')
-        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI')));
+        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI'))));
 
-  const connectReady = !!comfy.connected && !krea2CoreBlocked;
+  const connectReady = !!comfy.connected && !krea2CoreBlocked && !h3CoreBlocked;
   const installReady = workflowReady || restartRequired;
-  $('#setupTabConnectStatus').textContent = krea2CoreBlocked ? 'Update core'
+  $('#setupTabConnectStatus').textContent = krea2CoreBlocked || h3CoreBlocked ? 'Update core'
     : (connectReady ? 'Connected'
     : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed')));
   $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || activeWorkflowComponents.length || 1} needed`);
@@ -29717,6 +29971,11 @@ async function startSetupDependencies(components) {
   if (setupKrea2CoreBlocked(requested)) {
     setSetupStep('connect', { user: true });
     toast(setupKrea2CoreMessage(), true);
+    return false;
+  }
+  if (setupH3CoreBlocked(requested)) {
+    setSetupStep('connect', { user: true });
+    toast(setupH3CoreMessage(), true);
     return false;
   }
   if (setupNativeInt8Blocked(requested)) {
@@ -30424,7 +30683,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3r2v: 'MiniMax H3 reference-input nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

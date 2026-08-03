@@ -7,11 +7,15 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   KREA2_MIN_VERSION,
+  MINIMAX_H3_MIN_VERSION,
   NATIVE_INT8_MIN_VERSION,
   compareVersions,
+  detectMiniMaxH3Compatibility,
   detectNativeInt8Compatibility,
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
+  minimaxH3Compatibility,
+  minimaxH3CompatibilityError,
   nativeInt8Compatibility,
   nativeInt8CompatibilityError,
   normalizeVersion,
@@ -78,4 +82,39 @@ test('the standalone installer can verify a connected ComfyUI before falling bac
 test('compatibility errors always offer the supported FP8 alternative', () => {
   assert.match(nativeInt8CompatibilityError({ version: '0.26.9', minimumVersion: '0.27.0' }), /select the Krea 2 FP8 variant/);
   assert.match(nativeInt8CompatibilityError({ version: '', minimumVersion: '0.27.0' }), /could not verify native INT8/);
+});
+
+test('MiniMax H3 requires ComfyUI 0.30 native nodes and the minimax CLIP type', () => {
+  assert.equal(MINIMAX_H3_MIN_VERSION, '0.30.0');
+  const supported = {
+    MiniMaxH3ImageToVideo: {},
+    MiniMaxH3ReferenceToVideo: {},
+    VAEDecodeAudio: {},
+    CLIPLoader: { input: { required: { type: [['stable_diffusion', 'minimax']] } } },
+  };
+  assert.equal(minimaxH3Compatibility(supported, '0.30.0').supported, true);
+  const missing = minimaxH3Compatibility({ CLIPLoader: { input: { required: { type: [['stable_diffusion']] } } } }, '0.30.0');
+  assert.equal(missing.supported, false);
+  assert.deepEqual(missing.missingNodes, ['MiniMaxH3ImageToVideo', 'MiniMaxH3ReferenceToVideo', 'VAEDecodeAudio']);
+  assert.equal(missing.missingClipType, true);
+  assert.equal(minimaxH3Compatibility(null, '0.29.9').supported, false);
+  assert.equal(minimaxH3Compatibility(null, '0.30.0').supported, true);
+  assert.match(minimaxH3CompatibilityError(missing), /MiniMax H3 needs ComfyUI 0\.30\.0/);
+});
+
+test('the standalone H3 compatibility check reads system stats and object info', async () => {
+  const calls = [];
+  const result = await detectMiniMaxH3Compatibility({
+    comfyUrl: 'http://127.0.0.1:8188/',
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.endsWith('/system_stats')) return { ok: true, json: async () => ({ system: { comfyui_version: '0.30.1' } }) };
+      return { ok: true, json: async () => ({
+        MiniMaxH3ImageToVideo: {}, MiniMaxH3ReferenceToVideo: {}, VAEDecodeAudio: {},
+        CLIPLoader: { input: { required: { type: [['minimax']] } } },
+      }) };
+    },
+  });
+  assert.deepEqual(calls, ['http://127.0.0.1:8188/system_stats', 'http://127.0.0.1:8188/object_info']);
+  assert.equal(result.supported, true);
 });

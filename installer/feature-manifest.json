@@ -77,6 +77,25 @@
       "nodes": ["VideoHelperSuite", "LTXV", "BFS Nodes", "KJNodes"]
     },
     {
+      "id": "video.h3",
+      "label": "MiniMax H3 Video",
+      "default": false,
+      "variant": "Official pruned INT8 ConvRot FL2VA diffusion model + NVFP4 AWQ Qwen3-VL encoder with dynamic offload; includes T2V, I2V, first/last frames, and native stereo audio",
+      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 24, "autoSelect": "recommended", "unsupportedVendors": ["apple", "amd"], "unsupportedReason": "The curated MiniMax H3 workflow uses NVIDIA NVFP4/AWQ and INT8 ConvRot kernels and is not currently compatible with Apple Metal or AMD ROCm." },
+      "models": ["minimax-h3-fl2va-pruned-int8", "qwen3vl-32b-minimax-h3-nvfp4-awq", "minimax-h3-video-vae", "minimax-h3-audio-vae"],
+      "nodes": ["ComfyUI 0.30+", "MiniMaxH3ImageToVideo", "VAEDecodeAudio"]
+    },
+    {
+      "id": "video.h3R2V",
+      "label": "MiniMax H3 Reference-to-Video",
+      "default": false,
+      "dependsOn": ["video.h3"],
+      "variant": "Optional official pruned INT8 ConvRot Ref2VA diffusion model; downloaded separately from the standard H3 workflow",
+      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 24, "autoSelect": "recommended", "unsupportedVendors": ["apple", "amd"], "unsupportedReason": "The curated MiniMax H3 Reference-to-Video workflow uses NVIDIA NVFP4/AWQ and INT8 ConvRot kernels and is not currently compatible with Apple Metal or AMD ROCm." },
+      "models": ["minimax-h3-ref2va-pruned-int8"],
+      "nodes": ["MiniMaxH3ReferenceToVideo", "VideoHelperSuite"]
+    },
+    {
       "id": "video.ltxEdit",
       "label": "LTX Edit Anything",
       "default": false,

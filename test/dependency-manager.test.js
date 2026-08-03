@@ -49,10 +49,10 @@ function safetensorsFixture() {
 }
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'h3', 'h3r2v', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'h3', 'h3Ref', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -62,6 +62,11 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(NODE_PACKS.regional.allowCompatibleMirror, true);
   assert.match(NODE_PACKS.eros.repo, /TenStrip\/10S-Comfy-nodes/);
   assert.deepEqual(COMPONENTS.eros.nodes, ['eros', 'kjnodes']);
+  assert.deepEqual(COMPONENTS.h3.models, ['h3']);
+  assert.deepEqual(COMPONENTS.h3r2v.models, ['h3', 'h3Ref']);
+  assert.equal(COMPONENTS.h3.models.includes('h3Ref'), false, 'standard H3 never downloads the optional R2V diffusion model');
+  assert.match(MODEL_ASSETS.h3.find((asset) => asset[0] === 'h3Unet')[2], /Comfy-Org\/MiniMax-H3.*minimax_h3_fl2va_pruned_int8_convrot/);
+  assert.match(MODEL_ASSETS.h3Ref[0][2], /Comfy-Org\/MiniMax-H3.*minimax_h3_ref2va_pruned_int8_convrot/);
   assert.deepEqual(COMPONENTS.rife.nodes, ['rife']);
   assert.ok(availableComponents().includes('smartmask'));
   assert.equal(COMPONENTS.krea2raw.optional, true);
