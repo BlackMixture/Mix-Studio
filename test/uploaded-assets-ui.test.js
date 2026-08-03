@@ -15,7 +15,7 @@ test('source picker exposes uploaded assets for image, video, and audio inputs',
   assert.match(html, /Browse Library/);
   assert.match(html, /Generations and uploaded assets/);
   assert.match(app, /function uploadedAssetPickerAssets\(accept\)/);
-  assert.match(app, /normalized\.startsWith\('audio'\)/);
+  assert.match(app, /function assetPickerKinds\(accept\)[\s\S]{0,240}\['image', 'video', 'audio'\]/);
   assert.match(app, /directorOpenMediaPicker\('audio'\)/);
   assert.match(app, /pickUpload\('audio\/\*'/);
 });

@@ -125,6 +125,7 @@ const state = {
   vidRef: null,              // {name, url, w, h} - Video tab source image
   vidH3Mode: 'frames',       // frames | reference
   vidH3RefImageSize: 'match',
+  vidH3RefSlots: 1,
   vidH3References: { images: [], videos: [], audios: [] },
   directorOpen: false,
   directorProject: null,
@@ -472,6 +473,10 @@ function refForPromptToken(index) {
   return state.refs[Number(index) - 1] || null;
 }
 
+function h3ReferenceModeActive() {
+  return state.view === 'video' && state.vidEngine === 'h3' && state.vidH3Mode === 'reference';
+}
+
 function makePromptReferenceToken(index) {
   const ref = refForPromptToken(index);
   const token = document.createElement('span');
@@ -493,6 +498,38 @@ function makePromptReferenceToken(index) {
   remove.className = 'prompt-ref-remove';
   remove.dataset.removePromptRef = String(index);
   remove.setAttribute('aria-label', `Remove image ${index} from prompt`);
+  remove.textContent = '×';
+  token.append(label, remove);
+  return token;
+}
+
+function makeH3PromptReferenceToken(tag) {
+  const entry = h3PromptReferenceEntries().find((candidate) => candidate.tag === tag);
+  const token = document.createElement('span');
+  token.className = `prompt-ref-token prompt-h3-ref-token prompt-h3-${entry?.mediaKind || 'missing'}`;
+  token.contentEditable = 'false';
+  token.dataset.h3RefTag = tag;
+  token.title = entry ? `${entry.label}: ${entry.asset.label || entry.asset.name}` : tag;
+
+  if (entry?.mediaKind === 'image' && (entry.asset.url || entry.asset.name)) {
+    const img = document.createElement('img');
+    img.src = entry.asset.url || `/api/input?name=${encodeURIComponent(entry.asset.name)}`;
+    img.alt = '';
+    token.appendChild(img);
+  } else {
+    const media = document.createElement('span');
+    media.className = 'prompt-ref-media';
+    media.setAttribute('aria-hidden', 'true');
+    media.textContent = entry?.mediaKind === 'audio' ? '♫' : (entry?.mediaKind === 'video' ? '▶' : '?');
+    token.appendChild(media);
+  }
+  const label = document.createElement('b');
+  label.textContent = tag.replace(/[<>]/g, '');
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'prompt-ref-remove';
+  remove.dataset.removePromptRef = tag;
+  remove.setAttribute('aria-label', `Remove ${label.textContent} from prompt`);
   remove.textContent = '×';
   token.append(label, remove);
   return token;
@@ -871,16 +908,18 @@ function renderPromptComposer() {
     .sort((left, right) => right.length - left.length)
     .map(escapePromptPattern)
     .join('|');
-  const pattern = `(@image-\\d+|@lora-trigger\\[[^\\]]+\\]|@lora-trigger-[^\\s,;:!?]+${presetPattern ? `|${presetPattern}` : ''})`;
+  const pattern = `(@image-\\d+|<(?:Picture|Video|Audio) \\d+>|@lora-trigger\\[[^\\]]+\\]|@lora-trigger-[^\\s,;:!?]+${presetPattern ? `|${presetPattern}` : ''})`;
   const parts = value.split(new RegExp(pattern, 'g'));
   composer.replaceChildren();
   parts.forEach((part, index) => {
     const refMatch = /^@image-(\d+)$/.exec(part);
+    const h3RefMatch = /^<(?:Picture|Video|Audio) \d+>$/.test(part);
     const loraMatch = /^@lora-trigger(?:\[[^\]]+\]|-[^\s,;:!?]+)$/.test(part);
     const betweenPresets = /^\s*,\s*$/.test(part)
       && presetByValue.has(parts[index - 1])
       && presetByValue.has(parts[index + 1]);
     if (refMatch) composer.appendChild(makePromptReferenceToken(refMatch[1]));
+    else if (h3RefMatch && h3ReferenceModeActive()) composer.appendChild(makeH3PromptReferenceToken(part));
     else if (loraMatch) composer.appendChild(makePromptLoraTriggerToken(loraNameFromTriggerToken(part)));
     else if (presetByValue.has(part)) composer.appendChild(makePromptPresetToken(presetByValue.get(part)));
     else if (betweenPresets) composer.appendChild(makePromptPresetSeparator(part));
@@ -892,6 +931,7 @@ function composerNodeText(node, root) {
   if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node;
+  if (el.classList.contains('prompt-h3-ref-token')) return el.dataset.h3RefTag || '';
   if (el.classList.contains('prompt-ref-token')) return `@image-${el.dataset.refIndex}`;
   if (el.classList.contains('prompt-lora-token')) return loraTriggerToken(el.dataset.loraName);
   if (el.classList.contains('prompt-preset-token')) return el.dataset.promptValue || el.textContent || '';
@@ -1021,29 +1061,71 @@ function insertPromptReference(index, preferredRange = null, options = {}) {
   return caret;
 }
 
+function insertPromptH3Reference(tag, preferredRange = null) {
+  const composer = $('#promptComposer');
+  composer.focus({ preventScroll: true });
+  const selection = window.getSelection();
+  const range = promptComposerRange(preferredRange);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  range.deleteContents();
+  const leading = promptRangeNeedsSeparator(range, composer) ? document.createTextNode(' ') : null;
+  const token = makeH3PromptReferenceToken(tag);
+  const space = document.createTextNode(' ');
+  const fragment = document.createDocumentFragment();
+  if (leading) fragment.appendChild(leading);
+  fragment.append(token, space);
+  range.insertNode(fragment);
+  placePromptCaretAfter(space);
+  promptSelectionRange = null;
+  syncPromptDraftFromComposer();
+  saveForm();
+}
+
 function renderPromptMentionPicker() {
   const list = $('#promptMentionList');
   list.replaceChildren();
-  const refs = state.refs.map((ref, index) => ({ ref, index })).filter(({ ref }) => ref);
+  const h3Reference = h3ReferenceModeActive();
+  $('#promptMentionTitle').textContent = h3Reference ? 'Reference an H3 input' : 'Reference an image';
+  $('#promptMentionCopy').textContent = h3Reference
+    ? 'Choose a picture, video, or audio input to bind it to this prompt.'
+    : 'Choose an uploaded reference to add it to this prompt.';
+  const refs = h3Reference
+    ? h3PromptReferenceEntries()
+    : state.refs.map((ref, index) => ({ asset: ref, index, mediaKind: 'image', label: `Image ${index + 1}` })).filter(({ asset }) => asset);
   if (!refs.length) {
-    list.innerHTML = '<div class="prompt-mention-empty">Add a reference image above first, then type <b>@</b> here to place it in the prompt.</div>';
+    list.innerHTML = `<div class="prompt-mention-empty">Add a reference ${h3Reference ? 'input' : 'image'} above first, then type <b>@</b> here to place it in the prompt.</div>`;
     return;
   }
-  refs.forEach(({ ref, index }) => {
+  refs.forEach((entry) => {
+    const ref = entry.asset;
     const option = document.createElement('button');
     option.type = 'button';
     option.className = 'prompt-mention-option';
-    const img = document.createElement('img');
-    img.src = ref.displayUrl || ref.url;
-    img.alt = '';
+    let media;
+    if (entry.mediaKind === 'image') {
+      media = document.createElement('img');
+      media.src = ref.displayUrl || ref.url || `/api/input?name=${encodeURIComponent(ref.name)}`;
+      media.alt = '';
+    } else {
+      media = document.createElement('span');
+      media.className = `prompt-mention-media ${entry.mediaKind}`;
+      media.setAttribute('aria-hidden', 'true');
+      media.textContent = entry.mediaKind === 'audio' ? '♫' : '▶';
+    }
     const copy = document.createElement('span');
-    copy.innerHTML = `<b>Image ${index + 1}</b><small>Insert reference into prompt</small>`;
+    const title = document.createElement('b');
+    title.textContent = entry.label;
+    const detail = document.createElement('small');
+    detail.textContent = h3Reference ? (ref.label || ref.name) : 'Insert reference into prompt';
+    copy.append(title, detail);
     const add = document.createElement('i');
     add.textContent = '+';
-    option.append(img, copy, add);
+    option.append(media, copy, add);
     option.addEventListener('click', () => {
       $('#promptMentionSheet').classList.remove('show');
-      insertPromptReference(index + 1);
+      if (h3Reference) insertPromptH3Reference(entry.tag);
+      else insertPromptReference(entry.index + 1);
     });
     list.appendChild(option);
   });
@@ -2301,7 +2383,7 @@ function saveMediaPreferences(next) {
 }
 
 const WORKSPACE_ASSET_FIELDS = [
-  'name', 'w', 'h', 'label', 'safeName', 'safeW', 'safeH', 'srcItemId',
+  'kind', 'name', 'w', 'h', 'label', 'safeName', 'safeW', 'safeH', 'srcItemId',
   'faceId', 'hasAudio', 'dur', 'trimStart', 'trimEnd', 'duration',
 ];
 
@@ -2362,6 +2444,7 @@ function saveForm() {
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       vidH3Mode: state.vidH3Mode,
       vidH3RefImageSize: state.vidH3RefImageSize,
+      vidH3RefSlots: state.vidH3RefSlots,
       vidH3References: Object.fromEntries(Object.entries(h3References())
         .map(([kind, assets]) => [kind, assets.map(serializeWorkspaceAsset).filter(Boolean)])),
       editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
@@ -2609,6 +2692,8 @@ function loadForm() {
       (Array.isArray(f.vidH3References?.[kind]) ? f.vidH3References[kind] : [])
         .map(restoreWorkspaceAsset).filter(Boolean),
     ]));
+    const h3ReferenceCount = Object.values(state.vidH3References).reduce((count, assets) => count + assets.length, 0);
+    state.vidH3RefSlots = Math.max(1, Math.min(15, Math.max(Number(f.vidH3RefSlots) || 1, h3ReferenceCount)));
     state.vidEnd = restoreWorkspaceAsset(f.vidEnd);
     state.vidDrive = restoreWorkspaceAsset(f.vidDrive);
     state.vidFace = restoreWorkspaceAsset(f.vidFace);
@@ -3491,7 +3576,7 @@ function updateVideoPanels() {
       : (state.vidEngine === 'scail'
         ? 'Optional — add style or motion direction…'
         : (state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
-          ? 'Use <Picture 1>, <Video 1>, or <Audio 1>, then describe the video and sound…'
+          ? 'Type @ to reference an input, then describe the video and sound…'
           : 'Describe the motion and sound…')))
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
@@ -3554,11 +3639,15 @@ let assetPickerReturnFocus = null;
 let resetAssetPickerSwipeVisuals = () => {};
 let animateAssetPickerNavigation = () => {};
 
-function assetPickerKind(accept) {
+function assetPickerKinds(accept) {
   const normalized = String(accept || '').toLowerCase();
-  if (normalized.startsWith('video')) return 'video';
-  if (normalized.startsWith('audio')) return 'audio';
-  return 'image';
+  const kinds = ['image', 'video', 'audio'].filter((kind) => normalized.includes(`${kind}/`));
+  return kinds.length ? kinds : ['image'];
+}
+
+function assetPickerKind(accept) {
+  const kinds = assetPickerKinds(accept);
+  return kinds.length === 1 ? kinds[0] : 'mixed';
 }
 
 function formatAssetBytes(bytes) {
@@ -3570,10 +3659,11 @@ function formatAssetBytes(bytes) {
 }
 
 function uploadedAssetPickerAssets(accept) {
-  const kind = assetPickerKind(accept);
+  const allowedKinds = new Set(assetPickerKinds(accept));
   return (state.uploadedAssets || [])
-    .filter((asset) => asset && asset.kind === kind)
+    .filter((asset) => asset && allowedKinds.has(asset.kind))
     .map((asset) => {
+      const kind = asset.kind;
       const createdAt = Number(asset.createdAt || 0);
       const detail = [kind[0].toUpperCase() + kind.slice(1), formatAssetBytes(asset.size), new Date(createdAt || Date.now()).toLocaleDateString()]
         .filter(Boolean).join(' · ');
@@ -3597,18 +3687,18 @@ function uploadedAssetPickerAssets(accept) {
 }
 
 function previousGenerationAssets(accept) {
-  const kind = assetPickerKind(accept);
+  const allowedKinds = new Set(assetPickerKinds(accept));
   const assets = [];
   for (const item of state.items || []) {
     const folder = (state.folders || []).find((entry) => entry.id === item.folder);
-    if (kind === 'video') {
+    if (allowedKinds.has('video')) {
       for (const video of Array.isArray(item.videos) ? item.videos : []) {
         if (!video || !video.file) continue;
         const engine = videoEngineLabel(video.info && video.info.engine, video.info);
         const createdAt = Number(video.createdAt || item.createdAt || 0);
         assets.push({
           key: `${item.id}:video:${video.id || video.file}`,
-          kind, file: video.file, itemId: item.id, videoId: video.id,
+          kind: 'video', file: video.file, itemId: item.id, videoId: video.id,
           label: video.info?.motionPrompt || item.prompt || 'Previous video',
           detail: `${engine} · ${new Date(createdAt || Date.now()).toLocaleDateString()}`,
           poster: item.file, activity: createdAt || itemActivity(item), createdAt,
@@ -3616,12 +3706,13 @@ function previousGenerationAssets(accept) {
           liked: video.liked === true || item.liked === true,
         });
       }
-    } else if (item.file) {
+    }
+    if (allowedKinds.has('image') && item.file) {
       const model = galleryImageModelLabel(item);
       const createdAt = Number(item.createdAt || 0);
       assets.push({
         key: `${item.id}:image:${item.upscaled || item.file}`,
-        kind, file: item.upscaled || item.file, itemId: item.id,
+        kind: 'image', file: item.upscaled || item.file, itemId: item.id,
         label: item.prompt || 'Previous image',
         detail: `${model || 'Image'} · ${new Date(item.createdAt || Date.now()).toLocaleDateString()}`,
         activity: createdAt || itemActivity(item), createdAt,
@@ -3934,10 +4025,14 @@ function openAssetPicker(accept, callback, title, options = {}) {
   closeAssetPickerMenus();
   renderAssetPickerFilters();
   const kind = assetPickerKind(accept);
-  $('#assetPickerTitle').textContent = title || `Choose ${kind === 'audio' ? 'an' : 'a'} ${kind} source`;
+  $('#assetPickerTitle').textContent = title || (kind === 'mixed'
+    ? 'Choose a media source'
+    : `Choose ${kind === 'audio' ? 'an' : 'a'} ${kind} source`);
   $('#assetPickerCopy').textContent = assetPickerState.multiple
     ? 'Upload several images at once or select multiple images from generations or uploaded assets.'
-    : `Use ${kind === 'audio' ? 'audio' : `a ${kind}`} from your device, generations, or uploaded assets.`;
+    : (kind === 'mixed'
+      ? 'Use an image, video, or audio clip from your device, generations, or uploaded assets.'
+      : `Use ${kind === 'audio' ? 'audio' : `a ${kind}`} from your device, generations, or uploaded assets.`);
   renderAssetPickerMultiBar();
   $('#assetPickerSheet').classList.add('show');
   animateAssetPickerEntrance(panel, assetPickerReturnFocus);
@@ -4041,12 +4136,18 @@ function pickDeviceUpload(accept, cb, options = {}) {
     const files = [...(input.files || [])];
     if (!files.length) return;
     const assets = [];
+    const allowedKinds = new Set(assetPickerKinds(accept));
     for (const file of files) {
       try {
+        const mimeKind = String(file.type || '').split('/')[0].toLowerCase();
+        const extensionKind = /\.(?:mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name) ? 'video'
+          : (/\.(?:mp3|wav|flac|m4a|aac|ogg|opus)$/i.test(file.name) ? 'audio' : 'image');
+        const kind = ['image', 'video', 'audio'].includes(mimeKind) ? mimeKind : extensionKind;
+        if (!allowedKinds.has(kind)) throw new Error(`Choose ${[...allowedKinds].join(', ')} media`);
         const res = await uploadInputAsset(file, file.name || 'file.bin', { catalog: true });
         const url = URL.createObjectURL(file);
         let dims = { w: 0, h: 0 };
-        if (accept.startsWith('image')) {
+        if (kind === 'image') {
           dims = await new Promise((resolve) => {
             const im = new Image();
             im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
@@ -4054,7 +4155,7 @@ function pickDeviceUpload(accept, cb, options = {}) {
             im.src = url;
           });
         }
-        assets.push({ name: res.name, url, w: dims.w, h: dims.h, label: file.name, hasAudio: res.hasAudio === true });
+        assets.push({ kind, name: res.name, url, w: dims.w, h: dims.h, label: file.name, hasAudio: res.hasAudio === true });
       } catch (e) { toast(`${file.name}: ${e.message}`, true); }
     }
     if (assets.length) await cb(input.multiple ? assets : assets[0]);
@@ -4548,6 +4649,7 @@ async function usePreviousGenerations(assets) {
         const url = assetPickerMediaUrl(asset);
         const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
         prepared.push({
+          kind: asset.kind,
           name: asset.file,
           url,
           w: dims.w,
@@ -4564,6 +4666,7 @@ async function usePreviousGenerations(assets) {
     if (picker.galleryReference) {
       closeAssetPicker();
       const prepared = chosen.map((asset) => ({
+          kind: asset.kind,
           name: asset.file,
           url: assetPickerMediaUrl(asset),
           label: asset.label || 'Previous generation',
@@ -4586,7 +4689,7 @@ async function usePreviousGenerations(assets) {
       const url = URL.createObjectURL(blob);
       const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
       prepared.push({
-        name: res.name, url, w: dims.w, h: dims.h,
+        kind: asset.kind, name: res.name, url, w: dims.w, h: dims.h,
         label: asset.label || 'Previous generation', hasAudio: res.hasAudio === true,
         srcItemId: asset.itemId,
         srcVideoId: asset.videoId,
@@ -8811,7 +8914,7 @@ function updatePromptClear() {
   $('#promptClear').hidden = !promptDraft().trim();
 }
 $('#promptComposer').addEventListener('beforeinput', (event) => {
-  if (state.view === 'edit' && event.inputType === 'insertText' && event.data === '@') {
+  if ((state.view === 'edit' || h3ReferenceModeActive()) && event.inputType === 'insertText' && event.data === '@') {
     event.preventDefault();
     openPromptMentionPicker();
   }
@@ -15064,10 +15167,97 @@ function h3References() {
   return state.vidH3References;
 }
 
+const H3_REFERENCE_LIMITS = Object.freeze({ images: 9, videos: 3, audios: 3 });
+
+function h3ReferenceCount() {
+  return Object.values(h3References()).reduce((count, assets) => count + assets.length, 0);
+}
+
+function h3PromptReferenceEntries() {
+  const refs = h3References();
+  const entries = [];
+  let audioIndex = 0;
+  refs.images.forEach((asset, index) => entries.push({
+    asset, kind: 'images', index, mediaKind: 'image', role: 'primary',
+    tag: `<Picture ${index + 1}>`, label: `Picture ${index + 1}`,
+  }));
+  refs.videos.forEach((asset, index) => {
+    entries.push({
+      asset, kind: 'videos', index, mediaKind: 'video', role: 'primary',
+      tag: `<Video ${index + 1}>`, label: `Video ${index + 1}`,
+    });
+    if (asset.hasAudio) {
+      audioIndex += 1;
+      entries.push({
+        asset, kind: 'videos', index, mediaKind: 'audio', role: 'embedded-audio',
+        tag: `<Audio ${audioIndex}>`, label: `Audio ${audioIndex}`,
+      });
+    }
+  });
+  refs.audios.forEach((asset, index) => {
+    audioIndex += 1;
+    entries.push({
+      asset, kind: 'audios', index, mediaKind: 'audio', role: 'primary',
+      tag: `<Audio ${audioIndex}>`, label: `Audio ${audioIndex}`,
+    });
+  });
+  return entries;
+}
+
 function insertH3ReferenceTag(tag) {
-  const current = promptDraft();
-  setPromptDraft(`${current}${current && !/\s$/.test(current) ? ' ' : ''}${tag} `);
-  $('#promptComposer').focus({ preventScroll: true });
+  insertPromptH3Reference(tag);
+}
+
+function h3ReferenceAccept() {
+  const refs = h3References();
+  return Object.entries(H3_REFERENCE_LIMITS)
+    .filter(([kind, limit]) => refs[kind].length < limit)
+    .map(([kind]) => `${kind.slice(0, -1)}/*`)
+    .join(',');
+}
+
+function h3ReferenceKind(asset) {
+  if (['image', 'video', 'audio'].includes(asset?.kind)) return `${asset.kind}s`;
+  const source = `${asset?.name || ''} ${asset?.label || ''}`;
+  if (/\.(?:mp4|mov|mkv|webm|avi|m4v)(?:\s|$)/i.test(source)) return 'videos';
+  if (/\.(?:mp3|wav|flac|m4a|aac|ogg|opus)(?:\s|$)/i.test(source)) return 'audios';
+  return 'images';
+}
+
+function addH3Reference(asset) {
+  if (!asset) return;
+  const kind = h3ReferenceKind(asset);
+  const refs = h3References();
+  if (refs[kind].length >= H3_REFERENCE_LIMITS[kind]) {
+    toast(`H3 already has the maximum number of ${kind}`, true);
+    return;
+  }
+  refs[kind].push(asset);
+  state.vidH3RefSlots = Math.max(1, Number(state.vidH3RefSlots) || 1, h3ReferenceCount());
+  renderH3References();
+  renderPromptComposer();
+  saveForm();
+}
+
+function pickH3Reference() {
+  const accept = h3ReferenceAccept();
+  if (!accept) return toast('H3 reference inputs are full', true);
+  pickUpload(accept, addH3Reference, 'Choose H3 reference input');
+}
+
+function removeH3Reference(kind, index) {
+  const before = h3PromptReferenceEntries();
+  h3References()[kind].splice(index, 1);
+  const after = h3PromptReferenceEntries();
+  const remap = new Map(before.map((entry) => {
+    const replacement = after.find((candidate) => candidate.asset === entry.asset && candidate.role === entry.role);
+    return [entry.tag, replacement?.tag || ''];
+  }));
+  const nextPrompt = promptDraft().replace(/<(?:Picture|Video|Audio) \d+>/g, (tag) => remap.has(tag) ? remap.get(tag) : tag)
+    .replace(/[ \t]{2,}/g, ' ');
+  state.vidH3RefSlots = Math.max(1, Math.max(h3ReferenceCount(), (Number(state.vidH3RefSlots) || 1) - 1));
+  setPromptDraft(nextPrompt);
+  renderH3References();
   saveForm();
 }
 
@@ -15095,69 +15285,87 @@ function renderH3References() {
   const list = $('#vidH3ReferenceList');
   list.replaceChildren();
   let audioIndex = 0;
-  const append = (kind, asset, index, tag, extraTag = '') => {
-    const item = document.createElement('div');
-    item.className = 'h3-reference-item';
-    const preview = document.createElement('span');
-    preview.className = 'h3-reference-preview';
-    if (kind === 'images') {
-      const image = document.createElement('img');
-      image.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
-      image.alt = '';
-      preview.appendChild(image);
-    } else if (kind === 'videos') {
-      const video = document.createElement('video');
-      video.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
-      video.muted = true;
-      video.playsInline = true;
-      video.preload = 'metadata';
-      preview.appendChild(video);
-    } else {
-      preview.textContent = '♫';
-    }
-    const copy = document.createElement('span');
-    copy.className = 'h3-reference-copy';
-    const label = document.createElement('b');
-    label.textContent = asset.label || asset.name;
-    const tags = document.createElement('span');
-    tags.className = 'h3-reference-tags';
-    [tag, extraTag].filter(Boolean).forEach((value) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'h3-reference-tag';
-      button.textContent = value;
-      button.addEventListener('click', () => insertH3ReferenceTag(value));
-      tags.appendChild(button);
-    });
-    copy.append(label, tags);
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'h3-reference-remove';
-    remove.setAttribute('aria-label', `Remove ${asset.label || 'reference'}`);
-    remove.textContent = '×';
-    remove.addEventListener('click', () => {
-      refs[kind].splice(index, 1);
-      renderH3References();
-      saveForm();
-    });
-    item.append(preview, copy, remove);
-    list.appendChild(item);
-  };
-  refs.images.forEach((asset, index) => append('images', asset, index, `<Picture ${index + 1}>`));
+  const assets = [];
+  refs.images.forEach((asset, index) => assets.push({ kind: 'images', asset, index, tag: `<Picture ${index + 1}>` }));
   refs.videos.forEach((asset, index) => {
-    const audioTag = asset.hasAudio ? `<Audio ${++audioIndex}>` : '';
-    append('videos', asset, index, `<Video ${index + 1}>`, audioTag);
+    const extraTag = asset.hasAudio ? `<Audio ${++audioIndex}>` : '';
+    assets.push({ kind: 'videos', asset, index, tag: `<Video ${index + 1}>`, extraTag });
   });
-  refs.audios.forEach((asset, index) => append('audios', asset, index, `<Audio ${++audioIndex}>`));
-  $('#vidH3AddImages').disabled = refs.images.length >= 9;
-  $('#vidH3AddVideo').disabled = refs.videos.length >= 3;
-  $('#vidH3AddAudio').disabled = refs.audios.length >= 3;
+  refs.audios.forEach((asset, index) => assets.push({ kind: 'audios', asset, index, tag: `<Audio ${++audioIndex}>` }));
+  const requestedSlots = Math.max(1, Math.min(15, Math.round(Number(state.vidH3RefSlots) || 1)));
+  const visibleSlots = Math.max(assets.length, requestedSlots);
+  state.vidH3RefSlots = visibleSlots;
+  list.dataset.slots = String(visibleSlots);
+
+  for (let slotIndex = 0; slotIndex < visibleSlots; slotIndex += 1) {
+    const entry = assets[slotIndex];
+    const slot = document.createElement('div');
+    slot.className = `ref-slot${entry ? ' filled' : ''}`;
+    slot.dataset.h3RefSlot = String(slotIndex);
+    const num = document.createElement('span');
+    num.className = 'ref-num';
+    num.textContent = String(slotIndex + 1);
+    slot.appendChild(num);
+    if (entry) {
+      const { kind, asset, index, tag, extraTag = '' } = entry;
+      if (kind === 'images') {
+        const image = document.createElement('img');
+        image.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
+        image.alt = '';
+        slot.appendChild(image);
+      } else if (kind === 'videos') {
+        const video = document.createElement('video');
+        video.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        slot.appendChild(video);
+      } else {
+        const audio = document.createElement('span');
+        audio.className = 'h3-reference-audio-art';
+        audio.setAttribute('aria-hidden', 'true');
+        audio.textContent = '♫';
+        slot.appendChild(audio);
+      }
+      const role = document.createElement('span');
+      role.className = 'ref-role';
+      role.textContent = `${tag.replace(/[<>]/g, '')}${extraTag ? ` · ${extraTag.replace(/[<>]/g, '')}` : ''}`;
+      const name = document.createElement('span');
+      name.className = 'h3-reference-name';
+      name.textContent = asset.label || asset.name;
+      const remove = document.createElement('button');
+      remove.className = 'ref-x';
+      remove.type = 'button';
+      remove.textContent = '✕';
+      remove.setAttribute('aria-label', `Remove ${asset.label || 'H3 reference input'}`);
+      remove.addEventListener('click', (event) => {
+        event.stopPropagation();
+        removeH3Reference(kind, index);
+      });
+      slot.append(role, name, remove);
+      slot.setAttribute('aria-label', `${role.textContent}, ${asset.label || asset.name}`);
+    } else {
+      slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');
+      slot.setAttribute('role', 'button');
+      slot.tabIndex = 0;
+      slot.setAttribute('aria-label', `Choose H3 reference input ${slotIndex + 1}`);
+      slot.addEventListener('click', pickH3Reference);
+      slot.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        pickH3Reference();
+      });
+    }
+    list.appendChild(slot);
+  }
+  $('#vidH3AddReference').hidden = visibleSlots >= 15 || !h3ReferenceAccept();
 }
 
 $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => button.addEventListener('click', () => {
   state.vidH3Mode = button.dataset.h3Mode === 'reference' ? 'reference' : 'frames';
   renderVidAttach();
   updateVideoPanels();
+  renderPromptComposer();
   saveForm();
 }));
 $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => button.addEventListener('click', () => {
@@ -15165,27 +15373,11 @@ $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => button.addEventListen
   renderH3References();
   saveForm();
 }));
-$('#vidH3AddImages').addEventListener('click', () => {
-  pickUpload('image/*', (assets) => {
-    const values = Array.isArray(assets) ? assets : [assets];
-    h3References().images.push(...values.slice(0, 9 - h3References().images.length));
-    renderH3References();
-    saveForm();
-  }, 'Choose H3 reference images', { multiple: true });
-});
-$('#vidH3AddVideo').addEventListener('click', () => {
-  pickUpload('video/*', (asset) => {
-    if (h3References().videos.length < 3) h3References().videos.push(asset);
-    renderH3References();
-    saveForm();
-  }, 'Choose H3 reference video');
-});
-$('#vidH3AddAudio').addEventListener('click', () => {
-  pickUpload('audio/*', (asset) => {
-    if (h3References().audios.length < 3) h3References().audios.push(asset);
-    renderH3References();
-    saveForm();
-  }, 'Choose H3 reference audio');
+$('#vidH3AddReference').addEventListener('click', () => {
+  if (state.vidH3RefSlots >= 15 || !h3ReferenceAccept()) return;
+  state.vidH3RefSlots += 1;
+  renderH3References();
+  saveForm();
 });
 
 function renderVidAttach() {
@@ -18068,7 +18260,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3RefImageSize', 'vidH3References',
+  'vidH3Mode', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -18222,6 +18414,7 @@ function resetActiveGenerationForm() {
     state.vidRef = null;
     state.vidH3Mode = 'frames';
     state.vidH3RefImageSize = 'match';
+    state.vidH3RefSlots = 1;
     state.vidH3References = { images: [], videos: [], audios: [] };
     state.vidEnd = null;
     state.vidDrive = null;
@@ -23501,6 +23694,7 @@ async function reuseVideo(it, v) {
   state.vidRef = null;
   state.vidH3Mode = engine === 'h3' && info.h3Mode === 'reference' ? 'reference' : 'frames';
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
+  state.vidH3RefSlots = 1;
   state.vidH3References = { images: [], videos: [], audios: [] };
   state.vidEnd = null;
   state.vidDrive = null;
@@ -23610,6 +23804,7 @@ async function reuseVideo(it, v) {
           const blob = await inputBlob(asset.name);
           if (!reuseRequestCurrent(options)) return;
           state.vidH3References[kind].push({
+            kind: kind.slice(0, -1),
             name: asset.name,
             label: asset.label || `reused ${kind.slice(0, -1)} reference`,
             hasAudio: asset.hasAudio === true,
@@ -23618,6 +23813,7 @@ async function reuseVideo(it, v) {
         } catch { missing.push(`H3 ${kind.slice(0, -1)} reference`); }
       }
     }
+    state.vidH3RefSlots = Math.max(1, h3ReferenceCount());
   }
 
   // Audio (already trimmed at original upload -> reused as-is, no re-upload)

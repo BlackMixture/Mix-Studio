@@ -873,20 +873,20 @@
       </div>
       <div class="h3-reference-panel" id="vidH3ReferencePanel" hidden>
         <div class="h3-reference-head">
-          <span><b>Reference inputs</b><small>Up to 9 images, 3 videos, and 3 audio clips</small></span>
-          <div class="h3-reference-size" id="vidH3RefSize" role="group" aria-label="Reference image detail">
-            <button class="active" type="button" data-h3-ref-size="match" aria-pressed="true">Match</button>
-            <button type="button" data-h3-ref-size="max" aria-pressed="false">Max detail</button>
+          <span><b>Reference inputs</b><small>Images, videos, and audio · up to 15 inputs</small></span>
+          <div class="h3-reference-head-actions">
+            <div class="h3-reference-size" id="vidH3RefSize" role="group" aria-label="Reference image detail">
+              <button class="active" type="button" data-h3-ref-size="match" aria-pressed="true">Match</button>
+              <button type="button" data-h3-ref-size="max" aria-pressed="false">Max detail</button>
+            </div>
+            <button class="edit-reference-add h3-reference-add" id="vidH3AddReference" type="button" aria-label="Add another H3 reference input" title="Add another reference input">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+            </button>
           </div>
         </div>
         <p class="h3-reference-note">Reference mode installs its separate Ref2VA model only when you first use it. Text + frames does not download that model.</p>
-        <div class="h3-reference-list" id="vidH3ReferenceList"></div>
-        <div class="h3-reference-actions">
-          <button type="button" id="vidH3AddImages">+ Images</button>
-          <button type="button" id="vidH3AddVideo">+ Video</button>
-          <button type="button" id="vidH3AddAudio">+ Audio</button>
-        </div>
-        <p class="h3-reference-prompt-hint">Tap a tag such as <code>&lt;Picture 1&gt;</code> to insert it into the prompt.</p>
+        <div class="ref-row h3-reference-grid" id="vidH3ReferenceList"></div>
+        <p class="h3-reference-prompt-hint">Choose an empty <b>+</b> input to upload or browse the Library. Type <code>@</code> in the prompt to reference any input.</p>
       </div>
       <div class="chip-row" id="vidDriveTools" style="margin-top:8px; margin-bottom:0" hidden>
         <button class="chip video-tool-chip" id="vidDriveTrimChip">
@@ -2822,8 +2822,8 @@
 
 <div class="sheet" id="promptMentionSheet">
   <div class="sheet-panel prompt-mention-panel">
-    <h3 class="sheet-title">Reference an image <button data-close aria-label="Close image reference picker">✕</button></h3>
-    <p class="prompt-mention-copy">Choose an uploaded reference to add it to this prompt.</p>
+    <h3 class="sheet-title"><span id="promptMentionTitle">Reference an image</span> <button data-close aria-label="Close reference picker">✕</button></h3>
+    <p class="prompt-mention-copy" id="promptMentionCopy">Choose an uploaded reference to add it to this prompt.</p>
     <div class="prompt-mention-list" id="promptMentionList"></div>
   </div>
 </div>

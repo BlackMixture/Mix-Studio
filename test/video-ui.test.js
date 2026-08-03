@@ -383,6 +383,24 @@ test('MiniMax H3 keeps its standard and reference downloads independent', () => 
   assert.match(app, /h3References: h3Reference \? Object\.fromEntries/);
 });
 
+test('MiniMax H3 Reference mode uses progressive media slots and prompt mention cards', () => {
+  assert.match(html, /id="vidH3ReferencePanel"[\s\S]*class="edit-reference-add h3-reference-add" id="vidH3AddReference"/);
+  assert.match(html, /class="ref-row h3-reference-grid" id="vidH3ReferenceList"/);
+  assert.match(html, /Choose an empty <b>\+<\/b> input to upload or browse the Library/);
+  assert.doesNotMatch(html, /id="vidH3AddImages"|id="vidH3AddVideo"|id="vidH3AddAudio"/);
+  assert.match(app, /function pickH3Reference\(\)[\s\S]{0,240}pickUpload\(accept, addH3Reference, 'Choose H3 reference input'\)/);
+  assert.match(app, /function assetPickerKinds\(accept\)[\s\S]{0,240}\['image', 'video', 'audio'\]/);
+  assert.match(app, /multiple: options\.multiple === true && assetPickerKind\(accept\) === 'image'/);
+  assert.match(app, /#vidH3AddReference'\)\.addEventListener\('click'[\s\S]{0,220}state\.vidH3RefSlots \+= 1/);
+  assert.match(app, /function makeH3PromptReferenceToken\(tag\)/);
+  assert.match(app, /<(?:\(\?:)?Picture\|Video\|Audio\) \\\\d\+>/);
+  assert.match(app, /state\.view === 'edit' \|\| h3ReferenceModeActive\(\)[\s\S]{0,100}event\.data === '@'/);
+  assert.match(app, /function renderPromptMentionPicker\(\)[\s\S]{0,760}h3PromptReferenceEntries\(\)/);
+  assert.match(css, /\.h3-reference-grid \.ref-slot/);
+  assert.match(css, /\.video-input-grid\[hidden\] \{ display: none; \}/);
+  assert.match(css, /\.prompt-h3-audio/);
+});
+
 test('Multiple edit references support hold-and-drag reordering', () => {
   assert.match(app, /function wireRefReorder\(slot, index, maxSlots\)/);
   assert.match(app, /setTimeout\(\(\) => \{/);
