@@ -14105,6 +14105,7 @@ function videoDurationMax(engine) {
   if (engine === 'scail') return 60;
   if (engine === 'ltx' && cameraMotionReferenceSelected()) return cameraMotionGuideLimit();
   if (engine === 'ltx') return 20;
+  if (engine === 'h3') return 15;
   return 15;
 }
 
@@ -15277,10 +15278,6 @@ function renderH3References() {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
-  $('#vidH3ModeCopy').textContent = referenceMode
-    ? 'Guide identity, style, motion, camera, or voice with images, videos, and audio. H3 generates synced stereo audio.'
-    : 'Create from text, an optional first frame, or optional first and last frames. H3 generates synced stereo audio.';
-
   const refs = h3References();
   const list = $('#vidH3ReferenceList');
   list.replaceChildren();

@@ -229,11 +229,11 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.doesNotMatch(app, /openDurationPicker|durationPickerSheet|vidDurScrub/);
 });
 
-test('LTX 2.3 exposes its supported 20-second duration without raising other model limits', () => {
+test('LTX 2.3 and MiniMax H3 expose their supported duration limits', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="vidDur"[^>]*max="20"/);
   assert.match(html, /id="animDur"[^>]*max="20"/);
-  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx'\) return 20;[\s\S]*return 15;/);
+  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx'\) return 20;[\s\S]*engine === 'h3'\) return 15;[\s\S]*return 15;/);
   assert.match(app, /Math\.min\(Number\(durEl\.max\) \|\| 15, Math\.round\(len\)\)/);
   assert.match(server, /engine === 'ltx'[\s\S]*ltxDurationSeconds\(seconds\)/);
   assert.match(server, /seconds: opts\.seconds/);
@@ -374,8 +374,9 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
 test('MiniMax H3 keeps its standard and reference downloads independent', () => {
   assert.match(html, /data-engine="h3"[^>]*data-feature-engine="video\.h3"[^>]*data-model-label="MiniMax H3"/);
   assert.match(html, /id="vidH3ModeRow"[\s\S]*data-h3-mode="frames"[\s\S]*data-h3-mode="reference"/);
-  assert.match(html, /Reference mode installs its separate Ref2VA model only when you first use it\./);
-  assert.match(html, /Text \+ frames does not download that model\./);
+  assert.doesNotMatch(html, /Reference mode installs its separate Ref2VA model only when you first use it\./);
+  assert.doesNotMatch(html, /Text \+ frames does not download that model\./);
+  assert.doesNotMatch(html, /id="vidH3ModeCopy"/);
   assert.match(app, /const byEngine = \{ ltx: 'video', h3: 'h3'/);
   assert.match(app, /state\.vidEngine === 'h3' && state\.vidH3Mode === 'reference'\) components\.add\('h3r2v'\)/);
   assert.match(app, /sourceItemId: !h3Reference && state\.vidRef \? state\.vidRef\.srcItemId : undefined/);
@@ -386,7 +387,7 @@ test('MiniMax H3 keeps its standard and reference downloads independent', () => 
 test('MiniMax H3 Reference mode uses progressive media slots and prompt mention cards', () => {
   assert.match(html, /id="vidH3ReferencePanel"[\s\S]*class="edit-reference-add h3-reference-add" id="vidH3AddReference"/);
   assert.match(html, /class="ref-row h3-reference-grid" id="vidH3ReferenceList"/);
-  assert.match(html, /Choose an empty <b>\+<\/b> input to upload or browse the Library/);
+  assert.doesNotMatch(html, /Choose an empty <b>\+<\/b> input to upload or browse the Library/);
   assert.doesNotMatch(html, /id="vidH3AddImages"|id="vidH3AddVideo"|id="vidH3AddAudio"/);
   assert.match(app, /function pickH3Reference\(\)[\s\S]{0,240}pickUpload\(accept, addH3Reference, 'Choose H3 reference input'\)/);
   assert.match(app, /function assetPickerKinds\(accept\)[\s\S]{0,240}\['image', 'video', 'audio'\]/);

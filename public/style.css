@@ -1674,14 +1674,6 @@ html:-webkit-full-screen { background: #000; }
   border-color: rgba(139, 120, 255, .6);
   background: rgba(116, 94, 255, .2);
 }
-.h3-mode-panel p,
-.h3-reference-note,
-.h3-reference-prompt-hint {
-  margin: 8px 2px 0;
-  color: rgba(211, 219, 245, .6);
-  font-size: 10.5px;
-  line-height: 1.45;
-}
 .h3-reference-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .h3-reference-head > span { display: grid; gap: 2px; }
 .h3-reference-head b { font-size: 12px; color: #f4f6ff; }
@@ -1743,8 +1735,6 @@ html:-webkit-full-screen { background: #000; }
   color: #c9c0ff;
   font-size: 24px;
 }
-.h3-reference-prompt-hint code { color: #c9c0ff; }
-.h3-reference-prompt-hint b { color: #e8e4ff; }
 @media (max-width: 420px) {
   .h3-reference-head { align-items: flex-start; }
   .h3-reference-head-actions { align-items: flex-end; flex-direction: column-reverse; }

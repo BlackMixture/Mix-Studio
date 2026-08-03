@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Simplified MiniMax H3 input controls by removing redundant mode and Reference-mode instructional copy.
+- Made the H3 frontend duration limit explicitly match its supported 5–15 second backend range at 24 fps.
+
 ## 1.1.0 - 2026-08-03
 
 - Added MiniMax H3 text-to-video, image-to-video, first/last-frame, and native-audio generation through ComfyUI's day-zero native nodes.
