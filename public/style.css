@@ -4299,8 +4299,17 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   border-color: transparent;
   box-shadow: 0 0 16px rgba(66,87,255,0.25);
 }
+.aspect-output-dims {
+  color: var(--muted-2);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.aspect-chip.active .aspect-output-dims { color: var(--muted); }
 .res-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .size-seg { display: inline-flex; background: rgba(0,0,0,0.4); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.size-seg[hidden] { display: none; }
 .size-seg button {
   border: 0; background: transparent; color: var(--muted);
   font-size: 12px; font-weight: 800; padding: 7px 14px; border-radius: 999px;
@@ -4373,10 +4382,20 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .gallery-sort-menu i { opacity: 0; color: #fff; font-style: normal; }
 .gallery-sort-menu button.active i { opacity: 1; }
 .res-dims { font-size: 12.5px; color: var(--muted); font-weight: 700; }
+.res-native-note {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+.res-native-note[hidden] { display: none; }
 .res-dims input {
   width: 62px; background: rgba(0,0,0,0.4); border: 1px solid var(--line);
   border-radius: 8px; padding: 5px 6px; text-align: center; color: var(--ink);
   font-size: 12.5px; font-weight: 700; outline: none;
+}
+.res-dims input[readonly] {
+  color: var(--ink-soft);
+  cursor: default;
 }
 
 /* ---------------- loras ---------------- */

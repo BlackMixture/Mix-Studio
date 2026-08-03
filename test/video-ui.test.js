@@ -10,7 +10,24 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const promptEnhance = fs.readFileSync(path.join(root, 'lib', 'prompt-enhance.js'), 'utf8');
+const H3Resolution = require('../public/h3-resolution');
+const { h3Dimensions } = require('../lib/video-workflows');
 const regexEscape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+test('MiniMax H3 resolution picker mirrors the backend native canvas', () => {
+  for (const aspect of [[1, 1], [4, 5], [3, 4], [2, 3], [9, 16], [3, 2], [4, 3], [16, 9], [21, 9]]) {
+    const frontend = H3Resolution.dimensions(...aspect);
+    const backend = h3Dimensions(...aspect);
+    assert.deepEqual(frontend, { width: backend.W, height: backend.H });
+  }
+  assert.match(html, /id="h3ResolutionNote" hidden>H3 native canvas · 32 px grid</);
+  assert.ok(html.indexOf('/h3-resolution.js') < html.indexOf('/app.js'));
+  assert.match(app, /function h3ResolutionActive\(\)[\s\S]*state\.view === 'video' && state\.vidEngine === 'h3'/);
+  assert.match(app, /function computeDims\(\)[\s\S]*h3DimensionsForAspect\(\)[\s\S]*state\.width = dimensions\.width;[\s\S]*state\.height = dimensions\.height;/);
+  assert.match(app, /\$\('#sizeSeg'\)\.hidden = h3Resolution;/);
+  assert.match(app, /widthInput\.readOnly = h3Resolution;[\s\S]*heightInput\.readOnly = h3Resolution;/);
+  assert.match(app, /`\$\{state\.aspect\} · H3 native · \$\{state\.width\} × \$\{state\.height\}`/);
+});
 
 test('Video frame and media inputs use visual source cards', () => {
   assert.match(html, /class="video-input-grid"/);

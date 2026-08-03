@@ -209,6 +209,15 @@ const ASPECTS = [
 ];
 const RESOLUTION_SIZE_OPTIONS = [0.75, 1, 1.75];
 
+function h3ResolutionActive() {
+  return state.view === 'video' && state.vidEngine === 'h3';
+}
+
+function h3DimensionsForAspect(aspect = state.aspect) {
+  const selected = ASPECTS.find((option) => option.label === aspect) || ASPECTS[0];
+  return H3Resolution.dimensions(selected.ar, 1);
+}
+
 const QWEN_ANGLE_VIEWS = [
   { id: 'front-left', label: 'Front left' },
   { id: 'front', label: 'Front' },
@@ -2373,6 +2382,13 @@ $('#appRestartBtn').addEventListener('click', async () => {
 function round32(n) { return Math.max(64, Math.round(n / 32) * 32); }
 
 function computeDims() {
+  if (h3ResolutionActive()) {
+    const dimensions = h3DimensionsForAspect();
+    state.customDims = false;
+    state.width = dimensions.width;
+    state.height = dimensions.height;
+    return;
+  }
   if (state.customDims) return;
   const a = ASPECTS.find((x) => x.label === state.aspect) || ASPECTS[0];
   const px = state.mp * 1e6;
@@ -10113,7 +10129,8 @@ function renderAspects() {
     const maxSide = 22;
     const w = a.ar >= 1 ? maxSide : Math.round(maxSide * a.ar);
     const h = a.ar >= 1 ? Math.round(maxSide / a.ar) : maxSide;
-    btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span>${a.label}`;
+    const h3Dimensions = h3ResolutionActive() ? H3Resolution.dimensions(a.ar, 1) : null;
+    btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span><span>${a.label}</span>${h3Dimensions ? `<small class="aspect-output-dims">${h3Dimensions.width} × ${h3Dimensions.height}</small>` : ''}`;
     btn.addEventListener('click', () => {
       state.aspect = a.label;
       state.createMatchSource = false;
@@ -10128,9 +10145,22 @@ function renderAspects() {
   }
 }
 function renderDims() {
-  $('#wInput').value = state.width;
-  $('#hInput').value = state.height;
-  $('#resSummary').textContent = state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
+  const h3Resolution = h3ResolutionActive();
+  const widthInput = $('#wInput');
+  const heightInput = $('#hInput');
+  widthInput.value = state.width;
+  heightInput.value = state.height;
+  widthInput.readOnly = h3Resolution;
+  heightInput.readOnly = h3Resolution;
+  widthInput.setAttribute('aria-readonly', String(h3Resolution));
+  heightInput.setAttribute('aria-readonly', String(h3Resolution));
+  widthInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
+  heightInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
+  $('#sizeSeg').hidden = h3Resolution;
+  $('#h3ResolutionNote').hidden = !h3Resolution;
+  $('#resSummary').textContent = h3Resolution
+    ? `${state.aspect} · H3 native · ${state.width} × ${state.height}`
+    : state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
     ? `${state.aspect} · ${state.createMatchNative ? 'Native image' : `Match image ${createSizeLabel()}`} · ${state.width} × ${state.height}`
     : (state.customDims
       ? `custom · ${state.width} × ${state.height}`
@@ -10628,6 +10658,7 @@ $$('#editSizeSeg button').forEach((button) => button.addEventListener('click', (
   saveForm();
 }));
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
+  if (h3ResolutionActive()) return;
   const keepImageMatch = state.createMatchSource && !!state.createRef;
   state.mp = Number(b.dataset.mp);
   if (keepImageMatch) {
@@ -10644,6 +10675,7 @@ $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
 }));
 for (const id of ['#wInput', '#hInput']) {
   $(id).addEventListener('change', () => {
+    if (h3ResolutionActive()) return;
     state.createMatchSource = false;
     state.createMatchNative = false;
     state.customDims = true;
@@ -16482,6 +16514,7 @@ function wireEngineRow(rowId, noteWork) {
   }));
 }
 wireEngineRow('vidEngineRow', (engine) => {
+  const previousEngine = state.vidEngine;
   state.vidEngine = engine;
   const h3 = engine === 'h3';
   const wan = engine === 'wan';
@@ -16496,6 +16529,12 @@ wireEngineRow('vidEngineRow', (engine) => {
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
   $('#enhanceBtn').hidden = ltxEdit;
+  if (h3 || previousEngine === 'h3') {
+    state.customDims = false;
+    computeDims();
+    renderAspects();
+    renderDims();
+  }
   renderScailChunkControls();
   syncVideoDurationLimit();
   renderVidDrive();
