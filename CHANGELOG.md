@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added manual and automatic first-frame motion prompting to H3 Text + frames, with H3-specific chronological motion and native-audio guidance while Reference mode retains explicit reference assignments.
 - Simplified MiniMax H3 input controls by removing redundant mode and Reference-mode instructional copy.
 - Made the H3 frontend duration limit explicitly match its supported 5–15 second backend range at 24 fps.
 

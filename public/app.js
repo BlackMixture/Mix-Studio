@@ -15381,7 +15381,7 @@ function renderVidAttach() {
   const has = !!state.vidRef;
   const editAnything = state.vidEngine === 'ltx-edit';
   const scail = state.vidEngine === 'scail';
-  const canSuggestMotion = !editAnything && !scail && state.vidEngine !== 'h3' && has;
+  const canSuggestMotion = !editAnything && !scail && !h3ReferenceModeActive() && has;
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
   $('#vidMotionPromptRow').hidden = !canSuggestMotion;
@@ -15398,7 +15398,8 @@ function renderVidAttach() {
 
 function syncVideoAutoMotionUi() {
   const armed = state.vidAutoMotionPrompt && !!state.vidRef
-    && !['h3', 'ltx-edit', 'scail'].includes(state.vidEngine);
+    && !['ltx-edit', 'scail'].includes(state.vidEngine)
+    && !h3ReferenceModeActive();
   const toggle = $('#vidAutoMotionToggle');
   const action = $('#vidMotionPromptBtn');
   const label = $('#vidMotionPromptLabel');
@@ -15609,7 +15610,7 @@ $('#vidAttachX').addEventListener('click', () => {
   saveForm();
 });
 async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
-  if (!state.vidRef || state.vidEngine === 'ltx-edit') return;
+  if (!state.vidRef || state.vidEngine === 'ltx-edit' || h3ReferenceModeActive()) return;
   const btn = $('#vidMotionPromptBtn');
   const label = $('#vidMotionPromptLabel');
   btn.disabled = true;
@@ -15620,7 +15621,12 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
     const res = await api('/api/motionprompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageName: state.vidRef.name, prompt: promptDraft().trim() }),
+      body: JSON.stringify({
+        imageName: state.vidRef.name,
+        prompt: promptDraft().trim(),
+        engine: state.vidEngine,
+        seconds: Number($('#vidDur').value) || 5,
+      }),
     });
     if (!res.prompt) throw new Error('Vision model returned no usable motion prompt');
     state.prompts.video = res.prompt;
@@ -15638,7 +15644,7 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
 }
 async function maybeCreateAutomaticMotionPrompt() {
   if (!state.vidAutoMotionPrompt || !state.vidRef || promptDraft().trim()
-    || state.activeJobs.size || state.motionPromptRequestsPending) return;
+    || h3ReferenceModeActive() || state.activeJobs.size || state.motionPromptRequestsPending) return;
   try {
     const queue = await refreshQueue();
     if ((queue.running || []).length || (queue.pending || []).length) return;
@@ -16421,7 +16427,8 @@ $('#generateBtn').addEventListener('click', async () => {
   const autoMotionPrompt = state.view === 'video'
     && state.vidAutoMotionPrompt
     && !!state.vidRef
-    && !['h3', 'ltx-edit', 'scail'].includes(state.vidEngine);
+    && !['ltx-edit', 'scail'].includes(state.vidEngine)
+    && !h3ReferenceModeActive();
   const promptOptional = (state.view === 'video' && (state.vidEngine === 'scail' || autoMotionPrompt)) || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);

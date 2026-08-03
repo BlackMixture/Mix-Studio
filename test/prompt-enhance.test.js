@@ -7,7 +7,9 @@ const {
   CREATIVE_RESOLUTION_INSTRUCTION,
   REGIONAL_PROMPT_INSTRUCTION,
   ENHANCE_TAIL,
+  H3_MOTION_INSTRUCTION,
   cleanGeneratedPrompt,
+  motionPromptEnhanceParts,
   promptEnhanceParts,
   regionPromptEnhanceParts,
 } = require('../lib/prompt-enhance');
@@ -63,4 +65,18 @@ test('generated prompt cleanup rejects copied placeholder text', () => {
     cleanGeneratedPrompt('<think>planning</think><final_prompt>The camera slowly pushes toward the subject while fabric moves in the breeze.</final_prompt>', ''),
     'The camera slowly pushes toward the subject while fabric moves in the breeze.'
   );
+});
+
+test('H3 first-frame motion enhancement requests chronological motion and native audio', () => {
+  const parts = motionPromptEnhanceParts('The character waves, then turns toward the window.', {
+    engine: 'h3',
+    seconds: 12,
+  });
+
+  assert.match(H3_MOTION_INSTRUCTION, /chronological/i);
+  assert.match(H3_MOTION_INSTRUCTION, /native audio/i);
+  assert.match(H3_MOTION_INSTRUCTION, /never invent speech/i);
+  assert.match(parts.instruction, /Requested duration: 12 seconds/);
+  assert.match(parts.userInput, /<user_motion_idea>\nThe character waves, then turns toward the window\.\n<\/user_motion_idea>/);
+  assert.ok(parts.userInput.endsWith(ENHANCE_TAIL));
 });

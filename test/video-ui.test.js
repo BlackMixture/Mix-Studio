@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const promptEnhance = fs.readFileSync(path.join(root, 'lib', 'prompt-enhance.js'), 'utf8');
 const regexEscape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test('Video frame and media inputs use visual source cards', () => {
@@ -303,11 +304,11 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(html, /id="vidMotionPromptLabel">Motion prompt/);
   assert.match(app, /#vidMotionPromptBtn'\)\.addEventListener\('click'/);
   assert.match(app, /api\('\/api\/motionprompt'/);
-  assert.match(app, /imageName: state\.vidRef\.name, prompt: promptDraft\(\)\.trim\(\)/);
+  assert.match(app, /imageName: state\.vidRef\.name,[\s\S]{0,160}engine: state\.vidEngine,[\s\S]{0,100}seconds: Number\(\$\('#vidDur'\)\.value\) \|\| 5/);
   assert.match(app, /state\.prompts\.video = res\.prompt/);
   assert.match(app, /label\.textContent = 'Reading frame'/);
   assert.match(css, /\.motion-prompt-row \.frame-prompt-action \{/);
-  assert.match(app, /const canSuggestMotion = !editAnything && !scail && state\.vidEngine !== 'h3' && has/);
+  assert.match(app, /const canSuggestMotion = !editAnything && !scail && !h3ReferenceModeActive\(\) && has/);
   assert.match(app, /#vidMotionPromptRow'\)\.hidden = !canSuggestMotion/);
   assert.match(server, /body\.imageName/);
   assert.match(server, /suggestMotionPrompt\(comfyName/);
@@ -323,13 +324,16 @@ test('automatic motion prompting can queue video work without waiting for prompt
   assert.match(app, /classList\.toggle\('auto-armed', armed\)/);
   assert.match(app, /'Auto motion armed'/);
   assert.match(server, /if \(autoMotionRequested\)/);
-  assert.match(server, /suggestMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt\)/);
+  assert.match(app, /&& !h3ReferenceModeActive\(\);/);
+  assert.match(server, /suggestMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{ engine, seconds \}\)/);
+  assert.match(server, /body\.autoMotionPrompt === true[\s\S]{0,100}!\(engine === 'h3' && h3Mode === 'reference'\)/);
 });
 
 test('video prompt enhancement combines the first frame with the initial motion idea', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(server, /function suggestMotionPrompt\(comfyImageName, seed, profileId, userPrompt = ''\)/);
-  assert.match(server, /Preserve its intent and use the image to make it more specific and visually grounded/);
+  assert.match(server, /function suggestMotionPrompt\(comfyImageName, seed, profileId, userPrompt = '', options = \{\}\)/);
+  assert.match(server, /motionPromptEnhanceParts\(userPrompt, options\)/);
+  assert.match(promptEnhance, /Preserve its intent and use the image to make it more specific and visually grounded/);
   assert.match(server, /const frameAwareEnhance = !bypass && !faceImageName && !isLtxEdit/);
   assert.match(server, /frameAwareEnhance && enhance && suppliedMotionPrompt/);
   assert.match(server, /enhance: isLtxLike \? enhance && !wanRefined : false/);
