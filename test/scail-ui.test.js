@@ -29,9 +29,9 @@ test('SCAIL hides Camera Motion without removing it from the other video engines
   assert.match(indexHtml, /id="videoPromptTools"[^>]*>[\s\S]*id="videoCameraMotionBtn"/);
   assert.match(
     appJs,
-    /\$\('#videoPromptTools'\)\.hidden = !isVideo \|\| state\.vidEngine === 'scail'/
+    /\$\('#videoPromptTools'\)\.hidden = !isVideo \|\| state\.vidEngine === 'scail' \|\| state\.vidEngine === 'h3'/
   );
-  assert.match(appJs, /function cameraMotionAvailableForEngine\(engine = state\.vidEngine\) \{\s*return engine !== 'scail';\s*\}/);
+  assert.match(appJs, /function cameraMotionAvailableForEngine\(engine = state\.vidEngine\) \{\s*return !\['h3', 'scail'\]\.includes\(engine\);\s*\}/);
   assert.match(appJs, /function openCameraMotionPicker\(\) \{\s*if \(!CameraMotion \|\| !cameraMotionAvailableForEngine\(\)\) return;/);
 });
 
@@ -48,16 +48,17 @@ test('SCAIL generation requests do not submit saved Camera Motion selections', (
 test('the animate endpoint defensively ignores Camera Motion from legacy SCAIL clients', () => {
   assert.match(serverJs, /const requestedCameraMotions = normalizeCameraMotions\(body\.cameraMotions\)/);
   assert.match(serverJs, /const blockedCameraMotionPhrase = engine === 'scail' \? cameraMotionPhrase\(requestedCameraMotions\) : ''/);
-  assert.match(serverJs, /const cameraMotions = engine === 'scail' \? \[\] : requestedCameraMotions/);
+  assert.match(serverJs, /const cameraMotions = engine === 'scail' \|\| engine === 'h3' \? \[\] : requestedCameraMotions/);
   assert.match(serverJs, /engine === 'scail'\s*\? stripCameraMotionPhrase\(String\(body\.prompt \|\| ''\)\.trim\(\), blockedCameraMotionPhrase\)/);
 });
 
 test('reusing a legacy SCAIL result clears Camera Motion selections and their generated prompt clause', () => {
   assert.match(appJs, /const reusedCameraMotions = CameraMotion \? CameraMotion\.normalizeCameraMotions\(info\.cameraMotions\) : \[\]/);
   assert.match(appJs, /const reusedCameraMotionPhrase = CameraMotion \? CameraMotion\.cameraMotionPhrase\(reusedCameraMotions\) : ''/);
-  assert.match(appJs, /state\.videoCameraMotions = engine === 'scail' \? \[\] : reusedCameraMotions/);
-  assert.match(appJs, /state\.videoCameraMotionPhrase = engine === 'scail' \? '' : reusedCameraMotionPhrase/);
-  assert.match(appJs, /state\.prompts\.video = engine === 'scail' && CameraMotion\s*\? CameraMotion\.stripCameraMotionPhrase\(info\.motionPrompt \|\| '', reusedCameraMotionPhrase\)/);
+  assert.match(appJs, /const canReuseCameraMotion = cameraMotionAvailableForEngine\(engine\)/);
+  assert.match(appJs, /state\.videoCameraMotions = canReuseCameraMotion \? reusedCameraMotions : \[\]/);
+  assert.match(appJs, /state\.videoCameraMotionPhrase = canReuseCameraMotion \? reusedCameraMotionPhrase : ''/);
+  assert.match(appJs, /state\.prompts\.video = !canReuseCameraMotion && CameraMotion\s*\? CameraMotion\.stripCameraMotionPhrase\(info\.motionPrompt \|\| '', reusedCameraMotionPhrase\)/);
 });
 
 test('SCAIL applies the selected rate to source sampling, generation frames, output, trim, and metadata', () => {
@@ -94,7 +95,7 @@ test('SCAIL requests include stable chunk settings and saved videos remember the
 test('SCAIL only extracts driving audio when the uploaded video contains an audio track', () => {
   assert.match(appJs, /driveHasAudio: state\.vidEngine === 'scail'/);
   assert.match(serverJs, /driveAudio: engine === 'scail' && body\.driveHasAudio === true/);
-  assert.match(serverJs, /drivenAudio: engine === 'scail' \? opts\.driveAudio === true/);
+  assert.match(serverJs, /drivenAudio: engine === 'h3' \? true : \(engine === 'scail' \? opts\.driveAudio === true/);
   assert.match(serverJs, /detectAudioStreamFile\(temporary, orig\)/);
   assert.match(serverJs, /hasAudio: hasAudio === true/);
 });

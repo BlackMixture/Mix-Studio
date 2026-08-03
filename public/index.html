@@ -617,6 +617,7 @@
         <div class="model-order-hint" id="videoModelOrderHint">Hold models to reorder · first is default</div>
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model" aria-describedby="videoModelOrderHint">
           <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx" data-task-label="Cinematic Video" data-model-label="LTX 2.3"><b>LTX 2.3</b><small>Cinematic Video</small></button>
+          <button class="chip" data-engine="h3" data-feature-engine="video.h3" data-task-label="Omni Video" data-model-label="MiniMax H3"><b>MiniMax H3</b><small>Omni Video + Audio</small></button>
           <button class="chip video-model-option" id="directorModelOption" type="button" data-director-entry data-feature-engine="video.ltx" aria-label="Open LTX Director for directed sequences"><b>LTX Director</b><small>Directed Sequences</small></button>
           <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit" data-task-label="Video Editing" data-model-label="LTX Edit" data-experimental="true"><b>LTX Edit <span class="model-status-badge">Experimental</span></b><small>Video Editing</small></button>
           <button class="chip" data-engine="eros" data-feature-engine="video.eros" data-task-label="Image Animation" data-model-label="10Eros DMD"><b>10Eros DMD</b><small>Image Animation</small></button>
@@ -770,6 +771,13 @@
       <div class="video-inputs-head">
         <span>Inputs</span>
       </div>
+      <div class="h3-mode-panel" id="vidH3ModePanel" hidden>
+        <div class="h3-mode-row" id="vidH3ModeRow" role="group" aria-label="MiniMax H3 input mode">
+          <button class="active" type="button" data-h3-mode="frames" aria-pressed="true">Text + frames</button>
+          <button type="button" data-h3-mode="reference" aria-pressed="false">Reference (R2V)</button>
+        </div>
+        <p id="vidH3ModeCopy">Create from text, an optional first frame, or optional first and last frames. H3 generates synced stereo audio.</p>
+      </div>
       <div class="motion-prompt-row" id="vidMotionPromptRow" hidden>
         <button class="frame-prompt-action" id="vidMotionPromptBtn" aria-label="Create a motion prompt from this first frame" title="Create a motion prompt from this first frame">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15c3.2-5 7.6-6.8 13-5M15 6l3 4-4 3M6 5v3M4.5 6.5h3M8.5 2.8l1.2 2.1M3.3 10.2l2.2.8"/></svg>
@@ -779,7 +787,7 @@
           <span><b>Auto</b><small>Generate from first frame</small></span><span class="switch" aria-hidden="true"><i></i></span>
         </button>
       </div>
-      <div class="video-input-grid">
+      <div class="video-input-grid" id="vidStandardInputs">
         <button class="media-input-card video-frame-slot" id="vidAttachBtn" type="button" data-frame-role="start">
           <span class="media-input-art" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
@@ -862,6 +870,23 @@
             <span class="media-input-copy"><b data-audio-title>Audio</b><small data-audio-detail>Optional soundtrack</small></span>
           </button>
         </div>
+      </div>
+      <div class="h3-reference-panel" id="vidH3ReferencePanel" hidden>
+        <div class="h3-reference-head">
+          <span><b>Reference inputs</b><small>Up to 9 images, 3 videos, and 3 audio clips</small></span>
+          <div class="h3-reference-size" id="vidH3RefSize" role="group" aria-label="Reference image detail">
+            <button class="active" type="button" data-h3-ref-size="match" aria-pressed="true">Match</button>
+            <button type="button" data-h3-ref-size="max" aria-pressed="false">Max detail</button>
+          </div>
+        </div>
+        <p class="h3-reference-note">Reference mode installs its separate Ref2VA model only when you first use it. Text + frames does not download that model.</p>
+        <div class="h3-reference-list" id="vidH3ReferenceList"></div>
+        <div class="h3-reference-actions">
+          <button type="button" id="vidH3AddImages">+ Images</button>
+          <button type="button" id="vidH3AddVideo">+ Video</button>
+          <button type="button" id="vidH3AddAudio">+ Audio</button>
+        </div>
+        <p class="h3-reference-prompt-hint">Tap a tag such as <code>&lt;Picture 1&gt;</code> to insert it into the prompt.</p>
       </div>
       <div class="chip-row" id="vidDriveTools" style="margin-top:8px; margin-bottom:0" hidden>
         <button class="chip video-tool-chip" id="vidDriveTrimChip">
@@ -2060,6 +2085,7 @@
     </div>
     <div class="chip-row" id="animEngineRow">
       <button class="chip active" data-engine="ltx">LTX 2.3</button>
+      <button class="chip" data-engine="h3">MiniMax H3</button>
       <button class="chip" data-engine="eros">10Eros DMD</button>
       <button class="chip" data-engine="wan">Wan 2.2</button>
     </div>
@@ -2481,7 +2507,7 @@
         </section>
 
         <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" hidden>
-          <div class="settings-pane-head"><h4>Video Models</h4><p>LTX, Wan, 10Eros, and SCAIL pipelines.</p></div>
+          <div class="settings-pane-head"><h4>Video Models</h4><p>MiniMax H3, LTX, Wan, 10Eros, and SCAIL pipelines.</p></div>
           <div class="settings-group"><h5>LTX 2.3 &amp; Face ID</h5>
             <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
             <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
@@ -2493,6 +2519,13 @@
             <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>
             <div class="field"><label>Face ID LoRA</label><input id="setFaceIdLora" type="text" /></div>
             <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>MiniMax H3</h5>
+            <div class="field"><label>FL2VA diffusion model</label><input id="setH3Unet" type="text" /></div>
+            <div class="field"><label>Ref2VA diffusion model (optional)</label><input id="setH3RefUnet" type="text" /></div>
+            <div class="field"><label>Qwen3-VL text encoder</label><input id="setH3Clip" type="text" /></div>
+            <div class="field"><label>Video VAE</label><input id="setH3VideoVae" type="text" /></div>
+            <div class="field"><label>Audio VAE</label><input id="setH3AudioVae" type="text" /></div>
           </div>
           <div class="settings-group"><h5>Wan 2.2</h5>
             <div class="field"><label>High-noise diffusion model (.safetensors or .gguf)</label><input id="setWanHigh" type="text" /></div>

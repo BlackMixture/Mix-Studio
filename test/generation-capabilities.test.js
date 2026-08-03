@@ -14,18 +14,23 @@ const {
 
 const apple = { gpuVendor: 'apple', gpuBackend: 'mps', vramGb: 64 };
 const nvidia = { gpuVendor: 'nvidia', gpuBackend: 'cuda', vramGb: 24 };
+const amd = { gpuVendor: 'amd', gpuBackend: 'rocm', vramGb: 24 };
 
 test('Apple Metal exposes BF16 LTX and disables curated FP8 video families', () => {
   const capabilities = videoEngineCapabilities(apple);
   assert.equal(capabilities.ltx.supported, true);
   assert.equal(capabilities.ltx.requiresBf16, true);
   assert.equal(capabilities['ltx-edit'].supported, true);
+  assert.equal(capabilities.h3.supported, false);
   for (const engine of ['eros', 'wan', 'scail']) {
     assert.equal(capabilities[engine].supported, false);
     assert.match(capabilities[engine].reason, /FP8|Apple Metal/);
   }
   assert.match(dependencyComponentBlock('scailinfinity', apple), /Apple Metal/);
   assert.equal(dependencyComponentBlock('wan', nvidia), '');
+  assert.match(dependencyComponentBlock('h3r2v', apple), /NVFP4|Apple Metal/);
+  assert.match(dependencyComponentBlock('h3', amd), /AMD ROCm/);
+  assert.equal(videoEngineCapabilities(nvidia).h3.supported, true);
 });
 
 test('Apple LTX generation rejects FP8 configuration and accepts BF16', () => {

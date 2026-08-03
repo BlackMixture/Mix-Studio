@@ -31,6 +31,21 @@ test('progress labels retain specialized node descriptions and safe fallback', (
   assert.equal(nodeLabelForJob(null, 'sampler'), 'Working...');
 });
 
+test('MiniMax H3 progress names its model, conditioning, and audio stages', () => {
+  const h3Job = {
+    kind: 'video',
+    videoInfo: { engine: 'h3' },
+    graph: {
+      model: { class_type: 'UNETLoader' },
+      condition: { class_type: 'MiniMaxH3ReferenceToVideo' },
+      audio: { class_type: 'VAEDecodeAudio' },
+    },
+  };
+  assert.equal(nodeLabelForJob(h3Job, 'model'), 'Loading MiniMax H3...');
+  assert.equal(nodeLabelForJob(h3Job, 'condition'), 'Preparing H3 references...');
+  assert.equal(nodeLabelForJob(h3Job, 'audio'), 'Decoding audio...');
+});
+
 test('multi-stage video progress names each pass and reports one overall percentage', () => {
   const videoJob = {
     kind: 'video',

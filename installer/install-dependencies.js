@@ -4,7 +4,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { COMPONENTS, installComponents } = require('../lib/dependency-installer');
-const { detectNativeInt8Compatibility, nativeInt8CompatibilityError } = require('../lib/comfy-compatibility');
+const {
+  detectMiniMaxH3Compatibility,
+  detectNativeInt8Compatibility,
+  minimaxH3CompatibilityError,
+  nativeInt8CompatibilityError,
+} = require('../lib/comfy-compatibility');
 const { FEATURE_COMPONENTS } = require('../lib/setup-guide');
 const { normalizeKrea2Variant, recommendedKrea2Variant } = require('../lib/krea2-model');
 const { recommendedVramProfile } = require('../lib/vram-profile');
@@ -57,6 +62,10 @@ function installsKrea2(components) {
   return (components || []).some((id) => (COMPONENTS[id]?.models || []).includes('image'));
 }
 
+function installsMiniMaxH3(components) {
+  return (components || []).some((id) => id === 'h3' || id === 'h3r2v');
+}
+
 async function verifyNativeInt8Install(options = {}) {
   if (options.variant !== 'int8-convrot' || !installsKrea2(options.components)) return null;
   const compatibility = await (options.detectCompatibility || detectNativeInt8Compatibility)({
@@ -66,6 +75,19 @@ async function verifyNativeInt8Install(options = {}) {
   if (compatibility.supported === true) return compatibility;
   const error = new Error(nativeInt8CompatibilityError(compatibility));
   error.code = 'comfy_int8_update_required';
+  error.compatibility = compatibility;
+  throw error;
+}
+
+async function verifyMiniMaxH3Install(options = {}) {
+  if (!installsMiniMaxH3(options.components)) return null;
+  const compatibility = await (options.detectCompatibility || detectMiniMaxH3Compatibility)({
+    comfyUrl: options.runtime?.comfy?.url,
+    basePath: options.runtime?.comfy?.path,
+  });
+  if (compatibility.supported === true) return compatibility;
+  const error = new Error(minimaxH3CompatibilityError(compatibility));
+  error.code = 'comfy_h3_update_required';
   error.compatibility = compatibility;
   throw error;
 }
@@ -111,6 +133,7 @@ async function main() {
     ? normalizeKrea2Variant(settings.krea2ModelVariant, settings)
     : recommendedKrea2Variant(install.hardware || {});
   await verifyNativeInt8Install({ variant: configuredVariant, components, runtime });
+  await verifyMiniMaxH3Install({ components, runtime });
   const result = await installComponents({
     runtime,
     settings,
@@ -155,7 +178,9 @@ module.exports = {
   FEATURE_COMPONENTS,
   combineDiscovery,
   installsKrea2,
+  installsMiniMaxH3,
   selectedComponents,
+  verifyMiniMaxH3Install,
   verifyNativeInt8Install,
   writeJsonAtomic,
 };

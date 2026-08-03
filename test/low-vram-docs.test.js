@@ -25,7 +25,8 @@ test('GitHub-facing pages describe open low-VRAM tiers without promising every w
   assert.match(operations, /offloaded route rather than a claim that the complete pipeline remains resident in 4 GB/);
   assert.match(operations, /Krea 2 image route uses \*\*8 GB VRAM\*\* as its guided offload tier/);
   assert.match(operations, /Krea 2 requires ComfyUI 0\.26\.0 or newer/);
-  assert.match(operations, /Video workflows use \*\*8 GB VRAM\*\* as an experimental offload tier/);
+  assert.match(operations, /Most video workflows use \*\*8 GB VRAM\*\* as an experimental offload tier/);
+  assert.match(operations, /MiniMax H3 begins at a 12 GB guided offload tier/);
   assert.match(operations, /System RAM is not an installer requirement/);
   assert.match(operations, /not guarantees that every resolution or duration will fit/);
   assert.match(operations, /warns before a below-tier install or generation and lets the user continue unchanged/);
@@ -72,6 +73,9 @@ test('the installer manifest keeps image and experimental video offload tiers al
     assert.equal(feature.hardware.minimumVramGb, 8, `${id} exposes the experimental 8 GB tier`);
     assert.equal(feature.hardware.recommendedVramGb, 24, `${id} retains the practical 24 GB recommendation`);
   }
+  const h3 = manifest.features.find((entry) => entry.id === 'video.h3');
+  assert.equal(h3.hardware.minimumVramGb, 12);
+  assert.equal(h3.hardware.recommendedVramGb, 24);
   for (const feature of manifest.features) {
     assert.equal('minimumRamGb' in feature.hardware, false, `${feature.id} has no system RAM minimum`);
     assert.equal('recommendedRamGb' in feature.hardware, false, `${feature.id} has no system RAM recommendation`);

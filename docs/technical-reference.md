@@ -22,6 +22,8 @@ This document describes the curated workflows, their ComfyUI requirements, queue
 
 ## Video generation, editing, and motion transfer
 
+- **MiniMax H3:** native ComfyUI text-to-video, image-to-video, and first/last-frame generation at 24 fps with joint stereo audio. Reference mode accepts up to nine images, three videos, and three audio clips, with prompt-addressable tags such as `<Picture 1>` and `<Video 1>`.
+- **Independent H3 packages:** text and frame modes use the FL2VA diffusion model. Reference mode adds the separate Ref2VA diffusion model and VideoHelperSuite only when selected, so using the standard H3 modes never downloads Ref2VA.
 - **LTX 2.3:** two-stage text-to-video and image-to-video generation with first and last frames, joint audio generation, uploaded audio, waveform trimming, and motion controls.
 - **LTX Director:** Extend continues an existing clip, Keyframes arranges images, clips, and directions as a storyboard, and Timeline places story, audio, and motion segments at explicit frame ranges. Projects can be saved as JSON.
 - **LTX Face ID:** Best-FaceID and BFS overlap conditioning preserve a reference identity. An uploaded voice is encoded into the audio latent with a zero noise mask for lipsync.
@@ -63,10 +65,13 @@ Curated workflow families include:
 - ComfyUI-Krea2Edit and Krea2-Regional-MultiLoRA
 - Flux 2 Klein 4B and 9B
 - Qwen Image Edit 2511
+- MiniMax H3 FL2VA, Qwen3-VL, video VAE, and audio VAE; optional Ref2VA for reference mode
 - LTX 2.3, its spatial upscaler, and Gemma encoder
 - Wan 2.2, 10Eros, and SCAIL 2 with SAM3 multiplex and `clip_vision_h`
 - Best-FaceID LoRA and [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes)
 - SeedVR2, KJNodes, VideoHelperSuite, ComfyUI-Frame-Interpolation with RIFE, and Ultimate SD Upscale
+
+MiniMax H3 requires ComfyUI 0.30.0 or newer. Mix Studio checks the native H3 nodes before installation or generation and uses the official 768-short-edge canvas and 17k+5 frame schedule described in [ComfyUI's MiniMax H3 guide](https://docs.comfy.org/tutorials/video/minimax/minimax-h3).
 
 For installation, version, model-reuse, and VRAM details, see [Installation and operations](installation-and-operations.md).
 

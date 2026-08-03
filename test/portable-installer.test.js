@@ -102,7 +102,7 @@ test('README presents the product positioning and credits while contribution det
   const contributing = fs.readFileSync(path.join(root, 'CONTRIBUTING.md'), 'utf8');
   assert.match(readme, /Mix Studio is a local web interface that builds and submits ComfyUI API graphs/);
   assert.match(readme, /image generation, regional prompting, image editing, video generation, motion transfer, and upscaling/);
-  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, LTX 2\.3, Wan 2\.2, 10Eros, and SCAIL 2/);
+  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2\.3, Wan 2\.2, 10Eros, and SCAIL 2/);
   assert.match(readme, /## Acknowledgments & Attribution/);
   assert.match(readme, /\[Contributing\]\(CONTRIBUTING\.md\)/);
   assert.match(contributing, /## Contribute a workflow/);
@@ -111,7 +111,7 @@ test('README presents the product positioning and credits while contribution det
   assert.match(contributing, /github\.com\/BlackMixture\/Mix-Studio\/discussions/);
   assert.match(contributing, /github\.com\/BlackMixture\/Mix-Studio\/pulls/);
   assert.match(readme, /\*\*ComfyUI:\*\* Executes the API-format graphs built by the Mix Studio server/);
-  assert.match(readme, /Black Forest Labs \(Flux 2\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
+  assert.match(readme, /Black Forest Labs \(Flux 2\), MiniMax \(H3\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
   assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3/);
   assert.match(readme, /Dell provided the Dell Pro Max T2 Tower/);
   assert.match(readme, /\*\*NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM\*\*/);
@@ -177,7 +177,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /does not enforce a VRAM cutoff/);
   assert.match(page, /A clean, responsive AI workspace built on ComfyUI\./);
   assert.match(page, /Run highly tuned image and video workflows flawlessly from your desktop or your phone\./);
-  assert.match(page, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
+  assert.match(page, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, MiniMax H3, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
   assert.match(page, /Most local tools chain you to a desk\./);
   assert.match(page, /full creative control from anywhere\./);
   assert.match(page, /RTX PRO 6000 Blackwell · 96 GB VRAM · Jul 2026/);
@@ -664,6 +664,26 @@ test('standalone dependency setup gates only Krea INT8 on incompatible ComfyUI',
   assert.equal(await dependencyCli.verifyNativeInt8Install({
     variant: 'int8-convrot', components: ['wan'], runtime, detectCompatibility: unsupported,
   }), null);
+});
+
+test('standalone dependency setup gates H3 on ComfyUI 0.30 without coupling standard H3 to R2V', async () => {
+  const runtime = { comfy: { url: 'http://127.0.0.1:8188', path: 'C:\\ComfyUI' } };
+  const unsupported = async () => ({ version: '0.29.9', minimumVersion: '0.30.0', supported: false });
+  await assert.rejects(
+    dependencyCli.verifyMiniMaxH3Install({ components: ['h3'], runtime, detectCompatibility: unsupported }),
+    (error) => error.code === 'comfy_h3_update_required' && /ComfyUI 0\.30\.0/.test(error.message)
+  );
+  assert.equal(await dependencyCli.verifyMiniMaxH3Install({
+    components: ['video'], runtime, detectCompatibility: unsupported,
+  }), null);
+  assert.deepEqual(dependencyCli.selectedComponents(
+    { features: [{ id: 'video.h3' }, { id: 'video.h3R2V' }] },
+    { 'video.h3': true, 'video.h3R2V': false },
+  ), ['h3']);
+  assert.deepEqual(dependencyCli.selectedComponents(
+    { features: [{ id: 'video.h3' }, { id: 'video.h3R2V' }] },
+    { 'video.h3': true, 'video.h3R2V': true },
+  ), ['h3', 'h3r2v']);
 });
 
 test('hardware guidance rates model families by VRAM without enforcing system RAM', () => {

@@ -23,7 +23,7 @@ Mix Studio has no enforced VRAM cutoff. Its lowest guided tier is 4 GB of VRAM t
 
 The curated Krea 2 image route uses 8 GB VRAM as its guided offload tier and recommends 16 GB. Krea 2 requires ComfyUI 0.26.0 or newer because older cores do not expose its CLIP loader type. On detected 4–12 GB systems, Auto selects the Low VRAM profile and setup recommends the official Krea 2 INT8 ConvRot models when Krea is selected. Those files use ComfyUI's native quantized-weight support through its standard diffusion loader, not a GGUF or custom INT8 loader, and require ComfyUI 0.27.0 or newer. Generation setup checks both capabilities before installing or running them and keeps FP8 available as a visible fallback. An older existing installation must be updated before using Krea 2.
 
-Low VRAM mode is guidance, not a hidden cap. Image requests above roughly one megapixel or batch one receive a confirmation that offers safer settings or the exact original request. LTX 2.3, LTX Edit, 10Eros, Wan 2.2 14B, and SCAIL 2 use 8 GB VRAM as an experimental offload tier and recommend 24 GB VRAM. System RAM is not used as an installation requirement. Shorter duration, smaller frames, native ComfyUI offloading, and supported GGUF weights for Wan and SCAIL improve the chance of success. Hardware below the guided tier still receives an install-anyway option rather than a block.
+Low VRAM mode is guidance, not a hidden cap. Image requests above roughly one megapixel or batch one receive a confirmation that offers safer settings or the exact original request. LTX 2.3, LTX Edit, 10Eros, Wan 2.2 14B, and SCAIL 2 use 8 GB VRAM as an experimental offload tier and recommend 24 GB VRAM. MiniMax H3 uses a 12 GB guided offload tier and recommends 24 GB. System RAM is not used as an installation requirement. Shorter duration, smaller frames, native ComfyUI offloading, and supported GGUF weights for Wan and SCAIL improve the chance of success. Hardware below the guided tier still receives an install-anyway option rather than a block.
 
 Klein, Qwen, Wan, and SCAIL graphs switch to `UnetLoaderGGUF` when their configured diffusion filename ends in `.gguf`, and their setup groups install ComfyUI-GGUF. Guided downloads still use the curated safetensors/FP8 files, so third-party GGUF weights must be downloaded and selected manually. The current LTX 2.3 and 10Eros graphs use combined checkpoints; transformer-only GGUF files are not drop-in replacements for those pipelines.
 
@@ -47,7 +47,7 @@ For a manual installation, install Git for Windows and run `git clone https://gi
 4. In Generation setup, select the ComfyUI folder containing `main.py`. Browse uses the native macOS folder picker, and model paths use POSIX separators.
 5. Start ComfyUI from setup. Mix Studio applies `--fp32-vae`, split cross-attention, and the safe MPS fallback environment automatically.
 
-Apple Metal uses the compatible workflow tier. Setup selects official BF16 LTX 2.3 weights and disables the curated FP8-only 10Eros, Wan 2.2, and SCAIL 2 engines. Large LTX refine requests receive an up-front memory warning with a safer duration instead of failing late during stage two.
+Apple Metal uses the compatible workflow tier. Setup selects official BF16 LTX 2.3 weights and disables MiniMax H3 plus the curated FP8-only 10Eros, Wan 2.2, and SCAIL 2 engines. H3's curated NVFP4/AWQ and INT8 ConvRot route is currently NVIDIA-only. Large LTX refine requests receive an up-front memory warning with a safer duration instead of failing late during stage two.
 
 ## New Linux machine
 
@@ -56,7 +56,7 @@ Apple Metal uses the compatible workflow tier. Setup selects official BF16 LTX 2
 3. In Generation setup, select the ComfyUI folder containing `main.py` or enter a live loopback endpoint. Set `COMFYUI_PATH` before launching when ComfyUI is not under `$HOME/ComfyUI`.
 4. Optionally set `MIXBOX_COMFY_SERVICE=comfyui.service` when ComfyUI is deliberately managed as that user service. Mix Studio does not assume a unit name or run systemd commands for remote endpoints.
 
-NVIDIA uses the full curated workflow set when its ComfyUI dependencies are present. AMD ROCm is experimental and must already work in ComfyUI: Mix Studio detects AMD device and memory data, keeps Krea 2 on FP8, and changes NVIDIA-only SeedVR2 attention selections to SDPA. Mix Studio does not install ROCm, GPU drivers, or a platform-specific PyTorch build.
+NVIDIA uses the full curated workflow set when its ComfyUI dependencies are present, including MiniMax H3 on ComfyUI 0.30.0 or newer. H3 standard setup covers text and frame generation; its separate Ref2VA model is installed only if Reference mode is selected. AMD ROCm is experimental and must already work in ComfyUI: Mix Studio detects AMD device and memory data, keeps Krea 2 on FP8, and changes NVIDIA-only SeedVR2 attention selections to SDPA. The curated H3 route is unavailable on AMD. Mix Studio does not install ROCm, GPU drivers, or a platform-specific PyTorch build.
 
 The installer is intentionally idempotent. Rerunning it preserves the existing `data/` location and ComfyUI connection, refreshes the minimal bootstrap metadata atomically, starts the app, and opens the browser. Generation setup is always available later from **Advanced Settings → General**, and the Phone access card can be reopened from its Finish step.
 

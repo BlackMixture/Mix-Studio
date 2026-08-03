@@ -245,7 +245,7 @@ test('LTX settings avoid duplicate pipeline and playback summaries', () => {
   assert.match(app, /const ltxFamily = engine === 'ltx' \|\| ltxEdit/);
   assert.match(app, /function renderVideoFpsChoices\(\)/);
   assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : \(state\.vidEngine === 'scail' \? state\.vidScailFps : 16\)/);
-  assert.match(app, /\$\('#vidFpsRow'\)\.hidden = !\(ltxFamily \|\| wanOrScail\)/);
+  assert.match(app, /\$\('#vidFpsRow'\)\.hidden = h3 \|\| !\(ltxFamily \|\| wanOrScail\)/);
   assert.match(app, /\$\('#vidScailFpsField'\)\.hidden = !\(isVideo && state\.vidEngine === 'scail'\)/);
   assert.match(app, /\$\{baseFps \* multiplier\} fps · RIFE/);
 });
@@ -263,11 +263,11 @@ test('LTX Edit uses a source-video workflow and forces literal edit prompts', ()
   assert.match(html, /id="setLtxEditLora"/);
   assert.match(app, /'Describe the edit…'/);
   assert.match(app, /'Source video'/);
-  assert.match(app, /enhance: ltxEdit \? false : state\.enhance/);
+  assert.match(app, /enhance: ltxEdit \|\| state\.vidEngine === 'h3' \? false : state\.enhance/);
   assert.match(server, /ltxEditLora: 'edit_anything_v1\.1_r256\.safetensors'/);
   assert.match(server, /class_type: 'LTXVAddGuide'/);
   assert.match(server, /guideVideoName: isLtxEdit \? driveVideoName : null/);
-  assert.match(server, /const enhance = isLtxEdit \? false : body\.enhance !== false/);
+  assert.match(server, /const enhance = isLtxEdit \|\| engine === 'h3' \? false : body\.enhance !== false/);
 });
 
 test('Video prompt tools stay hidden and structured audio labels survive state changes', () => {
@@ -307,7 +307,7 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(app, /state\.prompts\.video = res\.prompt/);
   assert.match(app, /label\.textContent = 'Reading frame'/);
   assert.match(css, /\.motion-prompt-row \.frame-prompt-action \{/);
-  assert.match(app, /const canSuggestMotion = !editAnything && !scail && has/);
+  assert.match(app, /const canSuggestMotion = !editAnything && !scail && state\.vidEngine !== 'h3' && has/);
   assert.match(app, /#vidMotionPromptRow'\)\.hidden = !canSuggestMotion/);
   assert.match(server, /body\.imageName/);
   assert.match(server, /suggestMotionPrompt\(comfyName/);
@@ -366,9 +366,21 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
   assert.match(app, /openAnimateRouteSheet\(it\)/);
   assert.match(app, /function galleryImageDestinationActions\(item[\s\S]*label: 'First frame'[^\n]*sendToVideoTab\(item, 'start'\)/);
   assert.match(app, /function galleryImageDestinationActions\(item[\s\S]*label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
-  assert.match(app, /const endEngine = \['ltx', 'eros'\]\.find/);
+  assert.match(app, /const endEngine = \['ltx', 'h3', 'eros'\]\.find/);
   assert.match(html, /id="animateRouteStart"[\s\S]*<b>First frame<\/b>/);
   assert.match(html, /id="animateRouteEnd"[\s\S]*<b>Last frame<\/b>/);
+});
+
+test('MiniMax H3 keeps its standard and reference downloads independent', () => {
+  assert.match(html, /data-engine="h3"[^>]*data-feature-engine="video\.h3"[^>]*data-model-label="MiniMax H3"/);
+  assert.match(html, /id="vidH3ModeRow"[\s\S]*data-h3-mode="frames"[\s\S]*data-h3-mode="reference"/);
+  assert.match(html, /Reference mode installs its separate Ref2VA model only when you first use it\./);
+  assert.match(html, /Text \+ frames does not download that model\./);
+  assert.match(app, /const byEngine = \{ ltx: 'video', h3: 'h3'/);
+  assert.match(app, /state\.vidEngine === 'h3' && state\.vidH3Mode === 'reference'\) components\.add\('h3r2v'\)/);
+  assert.match(app, /sourceItemId: !h3Reference && state\.vidRef \? state\.vidRef\.srcItemId : undefined/);
+  assert.match(fs.readFileSync(path.join(root, 'server.js'), 'utf8'), /!item && body\.sourceItemId && !\(engine === 'h3' && h3Mode === 'reference'\)/);
+  assert.match(app, /h3References: h3Reference \? Object\.fromEntries/);
 });
 
 test('Multiple edit references support hold-and-drag reordering', () => {
