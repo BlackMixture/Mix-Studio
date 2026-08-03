@@ -8172,9 +8172,15 @@ wireEndFrame('vid', 'vidEnd');
 wireEndFrame('anim', 'animEnd');
 
 /* Swap first/last frame in the Video tab */
+function videoSupportsEndFrame() {
+  return state.vidEngine === 'ltx'
+    || state.vidEngine === 'eros'
+    || (state.vidEngine === 'h3' && state.vidH3Mode === 'frames');
+}
+
 function updateSwapChip() {
   const swap = $('#vidSwap');
-  const supportsEnd = state.vidEngine === 'ltx' || state.vidEngine === 'eros';
+  const supportsEnd = videoSupportsEndFrame();
   const hasFirst = !!state.vidRef;
   const hasLast = !!state.vidEnd;
   swap.hidden = !supportsEnd || (!hasFirst && !hasLast);
@@ -8190,6 +8196,7 @@ function swapVideoFrames(message = 'First and last frames swapped') {
   renderVidAttach();
   endFrameRefresh.vidEnd();
   updateVideoPanels();
+  saveForm();
   toast(message);
 }
 
@@ -8210,7 +8217,9 @@ function clearVideoFrameDrag() {
 
 function wireVideoFrameDrag(slot, role) {
   slot.addEventListener('pointerdown', (event) => {
+    if (!videoSupportsEndFrame()) return;
     if (event.target.closest('.attach-x, .input-crop-action')) return;
+    if (event.pointerType === 'mouse') event.preventDefault();
     clearVideoFrameDrag();
     const drag = {
       pointerId: event.pointerId,
@@ -8222,13 +8231,15 @@ function wireVideoFrameDrag(slot, role) {
       timer: null,
     };
     videoFrameDrag = drag;
-    drag.timer = setTimeout(() => {
+    const activate = () => {
       if (videoFrameDrag !== drag) return;
       drag.active = true;
       slot.classList.add('frame-reordering');
       try { slot.setPointerCapture(event.pointerId); } catch { /* noop */ }
       if (navigator.vibrate) navigator.vibrate(10);
-    }, 300);
+    };
+    if (event.pointerType === 'mouse') activate();
+    else drag.timer = setTimeout(activate, 300);
   });
   slot.addEventListener('pointermove', (event) => {
     const drag = videoFrameDrag;

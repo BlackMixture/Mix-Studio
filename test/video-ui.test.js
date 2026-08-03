@@ -350,12 +350,17 @@ test('Video exposes advanced seed and batch controls while model sampling stays 
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {
+  assert.match(app, /function videoSupportsEndFrame\(\)[\s\S]*state\.vidEngine === 'h3' && state\.vidH3Mode === 'frames'/);
   assert.match(app, /#vidEndChip'\)\.hidden = faceMode \|\| ltxEdit \|\| !!state\.vidEnd/);
   assert.match(html, /id="vidEndThumb"[^>]*data-frame-role="end"[\s\S]*id="vidSwap"[\s\S]*id="vidFaceChip"/);
   assert.match(app, /swap\.hidden = !supportsEnd \|\| \(!hasFirst && !hasLast\)/);
   assert.match(app, /\[state\.vidRef, state\.vidEnd\] = \[state\.vidEnd \|\| null, state\.vidRef \|\| null\]/);
   assert.match(app, /function wireVideoFrameDrag\(slot, role\)/);
+  assert.match(app, /if \(!videoSupportsEndFrame\(\)\) return;/);
+  assert.match(app, /if \(event\.pointerType === 'mouse'\) event\.preventDefault\(\)/);
+  assert.match(app, /if \(event\.pointerType === 'mouse'\) activate\(\)/);
   assert.match(app, /document\.elementFromPoint\(event\.clientX, event\.clientY\)\?\.closest\('\.video-frame-slot'\)/);
+  assert.match(app, /updateVideoPanels\(\);\s*saveForm\(\);\s*toast\(message\);/);
   assert.match(css, /\.video-frame-slot\.frame-drop-target/);
 });
 
