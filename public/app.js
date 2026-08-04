@@ -10198,7 +10198,6 @@ function renderDims() {
   widthInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
   heightInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
   $('#sizeSeg').hidden = false;
-  $('#h3ResolutionNote').hidden = !h3Resolution;
   $('#resSummary').textContent = h3Resolution
     ? `${state.aspect} · ${createSizeLabel()} · ${state.width} × ${state.height}`
     : state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()

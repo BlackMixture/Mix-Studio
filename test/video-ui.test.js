@@ -29,7 +29,6 @@ test('MiniMax H3 resolution picker mirrors the backend S, M, and L canvases', ()
     assert.ok(tierPixels[0] < tierPixels[1]);
     assert.ok(tierPixels[1] < tierPixels[2]);
   }
-  assert.match(html, /id="h3ResolutionNote" hidden>H3 S\/M\/L · L is native · 32 px grid</);
   assert.ok(html.indexOf('/h3-resolution.js') < html.indexOf('/app.js'));
   assert.match(app, /function h3ResolutionActive\(\)[\s\S]*state\.view === 'video' && state\.vidEngine === 'h3'/);
   assert.match(app, /function h3DimensionsForAspect\([\s\S]*H3Resolution\.dimensions\(selected\.ar, 1, state\.mp\)/);
