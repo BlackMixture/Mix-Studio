@@ -4293,6 +4293,14 @@ function erosSigmas(preset) {
   return EROS_SIGMA_PRESETS[preset] || EROS_SIGMA_PRESETS.dmd;
 }
 
+function manualSigmaStepCount(value) {
+  const sigmas = String(value || '')
+    .split(',')
+    .map((entry) => Number(entry.trim()))
+    .filter(Number.isFinite);
+  return Math.max(0, sigmas.length - 1);
+}
+
 /** Chain user LoRAs (model-only) onto a video model path. */
 function chainModelLoras(graph, model, loras, prefix) {
   let m = model;
@@ -7412,6 +7420,17 @@ async function handleApi(req, res, url) {
 
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
+    const videoSteps = engine === 'h3'
+      ? clampInt(body.steps, 1, 100, 20)
+      : engine === 'wan'
+        ? (body.fast !== false ? 4 : 20)
+        : engine === 'scail'
+          ? 6
+          : engine === 'eros'
+            ? manualSigmaStepCount(sig.first) + manualSigmaStepCount(sig.up)
+            : faceImageName
+              ? manualSigmaStepCount(LTX_SIGMAS_BASE)
+              : manualSigmaStepCount(LTX_SIGMAS_BASE) + manualSigmaStepCount(LTX_SIGMAS_REFINE);
     // RIFE frame interpolation for LTX, Wan, and SCAIL video outputs.
     const smooth = (engine === 'ltx' || isLtxEdit || engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
       ? Number(body.smooth) : 1;
@@ -7433,6 +7452,7 @@ async function handleApi(req, res, url) {
       // retain their specialized in-graph prompt enhancement.
       enhance: isLtxLike ? enhance && !refinedMotionPrompt : false,
       frames, fps,
+      steps: videoSteps,
       fourK: !!body.fourK,
       seed,
       W, H, bypass,
@@ -7488,7 +7508,7 @@ async function handleApi(req, res, url) {
         exactFrameCount: true,
         smooth: smooth > 1 ? smooth : undefined,
         fourK: opts.fourK, width: opts.fourK ? W * 2 : W, height: opts.fourK ? H * 2 : H,
-        seed: opts.seed, t2v: engine === 'h3' ? h3Mode === 'frames' && bypass : bypass,
+        seed: opts.seed, steps: opts.steps, t2v: engine === 'h3' ? h3Mode === 'frames' && bypass : bypass,
         motionFreedom: isLtxLike ? opts.imgCompression : undefined,
         fast: engine === 'wan' ? opts.fast : undefined,
         sigmaPreset: engine === 'eros' ? sigmaPreset : undefined,

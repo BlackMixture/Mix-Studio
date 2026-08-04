@@ -1201,8 +1201,8 @@
               <textarea id="negativePromptInput" rows="2" maxlength="4000" aria-describedby="negativePromptHint" placeholder="Things you do not want in the result"></textarea>
             </div>
             <div class="field" id="advancedStepsField">
-              <label>Steps</label>
-              <input id="stepsInput" type="number" inputmode="numeric" value="8" min="1" max="100" />
+              <label for="stepsInput">Steps <small id="advancedStepsHint" hidden></small></label>
+              <input id="stepsInput" type="number" inputmode="numeric" value="8" min="1" max="100" aria-describedby="advancedStepsHint" />
             </div>
             <div class="field" id="advancedCfgField">
               <label>CFG</label>
@@ -1250,7 +1250,7 @@
                 <span class="settings-media-switch" aria-hidden="true"><i></i></span>
               </button>
             </div>
-            <div class="video-advanced-note field-span" id="videoAdvancedNote" hidden>Steps and CFG follow the selected video model. Seed and Batch remain adjustable.</div>
+            <div class="video-advanced-note field-span" id="videoAdvancedNote" hidden>CFG follows the selected video model. Fixed sigma schedules are shown read-only; MiniMax H3 steps are adjustable.</div>
             <div class="field" id="denoiseField" hidden>
               <label>Denoise</label>
               <div class="range-field">

@@ -90,6 +90,13 @@ test('MiniMax H3 text-to-video does not synthesize placeholder keyframes', async
   assert.equal(graph.condition.inputs.last_frame, undefined);
 });
 
+test('MiniMax H3 accepts an explicit sampler step count', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A storm rolls across the sea.', W: 1344, H: 768, frames: 124, seed: 7, steps: 28,
+  }, settings);
+  assert.equal(graph.scheduler.inputs.steps, 28);
+});
+
 test('MiniMax H3 SageAttention patches only the guider model and leaves scheduler calculation unchanged', async () => {
   const graph = await buildMiniMaxH3Graph({
     mode: 'frames', prompt: 'A storm rolls across the sea.', W: 1344, H: 768, frames: 124, seed: 7,

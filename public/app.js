@@ -126,6 +126,7 @@ const state = {
   vidH3Mode: 'frames',       // frames | reference
   vidH3MatchSource: true,    // keep frame-mode output at the first frame's aspect unless explicitly overridden
   vidH3SageAttention: true,
+  vidH3Steps: 20,
   vidH3RefImageSize: 'match',
   vidH3RefSlots: 1,
   vidH3References: { images: [], videos: [], audios: [] },
@@ -2534,6 +2535,7 @@ function saveForm() {
       vidH3Mode: state.vidH3Mode,
       vidH3MatchSource: state.vidH3MatchSource,
       vidH3SageAttention: state.vidH3SageAttention,
+      vidH3Steps: state.vidH3Steps,
       vidH3RefImageSize: state.vidH3RefImageSize,
       vidH3RefSlots: state.vidH3RefSlots,
       vidH3References: Object.fromEntries(Object.entries(h3References())
@@ -2779,6 +2781,7 @@ function loadForm() {
     state.vidH3Mode = f.vidH3Mode === 'reference' ? 'reference' : 'frames';
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
+    state.vidH3Steps = Math.max(1, Math.min(100, Math.round(Number(f.vidH3Steps) || 20)));
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
     state.vidH3References = Object.fromEntries(['images', 'videos', 'audios'].map((kind) => [
       kind,
@@ -3741,10 +3744,11 @@ function updateVideoPanels() {
   $('.region-resolution-picker').hidden = useSharedRegionResolution;
   if (useSharedRegionResolution) setRegionResolutionExpanded(false);
   $('#seedInput').closest('.panel').hidden = false;
-  $('#advancedStepsField').hidden = isVideo;
+  $('#advancedStepsField').hidden = false;
   $('#advancedCfgField').hidden = isVideo;
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
   renderH3SageAttention();
+  renderVideoStepControl();
   $('#videoAdvancedNote').hidden = !isVideo;
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
@@ -8739,6 +8743,10 @@ function wireSigmaRow(rowId, key) {
   $$(`#${rowId} .chip`).forEach((c) => c.addEventListener('click', () => {
     $$(`#${rowId} .chip`).forEach((x) => x.classList.toggle('active', x === c));
     state[key] = c.dataset.sig;
+    if (rowId === 'vidSigmaRow') {
+      renderVideoStepControl();
+      saveForm();
+    }
   }));
 }
 wireSigmaRow('vidSigmaRow', 'vidSigma');
@@ -10979,6 +10987,67 @@ function renderNegativePromptControl() {
   hint.textContent = availability.hint;
 }
 
+function normalizedH3Steps(value = state.vidH3Steps) {
+  return Math.max(1, Math.min(100, Math.round(Number(value) || 20)));
+}
+
+function videoStepSpecification() {
+  if (state.vidEngine === 'h3') {
+    return { value: normalizedH3Steps(), editable: true, hint: 'MiniMax H3 sampler · adjustable' };
+  }
+  if (state.vidEngine === 'wan') {
+    const full = $('#vidQuality')?.classList.contains('active');
+    return full
+      ? { value: 20, editable: false, hint: 'Full Quality · fixed two-model handoff' }
+      : { value: 4, editable: false, hint: 'Fast distilled schedule · fixed' };
+  }
+  if (state.vidEngine === 'scail') {
+    return { value: 6, editable: false, hint: 'SCAIL distilled schedule · fixed' };
+  }
+  if (state.vidEngine === 'eros') {
+    if (state.vidSigma === 'custom') {
+      return { value: '', editable: false, placeholder: 'Custom', hint: 'Set by the custom base and refinement sigma lists' };
+    }
+    return state.vidSigma === 'dmd'
+      ? { value: 12, editable: false, hint: '8 base + 4 refinement · fixed sigmas' }
+      : { value: 12, editable: false, hint: '9 base + 3 refinement · fixed sigmas' };
+  }
+  if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) {
+    return { value: 8, editable: false, hint: 'Face ID base schedule · fixed' };
+  }
+  return {
+    value: 11,
+    editable: false,
+    hint: state.vidEngine === 'ltx-edit'
+      ? '8 base + 3 refinement · fixed LTX Edit schedule'
+      : '8 base + 3 refinement · fixed LTX 2.3 schedule',
+  };
+}
+
+function renderVideoStepControl() {
+  const input = $('#stepsInput');
+  const hint = $('#advancedStepsHint');
+  if (!input || !hint) return;
+  if (state.view !== 'video') {
+    input.readOnly = false;
+    input.removeAttribute('aria-readonly');
+    input.classList.remove('fixed-sampling');
+    input.placeholder = '';
+    hint.hidden = true;
+    hint.textContent = '';
+    return;
+  }
+  const spec = videoStepSpecification();
+  input.value = spec.value;
+  input.placeholder = spec.placeholder || '';
+  input.readOnly = !spec.editable;
+  input.setAttribute('aria-readonly', String(!spec.editable));
+  input.classList.toggle('fixed-sampling', !spec.editable);
+  input.title = spec.editable ? 'Sampling steps for MiniMax H3' : spec.hint;
+  hint.textContent = spec.hint;
+  hint.hidden = false;
+}
+
 function negativePromptForGeneration() {
   return negativePromptAvailability().supported
     ? String($('#negativePromptInput')?.value || '').trim().slice(0, 4000)
@@ -10988,7 +11057,7 @@ function negativePromptForGeneration() {
 function defaultGenerationTuning(mode) {
   if (mode === 'video') {
     return {
-      steps: 1,
+      steps: 20,
       cfg: 1,
       batch: 1,
       denoise: undefined,
@@ -11030,7 +11099,7 @@ function captureGenerationTuning(mode = generationTuningMode()) {
   const previous = state.generationTuning[mode] || defaultGenerationTuning(mode);
   const qwenLocked = mode === 'edit' && state.editEngine === 'qwen';
   state.generationTuning[mode] = normalizeGenerationTuning(mode, {
-    steps: qwenLocked ? previous.steps : ($('#stepsInput').value || previous.steps),
+    steps: mode === 'video' ? normalizedH3Steps() : (qwenLocked ? previous.steps : ($('#stepsInput').value || previous.steps)),
     cfg: qwenLocked ? previous.cfg : ($('#cfgInput').value === '' ? previous.cfg : $('#cfgInput').value),
     batch: $('#batchInput').value || previous.batch,
     denoise: mode === 'edit' ? $('#denoiseInput').value : undefined,
@@ -11052,6 +11121,7 @@ function restoreGenerationTuning(mode = generationTuningMode()) {
     $('#denoiseVal').textContent = Number(tuning.denoise).toFixed(2);
   }
   renderNegativePromptControl();
+  renderVideoStepControl();
   renderKrea2Mode();
 }
 
@@ -11060,7 +11130,11 @@ function resetGenerationControl(control) {
   if (!mode || !control) return;
   const defaults = defaultGenerationTuning(mode);
   const key = control.dataset.defaultReset;
-  if (key === 'seed') control.value = defaults.seed;
+  if (mode === 'video' && key === 'steps') {
+    if (state.vidEngine !== 'h3') return renderVideoStepControl();
+    state.vidH3Steps = 20;
+    control.value = 20;
+  } else if (key === 'seed') control.value = defaults.seed;
   else if (Object.prototype.hasOwnProperty.call(defaults, key)) control.value = defaults[key];
   if (key === 'denoise') $('#denoiseVal').textContent = Number(control.value).toFixed(2);
   captureGenerationTuning(mode);
@@ -14811,12 +14885,22 @@ Object.entries(generationResetControls).forEach(([id, key]) => {
     }
   });
   control.addEventListener('change', () => {
+    if (id === 'stepsInput' && state.view === 'video' && state.vidEngine === 'h3') {
+      state.vidH3Steps = normalizedH3Steps(control.value);
+    }
     captureGenerationTuning();
+    if (id === 'stepsInput' && state.view === 'video') renderVideoStepControl();
     renderKrea2Mode();
     saveForm();
   });
 });
-$('#stepsInput').addEventListener('input', renderKrea2Mode);
+$('#stepsInput').addEventListener('input', () => {
+  if (state.view === 'video' && state.vidEngine === 'h3') {
+    const value = Number($('#stepsInput').value);
+    if (Number.isFinite(value) && value >= 1) state.vidH3Steps = normalizedH3Steps(value);
+  }
+  renderKrea2Mode();
+});
 $('#negativePromptInput').addEventListener('change', () => {
   captureGenerationTuning();
   saveForm();
@@ -15692,6 +15776,7 @@ function renderVidFace() {
   $('#vidEngineSelected').textContent = definition.model;
   $('#vidEngineBadge').hidden = !definition.experimental;
   $('#vidEngineNote').textContent = faceMode ? 'Character Performance' : definition.task;
+  renderVideoStepControl();
   updateVideoTuningSummary();
 }
 
@@ -16321,6 +16406,8 @@ $('#vidDriveFrameChip').addEventListener('click', () => {
 $('#vidQuality').addEventListener('click', () => {
   $('#vidQuality').classList.toggle('active');
   renderNegativePromptControl();
+  renderVideoStepControl();
+  saveForm();
 });
 $('#animQuality').addEventListener('click', () => $('#animQuality').classList.toggle('active'));
 
@@ -16696,7 +16783,11 @@ $('#generateBtn').addEventListener('click', async () => {
   let prompt = state.view === 'video' ? cameraMotionPromptForEngine(rawPrompt) : rawPrompt;
   const promptTemplateBeforeAutoMotion = promptDraft().trim();
   const promptIntent = currentPromptIntent();
-  if (promptIntent && offerPromptIntentGuide(promptIntent)) return;
+  // Video prompts naturally mention motion, matching, and following. Those
+  // words can resemble a SCAIL motion-transfer request, but an advisory hint
+  // must not replace the user's Generate action with an animated tutorial.
+  // The visible "Show me" action remains available for deliberate guidance.
+  if (promptIntent && state.view !== 'video' && offerPromptIntentGuide(promptIntent)) return;
   if (contextualGuide?.id === 'first-image-generate' && prompt === FIRST_IMAGE_TUTORIAL_PROMPT) {
     firstImageTutorialPhase = 'submitting';
   }
@@ -16757,6 +16848,7 @@ $('#generateBtn').addEventListener('click', async () => {
       autoMotionPrompt,
       preparedMotionPrompt: false,
       engine: state.vidEngine,
+      steps: state.vidEngine === 'h3' ? normalizedH3Steps() : undefined,
       seconds: Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
       fourK: $('#vid4k').classList.contains('active'),
@@ -18567,7 +18659,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3MatchSource', 'vidH3SageAttention', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3MatchSource', 'vidH3SageAttention', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -18722,6 +18814,7 @@ function resetActiveGenerationForm() {
     state.vidH3Mode = 'frames';
     state.vidH3MatchSource = true;
     state.vidH3SageAttention = true;
+    state.vidH3Steps = 20;
     state.vidH3RefImageSize = 'match';
     state.vidH3RefSlots = 1;
     state.vidH3References = { images: [], videos: [], audios: [] };
@@ -22804,6 +22897,7 @@ function openLightbox(id, mediaSel, options = {}) {
     if (info.attentionBackend) {
       meta.push(`<b>Attention:</b> ${info.attentionBackend === 'sageattention' ? 'SageAttention (verified)' : 'Standard PyTorch'}`);
     }
+    if (hasDocumentationValue(info.steps)) meta.push(`<b>Steps:</b> ${escapeHtml(String(info.steps))}`);
     const recordedVideoWidth = Math.round(Number(info.width));
     const recordedVideoHeight = Math.round(Number(info.height));
     const fallbackVideoWidth = Math.round(Number(it.width));
@@ -24067,15 +24161,17 @@ async function reuseVideo(it, v) {
   state.generationTuning.video = normalizeGenerationTuning('video', {
     seed: $('#seedInput').value,
     batch: 1,
-    steps: 1,
+    steps: info.steps || 20,
     cfg: 1,
     negativePrompt: info.negativePrompt || '',
   });
+  state.vidH3Steps = engine === 'h3' ? normalizedH3Steps(info.steps || 20) : state.vidH3Steps;
   $('#negativePromptInput').value = state.generationTuning.video.negativePrompt || '';
   state.enhance = !!info.enhance;
   renderEnhance();
   $('#vid4k').classList.toggle('active', !!info.fourK);
   $('#vidQuality').classList.toggle('active', engine === 'wan' && info.fast === false);
+  renderVideoStepControl();
   if (info.motionFreedom !== undefined && info.motionFreedom !== null) {
     $('#vidFree').value = info.motionFreedom;
   }
@@ -25041,6 +25137,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     ['Options', options],
     ['Mix Pack presets', promptPresetNames(promptPresets).join(', ')],
     ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
+    ['Steps', hasDocumentationValue(info.steps) ? info.steps : ''],
     ['Generated in', info.durationMs ? formatDuration(info.durationMs) : ''],
   ].filter(([, value]) => hasDocumentationValue(value));
   if (Array.isArray(info.loras) && info.loras.length) {

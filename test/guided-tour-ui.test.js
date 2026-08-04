@@ -182,7 +182,10 @@ test('the prompt composer detects missing visual context before generation', () 
   assert.match(app, /function promptUsesUnattachedVisual\(prompt\)/);
   assert.match(app, /function promptRequestsSourceEdit\(prompt\)/);
   assert.match(app, /function currentPromptIntent\(\)/);
-  assert.match(app, /promptIntent && offerPromptIntentGuide\(promptIntent\)/);
+  assert.match(app, /promptIntent && state\.view !== 'video' && offerPromptIntentGuide\(promptIntent\)/,
+    'Generate Video should not be replaced by an inferred animated guide');
+  assert.match(app, /offerPromptIntentGuide\(intent, \{ explicit: true \}\)/,
+    'video intent help should remain available from the deliberate Show me action');
   assert.match(css, /\.prompt-intent-hint \{/);
 });
 

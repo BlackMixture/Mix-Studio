@@ -3770,6 +3770,7 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   background: rgba(255,255,255,.1);
 }
 .adv-grid input:disabled { opacity: .58; cursor: not-allowed; }
+.adv-grid input.fixed-sampling { color: var(--muted); background: rgba(255,255,255,.025); cursor: default; }
 .preserve-icon { width: 34px; height: 34px; padding: 0; color: var(--muted); }
 .preserve-icon[hidden] { display: none; }
 .preserve-icon svg { width: 17px; height: 17px; }

@@ -444,14 +444,20 @@ test('MiniMax H3 enhancement uses one duration-aware prompt pass and records the
   assert.match(app, /copyableMeta\('Enhanced motion', info\.refinedMotionPrompt\)/);
 });
 
-test('Video exposes advanced seed and batch controls while model sampling stays explicit', () => {
+test('Video exposes model-aware step counts and keeps fixed schedules read-only', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(html, /id="videoAdvancedNote"[^>]*>Steps and CFG follow the selected video model/);
+  assert.match(html, /id="advancedStepsHint"/);
+  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed sigma schedules are shown read-only; MiniMax H3 steps are adjustable/);
   assert.match(app, /#seedInput'\)\.closest\('\.panel'\)\.hidden = false/);
-  assert.match(app, /#advancedStepsField'\)\.hidden = isVideo/);
+  assert.match(app, /function videoStepSpecification\(\)/);
+  assert.match(app, /#advancedStepsField'\)\.hidden = false/);
+  assert.match(app, /steps: state\.vidEngine === 'h3' \? normalizedH3Steps\(\) : undefined/);
+  assert.match(app, /input\.readOnly = !spec\.editable/);
   assert.match(app, /if \(view === 'video'\) return 'video'/);
   assert.match(app, /const batch = Math\.max\(1, Math\.min\(8, Number\(\$\('#batchInput'\)\.value\)/);
   assert.match(server, /Number\.isSafeInteger\(requestedSeed\)/);
+  assert.match(server, /const videoSteps = engine === 'h3'/);
+  assert.match(server, /steps: opts\.steps/);
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {
