@@ -21,8 +21,13 @@
   }
 
   function dimensions(width, height, size = 1.75) {
-    const sourceWidth = Math.max(1, Number(width) || 1344);
-    const sourceHeight = Math.max(1, Number(height) || 768);
+    const requestedWidth = Number(width);
+    const requestedHeight = Number(height);
+    // Callers may provide either pixel dimensions (9, 16) or a normalized
+    // aspect ratio (9 / 16, 1). Preserve positive fractional values: clamping
+    // each side to 1 turns every portrait ratio into a square.
+    const sourceWidth = Number.isFinite(requestedWidth) && requestedWidth > 0 ? requestedWidth : 1344;
+    const sourceHeight = Number.isFinite(requestedHeight) && requestedHeight > 0 ? requestedHeight : 768;
     const ratio = sourceWidth / sourceHeight;
     let nominalWidth;
     let nominalHeight;

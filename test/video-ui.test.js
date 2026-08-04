@@ -42,6 +42,14 @@ test('MiniMax H3 resolution picker mirrors the backend S, M, and L canvases', ()
   assert.match(server, /h3Dimensions\(requestedAspectRatio, 1, body\.h3ResolutionSize\)/);
 });
 
+test('MiniMax H3 preserves normalized portrait aspect ratios from the picker', () => {
+  const frontend = H3Resolution.dimensions(9 / 16, 1, 1);
+  const backend = h3Dimensions(9 / 16, 1, 1);
+  assert.deepEqual(frontend, { width: 576, height: 1024 });
+  assert.deepEqual(backend, { W: 576, H: 1024 });
+  assert.equal(frontend.width / frontend.height, 9 / 16);
+});
+
 test('MiniMax H3 offers verified SageAttention with an explicit standard-attention bypass', () => {
   assert.match(html, /id="vidH3SageToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
   assert.match(html, /id="vidH3SageStatus">Verifying the ComfyUI runtime/);
