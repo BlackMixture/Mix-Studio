@@ -7302,7 +7302,7 @@ async function handleApi(req, res, url) {
             ? ltxCameraDurationSeconds(seconds, cameraGuideVideoName ? cameraGuideSourceDuration : 0, cameraGuideStart)
             : ltxDurationSeconds(seconds)
           : Math.max(1, Math.min(15, seconds));
-    let frames; let fps; let W; let H;
+    let frames; let fps; let W; let H; let h3OutputAspectRatio;
     if (engine === 'h3') {
       fps = H3_FPS;
       frames = h3FramesForSeconds(seconds);
@@ -7317,6 +7317,7 @@ async function handleApi(req, res, url) {
         4,
         requestedWidth / Math.max(1, requestedHeight)
       );
+      h3OutputAspectRatio = requestedAspectRatio;
       ({ W, H } = h3Dimensions(requestedAspectRatio, 1, body.h3ResolutionSize));
     } else if (engine === 'scail') {
       fps = selectedScailFps;
@@ -7506,6 +7507,9 @@ async function handleApi(req, res, url) {
         scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,
         scailChunkOverlap: engine === 'scail' ? selectedScailChunkOptions.overlapFrames : undefined,
         h3Mode: engine === 'h3' ? h3Mode : undefined,
+        h3AspectRatio: engine === 'h3' ? h3OutputAspectRatio : undefined,
+        h3ResolutionSize: engine === 'h3' ? Number(body.h3ResolutionSize) || 1 : undefined,
+        h3MatchSource: engine === 'h3' && h3Mode === 'frames' ? body.h3MatchSource === true : undefined,
         attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
         h3RefImageSize: engine === 'h3' && h3Mode === 'reference' ? opts.refImageSize : undefined,
         h3References: engine === 'h3' && h3Mode === 'reference' ? h3References : undefined,

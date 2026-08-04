@@ -130,7 +130,7 @@ test('pasted images use the existing upload path and deterministic workflow dest
   assert.match(routing, /insertPromptReference\(slot \+ 1, caret,/);
   assert.match(routing, /state\.vidFace = Object\.assign/);
   assert.match(routing, /state\.vidRef = null/);
-  assert.match(routing, /state\.vidRef = assets\[0\]/);
+  assert.match(routing, /setVideoFirstFrame\(assets\[0\]\)/);
   assert.match(routing, /state\.vidFace = null/);
   assert.doesNotMatch(routing, /state\.vidEnd = assets\[0\]/);
 });
