@@ -15,8 +15,8 @@ const H3Resolution = require('../public/h3-resolution');
 const { h3Dimensions } = require('../lib/video-workflows');
 const regexEscape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-test('MiniMax H3 resolution picker mirrors the backend S, M, and L canvases', () => {
-  const sizes = [0.75, 1, 1.75];
+test('MiniMax H3 resolution picker mirrors the backend S, M, L, and XL canvases', () => {
+  const sizes = [0.75, 1, 1.75, H3Resolution.XL_SIZE];
   for (const aspect of [[1, 1], [4, 5], [3, 4], [2, 3], [9, 16], [3, 2], [4, 3], [16, 9], [21, 9]]) {
     const tierPixels = sizes.map((size) => {
       const frontend = H3Resolution.dimensions(...aspect, size);
@@ -28,20 +28,25 @@ test('MiniMax H3 resolution picker mirrors the backend S, M, and L canvases', ()
     });
     assert.ok(tierPixels[0] < tierPixels[1]);
     assert.ok(tierPixels[1] < tierPixels[2]);
+    assert.ok(tierPixels[2] < tierPixels[3]);
   }
+  assert.match(html, /data-h3-xl="true"[^>]*hidden>XL</);
+  assert.match(html, /id="h3ResolutionWarning" hidden>XL uses roughly twice the pixels of L/);
   assert.ok(html.indexOf('/h3-resolution.js') < html.indexOf('/app.js'));
   assert.match(app, /function h3ResolutionActive\(\)[\s\S]*state\.view === 'video' && state\.vidEngine === 'h3'/);
-  assert.match(app, /function h3DimensionsForAspect\([\s\S]*H3Resolution\.dimensions\(selected\.ar, 1, state\.mp\)/);
+  assert.match(app, /function h3DimensionsForAspect\([\s\S]*H3Resolution\.dimensions\(selected\.ar, 1, h3ResolutionSize\(\)\)/);
   assert.match(app, /function h3ResolutionAspectRatio\(\)[\s\S]*h3MatchSourceActive\(\) \? h3SourceAspectRatio\(\) : selectedAspectRatio\(\)/);
+  assert.match(app, /function h3CurrentDimensions\(\)[\s\S]*h3ResolutionSize\(\)/);
   assert.match(app, /function computeDims\(\)[\s\S]*h3CurrentDimensions\(\)[\s\S]*state\.width = dimensions\.width;[\s\S]*state\.height = dimensions\.height;/);
   assert.match(app, /\$\('#sizeSeg'\)\.hidden = false;/);
   assert.match(app, /widthInput\.readOnly = h3Resolution;[\s\S]*heightInput\.readOnly = h3Resolution;/);
-  assert.match(app, /h3ResolutionSize: state\.vidEngine === 'h3' \? state\.mp : undefined/);
+  assert.match(app, /h3ResolutionSize: state\.vidEngine === 'h3' \? h3ResolutionSize\(\) : undefined/);
   assert.match(app, /h3AspectRatio: state\.vidEngine === 'h3' \? h3ResolutionAspectRatio\(\) : undefined/);
   assert.match(app, /Match frame[\s\S]*state\.vidH3MatchSource = true/);
   assert.match(app, /#resPanel'\)\.hidden = state\.view === 'edit'[\s\S]*isVideo && !!state\.vidRef && state\.vidEngine !== 'h3'/);
   assert.match(app, /width: state\.vidEngine === 'h3'[\s\S]*\? state\.width[\s\S]*height: state\.vidEngine === 'h3'[\s\S]*\? state\.height/);
   assert.match(server, /h3Dimensions\(requestedAspectRatio, 1, body\.h3ResolutionSize\)/);
+  assert.match(server, /h3ResolutionSize: engine === 'h3' \? Number\(body\.h3ResolutionSize\)/);
 });
 
 test('MiniMax H3 preserves normalized portrait aspect ratios from the picker', () => {
@@ -522,6 +527,8 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /function renderPromptMentionPicker\(\)[\s\S]{0,760}h3PromptReferenceEntries\(\)/);
   assert.doesNotMatch(app, /h3-reference-name/);
   assert.match(css, /\.h3-reference-grid \.ref-slot/);
+  assert.match(css, /\.h3-reference-grid \.ref-slot \.ref-role \{[\s\S]*background: transparent;/);
+  assert.match(css, /\.video-input-grid\.h3-frame-inputs \.media-input-filled \.attach-info \{[\s\S]*background: transparent;/);
   assert.match(css, /\.video-input-grid\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.prompt-h3-audio/);
 });

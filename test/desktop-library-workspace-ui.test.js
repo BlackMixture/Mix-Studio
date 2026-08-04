@@ -128,6 +128,8 @@ test('desktop gallery items drag onto compatible generation inputs', () => {
   assert.match(app, /\.ref-slot/);
   assert.match(app, /#vidAttachBtn/);
   assert.match(app, /#vidDriveBtn/);
+  assert.match(app, /#vidH3ReferenceList/);
+  assert.match(app, /Gallery \$\{kind\} added as an H3 reference/);
   assert.match(app, /sendVideoAsDrive\(item, video, \{ preserveEngine: true \}\)/);
   assert.match(css, /\.gallery-drop-ready/);
   assert.match(css, /\.gallery-drop-active/);

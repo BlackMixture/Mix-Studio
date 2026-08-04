@@ -125,6 +125,7 @@ const state = {
   vidRef: null,              // {name, url, w, h} - Video tab source image
   vidH3Mode: 'frames',       // frames | reference
   vidH3MatchSource: true,    // keep frame-mode output at the first frame's aspect unless explicitly overridden
+  vidH3Xl: false,
   vidH3SageAttention: true,
   vidH3Steps: 20,
   vidH3RefImageSize: 'match',
@@ -216,9 +217,13 @@ function h3ResolutionActive() {
   return state.view === 'video' && state.vidEngine === 'h3';
 }
 
+function h3ResolutionSize() {
+  return state.vidH3Xl ? H3Resolution.XL_SIZE : state.mp;
+}
+
 function h3DimensionsForAspect(aspect = state.aspect) {
   const selected = ASPECTS.find((option) => option.label === aspect) || ASPECTS[0];
-  return H3Resolution.dimensions(selected.ar, 1, state.mp);
+  return H3Resolution.dimensions(selected.ar, 1, h3ResolutionSize());
 }
 
 function h3SourceAspectRatio(asset = state.vidRef) {
@@ -241,7 +246,7 @@ function h3ResolutionAspectRatio() {
 }
 
 function h3CurrentDimensions() {
-  return H3Resolution.dimensions(h3ResolutionAspectRatio(), 1, state.mp);
+  return H3Resolution.dimensions(h3ResolutionAspectRatio(), 1, h3ResolutionSize());
 }
 
 function selectedAspectRatio(aspect = state.aspect) {
@@ -2534,6 +2539,7 @@ function saveForm() {
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       vidH3Mode: state.vidH3Mode,
       vidH3MatchSource: state.vidH3MatchSource,
+      vidH3Xl: state.vidH3Xl,
       vidH3SageAttention: state.vidH3SageAttention,
       vidH3Steps: state.vidH3Steps,
       vidH3RefImageSize: state.vidH3RefImageSize,
@@ -2780,6 +2786,7 @@ function loadForm() {
     state.vidRef = restoreWorkspaceAsset(f.vidRef);
     state.vidH3Mode = f.vidH3Mode === 'reference' ? 'reference' : 'frames';
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
+    state.vidH3Xl = f.vidH3Xl === true;
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
     state.vidH3Steps = Math.max(1, Math.min(100, Math.round(Number(f.vidH3Steps) || 20)));
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
@@ -10199,7 +10206,7 @@ function renderAspects() {
   }
   if (h3ResolutionActive() && state.vidH3Mode === 'frames' && h3SourceAspectRatio() > 0) {
     const sourceRatio = h3SourceAspectRatio();
-    const sourceDimensions = H3Resolution.dimensions(sourceRatio, 1, state.mp);
+    const sourceDimensions = H3Resolution.dimensions(sourceRatio, 1, h3ResolutionSize());
     const source = document.createElement('button');
     source.type = 'button';
     source.className = 'aspect-chip create-match-aspect' + (h3MatchSourceActive() ? ' active' : '');
@@ -10228,7 +10235,7 @@ function renderAspects() {
     const maxSide = 22;
     const w = a.ar >= 1 ? maxSide : Math.round(maxSide * a.ar);
     const h = a.ar >= 1 ? Math.round(maxSide / a.ar) : maxSide;
-    const h3Dimensions = h3ResolutionActive() ? H3Resolution.dimensions(a.ar, 1, state.mp) : null;
+    const h3Dimensions = h3ResolutionActive() ? H3Resolution.dimensions(a.ar, 1, h3ResolutionSize()) : null;
     btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span><span>${a.label}</span>${h3Dimensions ? `<small class="aspect-output-dims">${h3Dimensions.width} × ${h3Dimensions.height}</small>` : ''}`;
     btn.addEventListener('click', () => {
       state.aspect = a.label;
@@ -10258,8 +10265,10 @@ function renderDims() {
   widthInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
   heightInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
   $('#sizeSeg').hidden = false;
+  $('#h3ResolutionWarning').hidden = !h3Resolution || !state.vidH3Xl;
+  $('#sizeSeg [data-h3-xl]').hidden = !h3Resolution;
   $('#resSummary').textContent = h3Resolution
-    ? `${h3FrameMatch ? `First frame · ${derivedAspectLabel(state.vidRef.w, state.vidRef.h)}` : state.aspect} · ${createSizeLabel()} · ${state.width} × ${state.height}`
+    ? `${h3FrameMatch ? `First frame · ${derivedAspectLabel(state.vidRef.w, state.vidRef.h)}` : state.aspect} · ${state.vidH3Xl ? 'XL' : createSizeLabel()} · ${state.width} × ${state.height}`
     : state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
     ? `${state.aspect} · ${state.createMatchNative ? 'Native image' : `Match image ${createSizeLabel()}`} · ${state.width} × ${state.height}`
     : (state.customDims
@@ -10276,8 +10285,10 @@ function renderDims() {
     icon.style.height = `${h}px`;
   }
   $$('#sizeSeg button').forEach((b) => {
-    const selected = Number(b.dataset.mp) === state.mp
-      && (!state.customDims || (state.createMatchSource && !state.createMatchNative));
+    const selected = h3Resolution
+      ? (b.hasAttribute('data-h3-xl') ? state.vidH3Xl : (!state.vidH3Xl && Number(b.dataset.mp) === state.mp))
+      : (!b.hasAttribute('data-h3-xl') && Number(b.dataset.mp) === state.mp
+        && (!state.customDims || (state.createMatchSource && !state.createMatchNative)));
     b.classList.toggle('active', selected);
     b.setAttribute('aria-pressed', String(selected));
   });
@@ -10757,9 +10768,23 @@ $$('#editSizeSeg button').forEach((button) => button.addEventListener('click', (
   renderEditAspects();
   saveForm();
 }));
-$$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
-  const keepImageMatch = state.createMatchSource && !!state.createRef;
-  state.mp = Number(b.dataset.mp);
+$$('#sizeSeg button').forEach((b) => b.addEventListener('click', async () => {
+  if (b.hasAttribute('data-h3-xl')) {
+    if (!h3ResolutionActive()) return;
+    if (!state.vidH3Xl) {
+      const confirmed = await askConfirm({
+        title: 'Use H3 XL direct resolution?',
+        message: 'XL renders a larger canvas directly (1920 × 1088 at 16:9) and uses roughly twice the pixels of L. It can take substantially longer or run out of memory. L followed by RTX upscale is the more reliable route.',
+        confirmLabel: 'Use XL',
+      });
+      if (!confirmed) return;
+    }
+    state.vidH3Xl = true;
+  } else {
+    state.vidH3Xl = false;
+    state.mp = Number(b.dataset.mp);
+  }
+  const keepImageMatch = !h3ResolutionActive() && state.createMatchSource && !!state.createRef;
   if (keepImageMatch) {
     applyCreateMatchedDimensions();
   } else {
@@ -15575,6 +15600,7 @@ function renderH3References() {
   $('#vidH3ModePanel').hidden = !h3;
   $('#vidH3ReferencePanel').hidden = !referenceMode;
   $('#vidStandardInputs').hidden = referenceMode;
+  $('#vidStandardInputs').classList.toggle('h3-frame-inputs', h3 && !referenceMode);
   $('#vidH3ModeRow').style.setProperty('--h3-mode-index', referenceMode ? '1' : '0');
   $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => {
     const active = button.dataset.h3Mode === state.vidH3Mode;
@@ -16864,7 +16890,7 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
       h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
-      h3ResolutionSize: state.vidEngine === 'h3' ? state.mp : undefined,
+      h3ResolutionSize: state.vidEngine === 'h3' ? h3ResolutionSize() : undefined,
       h3AspectRatio: state.vidEngine === 'h3' ? h3ResolutionAspectRatio() : undefined,
       h3MatchSource: state.vidEngine === 'h3' && state.vidH3Mode === 'frames'
         ? h3MatchSourceActive() : undefined,
@@ -18659,7 +18685,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3MatchSource', 'vidH3SageAttention', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3MatchSource', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -18813,6 +18839,7 @@ function resetActiveGenerationForm() {
     state.vidRef = null;
     state.vidH3Mode = 'frames';
     state.vidH3MatchSource = true;
+    state.vidH3Xl = false;
     state.vidH3SageAttention = true;
     state.vidH3Steps = 20;
     state.vidH3RefImageSize = 'match';
@@ -21044,6 +21071,7 @@ $('#libraryGroupBack').addEventListener('click', closeDesktopLibraryGroup);
 let desktopGalleryDrag = null;
 const DESKTOP_GALLERY_DROP_SELECTOR = [
   '.lora-card[data-lora-name]',
+  '#vidH3ReferenceList',
   '.ref-slot',
   '#createImageGuideToggle', '#createImageGuideAdd', '#createImageGuideFilled',
   '#regionRefBtn', '#regionRefPreview',
@@ -21188,6 +21216,8 @@ async function applyDirectorGalleryDrop(target, drag, event) {
 }
 
 function desktopGalleryDropTarget(node) {
+  const h3References = node && node.closest ? node.closest('#vidH3ReferenceList') : null;
+  if (h3References?.getClientRects().length) return h3References;
   const target = node && node.closest ? node.closest(DESKTOP_GALLERY_DROP_SELECTOR) : null;
   return target && target.getClientRects().length ? target : null;
 }
@@ -21197,8 +21227,14 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
   return $$(DESKTOP_GALLERY_DROP_SELECTOR).filter((target) => {
     if (!target.getClientRects().length) return false;
     if (target.closest('[inert], [aria-hidden="true"]')) return false;
+    if (target.matches('#vidH3ReferenceList .ref-slot')) return false;
     if (target.closest('#directorWorkspace') && !directorGalleryDropTargetAllowed(target, drag)) return false;
     if (target.matches('.lora-card[data-lora-name]') && (drag.video || !drag.item?.file)) return false;
+    if (target.matches('#vidH3ReferenceList')) {
+      const kind = drag.video ? 'videos' : 'images';
+      return state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
+        && h3References()[kind].length < H3_REFERENCE_LIMITS[kind];
+    }
     if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
     if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
     return true;
@@ -21292,6 +21328,14 @@ async function applyDesktopGalleryDrop(target, drag, event) {
   if (await applyDirectorGalleryDrop(target, drag, event)) return;
   if (target.matches('.lora-card[data-lora-name]')) {
     await setLoraThumbFromGallery(target.dataset.loraName, item);
+    return;
+  }
+  if (target.matches('#vidH3ReferenceList')) {
+    const kind = video ? 'video' : 'image';
+    const reference = await directorGalleryDropAsset(drag, kind);
+    reference.kind = kind;
+    addH3Reference(reference);
+    toast(`Gallery ${kind} added as an H3 reference`);
     return;
   }
   if (target.matches('.ref-slot')) {
@@ -24105,6 +24149,8 @@ async function reuseVideo(it, v) {
   state.vidRef = null;
   state.vidH3Mode = engine === 'h3' && info.h3Mode === 'reference' ? 'reference' : 'frames';
   state.vidH3MatchSource = savedH3MatchSource === true;
+  state.vidH3Xl = engine === 'h3' && (Number(info.h3ResolutionSize) >= H3Resolution.XL_SIZE
+    || Math.max(Number(info.width) || 0, Number(info.height) || 0) > 1536);
   state.vidH3SageAttention = engine === 'h3' ? info.attentionBackend !== 'standard' : true;
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
   state.vidH3RefSlots = 1;
