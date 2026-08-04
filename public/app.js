@@ -216,7 +216,11 @@ function h3ResolutionActive() {
 
 function h3DimensionsForAspect(aspect = state.aspect) {
   const selected = ASPECTS.find((option) => option.label === aspect) || ASPECTS[0];
-  return H3Resolution.dimensions(selected.ar, 1);
+  return H3Resolution.dimensions(selected.ar, 1, state.mp);
+}
+
+function selectedAspectRatio(aspect = state.aspect) {
+  return (ASPECTS.find((option) => option.label === aspect) || ASPECTS[0]).ar;
 }
 
 const QWEN_ANGLE_VIEWS = [
@@ -10166,7 +10170,7 @@ function renderAspects() {
     const maxSide = 22;
     const w = a.ar >= 1 ? maxSide : Math.round(maxSide * a.ar);
     const h = a.ar >= 1 ? Math.round(maxSide / a.ar) : maxSide;
-    const h3Dimensions = h3ResolutionActive() ? H3Resolution.dimensions(a.ar, 1) : null;
+    const h3Dimensions = h3ResolutionActive() ? H3Resolution.dimensions(a.ar, 1, state.mp) : null;
     btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span><span>${a.label}</span>${h3Dimensions ? `<small class="aspect-output-dims">${h3Dimensions.width} × ${h3Dimensions.height}</small>` : ''}`;
     btn.addEventListener('click', () => {
       state.aspect = a.label;
@@ -10193,10 +10197,10 @@ function renderDims() {
   heightInput.setAttribute('aria-readonly', String(h3Resolution));
   widthInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
   heightInput.title = h3Resolution ? 'MiniMax H3 sets this from the selected aspect ratio' : '';
-  $('#sizeSeg').hidden = h3Resolution;
+  $('#sizeSeg').hidden = false;
   $('#h3ResolutionNote').hidden = !h3Resolution;
   $('#resSummary').textContent = h3Resolution
-    ? `${state.aspect} · H3 native · ${state.width} × ${state.height}`
+    ? `${state.aspect} · ${createSizeLabel()} · ${state.width} × ${state.height}`
     : state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
     ? `${state.aspect} · ${state.createMatchNative ? 'Native image' : `Match image ${createSizeLabel()}`} · ${state.width} × ${state.height}`
     : (state.customDims
@@ -10695,7 +10699,6 @@ $$('#editSizeSeg button').forEach((button) => button.addEventListener('click', (
   saveForm();
 }));
 $$('#sizeSeg button').forEach((b) => b.addEventListener('click', () => {
-  if (h3ResolutionActive()) return;
   const keepImageMatch = state.createMatchSource && !!state.createRef;
   state.mp = Number(b.dataset.mp);
   if (keepImageMatch) {
@@ -15437,6 +15440,7 @@ function renderH3References() {
   $('#vidH3ModePanel').hidden = !h3;
   $('#vidH3ReferencePanel').hidden = !referenceMode;
   $('#vidStandardInputs').hidden = referenceMode;
+  $('#vidH3ModeRow').style.setProperty('--h3-mode-index', referenceMode ? '1' : '0');
   $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => {
     const active = button.dataset.h3Mode === state.vidH3Mode;
     button.classList.toggle('active', active);
@@ -15831,7 +15835,7 @@ async function requestMotionPromptFromFirstFrame(initialPrompt) {
   }
 }
 
-async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
+async function createMotionPromptFromFirstFrame() {
   if (!state.vidRef || state.vidEngine === 'ltx-edit' || h3ReferenceModeActive()) return;
   const btn = $('#vidMotionPromptBtn');
   const label = $('#vidMotionPromptLabel');
@@ -15840,17 +15844,17 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
   btn.classList.add('is-loading');
   label.textContent = 'Reading frame';
   try {
-    if (!automatic) toast('Reading the start frame…');
+    toast('Reading the start frame…');
     const preparedPrompt = await requestMotionPromptFromFirstFrame(initialPrompt);
     const currentPrompt = promptDraft().trim();
     if (currentPrompt !== initialPrompt && currentPrompt !== preparedPrompt) {
-      throw new Error('The prompt changed while Auto motion was reading the frame. Review it and try again.');
+      throw new Error('The prompt changed while the frame was being read. Review it and try again.');
     }
     state.prompts.video = preparedPrompt;
     setPromptDraft(preparedPrompt);
     updatePromptClear();
     saveForm();
-    toast(automatic ? 'Motion prompt added automatically' : 'Motion prompt created from the start frame');
+    toast('Motion prompt created from the start frame');
     return preparedPrompt;
   } catch (e) {
     if (!isJobCancellation(e)) toast(e.message, true);
@@ -15861,30 +15865,17 @@ async function createMotionPromptFromFirstFrame({ automatic = false } = {}) {
     syncVideoAutoMotionUi();
   }
 }
-async function maybeCreateAutomaticMotionPrompt() {
-  if (!state.vidAutoMotionPrompt || !state.vidRef || promptDraft().trim()
-    || h3ReferenceModeActive() || state.activeJobs.size || state.motionPromptRequestsPending) return;
-  try {
-    const queue = await refreshQueue();
-    if ((queue.running || []).length || (queue.pending || []).length) return;
-  } catch { return; }
-  if (state.vidAutoMotionPrompt && state.vidRef && !promptDraft().trim()) {
-    createMotionPromptFromFirstFrame({ automatic: true });
-  }
-}
 $('#vidMotionPromptBtn').addEventListener('click', () => createMotionPromptFromFirstFrame());
 $('#vidAutoMotionToggle').addEventListener('click', () => {
   state.vidAutoMotionPrompt = !state.vidAutoMotionPrompt;
   renderVidAttach();
   saveForm();
-  if (state.vidAutoMotionPrompt) maybeCreateAutomaticMotionPrompt();
 });
 function pickVidRef() {
   pickUpload('image/*', (file) => {
     state.vidRef = file;
     renderVidAttach();
     updateVideoPanels();
-    maybeCreateAutomaticMotionPrompt();
     saveForm();
   }, 'Choose first frame');
 }
@@ -16685,17 +16676,6 @@ $('#generateBtn').addEventListener('click', async () => {
       return toast('SCAIL 2 needs a motion video — attach the clip whose movement you want to copy', true);
     }
     if (!(await ensureGenerationSetup())) return;
-    let preparedAutoMotionPrompt = false;
-    if (autoMotionPrompt) {
-      setGenerating(true, 'Enhancing motion prompt…');
-      const prepared = await createMotionPromptFromFirstFrame({ automatic: true });
-      if (!prepared) {
-        setGenerating(false);
-        return;
-      }
-      prompt = cameraMotionPromptForEngine(prepared);
-      preparedAutoMotionPrompt = true;
-    }
     let vidAudioName;
     if (state.vidAudio && (state.vidEngine === 'ltx' || state.vidEngine === 'eros')) {
       try { vidAudioName = await ensureAudioUploaded(state.vidAudio); }
@@ -16709,8 +16689,12 @@ $('#generateBtn').addEventListener('click', async () => {
       promptTemplate: promptTemplateBeforeAutoMotion || undefined,
       promptPresets: promptPresetMetadataForGeneration(),
       negativePrompt: negativePromptForGeneration(),
-      autoMotionPrompt: autoMotionPrompt && !preparedAutoMotionPrompt,
-      preparedMotionPrompt: preparedAutoMotionPrompt,
+      // Automatic motion prompting stays inside this animate request. The
+      // server reads this request's captured first frame, then queues the
+      // matching video with the generated prompt. Never route automatic mode
+      // through the manual helper, which mutates the shared prompt editor.
+      autoMotionPrompt,
+      preparedMotionPrompt: false,
       engine: state.vidEngine,
       seconds: Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
@@ -16727,6 +16711,8 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
       h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
+      h3ResolutionSize: state.vidEngine === 'h3' ? state.mp : undefined,
+      h3AspectRatio: state.vidEngine === 'h3' ? selectedAspectRatio() : undefined,
       sageAttention: state.vidEngine === 'h3' ? state.vidH3SageAttention !== false : undefined,
       h3RefImageSize: h3Reference ? state.vidH3RefImageSize : undefined,
       h3References: h3Reference ? Object.fromEntries(Object.entries(h3References()).map(([kind, assets]) => [
@@ -16748,16 +16734,24 @@ $('#generateBtn').addEventListener('click', async () => {
         ? Math.max(0.5, (state.vidDrive.trimEnd || state.vidDrive.dur) - (state.vidDrive.trimStart || 0)) : undefined,
       endImageName: state.vidEnd && !h3Reference ? state.vidEnd.name : undefined,
       imageName: state.vidRef && !h3Reference ? state.vidRef.name : undefined,
-      width: ltxEdit && state.vidDrive
+      width: state.vidEngine === 'h3'
+        ? state.width
+        : ltxEdit && state.vidDrive
         ? (state.vidDrive.w || state.width)
         : (!h3Reference && state.vidRef ? state.vidRef.w : state.width),
-      height: ltxEdit && state.vidDrive
+      height: state.vidEngine === 'h3'
+        ? state.height
+        : ltxEdit && state.vidDrive
         ? (state.vidDrive.h || state.height)
         : (!h3Reference && state.vidRef ? state.vidRef.h : state.height),
       seed: baseSeed,
     };
+    if (autoMotionPrompt) {
+      state.motionPromptRequestsPending += 1;
+      $('#genLbl').textContent = genLabel();
+    }
     try {
-      setGenerating(true, 'Queued…');
+      setGenerating(true, autoMotionPrompt ? 'Reading frame, then queueing video…' : 'Queued…');
       const requests = Array.from({ length: batch }, (_, index) => Object.assign({}, body, {
         seed: baseSeed == null ? undefined : baseSeed + index,
       }));
@@ -16782,6 +16776,12 @@ $('#generateBtn').addEventListener('click', async () => {
     } catch (e) {
       setGenerating(false);
       if (!isJobCancellation(e)) toast(e.message, true);
+    } finally {
+      if (autoMotionPrompt) {
+        state.motionPromptRequestsPending = Math.max(0, state.motionPromptRequestsPending - 1);
+        if (!state.activeJobs.size && !state.motionPromptRequestsPending) setGenerating(false);
+        else $('#genLbl').textContent = genLabel();
+      }
     }
     return;
   }

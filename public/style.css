@@ -1646,7 +1646,13 @@ html:-webkit-full-screen { background: #000; }
 }
 .video-input-grid[hidden] { display: none; }
 
-.h3-mode-panel,
+.h3-mode-panel {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
 .h3-reference-panel {
   margin: 0 0 10px;
   padding: 10px;
@@ -1654,9 +1660,46 @@ html:-webkit-full-screen { background: #000; }
   border-radius: 13px;
   background: rgba(10, 14, 25, .48);
 }
-.h3-mode-row,
 .h3-reference-size { display: flex; gap: 6px; }
-.h3-mode-row button,
+.h3-mode-row {
+  --h3-mode-index: 0;
+  position: relative;
+  isolation: isolate;
+  display: inline-grid;
+  width: min(100%, 282px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .4);
+}
+.h3-mode-indicator {
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 2);
+  border-radius: 999px;
+  background: #1b2030;
+  transform: translateX(calc(var(--h3-mode-index) * 100%));
+  transition: transform 260ms cubic-bezier(.2, .8, .2, 1), background 180ms ease;
+}
+.h3-mode-row button {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(232, 237, 255, .66);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 8px 10px;
+  white-space: nowrap;
+  transition: color 180ms ease;
+}
 .h3-reference-size button,
 .h3-reference-tag {
   border: 1px solid rgba(155, 170, 210, .18);
@@ -1668,11 +1711,17 @@ html:-webkit-full-screen { background: #000; }
   font-weight: 700;
   padding: 7px 10px;
 }
-.h3-mode-row button.active,
+.h3-mode-row button.active {
+  color: #fff;
+  background: transparent;
+}
 .h3-reference-size button.active {
   color: #fff;
   border-color: rgba(139, 120, 255, .6);
   background: rgba(116, 94, 255, .2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .h3-mode-indicator { transition-duration: 1ms; }
 }
 .h3-reference-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .h3-reference-head > span { display: grid; gap: 2px; }

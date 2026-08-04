@@ -15,19 +15,31 @@ const H3Resolution = require('../public/h3-resolution');
 const { h3Dimensions } = require('../lib/video-workflows');
 const regexEscape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-test('MiniMax H3 resolution picker mirrors the backend native canvas', () => {
+test('MiniMax H3 resolution picker mirrors the backend S, M, and L canvases', () => {
+  const sizes = [0.75, 1, 1.75];
   for (const aspect of [[1, 1], [4, 5], [3, 4], [2, 3], [9, 16], [3, 2], [4, 3], [16, 9], [21, 9]]) {
-    const frontend = H3Resolution.dimensions(...aspect);
-    const backend = h3Dimensions(...aspect);
-    assert.deepEqual(frontend, { width: backend.W, height: backend.H });
+    const tierPixels = sizes.map((size) => {
+      const frontend = H3Resolution.dimensions(...aspect, size);
+      const backend = h3Dimensions(...aspect, size);
+      assert.deepEqual(frontend, { width: backend.W, height: backend.H });
+      assert.equal(frontend.width % 32, 0);
+      assert.equal(frontend.height % 32, 0);
+      return frontend.width * frontend.height;
+    });
+    assert.ok(tierPixels[0] < tierPixels[1]);
+    assert.ok(tierPixels[1] < tierPixels[2]);
   }
-  assert.match(html, /id="h3ResolutionNote" hidden>H3 native canvas · 32 px grid</);
+  assert.match(html, /id="h3ResolutionNote" hidden>H3 S\/M\/L · L is native · 32 px grid</);
   assert.ok(html.indexOf('/h3-resolution.js') < html.indexOf('/app.js'));
   assert.match(app, /function h3ResolutionActive\(\)[\s\S]*state\.view === 'video' && state\.vidEngine === 'h3'/);
+  assert.match(app, /function h3DimensionsForAspect\([\s\S]*H3Resolution\.dimensions\(selected\.ar, 1, state\.mp\)/);
   assert.match(app, /function computeDims\(\)[\s\S]*h3DimensionsForAspect\(\)[\s\S]*state\.width = dimensions\.width;[\s\S]*state\.height = dimensions\.height;/);
-  assert.match(app, /\$\('#sizeSeg'\)\.hidden = h3Resolution;/);
+  assert.match(app, /\$\('#sizeSeg'\)\.hidden = false;/);
   assert.match(app, /widthInput\.readOnly = h3Resolution;[\s\S]*heightInput\.readOnly = h3Resolution;/);
-  assert.match(app, /`\$\{state\.aspect\} · H3 native · \$\{state\.width\} × \$\{state\.height\}`/);
+  assert.match(app, /h3ResolutionSize: state\.vidEngine === 'h3' \? state\.mp : undefined/);
+  assert.match(app, /h3AspectRatio: state\.vidEngine === 'h3' \? selectedAspectRatio\(\) : undefined/);
+  assert.match(app, /width: state\.vidEngine === 'h3'[\s\S]*\? state\.width[\s\S]*height: state\.vidEngine === 'h3'[\s\S]*\? state\.height/);
+  assert.match(server, /h3Dimensions\(requestedAspectRatio, 1, body\.h3ResolutionSize\)/);
 });
 
 test('MiniMax H3 offers verified SageAttention with an explicit standard-attention bypass', () => {
@@ -347,17 +359,18 @@ test('A start-frame action can ask the vision model for a fitting motion prompt'
   assert.match(server, /if \(!prompt\) \{[\s\S]*sharedMotionPrompt/);
 });
 
-test('automatic motion prompting prepares one shared prompt before queueing a video batch', () => {
+test('automatic motion prompting keeps each queued frame and video submission atomic', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="vidAutoMotionToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
   assert.match(app, /vidAutoMotionPrompt: false/);
-  assert.match(app, /preparedAutoMotionPrompt = true/);
-  assert.match(app, /autoMotionPrompt: autoMotionPrompt && !preparedAutoMotionPrompt/);
-  assert.match(app, /preparedMotionPrompt: preparedAutoMotionPrompt/);
+  assert.match(app, /autoMotionPrompt,\s*preparedMotionPrompt: false/);
+  assert.match(app, /state\.motionPromptRequestsPending \+= 1/);
+  assert.match(app, /Reading frame, then queueing video/);
   assert.match(app, /Promise\.allSettled\(requests\.map/);
   assert.match(app, /preparedMotionPromptCache/);
   assert.match(app, /motionPromptRequest && motionPromptRequest\.key === key/);
-  assert.match(app, /function maybeCreateAutomaticMotionPrompt\(\)/);
+  assert.doesNotMatch(app, /function maybeCreateAutomaticMotionPrompt\(\)/);
+  assert.doesNotMatch(app, /createMotionPromptFromFirstFrame\(\{ automatic: true \}\)/);
   assert.match(app, /classList\.toggle\('auto-armed', armed\)/);
   assert.match(app, /'Auto motion armed'/);
   assert.match(server, /if \(autoMotionRequested\)/);
@@ -454,7 +467,10 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
 
 test('MiniMax H3 keeps its standard and reference downloads independent', () => {
   assert.match(html, /data-engine="h3"[^>]*data-feature-engine="video\.h3"[^>]*data-model-label="MiniMax H3"/);
-  assert.match(html, /id="vidH3ModeRow"[\s\S]*data-h3-mode="frames"[\s\S]*data-h3-mode="reference"/);
+  assert.match(html, /id="vidH3ModeRow"[\s\S]*class="h3-mode-indicator"[\s\S]*data-h3-mode="frames"[\s\S]*data-h3-mode="reference"/);
+  assert.match(app, /\$\('#vidH3ModeRow'\)\.style\.setProperty\('--h3-mode-index', referenceMode \? '1' : '0'\)/);
+  assert.match(css, /\.h3-mode-panel \{[\s\S]*border: 0;[\s\S]*background: transparent;/);
+  assert.match(css, /\.h3-mode-indicator \{[\s\S]*transform: translateX\(calc\(var\(--h3-mode-index\) \* 100%\)\);[\s\S]*transition: transform 260ms/);
   assert.doesNotMatch(html, /Reference mode installs its separate Ref2VA model only when you first use it\./);
   assert.doesNotMatch(html, /Text \+ frames does not download that model\./);
   assert.doesNotMatch(html, /id="vidH3ModeCopy"/);

@@ -7306,7 +7306,18 @@ async function handleApi(req, res, url) {
     if (engine === 'h3') {
       fps = H3_FPS;
       frames = h3FramesForSeconds(seconds);
-      ({ W, H } = h3Dimensions(srcW, srcH));
+      // H3's first frame supplies visual conditioning, not the output canvas.
+      // Honor the aspect and S/M/L size captured by this submission so lower
+      // memory tiers also work for image-to-video and gallery reuse.
+      const requestedWidth = clampInt(body.width, 64, 8192, srcW);
+      const requestedHeight = clampInt(body.height, 64, 8192, srcH);
+      const requestedAspectRatio = clampNum(
+        body.h3AspectRatio,
+        0.25,
+        4,
+        requestedWidth / Math.max(1, requestedHeight)
+      );
+      ({ W, H } = h3Dimensions(requestedAspectRatio, 1, body.h3ResolutionSize));
     } else if (engine === 'scail') {
       fps = selectedScailFps;
       frames = scailFramesForSeconds(seconds, fps);

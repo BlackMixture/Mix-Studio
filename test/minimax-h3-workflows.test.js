@@ -43,6 +43,15 @@ test('MiniMax H3 canvas follows the native 768 short edge and area cap', () => {
   assert.ok(ultrawide.W * ultrawide.H <= 768 * 1344 + (32 * 1344));
 });
 
+test('MiniMax H3 S, M, and L tiers preserve aspect while reducing memory', () => {
+  assert.deepEqual(h3Dimensions(1920, 1080, 0.75), { W: 672, H: 384 });
+  assert.deepEqual(h3Dimensions(1920, 1080, 1), { W: 1024, H: 576 });
+  assert.deepEqual(h3Dimensions(1920, 1080, 1.75), { W: 1344, H: 768 });
+  assert.deepEqual(h3Dimensions(1000, 1000, 0.75), { W: 384, H: 384 });
+  assert.deepEqual(h3Dimensions(1000, 1000, 1), { W: 576, H: 576 });
+  assert.deepEqual(h3Dimensions(1000, 1000, 1.75), { W: 768, H: 768 });
+});
+
 test('MiniMax H3 first/last-frame graph matches the native joint AV workflow', async () => {
   const graph = await buildMiniMaxH3Graph({
     mode: 'frames',
