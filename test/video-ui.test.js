@@ -522,15 +522,24 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /multiple: options\.multiple === true && assetPickerKind\(accept\) === 'image'/);
   assert.match(app, /#vidH3AddReference'\)\.addEventListener\('click'[\s\S]{0,220}state\.vidH3RefSlots \+= 1/);
   assert.match(app, /function makeH3PromptReferenceToken\(tag\)/);
+  assert.match(app, /open\.dataset\.openH3PromptRef = tag/);
+  assert.match(app, /function replacePromptH3ReferenceToken\(token, tag\)[\s\S]{0,360}token\.replaceWith\(replacement\)/);
+  assert.match(app, /openPromptMentionPicker\(\{ targetToken: h3Token \}\)/);
   assert.match(app, /<(?:\(\?:)?Picture\|Video\|Audio\) \\\\d\+>/);
   assert.match(app, /state\.view === 'edit' \|\| h3ReferenceModeActive\(\)[\s\S]{0,100}event\.data === '@'/);
   assert.match(app, /function renderPromptMentionPicker\(\)[\s\S]{0,760}h3PromptReferenceEntries\(\)/);
+  assert.match(app, /Remove empty H3 reference input \$\{slotIndex \+ 1\}/);
+  assert.match(app, /state\.vidH3RefSlots = Math\.max\(1, visibleSlots - 1\)/);
+  assert.match(app, /state\.vidH3RefSlots = Math\.max\(1, h3ReferenceCount\(\)\);[\s\S]{0,260}renderPromptComposer\(\)/);
   assert.doesNotMatch(app, /h3-reference-name/);
   assert.match(css, /\.h3-reference-grid \.ref-slot/);
   assert.match(css, /\.h3-reference-grid \.ref-slot \.ref-role \{[\s\S]*background: transparent;/);
   assert.match(css, /\.video-input-grid\.h3-frame-inputs \.media-input-filled \.attach-info \{[\s\S]*background: transparent;/);
   assert.match(css, /\.video-input-grid\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.prompt-h3-audio/);
+  assert.match(css, /\.prompt-ref-open/);
+  assert.match(css, /\.prompt-mention-option\.current/);
+  assert.match(html, /class="sheet centered-dialog-sheet" id="promptMentionSheet"/);
 });
 
 test('Multiple edit references support hold-and-drag reordering', () => {

@@ -555,27 +555,34 @@ function makeH3PromptReferenceToken(tag) {
   token.dataset.h3RefTag = tag;
   token.title = entry ? `${entry.label}: ${entry.asset.label || entry.asset.name}` : tag;
 
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'prompt-ref-open';
+  open.dataset.openH3PromptRef = tag;
+  open.setAttribute('aria-label', `Change ${entry?.label || tag.replace(/[<>]/g, '')} reference`);
+
   if (entry?.mediaKind === 'image' && (entry.asset.url || entry.asset.name)) {
     const img = document.createElement('img');
     img.src = entry.asset.url || `/api/input?name=${encodeURIComponent(entry.asset.name)}`;
     img.alt = '';
-    token.appendChild(img);
+    open.appendChild(img);
   } else {
     const media = document.createElement('span');
     media.className = 'prompt-ref-media';
     media.setAttribute('aria-hidden', 'true');
     media.textContent = entry?.mediaKind === 'audio' ? '♫' : (entry?.mediaKind === 'video' ? '▶' : '?');
-    token.appendChild(media);
+    open.appendChild(media);
   }
   const label = document.createElement('b');
   label.textContent = tag.replace(/[<>]/g, '');
+  open.appendChild(label);
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'prompt-ref-remove';
   remove.dataset.removePromptRef = tag;
   remove.setAttribute('aria-label', `Remove ${label.textContent} from prompt`);
   remove.textContent = '×';
-  token.append(label, remove);
+  token.append(open, remove);
   return token;
 }
 
@@ -1170,12 +1177,30 @@ function insertPromptH3Reference(tag, preferredRange = null) {
   saveForm();
 }
 
+let promptMentionTargetToken = null;
+
+function replacePromptH3ReferenceToken(token, tag) {
+  if (!token?.isConnected || !token.classList.contains('prompt-h3-ref-token')) {
+    insertPromptH3Reference(tag);
+    return;
+  }
+  const replacement = makeH3PromptReferenceToken(tag);
+  token.replaceWith(replacement);
+  syncPromptDraftFromComposer();
+  $('#promptComposer').focus({ preventScroll: true });
+}
+
 function renderPromptMentionPicker() {
   const list = $('#promptMentionList');
   list.replaceChildren();
   const h3Reference = h3ReferenceModeActive();
-  $('#promptMentionTitle').textContent = h3Reference ? 'Reference an H3 input' : 'Reference an image';
-  $('#promptMentionCopy').textContent = h3Reference
+  const replacingH3Reference = h3Reference && promptMentionTargetToken?.isConnected;
+  $('#promptMentionTitle').textContent = replacingH3Reference
+    ? 'Change H3 reference'
+    : (h3Reference ? 'Reference an H3 input' : 'Reference an image');
+  $('#promptMentionCopy').textContent = replacingH3Reference
+    ? 'Choose which reference input this card should use.'
+    : h3Reference
     ? 'Choose a picture, video, or audio input to bind it to this prompt.'
     : 'Choose an uploaded reference to add it to this prompt.';
   const refs = h3Reference
@@ -1190,6 +1215,9 @@ function renderPromptMentionPicker() {
     const option = document.createElement('button');
     option.type = 'button';
     option.className = 'prompt-mention-option';
+    const current = replacingH3Reference && promptMentionTargetToken.dataset.h3RefTag === entry.tag;
+    option.classList.toggle('current', current);
+    option.setAttribute('aria-pressed', String(current));
     let media;
     if (entry.mediaKind === 'image') {
       media = document.createElement('img');
@@ -1208,11 +1236,14 @@ function renderPromptMentionPicker() {
     detail.textContent = h3Reference ? (ref.label || ref.name) : 'Insert reference into prompt';
     copy.append(title, detail);
     const add = document.createElement('i');
-    add.textContent = '+';
+    add.textContent = current ? '✓' : (replacingH3Reference ? '→' : '+');
     option.append(media, copy, add);
     option.addEventListener('click', () => {
       $('#promptMentionSheet').classList.remove('show');
-      if (h3Reference) insertPromptH3Reference(entry.tag);
+      const targetToken = promptMentionTargetToken;
+      promptMentionTargetToken = null;
+      if (h3Reference && targetToken?.isConnected) replacePromptH3ReferenceToken(targetToken, entry.tag);
+      else if (h3Reference) insertPromptH3Reference(entry.tag);
       else insertPromptReference(entry.index + 1);
     });
     list.appendChild(option);
@@ -1220,7 +1251,11 @@ function renderPromptMentionPicker() {
 }
 
 function openPromptMentionPicker() {
-  capturePromptSelection();
+  const options = arguments[0] || {};
+  promptMentionTargetToken = options.targetToken?.classList.contains('prompt-h3-ref-token')
+    ? options.targetToken
+    : null;
+  if (!promptMentionTargetToken) capturePromptSelection();
   renderPromptMentionPicker();
   $('#promptMentionSheet').classList.add('show');
 }
@@ -9126,6 +9161,12 @@ $('#promptComposer').addEventListener('mouseup', capturePromptSelection);
 $('#promptComposer').addEventListener('click', (event) => {
   const remove = event.target.closest('[data-remove-prompt-ref], [data-remove-prompt-lora], [data-remove-prompt-preset]');
   if (!remove) {
+    const openH3Reference = event.target.closest('[data-open-h3-prompt-ref]');
+    const h3Token = openH3Reference?.closest('.prompt-h3-ref-token');
+    if (h3Token) {
+      openPromptMentionPicker({ targetToken: h3Token });
+      return;
+    }
     const openPreset = event.target.closest('[data-open-prompt-preset]');
     const token = openPreset?.closest('.prompt-preset-token');
     if (token) {
@@ -15673,16 +15714,27 @@ function renderH3References() {
       slot.append(role, remove);
       slot.setAttribute('aria-label', `${role.textContent}, ${asset.label || asset.name}`);
     } else {
-      slot.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>');
-      slot.setAttribute('role', 'button');
-      slot.tabIndex = 0;
-      slot.setAttribute('aria-label', `Choose H3 reference input ${slotIndex + 1}`);
-      slot.addEventListener('click', pickH3Reference);
-      slot.addEventListener('keydown', (event) => {
-        if (!['Enter', ' '].includes(event.key)) return;
-        event.preventDefault();
-        pickH3Reference();
-      });
+      const choose = document.createElement('button');
+      choose.className = 'h3-reference-empty-add';
+      choose.type = 'button';
+      choose.setAttribute('aria-label', `Choose H3 reference input ${slotIndex + 1}`);
+      choose.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M11 13H5v-2h6V5h2v6h6v2h-6v6h-2v-6Z"/></svg>';
+      choose.addEventListener('click', pickH3Reference);
+      slot.appendChild(choose);
+      if (visibleSlots > 1) {
+        const remove = document.createElement('button');
+        remove.className = 'ref-x';
+        remove.type = 'button';
+        remove.textContent = '✕';
+        remove.setAttribute('aria-label', `Remove empty H3 reference input ${slotIndex + 1}`);
+        remove.addEventListener('click', (event) => {
+          event.stopPropagation();
+          state.vidH3RefSlots = Math.max(1, visibleSlots - 1);
+          renderH3References();
+          saveForm();
+        });
+        slot.appendChild(remove);
+      }
     }
     list.appendChild(slot);
   }
@@ -24293,6 +24345,9 @@ async function reuseVideo(it, v) {
       }
     }
     state.vidH3RefSlots = Math.max(1, h3ReferenceCount());
+    // The prompt is rendered before these async assets finish restoring.
+    // Redraw it now so its H3 cards recover their image thumbnails.
+    renderPromptComposer();
   }
 
   // Audio (already trimmed at original upload -> reused as-is, no re-upload)

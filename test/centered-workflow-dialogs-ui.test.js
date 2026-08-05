@@ -16,7 +16,7 @@ function openingTagById(source, id) {
 }
 
 test('focused workflow pickers use the centered dialog presentation', () => {
-  for (const id of ['videoCameraMotionSheet', 'faceSheet', 'engineInfoSheet', 'directorAddSheet']) {
+  for (const id of ['videoCameraMotionSheet', 'faceSheet', 'engineInfoSheet', 'directorAddSheet', 'promptMentionSheet']) {
     assert.match(openingTagById(html, id), /class="[^"]*\bcentered-dialog-sheet\b[^"]*"/);
   }
 
