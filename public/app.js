@@ -15635,7 +15635,112 @@ function removeH3Reference(kind, index) {
   saveForm();
 }
 
+let h3ReferenceReorder = null;
+
+function clearH3ReferenceReorder() {
+  const drag = h3ReferenceReorder;
+  if (!drag) return;
+  clearTimeout(drag.timer);
+  if (drag.source?.hasPointerCapture?.(drag.pointerId)) {
+    try { drag.source.releasePointerCapture(drag.pointerId); } catch {}
+  }
+  $$('#vidH3ReferenceList .ref-slot.ref-drop-target, #vidH3ReferenceList .ref-slot.ref-reordering')
+    .forEach((slot) => slot.classList.remove('ref-drop-target', 'ref-reordering'));
+  h3ReferenceReorder = null;
+}
+
+function swapH3References(kind, fromIndex, targetIndex) {
+  const assets = h3References()[kind];
+  if (!Array.isArray(assets)
+    || !Number.isInteger(fromIndex)
+    || !Number.isInteger(targetIndex)
+    || fromIndex === targetIndex
+    || !assets[fromIndex]
+    || !assets[targetIndex]) return false;
+  [assets[fromIndex], assets[targetIndex]] = [assets[targetIndex], assets[fromIndex]];
+  renderH3References();
+  renderPromptComposer();
+  saveForm();
+  toast('Reference inputs swapped');
+  return true;
+}
+
+function wireH3ReferenceReorder(slot, entry) {
+  if (!entry || h3References()[entry.kind].length < 2) return;
+  const { kind, index } = entry;
+  slot.tabIndex = 0;
+  slot.dataset.h3RefKind = kind;
+  slot.dataset.h3RefIndex = String(index);
+  slot.setAttribute('aria-roledescription', 'draggable H3 reference input');
+  slot.title = 'Drag onto another matching reference to swap them';
+  slot.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.ref-x')) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    clearH3ReferenceReorder();
+    if (event.pointerType === 'mouse') event.preventDefault();
+    const drag = {
+      pointerId: event.pointerId,
+      source: slot,
+      kind,
+      from: index,
+      target: index,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      timer: null,
+    };
+    h3ReferenceReorder = drag;
+    try { slot.setPointerCapture(event.pointerId); } catch {}
+    const activate = () => {
+      if (h3ReferenceReorder !== drag) return;
+      drag.active = true;
+      slot.classList.add('ref-reordering');
+    };
+    if (event.pointerType === 'mouse') activate();
+    else drag.timer = setTimeout(activate, 280);
+  });
+  slot.addEventListener('pointermove', (event) => {
+    const drag = h3ReferenceReorder;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 8) clearH3ReferenceReorder();
+      return;
+    }
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest('#vidH3ReferenceList .ref-slot.filled');
+    const targetKind = target?.dataset.h3RefKind;
+    const targetIndex = Number(target?.dataset.h3RefIndex);
+    $$('#vidH3ReferenceList .ref-slot.ref-drop-target')
+      .forEach((candidate) => candidate.classList.remove('ref-drop-target'));
+    if (targetKind !== drag.kind || !Number.isInteger(targetIndex)) {
+      drag.target = drag.from;
+      return;
+    }
+    drag.target = targetIndex;
+    if (targetIndex !== drag.from) target.classList.add('ref-drop-target');
+  });
+  const finish = (event) => {
+    const drag = h3ReferenceReorder;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const shouldSwap = drag.active && drag.target !== drag.from;
+    const { kind: dragKind, from, target } = drag;
+    clearH3ReferenceReorder();
+    if (shouldSwap) swapH3References(dragKind, from, target);
+  };
+  slot.addEventListener('pointerup', finish);
+  slot.addEventListener('pointercancel', clearH3ReferenceReorder);
+  slot.addEventListener('keydown', (event) => {
+    if (!event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    const target = index + (event.key === 'ArrowLeft' ? -1 : 1);
+    if (!h3References()[kind][target]) return;
+    event.preventDefault();
+    swapH3References(kind, index, target);
+  });
+}
+
 function renderH3References() {
+  clearH3ReferenceReorder();
   const h3 = state.vidEngine === 'h3';
   const referenceMode = h3 && state.vidH3Mode === 'reference';
   $('#vidH3ModePanel').hidden = !h3;
@@ -15684,6 +15789,7 @@ function renderH3References() {
         const image = document.createElement('img');
         image.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
         image.alt = '';
+        image.draggable = false;
         slot.appendChild(image);
       } else if (kind === 'videos') {
         const video = document.createElement('video');
@@ -15691,6 +15797,7 @@ function renderH3References() {
         video.muted = true;
         video.playsInline = true;
         video.preload = 'metadata';
+        video.draggable = false;
         slot.appendChild(video);
       } else {
         const audio = document.createElement('span');
@@ -15713,6 +15820,7 @@ function renderH3References() {
       });
       slot.append(role, remove);
       slot.setAttribute('aria-label', `${role.textContent}, ${asset.label || asset.name}`);
+      wireH3ReferenceReorder(slot, entry);
     } else {
       const choose = document.createElement('button');
       choose.className = 'h3-reference-empty-add';
@@ -26584,6 +26692,38 @@ function renderHardwareInfo(info) {
     [totalLabel ? `of ${totalLabel}` : '', info?.disk?.root ? `${info.disk.root} · Mix Studio export drive` : ''].filter(Boolean).join(' · '),
   );
   $('#hardwareDiskFill').style.width = `${freePercent}%`;
+
+  const performance = info?.performance || {};
+  const runtime = performance.runtime || {};
+  const runtimeValue = runtime.torchVersion ? `PyTorch ${runtime.torchVersion}` : 'Unavailable';
+  const runtimeDetail = [
+    runtime.cudaVersion ? `CUDA ${runtime.cudaVersion}` : '',
+    runtime.pythonVersion ? `Python ${runtime.pythonVersion}` : '',
+    runtime.deviceName && runtime.deviceName !== gpu?.name ? runtime.deviceName : '',
+  ].filter(Boolean).join(' · ');
+  setHardwareRow('hardwareRuntime', 'hardwareRuntimeDetail', runtimeValue, runtimeDetail || 'Connect the local ComfyUI folder to inspect its runtime');
+
+  const h3 = performance.h3 || {};
+  const h3Optimizations = [
+    h3.int8ConvRot ? 'INT8 ConvRot' : '',
+    h3.nvfp4TextEncoder ? 'NVFP4 text encoder' : '',
+    h3.sageAttention ? 'SageAttention' : '',
+  ].filter(Boolean);
+  setHardwareRow(
+    'hardwareH3',
+    'hardwareH3Detail',
+    h3Optimizations.length ? h3Optimizations.join(' · ') : 'Standard runtime',
+    h3.sageAttention
+      ? `Configured H3 route · SageAttention kernel verified${h3.sageVersion ? ` · version ${h3.sageVersion}` : ''}`
+      : (h3.sageReason ? `Configured H3 route · ${h3.sageReason}` : 'Configured H3 route · SageAttention is optional and scoped to H3'),
+  );
+
+  const recommendation = performance.cuda13 || {};
+  const recommendationCard = $('#runtimeRecommendation');
+  recommendationCard.dataset.state = recommendation.state || 'unavailable';
+  $('#runtimeRecommendationTitle').textContent = recommendation.title || 'Runtime status unavailable';
+  $('#runtimeRecommendationDetail').textContent = recommendation.detail || 'Mix Studio could not inspect the CUDA runtime used by ComfyUI.';
+  $('#runtimeUpdateGuide').hidden = !['recommended', 'driver-update', 'check-driver'].includes(recommendation.state);
   $('#hardwareList').setAttribute('aria-busy', 'false');
 }
 
@@ -26599,7 +26739,7 @@ async function loadHardwareInfo(force = false) {
   list.setAttribute('aria-busy', 'true');
   refresh.classList.add('loading');
   refresh.disabled = true;
-  hardwareInfoPromise = api('/api/hardware').then((info) => {
+  hardwareInfoPromise = api(force ? '/api/hardware?refresh=1' : '/api/hardware').then((info) => {
     hardwareInfoCache = info;
     renderHardwareInfo(info);
     return info;
@@ -26610,7 +26750,13 @@ async function loadHardwareInfo(force = false) {
       ['hardwareMemory', 'hardwareMemoryDetail'],
       ['hardwareOs', 'hardwareOsDetail'],
       ['hardwareDisk', 'hardwareDiskDetail'],
+      ['hardwareRuntime', 'hardwareRuntimeDetail'],
+      ['hardwareH3', 'hardwareH3Detail'],
     ]) setHardwareRow(valueId, detailId, 'Unavailable', 'Could not read system information');
+    $('#runtimeRecommendation').dataset.state = 'unavailable';
+    $('#runtimeRecommendationTitle').textContent = 'Runtime status unavailable';
+    $('#runtimeRecommendationDetail').textContent = 'Mix Studio could not inspect the ComfyUI generation environment.';
+    $('#runtimeUpdateGuide').hidden = true;
     list.setAttribute('aria-busy', 'false');
     throw error;
   }).finally(() => {

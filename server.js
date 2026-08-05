@@ -18,6 +18,7 @@ const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { probeSageAttention } = require('./lib/sage-attention');
+const { h3PerformanceReport } = require('./lib/h3-performance');
 const {
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
@@ -5911,7 +5912,24 @@ async function handleApi(req, res, url) {
   }
   if (route === '/api/hardware' && req.method === 'GET') {
     try {
-      return json(res, 200, await getSetupHardwareInfo(true));
+      const force = url.searchParams.get('refresh') === '1';
+      const hardware = await getSetupHardwareInfo(force);
+      const installStatus = sam3InstallStatus(RUNTIME);
+      const sageRuntime = await probeSageAttention(RUNTIME, { status: installStatus, force });
+      let sageNodeReady = false;
+      try {
+        const info = await getObjectInfo(force);
+        sageNodeReady = !!info.PathchSageAttentionKJ;
+      } catch { /* Python runtime details remain useful while ComfyUI is offline. */ }
+      const performanceRuntime = Object.assign({}, sageRuntime, {
+        ready: sageRuntime.ready === true && sageNodeReady,
+        reason: sageRuntime.ready === true && !sageNodeReady
+          ? 'ComfyUI-KJNodes is needed for the H3 SageAttention graph patch.'
+          : sageRuntime.reason,
+      });
+      return json(res, 200, Object.assign({}, hardware, {
+        performance: h3PerformanceReport({ hardware, runtime: performanceRuntime, models: settings }),
+      }));
     } catch (error) {
       return json(res, 500, { error: String(error.message || error) });
     }

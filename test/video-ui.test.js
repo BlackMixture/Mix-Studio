@@ -531,6 +531,11 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /Remove empty H3 reference input \$\{slotIndex \+ 1\}/);
   assert.match(app, /state\.vidH3RefSlots = Math\.max\(1, visibleSlots - 1\)/);
   assert.match(app, /state\.vidH3RefSlots = Math\.max\(1, h3ReferenceCount\(\)\);[\s\S]{0,260}renderPromptComposer\(\)/);
+  assert.match(app, /function wireH3ReferenceReorder\(slot, entry\)/);
+  assert.match(app, /if \(event\.pointerType === 'mouse'\) activate\(\)/);
+  assert.match(app, /closest\('#vidH3ReferenceList \.ref-slot\.filled'\)/);
+  assert.match(app, /\[assets\[fromIndex\], assets\[targetIndex\]\] = \[assets\[targetIndex\], assets\[fromIndex\]\]/);
+  assert.match(app, /renderH3References\(\);\s*renderPromptComposer\(\);\s*saveForm\(\);\s*toast\('Reference inputs swapped'\)/);
   assert.doesNotMatch(app, /h3-reference-name/);
   assert.match(css, /\.h3-reference-grid \.ref-slot/);
   assert.match(css, /\.h3-reference-grid \.ref-slot \.ref-role \{[\s\S]*background: transparent;/);
@@ -539,6 +544,7 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(css, /\.prompt-h3-audio/);
   assert.match(css, /\.prompt-ref-open/);
   assert.match(css, /\.prompt-mention-option\.current/);
+  assert.match(css, /\.h3-reference-grid \.ref-slot\.filled \{ cursor: grab;/);
   assert.match(html, /class="sheet centered-dialog-sheet" id="promptMentionSheet"/);
 });
 

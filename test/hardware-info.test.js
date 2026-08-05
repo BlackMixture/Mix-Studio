@@ -131,21 +131,43 @@ test('connected ComfyUI hardware stays authoritative over the local display GPU'
   });
   assert.equal(info.gpu.devices[0].vendor, 'amd');
   assert.equal(info.gpu.devices[0].source, 'comfyui');
+  assert.equal(info.gpu.devices[0].driver, '');
+});
+
+test('connected NVIDIA identity keeps the local driver needed for CUDA compatibility guidance', async () => {
+  const info = await hardwareInfo({
+    exportPath: '/exports',
+    comfyStats: { devices: [{
+      name: 'cuda:0 NVIDIA RTX PRO 6000 Blackwell', type: 'cuda', vram_total: 96 * 1024 ** 3,
+    }] },
+    osModule: {
+      cpus: () => [{ model: 'Local CPU' }], platform: () => 'win32',
+      totalmem: () => 128 * 1024 ** 3, freemem: () => 64 * 1024 ** 3,
+      release: () => '10.0', version: () => 'Windows 11', arch: () => 'x64',
+    },
+    fsPromises: { statfs: async () => ({ bsize: 4096, bavail: 100, blocks: 400 }) },
+    execFileFn: (_command, _args, _options, callback) => callback(null, 'NVIDIA RTX PRO 6000 Blackwell, 97887, 596.36'),
+  });
+  assert.equal(info.gpu.devices[0].name, 'NVIDIA RTX PRO 6000 Blackwell');
+  assert.equal(info.gpu.devices[0].source, 'comfyui');
+  assert.equal(info.gpu.devices[0].driver, '596.36');
 });
 
 test('Advanced Settings presents hardware as one minimal System readout', () => {
   assert.match(server, /route === '\/api\/hardware'/);
-  assert.match(server, /getSetupHardwareInfo\(true\)/);
+  assert.match(server, /h3PerformanceReport\(\{ hardware, runtime: performanceRuntime, models: settings \}\)/);
   assert.match(html, /class="settings-group hardware-group"/);
-  for (const id of ['hardwareGpu', 'hardwareCpu', 'hardwareMemory', 'hardwareOs', 'hardwareDisk']) {
+  for (const id of ['hardwareGpu', 'hardwareCpu', 'hardwareMemory', 'hardwareOs', 'hardwareDisk', 'hardwareRuntime', 'hardwareH3']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(html, /id="hardwareRefresh"[^>]+aria-label="Refresh hardware information"/);
   assert.match(app, /async function loadHardwareInfo\(force = false\)/);
-  assert.match(app, /api\('\/api\/hardware'\)/);
+  assert.match(app, /api\(force \? '\/api\/hardware\?refresh=1' : '\/api\/hardware'\)/);
   assert.match(app, /if \(name === 'system'\) loadHardwareInfo\(\)/);
   assert.match(css, /\.hardware-row \{[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\)/);
   assert.match(css, /\.hardware-meter i \{[\s\S]*linear-gradient/);
+  assert.match(html, /id="runtimeRecommendation"[^>]+data-state="checking"/);
+  assert.match(css, /\.runtime-recommendation\[data-state="active"\]/);
   assert.match(html, /id="exportDirectory"/);
   assert.match(app, /api\('\/api\/export-location'/);
 });

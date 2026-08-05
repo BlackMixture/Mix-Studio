@@ -2678,6 +2678,19 @@
                 <span class="hardware-label">Storage</span>
                 <span class="hardware-copy"><strong id="hardwareDisk">Checking…</strong><small id="hardwareDiskDetail"></small><span class="hardware-meter" aria-hidden="true"><i id="hardwareDiskFill"></i></span></span>
               </div>
+              <div class="hardware-row">
+                <span class="hardware-label">Runtime</span>
+                <span class="hardware-copy"><strong id="hardwareRuntime">Checking ComfyUI…</strong><small id="hardwareRuntimeDetail"></small></span>
+              </div>
+              <div class="hardware-row">
+                <span class="hardware-label">H3</span>
+                <span class="hardware-copy"><strong id="hardwareH3">Checking acceleration…</strong><small id="hardwareH3Detail"></small></span>
+              </div>
+            </div>
+            <div class="runtime-recommendation" id="runtimeRecommendation" data-state="checking" role="status" aria-live="polite">
+              <span class="runtime-recommendation-mark" aria-hidden="true"></span>
+              <span class="runtime-recommendation-copy"><strong id="runtimeRecommendationTitle">Checking the generation runtime…</strong><small id="runtimeRecommendationDetail"></small></span>
+              <a id="runtimeUpdateGuide" href="https://docs.comfy.org/installation/update_comfyui" target="_blank" rel="noopener noreferrer">Update guide</a>
             </div>
             <label class="vram-profile-control settings-vram-profile">
               <span><strong>Generation memory</strong><small>Low VRAM recommends batch one and about one megapixel, but always asks first and offers the exact requested settings. Configured .gguf diffusion models automatically use the GGUF loader; Krea INT8 ConvRot uses ComfyUI's native loader.</small></span>
