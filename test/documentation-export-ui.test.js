@@ -58,7 +58,8 @@ test('H3 R2V references persist in generation details and documentation exports'
   assert.match(app, /addVideo\(label, reference\.name/);
   assert.match(app, /addAudio\(label, reference\.name/);
   assert.match(app, /spec\.type === 'audio'[\s\S]*AUDIO REFERENCE/);
-  assert.match(app, /\['H3 references', h3ReferenceSummary\]/);
+  assert.match(app, /\['Inputs', inputSummary\]/);
+  assert.doesNotMatch(app, /\['H3 references', h3ReferenceSummary\]/);
   assert.match(css, /\.lightbox-reference-meta/);
   assert.match(css, /\.lightbox-reference-chip/);
 });
@@ -144,6 +145,14 @@ test('documentation videos offer social aspect ratios with a preview-first expor
   assert.match(app, /aspectSuffix[\s\S]*run\.aspect\.replace\(':', 'x'\)/);
   assert.match(css, /\.documentation-video-aspects/);
   assert.match(css, /\.documentation-video-preview canvas \{[\s\S]*width: auto;[\s\S]*max-width: 100%/);
+});
+
+test('documentation video labels stay clean and prompts use the available panel height', () => {
+  assert.match(app, /const promptLineLimit = Math\.max\(2, Math\.floor\(availablePromptHeight \/ promptLineHeight\)\)/);
+  assert.match(app, /wrapCanvasText\(ctx, details\.prompt, contentWidth, promptLineLimit\)/);
+  assert.doesNotMatch(app, /Math\.min\(5, Math\.floor\(availablePromptHeight/);
+  assert.doesNotMatch(app, /ctx\.fillStyle = accent/);
+  assert.doesNotMatch(app, /badgeHeight \* \.42\);\n\s*ctx\.fillStyle = quiet/);
 });
 
 test('documentation videos resolve the real model-specific generation inputs', () => {

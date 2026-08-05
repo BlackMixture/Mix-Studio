@@ -25408,15 +25408,11 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.processed === 'interpolate' && 'Frame interpolation',
     info.processed === 'extend' && 'Video extension',
   ].filter(Boolean).join(', ');
-  const h3ReferenceSummary = h3GenerationReferenceDescriptors(info)
-    .map((reference) => `${reference.inputLabel}: ${reference.assetLabel}`)
-    .join(', ');
   const facts = [
     ['Model', videoEngineLabel(info.engine, info)],
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
-    ['H3 references', h3ReferenceSummary],
     ['Attention', info.attentionBackend === 'sageattention'
       ? 'SageAttention (verified)'
       : (info.attentionBackend === 'standard' ? 'Standard PyTorch' : '')],
@@ -25515,18 +25511,16 @@ function drawDocumentationVideoMedia(ctx, media, box, label, accent, { quiet = f
     : Math.max(9, Math.min(14, scaledFontSize));
   setDocumentationFont(ctx, quiet ? 650 : 700, fontSize);
   const inset = Math.max(quiet ? 6 : 8, Math.round(fontSize * (quiet ? .58 : .72)));
-  const availableLabelWidth = Math.max(18, box.width - inset * 4.4);
+  const availableLabelWidth = Math.max(18, box.width - inset * 3.8);
   const visibleLabel = truncateCanvasText(ctx, label, availableLabelWidth);
   const labelWidth = ctx.measureText(visibleLabel).width;
   const badgeHeight = Math.round(fontSize * (quiet ? 1.72 : 1.9));
-  const badgeWidth = labelWidth + inset * (quiet ? 2.05 : 2.35);
+  const badgeWidth = labelWidth + inset * 2;
   ctx.fillStyle = quiet ? 'rgba(0,0,0,.62)' : 'rgba(0,0,0,.74)';
   ctx.fillRect(box.x + inset, box.y + inset, badgeWidth, badgeHeight);
-  ctx.fillStyle = accent;
-  ctx.fillRect(box.x + inset * 1.45, box.y + inset + badgeHeight * .29, Math.max(2, fontSize * .15), badgeHeight * .42);
   ctx.fillStyle = quiet ? 'rgba(255,255,255,.86)' : '#fff';
   ctx.textBaseline = 'top';
-  ctx.fillText(visibleLabel, box.x + inset * 2.05, box.y + inset + (badgeHeight - fontSize) * .42);
+  ctx.fillText(visibleLabel, box.x + inset * 2, box.y + inset + (badgeHeight - fontSize) * .42);
 }
 
 function drawDocumentationVideoStoryboard(ctx, inputMedia, box) {
@@ -25583,8 +25577,10 @@ function drawDocumentationVideoDetails(ctx, box, item, video, inputMedia, result
   ctx.fillStyle = 'rgba(255,255,255,.92)';
   setDocumentationFont(ctx, 500, promptSize);
   const availablePromptHeight = Math.max(promptSize * 1.4, box.y + box.height - copyY - details.facts.length * factSize * 1.9);
-  const promptLines = wrapCanvasText(ctx, details.prompt, contentWidth, Math.max(2, Math.min(5, Math.floor(availablePromptHeight / (promptSize * 1.35)))));
-  copyY = drawDocumentationLines(ctx, promptLines, box.x + inset, copyY, Math.round(promptSize * 1.35));
+  const promptLineHeight = Math.round(promptSize * 1.35);
+  const promptLineLimit = Math.max(2, Math.floor(availablePromptHeight / promptLineHeight));
+  const promptLines = wrapCanvasText(ctx, details.prompt, contentWidth, promptLineLimit);
+  copyY = drawDocumentationLines(ctx, promptLines, box.x + inset, copyY, promptLineHeight);
   copyY += Math.round(13 * density);
   const factGap = Math.round(7 * density);
   details.facts.forEach(([label, value]) => {
