@@ -163,3 +163,11 @@ test('documentation video recording follows result fps and retains result audio 
   assert.match(app, /input\.startAt \+ Math\.max\(0, resultTime \|\| 0\)/);
   assert.match(app, /run\.inputs \|\| \[\][\s\S]*input\.media\.pause\(\)/);
 });
+
+test('documentation video recording prefers MP4 while retaining a WebM fallback', () => {
+  const mp4 = app.indexOf("'video/mp4;codecs=avc1.42E01E,mp4a.40.2'");
+  const bareMp4 = app.indexOf("'video/mp4'");
+  const webm = app.indexOf("'video/webm;codecs=vp9'");
+  assert.ok(mp4 >= 0 && bareMp4 > mp4 && webm > bareMp4);
+  assert.match(app, /const extension = blob\.type === 'video\/mp4' \? 'mp4' : 'webm'/);
+});

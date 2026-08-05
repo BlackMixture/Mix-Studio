@@ -25117,10 +25117,12 @@ let documentationVideoRun = null;
 function documentationVideoMimeType() {
   if (!window.MediaRecorder) return '';
   return [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
-    'video/mp4;codecs=avc1.42E01E',
   ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 
