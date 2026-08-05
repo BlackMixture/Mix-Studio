@@ -33,6 +33,7 @@ const {
   COMPONENTS: DEPENDENCY_COMPONENTS,
   NODE_PACKS: DEPENDENCY_NODE_PACKS,
   availableComponents,
+  inspectPinnedNodeRevisions,
   installComponents,
   normalizeHuggingFaceEndpoint,
 } = require('./lib/dependency-installer');
@@ -839,6 +840,7 @@ let dependencyInstallState = {
   nodeFailures: [],
   updatedAt: Date.now(),
 };
+let pinnedNodeRevisionCache = { key: '', at: 0, nodes: [], components: [] };
 
 const EMPTY_DEPENDENCY_FAILURE = Object.freeze({
   errorCode: null,
@@ -873,6 +875,30 @@ function dependencyFailureState(error) {
 function updateDependencyInstallState(patch) {
   dependencyInstallState = Object.assign({}, dependencyInstallState, patch, { updatedAt: Date.now() });
   broadcast('dependencyInstall', dependencyInstallState);
+}
+
+function invalidatePinnedNodeRevisionCache() {
+  pinnedNodeRevisionCache = { key: '', at: 0, nodes: [], components: [] };
+}
+
+async function pinnedNodeRevisionStatus(status, force = false) {
+  const customNodesPath = String(status?.customNodesPath || '');
+  const pins = Object.entries(DEPENDENCY_NODE_PACKS)
+    .map(([id, pack]) => `${id}:${pack.ref || ''}`)
+    .join('|');
+  const key = `${customNodesPath}::${pins}`;
+  if (!force && pinnedNodeRevisionCache.key === key && Date.now() - pinnedNodeRevisionCache.at < 60_000) {
+    return pinnedNodeRevisionCache;
+  }
+  let nodes = [];
+  try {
+    nodes = await inspectPinnedNodeRevisions(status, {
+      gitExecutable: RUNTIME?.update?.gitExecutable,
+    });
+  } catch { /* node classes remain the fallback when revision inspection is unavailable */ }
+  const components = [...new Set(nodes.flatMap((entry) => entry.componentIds || []))];
+  pinnedNodeRevisionCache = { key, at: Date.now(), nodes, components };
+  return pinnedNodeRevisionCache;
 }
 
 function updateComfySetupState(patch) {
@@ -1520,6 +1546,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(capabilities, 'sageAttention')
     && capabilities.sageAttention?.ready !== true) ids.add('h3sage');
+  for (const component of capabilities.repairComponents || []) ids.add(component);
   return [...ids];
 }
 
@@ -6004,7 +6031,11 @@ async function handleApi(req, res, url) {
       if (sageRuntime.ready === true && !sageAttention.nodeReady) {
         sageAttention.reason = 'ComfyUI-KJNodes is needed for the H3 SageAttention graph patch.';
       }
-      const missingComponents = missingDependencyComponentIds(missing, models, { sageAttention });
+      const nodeRevisions = await pinnedNodeRevisionStatus(installStatus, url.searchParams.has('refresh'));
+      const missingComponents = missingDependencyComponentIds(missing, models, {
+        sageAttention,
+        repairComponents: nodeRevisions.components,
+      });
       if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
         const checkedComponents = Array.isArray(dependencyInstallState.components)
           ? dependencyInstallState.components.filter(Boolean)
@@ -6047,6 +6078,8 @@ async function handleApi(req, res, url) {
             sageAttention,
           )),
           missingComponents,
+          repairComponents: nodeRevisions.components,
+          outdatedNodes: nodeRevisions.nodes,
           install: dependencyInstallState,
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
           sageAttention,
@@ -6431,6 +6464,7 @@ async function handleApi(req, res, url) {
           saveJsonSync(SETTINGS_FILE, settings);
         }
         objectInfoCache = null;
+        invalidatePinnedNodeRevisionCache();
         if (result.failures?.length) {
           const firstFailure = result.failures[0];
           updateDependencyInstallState({

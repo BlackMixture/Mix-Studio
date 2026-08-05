@@ -26,6 +26,7 @@ const {
   filterRequirementsForEnvironment,
   huggingFaceEndpointUrl,
   huggingFaceAccessUrl,
+  inspectPinnedNodeRevisions,
   installComponents,
   installNodeRequirements,
   installNodePack,
@@ -124,6 +125,34 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.klein4.find((asset) => asset[0] === 'klein4ConsistencyLora')[2], /f2k_4B_consist_20260314\.safetensors/);
   assert.equal(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[1], 'loras');
   assert.match(MODEL_ASSETS.klein9.find((asset) => asset[0] === 'klein9ConsistencyLora')[2], /f2k_9B_lcs_consist_20260415\.safetensors/);
+});
+
+test('installed reviewed node packs report stale revisions for every affected workflow', async () => {
+  const customNodesPath = path.join('/comfy', 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.krea2Edit.folder);
+  const staleRef = '1'.repeat(40);
+  const result = await inspectPinnedNodeRevisions({ customNodesPath }, {
+    existsSync: (candidate) => candidate === nodePath || candidate === path.join(nodePath, '.git'),
+    run: async (_command, args) => args.includes('remote') ? NODE_PACKS.krea2Edit.repo : staleRef,
+  });
+  assert.deepEqual(result, [{
+    nodeId: 'krea2Edit',
+    label: NODE_PACKS.krea2Edit.label,
+    nodePath,
+    currentRef: staleRef,
+    expectedRef: NODE_PACKS.krea2Edit.ref,
+    componentIds: ['krea2ref', 'krea2outpaint'],
+  }]);
+});
+
+test('reviewed node packs at their pinned revision do not need repair', async () => {
+  const customNodesPath = path.join('/comfy', 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.krea2Edit.folder);
+  const result = await inspectPinnedNodeRevisions({ customNodesPath }, {
+    existsSync: (candidate) => candidate === nodePath || candidate === path.join(nodePath, '.git'),
+    run: async (_command, args) => args.includes('remote') ? NODE_PACKS.krea2Edit.repo : NODE_PACKS.krea2Edit.ref,
+  });
+  assert.deepEqual(result, []);
 });
 
 test('regional prompting installs the reviewed mirror and reuses a compatible legacy checkout', async () => {
@@ -880,6 +909,10 @@ test('dependency routes run asynchronously and publish progress instead of holdi
   assert.match(server, /qwenedit: \['qwen'\]/);
   assert.match(server, /klein: \['klein4', 'klein9'\]/);
   assert.match(server, /NODE_PACKS: DEPENDENCY_NODE_PACKS/);
+  assert.match(server, /inspectPinnedNodeRevisions/);
+  assert.match(server, /repairComponents: nodeRevisions\.components/);
+  assert.match(server, /outdatedNodes: nodeRevisions\.nodes/);
+  assert.match(server, /capabilities\.repairComponents \|\| \[\]/);
   assert.match(server, /dependencyComponentInfo\(id/);
   assert.match(app, /installState\?\.downloadMethod === 'hf-xet'/);
   assert.match(fs.readFileSync(path.join(root, 'lib', 'dependency-installer.js'), 'utf8'), /downloadTotal/);
@@ -932,6 +965,9 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(app, /Retry selected/);
   assert.match(app, /function scheduleDependencyPoll\(\)/);
   assert.match(app, /Repair selected/);
+  assert.match(app, /repairIds\.has\(id\)/);
+  assert.match(app, /reviewed custom-node update/);
+  assert.match(app, /repair-needed/);
   assert.match(app, /formatDependencyBytes/);
   assert.match(app, /dependencyProgressMetrics/);
   assert.match(app, /progressMetrics\.label/);
@@ -942,6 +978,8 @@ test('Settings presents a compact dependency manager with progress and restart c
   assert.match(app, /Restart ComfyUI\?/);
   assert.match(css, /\.dependency-progress/);
   assert.match(css, /\.dependency-option\.selected/);
+  assert.match(css, /\.dependency-option\.repair-needed/);
+  assert.match(css, /\.setup-component-option\.repair-needed/);
   assert.match(css, /\.dependency-cancel/);
   assert.match(css, /\.dependency-restart\.needed/);
   assert.match(css, /\.dependency-access\[hidden\]/);

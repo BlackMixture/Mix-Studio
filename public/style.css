@@ -8747,6 +8747,8 @@ body.sheet-open {
 .setup-component-option.selected .setup-component-check::after { content: ""; width: 7px; height: 4px; border: solid #fff; border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
 .setup-component-option.installed { border-color: rgba(85,213,138,.25); background: rgba(85,213,138,.045); cursor: default; }
 .setup-component-option.installed .setup-component-check { border-color: #55d58a; background: #236b41; }
+.setup-component-option.repair-needed { border-color: rgba(251,188,4,.4); background: rgba(251,188,4,.055); }
+.setup-component-option.repair-needed .setup-component-state { color: #f2c94f; }
 .setup-component-option.unavailable { opacity: .62; cursor: not-allowed; }
 .setup-component-copy { min-width: 0; display: grid; gap: 2px; }
 .setup-component-copy strong { overflow: hidden; color: #d9deea; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -11309,6 +11311,8 @@ body.sheet-open {
 .dependency-option::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; vertical-align: 1px; }
 .dependency-option.selected { border-color: rgba(126,157,224,.38); color: #dce7ff; background: rgba(75,104,169,.16); }
 .dependency-option.selected::before { border-color: #a9c4ff; background: #a9c4ff; box-shadow: 0 0 8px rgba(112,150,235,.4); }
+.dependency-option.repair-needed { border-color: rgba(251,188,4,.35); color: #e8dcae; }
+.dependency-option small { margin-left: 5px; color: #f2c94f; font: inherit; font-size: 8px; text-transform: uppercase; }
 .dependency-option:active { transform: scale(.97); }
 .dependency-option:disabled { opacity: .62; }
 .dependency-cancel { border: 1px solid rgba(244,103,92,.38); background: rgba(244,103,92,.08); color: #ffc0ba; }

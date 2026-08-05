@@ -29921,9 +29921,18 @@ function dependencyProgressMetrics(installState) {
 function dependencyMissingLabels() {
   const dependency = lastMeta && lastMeta.dependencies;
   const components = new Map(((dependency && dependency.components) || []).map((entry) => [entry.id, entry]));
+  const repairIds = new Set((dependency && dependency.repairComponents) || []);
+  const outdatedNodes = (dependency && dependency.outdatedNodes) || [];
   return ((dependency && dependency.missingComponents) || []).map((id) => {
     const component = components.get(id) || {};
-    return { id, label: component.label || id, optional: component.optional === true };
+    const outdated = outdatedNodes.find((entry) => (entry.componentIds || []).includes(id));
+    return {
+      id,
+      label: component.label || id,
+      optional: component.optional === true,
+      repair: repairIds.has(id),
+      repairLabel: outdated?.label || '',
+    };
   });
 }
 
@@ -30651,6 +30660,7 @@ function renderInitialSetup() {
   const missingIds = setupMissingComponentIds();
   const readinessKnown = Array.isArray(missingIds);
   const missingSet = new Set(missingIds || []);
+  const repairSet = new Set(lastMeta?.dependencies?.repairComponents || []);
   const selected = syncSetupComponentSelection(components, missingIds);
   const fitByComponent = setupComponentFitMap();
   const list = $('#setupComponentList');
@@ -30665,15 +30675,16 @@ function renderInitialSetup() {
       && selectableEntries.every((entry) => selected.has(entry.id));
     const rows = entries.map((entry) => {
       const fit = fitByComponent.get(entry.id);
+      const repairNeeded = repairSet.has(entry.id);
       const installed = readinessKnown && !missingSet.has(entry.id);
       const unavailable = entry.installable === false && !installed;
       const coreUpdate = entry.blockedBy === 'comfy-core' && !installed;
       const checked = installed || selected.has(entry.id);
       const disabled = installed || unavailable || busy || !state.profileIsOwner;
-      const status = installed ? 'Installed' : (coreUpdate ? 'Update ComfyUI' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked'))));
+      const status = installed ? 'Installed' : (repairNeeded ? 'Update' : (coreUpdate ? 'Update ComfyUI' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked')))));
       const detail = entry.installReason || fit?.detail || entry.label;
-      const readinessLabel = coreUpdate ? 'ComfyUI 0.26.0+ required' : (fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements'));
-      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(readinessLabel)}</small></span><span class="setup-component-state">${status}</span></label>`;
+      const readinessLabel = repairNeeded ? 'Reviewed custom-node update required' : (coreUpdate ? 'ComfyUI 0.26.0+ required' : (fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements')));
+      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${repairNeeded ? ' repair-needed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(readinessLabel)}</small></span><span class="setup-component-state">${status}</span></label>`;
     }).join('');
     const count = readinessKnown ? `${installedCount} of ${entries.length} installed` : `${entries.length} workflows`;
     const action = selectableEntries.length
@@ -31305,6 +31316,7 @@ function renderGenerationSetupEntry() {
   const dependency = lastMeta?.dependencies || {};
   const install = dependency.install || {};
   const missing = dependencyMissingLabels();
+  const repairCount = missing.filter((entry) => entry.repair).length;
   const imageReady = imageGenerationReady();
   const busy = ['running', 'cancelling', 'restarting'].includes(install.state);
   let stateName = 'checking';
@@ -31328,6 +31340,10 @@ function renderGenerationSetupEntry() {
     stateName = 'attention';
     statusText = 'Review';
     copyText = 'The last setup operation needs attention.';
+  } else if (repairCount) {
+    stateName = 'attention';
+    statusText = 'Update';
+    copyText = `${repairCount} installed workflow${repairCount === 1 ? '' : 's'} need${repairCount === 1 ? 's' : ''} the reviewed custom-node version.`;
   } else if (!imageReady) {
     stateName = 'attention';
     statusText = 'Image setup';
@@ -31351,6 +31367,7 @@ function renderDependencyManager() {
   const dependency = (lastMeta && lastMeta.dependencies) || {};
   const installState = dependency.install || { state: 'idle', phase: 'idle' };
   const missing = dependencyMissingLabels();
+  const repairCount = missing.filter((entry) => entry.repair).length;
   const imageReady = imageGenerationReady();
   const badge = $('#dependencyManagerBadge');
   const status = $('#dependencyManagerStatus');
@@ -31369,10 +31386,10 @@ function renderDependencyManager() {
   const selectedCount = selected.size;
   const busy = ['running', 'cancelling', 'restarting'].includes(installState.state);
   const cancellable = installState.state === 'running' || installState.state === 'cancelling';
-  const ready = imageReady && !busy;
+  const ready = imageReady && !busy && !repairCount;
   card.classList.toggle('ready', ready);
   card.classList.toggle('installing', busy);
-  list.innerHTML = missing.map((entry) => `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(entry.label)}"${busy || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}</button>`).join('');
+  list.innerHTML = missing.map((entry) => `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}${entry.repair ? ' repair-needed' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(entry.repair ? `${entry.repairLabel || entry.label} needs the reviewed version` : entry.label)}"${busy || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}${entry.repair ? '<small>Update</small>' : ''}</button>`).join('');
   selectionHead.hidden = !missing.length || busy || !state.profileIsOwner;
   toggleAll.textContent = selectedCount === missing.length ? 'Clear' : 'Select all';
   install.disabled = busy;
@@ -31404,6 +31421,9 @@ function renderDependencyManager() {
   } else if (!lastMeta?.ok) {
     badge.textContent = 'Offline';
     status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
+  } else if (repairCount) {
+    badge.textContent = 'Update available';
+    status.textContent = `${repairCount} installed workflow${repairCount === 1 ? '' : 's'} need${repairCount === 1 ? 's' : ''} a reviewed custom-node update. Select and repair, then restart ComfyUI.`;
   } else if (ready) {
     badge.textContent = 'Ready';
     status.textContent = missing.length
