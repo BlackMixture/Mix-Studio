@@ -25126,6 +25126,26 @@ function documentationVideoMimeType() {
   ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 
+async function convertDocumentationVideoToMp4(blob, signal) {
+  const response = await fetch('/api/video/convert-mp4', {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'video/webm', Accept: 'video/mp4' },
+    body: blob,
+    signal,
+  });
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({}));
+    if (response.status === 401 && details.code === 'auth') showProfileGate();
+    const error = new Error(details.error || `MP4 conversion failed (${response.status})`);
+    error.code = details.code || '';
+    error.status = response.status;
+    throw error;
+  }
+  const converted = await response.blob();
+  if (!converted.size) throw new Error('MP4 conversion returned an empty video');
+  return converted.type === 'video/mp4' ? converted : new Blob([converted], { type: 'video/mp4' });
+}
+
 function documentationVideoDimensions(width, height) {
   const ratio = Math.max(.25, Math.min(4, (Number(width) || 16) / (Number(height) || 9)));
   const even = (value) => Math.max(2, Math.round(value / 2) * 2);
@@ -25600,6 +25620,7 @@ function closeDocumentationVideoExport() {
   const run = documentationVideoRun;
   if (run) {
     run.cancelled = true;
+    if (run.abortController) run.abortController.abort();
     if (run.recorder && run.recorder.state !== 'inactive') run.recorder.stop();
     cleanupDocumentationVideoRun(run);
   }
@@ -25617,7 +25638,15 @@ async function saveDocumentationVideo(item, video) {
   }
   closeActionMenu();
   closeDocumentationVideoExport();
-  const run = { cancelled: false, recorder: null, stream: null, resultStream: null, video: null, inputs: [] };
+  const run = {
+    cancelled: false,
+    abortController: new AbortController(),
+    recorder: null,
+    stream: null,
+    resultStream: null,
+    video: null,
+    inputs: [],
+  };
   documentationVideoRun = run;
   $('#documentationVideoCancel').textContent = 'Cancel';
   $('#documentationVideoSheet').classList.add('show');
@@ -25683,21 +25712,39 @@ async function saveDocumentationVideo(item, video) {
     const blob = await recorded;
     cleanupDocumentationVideoRun(run);
     if (run.cancelled || documentationVideoRun !== run) return;
+    let exportBlob = blob;
+    let extension = 'mp4';
+    let conversionError = null;
+    if (blob.type !== 'video/mp4') {
+      updateDocumentationVideoProgress(1, 'Converting WebM recording to MP4…');
+      try {
+        exportBlob = await convertDocumentationVideoToMp4(blob, run.abortController.signal);
+      } catch (error) {
+        if (run.cancelled || error?.name === 'AbortError') throw error;
+        conversionError = error;
+        extension = 'webm';
+      }
+    }
+    if (run.cancelled || documentationVideoRun !== run) return;
     documentationVideoRun = null;
-    const extension = blob.type === 'video/mp4' ? 'mp4' : 'webm';
     const stem = generationDownloadStem(item, 'mix_studio');
     const filename = `${stem}_documentation.${extension}`;
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = URL.createObjectURL(exportBlob);
     link.download = filename;
-    mirrorExportFile(blob, filename);
+    mirrorExportFile(exportBlob, filename);
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 3000);
-    updateDocumentationVideoProgress(1, 'Documentation video saved');
+    updateDocumentationVideoProgress(1, conversionError
+      ? 'MP4 conversion unavailable; WebM saved instead'
+      : 'Documentation video saved as MP4');
     $('#documentationVideoCancel').textContent = 'Close';
-    toast('Documentation video saved');
+    toast(conversionError
+      ? `WebM saved because MP4 conversion failed: ${conversionError.message}`
+      : 'Documentation video saved as MP4', Boolean(conversionError));
   } catch (error) {
     cleanupDocumentationVideoRun(run);
+    if (run.cancelled || error?.name === 'AbortError') return;
     if (documentationVideoRun === run) documentationVideoRun = null;
     updateDocumentationVideoProgress(0, 'Could not build the documentation video');
     $('#documentationVideoCancel').textContent = 'Close';

@@ -7,9 +7,11 @@ const path = require('path');
 const {
   extensionJoinArgs,
   joinVideoExtension,
+  mp4TranscodeArgs,
   parseFfmpegVideoProbe,
   probeVideoFile,
   resolveFfmpegExecutable,
+  transcodeVideoFileToMp4,
 } = require('../lib/video-extension-join');
 
 const basePlan = {
@@ -101,6 +103,53 @@ test('extension join arguments normalize and concatenate source then tail video'
   assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
   assert.equal(args[args.indexOf('-f') + 1], 'mp4');
   assert.equal(args.at(-1), '/temp/joined output.mp4');
+});
+
+test('MP4 transcode arguments encode browser recordings as compatible H.264 and AAC', () => {
+  const args = mp4TranscodeArgs({
+    sourcePath: '/temp/documentation recording.webm',
+    outputPath: '/temp/documentation recording.mp4',
+  });
+  assert.deepEqual(args.slice(args.indexOf('-i'), args.indexOf('-vf')), [
+    '-i', '/temp/documentation recording.webm',
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
+  ]);
+  assert.equal(args[args.indexOf('-c:v') + 1], 'libx264');
+  assert.equal(args.includes('-pix_fmt'), false);
+  assert.match(args[args.indexOf('-vf') + 1], /trunc\(iw\/2\)\*2.*format=yuv420p/);
+  assert.equal(args[args.indexOf('-c:a') + 1], 'aac');
+  assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
+  assert.equal(args[args.indexOf('-f') + 1], 'mp4');
+  assert.equal(args.at(-1), '/temp/documentation recording.mp4');
+});
+
+test('MP4 transcoding invokes FFmpeg and verifies the output file', async () => {
+  let invocation;
+  const output = await transcodeVideoFileToMp4({
+    sourcePath: '/temp/source.webm',
+    outputPath: '/temp/result.mp4',
+    ffmpegPath: '/tools/ffmpeg',
+  }, {
+    run: async (command, args, options) => { invocation = { command, args, options }; },
+    fsp: { stat: async () => ({ isFile: () => true, size: 4096 }) },
+  });
+  assert.equal(output, '/temp/result.mp4');
+  assert.equal(invocation.command, '/tools/ffmpeg');
+  assert.equal(invocation.args.at(-1), '/temp/result.mp4');
+  assert.equal(invocation.options.cwd, '/temp');
+});
+
+test('MP4 transcoding reports missing FFmpeg and empty output directly', async () => {
+  await assert.rejects(transcodeVideoFileToMp4({
+    sourcePath: '/temp/source.webm', outputPath: '/temp/result.mp4', ffmpegPath: '',
+  }), (error) => error.code === 'ffmpeg_unavailable');
+  await assert.rejects(transcodeVideoFileToMp4({
+    sourcePath: '/temp/source.webm', outputPath: '/temp/result.mp4', ffmpegPath: '/tools/ffmpeg',
+  }, {
+    run: async () => {},
+    fsp: { stat: async () => ({ isFile: () => true, size: 0 }) },
+  }), (error) => error.code === 'video_transcode_failed' && /empty MP4/.test(error.message));
 });
 
 test('extension audio continues source audio into generated tail audio', () => {

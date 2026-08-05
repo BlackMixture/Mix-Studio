@@ -13,6 +13,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
+const { pipeline } = require('stream/promises');
 const { readAppRelease, updateFromGit } = require('./lib/app-update');
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
@@ -174,6 +175,7 @@ const {
   joinVideoExtension,
   probeVideoFile,
   resolveFfmpegExecutable,
+  transcodeVideoFileToMp4,
 } = require('./lib/video-extension-join');
 const {
   DIRECTOR_FPS,
@@ -309,6 +311,7 @@ const INPUTS = path.join(DATA, 'inputs');
 const TRASH_ROOT = path.join(DATA, 'trash');
 const PROMPT_PACKS = path.join(DATA, 'addons', 'prompt-packs');
 const PORT = Number(process.env.PORT || 3300);
+const MAX_DOCUMENTATION_VIDEO_BYTES = 256 * 1024 * 1024;
 
 fs.mkdirSync(IMAGES, { recursive: true });
 fs.mkdirSync(VIDEOS, { recursive: true });
@@ -7617,6 +7620,60 @@ async function handleApi(req, res, url) {
     trackJob(pid, { kind: 'video', profileId: req.profile.id, itemId: item.id, graph, videoInfo });
     ensureWs();
     return json(res, 200, { jobId: pid });
+  }
+
+  if (route === '/api/video/convert-mp4' && req.method === 'POST') {
+    const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!['video/webm', 'video/x-matroska', 'application/octet-stream'].includes(contentType)) {
+      req.resume();
+      return json(res, 415, { error: 'MP4 conversion accepts WebM video recordings only' });
+    }
+    const contentLength = Number(req.headers['content-length']);
+    if (Number.isFinite(contentLength) && contentLength > MAX_DOCUMENTATION_VIDEO_BYTES) {
+      req.resume();
+      return json(res, 413, { error: 'The documentation video is larger than the 256 MB conversion limit' });
+    }
+    if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
+    if (!videoExtensionFfmpeg) {
+      req.resume();
+      return json(res, 503, { error: 'MP4 conversion needs FFmpeg. Install FFmpeg or make the ComfyUI imageio-ffmpeg executable available.' });
+    }
+
+    let temporaryDirectory = '';
+    try {
+      temporaryDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'mixstudio-documentation-video-'));
+      const source = path.join(temporaryDirectory, 'recording.webm');
+      const output = path.join(temporaryDirectory, 'documentation.mp4');
+      const bytes = await receiveInputFile(req, source, MAX_DOCUMENTATION_VIDEO_BYTES);
+      if (!bytes) return json(res, 400, { error: 'No WebM recording received' });
+      await transcodeVideoFileToMp4({
+        sourcePath: source,
+        outputPath: output,
+        ffmpegPath: videoExtensionFfmpeg,
+      });
+      const stat = await fsp.stat(output);
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': stat.size,
+        'Content-Disposition': 'attachment; filename="mix-studio-documentation.mp4"',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      await pipeline(fs.createReadStream(output), res);
+    } catch (error) {
+      if (res.headersSent) {
+        if (!res.destroyed) res.destroy(error);
+        return;
+      }
+      const status = error?.code === 'INPUT_TOO_LARGE' ? 413
+        : error?.code === 'ffmpeg_unavailable' ? 503
+          : error?.code === 'video_transcode_failed' ? 422
+            : 500;
+      return json(res, status, { error: String(error.message || error) });
+    } finally {
+      if (temporaryDirectory) await fsp.rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {});
+    }
+    return;
   }
 
   // Side-by-side comparison: original motion video (left) + SCAIL result

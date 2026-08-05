@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('gallery save menu offers a documentation image builder', () => {
   assert.match(app, /label: 'Documentation image'/);
@@ -69,7 +70,6 @@ test('prompt control represents the prompt used for generation', () => {
 });
 
 test('camera variation documentation uses its angle-specific graph prompt', () => {
-  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(server, /anglePrompt: job\.params\.anglePrompt \|\| undefined/);
   assert.match(app, /function documentationAnglePrompt\(item\)/);
   assert.match(app, /item && item\.anglePrompt/);
@@ -169,5 +169,13 @@ test('documentation video recording prefers MP4 while retaining a WebM fallback'
   const bareMp4 = app.indexOf("'video/mp4'");
   const webm = app.indexOf("'video/webm;codecs=vp9'");
   assert.ok(mp4 >= 0 && bareMp4 > mp4 && webm > bareMp4);
-  assert.match(app, /const extension = blob\.type === 'video\/mp4' \? 'mp4' : 'webm'/);
+  assert.match(app, /function convertDocumentationVideoToMp4\(blob, signal\)/);
+  assert.match(app, /fetch\('\/api\/video\/convert-mp4'/);
+  assert.match(app, /blob\.type !== 'video\/mp4'[\s\S]*await convertDocumentationVideoToMp4/);
+  assert.match(app, /conversionError[\s\S]*extension = 'webm'/);
+  assert.match(app, /Documentation video saved as MP4/);
+  assert.match(server, /route === '\/api\/video\/convert-mp4'/);
+  assert.match(server, /receiveInputFile\(req, source, MAX_DOCUMENTATION_VIDEO_BYTES\)/);
+  assert.match(server, /transcodeVideoFileToMp4\(\{/);
+  assert.match(server, /'Content-Type': 'video\/mp4'/);
 });
