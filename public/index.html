@@ -1550,6 +1550,19 @@
   <div class="sheet-panel documentation-video-panel" role="dialog" aria-modal="true" aria-labelledby="documentationVideoTitle">
     <h3 class="sheet-title" id="documentationVideoTitle">Documentation video <button id="documentationVideoClose" type="button" aria-label="Cancel documentation video">✕</button></h3>
     <p class="documentation-intro">Generation inputs, settings, and the complete result stay together in one view.</p>
+    <div class="documentation-video-export-controls" id="documentationVideoExportControls">
+      <span class="documentation-control-label">Export aspect ratio</span>
+      <div class="documentation-video-aspects" id="documentationVideoAspects" role="radiogroup" aria-label="Documentation video aspect ratio">
+        <button type="button" data-documentation-video-aspect="auto" role="radio" aria-checked="true"><strong>Auto</strong><small>Best fit</small></button>
+        <button type="button" data-documentation-video-aspect="16:9" role="radio" aria-checked="false"><strong>16:9</strong><small>Landscape</small></button>
+        <button type="button" data-documentation-video-aspect="4:3" role="radio" aria-checked="false"><strong>4:3</strong><small>Classic</small></button>
+        <button type="button" data-documentation-video-aspect="1:1" role="radio" aria-checked="false"><strong>1:1</strong><small>Square</small></button>
+        <button type="button" data-documentation-video-aspect="4:5" role="radio" aria-checked="false"><strong>4:5</strong><small>Feed</small></button>
+        <button type="button" data-documentation-video-aspect="3:4" role="radio" aria-checked="false"><strong>3:4</strong><small>Portrait</small></button>
+        <button type="button" data-documentation-video-aspect="9:16" role="radio" aria-checked="false"><strong>9:16</strong><small>Story</small></button>
+      </div>
+      <p class="documentation-video-aspect-note" id="documentationVideoAspectNote">Auto chooses a frame that fits the generated result.</p>
+    </div>
     <div class="documentation-video-preview">
       <canvas id="documentationVideoCanvas" width="960" height="540" aria-label="Combined documentation video preview"></canvas>
     </div>
@@ -1558,7 +1571,10 @@
       <output id="documentationVideoPercent">0%</output>
     </div>
     <div class="documentation-video-progress" aria-hidden="true"><i id="documentationVideoProgress"></i></div>
-    <button class="sheet-cta ghost" id="documentationVideoCancel" type="button">Cancel</button>
+    <div class="documentation-video-actions">
+      <button class="sheet-cta documentation-video-start" id="documentationVideoStart" type="button" disabled>Export MP4</button>
+      <button class="sheet-cta ghost" id="documentationVideoCancel" type="button">Cancel</button>
+    </div>
   </div>
 </div>
 

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added social-ready aspect-ratio choices to documentation video exports, including 16:9, 4:3, square, 4:5, 3:4, and 9:16, with a live preview before recording.
 - Added compatibility-critical custom-node revision checks so Generation Setup detects stale installed node packs, marks every affected workflow for repair, and repins them before ComfyUI restarts.
 - Made documentation video exports save as H.264 MP4 with AAC audio when supported. Browsers that record only WebM now use a bounded server-side FFmpeg conversion, with the original WebM preserved as a fallback if conversion is unavailable.
 - Added manual and automatic first-frame motion prompting to H3 Text + frames, with H3-specific chronological motion and native-audio guidance while Reference mode retains explicit reference assignments.

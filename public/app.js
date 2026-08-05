@@ -25114,6 +25114,22 @@ function saveDocumentationImage() {
 
 let documentationVideoRun = null;
 
+const DOCUMENTATION_VIDEO_ASPECTS = Object.freeze({
+  auto: null,
+  '16:9': Object.freeze({ width: 1280, height: 720, label: 'Landscape' }),
+  '4:3': Object.freeze({ width: 1280, height: 960, label: 'Classic landscape' }),
+  '1:1': Object.freeze({ width: 1080, height: 1080, label: 'Square' }),
+  '4:5': Object.freeze({ width: 1024, height: 1280, label: 'Social feed' }),
+  '3:4': Object.freeze({ width: 960, height: 1280, label: 'Portrait' }),
+  '9:16': Object.freeze({ width: 720, height: 1280, label: 'Story / Reel' }),
+});
+let documentationVideoAspect = (() => {
+  try {
+    const saved = localStorage.getItem('ks-documentation-video-aspect') || 'auto';
+    return Object.prototype.hasOwnProperty.call(DOCUMENTATION_VIDEO_ASPECTS, saved) ? saved : 'auto';
+  } catch { return 'auto'; }
+})();
+
 function documentationVideoMimeType() {
   if (!window.MediaRecorder) return '';
   return [
@@ -25146,7 +25162,9 @@ async function convertDocumentationVideoToMp4(blob, signal) {
   return converted.type === 'video/mp4' ? converted : new Blob([converted], { type: 'video/mp4' });
 }
 
-function documentationVideoDimensions(width, height) {
+function documentationVideoDimensions(width, height, aspect = 'auto') {
+  const preset = DOCUMENTATION_VIDEO_ASPECTS[aspect];
+  if (preset) return { width: preset.width, height: preset.height };
   const ratio = Math.max(.25, Math.min(4, (Number(width) || 16) / (Number(height) || 9)));
   const even = (value) => Math.max(2, Math.round(value / 2) * 2);
   const portrait = ratio < (1 / 1.08);
@@ -25154,6 +25172,43 @@ function documentationVideoDimensions(width, height) {
   return boardRatio >= 1
     ? { width: 1280, height: even(1280 / boardRatio) }
     : { width: even(1280 * boardRatio), height: 1280 };
+}
+
+function syncDocumentationVideoAspectControls(run = documentationVideoRun) {
+  const selected = run?.aspect || documentationVideoAspect;
+  const locked = !run || ['recording', 'converting', 'done', 'error'].includes(run.phase);
+  $$('#documentationVideoAspects [data-documentation-video-aspect]').forEach((button) => {
+    const active = button.dataset.documentationVideoAspect === selected;
+    button.setAttribute('aria-checked', String(active));
+    button.disabled = locked;
+  });
+  const preset = DOCUMENTATION_VIDEO_ASPECTS[selected];
+  const dimensions = run?.video
+    ? documentationVideoDimensions(run.video.videoWidth, run.video.videoHeight, selected)
+    : preset;
+  $('#documentationVideoAspectNote').textContent = preset
+    ? `${selected} · ${dimensions.width} × ${dimensions.height} · ${preset.label}`
+    : (dimensions
+      ? `Auto · ${dimensions.width} × ${dimensions.height} · fitted to this result`
+      : 'Auto chooses a frame that fits the generated result.');
+  $('#documentationVideoStart').disabled = run?.phase !== 'ready';
+}
+
+function applyDocumentationVideoAspect(run, aspect) {
+  if (!run || !Object.prototype.hasOwnProperty.call(DOCUMENTATION_VIDEO_ASPECTS, aspect)) return;
+  if (run.phase === 'recording' || run.phase === 'converting') return;
+  run.aspect = aspect;
+  documentationVideoAspect = aspect;
+  try { localStorage.setItem('ks-documentation-video-aspect', aspect); } catch { /* preference remains in memory */ }
+  if (run.video) {
+    const canvas = $('#documentationVideoCanvas');
+    const dimensions = documentationVideoDimensions(run.video.videoWidth, run.video.videoHeight, aspect);
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+    syncDocumentationVideoInputs(run.inputs || [], run.video.currentTime || 0);
+    drawDocumentationVideoFrame(canvas.getContext('2d'), canvas, run.inputs || [], run.item, run.videoRecord, run.video);
+  }
+  syncDocumentationVideoAspectControls(run);
 }
 
 function drawContainedMedia(ctx, media, x, y, width, height) {
@@ -25394,13 +25449,13 @@ function documentationVideoInputBoxes(area, count, gap) {
 
 function documentationVideoLayout(width, height, mediaRatio = width / height, inputCount = 1, storyboardCount = 0) {
   const safeMediaRatio = Math.max(.25, Math.min(4, Number(mediaRatio) || width / height));
-  const portrait = safeMediaRatio < (1 / 1.08);
+  const stacked = width / height < 1.08;
   const pad = Math.max(18, Math.round(Math.min(width, height) * .04));
   const gap = Math.max(12, Math.round(pad * .62));
   const sourceCount = Math.max(0, Math.round(Number(inputCount) || 0));
   const storyboardHeight = storyboardCount ? Math.max(64, Math.min(118, Math.round(height * .115))) : 0;
   const storyboardGap = storyboardHeight ? gap : 0;
-  if (portrait) {
+  if (stacked) {
     const lowerWidth = width - pad * 2;
     const resultHeight = Math.min(
       lowerWidth / safeMediaRatio,
@@ -25640,6 +25695,11 @@ async function saveDocumentationVideo(item, video) {
   closeDocumentationVideoExport();
   const run = {
     cancelled: false,
+    phase: 'preparing',
+    aspect: documentationVideoAspect,
+    item,
+    videoRecord: video,
+    mimeType,
     abortController: new AbortController(),
     recorder: null,
     stream: null,
@@ -25649,9 +25709,11 @@ async function saveDocumentationVideo(item, video) {
   };
   documentationVideoRun = run;
   $('#documentationVideoCancel').textContent = 'Cancel';
+  $('#documentationVideoStart').hidden = false;
   $('#documentationVideoSheet').classList.add('show');
   syncSheetScrollLock();
-  updateDocumentationVideoProgress(0, 'Preparing combined documentation view…');
+  syncDocumentationVideoAspectControls(run);
+  updateDocumentationVideoProgress(0, 'Preparing aspect-ratio preview…');
 
   try {
     const inputMedia = await loadDocumentationVideoInputs(item, video);
@@ -25669,11 +25731,37 @@ async function saveDocumentationVideo(item, video) {
     });
     if (run.cancelled || documentationVideoRun !== run) return;
     run.video = result;
-    const dimensions = documentationVideoDimensions(result.videoWidth, result.videoHeight);
-    canvas.width = dimensions.width;
-    canvas.height = dimensions.height;
-    const ctx = canvas.getContext('2d');
     await prepareDocumentationVideoInputs(inputMedia);
+    if (run.cancelled || documentationVideoRun !== run) return;
+    run.phase = 'ready';
+    applyDocumentationVideoAspect(run, run.aspect);
+    updateDocumentationVideoProgress(0, 'Choose an aspect ratio, then export MP4.');
+  } catch (error) {
+    cleanupDocumentationVideoRun(run);
+    if (run.cancelled || error?.name === 'AbortError') return;
+    run.phase = 'error';
+    if (documentationVideoRun === run) documentationVideoRun = null;
+    syncDocumentationVideoAspectControls(run);
+    updateDocumentationVideoProgress(0, 'Could not prepare the documentation video');
+    $('#documentationVideoStart').hidden = true;
+    $('#documentationVideoCancel').textContent = 'Close';
+    toast(error.message, true);
+  }
+}
+
+async function recordDocumentationVideo(run) {
+  if (!run || run !== documentationVideoRun || run.phase !== 'ready' || !run.video) return;
+  const canvas = $('#documentationVideoCanvas');
+  const result = run.video;
+  const inputMedia = run.inputs || [];
+  const item = run.item;
+  const video = run.videoRecord;
+  const ctx = canvas.getContext('2d');
+  run.phase = 'recording';
+  syncDocumentationVideoAspectControls(run);
+  updateDocumentationVideoProgress(0, `Recording ${run.aspect === 'auto' ? 'Auto' : run.aspect} documentation video…`);
+
+  try {
     syncDocumentationVideoInputs(inputMedia, 0);
     drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result);
 
@@ -25693,12 +25781,12 @@ async function saveDocumentationVideo(item, video) {
     (resultStream ? resultStream.getAudioTracks() : []).forEach((track) => stream.addTrack(track));
     run.stream = stream;
     const chunks = [];
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
+    const recorder = new MediaRecorder(stream, { mimeType: run.mimeType, videoBitsPerSecond: 5_000_000 });
     run.recorder = recorder;
     const recorded = new Promise((resolve, reject) => {
       recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
       recorder.onerror = () => reject(new Error('The browser could not record the documentation video'));
-      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: run.mimeType.split(';')[0] }));
     });
     recorder.start(500);
     while (!run.cancelled && documentationVideoRun === run) {
@@ -25709,16 +25797,18 @@ async function saveDocumentationVideo(item, video) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
     if (recorder.state !== 'inactive') recorder.stop();
-    const blob = await recorded;
+    const recordedBlob = await recorded;
     cleanupDocumentationVideoRun(run);
     if (run.cancelled || documentationVideoRun !== run) return;
-    let exportBlob = blob;
+    let exportBlob = recordedBlob;
     let extension = 'mp4';
     let conversionError = null;
-    if (blob.type !== 'video/mp4') {
+    if (recordedBlob.type !== 'video/mp4') {
+      run.phase = 'converting';
+      syncDocumentationVideoAspectControls(run);
       updateDocumentationVideoProgress(1, 'Converting WebM recording to MP4…');
       try {
-        exportBlob = await convertDocumentationVideoToMp4(blob, run.abortController.signal);
+        exportBlob = await convertDocumentationVideoToMp4(recordedBlob, run.abortController.signal);
       } catch (error) {
         if (run.cancelled || error?.name === 'AbortError') throw error;
         conversionError = error;
@@ -25726,9 +25816,11 @@ async function saveDocumentationVideo(item, video) {
       }
     }
     if (run.cancelled || documentationVideoRun !== run) return;
+    run.phase = 'done';
     documentationVideoRun = null;
     const stem = generationDownloadStem(item, 'mix_studio');
-    const filename = `${stem}_documentation.${extension}`;
+    const aspectSuffix = run.aspect === 'auto' ? '' : `_${run.aspect.replace(':', 'x')}`;
+    const filename = `${stem}_documentation${aspectSuffix}.${extension}`;
     const link = document.createElement('a');
     link.href = URL.createObjectURL(exportBlob);
     link.download = filename;
@@ -25738,6 +25830,8 @@ async function saveDocumentationVideo(item, video) {
     updateDocumentationVideoProgress(1, conversionError
       ? 'MP4 conversion unavailable; WebM saved instead'
       : 'Documentation video saved as MP4');
+    syncDocumentationVideoAspectControls(run);
+    $('#documentationVideoStart').hidden = true;
     $('#documentationVideoCancel').textContent = 'Close';
     toast(conversionError
       ? `WebM saved because MP4 conversion failed: ${conversionError.message}`
@@ -25745,8 +25839,11 @@ async function saveDocumentationVideo(item, video) {
   } catch (error) {
     cleanupDocumentationVideoRun(run);
     if (run.cancelled || error?.name === 'AbortError') return;
+    run.phase = 'error';
     if (documentationVideoRun === run) documentationVideoRun = null;
+    syncDocumentationVideoAspectControls(run);
     updateDocumentationVideoProgress(0, 'Could not build the documentation video');
+    $('#documentationVideoStart').hidden = true;
     $('#documentationVideoCancel').textContent = 'Close';
     toast(error.message, true);
   }
@@ -25754,6 +25851,12 @@ async function saveDocumentationVideo(item, video) {
 
 $('#documentationVideoClose').addEventListener('click', closeDocumentationVideoExport);
 $('#documentationVideoCancel').addEventListener('click', closeDocumentationVideoExport);
+$('#documentationVideoStart').addEventListener('click', () => recordDocumentationVideo(documentationVideoRun));
+$('#documentationVideoAspects').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-documentation-video-aspect]');
+  if (!button || button.disabled) return;
+  applyDocumentationVideoAspect(documentationVideoRun, button.dataset.documentationVideoAspect);
+});
 
 $('#documentationLayout').addEventListener('click', (event) => {
   const button = event.target.closest('[data-doc-layout]');

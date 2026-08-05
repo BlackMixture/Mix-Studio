@@ -122,8 +122,28 @@ test('focused videos can export source, generation details, and result in one pe
   assert.doesNotMatch(app, /const introMs =/);
   assert.match(app, /canvas\.captureStream\(captureFps\)/);
   assert.match(app, /new MediaRecorder\(stream/);
-  assert.match(app, /mirrorExportFile\(blob, filename\)/);
+  assert.match(app, /mirrorExportFile\(exportBlob, filename\)/);
   assert.match(css, /\.documentation-video-preview/);
+});
+
+test('documentation videos offer social aspect ratios with a preview-first export flow', () => {
+  for (const aspect of ['auto', '16:9', '4:3', '1:1', '4:5', '3:4', '9:16']) {
+    assert.match(html, new RegExp(`data-documentation-video-aspect="${aspect.replace(':', '\\:')}"`));
+  }
+  assert.match(html, /id="documentationVideoAspects"[^>]*role="radiogroup"/);
+  assert.match(html, /id="documentationVideoStart"[^>]*disabled>Export MP4/);
+  assert.match(app, /const DOCUMENTATION_VIDEO_ASPECTS = Object\.freeze/);
+  assert.match(app, /'4:3': Object\.freeze\(\{ width: 1280, height: 960/);
+  assert.match(app, /'3:4': Object\.freeze\(\{ width: 960, height: 1280/);
+  assert.match(app, /'9:16': Object\.freeze\(\{ width: 720, height: 1280/);
+  assert.match(app, /function documentationVideoDimensions\(width, height, aspect = 'auto'\)/);
+  assert.match(app, /function applyDocumentationVideoAspect\(run, aspect\)/);
+  assert.match(app, /const stacked = width \/ height < 1\.08/);
+  assert.match(app, /run\.phase = 'ready'[\s\S]*Choose an aspect ratio, then export MP4/);
+  assert.match(app, /documentationVideoStart[^\n]*recordDocumentationVideo\(documentationVideoRun\)/);
+  assert.match(app, /aspectSuffix[\s\S]*run\.aspect\.replace\(':', 'x'\)/);
+  assert.match(css, /\.documentation-video-aspects/);
+  assert.match(css, /\.documentation-video-preview canvas \{[\s\S]*width: auto;[\s\S]*max-width: 100%/);
 });
 
 test('documentation videos resolve the real model-specific generation inputs', () => {
@@ -171,7 +191,7 @@ test('documentation video recording prefers MP4 while retaining a WebM fallback'
   assert.ok(mp4 >= 0 && bareMp4 > mp4 && webm > bareMp4);
   assert.match(app, /function convertDocumentationVideoToMp4\(blob, signal\)/);
   assert.match(app, /fetch\('\/api\/video\/convert-mp4'/);
-  assert.match(app, /blob\.type !== 'video\/mp4'[\s\S]*await convertDocumentationVideoToMp4/);
+  assert.match(app, /recordedBlob\.type !== 'video\/mp4'[\s\S]*await convertDocumentationVideoToMp4/);
   assert.match(app, /conversionError[\s\S]*extension = 'webm'/);
   assert.match(app, /Documentation video saved as MP4/);
   assert.match(server, /route === '\/api\/video\/convert-mp4'/);
