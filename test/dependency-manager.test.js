@@ -155,6 +155,16 @@ test('reviewed node packs at their pinned revision do not need repair', async ()
   assert.deepEqual(result, []);
 });
 
+test('revision readiness ignores reviewed pins that are not compatibility-critical', async () => {
+  const customNodesPath = path.join('/comfy', 'custom_nodes');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.kjnodes.folder);
+  const result = await inspectPinnedNodeRevisions({ customNodesPath }, {
+    existsSync: (candidate) => candidate === nodePath || candidate === path.join(nodePath, '.git'),
+    run: async (_command, args) => args.includes('remote') ? NODE_PACKS.kjnodes.repo : '1'.repeat(40),
+  });
+  assert.deepEqual(result, []);
+});
+
 test('regional prompting installs the reviewed mirror and reuses a compatible legacy checkout', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-regional-source-'));
   const customNodesPath = path.join(rootDir, 'custom_nodes');
