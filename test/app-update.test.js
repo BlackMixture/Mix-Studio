@@ -29,6 +29,8 @@ function gitSequence(outputs) {
   };
 }
 
+const healthyAssets = () => ({ ok: true, missing: [], sizes: {} });
+
 function temporaryReleaseRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mix-studio-release-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -80,7 +82,7 @@ test('release metadata is read from disk on every call and safely handles missin
 
 test('public-only updates do not require a server restart', async () => {
   const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n', 'Updating aaa..bbb\n', 'bbb\n', 'public/app.js\npublic/style.css\n']);
-  const result = await updateFromGit('/app', { runGit: fake.runGit });
+  const result = await updateFromGit('/app', { runGit: fake.runGit, inspectAssets: healthyAssets });
   assert.equal(result.updated, true);
   assert.equal(result.restartRequired, false);
   assert.equal(result.originMigrated, false);
@@ -98,6 +100,7 @@ test('updates report the release metadata from before and after the fast-forward
   const result = await updateFromGit('/app', {
     runGit: fake.runGit,
     readRelease: () => releases[releaseReads++],
+    inspectAssets: healthyAssets,
   });
 
   assert.equal(releaseReads, 2);
@@ -109,14 +112,14 @@ test('updates report the release metadata from before and after the fast-forward
 
 test('a legacy KreaStudio origin migrates to Mix-Studio before pulling', async () => {
   const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/KreaStudio.git\n', '', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
-  const result = await updateFromGit('/app', { runGit: fake.runGit });
+  const result = await updateFromGit('/app', { runGit: fake.runGit, inspectAssets: healthyAssets });
   assert.equal(result.originMigrated, true);
   assert.deepEqual(fake.calls[3], ['remote', 'set-url', 'origin', 'https://github.com/BlackMixture/Mix-Studio.git']);
 });
 
 test('a legacy ssh URL migrates using the same origin normalization', async () => {
   const fake = gitSequence(['', 'main\n', 'ssh://git@github.com/BlackMixture/KreaStudio.git\n', '', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
-  const result = await updateFromGit('/app', { runGit: fake.runGit });
+  const result = await updateFromGit('/app', { runGit: fake.runGit, inspectAssets: healthyAssets });
   assert.equal(result.originMigrated, true);
   assert.deepEqual(fake.calls[3], ['remote', 'set-url', 'origin', 'https://github.com/BlackMixture/Mix-Studio.git']);
 });
@@ -152,7 +155,7 @@ test('server and library updates require a restart', () => {
 
 test('an up-to-date checkout reports no changed files', async () => {
   const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n', 'Already up to date.\n', 'aaa\n']);
-  const result = await updateFromGit('/app', { runGit: fake.runGit });
+  const result = await updateFromGit('/app', { runGit: fake.runGit, inspectAssets: healthyAssets });
   assert.equal(result.updated, false);
   assert.equal(result.restartRequired, false);
   assert.deepEqual(result.changedFiles, []);
@@ -170,6 +173,23 @@ test('tracked local changes block an update before pulling', async () => {
     }
   );
   assert.equal(fake.calls.length, 1);
+});
+
+test('an update refuses to restart when a critical public asset is missing after the pull', async () => {
+  const fake = gitSequence(['', 'main\n', 'https://github.com/BlackMixture/Mix-Studio.git\n', 'aaa\n', 'Updating aaa..bbb\n', 'bbb\n']);
+  await assert.rejects(
+    updateFromGit('/app', {
+      runGit: fake.runGit,
+      inspectAssets: () => ({ ok: false, missing: ['public/style.css'], sizes: { 'style.css': 0 } }),
+    }),
+    (error) => {
+      assert.equal(error.code, 'update_assets_missing');
+      assert.deepEqual(error.missingFiles, ['public/style.css']);
+      assert.match(error.message, /public\/style\.css/);
+      return true;
+    }
+  );
+  assert.deepEqual(fake.calls[4], ['pull', '--ff-only', 'origin', 'main']);
 });
 
 test('dirty status details are bounded and exclude untracked files', () => {

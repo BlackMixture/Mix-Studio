@@ -14,7 +14,13 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { pipeline } = require('stream/promises');
-const { readAppRelease, updateFromGit } = require('./lib/app-update');
+const { gitCommand, readAppRelease, updateFromGit } = require('./lib/app-update');
+const {
+  inspectCriticalPublicAssets,
+  isCriticalPublicAsset,
+  isUsableCriticalPublicAsset,
+  loadCriticalPublicAssetCache,
+} = require('./lib/app-assets');
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
@@ -310,6 +316,8 @@ const {
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
+const CRITICAL_PUBLIC_STARTUP_CACHE = loadCriticalPublicAssetCache(ROOT);
+const CRITICAL_PUBLIC_GIT_CACHE = new Map();
 const officialReleaseChecker = createGithubReleaseChecker();
 const SETUP_FEATURE_MANIFEST = loadJson(path.join(ROOT, 'installer', 'feature-manifest.json'), { features: [] });
 let RUNTIME = resolveRuntimeConfig(ROOT);
@@ -5220,6 +5228,56 @@ function serveFile(res, file, range) {
   });
 }
 
+function sendPublicAssetBuffer(res, name, buffer, recoveredFrom = '') {
+  const mime = MIME[path.extname(name).toLowerCase()] || 'application/octet-stream';
+  const headers = {
+    'Content-Type': mime,
+    'Content-Length': buffer.length,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-cache',
+  };
+  if (recoveredFrom) headers['X-Mix-Studio-Asset-Recovery'] = recoveredFrom;
+  res.writeHead(200, headers);
+  res.end(buffer);
+}
+
+async function trackedCriticalPublicAsset(name) {
+  if (!isCriticalPublicAsset(name)) return null;
+  if (CRITICAL_PUBLIC_GIT_CACHE.has(name)) return CRITICAL_PUBLIC_GIT_CACHE.get(name);
+  try {
+    const text = await gitCommand(ROOT, ['show', `HEAD:public/${name}`], {
+      gitExecutable: RUNTIME.update.gitExecutable,
+    });
+    const data = Buffer.from(text, 'utf8');
+    if (!isUsableCriticalPublicAsset(name, data)) return null;
+    CRITICAL_PUBLIC_GIT_CACHE.set(name, data);
+    return data;
+  } catch (error) {
+    console.error(`[static] Could not recover public/${name} from Git:`, error.message);
+    return null;
+  }
+}
+
+async function serveCriticalPublicAsset(res, file, name) {
+  try {
+    const data = await fsp.readFile(file);
+    if (isUsableCriticalPublicAsset(name, data)) return sendPublicAssetBuffer(res, name, data);
+  } catch { /* Use the startup or Git fallback below. */ }
+
+  const startup = CRITICAL_PUBLIC_STARTUP_CACHE.get(name);
+  if (startup) {
+    console.warn(`[static] Recovered missing public/${name} from the startup cache.`);
+    return sendPublicAssetBuffer(res, name, startup, 'startup-cache');
+  }
+  const tracked = await trackedCriticalPublicAsset(name);
+  if (tracked) {
+    console.warn(`[static] Recovered missing public/${name} from Git HEAD.`);
+    return sendPublicAssetBuffer(res, name, tracked, 'git-head');
+  }
+  res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+  return res.end(`Mix Studio cannot load public/${name}. Repair or reinstall the app.`);
+}
+
 function safeMediaPath(root, encodedName) {
   let decoded;
   try { decoded = decodeURIComponent(String(encodedName || '')); } catch { return null; }
@@ -5878,6 +5936,7 @@ async function handleApi(req, res, url) {
       const update = await updateFromGit(ROOT, {
         channel: RUNTIME.update.channel,
         gitExecutable: RUNTIME.update.gitExecutable,
+        inspectAssets: () => inspectCriticalPublicAssets(ROOT),
       });
       // ComfyUI can receive work outside Mix Studio. Check it again directly
       // before scheduling a process restart. If that race occurs after Git has
@@ -5919,6 +5978,7 @@ async function handleApi(req, res, url) {
         payload.dirtyFiles = e.dirtyFiles;
         payload.dirtyFileCount = Number.isFinite(e.dirtyFileCount) ? e.dirtyFileCount : e.dirtyFiles.length;
       }
+      if (e.code === 'update_assets_missing' && Array.isArray(e.missingFiles)) payload.missingFiles = e.missingFiles;
       return json(res, status, payload);
     } finally {
       if (!keepMaintenanceUntilRestart) appUpdateRunning = false;
@@ -5927,6 +5987,14 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/app/restart' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restart Mix Studio' });
+    const assets = inspectCriticalPublicAssets(ROOT);
+    if (!assets.ok) {
+      return json(res, 409, {
+        error: `Mix Studio cannot restart because critical app files are missing: ${assets.missing.join(', ')}.`,
+        code: 'app_assets_missing',
+        missingFiles: assets.missing,
+      });
+    }
     try {
       await assertDesktopIsIdle();
     } catch (error) {
@@ -9094,6 +9162,9 @@ const server = http.createServer(async (req, res) => {
     let p = url.pathname === '/' ? '/index.html' : url.pathname;
     const publicFile = safeMediaPath(PUBLIC, p.replace(/^\//, ''));
     if (!publicFile) { res.writeHead(404); return res.end('not found'); }
+    if (isCriticalPublicAsset(publicFile.name)) {
+      return await serveCriticalPublicAsset(res, publicFile.file, publicFile.name);
+    }
     return serveFile(res, publicFile.file);
   } catch (e) {
     const cancelled = e && e.code === 'job_cancelled';

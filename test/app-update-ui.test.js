@@ -221,6 +221,14 @@ test('dirty update errors identify tracked files and retain the generic fallback
   const formatAppUpdateError = appFunction('formatAppUpdateError', 'formatAppVersion');
   assert.equal(
     formatAppUpdateError({
+      code: 'update_assets_missing',
+      message: 'generic asset message',
+      details: { missingFiles: ['public/style.css'] },
+    }),
+    'The update is incomplete because critical app files are missing: public/style.css. Repair or reinstall Mix Studio before restarting.'
+  );
+  assert.equal(
+    formatAppUpdateError({
       code: 'update_dirty',
       message: 'generic dirty message',
       details: {

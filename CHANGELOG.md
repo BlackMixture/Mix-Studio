@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added critical web-asset integrity checks to app updates, plus startup-memory and Git fallbacks for missing HTML, CSS, or JavaScript so a partial desktop deployment cannot leave the app unstyled.
 - Added one shared external prompt-AI provider for OpenAI, Gemini, or Ollama, with independent Image and Video switches for Revise Prompt and Prompt Enhance, connection testing, vision-aware references, and API-key controls in the renamed Preferences panel.
 - Improved documentation video readability by letting long prompts use the full available details panel, removing the colored marker beside media labels, and avoiding a duplicate H3 references row.
 - Added social-ready aspect-ratio choices to documentation video exports, including 16:9, 4:3, square, 4:5, 3:4, and 9:16, with a live preview before recording.

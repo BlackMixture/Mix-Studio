@@ -2221,6 +2221,14 @@ function setAppUpdateStatus(message, tone) {
 
 function formatAppUpdateError(error) {
   const fallback = String(error?.message || 'Mix Studio could not install the update.');
+  if (error?.code === 'update_assets_missing') {
+    const missing = Array.isArray(error.details?.missingFiles)
+      ? error.details.missingFiles.filter((file) => typeof file === 'string' && file.trim()).slice(0, 4)
+      : [];
+    return missing.length
+      ? `The update is incomplete because critical app files are missing: ${missing.join(', ')}. Repair or reinstall Mix Studio before restarting.`
+      : fallback;
+  }
   if (error?.code !== 'update_dirty') return fallback;
   const files = Array.isArray(error.details?.dirtyFiles) ? error.details.dirtyFiles : [];
   if (!files.length) return fallback;
