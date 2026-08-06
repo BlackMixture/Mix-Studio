@@ -62,11 +62,11 @@ test('advanced settings live in the app drawer instead of the top bar', () => {
   const topbar = html.match(/<header class="topbar">([\s\S]*?)<\/header>/)?.[1] || '';
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   assert.doesNotMatch(topbar, /id="settingsBtn"/);
-  assert.match(drawer, /id="settingsBtn"[\s\S]*Advanced Settings[\s\S]*Models &amp; connection/);
+  assert.match(drawer, /id="settingsBtn"[\s\S]*Preferences[\s\S]*Models, prompts &amp; app/);
   assert.match(app, /\$\('#settingsBtn'\)\.addEventListener\('click', async \(\) => \{\s*closeAppDrawer\(\)/);
 });
 
-test('app credits live in Advanced Settings instead of the drawer footer', () => {
+test('app credits live in Preferences instead of the drawer footer', () => {
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   const community = html.match(/id="settingsPaneCommunity"([\s\S]*?)<\/section>/)?.[1] || '';
   assert.doesNotMatch(drawer, /Created by Nate &amp; Chriselle Dwarika|Black Mixture &copy;/);

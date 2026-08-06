@@ -146,7 +146,7 @@
       notice.setAttribute('aria-live', 'polite');
       notice.setAttribute('aria-labelledby', 'telemetryNoticeTitle');
       notice.setAttribute('aria-describedby', 'telemetryNoticeCopy');
-      notice.innerHTML = '<span class="telemetry-toast-copy"><strong id="telemetryNoticeTitle">Anonymous analytics are on</strong><small id="telemetryNoticeCopy">Mix Studio only notes when the app opens and which model starts. No prompts, media, screen recording, or generation content. Change this anytime in Advanced Settings.</small></span><span class="telemetry-toast-actions"><button class="telemetry-toast-thanks" type="button">Thanks, continue</button><button class="telemetry-toast-disable" type="button">Disable</button></span>';
+      notice.innerHTML = '<span class="telemetry-toast-copy"><strong id="telemetryNoticeTitle">Anonymous analytics are on</strong><small id="telemetryNoticeCopy">Mix Studio only notes when the app opens and which model starts. No prompts, media, screen recording, or generation content. Change this anytime in Preferences.</small></span><span class="telemetry-toast-actions"><button class="telemetry-toast-thanks" type="button">Thanks, continue</button><button class="telemetry-toast-disable" type="button">Disable</button></span>';
       notice.querySelector('.telemetry-toast-disable').addEventListener('click', () => requestSetEnabled(false));
       notice.querySelector('.telemetry-toast-thanks').addEventListener('click', () => closeNotice(true));
       zone.appendChild(notice);
@@ -205,7 +205,7 @@
 
     async function requestSetEnabled(enabled) {
       if (!enabled) {
-        const message = 'Mix Studio will stop sending anonymous app launch and model start events. You can turn them back on anytime in Advanced Settings.';
+        const message = 'Mix Studio will stop sending anonymous app launch and model start events. You can turn them back on anytime in Preferences.';
         const confirmed = typeof win.askConfirm === 'function'
           ? await win.askConfirm({
             title: 'Disable anonymous analytics?',

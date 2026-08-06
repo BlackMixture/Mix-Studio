@@ -93,7 +93,7 @@ test('an existing opt-out never schedules or initializes the PostHog SDK', async
 test('the first-run analytics notice uses a clear primary action and a quiet opt-out', () => {
   assert.match(analyticsSource, /Anonymous analytics are on/);
   assert.match(analyticsSource, /No prompts, media, screen recording, or generation content/);
-  assert.match(analyticsSource, /Change this anytime in Advanced Settings/);
+  assert.match(analyticsSource, /Change this anytime in Preferences/);
   assert.match(analyticsSource, /setAttribute\('role', 'region'\)/);
   assert.match(analyticsSource, /setAttribute\('aria-live', 'polite'\)/);
   assert.match(analyticsSource, /setAttribute\('aria-labelledby', 'telemetryNoticeTitle'\)/);
@@ -131,7 +131,7 @@ test('the analytics notice is black and its visual hierarchy does not rely on fi
   assert.match(disableRule, /border:\s*(?:0|none)\b/i);
 });
 
-test('anonymous analytics remain controllable from the persistent Advanced Settings switch', () => {
+test('anonymous analytics remain controllable from the persistent Preferences switch', () => {
   assert.match(html, /id="analyticsToggle"[^>]*role="switch"[^>]*aria-labelledby="analyticsToggleLabel"[^>]*aria-describedby="analyticsToggleStatus"[^>]*hidden/);
   assert.match(html, /id="analyticsToggle"[^>]*aria-labelledby="analyticsToggleLabel"[^>]*aria-describedby="analyticsToggleStatus"/);
   assert.match(html, /<script src="\/analytics\.js"><\/script>/);

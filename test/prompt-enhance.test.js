@@ -16,6 +16,7 @@ const {
   motionPromptEnhanceParts,
   promptEnhanceParts,
   regionPromptEnhanceParts,
+  videoPromptEnhanceParts,
   videoPromptRevisionParts,
 } = require('../lib/prompt-enhance');
 
@@ -112,6 +113,21 @@ test('H3 prompt enhancement is duration-aware and preserves reference-mode input
   assert.match(parts.instruction, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
   assert.match(parts.userInput, /<user_video_prompt>\nUse <Picture 1> for the host and <Audio 1> for the performance\.\n<\/user_video_prompt>/);
   assert.ok(parts.userInput.endsWith(ENHANCE_TAIL));
+});
+
+test('generic video enhancement adapts to text-only and visual starting points', () => {
+  const textOnly = videoPromptEnhanceParts('A train crosses the desert.', {
+    engine: 'ltx', seconds: 8, hasImage: false,
+  });
+  assert.match(textOnly.instruction, /No source image is attached/);
+  assert.match(textOnly.instruction, /Target duration: 8 seconds/);
+  assert.match(textOnly.userInput, /<user_video_prompt>\nA train crosses the desert\.\n<\/user_video_prompt>/);
+
+  const visual = videoPromptEnhanceParts('She turns toward camera.', {
+    engine: 'wan', seconds: 5, hasImage: true,
+  });
+  assert.match(visual.instruction, /exact visual starting point/);
+  assert.ok(visual.userInput.endsWith(ENHANCE_TAIL));
 });
 
 test('video prompt revision preserves H3 reference tags and adds duration-aware shot craft', () => {

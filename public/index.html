@@ -143,8 +143,8 @@
           <span class="app-drawer-action-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m9.3 21-.5-3.1a6 6 0 0 1-1-.57l-2.9 1.2-2.7-4.66 2.4-1.9a6.7 6.7 0 0 1 0-1.14l-2.4-1.9L4.9 4.27l2.9 1.2a6 6 0 0 1 1-.57L9.3 1.8h5.4l.5 3.1a6 6 0 0 1 1 .57l2.9-1.2 2.7 4.66-2.4 1.9c.03.38.03.76 0 1.14l2.4 1.9-2.7 4.66-2.9-1.2a6 6 0 0 1-1 .57l-.5 3.1H9.3Zm2.7-5.6a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"/></svg>
           </span>
-          <span class="app-drawer-label">Advanced Settings</span>
-          <small>Models &amp; connection</small>
+          <span class="app-drawer-label">Preferences</span>
+          <small>Models, prompts &amp; app</small>
         </button>
       </section>
       </div>
@@ -640,7 +640,7 @@
       </div>
       <span class="sr-only" id="promptPasteHint">Paste an image here to add it to the active workflow input.</span>
       <span class="sr-only" id="clipboardPasteStatus" role="status" aria-live="polite"></span>
-      <button class="enhance-btn on" id="enhanceBtn" type="button" aria-label="Prompt enhance" title="Prompt enhance (Qwen3-VL)" aria-pressed="true">
+      <button class="enhance-btn on" id="enhanceBtn" type="button" aria-label="Prompt enhance" title="Prompt enhance" aria-pressed="true">
         <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 2l1.9 5.4L19 9l-5.1 1.6L12 16l-1.9-5.4L5 9l5.1-1.6L12 2Zm7 11 1 2.7 2.7 1-2.7 1-1 2.7-1-2.7-2.7-1 2.7-1 1-2.7ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z"/></svg>
       </button>
       <button class="prompt-camera-btn" id="cameraPromptBtn" type="button" aria-label="Mix Packs" title="Mix Packs">
@@ -700,12 +700,12 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m7 7 10 10M17 7 7 17"/></svg>
         </button>
       </div>
-      <button class="chip icon-chip" id="promptAssistantBtn" type="button" aria-label="Revise prompt" title="Revise prompt with local AI" aria-haspopup="dialog">
+      <button class="chip icon-chip" id="promptAssistantBtn" type="button" aria-label="Revise prompt" title="Revise prompt with configured AI" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 3h12a3 3 0 0 1 3 3v3h-2V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2v4l4.8-4H13v2h-1.5L4 23v-6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm14 8 1.05 2.95L22 15l-2.95 1.05L18 19l-1.05-2.95L14 15l2.95-1.05L18 11Zm3-3 .55 1.45L23 10l-1.45.55L21 12l-.55-1.45L19 10l1.45-.55L21 8Z"/></svg>
       </button>
     </div>
     <div class="chip-row prompt-tools video-prompt-tools" id="videoPromptTools" hidden>
-      <button class="chip video-revise-prompt" id="videoPromptAssistantBtn" type="button" aria-label="Revise video prompt" title="Revise video prompt with local AI" aria-haspopup="dialog">
+      <button class="chip video-revise-prompt" id="videoPromptAssistantBtn" type="button" aria-label="Revise video prompt" title="Revise video prompt with configured AI" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 3h12a3 3 0 0 1 3 3v3h-2V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2v4l4.8-4H13v2h-1.5L4 23v-6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm14 8 1.05 2.95L22 15l-2.95 1.05L18 19l-1.05-2.95L14 15l2.95-1.05L18 11Z"/></svg>
         <span>Revise prompt</span>
       </button>
@@ -2200,7 +2200,7 @@
       <span class="setup-title-actions">
         <button class="setup-return-settings" id="setupReturnSettings" type="button" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-          <span>Back to settings</span>
+          <span>Back to preferences</span>
         </button>
         <button class="setup-close" data-close aria-label="Close generation setup">✕</button>
       </span>
@@ -2231,7 +2231,7 @@
         </div>
         <div class="dependency-access" id="setupDependencyAccess" hidden>
           <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
-          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then add a read token in Settings → General → Hugging Face token.</small></span>
+          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then add a read token in Preferences → General → Hugging Face token.</small></span>
           <a class="dependency-access-link" id="setupDependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
         </div>
         <div class="setup-operation-actions">
@@ -2375,14 +2375,14 @@
 <div class="sheet" id="settingsSheet">
   <div class="sheet-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <h3 class="sheet-title" id="settingsTitle">
-      <span class="settings-title-copy">Settings <small id="settingsSaveStatus" role="status" aria-live="polite"></small></span>
+      <span class="settings-title-copy">Preferences <small id="settingsSaveStatus" role="status" aria-live="polite"></small></span>
       <span class="settings-title-actions">
         <button class="settings-restart-apply" id="settingsRestartApply" type="button" hidden>Restart to Apply</button>
-        <button class="settings-close" data-close type="button" aria-label="Close settings">✕</button>
+        <button class="settings-close" data-close type="button" aria-label="Close preferences">✕</button>
       </span>
     </h3>
     <div class="settings-shell">
-      <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+      <nav class="settings-tabs" role="tablist" aria-label="Preference sections" aria-orientation="vertical">
         <button class="active" id="settingsTabGeneral" type="button" role="tab" aria-selected="true" aria-controls="settingsPaneGeneral" data-settings-tab="general">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h10v2H4V6Zm0 10h16v2H4v-2Zm14-11h2v4h-2V5Zm-8 10h2v4h-2v-4Z"/></svg><span>General</span>
         </button>
@@ -2476,7 +2476,7 @@
             <div class="dependency-progress" id="dependencyProgress" hidden><span id="dependencyProgressFill"></span></div>
             <div class="dependency-access" id="dependencyAccess" hidden>
               <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
-              <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then paste a read token in Settings → General → Hugging Face token.</small></span>
+              <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then paste a read token in Preferences → General → Hugging Face token.</small></span>
               <a class="dependency-access-link" id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
             </div>
             <div class="dependency-selection-head" id="dependencySelectionHead" hidden>
@@ -2753,6 +2753,78 @@
             <div class="trash-management-row">
               <span><strong>Deleted files</strong><small id="trashStatus">Checking Mix Studio trash...</small></span>
               <button class="settings-cache-clear trash-empty" id="trashEmpty" type="button" disabled>Empty trash</button>
+            </div>
+          </div>
+          <div class="settings-group external-llm-settings" id="externalLlmSettings">
+            <h5>External prompt AI</h5>
+            <p class="settings-default-note">Use one shared provider for prompt revision and enhancement. API keys stay on this Mix Studio server and are never returned to the browser.</p>
+            <div class="field">
+              <label for="setExternalLlmProvider">Provider</label>
+              <select id="setExternalLlmProvider">
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="ollama">Ollama</option>
+              </select>
+            </div>
+            <div class="external-llm-provider" data-external-llm-provider="openai">
+              <div class="field">
+                <label for="setExternalLlmOpenAiModel">OpenAI model</label>
+                <input id="setExternalLlmOpenAiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-5.6-luna" />
+              </div>
+              <div class="field">
+                <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
+                <div class="external-llm-secret-row">
+                  <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                  <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
+                </div>
+              </div>
+            </div>
+            <div class="external-llm-provider" data-external-llm-provider="gemini" hidden>
+              <div class="field">
+                <label for="setExternalLlmGeminiModel">Gemini model</label>
+                <input id="setExternalLlmGeminiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemini-3.6-flash" />
+              </div>
+              <div class="field">
+                <label for="setExternalLlmGeminiApiKey">Gemini API key</label>
+                <div class="external-llm-secret-row">
+                  <input id="setExternalLlmGeminiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                  <button class="settings-cache-clear" id="clearExternalLlmGeminiApiKey" type="button" hidden>Clear</button>
+                </div>
+              </div>
+            </div>
+            <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
+              <div class="field">
+                <label for="setExternalLlmOllamaUrl">Ollama URL</label>
+                <input id="setExternalLlmOllamaUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434" />
+              </div>
+              <div class="field">
+                <label for="setExternalLlmOllamaModel">Ollama model</label>
+                <input id="setExternalLlmOllamaModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemma3" />
+              </div>
+            </div>
+            <div class="external-llm-routing">
+              <h6>Use external AI for</h6>
+              <button class="settings-media-toggle" id="externalLlmImageRevise" type="button" role="switch" aria-checked="false">
+                <span class="settings-media-toggle-copy"><strong>Image · Revise Prompt</strong><small>Rewrite image prompts with the selected provider.</small></span>
+                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+              </button>
+              <button class="settings-media-toggle" id="externalLlmImageEnhance" type="button" role="switch" aria-checked="false">
+                <span class="settings-media-toggle-copy"><strong>Image · Prompt Enhance</strong><small>Enhance global and regional image prompts externally.</small></span>
+                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+              </button>
+              <button class="settings-media-toggle" id="externalLlmVideoRevise" type="button" role="switch" aria-checked="false">
+                <span class="settings-media-toggle-copy"><strong>Video · Revise Prompt</strong><small>Rewrite video prompts with the selected provider.</small></span>
+                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+              </button>
+              <button class="settings-media-toggle" id="externalLlmVideoEnhance" type="button" role="switch" aria-checked="false">
+                <span class="settings-media-toggle-copy"><strong>Video · Prompt Enhance</strong><small>Use the provider before building H3, LTX, Wan, Eros, and SCAIL graphs.</small></span>
+                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+              </button>
+            </div>
+            <p class="external-llm-privacy">When visual context is enabled, prompt text and the selected reference image are sent to the chosen provider. Ollama remains local when its URL points to this computer.</p>
+            <div class="external-llm-test-row">
+              <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
+              <span id="externalLlmStatus" role="status" aria-live="polite"></span>
             </div>
           </div>
           <div class="field">

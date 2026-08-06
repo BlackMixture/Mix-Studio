@@ -153,7 +153,7 @@ test('connected NVIDIA identity keeps the local driver needed for CUDA compatibi
   assert.equal(info.gpu.devices[0].driver, '596.36');
 });
 
-test('Advanced Settings presents hardware as one minimal System readout', () => {
+test('Preferences presents hardware as one minimal System readout', () => {
   assert.match(server, /route === '\/api\/hardware'/);
   assert.match(server, /h3PerformanceReport\(\{ hardware, runtime: performanceRuntime, models: settings \}\)/);
   assert.match(html, /class="settings-group hardware-group"/);

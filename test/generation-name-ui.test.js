@@ -38,7 +38,7 @@ test('saved names participate in library search, sorting, and downloads', () => 
   assert.match(server, /generationFileStem\(item, `generation-\$\{index \+ 1\}`\)/);
 });
 
-test('Advanced Settings can toggle prompt-based names for new files', () => {
+test('Preferences can toggle prompt-based names for new files', () => {
   assert.match(html, /id="setSmartFilenames"[^>]*role="switch"[^>]*aria-checked="true"/);
   assert.match(html, /Smart file names[\s\S]*short phrase from the prompt/);
   assert.match(app, /setMediaPreferenceControl\('setSmartFilenames', s\.smartFilenames !== false\)/);

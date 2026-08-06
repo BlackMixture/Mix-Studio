@@ -529,7 +529,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /quick\.hidden = \(!quickMissing\.length\)[\s\S]{0,120}quickPreset\.id !== 'low-vram-klein4'/);
   assert.match(app, /connectionChoicesHidden = !!comfy\.connected \|\| nodeSetupActive/);
   assert.match(app, /e\.target === sheet && sheet\.id !== 'initialSetupSheet'/);
-  assert.match(app, /Generation setup is still needed\. Press Generate or open Advanced Settings to continue\./);
+  assert.match(app, /Generation setup is still needed\. Press Generate or open Preferences to continue\./);
   assert.match(app, /cancel\.hidden = !cancellable/);
   assert.match(app, /next\.disabled = busy \|\| !workflowReady/);
   assert.match(style, /\.setup-input-row \{[^}]*grid-template-columns: minmax\(0,1fr\) 40px/);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added one shared external prompt-AI provider for OpenAI, Gemini, or Ollama, with independent Image and Video switches for Revise Prompt and Prompt Enhance, connection testing, vision-aware references, and API-key controls in the renamed Preferences panel.
 - Improved documentation video readability by letting long prompts use the full available details panel, removing the colored marker beside media labels, and avoiding a duplicate H3 references row.
 - Added social-ready aspect-ratio choices to documentation video exports, including 16:9, 4:3, square, 4:5, 3:4, and 9:16, with a live preview before recording.
 - Added compatibility-critical custom-node revision checks so Generation Setup detects stale installed node packs, marks every affected workflow for repair, and repins them before ComfyUI restarts.

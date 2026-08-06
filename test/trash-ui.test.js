@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
-test('Advanced Settings exposes owner-only trash status and empty action', () => {
+test('Preferences exposes owner-only trash status and empty action', () => {
   assert.match(html, /id="trashManagement"[^>]*hidden/);
   assert.match(html, /id="trashStatus"/);
   assert.match(html, /id="trashEmpty"[^>]*>Empty trash/);

@@ -26401,8 +26401,58 @@ function mediaPreferenceControlValue(id) {
   return $('#' + id)?.getAttribute('aria-checked') === 'true';
 }
 
+let externalLlmKeyConfigured = { openai: false, gemini: false };
+let externalLlmKeyStored = { openai: false, gemini: false };
+
+function renderExternalLlmPreferences() {
+  const provider = $('#setExternalLlmProvider').value || 'openai';
+  $$('[data-external-llm-provider]').forEach((section) => {
+    section.hidden = section.dataset.externalLlmProvider !== provider;
+  });
+  const openAiKey = $('#setExternalLlmOpenAiApiKey');
+  const geminiKey = $('#setExternalLlmGeminiApiKey');
+  openAiKey.placeholder = externalLlmKeyConfigured.openai ? 'Saved · paste a new key to replace it' : 'Paste an API key';
+  geminiKey.placeholder = externalLlmKeyConfigured.gemini ? 'Saved · paste a new key to replace it' : 'Paste an API key';
+  $('#clearExternalLlmOpenAiApiKey').hidden = !externalLlmKeyStored.openai || !state.profileIsOwner;
+  $('#clearExternalLlmGeminiApiKey').hidden = !externalLlmKeyStored.gemini || !state.profileIsOwner;
+  const readonly = !state.profileIsOwner;
+  $('#externalLlmSettings').dataset.readonly = String(readonly);
+  [
+    'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
+    'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl',
+    'setExternalLlmOllamaModel', 'externalLlmImageRevise', 'externalLlmImageEnhance',
+    'externalLlmVideoRevise', 'externalLlmVideoEnhance', 'testExternalLlm',
+  ].forEach((id) => { $('#' + id).disabled = readonly; });
+}
+
+function applyExternalLlmSettings(settings = {}) {
+  $('#setExternalLlmProvider').value = ['openai', 'gemini', 'ollama'].includes(settings.externalLlmProvider)
+    ? settings.externalLlmProvider : 'openai';
+  $('#setExternalLlmOpenAiApiKey').value = '';
+  $('#setExternalLlmOpenAiModel').value = settings.externalLlmOpenAiModel || 'gpt-5.6-luna';
+  $('#setExternalLlmGeminiApiKey').value = '';
+  $('#setExternalLlmGeminiModel').value = settings.externalLlmGeminiModel || 'gemini-3.6-flash';
+  $('#setExternalLlmOllamaUrl').value = settings.externalLlmOllamaUrl || 'http://127.0.0.1:11434';
+  $('#setExternalLlmOllamaModel').value = settings.externalLlmOllamaModel || 'gemma3';
+  externalLlmKeyConfigured = {
+    openai: settings.externalLlmOpenAiApiKeyConfigured === true,
+    gemini: settings.externalLlmGeminiApiKeyConfigured === true,
+  };
+  externalLlmKeyStored = {
+    openai: settings.externalLlmOpenAiApiKeyStored === true,
+    gemini: settings.externalLlmGeminiApiKeyStored === true,
+  };
+  setMediaPreferenceControl('externalLlmImageRevise', settings.externalLlmImageRevise === true);
+  setMediaPreferenceControl('externalLlmImageEnhance', settings.externalLlmImageEnhance === true);
+  setMediaPreferenceControl('externalLlmVideoRevise', settings.externalLlmVideoRevise === true);
+  setMediaPreferenceControl('externalLlmVideoEnhance', settings.externalLlmVideoEnhance === true);
+  renderExternalLlmPreferences();
+}
+
 const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setComfy', 'setHfToken', 'setHfEndpoint', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
+  'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
+  'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl', 'setExternalLlmOllamaModel',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
   'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
   'setKlein4Unet', 'setKlein4Clip', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
@@ -26438,6 +26488,17 @@ function settingsPayload() {
     comfyUrl: $('#setComfy').value,
     hfToken: $('#setHfToken').value,
     hfEndpoint: $('#setHfEndpoint').value,
+    externalLlmProvider: $('#setExternalLlmProvider').value,
+    externalLlmOpenAiApiKey: $('#setExternalLlmOpenAiApiKey').value,
+    externalLlmOpenAiModel: $('#setExternalLlmOpenAiModel').value,
+    externalLlmGeminiApiKey: $('#setExternalLlmGeminiApiKey').value,
+    externalLlmGeminiModel: $('#setExternalLlmGeminiModel').value,
+    externalLlmOllamaUrl: $('#setExternalLlmOllamaUrl').value,
+    externalLlmOllamaModel: $('#setExternalLlmOllamaModel').value,
+    externalLlmImageRevise: mediaPreferenceControlValue('externalLlmImageRevise'),
+    externalLlmImageEnhance: mediaPreferenceControlValue('externalLlmImageEnhance'),
+    externalLlmVideoRevise: mediaPreferenceControlValue('externalLlmVideoRevise'),
+    externalLlmVideoEnhance: mediaPreferenceControlValue('externalLlmVideoEnhance'),
     galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
     vramProfile: $('#setVramProfile').value,
     krea2ModelVariant: $('#setKrea2ModelVariant').value,
@@ -26567,6 +26628,7 @@ function flushSettingsAutosave() {
       });
     }
     if (savedSettings) {
+      applyExternalLlmSettings(savedSettings);
       settingsAppRestartRequired = savedSettings.appRestartRequired === true;
       renderSettingsRestartAction();
       loadMeta(true).then(renderHealth).catch(() => { /* health remains available for manual retry */ });
@@ -27504,7 +27566,7 @@ const GUIDED_TOUR_STEPS = [
     target: '#appMenuBtn',
     advanceOn: '#appMenuBtn',
     title: 'Open the side panel',
-    copy: 'The Mix Studio mark opens navigation, Workspaces, Full screen, updates, and Advanced Settings.',
+    copy: 'The Mix Studio mark opens navigation, Workspaces, Full screen, updates, and Preferences.',
     motion: 'tap',
     simulateOn: '.side-menu-icon',
     demo: 'Tap the Mix Studio mark to open the menu',
@@ -27555,7 +27617,7 @@ const GUIDED_TOUR_STEPS = [
     id: 'prompt-tools',
     target: '#createPromptTools',
     title: 'Add visual direction',
-    copy: 'Image tools add a reference, depth, style, or image-to-prompt source. Revise prompt uses local AI. Both are optional.',
+    copy: 'Image tools add a reference, depth, style, or image-to-prompt source. Revise prompt uses the AI selected in Preferences. Both are optional.',
     motion: 'tap',
     simulateOn: '#createImageGuideToggle',
     demo: 'Tap a tool to add more control',
@@ -27828,7 +27890,7 @@ const CONTEXTUAL_GUIDES = {
     target: '#appMenuBtn',
     kicker: 'App controls',
     title: 'Your side panel',
-    copy: 'Open it for navigation, Workspaces, Full screen, updates, and Advanced Settings.',
+    copy: 'Open it for navigation, Workspaces, Full screen, updates, and Preferences.',
     motion: 'tap',
     simulateOn: '.side-menu-icon',
     demo: 'Tap the Mix Studio mark to open it',
@@ -29837,6 +29899,60 @@ $('#settingsSheet').addEventListener('change', (event) => {
   if (kind) scheduleSettingsAutosave(kind, 0);
 });
 
+$('#setExternalLlmProvider').addEventListener('change', () => {
+  $('#externalLlmStatus').textContent = '';
+  $('#externalLlmStatus').className = '';
+  renderExternalLlmPreferences();
+});
+
+['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance'].forEach((id) => {
+  $('#' + id).addEventListener('click', () => {
+    if (!state.profileIsOwner) return;
+    setMediaPreferenceControl(id, !mediaPreferenceControlValue(id));
+    scheduleSettingsAutosave('server', 0);
+  });
+});
+
+async function clearExternalLlmApiKey(provider) {
+  if (!state.profileIsOwner) return;
+  const label = provider === 'gemini' ? 'Gemini' : 'OpenAI';
+  try {
+    await flushSettingsAutosave();
+    const result = await api('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [provider === 'gemini' ? 'clearExternalLlmGeminiApiKey' : 'clearExternalLlmOpenAiApiKey']: true }),
+    });
+    applyExternalLlmSettings(result);
+    setSettingsSaveStatus(`${label} key cleared`, 'saved');
+  } catch (error) {
+    setSettingsSaveStatus('Couldn’t clear key', 'error');
+    toast(error.message, true);
+  }
+}
+
+$('#clearExternalLlmOpenAiApiKey').addEventListener('click', () => clearExternalLlmApiKey('openai'));
+$('#clearExternalLlmGeminiApiKey').addEventListener('click', () => clearExternalLlmApiKey('gemini'));
+$('#testExternalLlm').addEventListener('click', async () => {
+  if (!state.profileIsOwner) return;
+  const button = $('#testExternalLlm');
+  const status = $('#externalLlmStatus');
+  button.disabled = true;
+  status.className = '';
+  status.textContent = 'Saving and testing…';
+  try {
+    await flushSettingsAutosave();
+    button.disabled = true;
+    const result = await api('/api/prompt/provider/test', { method: 'POST' });
+    status.className = 'ready';
+    status.textContent = `${result.model} · connection ready`;
+  } catch (error) {
+    status.className = 'bad';
+    status.textContent = error.message || 'Connection failed';
+  } finally {
+    button.disabled = !state.profileIsOwner;
+  }
+});
+
 $('#settingsSheet').addEventListener('click', (event) => {
   if (event.target === $('#settingsSheet') || event.target.closest('[data-close]')) {
     flushSettingsAutosave().catch(() => { /* status and toast are handled by the save chain */ });
@@ -29859,6 +29975,7 @@ $('#settingsBtn').addEventListener('click', async () => {
       ? 'Saved · paste a new token to replace it'
       : 'Paste an hf_ read token';
     $('#setHfEndpoint').value = s.hfEndpoint || '';
+    applyExternalLlmSettings(s);
     $('#galleryPasswordInput').value = s.galleryPassword || '1234';
     $('#setVramProfile').value = s.vramProfile || 'auto';
     $('#setKrea2ModelVariant').value = s.krea2ModelVariant || (/int8.*convrot|convrot.*int8/i.test(s.unet || '') ? 'int8-convrot' : 'fp8');
@@ -30270,7 +30387,7 @@ function closeGenerationSetup(options = {}) {
   $('#setupReturnSettings').hidden = true;
   syncSheetScrollLock();
   if (options.deliberate && !options.completed && !setupGenerationReady()) {
-    toast('Generation setup is still needed. Press Generate or open Advanced Settings to continue.');
+    toast('Generation setup is still needed. Press Generate or open Preferences to continue.');
   }
   if (options.pauseTutorial && firstImageTutorialAwaitingSetup) {
     firstImageTutorialAwaitingSetup = false;
@@ -30403,7 +30520,7 @@ function setupFitForComponents(components) {
 function conciseSetupError(value) {
   const message = String(value || '');
   if (/Could not download|fetch failed|reviewed sources were unavailable/i.test(message)) {
-    return 'The model host could not be reached. Check the connection or add a trusted HTTPS download endpoint in Settings → General, then retry.';
+    return 'The model host could not be reached. Check the connection or add a trusted HTTPS download endpoint in Preferences → General, then retry.';
   }
   if (/ResolutionImpossible|conflicting dependencies|dependency conflict/i.test(message)) {
     return 'Python packages could not be resolved. Retry the install; open Details if it happens again.';
@@ -31840,7 +31957,7 @@ restoreGalleryZoom();
 wireDesktopPanelResizers();
 restoreLightboxMetaLayout();
 wireLightboxMetaResizer();
-// The complete feature tour remains available from Advanced Settings. The
+// The complete feature tour remains available from Preferences. The
 // smaller first-image offer waits for auth, readiness, and Library state below.
 markEngineRow('editEngineRow', state.editEngine);
 markEngineRow('vidEngineRow', state.vidEngine);

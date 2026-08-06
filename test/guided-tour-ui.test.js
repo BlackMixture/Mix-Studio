@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
-test('Advanced Settings can replay an accessible guided UI tutorial', () => {
+test('Preferences can replay an accessible guided UI tutorial', () => {
   assert.match(html, /id="settingsPaneGeneral"[\s\S]*class="guided-tour-setting"[\s\S]*id="guidedTourStart"/);
   assert.match(html, /id="guidedTour" hidden aria-hidden="true"/);
   assert.match(html, /id="guidedTourCard"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*tabindex="-1"/);
@@ -75,7 +75,7 @@ test('the full tour starts by showing where to open the side panel', () => {
   assert.match(menuStep, /motion: 'tap'/);
   assert.match(menuStep, /simulateOn: '\.side-menu-icon'/);
   assert.match(menuStep, /scroll: false/);
-  assert.match(menuStep, /Advanced Settings/);
+  assert.match(menuStep, /Preferences/);
 });
 
 test('side-panel access is a one-time contextual guide retired when the drawer is opened', () => {
@@ -95,7 +95,7 @@ test('side-panel access is a one-time contextual guide retired when the drawer i
     'people who find the drawer themselves should never see the access tip later');
 });
 
-test('Advanced Settings controls profile-scoped contextual gesture tips', () => {
+test('Preferences controls profile-scoped contextual gesture tips', () => {
   assert.match(html, /id="guidedTipsToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
   assert.match(app, /function guidedTipsStorageKey\(\)[\s\S]{0,180}ks-contextual-guides-/);
   assert.match(app, /function contextualGuidesEnabled\(\)[\s\S]{0,180}!== 'off'/);
@@ -151,7 +151,7 @@ test('Escape dismisses both action-required and informational contextual tips', 
   assert.match(app, /if \(event\.key === 'Escape'\)[\s\S]{0,180}finishGuidedTour\(false\)[\s\S]{0,100}if \(!guide\.advanceOn\) return/);
 });
 
-test('Advanced Settings can reset every profile-scoped tip and guide', () => {
+test('Preferences can reset every profile-scoped tip and guide', () => {
   assert.match(html, /id="guidedGuidesReset"[^>]*>[\s\S]{0,180}Reset tips &amp; guides[\s\S]{0,120}Show all one-time help again/);
   assert.match(app, /function resetTipsAndGuides\(\)[\s\S]{0,800}localStorage\.removeItem\(guidedTourStorageKey\(\)\)/);
   assert.match(app, /Object\.keys\(CONTEXTUAL_GUIDES\)\.forEach\(\(id\) => \{[\s\S]{0,120}localStorage\.removeItem\(contextualGuideSeenKey\(id\)\)/);

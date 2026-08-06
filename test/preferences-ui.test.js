@@ -9,7 +9,9 @@ const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
-test('Advanced Settings exposes profile defaults and contextual suggestions', () => {
+test('Preferences exposes profile defaults and contextual suggestions', () => {
+  assert.match(html, /class="app-drawer-label">Preferences<\/span>/);
+  assert.match(html, /class="settings-title-copy">Preferences/);
   assert.match(html, /data-settings-tab="defaults"/);
   assert.match(html, /data-settings-tab="suggestions"/);
   assert.match(html, /id="defaultSeedMode"/);

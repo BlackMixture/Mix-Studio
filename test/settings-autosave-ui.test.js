@@ -46,9 +46,28 @@ test('a pending app restart appears contextually beside the close button', () =>
 test('only a changed ComfyUI URL currently requests a Mix Studio restart', () => {
   assert.match(server, /const APP_RESTART_SETTINGS_AT_BOOT = Object\.freeze\(\{ comfyUrl: settings\.comfyUrl \}\)/);
   assert.match(server, /function settingsRequireAppRestart\(\) \{\s*return settings\.comfyUrl !== APP_RESTART_SETTINGS_AT_BOOT\.comfyUrl;\s*\}/);
-  assert.match(server, /function settingsResponse\(\) \{[\s\S]*hfTokenConfigured:[\s\S]*delete response\.hfToken;\s*return response;\s*\}/);
+  assert.match(server, /function settingsResponse\(\) \{[\s\S]*hfTokenConfigured:/);
+  assert.match(server, /delete response\.hfToken;/);
+  assert.match(server, /delete response\.externalLlmOpenAiApiKey;/);
+  assert.match(server, /delete response\.externalLlmGeminiApiKey;/);
   const getRoute = server.slice(server.indexOf("route === '/api/settings' && req.method === 'GET'"), server.indexOf("route === '/api/setup/status'"));
   const postRoute = server.slice(server.indexOf("route === '/api/settings' && req.method === 'POST'"), server.indexOf("route === '/api/meta'"));
   assert.match(getRoute, /settingsResponse\(\)/);
   assert.match(postRoute, /settingsResponse\(\)/);
+});
+
+test('shared external prompt AI preferences autosave without exposing API keys', () => {
+  for (const id of [
+    'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmGeminiApiKey',
+    'setExternalLlmOllamaUrl', 'externalLlmImageRevise', 'externalLlmImageEnhance',
+    'externalLlmVideoRevise', 'externalLlmVideoEnhance', 'testExternalLlm',
+  ]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(app, /externalLlmProvider: \$\('#setExternalLlmProvider'\)\.value/);
+  assert.match(app, /scheduleSettingsAutosave\('server', 0\)/);
+  assert.match(app, /api\('\/api\/prompt\/provider\/test', \{ method: 'POST' \}\)/);
+  assert.match(server, /Only the owner profile can change the shared external prompt provider/);
+  assert.match(server, /externalLlmOpenAiApiKeyConfigured:/);
+  const responseHelper = server.slice(server.indexOf('function settingsResponse()'), server.indexOf('function adoptDeviceCompatibleModelSettings'));
+  assert.match(responseHelper, /delete response\.externalLlmOpenAiApiKey;/);
+  assert.match(responseHelper, /delete response\.externalLlmGeminiApiKey;/);
 });

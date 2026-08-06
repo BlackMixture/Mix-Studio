@@ -25,7 +25,7 @@ function namedFunction(source, name, context = {}) {
   throw new Error(`${name} has no closing brace`);
 }
 
-test('Advanced Settings exposes a responsive owner-managed add-ons installer', () => {
+test('Preferences exposes a responsive owner-managed add-ons installer', () => {
   assert.match(indexHtml, /data-settings-tab="addons"/);
   assert.match(indexHtml, /id="settingsPaneAddons"/);
   assert.match(indexHtml, /id="addonDropZone"/);

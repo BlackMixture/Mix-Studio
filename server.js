@@ -83,8 +83,17 @@ const {
   motionPromptEnhanceParts,
   promptEnhanceParts,
   regionPromptEnhanceParts,
+  videoPromptEnhanceParts,
   videoPromptRevisionParts,
 } = require('./lib/prompt-enhance');
+const {
+  DEFAULTS: EXTERNAL_LLM_DEFAULTS,
+  externalLlmEnabled,
+  externalLlmProviderConfig,
+  externalLlmRequest,
+  normalizeExternalLlmSettings,
+  normalizeOllamaUrl,
+} = require('./lib/external-llm');
 const { combineNegativePrompts, normalizeNegativePrompt } = require('./lib/negative-prompt');
 const {
   buildDepthMapNodes,
@@ -438,6 +447,17 @@ const DEFAULT_SETTINGS = {
   scailClipVision: 'clip_vision_h.safetensors',
   scailSam: 'sam3.1_multiplex_fp16.safetensors',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  externalLlmProvider: EXTERNAL_LLM_DEFAULTS.externalLlmProvider,
+  externalLlmOpenAiApiKey: '',
+  externalLlmOpenAiModel: EXTERNAL_LLM_DEFAULTS.externalLlmOpenAiModel,
+  externalLlmGeminiApiKey: '',
+  externalLlmGeminiModel: EXTERNAL_LLM_DEFAULTS.externalLlmGeminiModel,
+  externalLlmOllamaUrl: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaUrl,
+  externalLlmOllamaModel: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaModel,
+  externalLlmImageRevise: false,
+  externalLlmImageEnhance: false,
+  externalLlmVideoRevise: false,
+  externalLlmVideoEnhance: false,
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
   exportDir: '',
   smartFilenames: true,
@@ -472,6 +492,7 @@ function normalizeSettings(s) {
   s.galleryPassword = galleryPassword(s);
   try { s.exportDir = normalizeExportDirectory(s.exportDir); } catch { s.exportDir = ''; }
   s.smartFilenames = s.smartFilenames !== false;
+  Object.assign(s, normalizeExternalLlmSettings(s));
   s.features = normalizeFeatures(s.features);
   return s;
 }
@@ -486,10 +507,16 @@ function settingsRequireAppRestart() {
 function settingsResponse() {
   const response = Object.assign({}, settings, {
     hfTokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
+    externalLlmOpenAiApiKeyConfigured: !!String(settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '').trim(),
+    externalLlmGeminiApiKeyConfigured: !!String(settings.externalLlmGeminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim(),
+    externalLlmOpenAiApiKeyStored: !!String(settings.externalLlmOpenAiApiKey || '').trim(),
+    externalLlmGeminiApiKeyStored: !!String(settings.externalLlmGeminiApiKey || '').trim(),
     appRestartRequired: settingsRequireAppRestart(),
     gpuVendor: setupHardwareProfile(setupHardwareSnapshot || {}).gpuVendor || '',
   });
   delete response.hfToken;
+  delete response.externalLlmOpenAiApiKey;
+  delete response.externalLlmGeminiApiKey;
   return response;
 }
 
@@ -2592,6 +2619,76 @@ function cleanEnhancedText(raw, fallback) {
   return cleanGeneratedPrompt(raw, fallback);
 }
 
+const MAX_EXTERNAL_LLM_IMAGE_BYTES = 20 * 1024 * 1024;
+
+function configuredExternalLlm() {
+  return externalLlmProviderConfig(Object.assign({}, settings, {
+    externalLlmOpenAiApiKey: settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '',
+    externalLlmGeminiApiKey: settings.externalLlmGeminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+  }));
+}
+
+function externalPromptStatus(action, provider) {
+  const verb = action === 'revise' ? 'Revising' : 'Enhancing';
+  return `${verb} prompt with ${provider.label}...`;
+}
+
+async function externalPromptImage(imageName, profileId) {
+  const name = String(imageName || '').trim();
+  if (!name) return null;
+  const catalogedAsset = db.uploadedAssets.find((asset) => asset.name === name);
+  if (catalogedAsset && (catalogedAsset.profileId !== profileId || catalogedAsset.deletedAt)) {
+    throw new Error('The selected reference image is unavailable');
+  }
+  const ext = path.extname(name.split('/').pop()).toLowerCase();
+  const mimeType = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp', '.gif': 'image/gif',
+  }[ext];
+  if (!mimeType) throw new Error('External prompt vision supports PNG, JPEG, WebP, or GIF references');
+  const local = inputAssetPath(INPUTS, name);
+  try {
+    const stat = await fsp.stat(local);
+    if (stat.size > MAX_EXTERNAL_LLM_IMAGE_BYTES) throw new Error('The reference image is larger than the 20 MB external prompt limit');
+    return { data: await fsp.readFile(local), mimeType };
+  } catch (error) {
+    if (/20 MB external prompt limit/.test(String(error?.message || ''))) throw error;
+  }
+  const parts = name.split('/');
+  const filename = parts.pop();
+  const subfolder = parts.join('/');
+  const response = await comfyFetch(`/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=input`);
+  const data = Buffer.from(await response.arrayBuffer());
+  if (data.length > MAX_EXTERNAL_LLM_IMAGE_BYTES) throw new Error('The reference image is larger than the 20 MB external prompt limit');
+  return { data, mimeType };
+}
+
+async function runConfiguredExternalPrompt(parts, maxTokens, options = {}) {
+  const provider = configuredExternalLlm();
+  const image = options.imageName ? await externalPromptImage(options.imageName, options.profileId) : null;
+  if (options.statusText !== false) {
+    broadcast('status', {
+      jobId: 'external-prompt',
+      profileId: options.profileId,
+      text: options.statusText || externalPromptStatus(options.action, provider),
+    });
+  }
+  return externalLlmRequest({
+    provider: provider.provider,
+    model: provider.model,
+    apiKey: provider.apiKey,
+    baseUrl: provider.baseUrl,
+    instruction: parts.instruction,
+    userInput: parts.userInput,
+    image,
+    maxTokens,
+  });
+}
+
+function shouldUseExternalPrompt(domain, action) {
+  return externalLlmEnabled(settings, domain, action);
+}
+
 function textGenInputs(seed, maxLength) {
   return {
     max_length: maxLength,
@@ -2640,6 +2737,14 @@ const h3PromptFlights = new Map();
 
 /** Vision pass: Qwen3-VL looks at the image and suggests a motion prompt. */
 function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', options = {}) {
+  if (shouldUseExternalPrompt('video', 'enhance')) {
+    const parts = motionPromptEnhanceParts(userPrompt, options);
+    return runConfiguredExternalPrompt(parts, String(options.engine || '').toLowerCase() === 'h3' ? 640 : 384, {
+      action: 'enhance',
+      imageName: comfyImageName,
+      profileId,
+    });
+  }
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
@@ -2757,8 +2862,12 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
 }
 
 function enhancePrompt(p, profileId) {
+  const parts = promptEnhanceParts(settings.systemPrompt, p.prompt);
+  if (shouldUseExternalPrompt('image', 'enhance')) {
+    return runConfiguredExternalPrompt(parts, 512, { action: 'enhance', profileId });
+  }
   return queueTextEnhancement(
-    promptEnhanceParts(settings.systemPrompt, p.prompt),
+    parts,
     p.seed,
     'Enhancing global prompt...',
     512,
@@ -2769,6 +2878,9 @@ function enhancePrompt(p, profileId) {
 function reviseImagePrompt(currentPrompt, changeRequest, seed, options = {}) {
   const parts = imagePromptRevisionParts(currentPrompt, changeRequest, { hasImage: !!options.imageName });
   parts.userInput += ENHANCE_TAIL;
+  if (shouldUseExternalPrompt('image', 'revise')) {
+    return runConfiguredExternalPrompt(parts, 384, Object.assign({ action: 'revise' }, options));
+  }
   return queueTextEnhancement(
     parts,
     seed,
@@ -2786,6 +2898,9 @@ function reviseVideoPrompt(currentPrompt, changeRequest, seed, options = {}) {
     hasImage: !!options.imageName,
   });
   parts.userInput += ENHANCE_TAIL;
+  if (shouldUseExternalPrompt('video', 'revise')) {
+    return runConfiguredExternalPrompt(parts, options.engine === 'h3' ? 640 : 384, Object.assign({ action: 'revise' }, options));
+  }
   return queueTextEnhancement(
     parts,
     seed,
@@ -2796,12 +2911,16 @@ function reviseVideoPrompt(currentPrompt, changeRequest, seed, options = {}) {
 }
 
 function enhanceH3Prompt(userPrompt, seed, options = {}) {
+  const parts = h3PromptEnhanceParts(userPrompt, {
+    seconds: options.seconds,
+    mode: options.mode,
+    hasImage: !!options.imageName,
+  });
+  if (shouldUseExternalPrompt('video', 'enhance')) {
+    return runConfiguredExternalPrompt(parts, 640, Object.assign({ action: 'enhance' }, options));
+  }
   return queueTextEnhancement(
-    h3PromptEnhanceParts(userPrompt, {
-      seconds: options.seconds,
-      mode: options.mode,
-      hasImage: !!options.imageName,
-    }),
+    parts,
     seed,
     'Enhancing MiniMax H3 prompt...',
     640,
@@ -2828,10 +2947,14 @@ function sharedH3PromptEnhancement(userPrompt, seed, options = {}) {
 }
 
 function enhanceRegionPrompt(description, globalPrompt, seed, options = {}) {
+  const parts = regionPromptEnhanceParts(settings.systemPrompt, globalPrompt, description, {
+    hasReference: !!options.imageName,
+  });
+  if (shouldUseExternalPrompt('image', 'enhance')) {
+    return runConfiguredExternalPrompt(parts, 384, Object.assign({ action: 'enhance' }, options));
+  }
   return queueTextEnhancement(
-    regionPromptEnhanceParts(settings.systemPrompt, globalPrompt, description, {
-      hasReference: !!options.imageName,
-    }),
+    parts,
     seed,
     options.statusText || '',
     384,
@@ -2841,7 +2964,13 @@ function enhanceRegionPrompt(description, globalPrompt, seed, options = {}) {
 
 /** Wan 2.2 enhance: Qwen3-VL sees the image + user's idea, writes the video prompt. */
 function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
-  const instruction = `Look at the provided image. Rewrite the user's motion idea into one vivid video-generation prompt paragraph (under 90 words) for an image-to-video model: describe subject actions, secondary motion, camera behavior and atmosphere, staying faithful to what is actually in the image and to the user's intent. Use present-progressive verbs.\n\nUser's motion idea: ${userPrompt}`;
+  const instruction = "Look at the provided image. Rewrite the user's motion idea into one vivid video-generation prompt paragraph (under 90 words) for an image-to-video model: describe subject actions, secondary motion, camera behavior and atmosphere, staying faithful to what is actually in the image and to the user's intent. Use present-progressive verbs.";
+  const promptInput = `User's motion idea: ${userPrompt}`;
+  if (shouldUseExternalPrompt('video', 'enhance')) {
+    return runConfiguredExternalPrompt({ instruction, userInput: promptInput + ENHANCE_TAIL }, 384, {
+      action: 'enhance', imageName: comfyImageName, profileId,
+    });
+  }
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
@@ -2850,7 +2979,7 @@ function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
       graph.gen = {
         class_type: 'TextGenerate',
         inputs: Object.assign(
-          { clip: ['clip', 0], image: ['img', 0], prompt: instruction + ENHANCE_TAIL },
+          { clip: ['clip', 0], image: ['img', 0], prompt: `${instruction}\n\n${promptInput}${ENHANCE_TAIL}` },
           textGenInputs(seed, 300)
         ),
       };
@@ -5980,6 +6109,20 @@ async function handleApi(req, res, url) {
   }
   if (route === '/api/settings' && req.method === 'POST') {
     const body = await readJsonBody(req);
+    if (typeof body.externalLlmOllamaUrl === 'string' && body.externalLlmOllamaUrl.trim()) {
+      try { body.externalLlmOllamaUrl = normalizeOllamaUrl(body.externalLlmOllamaUrl); }
+      catch (error) { return json(res, 400, { error: String(error.message || error) }); }
+    }
+    const changesExternalLlm = body.clearExternalLlmOpenAiApiKey === true
+      || body.clearExternalLlmGeminiApiKey === true
+      || ['externalLlmOpenAiApiKey', 'externalLlmGeminiApiKey'].some((key) => typeof body[key] === 'string' && body[key].trim())
+      || ['externalLlmProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel']
+        .some((key) => typeof body[key] === 'string' && body[key].trim() && body[key].trim() !== String(settings[key] || ''))
+      || ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
+        .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
+    if (changesExternalLlm && !isAdmin()) {
+      return json(res, 403, { error: 'Only the owner profile can change the shared external prompt provider' });
+    }
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (key === 'exportDir') continue;
       if (typeof body[key] === 'string' && body[key].trim()) settings[key] = body[key].trim();
@@ -5990,6 +6133,11 @@ async function handleApi(req, res, url) {
     if (typeof body.hfEndpoint === 'string') settings.hfEndpoint = body.hfEndpoint.trim();
     if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
     if (body.clearHfToken === true) settings.hfToken = '';
+    if (body.clearExternalLlmOpenAiApiKey === true) settings.externalLlmOpenAiApiKey = '';
+    if (body.clearExternalLlmGeminiApiKey === true) settings.externalLlmGeminiApiKey = '';
+    for (const key of ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']) {
+      if (typeof body[key] === 'boolean') settings[key] = body[key];
+    }
     if (body.features && typeof body.features === 'object') settings.features = normalizeFeatures(body.features);
     settings = normalizeSettings(settings);
     const hardwareProfile = setupHardwareProfile(await getSetupHardwareInfo().catch(() => ({})));
@@ -7442,7 +7590,25 @@ async function handleApi(req, res, url) {
     let prompt = motionPrompt;
     let refinedMotionPrompt = null;
     const frameAwareEnhance = !bypass && !faceImageName && !isLtxEdit && engine !== 'h3';
-    if (engine === 'h3' && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
+    if (shouldUseExternalPrompt('video', 'enhance') && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
+      const externalImageName = engine === 'h3' && h3Mode === 'reference'
+        ? h3References.images[0]?.name
+        : (faceImageName || (!bypass ? comfyName : undefined));
+      const parts = videoPromptEnhanceParts(motionPrompt, {
+        engine,
+        seconds,
+        mode: h3Mode,
+        hasImage: !!externalImageName,
+      });
+      const raw = await runConfiguredExternalPrompt(parts, engine === 'h3' ? 640 : 384, {
+        action: 'enhance',
+        imageName: externalImageName,
+        profileId: req.profile.id,
+      });
+      refinedMotionPrompt = cleanEnhancedText(raw, motionPrompt);
+      refinedMotionPrompt = ensureCameraMotionPrompt(refinedMotionPrompt, cameraMotions);
+      prompt = refinedMotionPrompt;
+    } else if (engine === 'h3' && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
       const h3EnhanceImageName = h3Mode === 'reference'
         ? h3References.images[0]?.name
         : (!bypass ? comfyName : undefined);
@@ -7981,6 +8147,26 @@ async function handleApi(req, res, url) {
     return json(res, 200, { prompt });
   }
 
+  if (route === '/api/prompt/provider/test' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can test the shared external prompt provider' });
+    const provider = configuredExternalLlm();
+    const text = await externalLlmRequest({
+      provider: provider.provider,
+      model: provider.model,
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl,
+      instruction: 'You are checking a prompt-writing connection. Follow the user request exactly.',
+      userInput: 'Reply with exactly: Connection ready',
+      maxTokens: 64,
+    });
+    return json(res, 200, {
+      ok: true,
+      provider: provider.provider,
+      model: provider.model,
+      response: String(text).trim().slice(0, 120),
+    });
+  }
+
   if (route === '/api/debug/models') {
     const info = await getObjectInfo();
     const q = (url.searchParams.get('q') || '').toLowerCase();
@@ -8321,7 +8507,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/export' && req.method === 'POST') {
-    if (!settings.exportDir) return json(res, 409, { error: 'Choose a default save folder in Advanced Settings first' });
+    if (!settings.exportDir) return json(res, 409, { error: 'Choose a default save folder in Preferences first' });
     const body = await readJsonBody(req);
     const unlocked = isPrivateUnlocked(req);
     const visible = galleryView(db, unlocked).items.filter((item) => item.profileId === req.profile.id);
@@ -8372,7 +8558,7 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/export-file' && req.method === 'POST') {
-    if (!settings.exportDir) return json(res, 409, { error: 'Choose a default save folder in Advanced Settings first' });
+    if (!settings.exportDir) return json(res, 409, { error: 'Choose a default save folder in Preferences first' });
     try {
       const buffer = await readBody(req, 64 * 1024 * 1024);
       if (!buffer.length) return json(res, 400, { error: 'No file received' });
