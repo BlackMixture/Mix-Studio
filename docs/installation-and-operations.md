@@ -164,7 +164,7 @@ The owner can also choose **Restart app**. The same queue safety checks run befo
 
 ### Maintainer release procedure
 
-Every user-facing release uses the semantic version in `release.json` and a matching Git tag such as `v1.1.0`.
+Every user-facing release uses the semantic version in `release.json` and a matching Git tag such as `v1.2.0`.
 
 1. Keep `main` release-ready and ensure the working tree contains the intended changes only.
 2. Update `release.json` with the version and release date.

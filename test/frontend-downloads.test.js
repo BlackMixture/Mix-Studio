@@ -26,7 +26,10 @@ test('region map export lives in the image save menu', () => {
 
 test('lightbox groups after-the-fact video processing actions in one menu', () => {
   assert.match(appJs, /Process video/);
-  assert.match(appJs, /Upscale video/);
+  assert.match(appJs, /SeedVR2 upscale/);
+  assert.match(appJs, /RTX upscale/);
+  assert.match(appJs, /processVideo\(it, selVideo, 'upscale', 'seedvr2'\)/);
+  assert.match(appJs, /processVideo\(it, selVideo, 'upscale', 'rtx'\)/);
   assert.match(appJs, /Increase FPS/);
   assert.match(appJs, /\/api\/video\/upscale/);
   assert.match(appJs, /\/api\/video\/interpolate/);

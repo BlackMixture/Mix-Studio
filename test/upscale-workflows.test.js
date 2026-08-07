@@ -13,6 +13,7 @@ const {
   seedVr2AttentionForVendor,
   targetResolutionForUpscale,
   rtxVideoSuperResolutionNode,
+  seedVr2UpscaleNodes,
   buildUltimateSdUpscaleGraph,
 } = require('../lib/upscale-workflows');
 
@@ -111,6 +112,30 @@ test('builds RTX 4K node with dynamic scale input and string quality', () => {
       quality: 'ULTRA',
     },
   });
+});
+
+test('builds a temporally coherent SeedVR2 video post-upscale batch', () => {
+  const result = seedVr2UpscaleNodes(['src', 0], {
+    settings: {
+      seedvr2Dit: DEFAULT_SEEDVR2_DIT,
+      seedvr2Vae: 'ema_vae_fp16.safetensors',
+      seedvr2Attention: 'sdpa',
+    },
+    availableModels: [DEFAULT_SEEDVR2_DIT],
+    gpuVendor: 'nvidia',
+    resolution: 1536,
+    batchSize: 5,
+    uniformBatchSize: true,
+    temporalOverlap: 2,
+    seed: 42,
+  });
+
+  assert.equal(result.nodes.upscale.class_type, 'SeedVR2VideoUpscaler');
+  assert.equal(result.nodes.upscale.inputs.resolution, 1536);
+  assert.equal(result.nodes.upscale.inputs.batch_size, 5);
+  assert.equal(result.nodes.upscale.inputs.uniform_batch_size, true);
+  assert.equal(result.nodes.upscale.inputs.temporal_overlap, 2);
+  assert.deepEqual(result.output, ['upscale', 0]);
 });
 
 test('targetResolutionForUpscale supports multiplier mode from the original short edge', () => {

@@ -104,6 +104,62 @@ test('generation enhancement can fall back to the authored prompt after structur
   assert.equal(calls, 2);
 });
 
+test('manual H3 revision accepts useful output with optional structure warnings without retrying', async () => {
+  let calls = 0;
+  let advisory = null;
+  const prompt = await validatedH3Prompt(async () => {
+    calls += 1;
+    return 'A handheld camera follows the baker through the busy kitchen while pans clatter nearby.';
+  }, basePrompt(), {
+    mode: 'frames',
+    seconds: 5,
+    advisoryStructure: true,
+    useFallbackOnEmpty: false,
+    onAdvisoryResult(result) { advisory = result; },
+  });
+
+  assert.equal(calls, 1);
+  assert.match(prompt, /handheld camera/);
+  assert.ok(advisory.audit.issueCodes.includes('missing-field'));
+});
+
+test('manual H3 revision retries and rejects output that damages active reference tokens', async () => {
+  let calls = 0;
+  await assert.rejects(
+    validatedH3Prompt(async () => {
+      calls += 1;
+      return referencePrompt().replaceAll('<Picture 1>', '<Picture 2>');
+    }, referencePrompt(), {
+      mode: 'reference',
+      seconds: 5,
+      expectedReferenceTokens: ['<Picture 1>'],
+      allowedReferenceTokens: ['<Picture 1>'],
+      advisoryStructure: true,
+      useFallbackOnEmpty: false,
+    }),
+    (error) => error.code === 'h3_prompt_format'
+      && /reference token/i.test(error.message),
+  );
+  assert.equal(calls, 2);
+});
+
+test('manual H3 revision does not mistake an empty model response for a successful fallback', async () => {
+  let calls = 0;
+  await assert.rejects(
+    validatedH3Prompt(async () => {
+      calls += 1;
+      return '';
+    }, basePrompt(), {
+      mode: 'frames',
+      seconds: 5,
+      advisoryStructure: true,
+      useFallbackOnEmpty: false,
+    }),
+    (error) => error.code === 'h3_prompt_format',
+  );
+  assert.equal(calls, 2);
+});
+
 test('automatic enhancement preserves exact authored dialogue and visible text', () => {
   const source = 'Maya says "Keep rolling..." while a sign reads “OPEN”.';
   const changed = inspectH3PromptOutput(basePrompt('[Shot 1] Maya speaks beside the sign.'), source, {

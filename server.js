@@ -76,9 +76,9 @@ const {
   seedVr2AttentionForVendor,
   installedSeedVr2Models,
   seedVr2Profile,
-  seedVr2DitInputs,
   targetResolutionForUpscale,
   rtxVideoSuperResolutionNode,
+  seedVr2UpscaleNodes,
   ULTIMATE_SD_UPSCALE_MODEL,
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
@@ -1984,6 +1984,21 @@ function clearPendingJobState(job) {
   }
 }
 
+async function stopComfyPrompt(pid) {
+  await comfyFetch('/queue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ delete: [pid] }),
+  }).catch(() => { /* prompt may already be running or complete */ });
+  let running = false;
+  try {
+    const queue = await (await comfyFetch('/queue')).json();
+    running = (queue.queue_running || []).some((entry) => String(entry?.[1] || '') === pid);
+  } catch { /* ComfyUI may be temporarily offline */ }
+  if (running) await comfyFetch('/interrupt', { method: 'POST' }).catch(() => { /* noop */ });
+  return running;
+}
+
 function cancelJob(pid, message = 'Cancelled') {
   const job = jobs.get(pid);
   if (!job) return false;
@@ -2366,7 +2381,7 @@ async function completeJob(pid) {
     item.videos = (Array.isArray(item.videos) ? item.videos : []).concat([entry]);
     saveDb();
     const videoActionLabel = job.videoInfo.processed === 'upscale'
-      ? 'Video upscale'
+      ? `Video upscale (${{ seedvr2: 'SeedVR2', rtx: 'RTX' }[job.videoInfo.upscaleEngine] || 'RTX'})`
       : (job.videoInfo.processed === 'interpolate'
         ? 'Frame interpolation'
         : (job.videoInfo.processed === 'extend' ? 'Video extension' : (job.videoInfo.composite ? 'Side-by-side' : 'Video')));
@@ -2805,8 +2820,17 @@ function armPromptJobDeadline(pid, reject, label) {
     const limit = job.startedAt ? 5 * 60_000 : 20 * 60_000;
     const remaining = limit - (Date.now() - base);
     if (remaining <= 0) {
+      stopped = true;
+      const timedOutJob = jobs.get(pid);
+      if (timedOutJob) {
+        timedOutJob.cancelRequested = true;
+        timedOutJob.cancelMessage = `${label} timed out`;
+      }
       jobs.delete(pid);
-      reject(new Error(`${label} timed out`));
+      const error = new Error(`${label} timed out`);
+      error.code = 'prompt_timeout';
+      reject(error);
+      stopComfyPrompt(pid).catch(() => { /* best-effort orphan cleanup */ });
       return;
     }
     timer = setTimeout(check, Math.min(30_000, remaining));
@@ -2820,6 +2844,62 @@ function armPromptJobDeadline(pid, reject, label) {
 
 const motionPromptFlights = new Map();
 const h3PromptFlights = new Map();
+const promptRevisionRequests = new Map();
+
+function promptRevisionRequestId(value) {
+  const id = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{8,96}$/.test(id) ? id : '';
+}
+
+function startPromptRevisionRequest(requestId, profileId) {
+  if (!requestId) return null;
+  const record = {
+    requestId,
+    profileId,
+    stage: 'preparing',
+    attempt: 1,
+    jobId: '',
+    cancelled: false,
+    warnings: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  promptRevisionRequests.set(requestId, record);
+  return record;
+}
+
+function updatePromptRevisionRequest(record, stage, details = {}) {
+  if (!record) return;
+  Object.assign(record, details, { stage, updatedAt: Date.now() });
+}
+
+function promptRevisionCancellationError() {
+  const error = new Error('Prompt revision cancelled');
+  error.code = 'job_cancelled';
+  return error;
+}
+
+function finishPromptRevisionRequest(record, stage, details = {}) {
+  if (!record) return;
+  updatePromptRevisionRequest(record, stage, Object.assign({ jobId: '' }, details));
+  const summary = {
+    requestId: record.requestId,
+    profileId: record.profileId,
+    stage,
+    attempts: record.attempt,
+    durationMs: Date.now() - record.createdAt,
+    warningCodes: (record.warnings || []).map((warning) => warning.code).filter(Boolean),
+    errorCode: record.errorCode || undefined,
+  };
+  if (stage === 'error') console.error('[prompt-revise]', JSON.stringify(summary));
+  else console.info('[prompt-revise]', JSON.stringify(summary));
+  const timer = setTimeout(() => {
+    if (promptRevisionRequests.get(record.requestId) === record) {
+      promptRevisionRequests.delete(record.requestId);
+    }
+  }, 5 * 60_000);
+  if (typeof timer.unref === 'function') timer.unref();
+}
 
 function h3PromptMaxTokens(mode) {
   // Full-reference rewrites contain six sections and normally need a much
@@ -2998,10 +3078,19 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
         kind: 'enhance',
         profileId: options.profileId,
         graph,
-        resolve: (t) => { clearDeadline(); resolve(t); },
-        reject: (e) => { clearDeadline(); reject(e); },
+        resolve: (t) => {
+          clearDeadline();
+          if (typeof options.onPromptJobSettled === 'function') options.onPromptJobSettled(pid, null);
+          resolve(t);
+        },
+        reject: (e) => {
+          clearDeadline();
+          if (typeof options.onPromptJobSettled === 'function') options.onPromptJobSettled(pid, e);
+          reject(e);
+        },
       });
       clearDeadline = armPromptJobDeadline(pid, reject, 'Prompt enhance');
+      if (typeof options.onPromptJobQueued === 'function') options.onPromptJobQueued(pid);
       ensureWs();
       if (statusText && options.broadcastStatus !== false) {
         broadcast('status', {
@@ -3881,46 +3970,16 @@ async function buildUpscale(imageName, opts) {
   }
   // Explicit inputs matching the current SeedVR2 node pack schema
   // (verified against /object_info via /api/debug/upscale).
-  graph.dit = {
-    class_type: 'SeedVR2LoadDiTModel',
-    inputs: seedVr2DitInputs(Object.assign({}, settings, { seedvr2Dit: profile.ditModel, gpuVendor })),
-  };
-  graph.svvae = {
-    class_type: 'SeedVR2LoadVAEModel',
-    inputs: {
-      model: settings.seedvr2Vae,
-      device: 'cuda:0',
-      encode_tiled: true,
-      encode_tile_size: 1024,
-      encode_tile_overlap: 256,
-      decode_tiled: true,
-      decode_tile_size: 1024,
-      decode_tile_overlap: 256,
-      tile_debug: 'false',
-      offload_device: 'cpu',
-      cache_model: false,
-    },
-  };
-  graph.upscale = {
-    class_type: 'SeedVR2VideoUpscaler',
-    inputs: {
-      image: imgRef,
-      dit: ['dit', 0],
-      vae: ['svvae', 0],
-      seed: Math.floor(Math.random() * 2 ** 31),
-      resolution: opts.resolution || 2160,
-      max_resolution: 0,
-      batch_size: 1,
-      uniform_batch_size: false,
-      color_correction: profile.colorCorrection,
-      temporal_overlap: 0,
-      prepend_frames: 0,
-      input_noise_scale: profile.inputNoiseScale,
-      latent_noise_scale: 0,
-      offload_device: 'cpu',
-      enable_debug: false,
-    },
-  };
+  const seedVr2 = seedVr2UpscaleNodes(imgRef, {
+    settings,
+    availableModels: installedDitModels,
+    gpuVendor,
+    profile: opts.profile,
+    noise: opts.noise,
+    resolution: opts.resolution || 2160,
+    batchSize: 1,
+  });
+  Object.assign(graph, seedVr2.nodes);
   graph.save = { class_type: 'SaveImage', inputs: { images: ['upscale', 0], filename_prefix: 'KreaStudio/upscale' } };
   return filterInputs(graph);
 }
@@ -5283,13 +5342,34 @@ async function buildExistingVideoUpscale(videoName, opts) {
     select_every_nth: 1,
     format: 'None',
   });
-  graph.vsr = rtxVideoSuperResolutionNode(['src', 0], opts.scale || 2);
-  const videoInputs = { images: ['vsr', 0], fps: opts.fps || 16 };
+  const engine = opts.engine === 'seedvr2' ? 'seedvr2' : 'rtx';
+  let frameSource;
+  if (engine === 'seedvr2') {
+    const gpuVendor = setupHardwareProfile(await getSetupHardwareInfo()).gpuVendor;
+    const availableModels = installedSeedVr2Models(seedVr2ModelDirs());
+    const seedVr2 = seedVr2UpscaleNodes(['src', 0], {
+      settings,
+      availableModels,
+      gpuVendor,
+      profile: opts.profile || 'sharp',
+      noise: opts.noise || 'low',
+      resolution: opts.resolution || 1080,
+      batchSize: 5,
+      uniformBatchSize: true,
+      temporalOverlap: 2,
+    });
+    Object.assign(graph, seedVr2.nodes);
+    frameSource = seedVr2.output;
+  } else {
+    graph.vsr = rtxVideoSuperResolutionNode(['src', 0], opts.scale || 2);
+    frameSource = ['vsr', 0];
+  }
+  const videoInputs = { images: frameSource, fps: opts.fps || 16 };
   if (opts.hasAudio) videoInputs.audio = ['src', 2];
   graph.video = { class_type: 'CreateVideo', inputs: videoInputs };
   graph.save = {
     class_type: 'SaveVideo',
-    inputs: { video: ['video', 0], filename_prefix: 'KreaStudio/video_upscale', format: 'auto', codec: 'auto' },
+    inputs: { video: ['video', 0], filename_prefix: `KreaStudio/video_upscale_${engine}`, format: 'auto', codec: 'auto' },
   };
   return filterInputs(graph);
 }
@@ -8171,8 +8251,35 @@ async function handleApi(req, res, url) {
     let videoInfo;
     if (route === '/api/video/upscale') {
       const scale = clampNum(body.scale, 1, 4, 2);
-      graph = await buildExistingVideoUpscale(comfyName, { fps, frames, scale, hasAudio });
-      videoInfo = videoProcessInfo(baseInfo, { kind: 'upscale', scale, parentVideoId: entry.id });
+      const upscaleEngine = body.engine === 'seedvr2' ? 'seedvr2' : 'rtx';
+      const objectInfo = await getObjectInfo();
+      if (upscaleEngine === 'seedvr2') {
+        const readiness = outpaintRefineReadiness(objectInfo);
+        if (!readiness.ready) {
+          return json(res, 409, {
+            error: 'SeedVR2 video upscale needs the SeedVR2 nodes and configured DiT/VAE models. Install the Upscale component in Generation setup.',
+            code: 'seedvr2_setup_required',
+          });
+        }
+      } else if (!objectInfo.RTXVideoSuperResolution) {
+        return json(res, 409, {
+          error: 'RTX video upscale needs the RTX Video Super Resolution node. Install the optional RTX 4K component in Generation setup.',
+          code: 'rtx_video_upscale_setup_required',
+        });
+      }
+      const sourceShortEdge = Math.min(
+        Number(baseInfo.width) || Number(dims.w) || 0,
+        Number(baseInfo.height) || Number(dims.h) || 0,
+      );
+      const resolution = sourceShortEdge > 0
+        ? clampInt(sourceShortEdge * scale, 512, 8192, 1080)
+        : 1080;
+      graph = await buildExistingVideoUpscale(comfyName, {
+        fps, frames, scale, hasAudio, engine: upscaleEngine, resolution,
+      });
+      videoInfo = videoProcessInfo(baseInfo, {
+        kind: 'upscale', scale, engine: upscaleEngine, parentVideoId: entry.id,
+      });
     } else {
       const multiplier = [2, 3, 4].includes(Number(body.multiplier)) ? Number(body.multiplier) : 2;
       graph = await buildExistingVideoInterpolate(comfyName, { fps, frames, smooth: multiplier, hasAudio });
@@ -8509,13 +8616,79 @@ async function handleApi(req, res, url) {
     return json(res, 200, { prompt });
   }
 
+  if (route === '/api/prompt/revise/status' && req.method === 'GET') {
+    const requestId = promptRevisionRequestId(url.searchParams.get('requestId'));
+    const record = requestId && promptRevisionRequests.get(requestId);
+    if (!record || record.profileId !== req.profile.id) {
+      return json(res, 404, { error: 'Prompt revision status is no longer available' });
+    }
+    let stage = record.stage;
+    let position = null;
+    const job = record.jobId ? jobs.get(record.jobId) : null;
+    if (job) {
+      stage = job.startedAt ? 'running' : 'queued';
+      if (!job.startedAt) {
+        try {
+          const queue = await (await comfyFetch('/queue')).json();
+          const index = (queue.queue_pending || []).findIndex((entry) => String(entry?.[1] || '') === record.jobId);
+          if (index >= 0) position = index + 1;
+        } catch { /* retain generic waiting state while ComfyUI reconnects */ }
+      }
+    }
+    const message = stage === 'queued'
+      ? `Waiting for ComfyUI${position ? ` · queue position ${position}` : ''}`
+      : stage === 'running'
+        ? `Rewriting prompt · attempt ${record.attempt}/2`
+        : stage === 'validating'
+          ? 'Checking the revised prompt…'
+          : stage === 'cancelled'
+            ? 'Prompt revision cancelled'
+            : stage === 'error'
+              ? 'Prompt revision failed'
+              : stage === 'done'
+                ? 'Prompt revision ready'
+                : 'Preparing prompt revision…';
+    return json(res, 200, {
+      requestId,
+      stage,
+      message,
+      jobId: record.jobId || null,
+      attempt: record.attempt,
+      position,
+    });
+  }
+
+  if (route === '/api/prompt/revise/cancel' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const requestId = promptRevisionRequestId(body.requestId);
+    const record = requestId && promptRevisionRequests.get(requestId);
+    if (!record || record.profileId !== req.profile.id) {
+      return json(res, 404, { error: 'This prompt revision is no longer available' });
+    }
+    record.cancelled = true;
+    updatePromptRevisionRequest(record, 'cancelled');
+    let running = false;
+    if (record.jobId) {
+      const job = jobs.get(record.jobId);
+      if (job) {
+        job.cancelRequested = true;
+        job.cancelMessage = 'Prompt revision cancelled';
+        running = await stopComfyPrompt(record.jobId);
+        cancelJob(record.jobId, job.cancelMessage);
+      }
+    }
+    return json(res, 200, { ok: true, running });
+  }
+
   if (route === '/api/prompt/revise' && req.method === 'POST') {
     const body = await readJsonBody(req);
+    const requestId = promptRevisionRequestId(body.requestId);
     const currentPrompt = String(body.currentPrompt || '').trim().slice(0, 12000);
     const changeRequest = String(body.changeRequest || '').trim().slice(0, 1200);
     const imageName = String(body.imageName || '').trim().slice(0, 500);
     const endImageName = String(body.endImageName || '').trim().slice(0, 500);
     if (!changeRequest) return json(res, 400, { error: 'Describe what you want to change' });
+    const revisionRequest = startPromptRevisionRequest(requestId, req.profile.id);
     const videoRevision = body.kind === 'video';
     const revisionMode = body.h3Mode === 'reference' ? 'reference' : 'frames';
     const revisionEngine = String(body.engine || '').trim().slice(0, 40);
@@ -8531,6 +8704,7 @@ async function handleApi(req, res, url) {
         ? [imageName].filter(Boolean)
         : [hasFirstFrame ? imageName : null, hasLastFrame ? (endImageName || (!hasFirstFrame ? imageName : '')) : null].filter(Boolean)
       : [imageName].filter(Boolean);
+    const revisionWarnings = [];
     const revisionOptions = {
       imageName: imageName || undefined,
       endImageName: endImageName || undefined,
@@ -8548,37 +8722,80 @@ async function handleApi(req, res, url) {
       allowedReferenceTokens,
       preserveAuthoredText: body.preserveAuthoredText === true,
       // Speaker-ID syntax improves H3 results but is never a hard gate for a
-      // user-authored revision. Keep structural/reference checks strict while
-      // allowing an otherwise usable rewrite through.
+      // user-authored revision. Reference-token integrity remains strict.
       allowDialogueFormatFallback: true,
       // The prompt-assistant sheet owns its own progress state. A generic
       // pre-generation status would otherwise overwrite the completed media
       // card and linger after this request resolves.
       broadcastStatus: false,
+      onPromptJobQueued(pid) {
+        updatePromptRevisionRequest(revisionRequest, 'queued', { jobId: pid });
+      },
+      onPromptJobSettled(pid) {
+        if (!revisionRequest?.cancelled && revisionRequest?.jobId === pid) {
+          updatePromptRevisionRequest(revisionRequest, 'validating', { jobId: '' });
+        }
+      },
     };
     const revisionSeed = Math.floor(Math.random() * 2 ** 31);
-    const raw = videoRevision && revisionEngine === 'h3'
-      ? await validatedH3Prompt(
-        (attempt, validationFeedback) => reviseVideoPrompt(
-          currentPrompt,
-          changeRequest,
-          revisionSeed + attempt,
-          Object.assign({}, revisionOptions, { validationFeedback }),
-        ),
-        currentPrompt || changeRequest,
-        Object.assign({}, revisionOptions, {
-          referenceSource: `${currentPrompt}\n${changeRequest}`,
-          authoredTextSource: currentPrompt,
-        }),
-      )
-      : (videoRevision
-        ? await reviseVideoPrompt(currentPrompt, changeRequest, revisionSeed, revisionOptions)
-        : await reviseImagePrompt(currentPrompt, changeRequest, revisionSeed, revisionOptions));
-    const prompt = videoRevision && revisionEngine === 'h3'
-      ? String(raw || '').trim()
-      : cleanEnhancedText(raw, currentPrompt || changeRequest);
-    if (!prompt) return json(res, 500, { error: 'Prompt assistant returned no usable text' });
-    return json(res, 200, { prompt });
+    try {
+      const raw = videoRevision && revisionEngine === 'h3'
+        ? await validatedH3Prompt(
+          (attempt, validationFeedback) => {
+            if (revisionRequest?.cancelled) throw promptRevisionCancellationError();
+            updatePromptRevisionRequest(revisionRequest, 'preparing', { attempt: attempt + 1, jobId: '' });
+            return reviseVideoPrompt(
+              currentPrompt,
+              changeRequest,
+              revisionSeed + attempt,
+              Object.assign({}, revisionOptions, { validationFeedback }),
+            );
+          },
+          currentPrompt || changeRequest,
+          Object.assign({}, revisionOptions, {
+            referenceSource: `${currentPrompt}\n${changeRequest}`,
+            authoredTextSource: currentPrompt,
+            // The official H3 guide is optional. A useful rewrite should not
+            // be discarded for cosmetic structure differences; only empty
+            // output and damaged reference contracts trigger a retry/error.
+            advisoryStructure: true,
+            useFallbackOnEmpty: false,
+            onAdvisoryResult(result) {
+              revisionWarnings.push(...result.audit.issues.map((issue) => ({
+                code: issue.code,
+                message: issue.message,
+              })));
+              if (revisionRequest) revisionRequest.warnings = revisionWarnings;
+            },
+          }),
+        )
+        : (videoRevision
+          ? await reviseVideoPrompt(currentPrompt, changeRequest, revisionSeed, revisionOptions)
+          : await reviseImagePrompt(currentPrompt, changeRequest, revisionSeed, revisionOptions));
+      if (revisionRequest?.cancelled) throw promptRevisionCancellationError();
+      const prompt = videoRevision && revisionEngine === 'h3'
+        ? String(raw || '').trim()
+        : cleanEnhancedText(raw, currentPrompt || changeRequest);
+      if (!prompt) {
+        const error = new Error('Prompt assistant returned no usable text');
+        error.code = 'prompt_empty';
+        throw error;
+      }
+      finishPromptRevisionRequest(revisionRequest, 'done');
+      return json(res, 200, { prompt, warnings: revisionWarnings });
+    } catch (error) {
+      const cancelled = error?.code === 'job_cancelled' || revisionRequest?.cancelled;
+      if (revisionRequest) {
+        revisionRequest.errorCode = cancelled ? 'job_cancelled' : (error?.code || 'prompt_revision_failed');
+        finishPromptRevisionRequest(revisionRequest, cancelled ? 'cancelled' : 'error');
+      }
+      const status = cancelled ? 409 : (error?.code === 'prompt_timeout' ? 504 : (error?.code === 'h3_prompt_format' ? 422 : 500));
+      return json(res, status, {
+        error: String(error?.message || error),
+        code: cancelled ? 'job_cancelled' : (error?.code || 'prompt_revision_failed'),
+        issues: Array.isArray(error?.issues) ? error.issues : undefined,
+      });
+    }
   }
 
   if (route === '/api/prompt/provider/test' && req.method === 'POST') {
@@ -8778,22 +8995,9 @@ async function handleApi(req, res, url) {
     if (job.completing) return json(res, 409, { error: 'This job is already finishing' });
     job.cancelRequested = true;
     job.cancelMessage = 'Cancelled by user';
-    // remove from pending first
-    await comfyFetch('/queue', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ delete: [pid] }),
-    }).catch(() => { /* noop */ });
     // If it is already running, ComfyUI may emit execution_interrupted before
     // this request returns. The cancel marker keeps that event neutral.
-    let stillRunning = false;
-    try {
-      const q = await (await comfyFetch('/queue')).json();
-      stillRunning = (q.queue_running || []).some((e) => String(e[1] || '') === pid);
-    } catch { /* noop */ }
-    if (stillRunning) {
-      await comfyFetch('/interrupt', { method: 'POST' }).catch(() => { /* noop */ });
-    }
+    const stillRunning = await stopComfyPrompt(pid);
     // Remove tracking immediately as a polling fallback and to settle any
     // preprocessing request even when the ComfyUI websocket is unavailable.
     cancelJob(pid, job.cancelMessage);
@@ -9435,7 +9639,9 @@ function jobLabel(job) {
     return prefix + (job.params.prompt || '').slice(0, 70);
   }
   if (job.kind === 'upscale') return job.upscaleInfo && job.upscaleInfo.engine === 'ultimate' ? 'Upscale (Ultimate SD)' : 'Upscale (SeedVR2)';
-  if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'upscale') return 'Video upscale (RTX)';
+  if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'upscale') {
+    return `Video upscale (${job.videoInfo.upscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'})`;
+  }
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'extend') return 'Video extension (LTX 2.3)';
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);

@@ -32,12 +32,18 @@
     </button>
   </div>
   <div class="topbar-actions">
+    <button class="topbar-update" id="topbarUpdateBtn" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5a7 7 0 0 1 6.3 4H16l3.3 3.3L22.6 9h-2.2A9 9 0 0 0 4 8.2L5.7 9A7 7 0 0 1 12 5Zm-7.3 6.7L1.4 15h2.2A9 9 0 0 0 20 15.8l-1.7-.8A7 7 0 0 1 5.7 15H8l-3.3-3.3Z"/></svg>
+      <span>Update</span>
+      <i aria-hidden="true"></i>
+    </button>
     <button class="profile-chip" id="profileBtn" hidden>
       <svg class="profile-chip-icon" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="8" r="3.25" fill="none" stroke="currentColor" stroke-width="1.8" />
         <path d="M5.75 19.25c.55-3.35 2.65-5.25 6.25-5.25s5.7 1.9 6.25 5.25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
       </svg>
       <span id="profileBtnName"></span>
+      <span class="profile-update-badge" id="profileUpdateBadge" aria-label="Update available" hidden></span>
     </button>
     <span class="conn-dot" id="connDot" title="ComfyUI connection"></span>
     <button class="icon-btn queue-btn" id="queueBtn" aria-label="Queue">
@@ -3003,7 +3009,7 @@
     <p class="prompt-assistant-status" id="promptAssistantStatus" role="status" hidden></p>
     <button class="prompt-assistant-undo" id="promptAssistantUndo" type="button" hidden>↶ Undo last revision</button>
     <div class="prompt-assistant-actions">
-      <button class="sheet-cta ghost" data-close type="button">Cancel</button>
+      <button class="sheet-cta ghost" id="promptAssistantCancel" type="button">Cancel</button>
       <button class="sheet-cta" id="promptAssistantApply" type="submit">Revise prompt</button>
     </div>
   </form>
@@ -3222,11 +3228,29 @@
 </div>
 
 <div class="icon-tooltip" id="iconTooltip" role="tooltip" aria-hidden="true" hidden></div>
-<aside class="update-notice" id="updateNotice" aria-live="polite" hidden>
-  <div class="update-notice-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg></div>
-  <div class="update-notice-copy"><span id="updateNoticeVersion">Update</span><strong id="updateNoticeTitle"></strong><p id="updateNoticeMessage"></p></div>
-  <div class="update-notice-actions"><button id="updateNoticeView" type="button">View update</button><button id="updateNoticeDismiss" type="button">Dismiss</button></div>
-</aside>
+<div class="update-notice" id="updateNotice" aria-hidden="true" hidden>
+  <button class="update-notice-backdrop" id="updateNoticeBackdrop" type="button" aria-label="Dismiss update"></button>
+  <section class="update-showcase" role="dialog" aria-modal="true" aria-labelledby="updateNoticeTitle" aria-describedby="updateNoticeMessage" tabindex="-1">
+    <header class="update-showcase-head">
+      <span class="update-showcase-version" id="updateNoticeVersion">Update</span>
+      <button class="update-showcase-close" id="updateNoticeClose" type="button" aria-label="Dismiss update">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <div class="update-showcase-media" id="updateNoticeMedia" aria-live="polite"></div>
+    <div class="update-showcase-dots" id="updateNoticeDots" aria-label="Update highlights"></div>
+    <div class="update-notice-copy">
+      <span id="updateNoticeEyebrow">What’s new</span>
+      <strong id="updateNoticeTitle"></strong>
+      <p id="updateNoticeMessage"></p>
+    </div>
+    <div class="update-notice-actions">
+      <button class="update-notice-install" id="updateNoticeInstall" type="button" hidden>Update now</button>
+      <button class="update-notice-view" id="updateNoticeView" type="button">View full changelog</button>
+      <button class="update-notice-dismiss" id="updateNoticeDismiss" type="button">Dismiss</button>
+    </div>
+  </section>
+</div>
 <div class="toast-zone" id="toastZone"></div>
 
 <script src="/camera-settings.js"></script>

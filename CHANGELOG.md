@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.2.0 - 2026-08-07
+
+- Added MiniMax H3 Turbo generation with its recommended custom sampler, audio-safe workflow, configurable steps, and optional LoRA strength under Advanced settings.
+- Added the official MiniMax H3 prompt guide, local no-LLM structure and dialogue formatting, and guide-aware Prompt Enhance while keeping all formatting optional at generation time.
+- Made H3 Revise Prompt resilient to long ComfyUI waits with live queued/running status, explicit cancellation, bounded retries, orphan cleanup, and advisory guide warnings instead of speaker-format dead ends.
+- Added SeedVR2 as a temporally coherent video post-upscale option alongside fast RTX Video Super Resolution.
+- Added a centered, animated update showcase with feature slides, full changelog and install actions, a desktop top-bar Update button, and a mobile profile notification and Update action.
+- Improved MiniMax H3 Turbo controls and native audio behavior, including editable step counts and a consistent Advanced LoRA strength control.
 - Added critical web-asset integrity checks to app updates, plus startup-memory and Git fallbacks for missing HTML, CSS, or JavaScript so a partial desktop deployment cannot leave the app unstyled.
 - Added one shared external prompt-AI provider for OpenAI, Gemini, or Ollama, with independent Image and Video switches for Revise Prompt and Prompt Enhance, connection testing, vision-aware references, and API-key controls in the renamed Preferences panel.
 - Improved documentation video readability by letting long prompts use the full available details panel, removing the colored marker beside media labels, and avoiding a duplicate H3 references row.

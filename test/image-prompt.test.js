@@ -58,6 +58,20 @@ test('local prompt assistant exposes iterative revision with optional source con
   assert.match(indexHtml, /id="promptAssistantUndo"/);
   assert.match(appJs, /api\('\/api\/prompt\/revise'/);
   assert.match(appJs, /currentPrompt: before,[\s\S]*changeRequest,[\s\S]*imageName:/);
+  assert.match(appJs, /const requestId = newPromptAssistantRequestId\(\)/);
+  assert.match(appJs, /fetch\('\/api\/prompt\/revise\/cancel'/);
+  assert.match(appJs, /\/api\/prompt\/revise\/status\?requestId=/);
+  assert.match(appJs, /signal: requestController\.signal/);
   assert.match(appJs, /state\.enhance = false;[\s\S]*renderEnhance\(\)/);
   assert.match(appJs, /state\.promptRevisionUndo = \{ before, after: revised, view: revisionView \}/);
+});
+
+test('H3 prompt revision is cancellable, observable, and treats guide structure as advisory', () => {
+  assert.match(serverJs, /route === '\/api\/prompt\/revise\/status'/);
+  assert.match(serverJs, /route === '\/api\/prompt\/revise\/cancel'/);
+  assert.match(serverJs, /broadcastStatus: false/);
+  assert.match(serverJs, /advisoryStructure: true/);
+  assert.match(serverJs, /useFallbackOnEmpty: false/);
+  assert.match(serverJs, /stopComfyPrompt\(record\.jobId\)/);
+  assert.match(serverJs, /error\.code = 'prompt_timeout'/);
 });

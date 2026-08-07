@@ -1538,6 +1538,13 @@ function renderProfileChip() {
 $('#profileBtn').addEventListener('click', () => {
   const isOwner = state.profile && state.profileIsOwner;
   openActionMenu($('#profileBtn'), [
+    state.officialReleaseUpdateAvailable ? {
+      label: 'Update Mix Studio',
+      detail: `${latestOfficialRelease()?.tagName || 'New version'} available`,
+      icon: 'updates',
+      tone: 'update',
+      action: () => showOfficialReleaseNotice(latestOfficialRelease(), { force: true }),
+    } : null,
     { label: 'Edit profile', icon: 'profile', action: openProfileEdit },
     isOwner ? { label: 'Manage profiles', icon: 'users', action: openProfileManage } : null,
     { label: 'Switch profile', icon: 'switch', action: switchProfile },
@@ -1730,6 +1737,27 @@ checkAuth();
 /* ------------------------------------------------------------------ */
 
 const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
+const OFFICIAL_RELEASE_SHOWCASES = {
+  '1.2.0': [
+    {
+      eyebrow: 'Video generation',
+      title: 'MiniMax H3 + Turbo is here',
+      message: 'Create H3 videos with native audio, reference inputs, guided prompting, and the new Turbo LoRA workflow with its audio-safe custom sampler.',
+      media: '/update-media/v1.2.0-h3-turbo.mp4',
+      theme: 'h3',
+    },
+    {
+      eyebrow: 'Creative workflow',
+      title: 'Meet Mix Packs',
+      message: 'Browse visual prompt collections, combine multiple looks, and bring the same reusable creative direction into image and video generations.',
+      media: '/update-media/v1.2.0-mix-packs.mp4',
+      mediaMobile: '/update-media/v1.2.0-mix-packs-mobile.mp4',
+      theme: 'packs',
+    },
+  ],
+};
+let updateShowcaseSlide = 0;
+let updateShowcaseReturnFocus = null;
 
 function updateSeenKey() {
   return profileStorageKey('ks-update-seen', state.profile?.id);
@@ -1767,6 +1795,93 @@ function officialReleaseSummary(release) {
   const notes = String(release?.notes || '').replace(/\s+/g, ' ').trim();
   if (!notes) return 'Open the official release notes to see what changed.';
   return notes.length > 220 ? `${notes.slice(0, 217)}…` : notes;
+}
+
+function officialReleaseShowcaseSlides(release) {
+  const version = String(release?.version || release?.tagName || '').replace(/^v/i, '');
+  return OFFICIAL_RELEASE_SHOWCASES[version] || [{
+    eyebrow: 'Mix Studio update',
+    title: release?.title || 'A new version is ready',
+    message: officialReleaseSummary(release),
+    media: '',
+    theme: 'release',
+  }];
+}
+
+function updateShowcaseFallbackMarkup(theme) {
+  if (theme === 'packs') {
+    return '<div class="update-showcase-fallback update-showcase-fallback-packs" aria-hidden="true"><span class="update-pack-card update-pack-card-a"><i></i><b>LIGHT</b></span><span class="update-pack-card update-pack-card-b"><i></i><b>COLOR</b></span><span class="update-pack-card update-pack-card-c"><i></i><b>STYLE</b></span><strong>MIX PACKS</strong></div>';
+  }
+  if (theme === 'h3') {
+    return '<div class="update-showcase-fallback update-showcase-fallback-h3" aria-hidden="true"><span class="update-h3-orbit update-h3-orbit-a"></span><span class="update-h3-orbit update-h3-orbit-b"></span><strong>H3</strong><b>TURBO</b><small>VIDEO + NATIVE AUDIO</small></div>';
+  }
+  return '<div class="update-showcase-fallback update-showcase-fallback-release" aria-hidden="true"><img src="/mix-studio-logo.svg" alt=""/><strong>NEW VERSION</strong></div>';
+}
+
+function renderUpdateShowcaseSlide(index = 0) {
+  const release = latestOfficialRelease();
+  const slides = officialReleaseShowcaseSlides(release);
+  updateShowcaseSlide = ((Number(index) || 0) + slides.length) % slides.length;
+  const slide = slides[updateShowcaseSlide];
+  const media = $('#updateNoticeMedia');
+  media.className = `update-showcase-media theme-${slide.theme || 'release'}`;
+  media.innerHTML = updateShowcaseFallbackMarkup(slide.theme);
+  if (slide.media) {
+    const video = document.createElement('video');
+    video.className = 'update-showcase-video';
+    video.muted = true;
+    video.loop = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.setAttribute('aria-label', `${slide.title} preview`);
+    video.addEventListener('canplay', () => {
+      media.classList.add('has-video');
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) video.play().catch(() => {});
+    }, { once: true });
+    video.addEventListener('error', () => video.remove(), { once: true });
+    if (slide.mediaMobile) {
+      const mobileSource = document.createElement('source');
+      mobileSource.media = '(max-width: 560px)';
+      mobileSource.src = slide.mediaMobile;
+      video.appendChild(mobileSource);
+      const desktopSource = document.createElement('source');
+      desktopSource.src = slide.media;
+      video.appendChild(desktopSource);
+    } else {
+      video.src = slide.media;
+    }
+    media.appendChild(video);
+    video.load();
+  }
+  $('#updateNoticeEyebrow').textContent = slide.eyebrow;
+  $('#updateNoticeTitle').textContent = slide.title;
+  $('#updateNoticeMessage').textContent = slide.message;
+  const dots = $('#updateNoticeDots');
+  dots.replaceChildren();
+  dots.hidden = slides.length < 2;
+  slides.forEach((entry, dotIndex) => {
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = dotIndex === updateShowcaseSlide ? 'active' : '';
+    dot.setAttribute('aria-label', `Show update ${dotIndex + 1}: ${entry.title}`);
+    dot.setAttribute('aria-current', dotIndex === updateShowcaseSlide ? 'true' : 'false');
+    dot.addEventListener('click', () => renderUpdateShowcaseSlide(dotIndex));
+    dots.appendChild(dot);
+  });
+}
+
+function closeOfficialReleaseNotice() {
+  const notice = $('#updateNotice');
+  if (!notice || notice.hidden) return;
+  notice.hidden = true;
+  notice.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('update-showcase-open');
+  $('#updateNoticeMedia')?.querySelector('video')?.pause();
+  if (updateShowcaseReturnFocus?.isConnected && updateShowcaseReturnFocus.offsetParent !== null) {
+    updateShowcaseReturnFocus.focus();
+  }
+  updateShowcaseReturnFocus = null;
 }
 
 function renderUpdateNotificationPreference() {
@@ -1809,6 +1924,9 @@ function renderOfficialRelease() {
   drawerButton.hidden = !state.officialReleaseUpdateAvailable;
   $('#updatesUnreadDot').hidden = !unread;
   drawerButton.classList.toggle('has-unread', unread);
+  $('#topbarUpdateBtn').hidden = !state.officialReleaseUpdateAvailable;
+  $('#profileUpdateBadge').hidden = !state.officialReleaseUpdateAvailable;
+  $('#updateNoticeInstall').hidden = !state.profileIsOwner || !state.officialReleaseUpdateAvailable;
 
   if (!state.profile) {
     setReleaseStatus('Sign in to check updates', 'idle');
@@ -1876,16 +1994,20 @@ function markLatestReleaseSeen() {
   const key = updateSeenKey();
   const id = officialReleaseId(latest);
   if (id && key) localStorage.setItem(key, id);
-  $('#updateNotice').hidden = true;
+  closeOfficialReleaseNotice();
   renderOfficialRelease();
 }
 
-function showOfficialReleaseNotice(release) {
-  if (!release || !state.officialReleaseUpdateAvailable || officialReleaseId(release) === seenUpdateId()) return;
+function showOfficialReleaseNotice(release, options = {}) {
+  if (!release || !state.officialReleaseUpdateAvailable || (!options.force && officialReleaseId(release) === seenUpdateId())) return;
+  updateShowcaseReturnFocus = document.activeElement;
   $('#updateNoticeVersion').textContent = release.tagName || `v${release.version}`;
-  $('#updateNoticeTitle').textContent = release.title;
-  $('#updateNoticeMessage').textContent = officialReleaseSummary(release);
-  $('#updateNotice').hidden = false;
+  renderUpdateShowcaseSlide(0);
+  const notice = $('#updateNotice');
+  notice.hidden = false;
+  notice.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('update-showcase-open');
+  requestAnimationFrame(() => $('.update-showcase').focus({ preventScroll: true }));
 }
 
 function showSystemUpdateNotification(release) {
@@ -1913,7 +2035,7 @@ function receiveOfficialRelease(result, options = {}) {
   state.officialReleaseError = String(result?.error || '');
   renderOfficialRelease();
   if (!state.officialReleaseUpdateAvailable) {
-    $('#updateNotice').hidden = true;
+    closeOfficialReleaseNotice();
     return;
   }
   showOfficialReleaseNotice(state.officialRelease);
@@ -1946,8 +2068,16 @@ async function openUpdatesSheet() {
 
 $('#updatesBtn').addEventListener('click', openUpdatesSheet);
 $('#settingsUpdatesBtn').addEventListener('click', openUpdatesSheet);
+$('#topbarUpdateBtn').addEventListener('click', () => showOfficialReleaseNotice(latestOfficialRelease(), { force: true }));
 $('#updateNoticeView').addEventListener('click', openUpdatesSheet);
 $('#updateNoticeDismiss').addEventListener('click', markLatestReleaseSeen);
+$('#updateNoticeClose').addEventListener('click', markLatestReleaseSeen);
+$('#updateNoticeBackdrop').addEventListener('click', markLatestReleaseSeen);
+$('#updateNotice').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') markLatestReleaseSeen();
+  else if (event.key === 'ArrowLeft') renderUpdateShowcaseSlide(updateShowcaseSlide - 1);
+  else if (event.key === 'ArrowRight') renderUpdateShowcaseSlide(updateShowcaseSlide + 1);
+});
 $('#updatesAlertToggle').addEventListener('click', async () => {
   if (!window.isSecureContext || !('Notification' in window)) return;
   const key = updateAlertsKey();
@@ -1963,14 +2093,17 @@ $('#updatesAlertToggle').addEventListener('click', async () => {
   if (permission === 'granted') toast('Browser update alerts enabled');
 });
 
-$('#updatesInstallBtn').addEventListener('click', () => {
+function installOfficialRelease() {
   if (!state.profileIsOwner || !state.officialReleaseUpdateAvailable) return;
   markLatestReleaseSeen();
   $('#updatesSheet').classList.remove('show');
   syncSheetScrollLock();
   openAppDrawer();
   $('#appUpdateBtn').click();
-});
+}
+
+$('#updatesInstallBtn').addEventListener('click', installOfficialRelease);
+$('#updateNoticeInstall').addEventListener('click', installOfficialRelease);
 
 setInterval(() => {
   if (state.profile) loadOfficialRelease({ notify: true });
@@ -2013,6 +2146,7 @@ function actionIconMarkup(icon) {
     profile: '<path d="M12 3a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm0 9c4.4 0 8 2.2 8 5v2H4v-2c0-2.8 3.6-5 8-5Zm0 2c-3.5 0-6 1.6-6 3h12c0-1.4-2.5-3-6-3Z"/>',
     users: '<path d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 1a3 3 0 1 1 0 6v-2a1 1 0 1 0 0-2V7ZM9 14c4 0 7 2 7 5v2H2v-2c0-3 3-5 7-5Zm0 2c-3 0-5 1.3-5 3h10c0-1.7-2-3-5-3Zm7-1c3.5 0 6 1.7 6 4.5V21h-4v-2h1.8c-.3-1.1-1.7-1.8-3.8-2V15Z"/>',
     switch: '<path d="m15 4 5 4-5 4V9H5V7h10V4Zm-6 8v3h10v2H9v3l-5-4 5-4Z"/>',
+    updates: '<path d="M12 5a7 7 0 0 1 6.3 4H16l3.3 3.3L22.6 9h-2.2A9 9 0 0 0 4 8.2L5.7 9A7 7 0 0 1 12 5Zm-7.3 6.7L1.4 15h2.2A9 9 0 0 0 20 15.8l-1.7-.8A7 7 0 0 1 5.7 15H8l-3.3-3.3Z"/>',
     image: '<path d="M4 4h16v16H4V4Zm2 2v12h12V6H6Zm2 9 3-4 2.4 2.7 1.8-2.1L18 15H8Zm7-7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/>',
     eye: '<path d="M12 5c5.2 0 9 5.3 9 7s-3.8 7-9 7-9-5.3-9-7 3.8-7 9-7Zm0 2c-3.8 0-6.7 3.7-7 5 .3 1.3 3.2 5 7 5s6.7-3.7 7-5c-.3-1.3-3.2-5-7-5Zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>',
     enhance: '<path d="m12 2 1.2 4.1L17 8l-3.8 1.9L12 14l-1.2-4.1L7 8l3.8-1.9L12 2Zm6 10 .8 2.7L21 16l-2.2 1.3L18 20l-.8-2.7L15 16l2.2-1.3L18 12ZM6 13l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3Z"/>',
@@ -2072,7 +2206,11 @@ function openActionMenu(anchor, items, options = {}) {
   const rect = anchor.getBoundingClientRect();
   const menuRect = menu.getBoundingClientRect();
   const left = Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, rect.left));
-  const top = Math.max(8, rect.top - menuRect.height - 8);
+  const spaceAbove = rect.top - 8;
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const opensBelow = spaceAbove < menuRect.height && spaceBelow >= spaceAbove;
+  const preferredTop = opensBelow ? rect.bottom + 8 : rect.top - menuRect.height - 8;
+  const top = Math.max(8, Math.min(window.innerHeight - menuRect.height - 8, preferredTop));
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
   actionMenuEl = menu;
@@ -6426,6 +6564,35 @@ function renderPromptAssistantSource() {
 }
 
 let promptAssistantBusy = false;
+let promptAssistantRequestId = '';
+let promptAssistantAbortController = null;
+let promptAssistantProgressTimer = null;
+
+function newPromptAssistantRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `revise_${crypto.randomUUID().replaceAll('-', '')}`;
+  }
+  return `revise_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
+function stopPromptAssistantProgress() {
+  if (promptAssistantProgressTimer) clearTimeout(promptAssistantProgressTimer);
+  promptAssistantProgressTimer = null;
+}
+
+async function refreshPromptAssistantProgress(requestId) {
+  if (!requestId || requestId !== promptAssistantRequestId || !promptAssistantBusy) return;
+  try {
+    const response = await fetch(`/api/prompt/revise/status?requestId=${encodeURIComponent(requestId)}`);
+    const progress = await response.json().catch(() => ({}));
+    if (response.ok && requestId === promptAssistantRequestId && promptAssistantBusy) {
+      setPromptAssistantBusy(true, progress.message || 'Rewriting prompt…');
+    }
+  } catch { /* the main request owns connection errors */ }
+  if (requestId === promptAssistantRequestId && promptAssistantBusy) {
+    promptAssistantProgressTimer = setTimeout(() => refreshPromptAssistantProgress(requestId), 1000);
+  }
+}
 
 function setPromptAssistantBusy(busy, message = '') {
   promptAssistantBusy = busy;
@@ -6438,6 +6605,9 @@ function setPromptAssistantBusy(busy, message = '') {
   const status = $('#promptAssistantStatus');
   status.hidden = !message;
   status.textContent = message;
+  const cancel = $('#promptAssistantCancel');
+  cancel.textContent = busy ? 'Cancel revision' : 'Cancel';
+  cancel.disabled = false;
 }
 
 function openPromptAssistant() {
@@ -6481,7 +6651,9 @@ function openPromptAssistant() {
     : 'Change the woman to a man in a tailored navy suit, use teal and gold, and keep the lighting and composition.';
   if (!promptAssistantBusy) $('#promptAssistantInput').value = '';
   renderPromptAssistantSource();
-  setPromptAssistantBusy(promptAssistantBusy, promptAssistantBusy ? 'Rewriting the complete prompt…' : '');
+  setPromptAssistantBusy(promptAssistantBusy, promptAssistantBusy
+    ? ($('#promptAssistantStatus').textContent || 'Rewriting the complete prompt…')
+    : '');
   const undo = state.promptRevisionUndo;
   $('#promptAssistantUndo').hidden = !(undo && undo.view === state.view && currentPrompt === undo.after);
   $('#promptAssistantSheet').classList.add('show');
@@ -6494,8 +6666,32 @@ function closePromptAssistant() {
   syncSheetScrollLock();
 }
 
+async function cancelPromptAssistantRevision() {
+  if (!promptAssistantBusy) {
+    closePromptAssistant();
+    return;
+  }
+  const requestId = promptAssistantRequestId;
+  $('#promptAssistantCancel').disabled = true;
+  try {
+    if (requestId) {
+      await fetch('/api/prompt/revise/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId }),
+      });
+    }
+  } catch { /* abort the browser request even if the server is reconnecting */ }
+  promptAssistantAbortController?.abort();
+  stopPromptAssistantProgress();
+  promptAssistantRequestId = '';
+  promptAssistantAbortController = null;
+  setPromptAssistantBusy(false, 'Prompt revision cancelled.');
+}
+
 $('#promptAssistantBtn').addEventListener('click', openPromptAssistant);
 $('#videoPromptAssistantBtn').addEventListener('click', openPromptAssistant);
+$('#promptAssistantCancel').addEventListener('click', cancelPromptAssistantRevision);
 $('#promptAssistantSourceToggle').addEventListener('click', () => {
   state.promptAssistantUseSource = !state.promptAssistantUseSource;
   renderPromptAssistantSource();
@@ -6559,13 +6755,16 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
   const revisionEndImageName = source && revisionHasFirstFrame && revisionHasLastFrame
     ? state.vidEnd.name
     : undefined;
-  const expectedReferenceTokens = revisionH3Mode === 'reference'
-    ? h3PromptReferenceTokens(before, changeRequest)
-    : [];
   const allowedReferenceTokens = revisionH3Mode === 'reference'
     ? h3PromptReferenceEntries().map((entry) => entry.tag)
     : [];
+  const requestId = newPromptAssistantRequestId();
+  const requestController = new AbortController();
+  promptAssistantRequestId = requestId;
+  promptAssistantAbortController = requestController;
   setPromptAssistantBusy(true, before ? 'Rewriting the complete prompt…' : 'Building a generation-ready prompt…');
+  stopPromptAssistantProgress();
+  promptAssistantProgressTimer = setTimeout(() => refreshPromptAssistantProgress(requestId), 250);
   checkpointDesktopInputSetup();
   try {
     const result = await api('/api/prompt/revise', {
@@ -6574,6 +6773,7 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
       body: JSON.stringify({
         currentPrompt: before,
         changeRequest,
+        requestId,
         imageName: source && source.name ? source.name : undefined,
         endImageName: revisionEndImageName,
         kind: revisionView === 'video' ? 'video' : 'image',
@@ -6584,26 +6784,10 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
         hasLastFrame: revisionEngine === 'h3' ? revisionHasLastFrame : undefined,
         allowedReferenceTokens: revisionEngine === 'h3' ? allowedReferenceTokens : undefined,
       }),
+      signal: requestController.signal,
     });
     const revised = String(result.prompt || '').trim();
     if (!revised) throw new Error('Prompt assistant returned no usable text');
-    if (revisionEngine === 'h3') {
-      const revisedAudit = H3PromptGuide?.auditStructure
-        ? H3PromptGuide.auditStructure(revised, {
-          mode: revisionH3Mode,
-          seconds: revisionSeconds,
-          hasFirstFrame: revisionHasFirstFrame,
-          hasLastFrame: revisionHasLastFrame,
-          expectedReferenceTokens,
-          allowedReferenceTokens,
-        })
-        : { ready: true, issues: [] };
-      const blockingIssue = revisedAudit.issues?.find((issue) => !H3_DIALOGUE_ISSUE_CODES.has(issue.code));
-      if (!revisedAudit.ready && blockingIssue) {
-        const issue = h3PromptGuideIssueText(blockingIssue);
-        throw new Error(`The prompt writer returned an incomplete H3 format${issue ? `: ${issue}` : ''}. Your prompt was left unchanged; try again.`);
-      }
-    }
     if (state.view !== revisionView
       || (revisionEngine === 'h3' && (state.vidEngine !== revisionEngine || state.vidH3Mode !== revisionH3Mode))
       || promptDraft().trim() !== before) {
@@ -6611,7 +6795,7 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
     }
     state.prompts[revisionView] = revised;
     state.promptRevisionUndo = { before, after: revised, view: revisionView };
-    if (revisionEngine === 'h3') rememberH3PromptStructure(revised);
+    if (revisionEngine === 'h3' && h3PromptLooksStructured(revised)) rememberH3PromptStructure(revised);
     state.enhance = false;
     setPromptDraft(revised);
     updatePromptClear();
@@ -6621,11 +6805,20 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
     setPromptAssistantBusy(false);
     closePromptAssistant();
     $('#promptComposer').focus();
-    toast(revisionView === 'video' ? 'Video prompt revised' : 'Prompt revised · Enhance turned off');
+    const hasGuideWarnings = revisionEngine === 'h3' && Array.isArray(result.warnings) && result.warnings.length > 0;
+    toast(revisionView === 'video'
+      ? (hasGuideWarnings ? 'Video prompt revised · optional H3 guide suggestions remain' : 'Video prompt revised')
+      : 'Prompt revised · Enhance turned off');
   } catch (error) {
-    setPromptAssistantBusy(false, error.message || 'Could not revise this prompt');
-    if (!isJobCancellation(error)) toast(error.message, true);
+    const cancelled = error?.name === 'AbortError' || isJobCancellation(error);
+    setPromptAssistantBusy(false, cancelled ? 'Prompt revision cancelled.' : (error.message || 'Could not revise this prompt'));
+    if (!cancelled) toast(error.message, true);
   } finally {
+    if (promptAssistantRequestId === requestId) {
+      stopPromptAssistantProgress();
+      promptAssistantRequestId = '';
+      promptAssistantAbortController = null;
+    }
     // The internal prompt writer is a short ComfyUI queue job. Its HTTP
     // response arrives only after that job is removed, so refresh now to keep
     // the queue badge/card in sync on every success and failure path.
@@ -19729,7 +19922,8 @@ $('#desktopStageUpscale').addEventListener('click', () => {
   if (!item) return;
   if (!video) return openUpscaleSheet(item);
   const choices = [
-    { label: 'Upscale video', detail: 'SeedVR2 finish', icon: 'process', action: () => processVideo(item, video, 'upscale') },
+    { label: 'SeedVR2 upscale', detail: 'AI detail restoration · 2×', icon: 'process', action: () => processVideo(item, video, 'upscale', 'seedvr2') },
+    { label: 'RTX upscale', detail: 'Fast video super resolution · 2×', icon: 'process', action: () => processVideo(item, video, 'upscale', 'rtx') },
     { label: 'Increase FPS', detail: 'RIFE interpolation', icon: 'process', action: () => processVideo(item, video, 'interpolate') },
   ];
   if (video.info?.engine === 'scail' && video.info?.driveVideoName && !video.info?.composite) choices.push({
@@ -23692,7 +23886,7 @@ function openLightbox(id, mediaSel, options = {}) {
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailFps && `${info.scailFps} fps generation`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
-      const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && 'RTX upscale', info.processed === 'interpolate' && 'RIFE pass', info.processed === 'extend' && 'extended', info.smooth && `RIFE ${info.smooth}×`, info.fourK && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.continuedAudio && 'continued sound', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
+      const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && `${info.upscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'} upscale`, info.processed === 'interpolate' && 'RIFE pass', info.processed === 'extend' && 'extended', info.smooth && `RIFE ${info.smooth}×`, info.fourK && info.processed !== 'upscale' && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.continuedAudio && 'continued sound', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; ${copyableMeta('Seed', info.seed)}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     } else if (info.seed != null) meta.push(copyableMeta('Seed', info.seed));
@@ -23989,7 +24183,8 @@ function openLightbox(id, mediaSel, options = {}) {
     if (videoUseItems.length) mkMenu('Use', '', videoUseItems, { icon: 'result-use', iconOnly: true, ariaLabel: 'Use video', menuTitle: 'Use video', tone: 'video' });
     const processItems = [];
     if (!vinfo.composite) {
-      processItems.push({ label: 'Upscale video', detail: 'SeedVR2 finish', icon: 'process', action: () => processVideo(it, selVideo, 'upscale') });
+      processItems.push({ label: 'SeedVR2 upscale', detail: 'AI detail restoration · 2×', icon: 'process', action: () => processVideo(it, selVideo, 'upscale', 'seedvr2') });
+      processItems.push({ label: 'RTX upscale', detail: 'Fast video super resolution · 2×', icon: 'process', action: () => processVideo(it, selVideo, 'upscale', 'rtx') });
       processItems.push({ label: 'Increase FPS', detail: 'RIFE interpolation', icon: 'process', action: () => processVideo(it, selVideo, 'interpolate') });
     }
     if (vinfo.engine === 'scail' && vinfo.driveVideoName && !vinfo.composite) {
@@ -24109,10 +24304,13 @@ function closeLightbox(fromPop) {
   });
 }
 
-async function processVideo(it, video, kind) {
+async function processVideo(it, video, kind, upscaleEngine = '') {
   if (!it || !video) return;
   const route = kind === 'upscale' ? '/api/video/upscale' : '/api/video/interpolate';
-  const label = kind === 'upscale' ? 'Video upscale queued' : 'Frame interpolation queued';
+  const normalizedUpscaleEngine = upscaleEngine === 'seedvr2' ? 'seedvr2' : 'rtx';
+  const label = kind === 'upscale'
+    ? `${normalizedUpscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'} video upscale queued`
+    : 'Frame interpolation queued';
   const requestKey = `animate:${it.id}`;
   try {
     setGenerating(true, 'Queued…');
@@ -24125,6 +24323,7 @@ async function processVideo(it, video, kind) {
         id: it.id,
         videoId: video.id,
         scale: kind === 'upscale' ? 2 : undefined,
+        engine: kind === 'upscale' ? normalizedUpscaleEngine : undefined,
         multiplier: kind === 'interpolate' ? 2 : undefined,
       }),
     });
@@ -25978,13 +26177,13 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.endFrame && 'Last-frame guidance',
     info.motionVideo && 'Motion transfer',
     info.smooth > 1 && `RIFE ${info.smooth}×`,
-    info.fourK && 'RTX 4K',
+    info.fourK && info.processed !== 'upscale' && 'RTX 4K',
     info.engine === 'wan' && info.fast && '4-step',
     info.engine === 'h3' && info.h3Turbo && `Turbo LoRA ${Number(info.h3TurboStrength || 1).toFixed(2)}`,
     info.sigmaPreset && `Sigmas: ${info.sigmaPreset}`,
     info.engine === 'scail' && info.scailMode && `SCAIL ${info.scailMode}`,
     info.engine === 'scail' && info.scailFps && `${info.scailFps} fps generation`,
-    info.processed === 'upscale' && 'Video upscale',
+    info.processed === 'upscale' && `${info.upscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'} video upscale`,
     info.processed === 'interpolate' && 'Frame interpolation',
     info.processed === 'extend' && 'Video extension',
   ].filter(Boolean).join(', ');

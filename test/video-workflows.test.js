@@ -143,7 +143,7 @@ test('videoProcessInfo updates metadata for after-the-fact interpolation and ups
     parentVideoId: 'v1',
   });
 
-  assert.deepEqual(videoProcessInfo(base, { kind: 'upscale', scale: 2, parentVideoId: 'v1' }), {
+  assert.deepEqual(videoProcessInfo(base, { kind: 'upscale', scale: 2, engine: 'seedvr2', parentVideoId: 'v1' }), {
     engine: 'scail',
     frames: 81,
     fps: 16,
@@ -151,6 +151,7 @@ test('videoProcessInfo updates metadata for after-the-fact interpolation and ups
     height: 1792,
     motionPrompt: 'spin',
     exactFrameCount: true,
+    upscaleEngine: 'seedvr2',
     fourK: true,
     processed: 'upscale',
     parentVideoId: 'v1',
@@ -159,4 +160,7 @@ test('videoProcessInfo updates metadata for after-the-fact interpolation and ups
   assert.equal(videoProcessInfo({ frames: 324, fps: 64, smooth: 4 }, {
     kind: 'upscale', scale: 2, parentVideoId: 'v4',
   }).frames, 321);
+  assert.equal(videoProcessInfo(base, {
+    kind: 'upscale', scale: 2, parentVideoId: 'v2',
+  }).upscaleEngine, 'rtx');
 });

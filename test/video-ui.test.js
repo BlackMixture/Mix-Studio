@@ -423,7 +423,7 @@ test('Video exposes the shared prompt revision assistant with H3-aware context',
   assert.match(app, /d\.jobId === 'pre'[\s\S]{0,160}d\.scope !== 'generation-preflight'[\s\S]{0,100}generationPreflightRequests < 1/);
   assert.match(app, /async function generationApi\([\s\S]{0,260}generationPreflightRequests = Math\.max/);
   assert.doesNotMatch(galleryAnimate, /generationApi\(/);
-  assert.match(app, /finally \{[\s\S]{0,260}refreshQueue\(\)\.catch/);
+  assert.match(app, /finally \{[\s\S]{0,520}refreshQueue\(\)\.catch/);
   assert.match(promptEnhance, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
 });
 
@@ -455,8 +455,9 @@ test('MiniMax H3 exposes an official-format guide with safe local dialogue forma
   assert.match(app, /hasLastFrame: revisionEngine === 'h3' \? revisionHasLastFrame : undefined/);
   assert.match(app, /allowedReferenceTokens: revisionEngine === 'h3' \? allowedReferenceTokens : undefined/);
   assert.match(app, /allowedReferenceTokens: referenceMode \? h3PromptReferenceEntries\(\)\.map\(\(entry\) => entry\.tag\) : \[\]/);
-  assert.match(app, /H3PromptGuide\.auditStructure\(revised,/);
-  assert.match(app, /const blockingIssue = revisedAudit\.issues\?\.find\(\(issue\) => !H3_DIALOGUE_ISSUE_CODES\.has\(issue\.code\)\)/);
+  assert.doesNotMatch(app, /H3PromptGuide\.auditStructure\(revised,/);
+  assert.match(server, /advisoryStructure: true/);
+  assert.match(server, /useFallbackOnEmpty: false/);
   assert.match(server, /function h3PromptMaxTokens\(mode\)[\s\S]{0,220}mode === 'reference' \? 1400 : 900/);
   assert.match(server, /const hasFirstFrame = body\.hasFirstFrame === undefined[\s\S]{0,120}revisionMode === 'frames' && !!imageName[\s\S]{0,80}body\.hasFirstFrame === true/);
   assert.match(server, /const hasLastFrame = body\.hasLastFrame === true/);

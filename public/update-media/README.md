@@ -1,0 +1,9 @@
+# Update showcase media
+
+The v1.2.0 update carousel reserves these public MP4 slots:
+
+- `v1.2.0-h3-turbo.mp4`
+- `v1.2.0-mix-packs.mp4`
+- `v1.2.0-mix-packs-mobile.mp4`
+
+Use muted, looping, web-optimized H.264 MP4 previews. A 16:9 source is preferred; the optional `-mobile` cut is selected for viewports up to 560 pixels wide. The interface displays its animated built-in artwork if a preview is not present or cannot load.

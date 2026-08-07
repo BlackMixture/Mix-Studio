@@ -143,12 +143,21 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(html, /id="updatesBtn"[^>]*hidden[\s\S]*id="updatesUnreadDot"/);
   assert.match(html, /id="settingsPaneSystem"[\s\S]*id="settingsUpdatesBtn"[\s\S]*id="settingsUpdatesStatus"/);
   assert.match(html, /id="updatesSheet"[\s\S]*id="updatesReleaseLink"[\s\S]*id="updatesInstallBtn"/);
+  assert.match(html, /id="topbarUpdateBtn"[^>]*hidden/);
+  assert.match(html, /id="profileUpdateBadge"[^>]*hidden/);
+  assert.match(html, /id="updateNotice"[\s\S]*id="updateNoticeMedia"[\s\S]*id="updateNoticeDots"[\s\S]*View full changelog/);
   assert.match(html, /github\.com\/BlackMixture\/Mix-Studio\/releases/);
   assert.doesNotMatch(html, /id="updatePublisher"|id="updatePublishBtn"|Push update/);
   assert.match(css, /\.update-notice \{[\s\S]*position: fixed/);
   assert.match(css, /\.updates-release-actions \{[\s\S]*justify-content: flex-end/);
   assert.match(css, /\.updates-release-actions \[hidden\] \{ display: none; \}/);
   assert.match(app, /drawerButton\.hidden = !state\.officialReleaseUpdateAvailable/);
+  assert.match(app, /OFFICIAL_RELEASE_SHOWCASES/);
+  assert.match(app, /'1\.2\.0': \[/);
+  assert.match(app, /mediaMobile: '\/update-media\/v1\.2\.0-mix-packs-mobile\.mp4'/);
+  assert.match(app, /mobileSource\.media = '\(max-width: 560px\)'/);
+  assert.match(app, /showOfficialReleaseNotice\(latestOfficialRelease\(\), \{ force: true \}\)/);
+  assert.match(app, /label: 'Update Mix Studio'/);
   assert.match(app, /\$\('#settingsUpdatesBtn'\)\.addEventListener\('click', openUpdatesSheet\)/);
 });
 
