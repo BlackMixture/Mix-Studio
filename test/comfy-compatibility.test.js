@@ -16,6 +16,7 @@ const {
   krea2ClipCompatibilityError,
   minimaxH3Compatibility,
   minimaxH3CompatibilityError,
+  minimaxH3NativeAudioSampling,
   nativeInt8Compatibility,
   nativeInt8CompatibilityError,
   normalizeVersion,
@@ -100,6 +101,15 @@ test('MiniMax H3 requires ComfyUI 0.30 native nodes and the minimax CLIP type', 
   assert.equal(minimaxH3Compatibility(null, '0.29.9').supported, false);
   assert.equal(minimaxH3Compatibility(null, '0.30.0').supported, true);
   assert.match(minimaxH3CompatibilityError(missing), /MiniMax H3 needs ComfyUI 0\.30\.0/);
+});
+
+test('MiniMax H3 detects the native AV audio schedule by its renamed core node', () => {
+  const legacy = { MiniMaxH3SigmaShift: { display_name: 'MiniMax H3 Sigma Shift' } };
+  const native = { MiniMaxH3SigmaShift: { display_name: 'ModelSamplingMiniMaxH3' } };
+
+  assert.equal(minimaxH3NativeAudioSampling(legacy), false);
+  assert.equal(minimaxH3NativeAudioSampling(native), true);
+  assert.equal(minimaxH3Compatibility(native).nativeAudioSampling, true);
 });
 
 test('the standalone H3 compatibility check reads system stats and object info', async () => {

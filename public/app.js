@@ -130,6 +130,7 @@ const state = {
   vidH3SageAttention: true,
   vidH3Turbo: false,
   vidH3TurboStrength: 1,
+  vidH3TurboSteps: 4,
   vidH3Steps: 20,
   vidH3RefImageSize: 'match',
   vidH3RefSlots: 1,
@@ -439,6 +440,19 @@ async function api(path, opts) {
   if (Analytics) Analytics.trackGenerationRequest(path, opts);
   if (SupportPrompt) SupportPrompt.recordGenerationRequest(path);
   return data;
+}
+
+// A preflight enhancement status has no ComfyUI job ID yet. Keep it local to
+// the browser that actually submitted the generation so another phone or tab
+// on the same profile cannot overwrite this device's completed result card.
+let generationPreflightRequests = 0;
+async function generationApi(path, opts) {
+  generationPreflightRequests += 1;
+  try {
+    return await api(path, opts);
+  } finally {
+    generationPreflightRequests = Math.max(0, generationPreflightRequests - 1);
+  }
 }
 
 function isJobCancellation(error) {
@@ -2595,6 +2609,7 @@ function saveForm() {
       vidH3SageAttention: state.vidH3SageAttention,
       vidH3Turbo: state.vidH3Turbo,
       vidH3TurboStrength: state.vidH3TurboStrength,
+      vidH3TurboSteps: state.vidH3TurboSteps,
       vidH3Steps: state.vidH3Steps,
       vidH3RefImageSize: state.vidH3RefImageSize,
       vidH3RefSlots: state.vidH3RefSlots,
@@ -2845,6 +2860,7 @@ function loadForm() {
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
     state.vidH3Turbo = f.vidH3Turbo === true;
     state.vidH3TurboStrength = Math.max(0.8, Math.min(1.2, Number(f.vidH3TurboStrength) || 1));
+    state.vidH3TurboSteps = Math.max(4, Math.min(100, Math.round(Number(f.vidH3TurboSteps) || 4)));
     state.vidH3Steps = Math.max(1, Math.min(100, Math.round(Number(f.vidH3Steps) || 20)));
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
     state.vidH3References = Object.fromEntries(['images', 'videos', 'audios'].map((kind) => [
@@ -3722,11 +3738,14 @@ function renderH3TurboMode() {
   const strengthField = $('#vidH3TurboStrengthField');
   const strength = $('#vidH3TurboStrength');
   const strengthValue = $('#vidH3TurboStrengthVal');
-  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue) return;
+  const strengthSlider = $('#vidH3TurboStrengthSlider');
+  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider) return;
   const h3 = state.view === 'video' && state.vidEngine === 'h3';
   const referenceMode = h3 && state.vidH3Mode === 'reference';
   const enabled = state.vidH3Turbo === true;
   const active = enabled && !referenceMode;
+  const turboSteps = normalizedH3TurboSteps();
+  const nativeAudioSampler = lastMeta?.minimaxH3?.nativeAudioSampling === true;
   panel.hidden = !h3;
   toggle.disabled = referenceMode;
   toggle.setAttribute('aria-disabled', String(referenceMode));
@@ -3736,19 +3755,25 @@ function renderH3TurboMode() {
     summary.textContent = 'Reference (R2V) uses Standard H3';
     toggle.title = 'The creator currently validates Turbo for Text + frames, not the Ref2VA model.';
   } else if (active && missing) {
-    summary.textContent = '4 steps · install creator workflow on generate';
-    toggle.title = 'The dedicated Turbo LoRA and audio-video sampler will be installed before generation.';
+    summary.textContent = `${turboSteps} steps · install creator workflow on generate`;
+    toggle.title = 'The Turbo LoRA workflow will be installed before generation.';
   } else if (active) {
-    summary.textContent = '4 steps · dedicated audio-video sampler';
-    toggle.title = 'Creator preview: four-step Turbo LoRA with separate video and audio schedules.';
+    summary.textContent = `${turboSteps} steps${turboSteps === 4 ? '' : ' · 4 recommended'} · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
+    toggle.title = nativeAudioSampler
+      ? 'Turbo LoRA with ComfyUI’s native H3 audio schedule. Four steps is creator-tuned; higher values are supported.'
+      : 'Turbo LoRA with the creator sampler for older ComfyUI cores. Four steps is creator-tuned.';
   } else {
     summary.textContent = `Standard H3 · ${normalizedH3Steps()} steps`;
-    toggle.title = 'Turn on the creator preview Turbo LoRA and dedicated four-step sampler.';
+    toggle.title = 'Turn on the creator Turbo LoRA. Four steps is recommended, and higher step counts remain adjustable.';
   }
   const showStrength = h3TurboActive();
   strengthField.hidden = !showStrength;
   strength.value = String(state.vidH3TurboStrength);
   strengthValue.textContent = Number(state.vidH3TurboStrength).toFixed(2);
+  strengthSlider.style.setProperty(
+    '--h3-turbo-progress',
+    `${((Number(state.vidH3TurboStrength) - 0.8) / 0.4) * 100}%`,
+  );
 }
 
 function renderH3SageAttention() {
@@ -3882,7 +3907,7 @@ $('#vidH3TurboToggle').addEventListener('click', () => {
 
 $('#vidH3TurboStrength').addEventListener('input', (event) => {
   state.vidH3TurboStrength = Math.max(0.8, Math.min(1.2, Number(event.target.value) || 1));
-  $('#vidH3TurboStrengthVal').textContent = state.vidH3TurboStrength.toFixed(2);
+  renderH3TurboMode();
 });
 $('#vidH3TurboStrength').addEventListener('change', saveForm);
 
@@ -6088,26 +6113,6 @@ function h3PromptLooksStructured(value) {
   return /(?:^|\n)\s*(?:integrated_multimodal_description|subject_definitions)\s*:/i.test(String(value || ''));
 }
 
-function h3StructuredPromptReadyForGeneration(value) {
-  if (!h3PromptGuideActive() || state.enhance || !h3PromptLooksStructured(value)) return true;
-  const prompt = String(value || '').trim();
-  const audit = h3PromptGuideAudit(prompt, {
-    expectedReferenceTokens: state.vidH3Mode === 'reference' ? h3PromptReferenceTokens(prompt) : [],
-  });
-  const remembered = state.h3PromptStructure;
-  const sameRememberedPrompt = remembered?.fingerprint === h3PromptFingerprint(prompt);
-  const contextChanged = sameRememberedPrompt
-    && remembered.context !== h3PromptStructureContextSignature();
-  if (audit.structureReady && !contextChanged) return true;
-  openH3PromptGuide();
-  const issue = contextChanged
-    ? 'Duration or frame inputs changed after this prompt was structured'
-    : h3PromptGuideIssueText(audit.structureIssues[0]);
-  setH3PromptGuideBusy(false, `${issue || 'Update the official H3 structure'} before generating.`);
-  toast(`H3 Guide · ${issue || 'Update the official prompt structure'}`, true);
-  return false;
-}
-
 function h3PromptGuideIssueText(issue) {
   if (!issue) return '';
   if (typeof issue === 'string') return issue;
@@ -6129,11 +6134,19 @@ function h3PromptGuideIssueText(issue) {
   if (String(issue.code || '').startsWith('shot-')) return 'Fix the later shot numbers and timestamps';
   if (issue.code === 'missing-reference-token') return `Restore ${issue.token || 'the missing reference tag'}`;
   if (issue.code === 'unexpected-reference-token') return `Remove ${issue.token || 'the invented reference tag'}`;
-  if (issue.code === 'missing-dialogue-format' || issue.code === 'dialogue-speaker-id') return 'Format dialogue with stable speaker IDs';
-  if (issue.code === 'dialogue-language') return 'Choose the actual dialogue language';
-  if (issue.code === 'speaker-id-instability' || issue.code === 'compound-speaker-id') return 'Keep speaker IDs stable across every line';
+  if (issue.code === 'missing-dialogue-format' || issue.code === 'dialogue-speaker-id') return 'Optional: format dialogue with speaker IDs';
+  if (issue.code === 'dialogue-language') return 'Optional: choose the dialogue language';
+  if (issue.code === 'speaker-id-instability' || issue.code === 'compound-speaker-id') return 'Optional: make speaker IDs consistent';
   return String(issue.message || issue.detail || issue.code || 'Official structure is incomplete');
 }
+
+const H3_DIALOGUE_ISSUE_CODES = new Set([
+  'compound-speaker-id',
+  'dialogue-language',
+  'dialogue-speaker-id',
+  'missing-dialogue-format',
+  'speaker-id-instability',
+]);
 
 function h3PromptGuideAudit(value = promptDraft(), overrides = {}) {
   const prompt = String(value || '');
@@ -6161,13 +6174,16 @@ function h3PromptGuideAudit(value = promptDraft(), overrides = {}) {
   const referenceTags = [...new Set(
     (prompt.match(/<(?:Picture|Video|Audio)\s+\d+>/gi) || []).map((tag) => tag.toLowerCase()),
   )];
+  const allStructureIssues = Array.isArray(structure.issues) ? structure.issues : [];
+  const structureIssues = allStructureIssues.filter((issue) => !H3_DIALOGUE_ISSUE_CODES.has(issue.code));
   return {
     prompt,
     referenceMode,
     requiredFields: Array.isArray(structure.requiredFields) ? structure.requiredFields : requiredFields,
     presentFields,
-    structureReady: structure.ready === true,
-    structureIssues: Array.isArray(structure.issues) ? structure.issues : [],
+    structureReady: structure.ready === true || structureIssues.length === 0,
+    structureIssues,
+    dialogueIssues: allStructureIssues.filter((issue) => H3_DIALOGUE_ISSUE_CODES.has(issue.code)),
     structure,
     referenceTags,
     dialogue,
@@ -6240,7 +6256,7 @@ function renderH3PromptGuide() {
     ? `${dialogueCount} line${dialogueCount === 1 ? '' : 's'}`
     : 'None found';
   $('#h3PromptGuideDialogueStatus').textContent = unformattedCount
-    ? `${unformattedCount} ready to format`
+    ? `Optional · ${unformattedCount} ready to format`
     : (dialogueCount ? 'Official tags already applied' : 'Quotes stay exact');
 
   const attachedReferences = audit.referenceMode ? h3ReferenceCount() : 0;
@@ -6279,10 +6295,10 @@ function renderH3PromptGuide() {
   format.textContent = unformattedCount
     ? `Format ${unformattedCount} dialogue line${unformattedCount === 1 ? '' : 's'}`
     : 'Dialogue is formatted';
-  $('#h3PromptStructure').textContent = audit.structureReady ? 'Recheck official format' : 'Structure full prompt';
+  $('#h3PromptStructure').textContent = audit.structureReady ? 'Recheck local format' : 'Add H3 structure locally';
   const undo = state.promptRevisionUndo;
   $('#h3PromptGuideUndo').hidden = !(undo && undo.view === 'video' && audit.prompt.trim() === undo.after);
-  setH3PromptGuideBusy(h3PromptGuideBusy, h3PromptGuideBusy ? 'Structuring the complete H3 prompt…' : '');
+  setH3PromptGuideBusy(h3PromptGuideBusy, h3PromptGuideBusy ? 'Formatting locally…' : '');
 }
 
 function openH3PromptGuide() {
@@ -6327,75 +6343,46 @@ function formatCurrentH3Dialogue() {
   toast('H3 dialogue formatted');
 }
 
-async function structureCurrentH3Prompt() {
+function structureCurrentH3Prompt() {
   if (h3PromptGuideBusy || promptAssistantBusy || !h3PromptGuideActive()) return;
   const before = promptDraft().trim();
   if (!before) {
     setH3PromptGuideBusy(false, 'Write a prompt first.');
     return;
   }
-  const revisionMode = state.vidH3Mode;
-  const source = promptAssistantSourceImage();
-  const seconds = h3EffectiveDurationSeconds();
-  const hasFirstFrame = revisionMode === 'frames' && !!state.vidRef;
-  const hasLastFrame = revisionMode === 'frames' && !!state.vidEnd;
-  const expectedReferenceTokens = revisionMode === 'reference'
-    ? h3PromptReferenceTokens(before)
-    : [];
-  const allowedReferenceTokens = revisionMode === 'reference'
-    ? h3PromptReferenceEntries().map((entry) => entry.tag)
-    : [];
-  const changeRequest = revisionMode === 'reference'
-    ? 'Refactor this into the official MiniMax H3 full-reference six-section format. Preserve every reference token, relationship, and spoken word exactly.'
-    : 'Refactor this into the official MiniMax H3 three-field format for the current frame anchors. Preserve the idea, visible quoted text, and every spoken word exactly.';
-  setH3PromptGuideBusy(true, 'Structuring the complete H3 prompt…');
-  checkpointDesktopInputSetup();
-  try {
-    const result = await api('/api/prompt/revise', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        currentPrompt: before,
-        changeRequest,
-        imageName: source?.name,
-        endImageName: hasFirstFrame && hasLastFrame ? state.vidEnd.name : undefined,
-        kind: 'video',
-        engine: 'h3',
-        seconds,
-        h3Mode: revisionMode,
-        hasFirstFrame,
-        hasLastFrame,
-        allowedReferenceTokens,
-        preserveAuthoredText: true,
-      }),
-    });
-    const revised = String(result.prompt || '').trim();
-    if (!revised) throw new Error('Prompt assistant returned no usable text');
-    const revisedAudit = h3PromptGuideAudit(revised, { expectedReferenceTokens });
-    if (!revisedAudit.structureReady) {
-      const issue = h3PromptGuideIssueText(revisedAudit.structureIssues[0]);
-      throw new Error(`The prompt writer returned an incomplete H3 format${issue ? `: ${issue}` : ''}. Your draft was left unchanged; try again.`);
-    }
-    if (!h3PromptGuideActive() || state.vidH3Mode !== revisionMode || promptDraft().trim() !== before) {
-      throw new Error('The prompt or H3 mode changed while the rewrite was running. Review it and try again.');
-    }
-    state.prompts.video = revised;
-    state.promptRevisionUndo = { before, after: revised, view: 'video' };
-    rememberH3PromptStructure(revised);
-    state.enhance = false;
-    setPromptDraft(revised);
-    updatePromptClear();
-    renderEnhance();
-    saveForm();
-    appendDesktopInputSetup();
-    setH3PromptGuideBusy(false);
-    closeH3PromptGuide({ restoreFocus: false });
-    $('#promptComposer').focus();
-    toast('Prompt structured for MiniMax H3 · Enhance turned off');
-  } catch (error) {
-    setH3PromptGuideBusy(false, error.message || 'Could not structure this prompt');
-    if (!isJobCancellation(error)) toast(error.message, true);
+  if (!H3PromptGuide?.structurePrompt) {
+    setH3PromptGuideBusy(false, 'Local H3 formatting is unavailable. Reload the app and try again.');
+    return;
   }
+  const result = H3PromptGuide.structurePrompt(before, h3PromptGuideContext({
+    expectedReferenceTokens: state.vidH3Mode === 'reference' ? h3PromptReferenceTokens(before) : [],
+  }));
+  const localAudit = h3PromptGuideAudit(result.prompt, {
+    expectedReferenceTokens: state.vidH3Mode === 'reference' ? h3PromptReferenceTokens(result.prompt) : [],
+  });
+  if (!result.changed) {
+    const issue = h3PromptGuideIssueText(localAudit.structureIssues[0]);
+    setH3PromptGuideBusy(false, issue
+      ? `Local check: ${issue}.`
+      : 'Official H3 structure is already current. Dialogue formatting remains optional.');
+    return;
+  }
+  checkpointDesktopInputSetup();
+  state.prompts.video = result.prompt;
+  state.promptRevisionUndo = { before, after: result.prompt, view: 'video' };
+  setPromptDraft(result.prompt);
+  updatePromptClear();
+  saveForm();
+  appendDesktopInputSetup();
+  renderH3PromptGuide();
+  const issue = h3PromptGuideIssueText(localAudit.structureIssues[0]);
+  setH3PromptGuideBusy(
+    false,
+    issue
+      ? `Official skeleton added locally · ${issue}. Fill it manually or use Enhance.`
+      : 'Official H3 structure updated locally · no AI used.',
+  );
+  toast('H3 structure added locally · no AI used');
 }
 
 $('#h3PromptGuideBtn').addEventListener('click', openH3PromptGuide);
@@ -6611,8 +6598,9 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
           allowedReferenceTokens,
         })
         : { ready: true, issues: [] };
-      if (!revisedAudit.ready) {
-        const issue = h3PromptGuideIssueText(revisedAudit.issues?.[0]);
+      const blockingIssue = revisedAudit.issues?.find((issue) => !H3_DIALOGUE_ISSUE_CODES.has(issue.code));
+      if (!revisedAudit.ready && blockingIssue) {
+        const issue = h3PromptGuideIssueText(blockingIssue);
         throw new Error(`The prompt writer returned an incomplete H3 format${issue ? `: ${issue}` : ''}. Your prompt was left unchanged; try again.`);
       }
     }
@@ -6637,6 +6625,11 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
   } catch (error) {
     setPromptAssistantBusy(false, error.message || 'Could not revise this prompt');
     if (!isJobCancellation(error)) toast(error.message, true);
+  } finally {
+    // The internal prompt writer is a short ComfyUI queue job. Its HTTP
+    // response arrives only after that job is removed, so refresh now to keep
+    // the queue badge/card in sync on every success and failure path.
+    refreshQueue().catch(() => { /* leave the last known queue state offline */ });
   }
 });
 
@@ -11593,9 +11586,22 @@ function normalizedH3Steps(value = state.vidH3Steps) {
   return Math.max(1, Math.min(100, Math.round(Number(value) || 20)));
 }
 
+function normalizedH3TurboSteps(value = state.vidH3TurboSteps) {
+  return Math.max(4, Math.min(100, Math.round(Number(value) || 4)));
+}
+
 function videoStepSpecification() {
   if (state.vidEngine === 'h3') {
-    if (h3TurboActive()) return { value: 4, editable: false, hint: 'H3 Turbo · dedicated four-step audio-video sampler' };
+    if (h3TurboActive()) {
+      const value = normalizedH3TurboSteps();
+      return {
+        value,
+        editable: true,
+        hint: value === 4
+          ? 'H3 Turbo · 4 steps is the creator-tuned default'
+          : 'H3 Turbo · 4 steps recommended; higher values trade speed for modest gains',
+      };
+    }
     return { value: normalizedH3Steps(), editable: true, hint: 'MiniMax H3 sampler · adjustable' };
   }
   if (state.vidEngine === 'wan') {
@@ -11646,7 +11652,7 @@ function renderVideoStepControl() {
   input.readOnly = !spec.editable;
   input.setAttribute('aria-readonly', String(!spec.editable));
   input.classList.toggle('fixed-sampling', !spec.editable);
-  input.title = spec.editable ? 'Sampling steps for Standard MiniMax H3' : spec.hint;
+  input.title = spec.hint;
   hint.textContent = spec.hint;
   hint.hidden = false;
 }
@@ -11702,7 +11708,9 @@ function captureGenerationTuning(mode = generationTuningMode()) {
   const previous = state.generationTuning[mode] || defaultGenerationTuning(mode);
   const qwenLocked = mode === 'edit' && state.editEngine === 'qwen';
   state.generationTuning[mode] = normalizeGenerationTuning(mode, {
-    steps: mode === 'video' ? normalizedH3Steps() : (qwenLocked ? previous.steps : ($('#stepsInput').value || previous.steps)),
+    steps: mode === 'video'
+      ? (h3TurboActive() ? normalizedH3TurboSteps() : normalizedH3Steps())
+      : (qwenLocked ? previous.steps : ($('#stepsInput').value || previous.steps)),
     cfg: qwenLocked ? previous.cfg : ($('#cfgInput').value === '' ? previous.cfg : $('#cfgInput').value),
     batch: $('#batchInput').value || previous.batch,
     denoise: mode === 'edit' ? $('#denoiseInput').value : undefined,
@@ -11735,8 +11743,13 @@ function resetGenerationControl(control) {
   const key = control.dataset.defaultReset;
   if (mode === 'video' && key === 'steps') {
     if (state.vidEngine !== 'h3') return renderVideoStepControl();
-    state.vidH3Steps = 20;
-    control.value = 20;
+    if (h3TurboActive()) {
+      state.vidH3TurboSteps = 4;
+      control.value = 4;
+    } else {
+      state.vidH3Steps = 20;
+      control.value = 20;
+    }
   } else if (key === 'seed') control.value = defaults.seed;
   else if (Object.prototype.hasOwnProperty.call(defaults, key)) control.value = defaults[key];
   if (key === 'denoise') $('#denoiseVal').textContent = Number(control.value).toFixed(2);
@@ -15489,7 +15502,8 @@ Object.entries(generationResetControls).forEach(([id, key]) => {
   });
   control.addEventListener('change', () => {
     if (id === 'stepsInput' && state.view === 'video' && state.vidEngine === 'h3') {
-      state.vidH3Steps = normalizedH3Steps(control.value);
+      if (h3TurboActive()) state.vidH3TurboSteps = normalizedH3TurboSteps(control.value);
+      else state.vidH3Steps = normalizedH3Steps(control.value);
     }
     captureGenerationTuning();
     if (id === 'stepsInput' && state.view === 'video') renderVideoStepControl();
@@ -15500,7 +15514,11 @@ Object.entries(generationResetControls).forEach(([id, key]) => {
 $('#stepsInput').addEventListener('input', () => {
   if (state.view === 'video' && state.vidEngine === 'h3') {
     const value = Number($('#stepsInput').value);
-    if (Number.isFinite(value) && value >= 1) state.vidH3Steps = normalizedH3Steps(value);
+    if (Number.isFinite(value) && value >= 1) {
+      if (h3TurboActive()) state.vidH3TurboSteps = normalizedH3TurboSteps(value);
+      else state.vidH3Steps = normalizedH3Steps(value);
+      renderH3TurboMode();
+    }
   }
   renderKrea2Mode();
 });
@@ -17544,7 +17562,6 @@ $('#generateBtn').addEventListener('click', async () => {
     if (h3Reference && !h3ReferenceCount) {
       return toast('MiniMax H3 Reference mode needs at least one image, video, or audio reference', true);
     }
-    if (state.vidEngine === 'h3' && !autoMotionPrompt && !h3StructuredPromptReadyForGeneration(prompt)) return;
     if (!ltxEdit && !['ltx', 'h3'].includes(state.vidEngine) && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
       return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 for text-to-video`, true);
@@ -17576,7 +17593,9 @@ $('#generateBtn').addEventListener('click', async () => {
       autoMotionPrompt,
       preparedMotionPrompt: false,
       engine: state.vidEngine,
-      steps: state.vidEngine === 'h3' ? (h3TurboActive() ? 4 : normalizedH3Steps()) : undefined,
+      steps: state.vidEngine === 'h3'
+        ? (h3TurboActive() ? normalizedH3TurboSteps() : normalizedH3Steps())
+        : undefined,
       seconds: state.vidEngine === 'h3'
         ? h3EffectiveDurationSeconds(Number($('#vidDur').value) || 5)
         : Number($('#vidDur').value) || 5,
@@ -17643,7 +17662,7 @@ $('#generateBtn').addEventListener('click', async () => {
         seed: baseSeed == null ? undefined : baseSeed + index,
       }));
       const settled = await Promise.allSettled(requests.map(async (request) => {
-          const result = await api('/api/animate', {
+          const result = await generationApi('/api/animate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(request),
@@ -17819,7 +17838,7 @@ $('#generateBtn').addEventListener('click', async () => {
       let res;
       while (!res) {
         try {
-          res = await api('/api/generate', {
+          res = await generationApi('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(Object.assign({}, request, lowVramChoice ? { lowVramChoice } : {})),
@@ -18435,6 +18454,11 @@ function renderGenerationProgress(d) {
 
 function renderGenerationStatus(d) {
   if (d.profileId && state.profile && d.profileId !== state.profile.id) return;
+  // Manual Revise Prompt requests report progress inside their sheet, not in
+  // the generation/result card. Ignore this legacy server status defensively
+  // so mixed-version updates cannot leave a stale "Revising prompt" card.
+  if (d.jobId === 'pre'
+    && (d.scope !== 'generation-preflight' || promptAssistantBusy || generationPreflightRequests < 1)) return;
   const phaseText = generationPhaseText(d);
   if (d.kind === 'smartMask' && smartMaskRunning) setSmartMaskLoading(d.text || 'Finding selection…');
   if (state.activeJobs.has(d.jobId) || d.jobId === 'pre') {
@@ -19392,7 +19416,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3MatchSource', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3TurboStrength', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3MatchSource', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3TurboStrength', 'vidH3TurboSteps', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -19550,6 +19574,7 @@ function resetActiveGenerationForm() {
     state.vidH3SageAttention = true;
     state.vidH3Turbo = false;
     state.vidH3TurboStrength = 1;
+    state.vidH3TurboSteps = 4;
     state.vidH3Steps = 20;
     state.vidH3RefImageSize = 'match';
     state.vidH3RefSlots = 1;
@@ -24864,6 +24889,8 @@ async function reuseVideo(it, v) {
   state.vidH3Turbo = engine === 'h3' && info.h3Turbo === true;
   state.vidH3TurboStrength = engine === 'h3' && Number.isFinite(Number(info.h3TurboStrength))
     ? Math.max(0.8, Math.min(1.2, Number(info.h3TurboStrength))) : 1;
+  state.vidH3TurboSteps = engine === 'h3' && info.h3Turbo
+    ? normalizedH3TurboSteps(info.steps || 4) : state.vidH3TurboSteps;
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
   state.vidH3RefSlots = 1;
   state.vidH3References = { images: [], videos: [], audios: [] };

@@ -6,6 +6,7 @@ const {
   appendH3ValidationFeedback,
   h3AuthoredTextSegments,
   h3PromptReferenceTokens,
+  h3PromptValidationFeedback,
   inspectH3PromptOutput,
   validatedH3Prompt,
 } = require('../lib/h3-prompt-validation');
@@ -77,6 +78,32 @@ test('validated H3 prompt rejects a second malformed response with a clear code'
   );
 });
 
+test('speaker formatting can remain an optional validation warning', async () => {
+  let calls = 0;
+  const raw = basePrompt('[Shot 1] (S1) Maya says: <d>[English] Hi.</d>');
+  const prompt = await validatedH3Prompt(async () => {
+    calls += 1;
+    return raw;
+  }, 'Maya says "Hi."', {
+    mode: 'frames', seconds: 5, preserveAuthoredText: true, allowDialogueFormatFallback: true,
+  });
+
+  assert.equal(prompt, raw);
+  assert.equal(calls, 1);
+});
+
+test('generation enhancement can fall back to the authored prompt after structural retries', async () => {
+  let calls = 0;
+  const fallback = 'A baker opens the shop.';
+  const prompt = await validatedH3Prompt(async () => {
+    calls += 1;
+    return 'Still unstructured.';
+  }, fallback, { mode: 'frames', seconds: 5, fallbackOnFailure: true });
+
+  assert.equal(prompt, fallback);
+  assert.equal(calls, 2);
+});
+
 test('automatic enhancement preserves exact authored dialogue and visible text', () => {
   const source = 'Maya says "Keep rolling..." while a sign reads “OPEN”.';
   const changed = inspectH3PromptOutput(basePrompt('[Shot 1] Maya speaks beside the sign.'), source, {
@@ -110,6 +137,52 @@ test('automatic enhancement preserves exact authored dialogue and visible text',
     '[Shot 1] Maya (S1) says: <d>[English] Keep rolling...</d> beside a sign reading "OPEN".',
   ), source, { mode: 'frames', seconds: 5, preserveAuthoredText: true });
   assert.equal(preserved.audit.ready, true);
+});
+
+test('official rich dialogue remains valid when speaker-name inference is ambiguous', () => {
+  const source = 'The baker says "First batch of the morning."';
+  const inspected = inspectH3PromptOutput(basePrompt(
+    '[Shot 1] The camera pushes in slowly from a medium shot to a close-up as the middle-aged baker with a calm, slightly raspy voice (S1) places a fresh loaf on the wooden counter and says: <d>[English] First batch of the morning.</d>',
+  ), source, { mode: 'frames', seconds: 5, preserveAuthoredText: true });
+
+  assert.equal(inspected.audit.ready, true);
+  assert.deepEqual(inspected.audit.missingDialogueFormat, []);
+});
+
+test('speaker IDs before or without an identity remain invalid enhancement output', () => {
+  for (const dialogue of [
+    '(S1) Maya says: <d>[English] Hi.</d>',
+    '(S1) says: <d>[English] Hi.</d>',
+  ]) {
+    const inspected = inspectH3PromptOutput(basePrompt(`[Shot 1] ${dialogue}`), 'Maya says "Hi."', {
+      mode: 'frames', seconds: 5, preserveAuthoredText: true,
+    });
+    assert.equal(inspected.audit.ready, false);
+    assert.ok(inspected.audit.issueCodes.includes('dialogue-speaker-id'));
+    assert.deepEqual(inspected.audit.missingDialogueFormat, ['Hi.']);
+  }
+});
+
+test('dialogue retry feedback aggregates lines and never repeats a message', () => {
+  const source = 'Maya says "One." Leo replies "Two."';
+  const inspected = inspectH3PromptOutput(basePrompt(
+    '[Shot 1] Maya says: <d>[English] One.</d> Leo replies: <d>[English] Two.</d>',
+  ), source, { mode: 'frames', seconds: 5, preserveAuthoredText: true });
+  const missingFormatIssues = inspected.audit.issues.filter((issue) => issue.code === 'missing-dialogue-format');
+  const feedback = h3PromptValidationFeedback({
+    issues: [
+      ...inspected.audit.issues,
+      { code: 'duplicate', message: missingFormatIssues[0].message },
+    ],
+  });
+
+  assert.equal(missingFormatIssues.length, 1);
+  assert.equal(missingFormatIssues[0].count, 2);
+  assert.deepEqual(missingFormatIssues[0].texts, ['One.', 'Two.']);
+  assert.equal(
+    feedback.match(/Format every clearly attributed spoken line/g)?.length,
+    1,
+  );
 });
 
 test('reference validation preserves every reference token from the authored prompt', () => {

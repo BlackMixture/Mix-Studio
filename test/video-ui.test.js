@@ -408,6 +408,7 @@ test('automatic motion prompting keeps each queued frame and video submission at
 
 test('Video exposes the shared prompt revision assistant with H3-aware context', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  const galleryAnimate = app.slice(app.indexOf("$('#animateGo').addEventListener"), app.indexOf("$('#lbClose').addEventListener"));
   assert.match(html, /id="videoPromptAssistantBtn"[^>]*aria-label="Revise video prompt"/);
   assert.match(app, /#videoPromptAssistantBtn'\)\.addEventListener\('click', openPromptAssistant\)/);
   assert.match(app, /kind: revisionView === 'video' \? 'video' : 'image'/);
@@ -416,32 +417,46 @@ test('Video exposes the shared prompt revision assistant with H3-aware context',
   assert.match(app, /'Add shot beats'/);
   assert.match(app, /#videoPromptTools'\)\.hidden = !isVideo/);
   assert.match(server, /videoRevision[\s\S]*reviseVideoPrompt\(/);
+  assert.match(server, /broadcastStatus: false/);
+  assert.match(server, /statusText && options\.broadcastStatus !== false/);
+  assert.match(server, /scope: 'generation-preflight'/);
+  assert.match(app, /d\.jobId === 'pre'[\s\S]{0,160}d\.scope !== 'generation-preflight'[\s\S]{0,100}generationPreflightRequests < 1/);
+  assert.match(app, /async function generationApi\([\s\S]{0,260}generationPreflightRequests = Math\.max/);
+  assert.doesNotMatch(galleryAnimate, /generationApi\(/);
+  assert.match(app, /finally \{[\s\S]{0,260}refreshQueue\(\)\.catch/);
   assert.match(promptEnhance, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
 });
 
 test('MiniMax H3 exposes an official-format guide with safe local dialogue formatting', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  const localStructure = app.slice(
+    app.indexOf('function structureCurrentH3Prompt()'),
+    app.indexOf("$('#h3PromptGuideBtn').addEventListener", app.indexOf('function structureCurrentH3Prompt()')),
+  );
   assert.match(html, /id="h3PromptGuideBtn"[^>]*aria-label="Open MiniMax H3 prompt guide"[^>]*hidden/);
-  assert.match(html, /id="h3PromptGuideSheet"[\s\S]*Official MiniMax structure[\s\S]*id="h3PromptFormatDialogue"[\s\S]*id="h3PromptStructure"/);
+  assert.match(html, /id="h3PromptGuideSheet"[\s\S]*Optional MiniMax structure[\s\S]*id="h3PromptFormatDialogue"[\s\S]*id="h3PromptStructure"/);
   assert.match(html, /id="h3PromptDialogueLanguage"[\s\S]*<option>Spanish<\/option>/);
   assert.ok(html.indexOf('/h3-prompt-guide.js') < html.indexOf('/app.js'));
   assert.match(app, /const H3PromptGuide = window\.H3PromptGuide/);
   assert.match(app, /function renderH3PromptGuideTrigger\(\)[\s\S]{0,220}h3PromptGuideActive\(\)/);
   assert.match(app, /H3PromptGuide\.formatDialogue\(before,[\s\S]{0,100}language:/);
+  assert.match(localStructure, /H3PromptGuide\.structurePrompt\(before, h3PromptGuideContext/);
+  assert.doesNotMatch(localStructure, /api\(/);
+  assert.doesNotMatch(localStructure, /state\.enhance\s*=/);
+  assert.match(html, /Generate with any prompt[\s\S]{0,180}local tools can add the official structure and dialogue tags without an LLM/);
+  assert.match(html, /These tools never gate Generate/);
   assert.match(app, /function h3EffectiveDurationSeconds\([\s\S]{0,180}H3PromptGuide\.h3EffectiveDurationSeconds\(value\)/);
   assert.match(app, /seconds: h3EffectiveDurationSeconds\(\)/);
   assert.match(app, /Official structure ready[\s\S]{0,240}effectiveDuration\.toFixed\(2\)\}s output/);
-  assert.match(app, /function h3StructuredPromptReadyForGeneration\([\s\S]{0,700}remembered\.context !== h3PromptStructureContextSignature\(\)/);
-  assert.match(app, /state\.vidEngine === 'h3' && !autoMotionPrompt && !h3StructuredPromptReadyForGeneration\(prompt\)/);
+  assert.doesNotMatch(app, /h3StructuredPromptReadyForGeneration/);
   assert.match(app, /h3PromptStructure: state\.h3PromptStructure/);
   assert.match(app, /state\.promptRevisionUndo = \{ before, after: result\.prompt, view: 'video' \}/);
-  assert.match(app, /changeRequest = revisionMode === 'reference'[\s\S]{0,500}official MiniMax H3 three-field format/);
   assert.match(app, /hasFirstFrame: revisionEngine === 'h3' \? revisionHasFirstFrame : undefined/);
   assert.match(app, /hasLastFrame: revisionEngine === 'h3' \? revisionHasLastFrame : undefined/);
   assert.match(app, /allowedReferenceTokens: revisionEngine === 'h3' \? allowedReferenceTokens : undefined/);
   assert.match(app, /allowedReferenceTokens: referenceMode \? h3PromptReferenceEntries\(\)\.map\(\(entry\) => entry\.tag\) : \[\]/);
   assert.match(app, /H3PromptGuide\.auditStructure\(revised,/);
-  assert.match(app, /preserveAuthoredText: true/);
+  assert.match(app, /const blockingIssue = revisedAudit\.issues\?\.find\(\(issue\) => !H3_DIALOGUE_ISSUE_CODES\.has\(issue\.code\)\)/);
   assert.match(server, /function h3PromptMaxTokens\(mode\)[\s\S]{0,220}mode === 'reference' \? 1400 : 900/);
   assert.match(server, /const hasFirstFrame = body\.hasFirstFrame === undefined[\s\S]{0,120}revisionMode === 'frames' && !!imageName[\s\S]{0,80}body\.hasFirstFrame === true/);
   assert.match(server, /const hasLastFrame = body\.hasLastFrame === true/);
@@ -486,11 +501,11 @@ test('MiniMax H3 enhancement uses a validated duration-aware prompt pass and rec
 test('Video exposes model-aware step counts and keeps fixed schedules read-only', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="advancedStepsHint"/);
-  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are shown read-only; Standard MiniMax H3 steps are adjustable/);
+  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Turbo/);
   assert.match(app, /#seedInput'\)\.closest\('\.panel'\)\.hidden = false/);
   assert.match(app, /function videoStepSpecification\(\)/);
   assert.match(app, /#advancedStepsField'\)\.hidden = false/);
-  assert.match(app, /steps: state\.vidEngine === 'h3' \? \(h3TurboActive\(\) \? 4 : normalizedH3Steps\(\)\) : undefined/);
+  assert.match(app, /h3TurboActive\(\) \? normalizedH3TurboSteps\(\) : normalizedH3Steps\(\)/);
   assert.match(app, /input\.readOnly = !spec\.editable/);
   assert.match(app, /if \(view === 'video'\) return 'video'/);
   assert.match(app, /const batch = Math\.max\(1, Math\.min\(8, Number\(\$\('#batchInput'\)\.value\)/);
@@ -499,19 +514,29 @@ test('Video exposes model-aware step counts and keeps fixed schedules read-only'
   assert.match(server, /steps: opts\.steps/);
 });
 
-test('MiniMax H3 Turbo is an opt-in four-step creator workflow for Text + frames', () => {
+test('MiniMax H3 Turbo uses audio-safe sampling, adjustable steps, and a polished local strength control', () => {
   assert.match(html, /id="vidH3TurboToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
-  assert.match(html, /id="vidH3TurboSummary">4 steps · dedicated audio-video sampler/);
+  assert.match(html, /id="vidH3TurboSummary">4 steps recommended · audio-safe sampler/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*min="0\.8"[^>]*max="1\.2"[^>]*value="1"/);
+  assert.match(html, /<label for="vidH3TurboStrength">LoRA strength<\/label>/);
+  assert.match(html, /id="vidH3TurboStrength"[^>]*aria-describedby="vidH3TurboStrengthHelp vidH3TurboStrengthScale"/);
+  assert.ok(html.indexOf('id="vidH3TurboStrengthField"') < html.indexOf('id="vidMotionPromptRow"'));
+  assert.match(css, /\.h3-turbo-strength-slider::before[\s\S]{0,500}--h3-turbo-progress/);
   assert.match(html, /id="setH3TurboLora"/);
   assert.match(app, /vidH3Turbo: false/);
+  assert.match(app, /vidH3TurboSteps: 4/);
+  assert.match(app, /function normalizedH3TurboSteps\([\s\S]{0,120}Math\.max\(4/);
   assert.match(app, /function h3TurboActive\(\)[\s\S]*state\.vidH3Mode === 'frames'[\s\S]*state\.vidH3Turbo === true/);
   assert.match(app, /Reference \(R2V\) uses Standard H3/);
+  assert.match(app, /4 steps recommended; higher values trade speed for modest gains/);
+  assert.match(app, /native audio-safe sampler/);
   assert.match(app, /if \(h3TurboActive\(\)\) components\.add\('h3turbo'\)/);
   assert.match(app, /h3Turbo: state\.vidEngine === 'h3' \? h3TurboActive\(\) : undefined/);
   assert.match(server, /const h3Turbo = h3TurboRequested && h3Mode === 'frames'/);
   assert.match(server, /code: 'h3_turbo_reference_unsupported'/);
-  assert.match(server, /videoSteps = engine === 'h3'[\s\S]{0,80}h3Turbo \? 4/);
+  assert.match(server, /h3Turbo \? clampInt\(body\.steps, 4, 100, 4\)/);
+  assert.match(server, /h3TurboNativeSampler = minimaxH3NativeAudioSampling\(info\)/);
+  assert.match(server, /if \(h3Core\.nativeAudioSampling\)[\s\S]{0,260}missing\.h3turbo = \['MiniMaxH3TurboLoRA'\]/);
   assert.match(server, /h3turbo: \['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'\]/);
 });
 

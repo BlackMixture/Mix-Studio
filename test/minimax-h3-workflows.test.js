@@ -124,7 +124,7 @@ test('MiniMax H3 SageAttention patches only the guider model and leaves schedule
   assert.deepEqual(standard.guider.inputs.model, ['model', 0]);
 });
 
-test('MiniMax H3 Turbo uses the creator LoRA, four-step AV sampler, and no cache nodes', async () => {
+test('MiniMax H3 Turbo keeps the creator sampler as a legacy-core fallback with adjustable steps', async () => {
   const graph = await buildMiniMaxH3Graph({
     mode: 'frames', prompt: 'A singer performs under soft stage light.', W: 1344, H: 768,
     frames: 124, seed: 17, steps: 28, turbo: true, turboStrength: 1.1,
@@ -141,10 +141,34 @@ test('MiniMax H3 Turbo uses the creator LoRA, four-step AV sampler, and no cache
   });
   assert.deepEqual(graph.turbo_sampler, { class_type: 'MiniMaxH3TurboSampler', inputs: {} });
   assert.equal(graph.sampler_select, undefined);
-  assert.equal(graph.scheduler.inputs.steps, 4);
+  assert.equal(graph.scheduler.inputs.steps, 28);
   assert.deepEqual(graph.scheduler.inputs.model, ['turbo_lora', 0]);
   assert.deepEqual(graph.guider.inputs.model, ['turbo_lora', 0]);
   assert.deepEqual(graph.sample.inputs.sampler, ['turbo_sampler', 0]);
+  assert.deepEqual(graph.decode_audio.inputs, { samples: ['sample', 0], vae: ['audio_vae', 0] });
+  assert.deepEqual(graph.video.inputs.audio, ['decode_audio', 0]);
+  assert.equal(Object.values(graph).some((node) => /cache/i.test(node.class_type)), false);
+});
+
+test('MiniMax H3 Turbo uses native Euler sampling after ComfyUI audio scheduling is available', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A singer performs under soft stage light.', W: 1344, H: 768,
+    frames: 124, seed: 17, steps: 7, turbo: true, turboNativeSampler: true,
+  }, settings);
+
+  assert.equal(graph.turbo_sampler, undefined);
+  assert.deepEqual(graph.native_av_sampling, {
+    class_type: 'MiniMaxH3SigmaShift',
+    inputs: { model: ['turbo_lora', 0], shift_video: 12, shift_audio: 3 },
+  });
+  assert.deepEqual(graph.sampler_select, {
+    class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' },
+  });
+  assert.equal(graph.scheduler.inputs.scheduler, 'simple');
+  assert.equal(graph.scheduler.inputs.steps, 7);
+  assert.deepEqual(graph.scheduler.inputs.model, ['native_av_sampling', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['native_av_sampling', 0]);
+  assert.deepEqual(graph.sample.inputs.sampler, ['sampler_select', 0]);
   assert.equal(Object.values(graph).some((node) => /cache/i.test(node.class_type)), false);
 });
 

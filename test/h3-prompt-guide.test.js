@@ -42,6 +42,7 @@ test('H3 prompt guide exposes the same formatter API to Node and browsers', () =
   assert.equal(typeof H3PromptGuide.auditStructure, 'function');
   assert.equal(typeof H3PromptGuide.formatDialogue, 'function');
   assert.equal(typeof H3PromptGuide.h3EffectiveDurationSeconds, 'function');
+  assert.equal(typeof H3PromptGuide.structurePrompt, 'function');
 
   const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'h3-prompt-guide.js'), 'utf8');
   const context = vm.createContext({});
@@ -50,6 +51,7 @@ test('H3 prompt guide exposes the same formatter API to Node and browsers', () =
   assert.equal(typeof context.H3PromptGuide.auditStructure, 'function');
   assert.equal(typeof context.H3PromptGuide.formatDialogue, 'function');
   assert.equal(typeof context.H3PromptGuide.h3EffectiveDurationSeconds, 'function');
+  assert.equal(typeof context.H3PromptGuide.structurePrompt, 'function');
 });
 
 test('browser H3 duration helper stays aligned with the generation frame grid', () => {
@@ -62,6 +64,82 @@ test('browser H3 duration helper stays aligned with the generation frame grid', 
   assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(5), 124 / 24);
   assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(10), 243 / 24);
   assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(15), 362 / 24);
+});
+
+test('local H3 structure wraps a plain prompt without inventing creative content', () => {
+  const source = 'Maya says "Keep rolling..." beside a sign reading "OPEN".';
+  const result = H3PromptGuide.structurePrompt(source, { mode: 'frames', seconds: 5 });
+
+  assert.equal(result.wrapped, true);
+  assert.equal(result.changed, true);
+  assert.ok(result.prompt.includes(`[Shot 1] ${source}`));
+  assert.match(result.prompt, /^integrated_multimodal_description:\n/);
+  assert.match(result.prompt, /\noverall_soundscape:\n\nnon_diegetic_music:$/);
+  assert.doesNotMatch(result.prompt, /<d>|\[English\]|\bN\/A\b/);
+  assert.equal((result.prompt.match(/Keep rolling\.\.\./g) || []).length, 1);
+  assert.equal((result.prompt.match(/"OPEN"/g) || []).length, 1);
+  assert.equal(result.audit.ready, false);
+  assert.ok(result.audit.issueCodes.includes('empty-field'));
+});
+
+test('local H3 structure creates a conservative reference skeleton and preserves tokens', () => {
+  const source = 'Use <Picture 1> for the baker and <Audio 1> for her voice. She waves.';
+  const result = H3PromptGuide.structurePrompt(source, {
+    mode: 'reference',
+    seconds: 10,
+    expectedReferenceTokens: ['<Picture 1>', '<Audio 1>'],
+    allowedReferenceTokens: ['<Picture 1>', '<Audio 1>'],
+  });
+
+  assert.equal(result.wrapped, true);
+  assert.match(result.prompt, /^subject_definitions:\n\nsummary:\n\nretention_analysis:\n\ndetailed_description:\n/);
+  assert.ok(result.prompt.includes(`[Shot 1] ${source}`));
+  assert.doesNotMatch(result.prompt, /^How the reference pictures align/m);
+  assert.equal((result.prompt.match(/<Picture 1>/g) || []).length, 1);
+  assert.equal((result.prompt.match(/<Audio 1>/g) || []).length, 1);
+  assert.doesNotMatch(result.prompt, /fully_preserved|reference generation|\bN\/A\b/);
+});
+
+test('local H3 structure synchronizes frame alignment without rewriting existing fields', () => {
+  const structured = baseH3Prompt('[Shot 1] A baker opens the shop.');
+  const first = H3PromptGuide.structurePrompt(structured, {
+    mode: 'frames', seconds: 10, hasFirstFrame: true, hasLastFrame: true,
+  });
+  const expected = 'How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 10.13-second mark of the target video.';
+
+  assert.equal(first.wrapped, false);
+  assert.equal(first.prompt, `${expected}\n\n${structured}`);
+  assert.equal(first.audit.ready, true);
+  const repeated = H3PromptGuide.structurePrompt(first.prompt, {
+    mode: 'frames', seconds: 10, hasFirstFrame: true, hasLastFrame: true,
+  });
+  assert.equal(repeated.changed, false);
+  assert.equal(repeated.prompt, first.prompt);
+});
+
+test('local H3 structure removes only exact generated alignment lines', () => {
+  const authored = `How the reference pictures align with the target video is explained by an on-screen tutorial.\n${baseH3Prompt('[Shot 1] The tutorial begins.')}`;
+  const preserved = H3PromptGuide.structurePrompt(authored, { mode: 'frames', seconds: 5 });
+  assert.equal(preserved.prompt, authored);
+
+  const official = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.';
+  const duplicate = H3PromptGuide.structurePrompt(`${official}\n\n${official}\n\n${baseH3Prompt('[Shot 1] A baker opens the shop.')}`, {
+    mode: 'frames', seconds: 5, hasFirstFrame: true,
+  });
+  assert.equal((duplicate.prompt.match(/For the target video, at 0\.00 seconds/g) || []).length, 1);
+  assert.equal(H3PromptGuide.structurePrompt(duplicate.prompt, {
+    mode: 'frames', seconds: 5, hasFirstFrame: true,
+  }).changed, false);
+});
+
+test('local H3 structure strips a stale alignment before wrapping plain prose', () => {
+  const official = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.';
+  const source = `${official}\n\n[Shot 1] A baker opens the shop.`;
+  const result = H3PromptGuide.structurePrompt(source, { mode: 'frames', seconds: 5 });
+
+  assert.doesNotMatch(result.prompt, /For the target video/);
+  assert.match(result.prompt, /^integrated_multimodal_description:\n\[Shot 1\] A baker opens the shop\./);
+  assert.equal((result.prompt.match(/\[Shot 1\]/g) || []).length, 1);
 });
 
 test('formats clearly attributed dialogue with stable speaker IDs', () => {
@@ -175,6 +253,19 @@ test('leaves signs, screens, labels, and other likely on-screen copy untouched',
   assert.match(result.prompt, /Alice \(S1\) says: <d>\[English\] Wait!<\/d>/);
   assert.equal(result.replacements, 1);
   assert.equal(result.before.skippedDisplayTextCount, 3);
+});
+
+test('does not treat ambiguous action verbs as raw dialogue', () => {
+  const input = [
+    'The courier delivers "Package A" to the desk.',
+    'The app responds "OK" on screen.',
+    'Maya voices "concern" about the plan.',
+  ].join(' ');
+  const result = H3PromptGuide.formatDialogue(input);
+
+  assert.equal(result.changed, false);
+  assert.equal(result.replacements, 0);
+  assert.equal(result.prompt, input);
 });
 
 test('does not rewrite unattributed quotes or unstable pronoun attributions', () => {
@@ -365,6 +456,52 @@ test('structure audit requires real dialogue language tags and stable speaker ID
     '[Shot 1] Maya (S1) whispers softly, <d>[English] Ready.</d> Leo (S2) replies: <d>[English] Ready.</d> The two children (S1,S2) shout together, <d>[English] Together!</d>',
   ), { mode: 'frames', seconds: 5 });
   assert.equal(compound.ready, true);
+});
+
+test('structure audit accepts the official rich bakery dialogue example', () => {
+  const audit = H3PromptGuide.auditStructure(baseH3Prompt(
+    '[Shot 1] The camera pushes in slowly from a medium shot to a close-up as the middle-aged baker with a calm, slightly raspy voice (S1) places a fresh loaf on the wooden counter and says: <d>[English] First batch of the morning.</d>',
+  ), { mode: 'frames', seconds: 5 });
+
+  assert.equal(audit.ready, true);
+  assert.deepEqual(audit.issues, []);
+});
+
+test('structure audit rejects speaker IDs before or without an identity', () => {
+  for (const dialogue of [
+    '(S1) Maya says: <d>[English] Hi.</d>',
+    '(S1) says: <d>[English] Hi.</d>',
+  ]) {
+    const audit = H3PromptGuide.auditStructure(baseH3Prompt(`[Shot 1] ${dialogue}`), {
+      mode: 'frames', seconds: 5,
+    });
+    assert.equal(audit.ready, false);
+    assert.ok(audit.issueCodes.includes('dialogue-speaker-id'));
+  }
+});
+
+test('structure audit permits a stable ID when the same speaker description is shortened', () => {
+  const audit = H3PromptGuide.auditStructure(baseH3Prompt([
+    '[Shot 1] The young woman with a quiet, breathy voice (S1) says: <d>[English] I get off at the next station.</d>',
+    '[Shot 2] At 00:03.000, the woman (S1) whispers: <d>[English] This is my stop.</d>',
+  ].join(' ')), { mode: 'frames', seconds: 5 });
+
+  assert.equal(audit.ready, true);
+  assert.deepEqual(audit.issues, []);
+});
+
+test('structure audit catches role-ID collisions and rich-description ID changes', () => {
+  const collision = H3PromptGuide.auditStructure(baseH3Prompt([
+    '[Shot 1] The baker (S1) says: <d>[English] Morning.</d>',
+    '[Shot 2] At 00:03.000, the pilot (S1) replies: <d>[English] Ready.</d>',
+  ].join(' ')), { mode: 'frames', seconds: 5 });
+  assert.ok(collision.issueCodes.includes('speaker-id-instability'));
+
+  const changedRichId = H3PromptGuide.auditStructure(baseH3Prompt([
+    '[Shot 1] The camera pushes in as the middle-aged baker with a calm, raspy voice (S1) places a loaf down and says: <d>[English] Morning.</d>',
+    '[Shot 2] At 00:03.000, the baker (S2) whispers: <d>[English] Again.</d>',
+  ].join(' ')), { mode: 'frames', seconds: 5 });
+  assert.ok(changedRichId.issueCodes.includes('speaker-id-instability'));
 });
 
 test('structure audit enforces a stable identity-to-speaker-ID mapping', () => {

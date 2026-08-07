@@ -5,6 +5,10 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.H3PromptGuide = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function h3PromptGuideFactory() {
+  // Raw quoted prose is formatted only for verbs that unambiguously introduce
+  // speech. Broader vocal verbs remain valid when an already-formatted H3
+  // dialogue block uses them, but must not turn phrases such as “delivers a
+  // package” or “the app responds” into spoken lines.
   const SPOKEN_VERB_SOURCE = [
     'says\\s+in\\s+(?:(?:an?\\s+)?off-screen\\s+)?voiceover',
     'calls\\s+out',
@@ -23,8 +27,8 @@
     'mutters',
     'exclaims',
     'announces',
-    'call\s+out',
-    'cry\s+out',
+    'call\\s+out',
+    'cry\\s+out',
     'narrate',
     'chant',
     'sing',
@@ -39,6 +43,15 @@
     'mutter',
     'exclaim',
     'announce',
+  ].join('|');
+  const FORMATTED_SPOKEN_VERB_SOURCE = [
+    SPOKEN_VERB_SOURCE,
+    'continues?',
+    'delivers?',
+    'responds?',
+    'speaks?',
+    'utters?',
+    'voices?',
   ].join('|');
 
   // These nouns describe surfaces that can contain exact visible copy. A line
@@ -84,7 +97,8 @@
     return snappedFrames / H3_FPS;
   }
   const KNOWN_PROMPT_FIELDS = new Set([...BASE_PROMPT_FIELDS, ...REFERENCE_PROMPT_FIELDS]);
-  const ALIGNMENT_LINE_RE = /^(?:For the target video, at 0\.00 seconds into the target video,|How the reference pictures align with the target video)/;
+  const ALIGNMENT_LINE_RE = /^(?:For the target video, at 0\.00 seconds into the target video,\s*<Picture 1>|How the reference pictures align with the target video\s+—\s+(?:Picture 1|<Picture 1>))/;
+  const OFFICIAL_ALIGNMENT_LINE_RE = /^(?:For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.|How the reference pictures align with the target video — (?:Picture 1 \(from Shot 1\) aligns with the 0\.00-second mark of the target video; Picture 2 \(from Shot \d+\) aligns with the \d+\.\d{2}-second mark of the target video\.|<Picture 1> \(from \[Shot \d+\]\) aligns with the \d+\.\d{2}-second mark of the target video\.))$/;
 
   const CONTEXT_PROPER_WORDS = new Set([
     'a', 'after', 'an', 'as', 'at', 'before', 'by', 'during', 'finally',
@@ -243,6 +257,40 @@
       if (match[0].length === 0) boundaryRe.lastIndex += 1;
     }
     return windowStart + boundaryEnd;
+  }
+
+  const NON_SPEAKER_CORES = new Set([
+    'app', 'application', 'audio', 'camera', 'display', 'frame', 'image',
+    'line', 'music', 'package', 'scene', 'screen', 'shot', 'sign', 'sound',
+    'text', 'video', 'voice',
+  ]);
+
+  function roleSpeakerCore(value) {
+    const normalized = normalizeSpeakerKey(value)
+      .replace(/^(?:the|a|an)\s+/, '')
+      .split(/\b(?:with|who|wearing|holding|carrying)\b/, 1)[0]
+      .trim();
+    const words = normalized.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
+    const core = words[words.length - 1] || '';
+    return NON_SPEAKER_CORES.has(core) ? '' : core;
+  }
+
+  // Rich official prompts can place camera/action prose before the identity,
+  // which is too long for the compact raw-dialogue parser. When that happens,
+  // accept only a conservative role phrase that still appears before the ID;
+  // an ID at the start of the clause or before the name remains invalid.
+  function fallbackSpeakerBeforeId(text, idStart) {
+    const raw = text.slice(lastSpeakerBoundary(text, idStart), idStart).trim();
+    if (!raw) return { valid: false, core: '' };
+    const reference = raw.match(/<(?:Picture|Subject)\s+\d+>\s*$/i);
+    if (reference) return { valid: true, core: normalizeSpeakerKey(reference[0]) };
+
+    const withRoles = [...raw.matchAll(/\b(?:the|a|an)\s+[\p{L}\p{N}'’\-]+(?:\s+[\p{L}\p{N}'’\-]+){0,8}\s+with\b/giu)];
+    const withRole = withRoles[withRoles.length - 1];
+    const trailingRole = raw.match(/\b(?:the|a|an)\s+[\p{L}\p{N}'’\-]+(?:\s+[\p{L}\p{N}'’\-]+){0,8}\s*$/iu);
+    const role = withRole ? withRole[0].replace(/\s+with$/i, '') : trailingRole?.[0];
+    const core = roleSpeakerCore(role || '');
+    return { valid: !!core, core };
   }
 
   function speakerFromRange(text, rawStart, rawEnd) {
@@ -465,14 +513,21 @@
     const re = /<d(?:\s[^>]*)?>\s*\[([^\]\r\n]+)\]([\s\S]*?)<\/d>/gi;
     let match;
     while ((match = re.exec(text))) {
-      const beforeStart = Math.max(0, match.index - 220);
+      // H3's official examples often put rich camera, action, and delivery
+      // prose between a speaker ID and the dialogue block. Keep the scan inside
+      // the current sentence/line, but do not reject a valid line merely
+      // because that prose is longer than a compact caption.
+      const beforeStart = Math.max(0, match.index - 900);
       const before = text.slice(beforeStart, match.index);
       const attribution = before.match(new RegExp(
-        `\\((S\\d+(?:\\s*,\\s*S\\d+)*)\\)([^.!?\\n<>]{0,140}?)\\b(${SPOKEN_VERB_SOURCE})\\b([^.!?\\n<>]{0,100}?)\\s*[:,]\\s*$`,
+        `\\((S\\d+(?:\\s*,\\s*S\\d+)*)\\)([^.!?\\n<>]{0,640}?)\\b(${FORMATTED_SPOKEN_VERB_SOURCE})\\b([^.!?\\n<>]{0,240}?)\\s*[:,]\\s*$`,
         'i',
       ));
       let speaker = '';
       let speakerKey = '';
+      let speakerType = '';
+      let speakerCore = '';
+      let hasSpeakerBeforeId = false;
       let speakerId = '';
       let verb = '';
       if (attribution && attribution.index != null) {
@@ -481,6 +536,13 @@
         if (extracted.valid) {
           speaker = extracted.identity;
           speakerKey = extracted.key;
+          speakerType = extracted.type;
+          speakerCore = extracted.type === 'role-speaker' ? roleSpeakerCore(extracted.identity) : '';
+          hasSpeakerBeforeId = true;
+        } else {
+          const fallback = fallbackSpeakerBeforeId(text, idStart);
+          speakerCore = fallback.core;
+          hasSpeakerBeforeId = fallback.valid;
         }
         speakerId = attribution[1].toUpperCase().replace(/\s+/g, '');
         verb = canonicalSpokenVerb(attribution[3]);
@@ -495,6 +557,9 @@
         start: match.index,
         end: match.index + match[0].length,
         speakerKey,
+        speakerType,
+        speakerCore,
+        hasSpeakerBeforeId,
       });
     }
     return entries;
@@ -607,6 +672,73 @@
       }
     }
     return { lines, markers, bodies, presentFields };
+  }
+
+  function withoutLeadingAlignment(value) {
+    const lines = sourceText(value).replace(/\r\n?/g, '\n').split('\n');
+    let firstContent = lines.findIndex((line) => line.trim());
+    while (firstContent >= 0 && OFFICIAL_ALIGNMENT_LINE_RE.test(lines[firstContent].trim())) {
+      lines.splice(firstContent, 1);
+      while (firstContent < lines.length && !lines[firstContent].trim()) lines.splice(firstContent, 1);
+      firstContent = lines.findIndex((line) => line.trim());
+    }
+    return lines.join('\n').trim();
+  }
+
+  // Add only the parts of the official H3 contract that can be determined
+  // without a language model. This intentionally does not invent sound,
+  // music, reference relationships, retention labels, or dialogue language.
+  // Users can fill those fields themselves or use Prompt Enhance for an AI
+  // rewrite; the separate Format dialogue action remains deterministic too.
+  function structurePrompt(value, context = {}) {
+    const before = sourceText(value).trim();
+    const mode = String(context.mode || 'frames').toLowerCase() === 'reference' ? 'reference' : 'frames';
+    const referenceMode = mode === 'reference';
+    const requiredFields = [...(referenceMode ? REFERENCE_PROMPT_FIELDS : BASE_PROMPT_FIELDS)];
+    const descriptionField = referenceMode ? 'detailed_description' : 'integrated_multimodal_description';
+    if (!before) {
+      return {
+        prompt: before,
+        changed: false,
+        wrapped: false,
+        alignmentChanged: false,
+        before: auditStructure(before, { ...context, mode }),
+        audit: auditStructure(before, { ...context, mode }),
+      };
+    }
+
+    const beforeAudit = auditStructure(before, { ...context, mode });
+    const beforeWithoutAlignment = withoutLeadingAlignment(before);
+    const knownSections = fieldSections(beforeWithoutAlignment, requiredFields);
+    let prompt = beforeWithoutAlignment;
+    let wrapped = false;
+    if (!knownSections.markers.length) {
+      const description = /\[Shot 1\]/.test(beforeWithoutAlignment)
+        ? beforeWithoutAlignment
+        : `[Shot 1] ${beforeWithoutAlignment}`;
+      prompt = requiredFields.map((field) => (
+        field === descriptionField ? `${field}:\n${description}` : `${field}:`
+      )).join('\n\n');
+      wrapped = true;
+    }
+
+    const withoutAlignment = withoutLeadingAlignment(prompt);
+    const alignmentAudit = auditStructure(withoutAlignment, { ...context, mode });
+    const expectedAlignment = alignmentAudit.alignment.expected;
+    prompt = expectedAlignment ? `${expectedAlignment}\n\n${withoutAlignment}` : withoutAlignment;
+    const alignedBefore = expectedAlignment
+      ? `${expectedAlignment}\n\n${beforeWithoutAlignment}`
+      : beforeWithoutAlignment;
+    const alignmentChanged = alignedBefore !== before;
+    const audit = auditStructure(prompt, { ...context, mode });
+    return {
+      prompt,
+      changed: prompt !== before,
+      wrapped,
+      alignmentChanged,
+      before: beforeAudit,
+      audit,
+    };
   }
 
   function auditStructure(value, context = {}) {
@@ -804,12 +936,18 @@
       );
     }
     const identityToSpeakerId = new Map();
-    const speakerIdToIdentity = new Map();
+    const speakerIdToStrongIdentity = new Map();
+    const roleCoreToSpeakerId = new Map();
+    const speakerIdToRoleCore = new Map();
+    const establishedSpeakerIds = new Set();
     for (const entry of dialogueAudit.entries.filter((candidate) => candidate.formatted === true)) {
       const speakerId = String(entry.speakerId || '').replace(/\s+/g, '').toUpperCase();
       const validSpeakerId = /^S\d+(?:,S\d+)*$/.test(speakerId);
-      if (!validSpeakerId || (!speakerId.includes(',') && !String(entry.speaker || '').trim())) {
-        addIssue('dialogue-speaker-id', 'Give every vocal line a stable (S1), (S2), or compound speaker ID.');
+      if (!validSpeakerId || entry.hasSpeakerBeforeId !== true) {
+        addIssue(
+          'dialogue-speaker-id',
+          'Write each vocal line as Speaker identity (S1) says: <d>[Language] exact words</d>.',
+        );
       }
       const language = String(entry.language || '').trim();
       if (!language || /^(?:language|lang(?:uage)?\s*(?:name|code)?|unknown|n\/?a|none)$/i.test(language)) {
@@ -818,21 +956,45 @@
       if (!validSpeakerId) continue;
       const ids = speakerId.split(',');
       if (ids.length > 1) {
-        if (ids.some((id) => !speakerIdToIdentity.has(id))) {
+        if (ids.some((id) => !establishedSpeakerIds.has(id))) {
           addIssue('compound-speaker-id', 'Use a compound speaker ID only after each individual speaker ID is established.');
         }
         continue;
       }
       const identity = normalizeSpeakerKey(entry.speaker);
-      if (!identity) continue;
-      const previousId = identityToSpeakerId.get(identity);
-      const previousIdentity = speakerIdToIdentity.get(ids[0]);
-      if ((previousId && previousId !== ids[0]) || (previousIdentity && previousIdentity !== identity)) {
-        addIssue('speaker-id-instability', 'Keep one stable speaker ID for each vocal identity throughout the prompt.');
-        continue;
+      const roleCore = normalizeSpeakerKey(entry.speakerCore
+        || (entry.speakerType === 'role-speaker' ? roleSpeakerCore(entry.speaker) : ''));
+      if (identity) {
+        const previousId = identityToSpeakerId.get(identity);
+        const strongIdentity = entry.speakerType === 'named-speaker'
+          || entry.speakerType === 'reference-token';
+        const previousStrongIdentity = strongIdentity
+          ? speakerIdToStrongIdentity.get(ids[0])
+          : '';
+        if ((previousId && previousId !== ids[0])
+          || (previousStrongIdentity && previousStrongIdentity !== identity)) {
+          addIssue('speaker-id-instability', 'Keep one stable speaker ID for each vocal identity throughout the prompt.');
+        } else {
+          identityToSpeakerId.set(identity, ids[0]);
+          if (strongIdentity) speakerIdToStrongIdentity.set(ids[0], identity);
+        }
       }
-      identityToSpeakerId.set(identity, ids[0]);
-      speakerIdToIdentity.set(ids[0], identity);
+      if (roleCore) {
+        const previousRoleId = roleCoreToSpeakerId.get(roleCore);
+        const previousRoleCore = speakerIdToRoleCore.get(ids[0]);
+        if ((previousRoleId && previousRoleId !== ids[0])
+          || (previousRoleCore && previousRoleCore !== roleCore)) {
+          addIssue('speaker-id-instability', 'Keep one stable speaker ID for each vocal identity throughout the prompt.');
+        } else {
+          roleCoreToSpeakerId.set(roleCore, ids[0]);
+          speakerIdToRoleCore.set(ids[0], roleCore);
+        }
+      }
+      // Natural prompts often shorten a description in later shots (for
+      // example, "the quiet young woman" becomes "the woman"). Exact phrase
+      // comparison cannot prove that two labels are different characters, so
+      // only enforce identity -> ID conflicts that we can establish safely.
+      establishedSpeakerIds.add(ids[0]);
     }
 
     const alignment = {
@@ -910,5 +1072,11 @@
     };
   }
 
-  return Object.freeze({ analyzePrompt, auditStructure, formatDialogue, h3EffectiveDurationSeconds });
+  return Object.freeze({
+    analyzePrompt,
+    auditStructure,
+    formatDialogue,
+    h3EffectiveDurationSeconds,
+    structurePrompt,
+  });
 });

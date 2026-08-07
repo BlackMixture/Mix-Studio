@@ -31,6 +31,7 @@ const {
   krea2ClipCompatibilityError,
   minimaxH3Compatibility,
   minimaxH3CompatibilityError,
+  minimaxH3NativeAudioSampling,
   nativeInt8Compatibility,
   nativeInt8CompatibilityError,
   objectInfoComboChoices,
@@ -2909,7 +2910,12 @@ function sharedMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', op
         Object.assign({}, options, { validationFeedback }),
       ),
       userPrompt,
-      Object.assign({ preserveAuthoredText: true, referenceSource: userPrompt }, options),
+      Object.assign({
+        preserveAuthoredText: true,
+        referenceSource: userPrompt,
+        allowDialogueFormatFallback: true,
+        fallbackOnFailure: true,
+      }, options),
     )
     : suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt, options);
   const flight = run
@@ -2983,7 +2989,14 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
       });
       clearDeadline = armPromptJobDeadline(pid, reject, 'Prompt enhance');
       ensureWs();
-      if (statusText) broadcast('status', { jobId: 'pre', profileId: options.profileId, text: statusText });
+      if (statusText && options.broadcastStatus !== false) {
+        broadcast('status', {
+          jobId: 'pre',
+          profileId: options.profileId,
+          scope: 'generation-preflight',
+          text: statusText,
+        });
+      }
     })().catch(reject);
   });
 }
@@ -3083,7 +3096,12 @@ function sharedH3PromptEnhancement(userPrompt, seed, options = {}) {
       Object.assign({}, options, { validationFeedback }),
     ),
     userPrompt,
-    Object.assign({ referenceSource: userPrompt, preserveAuthoredText: true }, options),
+    Object.assign({
+      referenceSource: userPrompt,
+      preserveAuthoredText: true,
+      allowDialogueFormatFallback: true,
+      fallbackOnFailure: true,
+    }, options),
   )
     .finally(() => {
       if (h3PromptFlights.get(key) === flight) h3PromptFlights.delete(key);
@@ -3139,7 +3157,9 @@ function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
       ensureWs();
-      broadcast('status', { jobId: 'pre', profileId, text: 'Enhancing motion prompt...' });
+      broadcast('status', {
+        jobId: 'pre', profileId, scope: 'generation-preflight', text: 'Enhancing motion prompt...',
+      });
     })().catch(reject);
   });
 }
@@ -6374,6 +6394,11 @@ async function handleApi(req, res, url) {
       const compatibility = await getComfyCompatibility(url.searchParams.has('refresh'));
       const krea2Core = krea2ClipCompatibility(info, compatibility.version);
       const h3Core = minimaxH3Compatibility(info, compatibility.version);
+      if (h3Core.nativeAudioSampling) {
+        // Current ComfyUI supplies the audio-safe AV schedule, so only the
+        // Turbo LoRA loader is needed; the legacy custom sampler is bypassed.
+        missing.h3turbo = ['MiniMaxH3TurboLoRA'].filter((className) => !info[className]);
+      }
       const sageRuntime = await probeSageAttention(RUNTIME, {
         status: installStatus,
         force: url.searchParams.has('refresh'),
@@ -7552,6 +7577,7 @@ async function handleApi(req, res, url) {
     const h3Turbo = h3TurboRequested && h3Mode === 'frames';
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
+    let h3TurboNativeSampler = false;
     const h3AllowedReferenceTokens = h3ReferenceInputTokens(h3References);
     // Every video route except Wan Full Quality is fixed at CFG 1 (or
     // explicitly zeroes negative conditioning), so a negative prompt cannot
@@ -7590,7 +7616,11 @@ async function handleApi(req, res, url) {
         });
       }
       if (h3Turbo) {
-        const missingTurboNodes = REQUIRED_CLASSES.h3turbo.filter((className) => !info[className]);
+        h3TurboNativeSampler = minimaxH3NativeAudioSampling(info);
+        const requiredTurboNodes = h3TurboNativeSampler
+          ? ['MiniMaxH3TurboLoRA']
+          : REQUIRED_CLASSES.h3turbo;
+        const missingTurboNodes = requiredTurboNodes.filter((className) => !info[className]);
         const turboLora = configuredModelsStatus(info).h3Turbo.lora;
         if (missingTurboNodes.length || !turboLora.ok) {
           return json(res, 409, {
@@ -7888,7 +7918,7 @@ async function handleApi(req, res, url) {
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
     const videoSteps = engine === 'h3'
-      ? (h3Turbo ? 4 : clampInt(body.steps, 1, 100, 20))
+      ? (h3Turbo ? clampInt(body.steps, 4, 100, 4) : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
         : engine === 'scail'
@@ -7947,8 +7977,9 @@ async function handleApi(req, res, url) {
       loras: engine === 'h3' ? [] : (Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : []),
       mode: h3Mode,
       turbo: h3Turbo,
-      turboStrength: clampNum(body.h3TurboStrength, 0.5, 1.5, 1),
+      turboStrength: clampNum(body.h3TurboStrength, 0.8, 1.2, 1),
       turboLowVram: body.h3TurboLowVram === true,
+      turboNativeSampler: h3TurboNativeSampler,
       sageAttention: h3SageAttention,
       firstImageName: engine === 'h3' && !bypass && h3Mode === 'frames' ? comfyName : null,
       references: h3References,
@@ -8000,6 +8031,9 @@ async function handleApi(req, res, url) {
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
         h3TurboStrength: engine === 'h3' && opts.turbo ? opts.turboStrength : undefined,
         h3TurboLowVram: engine === 'h3' && opts.turbo ? opts.turboLowVram || undefined : undefined,
+        h3TurboSampler: engine === 'h3' && opts.turbo
+          ? (opts.turboNativeSampler ? 'native-euler' : 'creator-legacy')
+          : undefined,
         h3AspectRatio: engine === 'h3' ? h3OutputAspectRatio : undefined,
         h3ResolutionSize: engine === 'h3' ? Number(body.h3ResolutionSize) || 1 : undefined,
         h3MatchSource: engine === 'h3' && h3Mode === 'frames' ? body.h3MatchSource === true : undefined,
@@ -8435,6 +8469,14 @@ async function handleApi(req, res, url) {
       hasLastFrame,
       allowedReferenceTokens,
       preserveAuthoredText: body.preserveAuthoredText === true,
+      // Speaker-ID syntax improves H3 results but is never a hard gate for a
+      // user-authored revision. Keep structural/reference checks strict while
+      // allowing an otherwise usable rewrite through.
+      allowDialogueFormatFallback: true,
+      // The prompt-assistant sheet owns its own progress state. A generic
+      // pre-generation status would otherwise overwrite the completed media
+      // card and linger after this request resolves.
+      broadcastStatus: false,
     };
     const revisionSeed = Math.floor(Math.random() * 2 ** 31);
     const raw = videoRevision && revisionEngine === 'h3'
