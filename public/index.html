@@ -709,6 +709,11 @@
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 3h12a3 3 0 0 1 3 3v3h-2V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2v4l4.8-4H13v2h-1.5L4 23v-6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm14 8 1.05 2.95L22 15l-2.95 1.05L18 19l-1.05-2.95L14 15l2.95-1.05L18 11Z"/></svg>
         <span>Revise prompt</span>
       </button>
+      <button class="chip h3-prompt-guide-trigger" id="h3PromptGuideBtn" type="button" aria-label="Open MiniMax H3 prompt guide" title="Check and structure this prompt for MiniMax H3" aria-haspopup="dialog" aria-controls="h3PromptGuideSheet" aria-expanded="false" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 4.5h5.5A2.5 2.5 0 0 1 13 7v12a2.5 2.5 0 0 0-2.5-2.5H5V4.5Zm14 0h-3.5A2.5 2.5 0 0 0 13 7v12a2.5 2.5 0 0 1 2.5-2.5H19V4.5ZM7.5 8h2.25M7.5 11h2.25M15.5 8h1"/></svg>
+        <span>H3 guide</span>
+        <span class="h3-prompt-guide-badge" id="h3PromptGuideBadge" hidden></span>
+      </button>
       <button class="chip video-camera-motion-trigger" id="videoCameraMotionBtn" type="button" aria-label="Camera motion" title="Camera motion" aria-haspopup="dialog" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 7.5h10.5a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Zm12.5 3 5-2.5v8l-5-2.5M6 4.5h5M5 19.5h10"/></svg>
         <span>Camera motion</span>
@@ -2985,6 +2990,52 @@
   </form>
 </div>
 
+<div class="sheet" id="h3PromptGuideSheet">
+  <div class="sheet-panel h3-prompt-guide-panel" role="dialog" aria-modal="true" aria-labelledby="h3PromptGuideTitle" aria-describedby="h3PromptGuideCopy" tabindex="-1">
+    <h3 class="sheet-title"><span id="h3PromptGuideTitle">H3 prompt guide</span><button data-close type="button" aria-label="Close H3 prompt guide">✕</button></h3>
+    <section class="h3-prompt-guide-hero">
+      <span class="h3-prompt-guide-kicker"><i aria-hidden="true"></i> Official MiniMax structure</span>
+      <strong>Write naturally. Mix Studio handles the format.</strong>
+      <p id="h3PromptGuideCopy">Prompt Enhance applies the guide automatically when you generate. These tools let you review and edit that structure first.</p>
+    </section>
+    <div class="h3-prompt-guide-checks" aria-label="H3 prompt checks">
+      <article>
+        <span>Format</span>
+        <strong id="h3PromptGuideFormat">3 fields</strong>
+        <small id="h3PromptGuideFormatStatus">Will structure on Enhance</small>
+      </article>
+      <article>
+        <span>Dialogue</span>
+        <strong id="h3PromptGuideDialogue">None found</strong>
+        <small id="h3PromptGuideDialogueStatus">Quotes stay exact</small>
+      </article>
+      <article>
+        <span>References</span>
+        <strong id="h3PromptGuideReferences">None</strong>
+        <small id="h3PromptGuideReferenceStatus">Reference tags stay exact</small>
+      </article>
+    </div>
+    <section class="h3-prompt-dialogue-preview" id="h3PromptDialoguePreview" hidden>
+      <header>
+        <span><strong>Identified dialogue</strong><small>Only clearly attributed speech is formatted. Signs and screen text stay quoted.</small></span>
+        <label class="h3-prompt-dialogue-language">Language
+          <select id="h3PromptDialogueLanguage" aria-label="Dialogue language tag">
+            <option>English</option><option>Spanish</option><option>French</option><option>German</option><option>Italian</option><option>Portuguese</option><option>Japanese</option><option>Korean</option><option>Mandarin Chinese</option><option>Hindi</option><option>Arabic</option>
+          </select>
+        </label>
+      </header>
+      <div class="h3-prompt-dialogue-list" id="h3PromptDialogueList"></div>
+    </section>
+    <p class="h3-prompt-guide-status" id="h3PromptGuideStatus" role="status" hidden></p>
+    <button class="h3-prompt-guide-undo" id="h3PromptGuideUndo" type="button" hidden>↶ Undo last prompt change</button>
+    <div class="h3-prompt-guide-actions">
+      <button class="sheet-cta ghost h3-prompt-dialogue-action" id="h3PromptFormatDialogue" type="button">Format dialogue</button>
+      <button class="sheet-cta" id="h3PromptStructure" type="button">Structure full prompt</button>
+    </div>
+    <p class="h3-prompt-guide-footnote">Dialogue words and punctuation are preserved exactly. Read MiniMax’s <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md" target="_blank" rel="noreferrer">base guide</a> or <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md" target="_blank" rel="noreferrer">reference guide</a>.</p>
+  </div>
+</div>
+
 <div class="sheet" id="assetPickerSheet">
   <div class="sheet-panel asset-picker-panel" role="dialog" aria-modal="true" aria-labelledby="assetPickerTitle" aria-describedby="assetPickerCopy" tabindex="-1">
     <h3 class="sheet-title"><span id="assetPickerTitle">Choose a source</span> <button data-close aria-label="Close source picker">✕</button></h3>
@@ -3169,6 +3220,7 @@
 <script src="/qrcodegen.js"></script>
 <script src="/pwa.js"></script>
 <script src="/h3-resolution.js"></script>
+<script src="/h3-prompt-guide.js"></script>
 <script src="/release-notes.js"></script>
 <script src="/app.js"></script>
 </body>

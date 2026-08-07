@@ -400,7 +400,7 @@ test('automatic motion prompting keeps each queued frame and video submission at
   assert.match(app, /'Auto motion armed'/);
   assert.match(server, /if \(autoMotionRequested\)/);
   assert.match(app, /&& !h3ReferenceModeActive\(\);/);
-  assert.match(server, /sharedMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{ engine, seconds \}\)/);
+  assert.match(server, /sharedMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{[\s\S]{0,220}engine,[\s\S]{0,80}seconds,[\s\S]{0,120}hasFirstFrame:[\s\S]{0,100}hasLastFrame:/);
   assert.match(server, /const preparedMotionPrompt = body\.preparedMotionPrompt === true/);
   assert.match(server, /queuePrompt\(graph, \{ profileId, front: true \}\)/);
   assert.match(server, /body\.autoMotionPrompt === true[\s\S]{0,100}!\(engine === 'h3' && h3Mode === 'reference'\)/);
@@ -411,11 +411,44 @@ test('Video exposes the shared prompt revision assistant with H3-aware context',
   assert.match(html, /id="videoPromptAssistantBtn"[^>]*aria-label="Revise video prompt"/);
   assert.match(app, /#videoPromptAssistantBtn'\)\.addEventListener\('click', openPromptAssistant\)/);
   assert.match(app, /kind: revisionView === 'video' \? 'video' : 'image'/);
-  assert.match(app, /h3Mode: revisionView === 'video' && state\.vidEngine === 'h3'/);
+  assert.match(app, /h3Mode: revisionH3Mode \|\| undefined/);
+  assert.match(app, /endImageName: revisionEndImageName/);
   assert.match(app, /'Add shot beats'/);
   assert.match(app, /#videoPromptTools'\)\.hidden = !isVideo/);
   assert.match(server, /videoRevision[\s\S]*reviseVideoPrompt\(/);
   assert.match(promptEnhance, /Preserve every <Picture n>, <Video n>, and <Audio n>/);
+});
+
+test('MiniMax H3 exposes an official-format guide with safe local dialogue formatting', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(html, /id="h3PromptGuideBtn"[^>]*aria-label="Open MiniMax H3 prompt guide"[^>]*hidden/);
+  assert.match(html, /id="h3PromptGuideSheet"[\s\S]*Official MiniMax structure[\s\S]*id="h3PromptFormatDialogue"[\s\S]*id="h3PromptStructure"/);
+  assert.match(html, /id="h3PromptDialogueLanguage"[\s\S]*<option>Spanish<\/option>/);
+  assert.ok(html.indexOf('/h3-prompt-guide.js') < html.indexOf('/app.js'));
+  assert.match(app, /const H3PromptGuide = window\.H3PromptGuide/);
+  assert.match(app, /function renderH3PromptGuideTrigger\(\)[\s\S]{0,220}h3PromptGuideActive\(\)/);
+  assert.match(app, /H3PromptGuide\.formatDialogue\(before,[\s\S]{0,100}language:/);
+  assert.match(app, /function h3EffectiveDurationSeconds\([\s\S]{0,180}H3PromptGuide\.h3EffectiveDurationSeconds\(value\)/);
+  assert.match(app, /seconds: h3EffectiveDurationSeconds\(\)/);
+  assert.match(app, /Official structure ready[\s\S]{0,240}effectiveDuration\.toFixed\(2\)\}s output/);
+  assert.match(app, /function h3StructuredPromptReadyForGeneration\([\s\S]{0,700}remembered\.context !== h3PromptStructureContextSignature\(\)/);
+  assert.match(app, /state\.vidEngine === 'h3' && !autoMotionPrompt && !h3StructuredPromptReadyForGeneration\(prompt\)/);
+  assert.match(app, /h3PromptStructure: state\.h3PromptStructure/);
+  assert.match(app, /state\.promptRevisionUndo = \{ before, after: result\.prompt, view: 'video' \}/);
+  assert.match(app, /changeRequest = revisionMode === 'reference'[\s\S]{0,500}official MiniMax H3 three-field format/);
+  assert.match(app, /hasFirstFrame: revisionEngine === 'h3' \? revisionHasFirstFrame : undefined/);
+  assert.match(app, /hasLastFrame: revisionEngine === 'h3' \? revisionHasLastFrame : undefined/);
+  assert.match(app, /allowedReferenceTokens: revisionEngine === 'h3' \? allowedReferenceTokens : undefined/);
+  assert.match(app, /allowedReferenceTokens: referenceMode \? h3PromptReferenceEntries\(\)\.map\(\(entry\) => entry\.tag\) : \[\]/);
+  assert.match(app, /H3PromptGuide\.auditStructure\(revised,/);
+  assert.match(app, /preserveAuthoredText: true/);
+  assert.match(server, /function h3PromptMaxTokens\(mode\)[\s\S]{0,220}mode === 'reference' \? 1400 : 900/);
+  assert.match(server, /const hasFirstFrame = body\.hasFirstFrame === undefined[\s\S]{0,120}revisionMode === 'frames' && !!imageName[\s\S]{0,80}body\.hasFirstFrame === true/);
+  assert.match(server, /const hasLastFrame = body\.hasLastFrame === true/);
+  assert.match(server, /const allowedReferenceTokens = revisionMode === 'reference'[\s\S]{0,180}h3PromptReferenceTokens/);
+  assert.match(server, /frames = h3FramesForSeconds\(seconds\);[\s\S]{0,80}seconds = h3EffectiveDurationSeconds\(seconds\);/);
+  assert.match(server, /const seconds = engine === 'h3'[\s\S]{0,100}h3EffectiveDurationSeconds\(requestedSeconds\)/);
+  assert.match(server, /seconds: revisionEngine === 'h3'[\s\S]{0,100}h3EffectiveDurationSeconds\(body\.seconds\)/);
 });
 
 test('video prompt enhancement combines the first frame with the initial motion idea', () => {
@@ -428,19 +461,20 @@ test('video prompt enhancement combines the first frame with the initial motion 
   assert.match(server, /enhance: isLtxLike \? enhance && !refinedMotionPrompt : false/);
 });
 
-test('MiniMax H3 enhancement uses one duration-aware prompt pass and records the result', () => {
+test('MiniMax H3 enhancement uses a validated duration-aware prompt pass and records the result', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="enhanceBtn"[^>]*aria-pressed="true"/);
   assert.match(app, /\$\('#enhanceBtn'\)\.hidden = isVideo && state\.vidEngine === 'ltx-edit'/);
   assert.match(app, /\$\('#enhanceBtn'\)\.hidden = ltxEdit/);
   assert.match(app, /renderVidFace\(\);[\s\S]{0,100}updateVideoPanels\(\);[\s\S]{0,60}renderEnhance\(\);/);
-  assert.match(app, /H3 prompt enhance: on · timed shots, camera, sound, and dialogue when appropriate/);
+  assert.match(app, /H3 prompt enhance: on · official structure, camera, sound, and exact dialogue/);
   assert.match(app, /enhance: ltxEdit \? false : state\.enhance/);
   assert.match(server, /function enhanceH3Prompt\(userPrompt, seed, options = \{\}\)/);
-  assert.match(server, /h3PromptEnhanceParts\(userPrompt, \{[\s\S]{0,180}seconds: options\.seconds,[\s\S]{0,100}mode: options\.mode/);
+  assert.match(server, /h3PromptEnhanceParts\(userPrompt, \{[\s\S]{0,180}seconds: h3Options\.seconds,[\s\S]{0,100}mode: h3Options\.mode/);
   assert.match(server, /function sharedH3PromptEnhancement\([\s\S]{0,800}const active = h3PromptFlights\.get\(key\);[\s\S]{0,100}if \(active\) return active/);
+  assert.match(server, /validatedH3Prompt\([\s\S]{0,500}validationFeedback/);
   assert.match(server, /engine === 'h3' && enhance && suppliedMotionPrompt && !autoGeneratedMotion/);
-  assert.match(server, /h3Mode === 'reference'[\s\S]{0,120}h3References\.images\[0\]\?\.name[\s\S]{0,100}!bypass \? comfyName : undefined/);
+  assert.match(server, /const h3PromptImageNames = engine !== 'h3'[\s\S]{0,180}h3Mode === 'reference'[\s\S]{0,100}h3References\.images\[0\]\?\.name[\s\S]{0,140}!bypass \? comfyName : null/);
   assert.match(server, /refinedMotionPrompt = cleanEnhancedText\(raw, motionPrompt\);[\s\S]{0,80}prompt = refinedMotionPrompt/);
   assert.match(server, /motionPrompt: recordedMotionPrompt,[\s\S]{0,100}refinedMotionPrompt: recordedRefinedMotionPrompt/);
   assert.doesNotMatch(server, /wanRefined/);

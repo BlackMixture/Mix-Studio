@@ -127,6 +127,72 @@ test('Ollama adapter uses native non-streaming chat and optional vision input', 
   assert.equal(request.body.messages[1].images.length, 1);
 });
 
+test('external adapters preserve ordered multiple vision images for every provider', async () => {
+  const first = { data: Buffer.from('first-image'), mimeType: 'image/jpeg' };
+  const second = { data: Buffer.from('second-image'), mimeType: 'image/webp' };
+  const firstBase64 = Buffer.from('first-image').toString('base64');
+  const secondBase64 = Buffer.from('second-image').toString('base64');
+
+  async function requestBody(provider) {
+    let body;
+    await externalLlmRequest({
+      provider,
+      model: `${provider}-test`,
+      apiKey: provider === 'ollama' ? '' : 'test-key',
+      baseUrl: 'http://127.0.0.1:11434',
+      instruction: 'Return one prompt.',
+      userInput: 'Compare both references.',
+      images: [first, second],
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body);
+        if (provider === 'openai') return jsonResponse({ output_text: 'Done.' });
+        if (provider === 'gemini') {
+          return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Done.' }] } }] });
+        }
+        return jsonResponse({ message: { content: 'Done.' } });
+      },
+    });
+    return body;
+  }
+
+  const openAi = await requestBody('openai');
+  assert.deepEqual(openAi.input[0].content.slice(1).map((part) => part.image_url), [
+    `data:image/jpeg;base64,${firstBase64}`,
+    `data:image/webp;base64,${secondBase64}`,
+  ]);
+
+  const gemini = await requestBody('gemini');
+  assert.deepEqual(gemini.contents[0].parts.slice(1).map((part) => part.inlineData), [
+    { mimeType: 'image/jpeg', data: firstBase64 },
+    { mimeType: 'image/webp', data: secondBase64 },
+  ]);
+
+  const ollama = await requestBody('ollama');
+  assert.deepEqual(ollama.messages[1].images, [firstBase64, secondBase64]);
+});
+
+test('multiple vision images ignore invalid entries and cap payloads at eight', async () => {
+  let body;
+  const validImages = Array.from({ length: 10 }, (_unused, index) => ({
+    data: Buffer.from(`image-${index}`),
+    mimeType: 'image/png',
+  }));
+  await externalLlmRequest({
+    provider: 'ollama',
+    model: 'gemma3',
+    baseUrl: 'http://127.0.0.1:11434',
+    instruction: 'Return one prompt.',
+    userInput: 'Use these references.',
+    images: [{}, { data: Buffer.alloc(0) }, ...validImages],
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(init.body);
+      return jsonResponse({ message: { content: 'Done.' } });
+    },
+  });
+
+  assert.deepEqual(body.messages[1].images, validImages.slice(0, 8).map((image) => image.data.toString('base64')));
+});
+
 test('external adapters report missing credentials and provider errors clearly', async () => {
   await assert.rejects(externalLlmRequest({
     provider: 'openai', model: 'gpt-test', instruction: 'Test', userInput: 'Test', fetchImpl: async () => jsonResponse({}),
@@ -150,4 +216,43 @@ test('server routes independent image and video revise/enhance paths through the
   assert.match(serverSource, /shouldUseExternalPrompt\('video', 'enhance'\) && enhance && suppliedMotionPrompt/);
   assert.match(serverSource, /videoPromptEnhanceParts\(motionPrompt/);
   assert.match(serverSource, /route === '\/api\/prompt\/provider\/test'/);
+});
+
+test('server preserves ordered H3 first and last frames for external and local prompt vision', () => {
+  assert.match(serverSource, /function h3ReferenceInputTokens\([\s\S]{0,500}<Picture \$\{index \+ 1\}>[\s\S]{0,500}<Audio \$\{audioIndex\}>/);
+  assert.match(serverSource, /function h3PromptPartsWithAllowedReferences\(/);
+  assert.match(serverSource, /Available reference tokens: \$\{allowed\.join\(', '\)\}/);
+  assert.match(serverSource, /function h3PromptPartsWithVisionOrder\(/);
+  assert.match(serverSource, /Attachment 1 is Picture 1, the first frame at 0\.00 seconds/);
+  assert.match(serverSource, /left panel is Picture 1, the first frame at 0\.00 seconds/);
+  assert.match(serverSource, /right panel is Picture 2, the last frame at the effective duration/);
+  const externalBlock = serverSource.slice(
+    serverSource.indexOf('async function runConfiguredExternalPrompt'),
+    serverSource.indexOf('function shouldUseExternalPrompt'),
+  );
+  assert.match(externalBlock, /const imageNames = orderedPromptImageNames\(options\)/);
+  assert.match(externalBlock, /h3PromptPartsWithVisionOrder\(parts, options, 'attachments'\)/);
+  assert.match(externalBlock, /Promise\.all\(imageNames\.map\(\(name\) => externalPromptImage\(name, options\.profileId\)\)\)/);
+  assert.match(externalBlock, /externalLlmRequest\(\{[\s\S]*images,/);
+
+  const localVisionBlock = serverSource.slice(
+    serverSource.indexOf('async function appendPromptVisionImages'),
+    serverSource.indexOf('/** Vision pass: Qwen3-VL looks at the image'),
+  );
+  assert.match(localVisionBlock, /imageNames\.forEach[\s\S]*class_type: 'LoadImage'/);
+  assert.match(localVisionBlock, /nodeFromOrdered\([\s\S]*'ImageStitch'[\s\S]*image1: image, image2: \[`img_\$\{index \+ 1\}`, 0\]/);
+  assert.match(serverSource, /function queueTextEnhancement[\s\S]{0,500}appendPromptVisionImages\(graph, options\)[\s\S]{0,500}refineInputs\.image = promptImage/);
+  assert.match(serverSource, /function queueTextEnhancement[\s\S]{0,260}h3PromptPartsWithVisionOrder\(parts, options, 'stitched'\)/);
+
+  assert.match(serverSource, /const h3PromptImageNames = engine !== 'h3'[\s\S]{0,260}!bypass \? comfyName : null,[\s\S]{0,100}body\.endImageName/);
+  assert.match(serverSource, /sharedMotionPrompt\(comfyName, seed,[\s\S]{0,260}imageNames: engine === 'h3' \? h3PromptImageNames : undefined/);
+  assert.match(serverSource, /sharedH3PromptEnhancement\(motionPrompt, seed,[\s\S]{0,220}imageNames: h3PromptImageNames/);
+
+  const revisionBlock = serverSource.slice(
+    serverSource.indexOf("if (route === '/api/prompt/revise'"),
+    serverSource.indexOf("if (route === '/api/prompt/provider/test'"),
+  );
+  assert.match(revisionBlock, /const endImageName = String\(body\.endImageName/);
+  assert.match(revisionBlock, /\[hasFirstFrame \? imageName : null, hasLastFrame \? \(endImageName/);
+  assert.match(revisionBlock, /imageNames: revisionImageNames/);
 });

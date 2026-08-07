@@ -93,6 +93,11 @@ const {
   videoPromptRevisionParts,
 } = require('./lib/prompt-enhance');
 const {
+  appendH3ValidationFeedback,
+  h3PromptReferenceTokens,
+  validatedH3Prompt,
+} = require('./lib/h3-prompt-validation');
+const {
   DEFAULTS: EXTERNAL_LLM_DEFAULTS,
   externalLlmEnabled,
   externalLlmProviderConfig,
@@ -165,6 +170,7 @@ const {
   buildMiniMaxH3Graph,
   h3Dimensions,
   h3DurationSeconds,
+  h3EffectiveDurationSeconds,
   h3FramesForSeconds,
   ltxCameraDurationSeconds,
   ltxDurationSeconds,
@@ -2677,9 +2683,60 @@ async function externalPromptImage(imageName, profileId) {
   return { data, mimeType };
 }
 
+function orderedPromptImageNames(options = {}) {
+  const plural = Array.isArray(options.imageNames)
+    ? options.imageNames.map((name) => String(name || '').trim()).filter(Boolean)
+    : [];
+  if (plural.length) return plural.slice(0, 8);
+  const singular = String(options.imageName || '').trim();
+  return singular ? [singular] : [];
+}
+
+function h3ReferenceInputTokens(references = {}) {
+  const tokens = [];
+  (references.images || []).forEach((_asset, index) => tokens.push(`<Picture ${index + 1}>`));
+  let audioIndex = 0;
+  (references.videos || []).forEach((asset, index) => {
+    tokens.push(`<Video ${index + 1}>`);
+    if (asset?.hasAudio) {
+      audioIndex += 1;
+      tokens.push(`<Audio ${audioIndex}>`);
+    }
+  });
+  (references.audios || []).forEach(() => {
+    audioIndex += 1;
+    tokens.push(`<Audio ${audioIndex}>`);
+  });
+  return tokens;
+}
+
+function h3PromptPartsWithAllowedReferences(parts, options = {}) {
+  const allowed = Array.isArray(options.allowedReferenceTokens)
+    ? options.allowedReferenceTokens.filter((token) => /^<(?:Picture|Video|Audio)\s+\d+>$/.test(token))
+    : [];
+  if (String(options.mode || '').toLowerCase() !== 'reference' || !allowed.length) return parts;
+  return Object.assign({}, parts, {
+    instruction: `${parts.instruction}\n\nAvailable reference tokens: ${allowed.join(', ')}. Use only these exact supplied tokens; never invent a different number or media type.`,
+  });
+}
+
+function h3PromptPartsWithVisionOrder(parts, options = {}, layout = 'attachments') {
+  const imageNames = orderedPromptImageNames(options);
+  if (String(options.engine || '').toLowerCase() !== 'h3'
+    || options.hasFirstFrame !== true
+    || options.hasLastFrame !== true
+    || imageNames.length < 2) return parts;
+  const note = layout === 'stitched'
+    ? 'Visual-input mapping: the supplied image is a left-to-right composite of the two exact anchors. The left panel is Picture 1, the first frame at 0.00 seconds; the right panel is Picture 2, the last frame at the effective duration. The narrow black divider is only a separator and is not part of either frame.'
+    : 'Visual-input mapping: the two image attachments are supplied in Picture order. Attachment 1 is Picture 1, the first frame at 0.00 seconds; attachment 2 is Picture 2, the last frame at the effective duration.';
+  return Object.assign({}, parts, { instruction: `${parts.instruction}\n\n${note}` });
+}
+
 async function runConfiguredExternalPrompt(parts, maxTokens, options = {}) {
   const provider = configuredExternalLlm();
-  const image = options.imageName ? await externalPromptImage(options.imageName, options.profileId) : null;
+  const imageNames = orderedPromptImageNames(options);
+  parts = h3PromptPartsWithVisionOrder(parts, options, 'attachments');
+  const images = await Promise.all(imageNames.map((name) => externalPromptImage(name, options.profileId)));
   if (options.statusText !== false) {
     broadcast('status', {
       jobId: 'external-prompt',
@@ -2694,7 +2751,7 @@ async function runConfiguredExternalPrompt(parts, maxTokens, options = {}) {
     baseUrl: provider.baseUrl,
     instruction: parts.instruction,
     userInput: parts.userInput,
-    image,
+    images,
     maxTokens,
   });
 }
@@ -2749,27 +2806,66 @@ function armPromptJobDeadline(pid, reject, label) {
 const motionPromptFlights = new Map();
 const h3PromptFlights = new Map();
 
+function h3PromptMaxTokens(mode) {
+  // Full-reference rewrites contain six sections and normally need a much
+  // longer detailed_description than the three-field frame-mode format.
+  return mode === 'reference' ? 1400 : 900;
+}
+
+async function appendPromptVisionImages(graph, options = {}) {
+  const imageNames = orderedPromptImageNames(options);
+  if (!imageNames.length) return null;
+  imageNames.forEach((name, index) => {
+    const key = index === 0 ? 'img' : `img_${index + 1}`;
+    graph[key] = { class_type: 'LoadImage', inputs: { image: name } };
+  });
+  let image = ['img', 0];
+  for (let index = 1; index < imageNames.length; index += 1) {
+    const key = `img_stitch_${index + 1}`;
+    graph[key] = await nodeFromOrdered(
+      'ImageStitch',
+      ['right', true, 8, 'black'],
+      { image1: image, image2: [`img_${index + 1}`, 0] }
+    );
+    image = [key, 0];
+  }
+  return image;
+}
+
 /** Vision pass: Qwen3-VL looks at the image and suggests a motion prompt. */
 function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', options = {}) {
+  const imageNames = orderedPromptImageNames(Object.assign({ imageName: comfyImageName }, options));
   if (shouldUseExternalPrompt('video', 'enhance')) {
-    const parts = motionPromptEnhanceParts(userPrompt, options);
-    return runConfiguredExternalPrompt(parts, String(options.engine || '').toLowerCase() === 'h3' ? 640 : 384, {
+    const parts = appendH3ValidationFeedback(
+      motionPromptEnhanceParts(userPrompt, options),
+      String(options.engine || '').toLowerCase() === 'h3' ? options.validationFeedback : '',
+    );
+    return runConfiguredExternalPrompt(parts, String(options.engine || '').toLowerCase() === 'h3' ? h3PromptMaxTokens(options.mode) : 384, Object.assign({}, options, {
       action: 'enhance',
       imageName: comfyImageName,
+      imageNames,
       profileId,
-    });
+    }));
   }
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
-      const parts = motionPromptEnhanceParts(userPrompt, options);
+      let parts = appendH3ValidationFeedback(
+        motionPromptEnhanceParts(userPrompt, options),
+        String(options.engine || '').toLowerCase() === 'h3' ? options.validationFeedback : '',
+      );
+      parts = h3PromptPartsWithVisionOrder(
+        parts,
+        Object.assign({}, options, { imageName: comfyImageName, imageNames }),
+        'stitched',
+      );
       graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
-      graph.img = { class_type: 'LoadImage', inputs: { image: comfyImageName } };
+      const promptImage = await appendPromptVisionImages(graph, { imageName: comfyImageName, imageNames });
       graph.gen = {
         class_type: 'TextGenerate',
         inputs: Object.assign(
-          { clip: ['clip', 0], image: ['img', 0], prompt: parts.instruction + parts.userInput },
-          textGenInputs(seed, String(options.engine || '').toLowerCase() === 'h3' ? 512 : 256)
+          { clip: ['clip', 0], image: promptImage, prompt: parts.instruction + parts.userInput },
+          textGenInputs(seed, String(options.engine || '').toLowerCase() === 'h3' ? h3PromptMaxTokens(options.mode) : 256)
         ),
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['gen', 0] } };
@@ -2797,10 +2893,26 @@ function sharedMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', op
     String(userPrompt || '').trim(),
     String(options.engine || ''),
     Number(options.seconds) || 0,
+    orderedPromptImageNames(Object.assign({ imageName: comfyImageName }, options)),
+    options.hasFirstFrame === true,
+    options.hasLastFrame === true,
   ]);
   const active = motionPromptFlights.get(key);
   if (active) return active;
-  const flight = suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt, options)
+  const run = String(options.engine || '').toLowerCase() === 'h3'
+    ? validatedH3Prompt(
+      (attempt, validationFeedback) => suggestMotionPrompt(
+        comfyImageName,
+        (Number(seed) || 0) + attempt,
+        profileId,
+        userPrompt,
+        Object.assign({}, options, { validationFeedback }),
+      ),
+      userPrompt,
+      Object.assign({ preserveAuthoredText: true, referenceSource: userPrompt }, options),
+    )
+    : suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt, options);
+  const flight = run
     .finally(() => {
       if (motionPromptFlights.get(key) === flight) motionPromptFlights.delete(key);
     });
@@ -2845,14 +2957,15 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
+      parts = h3PromptPartsWithVisionOrder(parts, options, 'stitched');
       graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
-      if (options.imageName) graph.img = { class_type: 'LoadImage', inputs: { image: options.imageName } };
+      const promptImage = await appendPromptVisionImages(graph, options);
       graph.concat = {
         class_type: 'StringConcatenate',
         inputs: { string_a: parts.instruction, string_b: parts.userInput, delimiter: '\n' },
       };
       const refineInputs = Object.assign({ clip: ['clip', 0], prompt: ['concat', 0] }, textGenInputs(seed, maxTokens));
-      if (options.imageName) refineInputs.image = ['img', 0];
+      if (promptImage) refineInputs.image = promptImage;
       graph.refine = {
         class_type: 'TextGenerate',
         inputs: refineInputs,
@@ -2905,40 +3018,49 @@ function reviseImagePrompt(currentPrompt, changeRequest, seed, options = {}) {
 }
 
 function reviseVideoPrompt(currentPrompt, changeRequest, seed, options = {}) {
-  const parts = videoPromptRevisionParts(currentPrompt, changeRequest, {
+  const imageNames = orderedPromptImageNames(options);
+  let parts = appendH3ValidationFeedback(videoPromptRevisionParts(currentPrompt, changeRequest, {
     engine: options.engine,
     seconds: options.seconds,
     mode: options.mode,
-    hasImage: !!options.imageName,
-  });
+    hasImage: imageNames.length > 0,
+    hasFirstImage: options.hasFirstFrame === true,
+    hasEndImage: options.hasLastFrame === true,
+  }), options.engine === 'h3' ? options.validationFeedback : '');
+  if (options.engine === 'h3') parts = h3PromptPartsWithAllowedReferences(parts, options);
   parts.userInput += ENHANCE_TAIL;
   if (shouldUseExternalPrompt('video', 'revise')) {
-    return runConfiguredExternalPrompt(parts, options.engine === 'h3' ? 640 : 384, Object.assign({ action: 'revise' }, options));
+    return runConfiguredExternalPrompt(parts, options.engine === 'h3' ? h3PromptMaxTokens(options.mode) : 384, Object.assign({ action: 'revise' }, options));
   }
   return queueTextEnhancement(
     parts,
     seed,
     'Revising video prompt...',
-    options.engine === 'h3' ? 640 : 384,
+    options.engine === 'h3' ? h3PromptMaxTokens(options.mode) : 384,
     options,
   );
 }
 
 function enhanceH3Prompt(userPrompt, seed, options = {}) {
-  const parts = h3PromptEnhanceParts(userPrompt, {
-    seconds: options.seconds,
-    mode: options.mode,
-    hasImage: !!options.imageName,
-  });
+  const h3Options = Object.assign({}, options, { engine: 'h3' });
+  const imageNames = orderedPromptImageNames(h3Options);
+  let parts = appendH3ValidationFeedback(h3PromptEnhanceParts(userPrompt, {
+    seconds: h3Options.seconds,
+    mode: h3Options.mode,
+    hasImage: imageNames.length > 0,
+    hasFirstImage: h3Options.hasFirstFrame === true,
+    hasEndImage: h3Options.hasLastFrame === true,
+  }), h3Options.validationFeedback);
+  parts = h3PromptPartsWithAllowedReferences(parts, h3Options);
   if (shouldUseExternalPrompt('video', 'enhance')) {
-    return runConfiguredExternalPrompt(parts, 640, Object.assign({ action: 'enhance' }, options));
+    return runConfiguredExternalPrompt(parts, h3PromptMaxTokens(h3Options.mode), Object.assign({ action: 'enhance' }, h3Options));
   }
   return queueTextEnhancement(
     parts,
     seed,
     'Enhancing MiniMax H3 prompt...',
-    640,
-    options,
+    h3PromptMaxTokens(h3Options.mode),
+    h3Options,
   );
 }
 
@@ -2946,13 +3068,23 @@ function sharedH3PromptEnhancement(userPrompt, seed, options = {}) {
   const key = JSON.stringify([
     options.profileId || '',
     String(userPrompt || '').trim(),
-    String(options.imageName || ''),
+    orderedPromptImageNames(options),
     String(options.mode || ''),
     Number(options.seconds) || 0,
+    options.hasFirstFrame === true,
+    options.hasLastFrame === true,
   ]);
   const active = h3PromptFlights.get(key);
   if (active) return active;
-  const flight = enhanceH3Prompt(userPrompt, seed, options)
+  const flight = validatedH3Prompt(
+    (attempt, validationFeedback) => enhanceH3Prompt(
+      userPrompt,
+      (Number(seed) || 0) + attempt,
+      Object.assign({}, options, { validationFeedback }),
+    ),
+    userPrompt,
+    Object.assign({ referenceSource: userPrompt, preserveAuthoredText: true }, options),
+  )
     .finally(() => {
       if (h3PromptFlights.get(key) === flight) h3PromptFlights.delete(key);
     });
@@ -7420,6 +7552,7 @@ async function handleApi(req, res, url) {
     const h3Turbo = h3TurboRequested && h3Mode === 'frames';
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
+    const h3AllowedReferenceTokens = h3ReferenceInputTokens(h3References);
     // Every video route except Wan Full Quality is fixed at CFG 1 (or
     // explicitly zeroes negative conditioning), so a negative prompt cannot
     // influence sampling there. Do not silently retain a placebo setting.
@@ -7615,6 +7748,7 @@ async function handleApi(req, res, url) {
     if (engine === 'h3') {
       fps = H3_FPS;
       frames = h3FramesForSeconds(seconds);
+      seconds = h3EffectiveDurationSeconds(seconds);
       // H3's first frame supplies visual conditioning, not the output canvas.
       // Honor the aspect and S/M/L size captured by this submission so lower
       // memory tiers also work for image-to-video and gallery reuse.
@@ -7677,9 +7811,21 @@ async function handleApi(req, res, url) {
     // Edit Anything expects concise, literal editing instructions. Its author
     // specifically advises against the LTX prompt rewriter for this workflow.
     const enhance = isLtxEdit ? false : body.enhance !== false;
+    const h3PromptImageNames = engine !== 'h3'
+      ? []
+      : h3Mode === 'reference'
+        ? [h3References.images[0]?.name].filter(Boolean)
+        : [!bypass ? comfyName : null, body.endImageName ? String(body.endImageName) : null].filter(Boolean);
     let autoGeneratedMotion = preparedMotionPrompt;
     if (autoMotionRequested) {
-      const suggested = await sharedMotionPrompt(comfyName, seed, req.profile.id, userMotionPrompt, { engine, seconds });
+      const suggested = await sharedMotionPrompt(comfyName, seed, req.profile.id, userMotionPrompt, {
+        engine,
+        seconds,
+        mode: h3Mode,
+        imageNames: engine === 'h3' ? h3PromptImageNames : undefined,
+        hasFirstFrame: engine === 'h3' && !bypass,
+        hasLastFrame: engine === 'h3' && !!body.endImageName,
+      });
       suppliedMotionPrompt = cleanEnhancedText(suggested, userMotionPrompt || 'subtle natural movement with a steady camera');
       suppliedMotionPrompt = ensureCameraMotionPrompt(suppliedMotionPrompt, cameraMotions);
       motionPrompt = suppliedMotionPrompt;
@@ -7688,33 +7834,35 @@ async function handleApi(req, res, url) {
     let prompt = motionPrompt;
     let refinedMotionPrompt = null;
     const frameAwareEnhance = !bypass && !faceImageName && !isLtxEdit && engine !== 'h3';
-    if (shouldUseExternalPrompt('video', 'enhance') && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
-      const externalImageName = engine === 'h3' && h3Mode === 'reference'
-        ? h3References.images[0]?.name
-        : (faceImageName || (!bypass ? comfyName : undefined));
+    if (engine !== 'h3' && shouldUseExternalPrompt('video', 'enhance') && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
+      const externalImageNames = [faceImageName || (!bypass ? comfyName : undefined)].filter(Boolean);
+      const externalImageName = externalImageNames[0];
       const parts = videoPromptEnhanceParts(motionPrompt, {
         engine,
         seconds,
         mode: h3Mode,
         hasImage: !!externalImageName,
       });
-      const raw = await runConfiguredExternalPrompt(parts, engine === 'h3' ? 640 : 384, {
+      const raw = await runConfiguredExternalPrompt(parts, 384, {
         action: 'enhance',
         imageName: externalImageName,
+        imageNames: externalImageNames,
         profileId: req.profile.id,
       });
       refinedMotionPrompt = cleanEnhancedText(raw, motionPrompt);
       refinedMotionPrompt = ensureCameraMotionPrompt(refinedMotionPrompt, cameraMotions);
       prompt = refinedMotionPrompt;
     } else if (engine === 'h3' && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
-      const h3EnhanceImageName = h3Mode === 'reference'
-        ? h3References.images[0]?.name
-        : (!bypass ? comfyName : undefined);
+      const h3EnhanceImageName = h3PromptImageNames[0];
       const raw = await sharedH3PromptEnhancement(motionPrompt, seed, {
         profileId: req.profile.id,
         imageName: h3EnhanceImageName,
+        imageNames: h3PromptImageNames,
         mode: h3Mode,
         seconds,
+        hasFirstFrame: h3Mode === 'frames' && !bypass,
+        hasLastFrame: h3Mode === 'frames' && !!body.endImageName,
+        allowedReferenceTokens: h3Mode === 'reference' ? h3AllowedReferenceTokens : [],
       });
       refinedMotionPrompt = cleanEnhancedText(raw, motionPrompt);
       prompt = refinedMotionPrompt;
@@ -8190,7 +8338,11 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const initialPrompt = String(body.prompt || '').trim();
     const engine = body.engine === 'h3' ? 'h3' : '';
-    const seconds = Number(body.seconds);
+    const endImageName = engine === 'h3' ? String(body.endImageName || '').trim().slice(0, 500) : '';
+    const requestedSeconds = Number(body.seconds);
+    const seconds = engine === 'h3'
+      ? h3EffectiveDurationSeconds(requestedSeconds)
+      : requestedSeconds;
     let comfyName = '';
     if (body.id) {
       const item = db.items.find((it) => it.id === body.id && it.profileId === req.profile.id);
@@ -8202,10 +8354,25 @@ async function handleApi(req, res, url) {
       comfyName = String(body.imageName);
     }
     if (!comfyName) return json(res, 400, { error: 'Attach a start frame first' });
-    let raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, { engine, seconds });
+    const imageNames = [comfyName, endImageName].filter(Boolean);
+    let raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, {
+      engine,
+      seconds,
+      mode: 'frames',
+      imageNames,
+      hasFirstFrame: engine === 'h3',
+      hasLastFrame: engine === 'h3' && !!endImageName,
+    });
     let prompt = cleanEnhancedText(raw, initialPrompt);
     if (!prompt) {
-      raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, { engine, seconds });
+      raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, {
+        engine,
+        seconds,
+        mode: 'frames',
+        imageNames,
+        hasFirstFrame: engine === 'h3',
+        hasLastFrame: engine === 'h3' && !!endImageName,
+      });
       prompt = cleanEnhancedText(raw, initialPrompt);
     }
     if (!prompt) return json(res, 500, { error: 'Vision model returned no usable text' });
@@ -8235,19 +8402,61 @@ async function handleApi(req, res, url) {
     const currentPrompt = String(body.currentPrompt || '').trim().slice(0, 12000);
     const changeRequest = String(body.changeRequest || '').trim().slice(0, 1200);
     const imageName = String(body.imageName || '').trim().slice(0, 500);
+    const endImageName = String(body.endImageName || '').trim().slice(0, 500);
     if (!changeRequest) return json(res, 400, { error: 'Describe what you want to change' });
     const videoRevision = body.kind === 'video';
+    const revisionMode = body.h3Mode === 'reference' ? 'reference' : 'frames';
+    const revisionEngine = String(body.engine || '').trim().slice(0, 40);
+    const hasFirstFrame = body.hasFirstFrame === undefined
+      ? revisionMode === 'frames' && !!imageName
+      : body.hasFirstFrame === true;
+    const hasLastFrame = body.hasLastFrame === true;
+    const allowedReferenceTokens = revisionMode === 'reference'
+      ? h3PromptReferenceTokens(...(Array.isArray(body.allowedReferenceTokens) ? body.allowedReferenceTokens : []))
+      : [];
+    const revisionImageNames = videoRevision && revisionEngine === 'h3'
+      ? revisionMode === 'reference'
+        ? [imageName].filter(Boolean)
+        : [hasFirstFrame ? imageName : null, hasLastFrame ? (endImageName || (!hasFirstFrame ? imageName : '')) : null].filter(Boolean)
+      : [imageName].filter(Boolean);
     const revisionOptions = {
       imageName: imageName || undefined,
+      endImageName: endImageName || undefined,
+      imageNames: revisionImageNames,
       profileId: req.profile.id,
-      engine: String(body.engine || '').trim().slice(0, 40),
-      seconds: clampNum(body.seconds, 1, 60, 5),
-      mode: body.h3Mode === 'reference' ? 'reference' : 'frames',
+      engine: revisionEngine,
+      seconds: revisionEngine === 'h3'
+        ? h3EffectiveDurationSeconds(body.seconds)
+        : clampNum(body.seconds, 1, 60, 5),
+      mode: revisionMode,
+      // Clients predating explicit frame flags sent only imageName. Preserve
+      // their I2VA behavior while keeping Reference-mode vision distinct.
+      hasFirstFrame,
+      hasLastFrame,
+      allowedReferenceTokens,
+      preserveAuthoredText: body.preserveAuthoredText === true,
     };
-    const raw = videoRevision
-      ? await reviseVideoPrompt(currentPrompt, changeRequest, Math.floor(Math.random() * 2 ** 31), revisionOptions)
-      : await reviseImagePrompt(currentPrompt, changeRequest, Math.floor(Math.random() * 2 ** 31), revisionOptions);
-    const prompt = cleanEnhancedText(raw, currentPrompt || changeRequest);
+    const revisionSeed = Math.floor(Math.random() * 2 ** 31);
+    const raw = videoRevision && revisionEngine === 'h3'
+      ? await validatedH3Prompt(
+        (attempt, validationFeedback) => reviseVideoPrompt(
+          currentPrompt,
+          changeRequest,
+          revisionSeed + attempt,
+          Object.assign({}, revisionOptions, { validationFeedback }),
+        ),
+        currentPrompt || changeRequest,
+        Object.assign({}, revisionOptions, {
+          referenceSource: `${currentPrompt}\n${changeRequest}`,
+          authoredTextSource: currentPrompt,
+        }),
+      )
+      : (videoRevision
+        ? await reviseVideoPrompt(currentPrompt, changeRequest, revisionSeed, revisionOptions)
+        : await reviseImagePrompt(currentPrompt, changeRequest, revisionSeed, revisionOptions));
+    const prompt = videoRevision && revisionEngine === 'h3'
+      ? String(raw || '').trim()
+      : cleanEnhancedText(raw, currentPrompt || changeRequest);
     if (!prompt) return json(res, 500, { error: 'Prompt assistant returned no usable text' });
     return json(res, 200, { prompt });
   }

@@ -10,6 +10,7 @@ const JobReconciliation = window.KreaJobReconciliation;
 const Analytics = window.KreaAnalytics;
 const SupportPrompt = window.KreaSupportPrompt;
 const ReleaseNotes = window.MixStudioReleaseNotes;
+const H3PromptGuide = window.H3PromptGuide;
 const progressEta = ProgressEta.createProgressEtaTracker();
 const EDIT_MODEL_ORDER_VERSION = 3;
 const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
@@ -133,6 +134,7 @@ const state = {
   vidH3RefImageSize: 'match',
   vidH3RefSlots: 1,
   vidH3References: { images: [], videos: [], audios: [] },
+  h3PromptStructure: null,    // fingerprint + frame/reference context from the last validated rewrite
   directorOpen: false,
   directorProject: null,
   directorComposerMode: 'timeline',
@@ -1051,6 +1053,7 @@ function setPromptDraft(value, { render = true } = {}) {
   $('#prompt').value = value || '';
   if (render) renderPromptComposer();
   if ($('#editSequenceBtn')) renderEditSequence();
+  renderH3PromptGuideTrigger();
 }
 
 function syncPromptDraftFromComposer() {
@@ -2597,6 +2600,7 @@ function saveForm() {
       vidH3RefSlots: state.vidH3RefSlots,
       vidH3References: Object.fromEntries(Object.entries(h3References())
         .map(([kind, assets]) => [kind, assets.map(serializeWorkspaceAsset).filter(Boolean)])),
+      h3PromptStructure: state.h3PromptStructure,
       editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
       videoEngineOrder: state.videoEngineOrder, videoEngineDefault: state.videoEngineDefault,
@@ -2848,6 +2852,11 @@ function loadForm() {
       (Array.isArray(f.vidH3References?.[kind]) ? f.vidH3References[kind] : [])
         .map(restoreWorkspaceAsset).filter(Boolean),
     ]));
+    state.h3PromptStructure = f.h3PromptStructure
+      && typeof f.h3PromptStructure.fingerprint === 'string'
+      && typeof f.h3PromptStructure.context === 'string'
+      ? { fingerprint: f.h3PromptStructure.fingerprint, context: f.h3PromptStructure.context }
+      : null;
     const h3ReferenceCount = Object.values(state.vidH3References).reduce((count, assets) => count + assets.length, 0);
     state.vidH3RefSlots = Math.max(1, Math.min(15, Math.max(Number(f.vidH3RefSlots) || 1, h3ReferenceCount)));
     state.vidEnd = restoreWorkspaceAsset(f.vidEnd);
@@ -3824,6 +3833,7 @@ function updateVideoPanels() {
   $('#createPromptTools').hidden = state.view !== 'create';
   $('#cameraPromptBtn').hidden = false;
   $('#videoPromptTools').hidden = !isVideo;
+  renderH3PromptGuideTrigger();
   $('#videoCameraMotionBtn').hidden = !isVideo || state.vidEngine === 'scail' || state.vidEngine === 'h3';
   syncCameraMotionTool();
   renderKrea2Mode();
@@ -6015,10 +6025,396 @@ async function createPromptFromImageName(image) {
   toast('Prompt created · use Revise to change it');
 }
 
+function h3PromptGuideActive() {
+  return state.view === 'video' && state.vidEngine === 'h3';
+}
+
+function h3PromptReferenceTokens(...values) {
+  return [...new Set(values.flatMap((value) => (
+    String(value || '').match(/<(?:Picture|Video|Audio)\s+\d+>/g) || []
+  )))];
+}
+
+function h3EffectiveDurationSeconds(value = Number($('#vidDur').value) || 5) {
+  return H3PromptGuide?.h3EffectiveDurationSeconds
+    ? H3PromptGuide.h3EffectiveDurationSeconds(value)
+    : Number(value) || 5;
+}
+
+function h3PromptGuideContext(overrides = {}) {
+  const referenceMode = state.vidH3Mode === 'reference';
+  return {
+    mode: referenceMode ? 'reference' : 'frames',
+    seconds: h3EffectiveDurationSeconds(),
+    hasFirstFrame: !referenceMode && !!state.vidRef,
+    hasLastFrame: !referenceMode && !!state.vidEnd,
+    expectedReferenceTokens: [],
+    allowedReferenceTokens: referenceMode ? h3PromptReferenceEntries().map((entry) => entry.tag) : [],
+    ...overrides,
+  };
+}
+
+function h3PromptFingerprint(value) {
+  const text = String(value || '');
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${text.length}:${(hash >>> 0).toString(16)}`;
+}
+
+function h3PromptStructureContextSignature() {
+  const referenceMode = state.vidH3Mode === 'reference';
+  return JSON.stringify({
+    mode: referenceMode ? 'reference' : 'frames',
+    seconds: h3EffectiveDurationSeconds().toFixed(3),
+    first: referenceMode ? '' : String(state.vidRef?.name || ''),
+    last: referenceMode ? '' : String(state.vidEnd?.name || ''),
+    references: referenceMode
+      ? h3PromptReferenceEntries().map((entry) => [entry.tag, String(entry.asset?.name || '')])
+      : [],
+  });
+}
+
+function rememberH3PromptStructure(value) {
+  state.h3PromptStructure = {
+    fingerprint: h3PromptFingerprint(value),
+    context: h3PromptStructureContextSignature(),
+  };
+}
+
+function h3PromptLooksStructured(value) {
+  return /(?:^|\n)\s*(?:integrated_multimodal_description|subject_definitions)\s*:/i.test(String(value || ''));
+}
+
+function h3StructuredPromptReadyForGeneration(value) {
+  if (!h3PromptGuideActive() || state.enhance || !h3PromptLooksStructured(value)) return true;
+  const prompt = String(value || '').trim();
+  const audit = h3PromptGuideAudit(prompt, {
+    expectedReferenceTokens: state.vidH3Mode === 'reference' ? h3PromptReferenceTokens(prompt) : [],
+  });
+  const remembered = state.h3PromptStructure;
+  const sameRememberedPrompt = remembered?.fingerprint === h3PromptFingerprint(prompt);
+  const contextChanged = sameRememberedPrompt
+    && remembered.context !== h3PromptStructureContextSignature();
+  if (audit.structureReady && !contextChanged) return true;
+  openH3PromptGuide();
+  const issue = contextChanged
+    ? 'Duration or frame inputs changed after this prompt was structured'
+    : h3PromptGuideIssueText(audit.structureIssues[0]);
+  setH3PromptGuideBusy(false, `${issue || 'Update the official H3 structure'} before generating.`);
+  toast(`H3 Guide · ${issue || 'Update the official prompt structure'}`, true);
+  return false;
+}
+
+function h3PromptGuideIssueText(issue) {
+  if (!issue) return '';
+  if (typeof issue === 'string') return issue;
+  const fieldLabels = {
+    integrated_multimodal_description: 'the main scene timeline',
+    subject_definitions: 'reference subject definitions',
+    summary: 'the reference summary',
+    retention_analysis: 'reference retention details',
+    detailed_description: 'the detailed shot timeline',
+    overall_soundscape: 'the overall soundscape',
+    non_diegetic_music: 'the background music field',
+  };
+  if (issue.code === 'missing-field') return `Add ${fieldLabels[issue.field] || 'the missing section'}`;
+  if (issue.code === 'empty-field') return `Add content to ${fieldLabels[issue.field] || 'the empty section'}`;
+  if (issue.code === 'field-order' || issue.code === 'leading-content') return 'Put the sections in the official order';
+  if (issue.code === 'alignment-line' || issue.code === 'unexpected-alignment') return 'Update the frame-alignment line';
+  if (issue.code === 'missing-shot-1' || issue.code === 'shot-1-position') return 'Begin the timeline with [Shot 1]';
+  if (issue.code === 'shot-1-timestamp') return 'Remove the timestamp from [Shot 1]';
+  if (String(issue.code || '').startsWith('shot-')) return 'Fix the later shot numbers and timestamps';
+  if (issue.code === 'missing-reference-token') return `Restore ${issue.token || 'the missing reference tag'}`;
+  if (issue.code === 'unexpected-reference-token') return `Remove ${issue.token || 'the invented reference tag'}`;
+  if (issue.code === 'missing-dialogue-format' || issue.code === 'dialogue-speaker-id') return 'Format dialogue with stable speaker IDs';
+  if (issue.code === 'dialogue-language') return 'Choose the actual dialogue language';
+  if (issue.code === 'speaker-id-instability' || issue.code === 'compound-speaker-id') return 'Keep speaker IDs stable across every line';
+  return String(issue.message || issue.detail || issue.code || 'Official structure is incomplete');
+}
+
+function h3PromptGuideAudit(value = promptDraft(), overrides = {}) {
+  const prompt = String(value || '');
+  const referenceMode = state.vidH3Mode === 'reference';
+  const requiredFields = referenceMode
+    ? ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music']
+    : ['integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music'];
+  const fallbackPresentFields = requiredFields.filter((field) => (
+    new RegExp(`(?:^|\\n)\\s*${field}\\s*:`, 'i').test(prompt)
+  ));
+  const structure = H3PromptGuide?.auditStructure
+    ? H3PromptGuide.auditStructure(prompt, h3PromptGuideContext(overrides))
+    : {
+      ready: fallbackPresentFields.length === requiredFields.length,
+      issues: [],
+      requiredFields,
+      presentFields: fallbackPresentFields,
+    };
+  const presentFields = Array.isArray(structure.presentFields)
+    ? structure.presentFields
+    : fallbackPresentFields;
+  const dialogue = H3PromptGuide?.analyzePrompt
+    ? H3PromptGuide.analyzePrompt(prompt)
+    : { entries: [], dialogueCount: 0, formattedDialogueCount: 0, unformattedDialogueCount: 0 };
+  const referenceTags = [...new Set(
+    (prompt.match(/<(?:Picture|Video|Audio)\s+\d+>/gi) || []).map((tag) => tag.toLowerCase()),
+  )];
+  return {
+    prompt,
+    referenceMode,
+    requiredFields: Array.isArray(structure.requiredFields) ? structure.requiredFields : requiredFields,
+    presentFields,
+    structureReady: structure.ready === true,
+    structureIssues: Array.isArray(structure.issues) ? structure.issues : [],
+    structure,
+    referenceTags,
+    dialogue,
+  };
+}
+
+function renderH3PromptGuideTrigger() {
+  const button = $('#h3PromptGuideBtn');
+  if (!button) return;
+  const active = h3PromptGuideActive();
+  button.hidden = !active;
+  if (!active) return;
+  const audit = h3PromptGuideAudit();
+  const ready = Number(audit.dialogue.unformattedDialogueCount) || 0;
+  const badge = $('#h3PromptGuideBadge');
+  badge.hidden = ready < 1;
+  badge.textContent = ready > 9 ? '9+' : String(ready);
+  button.title = ready
+    ? `${ready} dialogue line${ready === 1 ? '' : 's'} ready to format`
+    : (audit.structureReady ? 'This prompt follows the official H3 structure' : 'Check and structure this prompt for MiniMax H3');
+}
+
+function makeH3DialoguePreviewCard(entry) {
+  const card = document.createElement('article');
+  card.className = 'h3-prompt-dialogue-card';
+  const id = document.createElement('span');
+  id.className = 'h3-prompt-dialogue-id';
+  id.textContent = entry.speakerId ? `(${entry.speakerId})` : 'Voice';
+  const copy = document.createElement('span');
+  copy.className = 'h3-prompt-dialogue-copy';
+  const speaker = document.createElement('b');
+  speaker.textContent = entry.speaker || 'Identified speaker';
+  const quote = document.createElement('q');
+  quote.textContent = entry.text || '';
+  copy.append(speaker, quote);
+  card.append(id, copy);
+  return card;
+}
+
+let h3PromptGuideBusy = false;
+
+function setH3PromptGuideBusy(busy, message = '') {
+  h3PromptGuideBusy = busy;
+  const panel = $('#h3PromptGuideSheet .h3-prompt-guide-panel');
+  if (panel) panel.setAttribute('aria-busy', String(busy));
+  $('#h3PromptFormatDialogue').disabled = busy || $('#h3PromptFormatDialogue').dataset.available !== 'true';
+  $('#h3PromptStructure').disabled = busy || !promptDraft().trim();
+  $('#h3PromptDialogueLanguage').disabled = busy;
+  const status = $('#h3PromptGuideStatus');
+  status.hidden = !message;
+  status.textContent = message;
+}
+
+function renderH3PromptGuide() {
+  if (!h3PromptGuideActive()) return;
+  const audit = h3PromptGuideAudit();
+  const required = audit.requiredFields.length;
+  const effectiveDuration = Number(audit.structure?.duration) || h3EffectiveDurationSeconds();
+  $('#h3PromptGuideFormat').textContent = audit.referenceMode ? '6 sections' : '3 fields';
+  const formatStatus = audit.structureReady
+    ? 'Official structure ready'
+    : (h3PromptGuideIssueText(audit.structureIssues[0])
+      || `${audit.presentFields.length}/${required} present · Enhance will finish it`);
+  $('#h3PromptGuideFormatStatus').textContent = `${formatStatus} · ${effectiveDuration.toFixed(2)}s output`;
+
+  const dialogue = audit.dialogue;
+  const dialogueCount = Number(dialogue.dialogueCount) || 0;
+  const unformattedCount = Number(dialogue.unformattedDialogueCount) || 0;
+  $('#h3PromptGuideDialogue').textContent = dialogueCount
+    ? `${dialogueCount} line${dialogueCount === 1 ? '' : 's'}`
+    : 'None found';
+  $('#h3PromptGuideDialogueStatus').textContent = unformattedCount
+    ? `${unformattedCount} ready to format`
+    : (dialogueCount ? 'Official tags already applied' : 'Quotes stay exact');
+
+  const attachedReferences = audit.referenceMode ? h3ReferenceCount() : 0;
+  const firstFrame = !audit.referenceMode && !!state.vidRef;
+  const lastFrame = !audit.referenceMode && !!state.vidEnd;
+  if (audit.referenceMode) {
+    $('#h3PromptGuideReferences').textContent = attachedReferences
+      ? `${attachedReferences} input${attachedReferences === 1 ? '' : 's'}`
+      : 'None';
+    $('#h3PromptGuideReferenceStatus').textContent = audit.referenceTags.length
+      ? `${audit.referenceTags.length} unique tag${audit.referenceTags.length === 1 ? '' : 's'} in prompt`
+      : 'Type @ to mention an input';
+  } else {
+    const frameCount = Number(firstFrame) + Number(lastFrame);
+    $('#h3PromptGuideReferences').textContent = frameCount ? `${frameCount} frame${frameCount === 1 ? '' : 's'}` : 'Text only';
+    $('#h3PromptGuideReferenceStatus').textContent = firstFrame && lastFrame
+      ? 'First + last alignment'
+      : (firstFrame ? 'First-frame alignment' : (lastFrame ? 'Last-frame alignment' : 'No alignment line'));
+  }
+
+  const preview = $('#h3PromptDialoguePreview');
+  const list = $('#h3PromptDialogueList');
+  list.replaceChildren();
+  const entries = Array.isArray(dialogue.entries) ? dialogue.entries : [];
+  preview.hidden = entries.length === 0;
+  entries.slice(0, 4).forEach((entry) => list.appendChild(makeH3DialoguePreviewCard(entry)));
+  if (entries.length > 4) {
+    const more = document.createElement('small');
+    more.className = 'h3-prompt-dialogue-more';
+    more.textContent = `+${entries.length - 4} more dialogue line${entries.length - 4 === 1 ? '' : 's'}`;
+    list.appendChild(more);
+  }
+
+  const format = $('#h3PromptFormatDialogue');
+  format.dataset.available = String(unformattedCount > 0);
+  format.textContent = unformattedCount
+    ? `Format ${unformattedCount} dialogue line${unformattedCount === 1 ? '' : 's'}`
+    : 'Dialogue is formatted';
+  $('#h3PromptStructure').textContent = audit.structureReady ? 'Recheck official format' : 'Structure full prompt';
+  const undo = state.promptRevisionUndo;
+  $('#h3PromptGuideUndo').hidden = !(undo && undo.view === 'video' && audit.prompt.trim() === undo.after);
+  setH3PromptGuideBusy(h3PromptGuideBusy, h3PromptGuideBusy ? 'Structuring the complete H3 prompt…' : '');
+}
+
+function openH3PromptGuide() {
+  if (!h3PromptGuideActive()) return;
+  renderH3PromptGuide();
+  $('#h3PromptGuideSheet').classList.add('show');
+  $('#h3PromptGuideBtn').setAttribute('aria-expanded', 'true');
+  syncSheetScrollLock();
+  setTimeout(() => $('#h3PromptGuideSheet .h3-prompt-guide-panel').focus(), 80);
+}
+
+function closeH3PromptGuide({ restoreFocus = true } = {}) {
+  $('#h3PromptGuideSheet').classList.remove('show');
+  $('#h3PromptGuideBtn').setAttribute('aria-expanded', 'false');
+  syncSheetScrollLock();
+  if (restoreFocus && h3PromptGuideActive()) $('#h3PromptGuideBtn').focus({ preventScroll: true });
+}
+
+function formatCurrentH3Dialogue() {
+  if (h3PromptGuideBusy || !H3PromptGuide?.formatDialogue) return;
+  const before = promptDraft().trim();
+  const result = H3PromptGuide.formatDialogue(before, {
+    language: $('#h3PromptDialogueLanguage').value || 'English',
+  });
+  if (!result.changed) {
+    setH3PromptGuideBusy(false, 'No clearly attributed, unformatted dialogue was found.');
+    return;
+  }
+  checkpointDesktopInputSetup();
+  state.prompts.video = result.prompt;
+  state.promptRevisionUndo = { before, after: result.prompt, view: 'video' };
+  if (h3PromptLooksStructured(before)
+    && state.h3PromptStructure?.fingerprint === h3PromptFingerprint(before)) {
+    rememberH3PromptStructure(result.prompt);
+  }
+  setPromptDraft(result.prompt);
+  updatePromptClear();
+  saveForm();
+  appendDesktopInputSetup();
+  renderH3PromptGuide();
+  setH3PromptGuideBusy(false, `${result.replacements} dialogue line${result.replacements === 1 ? '' : 's'} formatted · exact words preserved.`);
+  toast('H3 dialogue formatted');
+}
+
+async function structureCurrentH3Prompt() {
+  if (h3PromptGuideBusy || promptAssistantBusy || !h3PromptGuideActive()) return;
+  const before = promptDraft().trim();
+  if (!before) {
+    setH3PromptGuideBusy(false, 'Write a prompt first.');
+    return;
+  }
+  const revisionMode = state.vidH3Mode;
+  const source = promptAssistantSourceImage();
+  const seconds = h3EffectiveDurationSeconds();
+  const hasFirstFrame = revisionMode === 'frames' && !!state.vidRef;
+  const hasLastFrame = revisionMode === 'frames' && !!state.vidEnd;
+  const expectedReferenceTokens = revisionMode === 'reference'
+    ? h3PromptReferenceTokens(before)
+    : [];
+  const allowedReferenceTokens = revisionMode === 'reference'
+    ? h3PromptReferenceEntries().map((entry) => entry.tag)
+    : [];
+  const changeRequest = revisionMode === 'reference'
+    ? 'Refactor this into the official MiniMax H3 full-reference six-section format. Preserve every reference token, relationship, and spoken word exactly.'
+    : 'Refactor this into the official MiniMax H3 three-field format for the current frame anchors. Preserve the idea, visible quoted text, and every spoken word exactly.';
+  setH3PromptGuideBusy(true, 'Structuring the complete H3 prompt…');
+  checkpointDesktopInputSetup();
+  try {
+    const result = await api('/api/prompt/revise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        currentPrompt: before,
+        changeRequest,
+        imageName: source?.name,
+        endImageName: hasFirstFrame && hasLastFrame ? state.vidEnd.name : undefined,
+        kind: 'video',
+        engine: 'h3',
+        seconds,
+        h3Mode: revisionMode,
+        hasFirstFrame,
+        hasLastFrame,
+        allowedReferenceTokens,
+        preserveAuthoredText: true,
+      }),
+    });
+    const revised = String(result.prompt || '').trim();
+    if (!revised) throw new Error('Prompt assistant returned no usable text');
+    const revisedAudit = h3PromptGuideAudit(revised, { expectedReferenceTokens });
+    if (!revisedAudit.structureReady) {
+      const issue = h3PromptGuideIssueText(revisedAudit.structureIssues[0]);
+      throw new Error(`The prompt writer returned an incomplete H3 format${issue ? `: ${issue}` : ''}. Your draft was left unchanged; try again.`);
+    }
+    if (!h3PromptGuideActive() || state.vidH3Mode !== revisionMode || promptDraft().trim() !== before) {
+      throw new Error('The prompt or H3 mode changed while the rewrite was running. Review it and try again.');
+    }
+    state.prompts.video = revised;
+    state.promptRevisionUndo = { before, after: revised, view: 'video' };
+    rememberH3PromptStructure(revised);
+    state.enhance = false;
+    setPromptDraft(revised);
+    updatePromptClear();
+    renderEnhance();
+    saveForm();
+    appendDesktopInputSetup();
+    setH3PromptGuideBusy(false);
+    closeH3PromptGuide({ restoreFocus: false });
+    $('#promptComposer').focus();
+    toast('Prompt structured for MiniMax H3 · Enhance turned off');
+  } catch (error) {
+    setH3PromptGuideBusy(false, error.message || 'Could not structure this prompt');
+    if (!isJobCancellation(error)) toast(error.message, true);
+  }
+}
+
+$('#h3PromptGuideBtn').addEventListener('click', openH3PromptGuide);
+$('#h3PromptFormatDialogue').addEventListener('click', formatCurrentH3Dialogue);
+$('#h3PromptStructure').addEventListener('click', structureCurrentH3Prompt);
+$('#h3PromptGuideSheet').addEventListener('click', (event) => {
+  if (event.target === $('#h3PromptGuideSheet') || event.target.closest('[data-close]')) closeH3PromptGuide();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && $('#h3PromptGuideSheet').classList.contains('show')) {
+    event.preventDefault();
+    closeH3PromptGuide();
+  }
+});
+
 function promptAssistantSourceImage() {
   if (state.view !== 'video') return state.promptSourceImage;
   if (h3ReferenceModeActive()) return h3References().images[0] || null;
-  return state.vidRef || null;
+  return state.vidRef || (state.vidEngine === 'h3' ? state.vidEnd : null) || null;
 }
 
 function renderPromptAssistantSource() {
@@ -6027,7 +6423,13 @@ function renderPromptAssistantSource() {
   row.hidden = !source;
   if (source) $('#promptAssistantSourceImg').src = source.url || `/api/input?name=${encodeURIComponent(source.name)}`;
   $('#promptAssistantSourceTitle').textContent = state.view === 'video'
-    ? (h3ReferenceModeActive() ? 'Use Picture 1 for context' : 'Use the first frame for context')
+    ? (h3ReferenceModeActive()
+      ? 'Use Picture 1 for context'
+      : (state.vidEngine === 'h3' && state.vidRef && state.vidEnd
+        ? 'Use first + last frames for context'
+        : (state.vidEngine === 'h3' && !state.vidRef && state.vidEnd
+          ? 'Use the last frame for context'
+          : 'Use the first frame for context')))
     : 'Use the source image for context';
   const toggle = $('#promptAssistantSourceToggle');
   const enabled = !!source && state.promptAssistantUseSource;
@@ -6054,14 +6456,22 @@ function setPromptAssistantBusy(busy, message = '') {
 function openPromptAssistant() {
   const currentPrompt = promptDraft().trim();
   const video = state.view === 'video';
+  const h3Video = video && state.vidEngine === 'h3';
   $('#promptAssistantTitle').textContent = currentPrompt
     ? (video ? 'Revise video prompt' : 'Revise prompt')
     : (video ? 'Build video prompt' : 'Build prompt');
   $('#promptAssistantApply').textContent = currentPrompt ? 'Revise prompt' : 'Build prompt';
   $('#promptAssistantCopy').textContent = video
-    ? 'Say what should change. Mix Studio will rewrite the complete video prompt while preserving continuity, timing, camera direction, audio, and reference tags.'
+    ? (h3Video
+      ? 'Say what should change. Mix Studio follows MiniMax’s official format while preserving timing, reference tags, and every spoken word.'
+      : 'Say what should change. Mix Studio will rewrite the complete video prompt while preserving continuity, timing, camera direction, audio, and reference tags.')
     : 'Say what should change. Mix Studio will rewrite the whole prompt, reconcile related details, and preserve everything else.';
-  const starters = video ? [
+  const starters = h3Video ? [
+    ['Official H3 format', 'Refactor this into the official MiniMax H3 format for the current input mode. Preserve the idea, reference tags, and every spoken word exactly.'],
+    ['Format dialogue', 'Format only clearly attributed speech with stable speaker IDs and MiniMax dialogue tags. Keep every spoken word and punctuation mark exact, and leave signs or on-screen text quoted.'],
+    ['Improve sound', 'Improve the physical ambience, synchronized action sounds, and audience-only music while keeping dialogue and diegetic audio in the correct H3 sections.'],
+    ['Refine camera', 'Make the camera framing and movement more deliberate, and keep every cut timestamp strictly increasing within the clip duration.'],
+  ] : video ? [
     ['Add shot beats', 'Restructure this as a coherent sequence with timestamped beats, purposeful camera angles, and only as many cuts as the duration can support.'],
     ['Change camera', 'Keep the subject and action, but change the camera direction to '],
     ['Improve motion', 'Make the subject movement, secondary motion, and transitions more specific and physically natural.'],
@@ -6078,7 +6488,9 @@ function openPromptAssistant() {
     button.dataset.promptRevision = starter[1];
   });
   $('#promptAssistantInput').placeholder = video
-    ? 'Add a low-angle close-up at 4 seconds, then cut wide as the subject turns. Keep the dialogue and end on the same action.'
+    ? (h3Video
+      ? 'Add a close-up at 4 seconds, keep the dialogue exact, and end on the same action.'
+      : 'Add a low-angle close-up at 4 seconds, then cut wide as the subject turns. Keep the dialogue and end on the same action.')
     : 'Change the woman to a man in a tailored navy suit, use teal and gold, and keep the lighting and composition.';
   if (!promptAssistantBusy) $('#promptAssistantInput').value = '';
   renderPromptAssistantSource();
@@ -6110,18 +6522,30 @@ $$('.prompt-assistant-starters [data-prompt-revision]').forEach((button) => {
     input.setSelectionRange(input.value.length, input.value.length);
   });
 });
-$('#promptAssistantUndo').addEventListener('click', () => {
+
+function undoLatestPromptChange({ closeAssistant = false } = {}) {
   const undo = state.promptRevisionUndo;
-  if (!undo || undo.view !== state.view || promptDraft().trim() !== undo.after) return;
+  if (!undo || undo.view !== state.view || promptDraft().trim() !== undo.after) return false;
   checkpointDesktopInputSetup();
   state.prompts[state.view] = undo.before;
   setPromptDraft(undo.before);
   state.promptRevisionUndo = null;
+  if (h3PromptGuideActive() && h3PromptLooksStructured(undo.before)) rememberH3PromptStructure(undo.before);
   updatePromptClear();
   saveForm();
   appendDesktopInputSetup();
-  closePromptAssistant();
+  if (closeAssistant) closePromptAssistant();
   toast('Prompt revision undone');
+  return true;
+}
+
+$('#promptAssistantUndo').addEventListener('click', () => {
+  undoLatestPromptChange({ closeAssistant: true });
+});
+$('#h3PromptGuideUndo').addEventListener('click', () => {
+  if (!undoLatestPromptChange()) return;
+  renderH3PromptGuide();
+  setH3PromptGuideBusy(false, 'Last prompt change undone.');
 });
 $('#promptAssistantForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -6135,6 +6559,25 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
   const before = promptDraft().trim();
   const revisionView = state.view;
   const source = state.promptAssistantUseSource ? promptAssistantSourceImage() : null;
+  const revisionEngine = revisionView === 'video' ? state.vidEngine : '';
+  const revisionH3Mode = revisionEngine === 'h3' ? state.vidH3Mode : '';
+  const requestedRevisionSeconds = Number($('#vidDur').value) || 5;
+  const revisionSeconds = revisionView === 'video'
+    ? (revisionEngine === 'h3' ? h3EffectiveDurationSeconds(requestedRevisionSeconds) : requestedRevisionSeconds)
+    : undefined;
+  const revisionHasFirstFrame = revisionEngine === 'h3'
+    && revisionH3Mode === 'frames' && !!state.vidRef;
+  const revisionHasLastFrame = revisionEngine === 'h3'
+    && revisionH3Mode === 'frames' && !!state.vidEnd;
+  const revisionEndImageName = source && revisionHasFirstFrame && revisionHasLastFrame
+    ? state.vidEnd.name
+    : undefined;
+  const expectedReferenceTokens = revisionH3Mode === 'reference'
+    ? h3PromptReferenceTokens(before, changeRequest)
+    : [];
+  const allowedReferenceTokens = revisionH3Mode === 'reference'
+    ? h3PromptReferenceEntries().map((entry) => entry.tag)
+    : [];
   setPromptAssistantBusy(true, before ? 'Rewriting the complete prompt…' : 'Building a generation-ready prompt…');
   checkpointDesktopInputSetup();
   try {
@@ -6145,19 +6588,42 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
         currentPrompt: before,
         changeRequest,
         imageName: source && source.name ? source.name : undefined,
+        endImageName: revisionEndImageName,
         kind: revisionView === 'video' ? 'video' : 'image',
-        engine: revisionView === 'video' ? state.vidEngine : undefined,
-        seconds: revisionView === 'video' ? Number($('#vidDur').value) || 5 : undefined,
-        h3Mode: revisionView === 'video' && state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
+        engine: revisionEngine || undefined,
+        seconds: revisionSeconds,
+        h3Mode: revisionH3Mode || undefined,
+        hasFirstFrame: revisionEngine === 'h3' ? revisionHasFirstFrame : undefined,
+        hasLastFrame: revisionEngine === 'h3' ? revisionHasLastFrame : undefined,
+        allowedReferenceTokens: revisionEngine === 'h3' ? allowedReferenceTokens : undefined,
       }),
     });
     const revised = String(result.prompt || '').trim();
     if (!revised) throw new Error('Prompt assistant returned no usable text');
-    if (state.view !== revisionView || promptDraft().trim() !== before) {
+    if (revisionEngine === 'h3') {
+      const revisedAudit = H3PromptGuide?.auditStructure
+        ? H3PromptGuide.auditStructure(revised, {
+          mode: revisionH3Mode,
+          seconds: revisionSeconds,
+          hasFirstFrame: revisionHasFirstFrame,
+          hasLastFrame: revisionHasLastFrame,
+          expectedReferenceTokens,
+          allowedReferenceTokens,
+        })
+        : { ready: true, issues: [] };
+      if (!revisedAudit.ready) {
+        const issue = h3PromptGuideIssueText(revisedAudit.issues?.[0]);
+        throw new Error(`The prompt writer returned an incomplete H3 format${issue ? `: ${issue}` : ''}. Your prompt was left unchanged; try again.`);
+      }
+    }
+    if (state.view !== revisionView
+      || (revisionEngine === 'h3' && (state.vidEngine !== revisionEngine || state.vidH3Mode !== revisionH3Mode))
+      || promptDraft().trim() !== before) {
       throw new Error('The prompt changed while the revision was running. Review it and try again.');
     }
     state.prompts[revisionView] = revised;
     state.promptRevisionUndo = { before, after: revised, view: revisionView };
+    if (revisionEngine === 'h3') rememberH3PromptStructure(revised);
     state.enhance = false;
     setPromptDraft(revised);
     updatePromptClear();
@@ -9168,7 +9634,7 @@ function renderEnhance() {
   btn.setAttribute('aria-pressed', String(state.enhance));
   btn.title = state.enhance
     ? (h3Video
-      ? 'H3 prompt enhance: on · timed shots, camera, sound, and dialogue when appropriate'
+      ? 'H3 prompt enhance: on · official structure, camera, sound, and exact dialogue'
       : (frameAwareVideo ? 'Enhance with start frame + prompt: on' : 'Prompt enhance: on'))
     : 'Prompt enhance: off';
   btn.setAttribute('aria-label', btn.title);
@@ -16181,10 +16647,12 @@ let preparedMotionPromptCache = null;
 let motionPromptRequest = null;
 
 function motionPromptContext(prompt) {
+  const requestedSeconds = Number($('#vidDur').value) || 5;
   return {
     imageName: state.vidRef ? state.vidRef.name : '',
+    endImageName: state.vidEngine === 'h3' && state.vidEnd ? state.vidEnd.name : '',
     engine: state.vidEngine,
-    seconds: Number($('#vidDur').value) || 5,
+    seconds: state.vidEngine === 'h3' ? h3EffectiveDurationSeconds(requestedSeconds) : requestedSeconds,
     input: String(prompt || '').trim(),
   };
 }
@@ -16192,6 +16660,7 @@ function motionPromptContext(prompt) {
 function sameMotionPromptContext(left, right, includeInput = true) {
   return !!left && !!right
     && left.imageName === right.imageName
+    && left.endImageName === right.endImageName
     && left.engine === right.engine
     && left.seconds === right.seconds
     && (!includeInput || left.input === right.input);
@@ -16214,6 +16683,7 @@ async function requestMotionPromptFromFirstFrame(initialPrompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       imageName: context.imageName,
+      endImageName: context.endImageName || undefined,
       prompt: context.input,
       engine: context.engine,
       seconds: context.seconds,
@@ -17074,6 +17544,7 @@ $('#generateBtn').addEventListener('click', async () => {
     if (h3Reference && !h3ReferenceCount) {
       return toast('MiniMax H3 Reference mode needs at least one image, video, or audio reference', true);
     }
+    if (state.vidEngine === 'h3' && !autoMotionPrompt && !h3StructuredPromptReadyForGeneration(prompt)) return;
     if (!ltxEdit && !['ltx', 'h3'].includes(state.vidEngine) && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
       return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 for text-to-video`, true);
@@ -17106,7 +17577,9 @@ $('#generateBtn').addEventListener('click', async () => {
       preparedMotionPrompt: false,
       engine: state.vidEngine,
       steps: state.vidEngine === 'h3' ? (h3TurboActive() ? 4 : normalizedH3Steps()) : undefined,
-      seconds: Number($('#vidDur').value) || 5,
+      seconds: state.vidEngine === 'h3'
+        ? h3EffectiveDurationSeconds(Number($('#vidDur').value) || 5)
+        : Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
       fourK: $('#vid4k').classList.contains('active'),
       fast: !$('#vidQuality').classList.contains('active'),

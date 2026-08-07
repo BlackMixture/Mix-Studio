@@ -10,6 +10,7 @@ const {
   buildMiniMaxH3Graph,
   h3Dimensions,
   h3DurationSeconds,
+  h3EffectiveDurationSeconds,
   h3FramesForSeconds,
   normalizeH3References,
 } = require('../lib/video-workflows');
@@ -32,6 +33,10 @@ test('MiniMax H3 duration snaps to the official 17k+5 frame grid at 24 fps', () 
   assert.equal(h3FramesForSeconds(5), 124);
   assert.equal(h3FramesForSeconds(15), 362);
   assert.equal(h3FramesForSeconds(7) % 17, 5);
+  assert.equal(h3EffectiveDurationSeconds(5), 124 / 24);
+  assert.equal(h3EffectiveDurationSeconds(10), 243 / 24);
+  assert.equal(h3EffectiveDurationSeconds(15), 362 / 24);
+  assert.equal(h3EffectiveDurationSeconds(h3EffectiveDurationSeconds(10)), 243 / 24);
 });
 
 test('MiniMax H3 canvas follows the native 768 short edge and area cap', () => {

@@ -145,10 +145,11 @@ test('automatic updates reject a non-official origin', async () => {
   assert.equal(isOfficialOrigin('https://github.com/elsewhere/Mix-Studio.git'), false);
 });
 
-test('server and library updates require a restart', () => {
+test('server, library, and server-imported browser helper updates require a restart', () => {
   assert.equal(restartRequiredForFiles(['README.md', 'server.js']), true);
   assert.equal(restartRequiredForFiles(['lib/profiles.js']), true);
   assert.equal(restartRequiredForFiles(['start.command']), true);
+  assert.equal(restartRequiredForFiles(['public/h3-prompt-guide.js']), true);
   assert.equal(restartRequiredForFiles(['public/index.html', 'test/foo.test.js']), false);
   assert.equal(restartRequiredForFiles(['release.json']), false);
 });
