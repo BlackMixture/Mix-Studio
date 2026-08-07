@@ -127,6 +127,8 @@ const state = {
   vidH3MatchSource: true,    // keep frame-mode output at the first frame's aspect unless explicitly overridden
   vidH3Xl: false,
   vidH3SageAttention: true,
+  vidH3Turbo: false,
+  vidH3TurboStrength: 1,
   vidH3Steps: 20,
   vidH3RefImageSize: 'match',
   vidH3RefSlots: 1,
@@ -215,6 +217,10 @@ const RESOLUTION_SIZE_OPTIONS = [0.75, 1, 1.75];
 
 function h3ResolutionActive() {
   return state.view === 'video' && state.vidEngine === 'h3';
+}
+
+function h3TurboActive() {
+  return h3ResolutionActive() && state.vidH3Mode === 'frames' && state.vidH3Turbo === true;
 }
 
 function h3ResolutionSize() {
@@ -2584,6 +2590,8 @@ function saveForm() {
       vidH3MatchSource: state.vidH3MatchSource,
       vidH3Xl: state.vidH3Xl,
       vidH3SageAttention: state.vidH3SageAttention,
+      vidH3Turbo: state.vidH3Turbo,
+      vidH3TurboStrength: state.vidH3TurboStrength,
       vidH3Steps: state.vidH3Steps,
       vidH3RefImageSize: state.vidH3RefImageSize,
       vidH3RefSlots: state.vidH3RefSlots,
@@ -2831,6 +2839,8 @@ function loadForm() {
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
     state.vidH3Xl = f.vidH3Xl === true;
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
+    state.vidH3Turbo = f.vidH3Turbo === true;
+    state.vidH3TurboStrength = Math.max(0.8, Math.min(1.2, Number(f.vidH3TurboStrength) || 1));
     state.vidH3Steps = Math.max(1, Math.min(100, Math.round(Number(f.vidH3Steps) || 20)));
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
     state.vidH3References = Object.fromEntries(['images', 'videos', 'audios'].map((kind) => [
@@ -3696,6 +3706,42 @@ function genLabel() {
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
+function renderH3TurboMode() {
+  const panel = $('#vidH3TurboPanel');
+  const toggle = $('#vidH3TurboToggle');
+  const summary = $('#vidH3TurboSummary');
+  const strengthField = $('#vidH3TurboStrengthField');
+  const strength = $('#vidH3TurboStrength');
+  const strengthValue = $('#vidH3TurboStrengthVal');
+  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue) return;
+  const h3 = state.view === 'video' && state.vidEngine === 'h3';
+  const referenceMode = h3 && state.vidH3Mode === 'reference';
+  const enabled = state.vidH3Turbo === true;
+  const active = enabled && !referenceMode;
+  panel.hidden = !h3;
+  toggle.disabled = referenceMode;
+  toggle.setAttribute('aria-disabled', String(referenceMode));
+  toggle.setAttribute('aria-checked', String(active));
+  const missing = lastMeta?.dependencies?.missingComponents?.includes('h3turbo') === true;
+  if (referenceMode) {
+    summary.textContent = 'Reference (R2V) uses Standard H3';
+    toggle.title = 'The creator currently validates Turbo for Text + frames, not the Ref2VA model.';
+  } else if (active && missing) {
+    summary.textContent = '4 steps · install creator workflow on generate';
+    toggle.title = 'The dedicated Turbo LoRA and audio-video sampler will be installed before generation.';
+  } else if (active) {
+    summary.textContent = '4 steps · dedicated audio-video sampler';
+    toggle.title = 'Creator preview: four-step Turbo LoRA with separate video and audio schedules.';
+  } else {
+    summary.textContent = `Standard H3 · ${normalizedH3Steps()} steps`;
+    toggle.title = 'Turn on the creator preview Turbo LoRA and dedicated four-step sampler.';
+  }
+  const showStrength = h3TurboActive();
+  strengthField.hidden = !showStrength;
+  strength.value = String(state.vidH3TurboStrength);
+  strengthValue.textContent = Number(state.vidH3TurboStrength).toFixed(2);
+}
+
 function renderH3SageAttention() {
   const field = $('#vidH3SageField');
   const toggle = $('#vidH3SageToggle');
@@ -3797,6 +3843,7 @@ function updateVideoPanels() {
   $('#advancedStepsField').hidden = false;
   $('#advancedCfgField').hidden = isVideo;
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
+  renderH3TurboMode();
   renderH3SageAttention();
   renderVideoStepControl();
   $('#videoAdvancedNote').hidden = !isVideo;
@@ -3813,6 +3860,21 @@ $('#vidH3SageToggle').addEventListener('click', () => {
   $('#genLbl').textContent = genLabel();
   saveForm();
 });
+
+$('#vidH3TurboToggle').addEventListener('click', () => {
+  if (state.vidEngine !== 'h3' || state.vidH3Mode === 'reference') return;
+  state.vidH3Turbo = !state.vidH3Turbo;
+  renderH3TurboMode();
+  renderVideoStepControl();
+  $('#genLbl').textContent = genLabel();
+  saveForm();
+});
+
+$('#vidH3TurboStrength').addEventListener('input', (event) => {
+  state.vidH3TurboStrength = Math.max(0.8, Math.min(1.2, Number(event.target.value) || 1));
+  $('#vidH3TurboStrengthVal').textContent = state.vidH3TurboStrength.toFixed(2);
+});
+$('#vidH3TurboStrength').addEventListener('change', saveForm);
 
 /* Shared source picker: every generation media dropzone can accept either a
    fresh device file or an existing image/video from the current gallery. */
@@ -11067,6 +11129,7 @@ function normalizedH3Steps(value = state.vidH3Steps) {
 
 function videoStepSpecification() {
   if (state.vidEngine === 'h3') {
+    if (h3TurboActive()) return { value: 4, editable: false, hint: 'H3 Turbo · dedicated four-step audio-video sampler' };
     return { value: normalizedH3Steps(), editable: true, hint: 'MiniMax H3 sampler · adjustable' };
   }
   if (state.vidEngine === 'wan') {
@@ -11117,7 +11180,7 @@ function renderVideoStepControl() {
   input.readOnly = !spec.editable;
   input.setAttribute('aria-readonly', String(!spec.editable));
   input.classList.toggle('fixed-sampling', !spec.editable);
-  input.title = spec.editable ? 'Sampling steps for MiniMax H3' : spec.hint;
+  input.title = spec.editable ? 'Sampling steps for Standard MiniMax H3' : spec.hint;
   hint.textContent = spec.hint;
   hint.hidden = false;
 }
@@ -17042,7 +17105,7 @@ $('#generateBtn').addEventListener('click', async () => {
       autoMotionPrompt,
       preparedMotionPrompt: false,
       engine: state.vidEngine,
-      steps: state.vidEngine === 'h3' ? normalizedH3Steps() : undefined,
+      steps: state.vidEngine === 'h3' ? (h3TurboActive() ? 4 : normalizedH3Steps()) : undefined,
       seconds: Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
       fourK: $('#vid4k').classList.contains('active'),
@@ -17058,6 +17121,8 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
       h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
+      h3Turbo: state.vidEngine === 'h3' ? h3TurboActive() : undefined,
+      h3TurboStrength: h3TurboActive() ? state.vidH3TurboStrength : undefined,
       h3ResolutionSize: state.vidEngine === 'h3' ? h3ResolutionSize() : undefined,
       h3AspectRatio: state.vidEngine === 'h3' ? h3ResolutionAspectRatio() : undefined,
       h3MatchSource: state.vidEngine === 'h3' && state.vidH3Mode === 'frames'
@@ -18412,6 +18477,7 @@ function itemActivity(it) {
 
 function videoEngineLabel(engine, info) {
   if (info?.workflow === 'director') return 'LTX 2.3 Director';
+  if (engine === 'h3' && info?.h3Turbo === true) return 'MiniMax H3 Turbo';
   return {
     ltx: 'LTX 2.3',
     h3: 'MiniMax H3',
@@ -18853,7 +18919,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3MatchSource', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3MatchSource', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3TurboStrength', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -19009,6 +19075,8 @@ function resetActiveGenerationForm() {
     state.vidH3MatchSource = true;
     state.vidH3Xl = false;
     state.vidH3SageAttention = true;
+    state.vidH3Turbo = false;
+    state.vidH3TurboStrength = 1;
     state.vidH3Steps = 20;
     state.vidH3RefImageSize = 'match';
     state.vidH3RefSlots = 1;
@@ -24320,6 +24388,9 @@ async function reuseVideo(it, v) {
   state.vidH3Xl = engine === 'h3' && (Number(info.h3ResolutionSize) >= H3Resolution.XL_SIZE
     || Math.max(Number(info.width) || 0, Number(info.height) || 0) > 1536);
   state.vidH3SageAttention = engine === 'h3' ? info.attentionBackend !== 'standard' : true;
+  state.vidH3Turbo = engine === 'h3' && info.h3Turbo === true;
+  state.vidH3TurboStrength = engine === 'h3' && Number.isFinite(Number(info.h3TurboStrength))
+    ? Math.max(0.8, Math.min(1.2, Number(info.h3TurboStrength))) : 1;
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
   state.vidH3RefSlots = 1;
   state.vidH3References = { images: [], videos: [], audios: [] };
@@ -24379,7 +24450,7 @@ async function reuseVideo(it, v) {
     cfg: 1,
     negativePrompt: info.negativePrompt || '',
   });
-  state.vidH3Steps = engine === 'h3' ? normalizedH3Steps(info.steps || 20) : state.vidH3Steps;
+  state.vidH3Steps = engine === 'h3' && !info.h3Turbo ? normalizedH3Steps(info.steps || 20) : state.vidH3Steps;
   $('#negativePromptInput').value = state.generationTuning.video.negativePrompt || '';
   state.enhance = !!info.enhance;
   renderEnhance();
@@ -25409,6 +25480,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.smooth > 1 && `RIFE ${info.smooth}×`,
     info.fourK && 'RTX 4K',
     info.engine === 'wan' && info.fast && '4-step',
+    info.engine === 'h3' && info.h3Turbo && `Turbo LoRA ${Number(info.h3TurboStrength || 1).toFixed(2)}`,
     info.sigmaPreset && `Sigmas: ${info.sigmaPreset}`,
     info.engine === 'scail' && info.scailMode && `SCAIL ${info.scailMode}`,
     info.engine === 'scail' && info.scailFps && `${info.scailFps} fps generation`,
@@ -26469,7 +26541,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
-  'setH3Unet', 'setH3RefUnet', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
+  'setH3Unet', 'setH3RefUnet', 'setH3TurboLora', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
   'setWanLowLora', 'setErosCkpt', 'setErosTe', 'setErosDmd', 'setErosSigF',
   'setErosSigU', 'setScailUnet', 'setScailLora', 'setScailPusaLora',
@@ -26549,6 +26621,7 @@ function settingsPayload() {
     ltxFaceIdDistilledLora: $('#setFaceIdDistilled').value,
     h3Unet: $('#setH3Unet').value,
     h3RefUnet: $('#setH3RefUnet').value,
+    h3TurboLora: $('#setH3TurboLora').value,
     h3Clip: $('#setH3Clip').value,
     h3VideoVae: $('#setH3VideoVae').value,
     h3AudioVae: $('#setH3AudioVae').value,
@@ -30025,6 +30098,7 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setFaceIdDistilled').value = s.ltxFaceIdDistilledLora || '';
     $('#setH3Unet').value = s.h3Unet || '';
     $('#setH3RefUnet').value = s.h3RefUnet || '';
+    $('#setH3TurboLora').value = s.h3TurboLora || '';
     $('#setH3Clip').value = s.h3Clip || '';
     $('#setH3VideoVae').value = s.h3VideoVae || '';
     $('#setH3AudioVae').value = s.h3AudioVae || '';
@@ -30200,7 +30274,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -30230,7 +30304,7 @@ function setupKrea2CoreBlocked(components) {
 
 function setupH3CoreBlocked(components) {
   const requested = (components || []).filter(Boolean);
-  return requested.some((id) => id === 'h3' || id === 'h3r2v')
+  return requested.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo')
     && setupViewStatus?.comfy?.minimaxH3?.supported !== true;
 }
 
@@ -30263,6 +30337,7 @@ function generationSetupComponents() {
   if (state.view === 'video') {
     const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
+    if (h3TurboActive()) components.add('h3turbo');
     if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
     if (state.vidEngine === 'h3' && state.vidH3Mode === 'reference') components.add('h3r2v');
     if (state.directorOpen) components.add('ltxdirector');
@@ -30310,7 +30385,7 @@ function currentGenerationSetupAction() {
   const required = generationSetupComponents();
   if (!lastMeta.ok) return 'connect';
   const requiresKrea2 = required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
-  const requiresH3 = required.some((id) => id === 'h3' || id === 'h3r2v');
+  const requiresH3 = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo');
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
   if (requiresKrea2 && lastMeta?.models?.krea2?.clipType?.ok !== true) return 'update';
   if (requiresKrea2
@@ -30328,7 +30403,7 @@ async function ensureGenerationSetup() {
     && required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
   const krea2CoreBlocked = required.some((id) => KREA2_MODEL_COMPONENTS.has(id))
     && lastMeta?.models?.krea2?.clipType?.ok !== true;
-  const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v')
+  const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo')
     && lastMeta?.minimaxH3?.supported !== true;
   if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked) return true;
   saveForm();
@@ -31774,6 +31849,7 @@ async function loadMeta(refresh, afterRestart = false) {
     renderLoras();
     renderSam3Dependency();
     renderDependencyManager();
+    renderH3TurboMode();
     renderH3SageAttention();
     $('#genLbl').textContent = genLabel();
     scheduleDependencyPoll();
@@ -31904,7 +31980,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

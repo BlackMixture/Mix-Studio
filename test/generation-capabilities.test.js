@@ -29,6 +29,7 @@ test('Apple Metal exposes BF16 LTX and disables curated FP8 video families', () 
   assert.match(dependencyComponentBlock('scailinfinity', apple), /Apple Metal/);
   assert.equal(dependencyComponentBlock('wan', nvidia), '');
   assert.match(dependencyComponentBlock('h3r2v', apple), /NVFP4|Apple Metal/);
+  assert.match(dependencyComponentBlock('h3turbo', apple), /NVFP4|Apple Metal/);
   assert.match(dependencyComponentBlock('h3', amd), /AMD ROCm/);
   assert.equal(videoEngineCapabilities(nvidia).h3.supported, true);
 });

@@ -452,17 +452,33 @@ test('MiniMax H3 enhancement uses one duration-aware prompt pass and records the
 test('Video exposes model-aware step counts and keeps fixed schedules read-only', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="advancedStepsHint"/);
-  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed sigma schedules are shown read-only; MiniMax H3 steps are adjustable/);
+  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are shown read-only; Standard MiniMax H3 steps are adjustable/);
   assert.match(app, /#seedInput'\)\.closest\('\.panel'\)\.hidden = false/);
   assert.match(app, /function videoStepSpecification\(\)/);
   assert.match(app, /#advancedStepsField'\)\.hidden = false/);
-  assert.match(app, /steps: state\.vidEngine === 'h3' \? normalizedH3Steps\(\) : undefined/);
+  assert.match(app, /steps: state\.vidEngine === 'h3' \? \(h3TurboActive\(\) \? 4 : normalizedH3Steps\(\)\) : undefined/);
   assert.match(app, /input\.readOnly = !spec\.editable/);
   assert.match(app, /if \(view === 'video'\) return 'video'/);
   assert.match(app, /const batch = Math\.max\(1, Math\.min\(8, Number\(\$\('#batchInput'\)\.value\)/);
   assert.match(server, /Number\.isSafeInteger\(requestedSeed\)/);
   assert.match(server, /const videoSteps = engine === 'h3'/);
   assert.match(server, /steps: opts\.steps/);
+});
+
+test('MiniMax H3 Turbo is an opt-in four-step creator workflow for Text + frames', () => {
+  assert.match(html, /id="vidH3TurboToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
+  assert.match(html, /id="vidH3TurboSummary">4 steps · dedicated audio-video sampler/);
+  assert.match(html, /id="vidH3TurboStrength"[^>]*min="0\.8"[^>]*max="1\.2"[^>]*value="1"/);
+  assert.match(html, /id="setH3TurboLora"/);
+  assert.match(app, /vidH3Turbo: false/);
+  assert.match(app, /function h3TurboActive\(\)[\s\S]*state\.vidH3Mode === 'frames'[\s\S]*state\.vidH3Turbo === true/);
+  assert.match(app, /Reference \(R2V\) uses Standard H3/);
+  assert.match(app, /if \(h3TurboActive\(\)\) components\.add\('h3turbo'\)/);
+  assert.match(app, /h3Turbo: state\.vidEngine === 'h3' \? h3TurboActive\(\) : undefined/);
+  assert.match(server, /const h3Turbo = h3TurboRequested && h3Mode === 'frames'/);
+  assert.match(server, /code: 'h3_turbo_reference_unsupported'/);
+  assert.match(server, /videoSteps = engine === 'h3'[\s\S]{0,80}h3Turbo \? 4/);
+  assert.match(server, /h3turbo: \['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'\]/);
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {

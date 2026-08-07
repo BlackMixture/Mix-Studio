@@ -20,6 +20,7 @@ const settings = {
   h3Clip: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
   h3VideoVae: 'minimax_h3_video_vae_fp16.safetensors',
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
+  h3TurboLora: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
 };
 
 test('MiniMax H3 duration snaps to the official 17k+5 frame grid at 24 fps', () => {
@@ -116,6 +117,54 @@ test('MiniMax H3 SageAttention patches only the guider model and leaves schedule
   }, settings);
   assert.equal(standard.sage_attention, undefined);
   assert.deepEqual(standard.guider.inputs.model, ['model', 0]);
+});
+
+test('MiniMax H3 Turbo uses the creator LoRA, four-step AV sampler, and no cache nodes', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A singer performs under soft stage light.', W: 1344, H: 768,
+    frames: 124, seed: 17, steps: 28, turbo: true, turboStrength: 1.1,
+  }, settings);
+
+  assert.deepEqual(graph.turbo_lora, {
+    class_type: 'MiniMaxH3TurboLoRA',
+    inputs: {
+      model: ['model', 0],
+      lora_name: settings.h3TurboLora,
+      strength: 1.1,
+      low_vram: false,
+    },
+  });
+  assert.deepEqual(graph.turbo_sampler, { class_type: 'MiniMaxH3TurboSampler', inputs: {} });
+  assert.equal(graph.sampler_select, undefined);
+  assert.equal(graph.scheduler.inputs.steps, 4);
+  assert.deepEqual(graph.scheduler.inputs.model, ['turbo_lora', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['turbo_lora', 0]);
+  assert.deepEqual(graph.sample.inputs.sampler, ['turbo_sampler', 0]);
+  assert.equal(Object.values(graph).some((node) => /cache/i.test(node.class_type)), false);
+});
+
+test('MiniMax H3 Turbo can stack SageAttention after the Turbo LoRA', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A singer performs under soft stage light.', W: 1344, H: 768,
+    frames: 124, seed: 17, turbo: true, sageAttention: true, turboLowVram: true,
+  }, settings);
+
+  assert.equal(graph.turbo_lora.inputs.low_vram, true);
+  assert.deepEqual(graph.sage_attention.inputs.model, ['turbo_lora', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['sage_attention', 0]);
+  assert.deepEqual(graph.scheduler.inputs.model, ['turbo_lora', 0]);
+});
+
+test('MiniMax H3 Reference mode does not apply the FL2VA Turbo LoRA', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Use <Picture 1>.', W: 1344, H: 768, frames: 124, seed: 17,
+    turbo: true, references: { images: [{ name: 'hero.png' }] },
+  }, settings);
+
+  assert.equal(graph.turbo_lora, undefined);
+  assert.equal(graph.turbo_sampler, undefined);
+  assert.equal(graph.scheduler.inputs.steps, 20);
+  assert.deepEqual(graph.sample.inputs.sampler, ['sampler_select', 0]);
 });
 
 test('MiniMax H3 reference graph preserves official reference namespaces and media order', async () => {

@@ -1226,6 +1226,29 @@ html:-webkit-full-screen { background: #000; }
   transition: border-color 180ms var(--ease), background 180ms var(--ease), transform 150ms var(--ease);
 }
 .krea-model-panel .krea-model-switch { margin-top: 0; }
+.h3-turbo-panel .krea-model-switch { margin-top: 0; }
+.h3-turbo-panel[hidden] { display: none; }
+.h3-turbo-panel {
+  margin: 0 0 12px;
+}
+.h3-turbo-switch:disabled {
+  cursor: not-allowed;
+  opacity: .7;
+}
+.h3-turbo-preview {
+  display: inline-flex;
+  margin-left: 5px;
+  padding: 2px 5px;
+  border: 1px solid rgba(var(--mode-rgb), .3);
+  border-radius: 999px;
+  color: rgb(var(--mode-rgb));
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
 .krea-model-switch:active { transform: scale(.992); }
 .krea-model-switch[aria-checked="true"] {
   border-color: rgba(var(--mode-rgb), .35);
