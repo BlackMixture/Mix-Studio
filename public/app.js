@@ -1537,14 +1537,21 @@ function renderProfileChip() {
 
 $('#profileBtn').addEventListener('click', () => {
   const isOwner = state.profile && state.profileIsOwner;
+  const latestRelease = latestOfficialRelease();
+  const releaseAction = state.officialReleaseUpdateAvailable ? {
+    label: 'Update Mix Studio',
+    detail: `${latestRelease?.tagName || 'New version'} available`,
+    icon: 'updates',
+    tone: 'update',
+    action: () => showOfficialReleaseNotice(latestRelease, { force: true }),
+  } : officialReleaseMatchesInstalled(latestRelease) ? {
+    label: `What’s new in ${latestRelease?.tagName || 'Mix Studio'}`,
+    detail: 'Replay release highlights',
+    icon: 'updates',
+    action: () => showOfficialReleaseNotice(latestRelease, { force: true }),
+  } : null;
   openActionMenu($('#profileBtn'), [
-    state.officialReleaseUpdateAvailable ? {
-      label: 'Update Mix Studio',
-      detail: `${latestOfficialRelease()?.tagName || 'New version'} available`,
-      icon: 'updates',
-      tone: 'update',
-      action: () => showOfficialReleaseNotice(latestOfficialRelease(), { force: true }),
-    } : null,
+    releaseAction,
     { label: 'Edit profile', icon: 'profile', action: openProfileEdit },
     isOwner ? { label: 'Manage profiles', icon: 'users', action: openProfileManage } : null,
     { label: 'Switch profile', icon: 'switch', action: switchProfile },
@@ -1780,6 +1787,32 @@ function seenUpdateId() {
   return key ? localStorage.getItem(key) || '' : '';
 }
 
+function officialReleaseMatchesInstalled(release = latestOfficialRelease()) {
+  const installedVersion = String(state.officialInstalledVersion || '').replace(/^v/i, '');
+  const releaseVersion = String(release?.version || release?.tagName || '').replace(/^v/i, '');
+  return !!installedVersion && !!releaseVersion && installedVersion === releaseVersion;
+}
+
+function officialReleaseNoticeId(release = latestOfficialRelease()) {
+  const id = officialReleaseId(release);
+  if (!id) return '';
+  const phase = state.officialReleaseUpdateAvailable
+    ? 'available'
+    : officialReleaseMatchesInstalled(release)
+      ? 'installed'
+      : 'release';
+  return `${id}:${phase}`;
+}
+
+function officialReleaseNoticeSeen(release = latestOfficialRelease()) {
+  const seen = seenUpdateId();
+  if (!seen) return false;
+  if (seen === officialReleaseNoticeId(release)) return true;
+  // Releases dismissed before this phase-aware key shipped stay dismissed
+  // while an update is still pending, but can appear once after installation.
+  return state.officialReleaseUpdateAvailable && seen === officialReleaseId(release);
+}
+
 function updateAlertsEnabled() {
   const key = updateAlertsKey();
   return !!key && localStorage.getItem(key) === '1';
@@ -1905,8 +1938,7 @@ function renderOfficialRelease() {
   const list = $('#updatesList');
   if (!list) return;
   const latest = latestOfficialRelease();
-  const latestId = officialReleaseId(latest);
-  const unread = !!latest && state.officialReleaseUpdateAvailable && latestId !== seenUpdateId();
+  const unread = !!latest && state.officialReleaseUpdateAvailable && !officialReleaseNoticeSeen(latest);
   const actions = $('#updatesReleaseActions');
   const install = $('#updatesInstallBtn');
   const installStatus = $('#updatesInstallStatus');
@@ -1915,13 +1947,13 @@ function renderOfficialRelease() {
   const settingsStatus = $('#settingsUpdatesStatus');
   const installedVersion = String(state.officialInstalledVersion || '').trim();
   const installedTag = installedVersion ? `v${installedVersion.replace(/^v/i, '')}` : '';
-  const latestMatchesInstalled = !!installedVersion && latest?.version === installedVersion.replace(/^v/i, '');
+  const latestMatchesInstalled = officialReleaseMatchesInstalled(latest);
   const setReleaseStatus = (text, stateName) => {
     $('#updatesDrawerStatus').textContent = text;
     if (settingsStatus) settingsStatus.textContent = text;
     if (settingsButton) settingsButton.dataset.state = stateName;
   };
-  drawerButton.hidden = !state.officialReleaseUpdateAvailable;
+  drawerButton.hidden = !latest;
   $('#updatesUnreadDot').hidden = !unread;
   drawerButton.classList.toggle('has-unread', unread);
   $('#topbarUpdateBtn').hidden = !state.officialReleaseUpdateAvailable;
@@ -1992,14 +2024,15 @@ function renderOfficialRelease() {
 function markLatestReleaseSeen() {
   const latest = latestOfficialRelease();
   const key = updateSeenKey();
-  const id = officialReleaseId(latest);
+  const id = officialReleaseNoticeId(latest);
   if (id && key) localStorage.setItem(key, id);
   closeOfficialReleaseNotice();
   renderOfficialRelease();
 }
 
 function showOfficialReleaseNotice(release, options = {}) {
-  if (!release || !state.officialReleaseUpdateAvailable || (!options.force && officialReleaseId(release) === seenUpdateId())) return;
+  const eligible = state.officialReleaseUpdateAvailable || officialReleaseMatchesInstalled(release);
+  if (!release || (!eligible && !options.force) || (!options.force && officialReleaseNoticeSeen(release))) return;
   updateShowcaseReturnFocus = document.activeElement;
   $('#updateNoticeVersion').textContent = release.tagName || `v${release.version}`;
   renderUpdateShowcaseSlide(0);
@@ -2034,7 +2067,7 @@ function receiveOfficialRelease(result, options = {}) {
   state.officialReleaseCheckState = result?.stale ? 'stale' : 'ready';
   state.officialReleaseError = String(result?.error || '');
   renderOfficialRelease();
-  if (!state.officialReleaseUpdateAvailable) {
+  if (!state.officialReleaseUpdateAvailable && !officialReleaseMatchesInstalled(state.officialRelease)) {
     closeOfficialReleaseNotice();
     return;
   }
@@ -2069,6 +2102,11 @@ async function openUpdatesSheet() {
 $('#updatesBtn').addEventListener('click', openUpdatesSheet);
 $('#settingsUpdatesBtn').addEventListener('click', openUpdatesSheet);
 $('#topbarUpdateBtn').addEventListener('click', () => showOfficialReleaseNotice(latestOfficialRelease(), { force: true }));
+$('#updatesHighlightsBtn').addEventListener('click', () => {
+  $('#updatesSheet').classList.remove('show');
+  syncSheetScrollLock();
+  showOfficialReleaseNotice(latestOfficialRelease(), { force: true });
+});
 $('#updateNoticeView').addEventListener('click', openUpdatesSheet);
 $('#updateNoticeDismiss').addEventListener('click', markLatestReleaseSeen);
 $('#updateNoticeClose').addEventListener('click', markLatestReleaseSeen);

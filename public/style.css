@@ -13691,8 +13691,10 @@ body.update-showcase-open { overflow: hidden; }
 .updates-release-actions a,
 .updates-release-actions button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border: 1px solid var(--line); border-radius: 11px; background: transparent; color: var(--ink-soft); font-size: 10.5px; font-weight: 850; text-decoration: none; }
 .updates-release-actions [hidden] { display: none; }
-.updates-release-actions button { border-color: rgba(66,133,244,.46); background: rgba(66,133,244,.13); color: #e3ebff; }
-.updates-release-actions button:hover { border-color: rgba(66,133,244,.7); background: rgba(66,133,244,.2); }
+.updates-release-actions button { border-color: rgba(132,160,229,.3); background: rgba(132,160,229,.07); color: #dce5ff; }
+.updates-release-actions button:hover { border-color: rgba(132,160,229,.52); background: rgba(132,160,229,.12); }
+.updates-release-actions #updatesInstallBtn { border-color: rgba(66,133,244,.46); background: rgba(66,133,244,.13); color: #e3ebff; }
+.updates-release-actions #updatesInstallBtn:hover { border-color: rgba(66,133,244,.7); background: rgba(66,133,244,.2); }
 .updates-install-status { min-height: 16px; margin: 8px 2px 0; color: var(--muted-2); font-size: 9.5px; font-weight: 650; text-align: right; }
 
 @media (max-width: 560px) {
