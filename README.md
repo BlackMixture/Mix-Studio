@@ -154,6 +154,7 @@ For update requirements, recovery behavior, and the maintainer release process, 
 
 - **[Installation and operations](docs/installation-and-operations.md):** setup, hardware guidance, ComfyUI discovery, updates, phone access, repair, and uninstall.
 - **[Technical reference](docs/technical-reference.md):** workflow behavior, required ComfyUI components, queue operation, and local data layout.
+- **[Roadmap](ROADMAP.md):** deferred integrations and the conditions for revisiting them.
 - **[Changelog](CHANGELOG.md):** user-facing release notes.
 - **[Contributing](CONTRIBUTING.md):** development checks and workflow-submission requirements.
 
