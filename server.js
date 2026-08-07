@@ -9643,6 +9643,17 @@ async function handleSparkMcp(req, res, url) {
   }
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Vary', 'Origin');
+  if (origin === 'https://gemini.google.com') {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization, MCP-Protocol-Version, MCP-Session-Id, Last-Event-ID');
+    res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-Id');
+    res.setHeader('Access-Control-Max-Age', '600');
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return json(res, 405, { error: 'This MCP endpoint accepts JSON-RPC over POST.' });

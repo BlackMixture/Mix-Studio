@@ -141,6 +141,9 @@ test('Spark MCP is owner-scoped and validates its capability path and protocol v
   assert.match(serverSource, /profile\.id !== db\.profiles\[0\]\?\.id/);
   assert.match(serverSource, /req\.headers\['mcp-protocol-version'\]/);
   assert.match(serverSource, /origin !== 'https:\/\/gemini\.google\.com'/);
+  assert.match(serverSource, /origin === 'https:\/\/gemini\.google\.com'[\s\S]{0,180}Access-Control-Allow-Origin/);
+  assert.match(serverSource, /Access-Control-Allow-Headers'[\s\S]{0,180}MCP-Protocol-Version[\s\S]{0,180}MCP-Session-Id/);
+  assert.match(serverSource, /req\.method === 'OPTIONS'[\s\S]{0,100}writeHead\(204\)/);
   assert.match(serverSource, /readBody\(req, 1024 \* 1024\)/);
   assert.match(serverSource, /url\.pathname\.startsWith\('\/mcp\/'\) \? '\/mcp\/\[redacted\]'/);
 });
