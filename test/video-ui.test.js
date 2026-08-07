@@ -514,13 +514,16 @@ test('Video exposes model-aware step counts and keeps fixed schedules read-only'
   assert.match(server, /steps: opts\.steps/);
 });
 
-test('MiniMax H3 Turbo uses audio-safe sampling, adjustable steps, and a polished local strength control', () => {
+test('MiniMax H3 Turbo uses audio-safe sampling, adjustable steps, and an advanced strength control', () => {
   assert.match(html, /id="vidH3TurboToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
   assert.match(html, /id="vidH3TurboSummary">4 steps recommended · audio-safe sampler/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*min="0\.8"[^>]*max="1\.2"[^>]*value="1"/);
-  assert.match(html, /<label for="vidH3TurboStrength">LoRA strength<\/label>/);
+  assert.match(html, /<label for="vidH3TurboStrength">Turbo LoRA strength<\/label>/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*aria-describedby="vidH3TurboStrengthHelp vidH3TurboStrengthScale"/);
-  assert.ok(html.indexOf('id="vidH3TurboStrengthField"') < html.indexOf('id="vidMotionPromptRow"'));
+  const advancedBody = html.slice(html.indexOf('id="advBody"'), html.indexOf('</main>'));
+  assert.match(advancedBody, /id="vidH3TurboStrengthField"/);
+  assert.ok(html.indexOf('id="vidH3TurboPanel"') < html.indexOf('id="advBody"'));
+  assert.ok(html.indexOf('id="advBody"') < html.indexOf('id="vidH3TurboStrengthField"'));
   assert.match(css, /\.h3-turbo-strength-slider::before[\s\S]{0,500}--h3-turbo-progress/);
   assert.match(html, /id="setH3TurboLora"/);
   assert.match(app, /vidH3Turbo: false/);

@@ -1257,6 +1257,7 @@ html:-webkit-full-screen { background: #000; }
   background: linear-gradient(135deg, rgba(var(--mode-rgb), .075), rgba(3, 4, 7, .72) 58%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035);
 }
+.adv-grid .h3-turbo-strength-field { margin-top: 0; }
 .h3-turbo-strength-field[hidden] { display: none; }
 .h3-turbo-strength-head {
   display: flex;
@@ -9183,6 +9184,29 @@ body.sheet-open {
 #tailscaleInstallDesktop { border-color: rgba(88,165,255,.42); color: #b8d8ff; }
 .phone-access-security { grid-column: 1 / -1; color: #687287; font-size: 8px; line-height: 1.45; }
 .phone-access-entry { margin-top: 8px; }
+.spark-access-card { display: grid; gap: 11px; margin-top: 8px; padding: 14px; border: 1px solid rgba(164,123,255,.28); border-radius: 14px; background: linear-gradient(125deg, rgba(96,63,167,.13), rgba(6,8,14,.76)); box-shadow: inset 0 1px rgba(255,255,255,.025); }
+.spark-access-card[hidden] { display: none; }
+.spark-access-card[data-state="ready"] { border-color: rgba(85,213,138,.34); background: linear-gradient(125deg, rgba(33,107,65,.13), rgba(6,8,14,.78)); }
+.spark-access-card[data-state="attention"] { border-color: rgba(230,185,76,.35); background: linear-gradient(125deg, rgba(126,89,20,.12), rgba(6,8,14,.78)); }
+.spark-access-head { min-width: 0; display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 10px; }
+.spark-access-head > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.spark-access-head strong { color: #edf1f8; font-size: 12px; }
+.spark-access-head small { overflow: hidden; color: #8c96a9; font-size: 9px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.spark-access-icon { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(164,123,255,.31); border-radius: 11px; background: rgba(164,123,255,.09); color: #c5afff; }
+.spark-access-icon svg { width: 21px; height: 21px; fill: currentColor; }
+.spark-access-badge { padding: 5px 7px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(255,255,255,.035); color: #929bad; font-size: 7px; font-weight: 950; letter-spacing: .075em; text-transform: uppercase; }
+.spark-access-card[data-state="ready"] .spark-access-badge { border-color: rgba(85,213,138,.34); background: rgba(85,213,138,.08); color: #91e7b1; }
+.spark-access-card[data-state="attention"] .spark-access-badge { border-color: rgba(230,185,76,.34); background: rgba(230,185,76,.07); color: #ebca7a; }
+.spark-access-card > p { margin: 0; color: #8e98aa; font-size: 9px; line-height: 1.55; }
+.spark-access-url { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; }
+.spark-access-url[hidden] { display: none; }
+.spark-access-url code { min-width: 0; padding: 10px 11px; overflow-wrap: anywhere; border: 1px solid rgba(85,213,138,.25); border-radius: 8px; background: rgba(85,213,138,.055); color: #a5e6bd; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 8px; line-height: 1.45; }
+.spark-access-url button, .spark-access-actions button { min-height: 40px; padding: 0 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: #050607; color: #d6ddea; font-size: 9px; font-weight: 900; }
+.spark-access-url button { border-color: rgba(85,213,138,.34); color: #a8e9c0; }
+.spark-access-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.spark-access-actions button.primary { border-color: rgba(164,123,255,.45); background: rgba(164,123,255,.11); color: #d5c7ff; }
+.spark-access-actions button:disabled { opacity: .42; cursor: not-allowed; }
+.spark-access-security { color: #687287; font-size: 8px; line-height: 1.45; }
 .setup-operation { margin: 14px 2px 0; padding: 12px 0; border: 0; border-block: 1px solid color-mix(in srgb, var(--setup-accent) 38%, transparent); border-radius: 0; background: transparent; }
 .setup-operation > div:first-child { margin-bottom: 8px; }
 .setup-operation-meter { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; }
@@ -9252,6 +9276,9 @@ body.sheet-open {
   .phone-access-url { grid-template-columns: 1fr; }
   .phone-access-url button, .phone-access-actions a, .phone-access-actions button { min-height: 44px; }
   .phone-access-actions > * { flex: 1 1 140px; }
+  .spark-access-url { grid-template-columns: 1fr; }
+  .spark-access-url button, .spark-access-actions button { min-height: 44px; }
+  .spark-access-actions button { flex: 1 1 150px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .setup-panel, .setup-pane.active, .setup-tabs button.working .setup-tab-index { animation: none; }

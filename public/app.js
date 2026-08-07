@@ -27062,6 +27062,74 @@ let settingsSaveRevision = 0;
 let settingsAutosavePending = { server: false, preferences: false, media: false };
 let settingsAppRestartRequired = false;
 let settingsAppRestartRunning = false;
+let sparkAccessState = null;
+let sparkAccessBusy = false;
+
+function renderSparkAccess() {
+  const card = $('#sparkAccessCard');
+  if (!card) return;
+  card.hidden = !state.profileIsOwner;
+  if (card.hidden) return;
+  const access = sparkAccessState;
+  const ready = access?.enabled === true && access?.configured === true;
+  const enabled = access?.enabled === true;
+  const unavailable = access?.available === false;
+  const attention = unavailable || access?.conflict === true || (enabled && !ready);
+  card.dataset.state = ready ? 'ready' : (attention ? 'attention' : 'off');
+
+  let status = 'Private · not connected';
+  let badge = 'Off';
+  if (!access) {
+    status = 'Checking Tailscale Funnel…';
+    badge = 'Checking';
+  } else if (ready) {
+    status = 'Connected · image and video generation available';
+    badge = 'Connected';
+  } else if (access.conflict) {
+    status = access.reason || 'Tailscale port 8443 is already in use';
+    badge = 'Review';
+  } else if (unavailable) {
+    status = access.reason || 'Tailscale Funnel is unavailable';
+    badge = 'Unavailable';
+  } else if (enabled) {
+    status = access.reason || 'The Funnel route needs to be reconnected';
+    badge = 'Reconnect';
+  } else if (access.reason) {
+    status = access.reason;
+    badge = 'Off';
+  }
+  $('#sparkAccessStatus').textContent = status;
+  $('#sparkAccessBadge').textContent = badge;
+
+  const url = ready ? String(access.url || '') : '';
+  $('#sparkAccessUrl').hidden = !url;
+  $('#sparkAccessUrl code').textContent = url;
+  $('#sparkAccessCopy').dataset.url = url;
+  const enable = $('#sparkAccessEnable');
+  const disable = $('#sparkAccessDisable');
+  enable.hidden = ready;
+  enable.disabled = sparkAccessBusy || !access || unavailable || access?.conflict === true;
+  enable.textContent = sparkAccessBusy ? 'Connecting…' : (enabled ? 'Reconnect Spark' : 'Enable Spark connection');
+  disable.hidden = !enabled || (!ready && sparkAccessBusy);
+  disable.disabled = sparkAccessBusy;
+}
+
+async function refreshSparkAccess() {
+  if (!state.profileIsOwner) {
+    sparkAccessState = null;
+    renderSparkAccess();
+    return;
+  }
+  sparkAccessState = null;
+  renderSparkAccess();
+  try {
+    const result = await api('/api/spark-access');
+    sparkAccessState = result.sparkAccess || {};
+  } catch (error) {
+    sparkAccessState = { available: false, enabled: false, reason: error.message || 'Could not check Gemini Spark access.' };
+  }
+  renderSparkAccess();
+}
 
 function settingsPayload() {
   return {
@@ -30630,6 +30698,7 @@ $('#settingsBtn').addEventListener('click', async () => {
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);
   refreshPreviewCacheStatus();
   refreshTrashStatus().catch(() => {});
+  refreshSparkAccess().catch(() => {});
   setSettingsTab(settingsActiveTab);
   $('#settingsSheet').classList.add('show');
   renderHealth();
@@ -32061,6 +32130,50 @@ $('#phoneAccessOpen').addEventListener('click', () => {
     returnToSettings: true,
     message: 'Review private phone access or update the generation computer.',
   });
+});
+$('#sparkAccessEnable').addEventListener('click', async () => {
+  if (sparkAccessBusy || !state.profileIsOwner) return;
+  sparkAccessBusy = true;
+  renderSparkAccess();
+  try {
+    const result = await api('/api/spark-access/enable', { method: 'POST' });
+    sparkAccessState = result.sparkAccess || {};
+    toast('Gemini Spark connection is ready');
+  } catch (error) {
+    const approvalUrl = String(error?.details?.approvalUrl || '');
+    if (approvalUrl) {
+      window.open(approvalUrl, '_blank', 'noopener,noreferrer');
+      toast('Approve Tailscale Funnel, then press Enable again');
+    } else {
+      toast(error.message || 'Could not enable Gemini Spark access', true);
+    }
+    await refreshSparkAccess().catch(() => {});
+  } finally {
+    sparkAccessBusy = false;
+    renderSparkAccess();
+  }
+});
+$('#sparkAccessDisable').addEventListener('click', async () => {
+  if (sparkAccessBusy || !state.profileIsOwner) return;
+  sparkAccessBusy = true;
+  renderSparkAccess();
+  try {
+    const result = await api('/api/spark-access/disable', { method: 'POST' });
+    sparkAccessState = result.sparkAccess || {};
+    toast('Gemini Spark connection disconnected');
+  } catch (error) {
+    toast(error.message || 'Could not fully remove the Tailscale Funnel route', true);
+    await refreshSparkAccess().catch(() => {});
+  } finally {
+    sparkAccessBusy = false;
+    renderSparkAccess();
+  }
+});
+$('#sparkAccessCopy').addEventListener('click', async () => {
+  const url = $('#sparkAccessCopy').dataset.url;
+  if (!url) return;
+  try { await copyTextToClipboard(url); toast('Gemini Spark MCP URL copied'); }
+  catch { toast('Could not copy the MCP URL', true); }
 });
 $('#setupReturnSettings').addEventListener('click', () => {
   if (!setupReturnToSettings) return;

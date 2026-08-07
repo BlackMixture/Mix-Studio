@@ -243,6 +243,14 @@ const {
   mobileAccessSummary,
   tailscaleHttpsStatus,
 } = require('./lib/mobile-access');
+const {
+  disableSparkFunnel,
+  enableSparkFunnel,
+  newSparkAccessToken,
+  normalizeSparkAccess,
+  sparkFunnelStatus,
+} = require('./lib/spark-access');
+const { SUPPORTED_PROTOCOL_VERSIONS, handleMcpPayload, mcpToolDefinitions } = require('./lib/spark-mcp');
 const { hardwareInfo } = require('./lib/hardware-info');
 const { isWidgetSpec } = require('./lib/comfy-widget-spec');
 const { browseGenerationFolder } = require('./lib/folder-picker');
@@ -375,6 +383,7 @@ function serializePromptPackMutation(task) {
 /* ------------------------------------------------------------------ */
 
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
+const SPARK_ACCESS_FILE = path.join(DATA, 'spark_access.json');
 const DEFAULT_SYSTEM_PROMPT = `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.
 
 Think step by step about the request before writing the answer:
@@ -514,7 +523,12 @@ function normalizeSettings(s) {
 }
 
 let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
+let sparkAccess = normalizeSparkAccess(loadJson(SPARK_ACCESS_FILE, {}));
 const APP_RESTART_SETTINGS_AT_BOOT = Object.freeze({ comfyUrl: settings.comfyUrl });
+
+function saveSparkAccess() {
+  saveJsonSync(SPARK_ACCESS_FILE, sparkAccess);
+}
 
 function settingsRequireAppRestart() {
   return settings.comfyUrl !== APP_RESTART_SETTINGS_AT_BOOT.comfyUrl;
@@ -5623,6 +5637,27 @@ async function currentMobileAccessStatus(force = false) {
   return mobileAccessStatusCache;
 }
 
+async function currentSparkAccessStatus() {
+  const owner = db.profiles[0] || null;
+  const token = sparkAccess.token;
+  const funnel = token
+    ? await sparkFunnelStatus(token, PORT)
+    : { available: true, configured: false, conflict: false, url: '', reason: '' };
+  const enabled = sparkAccess.enabled === true
+    && !!token
+    && !!owner
+    && sparkAccess.profileId === owner.id;
+  return {
+    enabled,
+    configured: enabled && funnel.configured === true,
+    available: funnel.available === true,
+    conflict: funnel.conflict === true,
+    url: enabled && funnel.configured ? funnel.url : '',
+    reason: funnel.reason || '',
+    scope: ['status', 'recent generations', 'generate image', 'generate video'],
+  };
+}
+
 async function setupStatusPayload(forceCompatibility = false) {
   const detected = sam3InstallStatus(RUNTIME);
   const launch = startStatus(RUNTIME);
@@ -5899,6 +5934,49 @@ async function handleApi(req, res, url) {
   // previews, and completed gallery records and are always profile-scoped.
   if (!profile && route !== '/api/meta') {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
+  }
+
+  if (route === '/api/spark-access' && req.method === 'GET') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can manage Gemini Spark access' });
+    res.setHeader('Cache-Control', 'no-store');
+    return json(res, 200, { sparkAccess: await currentSparkAccessStatus() });
+  }
+  if (route === '/api/spark-access/enable' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can enable Gemini Spark access' });
+    if (!sparkAccess.token) sparkAccess.token = newSparkAccessToken();
+    sparkAccess.profileId = profile.id;
+    sparkAccess.createdAt = sparkAccess.createdAt || Date.now();
+    sparkAccess.enabled = false;
+    saveSparkAccess();
+    try {
+      const funnel = await enableSparkFunnel(sparkAccess.token, PORT);
+      sparkAccess.enabled = true;
+      saveSparkAccess();
+      return json(res, 200, {
+        sparkAccess: Object.assign(await currentSparkAccessStatus(), { url: funnel.url }),
+      });
+    } catch (error) {
+      return json(res, error?.code === 'tailscale_funnel_conflict' ? 409 : 400, {
+        error: String(error?.message || error || 'Could not enable Gemini Spark access'),
+        code: error?.code || 'spark_access_failed',
+        approvalUrl: error?.approvalUrl || '',
+      });
+    }
+  }
+  if (route === '/api/spark-access/disable' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can disable Gemini Spark access' });
+    const token = sparkAccess.token;
+    sparkAccess.enabled = false;
+    saveSparkAccess();
+    try {
+      await disableSparkFunnel(token);
+      return json(res, 200, { sparkAccess: await currentSparkAccessStatus() });
+    } catch (error) {
+      return json(res, 400, {
+        error: `Gemini Spark access is blocked in Mix Studio, but Tailscale could not remove its stale Funnel route: ${String(error?.message || error)}`,
+        code: error?.code || 'spark_funnel_disable_failed',
+      });
+    }
   }
 
   if (route === '/api/addons' && req.method === 'GET') {
@@ -9402,6 +9480,200 @@ function normalizePromptPresets(value, prompt) {
     .filter((entry) => entry && entry.category);
 }
 
+const MCP_ASPECT_DIMENSIONS = Object.freeze({
+  square: [1024, 1024],
+  portrait: [832, 1216],
+  landscape: [1216, 832],
+  vertical: [768, 1344],
+  wide: [1344, 768],
+});
+
+function mcpArguments(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value;
+}
+
+function mcpPrompt(value) {
+  const prompt = String(value || '').trim().slice(0, 8000);
+  if (!prompt) {
+    const error = new Error('A non-empty prompt is required.');
+    error.code = 'prompt_required';
+    throw error;
+  }
+  return prompt;
+}
+
+function mcpAspect(value, fallback) {
+  const key = String(value || fallback || 'square').toLowerCase();
+  return MCP_ASPECT_DIMENSIONS[key] ? key : fallback;
+}
+
+async function mcpOwnerApi(profile, route, body) {
+  const response = await fetch(`http://127.0.0.1:${PORT}${route}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: Object.assign({
+      Cookie: `${PROFILE_COOKIE}=${encodeURIComponent(signProfileId(profile.id, AUTH_SECRET))}`,
+      Accept: 'application/json',
+      Connection: 'close',
+    }, body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  let payload;
+  try { payload = JSON.parse(text || '{}'); } catch { payload = { error: text || `HTTP ${response.status}` }; }
+  if (!response.ok) {
+    const error = new Error(String(payload.error || `Mix Studio returned HTTP ${response.status}`));
+    error.code = String(payload.code || `http_${response.status}`);
+    error.details = payload;
+    throw error;
+  }
+  return payload;
+}
+
+function mcpRecentGeneration(item) {
+  const videos = (item.videos || []).slice(-3).map((video) => ({
+    id: video.id,
+    createdAt: video.createdAt,
+    engine: video.info?.engine || '',
+    durationSeconds: Number(video.info?.frames) > 0 && Number(video.info?.fps) > 0
+      ? Number(video.info.frames) / Number(video.info.fps)
+      : undefined,
+    prompt: String(video.info?.refinedMotionPrompt || video.info?.motionPrompt || '').slice(0, 1200),
+  }));
+  return {
+    id: item.id,
+    mode: item.mode,
+    createdAt: item.createdAt,
+    prompt: String(item.refinedPrompt || item.prompt || '').slice(0, 1200),
+    width: item.width,
+    height: item.height,
+    videoCount: (item.videos || []).length,
+    videos,
+  };
+}
+
+async function callSparkMcpTool(name, rawArguments, profile) {
+  const args = mcpArguments(rawArguments);
+  if (name === 'mix_studio_status') {
+    const queue = await mcpOwnerApi(profile, '/api/queue');
+    return {
+      ok: queue.ok === true,
+      running: queue.running || [],
+      pending: queue.pending || [],
+      finalizing: queue.finalizing || [],
+      recentActivity: (queue.history || []).slice(0, 8).map((entry) => ({
+        ts: entry.ts, kind: entry.kind, itemId: entry.itemId, label: entry.label,
+      })),
+      error: queue.error || undefined,
+    };
+  }
+  if (name === 'mix_studio_recent_generations') {
+    const limit = clampInt(args.limit, 1, 20, 8);
+    const items = db.items
+      .filter((item) => item.profileId === profile.id)
+      .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0))
+      .slice(0, limit)
+      .map(mcpRecentGeneration);
+    return { count: items.length, items };
+  }
+  if (name === 'mix_studio_generate_image') {
+    const prompt = mcpPrompt(args.prompt);
+    const aspect = mcpAspect(args.aspect_ratio, 'square');
+    const [width, height] = MCP_ASPECT_DIMENSIONS[aspect];
+    const seed = Number(args.seed);
+    return mcpOwnerApi(profile, '/api/generate', {
+      mode: 't2i', prompt, width, height,
+      batch: clampInt(args.batch, 1, 4, 1),
+      enhance: args.enhance_prompt === true,
+      seed: Number.isSafeInteger(seed) && seed >= 0 ? seed : undefined,
+      steps: 8, cfg: 1, krea2Turbo: true, loras: [], regions: [], negativePrompt: '',
+    });
+  }
+  if (name === 'mix_studio_generate_video') {
+    const prompt = mcpPrompt(args.prompt);
+    const engine = args.engine === 'ltx' ? 'ltx' : 'h3';
+    const aspect = mcpAspect(args.aspect_ratio, 'landscape');
+    const [width, height] = MCP_ASPECT_DIMENSIONS[aspect];
+    const seed = Number(args.seed);
+    const turbo = engine === 'h3' && args.turbo === true;
+    return mcpOwnerApi(profile, '/api/animate', {
+      engine, prompt, width, height,
+      seconds: clampNum(args.seconds, 1, engine === 'h3' ? 10 : 20, 5),
+      enhance: args.enhance_prompt === true,
+      seed: Number.isSafeInteger(seed) && seed >= 0 ? seed : undefined,
+      h3Mode: engine === 'h3' ? 'frames' : undefined,
+      h3AspectRatio: engine === 'h3' ? width / height : undefined,
+      h3ResolutionSize: engine === 'h3' ? 768 : undefined,
+      h3Turbo: turbo,
+      h3TurboStrength: turbo ? 1 : undefined,
+      steps: engine === 'h3' ? (turbo ? 4 : 20) : undefined,
+      sageAttention: false,
+      fourK: false,
+    });
+  }
+  const error = new Error(`Unknown Mix Studio tool: ${name}`);
+  error.code = 'unknown_tool';
+  throw error;
+}
+
+function sparkTokenMatches(candidate) {
+  const expected = String(sparkAccess.token || '');
+  const supplied = String(candidate || '');
+  if (!sparkAccess.enabled || !expected || supplied.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  } catch { return false; }
+}
+
+async function handleSparkMcp(req, res, url) {
+  let candidate = '';
+  try {
+    candidate = decodeURIComponent(url.pathname.slice('/mcp/'.length));
+  } catch {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end('not found');
+  }
+  if (candidate.includes('/') || !sparkTokenMatches(candidate)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end('not found');
+  }
+  const origin = String(req.headers.origin || '');
+  if (origin && origin !== 'https://gemini.google.com') {
+    return json(res, 403, { error: 'Origin not allowed' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Vary', 'Origin');
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return json(res, 405, { error: 'This MCP endpoint accepts JSON-RPC over POST.' });
+  }
+  const protocolVersion = String(req.headers['mcp-protocol-version'] || '');
+  if (protocolVersion && !SUPPORTED_PROTOCOL_VERSIONS.includes(protocolVersion)) {
+    return json(res, 400, { error: `Unsupported MCP protocol version: ${protocolVersion}` });
+  }
+  const profile = db.profiles.find((entry) => entry.id === sparkAccess.profileId);
+  if (!profile || profile.id !== db.profiles[0]?.id) {
+    return json(res, 403, { error: 'The configured owner profile is unavailable.' });
+  }
+  let payload;
+  try {
+    const body = await readBody(req, 1024 * 1024);
+    payload = JSON.parse(body.toString('utf8') || 'null');
+  } catch (error) {
+    return json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+  }
+  const response = await handleMcpPayload(payload, {
+    version: readAppRelease(ROOT).version,
+    tools: mcpToolDefinitions(),
+    callTool: (name, args) => callSparkMcpTool(name, args, profile),
+  });
+  if (response === null) {
+    res.writeHead(202, { 'Cache-Control': 'no-store' });
+    return res.end();
+  }
+  return json(res, 200, response);
+}
+
 /* ------------------------------------------------------------------ */
 /* Server                                                              */
 /* ------------------------------------------------------------------ */
@@ -9409,6 +9681,7 @@ function normalizePromptPresets(value, prompt) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
+    if (url.pathname.startsWith('/mcp/')) return await handleSparkMcp(req, res, url);
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     if (url.pathname.startsWith('/images/')) {
       const profile = currentProfile(req);
@@ -9457,7 +9730,8 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     const cancelled = e && e.code === 'job_cancelled';
     const setupRequired = e && e.code === 'comfy_krea2_update_required';
-    if (!cancelled) console.error('[error]', req.method, url.pathname, e.message);
+    const loggedPath = url.pathname.startsWith('/mcp/') ? '/mcp/[redacted]' : url.pathname;
+    if (!cancelled) console.error('[error]', req.method, loggedPath, e.message);
     if (!res.headersSent) {
       json(res, cancelled || setupRequired ? 409 : 500, {
         error: String(e.message || e),
