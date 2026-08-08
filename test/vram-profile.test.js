@@ -37,13 +37,13 @@ test('low VRAM image recommendations retain normal Krea resolution and bound lar
   assert.equal(result.adjustments.length, 2);
 });
 
-test('setup and advanced settings expose the low VRAM route', () => {
+test('Preferences exposes the low VRAM route without repeating it in workflow setup', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
-  assert.match(html, /id="setupVramProfile"/);
+  assert.doesNotMatch(html, /id="setupVramProfile"/);
   assert.match(html, /id="setVramProfile"/);
-  assert.equal((html.match(/Low VRAM · 4–12 GB/g) || []).length, 2);
+  assert.equal((html.match(/Low VRAM · 4–12 GB/g) || []).length, 1);
   assert.match(server, /applyLowVramImageLimits/);
   assert.match(server, /low_vram_confirmation/);
   assert.match(server, /lowVramChoice === 'safe'/);

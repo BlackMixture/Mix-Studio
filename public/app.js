@@ -124,7 +124,7 @@ const state = {
   kreaMaskPreviewCutout: false,
   kreaMaskViewMode: 'dim',
   vidRef: null,              // {name, url, w, h} - Video tab source image
-  vidH3Mode: 'frames',       // frames | reference
+  vidH3Mode: 'frames',       // frames | reference | replace
   vidH3MatchSource: true,    // keep frame-mode output at the first frame's aspect unless explicitly overridden
   vidH3Xl: false,
   vidH3SageAttention: true,
@@ -136,6 +136,10 @@ const state = {
   vidH3RefImageSize: 'match',
   vidH3RefSlots: 1,
   vidH3References: { images: [], videos: [], audios: [] },
+  vidH3ReplaceKind: 'object',
+  vidH3ReplaceTarget: '',
+  vidH3ReplaceVideo: null,
+  vidH3ReplaceImage: null,
   h3PromptStructure: null,    // fingerprint + frame/reference context from the last validated rewrite
   directorOpen: false,
   directorProject: null,
@@ -540,8 +544,16 @@ function refForPromptToken(index) {
   return state.refs[Number(index) - 1] || null;
 }
 
+function h3ReferenceBackedMode(mode = state.vidH3Mode) {
+  return mode === 'reference' || mode === 'replace';
+}
+
 function h3ReferenceModeActive() {
-  return state.view === 'video' && state.vidEngine === 'h3' && state.vidH3Mode === 'reference';
+  return state.view === 'video' && state.vidEngine === 'h3' && h3ReferenceBackedMode();
+}
+
+function h3ReplaceModeActive() {
+  return state.view === 'video' && state.vidEngine === 'h3' && state.vidH3Mode === 'replace';
 }
 
 function makePromptReferenceToken(index) {
@@ -917,9 +929,13 @@ function promptPresetGenerationInfoMarkup(presets) {
 }
 
 function h3GenerationReferenceDescriptors(info = {}) {
-  if (info?.engine !== 'h3' || info?.h3Mode !== 'reference' || !info?.h3References) return [];
+  if (info?.engine !== 'h3' || !h3ReferenceBackedMode(info?.h3Mode) || !info?.h3References) return [];
   const refs = info.h3References;
-  const kinds = [
+  const kinds = info.h3Mode === 'replace' ? [
+    ['videos', 'video', 'Video'],
+    ['images', 'image', 'Picture'],
+    ['audios', 'audio', 'Audio'],
+  ] : [
     ['images', 'image', 'Picture'],
     ['videos', 'video', 'Video'],
     ['audios', 'audio', 'Audio'],
@@ -928,11 +944,14 @@ function h3GenerationReferenceDescriptors(info = {}) {
     (Array.isArray(refs[collection]) ? refs[collection] : []).map((asset, index) => {
       const name = String(asset?.name || '').trim();
       const fallbackLabel = name.split(/[\\/]/).pop() || `${inputName} ${index + 1}`;
+      const inputLabel = info.h3Mode === 'replace'
+        ? (kind === 'video' ? 'Master video' : (kind === 'image' ? 'Replacement image' : `${inputName} ${index + 1}`))
+        : `${inputName} ${index + 1}`;
       return {
         kind,
         name,
         assetLabel: String(asset?.label || fallbackLabel).trim() || fallbackLabel,
-        inputLabel: `${inputName} ${index + 1}`,
+        inputLabel,
         hasAudio: kind === 'video' && asset?.hasAudio === true,
       };
     }).filter((asset) => asset.name)
@@ -1069,6 +1088,7 @@ function setPromptDraft(value, { render = true } = {}) {
   if (render) renderPromptComposer();
   if ($('#editSequenceBtn')) renderEditSequence();
   renderH3PromptGuideTrigger();
+  if ($('#vidH3ReplacePanel')) renderH3Replacement();
 }
 
 function syncPromptDraftFromComposer() {
@@ -2793,6 +2813,10 @@ function saveForm() {
       vidH3RefSlots: state.vidH3RefSlots,
       vidH3References: Object.fromEntries(Object.entries(h3References())
         .map(([kind, assets]) => [kind, assets.map(serializeWorkspaceAsset).filter(Boolean)])),
+      vidH3ReplaceKind: state.vidH3ReplaceKind,
+      vidH3ReplaceTarget: state.vidH3ReplaceTarget,
+      vidH3ReplaceVideo: serializeWorkspaceAsset(state.vidH3ReplaceVideo),
+      vidH3ReplaceImage: serializeWorkspaceAsset(state.vidH3ReplaceImage),
       h3PromptStructure: state.h3PromptStructure,
       editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
@@ -3032,7 +3056,7 @@ function loadForm() {
     state.promptAssistantUseSource = f.promptAssistantUseSource !== false;
     state.editRefSlots = Math.max(1, state.refs.reduce((count, ref, index) => ref ? Math.max(count, index + 1) : count, 1));
     state.vidRef = restoreWorkspaceAsset(f.vidRef);
-    state.vidH3Mode = f.vidH3Mode === 'reference' ? 'reference' : 'frames';
+    state.vidH3Mode = ['reference', 'replace'].includes(f.vidH3Mode) ? f.vidH3Mode : 'frames';
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
     state.vidH3Xl = f.vidH3Xl === true;
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
@@ -3047,6 +3071,10 @@ function loadForm() {
       (Array.isArray(f.vidH3References?.[kind]) ? f.vidH3References[kind] : [])
         .map(restoreWorkspaceAsset).filter(Boolean),
     ]));
+    state.vidH3ReplaceKind = f.vidH3ReplaceKind === 'character' ? 'character' : 'object';
+    state.vidH3ReplaceTarget = String(f.vidH3ReplaceTarget || '').slice(0, 240);
+    state.vidH3ReplaceVideo = restoreWorkspaceAsset(f.vidH3ReplaceVideo);
+    state.vidH3ReplaceImage = restoreWorkspaceAsset(f.vidH3ReplaceImage);
     state.h3PromptStructure = f.h3PromptStructure
       && typeof f.h3PromptStructure.fingerprint === 'string'
       && typeof f.h3PromptStructure.context === 'string'
@@ -3920,7 +3948,7 @@ function renderH3TurboMode() {
   const strengthSlider = $('#vidH3TurboStrengthSlider');
   if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider) return;
   const h3 = state.view === 'video' && state.vidEngine === 'h3';
-  const referenceMode = h3 && state.vidH3Mode === 'reference';
+  const referenceMode = h3 && h3ReferenceBackedMode();
   const enabled = state.vidH3Turbo === true;
   const active = enabled;
   const turboSteps = normalizedH3TurboSteps();
@@ -4009,9 +4037,11 @@ function updateVideoPanels() {
       ? 'Describe the edit…'
       : (state.vidEngine === 'scail'
         ? 'Optional — add style or motion direction…'
-        : (state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
+        : (state.vidEngine === 'h3' && state.vidH3Mode === 'replace'
+          ? 'Describe the replacement, or apply the replacement preset below…'
+          : (state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
           ? 'Type @ to reference an input, then describe the video and sound…'
-          : 'Describe the motion and sound…')))
+          : 'Describe the motion and sound…'))))
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
       : (state.view === 'edit'
@@ -4036,7 +4066,7 @@ function updateVideoPanels() {
   regionWorkspace.hidden = !isRegion;
   if (!isRegion) setRegionResolutionExpanded(false);
   $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail'
-    || state.vidEngine === 'ltx-edit' || (state.vidEngine === 'h3' && state.vidH3Mode === 'reference');
+    || state.vidEngine === 'ltx-edit' || (state.vidEngine === 'h3' && h3ReferenceBackedMode());
   $('#createPromptTools').hidden = state.view !== 'create';
   $('#cameraPromptBtn').hidden = false;
   $('#videoPromptTools').hidden = !isVideo;
@@ -6249,7 +6279,7 @@ function h3EffectiveDurationSeconds(value = Number($('#vidDur').value) || 5) {
 }
 
 function h3PromptGuideContext(overrides = {}) {
-  const referenceMode = state.vidH3Mode === 'reference';
+  const referenceMode = h3ReferenceBackedMode();
   return {
     mode: referenceMode ? 'reference' : 'frames',
     seconds: h3EffectiveDurationSeconds(),
@@ -6272,7 +6302,7 @@ function h3PromptFingerprint(value) {
 }
 
 function h3PromptStructureContextSignature() {
-  const referenceMode = state.vidH3Mode === 'reference';
+  const referenceMode = h3ReferenceBackedMode();
   return JSON.stringify({
     mode: referenceMode ? 'reference' : 'frames',
     seconds: h3EffectiveDurationSeconds().toFixed(3),
@@ -6332,7 +6362,7 @@ const H3_DIALOGUE_ISSUE_CODES = new Set([
 
 function h3PromptGuideAudit(value = promptDraft(), overrides = {}) {
   const prompt = String(value || '');
-  const referenceMode = state.vidH3Mode === 'reference';
+  const referenceMode = h3ReferenceBackedMode();
   const requiredFields = referenceMode
     ? ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music']
     : ['integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music'];
@@ -6537,10 +6567,10 @@ function structureCurrentH3Prompt() {
     return;
   }
   const result = H3PromptGuide.structurePrompt(before, h3PromptGuideContext({
-    expectedReferenceTokens: state.vidH3Mode === 'reference' ? h3PromptReferenceTokens(before) : [],
+    expectedReferenceTokens: h3ReferenceBackedMode() ? h3PromptReferenceTokens(before) : [],
   }));
   const localAudit = h3PromptGuideAudit(result.prompt, {
-    expectedReferenceTokens: state.vidH3Mode === 'reference' ? h3PromptReferenceTokens(result.prompt) : [],
+    expectedReferenceTokens: h3ReferenceBackedMode() ? h3PromptReferenceTokens(result.prompt) : [],
   });
   if (!result.changed) {
     const issue = h3PromptGuideIssueText(localAudit.structureIssues[0]);
@@ -6582,7 +6612,7 @@ document.addEventListener('keydown', (event) => {
 
 function promptAssistantSourceImage() {
   if (state.view !== 'video') return state.promptSourceImage;
-  if (h3ReferenceModeActive()) return h3References().images[0] || null;
+  if (h3ReferenceModeActive()) return h3ActiveReferences().images[0] || null;
   return state.vidRef || (state.vidEngine === 'h3' ? state.vidEnd : null) || null;
 }
 
@@ -6799,7 +6829,7 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
   const revisionEndImageName = source && revisionHasFirstFrame && revisionHasLastFrame
     ? state.vidEnd.name
     : undefined;
-  const allowedReferenceTokens = revisionH3Mode === 'reference'
+  const allowedReferenceTokens = h3ReferenceBackedMode(revisionH3Mode)
     ? h3PromptReferenceEntries().map((entry) => entry.tag)
     : [];
   const requestId = newPromptAssistantRequestId();
@@ -11824,7 +11854,7 @@ function normalizedH3Steps(value = state.vidH3Steps) {
 }
 
 function normalizedH3TurboSteps(value) {
-  const referenceMode = state.vidH3Mode === 'reference';
+  const referenceMode = h3ReferenceBackedMode();
   const fallback = referenceMode ? 6 : 4;
   const configured = value === undefined
     ? (referenceMode ? state.vidH3RefTurboSteps : state.vidH3TurboSteps)
@@ -11836,7 +11866,7 @@ function videoStepSpecification() {
   if (state.vidEngine === 'h3') {
     if (h3TurboActive()) {
       const value = normalizedH3TurboSteps();
-      const referenceMode = state.vidH3Mode === 'reference';
+      const referenceMode = h3ReferenceBackedMode();
       return {
         value,
         editable: true,
@@ -11991,7 +12021,7 @@ function resetGenerationControl(control) {
   if (mode === 'video' && key === 'steps') {
     if (state.vidEngine !== 'h3') return renderVideoStepControl();
     if (h3TurboActive()) {
-      const referenceMode = state.vidH3Mode === 'reference';
+      const referenceMode = h3ReferenceBackedMode();
       if (referenceMode) state.vidH3RefTurboSteps = 6;
       else state.vidH3TurboSteps = 4;
       control.value = referenceMode ? 6 : 4;
@@ -15752,7 +15782,7 @@ Object.entries(generationResetControls).forEach(([id, key]) => {
   control.addEventListener('change', () => {
     if (id === 'stepsInput' && state.view === 'video' && state.vidEngine === 'h3') {
       if (h3TurboActive()) {
-        if (state.vidH3Mode === 'reference') state.vidH3RefTurboSteps = normalizedH3TurboSteps(control.value);
+        if (h3ReferenceBackedMode()) state.vidH3RefTurboSteps = normalizedH3TurboSteps(control.value);
         else state.vidH3TurboSteps = normalizedH3TurboSteps(control.value);
       }
       else state.vidH3Steps = normalizedH3Steps(control.value);
@@ -15768,7 +15798,7 @@ $('#stepsInput').addEventListener('input', () => {
     const value = Number($('#stepsInput').value);
     if (Number.isFinite(value) && value >= 1) {
       if (h3TurboActive()) {
-        if (state.vidH3Mode === 'reference') state.vidH3RefTurboSteps = normalizedH3TurboSteps(value);
+        if (h3ReferenceBackedMode()) state.vidH3RefTurboSteps = normalizedH3TurboSteps(value);
         else state.vidH3TurboSteps = normalizedH3TurboSteps(value);
       }
       else state.vidH3Steps = normalizedH3Steps(value);
@@ -16351,6 +16381,18 @@ function h3References() {
   return state.vidH3References;
 }
 
+function h3ReplacementReferences() {
+  return {
+    images: state.vidH3ReplaceImage ? [state.vidH3ReplaceImage] : [],
+    videos: state.vidH3ReplaceVideo ? [state.vidH3ReplaceVideo] : [],
+    audios: [],
+  };
+}
+
+function h3ActiveReferences() {
+  return state.vidH3Mode === 'replace' ? h3ReplacementReferences() : h3References();
+}
+
 const H3_REFERENCE_LIMITS = Object.freeze({ images: 9, videos: 3, audios: 3 });
 
 function h3ReferenceCount() {
@@ -16358,7 +16400,7 @@ function h3ReferenceCount() {
 }
 
 function h3PromptReferenceEntries() {
-  const refs = h3References();
+  const refs = h3ActiveReferences();
   const entries = [];
   let audioIndex = 0;
   refs.images.forEach((asset, index) => entries.push({
@@ -16549,20 +16591,108 @@ function wireH3ReferenceReorder(slot, entry) {
   });
 }
 
+function h3ReplacementPrompt() {
+  return H3PromptGuide?.buildReplacementPrompt
+    ? H3PromptGuide.buildReplacementPrompt({
+      kind: state.vidH3ReplaceKind,
+      target: state.vidH3ReplaceTarget,
+    })
+    : '';
+}
+
+function setH3ReplacementAsset(kind, asset) {
+  if (kind === 'video') state.vidH3ReplaceVideo = asset || null;
+  else state.vidH3ReplaceImage = asset || null;
+  renderH3References();
+  renderPromptComposer();
+  saveForm();
+}
+
+function renderH3Replacement() {
+  const panel = $('#vidH3ReplacePanel');
+  if (!panel) return;
+  const active = state.vidEngine === 'h3' && state.vidH3Mode === 'replace';
+  panel.hidden = !active;
+  $$('#vidH3ReplaceKind [data-h3-replace-kind]').forEach((button) => {
+    const selected = button.dataset.h3ReplaceKind === state.vidH3ReplaceKind;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  const target = $('#vidH3ReplaceTarget');
+  if (target && target.value !== state.vidH3ReplaceTarget) target.value = state.vidH3ReplaceTarget;
+
+  const video = state.vidH3ReplaceVideo;
+  $('#vidH3ReplaceVideoBtn').hidden = !!video;
+  $('#vidH3ReplaceVideoThumb').hidden = !video;
+  if (video) {
+    const preview = $('#vidH3ReplaceVideoPreview');
+    const src = video.url || `/api/input?name=${encodeURIComponent(video.name)}`;
+    if (preview.getAttribute('src') !== src) preview.src = src;
+    $('#vidH3ReplaceVideoLabel').textContent = video.label || 'Video 1';
+  } else {
+    $('#vidH3ReplaceVideoPreview').removeAttribute('src');
+  }
+
+  const image = state.vidH3ReplaceImage;
+  $('#vidH3ReplaceImageBtn').hidden = !!image;
+  $('#vidH3ReplaceImageThumb').hidden = !image;
+  if (image) {
+    $('#vidH3ReplaceImagePreview').src = image.url || `/api/input?name=${encodeURIComponent(image.name)}`;
+    $('#vidH3ReplaceImageLabel').textContent = image.label || 'Picture 1';
+  } else {
+    $('#vidH3ReplaceImagePreview').removeAttribute('src');
+  }
+
+  const descriptionReady = !!state.vidH3ReplaceTarget.trim();
+  const builtPrompt = descriptionReady ? h3ReplacementPrompt() : '';
+  const presetActive = !!builtPrompt && promptDraft().trim() === builtPrompt;
+  const promptButton = $('#vidH3ReplacePromptBtn');
+  promptButton.disabled = !descriptionReady;
+  promptButton.querySelector('span').textContent = presetActive ? 'Reapply preset' : 'Apply preset';
+  $('#vidH3ReplacePromptStatus').textContent = !descriptionReady
+    ? 'Add a target description, then apply the preset.'
+    : (presetActive
+      ? 'Preset active · you can still edit the prompt before generating.'
+      : 'Ready to build the replacement prompt locally · no LLM used.');
+}
+
+function applyH3ReplacementPrompt() {
+  if (!state.vidH3ReplaceTarget.trim()) {
+    $('#vidH3ReplaceTarget').focus();
+    return toast('Describe the original target first', true);
+  }
+  const prompt = h3ReplacementPrompt();
+  if (!prompt) return toast('Replacement prompt preset is unavailable. Reload the app and try again.', true);
+  checkpointDesktopInputSetup();
+  state.prompts.video = prompt;
+  state.enhance = false;
+  setPromptDraft(prompt);
+  updatePromptClear();
+  renderEnhance();
+  renderH3Replacement();
+  saveForm();
+  appendDesktopInputSetup();
+  $('#promptComposer').focus();
+  toast('Replacement prompt applied locally · Enhance turned off');
+}
+
 function renderH3References() {
   clearH3ReferenceReorder();
   const h3 = state.vidEngine === 'h3';
   const referenceMode = h3 && state.vidH3Mode === 'reference';
+  const replaceMode = h3 && state.vidH3Mode === 'replace';
+  const referenceBacked = referenceMode || replaceMode;
   $('#vidH3ModePanel').hidden = !h3;
   $('#vidH3ReferencePanel').hidden = !referenceMode;
-  $('#vidStandardInputs').hidden = referenceMode;
-  $('#vidStandardInputs').classList.toggle('h3-frame-inputs', h3 && !referenceMode);
-  $('#vidH3ModeRow').style.setProperty('--h3-mode-index', referenceMode ? '1' : '0');
+  $('#vidStandardInputs').hidden = referenceBacked;
+  $('#vidStandardInputs').classList.toggle('h3-frame-inputs', h3 && !referenceBacked);
+  $('#vidH3ModeRow').style.setProperty('--h3-mode-index', replaceMode ? '2' : (referenceMode ? '1' : '0'));
   $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => {
     const active = button.dataset.h3Mode === state.vidH3Mode;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  renderH3Replacement();
   $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => {
     const active = button.dataset.h3RefSize === state.vidH3RefImageSize;
     button.classList.toggle('active', active);
@@ -16660,12 +16790,31 @@ function renderH3References() {
 }
 
 $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => button.addEventListener('click', () => {
-  state.vidH3Mode = button.dataset.h3Mode === 'reference' ? 'reference' : 'frames';
+  state.vidH3Mode = ['reference', 'replace'].includes(button.dataset.h3Mode) ? button.dataset.h3Mode : 'frames';
   renderVidAttach();
   updateVideoPanels();
   renderPromptComposer();
   saveForm();
 }));
+$$('#vidH3ReplaceKind [data-h3-replace-kind]').forEach((button) => button.addEventListener('click', () => {
+  state.vidH3ReplaceKind = button.dataset.h3ReplaceKind === 'character' ? 'character' : 'object';
+  renderH3Replacement();
+  saveForm();
+}));
+$('#vidH3ReplaceTarget').addEventListener('input', (event) => {
+  state.vidH3ReplaceTarget = event.target.value.slice(0, 240);
+  renderH3Replacement();
+  saveForm();
+});
+$('#vidH3ReplaceVideoBtn').addEventListener('click', () => {
+  pickUpload('video/*', (asset) => setH3ReplacementAsset('video', asset), 'Choose the master video');
+});
+$('#vidH3ReplaceImageBtn').addEventListener('click', () => {
+  pickUpload('image/*', (asset) => setH3ReplacementAsset('image', asset), 'Choose the replacement image');
+});
+$('#vidH3ReplaceVideoX').addEventListener('click', () => setH3ReplacementAsset('video', null));
+$('#vidH3ReplaceImageX').addEventListener('click', () => setH3ReplacementAsset('image', null));
+$('#vidH3ReplacePromptBtn').addEventListener('click', applyH3ReplacementPrompt);
 $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => button.addEventListener('click', () => {
   state.vidH3RefImageSize = button.dataset.h3RefSize === 'max' ? 'max' : 'match';
   renderH3References();
@@ -17701,7 +17850,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = h3 || !(ltxFamily || wan || scail);
-  $('#vidExtras').hidden = wan || scail || ltxEdit || (h3 && state.vidH3Mode === 'reference');
+  $('#vidExtras').hidden = wan || scail || ltxEdit || (h3 && h3ReferenceBackedMode());
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
   $('#enhanceBtn').hidden = ltxEdit;
@@ -17812,10 +17961,16 @@ $('#generateBtn').addEventListener('click', async () => {
       return toast(capability.reason || 'This video model is not supported on the connected generation device.', true);
     }
     const ltxEdit = state.vidEngine === 'ltx-edit';
-    const h3Reference = state.vidEngine === 'h3' && state.vidH3Mode === 'reference';
-    const h3ReferenceCount = Object.values(h3References()).reduce((count, assets) => count + assets.length, 0);
+    const h3Reference = state.vidEngine === 'h3' && h3ReferenceBackedMode();
+    const h3GenerationReferences = h3ActiveReferences();
+    const h3ReferenceCount = Object.values(h3GenerationReferences).reduce((count, assets) => count + assets.length, 0);
     if (h3Reference && !h3ReferenceCount) {
       return toast('MiniMax H3 Reference mode needs at least one image, video, or audio reference', true);
+    }
+    if (state.vidEngine === 'h3' && state.vidH3Mode === 'replace') {
+      if (!state.vidH3ReplaceTarget.trim()) return toast('Describe the original target you want to replace', true);
+      if (!state.vidH3ReplaceVideo) return toast('Replace mode needs the master video', true);
+      if (!state.vidH3ReplaceImage) return toast('Replace mode needs the replacement image', true);
     }
     if (!ltxEdit && !['ltx', 'h3'].includes(state.vidEngine) && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
@@ -17868,6 +18023,8 @@ $('#generateBtn').addEventListener('click', async () => {
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
       h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
+      h3ReplaceKind: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' ? state.vidH3ReplaceKind : undefined,
+      h3ReplaceTarget: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' ? state.vidH3ReplaceTarget.trim() : undefined,
       h3Turbo: state.vidEngine === 'h3' ? h3TurboActive() : undefined,
       h3TurboStrength: h3TurboActive() ? state.vidH3TurboStrength : undefined,
       h3ResolutionSize: state.vidEngine === 'h3' ? h3ResolutionSize() : undefined,
@@ -17876,7 +18033,7 @@ $('#generateBtn').addEventListener('click', async () => {
         ? h3MatchSourceActive() : undefined,
       sageAttention: state.vidEngine === 'h3' ? state.vidH3SageAttention !== false : undefined,
       h3RefImageSize: h3Reference ? state.vidH3RefImageSize : undefined,
-      h3References: h3Reference ? Object.fromEntries(Object.entries(h3References()).map(([kind, assets]) => [
+      h3References: h3Reference ? Object.fromEntries(Object.entries(h3GenerationReferences).map(([kind, assets]) => [
         kind,
         assets.map((asset) => ({ name: asset.name, label: asset.label || '', hasAudio: asset.hasAudio === true })),
       ])) : undefined,
@@ -19229,6 +19386,9 @@ function itemActivity(it) {
 
 function videoEngineLabel(engine, info) {
   if (info?.workflow === 'director') return 'LTX 2.3 Director';
+  if (engine === 'h3' && info?.h3Mode === 'replace') {
+    return info?.h3Turbo === true ? 'MiniMax H3 Replace Turbo' : 'MiniMax H3 Replace';
+  }
   if (engine === 'h3' && info?.h3Turbo === true) {
     return info?.h3Mode === 'reference' ? 'MiniMax H3 Reference Turbo' : 'MiniMax H3 Turbo';
   }
@@ -19837,6 +19997,10 @@ function resetActiveGenerationForm() {
     state.vidH3RefImageSize = 'match';
     state.vidH3RefSlots = 1;
     state.vidH3References = { images: [], videos: [], audios: [] };
+    state.vidH3ReplaceKind = 'object';
+    state.vidH3ReplaceTarget = '';
+    state.vidH3ReplaceVideo = null;
+    state.vidH3ReplaceImage = null;
     state.vidEnd = null;
     state.vidDrive = null;
     state.vidFace = null;
@@ -22065,6 +22229,8 @@ let desktopGalleryDrag = null;
 const DESKTOP_GALLERY_DROP_SELECTOR = [
   '.lora-card[data-lora-name]',
   '#vidH3ReferenceList',
+  '#vidH3ReplaceVideoBtn', '#vidH3ReplaceVideoThumb',
+  '#vidH3ReplaceImageBtn', '#vidH3ReplaceImageThumb',
   '.ref-slot',
   '#createImageGuideToggle', '#createImageGuideAdd', '#createImageGuideFilled',
   '#regionRefBtn', '#regionRefPreview',
@@ -22228,6 +22394,12 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
       return state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
         && h3References()[kind].length < H3_REFERENCE_LIMITS[kind];
     }
+    if (target.matches('#vidH3ReplaceVideoBtn, #vidH3ReplaceVideoThumb')) {
+      return state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && !!drag.video;
+    }
+    if (target.matches('#vidH3ReplaceImageBtn, #vidH3ReplaceImageThumb')) {
+      return state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && !drag.video && !!drag.item?.file;
+    }
     if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
     if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
     return true;
@@ -22329,6 +22501,16 @@ async function applyDesktopGalleryDrop(target, drag, event) {
     reference.kind = kind;
     addH3Reference(reference);
     toast(`Gallery ${kind} added as an H3 reference`);
+    return;
+  }
+  if (target.matches('#vidH3ReplaceVideoBtn, #vidH3ReplaceVideoThumb')) {
+    setH3ReplacementAsset('video', await directorGalleryDropAsset(drag, 'video'));
+    toast('Gallery video set as the master plate');
+    return;
+  }
+  if (target.matches('#vidH3ReplaceImageBtn, #vidH3ReplaceImageThumb')) {
+    setH3ReplacementAsset('image', await directorGalleryDropAsset(drag, 'image'));
+    toast('Gallery image set as the replacement identity');
     return;
   }
   if (target.matches('.ref-slot')) {
@@ -25145,7 +25327,7 @@ async function reuseVideo(it, v) {
 
   // Clear current attachments + their UI
   state.vidRef = null;
-  state.vidH3Mode = engine === 'h3' && info.h3Mode === 'reference' ? 'reference' : 'frames';
+  state.vidH3Mode = engine === 'h3' && ['reference', 'replace'].includes(info.h3Mode) ? info.h3Mode : 'frames';
   state.vidH3MatchSource = savedH3MatchSource === true;
   state.vidH3Xl = engine === 'h3' && (Number(info.h3ResolutionSize) >= H3Resolution.XL_SIZE
     || Math.max(Number(info.width) || 0, Number(info.height) || 0) > 1536);
@@ -25154,12 +25336,16 @@ async function reuseVideo(it, v) {
   state.vidH3TurboStrength = engine === 'h3' && Number.isFinite(Number(info.h3TurboStrength))
     ? Math.max(0.8, Math.min(1.2, Number(info.h3TurboStrength))) : 1;
   if (engine === 'h3' && info.h3Turbo) {
-    if (state.vidH3Mode === 'reference') state.vidH3RefTurboSteps = normalizedH3TurboSteps(info.steps || 6);
+    if (h3ReferenceBackedMode()) state.vidH3RefTurboSteps = normalizedH3TurboSteps(info.steps || 6);
     else state.vidH3TurboSteps = normalizedH3TurboSteps(info.steps || 4);
   }
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
   state.vidH3RefSlots = 1;
   state.vidH3References = { images: [], videos: [], audios: [] };
+  state.vidH3ReplaceKind = info.h3ReplaceKind === 'character' ? 'character' : 'object';
+  state.vidH3ReplaceTarget = String(info.h3ReplaceTarget || '').slice(0, 240);
+  state.vidH3ReplaceVideo = null;
+  state.vidH3ReplaceImage = null;
   state.vidEnd = null;
   state.vidDrive = null;
   state.vidFace = null;
@@ -25242,7 +25428,7 @@ async function reuseVideo(it, v) {
   };
 
   // Source image
-  if (!info.t2v && !(engine === 'h3' && state.vidH3Mode === 'reference')) {
+  if (!info.t2v && !(engine === 'h3' && h3ReferenceBackedMode())) {
     try {
       if (it.mode !== 'video') {
         // grouped under a real image item -> reuse the item image (keeps grouping)
@@ -25281,25 +25467,32 @@ async function reuseVideo(it, v) {
     renderDims();
   }
 
-  if (engine === 'h3' && state.vidH3Mode === 'reference' && info.h3References) {
+  if (engine === 'h3' && h3ReferenceBackedMode() && info.h3References) {
     for (const kind of ['images', 'videos', 'audios']) {
       for (const asset of Array.isArray(info.h3References[kind]) ? info.h3References[kind] : []) {
         try {
           const blob = await inputBlob(asset.name);
           if (!reuseRequestCurrent(options)) return;
-          state.vidH3References[kind].push({
+          const restored = {
             kind: kind.slice(0, -1),
             name: asset.name,
             label: asset.label || `reused ${kind.slice(0, -1)} reference`,
             hasAudio: asset.hasAudio === true,
             url: URL.createObjectURL(blob),
-          });
+          };
+          if (state.vidH3Mode === 'replace') {
+            if (kind === 'images' && !state.vidH3ReplaceImage) state.vidH3ReplaceImage = restored;
+            if (kind === 'videos' && !state.vidH3ReplaceVideo) state.vidH3ReplaceVideo = restored;
+          } else {
+            state.vidH3References[kind].push(restored);
+          }
         } catch { missing.push(`H3 ${kind.slice(0, -1)} reference`); }
       }
     }
-    state.vidH3RefSlots = Math.max(1, h3ReferenceCount());
+    if (state.vidH3Mode === 'reference') state.vidH3RefSlots = Math.max(1, h3ReferenceCount());
     // The prompt is rendered before these async assets finish restoring.
     // Redraw it now so its H3 cards recover their image thumbnails.
+    renderH3References();
     renderPromptComposer();
   }
 
@@ -26132,7 +26325,7 @@ function documentationVideoInputSpecs(item, video) {
     return specs;
   }
 
-  if (engine === 'h3' && info.h3Mode === 'reference') {
+  if (engine === 'h3' && h3ReferenceBackedMode(info.h3Mode)) {
     h3GenerationReferenceDescriptors(info).forEach((reference) => {
       const label = reference.assetLabel && reference.assetLabel !== reference.inputLabel
         ? `${reference.inputLabel} · ${reference.assetLabel}` : reference.inputLabel;
@@ -26246,7 +26439,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.smooth > 1 && `RIFE ${info.smooth}×`,
     info.fourK && info.processed !== 'upscale' && 'RTX 4K',
     info.engine === 'wan' && info.fast && '4-step',
-    info.engine === 'h3' && info.h3Turbo && `${info.h3Mode === 'reference' ? 'Reference Turbo LoRA' : 'Turbo LoRA'} ${Number(info.h3TurboStrength || 1).toFixed(2)}`,
+    info.engine === 'h3' && info.h3Turbo && `${h3ReferenceBackedMode(info.h3Mode) ? 'Reference Turbo LoRA' : 'Turbo LoRA'} ${Number(info.h3TurboStrength || 1).toFixed(2)}`,
     info.sigmaPreset && `Sigmas: ${info.sigmaPreset}`,
     info.engine === 'scail' && info.scailMode && `SCAIL ${info.scailMode}`,
     info.engine === 'scail' && info.scailFps && `${info.scailFps} fps generation`,
@@ -31230,7 +31423,6 @@ let setupPollTimer = null;
 let setupAutoRestart = false;
 let setupActiveStep = 'connect';
 let setupStepTouched = false;
-let setupKrea2VariantOverride = '';
 let setupOperationDiagnostic = '';
 let setupDiscoveredMatches = [];
 let setupFirstRun = false;
@@ -31249,7 +31441,6 @@ const SETUP_COMPONENT_CATEGORIES = [
 ];
 
 function setupSelectedKrea2Variant() {
-  if (setupKrea2VariantOverride) return setupKrea2VariantOverride;
   return setupViewStatus?.modelVariants?.krea2
     || setupViewStatus?.modelRecommendations?.krea2
     || 'fp8';
@@ -31308,9 +31499,9 @@ function generationSetupComponents() {
   if (state.view === 'video') {
     const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
-    if (h3TurboActive()) components.add(state.vidH3Mode === 'reference' ? 'h3turbor2v' : 'h3turbo');
+    if (h3TurboActive()) components.add(h3ReferenceBackedMode() ? 'h3turbor2v' : 'h3turbo');
     if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
-    if (state.vidEngine === 'h3' && state.vidH3Mode === 'reference') components.add('h3r2v');
+    if (state.vidEngine === 'h3' && h3ReferenceBackedMode()) components.add('h3r2v');
     if (state.directorOpen) components.add('ltxdirector');
     if (state.vidEngine === 'ltx-edit') components.add('video');
     if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
@@ -31351,18 +31542,22 @@ function imageGenerationReady() {
     || lastMeta?.krea2?.nativeInt8?.supported === true;
 }
 
-function currentGenerationSetupAction() {
+function setupActionForComponents(required) {
   if (!lastMeta) return '';
-  const required = generationSetupComponents();
+  const components = [...new Set((required || []).filter(Boolean))];
   if (!lastMeta.ok) return 'connect';
-  const requiresKrea2 = required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
-  const requiresH3 = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v');
+  const requiresKrea2 = components.some((id) => KREA2_MODEL_COMPONENTS.has(id));
+  const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v');
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
   if (requiresKrea2 && lastMeta?.models?.krea2?.clipType?.ok !== true) return 'update';
   if (requiresKrea2
     && lastMeta?.krea2?.modelVariant === 'int8-convrot'
     && lastMeta?.krea2?.nativeInt8?.supported !== true) return 'update';
-  return missingSetupComponents(required).length ? 'install' : '';
+  return missingSetupComponents(components).length ? 'install' : '';
+}
+
+function currentGenerationSetupAction() {
+  return setupActionForComponents(generationSetupComponents());
 }
 
 async function ensureGenerationSetup() {
@@ -31377,9 +31572,11 @@ async function ensureGenerationSetup() {
   const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v')
     && lastMeta?.minimaxH3?.supported !== true;
   if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked) return true;
+  const setupAction = setupActionForComponents(required);
   saveForm();
   await openInitialSetup({
     components: missing.length ? missing : required,
+    initialStep: setupAction === 'install' ? 'install' : 'connect',
     message: h3CoreBlocked
       ? 'Update ComfyUI to 0.30.0 or newer before using MiniMax H3.'
       : (krea2CoreBlocked
@@ -31497,7 +31694,6 @@ async function openInitialSetup(options = {}) {
   setupReturnToSettings = options.returnToSettings === true;
   $('#setupReturnSettings').hidden = !setupReturnToSettings;
   setupContextComponents = [...new Set((options.components || []).filter(Boolean))];
-  setupKrea2VariantOverride = '';
   setupDiscoveredMatches = [];
   setupFirstRun = options.firstRun === true;
   setupLowVramStarterSelected = false;
@@ -31505,7 +31701,11 @@ async function openInitialSetup(options = {}) {
   setupSelectedComponents = new Set();
   setupKnownMissingComponents = null;
   setupStepTouched = false;
-  setupActiveStep = 'connect';
+  const inferredStep = setupActionForComponents(setupContextComponents) === 'install' ? 'install' : 'connect';
+  const initialStep = SETUP_STEPS.includes(options.initialStep)
+    ? options.initialStep
+    : (SETUP_STEPS.includes(options.step) ? options.step : inferredStep);
+  setupActiveStep = initialStep;
   setSetupGuideExpanded(false);
   setSetupCustomExpanded(false);
   setPhoneAccessExpanded(false);
@@ -31513,7 +31713,7 @@ async function openInitialSetup(options = {}) {
   $('#setupIntro').textContent = options.message
     || 'Connect ComfyUI, install a workflow, and check that it is ready.';
   $('#initialSetupSheet').classList.add('show');
-  setSetupStep('connect', { resetScroll: true });
+  setSetupStep(initialStep, { resetScroll: true });
   syncSheetScrollLock();
   await refreshSetupStatus();
   if (!setupViewStatus?.comfy?.connected) await discoverComfyFromSetup({ silent: true });
@@ -31841,25 +32041,6 @@ function renderInitialSetup() {
   }
   if (int8Blocked) $('#setupHardwareSummary').title += ` ${setupNativeInt8Message()}`;
   if (krea2CoreBlocked) $('#setupHardwareSummary').title += ` ${setupKrea2CoreMessage()}`;
-  const vramProfile = setupViewStatus.vramProfile || {};
-  if (document.activeElement !== $('#setupVramProfile')) {
-    $('#setupVramProfile').value = vramProfile.configured || 'auto';
-  }
-  const effectiveVramProfile = vramProfile.effective || vramProfile.recommended || 'standard';
-  $('#setupVramProfileCopy').textContent = effectiveVramProfile === 'low'
-    ? 'Uses the 4–12 GB guided route and asks before applying safer generation settings.'
-    : 'Uses standard image limits for GPUs with more memory.';
-  $('#setupVramProfile').disabled = busy || !state.profileIsOwner;
-  if (document.activeElement !== $('#setupKrea2Variant')) $('#setupKrea2Variant').value = selectedKrea2;
-  $('#setupKrea2VariantCopy').textContent = krea2CoreBlocked
-    ? setupKrea2CoreMessage()
-    : (selectedKrea2 === 'int8-convrot'
-    ? (int8Blocked ? setupNativeInt8Message() : 'Selected native INT8; FP8 remains available.')
-    : (recommendedKrea2 === 'int8-convrot'
-      ? 'FP8 is selected. Native INT8 is recommended for this GPU and remains available.'
-      : 'Selected the standard FP8 route.'));
-  $('#setupKrea2Variant').disabled = busy || !state.profileIsOwner;
-
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
   const modelsValue = comfy.modelsPath || setupLocalPath(pathValue, 'models');
   $('#setupComfyPath').placeholder = setupViewStatus.platform === 'darwin' ? '/Users/you/ComfyUI' : 'C:\\ComfyUI';
@@ -32259,38 +32440,6 @@ async function startSetupDependencies(components) {
   scheduleSetupPoll();
   return true;
 }
-
-$('#setupVramProfile').addEventListener('change', async () => {
-  try {
-    setupViewStatus = await api('/api/setup/vram-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vramProfile: $('#setupVramProfile').value }),
-    });
-    renderInitialSetup();
-  } catch (error) {
-    toast(error.message, true);
-  }
-});
-
-$('#setupKrea2Variant').addEventListener('change', async () => {
-  const choice = $('#setupKrea2Variant').value;
-  setupKrea2VariantOverride = choice === 'int8-convrot' ? 'int8-convrot' : 'fp8';
-  const selected = setupSelectedKrea2Variant();
-  try {
-    setupViewStatus = await api('/api/setup/krea2-variant', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ krea2ModelVariant: selected }),
-    });
-    if ($('#setKrea2ModelVariant')) $('#setKrea2ModelVariant').value = selected;
-    await loadMeta(true);
-    renderInitialSetup();
-  } catch (error) {
-    toast(error.message, true);
-    await refreshSetupStatus(true);
-  }
-});
 
 $('#setupGuideToggle').addEventListener('click', () => {
   setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');

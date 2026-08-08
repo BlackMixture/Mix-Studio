@@ -1819,14 +1819,23 @@ html:-webkit-full-screen { background: #000; }
   border-radius: 13px;
   background: rgba(10, 14, 25, .48);
 }
+.h3-replace-panel {
+  margin: 0 0 10px;
+  padding: 14px;
+  border: 1px solid rgba(155, 170, 210, .16);
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(139, 108, 255, .13), transparent 34%),
+    rgba(10, 14, 25, .5);
+}
 .h3-reference-size { display: flex; gap: 6px; }
 .h3-mode-row {
   --h3-mode-index: 0;
   position: relative;
   isolation: isolate;
   display: inline-grid;
-  width: min(100%, 282px);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 390px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1838,7 +1847,7 @@ html:-webkit-full-screen { background: #000; }
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc((100% - 6px) / 2);
+  width: calc((100% - 6px) / 3);
   border-radius: 999px;
   background: #1b2030;
   transform: translateX(calc(var(--h3-mode-index) * 100%));
@@ -1957,10 +1966,134 @@ html:-webkit-full-screen { background: #000; }
   color: #c9c0ff;
   font-size: 24px;
 }
+.h3-replace-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.h3-replace-head > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.h3-replace-head b { color: #f5f3ff; font-size: 13px; }
+.h3-replace-head small { color: rgba(211, 219, 245, .6); font-size: 10.5px; line-height: 1.35; }
+.h3-replace-icon {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(178, 158, 255, .3);
+  border-radius: 11px;
+  background: rgba(123, 91, 255, .13);
+  color: #cbbfff;
+}
+.h3-replace-icon svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.h3-replace-kind {
+  display: inline-flex;
+  gap: 3px;
+  margin-top: 14px;
+  padding: 3px;
+  border: 1px solid rgba(155, 170, 210, .16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .28);
+}
+.h3-replace-kind button {
+  min-width: 82px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(225, 230, 248, .62);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.h3-replace-kind button.active {
+  background: rgba(125, 97, 255, .2);
+  color: #f4f1ff;
+  box-shadow: inset 0 0 0 1px rgba(157, 137, 255, .22);
+}
+.h3-replace-target {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.h3-replace-target > span { color: #dfe4f7; font-size: 11px; font-weight: 800; }
+.h3-replace-target input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(155, 170, 210, .2);
+  border-radius: 10px;
+  outline: 0;
+  background: rgba(2, 4, 9, .62);
+  color: #f6f7ff;
+  font: inherit;
+  font-size: 12px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.h3-replace-target input:focus {
+  border-color: rgba(151, 128, 255, .64);
+  box-shadow: 0 0 0 3px rgba(121, 91, 255, .12);
+}
+.h3-replace-target small { color: rgba(211, 219, 245, .5); font-size: 9.5px; line-height: 1.35; }
+.h3-replace-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 13px;
+}
+.h3-replace-inputs .h3-replace-card,
+.h3-replace-inputs .h3-replace-filled { aspect-ratio: 1; min-height: 0; }
+.h3-replace-inputs .h3-replace-card .media-input-art { min-height: 0; flex: 1; }
+.h3-replace-inputs .h3-replace-filled > img,
+.h3-replace-inputs .h3-replace-filled > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.h3-replace-inputs .h3-replace-filled .attach-info {
+  background: linear-gradient(transparent, rgba(0, 0, 0, .78));
+  text-shadow: 0 1px 4px #000;
+}
+.h3-replace-prompt-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(155, 170, 210, .12);
+}
+.h3-replace-prompt-action > span { display: grid; gap: 2px; min-width: 0; }
+.h3-replace-prompt-action b { color: #edf0fb; font-size: 11px; }
+.h3-replace-prompt-action small { color: rgba(211, 219, 245, .53); font-size: 9.5px; line-height: 1.35; }
+.h3-replace-prompt-action button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+  border: 1px solid rgba(157, 137, 255, .45);
+  border-radius: 9px;
+  background: rgba(123, 91, 255, .19);
+  color: #f5f2ff;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 850;
+}
+.h3-replace-prompt-action button:hover { background: rgba(123, 91, 255, .28); }
+.h3-replace-prompt-action button:disabled { opacity: .42; cursor: not-allowed; }
+.h3-replace-prompt-action button svg { width: 14px; height: 14px; fill: currentColor; }
 @media (max-width: 420px) {
   .h3-reference-head { align-items: flex-start; }
   .h3-reference-head-actions { align-items: flex-end; flex-direction: column-reverse; }
   .h3-reference-size button { padding-inline: 7px; }
+  .h3-mode-row button { padding-inline: 6px; font-size: 10px; }
+  .h3-replace-panel { padding: 12px; }
+  .h3-replace-prompt-action { align-items: stretch; flex-direction: column; }
+  .h3-replace-prompt-action button { justify-content: center; width: 100%; }
 }
 .video-input-grid .media-input-card,
 .video-input-grid .media-input-filled {
@@ -8899,7 +9032,6 @@ body.sheet-open {
 .vram-profile-control strong { color: var(--ink-soft); font-size: 11px; }
 .vram-profile-control small { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .vram-profile-control select { min-width: 170px; min-height: 38px; padding: 0 34px 0 11px; border: 1px solid var(--line-strong); border-radius: 11px; background: #090c12; color: var(--ink-soft); font-size: 11px; font-weight: 800; }
-.setup-vram-profile { margin: -4px 0 14px; padding: 12px 14px; border: 1px solid rgba(226,232,255,.1); border-radius: 15px; background: rgba(8,11,17,.74); }
 .setup-operation { margin-bottom: 14px; padding: 14px; border: 1px solid rgba(66,133,244,.25); border-radius: 16px; background: rgba(66,133,244,.075); }
 .setup-operation > div:first-child { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .setup-operation strong { font-size: 12px; }
@@ -9110,7 +9242,7 @@ body.sheet-open {
 .setup-icon-action svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 @keyframes setupIconPulse { to { opacity: .35; transform: scale(.88); } }
 .setup-save-connection { margin: 0; }
-.setup-hardware { display: flex; align-items: center; gap: 12px; margin: 0 0 15px; padding: 11px 0; border: 0; border-block: 1px solid rgba(255,255,255,.09); border-radius: 0; background: transparent; }
+.setup-hardware { display: flex; align-items: center; gap: 12px; margin: 14px 0 0; padding: 11px 0; border: 0; border-block: 1px solid rgba(255,255,255,.09); border-radius: 0; background: transparent; }
 .setup-hardware > span { min-width: 38px; padding: 0; border-radius: 0; background: transparent; color: var(--setup-accent); font-size: 9px; }
 .setup-hardware div { min-width: 0; display: grid; gap: 2px; }
 .setup-hardware strong { overflow: hidden; color: #dce2ed; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -9132,7 +9264,7 @@ body.sheet-open {
 .setup-workflow-icon svg { width: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .setup-workflow-copy { min-width: 0; display: grid; gap: 3px; }
 .setup-workflow-copy small { color: #a991ef; font-size: 7px; font-weight: 950; letter-spacing: .1em; text-transform: uppercase; }
-.setup-workflow-copy .setup-workflow-title { overflow: hidden; color: #fff; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.setup-workflow-copy .setup-workflow-title { color: #fff; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; white-space: normal; }
 .setup-workflow-copy .setup-workflow-detail { color: #a59abf; font-size: 9px; line-height: 1.35; }
 .setup-workflow-verb { min-height: 30px; display: inline-flex; align-items: center; padding: 0 11px; border-radius: 999px; background: #a47bff; color: #09050f !important; font-size: 8px !important; font-weight: 950; letter-spacing: .04em; text-transform: uppercase; }
 .setup-actions.has-current .setup-recommended { grid-column: 1 / -1; min-height: 62px; }

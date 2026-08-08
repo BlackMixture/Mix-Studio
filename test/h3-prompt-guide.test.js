@@ -40,6 +40,7 @@ function referenceH3Prompt(description = 'A grounded cinematic style. [Shot 1] <
 test('H3 prompt guide exposes the same formatter API to Node and browsers', () => {
   assert.equal(typeof H3PromptGuide.analyzePrompt, 'function');
   assert.equal(typeof H3PromptGuide.auditStructure, 'function');
+  assert.equal(typeof H3PromptGuide.buildReplacementPrompt, 'function');
   assert.equal(typeof H3PromptGuide.formatDialogue, 'function');
   assert.equal(typeof H3PromptGuide.h3EffectiveDurationSeconds, 'function');
   assert.equal(typeof H3PromptGuide.structurePrompt, 'function');
@@ -49,9 +50,38 @@ test('H3 prompt guide exposes the same formatter API to Node and browsers', () =
   vm.runInContext(source, context);
   assert.equal(typeof context.H3PromptGuide.analyzePrompt, 'function');
   assert.equal(typeof context.H3PromptGuide.auditStructure, 'function');
+  assert.equal(typeof context.H3PromptGuide.buildReplacementPrompt, 'function');
   assert.equal(typeof context.H3PromptGuide.formatDialogue, 'function');
   assert.equal(typeof context.H3PromptGuide.h3EffectiveDurationSeconds, 'function');
   assert.equal(typeof context.H3PromptGuide.structurePrompt, 'function');
+});
+
+test('local H3 replacement preset targets one object with native reference tags', () => {
+  const prompt = H3PromptGuide.buildReplacementPrompt({
+    kind: 'object',
+    target: 'the red backpack held by the cyclist',
+  });
+
+  assert.match(prompt, /^SCENE CONTEXT\n/);
+  assert.match(prompt, /the object identified as "the red backpack held by the cyclist"/);
+  assert.match(prompt, /<Video 1>: the master plate/);
+  assert.match(prompt, /<Picture 1>: identity of the replacement object only/);
+  assert.match(prompt, /NO MASK/);
+  assert.match(prompt, /Only the object identified as/);
+  assert.doesNotMatch(prompt, /<Image[_ ]1>|<Video_1>/);
+});
+
+test('local H3 replacement preset adapts identity and motion locks for characters', () => {
+  const prompt = H3PromptGuide.buildReplacementPrompt({
+    kind: 'character',
+    target: 'the woman in the blue coat',
+  });
+
+  assert.match(prompt, /identity of the replacement character only/);
+  assert.match(prompt, /face, body proportions, hair, wardrobe/);
+  assert.match(prompt, /inherits the full performance of the original character/);
+  assert.match(prompt, /face, anatomy, wardrobe or colour/);
+  assert.doesNotMatch(prompt, /replacement object inherits/);
 });
 
 test('browser H3 duration helper stays aligned with the generation frame grid', () => {

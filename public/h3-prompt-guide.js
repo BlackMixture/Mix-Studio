@@ -96,6 +96,77 @@
     const snappedFrames = rawFrames + ((5 - (rawFrames % 17) + 17) % 17);
     return snappedFrames / H3_FPS;
   }
+
+  function replacementTarget(value, kind) {
+    const target = sourceText(value).replace(/[\r\n\t]+/g, ' ').replace(/"/g, "'").replace(/\s{2,}/g, ' ').trim().slice(0, 240);
+    return target ? `the ${kind} identified as "${target}"` : `the target ${kind}`;
+  }
+
+  function buildReplacementPrompt(options = {}) {
+    const kind = options.kind === 'character' ? 'character' : 'object';
+    const target = replacementTarget(options.target, kind);
+    const identity = kind === 'character'
+      ? 'Their face, body proportions, hair, wardrobe, colours and distinguishing features 100% match <Picture 1>, kept stable and recognizable throughout.'
+      : 'Its shape, proportion, material, colour, logos and surface markings 100% match <Picture 1>, kept legible and correctly oriented throughout.';
+    const motion = kind === 'character'
+      ? 'The replacement character inherits the full performance of the original character, frame by frame: same screen position, scale, pose, gaze, expression timing, gestures, movement path, speed, entry and exit timing. Whatever the original character did, the new character does identically. No new movement is introduced and none is removed.'
+      : 'The replacement object inherits the full behaviour of the object it replaces, frame by frame: same screen position, same scale, same rotation, same motion path, same speed, same entry and exit timing. Whatever the original object did, the new object does identically. No new movement is introduced and none is removed.';
+    const integration = kind === 'character'
+      ? [
+        'Body contact reads physically: hands, feet, clothing and supporting surfaces meet the replacement character\'s actual anatomy and silhouette; contact shadows land directly beneath them.',
+        'Occlusion order is preserved: whatever passed in front of the original character passes in front of the new character, and whatever the original character covered stays covered.',
+        'Hair, clothing, reflections and cast shadows are rebuilt for the replacement identity while keeping the same direction, softness and timing as the plate.',
+      ].join('\n')
+      : [
+        'Contact reads physically: hands wrap the new silhouette, supporting surfaces meet its actual base, contact shadows land directly beneath it, and any grip conforms to its real geometry.',
+        'Occlusion order is preserved: whatever passed in front of the original object passes in front of the new one, and whatever it covered stays covered.',
+        'Reflections, refractions and cast shadows on nearby surfaces are rebuilt for the new geometry while keeping the same direction and softness as the plate.',
+      ].join('\n');
+    const physics = kind === 'character'
+      ? 'Weight, balance, inertia, foot planting, hair movement and cloth response remain consistent with the character shown in <Picture 1>, while preserving the original performance and timing.'
+      : 'Mass, inertia, swing and settle behaviour remain consistent with the material shown in <Picture 1>. Any fluid, spill, dust or particle interaction updates to the new geometry while obeying the same gravity and timing as the plate.';
+    const lighting = kind === 'character'
+      ? 'Key direction, intensity, falloff and white balance come from <Video 1>. Skin, hair and wardrobe catch the same key from the same side, sit at the same ambient level, and cast shadows matching the plate in length, direction and softness. Highlights appear only where the plate\'s light would place them.'
+      : 'Key direction, intensity, falloff and white balance come from <Video 1>. The object catches the same key from the same side, sits at the same ambient level, and throws a shadow matching the existing shadows in length, direction and softness. Specular highlights appear only where the plate\'s key light would place them, reading the true surface finish from <Picture 1>.';
+    const entity = kind === 'character' ? 'character' : 'object';
+
+    return [
+      'SCENE CONTEXT',
+      `Replacement pass. In <Video 1>, ${target} is replaced by the ${entity} shown in <Picture 1>. Everything else in <Video 1> remains exactly as it is.`,
+      '',
+      'ACTIVE REFERENCES',
+      '<Video 1>: the master plate. Camera path, framing, timing, cast, environment, lighting and every other element 100% match <Video 1>.',
+      `<Picture 1>: identity of the replacement ${entity} only. ${identity} NO MASK.`,
+      '',
+      'MOTION INHERITANCE',
+      motion,
+      '',
+      'INTEGRATION',
+      integration,
+      '',
+      'OPTICS',
+      `Shot size, FOV, depth of field, focus falloff and motion blur carry over from <Video 1> with no drift. The ${entity} sits at the same focal plane as the original.`,
+      '',
+      'CAMERA',
+      'Camera behaviour, height, distance, movement and handheld character remain identical to <Video 1>.',
+      '',
+      'PHYSICS',
+      physics,
+      '',
+      'LIGHTING',
+      lighting,
+      '',
+      'STYLE',
+      'Photoreal, fully integrated into the original plate: same grain structure, black level, tonal contrast and colour grade as <Video 1>.',
+      '',
+      'POSITIVE LOCKS',
+      `- Only ${target} changes; every other element of <Video 1> stays untouched.`,
+      `- The replacement ${entity} stays present, complete and correctly scaled in every frame the original appeared in.`,
+      `- Identity from <Picture 1> holds steady across the whole clip, with no drift in ${kind === 'character' ? 'face, anatomy, wardrobe or colour' : 'shape, colour or markings'}.`,
+      '- Edges blend seamlessly: matching noise, matching edge softness, no halo, no outline.',
+      '- One continuous plate, cuts only where <Video 1> already cuts.',
+    ].join('\n');
+  }
   const KNOWN_PROMPT_FIELDS = new Set([...BASE_PROMPT_FIELDS, ...REFERENCE_PROMPT_FIELDS]);
   const ALIGNMENT_LINE_RE = /^(?:For the target video, at 0\.00 seconds into the target video,\s*<Picture 1>|How the reference pictures align with the target video\s+—\s+(?:Picture 1|<Picture 1>))/;
   const OFFICIAL_ALIGNMENT_LINE_RE = /^(?:For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.|How the reference pictures align with the target video — (?:Picture 1 \(from Shot 1\) aligns with the 0\.00-second mark of the target video; Picture 2 \(from Shot \d+\) aligns with the \d+\.\d{2}-second mark of the target video\.|<Picture 1> \(from \[Shot \d+\]\) aligns with the \d+\.\d{2}-second mark of the target video\.))$/;
@@ -1075,6 +1146,7 @@
   return Object.freeze({
     analyzePrompt,
     auditStructure,
+    buildReplacementPrompt,
     formatDialogue,
     h3EffectiveDurationSeconds,
     structurePrompt,

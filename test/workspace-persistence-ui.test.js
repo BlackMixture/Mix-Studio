@@ -13,9 +13,13 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 test('current workspace autosave retains active mode, LoRAs, prompts, and durable media inputs', () => {
   assert.match(app, /workspaceVersion: 2/);
   assert.match(app, /activeView: \['create', 'edit', 'video'\]\.includes\(state\.view\)/);
-  for (const field of ['refs', 'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio']) {
+  for (const field of ['refs', 'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidH3ReplaceVideo', 'vidH3ReplaceImage']) {
     assert.match(app, new RegExp(`${field}:`));
   }
+  assert.match(app, /vidH3ReplaceKind: state\.vidH3ReplaceKind/);
+  assert.match(app, /vidH3ReplaceTarget: state\.vidH3ReplaceTarget/);
+  assert.match(app, /state\.vidH3ReplaceVideo = restoreWorkspaceAsset\(f\.vidH3ReplaceVideo\)/);
+  assert.match(app, /state\.vidH3ReplaceImage = restoreWorkspaceAsset\(f\.vidH3ReplaceImage\)/);
   assert.match(app, /serializeWorkspaceAsset/);
   assert.match(app, /restoreWorkspaceAsset/);
   assert.match(app, /vidScailFps: state\.vidScailFps/);

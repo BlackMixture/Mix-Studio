@@ -94,7 +94,8 @@ test('setup gates Krea INT8 installation and generation on the compatible ComfyU
   assert.match(server, /setupStatusPayload\(url\.searchParams\.has\('refresh'\)\)/);
   assert.match(app, /setupNativeInt8Blocked/);
   assert.match(app, /or select FP8/);
-  assert.match(html, /id="setupKrea2Variant"/);
+  assert.doesNotMatch(html, /id="setupKrea2Variant"/);
+  assert.match(html, /id="setKrea2ModelVariant"/);
   assert.match(app, /modelVariants: \{ krea2: \$\('#setKrea2ModelVariant'\)\.value \}/);
 });
 
@@ -112,13 +113,12 @@ test('setup rejects Krea 2 before ComfyUI exposes the required CLIP type', () =>
   assert.match(html, /id="setupCoreUpdate"[\s\S]*Update ComfyUI before using Krea 2/);
 });
 
-test('setup preserves an explicit Krea precision instead of replacing it with hardware guidance', () => {
+test('setup uses the saved Krea precision instead of replacing it with hardware guidance', () => {
   const app = read('public/app.js');
   const start = app.indexOf('function setupSelectedKrea2Variant(');
   const end = app.indexOf('\nfunction setupNeedsNativeInt8(', start);
   assert.ok(start >= 0 && end > start);
   const context = {
-    setupKrea2VariantOverride: '',
     setupViewStatus: {
       modelVariants: { krea2: 'fp8' },
       modelRecommendations: { krea2: 'int8-convrot' },
@@ -126,6 +126,4 @@ test('setup preserves an explicit Krea precision instead of replacing it with ha
   };
   const selectedVariant = vm.runInNewContext(`(${app.slice(start, end)})`, context);
   assert.equal(selectedVariant(), 'fp8');
-  context.setupKrea2VariantOverride = 'int8-convrot';
-  assert.equal(selectedVariant(), 'int8-convrot');
 });

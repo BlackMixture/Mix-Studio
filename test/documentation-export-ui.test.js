@@ -53,7 +53,7 @@ test('H3 R2V references persist in generation details and documentation exports'
   assert.match(app, /function h3ReferenceGenerationInfoMarkup\(info\)/);
   assert.match(app, /meta\.push\(h3ReferenceMarkup\)/);
   assert.match(app, /class="lightbox-reference-chip"/);
-  assert.match(app, /engine === 'h3' && info\.h3Mode === 'reference'[\s\S]*h3GenerationReferenceDescriptors\(info\)/);
+  assert.match(app, /engine === 'h3' && h3ReferenceBackedMode\(info\.h3Mode\)[\s\S]*h3GenerationReferenceDescriptors\(info\)/);
   assert.match(app, /addImage\(label, reference\.name/);
   assert.match(app, /addVideo\(label, reference\.name/);
   assert.match(app, /addAudio\(label, reference\.name/);

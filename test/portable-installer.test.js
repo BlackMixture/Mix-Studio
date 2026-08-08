@@ -483,6 +483,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /async function ensureGenerationSetup\(\)/);
   assert.match(app, /if \(!\(await ensureGenerationSetup\(\)\)\) return/);
   assert.match(app, /function currentGenerationSetupAction\(\)/);
+  assert.match(app, /function setupActionForComponents\(required\)/);
   assert.match(app, /if \(setupAction === 'install'\) return 'Install workflow'/);
   assert.match(app, /if \(setupAction === 'update'\) return 'Update ComfyUI'/);
   assert.match(app, /if \(setupAction === 'connect'\) return 'Set up generation'/);
@@ -492,7 +493,10 @@ test('generation setup lives in the web app and gates only a generation attempt'
   );
   assert.match(app, /function setSetupStep\(step/);
   assert.match(app, /stepChanged \|\| options\.resetScroll/);
-  assert.match(app, /setSetupStep\('connect', \{ resetScroll: true \}\)/);
+  assert.match(app, /initialStep: setupAction === 'install' \? 'install' : 'connect'/);
+  assert.match(app, /const inferredStep = setupActionForComponents\(setupContextComponents\) === 'install' \? 'install' : 'connect'/);
+  assert.match(app, /SETUP_STEPS\.includes\(options\.step\) \? options\.step : inferredStep/);
+  assert.match(app, /setSetupStep\(initialStep, \{ resetScroll: true \}\)/);
   assert.match(app, /setupReturnToSettings = options\.returnToSettings === true/);
   assert.match(app, /openInitialSetup\(\{ returnToSettings: true \}\)/);
   assert.match(app, /phoneGuide: true,[\s\S]{0,100}returnToSettings: true/);

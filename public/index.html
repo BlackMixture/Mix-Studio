@@ -789,8 +789,9 @@
       <div class="h3-mode-panel" id="vidH3ModePanel" hidden>
         <div class="h3-mode-row" id="vidH3ModeRow" role="group" aria-label="MiniMax H3 input mode">
           <span class="h3-mode-indicator" aria-hidden="true"></span>
-          <button class="active" type="button" data-h3-mode="frames" aria-pressed="true">Text + frames</button>
-          <button type="button" data-h3-mode="reference" aria-pressed="false">Reference (R2V)</button>
+          <button class="active" type="button" data-h3-mode="frames" aria-pressed="true">Text + Frames</button>
+          <button type="button" data-h3-mode="reference" aria-pressed="false">Reference</button>
+          <button type="button" data-h3-mode="replace" aria-pressed="false">Replace</button>
         </div>
       </div>
       <div class="h3-turbo-panel" id="vidH3TurboPanel" hidden>
@@ -908,6 +909,54 @@
         </div>
         <div class="ref-row h3-reference-grid" id="vidH3ReferenceList"></div>
       </div>
+      <section class="h3-replace-panel" id="vidH3ReplacePanel" hidden aria-labelledby="vidH3ReplaceTitle">
+        <header class="h3-replace-head">
+          <span class="h3-replace-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7zM4 10V6a2 2 0 0 1 2-2h4M20 14v4a2 2 0 0 1-2 2h-4"/></svg>
+          </span>
+          <span><b id="vidH3ReplaceTitle">Replace in video</b><small>Keep the plate. Change one identity. No mask needed.</small></span>
+        </header>
+        <div class="h3-replace-kind" id="vidH3ReplaceKind" role="group" aria-label="Replacement type">
+          <button class="active" type="button" data-h3-replace-kind="object" aria-pressed="true">Object</button>
+          <button type="button" data-h3-replace-kind="character" aria-pressed="false">Character</button>
+        </div>
+        <label class="h3-replace-target" for="vidH3ReplaceTarget">
+          <span>What should be replaced?</span>
+          <input id="vidH3ReplaceTarget" type="text" maxlength="240" autocomplete="off" placeholder="e.g. the red backpack held by the cyclist" />
+          <small>Describe the original target so H3 changes only that element.</small>
+        </label>
+        <div class="h3-replace-inputs">
+          <button class="media-input-card h3-replace-card" id="vidH3ReplaceVideoBtn" type="button">
+            <span class="media-input-art" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h11a2 2 0 0 1 2 2v1.2l5-3v11.6l-5-3V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2v8h11V8H4Zm13 3.5v1l3 1.8V9.7l-3 1.8Z"/></svg><i>+</i>
+            </span>
+            <span class="media-input-copy"><b>Master video</b><small>Required · the plate to preserve</small></span>
+          </button>
+          <div class="attach-thumb media-input-filled h3-replace-filled" id="vidH3ReplaceVideoThumb" hidden>
+            <video id="vidH3ReplaceVideoPreview" muted loop autoplay playsinline></video>
+            <div class="attach-info"><b>Master video</b><span id="vidH3ReplaceVideoLabel">Video 1</span></div>
+            <button class="attach-x" id="vidH3ReplaceVideoX" type="button" aria-label="Remove master video">✕</button>
+          </div>
+          <button class="media-input-card h3-replace-card" id="vidH3ReplaceImageBtn" type="button">
+            <span class="media-input-art" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg><i>+</i>
+            </span>
+            <span class="media-input-copy"><b>Replacement image</b><small>Required · the new identity</small></span>
+          </button>
+          <div class="attach-thumb media-input-filled h3-replace-filled" id="vidH3ReplaceImageThumb" hidden>
+            <img id="vidH3ReplaceImagePreview" alt="Replacement identity preview" />
+            <div class="attach-info"><b>Replacement image</b><span id="vidH3ReplaceImageLabel">Picture 1</span></div>
+            <button class="attach-x" id="vidH3ReplaceImageX" type="button" aria-label="Remove replacement image">✕</button>
+          </div>
+        </div>
+        <div class="h3-replace-prompt-action">
+          <span><b>Replacement prompt</b><small id="vidH3ReplacePromptStatus">Add a target description, then apply the preset.</small></span>
+          <button id="vidH3ReplacePromptBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Zm6 10 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13ZM6 14l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3Z"/></svg>
+            <span>Apply preset</span>
+          </button>
+        </div>
+      </section>
       <div class="chip-row" id="vidDriveTools" style="margin-top:8px; margin-bottom:0" hidden>
         <button class="chip video-tool-chip" id="vidDriveTrimChip">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="m8.2 8.2 10.3 8.3M8.2 15.8 18.5 7.5"/></svg>
@@ -2315,25 +2364,6 @@
 
       <section class="setup-pane" id="setupPaneInstall" role="tabpanel" aria-labelledby="setupTabInstall" data-setup-pane="install" hidden>
         <header class="setup-pane-head"><span>Downloads</span><h3>Install what you need</h3><p>Existing files are reused automatically.</p></header>
-        <div class="setup-hardware" id="setupHardwareSummary">
-          <span aria-hidden="true">GPU</span>
-          <div><strong id="setupHardwareCopy">Checking this computer…</strong><small id="setupHardwareFit">Checking compatibility…</small></div>
-        </div>
-        <label class="vram-profile-control setup-vram-profile">
-          <span><strong>Generation memory</strong><small id="setupVramProfileCopy">Automatically match this GPU.</small></span>
-          <select id="setupVramProfile">
-            <option value="auto">Auto</option>
-            <option value="low">Low VRAM · 4–12 GB</option>
-            <option value="standard">Standard · 16 GB+</option>
-          </select>
-        </label>
-        <label class="vram-profile-control setup-vram-profile">
-          <span><strong>Krea 2 precision</strong><small id="setupKrea2VariantCopy">Choose the compatible route for this GPU and ComfyUI.</small></span>
-          <select id="setupKrea2Variant">
-            <option value="fp8">FP8 · compatible fallback</option>
-            <option value="int8-convrot">INT8 ConvRot · low VRAM</option>
-          </select>
-        </label>
         <div class="setup-actions">
           <button class="setup-workflow-install" id="setupCurrentWorkflow" type="button">
             <span class="setup-workflow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg></span>
@@ -2341,6 +2371,10 @@
             <span class="setup-workflow-verb">Install</span>
           </button>
           <button class="setup-secondary setup-recommended" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
+        </div>
+        <div class="setup-hardware" id="setupHardwareSummary">
+          <span aria-hidden="true">GPU</span>
+          <div><strong id="setupHardwareCopy">Checking this computer…</strong><small id="setupHardwareFit">Checking compatibility…</small></div>
         </div>
         <button class="setup-disclosure" id="setupCustomToggle" type="button" aria-expanded="false" aria-controls="setupCustomPanel"><span>Choose components</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg></button>
         <div class="setup-custom-panel" id="setupCustomPanel" hidden>
