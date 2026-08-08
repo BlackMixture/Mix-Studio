@@ -13840,6 +13840,18 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
 .update-showcase-fallback-h3 small { position: absolute; z-index: 2; bottom: 15%; color: #a4b5df; font-size: 8px; font-weight: 900; letter-spacing: .24em; }
 .update-h3-orbit { position: absolute; width: 56%; aspect-ratio: 2.2; border: 1px solid rgba(144,177,255,.22); border-radius: 50%; transform: rotate(-15deg); }
 .update-h3-orbit-b { width: 44%; transform: rotate(38deg); border-color: rgba(187,128,255,.22); }
+.update-showcase-fallback-wan {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 12% 14% 18%;
+  background: radial-gradient(circle at 50% 18%, rgba(100, 127, 255, .2), transparent 33%), linear-gradient(140deg, #050810, #101829 58%, #07090f);
+}
+.update-showcase-fallback-wan > strong { position: absolute; bottom: 10%; color: #e4ebff; font-size: clamp(15px, 3vw, 25px); font-weight: 950; letter-spacing: .15em; }
+.update-wan-frame { position: relative; aspect-ratio: 3 / 4; display: flex; align-items: flex-end; padding: 8px; overflow: hidden; border: 1px solid rgba(172, 192, 255, .24); border-radius: 14px; background: rgba(255, 255, 255, .04); box-shadow: 0 18px 38px rgba(0, 0, 0, .38); }
+.update-wan-frame i { position: absolute; inset: 7px 7px 27px; border-radius: 9px; background: radial-gradient(circle at 50% 34%, #b9c8f1 0 10%, transparent 11%), radial-gradient(ellipse at 50% 72%, #5f78b8 0 25%, transparent 26%), linear-gradient(145deg, #223963, #0a111f); }
+.update-wan-frame-motion i { background: radial-gradient(circle at 50% 34%, #f4c9a4 0 10%, transparent 11%), radial-gradient(ellipse at 50% 72%, #b45f69 0 25%, transparent 26%), linear-gradient(145deg, #563040, #17101c); }
+.update-wan-frame b { position: relative; color: #dce6ff; font-size: 7px; letter-spacing: .12em; }
+.update-wan-flow { color: #8fa9ef; font-size: clamp(20px, 4vw, 34px); font-weight: 800; }
 .update-showcase-fallback-packs { background: radial-gradient(circle at 50% 18%, rgba(252,142,67,.13), transparent 32%), linear-gradient(140deg, #100b10, #0a0d18 55%, #080910); }
 .update-showcase-fallback-packs > strong { position: absolute; bottom: 12%; color: rgba(242,245,255,.88); font-size: clamp(16px, 3vw, 26px); font-weight: 950; letter-spacing: .18em; }
 .update-pack-card { position: absolute; top: 18%; width: 26%; height: 50%; padding: 8px; display: flex; flex-direction: column; justify-content: flex-end; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; background: rgba(255,255,255,.055); box-shadow: 0 24px 45px rgba(0,0,0,.4); }

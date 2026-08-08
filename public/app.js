@@ -1777,6 +1777,13 @@ const OFFICIAL_RELEASE_SHOWCASES = {
       theme: 'h3',
     },
     {
+      eyebrow: 'Character animation',
+      title: 'Wan Animate 2 is available',
+      message: 'Animate a character image from a performance video with native ComfyUI support for high-fidelity motion, expression, identity, timing, and source audio.',
+      media: '/update-media/v1.2.0-wan-animate2.mp4',
+      theme: 'wan-animate2',
+    },
+    {
       eyebrow: 'Creative workflow',
       title: 'Meet Mix Packs',
       message: 'Browse visual prompt collections, combine multiple looks, and bring the same reusable creative direction into image and video generations.',
@@ -1870,6 +1877,9 @@ function updateShowcaseFallbackMarkup(theme) {
   }
   if (theme === 'h3') {
     return '<div class="update-showcase-fallback update-showcase-fallback-h3" aria-hidden="true"><span class="update-h3-orbit update-h3-orbit-a"></span><span class="update-h3-orbit update-h3-orbit-b"></span><strong>H3</strong><b>TURBO</b><small>VIDEO + NATIVE AUDIO</small></div>';
+  }
+  if (theme === 'wan-animate2') {
+    return '<div class="update-showcase-fallback update-showcase-fallback-wan" aria-hidden="true"><span class="update-wan-frame update-wan-frame-source"><i></i><b>CHARACTER</b></span><span class="update-wan-flow">→</span><span class="update-wan-frame update-wan-frame-motion"><i></i><b>PERFORMANCE</b></span><strong>WAN ANIMATE 2</strong></div>';
   }
   return '<div class="update-showcase-fallback update-showcase-fallback-release" aria-hidden="true"><img src="/mix-studio-logo.svg" alt=""/><strong>NEW VERSION</strong></div>';
 }
