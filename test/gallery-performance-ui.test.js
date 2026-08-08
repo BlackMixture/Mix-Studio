@@ -34,9 +34,19 @@ test('temporary media URLs and hidden gallery videos are explicitly released', (
   assert.match(app, /function releaseCurrentVideoAssetUrls\(\)/);
   assert.match(app, /function setVideoFirstFrame[\s\S]*?releaseAssetObjectUrls\(\[state\.vidRef\], \[asset, state\.vidEnd\]\)/);
   assert.match(app, /function setH3ReplacementAsset[\s\S]*?releaseAssetObjectUrl\(state\.vidH3ReplaceVideo, asset\)/);
-  assert.match(app, /function suspendGalleryPreviewPlayback\(\)[\s\S]*?video\.removeAttribute\('src'\)[\s\S]*?video\.load\(\)/);
+  assert.match(app, /function unloadGalleryPreview\(video\)[\s\S]*?video\.removeAttribute\('src'\)[\s\S]*?video\.load\(\)/);
+  assert.match(app, /function suspendGalleryPreviewPlayback\(\)[\s\S]*?unloadGalleryPreview\(video\)/);
   assert.match(app, /if \(!isGallery\) suspendGalleryPreviewPlayback\(\)/);
   assert.match(app, /document\.hidden \|\| !galleryPreviewMotionAllowed\(\)[\s\S]*?suspendGalleryPreviewPlayback\(\)/);
+});
+
+test('desktop side library previews play on hover without restoring background autoplay', () => {
+  assert.match(app, /function desktopSideLibraryHoverPreviewAllowed\(\)[\s\S]*?desktopWorkspaceActive\(\)[\s\S]*?desktopResolutionPickerQuery\.matches[\s\S]*?state\.view !== 'gallery'/);
+  assert.match(app, /function startDesktopSideLibraryPreview\(video\)[\s\S]*?galleryPreviewActive = new Set\(\[video\]\);[\s\S]*?playGalleryPreview\(video\)/);
+  assert.match(app, /function stopDesktopSideLibraryPreview\(video\)[\s\S]*?galleryPreviewActive\.delete\(video\)[\s\S]*?unloadGalleryPreview\(video\)/);
+  assert.match(app, /card\.addEventListener\('pointerenter', \(\) => startDesktopSideLibraryPreview\(preview\)/);
+  assert.match(app, /card\.addEventListener\('pointerleave', \(\) => stopDesktopSideLibraryPreview\(preview\)/);
+  assert.match(app, /function resetGalleryPreviewObservation\(\)[\s\S]*?if \(state\.view !== 'gallery'\) return;[\s\S]*?galleryPreviewObserver\.observe\(video\)/);
 });
 
 test('background polling pauses while the app is hidden', () => {
