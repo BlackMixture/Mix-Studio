@@ -502,7 +502,7 @@ test('MiniMax H3 enhancement uses a validated duration-aware prompt pass and rec
 test('Video exposes model-aware step counts and keeps fixed schedules read-only', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="advancedStepsHint"/);
-  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Turbo/);
+  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Frames Turbo and 6 for Reference Turbo/);
   assert.match(app, /#seedInput'\)\.closest\('\.panel'\)\.hidden = false/);
   assert.match(app, /function videoStepSpecification\(\)/);
   assert.match(app, /#advancedStepsField'\)\.hidden = false/);
@@ -515,9 +515,9 @@ test('Video exposes model-aware step counts and keeps fixed schedules read-only'
   assert.match(server, /steps: opts\.steps/);
 });
 
-test('MiniMax H3 Turbo uses audio-safe sampling, adjustable steps, and an advanced strength control', () => {
+test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-safe setup paths', () => {
   assert.match(html, /id="vidH3TurboToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
-  assert.match(html, /id="vidH3TurboSummary">4 steps recommended · audio-safe sampler/);
+  assert.match(html, /id="vidH3TurboSummary">4 frames · 6 reference · audio-safe/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*min="0\.8"[^>]*max="1\.2"[^>]*value="1"/);
   assert.match(html, /<label for="vidH3TurboStrength">Turbo LoRA strength<\/label>/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*aria-describedby="vidH3TurboStrengthHelp vidH3TurboStrengthScale"/);
@@ -527,21 +527,25 @@ test('MiniMax H3 Turbo uses audio-safe sampling, adjustable steps, and an advanc
   assert.ok(html.indexOf('id="advBody"') < html.indexOf('id="vidH3TurboStrengthField"'));
   assert.match(css, /\.h3-turbo-strength-slider::before[\s\S]{0,500}--h3-turbo-progress/);
   assert.match(html, /id="setH3TurboLora"/);
+  assert.match(html, /id="setH3RefTurboLora"/);
   assert.match(app, /vidH3Turbo: false/);
   assert.match(app, /vidH3TurboSteps: 4/);
-  assert.match(app, /function normalizedH3TurboSteps\([\s\S]{0,120}Math\.max\(4/);
-  assert.match(app, /function h3TurboActive\(\)[\s\S]*state\.vidH3Mode === 'frames'[\s\S]*state\.vidH3Turbo === true/);
-  assert.match(app, /Reference \(R2V\) uses Standard H3/);
+  assert.match(app, /vidH3RefTurboSteps: 6/);
+  assert.match(app, /function normalizedH3TurboSteps\([\s\S]{0,360}Math\.max\(4/);
+  assert.match(app, /function h3TurboActive\(\)[\s\S]{0,120}state\.vidH3Turbo === true/);
+  assert.match(app, /H3 Reference Turbo · 6-step LightX2V audio-safe setup/);
+  assert.match(app, /LightX2V · audio-safe sampler/);
   assert.match(app, /4 steps recommended; higher values trade speed for modest gains/);
   assert.match(app, /native audio-safe sampler/);
-  assert.match(app, /if \(h3TurboActive\(\)\) components\.add\('h3turbo'\)/);
+  assert.match(app, /if \(h3TurboActive\(\)\) components\.add\(state\.vidH3Mode === 'reference' \? 'h3turbor2v' : 'h3turbo'\)/);
   assert.match(app, /h3Turbo: state\.vidEngine === 'h3' \? h3TurboActive\(\) : undefined/);
-  assert.match(server, /const h3Turbo = h3TurboRequested && h3Mode === 'frames'/);
-  assert.match(server, /code: 'h3_turbo_reference_unsupported'/);
-  assert.match(server, /h3Turbo \? clampInt\(body\.steps, 4, 100, 4\)/);
+  assert.match(server, /const h3Turbo = h3TurboRequested;/);
+  assert.doesNotMatch(server, /h3_turbo_reference_unsupported/);
+  assert.match(server, /h3Turbo \? clampInt\(body\.steps, 4, 100, h3Mode === 'reference' \? 6 : 4\)/);
   assert.match(server, /h3TurboNativeSampler = minimaxH3NativeAudioSampling\(info\)/);
   assert.match(server, /if \(h3Core\.nativeAudioSampling\)[\s\S]{0,260}missing\.h3turbo = \['MiniMaxH3TurboLoRA'\]/);
   assert.match(server, /h3turbo: \['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'\]/);
+  assert.match(server, /h3turbor2v: \['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'\]/);
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {

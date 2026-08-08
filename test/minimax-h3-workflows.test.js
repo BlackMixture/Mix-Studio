@@ -22,6 +22,7 @@ const settings = {
   h3VideoVae: 'minimax_h3_video_vae_fp16.safetensors',
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   h3TurboLora: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+  h3RefTurboLora: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
 };
 
 test('MiniMax H3 duration snaps to the official 17k+5 frame grid at 24 fps', () => {
@@ -184,16 +185,26 @@ test('MiniMax H3 Turbo can stack SageAttention after the Turbo LoRA', async () =
   assert.deepEqual(graph.scheduler.inputs.model, ['turbo_lora', 0]);
 });
 
-test('MiniMax H3 Reference mode does not apply the FL2VA Turbo LoRA', async () => {
+test('MiniMax H3 Reference Turbo uses LightX2V with the audio-safe creator sampler', async () => {
   const graph = await buildMiniMaxH3Graph({
     mode: 'reference', prompt: 'Use <Picture 1>.', W: 1344, H: 768, frames: 124, seed: 17,
     turbo: true, references: { images: [{ name: 'hero.png' }] },
   }, settings);
 
-  assert.equal(graph.turbo_lora, undefined);
-  assert.equal(graph.turbo_sampler, undefined);
-  assert.equal(graph.scheduler.inputs.steps, 20);
-  assert.deepEqual(graph.sample.inputs.sampler, ['sampler_select', 0]);
+  assert.equal(graph.condition.class_type, 'MiniMaxH3ReferenceToVideo');
+  assert.equal(graph.turbo_lora.class_type, 'LoraLoaderModelOnly');
+  assert.equal(graph.turbo_lora.inputs.lora_name, settings.h3RefTurboLora);
+  assert.equal(graph.turbo_lora.inputs.strength_model, 1);
+  assert.equal(graph.turbo_sampling.class_type, 'MiniMaxH3SigmaShift');
+  assert.deepEqual(graph.turbo_sampling.inputs.model, ['turbo_lora', 0]);
+  assert.equal(graph.turbo_sampling.inputs.shift_video, 12);
+  assert.equal(graph.turbo_sampling.inputs.shift_audio, 3);
+  assert.equal(graph.turbo_sampler.class_type, 'MiniMaxH3TurboSampler');
+  assert.equal(graph.scheduler.inputs.steps, 6);
+  assert.deepEqual(graph.scheduler.inputs.model, ['turbo_sampling', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['turbo_sampling', 0]);
+  assert.deepEqual(graph.sample.inputs.sampler, ['turbo_sampler', 0]);
+  assert.equal(Object.values(graph).some((node) => /cache/i.test(node.class_type)), false);
 });
 
 test('MiniMax H3 reference graph preserves official reference namespaces and media order', async () => {

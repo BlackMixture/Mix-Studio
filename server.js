@@ -458,6 +458,7 @@ const DEFAULT_SETTINGS = {
   h3VideoVae: 'minimax_h3_video_vae_fp16.safetensors',
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   h3TurboLora: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+  h3RefTurboLora: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
   wanHighUnet: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',
   wanLowUnet: 'wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors',
   wanClip: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors',
@@ -1527,6 +1528,10 @@ function configuredModelsStatus(info) {
       label: 'MiniMax H3 Turbo',
       lora: modelStatus(info, 'MiniMaxH3TurboLoRA', 'lora_name', settings.h3TurboLora, loraList),
     },
+    h3RefTurbo: {
+      label: 'MiniMax H3 Reference Turbo',
+      lora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.h3RefTurboLora, loraList),
+    },
     ltxDirector: {
       label: 'LTX 2.3 Director',
       ingredients: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltxDirectorIcLora, loraList),
@@ -1585,6 +1590,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
     h3: ['h3'],
     h3r2v: ['h3r2v'],
     h3turbo: ['h3turbo'],
+    h3turbor2v: ['h3turbor2v'],
     h3sage: ['h3sage'],
     ltxcamera: ['ltxcamera'],
     ltxdirector: ['ltxdirector'],
@@ -1609,7 +1615,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
   const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
   if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
   if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
-  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -5638,6 +5644,7 @@ const REQUIRED_CLASSES = {
     'CreateVideo', 'SaveVideo', 'ImageFromBatch', 'SaveImage'],
   h3r2v: ['MiniMaxH3ReferenceToVideo', 'VHS_LoadVideo', 'VHS_LoadAudioUpload'],
   h3turbo: ['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'],
+  h3turbor2v: ['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'],
   h3sage: ['PathchSageAttentionKJ'],
   ltxdirector: ['LTXDirector', 'LTXDirectorGuide', 'LTXDirectorCropGuides'],
   ltxcamera: ['LTXICLoRALoaderModelOnly', 'LTXAddVideoICLoRAGuide', 'LTXVImgToVideoConditionOnly',
@@ -5663,7 +5670,7 @@ const REQUIRED_CLASSES = {
 const KREA2_DEPENDENCY_COMPONENTS = new Set([
   'image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style',
 ]);
-const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3sage']);
+const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3sage']);
 
 function dependencyComponentInfo(id, fit = null) {
   const component = DEPENDENCY_COMPONENTS[id] || {};
@@ -7751,7 +7758,7 @@ async function handleApi(req, res, url) {
     const engine = ['h3', 'wan', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
     const h3Mode = engine === 'h3' && body.h3Mode === 'reference' ? 'reference' : 'frames';
     const h3TurboRequested = engine === 'h3' && body.h3Turbo === true;
-    const h3Turbo = h3TurboRequested && h3Mode === 'frames';
+    const h3Turbo = h3TurboRequested;
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
     let h3TurboNativeSampler = false;
@@ -7786,26 +7793,21 @@ async function handleApi(req, res, url) {
           compatibility: h3Compatibility,
         });
       }
-      if (h3TurboRequested && h3Mode === 'reference') {
-        return json(res, 400, {
-          error: 'MiniMax H3 Turbo is currently supported for Text + frames only. Reference (R2V) uses Standard H3.',
-          code: 'h3_turbo_reference_unsupported',
-        });
-      }
       if (h3Turbo) {
         h3TurboNativeSampler = minimaxH3NativeAudioSampling(info);
-        const requiredTurboNodes = h3TurboNativeSampler
-          ? ['MiniMaxH3TurboLoRA']
-          : REQUIRED_CLASSES.h3turbo;
+        const referenceTurbo = h3Mode === 'reference';
+        const requiredTurboNodes = referenceTurbo
+          ? REQUIRED_CLASSES.h3turbor2v
+          : (h3TurboNativeSampler ? ['MiniMaxH3TurboLoRA'] : REQUIRED_CLASSES.h3turbo);
         const missingTurboNodes = requiredTurboNodes.filter((className) => !info[className]);
-        const turboLora = configuredModelsStatus(info).h3Turbo.lora;
+        const turboLora = configuredModelsStatus(info)[referenceTurbo ? 'h3RefTurbo' : 'h3Turbo'].lora;
         if (missingTurboNodes.length || !turboLora.ok) {
           return json(res, 409, {
             error: missingTurboNodes.length
-              ? 'MiniMax H3 Turbo needs the creator custom node. Install the H3 Turbo workflow, restart ComfyUI, and try again.'
-              : `MiniMax H3 Turbo needs this LoRA in ComfyUI: ${settings.h3TurboLora}`,
+              ? 'MiniMax H3 Turbo needs the current creator sampler workflow. Install or repair H3 Turbo, restart ComfyUI, and try again.'
+              : `MiniMax H3 ${referenceTurbo ? 'Reference ' : ''}Turbo needs this LoRA in ComfyUI: ${referenceTurbo ? settings.h3RefTurboLora : settings.h3TurboLora}`,
             code: 'h3_turbo_unavailable',
-            component: 'h3turbo',
+            component: referenceTurbo ? 'h3turbor2v' : 'h3turbo',
             missingNodes: missingTurboNodes,
             lora: turboLora,
           });
@@ -8095,7 +8097,7 @@ async function handleApi(req, res, url) {
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
     const videoSteps = engine === 'h3'
-      ? (h3Turbo ? clampInt(body.steps, 4, 100, 4) : clampInt(body.steps, 1, 100, 20))
+      ? (h3Turbo ? clampInt(body.steps, 4, 100, h3Mode === 'reference' ? 6 : 4) : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
         : engine === 'scail'
@@ -8209,7 +8211,7 @@ async function handleApi(req, res, url) {
         h3TurboStrength: engine === 'h3' && opts.turbo ? opts.turboStrength : undefined,
         h3TurboLowVram: engine === 'h3' && opts.turbo ? opts.turboLowVram || undefined : undefined,
         h3TurboSampler: engine === 'h3' && opts.turbo
-          ? (opts.turboNativeSampler ? 'native-euler' : 'creator-legacy')
+          ? (h3Mode === 'reference' ? 'creator-reference' : (opts.turboNativeSampler ? 'native-euler' : 'creator-legacy'))
           : undefined,
         h3AspectRatio: engine === 'h3' ? h3OutputAspectRatio : undefined,
         h3ResolutionSize: engine === 'h3' ? Number(body.h3ResolutionSize) || 1 : undefined,
