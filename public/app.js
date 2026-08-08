@@ -1620,11 +1620,12 @@ $('#peChangePhoto').addEventListener('click', () => {
   input.addEventListener('change', async () => {
     const file = input.files && input.files[0];
     if (!file) return;
+    let previewUrl = '';
     try {
       // Square cover-crop to 512 client-side, then upload raw PNG
-      const url = URL.createObjectURL(file);
+      previewUrl = URL.createObjectURL(file);
       const img = new Image();
-      await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error('Could not read the image')); img.src = url; });
+      await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error('Could not read the image')); img.src = previewUrl; });
       const size = 512;
       const c = document.createElement('canvas');
       c.width = size;
@@ -1640,6 +1641,7 @@ $('#peChangePhoto').addEventListener('click', () => {
       openProfileEdit(); // refresh the preview
       toast('Profile photo updated');
     } catch (e) { toast(e.message, true); }
+    finally { releaseAssetObjectUrl(previewUrl); }
   });
   input.click();
 });
@@ -1954,7 +1956,15 @@ function closeOfficialReleaseNotice() {
   notice.hidden = true;
   notice.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('update-showcase-open');
-  $('#updateNoticeMedia')?.querySelector('video')?.pause();
+  const media = $('#updateNoticeMedia');
+  const video = media?.querySelector('video');
+  if (video) {
+    video.pause();
+    video.removeAttribute('src');
+    video.querySelectorAll('source').forEach((source) => source.removeAttribute('src'));
+    video.load();
+  }
+  media?.replaceChildren();
   if (updateShowcaseReturnFocus?.isConnected && updateShowcaseReturnFocus.offsetParent !== null) {
     updateShowcaseReturnFocus.focus();
   }
@@ -2188,7 +2198,7 @@ $('#updatesInstallBtn').addEventListener('click', installOfficialRelease);
 $('#updateNoticeInstall').addEventListener('click', installOfficialRelease);
 
 setInterval(() => {
-  if (state.profile) loadOfficialRelease({ notify: true });
+  if (state.profile && !document.hidden) loadOfficialRelease({ notify: true });
 }, OFFICIAL_RELEASE_POLL_MS);
 
 window.addEventListener('storage', (event) => {
@@ -3911,6 +3921,7 @@ function setView(view, opts = {}) {
   $('#view-create').classList.toggle('active', !isGallery);
   $('#view-gallery').classList.toggle('active', isGallery);
   $('#genDock').style.display = isGallery ? 'none' : '';
+  if (!isGallery) suspendGalleryPreviewPlayback();
   $('#refPanel').hidden = view !== 'edit';
   if (prev !== view && !isGallery) restoreGenerationTuning(generationTuningMode(view));
   updateVideoPanels();
@@ -4897,10 +4908,39 @@ function flashClipboardPasteDestination(element) {
   setTimeout(() => element.classList.remove('clipboard-paste-received'), 650);
 }
 
-function releaseClipboardAssetUrl(asset, replacement = null) {
-  const url = String(asset?.url || '');
-  if (!url.startsWith('blob:') || url === replacement?.url) return;
+function assetObjectUrl(asset) {
+  return String(typeof asset === 'string' ? asset : (asset?.url || ''));
+}
+
+function releaseAssetObjectUrl(asset, replacement = null) {
+  const url = assetObjectUrl(asset);
+  if (!url.startsWith('blob:') || url === assetObjectUrl(replacement)) return;
   try { URL.revokeObjectURL(url); } catch { /* noop */ }
+}
+
+function releaseAssetObjectUrls(assets, replacements = []) {
+  const keep = new Set((Array.isArray(replacements) ? replacements : [replacements])
+    .map(assetObjectUrl).filter(Boolean));
+  (Array.isArray(assets) ? assets : [assets]).flat(Infinity).forEach((asset) => {
+    const url = assetObjectUrl(asset);
+    if (!url.startsWith('blob:') || keep.has(url)) return;
+    try { URL.revokeObjectURL(url); } catch { /* noop */ }
+  });
+}
+
+function releaseClipboardAssetUrl(asset, replacement = null) {
+  releaseAssetObjectUrl(asset, replacement);
+}
+
+function releaseCurrentVideoAssetUrls() {
+  const h3Assets = state.vidH3References && typeof state.vidH3References === 'object'
+    ? Object.values(state.vidH3References)
+    : [];
+  releaseAssetObjectUrls([
+    state.vidRef, state.vidEnd, state.vidDrive, state.vidFace,
+    state.vidH3ReplaceVideo, state.vidH3ReplaceImage,
+    state.videoCameraGuide, h3Assets,
+  ]);
 }
 
 function insertClipboardPasteAnchor(range, caption = '') {
@@ -5082,8 +5122,8 @@ async function applyClipboardImages(request, destination, assets) {
     const previousFrame = state.vidRef;
     state.vidFace = Object.assign({}, assets[0], { label: 'Pasted image' });
     state.vidRef = null;
-    releaseClipboardAssetUrl(previousFace, assets[0]);
-    releaseClipboardAssetUrl(previousFrame, assets[0]);
+    releaseAssetObjectUrls([previousFace], [assets[0], state.vidEnd]);
+    releaseAssetObjectUrls([previousFrame], [assets[0], state.vidEnd]);
     renderVidAttach();
     updateVideoPanels();
     saveForm();
@@ -5094,8 +5134,8 @@ async function applyClipboardImages(request, destination, assets) {
     const previousFace = state.vidFace;
     setVideoFirstFrame(assets[0]);
     state.vidFace = null;
-    releaseClipboardAssetUrl(previousFrame, assets[0]);
-    releaseClipboardAssetUrl(previousFace, assets[0]);
+    releaseAssetObjectUrls([previousFrame], [assets[0], state.vidEnd]);
+    releaseAssetObjectUrls([previousFace], [assets[0], state.vidEnd]);
     renderVidAttach();
     updateVideoPanels();
     maybeCreateAutomaticMotionPrompt();
@@ -6169,6 +6209,7 @@ let createGuideTeachingIntentKey = '';
 async function setCreateImageGuideAsset(asset, mode = 'image') {
   const prepared = await prepareCreateImageGuideAsset(asset);
   arguments[2]?.();
+  releaseAssetObjectUrls([state.createRef], [prepared, state.promptSourceImage]);
   state.createRef = prepared;
   clearCreateDepthPreview();
   state.createGuideMode = ['image', 'depth', 'style'].includes(mode) ? mode : 'image';
@@ -6300,7 +6341,9 @@ async function createPromptFromImageName(image) {
     body: JSON.stringify({ imageName }),
   });
   state.prompts.create = res.prompt || '';
-  state.promptSourceImage = asset ? imageAssetSnapshot(asset) : null;
+  const nextPromptSource = asset ? imageAssetSnapshot(asset) : null;
+  releaseAssetObjectUrls([state.promptSourceImage], [nextPromptSource, state.createRef]);
+  state.promptSourceImage = nextPromptSource;
   state.promptAssistantUseSource = !!state.promptSourceImage;
   state.promptRevisionUndo = null;
   state.enhance = false;
@@ -7015,7 +7058,9 @@ $('#createImageToPrompt').addEventListener('click', async () => {
 $('#createImageGuideCrop').addEventListener('click', () => {
   if (!state.createRef) return;
   openInputImageCrop(state.createRef, async (next) => {
-    state.createRef = await prepareCreateImageGuideAsset(next);
+    const prepared = await prepareCreateImageGuideAsset(next);
+    releaseAssetObjectUrls([state.createRef], [prepared, state.promptSourceImage]);
+    state.createRef = prepared;
     clearCreateDepthPreview();
     applyCreateMatchedDimensions();
     renderCreateImageGuide();
@@ -7080,6 +7125,7 @@ $('#createDepthPreviewBtn').addEventListener('click', async () => {
   renderCreateImageGuide();
 });
 function clearCreateImageGuide() {
+  releaseAssetObjectUrls([state.createRef], [state.promptSourceImage]);
   state.createRef = null;
   state.createGuideActive = false;
   state.createImageGuideOpen = false;
@@ -7706,8 +7752,10 @@ async function uploadRegionReference(file) {
       body: buf,
     });
     if (res.asset) state.uploadedAssets = [res.asset, ...state.uploadedAssets.filter((asset) => asset.id !== res.asset.id)];
+    releaseAssetObjectUrl(region.refAsset || region.refUrl);
     region.refImageName = res.name;
     region.refUrl = URL.createObjectURL(file);
+    region.refAsset = null;
     renderRegionEditor();
     saveForm();
   } catch (e) { toast(e.message, true); }
@@ -7716,6 +7764,7 @@ async function uploadRegionReference(file) {
 function setRegionReference(asset, { announce = true } = {}) {
   const region = selectedRegion();
   if (!region || !asset) return;
+  releaseAssetObjectUrl(region.refAsset || region.refUrl, asset);
   region.refImageName = asset.name;
   region.refUrl = asset.url;
   region.refAsset = asset;
@@ -7728,6 +7777,7 @@ function clearKreaMask(silent) {
   const options = arguments[1] || {};
   cancelSmartMaskRequest();
   invalidateProcessedMask();
+  releaseAssetObjectUrl(state.kreaMask);
   state.kreaMask = null;
   state.kreaMaskPreview = null;
   state.kreaMaskDirty = false;
@@ -8093,6 +8143,7 @@ function rasterizeKreaMaskBoxes({ persist = false } = {}) {
   maskBoxGeometry.pixelRects(boxes, canvas.width, canvas.height).forEach((rect) => {
     context.fillRect(rect.x, rect.y, rect.w, rect.h);
   });
+  releaseAssetObjectUrl(state.kreaMask);
   state.kreaMask = null;
   state.kreaMaskPreview = canvas.toDataURL('image/png');
   state.kreaMaskDirty = true;
@@ -8824,7 +8875,9 @@ async function ensureKreaMaskUploaded() {
     headers: { 'x-filename': encodeURIComponent('edit_mask.png') },
     body: await blob.arrayBuffer(),
   });
-  state.kreaMask = { name: res.name, url: URL.createObjectURL(blob) };
+  const nextMask = { name: res.name, url: URL.createObjectURL(blob) };
+  releaseAssetObjectUrl(state.kreaMask, nextMask);
+  state.kreaMask = nextMask;
   state.kreaMaskDirty = false;
   renderKreaMaskTools();
   return state.kreaMask.name;
@@ -8949,6 +9002,7 @@ $('#regionRefInput').addEventListener('change', () => uploadRegionReference($('#
 $('#regionRefClear').addEventListener('click', () => {
   const region = selectedRegion();
   if (!region) return;
+  releaseAssetObjectUrl(region.refAsset || region.refUrl);
   region.refImageName = '';
   region.refUrl = '';
   region.refAsset = null;
@@ -9168,10 +9222,16 @@ function wireEndFrame(prefix, stateKey) {
     if (stateKey === 'vidEnd' && typeof updateSwapChip === 'function') updateSwapChip();
   };
   chip.addEventListener('click', () => {
-    pickUpload('image/*', (f) => { state[stateKey] = f; refresh(); });
+    pickUpload('image/*', (f) => {
+      releaseAssetObjectUrl(state[stateKey], f);
+      state[stateKey] = f;
+      refresh();
+    });
   });
   x.addEventListener('click', () => {
+    const previous = state[stateKey];
     state[stateKey] = null;
+    releaseAssetObjectUrl(previous);
     refresh();
     toast('Last frame removed');
     saveForm();
@@ -9181,6 +9241,7 @@ function wireEndFrame(prefix, stateKey) {
     const asset = state[stateKey];
     if (!asset) return;
     openInputImageCrop(asset, (next) => {
+      releaseAssetObjectUrl(state[stateKey], next);
       state[stateKey] = next;
       refresh();
       saveForm();
@@ -9508,6 +9569,7 @@ function wireAudioChip(prefix, stateKey, durInputId) {
         requestAnimationFrame(() => { drawWave(); layout(); });
         saveForm();
       } catch (e) { toast('Could not read audio: ' + e.message, true); }
+      finally { releaseAssetObjectUrl(asset); }
     }, 'Choose audio');
   });
 }
@@ -10894,10 +10956,13 @@ function renderCameraMotionCustom() {
 function chooseCustomCameraMotion() {
   pickUpload('video/*', async (asset) => {
     try {
-      cameraMotionGuideDraft = await prepareCameraMotionGuide(asset);
+      const nextGuide = await prepareCameraMotionGuide(asset);
+      releaseAssetObjectUrls([cameraMotionGuideDraft], [state.videoCameraGuide, nextGuide]);
+      cameraMotionGuideDraft = nextGuide;
       renderCameraMotionPicker();
       toast('Custom camera-motion clip ready');
     } catch (error) {
+      releaseAssetObjectUrl(asset, state.videoCameraGuide);
       toast(error.message, true);
     }
   }, 'Choose a camera-motion clip');
@@ -10906,6 +10971,7 @@ function chooseCustomCameraMotion() {
 $('#cameraMotionCustomChoose').addEventListener('click', chooseCustomCameraMotion);
 $('#cameraMotionCustomChange').addEventListener('click', chooseCustomCameraMotion);
 $('#cameraMotionCustomRemove').addEventListener('click', () => {
+  releaseAssetObjectUrl(cameraMotionGuideDraft, state.videoCameraGuide);
   cameraMotionGuideDraft = null;
   renderCameraMotionPicker();
 });
@@ -11040,7 +11106,9 @@ function applyCameraMotionSelection() {
   const applied = CameraMotion.applyCameraMotionPrompt(promptDraft(), state.videoCameraMotionPhrase, selected);
   state.videoCameraMotions = selected;
   state.videoCameraMotionPhrase = applied.phrase;
-  state.videoCameraGuide = cameraMotionGuideDraft ? Object.assign({}, cameraMotionGuideDraft) : null;
+  const nextGuide = cameraMotionGuideDraft ? Object.assign({}, cameraMotionGuideDraft) : null;
+  releaseAssetObjectUrl(state.videoCameraGuide, nextGuide);
+  state.videoCameraGuide = nextGuide;
   setPromptDraft(applied.prompt);
   state.prompts.video = applied.prompt;
   updatePromptClear();
@@ -11057,6 +11125,7 @@ function applyCameraMotionSelection() {
 $('#videoCameraMotionBtn').addEventListener('click', openCameraMotionPicker);
 $('#cameraMotionClear').addEventListener('click', () => {
   cameraMotionDraft = [];
+  releaseAssetObjectUrl(cameraMotionGuideDraft, state.videoCameraGuide);
   cameraMotionGuideDraft = null;
   renderCameraMotionPicker();
 });
@@ -11067,6 +11136,8 @@ new MutationObserver(() => {
   if (!open) {
     stopCameraMotionPreviews();
     $('#cameraMotionCustomVideo').pause();
+    releaseAssetObjectUrl(cameraMotionGuideDraft, state.videoCameraGuide);
+    cameraMotionGuideDraft = null;
   }
 }).observe($('#videoCameraMotionSheet'), { attributes: true, attributeFilter: ['class'] });
 
@@ -16085,10 +16156,12 @@ function renderRefs({ preservePromptComposer = false } = {}) {
       remove.addEventListener('click', (event) => {
         event.stopPropagation();
         if (idx === 0) {
+          releaseAssetObjectUrl(state.refs[0]);
           state.refs[0] = null;
           clearKreaMask(true);
         } else {
-          state.refs.splice(idx, 1);
+          const [removed] = state.refs.splice(idx, 1);
+          releaseAssetObjectUrl(removed);
           state.refs.push(null);
           state.editRefSlots = Math.max(1, state.editRefSlots - 1);
         }
@@ -16165,6 +16238,7 @@ function wireRefReorder(slot, index, maxSlots) {
 
 function pickRef(idx) {
   pickUpload('image/*', (file) => {
+    releaseAssetObjectUrl(state.refs[idx], file);
     state.refs[idx] = file;
     if (idx === 0) clearKreaMask(true);
     renderRefs();
@@ -16190,6 +16264,7 @@ async function sendToVideoTab(item, role = 'start') {
       body: buf,
     });
     const frame = { name: res.name, url: '/images/' + item.file, w: item.width || 1024, h: item.height || 1024, srcItemId: item.id };
+    if (role === 'end') releaseAssetObjectUrls([state.vidEnd], [frame, state.vidRef]);
     if (role === 'end') state.vidEnd = frame;
     else setVideoFirstFrame(frame);
     closeAnimateRouteSheet();
@@ -16239,6 +16314,7 @@ async function sendVideoAsDrive(it, v) {
     });
     const url = URL.createObjectURL(blob);
     const d = { name: res.name, url, label: 'from gallery', hasAudio: res.hasAudio === true };
+    releaseAssetObjectUrl(state.vidDrive, d);
     state.vidDrive = d;
     $('#vidDriveTrimChip').classList.remove('active');
     $('#vidDriveLabel').textContent = d.label;
@@ -16561,7 +16637,8 @@ function pickH3Reference() {
 
 function removeH3Reference(kind, index) {
   const before = h3PromptReferenceEntries();
-  h3References()[kind].splice(index, 1);
+  const [removed] = h3References()[kind].splice(index, 1);
+  releaseAssetObjectUrl(removed);
   const after = h3PromptReferenceEntries();
   const remap = new Map(before.map((entry) => {
     const replacement = after.find((candidate) => candidate.asset === entry.asset && candidate.role === entry.role);
@@ -16689,8 +16766,13 @@ function h3ReplacementPrompt() {
 }
 
 function setH3ReplacementAsset(kind, asset) {
-  if (kind === 'video') state.vidH3ReplaceVideo = asset || null;
-  else state.vidH3ReplaceImage = asset || null;
+  if (kind === 'video') {
+    releaseAssetObjectUrl(state.vidH3ReplaceVideo, asset);
+    state.vidH3ReplaceVideo = asset || null;
+  } else {
+    releaseAssetObjectUrl(state.vidH3ReplaceImage, asset);
+    state.vidH3ReplaceImage = asset || null;
+  }
   renderH3References();
   renderPromptComposer();
   saveForm();
@@ -17048,12 +17130,14 @@ $('#vidFaceCrop').addEventListener('click', (event) => {
   event.stopPropagation();
   if (!state.vidFace) return;
   openInputImageCrop(state.vidFace, (next) => {
+    releaseAssetObjectUrl(state.vidFace, next);
     state.vidFace = next;
     renderVidAttach();
     saveForm();
   }, 'Crop Face ID image');
 });
 $('#vidFaceX').addEventListener('click', () => {
+  releaseAssetObjectUrl(state.vidFace);
   state.vidFace = null;
   renderVidAttach();
 });
@@ -17128,7 +17212,9 @@ async function useFace(face) {
       headers: { 'x-filename': encodeURIComponent(face.name.replace(/[^\w]+/g, '_') + '.png') },
       body: buf,
     });
-    state.vidFace = { name: res.name, url: URL.createObjectURL(blob), label: face.name, faceId: face.id };
+    const nextFace = { name: res.name, url: URL.createObjectURL(blob), label: face.name, faceId: face.id };
+    releaseAssetObjectUrl(state.vidFace, nextFace);
+    state.vidFace = nextFace;
     $('#faceSheet').classList.remove('show');
     renderVidAttach();
     toast(`${face.name} set as the Face ID reference`);
@@ -17148,7 +17234,9 @@ $('#faceUploadBtn').addEventListener('click', () => {
       });
       faceLibrary = r.faces || [];
       const saved = faceLibrary.find((x) => x.name === name) || faceLibrary[0];
-      state.vidFace = { name: f.name, url: f.url, label: name, faceId: saved && saved.id };
+      const nextFace = { name: f.name, url: f.url, label: name, faceId: saved && saved.id };
+      releaseAssetObjectUrl(state.vidFace, nextFace);
+      state.vidFace = nextFace;
       $('#faceSheet').classList.remove('show');
       renderVidAttach();
       toast(`${name} saved to the library and set as reference`);
@@ -17278,6 +17366,7 @@ function pickVidRef() {
 }
 
 function setVideoFirstFrame(asset, { matchH3Source = !!asset } = {}) {
+  releaseAssetObjectUrls([state.vidRef], [asset, state.vidEnd]);
   state.vidRef = asset || null;
   if (asset && matchH3Source) state.vidH3MatchSource = true;
 }
@@ -17399,6 +17488,7 @@ function renderVidDrive() {
 }
 $('#vidDriveBtn').addEventListener('click', () => {
   pickUpload('video/*', (f) => {
+    releaseAssetObjectUrl(state.vidDrive, f);
     state.vidDrive = f;
     $('#vidDriveTrimChip').classList.remove('active');
     $('#vidDriveLabel').textContent = f.label || 'drives the movement';
@@ -17419,6 +17509,7 @@ $('#vidDriveBtn').addEventListener('click', () => {
   });
 });
 $('#vidDriveX').addEventListener('click', () => {
+  releaseAssetObjectUrl(state.vidDrive);
   state.vidDrive = null;
   $('#vidDriveVideo').removeAttribute('src');
   $('#vidDriveTrimChip').classList.remove('active');
@@ -20186,6 +20277,7 @@ function resetActiveGenerationForm() {
   if (mode === 'edit') {
     switchEditEngine(enabledEditEngines()[0] || state.editEngineDefault || EDIT_ENGINES[0]);
     markEngineRow('editEngineRow', state.editEngine);
+    releaseAssetObjectUrls(state.refs);
     state.refs = [null, null, null];
     state.editRefSlots = 1;
     state.editLoras = [];
@@ -20202,6 +20294,7 @@ function resetActiveGenerationForm() {
     renderEditUpscale();
     renderQwenAngleTool();
   } else if (mode === 'video') {
+    releaseCurrentVideoAssetUrls();
     state.vidRef = null;
     state.vidH3Mode = 'frames';
     state.vidH3MatchSource = true;
@@ -20243,6 +20336,11 @@ function resetActiveGenerationForm() {
     updateVideoPanels();
     syncCameraMotionTool();
   } else {
+    releaseAssetObjectUrls([
+      state.createRef,
+      state.promptSourceImage,
+      state.regions.map((region) => region.refAsset || region.refUrl),
+    ]);
     state.loras = [];
     state.promptPresetSelections = { camera: [] };
     state.regions = [];
@@ -21657,6 +21755,25 @@ function resetGalleryPreviewObservation() {
   scheduleGalleryPreviewPlayback(180);
 }
 
+function suspendGalleryPreviewPlayback() {
+  clearTimeout(galleryPreviewSettleTimer);
+  clearTimeout(galleryPreviewScrollTimer);
+  galleryPreviewSettleTimer = null;
+  galleryPreviewScrollTimer = null;
+  if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
+  $$('.gallery-card-video').forEach((video) => {
+    clearTimeout(video._previewUnloadTimer);
+    video.pause();
+    if (video.dataset.loaded === 'true') {
+      try { video.currentTime = 0; } catch { /* noop */ }
+      video.removeAttribute('src');
+      video.dataset.loaded = 'false';
+      video.load();
+    }
+  });
+  galleryPreviewActive.clear();
+}
+
 window.addEventListener('scroll', () => {
   if (state.view !== 'gallery' || !galleryPreviewMotionAllowed()) return;
   clearTimeout(galleryPreviewScrollTimer);
@@ -22126,11 +22243,12 @@ function renderGrid() {
   ensureGalleryPreviewObserver();
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   releasePreviewCacheObjectUrls();
-  grid.innerHTML = '';
+  grid.replaceChildren();
   const items = focusedGroup ? orderedLibraryGroupFocusItems(focusedGroup) : visibleItems();
   const entries = focusedGroup
     ? items.map((item) => ({ item, items: [item] }))
     : galleryEntries(items);
+  const fragment = document.createDocumentFragment();
   const dateItemIds = new Map();
   items.forEach((item) => {
     const key = galleryDateKey(item.createdAt);
@@ -22162,7 +22280,7 @@ function renderGrid() {
       divider.setAttribute('aria-label', `Select all from ${galleryDateLabel(it.createdAt)}`);
       divider.innerHTML = `<span>${escapeHtml(galleryDateLabel(it.createdAt))}</span>`;
       divider.addEventListener('click', () => toggleBulkSelection(dateIds));
-      grid.appendChild(divider);
+      fragment.appendChild(divider);
     }
     const card = document.createElement('button');
     const hasAttachedComposite = Array.isArray(it.composites) && it.composites.length > 0;
@@ -22192,6 +22310,7 @@ function renderGrid() {
     } else {
       const img = document.createElement('img');
       img.loading = 'lazy';
+      img.decoding = 'async';
       img.draggable = false;
       const source = galleryImageSource(it);
       img.src = source;
@@ -22381,8 +22500,9 @@ function renderGrid() {
       else if (desktopWorkspaceActive() && ($('#lightbox').classList.contains('show') || state.view !== 'gallery')) handleDesktopGalleryTap(it, card, galleryGroup);
       else handleGalleryTap(it, card);
     });
-    grid.appendChild(card);
+    fragment.appendChild(card);
   }
+  grid.appendChild(fragment);
   resetGalleryPreviewObservation();
   syncSelectionVisuals();
   syncDesktopGallerySelection();
@@ -22762,8 +22882,10 @@ async function applyDesktopGalleryDrop(target, drag, event) {
   }
   if (target.matches('#vidFaceChip, #vidFaceThumb')) {
     const reference = await galleryItemEditReference(item);
-    state.vidFace = Object.assign(reference, { label: 'from gallery' });
-    state.vidRef = null;
+    const nextFace = Object.assign(reference, { label: 'from gallery' });
+    releaseAssetObjectUrl(state.vidFace, nextFace);
+    state.vidFace = nextFace;
+    setVideoFirstFrame(null, { matchH3Source: false });
     renderVidAttach();
     updateVideoPanels();
     saveForm();
@@ -22813,12 +22935,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  const previews = $$('.gallery-card-video');
   if (document.hidden || !galleryPreviewMotionAllowed()) {
-    previews.forEach((video) => {
-      video.pause();
-      try { video.currentTime = 0; } catch { /* noop */ }
-    });
+    suspendGalleryPreviewPlayback();
   } else {
     resetGalleryPreviewObservation();
     reconcileGenerationAfterResume();
@@ -24815,6 +24933,7 @@ function openAnimateSheet(it, selVideo) {
   const src = (selVideo && selVideo.info) || ((it.videos || []).length ? it.videos[it.videos.length - 1].info : null);
   if (src && src.motionPrompt) $('#animPrompt').value = src.motionPrompt;
   // fresh attachments per open
+  releaseAssetObjectUrl(state.animEnd);
   state.animEnd = null;
   state.animAudio = null;
   stopPreview();
@@ -25544,6 +25663,7 @@ async function reuseVideo(it, v) {
   }
 
   // Clear current attachments + their UI
+  releaseCurrentVideoAssetUrls();
   state.vidRef = null;
   const reusableH3Mode = engine === 'h3' && ['reference', 'replace'].includes(info.h3Mode) ? info.h3Mode : 'frames';
   state.vidH3Mode = reusableH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : reusableH3Mode;
@@ -33711,6 +33831,10 @@ if (Analytics) Analytics.init();
 if (SupportPrompt) SupportPrompt.init();
 loadMeta();
 refreshGallery(true);
-setInterval(() => loadMeta(), 30000);
+setInterval(() => {
+  if (!document.hidden) loadMeta();
+}, 30000);
 refreshQueue().catch(() => { /* noop */ });
-setInterval(() => { refreshQueue().catch(() => { /* noop */ }); }, 15000);
+setInterval(() => {
+  if (!document.hidden) refreshQueue().catch(() => { /* noop */ });
+}, 15000);

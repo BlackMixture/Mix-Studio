@@ -6108,6 +6108,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 }
 .card {
   position: relative;
+  aspect-ratio: 1;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--line);
@@ -6170,7 +6171,16 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 .card {
   transform: scale(1);
   transition: transform 280ms cubic-bezier(.2,.8,.2,1), border-color 200ms var(--ease), box-shadow 220ms var(--ease), background 220ms var(--ease);
-  will-change: transform;
+}
+.card.selected,
+.card.is-dragging { will-change: transform; }
+@supports (content-visibility: auto) {
+  /* Keep the full Library available to search, select, and scrub without
+     laying out or painting every offscreen card on each UI update. */
+  #galleryGrid .card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 240px;
+  }
 }
 .card.selected {
   border: 2px solid transparent;
