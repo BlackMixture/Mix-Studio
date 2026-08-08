@@ -78,7 +78,7 @@ const state = {
   editEngine: 'klein9',
   editEngineOrder: [...DEFAULT_EDIT_ENGINE_ORDER],
   editEngineDefault: 'klein9',
-  videoEngineOrder: ['ltx', 'h3', 'ltx-edit', 'eros', 'wan', 'scail'],
+  videoEngineOrder: ['ltx', 'h3', 'ltx-edit', 'eros', 'wan', 'wan-animate2', 'scail'],
   videoEngineDefault: 'ltx',
   appRelease: { version: '', releasedAt: null, revision: '', instanceId: '' },
   officialRelease: null,
@@ -140,6 +140,8 @@ const state = {
   vidH3ReplaceTarget: '',
   vidH3ReplaceVideo: null,
   vidH3ReplaceImage: null,
+  vidWanAnimate2IdentityStrength: 1,
+  vidWanAnimate2MotionStrength: 1,
   h3PromptStructure: null,    // fingerprint + frame/reference context from the last validated rewrite
   directorOpen: false,
   directorProject: null,
@@ -295,7 +297,7 @@ const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref', krea2remix: 'edit.krea2remix' };
-const VIDEO_FEATURES = { ltx: 'video.ltx', h3: 'video.h3', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', scail: 'video.scail' };
+const VIDEO_FEATURES = { ltx: 'video.ltx', h3: 'video.h3', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', 'wan-animate2': 'video.wanAnimate2', scail: 'video.scail' };
 const VIDEO_ENGINES = Object.keys(VIDEO_FEATURES);
 
 function normalizeEngineOrder(order, engines) {
@@ -2817,6 +2819,8 @@ function saveForm() {
       vidH3ReplaceTarget: state.vidH3ReplaceTarget,
       vidH3ReplaceVideo: serializeWorkspaceAsset(state.vidH3ReplaceVideo),
       vidH3ReplaceImage: serializeWorkspaceAsset(state.vidH3ReplaceImage),
+      vidWanAnimate2IdentityStrength: state.vidWanAnimate2IdentityStrength,
+      vidWanAnimate2MotionStrength: state.vidWanAnimate2MotionStrength,
       h3PromptStructure: state.h3PromptStructure,
       editModelOrderVersion: EDIT_MODEL_ORDER_VERSION,
       editEngineOrder: state.editEngineOrder, editEngineDefault: state.editEngineDefault,
@@ -3075,6 +3079,8 @@ function loadForm() {
     state.vidH3ReplaceTarget = String(f.vidH3ReplaceTarget || '').slice(0, 240);
     state.vidH3ReplaceVideo = restoreWorkspaceAsset(f.vidH3ReplaceVideo);
     state.vidH3ReplaceImage = restoreWorkspaceAsset(f.vidH3ReplaceImage);
+    state.vidWanAnimate2IdentityStrength = Math.max(0, Math.min(2, Number(f.vidWanAnimate2IdentityStrength) || 1));
+    state.vidWanAnimate2MotionStrength = Math.max(0, Math.min(2, Number(f.vidWanAnimate2MotionStrength) || 1));
     state.h3PromptStructure = f.h3PromptStructure
       && typeof f.h3PromptStructure.fingerprint === 'string'
       && typeof f.h3PromptStructure.context === 'string'
@@ -4030,18 +4036,24 @@ function updateVideoPanels() {
     $('#view-create').insertBefore(promptPanel, regionWorkspace);
   }
   const scailInputFirst = isVideo && state.vidEngine === 'scail';
+  const wanAnimate2InputFirst = isVideo && state.vidEngine === 'wan-animate2';
   promptPanel.classList.toggle('scail-input-first', scailInputFirst);
+  promptPanel.classList.toggle('wan-animate2-prompt', wanAnimate2InputFirst);
+  if (wanAnimate2InputFirst) promptPanel.classList.add('scail-input-first');
   $('#promptLabel').textContent = isRegion ? 'Global prompt' : (scailInputFirst ? 'Creative direction · optional' : 'Prompt');
+  if (wanAnimate2InputFirst) $('#promptLabel').textContent = 'Scene direction · optional';
   $('#promptComposer').dataset.placeholder = isVideo
     ? (state.vidEngine === 'ltx-edit'
       ? 'Describe the edit…'
       : (state.vidEngine === 'scail'
         ? 'Optional — add style or motion direction…'
+        : (state.vidEngine === 'wan-animate2'
+          ? 'Optional — describe character appearance, background, lighting, and camera…'
         : (state.vidEngine === 'h3' && state.vidH3Mode === 'replace'
           ? 'Describe the replacement, or apply the replacement preset below…'
           : (state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
           ? 'Type @ to reference an input, then describe the video and sound…'
-          : 'Describe the motion and sound…'))))
+          : 'Describe the motion and sound…')))))
     : (state.createMode === 'region' && state.view === 'create'
       ? 'Describe the full scene… (optional)'
       : (state.view === 'edit'
@@ -4053,8 +4065,13 @@ function updateVideoPanels() {
   if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidScailModeRow').hidden = !(isVideo && state.vidEngine === 'scail');
+  $('#vidWanAnimate2InputNote').hidden = !(isVideo && state.vidEngine === 'wan-animate2');
+  $('#vidWanAnimate2Strengths').hidden = !(isVideo && state.vidEngine === 'wan-animate2');
+  $('#vidDurationField').hidden = isVideo && state.vidEngine === 'wan-animate2';
+  $('#vid4k').hidden = isVideo && state.vidEngine === 'wan-animate2';
   renderScailChunkControls();
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
+  if (isVideo && state.vidEngine === 'wan-animate2') $('#enhanceBtn').hidden = true;
   if (!supportsCurrentEditAngles()) state.qwenAnglesMode = false;
   $('#qwenAngleTool').hidden = !supportsCurrentEditAngles() || state.qwenAnglesMode || hasEditMask();
   renderQwenAngleTool();
@@ -4065,7 +4082,7 @@ function updateVideoPanels() {
   renderEditSequence();
   regionWorkspace.hidden = !isRegion;
   if (!isRegion) setRegionResolutionExpanded(false);
-  $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'scail'
+  $('#vidExtras').hidden = !isVideo || state.vidEngine === 'wan' || state.vidEngine === 'wan-animate2' || state.vidEngine === 'scail'
     || state.vidEngine === 'ltx-edit' || (state.vidEngine === 'h3' && h3ReferenceBackedMode());
   $('#createPromptTools').hidden = state.view !== 'create';
   $('#cameraPromptBtn').hidden = false;
@@ -4083,6 +4100,7 @@ function updateVideoPanels() {
   renderKreaMaskTools();
   $('#resPanel').hidden = state.view === 'edit'
     || (isVideo && !!state.vidRef && state.vidEngine !== 'h3')
+    || (isVideo && state.vidEngine === 'wan-animate2')
     || (isRegion && !useSharedRegionResolution);
   $('.region-resolution-picker').hidden = useSharedRegionResolution;
   if (useSharedRegionResolution) setRegionResolutionExpanded(false);
@@ -4092,8 +4110,12 @@ function updateVideoPanels() {
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
   renderH3TurboMode();
   renderH3SageAttention();
+  renderWanAnimate2Strengths();
   renderVideoStepControl();
   $('#videoAdvancedNote').hidden = !isVideo;
+  $('#videoAdvancedNote').textContent = wanAnimate2InputFirst
+    ? 'The official workflow uses a fixed six-step LCM schedule. Identity and Motion both default to 1.00.'
+    : 'CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Frames Turbo and 6 for Reference Turbo.';
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   $('#loraPanel').closest('.panel').hidden = isVideo && state.vidEngine === 'h3';
@@ -5048,7 +5070,9 @@ async function applyClipboardImages(request, destination, assets) {
     updateVideoPanels();
     maybeCreateAutomaticMotionPrompt();
     saveForm();
-    const role = context.engine === 'scail' ? 'reference image' : 'first frame';
+    const role = context.engine === 'scail'
+      ? 'reference image'
+      : (context.engine === 'wan-animate2' ? 'character image' : 'first frame');
     message = destination.targetFrame ? `Pasted image replaced the ${role}` : `Pasted image added as the ${role}`;
     requestAnimationFrame(() => flashClipboardPasteDestination($('#vidAttachThumb')));
   }
@@ -9522,6 +9546,26 @@ state.vidScailFps = 16;
 state.vidScailStableTracking = true;
 state.vidScailChunkFrames = 81;
 state.vidScailChunkOverlap = 13;
+function renderWanAnimate2Strengths() {
+  const identity = Math.max(0, Math.min(2, Number(state.vidWanAnimate2IdentityStrength) || 1));
+  const motion = Math.max(0, Math.min(2, Number(state.vidWanAnimate2MotionStrength) || 1));
+  state.vidWanAnimate2IdentityStrength = identity;
+  state.vidWanAnimate2MotionStrength = motion;
+  $('#vidWanAnimate2IdentityStrength').value = String(identity);
+  $('#vidWanAnimate2MotionStrength').value = String(motion);
+  $('#vidWanAnimate2IdentityVal').textContent = identity.toFixed(2);
+  $('#vidWanAnimate2MotionVal').textContent = motion.toFixed(2);
+}
+for (const [id, stateKey, outputId] of [
+  ['vidWanAnimate2IdentityStrength', 'vidWanAnimate2IdentityStrength', 'vidWanAnimate2IdentityVal'],
+  ['vidWanAnimate2MotionStrength', 'vidWanAnimate2MotionStrength', 'vidWanAnimate2MotionVal'],
+]) {
+  $('#' + id).addEventListener('input', (event) => {
+    state[stateKey] = Math.max(0, Math.min(2, Number(event.target.value) || 1));
+    $('#' + outputId).textContent = state[stateKey].toFixed(2);
+  });
+  $('#' + id).addEventListener('change', saveForm);
+}
 function renderScailFpsControls() {
   $$('#vidScailFpsRow .chip').forEach((chip) => {
     chip.classList.toggle('active', Number(chip.dataset.scailFps) === state.vidScailFps);
@@ -9888,6 +9932,7 @@ $('#qwenAnglesToggleAll').addEventListener('click', () => {
 function renderEnhance() {
   const btn = $('#enhanceBtn');
   const h3Video = state.view === 'video' && state.vidEngine === 'h3';
+  if (state.view === 'video' && ['ltx-edit', 'wan-animate2'].includes(state.vidEngine)) btn.hidden = true;
   const frameAwareVideo = state.view === 'video' && !!state.vidRef
     && !['ltx-edit'].includes(state.vidEngine);
   btn.classList.toggle('on', state.enhance);
@@ -10682,7 +10727,7 @@ function cameraMotionGuideLimit(guide = state.videoCameraGuide) {
 }
 
 function cameraMotionEngineLabel() {
-  return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2' }[state.vidEngine] || 'this model';
+  return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2' }[state.vidEngine] || 'this model';
 }
 
 function cameraMotionModeText(guide = state.videoCameraGuide, motions = state.videoCameraMotions) {
@@ -11887,6 +11932,9 @@ function videoStepSpecification() {
       ? { value: 20, editable: false, hint: 'Full Quality · fixed two-model handoff' }
       : { value: 4, editable: false, hint: 'Fast distilled schedule · fixed' };
   }
+  if (state.vidEngine === 'wan-animate2') {
+    return { value: 6, editable: false, hint: 'Wan Animate 2 · official six-step LCM schedule' };
+  }
   if (state.vidEngine === 'scail') {
     return { value: 6, editable: false, hint: 'SCAIL distilled schedule · fixed' };
   }
@@ -12661,6 +12709,12 @@ const VIDEO_ENGINE_TASKS = {
     detail: 'Physics + prompt accuracy',
     copy: 'Best for demanding action, physical motion, and prompt adherence.',
     preview: { type: 'video', src: '/guides/wan-knight-explosion.mp4' },
+  },
+  'wan-animate2': {
+    task: 'Character Animation', model: 'Wan Animate 2',
+    detail: 'Character image + performance video',
+    copy: 'Transfer body motion, expression, timing, and source audio onto a reference character.',
+    preview: { type: 'motion', tone: 'wan-animate2' },
   },
   scail: {
     task: 'Motion Transfer', model: 'SCAIL 2',
@@ -15579,7 +15633,9 @@ function updateVideoTuningSummary() {
   const scailMode = state.vidEngine === 'scail'
     ? `${state.vidScailMode[0].toUpperCase()}${state.vidScailMode.slice(1)}`
     : '';
-  const summary = scailMode
+  const summary = state.vidEngine === 'wan-animate2'
+    ? '81 frames · source timing + audio'
+    : scailMode
     ? `${duration}s · ${scailMode}`
     : (motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`);
   $('#vidControlsNote').textContent = summary;
@@ -16630,7 +16686,11 @@ function renderH3Replacement() {
     if (preview.getAttribute('src') !== src) preview.src = src;
     $('#vidH3ReplaceVideoLabel').textContent = video.label || 'Video 1';
   } else {
-    $('#vidH3ReplaceVideoPreview').removeAttribute('src');
+    const preview = $('#vidH3ReplaceVideoPreview');
+    preview.removeAttribute('src');
+    preview.controls = false;
+    $('#vidH3ReplaceVideoThumb').classList.remove('expanded');
+    setInlineVideoExpandIcon($('#vidH3ReplaceVideoExpand'), false, 'master video');
   }
 
   const image = state.vidH3ReplaceImage;
@@ -16814,6 +16874,9 @@ $('#vidH3ReplaceImageBtn').addEventListener('click', () => {
 });
 $('#vidH3ReplaceVideoX').addEventListener('click', () => setH3ReplacementAsset('video', null));
 $('#vidH3ReplaceImageX').addEventListener('click', () => setH3ReplacementAsset('image', null));
+$('#vidH3ReplaceVideoExpand').addEventListener('click', () => {
+  toggleInlineVideoPreview($('#vidH3ReplaceVideoThumb'), $('#vidH3ReplaceVideoPreview'), $('#vidH3ReplaceVideoExpand'), 'master video');
+});
 $('#vidH3ReplacePromptBtn').addEventListener('click', applyH3ReplacementPrompt);
 $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => button.addEventListener('click', () => {
   state.vidH3RefImageSize = button.dataset.h3RefSize === 'max' ? 'max' : 'match';
@@ -16836,10 +16899,12 @@ function renderVidAttach() {
   const has = !!state.vidRef;
   const editAnything = state.vidEngine === 'ltx-edit';
   const scail = state.vidEngine === 'scail';
+  const wanAnimate2 = state.vidEngine === 'wan-animate2';
   const canSuggestMotion = !editAnything && !scail && !h3ReferenceModeActive() && has;
   $('#vidAttachBtn').hidden = editAnything || has || !!state.vidFace;
   $('#vidAttachThumb').hidden = editAnything || !has;
   $('#vidMotionPromptRow').hidden = !canSuggestMotion;
+  if (wanAnimate2) $('#vidMotionPromptRow').hidden = true;
   syncVideoAutoMotionUi();
   if (has) {
     $('#vidAttachImg').src = state.vidRef.url;
@@ -16853,7 +16918,7 @@ function renderVidAttach() {
 
 function syncVideoAutoMotionUi() {
   const armed = state.vidAutoMotionPrompt && !!state.vidRef
-    && !['ltx-edit', 'scail'].includes(state.vidEngine)
+    && !['ltx-edit', 'scail', 'wan-animate2'].includes(state.vidEngine)
     && !h3ReferenceModeActive();
   const toggle = $('#vidAutoMotionToggle');
   const action = $('#vidMotionPromptBtn');
@@ -16896,8 +16961,9 @@ function renderVidFace() {
   // RIFE can smooth any LTX, Wan, or SCAIL output. Motion freedom stays
   // specific to standard LTX only.
   const wanOrScail = state.vidEngine === 'wan' || state.vidEngine === 'scail';
+  const fixedMotion = wanOrScail || state.vidEngine === 'wan-animate2';
   $('#vidFpsRow').hidden = h3 || !(ltxFamily || wanOrScail);
-  $('#vidFreeField').hidden = h3 || wanOrScail || ltxEdit || faceMode;
+  $('#vidFreeField').hidden = h3 || fixedMotion || ltxEdit || faceMode;
   $('#vidAudioChip').hidden = h3;
   $('#vidAudioTrim').hidden = h3 || !state.vidAudio;
   renderVideoFpsChoices();
@@ -17256,22 +17322,32 @@ state.vidDrive = null;
 state.vidFace = null;
 function renderVidDrive() {
   const scail = state.vidEngine === 'scail';
+  const wanAnimate2 = state.vidEngine === 'wan-animate2';
   const editAnything = state.vidEngine === 'ltx-edit';
-  const usesGuideVideo = scail || editAnything;
+  const usesGuideVideo = scail || wanAnimate2 || editAnything;
   const has = !!state.vidDrive;
+  $('#vidDriveThumb').classList.toggle('preview-only', scail);
   $('#vidDriveBtn').hidden = !usesGuideVideo || has;
   $('#vidDriveThumb').hidden = !usesGuideVideo || !has;
   $('#vidDriveTools').hidden = !usesGuideVideo || !has;
+  $('#vidDriveTrimChip').hidden = wanAnimate2;
   $('#vidDriveTrim').hidden = !usesGuideVideo || !has || !$('#vidDriveTrimChip').classList.contains('active');
   $('#vidDriveFrameChip').hidden = editAnything;
-  $('#vidDriveTitle').textContent = editAnything ? 'Source video' : 'Motion video';
-  $('#vidDriveSub').textContent = editAnything ? 'Required · video to edit' : 'Required · drives movement';
-  $('#vidDriveFilledTitle').textContent = editAnything ? 'Source video' : 'Motion video';
+  $('#vidDriveTitle').textContent = editAnything ? 'Source video' : (wanAnimate2 ? 'Performance video' : 'Motion video');
+  $('#vidDriveSub').textContent = editAnything ? 'Required · video to edit' : (wanAnimate2 ? 'Required · motion, expression, and audio' : 'Required · drives movement');
+  $('#vidDriveFilledTitle').textContent = editAnything ? 'Source video' : (wanAnimate2 ? 'Performance video' : 'Motion video');
   $('#vidAttachTitle').textContent = scail ? 'Reference image' : 'First frame';
   $('#vidAttachFilledTitle').textContent = scail ? 'Reference image' : 'First frame';
   $('#vidAttachImg').alt = scail ? 'Reference image preview' : 'First frame preview';
+  if (wanAnimate2) {
+    $('#vidAttachTitle').textContent = 'Character image';
+    $('#vidAttachFilledTitle').textContent = 'Character image';
+    $('#vidAttachImg').alt = 'Character image preview';
+  }
   $('#vidAttachSub').textContent = scail
     ? 'required · the person to re-animate'
+    : wanAnimate2
+      ? 'required · identity and appearance'
     : 'optional · image → video';
   if (usesGuideVideo && has) {
     const v = $('#vidDriveVideo');
@@ -17443,16 +17519,20 @@ $('#vidDriveVideo').addEventListener('timeupdate', () => {
 $('#vidDriveVideo').addEventListener('play', () => setTrimPlaybackIcon($('#driveTrimPlay'), true));
 $('#vidDriveVideo').addEventListener('pause', () => setTrimPlaybackIcon($('#driveTrimPlay'), false));
 $('#vidDriveVideo').addEventListener('ended', () => setTrimPlaybackIcon($('#driveTrimPlay'), false));
-/* Expand the motion-video thumb into a full-width inline preview */
-$('#vidDriveExpand').addEventListener('click', () => {
-  const th = $('#vidDriveThumb');
-  const v = $('#vidDriveVideo');
-  const on = th.classList.toggle('expanded');
-  v.controls = on;
-  $('#vidDriveExpand').innerHTML = on
+function setInlineVideoExpandIcon(button, expanded, subject = 'preview') {
+  button.innerHTML = expanded
     ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9H4V4M15 9h5V4M15 15h5v5M9 15H4v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  $('#vidDriveExpand').setAttribute('aria-label', on ? 'Collapse preview' : 'Expand preview');
+  button.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${subject} preview`);
+}
+function toggleInlineVideoPreview(thumb, video, button, subject = 'preview') {
+  const expanded = thumb.classList.toggle('expanded');
+  video.controls = expanded;
+  setInlineVideoExpandIcon(button, expanded, subject);
+}
+/* Expand the motion-video thumb into a full-width inline preview */
+$('#vidDriveExpand').addEventListener('click', () => {
+  toggleInlineVideoPreview($('#vidDriveThumb'), $('#vidDriveVideo'), $('#vidDriveExpand'), 'motion video');
 });
 $('#driveTrimPlay').addEventListener('click', () => {
   const dv = $('#vidDriveVideo');
@@ -17843,17 +17923,19 @@ wireEngineRow('vidEngineRow', (engine) => {
   state.vidEngine = engine;
   const h3 = engine === 'h3';
   const wan = engine === 'wan';
+  const wanAnimate2 = engine === 'wan-animate2';
   const scail = engine === 'scail';
   const ltxEdit = engine === 'ltx-edit';
   const ltxFamily = engine === 'ltx' || ltxEdit;
-  $('#vidFreeField').hidden = h3 || wan || scail || ltxEdit;
+  $('#vidFreeField').hidden = h3 || wan || wanAnimate2 || scail || ltxEdit;
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = h3 || !(ltxFamily || wan || scail);
-  $('#vidExtras').hidden = wan || scail || ltxEdit || (h3 && h3ReferenceBackedMode());
+  $('#vidExtras').hidden = wan || wanAnimate2 || scail || ltxEdit || (h3 && h3ReferenceBackedMode());
   // The Edit Anything workflow is trained on literal edit captions; do not
   // send those captions through the creative prompt enhancer.
   $('#enhanceBtn').hidden = ltxEdit;
+  if (wanAnimate2) $('#enhanceBtn').hidden = true;
   if (h3 || previousEngine === 'h3') {
     state.customDims = false;
     computeDims();
@@ -17947,9 +18029,10 @@ $('#generateBtn').addEventListener('click', async () => {
   const autoMotionPrompt = state.view === 'video'
     && state.vidAutoMotionPrompt
     && !!state.vidRef
-    && !['ltx-edit', 'scail'].includes(state.vidEngine)
+    && !['ltx-edit', 'scail', 'wan-animate2'].includes(state.vidEngine)
     && !h3ReferenceModeActive();
-  const promptOptional = (state.view === 'video' && (state.vidEngine === 'scail' || autoMotionPrompt)) || outpaintActive;
+  const promptOptional = (state.view === 'video'
+    && (state.vidEngine === 'scail' || autoMotionPrompt || state.vidEngine === 'wan-animate2')) || outpaintActive;
   if (!prompt && !promptOptional && !hasRegionPrompts && !qwenAngleExports.length) return toast('Type a prompt first', true);
   if (qwenAngleExports.length && !state.refs[0]) return toast('Camera variations need a source image in reference slot 1', true);
   if (outpaintActive && !state.refs[0]) return toast('Expand needs a source image in reference slot 1', true);
@@ -17973,7 +18056,7 @@ $('#generateBtn').addEventListener('click', async () => {
       if (!state.vidH3ReplaceImage) return toast('Replace mode needs the replacement image', true);
     }
     if (!ltxEdit && !['ltx', 'h3'].includes(state.vidEngine) && !state.vidRef) {
-      const lbl = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
+      const lbl = { wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
       return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 for text-to-video`, true);
     }
     if (ltxEdit && !state.vidDrive) {
@@ -17981,6 +18064,9 @@ $('#generateBtn').addEventListener('click', async () => {
     }
     if (state.vidEngine === 'scail' && !state.vidDrive) {
       return toast('SCAIL 2 needs a motion video — attach the clip whose movement you want to copy', true);
+    }
+    if (state.vidEngine === 'wan-animate2' && !state.vidDrive) {
+      return toast('Wan Animate 2 needs a performance video for motion and expression', true);
     }
     if (!(await ensureGenerationSetup())) return;
     let vidAudioName;
@@ -18010,16 +18096,18 @@ $('#generateBtn').addEventListener('click', async () => {
         ? h3EffectiveDurationSeconds(Number($('#vidDur').value) || 5)
         : Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
-      fourK: $('#vid4k').classList.contains('active'),
+      fourK: state.vidEngine === 'wan-animate2' ? false : $('#vid4k').classList.contains('active'),
       fast: !$('#vidQuality').classList.contains('active'),
       motionFreedom: Number($('#vidFree').value),
       sigmaPreset: state.vidSigma,
-      smooth: state.vidSmooth,
+      smooth: state.vidEngine === 'wan-animate2' ? 1 : state.vidSmooth,
       scailMode: state.vidEngine === 'scail' ? state.vidScailMode : undefined,
       scailFps: state.vidEngine === 'scail' ? state.vidScailFps : undefined,
       scailStableTracking: state.vidEngine === 'scail' ? state.vidScailStableTracking !== false : undefined,
       scailChunkFrames: state.vidEngine === 'scail' ? state.vidScailChunkFrames : undefined,
       scailChunkOverlap: state.vidEngine === 'scail' ? state.vidScailChunkOverlap : undefined,
+      wanAnimate2IdentityStrength: state.vidEngine === 'wan-animate2' ? state.vidWanAnimate2IdentityStrength : undefined,
+      wanAnimate2MotionStrength: state.vidEngine === 'wan-animate2' ? state.vidWanAnimate2MotionStrength : undefined,
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
       h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
@@ -18045,10 +18133,10 @@ $('#generateBtn').addEventListener('click', async () => {
         ? Math.max(0, Number(state.videoCameraGuide.dur) || 0) : undefined,
       audioName: vidAudioName,
       faceImageName: state.vidEngine === 'ltx' && state.vidFace && !state.vidRef ? state.vidFace.name : undefined,
-      driveVideoName: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.name : undefined,
+      driveVideoName: (['scail', 'wan-animate2'].includes(state.vidEngine) || ltxEdit) && state.vidDrive ? state.vidDrive.name : undefined,
       driveHasAudio: state.vidEngine === 'scail' && state.vidDrive ? state.vidDrive.hasAudio === true : undefined,
       driveStartSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive ? state.vidDrive.trimStart || 0 : undefined,
-      driveDurSeconds: (state.vidEngine === 'scail' || ltxEdit) && state.vidDrive && state.vidDrive.dur
+      driveDurSeconds: (['scail', 'wan-animate2'].includes(state.vidEngine) || ltxEdit) && state.vidDrive && state.vidDrive.dur
         ? Math.max(0.5, (state.vidDrive.trimEnd || state.vidDrive.dur) - (state.vidDrive.trimStart || 0)) : undefined,
       endImageName: state.vidEnd && !h3Reference ? state.vidEnd.name : undefined,
       imageName: state.vidRef && !h3Reference ? state.vidRef.name : undefined,
@@ -18064,6 +18152,10 @@ $('#generateBtn').addEventListener('click', async () => {
         : (!h3Reference && state.vidRef ? state.vidRef.h : state.height),
       seed: baseSeed,
     };
+    if (state.vidEngine === 'wan-animate2') {
+      body.enhance = false;
+      body.driveHasAudio = state.vidDrive?.hasAudio === true;
+    }
     if (autoMotionPrompt) {
       state.motionPromptRequestsPending += 1;
       $('#genLbl').textContent = genLabel();
@@ -19398,6 +19490,7 @@ function videoEngineLabel(engine, info) {
     'ltx-edit': 'LTX Edit',
     eros: '10Eros DMD',
     wan: 'Wan 2.2',
+    'wan-animate2': 'Wan Animate 2',
     scail: 'SCAIL 2',
   }[engine] || 'LTX 2.3';
 }
@@ -25286,7 +25379,7 @@ async function reuseItem(it, useEnhanced) {
 async function reuseVideo(it, v) {
   const options = arguments[2] || {};
   const info = v.info || {};
-  const engine = ['h3', 'wan', 'eros', 'scail'].includes(info.engine) ? info.engine : 'ltx';
+  const engine = ['h3', 'wan', 'wan-animate2', 'eros', 'scail', 'ltx-edit'].includes(info.engine) ? info.engine : 'ltx';
   const savedH3MatchSource = engine === 'h3' && typeof info.h3MatchSource === 'boolean'
     ? info.h3MatchSource
     : null;
@@ -25346,6 +25439,10 @@ async function reuseVideo(it, v) {
   state.vidH3ReplaceTarget = String(info.h3ReplaceTarget || '').slice(0, 240);
   state.vidH3ReplaceVideo = null;
   state.vidH3ReplaceImage = null;
+  state.vidWanAnimate2IdentityStrength = engine === 'wan-animate2'
+    ? Math.max(0, Math.min(2, Number(info.wanAnimate2IdentityStrength) || 1)) : 1;
+  state.vidWanAnimate2MotionStrength = engine === 'wan-animate2'
+    ? Math.max(0, Math.min(2, Number(info.wanAnimate2MotionStrength) || 1)) : 1;
   state.vidEnd = null;
   state.vidDrive = null;
   state.vidFace = null;
@@ -25404,7 +25501,7 @@ async function reuseVideo(it, v) {
   });
   state.vidH3Steps = engine === 'h3' && !info.h3Turbo ? normalizedH3Steps(info.steps || 20) : state.vidH3Steps;
   $('#negativePromptInput').value = state.generationTuning.video.negativePrompt || '';
-  state.enhance = !!info.enhance;
+  state.enhance = engine === 'wan-animate2' ? false : !!info.enhance;
   renderEnhance();
   $('#vid4k').classList.toggle('active', !!info.fourK);
   $('#vidQuality').classList.toggle('active', engine === 'wan' && info.fast === false);
@@ -25570,13 +25667,18 @@ async function reuseVideo(it, v) {
     } catch { missing.push('camera-motion clip'); }
   }
 
-  // Motion video (SCAIL) + its trim window
-  if (engine === 'scail' && info.driveVideoName) {
+  // Motion/performance video (SCAIL or Wan Animate 2)
+  if (['scail', 'wan-animate2'].includes(engine) && info.driveVideoName) {
     try {
       const blob = await inputBlob(info.driveVideoName);
       if (!reuseRequestCurrent(options)) return;
       const urlObj = URL.createObjectURL(blob);
-      const d = { name: info.driveVideoName, url: urlObj, label: 'reused motion video', hasAudio: info.driveHasAudio === true };
+      const d = {
+        name: info.driveVideoName,
+        url: urlObj,
+        label: engine === 'wan-animate2' ? 'reused performance video' : 'reused motion video',
+        hasAudio: info.driveHasAudio === true,
+      };
       state.vidDrive = d;
       $('#vidDriveLabel').textContent = d.label;
       const probe = document.createElement('video');
@@ -25588,7 +25690,7 @@ async function reuseVideo(it, v) {
           return;
         }
         d.dur = probe.duration || 0;
-        const s = Math.min(info.driveStartSeconds || 0, d.dur);
+        const s = engine === 'wan-animate2' ? 0 : Math.min(info.driveStartSeconds || 0, d.dur);
         d.trimStart = s;
         d.trimEnd = info.driveDurSeconds ? Math.min(d.dur, s + info.driveDurSeconds) : d.dur;
         renderVidDrive();
@@ -26347,12 +26449,18 @@ function documentationVideoInputSpecs(item, video) {
   if (info.faceImageName) {
     addImage('Face Reference', info.faceImageName, '#a970ff');
   } else if (!info.t2v) {
-    addImage(engine === 'scail' ? 'Reference Image' : 'Start Frame', info.imageName, engine === 'scail' ? '#34a853' : '#4285f4', gallerySource);
+    const imageLabel = engine === 'wan-animate2'
+      ? 'Character Image'
+      : (engine === 'scail' ? 'Reference Image' : 'Start Frame');
+    addImage(imageLabel, info.imageName, ['scail', 'wan-animate2'].includes(engine) ? '#34a853' : '#4285f4', gallerySource);
   }
 
   if (info.endImageName) addImage('Last Frame', info.endImageName, '#fbbc04');
   if (info.driveVideoName) {
-    addVideo(engine === 'scail' ? 'Motion Video' : 'Source Video', info.driveVideoName, '#00bcd4', info.driveStartSeconds, info.driveDurSeconds);
+    const driveLabel = engine === 'wan-animate2'
+      ? 'Performance Video'
+      : (engine === 'scail' ? 'Motion Video' : 'Source Video');
+    addVideo(driveLabel, info.driveVideoName, '#00bcd4', info.driveStartSeconds, info.driveDurSeconds);
   }
   return specs;
 }
@@ -26443,6 +26551,8 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.sigmaPreset && `Sigmas: ${info.sigmaPreset}`,
     info.engine === 'scail' && info.scailMode && `SCAIL ${info.scailMode}`,
     info.engine === 'scail' && info.scailFps && `${info.scailFps} fps generation`,
+    info.engine === 'wan-animate2' && `Identity ${Number(info.wanAnimate2IdentityStrength || 1).toFixed(2)} · motion ${Number(info.wanAnimate2MotionStrength || 1).toFixed(2)}`,
+    info.engine === 'wan-animate2' && 'Source timing + audio',
     info.processed === 'upscale' && `${info.upscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'} video upscale`,
     info.processed === 'interpolate' && 'Frame interpolation',
     info.processed === 'extend' && 'Video extension',
@@ -27608,7 +27718,8 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
   'setWanLowLora', 'setErosCkpt', 'setErosTe', 'setErosDmd', 'setErosSigF',
   'setErosSigU', 'setScailUnet', 'setScailLora', 'setScailPusaLora',
-  'setScailCv', 'setScailSam',
+  'setScailCv', 'setScailSam', 'setWanAnimate2Unet', 'setWanAnimate2Lora',
+  'setWanAnimate2Clip', 'setWanAnimate2Cv', 'setWanAnimate2Vae',
 ]);
 const SETTINGS_PREFERENCE_CONTROL_IDS = new Set([
   'defaultSeedValue', 'defaultCreateSteps', 'defaultCreateCfg', 'defaultCreateBatch',
@@ -27775,6 +27886,11 @@ function settingsPayload() {
     scailPusaLora: $('#setScailPusaLora').value,
     scailClipVision: $('#setScailCv').value,
     scailSam: $('#setScailSam').value,
+    wanAnimate2Unet: $('#setWanAnimate2Unet').value,
+    wanAnimate2Lora: $('#setWanAnimate2Lora').value,
+    wanAnimate2Clip: $('#setWanAnimate2Clip').value,
+    wanAnimate2ClipVision: $('#setWanAnimate2Cv').value,
+    wanAnimate2Vae: $('#setWanAnimate2Vae').value,
     smartFilenames: mediaPreferenceControlValue('setSmartFilenames'),
   };
 }
@@ -31281,6 +31397,11 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setScailPusaLora').value = s.scailPusaLora || '';
     $('#setScailCv').value = s.scailClipVision || '';
     $('#setScailSam').value = s.scailSam || '';
+    $('#setWanAnimate2Unet').value = s.wanAnimate2Unet || '';
+    $('#setWanAnimate2Lora').value = s.wanAnimate2Lora || '';
+    $('#setWanAnimate2Clip').value = s.wanAnimate2Clip || '';
+    $('#setWanAnimate2Cv').value = s.wanAnimate2ClipVision || '';
+    $('#setWanAnimate2Vae').value = s.wanAnimate2Vae || '';
     setMediaPreferenceControl('setSmartFilenames', s.smartFilenames !== false);
     renderExportLocation(s.exportDir || '');
     settingsAppRestartRequired = s.appRestartRequired === true;
@@ -31437,7 +31558,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -31470,6 +31591,18 @@ function setupH3CoreBlocked(components) {
     && setupViewStatus?.comfy?.minimaxH3?.supported !== true;
 }
 
+function setupWanAnimate2CoreBlocked(components) {
+  const requested = (components || []).filter(Boolean);
+  return setupViewStatus?.comfy?.connected === true
+    && requested.includes('wananimate2')
+    && setupViewStatus?.comfy?.wanAnimate2?.supported !== true;
+}
+
+function setupWanAnimate2CoreMessage() {
+  return setupViewStatus?.comfy?.wanAnimate2?.reason
+    || 'Update ComfyUI to a current build with native Wan Animate 2 support, restart it, then press Check again.';
+}
+
 function setupH3CoreMessage() {
   const compatibility = setupViewStatus?.comfy?.minimaxH3 || {};
   const minimum = compatibility.minimumVersion || '0.30.0';
@@ -31497,7 +31630,7 @@ function setupNativeInt8Message() {
 function generationSetupComponents() {
   const components = new Set();
   if (state.view === 'video') {
-    const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', scail: 'scail' };
+    const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', 'wan-animate2': 'wananimate2', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
     if (h3TurboActive()) components.add(h3ReferenceBackedMode() ? 'h3turbor2v' : 'h3turbo');
     if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
@@ -31507,7 +31640,8 @@ function generationSetupComponents() {
     if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) components.add('faceid');
     if (cameraMotionReferenceSelected()) components.add('ltxcamera');
     if (state.vidEngine === 'scail' && state.vidScailMode === 'infinity') components.add('scailinfinity');
-    if (state.directorOpen ? state.directorProject?.output?.fourK : $('#vid4k').classList.contains('active')) components.add('video4k');
+    if (state.vidEngine !== 'wan-animate2'
+      && (state.directorOpen ? state.directorProject?.output?.fourK : $('#vid4k').classList.contains('active'))) components.add('video4k');
     return [...components];
   }
   if (state.view === 'edit') {
@@ -31548,7 +31682,9 @@ function setupActionForComponents(required) {
   if (!lastMeta.ok) return 'connect';
   const requiresKrea2 = components.some((id) => KREA2_MODEL_COMPONENTS.has(id));
   const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v');
+  const requiresWanAnimate2 = components.includes('wananimate2');
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
+  if (requiresWanAnimate2 && lastMeta?.wanAnimate2?.supported !== true) return 'update';
   if (requiresKrea2 && lastMeta?.models?.krea2?.clipType?.ok !== true) return 'update';
   if (requiresKrea2
     && lastMeta?.krea2?.modelVariant === 'int8-convrot'
@@ -31571,7 +31707,9 @@ async function ensureGenerationSetup() {
     && lastMeta?.models?.krea2?.clipType?.ok !== true;
   const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v')
     && lastMeta?.minimaxH3?.supported !== true;
-  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked) return true;
+  const wanAnimate2CoreBlocked = required.includes('wananimate2')
+    && lastMeta?.wanAnimate2?.supported !== true;
+  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked && !wanAnimate2CoreBlocked) return true;
   const setupAction = setupActionForComponents(required);
   saveForm();
   await openInitialSetup({
@@ -31579,13 +31717,15 @@ async function ensureGenerationSetup() {
     initialStep: setupAction === 'install' ? 'install' : 'connect',
     message: h3CoreBlocked
       ? 'Update ComfyUI to 0.30.0 or newer before using MiniMax H3.'
+      : (wanAnimate2CoreBlocked
+      ? 'Update ComfyUI to a current build with native Wan Animate 2 support.'
       : (krea2CoreBlocked
       ? 'Update ComfyUI to 0.26.0 or newer before using Krea 2.'
       : (nativeInt8Blocked
       ? 'Update ComfyUI for Krea 2 INT8 ConvRot, or choose the compatible FP8 route.'
       : (lastMeta?.ok
       ? 'This workflow needs a few desktop tools before it can run.'
-      : 'Connect ComfyUI, then install what this workflow needs.'))),
+      : 'Connect ComfyUI, then install what this workflow needs.')))),
   });
   return false;
 }
@@ -31653,6 +31793,7 @@ function setupGenerationReady() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   if (setupKrea2CoreBlocked(compatibilityComponents)) return false;
   if (setupH3CoreBlocked(compatibilityComponents)) return false;
+  if (setupWanAnimate2CoreBlocked(compatibilityComponents)) return false;
   if (setupNativeInt8Blocked(compatibilityComponents)) return false;
   const missing = missingSetupComponents(compatibilityComponents);
   return !missing.length;
@@ -31664,6 +31805,7 @@ function renderSetupFooter() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
+  const wanAnimate2CoreBlocked = setupWanAnimate2CoreBlocked(compatibilityComponents);
   const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
   const startBusy = !!comfy.start?.running || comfy.start?.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
@@ -31678,8 +31820,8 @@ function renderSetupFooter() {
   cancel.disabled = comfy.install?.state === 'cancelling' || setupDependencyState?.state === 'cancelling';
   const next = $('#setupNext');
   if (setupActiveStep === 'connect') {
-    next.textContent = krea2CoreBlocked || h3CoreBlocked ? 'Update ComfyUI first' : 'Continue';
-    next.disabled = busy || !comfy.connected || krea2CoreBlocked || h3CoreBlocked;
+    next.textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'Update ComfyUI first' : 'Continue';
+    next.disabled = busy || !comfy.connected || krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked;
   } else if (setupActiveStep === 'install') {
     next.textContent = 'Review';
     next.disabled = busy || (!workflowReady && !restartRequired);
@@ -31968,8 +32110,9 @@ function renderInitialSetup() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
+  const wanAnimate2CoreBlocked = setupWanAnimate2CoreBlocked(compatibilityComponents);
   const int8Blocked = setupNativeInt8Blocked(compatibilityComponents);
-  const comfyCompatibilityBlocked = krea2CoreBlocked || h3CoreBlocked || int8Blocked;
+  const comfyCompatibilityBlocked = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked || int8Blocked;
   const incompleteComfy = !!comfy.partialPath && !comfy.detectedPath;
   const comfyCard = $('#setupComfyStatus');
   comfyCard.classList.toggle('ready', !!comfy.connected && !comfyCompatibilityBlocked);
@@ -31977,9 +32120,11 @@ function renderInitialSetup() {
   $('#setupComfyStatusCopy').textContent = comfy.connected
     ? (h3CoreBlocked
       ? `Update to ${comfy.minimaxH3?.minimumVersion || '0.30.0'}+ for MiniMax H3`
+      : (wanAnimate2CoreBlocked
+      ? 'Update for native Wan Animate 2 support'
       : (krea2CoreBlocked
       ? `Update to ${comfy.krea2?.minimumVersion || '0.26.0'}+ for Krea 2`
-      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`)))
+      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`))))
     : (incompleteComfy ? 'Incomplete · finish in Comfy Desktop'
       : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed'));
 
@@ -32001,6 +32146,8 @@ function renderInitialSetup() {
   $('#setupWorkflowStatus strong').textContent = setupContextComponents.length ? 'Current workflow' : 'Image generation';
   $('#setupWorkflowStatusCopy').textContent = h3CoreBlocked
     ? 'ComfyUI update needed for MiniMax H3'
+    : (wanAnimate2CoreBlocked
+    ? 'ComfyUI update needed for Wan Animate 2'
     : (krea2CoreBlocked
     ? 'ComfyUI update needed for Krea 2'
     : (int8Blocked
@@ -32009,11 +32156,11 @@ function renderInitialSetup() {
       ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
       : (comfy.connected ? (workflowReady
         ? (additionalMissing.length ? `Ready · ${additionalMissing.length} more workflows available` : 'Ready')
-        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI'))));
+        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI')))));
 
-  const connectReady = !!comfy.connected && !krea2CoreBlocked && !h3CoreBlocked;
+  const connectReady = !!comfy.connected && !krea2CoreBlocked && !h3CoreBlocked && !wanAnimate2CoreBlocked;
   const installReady = workflowReady || restartRequired;
-  $('#setupTabConnectStatus').textContent = krea2CoreBlocked || h3CoreBlocked ? 'Update core'
+  $('#setupTabConnectStatus').textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'Update core'
     : (connectReady ? 'Connected'
     : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed')));
   $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || activeWorkflowComponents.length || 1} needed`);
@@ -32031,7 +32178,9 @@ function renderInitialSetup() {
     : 'No compatible GPU detected';
   $('#setupHardwareFit').textContent = krea2CoreBlocked
     ? 'Update ComfyUI for Krea 2'
-    : (int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available'));
+    : (wanAnimate2CoreBlocked
+      ? 'Update ComfyUI for Wan Animate 2'
+      : (int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available')));
   $('#setupHardwareSummary').title = quickFit.detail || 'Recommendations match the generation computer.';
   $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
   const recommendedKrea2 = setupViewStatus.modelRecommendations?.krea2;
@@ -32041,6 +32190,7 @@ function renderInitialSetup() {
   }
   if (int8Blocked) $('#setupHardwareSummary').title += ` ${setupNativeInt8Message()}`;
   if (krea2CoreBlocked) $('#setupHardwareSummary').title += ` ${setupKrea2CoreMessage()}`;
+  if (wanAnimate2CoreBlocked) $('#setupHardwareSummary').title += ` ${setupWanAnimate2CoreMessage()}`;
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
   const modelsValue = comfy.modelsPath || setupLocalPath(pathValue, 'models');
   $('#setupComfyPath').placeholder = setupViewStatus.platform === 'darwin' ? '/Users/you/ComfyUI' : 'C:\\ComfyUI';
@@ -32063,12 +32213,15 @@ function renderInitialSetup() {
   $('#setupStartComfy').textContent = desktopStart ? 'Open Comfy Desktop' : 'Start ComfyUI';
   $('#setupStartComfy').disabled = busy || !start.canStart || !state.profileIsOwner;
   $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
-  $('#setupCoreUpdate').hidden = !krea2CoreBlocked;
+  $('#setupCoreUpdate').hidden = !(krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked);
+  const coreUpdateMessage = wanAnimate2CoreBlocked
+    ? setupWanAnimate2CoreMessage()
+    : (h3CoreBlocked ? setupH3CoreMessage() : setupKrea2CoreMessage());
   $('#setupCoreUpdateCopy').textContent = start.kind === 'desktop'
-    ? `${setupKrea2CoreMessage()} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
+    ? `${coreUpdateMessage} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
     : (setupViewStatus.platform === 'darwin'
-      ? `${setupKrea2CoreMessage()} Update the source checkout from Terminal, then restart ComfyUI.`
-      : `${setupKrea2CoreMessage()} For Portable, run update\\update_comfyui.bat from the portable folder.`);
+      ? `${coreUpdateMessage} Update the source checkout from Terminal, then restart ComfyUI.`
+      : `${coreUpdateMessage} For Portable, run update\\update_comfyui.bat from the portable folder.`);
   $('#setupCoreUpdateCheck').disabled = busy;
   const endpointMatches = setupDiscoveredMatches.length ? setupDiscoveredMatches : (start.matches || []);
   renderSetupEndpointChoices(endpointMatches);
@@ -32083,10 +32236,10 @@ function renderInitialSetup() {
   $('#setupConnectionChoices').hidden = connectionChoicesHidden;
   $('#setupConnectionChoices').classList.toggle('start-offered', canOfferStart);
   $('#setupUseDetected').hidden = canOfferStart;
-  $('#setupConnectHeading').textContent = krea2CoreBlocked ? 'ComfyUI update needed'
+  $('#setupConnectHeading').textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'ComfyUI update needed'
     : (comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI'));
-  $('#setupConnectCopy').textContent = krea2CoreBlocked
-    ? 'Mix Studio reached ComfyUI, but this core is too old for Krea 2.'
+  $('#setupConnectCopy').textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked
+    ? `Mix Studio reached ComfyUI, but this core is missing ${wanAnimate2CoreBlocked ? 'native Wan Animate 2 support' : (h3CoreBlocked ? 'MiniMax H3 support' : 'the required Krea 2 support')}.`
     : (comfy.connected
     ? 'Connection details are available below if a path changes.'
     : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Start a detected installation or choose another location. Mix Studio finds the port automatically.'));
@@ -32414,6 +32567,11 @@ async function startSetupDependencies(components) {
   if (setupH3CoreBlocked(requested)) {
     setSetupStep('connect', { user: true });
     toast(setupH3CoreMessage(), true);
+    return false;
+  }
+  if (setupWanAnimate2CoreBlocked(requested)) {
+    setSetupStep('connect', { user: true });
+    toast(setupWanAnimate2CoreMessage(), true);
     return false;
   }
   if (setupNativeInt8Blocked(requested)) {
@@ -33144,7 +33302,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

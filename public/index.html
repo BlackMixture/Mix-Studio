@@ -628,6 +628,7 @@
           <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit" data-task-label="Video Editing" data-model-label="LTX Edit" data-experimental="true"><b>LTX Edit <span class="model-status-badge">Experimental</span></b><small>Video Editing</small></button>
           <button class="chip" data-engine="eros" data-feature-engine="video.eros" data-task-label="Image Animation" data-model-label="10Eros DMD"><b>10Eros DMD</b><small>Image Animation</small></button>
           <button class="chip" data-engine="wan" data-feature-engine="video.wan" data-task-label="Complex Motion" data-model-label="Wan 2.2"><b>Wan 2.2</b><small>Complex Motion</small></button>
+          <button class="chip" data-engine="wan-animate2" data-feature-engine="video.wanAnimate2" data-task-label="Character Animation" data-model-label="Wan Animate 2"><b>Wan Animate 2</b><small>Character Animation</small></button>
           <button class="chip" data-engine="scail" data-feature-engine="video.scail" data-task-label="Motion Transfer" data-model-label="SCAIL 2"><b>SCAIL 2</b><small>Motion Transfer</small></button>
         </div>
         <button class="info-btn video-model-info" id="engineInfoBtn" type="button" aria-label="Compare model capabilities" title="Compare model capabilities">
@@ -894,6 +895,10 @@
           </button>
         </div>
       </div>
+      <div class="wan-animate2-input-note" id="vidWanAnimate2InputNote" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 10h2v7h-2v-7Zm0-3h2v2h-2V7Zm1-5a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg>
+        <span><b>Match the framing</b><small>Use a character image with a similar close-up or full-body crop as the performance video. The first 81 source frames are animated.</small></span>
+      </div>
       <div class="h3-reference-panel" id="vidH3ReferencePanel" hidden>
         <div class="h3-reference-head">
           <span><b>Reference inputs</b><small>Images, videos, and audio · up to 15 inputs</small></span>
@@ -932,9 +937,12 @@
             </span>
             <span class="media-input-copy"><b>Master video</b><small>Required · the plate to preserve</small></span>
           </button>
-          <div class="attach-thumb media-input-filled h3-replace-filled" id="vidH3ReplaceVideoThumb" hidden>
+          <div class="attach-thumb media-input-filled h3-replace-filled preview-only" id="vidH3ReplaceVideoThumb" hidden>
             <video id="vidH3ReplaceVideoPreview" muted loop autoplay playsinline></video>
-            <div class="attach-info"><b>Master video</b><span id="vidH3ReplaceVideoLabel">Video 1</span></div>
+            <span class="sr-only" id="vidH3ReplaceVideoLabel">Video 1</span>
+            <button class="attach-x attach-expand" id="vidH3ReplaceVideoExpand" type="button" aria-label="Expand master video preview">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
             <button class="attach-x" id="vidH3ReplaceVideoX" type="button" aria-label="Remove master video">✕</button>
           </div>
           <button class="media-input-card h3-replace-card" id="vidH3ReplaceImageBtn" type="button">
@@ -1330,6 +1338,18 @@
               <div class="h3-turbo-strength-scale" id="vidH3TurboStrengthScale">
                 <span>Less LoRA</span><span>1.00 recommended</span><span>More LoRA</span>
               </div>
+            </div>
+            <div class="wan-animate2-strengths field-span" id="vidWanAnimate2Strengths" hidden>
+              <label class="wan-animate2-strength" for="vidWanAnimate2IdentityStrength">
+                <span><b>Identity strength</b><small>How closely appearance follows the character image</small></span>
+                <output id="vidWanAnimate2IdentityVal" for="vidWanAnimate2IdentityStrength">1.00</output>
+                <input id="vidWanAnimate2IdentityStrength" type="range" min="0" max="2" step="0.05" value="1" />
+              </label>
+              <label class="wan-animate2-strength" for="vidWanAnimate2MotionStrength">
+                <span><b>Motion strength</b><small>How closely performance follows the source video</small></span>
+                <output id="vidWanAnimate2MotionVal" for="vidWanAnimate2MotionStrength">1.00</output>
+                <input id="vidWanAnimate2MotionStrength" type="range" min="0" max="2" step="0.05" value="1" />
+              </label>
             </div>
             <div class="video-advanced-note field-span" id="videoAdvancedNote" hidden>CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Frames Turbo and 6 for Reference Turbo.</div>
             <div class="field" id="denoiseField" hidden>
@@ -2657,6 +2677,13 @@
             <div class="field"><label>Pusa LoRA</label><input id="setScailPusaLora" type="text" /></div>
             <div class="field"><label>CLIP Vision</label><input id="setScailCv" type="text" /></div>
             <div class="field"><label>SAM3 checkpoint</label><input id="setScailSam" type="text" /></div>
+          </div>
+          <div class="settings-group"><h5>Wan Animate 2</h5>
+            <div class="field"><label>Animate 2 diffusion model</label><input id="setWanAnimate2Unet" type="text" /></div>
+            <div class="field"><label>LightX2V 480p LoRA</label><input id="setWanAnimate2Lora" type="text" /></div>
+            <div class="field"><label>UMT5 text encoder</label><input id="setWanAnimate2Clip" type="text" /></div>
+            <div class="field"><label>CLIP Vision</label><input id="setWanAnimate2Cv" type="text" /></div>
+            <div class="field"><label>Wan 2.1 BF16 VAE</label><input id="setWanAnimate2Vae" type="text" /></div>
           </div>
         </section>
 

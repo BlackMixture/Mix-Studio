@@ -195,6 +195,12 @@ const {
   videoProcessInfo,
 } = require('./lib/video-workflows');
 const {
+  WAN_ANIMATE_2_FRAMES,
+  WAN_ANIMATE_2_STEPS,
+  buildWanAnimate2Graph,
+  wanAnimate2Dimensions,
+} = require('./lib/wan-animate2-workflow');
+const {
   normalizeDirectorExtensionPlan,
   resolveDurableUploadedVideo,
   videoExtensionInfo,
@@ -477,6 +483,11 @@ const DEFAULT_SETTINGS = {
   scailPusaLora: 'Pusa\\Wan21_PusaV1_LoRA_14B_rank512_bf16.safetensors',
   scailClipVision: 'clip_vision_h.safetensors',
   scailSam: 'sam3.1_multiplex_fp16.safetensors',
+  wanAnimate2Unet: 'wan_animate_2_int8_convrot.safetensors',
+  wanAnimate2Lora: 'lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors',
+  wanAnimate2Clip: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors',
+  wanAnimate2ClipVision: 'clip_vision_h.safetensors',
+  wanAnimate2Vae: 'Wan2_1_VAE_bf16.safetensors',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   externalLlmProvider: EXTERNAL_LLM_DEFAULTS.externalLlmProvider,
   externalLlmOpenAiApiKey: '',
@@ -1571,6 +1582,14 @@ function configuredModelsStatus(info) {
       clipVision: modelStatus(info, 'CLIPVisionLoader', 'clip_name', settings.scailClipVision),
       sam: modelStatus(info, 'CheckpointLoaderSimple', 'ckpt_name', settings.scailSam),
     },
+    wanAnimate2: {
+      label: 'Wan Animate 2',
+      unet: diffusionModelStatus(info, settings.wanAnimate2Unet),
+      lightx: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.wanAnimate2Lora, loraList),
+      textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', settings.wanAnimate2Clip),
+      clipVision: modelStatus(info, 'CLIPVisionLoader', 'clip_name', settings.wanAnimate2ClipVision),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.wanAnimate2Vae),
+    },
     scailInfinity: Object.assign({ label: 'SCAIL 2 Infinity' }, scailInfinityStatus(info)),
   };
 }
@@ -1598,6 +1617,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
     video4k: ['video4k'],
     rife: ['rife'],
     wan: ['wan'],
+    wananimate2: ['wananimate2'],
     eros: ['eros'],
     scail: ['scail'],
     scailinfinity: ['scailinfinity'],
@@ -1615,7 +1635,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
   const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
   if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
   if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
-  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', wanAnimate2: 'wananimate2', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -2382,15 +2402,33 @@ async function completeJob(pid) {
     const fname = settings.smartFilenames
       ? smartAssetFilename(job.videoInfo.motionPrompt, videoId, '.mp4', 'video')
       : `${item.id}_${Date.now()}.mp4`;
-    await fsp.writeFile(path.join(VIDEOS, fname), buf);
+    const storedVideoPath = path.join(VIDEOS, fname);
+    await fsp.writeFile(storedVideoPath, buf);
+    const completedVideoInfo = Object.assign({}, job.videoInfo, {
+      refinedMotionPrompt: completedRefinedMotionPrompt,
+      durationMs,
+    });
+    if (completedVideoInfo.engine === 'wan-animate2') {
+      try {
+        const ffmpegPath = await resolveFfmpegExecutable(RUNTIME);
+        const probe = await probeVideoFile(storedVideoPath, ffmpegPath);
+        Object.assign(completedVideoInfo, {
+          frames: probe.frames,
+          fps: probe.fps,
+          seconds: probe.durationSeconds,
+          width: probe.width,
+          height: probe.height,
+          exactFrameCount: true,
+          sourceFrameRate: true,
+          driveDurSeconds: probe.durationSeconds,
+        });
+      } catch { /* The saved video remains valid; browser metadata is the fallback. */ }
+    }
     const entry = {
       id: videoId,
       file: fname,
       createdAt: Date.now(),
-      info: Object.assign({}, job.videoInfo, {
-        refinedMotionPrompt: completedRefinedMotionPrompt,
-        durationMs,
-      }),
+      info: completedVideoInfo,
     };
     item.videos = (Array.isArray(item.videos) ? item.videos : []).concat([entry]);
     saveDb();
@@ -2401,7 +2439,7 @@ async function completeJob(pid) {
         : (job.videoInfo.processed === 'extend' ? 'Video extension' : (job.videoInfo.composite ? 'Side-by-side' : 'Video')));
     pushHistory({
       kind: 'video', profileId: job.profileId, itemId: item.id, videoId: entry.id, durationMs,
-      label: `${videoActionLabel} (${{ h3: 'MiniMax H3', wan: 'Wan 2.2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
+      label: `${videoActionLabel} (${{ h3: 'MiniMax H3', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
     });
     jobs.delete(pid);
     broadcast('videoDone', { jobId: pid, item });
@@ -5654,6 +5692,10 @@ const REQUIRED_CLASSES = {
   rife: ['RIFE VFI'],
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
+  wananimate2: ['UNETLoader', 'LoraLoaderModelOnly', 'CLIPLoader', 'CLIPTextEncode', 'CLIPVisionLoader',
+    'CLIPVisionEncode', 'VAELoader', 'LoadImage', 'LoadVideo', 'GetVideoComponents', 'ResizeImageMaskNode',
+    'ImageFromBatch', 'WanAnimate2Cache', 'WanAnimate2ToVideo', 'ModelSamplingSD3', 'BasicScheduler',
+    'KSamplerSelect', 'SamplerCustom', 'TrimVideoLatent', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
   eros: ['CheckpointLoaderSimple', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
     'LTXVPreprocess', 'LTXReferenceEnable', 'LTXReferenceConditioning', 'LoraLoaderModelOnly',
     'EmptyLTXVLatentVideo', 'LTXVEmptyLatentAudio', 'LTXVImgToVideoInplaceKJ', 'LTXVConcatAVLatent',
@@ -5689,7 +5731,7 @@ function dependencyComponentInfo(id, fit = null) {
   };
 }
 
-function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, sageAttention = null) {
+function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, wanAnimate2Core = null, sageAttention = null) {
   const component = dependencyComponentInfo(id, fit);
   if (fit?.blocked) {
     component.installable = false;
@@ -5706,12 +5748,31 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, sageAttention 
     component.blockedBy = 'comfy-core';
     component.installReason = minimaxH3CompatibilityError(h3Core);
   }
+  if (id === 'wananimate2' && wanAnimate2Core && wanAnimate2Core.supported !== true) {
+    component.installable = false;
+    component.blockedBy = 'comfy-core';
+    component.installReason = wanAnimate2Core.reason;
+  }
   if (id === 'h3sage' && sageAttention && sageAttention.ready !== true && sageAttention.installable !== true) {
     component.installable = false;
     component.blockedBy = 'sage-runtime';
     component.installReason = sageAttention.reason || 'SageAttention cannot be installed automatically in this ComfyUI Python environment.';
   }
   return component;
+}
+
+function wanAnimate2CoreCompatibility(info, version = '') {
+  const required = ['WanAnimate2ToVideo', 'WanAnimate2Cache', 'LoadVideo', 'GetVideoComponents',
+    'ResizeImageMaskNode', 'TrimVideoLatent', 'CreateVideo', 'SaveVideo'];
+  const missingNodes = required.filter((className) => !info?.[className]);
+  return {
+    supported: missingNodes.length === 0,
+    version: String(version || ''),
+    missingNodes,
+    reason: missingNodes.length
+      ? 'Update ComfyUI to a current build with native Wan Animate 2 support, restart it, then check again.'
+      : '',
+  };
 }
 
 let mobileAccessStatusCache = null;
@@ -5790,6 +5851,7 @@ async function setupStatusPayload(forceCompatibility = false) {
     ? krea2ClipCompatibility(info, compatibility.version)
     : krea2ClipCompatibility(null, compatibility.version);
   const h3Core = minimaxH3Compatibility(connected ? info : null, compatibility.version);
+  const wanAnimate2Core = connected ? wanAnimate2CoreCompatibility(info, compatibility.version) : null;
   const sageRuntime = await probeSageAttention(RUNTIME, {
     status: detected,
     force: forceCompatibility,
@@ -5825,6 +5887,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       guidance[id] || null,
       connected ? krea2Core : null,
       h3Core,
+      wanAnimate2Core,
       sageAttention,
     )),
     comfy: {
@@ -5833,6 +5896,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       version: compatibility.version,
       krea2: krea2Core,
       minimaxH3: h3Core,
+      wanAnimate2: wanAnimate2Core,
       sageAttention,
       nativeInt8: compatibility,
       url: settings.comfyUrl,
@@ -6578,6 +6642,7 @@ async function handleApi(req, res, url) {
       const compatibility = await getComfyCompatibility(url.searchParams.has('refresh'));
       const krea2Core = krea2ClipCompatibility(info, compatibility.version);
       const h3Core = minimaxH3Compatibility(info, compatibility.version);
+      const wanAnimate2Core = wanAnimate2CoreCompatibility(info, compatibility.version);
       if (h3Core.nativeAudioSampling) {
         // Current ComfyUI supplies the audio-safe AV schedule, so only the
         // Turbo LoRA loader is needed; the legacy custom sampler is bypassed.
@@ -6639,6 +6704,7 @@ async function handleApi(req, res, url) {
             hardwareGuidance[id] || null,
             krea2Core,
             h3Core,
+            wanAnimate2Core,
             sageAttention,
           )),
           missingComponents,
@@ -6659,6 +6725,7 @@ async function handleApi(req, res, url) {
           outpaintLora: settings.krea2OutpaintLora,
         },
         minimaxH3: h3Core,
+        wanAnimate2: wanAnimate2Core,
         features: settings.features,
         capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
         queue: jobs.size,
@@ -7755,7 +7822,8 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/animate' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const engine = ['h3', 'wan', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
+    const engine = ['h3', 'wan', 'wan-animate2', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
+    const wanAnimate2 = engine === 'wan-animate2';
     const h3Mode = engine === 'h3' && ['reference', 'replace'].includes(body.h3Mode)
       ? body.h3Mode
       : 'frames';
@@ -7852,6 +7920,23 @@ async function handleApi(req, res, url) {
         }
       }
     }
+    if (wanAnimate2) {
+      const info = await getObjectInfo();
+      const missingNodes = REQUIRED_CLASSES.wananimate2.filter((className) => !info[className]);
+      const modelStatusValue = configuredModelsStatus(info).wanAnimate2;
+      const missingModels = Object.entries(modelStatusValue)
+        .filter(([key, value]) => key !== 'label' && value?.ok === false)
+        .map(([key]) => key);
+      if (missingNodes.length || missingModels.length) {
+        return json(res, 409, {
+          error: 'Wan Animate 2 needs the current ComfyUI core nodes and official model pack. Install or repair Wan Animate 2 in Generation Setup, restart ComfyUI, and try again.',
+          code: 'wan_animate2_unavailable',
+          component: 'wananimate2',
+          missingNodes,
+          missingModels,
+        });
+      }
+    }
     const requestedCameraMotions = normalizeCameraMotions(body.cameraMotions);
     const blockedCameraMotionPhrase = engine === 'scail' ? cameraMotionPhrase(requestedCameraMotions) : '';
     const cameraMotions = engine === 'scail' || engine === 'h3' ? [] : requestedCameraMotions;
@@ -7871,7 +7956,9 @@ async function handleApi(req, res, url) {
     const preparedMotionPrompt = body.preparedMotionPrompt === true && !!suppliedMotionPrompt;
     // SCAIL follows its driving clip, so a motion sentence is an optional
     // creative nudge rather than a prerequisite for a faithful transfer.
-    if (!suppliedMotionPrompt && engine !== 'scail' && !autoMotionRequested) return json(res, 400, { error: 'Describe the motion first' });
+    if (!suppliedMotionPrompt && engine !== 'scail' && !autoMotionRequested) {
+      if (!wanAnimate2) return json(res, 400, { error: 'Describe the motion first' });
+    }
     let motionPrompt = suppliedMotionPrompt || 'preserve the movement from the driving video';
     const isLtxEdit = engine === 'ltx-edit';
     let item = body.id ? db.items.find((it) => it.id === body.id && it.profileId === req.profile.id) : null;
@@ -7910,14 +7997,14 @@ async function handleApi(req, res, url) {
     }
 
     if (engine !== 'ltx' && engine !== 'h3' && bypass) {
-      const label = { wan: 'Wan 2.2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[engine];
+      const label = { wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[engine];
       return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
     }
     if (autoMotionRequested && bypass) {
       return json(res, 400, { error: 'Automatic motion prompts need a first-frame image.' });
     }
     const faceImageName = engine === 'ltx' && body.faceImageName ? String(body.faceImageName) : null;
-    const driveVideoName = (engine === 'scail' || isLtxEdit) && body.driveVideoName ? String(body.driveVideoName) : null;
+    const driveVideoName = (engine === 'scail' || wanAnimate2 || isLtxEdit) && body.driveVideoName ? String(body.driveVideoName) : null;
     const cameraGuideVideoName = engine === 'ltx' && body.cameraGuideVideoName
       ? String(body.cameraGuideVideoName)
       : null;
@@ -7944,6 +8031,9 @@ async function handleApi(req, res, url) {
     if (engine === 'scail' && !driveVideoName) {
       return json(res, 400, { error: 'SCAIL 2 needs a driving motion video. Attach one with the 🎥 chip.' });
     }
+    if (wanAnimate2 && !driveVideoName) {
+      return json(res, 400, { error: 'Wan Animate 2 needs a performance video for motion and expression.' });
+    }
     if (isLtxEdit && !driveVideoName) {
       return json(res, 400, { error: 'LTX Edit needs the source video you want to edit.' });
     }
@@ -7958,6 +8048,8 @@ async function handleApi(req, res, url) {
     if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 505, 121) / 25;
     seconds = engine === 'h3'
       ? h3DurationSeconds(seconds)
+      : wanAnimate2
+        ? WAN_ANIMATE_2_FRAMES / 24
       : engine === 'scail'
       ? scailDurationSeconds(seconds, driveDur)
       : isLtxEdit && driveDur > 0
@@ -7985,6 +8077,10 @@ async function handleApi(req, res, url) {
       );
       h3OutputAspectRatio = requestedAspectRatio;
       ({ W, H } = h3Dimensions(requestedAspectRatio, 1, body.h3ResolutionSize));
+    } else if (wanAnimate2) {
+      fps = 24;
+      frames = WAN_ANIMATE_2_FRAMES;
+      ({ W, H } = wanAnimate2Dimensions(srcW, srcH));
     } else if (engine === 'scail') {
       fps = selectedScailFps;
       frames = scailFramesForSeconds(seconds, fps);
@@ -8033,6 +8129,7 @@ async function handleApi(req, res, url) {
       : Math.floor(Math.random() * 2 ** 48);
     // Edit Anything expects concise, literal editing instructions. Its author
     // specifically advises against the LTX prompt rewriter for this workflow.
+    if (wanAnimate2) body.enhance = false;
     const enhance = isLtxEdit ? false : body.enhance !== false;
     const h3PromptImageNames = engine !== 'h3'
       ? []
@@ -8089,7 +8186,7 @@ async function handleApi(req, res, url) {
       });
       refinedMotionPrompt = cleanEnhancedText(raw, motionPrompt);
       prompt = refinedMotionPrompt;
-    } else if (frameAwareEnhance && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
+    } else if (!wanAnimate2 && frameAwareEnhance && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
       // Every image-to-video enhancer sees both the actual first frame and
       // the user's initial motion idea before the generation graph is built.
       const raw = await wanEnhance(comfyName, motionPrompt, seed, req.profile.id);
@@ -8102,7 +8199,7 @@ async function handleApi(req, res, url) {
     }
     prompt = ensureCameraMotionPrompt(prompt, cameraMotions);
     const recordedMotionPrompt = promptTemplate || userMotionPrompt || suppliedMotionPrompt
-      || (engine === 'scail' ? 'Motion copied from driving video' : motionPrompt);
+      || ((engine === 'scail' || wanAnimate2) ? 'Motion copied from performance video' : motionPrompt);
     const recordedRefinedMotionPrompt = refinedMotionPrompt && refinedMotionPrompt !== recordedMotionPrompt
       ? refinedMotionPrompt
       : null;
@@ -8114,6 +8211,8 @@ async function handleApi(req, res, url) {
       ? (h3Turbo ? clampInt(body.steps, 4, 100, h3ReferenceBacked ? 6 : 4) : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
+        : wanAnimate2
+          ? WAN_ANIMATE_2_STEPS
         : engine === 'scail'
           ? 6
           : engine === 'eros'
@@ -8166,6 +8265,8 @@ async function handleApi(req, res, url) {
       scailChunkFrames: selectedScailChunkOptions.chunkFrames,
       scailChunkOverlap: selectedScailChunkOptions.overlapFrames,
       driveAudio: engine === 'scail' && body.driveHasAudio === true,
+      identityStrength: clampNum(body.wanAnimate2IdentityStrength, 0, 2, 1),
+      motionStrength: clampNum(body.wanAnimate2MotionStrength, 0, 2, 1),
       smooth,
       loras: engine === 'h3' ? [] : (Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : []),
       mode: h3GraphMode,
@@ -8181,6 +8282,7 @@ async function handleApi(req, res, url) {
     const graph = engine === 'h3' ? await buildMiniMaxH3Graph(opts, settings, {
       nodeFromOrdered, filterInputs, rtxVideoSuperResolutionNode,
     })
+      : wanAnimate2 ? await buildWanAnimate2Graph(comfyName, opts, settings, { nodeFromOrdered, filterInputs })
       : engine === 'scail' ? await buildAnimateScail(comfyName, opts)
       : engine === 'wan' ? await buildAnimateWan(comfyName, opts)
         : engine === 'eros' ? await buildAnimateEros(comfyName, opts)
@@ -8206,7 +8308,7 @@ async function handleApi(req, res, url) {
         motionFreedom: isLtxLike ? opts.imgCompression : undefined,
         fast: engine === 'wan' ? opts.fast : undefined,
         sigmaPreset: engine === 'eros' ? sigmaPreset : undefined,
-        drivenAudio: engine === 'h3' ? true : (engine === 'scail' ? opts.driveAudio === true : !!audioName),
+        drivenAudio: engine === 'h3' ? true : (engine === 'scail' ? opts.driveAudio === true : (wanAnimate2 ? body.driveHasAudio === true : !!audioName)),
         endFrame: !!endImageName,
         motionVideo: !!driveVideoName,
         cameraMotions: cameraMotions.length ? cameraMotions : undefined,
@@ -8220,6 +8322,9 @@ async function handleApi(req, res, url) {
         scailStableTracking: engine === 'scail' ? selectedScailChunkOptions.stableTracking : undefined,
         scailChunkFrames: engine === 'scail' ? selectedScailChunkOptions.chunkFrames : undefined,
         scailChunkOverlap: engine === 'scail' ? selectedScailChunkOptions.overlapFrames : undefined,
+        wanAnimate2IdentityStrength: wanAnimate2 ? opts.identityStrength : undefined,
+        wanAnimate2MotionStrength: wanAnimate2 ? opts.motionStrength : undefined,
+        sourceFrameRate: wanAnimate2 || undefined,
         h3Mode: engine === 'h3' ? h3Mode : undefined,
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
         h3TurboStrength: engine === 'h3' && opts.turbo ? opts.turboStrength : undefined,
@@ -8242,11 +8347,13 @@ async function handleApi(req, res, url) {
         audioName: audioName || undefined,
         endImageName: endImageName || undefined,
         driveVideoName: driveVideoName || undefined,
-        driveHasAudio: engine === 'scail' ? opts.driveAudio === true : undefined,
+        driveHasAudio: (engine === 'scail' || wanAnimate2) ? body.driveHasAudio === true : undefined,
         faceId: !!faceImageName || undefined,
         faceImageName: faceImageName || undefined,
         driveStartSeconds: (engine === 'scail' || isLtxEdit) && driveStart > 0 ? driveStart : undefined,
-        driveDurSeconds: (engine === 'scail' || isLtxEdit) && driveDur > 0 ? driveDur : undefined,
+        driveDurSeconds: wanAnimate2
+          ? seconds
+          : ((engine === 'scail' || isLtxEdit) && driveDur > 0 ? driveDur : undefined),
         loras: opts.loras,
       },
     });

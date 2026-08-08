@@ -608,6 +608,18 @@ test('MiniMax H3 Replace mode offers a focused local-preset workflow', () => {
   assert.match(server, /mode: h3GraphMode/);
   assert.match(css, /\.h3-replace-panel/);
   assert.match(css, /\.h3-replace-inputs/);
+  assert.match(css, /\.h3-replace-inputs > \[hidden\] \{ display: none; \}/);
+  assert.match(html, /class="[^"]*h3-replace-filled preview-only" id="vidH3ReplaceVideoThumb"[\s\S]*id="vidH3ReplaceVideoExpand"/);
+  assert.doesNotMatch(html, /id="vidH3ReplaceVideoThumb"[\s\S]{0,220}<div class="attach-info">/);
+  assert.match(css, /\.h3-replace-inputs \.h3-replace-filled \{[\s\S]*overflow: hidden;[\s\S]*contain: inline-size;/);
+  assert.match(css, /\.h3-replace-inputs \.h3-replace-filled\.expanded \{[\s\S]*grid-column: 1 \/ -1;[\s\S]*aspect-ratio: auto;/);
+  assert.match(app, /toggleInlineVideoPreview\(\$\('#vidH3ReplaceVideoThumb'\), \$\('#vidH3ReplaceVideoPreview'\), \$\('#vidH3ReplaceVideoExpand'\), 'master video'\)/);
+});
+
+test('SCAIL motion preview hides metadata while preserving remove and expand controls', () => {
+  assert.match(html, /id="vidDriveThumb"[\s\S]*id="vidDriveExpand"[\s\S]*id="vidDriveX"/);
+  assert.match(app, /\$\('#vidDriveThumb'\)\.classList\.toggle\('preview-only', scail\)/);
+  assert.match(css, /\.video-input-grid \.media-input-filled\.preview-only \.attach-info \{ display: none; \}/);
 });
 
 test('MiniMax H3 Reference mode uses progressive media slots and prompt mention cards', () => {

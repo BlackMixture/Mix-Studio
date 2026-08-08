@@ -18,7 +18,7 @@
 
 ![Mix Studio Create workspace running a curated Krea 2 workflow](docs/download/mix-studio-create.webp)
 
-Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2.
+Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2, plus Wan Animate 2.
 
 Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remix** workflow, with an advanced Reference boost control for stronger identity and subject guidance.
 
@@ -44,7 +44,7 @@ For manual Git setup, detailed VRAM guidance, shared-model discovery, phone acce
 | **Create** | Krea 2 Turbo and Raw, exact resolution and seed controls, batching, LoRAs, prompt enhancement, reference, style, and depth guidance. |
 | **Region** | Aspect-correct boxes with independent prompts, LoRA stacks, and reference images combined into one coherent generation. |
 | **Edit** | Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix with multiple inputs, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
-| **Video** | MiniMax H3 text, first/last-frame, and optional reference-to-video generation; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 motion transfer. |
+| **Video** | MiniMax H3 text, first/last-frame, and optional reference-to-video generation; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
 | **Upscale** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
 | **Library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
 
@@ -102,7 +102,7 @@ Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix in one wor
 
 ### Video
 
-MiniMax H3, LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 controls. H3 Reference mode accepts images, videos, and audio; its separate Ref2VA model is downloaded only when that mode is used.
+MiniMax H3, LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 controls. H3 Reference mode accepts images, videos, and audio; its separate Ref2VA model is downloaded only when that mode is used. Wan Animate 2 combines a character image with a performance video, carrying across body motion, expression, source timing, and audio with the official six-step LightX2V workflow.
 
 ![LTX 2.3 video workspace with motion prompt, last frame, and audio waveform](docs/download/mix-studio-video.png)
 

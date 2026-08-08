@@ -134,6 +134,15 @@
       "nodes": ["WanSCAILToVideo", "SAM3_VideoTrack", "comfyui-scail2-infinity", "ComfyUI-GGUF"]
     },
     {
+      "id": "video.wanAnimate2",
+      "label": "Wan Animate 2 Character Animation",
+      "default": false,
+      "variant": "Official Wan Animate 2 INT8 ConvRot model with the 480p LightX2V adapter; preserves performance-video timing and audio",
+      "hardware": { "minimumVramGb": 12, "recommendedVramGb": 24, "autoSelect": "recommended", "unsupportedVendors": ["apple", "amd"], "unsupportedReason": "The official Wan Animate 2 workflow uses NVIDIA INT8 ConvRot kernels and is not currently compatible with Apple Metal or AMD ROCm." },
+      "models": ["wan-animate-2-int8-convrot", "wan-animate-2-lightx2v", "umt5-xxl", "clip-vision-h", "wan-vae-bf16"],
+      "nodes": ["WanAnimate2ToVideo", "WanAnimate2Cache", "LoadVideo", "GetVideoComponents"]
+    },
+    {
       "id": "video.rife",
       "label": "RIFE Frame Interpolation",
       "default": false,

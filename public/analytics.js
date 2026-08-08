@@ -64,7 +64,7 @@
     const payload = body && typeof body === 'object' ? body : {};
     if (route === '/api/director/generate') return 'LTX 2.3 Director';
     if (route === '/api/animate') {
-      return { ltx: 'LTX 2.3', h3: 'MiniMax H3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', scail: 'SCAIL 2' }[payload.engine] || 'LTX 2.3';
+      return { ltx: 'LTX 2.3', h3: 'MiniMax H3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', scail: 'SCAIL 2' }[payload.engine] || 'LTX 2.3';
     }
     if (route === '/api/upscale') return payload.engine === 'ultimate' ? 'Ultimate SD' : 'SeedVR2';
     if (route !== '/api/generate') return '';

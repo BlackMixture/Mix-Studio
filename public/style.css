@@ -1368,6 +1368,39 @@ html:-webkit-full-screen { background: #000; }
   letter-spacing: .05em;
   text-transform: uppercase;
 }
+.wan-animate2-strengths {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.wan-animate2-strengths[hidden] { display: none; }
+.wan-animate2-strength {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--mode-rgb), .2);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(var(--mode-rgb), .075), rgba(3, 4, 7, .72));
+}
+.wan-animate2-strength > span { min-width: 0; display: grid; gap: 2px; }
+.wan-animate2-strength b { color: #f7f8ff; font-size: 11.5px; font-weight: 900; }
+.wan-animate2-strength small { color: var(--muted-2); font-size: 9.5px; font-weight: 650; line-height: 1.35; }
+.wan-animate2-strength output {
+  min-width: 48px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.wan-animate2-strength input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 1px 0 0;
+  accent-color: var(--mode-color);
+}
 .krea-model-switch:active { transform: scale(.992); }
 .krea-model-switch[aria-checked="true"] {
   border-color: rgba(var(--mode-rgb), .35);
@@ -1804,6 +1837,23 @@ html:-webkit-full-screen { background: #000; }
   gap: 10px;
 }
 .video-input-grid[hidden] { display: none; }
+.wan-animate2-input-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(92, 164, 255, .2);
+  border-radius: 12px;
+  background: rgba(50, 111, 190, .08);
+  color: #eaf3ff;
+}
+.wan-animate2-input-note[hidden] { display: none; }
+.wan-animate2-input-note svg { width: 17px; height: 17px; flex: 0 0 auto; color: #87bfff; }
+.wan-animate2-input-note span { min-width: 0; display: grid; gap: 2px; }
+.wan-animate2-input-note b { font-size: 11px; font-weight: 900; }
+.wan-animate2-input-note small { color: rgba(219, 233, 255, .66); font-size: 9.5px; font-weight: 650; line-height: 1.4; }
+.wan-animate2-prompt #enhanceBtn { display: none !important; }
 
 .h3-mode-panel {
   margin: 0 0 10px;
@@ -2042,20 +2092,59 @@ html:-webkit-full-screen { background: #000; }
   gap: 10px;
   margin-top: 13px;
 }
+.h3-replace-inputs > [hidden] { display: none; }
 .h3-replace-inputs .h3-replace-card,
 .h3-replace-inputs .h3-replace-filled { aspect-ratio: 1; min-height: 0; }
 .h3-replace-inputs .h3-replace-card .media-input-art { min-height: 0; flex: 1; }
+.h3-replace-inputs .h3-replace-filled {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  contain: inline-size;
+  background: #050608;
+}
 .h3-replace-inputs .h3-replace-filled > img,
 .h3-replace-inputs .h3-replace-filled > video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
   object-fit: cover;
+  border-radius: 0;
 }
 .h3-replace-inputs .h3-replace-filled .attach-info {
   background: linear-gradient(transparent, rgba(0, 0, 0, .78));
   text-shadow: 0 1px 4px #000;
+}
+.h3-replace-inputs .h3-replace-filled.preview-only .attach-info,
+.video-input-grid .media-input-filled.preview-only .attach-info { display: none; }
+.h3-replace-inputs .h3-replace-filled .attach-x {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  border: 0;
+  background: rgba(0, 0, 0, .72);
+  color: #fff;
+}
+.h3-replace-inputs .h3-replace-filled .attach-expand { right: 48px; }
+.h3-replace-inputs .h3-replace-filled.expanded {
+  grid-column: 1 / -1;
+  aspect-ratio: auto;
+  contain: none;
+}
+.h3-replace-inputs .h3-replace-filled.expanded > video {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  max-height: 60vh;
+  object-fit: contain;
 }
 .h3-replace-prompt-action {
   display: flex;
@@ -7187,6 +7276,7 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   padding: 8px 12px;
   transition: color 180ms var(--ease), border-color 180ms var(--ease), background 180ms var(--ease), transform 150ms var(--ease);
 }
+.h3-prompt-guide-trigger[hidden] { display: none; }
 .video-revise-prompt svg { flex: 0 0 auto; }
 .h3-prompt-guide-trigger svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .h3-prompt-guide-trigger {

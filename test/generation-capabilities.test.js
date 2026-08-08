@@ -22,12 +22,15 @@ test('Apple Metal exposes BF16 LTX and disables curated FP8 video families', () 
   assert.equal(capabilities.ltx.requiresBf16, true);
   assert.equal(capabilities['ltx-edit'].supported, true);
   assert.equal(capabilities.h3.supported, false);
-  for (const engine of ['eros', 'wan', 'scail']) {
+  for (const engine of ['eros', 'wan', 'wan-animate2', 'scail']) {
     assert.equal(capabilities[engine].supported, false);
     assert.match(capabilities[engine].reason, /FP8|Apple Metal/);
   }
   assert.match(dependencyComponentBlock('scailinfinity', apple), /Apple Metal/);
   assert.equal(dependencyComponentBlock('wan', nvidia), '');
+  assert.equal(dependencyComponentBlock('wananimate2', nvidia), '');
+  assert.match(dependencyComponentBlock('wananimate2', apple), /INT8 ConvRot|Apple Metal/);
+  assert.match(dependencyComponentBlock('wananimate2', amd), /INT8 ConvRot|AMD ROCm/);
   assert.match(dependencyComponentBlock('h3r2v', apple), /NVFP4|Apple Metal/);
   assert.match(dependencyComponentBlock('h3turbo', apple), /NVFP4|Apple Metal/);
   assert.match(dependencyComponentBlock('h3', amd), /AMD ROCm/);
