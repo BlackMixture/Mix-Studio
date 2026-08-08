@@ -16,7 +16,7 @@ test('prompt tools expose Mix Packs in the shared Create, Edit, and video prompt
   const promptBox = indexHtml.slice(indexHtml.indexOf('<div class="prompt-box">'), indexHtml.indexOf('<div class="prompt-intent-hint"'));
   const createTools = indexHtml.slice(indexHtml.indexOf('id="createPromptTools"'), indexHtml.indexOf('id="videoPromptTools"'));
   assert.match(promptBox, /class="prompt-camera-btn"[^>]*id="cameraPromptBtn"[^>]*aria-label="Mix Packs"/);
-  assert.match(promptBox, /<rect x="4" y="5" width="13" height="13" rx="2"\/>/);
+  assert.match(promptBox, /<rect x="4" y="4" width="6" height="6" rx="1\.5"\/>/);
   assert.doesNotMatch(createTools, /id="cameraPromptBtn"/);
   assert.match(styleCss, /\.prompt-camera-btn\s*\{[^}]*position:\s*absolute[^}]*right:\s*56px/s);
   assert.match(appJs, /cameraPromptBtn'\)\.hidden = false/);

@@ -4075,7 +4075,6 @@ function updateVideoPanels() {
   if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidScailModeRow').hidden = !(isVideo && state.vidEngine === 'scail');
-  $('#vidWanAnimate2InputNote').hidden = !(isVideo && state.vidEngine === 'wan-animate2');
   $('#vidWanAnimate2Strengths').hidden = !(isVideo && state.vidEngine === 'wan-animate2');
   $('#vidDurationField').hidden = isVideo && state.vidEngine === 'wan-animate2';
   $('#vid4k').hidden = isVideo && state.vidEngine === 'wan-animate2';

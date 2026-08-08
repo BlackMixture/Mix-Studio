@@ -14,13 +14,15 @@ const progress = require('../lib/progress-labels');
 
 test('Wan Animate 2 presents an input-first character animation workflow', () => {
   assert.match(html, /data-engine="wan-animate2"[^>]*data-task-label="Character Animation"[^>]*data-model-label="Wan Animate 2"/);
-  assert.match(html, /id="vidWanAnimate2InputNote"/);
-  assert.match(html, /Match the framing/);
-  assert.match(html, /similar close-up or full-body crop as the performance video/);
+  assert.doesNotMatch(html, /id="vidWanAnimate2InputNote"/);
+  assert.doesNotMatch(html, /Match the framing/);
+  assert.doesNotMatch(app, /vidWanAnimate2InputNote/);
   assert.match(app, /'Character image'/);
   assert.match(app, /'Performance video'/);
   assert.match(app, /'Scene direction · optional'/);
   assert.match(app, /81 frames · source timing \+ audio/);
+  assert.match(fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8'),
+    /\.wan-animate2-prompt \.prompt-camera-btn\s*\{[^}]*right:\s*10px/);
 });
 
 test('Wan Animate 2 validates both media inputs and sends model-specific controls', () => {

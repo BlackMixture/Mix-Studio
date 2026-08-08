@@ -1837,23 +1837,9 @@ html:-webkit-full-screen { background: #000; }
   gap: 10px;
 }
 .video-input-grid[hidden] { display: none; }
-.wan-animate2-input-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  margin-top: 10px;
-  padding: 10px 11px;
-  border: 1px solid rgba(92, 164, 255, .2);
-  border-radius: 12px;
-  background: rgba(50, 111, 190, .08);
-  color: #eaf3ff;
-}
-.wan-animate2-input-note[hidden] { display: none; }
-.wan-animate2-input-note svg { width: 17px; height: 17px; flex: 0 0 auto; color: #87bfff; }
-.wan-animate2-input-note span { min-width: 0; display: grid; gap: 2px; }
-.wan-animate2-input-note b { font-size: 11px; font-weight: 900; }
-.wan-animate2-input-note small { color: rgba(219, 233, 255, .66); font-size: 9.5px; font-weight: 650; line-height: 1.4; }
 .wan-animate2-prompt #enhanceBtn { display: none !important; }
+.wan-animate2-prompt .prompt-camera-btn { right: 10px; }
+.wan-animate2-prompt .prompt-box:has(.prompt-camera-btn:not([hidden])) .prompt-composer { padding-right: 52px; }
 
 .h3-mode-panel {
   margin: 0 0 10px;
