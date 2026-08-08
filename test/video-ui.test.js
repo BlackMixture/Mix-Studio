@@ -599,9 +599,12 @@ test('MiniMax H3 Replace mode offers a focused local-preset workflow', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /data-h3-mode="replace"[^>]*>Replace<\/button>/);
   assert.match(html, /id="vidH3ReplacePanel"[\s\S]*id="vidH3ReplaceTarget"[\s\S]*id="vidH3ReplaceVideoBtn"[\s\S]*id="vidH3ReplaceImageBtn"[\s\S]*id="vidH3ReplacePromptBtn"/);
+  assert.doesNotMatch(html, /Keep the plate\. Change one identity\. No mask needed\.|<b>Replacement prompt<\/b>/);
   assert.match(app, /function h3ReplacementReferences\(\)[\s\S]*images: state\.vidH3ReplaceImage[\s\S]*videos: state\.vidH3ReplaceVideo/);
   assert.match(app, /H3PromptGuide\.buildReplacementPrompt/);
   assert.match(app, /state\.enhance = false;[\s\S]{0,200}Replacement prompt applied locally/);
+  assert.doesNotMatch(app, /Ready to build the replacement prompt locally|no LLM used/);
+  assert.match(app, /promptStatus\.hidden = descriptionReady && !presetActive/);
   assert.match(app, /h3ReplaceKind:[\s\S]{0,160}h3ReplaceTarget:/);
   assert.match(server, /\['reference', 'replace'\]\.includes\(body\.h3Mode\)/);
   assert.match(server, /h3Mode === 'replace'[\s\S]{0,400}exactly one master video and one replacement image/);

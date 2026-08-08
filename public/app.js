@@ -16718,11 +16718,11 @@ function renderH3Replacement() {
   const promptButton = $('#vidH3ReplacePromptBtn');
   promptButton.disabled = !descriptionReady;
   promptButton.querySelector('span').textContent = presetActive ? 'Reapply preset' : 'Apply preset';
-  $('#vidH3ReplacePromptStatus').textContent = !descriptionReady
+  const promptStatus = $('#vidH3ReplacePromptStatus');
+  promptStatus.hidden = descriptionReady && !presetActive;
+  promptStatus.textContent = !descriptionReady
     ? 'Add a target description, then apply the preset.'
-    : (presetActive
-      ? 'Preset active · you can still edit the prompt before generating.'
-      : 'Ready to build the replacement prompt locally · no LLM used.');
+    : (presetActive ? 'Preset active · you can still edit the prompt before generating.' : '');
 }
 
 function applyH3ReplacementPrompt() {
@@ -29598,7 +29598,7 @@ function currentPromptIntent() {
     if (promptRequestsOutpaint(prompt) && OUTPAINT_EDIT_ENGINES.has(state.editEngine) && !state.editOutpaint) id = 'outpaint-intent';
     else if (promptRequestsLocalEdit(prompt) && supportsCurrentEditMask() && !hasEditMask()) id = 'inpaint-intent';
   } else if (state.view === 'video') {
-    if (prompt && promptRequestsMotionTransfer(prompt) && state.vidEngine !== 'scail') {
+    if (prompt && promptRequestsMotionTransfer(prompt) && !['h3', 'scail'].includes(state.vidEngine)) {
       id = $('#vidModelHeader').getAttribute('aria-expanded') === 'true' ? 'video-scail-model' : 'video-scail-intent';
     } else if (state.vidEngine === 'scail' && !state.vidRef) id = 'scail-source-upload';
     else if (state.vidEngine === 'scail' && !state.vidDrive) id = 'scail-motion-upload';
