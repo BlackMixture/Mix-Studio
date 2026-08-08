@@ -106,6 +106,11 @@ const {
   normalizeExternalLlmSettings,
   normalizeOllamaUrl,
 } = require('./lib/external-llm');
+const {
+  localPromptAiCatalog,
+  localPromptAiConfig,
+  normalizeLocalPromptAiSettings,
+} = require('./lib/local-prompt-ai');
 const { combineNegativePrompts, normalizeNegativePrompt } = require('./lib/negative-prompt');
 const {
   buildDepthMapNodes,
@@ -483,6 +488,8 @@ const DEFAULT_SETTINGS = {
   externalLlmImageEnhance: false,
   externalLlmVideoRevise: false,
   externalLlmVideoEnhance: false,
+  localPromptAiClip: '',
+  localPromptAiClipType: 'krea2',
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
   exportDir: '',
   smartFilenames: true,
@@ -518,6 +525,7 @@ function normalizeSettings(s) {
   try { s.exportDir = normalizeExportDirectory(s.exportDir); } catch { s.exportDir = ''; }
   s.smartFilenames = s.smartFilenames !== false;
   Object.assign(s, normalizeExternalLlmSettings(s));
+  Object.assign(s, normalizeLocalPromptAiSettings(s));
   s.features = normalizeFeatures(s.features);
   return s;
 }
@@ -2806,6 +2814,11 @@ function textGenInputs(seed, maxLength) {
   };
 }
 
+function localPromptAiLoaderInputs() {
+  const promptAi = localPromptAiConfig(settings);
+  return { clip_name: promptAi.model, type: promptAi.type, device: 'default' };
+}
+
 function armPromptJobDeadline(pid, reject, label) {
   let stopped = false;
   let timer = null;
@@ -2954,7 +2967,7 @@ function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', o
         Object.assign({}, options, { imageName: comfyImageName, imageNames }),
         'stitched',
       );
-      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs() };
       const promptImage = await appendPromptVisionImages(graph, { imageName: comfyImageName, imageNames });
       graph.gen = {
         class_type: 'TextGenerate',
@@ -3025,7 +3038,7 @@ function suggestImagePrompt(comfyImageName, seed, profileId) {
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
-      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs() };
       graph.img = { class_type: 'LoadImage', inputs: { image: comfyImageName } };
       graph.gen = {
         class_type: 'TextGenerate',
@@ -3058,7 +3071,7 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
     (async () => {
       const graph = {};
       parts = h3PromptPartsWithVisionOrder(parts, options, 'stitched');
-      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs() };
       const promptImage = await appendPromptVisionImages(graph, options);
       graph.concat = {
         class_type: 'StringConcatenate',
@@ -3241,7 +3254,7 @@ function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
   return new Promise((resolve, reject) => {
     (async () => {
       const graph = {};
-      graph.clip = { class_type: 'CLIPLoader', inputs: { clip_name: settings.clip, type: settings.clipType, device: 'default' } };
+      graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs() };
       graph.img = { class_type: 'LoadImage', inputs: { image: comfyImageName } };
       graph.gen = {
         class_type: 'TextGenerate',
@@ -6505,8 +6518,10 @@ async function handleApi(req, res, url) {
         .some((key) => typeof body[key] === 'string' && body[key].trim() && body[key].trim() !== String(settings[key] || ''))
       || ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
         .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
-    if (changesExternalLlm && !isAdmin()) {
-      return json(res, 403, { error: 'Only the owner profile can change the shared external prompt provider' });
+    const changesLocalPromptAi = ['localPromptAiClip', 'localPromptAiClipType']
+      .some((key) => typeof body[key] === 'string' && body[key].trim() !== String(settings[key] || ''));
+    if ((changesExternalLlm || changesLocalPromptAi) && !isAdmin()) {
+      return json(res, 403, { error: 'Only the owner profile can change the shared prompt AI settings' });
     }
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (key === 'exportDir') continue;
@@ -6516,6 +6531,10 @@ async function handleApi(req, res, url) {
       settings.krea2ModelVariant = body.krea2ModelVariant;
     }
     if (typeof body.hfEndpoint === 'string') settings.hfEndpoint = body.hfEndpoint.trim();
+    if (typeof body.localPromptAiClip === 'string') settings.localPromptAiClip = body.localPromptAiClip.trim();
+    if (typeof body.localPromptAiClipType === 'string' && body.localPromptAiClipType.trim()) {
+      settings.localPromptAiClipType = body.localPromptAiClipType.trim();
+    }
     if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
     if (body.clearHfToken === true) settings.hfToken = '';
     if (body.clearExternalLlmOpenAiApiKey === true) settings.externalLlmOpenAiApiKey = '';
@@ -8816,6 +8835,40 @@ async function handleApi(req, res, url) {
       model: provider.model,
       response: String(text).trim().slice(0, 120),
     });
+  }
+
+  if (route === '/api/prompt/local-models' && req.method === 'GET') {
+    try {
+      const info = await getObjectInfo(url.searchParams.has('refresh'));
+      return json(res, 200, localPromptAiCatalog(info, settings));
+    } catch (error) {
+      return json(res, 503, {
+        error: String(error?.message || error || 'Could not read local prompt models from ComfyUI'),
+        code: error?.code || 'local_prompt_models_unavailable',
+      });
+    }
+  }
+
+  if (route === '/api/prompt/local-model/test' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can test the shared local prompt model' });
+    try {
+      const raw = await queueTextEnhancement({
+        instruction: 'Return exactly one <final_prompt> XML element containing the requested text and nothing else.',
+        userInput: 'Write exactly: Local prompt model ready',
+      }, Math.floor(Math.random() * 2 ** 31), '', 64, {
+        profileId: req.profile.id,
+        broadcastStatus: false,
+      });
+      const response = cleanEnhancedText(raw, '');
+      if (!response) throw new Error('The selected local model returned no usable text');
+      const active = localPromptAiConfig(settings);
+      return json(res, 200, { ok: true, model: active.model, type: active.type, response: response.slice(0, 120) });
+    } catch (error) {
+      return json(res, error?.code === 'prompt_timeout' ? 504 : 409, {
+        error: String(error?.message || error || 'The selected local prompt model could not run'),
+        code: error?.code || 'local_prompt_model_failed',
+      });
+    }
   }
 
   if (route === '/api/debug/models') {

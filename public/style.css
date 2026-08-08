@@ -11317,7 +11317,16 @@ body.sheet-open {
 .trash-management-row strong { color: var(--ink); font-size: 11px; }
 .trash-management-row small { color: var(--muted-2); font-size: 10px; font-weight: 700; line-height: 1.35; }
 .trash-empty { flex: 0 0 auto; margin-top: 0; border-color: rgba(234,67,53,.38); color: #ffaaa3; }
+.local-prompt-ai-settings > .settings-default-note,
 .external-llm-settings > .settings-default-note { margin: -4px 0 14px; }
+.local-prompt-ai-hint { margin: 10px 1px 0; color: var(--muted-2); font-size: 10.5px; font-weight: 650; line-height: 1.45; }
+#localPromptAiClipTypeField.is-inherited { opacity: .5; }
+.local-prompt-ai-actions { margin-top: 11px; display: flex; align-items: center; gap: 8px; }
+.local-prompt-ai-actions .settings-cache-clear { flex: 0 0 auto; margin-top: 0; }
+#localPromptAiStatus { min-width: 0; color: var(--muted); font-size: 10.5px; font-weight: 750; line-height: 1.35; overflow-wrap: anywhere; }
+#localPromptAiStatus.ready { color: #b9f6ca; }
+#localPromptAiStatus.bad { color: #ffaaa3; }
+.local-prompt-ai-settings[data-readonly="true"] .local-prompt-ai-hint::after { content: ' Only the owner profile can change this shared model.'; color: #ffd18a; }
 .external-llm-provider {
   margin-top: 11px;
   padding: 12px;
@@ -11591,6 +11600,9 @@ body.sheet-open {
   .settings-tabs { padding-inline: 6px; }
   .settings-tabs button { min-height: 54px; font-size: 10px; }
   .settings-content { padding: 16px 14px; }
+  .local-prompt-ai-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .local-prompt-ai-actions .settings-cache-clear { width: 100%; padding-inline: 7px; }
+  #localPromptAiStatus { grid-column: 1 / -1; }
   .settings-title-copy small { display: none; }
   .settings-panel > .sheet-title .settings-restart-apply { padding-inline: 9px; font-size: 9.5px; }
   .guided-tour-setting { grid-template-columns: 32px minmax(0, 1fr); gap: 9px; padding: 0 0 14px; }

@@ -65,7 +65,7 @@ test('shared external prompt AI preferences autosave without exposing API keys',
   assert.match(app, /externalLlmProvider: \$\('#setExternalLlmProvider'\)\.value/);
   assert.match(app, /scheduleSettingsAutosave\('server', 0\)/);
   assert.match(app, /api\('\/api\/prompt\/provider\/test', \{ method: 'POST' \}\)/);
-  assert.match(server, /Only the owner profile can change the shared external prompt provider/);
+  assert.match(server, /Only the owner profile can change the shared prompt AI settings/);
   assert.match(server, /externalLlmOpenAiApiKeyConfigured:/);
   const responseHelper = server.slice(server.indexOf('function settingsResponse()'), server.indexOf('function adoptDeviceCompatibleModelSettings'));
   assert.match(responseHelper, /delete response\.externalLlmOpenAiApiKey;/);

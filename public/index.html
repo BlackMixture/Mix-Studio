@@ -2800,6 +2800,28 @@
               <button class="settings-cache-clear trash-empty" id="trashEmpty" type="button" disabled>Empty trash</button>
             </div>
           </div>
+          <div class="settings-group local-prompt-ai-settings" id="localPromptAiSettings">
+            <h5>Local prompt AI</h5>
+            <p class="settings-default-note">Choose the ComfyUI text encoder used for local Revise Prompt and Prompt Enhance. Generation models remain unchanged.</p>
+            <div class="field">
+              <label for="setLocalPromptAiClip">Prompt model</label>
+              <select id="setLocalPromptAiClip" aria-describedby="localPromptAiHint">
+                <option value="">Automatic · Krea 2 prompt model</option>
+              </select>
+            </div>
+            <div class="field" id="localPromptAiClipTypeField">
+              <label for="setLocalPromptAiClipType">Loader type</label>
+              <select id="setLocalPromptAiClipType">
+                <option value="krea2">Krea 2 / Qwen3-VL</option>
+              </select>
+            </div>
+            <p class="local-prompt-ai-hint" id="localPromptAiHint">Vision-capable Qwen3-VL models are recommended for frame- and reference-aware prompts.</p>
+            <div class="local-prompt-ai-actions">
+              <button class="settings-cache-clear" id="refreshLocalPromptAiModels" type="button">Refresh models</button>
+              <button class="settings-cache-clear" id="testLocalPromptAiModel" type="button">Test model</button>
+              <span id="localPromptAiStatus" role="status" aria-live="polite">Loading installed models…</span>
+            </div>
+          </div>
           <div class="settings-group external-llm-settings" id="externalLlmSettings">
             <h5>External prompt AI</h5>
             <p class="settings-default-note">Use one shared provider for prompt revision and enhancement. API keys stay on this Mix Studio server and are never returned to the browser.</p>

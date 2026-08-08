@@ -27220,6 +27220,109 @@ function mediaPreferenceControlValue(id) {
 
 let externalLlmKeyConfigured = { openai: false, gemini: false };
 let externalLlmKeyStored = { openai: false, gemini: false };
+let localPromptAiSettings = { clip: '', clipType: 'krea2', activeModel: '', activeType: 'krea2' };
+
+function localPromptAiTypeLabel(value) {
+  return {
+    krea2: 'Krea 2 / Qwen3-VL',
+    qwen_image: 'Qwen Image',
+    flux2: 'Flux 2',
+    minimax: 'MiniMax H3',
+  }[value] || value;
+}
+
+function localPromptAiModelLabel(value) {
+  const model = String(value || '');
+  const parts = model.split(/[\\/]/).filter(Boolean);
+  if (parts.length < 2) return model;
+  return `${parts.at(-1)} · ${parts.slice(0, -1).join('/')}`;
+}
+
+function ensureSelectChoice(select, value, label) {
+  if (!select || !value || [...select.options].some((option) => option.value === value)) return;
+  select.add(new Option(label || value, value));
+}
+
+function renderLocalPromptAiStatus(catalog = null) {
+  const status = $('#localPromptAiStatus');
+  const custom = $('#setLocalPromptAiClip').value;
+  status.className = '';
+  if (!catalog) {
+    status.textContent = custom
+      ? `Custom · ${localPromptAiModelLabel(custom)}`
+      : `Automatic · ${localPromptAiModelLabel(localPromptAiSettings.clip || localPromptAiSettings.activeModel) || 'Krea 2 prompt model'}`;
+    return;
+  }
+  if (custom && catalog.available === false && custom === catalog.configuredModel) {
+    status.className = 'bad';
+    status.textContent = 'Configured model is not listed by ComfyUI';
+    return;
+  }
+  status.className = 'ready';
+  status.textContent = custom
+    ? `Ready · ${localPromptAiModelLabel(custom)}`
+    : `Automatic · ${localPromptAiModelLabel(catalog.activeModel || localPromptAiSettings.clip) || 'Krea 2 prompt model'}`;
+}
+
+function syncLocalPromptAiTypeAvailability() {
+  const model = $('#setLocalPromptAiClip');
+  const type = $('#setLocalPromptAiClipType');
+  const readonly = !state.profileIsOwner;
+  type.disabled = readonly || !model.value;
+  $('#localPromptAiClipTypeField').classList.toggle('is-inherited', !model.value);
+}
+
+function applyLocalPromptAiSettings(settings = {}) {
+  localPromptAiSettings = {
+    clip: settings.clip || '',
+    clipType: settings.clipType || 'krea2',
+    activeModel: settings.localPromptAiClip || settings.clip || '',
+    activeType: settings.localPromptAiClip ? (settings.localPromptAiClipType || 'krea2') : (settings.clipType || 'krea2'),
+  };
+  const model = $('#setLocalPromptAiClip');
+  const type = $('#setLocalPromptAiClipType');
+  const configuredModel = settings.localPromptAiClip || '';
+  const configuredType = settings.localPromptAiClipType || 'krea2';
+  ensureSelectChoice(model, configuredModel, localPromptAiModelLabel(configuredModel));
+  ensureSelectChoice(type, configuredType, localPromptAiTypeLabel(configuredType));
+  model.value = configuredModel;
+  type.value = configuredType;
+  const readonly = !state.profileIsOwner;
+  $('#localPromptAiSettings').dataset.readonly = String(readonly);
+  [model, type, $('#refreshLocalPromptAiModels'), $('#testLocalPromptAiModel')]
+    .forEach((control) => { control.disabled = readonly; });
+  syncLocalPromptAiTypeAvailability();
+  renderLocalPromptAiStatus();
+}
+
+async function refreshLocalPromptAiModels(force = false) {
+  const model = $('#setLocalPromptAiClip');
+  const type = $('#setLocalPromptAiClipType');
+  const selectedModel = model.value;
+  const selectedType = type.value || 'krea2';
+  const status = $('#localPromptAiStatus');
+  status.className = '';
+  status.textContent = 'Reading installed ComfyUI models…';
+  try {
+    const catalog = await api(`/api/prompt/local-models${force ? '?refresh=1' : ''}`);
+    model.replaceChildren(new Option('Automatic · Krea 2 prompt model', ''));
+    catalog.models.forEach((name) => model.add(new Option(localPromptAiModelLabel(name), name)));
+    ensureSelectChoice(model, selectedModel, `${localPromptAiModelLabel(selectedModel)} · unavailable`);
+    type.replaceChildren();
+    catalog.types.forEach((value) => type.add(new Option(localPromptAiTypeLabel(value), value)));
+    ensureSelectChoice(type, selectedType, localPromptAiTypeLabel(selectedType));
+    model.value = selectedModel;
+    type.value = selectedType;
+    syncLocalPromptAiTypeAvailability();
+    renderLocalPromptAiStatus(Object.assign({}, catalog, {
+      available: !model.value || catalog.models.includes(model.value),
+      configuredModel: model.value,
+    }));
+  } catch (error) {
+    status.className = 'bad';
+    status.textContent = error.message || 'Could not read ComfyUI models';
+  }
+}
 
 function renderExternalLlmPreferences() {
   const provider = $('#setExternalLlmProvider').value || 'openai';
@@ -27268,6 +27371,7 @@ function applyExternalLlmSettings(settings = {}) {
 
 const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setComfy', 'setHfToken', 'setHfEndpoint', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
+  'setLocalPromptAiClip', 'setLocalPromptAiClipType',
   'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
   'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl', 'setExternalLlmOllamaModel',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
@@ -27384,6 +27488,8 @@ function settingsPayload() {
     externalLlmImageEnhance: mediaPreferenceControlValue('externalLlmImageEnhance'),
     externalLlmVideoRevise: mediaPreferenceControlValue('externalLlmVideoRevise'),
     externalLlmVideoEnhance: mediaPreferenceControlValue('externalLlmVideoEnhance'),
+    localPromptAiClip: $('#setLocalPromptAiClip').value,
+    localPromptAiClipType: $('#setLocalPromptAiClipType').value,
     galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
     vramProfile: $('#setVramProfile').value,
     krea2ModelVariant: $('#setKrea2ModelVariant').value,
@@ -27514,6 +27620,7 @@ function flushSettingsAutosave() {
       });
     }
     if (savedSettings) {
+      applyLocalPromptAiSettings(savedSettings);
       applyExternalLlmSettings(savedSettings);
       settingsAppRestartRequired = savedSettings.appRestartRequired === true;
       renderSettingsRestartAction();
@@ -30791,6 +30898,31 @@ $('#setExternalLlmProvider').addEventListener('change', () => {
   renderExternalLlmPreferences();
 });
 
+$('#setLocalPromptAiClip').addEventListener('change', () => {
+  syncLocalPromptAiTypeAvailability();
+  renderLocalPromptAiStatus();
+});
+$('#refreshLocalPromptAiModels').addEventListener('click', () => refreshLocalPromptAiModels(true));
+$('#testLocalPromptAiModel').addEventListener('click', async () => {
+  if (!state.profileIsOwner) return;
+  const button = $('#testLocalPromptAiModel');
+  const status = $('#localPromptAiStatus');
+  button.disabled = true;
+  status.className = '';
+  status.textContent = 'Saving and testing…';
+  try {
+    await flushSettingsAutosave();
+    const result = await api('/api/prompt/local-model/test', { method: 'POST' });
+    status.className = 'ready';
+    status.textContent = `Ready · ${localPromptAiModelLabel(result.model)}`;
+  } catch (error) {
+    status.className = 'bad';
+    status.textContent = error.message || 'Local model test failed';
+  } finally {
+    button.disabled = !state.profileIsOwner;
+  }
+});
+
 ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance'].forEach((id) => {
   $('#' + id).addEventListener('click', () => {
     if (!state.profileIsOwner) return;
@@ -30862,6 +30994,8 @@ $('#settingsBtn').addEventListener('click', async () => {
       : 'Paste an hf_ read token';
     $('#setHfEndpoint').value = s.hfEndpoint || '';
     applyExternalLlmSettings(s);
+    applyLocalPromptAiSettings(s);
+    refreshLocalPromptAiModels().catch(() => {});
     $('#galleryPasswordInput').value = s.galleryPassword || '1234';
     $('#setVramProfile').value = s.vramProfile || 'auto';
     $('#setKrea2ModelVariant').value = s.krea2ModelVariant || (/int8.*convrot|convrot.*int8/i.test(s.unet || '') ? 'int8-convrot' : 'fp8');
