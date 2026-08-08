@@ -582,7 +582,7 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
 test('MiniMax H3 keeps its frame and reference-backed downloads independent', () => {
   assert.match(html, /data-engine="h3"[^>]*data-feature-engine="video\.h3"[^>]*data-model-label="MiniMax H3"/);
   assert.match(html, /id="vidH3ModeRow"[\s\S]*class="h3-mode-indicator"[\s\S]*data-h3-mode="frames"[\s\S]*data-h3-mode="reference"[\s\S]*data-h3-mode="replace"/);
-  assert.match(app, /\$\('#vidH3ModeRow'\)\.style\.setProperty\('--h3-mode-index', replaceMode \? '2' : \(referenceMode \? '1' : '0'\)\)/);
+  assert.match(app, /modeRow\.style\.setProperty\('--h3-mode-index', replaceMode \? '2' : \(referenceMode \? '1' : '0'\)\)/);
   assert.match(css, /\.h3-mode-panel \{[\s\S]*border: 0;[\s\S]*background: transparent;/);
   assert.match(css, /\.h3-mode-indicator \{[\s\S]*transform: translateX\(calc\(var\(--h3-mode-index\) \* 100%\)\);[\s\S]*transition: transform 260ms/);
   assert.doesNotMatch(html, /Reference mode installs its separate Ref2VA model only when you first use it\./);
@@ -597,7 +597,14 @@ test('MiniMax H3 keeps its frame and reference-backed downloads independent', ()
 
 test('MiniMax H3 Replace mode offers a focused local-preset workflow', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(html, /data-h3-mode="replace"[^>]*>Replace<\/button>/);
+  assert.match(html, /data-h3-mode="replace"[^>]*data-experimental="true"[^>]*aria-label="Replace, experimental"[^>]*hidden>Replace<\/button>/);
+  assert.match(html, /id="experimentalFeaturesToggle"[^>]*role="switch"[^>]*aria-checked="false"[\s\S]{0,300}<strong>Experimental Features<\/strong>/);
+  assert.match(app, /experimentalFeatures: saved\?\.experimentalFeatures === true/);
+  assert.match(app, /if \(!replaceAvailable && state\.vidH3Mode === 'replace'\) state\.vidH3Mode = 'frames'/);
+  assert.match(app, /replaceButton\.hidden = !replaceAvailable/);
+  assert.match(app, /state\.vidH3Mode = savedH3Mode === 'replace' && !h3ReplaceAvailable\(\) \? 'frames' : savedH3Mode/);
+  assert.match(css, /\.h3-mode-row \{[\s\S]*--h3-mode-count: 2;[\s\S]*grid-template-columns: repeat\(var\(--h3-mode-count\), minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.h3-mode-row\.has-replace \{ --h3-mode-count: 3; \}/);
   assert.match(html, /id="vidH3ReplacePanel"[\s\S]*id="vidH3ReplaceTarget"[\s\S]*id="vidH3ReplaceVideoBtn"[\s\S]*id="vidH3ReplaceImageBtn"[\s\S]*id="vidH3ReplacePromptBtn"/);
   assert.doesNotMatch(html, /Keep the plate\. Change one identity\. No mask needed\.|<b>Replacement prompt<\/b>/);
   assert.match(app, /function h3ReplacementReferences\(\)[\s\S]*images: state\.vidH3ReplaceImage[\s\S]*videos: state\.vidH3ReplaceVideo/);

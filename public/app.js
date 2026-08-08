@@ -167,6 +167,7 @@ const state = {
   mediaPreferences: {
     videoPreviews: true,
     previewCache: false,
+    experimentalFeatures: false,
   },
   metaLoras: [],
   metaLorasInfo: {},
@@ -550,12 +551,22 @@ function h3ReferenceBackedMode(mode = state.vidH3Mode) {
   return mode === 'reference' || mode === 'replace';
 }
 
+function experimentalFeaturesEnabled() {
+  return state.mediaPreferences.experimentalFeatures === true;
+}
+
+function h3ReplaceAvailable() {
+  return experimentalFeaturesEnabled();
+}
+
 function h3ReferenceModeActive() {
-  return state.view === 'video' && state.vidEngine === 'h3' && h3ReferenceBackedMode();
+  return state.view === 'video' && state.vidEngine === 'h3'
+    && (state.vidH3Mode === 'reference' || (state.vidH3Mode === 'replace' && h3ReplaceAvailable()));
 }
 
 function h3ReplaceModeActive() {
-  return state.view === 'video' && state.vidEngine === 'h3' && state.vidH3Mode === 'replace';
+  return state.view === 'video' && state.vidEngine === 'h3'
+    && state.vidH3Mode === 'replace' && h3ReplaceAvailable();
 }
 
 function makePromptReferenceToken(index) {
@@ -2725,7 +2736,7 @@ function mediaPreferencesKey() {
 function loadMediaPreferences() {
   const key = mediaPreferencesKey();
   if (!key) {
-    state.mediaPreferences = { videoPreviews: true, previewCache: false };
+    state.mediaPreferences = { videoPreviews: true, previewCache: false, experimentalFeatures: false };
     return;
   }
   try {
@@ -2733,9 +2744,10 @@ function loadMediaPreferences() {
     state.mediaPreferences = {
       videoPreviews: saved?.videoPreviews !== false,
       previewCache: saved?.previewCache === true,
+      experimentalFeatures: saved?.experimentalFeatures === true,
     };
   } catch {
-    state.mediaPreferences = { videoPreviews: true, previewCache: false };
+    state.mediaPreferences = { videoPreviews: true, previewCache: false, experimentalFeatures: false };
   }
 }
 
@@ -2743,6 +2755,7 @@ function saveMediaPreferences(next) {
   state.mediaPreferences = {
     videoPreviews: next.videoPreviews !== false,
     previewCache: next.previewCache === true,
+    experimentalFeatures: next.experimentalFeatures === true,
   };
   const key = mediaPreferencesKey();
   if (key) {
@@ -3070,7 +3083,8 @@ function loadForm() {
     state.promptAssistantUseSource = f.promptAssistantUseSource !== false;
     state.editRefSlots = Math.max(1, state.refs.reduce((count, ref, index) => ref ? Math.max(count, index + 1) : count, 1));
     state.vidRef = restoreWorkspaceAsset(f.vidRef);
-    state.vidH3Mode = ['reference', 'replace'].includes(f.vidH3Mode) ? f.vidH3Mode : 'frames';
+    const savedH3Mode = ['reference', 'replace'].includes(f.vidH3Mode) ? f.vidH3Mode : 'frames';
+    state.vidH3Mode = savedH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : savedH3Mode;
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
     state.vidH3Xl = f.vidH3Xl === true;
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
@@ -16455,7 +16469,9 @@ function h3ReplacementReferences() {
 }
 
 function h3ActiveReferences() {
-  return state.vidH3Mode === 'replace' ? h3ReplacementReferences() : h3References();
+  return state.vidH3Mode === 'replace' && h3ReplaceAvailable()
+    ? h3ReplacementReferences()
+    : h3References();
 }
 
 const H3_REFERENCE_LIMITS = Object.freeze({ images: 9, videos: 3, audios: 3 });
@@ -16676,7 +16692,7 @@ function setH3ReplacementAsset(kind, asset) {
 function renderH3Replacement() {
   const panel = $('#vidH3ReplacePanel');
   if (!panel) return;
-  const active = state.vidEngine === 'h3' && state.vidH3Mode === 'replace';
+  const active = state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && h3ReplaceAvailable();
   panel.hidden = !active;
   $$('#vidH3ReplaceKind [data-h3-replace-kind]').forEach((button) => {
     const selected = button.dataset.h3ReplaceKind === state.vidH3ReplaceKind;
@@ -16748,6 +16764,12 @@ function applyH3ReplacementPrompt() {
 function renderH3References() {
   clearH3ReferenceReorder();
   const h3 = state.vidEngine === 'h3';
+  const replaceAvailable = h3ReplaceAvailable();
+  if (!replaceAvailable && state.vidH3Mode === 'replace') state.vidH3Mode = 'frames';
+  const modeRow = $('#vidH3ModeRow');
+  const replaceButton = modeRow.querySelector('[data-h3-mode="replace"]');
+  replaceButton.hidden = !replaceAvailable;
+  modeRow.classList.toggle('has-replace', replaceAvailable);
   const referenceMode = h3 && state.vidH3Mode === 'reference';
   const replaceMode = h3 && state.vidH3Mode === 'replace';
   const referenceBacked = referenceMode || replaceMode;
@@ -16755,8 +16777,8 @@ function renderH3References() {
   $('#vidH3ReferencePanel').hidden = !referenceMode;
   $('#vidStandardInputs').hidden = referenceBacked;
   $('#vidStandardInputs').classList.toggle('h3-frame-inputs', h3 && !referenceBacked);
-  $('#vidH3ModeRow').style.setProperty('--h3-mode-index', replaceMode ? '2' : (referenceMode ? '1' : '0'));
-  $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => {
+  modeRow.style.setProperty('--h3-mode-index', replaceMode ? '2' : (referenceMode ? '1' : '0'));
+  modeRow.querySelectorAll('[data-h3-mode]').forEach((button) => {
     const active = button.dataset.h3Mode === state.vidH3Mode;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
@@ -16859,7 +16881,10 @@ function renderH3References() {
 }
 
 $$('#vidH3ModeRow [data-h3-mode]').forEach((button) => button.addEventListener('click', () => {
-  state.vidH3Mode = ['reference', 'replace'].includes(button.dataset.h3Mode) ? button.dataset.h3Mode : 'frames';
+  const requestedMode = button.dataset.h3Mode;
+  state.vidH3Mode = requestedMode === 'replace' && !h3ReplaceAvailable()
+    ? 'frames'
+    : (['reference', 'replace'].includes(requestedMode) ? requestedMode : 'frames');
   renderVidAttach();
   updateVideoPanels();
   renderPromptComposer();
@@ -18053,13 +18078,14 @@ $('#generateBtn').addEventListener('click', async () => {
       return toast(capability.reason || 'This video model is not supported on the connected generation device.', true);
     }
     const ltxEdit = state.vidEngine === 'ltx-edit';
-    const h3Reference = state.vidEngine === 'h3' && h3ReferenceBackedMode();
+    const h3Reference = state.vidEngine === 'h3'
+      && (state.vidH3Mode === 'reference' || (state.vidH3Mode === 'replace' && h3ReplaceAvailable()));
     const h3GenerationReferences = h3ActiveReferences();
     const h3ReferenceCount = Object.values(h3GenerationReferences).reduce((count, assets) => count + assets.length, 0);
     if (h3Reference && !h3ReferenceCount) {
       return toast('MiniMax H3 Reference mode needs at least one image, video, or audio reference', true);
     }
-    if (state.vidEngine === 'h3' && state.vidH3Mode === 'replace') {
+    if (state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && h3ReplaceAvailable()) {
       if (!state.vidH3ReplaceTarget.trim()) return toast('Describe the original target you want to replace', true);
       if (!state.vidH3ReplaceVideo) return toast('Replace mode needs the master video', true);
       if (!state.vidH3ReplaceImage) return toast('Replace mode needs the replacement image', true);
@@ -18119,9 +18145,13 @@ $('#generateBtn').addEventListener('click', async () => {
       wanAnimate2MotionStrength: state.vidEngine === 'wan-animate2' ? state.vidWanAnimate2MotionStrength : undefined,
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
       loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
-      h3Mode: state.vidEngine === 'h3' ? state.vidH3Mode : undefined,
-      h3ReplaceKind: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' ? state.vidH3ReplaceKind : undefined,
-      h3ReplaceTarget: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' ? state.vidH3ReplaceTarget.trim() : undefined,
+      h3Mode: state.vidEngine === 'h3'
+        ? (state.vidH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : state.vidH3Mode)
+        : undefined,
+      h3ReplaceKind: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && h3ReplaceAvailable()
+        ? state.vidH3ReplaceKind : undefined,
+      h3ReplaceTarget: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && h3ReplaceAvailable()
+        ? state.vidH3ReplaceTarget.trim() : undefined,
       h3Turbo: state.vidEngine === 'h3' ? h3TurboActive() : undefined,
       h3TurboStrength: h3TurboActive() ? state.vidH3TurboStrength : undefined,
       h3ResolutionSize: state.vidEngine === 'h3' ? h3ResolutionSize() : undefined,
@@ -22497,10 +22527,10 @@ function desktopGalleryDropTargets(drag = desktopGalleryDrag) {
         && h3References()[kind].length < H3_REFERENCE_LIMITS[kind];
     }
     if (target.matches('#vidH3ReplaceVideoBtn, #vidH3ReplaceVideoThumb')) {
-      return state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && !!drag.video;
+      return h3ReplaceModeActive() && !!drag.video;
     }
     if (target.matches('#vidH3ReplaceImageBtn, #vidH3ReplaceImageThumb')) {
-      return state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && !drag.video && !!drag.item?.file;
+      return h3ReplaceModeActive() && !drag.video && !!drag.item?.file;
     }
     if ((target.id === 'vidDriveBtn' || target.id === 'vidDriveThumb') && !drag.video) return false;
     if ((target.id === 'regionRefBtn' || target.id === 'regionRefPreview') && !selectedRegion()) return false;
@@ -25429,7 +25459,8 @@ async function reuseVideo(it, v) {
 
   // Clear current attachments + their UI
   state.vidRef = null;
-  state.vidH3Mode = engine === 'h3' && ['reference', 'replace'].includes(info.h3Mode) ? info.h3Mode : 'frames';
+  const reusableH3Mode = engine === 'h3' && ['reference', 'replace'].includes(info.h3Mode) ? info.h3Mode : 'frames';
+  state.vidH3Mode = reusableH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : reusableH3Mode;
   state.vidH3MatchSource = savedH3MatchSource === true;
   state.vidH3Xl = engine === 'h3' && (Number(info.h3ResolutionSize) >= H3Resolution.XL_SIZE
     || Math.max(Number(info.width) || 0, Number(info.height) || 0) > 1536);
@@ -27965,6 +27996,7 @@ function flushSettingsAutosave() {
       saveMediaPreferences({
         videoPreviews: mediaPreferenceControlValue('setVideoPreviews'),
         previewCache: mediaPreferenceControlValue('setPreviewCache'),
+        experimentalFeatures: mediaPreferenceControlValue('experimentalFeaturesToggle'),
       });
     }
     if (savedSettings) {
@@ -28033,10 +28065,18 @@ async function emptyTrashFromSettings() {
   await refreshTrashStatus();
 }
 
-['setVideoPreviews', 'setPreviewCache', 'setSmartFilenames'].forEach((id) => {
+['experimentalFeaturesToggle', 'setVideoPreviews', 'setPreviewCache', 'setSmartFilenames'].forEach((id) => {
   $('#' + id).addEventListener('click', () => {
     const button = $('#' + id);
-    button.setAttribute('aria-checked', String(!mediaPreferenceControlValue(id)));
+    const enabled = !mediaPreferenceControlValue(id);
+    button.setAttribute('aria-checked', String(enabled));
+    if (id === 'experimentalFeaturesToggle') {
+      state.mediaPreferences.experimentalFeatures = enabled;
+      if (!enabled && state.vidH3Mode === 'replace') state.vidH3Mode = 'frames';
+      updateVideoPanels();
+      renderPromptComposer();
+      saveForm();
+    }
     scheduleSettingsAutosave(id === 'setSmartFilenames' ? 'server' : 'media', 0);
   });
 });
@@ -31421,6 +31461,7 @@ $('#settingsBtn').addEventListener('click', async () => {
   }
   setMediaPreferenceControl('setVideoPreviews', state.mediaPreferences.videoPreviews);
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);
+  setMediaPreferenceControl('experimentalFeaturesToggle', state.mediaPreferences.experimentalFeatures);
   refreshPreviewCacheStatus();
   refreshTrashStatus().catch(() => {});
   refreshSparkAccess().catch(() => {});
@@ -33361,11 +33402,11 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
 });
 
 initIconTooltips();
+loadMediaPreferences();
 loadForm();
 syncGallerySortControl();
 setPromptDraft(state.prompts[state.view] || '');
 applySavedEngineOrders();
-loadMediaPreferences();
 restoreGenerationTuning(generationTuningMode(state.view));
 restoreDesktopPanelLayout();
 restoreGalleryZoom();

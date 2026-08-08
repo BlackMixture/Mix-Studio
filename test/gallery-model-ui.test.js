@@ -69,7 +69,7 @@ test('gallery performance controls can disable video previews and build an idle 
   assert.match(html, /id="setPreviewCache"[^>]*role="switch"/);
   assert.match(html, /id="previewCacheStatus"[^>]*aria-live="polite"/);
   assert.match(html, /id="previewCacheClear"/);
-  assert.match(app, /mediaPreferences: \{[\s\S]*videoPreviews: true,[\s\S]*previewCache: false/);
+  assert.match(app, /mediaPreferences: \{[\s\S]*videoPreviews: true,[\s\S]*previewCache: false,[\s\S]*experimentalFeatures: false/);
   assert.match(app, /function saveMediaPreferences\(next\)/);
   assert.match(app, /function compressedPreviewResponse\(response\)/);
   assert.match(app, /window\.requestIdleCallback\(work/);
