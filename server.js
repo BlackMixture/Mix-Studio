@@ -42,8 +42,24 @@ const {
   availableComponents,
   inspectPinnedNodeRevisions,
   installComponents,
+  MODEL_ASSETS: DEPENDENCY_MODEL_ASSETS,
   normalizeHuggingFaceEndpoint,
 } = require('./lib/dependency-installer');
+const {
+  activeH3ModelSettingKeys,
+  h3EffectiveModelName,
+  h3FrameVariant,
+  h3ReferenceVariant,
+  h3TurboCompatibility,
+  h3VariantSettingDefaults,
+  normalizeH3FrameVariant,
+  normalizeH3ReferenceVariant,
+} = require('./lib/h3-model-variants');
+const { dynTimePatchStatus, restoreDynTimePatch } = require('./lib/h3-dyntime-patch');
+const {
+  deleteManagedModelCandidate,
+  managedModelCleanupCandidates,
+} = require('./lib/model-cleanup');
 const { discoverModels } = require('./installer/model-discovery');
 const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
 const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
@@ -465,6 +481,7 @@ const DEFAULT_SETTINGS = {
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   h3TurboLora: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
   h3RefTurboLora: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
+  ...h3VariantSettingDefaults(),
   wanHighUnet: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',
   wanLowUnet: 'wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors',
   wanClip: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors',
@@ -523,6 +540,8 @@ function normalizeSettings(s) {
   normalizeSeedVr2Defaults(s);
   s.krea2ModelVariant = normalizeKrea2Variant(s.krea2ModelVariant, s);
   s.vramProfile = normalizeVramProfile(s.vramProfile);
+  s.h3FrameModelVariant = normalizeH3FrameVariant(s.h3FrameModelVariant);
+  s.h3ReferenceModelVariant = normalizeH3ReferenceVariant(s.h3ReferenceModelVariant);
   s.hfEndpoint = normalizeHuggingFaceEndpoint(s.hfEndpoint);
   if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
   if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
@@ -568,6 +587,22 @@ function settingsResponse() {
   delete response.externalLlmOpenAiApiKey;
   delete response.externalLlmGeminiApiKey;
   return response;
+}
+
+function configuredModelsRoot() {
+  const install = sam3InstallStatus(RUNTIME);
+  return String(RUNTIME.comfy.modelsPath || (install.basePath ? path.join(install.basePath, 'models') : '')).trim();
+}
+
+function publicModelCleanupCandidate(candidate) {
+  return {
+    id: candidate.id,
+    settingKey: candidate.settingKey,
+    filename: candidate.filename,
+    folder: candidate.folder,
+    bytes: candidate.bytes,
+    modifiedAt: candidate.modifiedAt,
+  };
 }
 
 function adoptDeviceCompatibleModelSettings(hardwareProfile = {}) {
@@ -1526,14 +1561,14 @@ function configuredModelsStatus(info) {
     },
     h3: {
       label: 'MiniMax H3',
-      model: diffusionModelStatus(info, settings.h3Unet),
+      model: diffusionModelStatus(info, h3EffectiveModelName(settings, 'frames')),
       textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', settings.h3Clip),
       videoVae: modelStatus(info, 'VAELoader', 'vae_name', settings.h3VideoVae),
       audioVae: modelStatus(info, 'VAELoader', 'vae_name', settings.h3AudioVae),
     },
     h3Ref: {
       label: 'MiniMax H3 Reference-to-Video',
-      model: diffusionModelStatus(info, settings.h3RefUnet),
+      model: diffusionModelStatus(info, h3EffectiveModelName(settings, 'reference')),
     },
     h3Turbo: {
       label: 'MiniMax H3 Turbo',
@@ -5712,7 +5747,7 @@ const REQUIRED_CLASSES = {
 const KREA2_DEPENDENCY_COMPONENTS = new Set([
   'image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style',
 ]);
-const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3sage']);
+const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3dyntime']);
 
 function dependencyComponentInfo(id, fit = null) {
   const component = DEPENDENCY_COMPONENTS[id] || {};
@@ -6410,6 +6445,64 @@ async function handleApi(req, res, url) {
     await getSetupHardwareInfo().catch(() => null);
     return json(res, 200, settingsResponse());
   }
+  if (route === '/api/h3/models/status' && req.method === 'GET') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can inspect shared H3 model setup' });
+    const frame = h3FrameVariant(settings);
+    const reference = h3ReferenceVariant(settings);
+    return json(res, 200, {
+      frame: Object.assign({}, frame, { filename: h3EffectiveModelName(settings, 'frames') }),
+      reference: Object.assign({}, reference, { filename: h3EffectiveModelName(settings, 'reference') }),
+      turbo: {
+        frames: h3TurboCompatibility(settings, 'frames'),
+        reference: h3TurboCompatibility(settings, 'reference'),
+      },
+      dynTimePatch: await dynTimePatchStatus(RUNTIME),
+    });
+  }
+  if (route === '/api/h3/dyntime/restore' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can restore shared ComfyUI files' });
+    if (dependencyInstallRunning) return json(res, 409, { error: 'Wait for the active dependency installation to finish.' });
+    const body = await readJsonBody(req);
+    if (body.confirm !== 'RESTORE COMFYUI') {
+      return json(res, 400, { error: 'Type RESTORE COMFYUI exactly to restore the verified pre-DynTime files.' });
+    }
+    try { await assertDesktopIsIdle(); }
+    catch (error) { return json(res, 409, { error: String(error.message || error) }); }
+    try {
+      const restored = await restoreDynTimePatch(RUNTIME);
+      return json(res, 200, { ok: true, restored: restored.restored, restartRequired: true });
+    } catch (error) {
+      return json(res, 409, { error: String(error.message || error), code: error?.code || 'h3_dyntime_restore_failed' });
+    }
+  }
+  if (route === '/api/models/cleanup' && req.method === 'GET') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can manage shared model files' });
+    const candidates = await managedModelCleanupCandidates(configuredModelsRoot(), settings, DEPENDENCY_MODEL_ASSETS);
+    return json(res, 200, {
+      candidates: candidates.map(publicModelCleanupCandidate),
+      bytes: candidates.reduce((sum, candidate) => sum + candidate.bytes, 0),
+      scope: 'inactive-mix-studio-managed',
+    });
+  }
+  if (route === '/api/models/cleanup' && req.method === 'DELETE') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can manage shared model files' });
+    if (dependencyInstallRunning) return json(res, 409, { error: 'Wait for the active model download or dependency installation to finish.' });
+    try { await assertDesktopIsIdle(); }
+    catch (error) { return json(res, 409, { error: String(error.message || error) }); }
+    const body = await readJsonBody(req);
+    try {
+      const deleted = await deleteManagedModelCandidate(
+        configuredModelsRoot(), settings, DEPENDENCY_MODEL_ASSETS, body.id, body.confirmName,
+      );
+      objectInfoCache = null;
+      return json(res, 200, { ok: true, deleted: publicModelCleanupCandidate(deleted), permanent: true });
+    } catch (error) {
+      return json(res, error?.code === 'model_cleanup_stale' ? 409 : 400, {
+        error: String(error.message || error),
+        code: error?.code || 'model_cleanup_failed',
+      });
+    }
+  }
   if (route === '/api/setup/status' && req.method === 'GET') {
     return json(res, 200, await setupStatusPayload(url.searchParams.has('refresh')));
   }
@@ -6591,8 +6684,14 @@ async function handleApi(req, res, url) {
         .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
     const changesLocalPromptAi = ['localPromptAiClip', 'localPromptAiClipType']
       .some((key) => typeof body[key] === 'string' && body[key].trim() !== String(settings[key] || ''));
-    if ((changesExternalLlm || changesLocalPromptAi) && !isAdmin()) {
-      return json(res, 403, { error: 'Only the owner profile can change the shared prompt AI settings' });
+    const changesH3ModelVariant = [
+      'h3FrameModelVariant', 'h3ReferenceModelVariant', 'h3Unet', 'h3RefUnet',
+      'h3Bf16Unet', 'h3Bf16RefUnet', 'h3DynTimeRefUnet', 'h3DynTimeRefHqUnet',
+      'h3TurboLora', 'h3RefTurboLora', 'h3Clip', 'h3VideoVae', 'h3AudioVae',
+    ]
+      .some((key) => typeof body[key] === 'string' && body[key].trim() !== String(settings[key] || ''));
+    if ((changesExternalLlm || changesLocalPromptAi || changesH3ModelVariant) && !isAdmin()) {
+      return json(res, 403, { error: 'Only the owner profile can change the shared prompt AI settings or shared H3 model settings' });
     }
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       if (key === 'exportDir') continue;
@@ -6724,7 +6823,14 @@ async function handleApi(req, res, url) {
           depthModel: settings.depthAnythingV3Model,
           outpaintLora: settings.krea2OutpaintLora,
         },
-        minimaxH3: h3Core,
+        minimaxH3: Object.assign({}, h3Core, {
+          frameVariant: h3FrameVariant(settings),
+          referenceVariant: h3ReferenceVariant(settings),
+          turbo: {
+            frames: h3TurboCompatibility(settings, 'frames'),
+            reference: h3TurboCompatibility(settings, 'reference'),
+          },
+        }),
         wanAnimate2: wanAnimate2Core,
         features: settings.features,
         capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
@@ -7829,6 +7935,9 @@ async function handleApi(req, res, url) {
       : 'frames';
     const h3ReferenceBacked = engine === 'h3' && (h3Mode === 'reference' || h3Mode === 'replace');
     const h3GraphMode = h3ReferenceBacked ? 'reference' : 'frames';
+    const h3SelectedModelVariant = engine === 'h3'
+      ? (h3ReferenceBacked ? h3ReferenceVariant(settings) : h3FrameVariant(settings))
+      : null;
     const h3ReplaceKind = body.h3ReplaceKind === 'character' ? 'character' : 'object';
     const h3ReplaceTarget = String(body.h3ReplaceTarget || '').trim().slice(0, 240);
     const h3TurboRequested = engine === 'h3' && body.h3Turbo === true;
@@ -7867,7 +7976,37 @@ async function handleApi(req, res, url) {
           compatibility: h3Compatibility,
         });
       }
+      const selectedMode = h3ReferenceBacked ? 'reference' : 'frames';
+      const selectedVariant = h3SelectedModelVariant;
+      if (selectedVariant.requiresPatch) {
+        const patchStatus = await dynTimePatchStatus(RUNTIME);
+        if (!patchStatus.ready) {
+          return json(res, 409, {
+            error: 'MiniMax H3 DynTime needs its reviewed ComfyUI compatibility patch. Open Preferences → Video Models and run DynTime setup.',
+            code: 'h3_dyntime_patch_required',
+            component: 'h3dyntime',
+            patch: patchStatus,
+          });
+        }
+      }
+      const selectedModel = diffusionModelStatus(info, h3EffectiveModelName(settings, selectedMode));
+      if (!selectedModel.ok) {
+        return json(res, 409, {
+          error: `MiniMax H3 needs this ${selectedVariant.label} model in ComfyUI: ${selectedModel.name}`,
+          code: 'h3_model_unavailable',
+          component: selectedVariant.requiresPatch ? 'h3dyntime' : (h3ReferenceBacked ? 'h3r2v' : 'h3'),
+          model: selectedModel,
+        });
+      }
       if (h3Turbo) {
+        const turboCompatibility = h3TurboCompatibility(settings, selectedMode);
+        if (!turboCompatibility.supported) {
+          return json(res, 409, {
+            error: turboCompatibility.reason,
+            code: 'h3_turbo_model_incompatible',
+            modelVariant: turboCompatibility.variant,
+          });
+        }
         h3TurboNativeSampler = minimaxH3NativeAudioSampling(info);
         const referenceTurbo = h3ReferenceBacked;
         const requiredTurboNodes = referenceTurbo
@@ -8327,6 +8466,8 @@ async function handleApi(req, res, url) {
         sourceFrameRate: wanAnimate2 || undefined,
         h3Mode: engine === 'h3' ? h3Mode : undefined,
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
+        h3ModelVariant: engine === 'h3' ? h3SelectedModelVariant?.id : undefined,
+        h3ModelName: engine === 'h3' ? h3EffectiveModelName(settings, h3GraphMode) : undefined,
         h3TurboStrength: engine === 'h3' && opts.turbo ? opts.turboStrength : undefined,
         h3TurboLowVram: engine === 'h3' && opts.turbo ? opts.turboLowVram || undefined : undefined,
         h3TurboSampler: engine === 'h3' && opts.turbo
@@ -9051,6 +9192,21 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/queue') {
+    const queueNow = Date.now();
+    const dependencyDownloadActive = dependencyInstallState.state === 'running'
+      && dependencyInstallState.phase === 'downloading-model';
+    const activeDownloads = dependencyDownloadActive ? [{
+      id: 'dependency-model-download',
+      label: dependencyInstallState.filename || dependencyInstallState.message || 'Model download',
+      message: dependencyInstallState.message || 'Downloading model',
+      filename: dependencyInstallState.filename || '',
+      downloaded: Math.max(0, Number(dependencyInstallState.downloaded || 0)),
+      downloadTotal: Math.max(0, Number(dependencyInstallState.downloadTotal || 0)),
+      downloadMethod: dependencyInstallState.downloadMethod || '',
+      downloadStartedAt: dependencyInstallState.downloadStartedAt || dependencyInstallState.updatedAt || queueNow,
+      updatedAt: dependencyInstallState.updatedAt || queueNow,
+      canCancel: isAdmin(),
+    }] : [];
     try {
       const q = await (await comfyFetch('/queue')).json();
       // Other profiles' jobs stay visible (shared GPU) but get redacted labels
@@ -9100,6 +9256,7 @@ async function handleApi(req, res, url) {
         running,
         pending,
         finalizing,
+        downloads: activeDownloads,
         health: await queueHealth(running, pending),
         history: db.history.filter((h) => h.profileId === req.profile.id).slice(0, 20).map((entry) => {
           const item = entry.itemId && db.items.find((candidate) => candidate.id === entry.itemId && candidate.profileId === req.profile.id);
@@ -9107,7 +9264,7 @@ async function handleApi(req, res, url) {
         }),
       });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [], finalizing: [] });
+      return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [], finalizing: [], downloads: activeDownloads });
     }
   }
 

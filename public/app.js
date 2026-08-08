@@ -3979,17 +3979,23 @@ function renderH3TurboMode() {
   if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider) return;
   const h3 = state.view === 'video' && state.vidEngine === 'h3';
   const referenceMode = h3 && h3ReferenceBackedMode();
+  const selectedTurboCompatibility = lastMeta?.minimaxH3?.turbo?.[referenceMode ? 'reference' : 'frames'];
+  const modelSupportsTurbo = selectedTurboCompatibility?.supported !== false;
+  if (!modelSupportsTurbo && state.vidH3Turbo) state.vidH3Turbo = false;
   const enabled = state.vidH3Turbo === true;
   const active = enabled;
   const turboSteps = normalizedH3TurboSteps();
   const nativeAudioSampler = lastMeta?.minimaxH3?.nativeAudioSampling === true;
   panel.hidden = !h3;
-  toggle.disabled = false;
-  toggle.setAttribute('aria-disabled', 'false');
+  toggle.disabled = !modelSupportsTurbo;
+  toggle.setAttribute('aria-disabled', String(!modelSupportsTurbo));
   toggle.setAttribute('aria-checked', String(active));
   const component = referenceMode ? 'h3turbor2v' : 'h3turbo';
   const missing = lastMeta?.dependencies?.missingComponents?.includes(component) === true;
-  if (active && missing) {
+  if (!modelSupportsTurbo) {
+    summary.textContent = 'Unavailable with DynTime · use Standard or Full BF16';
+    toggle.title = selectedTurboCompatibility?.reason || 'The selected H3 model is not compatible with the current Turbo adapter.';
+  } else if (active && missing) {
     summary.textContent = `${turboSteps} steps · install ${referenceMode ? 'Reference ' : ''}Turbo on generate`;
     toggle.title = `${referenceMode ? 'The LightX2V Reference Turbo LoRA and creator sampler' : 'The Turbo LoRA workflow'} will be installed before generation.`;
   } else if (active && referenceMode) {
@@ -4154,6 +4160,7 @@ $('#vidH3SageToggle').addEventListener('click', () => {
 });
 
 $('#vidH3TurboToggle').addEventListener('click', () => {
+  if ($('#vidH3TurboToggle').disabled) return;
   if (state.vidEngine !== 'h3') return;
   state.vidH3Turbo = !state.vidH3Turbo;
   renderH3TurboMode();
@@ -18476,11 +18483,13 @@ function setGenerating(on, statusText) {
 state.queueProgress = {};
 let queueRefreshAt = 0;
 let queueDrag = null;
+let queueView = 'jobs';
+let queueDownloadsWereActive = false;
 
 async function refreshQueue() {
   const q = await api('/api/queue');
   reconcileGenerationState(q);
-  const total = (q.running || []).length + (q.pending || []).length + (q.finalizing || []).length;
+  const total = (q.running || []).length + (q.pending || []).length + (q.finalizing || []).length + (q.downloads || []).length;
   $('#queueCount').hidden = total === 0;
   $('#queueCount').textContent = String(total);
   if ($('#queueSheet').classList.contains('show')) renderQueue(q);
@@ -18808,7 +18817,78 @@ function queueThumbnail(entry) {
   return thumb;
 }
 
+function setQueueView(view) {
+  queueView = view === 'downloads' ? 'downloads' : 'jobs';
+  const jobsActive = queueView === 'jobs';
+  $('#queueJobsPanel').hidden = !jobsActive;
+  $('#queueDownloadsPanel').hidden = jobsActive;
+  $('#queueJobsTab').classList.toggle('active', jobsActive);
+  $('#queueDownloadsTab').classList.toggle('active', !jobsActive);
+  $('#queueJobsTab').setAttribute('aria-selected', String(jobsActive));
+  $('#queueDownloadsTab').setAttribute('aria-selected', String(!jobsActive));
+}
+
+function syncQueueTabs(q) {
+  const downloads = q.downloads || [];
+  const jobs = (q.running || []).length + (q.pending || []).length + (q.finalizing || []).length;
+  const hasDownloads = downloads.length > 0;
+  $('#queueTabs').hidden = !hasDownloads;
+  $('#queueJobsCount').textContent = String(jobs);
+  $('#queueDownloadsCount').textContent = String(downloads.length);
+  if (hasDownloads && !queueDownloadsWereActive && jobs === 0) queueView = 'downloads';
+  if (!hasDownloads) queueView = 'jobs';
+  queueDownloadsWereActive = hasDownloads;
+  setQueueView(queueView);
+}
+
+function renderQueueDownloads(downloads) {
+  const list = $('#queueDownloadsList');
+  list.innerHTML = '';
+  if (!downloads.length) {
+    list.innerHTML = '<div class="queue-empty">No active downloads.</div>';
+    return;
+  }
+  for (const download of downloads) {
+    const metrics = dependencyProgressMetrics(Object.assign({ phase: 'downloading-model', state: 'running' }, download));
+    const card = document.createElement('div');
+    card.className = 'queue-download-card';
+    const head = document.createElement('div');
+    head.className = 'queue-download-head';
+    head.innerHTML = `<span class="queue-download-icon" aria-hidden="true">↓</span><span><strong>${escapeHtml(download.filename || download.label || 'Model download')}</strong><small>${escapeHtml(download.message || 'Downloading model')}</small></span>`;
+    const progress = document.createElement('div');
+    progress.className = `queue-download-progress${metrics.determinate ? '' : ' indeterminate'}`;
+    progress.innerHTML = `<i style="width:${metrics.determinate ? Math.max(0, Math.min(100, metrics.percent)) : 34}%"></i>`;
+    const footer = document.createElement('div');
+    footer.className = 'queue-download-footer';
+    const label = document.createElement('span');
+    label.textContent = metrics.label || 'Download active';
+    footer.appendChild(label);
+    if (download.canCancel) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', async () => {
+        if (!await askConfirm({ title: 'Cancel this download?', message: 'Completed files are kept and partial model data is removed safely.', confirmLabel: 'Cancel download', danger: true })) return;
+        cancel.disabled = true;
+        try {
+          await api('/api/dependencies/cancel', { method: 'POST' });
+          toast('Stopping download safely…');
+          refreshQueue();
+        } catch (error) {
+          cancel.disabled = false;
+          toast(error.message, true);
+        }
+      });
+      footer.appendChild(cancel);
+    }
+    card.append(head, progress, footer);
+    list.appendChild(card);
+  }
+}
+
 function renderQueue(q) {
+  syncQueueTabs(q);
+  renderQueueDownloads(q.downloads || []);
   renderQueueHealth(q.health);
   if (queueDrag) return;
   const list = $('#queueList');
@@ -18918,6 +18998,8 @@ $('#queueBtn').addEventListener('click', async () => {
     refreshQueue().catch(() => { /* noop */ });
   }, 3000);
 });
+
+$$('[data-queue-view]').forEach((button) => button.addEventListener('click', () => setQueueView(button.dataset.queueView)));
 
 $('#queueResetBtn').addEventListener('click', async () => {
   if (!await askConfirm({ title: 'Hard reset ComfyUI?', message: 'This stops the active job, clears queued jobs, and unloads model memory.', confirmLabel: 'Hard reset', danger: true })) return;
@@ -19207,6 +19289,10 @@ function connectEvents() {
     setGenerating(false);
     renderGrid();
     refreshGallery(true).catch(() => { /* noop */ });
+    queueRefreshSoon();
+  });
+  es.addEventListener('dependencyInstall', (event) => {
+    try { setupDependencyState = JSON.parse(event.data); } catch { /* Queue refresh remains authoritative. */ }
     queueRefreshSoon();
   });
   es.onerror = () => { /* browser auto-reconnects */ };
@@ -27754,7 +27840,9 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
-  'setH3Unet', 'setH3RefUnet', 'setH3TurboLora', 'setH3RefTurboLora', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
+  'setH3FrameModelVariant', 'setH3ReferenceModelVariant',
+  'setH3Unet', 'setH3RefUnet', 'setH3Bf16Unet', 'setH3Bf16RefUnet', 'setH3DynTimeRefUnet', 'setH3DynTimeRefHqUnet',
+  'setH3TurboLora', 'setH3RefTurboLora', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
   'setWanLowLora', 'setErosCkpt', 'setErosTe', 'setErosDmd', 'setErosSigF',
   'setErosSigU', 'setScailUnet', 'setScailLora', 'setScailPusaLora',
@@ -27903,8 +27991,14 @@ function settingsPayload() {
     ltxUpscaler: $('#setLtxUps').value,
     ltxFaceIdLora: $('#setFaceIdLora').value,
     ltxFaceIdDistilledLora: $('#setFaceIdDistilled').value,
+    h3FrameModelVariant: $('#setH3FrameModelVariant').value,
+    h3ReferenceModelVariant: $('#setH3ReferenceModelVariant').value,
     h3Unet: $('#setH3Unet').value,
     h3RefUnet: $('#setH3RefUnet').value,
+    h3Bf16Unet: $('#setH3Bf16Unet').value,
+    h3Bf16RefUnet: $('#setH3Bf16RefUnet').value,
+    h3DynTimeRefUnet: $('#setH3DynTimeRefUnet').value,
+    h3DynTimeRefHqUnet: $('#setH3DynTimeRefHqUnet').value,
     h3TurboLora: $('#setH3TurboLora').value,
     h3RefTurboLora: $('#setH3RefTurboLora').value,
     h3Clip: $('#setH3Clip').value,
@@ -28037,6 +28131,170 @@ async function refreshTrashStatus() {
     button.disabled = files === 0;
   } catch (error) {
     status.textContent = error.message || 'Could not check trash';
+  }
+}
+
+let h3ModelInstallBusy = false;
+
+async function refreshH3ModelStatus() {
+  const status = $('#h3ModelCompatibility');
+  const frameButton = $('#h3InstallFrameModel');
+  const referenceButton = $('#h3InstallReferenceModel');
+  const restoreButton = $('#h3RestoreDynTimePatch');
+  if (!status || !frameButton || !referenceButton || !restoreButton) return;
+  frameButton.hidden = !state.profileIsOwner;
+  referenceButton.hidden = !state.profileIsOwner;
+  frameButton.disabled = h3ModelInstallBusy || !state.profileIsOwner;
+  referenceButton.disabled = h3ModelInstallBusy || !state.profileIsOwner;
+  restoreButton.disabled = h3ModelInstallBusy || !state.profileIsOwner;
+  restoreButton.hidden = true;
+  if (!state.profileIsOwner) {
+    status.dataset.state = 'idle';
+    status.textContent = 'Only the owner can change shared generation models.';
+    return;
+  }
+  status.dataset.state = 'checking';
+  status.textContent = 'Checking selected H3 models…';
+  try {
+    const result = await api('/api/h3/models/status');
+    const reference = result.reference || {};
+    const patch = result.dynTimePatch || {};
+    restoreButton.hidden = !(patch.ready && patch.restoreAvailable);
+    if (reference.requiresPatch) {
+      status.dataset.state = patch.ready ? 'ready' : 'attention';
+      status.textContent = patch.ready
+        ? 'DynTime compatibility is ready. Turbo is disabled for DynTime because its split Q/K/V layout does not match the current Turbo adapters.'
+        : 'DynTime setup is required. Setup checks the pinned patch first, backs up all three affected ComfyUI files, and leaves the current install untouched if compatibility checks fail.';
+      referenceButton.textContent = patch.ready ? 'Install selected DynTime model' : 'Set up DynTime safely';
+    } else if (reference.id === 'bf16' || result.frame?.id === 'bf16') {
+      status.dataset.state = 'attention';
+      status.textContent = 'Full BF16 supports H3 Turbo, but each selected model is 66.3 GB and real generation may need roughly 116 GB of available GPU or unified memory.';
+      referenceButton.textContent = 'Install selected Reference model';
+    } else {
+      status.dataset.state = 'ready';
+      status.textContent = 'Standard H3 is selected. Turbo remains available for both Frames and Reference modes.';
+      referenceButton.textContent = 'Install selected Reference model';
+    }
+  } catch (error) {
+    status.dataset.state = 'error';
+    status.textContent = error.message || 'Could not check H3 model setup.';
+  }
+}
+
+async function restoreDynTimePatchFromSettings() {
+  const typed = await askText({
+    title: 'Restore pre-DynTime ComfyUI files?',
+    message: 'Mix Studio will restore only its verified three-file backup. It refuses if ComfyUI changed after setup. Type RESTORE COMFYUI to continue.',
+    confirmLabel: 'Restore files',
+    danger: true,
+    input: { label: 'Type RESTORE COMFYUI', expected: 'RESTORE COMFYUI', expectedMessage: 'Type RESTORE COMFYUI exactly.' },
+  });
+  if (typed == null) return;
+  h3ModelInstallBusy = true;
+  try {
+    const result = await api('/api/h3/dyntime/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: typed }),
+    });
+    toast(result.restartRequired ? 'Pre-DynTime files restored — restart ComfyUI before generating' : 'Pre-DynTime files restored');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    h3ModelInstallBusy = false;
+    refreshH3ModelStatus().catch(() => {});
+  }
+}
+
+async function installSelectedH3Model(kind) {
+  if (h3ModelInstallBusy || !state.profileIsOwner) return;
+  try {
+    await flushSettingsAutosave();
+    const selectedVariant = kind === 'frames'
+      ? $('#setH3FrameModelVariant').value
+      : $('#setH3ReferenceModelVariant').value;
+    if (selectedVariant === 'bf16' && !await askConfirm({
+      title: 'Install the full BF16 H3 model?',
+      message: 'This download is 66.3 GB. Generation may need roughly 116 GB of available GPU or unified memory. Your Standard model remains installed unless you later delete it from Model cleanup.',
+      confirmLabel: 'Install 66.3 GB model',
+    })) return;
+    if (selectedVariant.startsWith('dyntime') && !await askConfirm({
+      title: 'Set up experimental DynTime?',
+      message: 'Mix Studio will first verify a pinned compatibility patch, back up the three affected ComfyUI files, then install the selected model. If the patch does not fit your ComfyUI version, setup stops before changing it.',
+      confirmLabel: 'Continue safely',
+    })) return;
+    h3ModelInstallBusy = true;
+    await refreshH3ModelStatus();
+    const referenceVariant = $('#setH3ReferenceModelVariant').value;
+    const component = kind === 'frames'
+      ? 'h3'
+      : (referenceVariant.startsWith('dyntime') ? 'h3dyntime' : 'h3r2v');
+    const result = await api('/api/dependencies/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ components: [component] }),
+    });
+    setupDependencyState = result.install || setupDependencyState;
+    toast('H3 setup started — progress is available in Queue → Downloads');
+    queueRefreshSoon();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    h3ModelInstallBusy = false;
+    refreshH3ModelStatus().catch(() => {});
+  }
+}
+
+async function refreshModelCleanup() {
+  const section = $('#modelCleanup');
+  const summary = $('#modelCleanupSummary');
+  const list = $('#modelCleanupList');
+  if (!section || !summary || !list) return;
+  section.hidden = !state.profileIsOwner;
+  if (!state.profileIsOwner) return;
+  summary.textContent = 'Checking managed models…';
+  list.innerHTML = '';
+  try {
+    const result = await api('/api/models/cleanup');
+    const candidates = result.candidates || [];
+    summary.textContent = candidates.length
+      ? `${candidates.length} inactive managed model${candidates.length === 1 ? '' : 's'} · ${formatSelectionBytes(result.bytes)}`
+      : 'No inactive Mix Studio-managed models found.';
+    for (const candidate of candidates) {
+      const row = document.createElement('div');
+      row.className = 'model-cleanup-row';
+      row.innerHTML = `<span><strong>${escapeHtml(candidate.filename)}</strong><small>${escapeHtml(candidate.folder)} · ${formatSelectionBytes(candidate.bytes)}</small></span>`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', async () => {
+        const typed = await askText({
+          title: 'Permanently delete this model?',
+          message: `This permanently deletes ${candidate.filename}. Type the complete filename to continue.`,
+          confirmLabel: 'Delete model',
+          danger: true,
+          input: { label: 'Model filename', expected: candidate.filename, expectedMessage: 'Type the complete filename exactly.' },
+        });
+        if (typed == null) return;
+        remove.disabled = true;
+        try {
+          await api('/api/models/cleanup', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: candidate.id, confirmName: typed }),
+          });
+          toast(`Deleted ${candidate.filename}`);
+          await refreshModelCleanup();
+        } catch (error) {
+          remove.disabled = false;
+          toast(error.message, true);
+        }
+      });
+      row.appendChild(remove);
+      list.appendChild(row);
+    }
+  } catch (error) {
+    summary.textContent = error.message || 'Could not inspect managed models.';
   }
 }
 
@@ -31423,8 +31681,14 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setLtxUps').value = s.ltxUpscaler || '';
     $('#setFaceIdLora').value = s.ltxFaceIdLora || '';
     $('#setFaceIdDistilled').value = s.ltxFaceIdDistilledLora || '';
+    $('#setH3FrameModelVariant').value = s.h3FrameModelVariant || 'standard';
+    $('#setH3ReferenceModelVariant').value = s.h3ReferenceModelVariant || 'standard';
     $('#setH3Unet').value = s.h3Unet || '';
     $('#setH3RefUnet').value = s.h3RefUnet || '';
+    $('#setH3Bf16Unet').value = s.h3Bf16Unet || '';
+    $('#setH3Bf16RefUnet').value = s.h3Bf16RefUnet || '';
+    $('#setH3DynTimeRefUnet').value = s.h3DynTimeRefUnet || '';
+    $('#setH3DynTimeRefHqUnet').value = s.h3DynTimeRefHqUnet || '';
     $('#setH3TurboLora').value = s.h3TurboLora || '';
     $('#setH3RefTurboLora').value = s.h3RefTurboLora || '';
     $('#setH3Clip').value = s.h3Clip || '';
@@ -31464,6 +31728,8 @@ $('#settingsBtn').addEventListener('click', async () => {
   setMediaPreferenceControl('experimentalFeaturesToggle', state.mediaPreferences.experimentalFeatures);
   refreshPreviewCacheStatus();
   refreshTrashStatus().catch(() => {});
+  refreshH3ModelStatus().catch(() => {});
+  refreshModelCleanup().catch(() => {});
   refreshSparkAccess().catch(() => {});
   setSettingsTab(settingsActiveTab);
   $('#settingsSheet').classList.add('show');
@@ -31479,6 +31745,18 @@ $('#setKrea2ModelVariant').addEventListener('change', () => {
     ? 'krea2_raw_int8_convrot.safetensors'
     : 'krea2_raw_fp8_scaled.safetensors';
 });
+
+['setH3FrameModelVariant', 'setH3ReferenceModelVariant'].forEach((id) => {
+  $('#' + id).addEventListener('change', async () => {
+    try { await flushSettingsAutosave(); } catch { return; }
+    refreshH3ModelStatus().catch(() => {});
+    refreshModelCleanup().catch(() => {});
+  });
+});
+$('#h3InstallFrameModel').addEventListener('click', () => installSelectedH3Model('frames'));
+$('#h3InstallReferenceModel').addEventListener('click', () => installSelectedH3Model('reference'));
+$('#h3RestoreDynTimePatch').addEventListener('click', restoreDynTimePatchFromSettings);
+$('#modelCleanupRefresh').addEventListener('click', () => refreshModelCleanup());
 
 $('#settingsRestartApply').addEventListener('click', async () => {
   if (settingsAppRestartRunning || !settingsAppRestartRequired) return;

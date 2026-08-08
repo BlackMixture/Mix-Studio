@@ -2185,13 +2185,22 @@
 <div class="sheet" id="queueSheet">
   <div class="sheet-panel">
     <h3 class="sheet-title">Queue <button data-close type="button" aria-label="Close queue">✕</button></h3>
-    <div class="queue-health" id="queueHealth"></div>
-    <div class="queue-tools">
-      <button class="queue-clear-btn" id="queueClearHistoryBtn" type="button">Clear history</button>
-      <button class="queue-reset-btn" id="queueResetBtn" type="button">Hard reset</button>
+    <div class="queue-tabs" id="queueTabs" role="tablist" aria-label="Queue sections" hidden>
+      <button class="active" id="queueJobsTab" type="button" role="tab" aria-selected="true" data-queue-view="jobs">Jobs <span id="queueJobsCount">0</span></button>
+      <button id="queueDownloadsTab" type="button" role="tab" aria-selected="false" data-queue-view="downloads">Downloads <span id="queueDownloadsCount">0</span></button>
     </div>
-    <div class="queue-reorder-hint" id="queueReorderHint" hidden>Hold and drag queued jobs to reorder.</div>
-    <div id="queueList"></div>
+    <div id="queueJobsPanel" role="tabpanel" aria-labelledby="queueJobsTab">
+      <div class="queue-health" id="queueHealth"></div>
+      <div class="queue-tools">
+        <button class="queue-clear-btn" id="queueClearHistoryBtn" type="button">Clear history</button>
+        <button class="queue-reset-btn" id="queueResetBtn" type="button">Hard reset</button>
+      </div>
+      <div class="queue-reorder-hint" id="queueReorderHint" hidden>Hold and drag queued jobs to reorder.</div>
+      <div id="queueList"></div>
+    </div>
+    <div id="queueDownloadsPanel" role="tabpanel" aria-labelledby="queueDownloadsTab" hidden>
+      <div id="queueDownloadsList"></div>
+    </div>
   </div>
 </div>
 
@@ -2648,13 +2657,38 @@
             <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
           </div>
           <div class="settings-group"><h5>MiniMax H3</h5>
-            <div class="field"><label>FL2VA diffusion model</label><input id="setH3Unet" type="text" /></div>
-            <div class="field"><label>Ref2VA diffusion model (optional)</label><input id="setH3RefUnet" type="text" /></div>
-            <div class="field"><label>Frames Turbo LoRA (optional preview)</label><input id="setH3TurboLora" type="text" /></div>
-            <div class="field"><label>Reference Turbo LoRA (LightX2V)</label><input id="setH3RefTurboLora" type="text" /></div>
-            <div class="field"><label>Qwen3-VL text encoder</label><input id="setH3Clip" type="text" /></div>
-            <div class="field"><label>Video VAE</label><input id="setH3VideoVae" type="text" /></div>
-            <div class="field"><label>Audio VAE</label><input id="setH3AudioVae" type="text" /></div>
+            <p class="settings-default-note">The standard pruned INT8 models remain the default. Full BF16 needs unusually large memory; DynTime modifies three ComfyUI core files only after explicit setup and keeps verified backups.</p>
+            <div class="field"><label for="setH3FrameModelVariant">Text + Frames model</label>
+              <select id="setH3FrameModelVariant">
+                <option value="standard">Standard · pruned INT8 · 21 GB</option>
+                <option value="bf16">Full BF16 · 66.3 GB</option>
+              </select>
+            </div>
+            <button class="settings-cache-clear h3-model-install" id="h3InstallFrameModel" type="button">Install selected Frames model</button>
+            <div class="field"><label for="setH3ReferenceModelVariant">Reference / Replace model</label>
+              <select id="setH3ReferenceModelVariant">
+                <option value="standard">Standard · pruned INT8 · 21 GB</option>
+                <option value="bf16">Full BF16 · 66.3 GB</option>
+                <option value="dyntime">DynTime sQKV · 21 GiB · experimental</option>
+                <option value="dyntime-hq">DynTime sQKV HQ · 28 GiB · experimental</option>
+              </select>
+            </div>
+            <div class="h3-model-compatibility" id="h3ModelCompatibility" data-state="checking" role="status" aria-live="polite">Checking selected H3 models…</div>
+            <button class="settings-cache-clear h3-model-install" id="h3InstallReferenceModel" type="button">Install selected Reference model</button>
+            <button class="settings-cache-clear h3-patch-restore" id="h3RestoreDynTimePatch" type="button" hidden>Restore pre-DynTime ComfyUI files</button>
+            <details class="settings-advanced-models"><summary>Advanced filenames</summary>
+              <div class="field"><label>Standard FL2VA model</label><input id="setH3Unet" type="text" /></div>
+              <div class="field"><label>Standard Ref2VA model</label><input id="setH3RefUnet" type="text" /></div>
+              <div class="field"><label>Full BF16 FL2VA model</label><input id="setH3Bf16Unet" type="text" /></div>
+              <div class="field"><label>Full BF16 Ref2VA model</label><input id="setH3Bf16RefUnet" type="text" /></div>
+              <div class="field"><label>DynTime Ref2VA model</label><input id="setH3DynTimeRefUnet" type="text" /></div>
+              <div class="field"><label>DynTime Ref2VA HQ model</label><input id="setH3DynTimeRefHqUnet" type="text" /></div>
+              <div class="field"><label>Frames Turbo LoRA</label><input id="setH3TurboLora" type="text" /></div>
+              <div class="field"><label>Reference Turbo LoRA (LightX2V)</label><input id="setH3RefTurboLora" type="text" /></div>
+              <div class="field"><label>Qwen3-VL text encoder</label><input id="setH3Clip" type="text" /></div>
+              <div class="field"><label>Video VAE</label><input id="setH3VideoVae" type="text" /></div>
+              <div class="field"><label>Audio VAE</label><input id="setH3AudioVae" type="text" /></div>
+            </details>
           </div>
           <div class="settings-group"><h5>Wan 2.2</h5>
             <div class="field"><label>High-noise diffusion model (.safetensors or .gguf)</label><input id="setWanHigh" type="text" /></div>
@@ -2841,6 +2875,13 @@
               <span class="settings-media-toggle-copy"><strong>Smart file names</strong><small>Use a short phrase from the prompt for new image and video files. A short ID prevents duplicates.</small></span>
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>
             </button>
+          </div>
+          <div class="settings-group model-cleanup" id="modelCleanup" hidden>
+            <h5>Model cleanup</h5>
+            <p class="settings-default-note">Review inactive model files installed from Mix Studio’s managed catalog. Active models and unrelated ComfyUI files are never listed.</p>
+            <div class="model-cleanup-summary" id="modelCleanupSummary">Checking managed models…</div>
+            <div class="model-cleanup-list" id="modelCleanupList"></div>
+            <button class="settings-cache-clear" id="modelCleanupRefresh" type="button">Refresh model list</button>
           </div>
           <div class="settings-group">
             <h5>Gallery performance</h5>
