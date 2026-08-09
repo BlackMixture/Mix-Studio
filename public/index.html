@@ -899,14 +899,20 @@
         <div class="h3-reference-head">
           <span><b>Reference inputs</b><small>Images, videos, and audio · up to 15 inputs</small></span>
           <div class="h3-reference-head-actions">
-            <button class="h3-reference-tag h3-restyle-trigger" id="vidH3Restyle" type="button" title="Add a source video to restyle it" disabled>Restyle</button>
-            <div class="h3-reference-size" id="vidH3RefSize" role="group" aria-label="Reference image detail">
-              <button class="active" type="button" data-h3-ref-size="match" aria-pressed="true">Match</button>
-              <button type="button" data-h3-ref-size="max" aria-pressed="false">Max detail</button>
-            </div>
+            <button class="h3-restyle-trigger" id="vidH3Restyle" type="button" title="Add a source video to restyle it" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.15 3.1L16 7.25l-2.85 1.15L12 11.5l-1.15-3.1L8 7.25l2.85-1.15L12 3ZM6.5 12l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Zm10.75 1 .95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95.95-2.55Z"/></svg>
+              <span>Restyle</span>
+            </button>
             <button class="edit-reference-add h3-reference-add" id="vidH3AddReference" type="button" aria-label="Add another H3 reference input" title="Add another reference input">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
             </button>
+          </div>
+        </div>
+        <div class="h3-reference-options">
+          <span>Image detail</span>
+          <div class="h3-reference-size" id="vidH3RefSize" role="group" aria-label="Reference image detail">
+            <button class="active" type="button" data-h3-ref-size="match" aria-pressed="true">Match</button>
+            <button type="button" data-h3-ref-size="max" aria-pressed="false">Max detail</button>
           </div>
         </div>
         <div class="ref-row h3-reference-grid" id="vidH3ReferenceList"></div>

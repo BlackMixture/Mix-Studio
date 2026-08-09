@@ -687,7 +687,8 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
 });
 
 test('MiniMax H3 Reference mode offers local multi-style video restyling', () => {
-  assert.match(html, /id="vidH3ReferencePanel"[\s\S]*id="vidH3Restyle"[^>]*disabled[^>]*>Restyle<\/button>/);
+  assert.match(html, /id="vidH3ReferencePanel"[\s\S]*id="vidH3Restyle"[^>]*disabled[^>]*>[\s\S]*?<span>Restyle<\/span>[\s\S]*?<\/button>/);
+  assert.match(html, /class="h3-reference-options"[\s\S]*?<span>Image detail<\/span>[\s\S]*?id="vidH3RefSize"/);
   assert.match(html, /id="h3StyleSheet"[\s\S]*data-h3-style="anime-2d"[\s\S]*data-h3-style="live-action"[\s\S]*data-h3-style="feature-3d"[\s\S]*data-h3-style="cel-3d"/);
   assert.match(html, /id="h3StyleCustom"[^>]*maxlength="500"/);
   assert.match(app, /function openH3StylePicker\(\)/);
@@ -700,6 +701,9 @@ test('MiniMax H3 Reference mode offers local multi-style video restyling', () =>
   assert.match(app, /#vidH3Restyle'\)\.addEventListener\('click', openH3StylePicker\)/);
   assert.match(app, /#h3StyleGrid \[data-h3-style\]/);
   assert.match(css, /\.h3-style-grid/);
+  assert.match(css, /\.h3-reference-head-actions \{[^}]*display: flex;[^}]*align-items: center;/);
+  assert.match(css, /\.h3-reference-options \{[\s\S]*?justify-content: space-between;/);
+  assert.match(css, /\.h3-reference-size \{[\s\S]*?display: inline-flex;[\s\S]*?border-radius: 9px;/);
 });
 
 test('Multiple edit references support hold-and-drag reordering', () => {
