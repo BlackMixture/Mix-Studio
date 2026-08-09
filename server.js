@@ -186,6 +186,7 @@ const {
 } = require('./lib/edit-mask');
 const {
   H3_FPS,
+  H3_TURBO_REFERENCE_CHUNK_FRAMES,
   LTX_MAX_SECONDS,
   LTX_CAMERA_FPS,
   LTX_CAMERA_MAX_SECONDS,
@@ -194,6 +195,7 @@ const {
   h3DurationSeconds,
   h3EffectiveDurationSeconds,
   h3FramesForSeconds,
+  h3TurboReferenceSegments,
   ltxCameraDurationSeconds,
   ltxDurationSeconds,
   ltxFramesForSeconds,
@@ -222,6 +224,7 @@ const {
   videoExtensionInfo,
 } = require('./lib/video-extension');
 const {
+  joinVideoChunks,
   joinVideoExtension,
   probeVideoFile,
   resolveFfmpegExecutable,
@@ -2322,6 +2325,32 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
   broadcast('jobDone', { jobId: pid, items: [composite, ...created], strengthHunt: true, count: created.length });
 }
 
+async function queueNextH3TurboReferenceChunk(job) {
+  const sequence = job && job.videoChunkSequence;
+  if (!sequence || sequence.index >= sequence.segments.length - 1) return null;
+  const nextIndex = sequence.index + 1;
+  const nextOpts = Object.assign({}, sequence.opts, {
+    makePoster: false,
+    turboReferenceSegment: sequence.segments[nextIndex],
+  });
+  const graph = await buildMiniMaxH3Graph(nextOpts, settings, {
+    nodeFromOrdered, filterInputs, rtxVideoSuperResolutionNode,
+  });
+  const nextPid = await queuePrompt(graph, { profileId: job.profileId });
+  trackJob(nextPid, {
+    kind: 'video',
+    profileId: job.profileId,
+    itemId: job.itemId || null,
+    createItem: job.createItem,
+    graph,
+    videoInfo: job.videoInfo,
+    thumbnailName: job.thumbnailName,
+    videoChunkSequence: Object.assign({}, sequence, { index: nextIndex }),
+  });
+  ensureWs();
+  return nextPid;
+}
+
 async function completeJob(pid) {
   const job = jobs.get(pid);
   if (!job) return;
@@ -2377,6 +2406,56 @@ async function completeJob(pid) {
     const vids = findOutputFiles(outputs, /\.(mp4|webm|mov|mkv)$/i);
     if (!vids.length) return failJob(pid, 'ComfyUI produced no video file');
     let buf = await downloadOutput(vids[vids.length - 1]);
+    const videoChunkSequence = job.videoChunkSequence;
+    if (videoChunkSequence) {
+      videoChunkSequence.chunkBuffers[videoChunkSequence.index] = buf;
+      if (videoChunkSequence.index === 0 && job.createItem && !videoChunkSequence.posterBuffer) {
+        const posters = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
+        if (posters.length) videoChunkSequence.posterBuffer = await downloadOutput(posters[0]);
+      }
+      if (videoChunkSequence.index < videoChunkSequence.segments.length - 1) {
+        try {
+          const nextJobId = await queueNextH3TurboReferenceChunk(job);
+          jobs.delete(pid);
+          broadcast('videoChunkStep', {
+            jobId: pid,
+            nextJobId,
+            profileId: job.profileId,
+            completedChunk: videoChunkSequence.index + 1,
+            nextChunk: videoChunkSequence.index + 2,
+            total: videoChunkSequence.segments.length,
+          });
+        } catch (error) {
+          return failJob(pid, `MiniMax H3 chunk ${videoChunkSequence.index + 2} could not start: ${error.message}`);
+        }
+        return;
+      }
+      broadcast('status', {
+        jobId: pid,
+        profileId: job.profileId,
+        kind: 'video',
+        text: 'Joining H3 video chunks…',
+        itemId: job.itemId || null,
+      });
+      try {
+        const ffmpegPath = await resolveFfmpegExecutable(RUNTIME);
+        if (videoChunkSequence.chunkBuffers.length !== videoChunkSequence.segments.length
+          || videoChunkSequence.chunkBuffers.some((chunk) => !chunk)) {
+          throw new Error('One or more generated chunks are missing');
+        }
+        buf = await joinVideoChunks({
+          chunkBuffers: videoChunkSequence.chunkBuffers,
+          segments: videoChunkSequence.segments,
+          fps: videoChunkSequence.fps,
+          width: videoChunkSequence.width,
+          height: videoChunkSequence.height,
+          ffmpegPath,
+        });
+        durationMs = Math.max(jobDurationMs(job), Date.now() - videoChunkSequence.startedAt);
+      } catch (error) {
+        return failJob(pid, error.message || 'Could not join the generated H3 video chunks');
+      }
+    }
     if (job.extensionJoin) {
       broadcast('status', {
         jobId: pid,
@@ -2407,7 +2486,8 @@ async function completeJob(pid) {
         ? smartAssetFilename(videoPrompt, id, '.png', 'video')
         : `${id}.png`;
       const posters = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
-      const pbuf = posters.length ? await downloadOutput(posters[0]) : BLANK_PNG;
+      const pbuf = videoChunkSequence?.posterBuffer
+        || (posters.length ? await downloadOutput(posters[0]) : BLANK_PNG);
       await fsp.writeFile(path.join(IMAGES, posterName), pbuf);
       item = {
         id,
@@ -8418,6 +8498,13 @@ async function handleApi(req, res, url) {
       references: h3References,
       refImageSize: body.h3RefImageSize === 'max' ? 'max' : 'match',
     };
+    const h3TurboReferenceChunks = engine === 'h3' && h3ReferenceBacked && h3Turbo
+      && h3References.videos.length && frames > H3_TURBO_REFERENCE_CHUNK_FRAMES
+      ? h3TurboReferenceSegments(frames)
+      : [];
+    if (h3TurboReferenceChunks.length > 1) {
+      opts.turboReferenceSegment = h3TurboReferenceChunks[0];
+    }
     const graph = engine === 'h3' ? await buildMiniMaxH3Graph(opts, settings, {
       nodeFromOrdered, filterInputs, rtxVideoSuperResolutionNode,
     })
@@ -8428,8 +8515,21 @@ async function handleApi(req, res, url) {
           : faceImageName ? await buildAnimateFaceId(faceImageName, opts)
             : await buildAnimate(comfyName, opts);
     const pid = await queuePrompt(graph, { profileId: req.profile.id });
+    const h3ChunkSequenceId = h3TurboReferenceChunks.length > 1 ? uid() : '';
     trackJob(pid, {
       kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
+      videoChunkSequence: h3TurboReferenceChunks.length > 1 ? {
+        id: h3ChunkSequenceId,
+        index: 0,
+        segments: h3TurboReferenceChunks,
+        chunkBuffers: [],
+        posterBuffer: null,
+        startedAt: Date.now(),
+        opts: Object.assign({}, opts),
+        fps: H3_FPS,
+        width: opts.fourK ? W * 2 : W,
+        height: opts.fourK ? H * 2 : H,
+      } : undefined,
       videoInfo: {
         engine,
         seconds: opts.seconds,
@@ -8473,6 +8573,7 @@ async function handleApi(req, res, url) {
         h3TurboSampler: engine === 'h3' && opts.turbo
           ? (h3ReferenceBacked ? 'creator-reference' : (opts.turboNativeSampler ? 'native-euler' : 'creator-legacy'))
           : undefined,
+        h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
         h3AspectRatio: engine === 'h3' ? h3OutputAspectRatio : undefined,
         h3ResolutionSize: engine === 'h3' ? Number(body.h3ResolutionSize) || 1 : undefined,
         h3MatchSource: engine === 'h3' && h3Mode === 'frames' ? body.h3MatchSource === true : undefined,
@@ -8504,6 +8605,8 @@ async function handleApi(req, res, url) {
       frames,
       engine,
       h3Turbo: engine === 'h3' ? opts.turbo : undefined,
+      h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
+      sequenceId: h3ChunkSequenceId || undefined,
       attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
     });
   }
@@ -9224,7 +9327,8 @@ async function handleApi(req, res, url) {
         return Object.assign({}, row, {
           owned,
           sequenceId: owned && job.params && job.params.editSequence
-            ? job.params.editSequence.id : undefined,
+            ? job.params.editSequence.id
+            : (owned && job.videoChunkSequence ? job.videoChunkSequence.id : undefined),
         });
       };
       const markReorderable = (row) => {
@@ -9979,6 +10083,10 @@ function jobLabel(job) {
   }
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'extend') return 'Video extension (LTX 2.3)';
+  if (job.kind === 'video' && job.videoChunkSequence) {
+    return `H3 Turbo chunk ${job.videoChunkSequence.index + 1}/${job.videoChunkSequence.segments.length}: `
+      + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 58);
+  }
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);
   if (job.kind === 'enhance') return 'Prompt enhance';
   if (job.kind === 'motionPrompt') return 'Motion prompt from first frame';

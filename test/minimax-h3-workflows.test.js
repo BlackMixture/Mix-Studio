@@ -7,11 +7,14 @@ const {
   H3_FPS,
   H3_MAX_SECONDS,
   H3_MIN_SECONDS,
+  H3_TURBO_REFERENCE_CHUNK_ADVANCE_FRAMES,
+  H3_TURBO_REFERENCE_CHUNK_FRAMES,
   buildMiniMaxH3Graph,
   h3Dimensions,
   h3DurationSeconds,
   h3EffectiveDurationSeconds,
   h3FramesForSeconds,
+  h3TurboReferenceSegments,
   normalizeH3References,
 } = require('../lib/video-workflows');
 
@@ -38,6 +41,23 @@ test('MiniMax H3 duration snaps to the official 17k+5 frame grid at 24 fps', () 
   assert.equal(h3EffectiveDurationSeconds(10), 243 / 24);
   assert.equal(h3EffectiveDurationSeconds(15), 362 / 24);
   assert.equal(h3EffectiveDurationSeconds(h3EffectiveDurationSeconds(10)), 243 / 24);
+});
+
+test('MiniMax H3 Reference Turbo plans long outputs as five-second source chunks', () => {
+  assert.equal(H3_TURBO_REFERENCE_CHUNK_ADVANCE_FRAMES, 120);
+  assert.equal(H3_TURBO_REFERENCE_CHUNK_FRAMES, 124);
+  assert.deepEqual(h3TurboReferenceSegments(124), [
+    { index: 0, startFrame: 0, generationFrames: 124, keepFrames: 124 },
+  ]);
+  assert.deepEqual(h3TurboReferenceSegments(243), [
+    { index: 0, startFrame: 0, generationFrames: 124, keepFrames: 120 },
+    { index: 1, startFrame: 120, generationFrames: 124, keepFrames: 123 },
+  ]);
+  assert.deepEqual(h3TurboReferenceSegments(362), [
+    { index: 0, startFrame: 0, generationFrames: 124, keepFrames: 120 },
+    { index: 1, startFrame: 120, generationFrames: 124, keepFrames: 120 },
+    { index: 2, startFrame: 240, generationFrames: 124, keepFrames: 122 },
+  ]);
 });
 
 test('MiniMax H3 canvas follows the native 768 short edge and area cap', () => {
@@ -205,6 +225,41 @@ test('MiniMax H3 Reference Turbo uses LightX2V with the audio-safe creator sampl
   assert.deepEqual(graph.guider.inputs.model, ['turbo_sampling', 0]);
   assert.deepEqual(graph.sample.inputs.sampler, ['turbo_sampler', 0]);
   assert.equal(Object.values(graph).some((node) => /cache/i.test(node.class_type)), false);
+});
+
+test('MiniMax H3 Reference Turbo renders a planned long-video segment inside the five-second safety window', async () => {
+  const segment = h3TurboReferenceSegments(362)[1];
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Restyle <Video 1> as hand-drawn anime.', W: 1344, H: 768,
+    frames: 362, seed: 17, turbo: true, fourK: true, makePoster: true,
+    turboReferenceSegment: segment,
+    references: {
+      videos: [{ name: 'live-action.mp4', hasAudio: true }],
+      audios: [{ name: 'music.wav' }],
+    },
+  }, settings);
+
+  assert.equal(graph.condition.class_type, 'MiniMaxH3ReferenceToVideo');
+  assert.equal(graph.condition.inputs.length, 124);
+  assert.deepEqual(graph.condition.inputs['ref_videos.ref_video_0'], ['ref_video_1_0', 0]);
+  assert.deepEqual(graph.condition.inputs['ref_video_audios.ref_video_audio_0'], ['ref_video_1_0', 2]);
+  assert.equal(graph.ref_video_1_0.inputs.frame_load_cap, 124);
+  assert.equal(graph.ref_video_1_0.inputs.skip_first_frames, 120);
+  assert.equal(graph.ref_audio_1_0.inputs.start_time, 5);
+  assert.equal(graph.ref_audio_1_0.inputs.duration, 124 / 24);
+  assert.deepEqual(graph.sample.inputs.latent_image, ['condition', 1]);
+  assert.deepEqual(graph.decode.inputs.samples, ['sample', 0]);
+  assert.deepEqual(graph.video.inputs.images, ['vsr', 0]);
+  assert.deepEqual(graph.save.inputs.video, ['video', 0]);
+  assert.deepEqual(graph.poster_pick.inputs.image, ['decode', 0]);
+});
+
+test('MiniMax H3 Reference Turbo rejects an unplanned long video graph', async () => {
+  await assert.rejects(buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Restyle <Video 1>.', W: 1344, H: 768,
+    frames: 362, seed: 17, turbo: true,
+    references: { videos: [{ name: 'live-action.mp4', hasAudio: true }] },
+  }, settings), /planned five-second chunk segment/);
 });
 
 test('MiniMax H3 reference graph preserves official reference namespaces and media order', async () => {

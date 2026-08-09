@@ -4301,6 +4301,7 @@ function assetPickerVisibleAssets() {
     ? uploadedAssetPickerAssets(assetPickerState.accept)
     : previousGenerationAssets(assetPickerState.accept);
   let assets = source.filter((asset) => {
+    if (assetPickerState.mediaKind !== 'all' && asset.kind !== assetPickerState.mediaKind) return false;
     if (!assetMatchesQuery(asset, assetPickerState.query)) return false;
     if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && asset.folder !== assetPickerState.folder) return false;
     if (assetPickerState.likes && !asset.liked) return false;
@@ -4328,6 +4329,19 @@ function closeAssetPickerMenus(except = null) {
 
 function renderAssetPickerFilters() {
   if (!assetPickerState) return;
+  const allowedKinds = assetPickerKinds(assetPickerState.accept);
+  if (assetPickerState.mediaKind !== 'all' && !allowedKinds.includes(assetPickerState.mediaKind)) {
+    assetPickerState.mediaKind = 'all';
+  }
+  const kindFilter = $('#assetPickerKindFilter');
+  kindFilter.hidden = allowedKinds.length < 2;
+  $$('#assetPickerKindFilter [data-asset-kind]').forEach((button) => {
+    const kind = button.dataset.assetKind;
+    button.hidden = kind !== 'all' && !allowedKinds.includes(kind);
+    const active = kind === assetPickerState.mediaKind;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   const folder = (state.folders || []).find((entry) => entry.id === assetPickerState.folder);
   if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && !folder) assetPickerState.folder = 'all';
   $('#assetPickerFolderLabel').textContent = assetPickerState.folder === 'uploaded-assets'
@@ -4410,7 +4424,8 @@ function renderAssetPickerList() {
     : previousGenerationAssets(assetPickerState.accept);
   const assets = assetPickerVisibleAssets();
   list.replaceChildren();
-  const filtered = assetPickerState.query || (!browsingUploads && assetPickerState.folder !== 'all') || assetPickerState.likes;
+  const filtered = assetPickerState.mediaKind !== 'all' || assetPickerState.query
+    || (!browsingUploads && assetPickerState.folder !== 'all') || assetPickerState.likes;
   count.textContent = filtered
     ? `${assets.length} of ${allAssets.length}`
     : `${allAssets.length} available`;
@@ -4561,7 +4576,7 @@ function openAssetPicker(accept, callback, title, options = {}) {
   const folder = ['all', 'uploaded-assets'].includes(state.activeFolder) || (state.folders || []).some((entry) => entry.id === state.activeFolder)
     ? state.activeFolder : 'all';
   assetPickerState = {
-    accept, callback, query: '', preview: null, assets: [], folder,
+    accept, callback, query: '', preview: null, assets: [], folder, mediaKind: 'all',
     galleryReference: options.galleryReference === true,
     multiple: options.multiple === true && assetPickerKind(accept) === 'image',
     selected: new Map(),
@@ -5562,6 +5577,13 @@ $('#assetPickerSearchClear').addEventListener('click', () => {
   renderAssetPickerList();
   $('#assetPickerSearch').focus();
 });
+$$('#assetPickerKindFilter [data-asset-kind]').forEach((button) => button.addEventListener('click', () => {
+  if (!assetPickerState || button.hidden) return;
+  assetPickerState.mediaKind = button.dataset.assetKind;
+  closeAssetPickerMenus();
+  renderAssetPickerFilters();
+  renderAssetPickerList();
+}));
 $('#assetPickerPreviewBack').addEventListener('click', closeAssetPickerPreview);
 $('#assetPickerFolderTrigger').addEventListener('click', () => {
   if (!assetPickerState) return;
@@ -16635,6 +16657,29 @@ function pickH3Reference() {
   pickUpload(accept, addH3Reference, 'Choose H3 reference input');
 }
 
+function replaceH3Reference(kind, index, asset) {
+  const refs = h3References();
+  const current = refs[kind]?.[index];
+  if (!current || !asset) return;
+  if (h3ReferenceKind(asset) !== kind) {
+    toast(`Choose another ${kind.slice(0, -1)}`, true);
+    return;
+  }
+  refs[kind][index] = asset;
+  releaseAssetObjectUrl(current, asset);
+  renderH3References();
+  renderPromptComposer();
+  saveForm();
+  const labels = { images: 'Picture', videos: 'Video', audios: 'Audio' };
+  toast(`${labels[kind]} ${index + 1} replaced · prompt kept`);
+}
+
+function pickH3ReferenceReplacement(kind, index) {
+  const labels = { images: 'Picture', videos: 'Video', audios: 'Audio' };
+  const mediaKind = kind.slice(0, -1);
+  pickUpload(`${mediaKind}/*`, (asset) => replaceH3Reference(kind, index, asset), `Replace ${labels[kind]} ${index + 1}`);
+}
+
 function removeH3Reference(kind, index) {
   const before = h3PromptReferenceEntries();
   const [removed] = h3References()[kind].splice(index, 1);
@@ -16691,7 +16736,7 @@ function wireH3ReferenceReorder(slot, entry) {
   slot.setAttribute('aria-roledescription', 'draggable H3 reference input');
   slot.title = 'Drag onto another matching reference to swap them';
   slot.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('.ref-x')) return;
+    if (event.target.closest('.ref-x, .ref-swap')) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     clearH3ReferenceReorder();
     if (event.pointerType === 'mouse') event.preventDefault();
@@ -16850,6 +16895,54 @@ function applyH3ReplacementPrompt() {
   toast('Replacement prompt applied locally · Enhance turned off');
 }
 
+function h3StylePreset(id) {
+  return (H3PromptGuide?.styleTransferPresets || []).find((preset) => preset.id === id) || null;
+}
+
+function closeH3StylePicker() {
+  $('#h3StyleSheet').classList.remove('show');
+  syncSheetScrollLock();
+}
+
+function openH3StylePicker() {
+  const refs = h3References();
+  if (!refs.videos.length) return toast('Add the source video first', true);
+  $('#h3StyleSheet').classList.add('show');
+  syncSheetScrollLock();
+  requestAnimationFrame(() => $('#h3StyleGrid [data-h3-style]')?.focus({ preventScroll: true }));
+}
+
+function applyH3StyleTransferPrompt(style, label = 'Custom') {
+  const refs = h3References();
+  if (!refs.videos.length) return toast('Add the source video first', true);
+  if (!H3PromptGuide?.buildStyleTransferPrompt) {
+    return toast('The restyle presets are unavailable. Reload the app and try again.', true);
+  }
+  const before = promptDraft().trim();
+  const usesStyleImage = refs.images.length > 0;
+  const prompt = H3PromptGuide.buildStyleTransferPrompt({
+    style,
+    hasAudio: refs.videos[0].hasAudio === true,
+    hasStyleImage: usesStyleImage,
+  });
+  checkpointDesktopInputSetup();
+  state.prompts.video = prompt;
+  state.promptRevisionUndo = { before, after: prompt, view: 'video' };
+  state.enhance = false;
+  setPromptDraft(prompt);
+  rememberH3PromptStructure(prompt);
+  updatePromptClear();
+  renderEnhance();
+  renderH3PromptGuideTrigger();
+  saveForm();
+  appendDesktopInputSetup();
+  closeH3StylePicker();
+  $('#promptComposer').focus();
+  toast(usesStyleImage
+    ? `${label} restyle applied · Picture 1 guides the visual treatment`
+    : `${label} restyle applied locally · add Picture 1 for a specific look`);
+}
+
 function renderH3References() {
   clearH3ReferenceReorder();
   const h3 = state.vidEngine === 'h3';
@@ -16879,6 +16972,13 @@ function renderH3References() {
     button.setAttribute('aria-pressed', String(active));
   });
   const refs = h3References();
+  const restyle = $('#vidH3Restyle');
+  if (restyle) {
+    restyle.disabled = refs.videos.length < 1;
+    restyle.title = refs.videos.length
+      ? 'Choose a visual style for this video'
+      : 'Add a source video to restyle it';
+  }
   const list = $('#vidH3ReferenceList');
   list.replaceChildren();
   let audioIndex = 0;
@@ -16938,7 +17038,17 @@ function renderH3References() {
         event.stopPropagation();
         removeH3Reference(kind, index);
       });
-      slot.append(role, remove);
+      const swap = document.createElement('button');
+      swap.className = 'ref-swap';
+      swap.type = 'button';
+      swap.setAttribute('aria-label', `Replace ${tag.replace(/[<>]/g, '')} and keep its prompt reference`);
+      swap.title = `Replace ${tag.replace(/[<>]/g, '')}`;
+      swap.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h12m0 0-3-3m3 3-3 3M19 16H7m0 0 3-3m-3 3 3 3"/></svg>';
+      swap.addEventListener('click', (event) => {
+        event.stopPropagation();
+        pickH3ReferenceReplacement(kind, index);
+      });
+      slot.append(role, swap, remove);
       slot.setAttribute('aria-label', `${role.textContent}, ${asset.label || asset.name}`);
       wireH3ReferenceReorder(slot, entry);
     } else {
@@ -17001,6 +17111,24 @@ $('#vidH3ReplaceVideoExpand').addEventListener('click', () => {
   toggleInlineVideoPreview($('#vidH3ReplaceVideoThumb'), $('#vidH3ReplaceVideoPreview'), $('#vidH3ReplaceVideoExpand'), 'master video');
 });
 $('#vidH3ReplacePromptBtn').addEventListener('click', applyH3ReplacementPrompt);
+$('#vidH3Restyle').addEventListener('click', openH3StylePicker);
+$$('#h3StyleGrid [data-h3-style]').forEach((button) => button.addEventListener('click', () => {
+  const preset = h3StylePreset(button.dataset.h3Style);
+  if (!preset) return toast('That style preset is unavailable. Reload the app and try again.', true);
+  applyH3StyleTransferPrompt(preset.prompt, preset.label);
+}));
+$('#h3StyleCustom').addEventListener('input', (event) => {
+  $('#h3StyleCustomApply').disabled = !event.target.value.trim();
+});
+$('#h3StyleCustom').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || !event.target.value.trim()) return;
+  event.preventDefault();
+  applyH3StyleTransferPrompt(event.target.value.trim(), 'Custom');
+});
+$('#h3StyleCustomApply').addEventListener('click', () => {
+  const style = $('#h3StyleCustom').value.trim();
+  if (style) applyH3StyleTransferPrompt(style, 'Custom');
+});
 $$('#vidH3RefSize [data-h3-ref-size]').forEach((button) => button.addEventListener('click', () => {
   state.vidH3RefImageSize = button.dataset.h3RefSize === 'max' ? 'max' : 'match';
   renderH3References();
@@ -18309,6 +18437,7 @@ $('#generateBtn').addEventListener('click', async () => {
             body: JSON.stringify(request),
           });
           state.activeJobs.add(result.jobId);
+          if (result.sequenceId) state.activeJobSequences.set(result.jobId, result.sequenceId);
           return result;
       }));
       const results = settled.filter((result) => result.status === 'fulfilled').map((result) => result.value);
@@ -19219,6 +19348,15 @@ function connectEvents() {
     }
     toast(`Step ${d.completedStep} complete · running ${d.nextStep} of ${d.total}`);
     refreshGallery(true);
+    queueRefreshSoon();
+  });
+  es.addEventListener('videoChunkStep', (ev) => {
+    const d = JSON.parse(ev.data);
+    if (state.activeJobs.has(d.jobId)) {
+      applyQueueJobMapping({ [d.jobId]: d.nextJobId });
+      setGenerating(true, `H3 Turbo chunk ${d.nextChunk} of ${d.total}…`);
+    }
+    toast(`H3 chunk ${d.completedChunk} complete · running ${d.nextChunk} of ${d.total}`);
     queueRefreshSoon();
   });
   es.addEventListener('jobDone', (ev) => {

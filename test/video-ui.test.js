@@ -548,6 +548,18 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(server, /h3turbor2v: \['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'\]/);
 });
 
+test('long H3 Reference Turbo videos advance through five-second jobs and rejoin as one result', () => {
+  assert.match(server, /h3TurboReferenceSegments\(frames\)/);
+  assert.match(server, /opts\.turboReferenceSegment = h3TurboReferenceChunks\[0\]/);
+  assert.match(server, /async function queueNextH3TurboReferenceChunk\(job\)/);
+  assert.match(server, /videoChunkSequence\.chunkBuffers\[videoChunkSequence\.index\] = buf/);
+  assert.match(server, /await joinVideoChunks\(\{/);
+  assert.match(server, /broadcast\('videoChunkStep'/);
+  assert.match(app, /if \(result\.sequenceId\) state\.activeJobSequences\.set\(result\.jobId, result\.sequenceId\)/);
+  assert.match(app, /es\.addEventListener\('videoChunkStep'/);
+  assert.match(app, /H3 Turbo chunk \$\{d\.nextChunk\} of \$\{d\.total\}/);
+});
+
 test('First and last frames can be moved or swapped from the visible frame row', () => {
   assert.match(app, /function videoSupportsEndFrame\(\)[\s\S]*state\.vidEngine === 'h3' && state\.vidH3Mode === 'frames'/);
   assert.match(app, /#vidEndChip'\)\.hidden = faceMode \|\| ltxEdit \|\| !!state\.vidEnd/);
@@ -656,6 +668,12 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /closest\('#vidH3ReferenceList \.ref-slot\.filled'\)/);
   assert.match(app, /\[assets\[fromIndex\], assets\[targetIndex\]\] = \[assets\[targetIndex\], assets\[fromIndex\]\]/);
   assert.match(app, /renderH3References\(\);\s*renderPromptComposer\(\);\s*saveForm\(\);\s*toast\('Reference inputs swapped'\)/);
+  assert.match(app, /function replaceH3Reference\(kind, index, asset\)/);
+  assert.match(app, /refs\[kind\]\[index\] = asset/);
+  assert.match(app, /prompt kept/);
+  assert.match(app, /swap\.className = 'ref-swap'/);
+  assert.match(app, /pickH3ReferenceReplacement\(kind, index\)/);
+  assert.match(css, /\.h3-reference-grid \.ref-swap/);
   assert.doesNotMatch(app, /h3-reference-name/);
   assert.match(css, /\.h3-reference-grid \.ref-slot/);
   assert.match(css, /\.h3-reference-grid \.ref-slot \.ref-role \{[\s\S]*background: transparent;/);
@@ -666,6 +684,22 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(css, /\.prompt-mention-option\.current/);
   assert.match(css, /\.h3-reference-grid \.ref-slot\.filled \{ cursor: grab;/);
   assert.match(html, /class="sheet centered-dialog-sheet" id="promptMentionSheet"/);
+});
+
+test('MiniMax H3 Reference mode offers local multi-style video restyling', () => {
+  assert.match(html, /id="vidH3ReferencePanel"[\s\S]*id="vidH3Restyle"[^>]*disabled[^>]*>Restyle<\/button>/);
+  assert.match(html, /id="h3StyleSheet"[\s\S]*data-h3-style="anime-2d"[\s\S]*data-h3-style="live-action"[\s\S]*data-h3-style="feature-3d"[\s\S]*data-h3-style="cel-3d"/);
+  assert.match(html, /id="h3StyleCustom"[^>]*maxlength="500"/);
+  assert.match(app, /function openH3StylePicker\(\)/);
+  assert.match(app, /function applyH3StyleTransferPrompt\(style, label = 'Custom'\)/);
+  assert.match(app, /H3PromptGuide\.buildStyleTransferPrompt\(\{/);
+  assert.match(app, /style,/);
+  assert.match(app, /hasAudio: refs\.videos\[0\]\.hasAudio === true/);
+  assert.match(app, /hasStyleImage: usesStyleImage/);
+  assert.match(app, /Picture 1 guides the visual treatment/);
+  assert.match(app, /#vidH3Restyle'\)\.addEventListener\('click', openH3StylePicker\)/);
+  assert.match(app, /#h3StyleGrid \[data-h3-style\]/);
+  assert.match(css, /\.h3-style-grid/);
 });
 
 test('Multiple edit references support hold-and-drag reordering', () => {

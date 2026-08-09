@@ -6,12 +6,14 @@ const path = require('path');
 
 const {
   extensionJoinArgs,
+  joinVideoChunks,
   joinVideoExtension,
   mp4TranscodeArgs,
   parseFfmpegVideoProbe,
   probeVideoFile,
   resolveFfmpegExecutable,
   transcodeVideoFileToMp4,
+  videoChunkJoinArgs,
 } = require('../lib/video-extension-join');
 
 const basePlan = {
@@ -103,6 +105,46 @@ test('extension join arguments normalize and concatenate source then tail video'
   assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
   assert.equal(args[args.indexOf('-f') + 1], 'mp4');
   assert.equal(args.at(-1), '/temp/joined output.mp4');
+});
+
+test('H3 chunk join arguments trim exact frame counts and concatenate synchronized audio', () => {
+  const args = videoChunkJoinArgs({
+    sourcePaths: ['/temp/chunk 1.mp4', '/temp/chunk 2.mp4', '/temp/chunk 3.mp4'],
+    outputPath: '/temp/joined.mp4',
+    segments: [
+      { keepFrames: 120 },
+      { keepFrames: 120 },
+      { keepFrames: 122 },
+    ],
+    fps: 24,
+    width: 1344,
+    height: 768,
+  });
+  const filter = filterFrom(args);
+  assert.deepEqual(args.slice(args.indexOf('-i'), args.indexOf('-filter_complex')), [
+    '-i', '/temp/chunk 1.mp4',
+    '-i', '/temp/chunk 2.mp4',
+    '-i', '/temp/chunk 3.mp4',
+  ]);
+  assert.match(filter, /\[0:v:0\]fps=24,trim=end_frame=120/);
+  assert.match(filter, /\[2:v:0\]fps=24,trim=end_frame=122/);
+  assert.match(filter, /\[0:a:0\].*atrim=duration=5,apad=pad_dur=5/s);
+  assert.match(filter, /\[2:a:0\].*atrim=duration=5\.083333,apad=pad_dur=5\.083333/s);
+  assert.match(filter, /\[v0\]\[a0\]\[v1\]\[a1\]\[v2\]\[a2\]concat=n=3:v=1:a=1\[video\]\[audio\]/);
+  assert.equal(args[args.indexOf('-c:v') + 1], 'libx264');
+  assert.equal(args[args.indexOf('-c:a') + 1], 'aac');
+  assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
+});
+
+test('H3 chunk join arguments reject mismatched or unsafe plans', () => {
+  assert.throws(() => videoChunkJoinArgs({
+    sourcePaths: ['/one.mp4', '/two.mp4'], outputPath: '/out.mp4',
+    segments: [{ keepFrames: 120 }], fps: 24, width: 1344, height: 768,
+  }), /must match/);
+  assert.throws(() => videoChunkJoinArgs({
+    sourcePaths: ['/one.mp4', '/two.mp4'], outputPath: '/out.mp4',
+    segments: [{ keepFrames: 120 }, { keepFrames: '1;movie=bad' }], fps: 24, width: 1344, height: 768,
+  }), /keep at least one frame/);
 });
 
 test('MP4 transcode arguments encode browser recordings as compatible H.264 and AAC', () => {
@@ -326,4 +368,33 @@ test('video extension join gives a direct error when FFmpeg is unavailable', asy
     assert.match(error.message, /requires FFmpeg/);
     return true;
   });
+});
+
+test('H3 video chunk join writes every segment and cleans up its temporary directory', async () => {
+  const operations = [];
+  const tempDir = '/virtual/tmp/mixstudio-video-chunks-abc';
+  const fsp = {
+    mkdtemp: async (prefix) => { operations.push(['mkdtemp', prefix]); return tempDir; },
+    writeFile: async (file, data) => { operations.push(['writeFile', file, Buffer.from(data)]); },
+    readFile: async (file) => { operations.push(['readFile', file]); return Buffer.from('joined chunks'); },
+    rm: async (file, options) => { operations.push(['rm', file, options]); },
+  };
+  let invocation;
+  const joined = await joinVideoChunks({
+    chunkBuffers: [Buffer.from('first'), Buffer.from('second')],
+    segments: [{ keepFrames: 120 }, { keepFrames: 123 }],
+    fps: 24,
+    width: 1344,
+    height: 768,
+    ffmpegPath: '/tools/ffmpeg',
+  }, {
+    fsp,
+    osTmpdir: '/virtual/tmp',
+    run: async (command, args, options) => { invocation = { command, args, options }; },
+  });
+  assert.deepEqual(joined, Buffer.from('joined chunks'));
+  assert.equal(operations.filter(([operation]) => operation === 'writeFile').length, 2);
+  assert.equal(invocation.command, '/tools/ffmpeg');
+  assert.equal(invocation.args.at(-1), path.join(tempDir, 'joined.mp4'));
+  assert.deepEqual(operations.at(-1), ['rm', tempDir, { recursive: true, force: true }]);
 });

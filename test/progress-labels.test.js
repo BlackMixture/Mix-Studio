@@ -46,6 +46,27 @@ test('MiniMax H3 progress names its model, conditioning, and audio stages', () =
   assert.equal(nodeLabelForJob(h3Job, 'audio'), 'Decoding audio...');
 });
 
+test('sequential H3 Turbo chunks retain one overall progress range across prompt IDs', () => {
+  const h3Job = {
+    kind: 'video',
+    graph: { sample: { class_type: 'SamplerCustomAdvanced' } },
+    videoChunkSequence: {
+      index: 1,
+      segments: [{ index: 0 }, { index: 1 }, { index: 2 }],
+    },
+  };
+  assert.equal(nodeLabelForJob(h3Job, 'sample'), 'H3 Turbo chunk 2 of 3');
+  assert.deepEqual(progressDetailsForJob(h3Job, 'sample', 3, 6), {
+    isSampling: true,
+    nodeId: 'sample',
+    phaseIndex: 2,
+    phaseCount: 3,
+    phaseLabel: 'H3 Turbo chunk',
+    localPercent: 50,
+    overallPercent: 48,
+  });
+});
+
 test('multi-stage video progress names each pass and reports one overall percentage', () => {
   const videoJob = {
     kind: 'video',

@@ -41,6 +41,8 @@ test('H3 prompt guide exposes the same formatter API to Node and browsers', () =
   assert.equal(typeof H3PromptGuide.analyzePrompt, 'function');
   assert.equal(typeof H3PromptGuide.auditStructure, 'function');
   assert.equal(typeof H3PromptGuide.buildReplacementPrompt, 'function');
+  assert.equal(typeof H3PromptGuide.buildStyleTransferPrompt, 'function');
+  assert.equal(Array.isArray(H3PromptGuide.styleTransferPresets), true);
   assert.equal(typeof H3PromptGuide.formatDialogue, 'function');
   assert.equal(typeof H3PromptGuide.h3EffectiveDurationSeconds, 'function');
   assert.equal(typeof H3PromptGuide.structurePrompt, 'function');
@@ -51,6 +53,8 @@ test('H3 prompt guide exposes the same formatter API to Node and browsers', () =
   assert.equal(typeof context.H3PromptGuide.analyzePrompt, 'function');
   assert.equal(typeof context.H3PromptGuide.auditStructure, 'function');
   assert.equal(typeof context.H3PromptGuide.buildReplacementPrompt, 'function');
+  assert.equal(typeof context.H3PromptGuide.buildStyleTransferPrompt, 'function');
+  assert.equal(Array.isArray(context.H3PromptGuide.styleTransferPresets), true);
   assert.equal(typeof context.H3PromptGuide.formatDialogue, 'function');
   assert.equal(typeof context.H3PromptGuide.h3EffectiveDurationSeconds, 'function');
   assert.equal(typeof context.H3PromptGuide.structurePrompt, 'function');
@@ -82,6 +86,48 @@ test('local H3 replacement preset adapts identity and motion locks for character
   assert.match(prompt, /inherits the full performance of the original character/);
   assert.match(prompt, /face, anatomy, wardrobe or colour/);
   assert.doesNotMatch(prompt, /replacement object inherits/);
+});
+
+test('local H3 style-transfer preset preserves the source timeline and optional synchronized audio', () => {
+  const prompt = H3PromptGuide.buildStyleTransferPrompt({ hasAudio: true });
+  assert.match(prompt, /^subject_definitions:\n<Video 1> is the source video/);
+  assert.match(prompt, /<Audio 1> is the synchronized audio track of <Video 1>/);
+  assert.match(prompt, /\[video editing \+ audio reuse\]/);
+  assert.match(prompt, /partially_preserved - every subject, action, expression/);
+  assert.match(prompt, /<Audio 1>: fully_copy/);
+  assert.match(prompt, /polished hand-drawn 2D anime/);
+  assert.match(prompt, /Follow <Video 1> frame by frame/);
+  assert.match(prompt, /Do not add, remove, replace, or redesign people, objects, actions, backgrounds, or cuts/);
+  const audit = H3PromptGuide.auditStructure(prompt, {
+    mode: 'reference',
+    seconds: 15,
+    allowedReferenceTokens: ['<Video 1>', '<Audio 1>'],
+  });
+  assert.equal(audit.ready, true);
+});
+
+test('local H3 style transfer can use Picture 1 only as a visual-style reference', () => {
+  const prompt = H3PromptGuide.buildStyleTransferPrompt({ hasStyleImage: true });
+  assert.match(prompt, /<Subject 1> is the visual treatment shown in <Picture 1>/);
+  assert.match(prompt, /not its depicted subject, composition, text, or pose/);
+  assert.match(prompt, /<Subject 1> \(appears throughout\): attribute_transfer/);
+  assert.match(prompt, /\[video editing \+ reference generation\]/);
+  assert.match(prompt, /Picture 1 guides only the visual treatment|<Picture 1>/);
+  assert.doesNotMatch(prompt, /<Audio 1>/);
+});
+
+test('H3 restyle exposes varied visual presets and accepts a custom destination style', () => {
+  assert.deepEqual(
+    H3PromptGuide.styleTransferPresets.map((preset) => preset.id),
+    ['anime-2d', 'live-action', 'feature-3d', 'cel-3d', 'stop-motion', 'graphic-novel'],
+  );
+  const prompt = H3PromptGuide.buildStyleTransferPrompt({
+    style: 'luminous watercolor storybook animation with visible paper grain',
+  });
+  assert.match(prompt, /luminous watercolor storybook animation with visible paper grain/);
+  assert.match(prompt, /complete source performance and shot structure are preserved/);
+  assert.match(prompt, /only the source rendering is changed/);
+  assert.doesNotMatch(prompt, /complete live-action performance|same anime production style/);
 });
 
 test('browser H3 duration helper stays aligned with the generation frame grid', () => {

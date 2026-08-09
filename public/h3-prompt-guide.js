@@ -83,6 +83,44 @@
     'non_diegetic_music',
   ]);
   const H3_FPS = 24;
+  const STYLE_TRANSFER_PRESETS = Object.freeze([
+    Object.freeze({
+      id: 'anime-2d',
+      label: 'Anime 2D',
+      hint: 'Drawn lines and cel shading',
+      prompt: 'polished hand-drawn 2D anime with clean confident line art, stable cel shading, expressive but proportionally consistent faces, controlled highlights, and a cohesive cinematic color script',
+    }),
+    Object.freeze({
+      id: 'live-action',
+      label: 'Live action',
+      hint: 'Cinematic and photoreal',
+      prompt: 'cinematic photoreal live action with natural skin and material detail, physically plausible lighting, realistic depth, restrained film grain, and consistent production design',
+    }),
+    Object.freeze({
+      id: 'feature-3d',
+      label: 'Pixar-style 3D',
+      hint: 'Polished feature animation',
+      prompt: 'polished stylized 3D feature animation with appealing rounded character design, expressive readable faces, detailed materials, soft global illumination, cinematic depth, and high-end animated-film rendering',
+    }),
+    Object.freeze({
+      id: 'cel-3d',
+      label: 'Cel-shaded 3D',
+      hint: 'Graphic 3D with inked edges',
+      prompt: 'stylized cel-shaded 3D animation with stable inked contours, deliberate two-tone shadow shapes, crisp graphic highlights, dimensional camera movement, and cohesive game-cinematic rendering',
+    }),
+    Object.freeze({
+      id: 'stop-motion',
+      label: 'Stop motion',
+      hint: 'Handmade miniature look',
+      prompt: 'premium handcrafted stop-motion animation with tactile miniature sets, sculpted characters, visible material texture, practical lighting, subtle frame-by-frame motion character, and consistent scale',
+    }),
+    Object.freeze({
+      id: 'graphic-novel',
+      label: 'Graphic novel',
+      hint: 'Bold ink and printed color',
+      prompt: 'cinematic graphic-novel illustration with bold stable inks, dramatic shape-based shadows, controlled halftone texture, selective printed color, and consistent illustrated anatomy',
+    }),
+  ]);
   const H3_MIN_SECONDS = 5;
   const H3_MAX_SECONDS = 15;
 
@@ -165,6 +203,61 @@
       `- Identity from <Picture 1> holds steady across the whole clip, with no drift in ${kind === 'character' ? 'face, anatomy, wardrobe or colour' : 'shape, colour or markings'}.`,
       '- Edges blend seamlessly: matching noise, matching edge softness, no halo, no outline.',
       '- One continuous plate, cuts only where <Video 1> already cuts.',
+    ].join('\n');
+  }
+
+  function buildStyleTransferPrompt(options = {}) {
+    const requestedStyle = sourceText(options.style || '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 500);
+    const style = requestedStyle || STYLE_TRANSFER_PRESETS[0].prompt;
+    const hasAudio = options.hasAudio === true;
+    const hasStyleImage = options.hasStyleImage === true;
+    const taskTypes = [
+      'video editing',
+      hasStyleImage ? 'reference generation' : '',
+      hasAudio ? 'audio reuse' : '',
+    ].filter(Boolean).join(' + ');
+    const definitions = [
+      '<Video 1> is the source video for the target video edit and defines the complete action, subject placement, camera path, cuts, framing, timing, lighting direction, and environment.',
+    ];
+    if (hasStyleImage) {
+      definitions.push('<Subject 1> is the visual treatment shown in <Picture 1>; only its rendering language, shape design, surface treatment, color treatment, and highlight design are referenced, not its depicted subject, composition, text, or pose.');
+    }
+    if (hasAudio) definitions.push('<Audio 1> is the synchronized audio track of <Video 1> and is reused in the target video.');
+    const retention = [
+      '<Video 1> (complete visual timeline): partially_preserved - every subject, action, expression, object interaction, camera move, cut, composition, occlusion, and lighting cue is retained frame by frame, while only the source rendering is changed to the requested visual treatment.',
+    ];
+    if (hasStyleImage) retention.push('<Subject 1> (appears throughout): attribute_transfer - the rendering characteristics from <Picture 1> are transferred consistently to every visible element in <Video 1> without transferring the picture\'s subject identity or composition.');
+    if (hasAudio) retention.push('<Audio 1>: fully_copy - <Audio 1> is reused 1:1 as the target video\'s complete synchronized audio track.');
+    const audioSentence = hasAudio
+      ? 'The synchronized dialogue, ambience, physical sounds, and music in <Audio 1> remain aligned to the same actions and cuts without replacement or retiming.'
+      : 'Recreate synchronized ambience and physical sounds that follow the original actions and cuts in <Video 1>.';
+    return [
+      'subject_definitions:',
+      ...definitions,
+      '',
+      'summary:',
+      `[${taskTypes}] The target video is an edited version of <Video 1>. The complete source performance and shot structure are preserved while the visible image is re-rendered as ${hasStyleImage ? 'the visual treatment defined by <Subject 1> from <Picture 1>, supported by ' : ''}${style}.`,
+      '',
+      'retention_analysis:',
+      ...retention,
+      '',
+      'detailed_description:',
+      `The target video uses ${hasStyleImage ? 'the visual treatment defined by <Subject 1> from <Picture 1>, supported by ' : ''}${style}. The treatment fully re-renders each frame rather than applying a superficial filter. Identities, wardrobe, props, environments, spatial relationships, and readable object details remain recognizable while materials, edges, shading, and color are rebuilt in the requested style.`,
+      `[Shot 1] Follow <Video 1> frame by frame from its first frame through its final frame. Preserve the exact performance, body mechanics, facial expressions, lip movement, object interactions, camera behavior, lens perspective, framing, focus changes, shot order, cut timing, motion direction, speed, and composition. Re-render every visible element consistently in the same production style across the entire clip. Do not add, remove, replace, or redesign people, objects, actions, backgrounds, or cuts. Keep silhouettes stable, prevent identity drift, preserve contact and occlusion order, and translate the source lighting into treatment-appropriate shadows and highlights without changing where the light comes from. ${audioSentence}`,
+      '',
+      'overall_soundscape:',
+      hasAudio
+        ? 'The copied ambience, dialogue, non-verbal voices, and physical action sounds from <Audio 1> continue unchanged and remain synchronized to the edited visuals.'
+        : 'Recreated ambience and physical action sounds remain synchronized to the visible actions throughout the target video.',
+      '',
+      'non_diegetic_music:',
+      hasAudio
+        ? 'Any audience-only music present in <Audio 1> is directly reused without changes or retiming.'
+        : 'N/A',
     ].join('\n');
   }
   const KNOWN_PROMPT_FIELDS = new Set([...BASE_PROMPT_FIELDS, ...REFERENCE_PROMPT_FIELDS]);
@@ -1147,6 +1240,8 @@
     analyzePrompt,
     auditStructure,
     buildReplacementPrompt,
+    buildStyleTransferPrompt,
+    styleTransferPresets: STYLE_TRANSFER_PRESETS,
     formatDialogue,
     h3EffectiveDurationSeconds,
     structurePrompt,
