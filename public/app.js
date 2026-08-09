@@ -4342,6 +4342,11 @@ function renderAssetPickerFilters() {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  const visibleKindButtons = $$('#assetPickerKindFilter [data-asset-kind]').filter((button) => !button.hidden);
+  const activeKindButton = visibleKindButtons.find((button) => button.dataset.assetKind === assetPickerState.mediaKind)
+    || visibleKindButtons[0];
+  kindFilter.classList.toggle('has-audio', visibleKindButtons.length === 4);
+  kindFilter.style.setProperty('--filter-index', String(Math.max(0, visibleKindButtons.indexOf(activeKindButton))));
   const folder = (state.folders || []).find((entry) => entry.id === assetPickerState.folder);
   if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && !folder) assetPickerState.folder = 'all';
   $('#assetPickerFolderLabel').textContent = assetPickerState.folder === 'uploaded-assets'

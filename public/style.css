@@ -4722,27 +4722,9 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
 .asset-picker-kind-filter {
   width: fit-content;
   max-width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 3px;
   margin: -1px 0 10px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #050609;
 }
 .asset-picker-kind-filter[hidden] { display: none; }
-.asset-picker-kind-filter button {
-  min-height: 29px;
-  padding: 5px 11px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted-2);
-  font-size: 9.5px;
-  font-weight: 850;
-}
-.asset-picker-kind-filter button.active { background: rgba(var(--mode-rgb),.17); color: #fff; }
 .asset-picker-kind-filter button[hidden] { display: none; }
 .asset-picker-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 7px; margin-bottom: 10px; }
 .asset-picker-dropdown { position: relative; min-width: 0; }

@@ -60,7 +60,7 @@ test('generation media inputs offer device upload or reusable Library assets', (
   assert.match(appJs, /function previousGenerationAssets/);
   assert.doesNotMatch(appJs, /return assets\.sort\([\s\S]{0,240}\.slice\(0, 80\)/);
   assert.match(indexHtml, /id="assetPickerSearch"/);
-  assert.match(indexHtml, /id="assetPickerKindFilter"[\s\S]*data-asset-kind="all"[\s\S]*data-asset-kind="image"[\s\S]*data-asset-kind="video"/);
+  assert.match(indexHtml, /class="size-seg media-filter asset-picker-kind-filter"[^>]*id="assetPickerKindFilter"[\s\S]*media-filter-indicator[\s\S]*data-asset-kind="all"[\s\S]*data-asset-kind="image"[\s\S]*data-asset-kind="video"/);
   assert.match(indexHtml, /id="assetPickerPreview"/);
   assert.match(indexHtml, /id="assetPickerPreviewUse"/);
   assert.match(indexHtml, /id="assetPickerFolderTrigger"/);
@@ -76,6 +76,8 @@ test('generation media inputs offer device upload or reusable Library assets', (
   assert.match(appJs, /assetPickerState\.mediaKind !== 'all' && asset\.kind !== assetPickerState\.mediaKind/);
   assert.match(appJs, /mediaKind: 'all'/);
   assert.match(appJs, /#assetPickerKindFilter \[data-asset-kind\]/);
+  assert.match(appJs, /kindFilter\.classList\.toggle\('has-audio', visibleKindButtons\.length === 4\)/);
+  assert.match(appJs, /kindFilter\.style\.setProperty\('--filter-index'/);
   assert.match(appJs, /assetPickerState\.folder !== 'all'/);
   assert.match(appJs, /assetPickerState\.likes && !asset\.liked/);
   assert.match(appJs, /function openAssetPickerPreview\(asset\)/);
@@ -97,6 +99,7 @@ test('generation media inputs offer device upload or reusable Library assets', (
   assert.match(appJs, /detail\.textContent = 'Available after refresh'/);
   assert.match(appJs, /const res = await uploadInputAsset\(file, file\.name \|\| 'file\.bin', \{ catalog: true \}\)/);
   assert.match(styleCss, /\.asset-picker-kind-filter/);
+  assert.doesNotMatch(styleCss, /\.asset-picker-kind-filter button\.active/);
 });
 
 test('mobile source preview keeps its primary action in the visible panel', () => {
