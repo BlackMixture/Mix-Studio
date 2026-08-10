@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.2.4 - 2026-08-09
+
+### Mobile video previews
+
+- Replaced full-resolution gallery-card playback with cached, silent 480p proxy clips capped at 12 fps, while keeping the expanded viewer on the original full-quality video.
+- Limited touch-first devices to one centered animated preview decoder at a time and serialized server-side proxy creation to avoid simultaneous mobile decoder and server transcode spikes.
+- Reused IntersectionObserver visibility results instead of forcing layout reads across every gallery video whenever preview playback settles.
+- Made mobile profile-menu actions activate directly from completed touch gestures, and pause gallery decoding while menus, sheets, or the app drawer are open.
+
 ## 1.2.3 - 2026-08-09
 
 ### Mobile responsiveness

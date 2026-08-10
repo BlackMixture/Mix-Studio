@@ -1813,6 +1813,15 @@ checkAuth();
 
 const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
 const OFFICIAL_RELEASE_SHOWCASES = {
+  '1.2.4': [
+    {
+      eyebrow: 'Mobile performance',
+      title: 'Lighter video previews',
+      message: 'Animated Library cards now use compact preview clips and one centered mobile decoder, while profile menus stay responsive and expanded videos retain full quality.',
+      media: '',
+      theme: 'release',
+    },
+  ],
   '1.2.3': [
     {
       eyebrow: 'Mobile performance',
@@ -2278,6 +2287,7 @@ window.addEventListener('storage', (event) => {
 
 let actionMenuEl = null;
 let actionMenuCleanup = null;
+let galleryOverlayPreviewPaused = false;
 function actionIconMarkup(icon) {
   const paths = {
     use: '<path d="M5 4h7v2H7v11h11v-5h2v7H5V4Zm8 0h7v7h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H13V4Z"/>',
@@ -2315,10 +2325,12 @@ function actionIconMarkup(icon) {
 }
 
 function closeActionMenu() {
+  const hadMenu = !!actionMenuEl;
   if (actionMenuCleanup) actionMenuCleanup();
   actionMenuCleanup = null;
   if (actionMenuEl) actionMenuEl.remove();
   actionMenuEl = null;
+  if (hadMenu) syncSheetScrollLock();
 }
 
 function openActionMenu(anchor, items, options = {}) {
@@ -2354,10 +2366,24 @@ function openActionMenu(anchor, items, options = {}) {
       copy.appendChild(detail);
     }
     b.append(icon, copy);
-    b.addEventListener('click', () => {
+    let touchPointerId = null;
+    const activate = (event, afterTouch = false) => {
+      if (!b.isConnected) return;
+      event?.preventDefault();
       closeActionMenu();
-      item.action();
+      if (afterTouch) setTimeout(() => item.action(), 0);
+      else item.action();
+    };
+    b.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') touchPointerId = event.pointerId;
+    }, { passive: true });
+    b.addEventListener('pointercancel', () => { touchPointerId = null; });
+    b.addEventListener('pointerup', (event) => {
+      if (touchPointerId == null || event.pointerId !== touchPointerId) return;
+      touchPointerId = null;
+      activate(event, true);
     });
+    b.addEventListener('click', activate);
     menu.appendChild(b);
   }
   document.body.appendChild(menu);
@@ -2384,6 +2410,7 @@ function openActionMenu(anchor, items, options = {}) {
     document.removeEventListener('keydown', onKey);
     anchor.setAttribute('aria-expanded', 'false');
   };
+  syncSheetScrollLock();
 }
 
 let sheetScrollY = 0;
@@ -2402,6 +2429,17 @@ function syncSheetScrollLock() {
       document.body.style.top = '';
       window.scrollTo(0, desktopWorkspaceActive() ? 0 : sheetScrollY);
     }
+  }
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  const previewOverlayOpen = anySheetOpen || !!actionMenuEl;
+  if (state.view === 'gallery' && touchFirst && previewOverlayOpen && !galleryOverlayPreviewPaused) {
+    galleryOverlayPreviewPaused = true;
+    suspendGalleryPreviewPlayback();
+  } else if (state.view === 'gallery' && touchFirst && !previewOverlayOpen && galleryOverlayPreviewPaused) {
+    galleryOverlayPreviewPaused = false;
+    scheduleGalleryPreviewWake();
+  } else if (state.view !== 'gallery') {
+    galleryOverlayPreviewPaused = false;
   }
 }
 
@@ -22212,6 +22250,7 @@ function useCachedGalleryImage(target, source, property = 'src') {
 
 let galleryPreviewObserver = null;
 let galleryPreviewActive = new Set();
+let galleryPreviewIntersecting = new Set();
 let galleryPreviewSettleTimer = null;
 let galleryPreviewScrollTimer = null;
 let galleryPreviewWakeTimer = null;
@@ -22259,6 +22298,9 @@ function galleryPreviewMotionAllowed() {
   return document.visibilityState === 'visible'
     && state.mediaPreferences.videoPreviews
     && !$('#lightbox')?.classList.contains('show')
+    && !$('.sheet.show')
+    && !$('#appDrawer')?.classList.contains('show')
+    && !actionMenuEl
     && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 function desktopSideLibraryHoverPreviewAllowed() {
@@ -22357,11 +22399,20 @@ function settleGalleryPreviewPlayback() {
   galleryPreviewSettleTimer = null;
   if (!galleryPreviewMotionAllowed() || state.view !== 'gallery') return;
   const center = window.innerHeight / 2;
-  const candidates = $$('.gallery-card-video').filter((video) => {
+  const candidates = [...galleryPreviewIntersecting].filter((video) => {
+    if (!video.isConnected) return false;
     const rect = video.getBoundingClientRect();
     return rect.bottom > window.innerHeight * 0.16 && rect.top < window.innerHeight * 0.84;
   });
-  const next = new Set(centeredGalleryPreviewRow(candidates, center));
+  let centered = centeredGalleryPreviewRow(candidates, center);
+  if (window.matchMedia?.('(hover: none), (pointer: coarse)').matches && centered.length > 1) {
+    centered = [centered.reduce((nearest, video) => {
+      const distance = Math.abs(video.getBoundingClientRect().top + video.offsetHeight / 2 - center);
+      const nearestDistance = Math.abs(nearest.getBoundingClientRect().top + nearest.offsetHeight / 2 - center);
+      return distance < nearestDistance ? video : nearest;
+    })];
+  }
+  const next = new Set(centered);
   galleryPreviewActive.forEach((video) => {
     if (!next.has(video)) pauseGalleryPreview(video);
   });
@@ -22374,7 +22425,13 @@ function scheduleGalleryPreviewPlayback(delay = 140) {
 }
 function ensureGalleryPreviewObserver() {
   if (galleryPreviewObserver || !('IntersectionObserver' in window)) return;
-  galleryPreviewObserver = new IntersectionObserver(() => scheduleGalleryPreviewPlayback(), {
+  galleryPreviewObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) galleryPreviewIntersecting.add(entry.target);
+      else galleryPreviewIntersecting.delete(entry.target);
+    });
+    scheduleGalleryPreviewPlayback();
+  }, {
     root: null,
     rootMargin: '-16% 0px -16% 0px',
     threshold: [0, 0.25, 0.5, 0.75],
@@ -22384,6 +22441,7 @@ function resetGalleryPreviewObservation() {
   if (!galleryPreviewObserver) return;
   clearTimeout(galleryPreviewSettleTimer);
   galleryPreviewObserver.disconnect();
+  galleryPreviewIntersecting.clear();
   galleryPreviewActive = new Set([...galleryPreviewActive].filter((video) => video.isConnected));
   if (state.view !== 'gallery' || galleryPreviewWakePending) return;
   $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
@@ -22397,7 +22455,9 @@ function suspendGalleryPreviewPlayback() {
   galleryPreviewSettleTimer = null;
   galleryPreviewScrollTimer = null;
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
-  $$('.gallery-card-video').forEach((video) => {
+  galleryPreviewIntersecting.clear();
+  const loaded = new Set([...galleryPreviewActive, ...$$('.gallery-card-video[data-loaded="true"]')]);
+  loaded.forEach((video) => {
     video._desktopSideLibraryHovered = false;
     clearTimeout(video._previewUnloadTimer);
     unloadGalleryPreview(video);
@@ -22412,6 +22472,7 @@ function handoffGalleryPreviewsToFocusedMedia() {
   galleryPreviewSettleTimer = null;
   galleryPreviewScrollTimer = null;
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
+  galleryPreviewIntersecting.clear();
   const active = [...galleryPreviewActive];
   active.forEach((video) => {
     clearTimeout(video._previewUnloadTimer);
@@ -22956,7 +23017,7 @@ function renderGrid() {
       const posterSource = galleryImageSource(it);
       preview.poster = posterSource;
       useCachedGalleryImage(preview, posterSource, 'poster');
-      preview.dataset.src = '/videos/' + latestVideo.file;
+      preview.dataset.src = '/video-previews/' + encodeURIComponent(latestVideo.file);
       preview.dataset.loaded = 'false';
       preview.tabIndex = -1;
       preview.setAttribute('aria-hidden', 'true');

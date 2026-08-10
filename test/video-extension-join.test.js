@@ -13,6 +13,8 @@ const {
   probeVideoFile,
   resolveFfmpegExecutable,
   transcodeVideoFileToMp4,
+  transcodeVideoPreview,
+  videoPreviewTranscodeArgs,
   videoChunkJoinArgs,
 } = require('../lib/video-extension-join');
 
@@ -192,6 +194,53 @@ test('MP4 transcoding reports missing FFmpeg and empty output directly', async (
     run: async () => {},
     fsp: { stat: async () => ({ isFile: () => true, size: 0 }) },
   }), (error) => error.code === 'video_transcode_failed' && /empty MP4/.test(error.message));
+});
+
+test('gallery preview arguments create a bounded silent H.264 proxy', () => {
+  const args = videoPreviewTranscodeArgs({
+    sourcePath: '/media/full resolution.mp4',
+    outputPath: '/cache/preview.mp4',
+  });
+  assert.deepEqual(args.slice(args.indexOf('-i'), args.indexOf('-vf')), [
+    '-i', '/media/full resolution.mp4',
+    '-map', '0:v:0',
+    '-an',
+    '-t', '5',
+  ]);
+  assert.match(args[args.indexOf('-vf') + 1], /scale=480:480:force_original_aspect_ratio=decrease/);
+  assert.match(args[args.indexOf('-vf') + 1], /fps=12/);
+  assert.match(args[args.indexOf('-vf') + 1], /format=yuv420p/);
+  assert.equal(args[args.indexOf('-c:v') + 1], 'libx264');
+  assert.equal(args[args.indexOf('-preset') + 1], 'veryfast');
+  assert.equal(args[args.indexOf('-crf') + 1], '28');
+  assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
+  assert.equal(args.at(-1), '/cache/preview.mp4');
+});
+
+test('gallery preview transcoding invokes FFmpeg and verifies its cache file', async () => {
+  let invocation;
+  const output = await transcodeVideoPreview({
+    sourcePath: '/media/source.mp4',
+    outputPath: '/cache/preview.mp4',
+    ffmpegPath: '/tools/ffmpeg',
+  }, {
+    run: async (command, args, options) => { invocation = { command, args, options }; },
+    fsp: { stat: async () => ({ isFile: () => true, size: 2048 }) },
+  });
+  assert.equal(output, '/cache/preview.mp4');
+  assert.equal(invocation.command, '/tools/ffmpeg');
+  assert.equal(invocation.args.at(-1), '/cache/preview.mp4');
+  assert.equal(invocation.options.cwd, '/cache');
+
+  await assert.rejects(transcodeVideoPreview({
+    sourcePath: '/media/source.mp4', outputPath: '/cache/preview.mp4', ffmpegPath: '',
+  }), (error) => error.code === 'ffmpeg_unavailable');
+  await assert.rejects(transcodeVideoPreview({
+    sourcePath: '/media/source.mp4', outputPath: '/cache/preview.mp4', ffmpegPath: '/tools/ffmpeg',
+  }, {
+    run: async () => {},
+    fsp: { stat: async () => ({ isFile: () => true, size: 0 }) },
+  }), (error) => error.code === 'video_preview_failed' && /empty preview/.test(error.message));
 });
 
 test('extension audio continues source audio into generated tail audio', () => {

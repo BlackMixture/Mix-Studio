@@ -63,7 +63,8 @@ test('generated media is restricted to visible records owned by the signed-in pr
   assert.match(access, /db\.faces/);
   assert.match(access, /face\.profileId === profile\.id/);
 
-  const imageRoute = sourceSection("if (url.pathname.startsWith('/images/'))", "if (url.pathname.startsWith('/videos/'))");
+  const imageRoute = sourceSection("if (url.pathname.startsWith('/images/'))", "if (url.pathname.startsWith('/video-previews/'))");
+  const previewRoute = sourceSection("if (url.pathname.startsWith('/video-previews/'))", "if (url.pathname.startsWith('/videos/'))");
   const videoRoute = sourceSection("if (url.pathname.startsWith('/videos/'))", "if (url.pathname.startsWith('/faces/'))");
   const faceRoute = sourceSection("if (url.pathname.startsWith('/faces/'))", "if (url.pathname.startsWith('/avatars/'))");
   for (const [kind, route] of [['image', imageRoute], ['video', videoRoute], ['face', faceRoute]]) {
@@ -71,6 +72,10 @@ test('generated media is restricted to visible records owned by the signed-in pr
     assert.match(route, new RegExp(`canAccessProfileMedia\\(req,\\s*profile,\\s*'${kind}',\\s*[\\w.]+\\)`));
     assert.match(route, /res\.writeHead\(404\)/, 'unowned and locked media should not reveal whether a file exists');
   }
+  assert.match(previewRoute, /const profile = currentProfile\(req\)/);
+  assert.match(previewRoute, /safeMediaPath\(VIDEOS/);
+  assert.match(previewRoute, /canAccessProfileMedia\(req, profile, 'video', media\.name\)/);
+  assert.match(previewRoute, /res\.writeHead\(404\)/, 'unowned preview sources should not reveal whether a file exists');
 });
 
 test('phone access works without a PIN and offers PIN protection as an option', () => {

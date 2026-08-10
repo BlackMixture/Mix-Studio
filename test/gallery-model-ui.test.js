@@ -41,12 +41,13 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /return item\.krea2Turbo === false \? 'Raw' : 'Turbo'/);
   assert.match(app, /className = 'gallery-card-video'/);
   assert.match(app, /preview\.preload = 'none'/);
-  assert.match(app, /preview\.dataset\.src = '\/videos\/' \+ latestVideo\.file/);
+  assert.match(app, /preview\.dataset\.src = '\/video-previews\/' \+ encodeURIComponent\(latestVideo\.file\)/);
   assert.match(app, /video\.dataset\.loaded !== 'true'/);
   assert.match(app, /let galleryPreviewActive = new Set\(\)/);
   assert.match(app, /function centeredGalleryPreviewRow\(candidates, center\)/);
   assert.match(app, /function settleGalleryPreviewPlayback\(\)/);
-  assert.match(app, /const next = new Set\(centeredGalleryPreviewRow\(candidates, center\)\)/);
+  assert.match(app, /let centered = centeredGalleryPreviewRow\(candidates, center\)/);
+  assert.match(app, /const next = new Set\(centered\)/);
   assert.match(app, /galleryPreviewActive\.forEach\(playGalleryPreview\)/);
   assert.match(app, /setTimeout\(\(\) => scheduleGalleryPreviewPlayback\(0\), 150\)/);
   assert.match(app, /rootMargin: '-16% 0px -16% 0px'/);
@@ -96,6 +97,16 @@ test('mobile Library gives input priority over preview observer and decoder wake
   assert.match(app, /if \(state\.view !== 'gallery' \|\| galleryPreviewWakePending\) return;/);
   assert.match(app, /document\.addEventListener\('pointerdown',[\s\S]*deferGalleryPreviewWakeForInteraction\(\)/);
   assert.match(app, /window\.addEventListener\('scroll', \(\) => \{\s*deferGalleryPreviewWakeForInteraction\(\)/);
+});
+
+test('gallery cards use lightweight preview proxies and one mobile decoder', () => {
+  assert.match(app, /let galleryPreviewIntersecting = new Set\(\)/);
+  assert.match(app, /entries\.forEach\(\(entry\) => \{[\s\S]*galleryPreviewIntersecting\.add\(entry\.target\)/);
+  assert.match(app, /const candidates = \[\.\.\.galleryPreviewIntersecting\]/);
+  assert.match(app, /\(hover: none\), \(pointer: coarse\)'\)\.matches && centered\.length > 1/);
+  assert.match(server, /url\.pathname\.startsWith\('\/video-previews\/'\)/);
+  assert.match(server, /async function cachedVideoPreview\(media\)/);
+  assert.match(server, /videoPreviewQueue\.then\(create, create\)/);
 });
 
 test('focused videos leave playback entirely to native controls', () => {

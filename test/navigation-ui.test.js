@@ -104,6 +104,19 @@ test('mobile profile control uses a compact vector icon', () => {
   assert.match(css, /@media \(max-width: 420px\) \{[\s\S]*\.profile-chip-icon \{ width: 16px; height: 16px; \}/);
 });
 
+test('mobile profile menu actions use direct touch activation and pause gallery previews', () => {
+  const menuStart = app.indexOf('function openActionMenu(anchor, items, options = {})');
+  const menuEnd = app.indexOf('\nlet sheetScrollY', menuStart);
+  const actionMenu = app.slice(menuStart, menuEnd);
+  assert.match(actionMenu, /b\.addEventListener\('pointerdown',[\s\S]*event\.pointerType === 'touch'/);
+  assert.match(actionMenu, /b\.addEventListener\('pointerup',[\s\S]*event\.pointerId !== touchPointerId[\s\S]*activate\(event, true\)/);
+  assert.match(actionMenu, /b\.addEventListener\('click', activate\)/);
+  assert.match(actionMenu, /if \(afterTouch\) setTimeout\(\(\) => item\.action\(\), 0\)/);
+  assert.match(app, /const previewOverlayOpen = anySheetOpen \|\| !!actionMenuEl/);
+  assert.match(app, /previewOverlayOpen && !galleryOverlayPreviewPaused[\s\S]*suspendGalleryPreviewPlayback\(\)/);
+  assert.match(app, /!previewOverlayOpen && galleryOverlayPreviewPaused[\s\S]*scheduleGalleryPreviewWake\(\)/);
+});
+
 test('only the Resolution section keeps an outer panel surface', () => {
   assert.match(css, /--page-bg: #000/);
   assert.match(css, /\.panel \{[\s\S]*border: 0;/);

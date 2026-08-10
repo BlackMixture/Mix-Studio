@@ -233,6 +233,7 @@ const {
   probeVideoFile,
   resolveFfmpegExecutable,
   transcodeVideoFileToMp4,
+  transcodeVideoPreview,
 } = require('./lib/video-extension-join');
 const {
   DIRECTOR_FPS,
@@ -374,6 +375,7 @@ let videoExtensionFfmpeg = '';
 const DATA = RUNTIME.dataDir;
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
+const VIDEO_PREVIEWS = path.join(DATA, 'video-previews');
 const INPUTS = path.join(DATA, 'inputs');
 const TRASH_ROOT = path.join(DATA, 'trash');
 const PROMPT_PACKS = path.join(DATA, 'addons', 'prompt-packs');
@@ -382,6 +384,7 @@ const MAX_DOCUMENTATION_VIDEO_BYTES = 256 * 1024 * 1024;
 
 fs.mkdirSync(IMAGES, { recursive: true });
 fs.mkdirSync(VIDEOS, { recursive: true });
+fs.mkdirSync(VIDEO_PREVIEWS, { recursive: true });
 fs.mkdirSync(INPUTS, { recursive: true });
 fs.mkdirSync(TRASH_ROOT, { recursive: true });
 fs.mkdirSync(PROMPT_PACKS, { recursive: true });
@@ -5759,6 +5762,40 @@ function safeMediaPath(root, encodedName) {
   };
 }
 
+const videoPreviewJobs = new Map();
+let videoPreviewQueue = Promise.resolve();
+
+async function cachedVideoPreview(media) {
+  const sourceStat = await fsp.stat(media.file);
+  if (!sourceStat.isFile()) throw Object.assign(new Error('Video not found'), { code: 'ENOENT' });
+  const fingerprint = crypto.createHash('sha256')
+    .update(`${media.name}\0${sourceStat.size}\0${Math.round(sourceStat.mtimeMs)}`)
+    .digest('hex')
+    .slice(0, 24);
+  const output = path.join(VIDEO_PREVIEWS, `${fingerprint}.mp4`);
+  const existing = await fsp.stat(output).catch(() => null);
+  if (existing?.isFile() && existing.size > 0) return output;
+  if (videoPreviewJobs.has(output)) return videoPreviewJobs.get(output);
+
+  const temp = path.join(VIDEO_PREVIEWS, `${fingerprint}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp.mp4`);
+  const create = async () => {
+    if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
+    if (!videoExtensionFfmpeg) throw Object.assign(new Error('Video previews require FFmpeg'), { code: 'ffmpeg_unavailable' });
+    try {
+      await transcodeVideoPreview({ sourcePath: media.file, outputPath: temp, ffmpegPath: videoExtensionFfmpeg });
+      await fsp.rename(temp, output);
+      return output;
+    } finally {
+      await fsp.rm(temp, { force: true }).catch(() => {});
+    }
+  };
+  const job = videoPreviewQueue.then(create, create);
+  videoPreviewQueue = job.then(() => undefined, () => undefined);
+  videoPreviewJobs.set(output, job);
+  job.finally(() => videoPreviewJobs.delete(output)).catch(() => {});
+  return job;
+}
+
 function storedMediaName(value) {
   return String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
@@ -10494,6 +10531,21 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(404); return res.end('not found');
       }
       return serveFile(res, media.file, req.headers.range);
+    }
+    if (url.pathname.startsWith('/video-previews/')) {
+      const profile = currentProfile(req);
+      if (!profile) return json(res, 401, { error: 'Sign in to view generated media', code: 'auth' });
+      const media = safeMediaPath(VIDEOS, url.pathname.slice('/video-previews/'.length));
+      if (!media || !canAccessProfileMedia(req, profile, 'video', media.name)) {
+        res.writeHead(404); return res.end('not found');
+      }
+      try {
+        const preview = await cachedVideoPreview(media);
+        return serveFile(res, preview, req.headers.range);
+      } catch (error) {
+        const status = error?.code === 'ENOENT' ? 404 : error?.code === 'ffmpeg_unavailable' ? 503 : 422;
+        return json(res, status, { error: String(error?.message || 'Video preview unavailable'), code: error?.code || 'video_preview_failed' });
+      }
     }
     if (url.pathname.startsWith('/videos/')) {
       const profile = currentProfile(req);
