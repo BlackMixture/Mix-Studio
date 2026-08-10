@@ -679,8 +679,10 @@ function seedVr2ModelDirs() {
 const DB_FILE = path.join(DATA, 'db.json');
 let db = loadJson(DB_FILE, { folders: [], items: [] });
 let dbSaveTimer = null;
+let dbRevision = 1;
 let mediaDeletionQueue = Promise.resolve();
 function saveDb() {
+  dbRevision += 1;
   clearTimeout(dbSaveTimer);
   dbSaveTimer = setTimeout(() => saveJsonSync(DB_FILE, db), 150);
 }
@@ -9623,13 +9625,17 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/gallery') {
     const unlocked = isPrivateUnlocked(req);
+    const revision = `${SERVER_INSTANCE_ID}.${dbRevision}`;
+    if (url.searchParams.get('revision') === revision) {
+      return json(res, 200, { unchanged: true, revision });
+    }
     const view = galleryView(db, unlocked);
     view.items = view.items.filter((it) => it.profileId === req.profile.id);
     view.folders = view.folders.filter((f) => f.profileId === req.profile.id);
     const uploadedAssets = db.uploadedAssets
       .filter((asset) => asset.profileId === req.profile.id && !asset.deletedAt)
       .map(publicUploadedAsset);
-    return json(res, 200, Object.assign({ unlocked, uploadedAssets, profile: publicProfile(req.profile, db) }, view));
+    return json(res, 200, Object.assign({ unlocked, uploadedAssets, profile: publicProfile(req.profile, db), revision }, view));
   }
 
   const uploadedAssetDelete = route.match(/^\/api\/uploaded-assets\/([\w]+)$/);

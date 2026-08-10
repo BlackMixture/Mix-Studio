@@ -41,9 +41,9 @@ function writeRelease(root, release) {
   fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify(release));
 }
 
-test('the checked-in release manifest identifies Mix Studio 1.2.2', () => {
+test('the checked-in release manifest identifies Mix Studio 1.2.3', () => {
   assert.deepEqual(readAppRelease(path.join(__dirname, '..')), {
-    version: '1.2.2',
+    version: '1.2.3',
     releasedAt: '2026-08-09',
   });
 });

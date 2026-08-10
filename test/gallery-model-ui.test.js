@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('gallery cards identify create, edit, and video generation models', () => {
   assert.match(app, /function galleryImageModelLabel\(item\)/);
@@ -68,19 +69,33 @@ test('mobile gallery videos open immediately and release card preview resources'
 
 test('mobile Library paints its mounted grid before refreshing stale data', () => {
   const setView = app.match(/function setView\(view, opts = \{\}\) \{[\s\S]*?\n\}/)?.[0] || '';
-  const refreshStart = app.indexOf('function refreshGallery(soft)');
+  const refreshStart = app.indexOf('function refreshGallery(soft, options = {})');
   const refreshEnd = app.indexOf('\nfunction updatePrivacyButton()', refreshStart);
   const refreshGallery = app.slice(refreshStart, refreshEnd);
-  assert.match(app, /const GALLERY_ENTRY_REFRESH_DELAY_MS = 900/);
+  assert.match(app, /const GALLERY_ENTRY_REFRESH_DELAY_MS = 2200/);
   assert.match(app, /function scheduleGalleryEntryRefresh\(delay = GALLERY_ENTRY_REFRESH_DELAY_MS\)/);
   assert.match(app, /function resumeGalleryPreviewsAfterPaint\(\)/);
   assert.match(setView, /resumeGalleryPreviewsAfterPaint\(\);\s*scheduleGalleryEntryRefresh\(\);/);
   assert.doesNotMatch(setView, /if \(isGallery\) \{\s*refreshGallery\(/);
   assert.match(setView, /if \(!isGallery\) \{\s*updateVideoPanels\(\);\s*renderEnhance\(\);\s*\}/);
-  assert.match(app, /\$\('#view-gallery'\)\.addEventListener\('pointerdown',[\s\S]*scheduleGalleryEntryRefresh\(\)/);
-  assert.match(app, /if \(galleryRefreshPromise\) return;\s*refreshGallery\(true\)/);
+  assert.match(app, /document\.addEventListener\('pointerdown',[\s\S]*scheduleGalleryEntryRefresh\(\)/);
+  assert.match(app, /if \(galleryRefreshPromise\) return;\s*refreshGallery\(true, \{ conditional: true \}\)/);
+  assert.match(refreshGallery, /\?revision=\$\{encodeURIComponent\(conditionalRevision\)\}/);
+  assert.match(refreshGallery, /if \(data\.unchanged\) \{[\s\S]*return;/);
   assert.match(refreshGallery, /void refreshLoraContext\(\);/);
   assert.doesNotMatch(refreshGallery, /await refreshLoraContext\(\);/);
+  assert.match(server, /let dbRevision = 1;/);
+  assert.match(server, /url\.searchParams\.get\('revision'\) === revision/);
+  assert.match(server, /\{ unchanged: true, revision \}/);
+});
+
+test('mobile Library gives input priority over preview observer and decoder wake-up', () => {
+  assert.match(app, /const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 1400/);
+  assert.match(app, /function scheduleGalleryPreviewWake\(delay = null\)/);
+  assert.match(app, /function deferGalleryPreviewWakeForInteraction\(\)/);
+  assert.match(app, /if \(state\.view !== 'gallery' \|\| galleryPreviewWakePending\) return;/);
+  assert.match(app, /document\.addEventListener\('pointerdown',[\s\S]*deferGalleryPreviewWakeForInteraction\(\)/);
+  assert.match(app, /window\.addEventListener\('scroll', \(\) => \{\s*deferGalleryPreviewWakeForInteraction\(\)/);
 });
 
 test('focused videos leave playback entirely to native controls', () => {

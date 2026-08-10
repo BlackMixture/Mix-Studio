@@ -46,7 +46,7 @@ test('desktop side library previews play on hover without restoring background a
   assert.match(app, /function stopDesktopSideLibraryPreview\(video\)[\s\S]*?galleryPreviewActive\.delete\(video\)[\s\S]*?unloadGalleryPreview\(video\)/);
   assert.match(app, /card\.addEventListener\('pointerenter', \(\) => startDesktopSideLibraryPreview\(preview\)/);
   assert.match(app, /card\.addEventListener\('pointerleave', \(\) => stopDesktopSideLibraryPreview\(preview\)/);
-  assert.match(app, /function resetGalleryPreviewObservation\(\)[\s\S]*?if \(state\.view !== 'gallery'\) return;[\s\S]*?galleryPreviewObserver\.observe\(video\)/);
+  assert.match(app, /function resetGalleryPreviewObservation\(\)[\s\S]*?if \(state\.view !== 'gallery' \|\| galleryPreviewWakePending\) return;[\s\S]*?galleryPreviewObserver\.observe\(video\)/);
 });
 
 test('background polling pauses while the app is hidden', () => {

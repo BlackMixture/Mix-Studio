@@ -1813,6 +1813,15 @@ checkAuth();
 
 const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
 const OFFICIAL_RELEASE_SHOWCASES = {
+  '1.2.3': [
+    {
+      eyebrow: 'Mobile performance',
+      title: 'Library stays responsive',
+      message: 'Library navigation, scrolling, and taps now remain responsive while unchanged data and video previews wait for an interaction-safe idle window.',
+      media: '',
+      theme: 'release',
+    },
+  ],
   '1.2.2': [
     {
       eyebrow: 'Mobile library',
@@ -3966,8 +3975,9 @@ function syncNavigation() {
 }
 
 const GALLERY_ENTRY_REFRESH_FRESH_MS = 20 * 1000;
-const GALLERY_ENTRY_REFRESH_DELAY_MS = 900;
+const GALLERY_ENTRY_REFRESH_DELAY_MS = 2200;
 let galleryDataUpdatedAt = 0;
+let galleryDataRevision = '';
 let galleryRefreshPromise = null;
 let galleryEntryRefreshTimer = null;
 let galleryEntryRefreshIdle = null;
@@ -3995,7 +4005,7 @@ function scheduleGalleryEntryRefresh(delay = GALLERY_ENTRY_REFRESH_DELAY_MS) {
         return;
       }
       if (galleryRefreshPromise) return;
-      refreshGallery(true).catch(() => { /* keep the mounted Library usable */ });
+      refreshGallery(true, { conditional: true }).catch(() => { /* keep the mounted Library usable */ });
     };
     if (typeof window.requestIdleCallback === 'function') {
       galleryEntryRefreshIdle = window.requestIdleCallback(refresh, { timeout: 1400 });
@@ -4008,7 +4018,7 @@ function scheduleGalleryEntryRefresh(delay = GALLERY_ENTRY_REFRESH_DELAY_MS) {
 function resumeGalleryPreviewsAfterPaint() {
   requestAnimationFrame(() => setTimeout(() => {
     if (state.view === 'gallery' && !$('#lightbox')?.classList.contains('show')) {
-      resetGalleryPreviewObservation();
+      scheduleGalleryPreviewWake();
     }
   }, 0));
 }
@@ -4077,10 +4087,12 @@ primaryTabButtons.forEach((button) => button.addEventListener('click', () => {
   if (mode === 'create') setCreateMode(state.createMode || 'image');
   else setView(mode);
 }));
-$('#view-gallery').addEventListener('pointerdown', () => {
+document.addEventListener('pointerdown', () => {
+  if (state.view !== 'gallery') return;
   if (galleryEntryRefreshTimer != null || galleryEntryRefreshIdle != null) {
     scheduleGalleryEntryRefresh();
   }
+  deferGalleryPreviewWakeForInteraction();
 }, { capture: true, passive: true });
 createTabButtons.forEach((button) => button.addEventListener('click', () => {
   setCreateMode(button.dataset.createMode, button.dataset.createMode === 'region');
@@ -19916,15 +19928,23 @@ function isUpscaleJob() { return state.upscaling.size > 0; }
 /* Gallery                                                             */
 /* ------------------------------------------------------------------ */
 
-function refreshGallery(soft) {
+function refreshGallery(soft, options = {}) {
   const request = (async () => {
     try {
-      const data = await api('/api/gallery');
+      const conditionalRevision = options.conditional ? galleryDataRevision : '';
+      const data = await api('/api/gallery' + (conditionalRevision
+        ? `?revision=${encodeURIComponent(conditionalRevision)}`
+        : ''));
+      galleryDataUpdatedAt = Date.now();
+      if (data.unchanged) {
+        galleryDataRevision = String(data.revision || galleryDataRevision);
+        return;
+      }
       state.folders = data.folders;
       state.items = data.items;
       state.uploadedAssets = Array.isArray(data.uploadedAssets) ? data.uploadedAssets : [];
       state.privateUnlocked = !!data.unlocked;
-      galleryDataUpdatedAt = Date.now();
+      galleryDataRevision = String(data.revision || '');
       if (!['all', 'uploaded-assets'].includes(state.activeFolder) && !state.folders.some((f) => f.id === state.activeFolder)) {
         state.activeFolder = 'all';
       }
@@ -22194,6 +22214,47 @@ let galleryPreviewObserver = null;
 let galleryPreviewActive = new Set();
 let galleryPreviewSettleTimer = null;
 let galleryPreviewScrollTimer = null;
+let galleryPreviewWakeTimer = null;
+let galleryPreviewWakeIdle = null;
+let galleryPreviewWakePending = false;
+const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 1400;
+
+function cancelGalleryPreviewWake() {
+  if (galleryPreviewWakeTimer != null) clearTimeout(galleryPreviewWakeTimer);
+  if (galleryPreviewWakeIdle != null && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(galleryPreviewWakeIdle);
+  }
+  galleryPreviewWakeTimer = null;
+  galleryPreviewWakeIdle = null;
+  galleryPreviewWakePending = false;
+}
+
+function scheduleGalleryPreviewWake(delay = null) {
+  cancelGalleryPreviewWake();
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  const wait = delay == null ? (touchFirst ? MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS : 0) : delay;
+  galleryPreviewWakePending = true;
+  galleryPreviewWakeTimer = setTimeout(() => {
+    galleryPreviewWakeTimer = null;
+    const wake = () => {
+      galleryPreviewWakeTimer = null;
+      galleryPreviewWakeIdle = null;
+      galleryPreviewWakePending = false;
+      if (state.view !== 'gallery' || $('#lightbox')?.classList.contains('show')) return;
+      resetGalleryPreviewObservation();
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      galleryPreviewWakeIdle = window.requestIdleCallback(wake, { timeout: 900 });
+    } else {
+      galleryPreviewWakeTimer = setTimeout(wake, 0);
+    }
+  }, Math.max(0, wait));
+}
+
+function deferGalleryPreviewWakeForInteraction() {
+  if (state.view === 'gallery' && galleryPreviewWakePending) scheduleGalleryPreviewWake();
+}
+
 function galleryPreviewMotionAllowed() {
   return document.visibilityState === 'visible'
     && state.mediaPreferences.videoPreviews
@@ -22324,12 +22385,13 @@ function resetGalleryPreviewObservation() {
   clearTimeout(galleryPreviewSettleTimer);
   galleryPreviewObserver.disconnect();
   galleryPreviewActive = new Set([...galleryPreviewActive].filter((video) => video.isConnected));
-  if (state.view !== 'gallery') return;
+  if (state.view !== 'gallery' || galleryPreviewWakePending) return;
   $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
   scheduleGalleryPreviewPlayback(180);
 }
 
 function suspendGalleryPreviewPlayback() {
+  cancelGalleryPreviewWake();
   clearTimeout(galleryPreviewSettleTimer);
   clearTimeout(galleryPreviewScrollTimer);
   galleryPreviewSettleTimer = null;
@@ -22344,6 +22406,7 @@ function suspendGalleryPreviewPlayback() {
 }
 
 function handoffGalleryPreviewsToFocusedMedia() {
+  cancelGalleryPreviewWake();
   clearTimeout(galleryPreviewSettleTimer);
   clearTimeout(galleryPreviewScrollTimer);
   galleryPreviewSettleTimer = null;
@@ -22366,6 +22429,7 @@ function handoffGalleryPreviewsToFocusedMedia() {
 }
 
 window.addEventListener('scroll', () => {
+  deferGalleryPreviewWakeForInteraction();
   if (state.view !== 'gallery' || !galleryPreviewMotionAllowed()) return;
   clearTimeout(galleryPreviewScrollTimer);
   galleryPreviewActive.forEach((video) => pauseGalleryPreview(video, 3600));

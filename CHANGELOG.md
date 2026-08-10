@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.2.3 - 2026-08-09
+
+### Mobile responsiveness
+
+- Kept the entire app interactive immediately after entering Library by replacing its blind delayed full-grid rebuild with a lightweight revision check that does no DOM work when gallery data is unchanged.
+- Deferred mobile video-preview observer and decoder activation until an interaction-safe idle window; early taps or scrolling take priority and postpone that background work automatically.
+- Preserved immediate full refreshes after actual gallery mutations, profile changes, and generation events while coalescing only the passive tab-entry freshness check.
+
 ## 1.2.2 - 2026-08-09
 
 ### Mobile library
