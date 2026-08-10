@@ -44,7 +44,7 @@ For manual Git setup, detailed VRAM guidance, shared-model discovery, phone acce
 | **Create** | Krea 2 Turbo and Raw, exact resolution and seed controls, batching, LoRAs, prompt enhancement, reference, style, and depth guidance. |
 | **Region** | Aspect-correct boxes with independent prompts, LoRA stacks, and reference images combined into one coherent generation. |
 | **Edit** | Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix with multiple inputs, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
-| **Video** | MiniMax H3 text, first/last-frame, and optional reference-to-video generation; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
+| **Video** | MiniMax H3 text, first/last-frame, reference-to-video, and experimental long-context generation; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
 | **Upscale** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
 | **Library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
 

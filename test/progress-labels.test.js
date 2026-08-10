@@ -67,6 +67,21 @@ test('sequential H3 Turbo chunks retain one overall progress range across prompt
   });
 });
 
+test('H3 Long context clips retain one overall progress range with a distinct label', () => {
+  const h3Job = {
+    kind: 'video',
+    graph: { sample: { class_type: 'SamplerCustomAdvanced' } },
+    videoChunkSequence: {
+      type: 'long-context',
+      index: 2,
+      segments: [{ index: 0 }, { index: 1 }, { index: 2 }, { index: 3 }],
+    },
+  };
+  assert.equal(nodeLabelForJob(h3Job, 'sample'), 'H3 Long context clip 3 of 4');
+  assert.equal(progressDetailsForJob(h3Job, 'sample', 5, 10).overallPercent, 60);
+  assert.equal(progressPhaseForJob(h3Job, 'sample').phaseLabel, 'H3 Long context clip');
+});
+
 test('multi-stage video progress names each pass and reports one overall percentage', () => {
   const videoJob = {
     kind: 'video',

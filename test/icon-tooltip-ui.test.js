@@ -64,6 +64,8 @@ test('icon tooltip behavior is delegated, keyboard accessible, and supports dyna
   assert.match(tooltipJs, /addEventListener\(\s*['"](?:pointerout|pointerleave)['"]/);
   assert.match(tooltipJs, /addEventListener\(\s*['"](?:focusin|focus)['"]/);
   assert.match(tooltipJs, /addEventListener\(\s*['"](?:focusout|blur)['"]/);
+  assert.match(tooltipJs, /addEventListener\(\s*['"]click['"][\s\S]{0,420}showIconTooltip\(button, true\)/);
+  assert.match(tooltipJs, /dataset\.iconTooltipDetail/);
   assert.match(tooltipJs, /setAttribute\(\s*['"]aria-describedby['"]\s*,/);
   assert.match(tooltipJs, /removeAttribute\(\s*['"]aria-describedby['"]\s*\)/);
 

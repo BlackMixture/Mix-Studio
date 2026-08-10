@@ -186,6 +186,8 @@ const {
 } = require('./lib/edit-mask');
 const {
   H3_FPS,
+  H3_LONG_CONTEXT_MAX_SECONDS,
+  H3_MIN_SECONDS,
   H3_TURBO_REFERENCE_CHUNK_FRAMES,
   LTX_MAX_SECONDS,
   LTX_CAMERA_FPS,
@@ -195,6 +197,8 @@ const {
   h3DurationSeconds,
   h3EffectiveDurationSeconds,
   h3FramesForSeconds,
+  h3LongContextSegments,
+  h3LongContextSegmentPrompt,
   h3TurboReferenceSegments,
   ltxCameraDurationSeconds,
   ltxDurationSeconds,
@@ -414,6 +418,9 @@ function serializePromptPackMutation(task) {
 
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
 const SPARK_ACCESS_FILE = path.join(DATA, 'spark_access.json');
+const SETTINGS_SCHEMA_VERSION = 2;
+const LEGACY_H3_TURBO_LORA = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
+const DEFAULT_H3_TURBO_LORA = 'minimax_h3_turbo_v4_step600_ema.safetensors';
 const DEFAULT_SYSTEM_PROMPT = `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.
 
 Think step by step about the request before writing the answer:
@@ -437,6 +444,7 @@ Follow these rules strictly:
 User's Input:`;
 
 const DEFAULT_SETTINGS = {
+  settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
   comfyUrl: RUNTIME.comfy.url || 'http://127.0.0.1:8188',
   hfToken: '',
   hfEndpoint: '',
@@ -482,7 +490,7 @@ const DEFAULT_SETTINGS = {
   h3Clip: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
   h3VideoVae: 'minimax_h3_video_vae_fp16.safetensors',
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
-  h3TurboLora: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+  h3TurboLora: DEFAULT_H3_TURBO_LORA,
   h3RefTurboLora: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
   ...h3VariantSettingDefaults(),
   wanHighUnet: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',
@@ -540,6 +548,7 @@ function saveJsonSync(file, obj) {
 }
 
 function normalizeSettings(s) {
+  s.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION;
   normalizeSeedVr2Defaults(s);
   s.krea2ModelVariant = normalizeKrea2Variant(s.krea2ModelVariant, s);
   s.vramProfile = normalizeVramProfile(s.vramProfile);
@@ -564,7 +573,21 @@ function normalizeSettings(s) {
   return s;
 }
 
-let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, loadJson(SETTINGS_FILE, {})));
+function migrateStoredSettings(value) {
+  const stored = value && typeof value === 'object' ? Object.assign({}, value) : {};
+  const version = Math.max(0, Math.round(Number(stored.settingsSchemaVersion) || 0));
+  let changed = version < SETTINGS_SCHEMA_VERSION;
+  if (version < 2 && String(stored.h3TurboLora || '').trim().toLowerCase() === LEGACY_H3_TURBO_LORA.toLowerCase()) {
+    stored.h3TurboLora = DEFAULT_H3_TURBO_LORA;
+    changed = true;
+  }
+  stored.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION;
+  return { stored, changed };
+}
+
+const storedSettingsMigration = migrateStoredSettings(loadJson(SETTINGS_FILE, {}));
+let settings = normalizeSettings(Object.assign({}, DEFAULT_SETTINGS, storedSettingsMigration.stored));
+if (storedSettingsMigration.changed && fs.existsSync(SETTINGS_FILE)) saveJsonSync(SETTINGS_FILE, settings);
 let sparkAccess = normalizeSparkAccess(loadJson(SPARK_ACCESS_FILE, {}));
 const APP_RESTART_SETTINGS_AT_BOOT = Object.freeze({ comfyUrl: settings.comfyUrl });
 
@@ -1648,6 +1671,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
     h3r2v: ['h3r2v'],
     h3turbo: ['h3turbo'],
     h3turbor2v: ['h3turbor2v'],
+    h3context: ['h3context'],
     h3sage: ['h3sage'],
     ltxcamera: ['ltxcamera'],
     ltxdirector: ['ltxdirector'],
@@ -2325,14 +2349,26 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
   broadcast('jobDone', { jobId: pid, items: [composite, ...created], strengthHunt: true, count: created.length });
 }
 
-async function queueNextH3TurboReferenceChunk(job) {
+async function queueNextH3VideoChunk(job) {
   const sequence = job && job.videoChunkSequence;
   if (!sequence || sequence.index >= sequence.segments.length - 1) return null;
   const nextIndex = sequence.index + 1;
-  const nextOpts = Object.assign({}, sequence.opts, {
-    makePoster: false,
-    turboReferenceSegment: sequence.segments[nextIndex],
-  });
+  const nextSegment = sequence.segments[nextIndex];
+  const nextOpts = sequence.type === 'long-context'
+    ? Object.assign({}, sequence.opts, {
+      prompt: h3LongContextSegmentPrompt(sequence.basePrompt, nextSegment, sequence.segments.length),
+      frames: nextSegment.generationFrames,
+      seed: (Number(sequence.opts.seed) + nextIndex) % (2 ** 48),
+      makePoster: false,
+      firstImageName: null,
+      endImageName: nextIndex === sequence.segments.length - 1 ? sequence.finalEndImageName : null,
+      longContext: { chainId: sequence.chainId, clipIndex: nextIndex },
+      turboReferenceSegment: sequence.turboReferenceVideo ? nextSegment : null,
+    })
+    : Object.assign({}, sequence.opts, {
+      makePoster: false,
+      turboReferenceSegment: nextSegment,
+    });
   const graph = await buildMiniMaxH3Graph(nextOpts, settings, {
     nodeFromOrdered, filterInputs, rtxVideoSuperResolutionNode,
   });
@@ -2415,7 +2451,7 @@ async function completeJob(pid) {
       }
       if (videoChunkSequence.index < videoChunkSequence.segments.length - 1) {
         try {
-          const nextJobId = await queueNextH3TurboReferenceChunk(job);
+          const nextJobId = await queueNextH3VideoChunk(job);
           jobs.delete(pid);
           broadcast('videoChunkStep', {
             jobId: pid,
@@ -2424,6 +2460,7 @@ async function completeJob(pid) {
             completedChunk: videoChunkSequence.index + 1,
             nextChunk: videoChunkSequence.index + 2,
             total: videoChunkSequence.segments.length,
+            sequenceKind: videoChunkSequence.type || 'turbo-reference',
           });
         } catch (error) {
           return failJob(pid, `MiniMax H3 chunk ${videoChunkSequence.index + 2} could not start: ${error.message}`);
@@ -2434,7 +2471,9 @@ async function completeJob(pid) {
         jobId: pid,
         profileId: job.profileId,
         kind: 'video',
-        text: 'Joining H3 video chunks…',
+        text: videoChunkSequence.type === 'long-context'
+          ? 'Joining H3 long-context clips…'
+          : 'Joining H3 video chunks…',
         itemId: job.itemId || null,
       });
       try {
@@ -3160,6 +3199,7 @@ function sharedMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', op
     String(userPrompt || '').trim(),
     String(options.engine || ''),
     Number(options.seconds) || 0,
+    options.longContext === true,
     orderedPromptImageNames(Object.assign({ imageName: comfyImageName }, options)),
     options.hasFirstFrame === true,
     options.hasLastFrame === true,
@@ -3310,6 +3350,7 @@ function reviseVideoPrompt(currentPrompt, changeRequest, seed, options = {}) {
   let parts = appendH3ValidationFeedback(videoPromptRevisionParts(currentPrompt, changeRequest, {
     engine: options.engine,
     seconds: options.seconds,
+    longContext: options.longContext === true,
     mode: options.mode,
     hasImage: imageNames.length > 0,
     hasFirstImage: options.hasFirstFrame === true,
@@ -3334,6 +3375,7 @@ function enhanceH3Prompt(userPrompt, seed, options = {}) {
   const imageNames = orderedPromptImageNames(h3Options);
   let parts = appendH3ValidationFeedback(h3PromptEnhanceParts(userPrompt, {
     seconds: h3Options.seconds,
+    longContext: h3Options.longContext === true,
     mode: h3Options.mode,
     hasImage: imageNames.length > 0,
     hasFirstImage: h3Options.hasFirstFrame === true,
@@ -3359,6 +3401,7 @@ function sharedH3PromptEnhancement(userPrompt, seed, options = {}) {
     orderedPromptImageNames(options),
     String(options.mode || ''),
     Number(options.seconds) || 0,
+    options.longContext === true,
     options.hasFirstFrame === true,
     options.hasLastFrame === true,
   ]);
@@ -5798,6 +5841,8 @@ const REQUIRED_CLASSES = {
   h3r2v: ['MiniMaxH3ReferenceToVideo', 'VHS_LoadVideo', 'VHS_LoadAudioUpload'],
   h3turbo: ['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'],
   h3turbor2v: ['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'],
+  h3context: ['MiniMaxH3MotionContext', 'MiniMaxH3MotionContextTrim',
+    'MiniMaxH3MotionContextSaveLatent', 'MiniMaxH3MotionContextLoadLatent'],
   h3sage: ['PathchSageAttentionKJ'],
   ltxdirector: ['LTXDirector', 'LTXDirectorGuide', 'LTXDirectorCropGuides'],
   ltxcamera: ['LTXICLoRALoaderModelOnly', 'LTXAddVideoICLoRAGuide', 'LTXVImgToVideoConditionOnly',
@@ -5827,7 +5872,7 @@ const REQUIRED_CLASSES = {
 const KREA2_DEPENDENCY_COMPONENTS = new Set([
   'image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style',
 ]);
-const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3dyntime']);
+const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3dyntime']);
 
 function dependencyComponentInfo(id, fit = null) {
   const component = DEPENDENCY_COMPONENTS[id] || {};
@@ -8022,6 +8067,7 @@ async function handleApi(req, res, url) {
     const h3ReplaceTarget = String(body.h3ReplaceTarget || '').trim().slice(0, 240);
     const h3TurboRequested = engine === 'h3' && body.h3Turbo === true;
     const h3Turbo = h3TurboRequested;
+    const h3LongContext = engine === 'h3' && body.h3LongContext === true;
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
     let h3TurboNativeSampler = false;
@@ -8058,6 +8104,29 @@ async function handleApi(req, res, url) {
       }
       const selectedMode = h3ReferenceBacked ? 'reference' : 'frames';
       const selectedVariant = h3SelectedModelVariant;
+      if (h3LongContext && h3Mode === 'replace') {
+        return json(res, 400, {
+          error: 'MiniMax H3 Long context supports Text + Frames and Reference modes. Replace remains a single-clip workflow.',
+          code: 'h3_long_context_mode_incompatible',
+        });
+      }
+      if (h3LongContext && selectedVariant.requiresPatch) {
+        return json(res, 409, {
+          error: 'MiniMax H3 Long context is not yet validated with DynTime. Choose Standard or Full BF16 for this generation.',
+          code: 'h3_long_context_model_incompatible',
+        });
+      }
+      if (h3LongContext) {
+        const missingContextNodes = REQUIRED_CLASSES.h3context.filter((className) => !info[className]);
+        if (missingContextNodes.length) {
+          return json(res, 409, {
+            error: 'MiniMax H3 Long context needs the reviewed Motion Context node. Install Long Context, restart ComfyUI, and try again.',
+            code: 'h3_long_context_unavailable',
+            component: 'h3context',
+            missingNodes: missingContextNodes,
+          });
+        }
+      }
       if (selectedVariant.requiresPatch) {
         const patchStatus = await dynTimePatchStatus(RUNTIME);
         if (!patchStatus.ready) {
@@ -8264,9 +8333,14 @@ async function handleApi(req, res, url) {
 
     // Duration: prefer seconds; fall back to legacy frames (25 fps)
     let seconds = Number(body.seconds);
+    let h3LongContextPlan = [];
+    const h3LongContextTurboVideo = h3LongContext && h3Turbo && h3ReferenceBacked
+      && h3References.videos.length > 0;
     if (!Number.isFinite(seconds)) seconds = clampInt(body.frames, 25, 505, 121) / 25;
     seconds = engine === 'h3'
-      ? h3DurationSeconds(seconds)
+      ? (h3LongContext
+        ? Math.max(H3_MIN_SECONDS, Math.min(H3_LONG_CONTEXT_MAX_SECONDS, seconds))
+        : h3DurationSeconds(seconds))
       : wanAnimate2
         ? WAN_ANIMATE_2_FRAMES / 24
       : engine === 'scail'
@@ -8281,8 +8355,16 @@ async function handleApi(req, res, url) {
     let frames; let fps; let W; let H; let h3OutputAspectRatio;
     if (engine === 'h3') {
       fps = H3_FPS;
-      frames = h3FramesForSeconds(seconds);
-      seconds = h3EffectiveDurationSeconds(seconds);
+      if (h3LongContext) {
+        h3LongContextPlan = h3LongContextSegments(seconds, {
+          maxGenerationFrames: h3LongContextTurboVideo ? H3_TURBO_REFERENCE_CHUNK_FRAMES : undefined,
+        });
+        frames = h3LongContextPlan.reduce((total, segment) => total + segment.keepFrames, 0);
+        seconds = frames / H3_FPS;
+      } else {
+        frames = h3FramesForSeconds(seconds);
+        seconds = h3EffectiveDurationSeconds(seconds);
+      }
       // H3's first frame supplies visual conditioning, not the output canvas.
       // Honor the aspect and S/M/L size captured by this submission so lower
       // memory tiers also work for image-to-video and gallery reuse.
@@ -8360,6 +8442,7 @@ async function handleApi(req, res, url) {
       const suggested = await sharedMotionPrompt(comfyName, seed, req.profile.id, userMotionPrompt, {
         engine,
         seconds,
+        longContext: h3LongContext,
         mode: h3GraphMode,
         imageNames: engine === 'h3' ? h3PromptImageNames : undefined,
         hasFirstFrame: engine === 'h3' && !bypass,
@@ -8399,6 +8482,7 @@ async function handleApi(req, res, url) {
         imageNames: h3PromptImageNames,
         mode: h3GraphMode,
         seconds,
+        longContext: h3LongContext,
         hasFirstFrame: h3Mode === 'frames' && !bypass,
         hasLastFrame: h3Mode === 'frames' && !!body.endImageName,
         allowedReferenceTokens: h3ReferenceBacked ? h3AllowedReferenceTokens : [],
@@ -8427,7 +8511,7 @@ async function handleApi(req, res, url) {
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
     const videoSteps = engine === 'h3'
-      ? (h3Turbo ? clampInt(body.steps, 4, 100, h3ReferenceBacked ? 6 : 4) : clampInt(body.steps, 1, 100, 20))
+      ? (h3Turbo ? clampInt(body.steps, 4, 100, 6) : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
         : wanAnimate2
@@ -8449,8 +8533,12 @@ async function handleApi(req, res, url) {
     const cameraMotionGuideNames = cameraReferenceGuided
       ? (cameraGuideVideoName ? [cameraGuideVideoName] : await uploadCameraMotionGuides(cameraMotions))
       : [];
+    const h3LongContextChainId = h3LongContextPlan.length ? uid() : '';
+    const firstH3LongContextSegment = h3LongContextPlan[0] || null;
     const opts = {
-      prompt,
+      prompt: firstH3LongContextSegment
+        ? h3LongContextSegmentPrompt(prompt, firstH3LongContextSegment, h3LongContextPlan.length)
+        : prompt,
       negativePrompt,
       cameraMotionPhrase: selectedCameraMotionPhrase,
       cameraMotionPromptBase,
@@ -8459,7 +8547,8 @@ async function handleApi(req, res, url) {
       // I2V was enhanced by the shared vision pass above. T2V and Face ID
       // retain their specialized in-graph prompt enhancement.
       enhance: isLtxLike ? enhance && !refinedMotionPrompt : false,
-      frames, fps,
+      frames: firstH3LongContextSegment ? firstH3LongContextSegment.generationFrames : frames,
+      fps,
       steps: videoSteps,
       fourK: !!body.fourK,
       seed,
@@ -8468,7 +8557,7 @@ async function handleApi(req, res, url) {
       imgCompression: clampInt(body.motionFreedom, 0, 100, 35),
       fast: body.fast !== false,
       audioName,
-      endImageName,
+      endImageName: !firstH3LongContextSegment || h3LongContextPlan.length === 1 ? endImageName : null,
       sigmaFirst: sig.first,
       sigmaUp: sig.up,
       driveVideoName,
@@ -8497,9 +8586,16 @@ async function handleApi(req, res, url) {
       firstImageName: engine === 'h3' && !bypass && h3Mode === 'frames' ? comfyName : null,
       references: h3References,
       refImageSize: body.h3RefImageSize === 'max' ? 'max' : 'match',
+      longContext: firstH3LongContextSegment ? {
+        chainId: h3LongContextChainId,
+        clipIndex: 0,
+      } : null,
     };
+    if (h3LongContextTurboVideo && firstH3LongContextSegment) {
+      opts.turboReferenceSegment = firstH3LongContextSegment;
+    }
     const h3TurboReferenceChunks = engine === 'h3' && h3ReferenceBacked && h3Turbo
-      && h3References.videos.length && frames > H3_TURBO_REFERENCE_CHUNK_FRAMES
+      && !h3LongContext && h3References.videos.length && frames > H3_TURBO_REFERENCE_CHUNK_FRAMES
       ? h3TurboReferenceSegments(frames)
       : [];
     if (h3TurboReferenceChunks.length > 1) {
@@ -8515,21 +8611,41 @@ async function handleApi(req, res, url) {
           : faceImageName ? await buildAnimateFaceId(faceImageName, opts)
             : await buildAnimate(comfyName, opts);
     const pid = await queuePrompt(graph, { profileId: req.profile.id });
-    const h3ChunkSequenceId = h3TurboReferenceChunks.length > 1 ? uid() : '';
+    const h3ChunkSequenceId = h3LongContextPlan.length > 1
+      ? h3LongContextChainId
+      : (h3TurboReferenceChunks.length > 1 ? uid() : '');
+    const h3VideoChunkSequence = h3LongContextPlan.length > 1 ? {
+      type: 'long-context',
+      id: h3ChunkSequenceId,
+      chainId: h3LongContextChainId,
+      index: 0,
+      segments: h3LongContextPlan,
+      chunkBuffers: [],
+      posterBuffer: null,
+      startedAt: Date.now(),
+      opts: Object.assign({}, opts),
+      basePrompt: prompt,
+      finalEndImageName: endImageName,
+      turboReferenceVideo: h3LongContextTurboVideo,
+      fps: H3_FPS,
+      width: opts.fourK ? W * 2 : W,
+      height: opts.fourK ? H * 2 : H,
+    } : (h3TurboReferenceChunks.length > 1 ? {
+      type: 'turbo-reference',
+      id: h3ChunkSequenceId,
+      index: 0,
+      segments: h3TurboReferenceChunks,
+      chunkBuffers: [],
+      posterBuffer: null,
+      startedAt: Date.now(),
+      opts: Object.assign({}, opts),
+      fps: H3_FPS,
+      width: opts.fourK ? W * 2 : W,
+      height: opts.fourK ? H * 2 : H,
+    } : undefined);
     trackJob(pid, {
       kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
-      videoChunkSequence: h3TurboReferenceChunks.length > 1 ? {
-        id: h3ChunkSequenceId,
-        index: 0,
-        segments: h3TurboReferenceChunks,
-        chunkBuffers: [],
-        posterBuffer: null,
-        startedAt: Date.now(),
-        opts: Object.assign({}, opts),
-        fps: H3_FPS,
-        width: opts.fourK ? W * 2 : W,
-        height: opts.fourK ? H * 2 : H,
-      } : undefined,
+      videoChunkSequence: h3VideoChunkSequence,
       videoInfo: {
         engine,
         seconds: opts.seconds,
@@ -8539,7 +8655,7 @@ async function handleApi(req, res, url) {
         promptTemplate,
         promptPresets,
         enhance: enhance && !!suppliedMotionPrompt,
-        frames: (opts.frames - 1) * smooth + 1, fps: opts.fps * smooth,
+        frames: h3LongContextPlan.length ? frames : (opts.frames - 1) * smooth + 1, fps: opts.fps * smooth,
         exactFrameCount: true,
         smooth: smooth > 1 ? smooth : undefined,
         fourK: opts.fourK, width: opts.fourK ? W * 2 : W, height: opts.fourK ? H * 2 : H,
@@ -8568,15 +8684,23 @@ async function handleApi(req, res, url) {
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
         h3ModelVariant: engine === 'h3' ? h3SelectedModelVariant?.id : undefined,
         h3ModelName: engine === 'h3' ? h3EffectiveModelName(settings, h3GraphMode) : undefined,
+        h3TurboLora: engine === 'h3' && opts.turbo
+          ? (h3ReferenceBacked ? settings.h3RefTurboLora : settings.h3TurboLora)
+          : undefined,
         h3TurboStrength: engine === 'h3' && opts.turbo ? opts.turboStrength : undefined,
         h3TurboLowVram: engine === 'h3' && opts.turbo ? opts.turboLowVram || undefined : undefined,
         h3TurboSampler: engine === 'h3' && opts.turbo
           ? (h3ReferenceBacked ? 'creator-reference' : (opts.turboNativeSampler ? 'native-euler' : 'creator-legacy'))
           : undefined,
         h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
+        h3LongContext: h3LongContextPlan.length > 1 || undefined,
+        h3LongContextClips: h3LongContextPlan.length > 1 ? h3LongContextPlan.length : undefined,
+        h3LongContextFrames: h3LongContextPlan.length > 1 ? 22 : undefined,
         h3AspectRatio: engine === 'h3' ? h3OutputAspectRatio : undefined,
         h3ResolutionSize: engine === 'h3' ? Number(body.h3ResolutionSize) || 1 : undefined,
         h3MatchSource: engine === 'h3' && h3Mode === 'frames' ? body.h3MatchSource === true : undefined,
+        h3MatchReferenceVideo: engine === 'h3' && h3Mode === 'reference'
+          ? body.h3MatchReferenceVideo === true : undefined,
         attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
         h3RefImageSize: h3ReferenceBacked ? opts.refImageSize : undefined,
         h3References: h3ReferenceBacked ? h3References : undefined,
@@ -8606,6 +8730,7 @@ async function handleApi(req, res, url) {
       engine,
       h3Turbo: engine === 'h3' ? opts.turbo : undefined,
       h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
+      h3LongContextClips: h3LongContextPlan.length > 1 ? h3LongContextPlan.length : undefined,
       sequenceId: h3ChunkSequenceId || undefined,
       attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
     });
@@ -8945,10 +9070,14 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const initialPrompt = String(body.prompt || '').trim();
     const engine = body.engine === 'h3' ? 'h3' : '';
+    const h3LongContext = engine === 'h3' && body.h3LongContext === true;
     const endImageName = engine === 'h3' ? String(body.endImageName || '').trim().slice(0, 500) : '';
     const requestedSeconds = Number(body.seconds);
     const seconds = engine === 'h3'
-      ? h3EffectiveDurationSeconds(requestedSeconds)
+      ? (h3LongContext
+        ? h3LongContextSegments(requestedSeconds)
+          .reduce((total, segment) => total + segment.keepFrames, 0) / H3_FPS
+        : h3EffectiveDurationSeconds(requestedSeconds))
       : requestedSeconds;
     let comfyName = '';
     if (body.id) {
@@ -8965,6 +9094,7 @@ async function handleApi(req, res, url) {
     let raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, {
       engine,
       seconds,
+      longContext: h3LongContext,
       mode: 'frames',
       imageNames,
       hasFirstFrame: engine === 'h3',
@@ -8975,6 +9105,7 @@ async function handleApi(req, res, url) {
       raw = await sharedMotionPrompt(comfyName, Math.floor(Math.random() * 2 ** 31), req.profile.id, initialPrompt, {
         engine,
         seconds,
+        longContext: h3LongContext,
         mode: 'frames',
         imageNames,
         hasFirstFrame: engine === 'h3',
@@ -9080,6 +9211,7 @@ async function handleApi(req, res, url) {
     const videoRevision = body.kind === 'video';
     const revisionMode = ['reference', 'replace'].includes(body.h3Mode) ? 'reference' : 'frames';
     const revisionEngine = String(body.engine || '').trim().slice(0, 40);
+    const revisionH3LongContext = revisionEngine === 'h3' && body.h3LongContext === true;
     const hasFirstFrame = body.hasFirstFrame === undefined
       ? revisionMode === 'frames' && !!imageName
       : body.hasFirstFrame === true;
@@ -9100,8 +9232,12 @@ async function handleApi(req, res, url) {
       profileId: req.profile.id,
       engine: revisionEngine,
       seconds: revisionEngine === 'h3'
-        ? h3EffectiveDurationSeconds(body.seconds)
+        ? (revisionH3LongContext
+          ? h3LongContextSegments(body.seconds)
+            .reduce((total, segment) => total + segment.keepFrames, 0) / H3_FPS
+          : h3EffectiveDurationSeconds(body.seconds))
         : clampNum(body.seconds, 1, 60, 5),
+      longContext: revisionH3LongContext,
       mode: revisionMode,
       // Clients predating explicit frame flags sent only imageName. Preserve
       // their I2VA behavior while keeping Reference-mode vision distinct.
@@ -10084,7 +10220,8 @@ function jobLabel(job) {
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'extend') return 'Video extension (LTX 2.3)';
   if (job.kind === 'video' && job.videoChunkSequence) {
-    return `H3 Turbo chunk ${job.videoChunkSequence.index + 1}/${job.videoChunkSequence.segments.length}: `
+    const label = job.videoChunkSequence.type === 'long-context' ? 'H3 Long context clip' : 'H3 Turbo chunk';
+    return `${label} ${job.videoChunkSequence.index + 1}/${job.videoChunkSequence.segments.length}: `
       + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 58);
   }
   if (job.kind === 'video') return 'Video: ' + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 70);

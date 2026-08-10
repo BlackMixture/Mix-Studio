@@ -140,6 +140,24 @@ test('browser H3 duration helper stays aligned with the generation frame grid', 
   assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(5), 124 / 24);
   assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(10), 243 / 24);
   assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(15), 362 / 24);
+  assert.equal(H3PromptGuide.h3EffectiveDurationSeconds(30, 120), 736 / 24);
+});
+
+test('H3 prompt audit accepts later shots across a long-context timeline', () => {
+  const prompt = baseH3Prompt(
+    '[Shot 1] A rider moves forward. [Shot 2] At 00:20.000, the camera cuts to the rider stopping.',
+  );
+  const standard = H3PromptGuide.auditStructure(prompt, { mode: 'frames', seconds: 30 });
+  const longContext = H3PromptGuide.auditStructure(prompt, {
+    mode: 'frames',
+    seconds: 30,
+    longContext: true,
+  });
+
+  assert.equal(standard.ready, false);
+  assert.ok(standard.issueCodes.includes('shot-time-range'));
+  assert.equal(longContext.ready, true);
+  assert.equal(longContext.duration, 736 / 24);
 });
 
 test('local H3 structure wraps a plain prompt without inventing creative content', () => {

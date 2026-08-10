@@ -31,11 +31,11 @@ test('MiniMax H3 resolution picker mirrors the backend S, M, L, and XL canvases'
     assert.ok(tierPixels[2] < tierPixels[3]);
   }
   assert.match(html, /data-h3-xl="true"[^>]*hidden>XL</);
-  assert.match(html, /id="h3ResolutionWarning" hidden>XL uses roughly twice the pixels of L/);
+  assert.match(html, /id="h3ResolutionWarning"[^>]*data-icon-tooltip-detail="XL uses roughly twice the pixels of L/);
   assert.ok(html.indexOf('/h3-resolution.js') < html.indexOf('/app.js'));
   assert.match(app, /function h3ResolutionActive\(\)[\s\S]*state\.view === 'video' && state\.vidEngine === 'h3'/);
   assert.match(app, /function h3DimensionsForAspect\([\s\S]*H3Resolution\.dimensions\(selected\.ar, 1, h3ResolutionSize\(\)\)/);
-  assert.match(app, /function h3ResolutionAspectRatio\(\)[\s\S]*h3MatchSourceActive\(\) \? h3SourceAspectRatio\(\) : selectedAspectRatio\(\)/);
+  assert.match(app, /function h3ResolutionAspectRatio\(\)[\s\S]*h3MatchSourceActive\(\)[\s\S]*h3MatchReferenceVideoActive\(\)[\s\S]*selectedAspectRatio\(\)/);
   assert.match(app, /function h3CurrentDimensions\(\)[\s\S]*h3ResolutionSize\(\)/);
   assert.match(app, /function computeDims\(\)[\s\S]*h3CurrentDimensions\(\)[\s\S]*state\.width = dimensions\.width;[\s\S]*state\.height = dimensions\.height;/);
   assert.match(app, /\$\('#sizeSeg'\)\.hidden = false;/);
@@ -65,6 +65,18 @@ test('MiniMax H3 can match a first frame aspect without using its oversized nati
   assert.ok(Math.abs((frontend.width / frontend.height) - (1184 / 1472)) < 0.005);
   assert.match(app, /h3MatchSource: state\.vidEngine === 'h3' && state\.vidH3Mode === 'frames'/);
   assert.match(server, /h3MatchSource: engine === 'h3' && h3Mode === 'frames'/);
+});
+
+test('MiniMax H3 Reference mode can match Video 1 aspect and labels video thumbnails', () => {
+  assert.match(app, /vidH3MatchReferenceVideo: false/);
+  assert.match(app, /function h3ReferenceVideoAspectRatio\(\)/);
+  assert.match(app, /<span>Match video<\/span>/);
+  assert.match(app, /state\.vidH3MatchReferenceVideo = true/);
+  assert.match(app, /h3MatchReferenceVideo: state\.vidEngine === 'h3' && state\.vidH3Mode === 'reference'/);
+  assert.match(app, /className = 'h3-reference-aspect'/);
+  assert.match(app, /video\.videoWidth/);
+  assert.match(css, /\.h3-reference-aspect \{/);
+  assert.match(server, /h3MatchReferenceVideo: engine === 'h3' && h3Mode === 'reference'/);
 });
 
 test('MiniMax H3 offers verified SageAttention with an explicit standard-attention bypass', () => {
@@ -303,7 +315,7 @@ test('LTX 2.3 and MiniMax H3 expose their supported duration limits', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="vidDur"[^>]*max="20"/);
   assert.match(html, /id="animDur"[^>]*max="20"/);
-  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx'\) return 20;[\s\S]*engine === 'h3'\) return 15;[\s\S]*return 15;/);
+  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx'\) return 20;[\s\S]*engine === 'h3'\) return h3LongContextActive\(\) \? 120 : 15;[\s\S]*return 15;/);
   assert.match(app, /Math\.min\(Number\(durEl\.max\) \|\| 15, Math\.round\(len\)\)/);
   assert.match(server, /engine === 'ltx'[\s\S]*ltxDurationSeconds\(seconds\)/);
   assert.match(server, /seconds: opts\.seconds/);
@@ -400,7 +412,7 @@ test('automatic motion prompting keeps each queued frame and video submission at
   assert.match(app, /'Auto motion armed'/);
   assert.match(server, /if \(autoMotionRequested\)/);
   assert.match(app, /&& !h3ReferenceModeActive\(\);/);
-  assert.match(server, /sharedMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{[\s\S]{0,220}engine,[\s\S]{0,80}seconds,[\s\S]{0,120}hasFirstFrame:[\s\S]{0,100}hasLastFrame:/);
+  assert.match(server, /sharedMotionPrompt\(comfyName, seed, req\.profile\.id, userMotionPrompt, \{[\s\S]{0,260}engine,[\s\S]{0,80}seconds,[\s\S]{0,100}longContext: h3LongContext,[\s\S]{0,160}hasFirstFrame:[\s\S]{0,100}hasLastFrame:/);
   assert.match(server, /const preparedMotionPrompt = body\.preparedMotionPrompt === true/);
   assert.match(server, /queuePrompt\(graph, \{ profileId, front: true \}\)/);
   assert.match(server, /body\.autoMotionPrompt === true[\s\S]{0,100}!h3ReferenceBacked/);
@@ -445,7 +457,7 @@ test('MiniMax H3 exposes an official-format guide with safe local dialogue forma
   assert.doesNotMatch(localStructure, /state\.enhance\s*=/);
   assert.match(html, /Generate with any prompt[\s\S]{0,180}local tools can add the official structure and dialogue tags without an LLM/);
   assert.match(html, /These tools never gate Generate/);
-  assert.match(app, /function h3EffectiveDurationSeconds\([\s\S]{0,180}H3PromptGuide\.h3EffectiveDurationSeconds\(value\)/);
+  assert.match(app, /function h3EffectiveDurationSeconds\([\s\S]{0,220}H3PromptGuide\.h3EffectiveDurationSeconds\(value, h3LongContextActive\(\) \? 120 : 15\)/);
   assert.match(app, /seconds: h3EffectiveDurationSeconds\(\)/);
   assert.match(app, /Official structure ready[\s\S]{0,240}effectiveDuration\.toFixed\(2\)\}s output/);
   assert.doesNotMatch(app, /h3StructuredPromptReadyForGeneration/);
@@ -463,8 +475,8 @@ test('MiniMax H3 exposes an official-format guide with safe local dialogue forma
   assert.match(server, /const hasLastFrame = body\.hasLastFrame === true/);
   assert.match(server, /const allowedReferenceTokens = revisionMode === 'reference'[\s\S]{0,180}h3PromptReferenceTokens/);
   assert.match(server, /frames = h3FramesForSeconds\(seconds\);[\s\S]{0,80}seconds = h3EffectiveDurationSeconds\(seconds\);/);
-  assert.match(server, /const seconds = engine === 'h3'[\s\S]{0,100}h3EffectiveDurationSeconds\(requestedSeconds\)/);
-  assert.match(server, /seconds: revisionEngine === 'h3'[\s\S]{0,100}h3EffectiveDurationSeconds\(body\.seconds\)/);
+  assert.match(server, /const seconds = engine === 'h3'[\s\S]{0,260}h3LongContextSegments\(requestedSeconds\)[\s\S]{0,180}h3EffectiveDurationSeconds\(requestedSeconds\)/);
+  assert.match(server, /seconds: revisionEngine === 'h3'[\s\S]{0,280}h3LongContextSegments\(body\.seconds\)[\s\S]{0,180}h3EffectiveDurationSeconds\(body\.seconds\)/);
 });
 
 test('video prompt enhancement combines the first frame with the initial motion idea', () => {
@@ -502,7 +514,7 @@ test('MiniMax H3 enhancement uses a validated duration-aware prompt pass and rec
 test('Video exposes model-aware step counts and keeps fixed schedules read-only', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="advancedStepsHint"/);
-  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Frames Turbo and 6 for Reference Turbo/);
+  assert.match(html, /id="videoAdvancedNote"[^>]*>CFG follows the selected video model\. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 6–8 recommended for Frames Turbo v4 and 6 for Reference Turbo/);
   assert.match(app, /#seedInput'\)\.closest\('\.panel'\)\.hidden = false/);
   assert.match(app, /function videoStepSpecification\(\)/);
   assert.match(app, /#advancedStepsField'\)\.hidden = false/);
@@ -517,7 +529,8 @@ test('Video exposes model-aware step counts and keeps fixed schedules read-only'
 
 test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-safe setup paths', () => {
   assert.match(html, /id="vidH3TurboToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
-  assert.match(html, /id="vidH3TurboSummary">4 frames · 6 reference · audio-safe/);
+  assert.match(html, /id="vidH3TurboSummary">6 frames · 6 reference · audio-safe/);
+  assert.match(html, /id="vidH3TurboV4Caution"[^>]*data-icon-tooltip="Four-step Turbo v4 caution"/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*min="0\.8"[^>]*max="1\.2"[^>]*value="1"/);
   assert.match(html, /<label for="vidH3TurboStrength">Turbo LoRA strength<\/label>/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*aria-describedby="vidH3TurboStrengthHelp vidH3TurboStrengthScale"/);
@@ -529,35 +542,64 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(html, /id="setH3TurboLora"/);
   assert.match(html, /id="setH3RefTurboLora"/);
   assert.match(app, /vidH3Turbo: false/);
-  assert.match(app, /vidH3TurboSteps: 4/);
+  assert.match(app, /vidH3TurboSteps: 6/);
   assert.match(app, /vidH3RefTurboSteps: 6/);
   assert.match(app, /function normalizedH3TurboSteps\([\s\S]{0,360}Math\.max\(4/);
   assert.match(app, /function h3TurboActive\(\)[\s\S]{0,120}state\.vidH3Turbo === true/);
   assert.match(app, /H3 Reference Turbo · 6-step LightX2V audio-safe setup/);
   assert.match(app, /LightX2V · audio-safe sampler/);
-  assert.match(app, /4 steps recommended; higher values trade speed for modest gains/);
+  assert.match(app, /H3 Turbo v4\/600 · 6-step quality default/);
+  assert.match(app, /6–8 steps recommended/);
   assert.match(app, /native audio-safe sampler/);
   assert.match(app, /if \(h3TurboActive\(\)\) components\.add\(h3ReferenceBackedMode\(\) \? 'h3turbor2v' : 'h3turbo'\)/);
   assert.match(app, /h3Turbo: state\.vidEngine === 'h3' \? h3TurboActive\(\) : undefined/);
   assert.match(server, /const h3Turbo = h3TurboRequested;/);
   assert.doesNotMatch(server, /h3_turbo_reference_unsupported/);
-  assert.match(server, /h3Turbo \? clampInt\(body\.steps, 4, 100, h3ReferenceBacked \? 6 : 4\)/);
+  assert.match(server, /h3Turbo \? clampInt\(body\.steps, 4, 100, 6\)/);
   assert.match(server, /h3TurboNativeSampler = minimaxH3NativeAudioSampling\(info\)/);
   assert.match(server, /if \(h3Core\.nativeAudioSampling\)[\s\S]{0,260}missing\.h3turbo = \['MiniMaxH3TurboLoRA'\]/);
   assert.match(server, /h3turbo: \['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'\]/);
   assert.match(server, /h3turbor2v: \['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'\]/);
 });
 
+test('MiniMax H3 Frames Turbo upgrades the managed default to v4 without locking out manual adapters', () => {
+  assert.match(server, /const DEFAULT_H3_TURBO_LORA = 'minimax_h3_turbo_v4_step600_ema\.safetensors'/);
+  assert.match(server, /version < 2 && String\(stored\.h3TurboLora \|\| ''\)[\s\S]{0,220}stored\.h3TurboLora = DEFAULT_H3_TURBO_LORA/);
+  assert.match(server, /stored\.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION/);
+  assert.match(server, /h3TurboLora: engine === 'h3' && opts\.turbo/);
+  assert.match(app, /copyableMeta\('Turbo adapter', prettyLora\(String\(info\.h3TurboLora\)\)\)/);
+});
+
 test('long H3 Reference Turbo videos advance through five-second jobs and rejoin as one result', () => {
   assert.match(server, /h3TurboReferenceSegments\(frames\)/);
   assert.match(server, /opts\.turboReferenceSegment = h3TurboReferenceChunks\[0\]/);
-  assert.match(server, /async function queueNextH3TurboReferenceChunk\(job\)/);
+  assert.match(server, /async function queueNextH3VideoChunk\(job\)/);
   assert.match(server, /videoChunkSequence\.chunkBuffers\[videoChunkSequence\.index\] = buf/);
   assert.match(server, /await joinVideoChunks\(\{/);
   assert.match(server, /broadcast\('videoChunkStep'/);
   assert.match(app, /if \(result\.sequenceId\) state\.activeJobSequences\.set\(result\.jobId, result\.sequenceId\)/);
   assert.match(app, /es\.addEventListener\('videoChunkStep'/);
-  assert.match(app, /H3 Turbo chunk \$\{d\.nextChunk\} of \$\{d\.total\}/);
+  assert.match(app, /H3 Turbo chunk'\} \$\{d\.nextChunk\} of \$\{d\.total\}/);
+});
+
+test('MiniMax H3 Long context allows Turbo with an icon-only quality caution', () => {
+  assert.match(html, /id="vidH3LongContextToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
+  assert.match(html, /Long context <span class="h3-turbo-preview">Experimental<\/span>/);
+  assert.match(app, /vidH3LongContext: false/);
+  assert.match(app, /function h3LongContextActive\(\)/);
+  assert.doesNotMatch(app, /if \(state\.vidH3LongContext\) \{[\s\S]{0,180}state\.vidH3Turbo = false/);
+  assert.match(html, /id="vidH3LongContextCaution"[^>]*data-icon-tooltip-detail="Turbo is allowed/);
+  assert.match(app, /caution\.hidden = !turbo/);
+  assert.match(app, /if \(h3LongContextActive\(\)\) components\.add\('h3context'\)/);
+  assert.match(app, /h3LongContext: state\.vidEngine === 'h3' \? h3LongContextActive\(\) : undefined/);
+  assert.match(app, /if \(engine === 'h3'\) return h3LongContextActive\(\) \? 120 : 15/);
+  assert.match(server, /h3LongContextSegments\(seconds, \{[\s\S]{0,120}maxGenerationFrames/);
+  assert.match(server, /h3LongContextTurboVideo[\s\S]{0,200}h3References\.videos\.length/);
+  assert.match(server, /type: 'long-context'/);
+  assert.match(server, /MiniMaxH3MotionContextSaveLatent/);
+  assert.match(server, /MiniMaxH3MotionContextLoadLatent/);
+  assert.match(server, /sequenceKind: videoChunkSequence\.type/);
+  assert.doesNotMatch(server, /h3_long_context_turbo_incompatible/);
 });
 
 test('First and last frames can be moved or swapped from the visible frame row', () => {
@@ -667,8 +709,8 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /if \(event\.pointerType === 'mouse'\) activate\(\)/);
   assert.match(app, /closest\('#vidH3ReferenceList \.ref-slot\.filled'\)/);
   assert.match(app, /\[assets\[fromIndex\], assets\[targetIndex\]\] = \[assets\[targetIndex\], assets\[fromIndex\]\]/);
-  assert.match(app, /renderH3References\(\);\s*renderPromptComposer\(\);\s*saveForm\(\);\s*toast\('Reference inputs swapped'\)/);
-  assert.match(app, /function replaceH3Reference\(kind, index, asset\)/);
+  assert.match(app, /renderH3References\(\);\s*renderPromptComposer\(\);\s*refreshH3ReferenceResolution\(\);\s*saveForm\(\);\s*toast\('Reference inputs swapped'\)/);
+  assert.match(app, /async function replaceH3Reference\(kind, index, asset\)/);
   assert.match(app, /refs\[kind\]\[index\] = asset/);
   assert.match(app, /prompt kept/);
   assert.match(app, /swap\.className = 'ref-swap'/);

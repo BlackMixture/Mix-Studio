@@ -126,11 +126,13 @@ const state = {
   vidRef: null,              // {name, url, w, h} - Video tab source image
   vidH3Mode: 'frames',       // frames | reference | replace
   vidH3MatchSource: true,    // keep frame-mode output at the first frame's aspect unless explicitly overridden
+  vidH3MatchReferenceVideo: false,
   vidH3Xl: false,
   vidH3SageAttention: true,
   vidH3Turbo: false,
+  vidH3LongContext: false,
   vidH3TurboStrength: 1,
-  vidH3TurboSteps: 4,
+  vidH3TurboSteps: 6,
   vidH3RefTurboSteps: 6,
   vidH3Steps: 20,
   vidH3RefImageSize: 'match',
@@ -258,8 +260,30 @@ function h3MatchSourceActive() {
     && h3SourceAspectRatio() > 0;
 }
 
+function h3ReferenceVideoAspectSource() {
+  return state.vidH3Mode === 'reference' ? state.vidH3References?.videos?.[0] || null : null;
+}
+
+function h3ReferenceVideoAspectRatio() {
+  const asset = h3ReferenceVideoAspectSource();
+  const width = Number(asset?.w);
+  const height = Number(asset?.h);
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+    ? width / height
+    : 0;
+}
+
+function h3MatchReferenceVideoActive() {
+  return h3ResolutionActive()
+    && state.vidH3Mode === 'reference'
+    && state.vidH3MatchReferenceVideo === true
+    && h3ReferenceVideoAspectRatio() > 0;
+}
+
 function h3ResolutionAspectRatio() {
-  return h3MatchSourceActive() ? h3SourceAspectRatio() : selectedAspectRatio();
+  if (h3MatchSourceActive()) return h3SourceAspectRatio();
+  if (h3MatchReferenceVideoActive()) return h3ReferenceVideoAspectRatio();
+  return selectedAspectRatio();
 }
 
 function h3CurrentDimensions() {
@@ -557,6 +581,14 @@ function experimentalFeaturesEnabled() {
 
 function h3ReplaceAvailable() {
   return experimentalFeaturesEnabled();
+}
+
+function h3LongContextActive() {
+  return state.view === 'video'
+    && state.vidEngine === 'h3'
+    && state.vidH3LongContext === true
+    && experimentalFeaturesEnabled()
+    && state.vidH3Mode !== 'replace';
 }
 
 function h3ReferenceModeActive() {
@@ -1781,6 +1813,15 @@ checkAuth();
 
 const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
 const OFFICIAL_RELEASE_SHOWCASES = {
+  '1.2.1': [
+    {
+      eyebrow: 'Video generation',
+      title: 'MiniMax H3 Turbo v4',
+      message: 'Frames Turbo now uses the creator-recommended v4/600 EMA checkpoint with a six-step quality default, Long Context support, and reference aspect matching.',
+      media: '/update-media/v1.2.0-h3-turbo.mp4',
+      theme: 'h3',
+    },
+  ],
   '1.2.0': [
     {
       eyebrow: 'Video generation',
@@ -2826,7 +2867,7 @@ function saveForm() {
     if (Object.prototype.hasOwnProperty.call(state.prompts, state.view)) state.prompts[state.view] = promptDraft();
     captureGenerationTuning(generationTuningMode());
     localStorage.setItem(key, JSON.stringify({
-      workspaceVersion: 2,
+      workspaceVersion: 3,
       activeView: ['create', 'edit', 'video'].includes(state.view) ? state.view : 'create',
       gallerySort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
       enhance: state.enhance, aspect: state.aspect, mp: state.mp,
@@ -2837,9 +2878,11 @@ function saveForm() {
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       vidH3Mode: state.vidH3Mode,
       vidH3MatchSource: state.vidH3MatchSource,
+      vidH3MatchReferenceVideo: state.vidH3MatchReferenceVideo,
       vidH3Xl: state.vidH3Xl,
       vidH3SageAttention: state.vidH3SageAttention,
       vidH3Turbo: state.vidH3Turbo,
+      vidH3LongContext: state.vidH3LongContext,
       vidH3TurboStrength: state.vidH3TurboStrength,
       vidH3TurboSteps: state.vidH3TurboSteps,
       vidH3RefTurboSteps: state.vidH3RefTurboSteps,
@@ -3096,11 +3139,19 @@ function loadForm() {
     const savedH3Mode = ['reference', 'replace'].includes(f.vidH3Mode) ? f.vidH3Mode : 'frames';
     state.vidH3Mode = savedH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : savedH3Mode;
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
+    state.vidH3MatchReferenceVideo = f.vidH3MatchReferenceVideo === true;
     state.vidH3Xl = f.vidH3Xl === true;
     state.vidH3SageAttention = f.vidH3SageAttention !== false;
     state.vidH3Turbo = f.vidH3Turbo === true;
+    state.vidH3LongContext = f.vidH3LongContext === true
+      && experimentalFeaturesEnabled()
+      && state.vidH3Mode !== 'replace';
     state.vidH3TurboStrength = Math.max(0.8, Math.min(1.2, Number(f.vidH3TurboStrength) || 1));
-    state.vidH3TurboSteps = Math.max(4, Math.min(100, Math.round(Number(f.vidH3TurboSteps) || 4)));
+    const savedH3TurboSteps = Math.round(Number(f.vidH3TurboSteps) || 0);
+    const migratedH3TurboSteps = Number(f.workspaceVersion) < 3 && savedH3TurboSteps === 4
+      ? 6
+      : savedH3TurboSteps;
+    state.vidH3TurboSteps = Math.max(4, Math.min(100, migratedH3TurboSteps || 6));
     state.vidH3RefTurboSteps = Math.max(4, Math.min(100, Math.round(Number(f.vidH3RefTurboSteps) || 6)));
     state.vidH3Steps = Math.max(1, Math.min(100, Math.round(Number(f.vidH3Steps) || 20)));
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
@@ -3987,7 +4038,8 @@ function renderH3TurboMode() {
   const strength = $('#vidH3TurboStrength');
   const strengthValue = $('#vidH3TurboStrengthVal');
   const strengthSlider = $('#vidH3TurboStrengthSlider');
-  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider) return;
+  const v4Caution = $('#vidH3TurboV4Caution');
+  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider || !v4Caution) return;
   const h3 = state.view === 'video' && state.vidEngine === 'h3';
   const referenceMode = h3 && h3ReferenceBackedMode();
   const selectedTurboCompatibility = lastMeta?.minimaxH3?.turbo?.[referenceMode ? 'reference' : 'frames'];
@@ -3997,7 +4049,10 @@ function renderH3TurboMode() {
   const active = enabled;
   const turboSteps = normalizedH3TurboSteps();
   const nativeAudioSampler = lastMeta?.minimaxH3?.nativeAudioSampling === true;
+  const showV4Caution = h3 && active && !referenceMode && turboSteps === 4;
   panel.hidden = !h3;
+  panel.classList.toggle('has-caution', showV4Caution);
+  v4Caution.hidden = !showV4Caution;
   toggle.disabled = !modelSupportsTurbo;
   toggle.setAttribute('aria-disabled', String(!modelSupportsTurbo));
   toggle.setAttribute('aria-checked', String(active));
@@ -4013,15 +4068,15 @@ function renderH3TurboMode() {
     summary.textContent = `${turboSteps} steps${turboSteps === 6 ? '' : ' · 6 recommended'} · LightX2V · audio-safe sampler`;
     toggle.title = 'Reference Turbo uses Kijai’s LightX2V LoRA, MiniMax’s 12/3 audio-video schedule, and the creator’s adaptive sampler. Six steps is the tested default.';
   } else if (active) {
-    summary.textContent = `${turboSteps} steps${turboSteps === 4 ? '' : ' · 4 recommended'} · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
+    summary.textContent = `${turboSteps} steps${turboSteps >= 6 && turboSteps <= 8 ? '' : ' · 6–8 recommended'} · v4/600 · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
     toggle.title = nativeAudioSampler
-      ? 'Turbo LoRA with ComfyUI’s native H3 audio schedule. Four steps is creator-tuned; higher values are supported.'
-      : 'Turbo LoRA with the creator sampler for older ComfyUI cores. Four steps is creator-tuned.';
+      ? 'Turbo LoRA v4/600 with ComfyUI’s native H3 audio schedule. Six to eight steps is the creator-recommended quality range.'
+      : 'Turbo LoRA v4/600 with the creator sampler for older ComfyUI cores. Six to eight steps is the creator-recommended quality range.';
   } else {
     summary.textContent = `${referenceMode ? 'Standard Reference H3' : 'Standard H3'} · ${normalizedH3Steps()} steps`;
     toggle.title = referenceMode
       ? 'Turn on the LightX2V Reference Turbo workflow. Six steps is the tested default.'
-      : 'Turn on the creator Turbo LoRA. Four steps is recommended, and higher step counts remain adjustable.';
+      : 'Turn on the creator Turbo LoRA v4/600. Six steps is the new default, and the step count remains adjustable.';
   }
   const showStrength = h3TurboActive();
   strengthField.hidden = !showStrength;
@@ -4031,6 +4086,53 @@ function renderH3TurboMode() {
     '--h3-turbo-progress',
     `${((Number(state.vidH3TurboStrength) - 0.8) / 0.4) * 100}%`,
   );
+}
+
+function h3LongContextClipCount(seconds = Number($('#vidDur')?.value) || 30) {
+  const requested = Math.max(5, Math.min(120, Number(seconds) || 30));
+  const rawFrames = Math.max(5, Math.round(requested * 24));
+  const targetFrames = rawFrames + ((5 - (rawFrames % 17) + 17) % 17);
+  if (h3TurboActive() && h3ReferenceBackedMode() && h3References().videos.length) {
+    return targetFrames <= 124 ? 1 : 1 + Math.ceil((targetFrames - 124) / 102);
+  }
+  const units = Math.max(7, Math.round((targetFrames - 5) / 17));
+  return units <= 21 ? 1 : Math.ceil((units - 21) / 20) + 1;
+}
+
+function renderH3LongContext() {
+  const panel = $('#vidH3LongContextPanel');
+  const toggle = $('#vidH3LongContextToggle');
+  const summary = $('#vidH3LongContextSummary');
+  const caution = $('#vidH3LongContextCaution');
+  if (!panel || !toggle || !summary || !caution) return;
+  const h3 = state.view === 'video' && state.vidEngine === 'h3';
+  const available = h3 && experimentalFeaturesEnabled();
+  const replaceMode = h3 && state.vidH3Mode === 'replace';
+  const variant = lastMeta?.minimaxH3?.[h3ReferenceBackedMode() ? 'referenceVariant' : 'frameVariant'];
+  const modelCompatible = variant?.requiresPatch !== true;
+  if ((!available || replaceMode || !modelCompatible) && state.vidH3LongContext) state.vidH3LongContext = false;
+  const enabled = h3LongContextActive();
+  const turbo = enabled && h3TurboActive();
+  panel.hidden = !available;
+  panel.classList.toggle('has-caution', turbo);
+  caution.hidden = !turbo;
+  toggle.disabled = replaceMode || !modelCompatible;
+  toggle.setAttribute('aria-disabled', String(replaceMode || !modelCompatible));
+  toggle.setAttribute('aria-checked', String(enabled));
+  if (replaceMode) {
+    summary.textContent = 'Unavailable in Replace mode';
+    toggle.title = 'Long context currently supports Text + Frames and Reference modes.';
+  } else if (!modelCompatible) {
+    summary.textContent = 'Unavailable with DynTime · choose Standard or Full BF16';
+    toggle.title = 'The new Motion Context runtime patch has not been validated with the DynTime core patch.';
+  } else if (enabled) {
+    const count = h3LongContextClipCount();
+    summary.textContent = `${count} sequential clip${count === 1 ? '' : 's'} · 22-frame motion + audio bridge · ${turbo ? 'Turbo' : 'Standard'}`;
+    toggle.title = 'Generates clips in sequence through the lossless H3 latent path, trims the repeated bridge, then joins one MP4.';
+  } else {
+    summary.textContent = 'Up to 120s · motion and audio continuity';
+    toggle.title = 'Turn on automatic sequential H3 continuation with a 22-frame motion and audio bridge.';
+  }
 }
 
 function renderH3SageAttention() {
@@ -4148,6 +4250,7 @@ function updateVideoPanels() {
   $('#advancedStepsField').hidden = false;
   $('#advancedCfgField').hidden = isVideo;
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
+  renderH3LongContext();
   renderH3TurboMode();
   renderH3SageAttention();
   renderWanAnimate2Strengths();
@@ -4155,7 +4258,7 @@ function updateVideoPanels() {
   $('#videoAdvancedNote').hidden = !isVideo;
   $('#videoAdvancedNote').textContent = wanAnimate2InputFirst
     ? 'The official workflow uses a fixed six-step LCM schedule. Identity and Motion both default to 1.00.'
-    : 'CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 4 recommended for Frames Turbo and 6 for Reference Turbo.';
+    : 'CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 6–8 recommended for Frames Turbo v4 and 6 for Reference Turbo.';
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   $('#loraPanel').closest('.panel').hidden = isVideo && state.vidEngine === 'h3';
@@ -4174,6 +4277,21 @@ $('#vidH3TurboToggle').addEventListener('click', () => {
   if ($('#vidH3TurboToggle').disabled) return;
   if (state.vidEngine !== 'h3') return;
   state.vidH3Turbo = !state.vidH3Turbo;
+  renderH3TurboMode();
+  renderH3LongContext();
+  renderVideoStepControl();
+  $('#genLbl').textContent = genLabel();
+  saveForm();
+});
+
+$('#vidH3LongContextToggle').addEventListener('click', () => {
+  if ($('#vidH3LongContextToggle').disabled || state.vidEngine !== 'h3') return;
+  state.vidH3LongContext = !state.vidH3LongContext;
+  if (state.vidH3LongContext) {
+    if (Number($('#vidDur').value) <= 15) $('#vidDur').value = '30';
+  }
+  syncVideoDurationLimit();
+  renderH3LongContext();
   renderH3TurboMode();
   renderVideoStepControl();
   $('#genLbl').textContent = genLabel();
@@ -4720,16 +4838,19 @@ function pickDeviceUpload(accept, cb, options = {}) {
         if (!allowedKinds.has(kind)) throw new Error(`Choose ${[...allowedKinds].join(', ')} media`);
         const res = await uploadInputAsset(file, file.name || 'file.bin', { catalog: true });
         const url = URL.createObjectURL(file);
-        let dims = { w: 0, h: 0 };
+        let dims = { w: 0, h: 0, dur: 0 };
         if (kind === 'image') {
           dims = await new Promise((resolve) => {
             const im = new Image();
-            im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
-            im.onerror = () => resolve({ w: 1024, h: 1024 });
+            im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight, dur: 0 });
+            im.onerror = () => resolve({ w: 1024, h: 1024, dur: 0 });
             im.src = url;
           });
+        } else if (kind === 'video') {
+          const metadata = await directorProbeVideo(url);
+          dims = { w: metadata.width, h: metadata.height, dur: metadata.seconds };
         }
-        assets.push({ kind, name: res.name, url, w: dims.w, h: dims.h, label: file.name, hasAudio: res.hasAudio === true });
+        assets.push({ kind, name: res.name, url, w: dims.w, h: dims.h, dur: dims.dur, label: file.name, hasAudio: res.hasAudio === true });
       } catch (e) { toast(`${file.name}: ${e.message}`, true); }
     }
     if (assets.length) await cb(input.multiple ? assets : assets[0]);
@@ -5252,13 +5373,18 @@ async function usePreviousGenerations(assets) {
       const prepared = [];
       for (const asset of chosen) {
         const url = assetPickerMediaUrl(asset);
-        const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+        const metadata = asset.kind === 'video' ? await directorProbeVideo(url) : null;
+        const dims = asset.kind === 'image' ? await imageDimensions(url) : {
+          w: metadata?.width || 0,
+          h: metadata?.height || 0,
+        };
         prepared.push({
           kind: asset.kind,
           name: asset.file,
           url,
           w: dims.w,
           h: dims.h,
+          dur: metadata?.seconds || 0,
           label: asset.label || `Uploaded ${asset.kind}`,
           hasAudio: asset.hasAudio === true,
           uploadedAssetId: asset.id,
@@ -5270,16 +5396,24 @@ async function usePreviousGenerations(assets) {
     }
     if (picker.galleryReference) {
       closeAssetPicker();
-      const prepared = chosen.map((asset) => ({
+      const prepared = await Promise.all(chosen.map(async (asset) => {
+        const url = assetPickerMediaUrl(asset);
+        const result = {
           kind: asset.kind,
           name: asset.file,
-          url: assetPickerMediaUrl(asset),
+          url,
           label: asset.label || 'Previous generation',
           srcItemId: asset.itemId,
           srcVideoId: asset.videoId,
           galleryFile: asset.file,
           hasAudio: false,
-        }));
+        };
+        const metadata = asset.kind === 'video' ? await directorProbeVideo(url) : null;
+        result.w = metadata?.width || Number(asset.w) || 0;
+        result.h = metadata?.height || Number(asset.h) || 0;
+        result.dur = metadata?.seconds || Number(asset.dur) || 0;
+        return result;
+      }));
       await picker.callback(picker.multiple ? prepared : prepared[0]);
       return;
     }
@@ -5292,9 +5426,14 @@ async function usePreviousGenerations(assets) {
       const blob = await response.blob();
       const res = await uploadInputAsset(blob, asset.file);
       const url = URL.createObjectURL(blob);
-      const dims = asset.kind === 'image' ? await imageDimensions(url) : { w: 0, h: 0 };
+      const metadata = asset.kind === 'video' ? await directorProbeVideo(url) : null;
+      const dims = asset.kind === 'image' ? await imageDimensions(url) : {
+        w: metadata?.width || 0,
+        h: metadata?.height || 0,
+      };
       prepared.push({
         kind: asset.kind, name: res.name, url, w: dims.w, h: dims.h,
+        dur: metadata?.seconds || 0,
         label: asset.label || 'Previous generation', hasAudio: res.hasAudio === true,
         srcItemId: asset.itemId,
         srcVideoId: asset.videoId,
@@ -6398,7 +6537,7 @@ function h3PromptReferenceTokens(...values) {
 
 function h3EffectiveDurationSeconds(value = Number($('#vidDur').value) || 5) {
   return H3PromptGuide?.h3EffectiveDurationSeconds
-    ? H3PromptGuide.h3EffectiveDurationSeconds(value)
+    ? H3PromptGuide.h3EffectiveDurationSeconds(value, h3LongContextActive() ? 120 : 15)
     : Number(value) || 5;
 }
 
@@ -6407,6 +6546,7 @@ function h3PromptGuideContext(overrides = {}) {
   return {
     mode: referenceMode ? 'reference' : 'frames',
     seconds: h3EffectiveDurationSeconds(),
+    longContext: h3LongContextActive(),
     hasFirstFrame: !referenceMode && !!state.vidRef,
     hasLastFrame: !referenceMode && !!state.vidEnd,
     expectedReferenceTokens: [],
@@ -6430,6 +6570,7 @@ function h3PromptStructureContextSignature() {
   return JSON.stringify({
     mode: referenceMode ? 'reference' : 'frames',
     seconds: h3EffectiveDurationSeconds().toFixed(3),
+    longContext: h3LongContextActive(),
     first: referenceMode ? '' : String(state.vidRef?.name || ''),
     last: referenceMode ? '' : String(state.vidEnd?.name || ''),
     references: referenceMode
@@ -6946,6 +7087,7 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
   const revisionSeconds = revisionView === 'video'
     ? (revisionEngine === 'h3' ? h3EffectiveDurationSeconds(requestedRevisionSeconds) : requestedRevisionSeconds)
     : undefined;
+  const revisionH3LongContext = revisionEngine === 'h3' && h3LongContextActive();
   const revisionHasFirstFrame = revisionEngine === 'h3'
     && revisionH3Mode === 'frames' && !!state.vidRef;
   const revisionHasLastFrame = revisionEngine === 'h3'
@@ -6978,6 +7120,7 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
         engine: revisionEngine || undefined,
         seconds: revisionSeconds,
         h3Mode: revisionH3Mode || undefined,
+        h3LongContext: revisionEngine === 'h3' ? revisionH3LongContext : undefined,
         hasFirstFrame: revisionEngine === 'h3' ? revisionHasFirstFrame : undefined,
         hasLastFrame: revisionEngine === 'h3' ? revisionHasLastFrame : undefined,
         allowedReferenceTokens: revisionEngine === 'h3' ? allowedReferenceTokens : undefined,
@@ -11236,9 +11379,34 @@ function renderAspects() {
     });
     row.appendChild(source);
   }
+  if (h3ResolutionActive() && state.vidH3Mode === 'reference' && h3ReferenceVideoAspectRatio() > 0) {
+    const videoAsset = h3ReferenceVideoAspectSource();
+    const videoRatio = h3ReferenceVideoAspectRatio();
+    const videoDimensions = H3Resolution.dimensions(videoRatio, 1, h3ResolutionSize());
+    const source = document.createElement('button');
+    source.type = 'button';
+    source.className = 'aspect-chip create-match-aspect' + (h3MatchReferenceVideoActive() ? ' active' : '');
+    source.setAttribute('aria-pressed', String(h3MatchReferenceVideoActive()));
+    source.setAttribute('aria-label', `Match Video 1 aspect at ${videoDimensions.width} by ${videoDimensions.height}`);
+    const maxSide = 22;
+    const iconWidth = videoRatio >= 1 ? maxSide : Math.max(7, Math.round(maxSide * videoRatio));
+    const iconHeight = videoRatio >= 1 ? Math.max(7, Math.round(maxSide / videoRatio)) : maxSide;
+    source.innerHTML = `<span class="ar-box" style="width:${iconWidth}px;height:${iconHeight}px"></span><span>Match video</span><small class="aspect-output-dims">${derivedAspectLabel(videoAsset.w, videoAsset.h)} · ${videoDimensions.width} × ${videoDimensions.height}</small>`;
+    source.addEventListener('click', () => {
+      state.vidH3MatchReferenceVideo = true;
+      state.vidH3MatchSource = false;
+      state.customDims = false;
+      computeDims();
+      renderAspects();
+      renderDims();
+      saveForm();
+    });
+    row.appendChild(source);
+  }
   for (const a of ASPECTS) {
     const btn = document.createElement('button');
-    const selected = a.label === state.aspect && !state.customDims && !h3MatchSourceActive();
+    const selected = a.label === state.aspect && !state.customDims
+      && !h3MatchSourceActive() && !h3MatchReferenceVideoActive();
     btn.className = 'aspect-chip' + (selected ? ' active' : '');
     btn.setAttribute('aria-pressed', String(selected));
     btn.dataset.aspect = a.label;
@@ -11249,7 +11417,10 @@ function renderAspects() {
     btn.innerHTML = `<span class="ar-box" style="width:${w}px;height:${h}px"></span><span>${a.label}</span>${h3Dimensions ? `<small class="aspect-output-dims">${h3Dimensions.width} × ${h3Dimensions.height}</small>` : ''}`;
     btn.addEventListener('click', () => {
       state.aspect = a.label;
-      if (h3ResolutionActive()) state.vidH3MatchSource = false;
+      if (h3ResolutionActive()) {
+        state.vidH3MatchSource = false;
+        state.vidH3MatchReferenceVideo = false;
+      }
       state.createMatchSource = false;
       state.createMatchNative = false;
       state.customDims = false;
@@ -11264,6 +11435,7 @@ function renderAspects() {
 function renderDims() {
   const h3Resolution = h3ResolutionActive();
   const h3FrameMatch = h3MatchSourceActive();
+  const h3VideoMatch = h3MatchReferenceVideoActive();
   const widthInput = $('#wInput');
   const heightInput = $('#hInput');
   widthInput.value = state.width;
@@ -11278,7 +11450,11 @@ function renderDims() {
   $('#h3ResolutionWarning').hidden = !h3Resolution || !state.vidH3Xl;
   $('#sizeSeg [data-h3-xl]').hidden = !h3Resolution;
   $('#resSummary').textContent = h3Resolution
-    ? `${h3FrameMatch ? `First frame · ${derivedAspectLabel(state.vidRef.w, state.vidRef.h)}` : state.aspect} · ${state.vidH3Xl ? 'XL' : createSizeLabel()} · ${state.width} × ${state.height}`
+    ? `${h3FrameMatch
+      ? `First frame · ${derivedAspectLabel(state.vidRef.w, state.vidRef.h)}`
+      : (h3VideoMatch
+        ? `Video 1 · ${derivedAspectLabel(h3ReferenceVideoAspectSource().w, h3ReferenceVideoAspectSource().h)}`
+        : state.aspect)} · ${state.vidH3Xl ? 'XL' : createSizeLabel()} · ${state.width} × ${state.height}`
     : state.view === 'create' && state.createMode === 'image' && state.createMatchSource && matchedCreateOutputDimensions()
     ? `${state.aspect} · ${state.createMatchNative ? 'Native image' : `Match image ${createSizeLabel()}`} · ${state.width} × ${state.height}`
     : (state.customDims
@@ -12028,7 +12204,7 @@ function normalizedH3Steps(value = state.vidH3Steps) {
 
 function normalizedH3TurboSteps(value) {
   const referenceMode = h3ReferenceBackedMode();
-  const fallback = referenceMode ? 6 : 4;
+  const fallback = 6;
   const configured = value === undefined
     ? (referenceMode ? state.vidH3RefTurboSteps : state.vidH3TurboSteps)
     : value;
@@ -12047,9 +12223,11 @@ function videoStepSpecification() {
           ? (value === 6
             ? 'H3 Reference Turbo · 6-step LightX2V audio-safe setup'
             : 'H3 Reference Turbo · 6 steps is the tested audio-safe default')
-          : (value === 4
-            ? 'H3 Turbo · 4 steps is the creator-tuned default'
-            : 'H3 Turbo · 4 steps recommended; higher values trade speed for modest gains'),
+          : (value === 6
+            ? 'H3 Turbo v4/600 · 6-step quality default'
+            : (value >= 7 && value <= 8
+              ? 'H3 Turbo v4/600 · creator-recommended 6–8 step range'
+              : 'H3 Turbo v4/600 · 6–8 steps recommended')),
       };
     }
     return { value: normalizedH3Steps(), editable: true, hint: 'MiniMax H3 sampler · adjustable' };
@@ -12199,8 +12377,8 @@ function resetGenerationControl(control) {
     if (h3TurboActive()) {
       const referenceMode = h3ReferenceBackedMode();
       if (referenceMode) state.vidH3RefTurboSteps = 6;
-      else state.vidH3TurboSteps = 4;
-      control.value = referenceMode ? 6 : 4;
+      else state.vidH3TurboSteps = 6;
+      control.value = 6;
     } else {
       state.vidH3Steps = 20;
       control.value = 20;
@@ -12407,7 +12585,10 @@ function renderLoraCompatibility() {
   if (!warn) return;
   const bad = incompatibleSelectedLoras();
   warn.classList.toggle('hidden', bad.length === 0);
-  warn.textContent = bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : '';
+  const warning = bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : '';
+  warn.dataset.iconTooltip = warning || 'LoRA compatibility caution';
+  warn.dataset.iconTooltipDetail = warning || 'The selected LoRA may not be compatible with this workflow.';
+  warn.setAttribute('aria-label', warning || 'LoRA compatibility caution');
   const allBtn = $('#loraAllBtn');
   if (allBtn) {
     const filtering = !state.showAllLoras;
@@ -15479,7 +15660,7 @@ function videoDurationMax(engine) {
   if (engine === 'scail') return 60;
   if (engine === 'ltx' && cameraMotionReferenceSelected()) return cameraMotionGuideLimit();
   if (engine === 'ltx') return 20;
-  if (engine === 'h3') return 15;
+  if (engine === 'h3') return h3LongContextActive() ? 120 : 15;
   return 15;
 }
 
@@ -15722,6 +15903,7 @@ function exitFineVideoDuration({ immediate = false } = {}) {
 
 function updateVideoDurationFromControl() {
   updateVideoTuningSummary();
+  if (state.vidEngine === 'h3') renderH3LongContext();
   if ($('#videoCameraMotionSheet').classList.contains('show')) renderCameraMotionCustom();
 }
 
@@ -16641,8 +16823,28 @@ function h3ReferenceKind(asset) {
   return 'images';
 }
 
-function addH3Reference(asset) {
+async function prepareH3ReferenceAsset(asset) {
+  if (!asset || h3ReferenceKind(asset) !== 'videos') return asset;
+  if (Number(asset.w) > 0 && Number(asset.h) > 0) return asset;
+  const metadata = await directorProbeVideo(asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`);
+  if (metadata.width > 0 && metadata.height > 0) {
+    asset.w = metadata.width;
+    asset.h = metadata.height;
+  }
+  if (metadata.seconds > 0 && !(Number(asset.dur) > 0)) asset.dur = metadata.seconds;
+  return asset;
+}
+
+function refreshH3ReferenceResolution() {
+  if (!h3ResolutionActive()) return;
+  computeDims();
+  renderAspects();
+  renderDims();
+}
+
+async function addH3Reference(asset) {
   if (!asset) return;
+  await prepareH3ReferenceAsset(asset);
   const kind = h3ReferenceKind(asset);
   const refs = h3References();
   if (refs[kind].length >= H3_REFERENCE_LIMITS[kind]) {
@@ -16653,6 +16855,7 @@ function addH3Reference(asset) {
   state.vidH3RefSlots = Math.max(1, Number(state.vidH3RefSlots) || 1, h3ReferenceCount());
   renderH3References();
   renderPromptComposer();
+  refreshH3ReferenceResolution();
   saveForm();
 }
 
@@ -16662,10 +16865,11 @@ function pickH3Reference() {
   pickUpload(accept, addH3Reference, 'Choose H3 reference input');
 }
 
-function replaceH3Reference(kind, index, asset) {
+async function replaceH3Reference(kind, index, asset) {
   const refs = h3References();
   const current = refs[kind]?.[index];
   if (!current || !asset) return;
+  await prepareH3ReferenceAsset(asset);
   if (h3ReferenceKind(asset) !== kind) {
     toast(`Choose another ${kind.slice(0, -1)}`, true);
     return;
@@ -16674,6 +16878,7 @@ function replaceH3Reference(kind, index, asset) {
   releaseAssetObjectUrl(current, asset);
   renderH3References();
   renderPromptComposer();
+  refreshH3ReferenceResolution();
   saveForm();
   const labels = { images: 'Picture', videos: 'Video', audios: 'Audio' };
   toast(`${labels[kind]} ${index + 1} replaced · prompt kept`);
@@ -16699,6 +16904,7 @@ function removeH3Reference(kind, index) {
   state.vidH3RefSlots = Math.max(1, Math.max(h3ReferenceCount(), (Number(state.vidH3RefSlots) || 1) - 1));
   setPromptDraft(nextPrompt);
   renderH3References();
+  refreshH3ReferenceResolution();
   saveForm();
 }
 
@@ -16727,6 +16933,7 @@ function swapH3References(kind, fromIndex, targetIndex) {
   [assets[fromIndex], assets[targetIndex]] = [assets[targetIndex], assets[fromIndex]];
   renderH3References();
   renderPromptComposer();
+  refreshH3ReferenceResolution();
   saveForm();
   toast('Reference inputs swapped');
   return true;
@@ -17024,6 +17231,37 @@ function renderH3References() {
         video.preload = 'metadata';
         video.draggable = false;
         slot.appendChild(video);
+        const aspectBadge = document.createElement('span');
+        aspectBadge.className = 'h3-reference-aspect';
+        aspectBadge.hidden = true;
+        const updateAspectBadge = () => {
+          const width = Number(asset.w);
+          const height = Number(asset.h);
+          if (!(width > 0 && height > 0)) {
+            aspectBadge.hidden = true;
+            return;
+          }
+          const ratio = width / height;
+          const maxSide = 12;
+          const iconWidth = ratio >= 1 ? maxSide : Math.max(4, Math.round(maxSide * ratio));
+          const iconHeight = ratio >= 1 ? Math.max(4, Math.round(maxSide / ratio)) : maxSide;
+          aspectBadge.innerHTML = `<i style="width:${iconWidth}px;height:${iconHeight}px"></i><b>${derivedAspectLabel(width, height)}</b>`;
+          aspectBadge.hidden = false;
+        };
+        updateAspectBadge();
+        video.addEventListener('loadedmetadata', () => {
+          const width = Number(video.videoWidth) || 0;
+          const height = Number(video.videoHeight) || 0;
+          if (!(Number(asset.w) > 0 && Number(asset.h) > 0) && width > 0 && height > 0) {
+            asset.w = width;
+            asset.h = height;
+            if (!(Number(asset.dur) > 0)) asset.dur = Number(video.duration) || 0;
+            if (index === 0) refreshH3ReferenceResolution();
+            saveForm();
+          }
+          updateAspectBadge();
+        }, { once: true });
+        slot.appendChild(aspectBadge);
       } else {
         const audio = document.createElement('span');
         audio.className = 'h3-reference-audio-art';
@@ -17403,6 +17641,7 @@ function motionPromptContext(prompt) {
     endImageName: state.vidEngine === 'h3' && state.vidEnd ? state.vidEnd.name : '',
     engine: state.vidEngine,
     seconds: state.vidEngine === 'h3' ? h3EffectiveDurationSeconds(requestedSeconds) : requestedSeconds,
+    h3LongContext: state.vidEngine === 'h3' && h3LongContextActive(),
     input: String(prompt || '').trim(),
   };
 }
@@ -17413,6 +17652,7 @@ function sameMotionPromptContext(left, right, includeInput = true) {
     && left.endImageName === right.endImageName
     && left.engine === right.engine
     && left.seconds === right.seconds
+    && left.h3LongContext === right.h3LongContext
     && (!includeInput || left.input === right.input);
 }
 
@@ -17437,6 +17677,7 @@ async function requestMotionPromptFromFirstFrame(initialPrompt) {
       prompt: context.input,
       engine: context.engine,
       seconds: context.seconds,
+      h3LongContext: context.h3LongContext,
     }),
   }).then((res) => {
     if (!res.prompt) throw new Error('Vision model returned no usable motion prompt');
@@ -18359,7 +18600,9 @@ $('#generateBtn').addEventListener('click', async () => {
         ? (h3TurboActive() ? normalizedH3TurboSteps() : normalizedH3Steps())
         : undefined,
       seconds: state.vidEngine === 'h3'
-        ? h3EffectiveDurationSeconds(Number($('#vidDur').value) || 5)
+        ? (h3LongContextActive()
+          ? Number($('#vidDur').value) || 30
+          : h3EffectiveDurationSeconds(Number($('#vidDur').value) || 5))
         : Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
       fourK: state.vidEngine === 'wan-animate2' ? false : $('#vid4k').classList.contains('active'),
@@ -18384,16 +18627,25 @@ $('#generateBtn').addEventListener('click', async () => {
       h3ReplaceTarget: state.vidEngine === 'h3' && state.vidH3Mode === 'replace' && h3ReplaceAvailable()
         ? state.vidH3ReplaceTarget.trim() : undefined,
       h3Turbo: state.vidEngine === 'h3' ? h3TurboActive() : undefined,
+      h3LongContext: state.vidEngine === 'h3' ? h3LongContextActive() : undefined,
       h3TurboStrength: h3TurboActive() ? state.vidH3TurboStrength : undefined,
       h3ResolutionSize: state.vidEngine === 'h3' ? h3ResolutionSize() : undefined,
       h3AspectRatio: state.vidEngine === 'h3' ? h3ResolutionAspectRatio() : undefined,
       h3MatchSource: state.vidEngine === 'h3' && state.vidH3Mode === 'frames'
         ? h3MatchSourceActive() : undefined,
+      h3MatchReferenceVideo: state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
+        ? h3MatchReferenceVideoActive() : undefined,
       sageAttention: state.vidEngine === 'h3' ? state.vidH3SageAttention !== false : undefined,
       h3RefImageSize: h3Reference ? state.vidH3RefImageSize : undefined,
       h3References: h3Reference ? Object.fromEntries(Object.entries(h3GenerationReferences).map(([kind, assets]) => [
         kind,
-        assets.map((asset) => ({ name: asset.name, label: asset.label || '', hasAudio: asset.hasAudio === true })),
+        assets.map((asset) => ({
+          name: asset.name,
+          label: asset.label || '',
+          hasAudio: asset.hasAudio === true,
+          w: Math.max(0, Math.round(Number(asset.w) || 0)),
+          h: Math.max(0, Math.round(Number(asset.h) || 0)),
+        })),
       ])) : undefined,
       cameraMotions: cameraMotionsForEngine(),
       cameraGuideVideoName: cameraMotionReferenceActive() && state.videoCameraGuide ? state.videoCameraGuide.name : undefined,
@@ -19357,11 +19609,12 @@ function connectEvents() {
   });
   es.addEventListener('videoChunkStep', (ev) => {
     const d = JSON.parse(ev.data);
+    const longContext = d.sequenceKind === 'long-context';
     if (state.activeJobs.has(d.jobId)) {
       applyQueueJobMapping({ [d.jobId]: d.nextJobId });
-      setGenerating(true, `H3 Turbo chunk ${d.nextChunk} of ${d.total}…`);
+      setGenerating(true, `${longContext ? 'H3 Long context clip' : 'H3 Turbo chunk'} ${d.nextChunk} of ${d.total}…`);
     }
-    toast(`H3 chunk ${d.completedChunk} complete · running ${d.nextChunk} of ${d.total}`);
+    toast(`${longContext ? 'Long context clip' : 'H3 chunk'} ${d.completedChunk} complete · running ${d.nextChunk} of ${d.total}`);
     queueRefreshSoon();
   });
   es.addEventListener('jobDone', (ev) => {
@@ -20285,7 +20538,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
-  'vidH3Mode', 'vidH3MatchSource', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3TurboStrength', 'vidH3TurboSteps', 'vidH3RefTurboSteps', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3MatchSource', 'vidH3MatchReferenceVideo', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3LongContext', 'vidH3TurboStrength', 'vidH3TurboSteps', 'vidH3RefTurboSteps', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -20441,11 +20694,13 @@ function resetActiveGenerationForm() {
     state.vidRef = null;
     state.vidH3Mode = 'frames';
     state.vidH3MatchSource = true;
+    state.vidH3MatchReferenceVideo = false;
     state.vidH3Xl = false;
     state.vidH3SageAttention = true;
     state.vidH3Turbo = false;
+    state.vidH3LongContext = false;
     state.vidH3TurboStrength = 1;
-    state.vidH3TurboSteps = 4;
+    state.vidH3TurboSteps = 6;
     state.vidH3RefTurboSteps = 6;
     state.vidH3Steps = 20;
     state.vidH3RefImageSize = 'match';
@@ -24632,6 +24887,7 @@ function openLightbox(id, mediaSel, options = {}) {
       meta.push(`<b>Attention:</b> ${info.attentionBackend === 'sageattention' ? 'SageAttention (verified)' : 'Standard PyTorch'}`);
     }
     if (hasDocumentationValue(info.steps)) meta.push(`<b>Steps:</b> ${escapeHtml(String(info.steps))}`);
+    if (info.h3TurboLora) meta.push(copyableMeta('Turbo adapter', prettyLora(String(info.h3TurboLora))));
     const recordedVideoWidth = Math.round(Number(info.width));
     const recordedVideoHeight = Math.round(Number(info.height));
     const fallbackVideoWidth = Math.round(Number(it.width));
@@ -24648,7 +24904,7 @@ function openLightbox(id, mediaSel, options = {}) {
     if (info.durationMs) meta.push(`<b>Generated in:</b> ${formatDuration(info.durationMs)}`);
     if (info.frames && info.fps) {
       const scailFlags = [info.scailMode && `SCAIL ${info.scailMode}`, info.scailFps && `${info.scailFps} fps generation`, info.scailMode === 'chunked' && info.scailStableTracking && 'stable', info.scailMode === 'chunked' && info.scailChunkFrames && `${info.scailChunkFrames}f chunks`, info.scailMode === 'chunked' && info.scailChunkOverlap && `${info.scailChunkOverlap}f overlap`].filter(Boolean).join(', ');
-      const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && `${info.upscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'} upscale`, info.processed === 'interpolate' && 'RIFE pass', info.processed === 'extend' && 'extended', info.smooth && `RIFE ${info.smooth}×`, info.fourK && info.processed !== 'upscale' && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.continuedAudio && 'continued sound', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
+      const flags = [info.composite && 'side-by-side', info.faceId && 'Face ID', info.processed === 'upscale' && `${info.upscaleEngine === 'seedvr2' ? 'SeedVR2' : 'RTX'} upscale`, info.processed === 'interpolate' && 'RIFE pass', info.processed === 'extend' && 'extended', info.h3LongContext && `${info.h3LongContextClips || 2}-clip Long context`, info.smooth && `RIFE ${info.smooth}×`, info.fourK && info.processed !== 'upscale' && 'RTX 4K', info.engine === 'wan' && info.fast && '4-step', info.sigmaPreset && `sigmas: ${info.sigmaPreset}`, scailFlags, info.drivenAudio && 'audio-driven', info.continuedAudio && 'continued sound', info.preservedAudio && 'audio kept', info.endFrame && 'end frame', info.motionVideo && !info.composite && 'motion transfer'].filter(Boolean).join(' · ');
       meta.push(`<b>Playback:</b> ${(info.frames / info.fps).toFixed(1)}s @ ${info.fps}fps${flags ? ' · ' + flags : ''} &nbsp; ${copyableMeta('Seed', info.seed)}`);
       if (info.loras && info.loras.length) meta.push('<b>Video LoRAs:</b> ' + info.loras.map((l) => `${prettyLora(l.name)} (${Number(l.strength).toFixed(2)})`).join(', '));
     } else if (info.seed != null) meta.push(copyableMeta('Seed', info.seed));
@@ -25806,6 +26062,7 @@ async function reuseVideo(it, v) {
   const savedH3MatchSource = engine === 'h3' && typeof info.h3MatchSource === 'boolean'
     ? info.h3MatchSource
     : null;
+  const savedH3MatchReferenceVideo = engine === 'h3' && info.h3MatchReferenceVideo === true;
   if (state.directorOpen && !(info.workflow === 'director' && info.directorProject)) closeDirectorMode();
   if (!options.preserveLightbox) closeLightbox();
   setView('video');
@@ -25847,15 +26104,20 @@ async function reuseVideo(it, v) {
   const reusableH3Mode = engine === 'h3' && ['reference', 'replace'].includes(info.h3Mode) ? info.h3Mode : 'frames';
   state.vidH3Mode = reusableH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : reusableH3Mode;
   state.vidH3MatchSource = savedH3MatchSource === true;
+  state.vidH3MatchReferenceVideo = savedH3MatchReferenceVideo;
   state.vidH3Xl = engine === 'h3' && (Number(info.h3ResolutionSize) >= H3Resolution.XL_SIZE
     || Math.max(Number(info.width) || 0, Number(info.height) || 0) > 1536);
   state.vidH3SageAttention = engine === 'h3' ? info.attentionBackend !== 'standard' : true;
   state.vidH3Turbo = engine === 'h3' && info.h3Turbo === true;
+  state.vidH3LongContext = engine === 'h3'
+    && info.h3LongContext === true
+    && experimentalFeaturesEnabled()
+    && state.vidH3Mode !== 'replace';
   state.vidH3TurboStrength = engine === 'h3' && Number.isFinite(Number(info.h3TurboStrength))
     ? Math.max(0.8, Math.min(1.2, Number(info.h3TurboStrength))) : 1;
   if (engine === 'h3' && info.h3Turbo) {
     if (h3ReferenceBackedMode()) state.vidH3RefTurboSteps = normalizedH3TurboSteps(info.steps || 6);
-    else state.vidH3TurboSteps = normalizedH3TurboSteps(info.steps || 4);
+    else state.vidH3TurboSteps = normalizedH3TurboSteps(info.steps || 6);
   }
   state.vidH3RefImageSize = info.h3RefImageSize === 'max' ? 'max' : 'match';
   state.vidH3RefSlots = 1;
@@ -26000,6 +26262,8 @@ async function reuseVideo(it, v) {
             name: asset.name,
             label: asset.label || `reused ${kind.slice(0, -1)} reference`,
             hasAudio: asset.hasAudio === true,
+            w: Math.max(0, Number(asset.w) || 0),
+            h: Math.max(0, Number(asset.h) || 0),
             url: URL.createObjectURL(blob),
           };
           if (state.vidH3Mode === 'replace') {
@@ -26016,6 +26280,7 @@ async function reuseVideo(it, v) {
     // Redraw it now so its H3 cards recover their image thumbnails.
     renderH3References();
     renderPromptComposer();
+    refreshH3ReferenceResolution();
   }
 
   // Audio (already trimmed at original upload -> reused as-is, no re-upload)
@@ -26984,6 +27249,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
   ].filter(Boolean).join(', ');
   const facts = [
     ['Model', videoEngineLabel(info.engine, info)],
+    ['Turbo adapter', info.h3TurboLora ? prettyLora(String(info.h3TurboLora)) : ''],
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
@@ -28630,6 +28896,7 @@ async function emptyTrashFromSettings() {
     if (id === 'experimentalFeaturesToggle') {
       state.mediaPreferences.experimentalFeatures = enabled;
       if (!enabled && state.vidH3Mode === 'replace') state.vidH3Mode = 'frames';
+      if (!enabled) state.vidH3LongContext = false;
       updateVideoPanels();
       renderPromptComposer();
       saveForm();
@@ -29000,6 +29267,8 @@ function buttonIsIconOnly(button) {
 }
 
 function iconTooltipLabel(button) {
+  const detail = String(button.dataset.iconTooltipDetail || '').trim();
+  if (detail) return detail.slice(0, 500);
   const explicit = button.dataset.iconTooltip;
   const configured = ICON_TOOLTIP_OVERRIDES[button.id];
   const override = typeof configured === 'function' ? configured(button) : configured;
@@ -29166,7 +29435,15 @@ function initIconTooltips() {
     if (button) hideIconTooltip(button);
   });
   document.addEventListener('pointerdown', () => hideIconTooltip(), true);
-  document.addEventListener('click', () => hideIconTooltip(), true);
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-icon-tooltip]');
+    if (button && !button.disabled) {
+      if (iconTooltipButton === button && !$('#iconTooltip')?.hidden) hideIconTooltip(button);
+      else showIconTooltip(button, true);
+      return;
+    }
+    hideIconTooltip();
+  }, true);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') hideIconTooltip();
   });
@@ -32185,7 +32462,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -32214,7 +32491,7 @@ function setupKrea2CoreBlocked(components) {
 
 function setupH3CoreBlocked(components) {
   const requested = (components || []).filter(Boolean);
-  return requested.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v')
+  return requested.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context')
     && setupViewStatus?.comfy?.minimaxH3?.supported !== true;
 }
 
@@ -32260,6 +32537,7 @@ function generationSetupComponents() {
     const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', 'wan-animate2': 'wananimate2', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
     if (h3TurboActive()) components.add(h3ReferenceBackedMode() ? 'h3turbor2v' : 'h3turbo');
+    if (h3LongContextActive()) components.add('h3context');
     if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
     if (state.vidEngine === 'h3' && h3ReferenceBackedMode()) components.add('h3r2v');
     if (state.directorOpen) components.add('ltxdirector');
@@ -32308,7 +32586,7 @@ function setupActionForComponents(required) {
   const components = [...new Set((required || []).filter(Boolean))];
   if (!lastMeta.ok) return 'connect';
   const requiresKrea2 = components.some((id) => KREA2_MODEL_COMPONENTS.has(id));
-  const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v');
+  const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context');
   const requiresWanAnimate2 = components.includes('wananimate2');
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
   if (requiresWanAnimate2 && lastMeta?.wanAnimate2?.supported !== true) return 'update';
@@ -32332,7 +32610,7 @@ async function ensureGenerationSetup() {
     && required.some((id) => KREA2_MODEL_COMPONENTS.has(id));
   const krea2CoreBlocked = required.some((id) => KREA2_MODEL_COMPONENTS.has(id))
     && lastMeta?.models?.krea2?.clipType?.ok !== true;
-  const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v')
+  const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context')
     && lastMeta?.minimaxH3?.supported !== true;
   const wanAnimate2CoreBlocked = required.includes('wananimate2')
     && lastMeta?.wanAnimate2?.supported !== true;
@@ -33798,6 +34076,7 @@ async function loadMeta(refresh, afterRestart = false) {
     renderLoras();
     renderSam3Dependency();
     renderDependencyManager();
+    renderH3LongContext();
     renderH3TurboMode();
     renderH3SageAttention();
     $('#genLbl').textContent = genLabel();
@@ -33929,7 +34208,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

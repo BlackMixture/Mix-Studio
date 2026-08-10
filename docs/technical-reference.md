@@ -22,8 +22,9 @@ This document describes the curated workflows, their ComfyUI requirements, queue
 
 ## Video generation, editing, and motion transfer
 
-- **MiniMax H3:** native ComfyUI text-to-video, image-to-video, and first/last-frame generation at 24 fps with joint stereo audio. Reference mode accepts up to nine images, three videos, and three audio clips, with prompt-addressable tags such as `<Picture 1>` and `<Video 1>`.
+- **MiniMax H3:** native ComfyUI text-to-video, image-to-video, and first/last-frame generation at 24 fps with joint stereo audio. Frames Turbo uses the creator's v4/600 EMA LoRA with a six-step default and adjustable sampling; Reference Turbo remains on its separate Kijai LightX2V LoRA and audio-safe six-step path. Reference mode accepts up to nine images, three videos, and three audio clips, with prompt-addressable tags such as `<Picture 1>` and `<Video 1>`.
 - **Independent H3 packages:** text and frame modes use the FL2VA diffusion model. Reference mode adds the separate Ref2VA diffusion model and VideoHelperSuite only when selected, so using the standard H3 modes never downloads Ref2VA.
+- **H3 Long context (experimental):** Standard, Full BF16, and Turbo frame or reference generations can extend to 120 seconds as sequential clips. Each successor loads the prior joint video/audio latent through the reviewed H3 Motion Context v0.2.0 node, pins and trims a 22-frame bridge, and is joined into one MP4. Turbo remains optional with a caution that inherited picture softness or muffled audio can accumulate across the chain; video-backed Reference Turbo uses five-second source windows. DynTime remains disabled because its core patch has not been validated with Motion Context. SageAttention remains available.
 - **LTX 2.3:** two-stage text-to-video and image-to-video generation with first and last frames, joint audio generation, uploaded audio, waveform trimming, and motion controls.
 - **LTX Director:** Extend continues an existing clip, Keyframes arranges images, clips, and directions as a storyboard, and Timeline places story, audio, and motion segments at explicit frame ranges. Projects can be saved as JSON.
 - **LTX Face ID:** Best-FaceID and BFS overlap conditioning preserve a reference identity. An uploaded voice is encoded into the audio latent with a zero noise mask for lipsync.
@@ -65,7 +66,7 @@ Curated workflow families include:
 - ComfyUI-Krea2Edit and Krea2-Regional-MultiLoRA
 - Flux 2 Klein 4B and 9B
 - Qwen Image Edit 2511
-- MiniMax H3 FL2VA, Qwen3-VL, video VAE, and audio VAE; optional Ref2VA for reference mode
+- MiniMax H3 FL2VA, Qwen3-VL, video VAE, and audio VAE; optional Ref2VA for reference mode and H3 Motion Context for experimental long generation
 - LTX 2.3, its spatial upscaler, and Gemma encoder
 - Wan 2.2, 10Eros, and SCAIL 2 with SAM3 multiplex and `clip_vision_h`
 - Best-FaceID LoRA and [ComfyUI-BFSNodes](https://github.com/alisson-anjos/ComfyUI-BFSNodes)

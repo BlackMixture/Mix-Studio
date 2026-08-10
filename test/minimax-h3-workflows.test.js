@@ -6,6 +6,8 @@ const assert = require('node:assert/strict');
 const {
   H3_FPS,
   H3_MAX_SECONDS,
+  H3_LONG_CONTEXT_FRAMES,
+  H3_LONG_CONTEXT_MAX_SECONDS,
   H3_MIN_SECONDS,
   H3_TURBO_REFERENCE_CHUNK_ADVANCE_FRAMES,
   H3_TURBO_REFERENCE_CHUNK_FRAMES,
@@ -14,6 +16,8 @@ const {
   h3DurationSeconds,
   h3EffectiveDurationSeconds,
   h3FramesForSeconds,
+  h3LongContextSegments,
+  h3LongContextSegmentPrompt,
   h3TurboReferenceSegments,
   normalizeH3References,
 } = require('../lib/video-workflows');
@@ -24,7 +28,7 @@ const settings = {
   h3Clip: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
   h3VideoVae: 'minimax_h3_video_vae_fp16.safetensors',
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
-  h3TurboLora: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+  h3TurboLora: 'minimax_h3_turbo_v4_step600_ema.safetensors',
   h3RefTurboLora: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
 };
 
@@ -58,6 +62,49 @@ test('MiniMax H3 Reference Turbo plans long outputs as five-second source chunks
     { index: 1, startFrame: 120, generationFrames: 124, keepFrames: 120 },
     { index: 2, startFrame: 240, generationFrames: 124, keepFrames: 122 },
   ]);
+});
+
+test('MiniMax H3 Long context distributes a snapped output across valid clips with 22-frame bridges', () => {
+  assert.equal(H3_LONG_CONTEXT_MAX_SECONDS, 120);
+  assert.equal(H3_LONG_CONTEXT_FRAMES, 22);
+  assert.deepEqual(h3LongContextSegments(30), [
+    { index: 0, generationFrames: 362, keepFrames: 362, trimFrames: 0 },
+    { index: 1, generationFrames: 209, keepFrames: 187, trimFrames: 22 },
+    { index: 2, generationFrames: 209, keepFrames: 187, trimFrames: 22 },
+  ]);
+  const maximum = h3LongContextSegments(120);
+  assert.equal(maximum.reduce((total, segment) => total + segment.keepFrames, 0), 2895);
+  assert.ok(maximum.every((segment) => segment.generationFrames >= 124 && segment.generationFrames <= 362));
+  assert.ok(maximum.every((segment) => segment.generationFrames % 17 === 5));
+  assert.match(h3LongContextSegmentPrompt('A rider keeps moving.', { index: 1 }, 3), /Continuity airlock/);
+  assert.match(h3LongContextSegmentPrompt('A rider keeps moving.', { index: 1 }, 3), /do not freeze/);
+  for (let tenths = 50; tenths <= 1200; tenths += 1) {
+    const requested = tenths / 10;
+    const rawFrames = Math.max(5, Math.round(requested * H3_FPS));
+    const targetFrames = rawFrames + ((5 - (rawFrames % 17) + 17) % 17);
+    const plan = h3LongContextSegments(requested);
+    assert.equal(plan.reduce((total, segment) => total + segment.keepFrames, 0), targetFrames);
+    assert.ok(plan.every((segment) => segment.generationFrames >= 124 && segment.generationFrames <= 362));
+    assert.ok(plan.every((segment) => segment.generationFrames % 17 === 5));
+  }
+});
+
+test('MiniMax H3 Long context keeps Reference Turbo video clips inside the five-second safety window', () => {
+  const plan = h3LongContextSegments(30, { maxGenerationFrames: H3_TURBO_REFERENCE_CHUNK_FRAMES });
+  assert.equal(plan.length, 7);
+  assert.deepEqual(plan[0], {
+    index: 0, startFrame: 0, generationFrames: 124, keepFrames: 124, trimFrames: 0,
+  });
+  assert.deepEqual(plan[1], {
+    index: 1, startFrame: 102, generationFrames: 124, keepFrames: 102, trimFrames: 22,
+  });
+  assert.equal(plan.reduce((total, segment) => total + segment.keepFrames, 0), 736);
+  assert.ok(plan.every((segment) => segment.generationFrames === 124));
+
+  const maximum = h3LongContextSegments(120, { maxGenerationFrames: 124 });
+  assert.equal(maximum.length, 29);
+  assert.equal(maximum.reduce((total, segment) => total + segment.keepFrames, 0), 2895);
+  assert.ok(maximum.slice(1).every((segment) => segment.trimFrames === 22));
 });
 
 test('MiniMax H3 canvas follows the native 768 short edge and area cap', () => {
@@ -117,6 +164,78 @@ test('MiniMax H3 text-to-video does not synthesize placeholder keyframes', async
   assert.equal(graph.last_image, undefined);
   assert.equal(graph.condition.inputs.first_frame, undefined);
   assert.equal(graph.condition.inputs.last_frame, undefined);
+});
+
+test('MiniMax H3 Long context saves the first AV latent and continues later clips through the lossless latent path', async () => {
+  const first = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A singer continues the performance.', W: 1344, H: 768,
+    frames: 362, seed: 17, longContext: { chainId: 'chain-abc', clipIndex: 0 },
+  }, settings);
+  assert.equal(first.motion_context, undefined);
+  assert.deepEqual(first.context_save.inputs, {
+    latent: ['sample', 0],
+    filename_prefix: 'KreaStudio/h3_context/chain-abc/clip',
+    clip_index: 1,
+  });
+  assert.deepEqual(first.video.inputs.images, ['decode', 0]);
+  assert.deepEqual(first.video.inputs.audio, ['decode_audio', 0]);
+
+  const next = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Continue with <Picture 1>.', W: 1344, H: 768,
+    frames: 209, seed: 18, references: { images: [{ name: 'singer.png' }] },
+    longContext: { chainId: 'chain-abc', clipIndex: 1 },
+  }, settings);
+  assert.deepEqual(next.context_load.inputs, {
+    latent_path: 'KreaStudio/h3_context/chain-abc', clip_index: 1,
+  });
+  assert.deepEqual(next.motion_context.inputs, {
+    conditioning: ['condition', 0],
+    vae: ['video_vae', 0],
+    latent: ['condition', 1],
+    context_length: '22',
+    audio_context_length: 22,
+    context_latent: ['context_load', 0],
+  });
+  assert.deepEqual(next.guider.inputs.conditioning, ['motion_context', 0]);
+  assert.deepEqual(next.sample.inputs.latent_image, ['condition', 1]);
+  assert.deepEqual(next.context_trim.inputs.trim_frames, ['motion_context', 1]);
+  assert.deepEqual(next.video.inputs.images, ['context_trim', 0]);
+  assert.deepEqual(next.video.inputs.audio, ['context_trim', 1]);
+  assert.equal(next.context_save.inputs.clip_index, 2);
+});
+
+test('MiniMax H3 Long context allows Turbo while preserving the joint latent bridge', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'Continue.', W: 1344, H: 768, frames: 362, seed: 17,
+    turbo: true, longContext: { chainId: 'chain-abc', clipIndex: 0 },
+  }, settings);
+  assert.equal(graph.turbo_lora.class_type, 'MiniMaxH3TurboLoRA');
+  assert.equal(graph.turbo_sampler.class_type, 'MiniMaxH3TurboSampler');
+  assert.equal(graph.context_save.class_type, 'MiniMaxH3MotionContextSaveLatent');
+  assert.deepEqual(graph.sample.inputs.sampler, ['turbo_sampler', 0]);
+});
+
+test('MiniMax H3 Reference Turbo continuation combines a five-second source window with Motion Context', async () => {
+  const segment = {
+    index: 1,
+    startFrame: 102,
+    generationFrames: 124,
+    keepFrames: 102,
+    trimFrames: 22,
+  };
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Continue <Video 1>.', W: 1344, H: 768, frames: 124, seed: 18,
+    turbo: true,
+    turboReferenceSegment: segment,
+    references: { videos: [{ name: 'source.mp4', hasAudio: true, w: 1080, h: 1920 }] },
+    longContext: { chainId: 'chain-turbo', clipIndex: 1 },
+  }, settings);
+  assert.equal(graph.turbo_lora.class_type, 'LoraLoaderModelOnly');
+  assert.equal(graph.ref_video_1_0.inputs.frame_load_cap, 124);
+  assert.equal(graph.ref_video_1_0.inputs.skip_first_frames, 102);
+  assert.equal(graph.motion_context.class_type, 'MiniMaxH3MotionContext');
+  assert.deepEqual(graph.sample.inputs.sampler, ['turbo_sampler', 0]);
+  assert.deepEqual(graph.context_trim.inputs.trim_frames, ['motion_context', 1]);
 });
 
 test('MiniMax H3 accepts an explicit sampler step count', async () => {

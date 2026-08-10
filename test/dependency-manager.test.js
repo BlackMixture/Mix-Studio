@@ -79,7 +79,7 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(COMPONENTS.h3.models.includes('h3Ref'), false, 'standard H3 never downloads the optional R2V diffusion model');
   assert.match(MODEL_ASSETS.h3.find((asset) => asset[0] === 'h3Unet')[2], /Comfy-Org\/MiniMax-H3.*minimax_h3_fl2va_pruned_int8_convrot/);
   assert.match(MODEL_ASSETS.h3Ref[0][2], /Comfy-Org\/MiniMax-H3.*minimax_h3_ref2va_pruned_int8_convrot/);
-  assert.match(MODEL_ASSETS.h3Turbo[0][2], /larryvrh\/MiniMax-H3-Turbo-Lora.*minimax_h3_turbo_4step_ema_ckpt850/);
+  assert.match(MODEL_ASSETS.h3Turbo[0][2], /larryvrh\/MiniMax-H3-Turbo-Lora.*minimax_h3_turbo_v4_step600_ema/);
   assert.match(MODEL_ASSETS.h3RefTurbo[0][2], /Kijai\/MiniMax-H3_comfy.*minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16/);
   assert.deepEqual(COMPONENTS.rife.nodes, ['rife']);
   assert.ok(availableComponents().includes('smartmask'));

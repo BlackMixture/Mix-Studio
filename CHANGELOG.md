@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 1.2.1 - 2026-08-09
+
+### MiniMax H3 Turbo
+
+- Updated Frames Turbo to the creator-recommended `minimax_h3_turbo_v4_step600_ema.safetensors` adapter and made six steps the default. Existing installs using Mix Studio's former v1/850 default migrate automatically, while users can still select that older checkpoint manually for specialized four-step, high-motion work.
+- Kept Reference Turbo on its separate Kijai LightX2V adapter and six-step audio-safe sampler path, so the Frames Turbo upgrade does not change the reference-video workflow.
+- Added generation metadata for the exact H3 Turbo adapter used, including gallery and documentation-video details.
+- Added a compact caution icon at four Frames Turbo steps explaining v4's possible smearing or motion trails, with the full guidance available by hover or tap instead of permanent warning text.
+
+### Long videos and references
+
+- Added experimental H3 Long Context generation for Standard, Full BF16, and Turbo frame or reference workflows, extending generation up to 120 seconds as sequential clips with a pinned 22-frame joint video-and-audio latent bridge.
+- Added automatic installation and revision checks for the reviewed H3 Motion Context node, sequential queue progress such as `H3 Long context clip 2 of 4`, and final joining into one MP4.
+- Allowed Turbo in Long Context with a compact quality caution, while keeping DynTime disabled until its core patch is validated with Motion Context. Video-backed Reference Turbo uses safe five-second source windows throughout the chain.
+- Made H3 Prompt Enhance, Revise Prompt, prompt-guide timelines, and validation aware of the complete Long Context duration instead of treating every prompt as a maximum 15-second clip.
+- Added a Match video aspect option for H3 Reference generation and aspect-ratio badges on video reference thumbnails, while preserving manual aspect choices and saved-workspace behavior.
+
+### Interface and reliability
+
+- Replaced full inline compatibility warnings with consistent caution icons whose details open on hover, keyboard focus, or tap.
+- Persisted Long Context and reference aspect choices across workspace saves and gallery reuse, and recorded Long Context clip counts in generation details.
+- Improved H3 chunk and continuation status labels so the task queue distinguishes Reference Turbo chunks from Long Context clips.
+
 ## 1.2.0 - 2026-08-07
 
 - Added MiniMax H3 Turbo generation with its recommended custom sampler, audio-safe workflow, configurable steps, and optional LoRA strength under Advanced settings.

@@ -21,6 +21,20 @@ function basePrompt(description = '[Shot 1] A baker opens the shop.') {
   ].join('\n');
 }
 
+test('H3 output validation keeps long-context shot timestamps in range', () => {
+  const prompt = basePrompt(
+    '[Shot 1] A rider moves forward. [Shot 2] At 00:20.000, the camera cuts to the rider stopping.',
+  );
+  const inspected = inspectH3PromptOutput(prompt, prompt, {
+    mode: 'frames',
+    seconds: 30,
+    longContext: true,
+  });
+
+  assert.equal(inspected.audit.ready, true);
+  assert.equal(inspected.audit.duration, 736 / 24);
+});
+
 function referencePrompt() {
   return [
     'subject_definitions:',

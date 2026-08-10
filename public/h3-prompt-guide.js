@@ -124,10 +124,14 @@
   const H3_MIN_SECONDS = 5;
   const H3_MAX_SECONDS = 15;
 
-  function h3EffectiveDurationSeconds(value) {
+  function h3EffectiveDurationSeconds(value, maxSeconds = H3_MAX_SECONDS) {
     const requested = Number(value);
+    const maximum = Math.max(
+      H3_MIN_SECONDS,
+      Number.isFinite(Number(maxSeconds)) ? Number(maxSeconds) : H3_MAX_SECONDS,
+    );
     const bounded = Math.max(H3_MIN_SECONDS, Math.min(
-      H3_MAX_SECONDS,
+      maximum,
       Number.isFinite(requested) ? requested : H3_MIN_SECONDS,
     ));
     const rawFrames = Math.max(5, Math.round(bounded * H3_FPS));
@@ -911,7 +915,10 @@
     const referenceMode = mode === 'reference';
     const requiredFields = [...(referenceMode ? REFERENCE_PROMPT_FIELDS : BASE_PROMPT_FIELDS)];
     const descriptionField = referenceMode ? 'detailed_description' : 'integrated_multimodal_description';
-    const duration = h3EffectiveDurationSeconds(context.seconds);
+    const duration = h3EffectiveDurationSeconds(
+      context.seconds,
+      context.longContext === true ? 120 : H3_MAX_SECONDS,
+    );
     const hasFirstFrame = !!context.hasFirstFrame;
     const hasLastFrame = !!context.hasLastFrame;
     const expectedReferenceTokens = expectedTokenList(context.expectedReferenceTokens);

@@ -145,6 +145,7 @@ test('H3 timeline guidance uses snapped frame duration and official shot timesta
   assert.match(h3TimelineGuidance(10), /\[Shot 2\] At 00:03\.500/);
   assert.match(h3TimelineGuidance(10), /greater than 0\.000 and less than 10\.13 seconds/);
   assert.match(h3TimelineGuidance(15), /prefer a continuous shot when cuts add no new information/i);
+  assert.match(h3TimelineGuidance(30, { longContext: true }), /Effective video duration: 30\.67 seconds/);
 });
 
 test('H3 base prompt craft enforces official fields, dialogue fidelity, and visible-text separation', () => {
