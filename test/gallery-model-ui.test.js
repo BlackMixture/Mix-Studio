@@ -41,7 +41,9 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /return item\.krea2Turbo === false \? 'Raw' : 'Turbo'/);
   assert.match(app, /className = 'gallery-card-video'/);
   assert.match(app, /preview\.preload = 'none'/);
-  assert.match(app, /preview\.dataset\.src = '\/video-previews\/' \+ encodeURIComponent\(latestVideo\.file\)/);
+  assert.match(app, /preview\.dataset\.src = galleryVideoPreviewSource\(latestVideo\.file\)/);
+  assert.match(app, /function galleryVideoPreviewSource\(file\)/);
+  assert.match(app, /`\/video-previews\/\$\{encodeURIComponent\(file\)\}\?size=\$\{resolution\}&fps=\$\{frameRate\}`/);
   assert.match(app, /video\.dataset\.loaded !== 'true'/);
   assert.match(app, /let galleryPreviewActive = new Set\(\)/);
   assert.match(app, /function centeredGalleryPreviewRow\(candidates, center\)/);
@@ -105,7 +107,10 @@ test('gallery cards use lightweight preview proxies and one mobile decoder', () 
   assert.match(app, /const candidates = \[\.\.\.galleryPreviewIntersecting\]/);
   assert.match(app, /\(hover: none\), \(pointer: coarse\)'\)\.matches && centered\.length > 1/);
   assert.match(server, /url\.pathname\.startsWith\('\/video-previews\/'\)/);
-  assert.match(server, /async function cachedVideoPreview\(media\)/);
+  assert.match(server, /async function cachedVideoPreview\(media, options = \{\}\)/);
+  assert.match(server, /normalizeVideoPreviewOptions\(options\)/);
+  assert.match(server, /preview-v2\\0\$\{media\.name\}[\s\S]*\$\{preview\.size\}\\0\$\{preview\.fps\}/);
+  assert.match(server, /size: url\.searchParams\.get\('size'\),\s*fps: url\.searchParams\.get\('fps'\)/);
   assert.match(server, /videoPreviewQueue\.then\(create, create\)/);
 });
 
@@ -120,10 +125,16 @@ test('focused videos leave playback entirely to native controls', () => {
 
 test('gallery performance controls can disable video previews and build an idle compressed cache', () => {
   assert.match(html, /id="setVideoPreviews"[^>]*role="switch"/);
+  assert.match(html, /id="setVideoPreviewResolution"[\s\S]*value="640" selected/);
+  assert.match(html, /id="setVideoPreviewFrameRate"[\s\S]*value="24" selected/);
   assert.match(html, /id="setPreviewCache"[^>]*role="switch"/);
   assert.match(html, /id="previewCacheStatus"[^>]*aria-live="polite"/);
   assert.match(html, /id="previewCacheClear"/);
-  assert.match(app, /mediaPreferences: \{[\s\S]*videoPreviews: true,[\s\S]*previewCache: false,[\s\S]*experimentalFeatures: false/);
+  assert.match(app, /const DEFAULT_GALLERY_PREVIEW_RESOLUTION = 640/);
+  assert.match(app, /const DEFAULT_GALLERY_PREVIEW_FRAME_RATE = 24/);
+  assert.match(app, /mediaPreferences: \{[\s\S]*videoPreviews: true,[\s\S]*previewResolution: DEFAULT_GALLERY_PREVIEW_RESOLUTION,[\s\S]*previewFrameRate: DEFAULT_GALLERY_PREVIEW_FRAME_RATE,[\s\S]*previewCache: false,[\s\S]*experimentalFeatures: false/);
+  assert.match(app, /function renderVideoPreviewQualityControls\(\)/);
+  assert.match(app, /\['setVideoPreviewResolution', 'setVideoPreviewFrameRate'\]/);
   assert.match(app, /function saveMediaPreferences\(next\)/);
   assert.match(app, /function compressedPreviewResponse\(response\)/);
   assert.match(app, /window\.requestIdleCallback\(work/);

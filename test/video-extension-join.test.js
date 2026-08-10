@@ -5,10 +5,15 @@ const assert = require('node:assert/strict');
 const path = require('path');
 
 const {
+  DEFAULT_VIDEO_PREVIEW_FPS,
+  DEFAULT_VIDEO_PREVIEW_SIZE,
+  VIDEO_PREVIEW_FPS_OPTIONS,
+  VIDEO_PREVIEW_SIZE_OPTIONS,
   extensionJoinArgs,
   joinVideoChunks,
   joinVideoExtension,
   mp4TranscodeArgs,
+  normalizeVideoPreviewOptions,
   parseFfmpegVideoProbe,
   probeVideoFile,
   resolveFfmpegExecutable,
@@ -207,14 +212,34 @@ test('gallery preview arguments create a bounded silent H.264 proxy', () => {
     '-an',
     '-t', '5',
   ]);
-  assert.match(args[args.indexOf('-vf') + 1], /scale=480:480:force_original_aspect_ratio=decrease/);
-  assert.match(args[args.indexOf('-vf') + 1], /fps=12/);
+  assert.equal(DEFAULT_VIDEO_PREVIEW_SIZE, 640);
+  assert.equal(DEFAULT_VIDEO_PREVIEW_FPS, 24);
+  assert.deepEqual(VIDEO_PREVIEW_SIZE_OPTIONS, [480, 640, 720]);
+  assert.deepEqual(VIDEO_PREVIEW_FPS_OPTIONS, [12, 18, 24, 30]);
+  assert.match(args[args.indexOf('-vf') + 1], /scale=640:640:force_original_aspect_ratio=decrease/);
+  assert.match(args[args.indexOf('-vf') + 1], /fps=24/);
   assert.match(args[args.indexOf('-vf') + 1], /format=yuv420p/);
   assert.equal(args[args.indexOf('-c:v') + 1], 'libx264');
   assert.equal(args[args.indexOf('-preset') + 1], 'veryfast');
   assert.equal(args[args.indexOf('-crf') + 1], '28');
+  assert.equal(args[args.indexOf('-g') + 1], '48');
+  assert.equal(args[args.indexOf('-keyint_min') + 1], '48');
   assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
   assert.equal(args.at(-1), '/cache/preview.mp4');
+});
+
+test('gallery preview options accept supported quality levels and reject arbitrary work', () => {
+  assert.deepEqual(normalizeVideoPreviewOptions({ size: '720', fps: '30' }), { size: 720, fps: 30 });
+  assert.deepEqual(normalizeVideoPreviewOptions({ size: 4000, fps: 120 }), { size: 640, fps: 24 });
+  const args = videoPreviewTranscodeArgs({
+    sourcePath: '/media/source.mp4',
+    outputPath: '/cache/preview.mp4',
+    size: 480,
+    fps: 12,
+  });
+  assert.match(args[args.indexOf('-vf') + 1], /scale=480:480:force_original_aspect_ratio=decrease/);
+  assert.match(args[args.indexOf('-vf') + 1], /fps=12/);
+  assert.equal(args[args.indexOf('-g') + 1], '24');
 });
 
 test('gallery preview transcoding invokes FFmpeg and verifies its cache file', async () => {
@@ -223,6 +248,8 @@ test('gallery preview transcoding invokes FFmpeg and verifies its cache file', a
     sourcePath: '/media/source.mp4',
     outputPath: '/cache/preview.mp4',
     ffmpegPath: '/tools/ffmpeg',
+    size: 720,
+    fps: 30,
   }, {
     run: async (command, args, options) => { invocation = { command, args, options }; },
     fsp: { stat: async () => ({ isFile: () => true, size: 2048 }) },
@@ -230,6 +257,8 @@ test('gallery preview transcoding invokes FFmpeg and verifies its cache file', a
   assert.equal(output, '/cache/preview.mp4');
   assert.equal(invocation.command, '/tools/ffmpeg');
   assert.equal(invocation.args.at(-1), '/cache/preview.mp4');
+  assert.match(invocation.args[invocation.args.indexOf('-vf') + 1], /scale=720:720/);
+  assert.match(invocation.args[invocation.args.indexOf('-vf') + 1], /fps=30/);
   assert.equal(invocation.options.cwd, '/cache');
 
   await assert.rejects(transcodeVideoPreview({

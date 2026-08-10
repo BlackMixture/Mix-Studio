@@ -230,6 +230,7 @@ const {
 const {
   joinVideoChunks,
   joinVideoExtension,
+  normalizeVideoPreviewOptions,
   probeVideoFile,
   resolveFfmpegExecutable,
   transcodeVideoFileToMp4,
@@ -5765,11 +5766,12 @@ function safeMediaPath(root, encodedName) {
 const videoPreviewJobs = new Map();
 let videoPreviewQueue = Promise.resolve();
 
-async function cachedVideoPreview(media) {
+async function cachedVideoPreview(media, options = {}) {
+  const preview = normalizeVideoPreviewOptions(options);
   const sourceStat = await fsp.stat(media.file);
   if (!sourceStat.isFile()) throw Object.assign(new Error('Video not found'), { code: 'ENOENT' });
   const fingerprint = crypto.createHash('sha256')
-    .update(`${media.name}\0${sourceStat.size}\0${Math.round(sourceStat.mtimeMs)}`)
+    .update(`preview-v2\0${media.name}\0${sourceStat.size}\0${Math.round(sourceStat.mtimeMs)}\0${preview.size}\0${preview.fps}`)
     .digest('hex')
     .slice(0, 24);
   const output = path.join(VIDEO_PREVIEWS, `${fingerprint}.mp4`);
@@ -5782,7 +5784,13 @@ async function cachedVideoPreview(media) {
     if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
     if (!videoExtensionFfmpeg) throw Object.assign(new Error('Video previews require FFmpeg'), { code: 'ffmpeg_unavailable' });
     try {
-      await transcodeVideoPreview({ sourcePath: media.file, outputPath: temp, ffmpegPath: videoExtensionFfmpeg });
+      await transcodeVideoPreview({
+        sourcePath: media.file,
+        outputPath: temp,
+        ffmpegPath: videoExtensionFfmpeg,
+        size: preview.size,
+        fps: preview.fps,
+      });
       await fsp.rename(temp, output);
       return output;
     } finally {
@@ -10540,7 +10548,10 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(404); return res.end('not found');
       }
       try {
-        const preview = await cachedVideoPreview(media);
+        const preview = await cachedVideoPreview(media, {
+          size: url.searchParams.get('size'),
+          fps: url.searchParams.get('fps'),
+        });
         return serveFile(res, preview, req.headers.range);
       } catch (error) {
         const status = error?.code === 'ENOENT' ? 404 : error?.code === 'ffmpeg_unavailable' ? 503 : 422;

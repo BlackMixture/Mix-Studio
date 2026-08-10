@@ -2913,6 +2913,31 @@
               <span class="settings-media-toggle-copy"><strong>Video previews</strong><small>Play muted video previews while they are centered in the gallery.</small></span>
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>
             </button>
+            <div class="video-preview-quality" id="videoPreviewQuality">
+              <div class="video-preview-quality-heading">
+                <strong>Preview quality</strong>
+                <small>Higher settings look smoother and sharper but use more bandwidth and decoding power.</small>
+              </div>
+              <div class="video-preview-quality-grid">
+                <label for="setVideoPreviewResolution">
+                  <span>Resolution</span>
+                  <select id="setVideoPreviewResolution">
+                    <option value="480">480 px · Compact</option>
+                    <option value="640" selected>640 px · Default</option>
+                    <option value="720">720 px · High</option>
+                  </select>
+                </label>
+                <label for="setVideoPreviewFrameRate">
+                  <span>Frame rate</span>
+                  <select id="setVideoPreviewFrameRate">
+                    <option value="12">12 fps · Saver</option>
+                    <option value="18">18 fps</option>
+                    <option value="24" selected>24 fps · Default</option>
+                    <option value="30">30 fps · Smooth</option>
+                  </select>
+                </label>
+              </div>
+            </div>
             <button class="settings-media-toggle" id="setPreviewCache" type="button" role="switch" aria-checked="false">
               <span class="settings-media-toggle-copy"><strong>Compressed image preview cache</strong><small>Build up to 250 smaller browser-cached thumbnails during idle time for faster future gallery loads.</small></span>
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>

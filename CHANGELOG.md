@@ -2,11 +2,14 @@
 
 ## Unreleased
 
+All shipped changes from v1.2.0 onward are recorded below by release.
+
 ## 1.2.4 - 2026-08-09
 
 ### Mobile video previews
 
-- Replaced full-resolution gallery-card playback with cached, silent 480p proxy clips capped at 12 fps, while keeping the expanded viewer on the original full-quality video.
+- Replaced full-resolution gallery-card playback with cached, silent proxy clips while keeping the expanded viewer on the original full-quality video.
+- Added profile-level Preview quality preferences for 480, 640, or 720 px video previews and 12, 18, 24, or 30 fps playback. New and existing profiles default to a sharper 640 px at 24 fps, and the cache keeps each quality combination separate.
 - Limited touch-first devices to one centered animated preview decoder at a time and serialized server-side proxy creation to avoid simultaneous mobile decoder and server transcode spikes.
 - Reused IntersectionObserver visibility results instead of forcing layout reads across every gallery video whenever preview playback settles.
 - Made mobile profile-menu actions activate directly from completed touch gestures, and pause gallery decoding while menus, sheets, or the app drawer are open.
@@ -37,12 +40,32 @@
 
 ## 1.2.1 - 2026-08-09
 
+### New video workflows
+
+- Added Wan Animate 2 with image identity, driving-video motion, optional performance reference, output sizing, center-crop controls, install checks, saved-generation reuse, and a dedicated update-showcase slide.
+- Added experimental MiniMax H3 Replace mode with a focused master-video and replacement-image workflow, locally generated replacement prompts, clean video previews, and an Experimental Features preference gate.
+- Added MiniMax H3 Reference Turbo using the separate Kijai LightX2V adapter, audio-safe custom sampler path, five-second source windows, and automatic chunk joining for longer source videos.
+- Added H3 restyle presets for live action, anime, cinematic 3D, cel-shaded 3D, and maximum-detail transformations, plus reference swapping without rewriting prompt cards.
+
 ### MiniMax H3 Turbo
 
 - Updated Frames Turbo to the creator-recommended `minimax_h3_turbo_v4_step600_ema.safetensors` adapter and made six steps the default. Existing installs using Mix Studio's former v1/850 default migrate automatically, while users can still select that older checkpoint manually for specialized four-step, high-motion work.
 - Kept Reference Turbo on its separate Kijai LightX2V adapter and six-step audio-safe sampler path, so the Frames Turbo upgrade does not change the reference-video workflow.
 - Added generation metadata for the exact H3 Turbo adapter used, including gallery and documentation-video details.
 - Added a compact caution icon at four Frames Turbo steps explaining v4's possible smearing or motion trails, with the full guidance available by hover or tap instead of permanent warning text.
+
+### Models and setup
+
+- Added deliberate H3 Standard, Full BF16, and DynTime model choices for Frames and Reference workflows while leaving the existing standard model as the default.
+- Added guided Full BF16 and DynTime downloads, DynTime patch compatibility checks, safe patch application and restoration, and exact model-variant generation metadata.
+- Added Jobs and Downloads task-queue tabs that appear only during active downloads and report bytes, progress, speed, and install state.
+- Added model cleanup for inactive Mix Studio-managed model files while protecting active selections and unrelated ComfyUI files.
+- Documented a future signed-access Stable versus Early Beta update channel without changing the current public-main update flow.
+
+### Prompt AI
+
+- Added user-selectable local prompt models, separate text and vision-capable model choices, installed-model discovery, compatibility filtering, and shared use by Revise Prompt and Prompt Enhance.
+- Improved H3 programmatic formatting, speaker handling, and guide-aware enhancement for video-backed references and longer timelines without requiring guide formatting to generate.
 
 ### Long videos and references
 
@@ -57,6 +80,10 @@
 - Replaced full inline compatibility warnings with consistent caution icons whose details open on hover, keyboard focus, or tap.
 - Persisted Long Context and reference aspect choices across workspace saves and gallery reuse, and recorded Long Context clip counts in generation details.
 - Improved H3 chunk and continuation status labels so the task queue distinguishes Reference Turbo chunks from Long Context clips.
+- Added image, video, and All filters to previous-generation pickers using the same segmented control as the Library, plus aspect-ratio badges and one-click replacement of selected reference assets.
+- Added desktop side-library video previews that load and play on hover, while static thumbnails remain idle otherwise.
+- Reduced long-session UI work by coalescing renders, pausing hidden media, bounding caches and transient state, and avoiding unnecessary gallery and queue DOM rebuilds.
+- Made installed update highlights replayable and kept update notices tied to the installed release rather than disappearing permanently after dismissal.
 
 ## 1.2.0 - 2026-08-07
 
@@ -73,8 +100,12 @@
 - Added compatibility-critical custom-node revision checks so Generation Setup detects stale installed node packs, marks every affected workflow for repair, and repins them before ComfyUI restarts.
 - Made documentation video exports save as H.264 MP4 with AAC audio when supported. Browsers that record only WebM now use a bounded server-side FFmpeg conversion, with the original WebM preserved as a fallback if conversion is unavailable.
 - Added manual and automatic first-frame motion prompting to H3 Text + frames, with H3-specific chronological motion and native-audio guidance while Reference mode retains explicit reference assignments.
+- Added H3 first- and last-frame swapping, reliable reference-card editing, persisted reference assets in generation details and documentation exports, and clearer Reference-mode controls.
+- Added H3 portrait and XL resolution choices, reliable aspect matching from reference media, and server-side normalization that preserves requested vertical output dimensions.
+- Added adjustable H3 sampling steps, verified SageAttention compatibility, and improved reference/runtime performance without changing the default workflow.
 - Simplified MiniMax H3 input controls by removing redundant mode and Reference-mode instructional copy.
 - Made the H3 frontend duration limit explicitly match its supported 5–15 second backend range at 24 fps.
+- Added an experimental authenticated HTTPS MCP bridge for remote app control and documented the Gemini Spark beta compatibility findings for a later re-evaluation.
 
 ## 1.1.0 - 2026-08-03
 

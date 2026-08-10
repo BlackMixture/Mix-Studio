@@ -26,6 +26,8 @@ test('settings auto-apply without a persistent footer action', () => {
 
 test('custom settings controls explicitly join the appropriate autosave route', () => {
   assert.match(app, /scheduleSettingsAutosave\(id === 'setSmartFilenames' \? 'server' : 'media', 0\)/);
+  assert.match(app, /\['setVideoPreviewResolution', 'setVideoPreviewFrameRate'\]\.forEach\(\(id\) => \{/);
+  assert.match(app, /previewResolution: \$\('#setVideoPreviewResolution'\)\.value,\s*previewFrameRate: \$\('#setVideoPreviewFrameRate'\)\.value/);
   assert.match(app, /setSvAttnValue\(option\.dataset\.attention\)[\s\S]{0,180}scheduleSettingsAutosave\('server', 0\)/);
   assert.match(app, /#defaultSeedMode button[\s\S]{0,300}scheduleSettingsAutosave\('preferences', 0\)/);
   assert.match(app, /defaultStrength: Number\(strengthInput\.value\)[\s\S]{0,100}scheduleSettingsAutosave\('preferences'\)/);

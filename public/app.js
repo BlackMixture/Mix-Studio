@@ -13,6 +13,10 @@ const ReleaseNotes = window.MixStudioReleaseNotes;
 const H3PromptGuide = window.H3PromptGuide;
 const progressEta = ProgressEta.createProgressEtaTracker();
 const EDIT_MODEL_ORDER_VERSION = 3;
+const DEFAULT_GALLERY_PREVIEW_RESOLUTION = 640;
+const DEFAULT_GALLERY_PREVIEW_FRAME_RATE = 24;
+const GALLERY_PREVIEW_RESOLUTION_OPTIONS = Object.freeze([480, 640, 720]);
+const GALLERY_PREVIEW_FRAME_RATE_OPTIONS = Object.freeze([12, 18, 24, 30]);
 const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
 // Keep every local workspace write bound to the profile that loaded this
 // document. Profile transitions update localStorage before the old page exits,
@@ -168,6 +172,8 @@ const state = {
   libraryGroupFocus: null,
   mediaPreferences: {
     videoPreviews: true,
+    previewResolution: DEFAULT_GALLERY_PREVIEW_RESOLUTION,
+    previewFrameRate: DEFAULT_GALLERY_PREVIEW_FRAME_RATE,
     previewCache: false,
     experimentalFeatures: false,
   },
@@ -2840,27 +2846,55 @@ function mediaPreferencesKey() {
   return profileStorageKey('ks-media-preferences');
 }
 
+function normalizedGalleryPreviewResolution(value) {
+  const resolution = Math.round(Number(value));
+  return GALLERY_PREVIEW_RESOLUTION_OPTIONS.includes(resolution)
+    ? resolution
+    : DEFAULT_GALLERY_PREVIEW_RESOLUTION;
+}
+
+function normalizedGalleryPreviewFrameRate(value) {
+  const frameRate = Math.round(Number(value));
+  return GALLERY_PREVIEW_FRAME_RATE_OPTIONS.includes(frameRate)
+    ? frameRate
+    : DEFAULT_GALLERY_PREVIEW_FRAME_RATE;
+}
+
+function defaultMediaPreferences() {
+  return {
+    videoPreviews: true,
+    previewResolution: DEFAULT_GALLERY_PREVIEW_RESOLUTION,
+    previewFrameRate: DEFAULT_GALLERY_PREVIEW_FRAME_RATE,
+    previewCache: false,
+    experimentalFeatures: false,
+  };
+}
+
 function loadMediaPreferences() {
   const key = mediaPreferencesKey();
   if (!key) {
-    state.mediaPreferences = { videoPreviews: true, previewCache: false, experimentalFeatures: false };
+    state.mediaPreferences = defaultMediaPreferences();
     return;
   }
   try {
     const saved = JSON.parse(localStorage.getItem(key) || 'null');
     state.mediaPreferences = {
       videoPreviews: saved?.videoPreviews !== false,
+      previewResolution: normalizedGalleryPreviewResolution(saved?.previewResolution),
+      previewFrameRate: normalizedGalleryPreviewFrameRate(saved?.previewFrameRate),
       previewCache: saved?.previewCache === true,
       experimentalFeatures: saved?.experimentalFeatures === true,
     };
   } catch {
-    state.mediaPreferences = { videoPreviews: true, previewCache: false, experimentalFeatures: false };
+    state.mediaPreferences = defaultMediaPreferences();
   }
 }
 
 function saveMediaPreferences(next) {
   state.mediaPreferences = {
     videoPreviews: next.videoPreviews !== false,
+    previewResolution: normalizedGalleryPreviewResolution(next.previewResolution),
+    previewFrameRate: normalizedGalleryPreviewFrameRate(next.previewFrameRate),
     previewCache: next.previewCache === true,
     experimentalFeatures: next.experimentalFeatures === true,
   };
@@ -22296,6 +22330,11 @@ function galleryPreviewMotionAllowed() {
     && !actionMenuEl
     && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
+function galleryVideoPreviewSource(file) {
+  const resolution = normalizedGalleryPreviewResolution(state.mediaPreferences.previewResolution);
+  const frameRate = normalizedGalleryPreviewFrameRate(state.mediaPreferences.previewFrameRate);
+  return `/video-previews/${encodeURIComponent(file)}?size=${resolution}&fps=${frameRate}`;
+}
 function desktopSideLibraryHoverPreviewAllowed() {
   return desktopWorkspaceActive()
     && desktopResolutionPickerQuery.matches
@@ -23010,7 +23049,7 @@ function renderGrid() {
       const posterSource = galleryImageSource(it);
       preview.poster = posterSource;
       useCachedGalleryImage(preview, posterSource, 'poster');
-      preview.dataset.src = '/video-previews/' + encodeURIComponent(latestVideo.file);
+      preview.dataset.src = galleryVideoPreviewSource(latestVideo.file);
       preview.dataset.loaded = 'false';
       preview.tabIndex = -1;
       preview.setAttribute('aria-hidden', 'true');
@@ -28527,6 +28566,16 @@ function mediaPreferenceControlValue(id) {
   return $('#' + id)?.getAttribute('aria-checked') === 'true';
 }
 
+function renderVideoPreviewQualityControls() {
+  const enabled = mediaPreferenceControlValue('setVideoPreviews');
+  const panel = $('#videoPreviewQuality');
+  const resolution = $('#setVideoPreviewResolution');
+  const frameRate = $('#setVideoPreviewFrameRate');
+  if (panel) panel.classList.toggle('is-disabled', !enabled);
+  if (resolution) resolution.disabled = !enabled;
+  if (frameRate) frameRate.disabled = !enabled;
+}
+
 let externalLlmKeyConfigured = { openai: false, gemini: false };
 let externalLlmKeyStored = { openai: false, gemini: false };
 let localPromptAiSettings = { clip: '', clipType: 'krea2', activeModel: '', activeType: 'krea2' };
@@ -28940,6 +28989,8 @@ function flushSettingsAutosave() {
     if (work.media) {
       saveMediaPreferences({
         videoPreviews: mediaPreferenceControlValue('setVideoPreviews'),
+        previewResolution: $('#setVideoPreviewResolution').value,
+        previewFrameRate: $('#setVideoPreviewFrameRate').value,
         previewCache: mediaPreferenceControlValue('setPreviewCache'),
         experimentalFeatures: mediaPreferenceControlValue('experimentalFeaturesToggle'),
       });
@@ -29187,8 +29238,12 @@ async function emptyTrashFromSettings() {
       renderPromptComposer();
       saveForm();
     }
+    if (id === 'setVideoPreviews') renderVideoPreviewQualityControls();
     scheduleSettingsAutosave(id === 'setSmartFilenames' ? 'server' : 'media', 0);
   });
+});
+['setVideoPreviewResolution', 'setVideoPreviewFrameRate'].forEach((id) => {
+  $('#' + id).addEventListener('change', () => scheduleSettingsAutosave('media', 0));
 });
 $('#previewCacheClear').addEventListener('click', clearPreviewCache);
 $('#trashEmpty').addEventListener('click', emptyTrashFromSettings);
@@ -32586,8 +32641,11 @@ $('#settingsBtn').addEventListener('click', async () => {
     renderSettingsRestartAction();
   }
   setMediaPreferenceControl('setVideoPreviews', state.mediaPreferences.videoPreviews);
+  $('#setVideoPreviewResolution').value = String(state.mediaPreferences.previewResolution);
+  $('#setVideoPreviewFrameRate').value = String(state.mediaPreferences.previewFrameRate);
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);
   setMediaPreferenceControl('experimentalFeaturesToggle', state.mediaPreferences.experimentalFeatures);
+  renderVideoPreviewQualityControls();
   refreshPreviewCacheStatus();
   refreshTrashStatus().catch(() => {});
   refreshH3ModelStatus().catch(() => {});
