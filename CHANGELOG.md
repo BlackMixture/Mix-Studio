@@ -12,6 +12,7 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Added profile-level Preview quality preferences for 480, 640, or 720 px video previews and 12, 18, 24, or 30 fps playback. New and existing profiles default to a sharper 640 px at 24 fps, and the cache keeps each quality combination separate.
 - Limited touch-first devices to one centered animated preview decoder at a time, alternated fairly between the left and right cards in a visible row, and serialized server-side proxy creation to avoid simultaneous mobile decoder and server transcode spikes.
 - Made every new mobile touch or scroll pause previews and restart their decoder wake-up only after a quiet window, keeping Library navigation and controls ahead of background playback.
+- Replaced mobile’s delayed full-Library preview-observer registration with a bounded visible-card sampler, preventing large galleries from blocking the main thread after the page already appears loaded.
 - Reused IntersectionObserver visibility results instead of forcing layout reads across every gallery video whenever preview playback settles.
 - Made mobile profile-menu actions activate directly from completed touch gestures, removed the profile tooltip on touch devices, and added a temporary pointer shield so submenu taps cannot fall through to Library cards below.
 - Kept the original v1.2.0 MiniMax H3, Wan Animate 2, and Mix Packs showcase carousel for the v1.2.4 update notice.

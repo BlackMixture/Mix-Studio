@@ -109,7 +109,11 @@ test('mobile Library gives input priority over preview observer and decoder wake
 test('gallery cards use lightweight preview proxies and one mobile decoder', () => {
   assert.match(app, /let galleryPreviewIntersecting = new Set\(\)/);
   assert.match(app, /entries\.forEach\(\(entry\) => \{[\s\S]*galleryPreviewIntersecting\.add\(entry\.target\)/);
-  assert.match(app, /const candidates = \[\.\.\.galleryPreviewIntersecting\]/);
+  assert.match(app, /function mobileGalleryPreviewCandidates\(center = window\.innerHeight \/ 2\)/);
+  assert.match(app, /document\.elementFromPoint\(x, y\)\?\.closest\?\.\('#galleryGrid \.card'\)/);
+  assert.match(app, /const previewPool = touchFirst \? mobileGalleryPreviewCandidates\(center\) : \[\.\.\.galleryPreviewIntersecting\]/);
+  assert.match(app, /if \(window\.matchMedia\?\.\('\(hover: none\), \(pointer: coarse\)'\)\.matches\) \{\s*scheduleGalleryPreviewPlayback\(180\);\s*return;/);
+  assert.match(app, /if \(!galleryPreviewObserver\) return;\s*\$\$\('\.gallery-card-video'\)\.forEach/);
   assert.match(app, /const mobileAlternates = touchFirst && centered\.length > 1/);
   assert.match(app, /const MOBILE_GALLERY_PREVIEW_ROTATE_MS = 4800/);
   assert.match(app, /settleGalleryPreviewPlayback\(true\)/);

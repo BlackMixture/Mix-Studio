@@ -22493,18 +22493,46 @@ function centeredGalleryPreviewRow(candidates, center) {
   }
   return best.videos;
 }
+
+function mobileGalleryPreviewCandidates(center = window.innerHeight / 2) {
+  const grid = $('#galleryGrid');
+  if (!grid || grid.hidden) return [];
+  const rect = grid.getBoundingClientRect();
+  const left = Math.max(0, rect.left);
+  const right = Math.min(window.innerWidth, rect.right);
+  const top = Math.max(0, rect.top);
+  const bottom = Math.min(window.innerHeight, rect.bottom);
+  const width = right - left;
+  if (width < 40 || bottom <= top) return [];
+  const columns = Math.max(2, Math.min(5, Math.round(width / 132)));
+  const rowOffset = Math.max(56, Math.min(110, window.innerHeight * .12));
+  const sampleRows = [center, center - rowOffset, center + rowOffset]
+    .filter((y) => y >= top && y <= bottom);
+  const videos = new Set();
+  sampleRows.forEach((y) => {
+    for (let column = 0; column < columns; column += 1) {
+      const x = left + ((column + .5) * width / columns);
+      const card = document.elementFromPoint(x, y)?.closest?.('#galleryGrid .card');
+      const video = card?.querySelector('.gallery-card-video');
+      if (video?.isConnected) videos.add(video);
+    }
+  });
+  return [...videos];
+}
+
 function settleGalleryPreviewPlayback(advanceMobile = false) {
   galleryPreviewSettleTimer = null;
   cancelGalleryPreviewRotation();
   if (!galleryPreviewMotionAllowed() || state.view !== 'gallery' || galleryPreviewWakePending) return;
   const center = window.innerHeight / 2;
-  const candidates = [...galleryPreviewIntersecting].filter((video) => {
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  const previewPool = touchFirst ? mobileGalleryPreviewCandidates(center) : [...galleryPreviewIntersecting];
+  const candidates = previewPool.filter((video) => {
     if (!video.isConnected) return false;
     const rect = video.getBoundingClientRect();
     return rect.bottom > window.innerHeight * 0.16 && rect.top < window.innerHeight * 0.84;
   });
   let centered = centeredGalleryPreviewRow(candidates, center);
-  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
   const mobileAlternates = touchFirst && centered.length > 1;
   if (mobileAlternates) {
     const ordered = [...centered].sort((a, b) => (
@@ -22545,12 +22573,16 @@ function ensureGalleryPreviewObserver() {
 }
 function resetGalleryPreviewObservation() {
   cancelGalleryPreviewRotation();
-  if (!galleryPreviewObserver) return;
   clearTimeout(galleryPreviewSettleTimer);
-  galleryPreviewObserver.disconnect();
+  if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   galleryPreviewIntersecting.clear();
   galleryPreviewActive = new Set([...galleryPreviewActive].filter((video) => video.isConnected));
   if (state.view !== 'gallery' || galleryPreviewWakePending) return;
+  if (window.matchMedia?.('(hover: none), (pointer: coarse)').matches) {
+    scheduleGalleryPreviewPlayback(180);
+    return;
+  }
+  if (!galleryPreviewObserver) return;
   $$('.gallery-card-video').forEach((video) => galleryPreviewObserver.observe(video));
   scheduleGalleryPreviewPlayback(180);
 }
