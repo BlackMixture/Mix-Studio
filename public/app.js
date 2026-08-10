@@ -2425,6 +2425,8 @@ function actionIconMarkup(icon) {
     'last-frame': '<path d="M4 5h15v14H4V5Zm2 2v10h11V7H6Zm14 4h2v2h-2v-2ZM8 15l2.7-3.2 2 2.1 1.5-1.8L17 15H8Z"/>',
     save: '<path d="M5 3h12l3 3v15H4V3h1Zm1 2v14h12V6.8L16.2 5H6Zm2 0h6v5H8V5Zm1 10h6v4H9v-4Z"/>',
     documentation: '<path d="M5 3h10l4 4v14H5V3Zm2 2v14h10V8h-3V5H7Zm2 6h6v2H9v-2Zm0 4h6v2H9v-2Z"/>',
+    group: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 7h12v12H4V7Zm4-3h12v12h-4V7H8V4Z"/>',
+    ungroup: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 4h8v8H3V4Zm10 8h8v8h-8v-8Zm-2-4h4m-2-2 2 2-2 2M13 16H9m2-2-2 2 2 2"/>',
     composite: '<path d="M5 5h11v11H5V5Zm2 2v7h7V7H7Zm6 4h6v8H9v-3h2v1h6v-4h-4v-2Z"/>',
     process: '<path d="M4 7h10v2H4V7Zm13-1h3v4h-3V6ZM4 15h6v2H4v-2Zm9-1h3v4h-3v-4Zm-3-4h10v2H10v-2Z"/>',
     'result-use': '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m5 16.5 9.8-9.8 3.5 3.5-9.8 9.8L4.5 20l.5-3.5ZM16.2 5.3l1.2-1.2a2 2 0 0 1 2.8 2.8L19 8.1"/>',
@@ -2473,14 +2475,17 @@ function closeActionMenu(options = {}) {
 function openActionMenu(anchor, items, options = {}) {
   closeActionMenu();
   hideIconTooltip(anchor);
-  const shield = document.createElement('div');
-  shield.className = 'action-menu-shield';
-  shield.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(shield);
-  actionMenuShield = shield;
+  if (!options.nonModal) {
+    const shield = document.createElement('div');
+    shield.className = 'action-menu-shield';
+    shield.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(shield);
+    actionMenuShield = shield;
+  }
   const menu = document.createElement('div');
   menu.className = 'action-menu' + (options.tone ? ` action-menu-${options.tone}` : '');
   menu.setAttribute('role', 'menu');
+  if (options.scope) menu.dataset.scope = options.scope;
   if (options.menuTitle) {
     const head = document.createElement('div');
     head.className = 'action-menu-title';
@@ -2495,6 +2500,7 @@ function openActionMenu(anchor, items, options = {}) {
     b.className = 'action-menu-item' + (item.danger ? ' danger' : '') + (item.tone ? ` action-menu-item-${item.tone}` : '');
     b.type = 'button';
     b.setAttribute('role', 'menuitem');
+    b.disabled = item.disabled === true;
     const icon = document.createElement('span');
     icon.className = 'action-menu-icon';
     icon.innerHTML = actionIconMarkup(item.icon || 'use');
@@ -2537,23 +2543,62 @@ function openActionMenu(anchor, items, options = {}) {
   document.body.appendChild(menu);
   const rect = anchor.getBoundingClientRect();
   const menuRect = menu.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, rect.left));
-  const spaceAbove = rect.top - 8;
-  const spaceBelow = window.innerHeight - rect.bottom - 8;
-  const opensBelow = spaceAbove < menuRect.height && spaceBelow >= spaceAbove;
-  const preferredTop = opensBelow ? rect.bottom + 8 : rect.top - menuRect.height - 8;
+  const pointX = Number(options.anchorPoint?.x);
+  const pointY = Number(options.anchorPoint?.y);
+  const hasAnchorPoint = Number.isFinite(pointX) && Number.isFinite(pointY);
+  let opensLeft = false;
+  let opensBelow = false;
+  let left;
+  let preferredTop;
+  if (hasAnchorPoint) {
+    const gap = 4;
+    opensLeft = pointX + menuRect.width + gap > window.innerWidth - 8;
+    const preferredLeft = opensLeft ? pointX - menuRect.width - gap : pointX + gap;
+    left = Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, preferredLeft));
+    const spaceAbove = pointY - 8;
+    const spaceBelow = window.innerHeight - pointY - 8;
+    opensBelow = spaceBelow >= menuRect.height || spaceBelow >= spaceAbove;
+    preferredTop = opensBelow ? pointY + gap : pointY - menuRect.height - gap;
+  } else {
+    left = Math.max(8, Math.min(window.innerWidth - menuRect.width - 8, rect.left));
+    const spaceAbove = rect.top - 8;
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    opensBelow = spaceAbove < menuRect.height && spaceBelow >= spaceAbove;
+    preferredTop = opensBelow ? rect.bottom + 8 : rect.top - menuRect.height - 8;
+  }
   const top = Math.max(8, Math.min(window.innerHeight - menuRect.height - 8, preferredTop));
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
+  if (hasAnchorPoint) menu.style.transformOrigin = `${opensBelow ? 'top' : 'bottom'} ${opensLeft ? 'right' : 'left'}`;
   actionMenuEl = menu;
   anchor.setAttribute('aria-expanded', 'true');
   const onDoc = (e) => {
-    if (!menu.contains(e.target) && !anchor.contains(e.target)) {
+    if (!menu.contains(e.target) && (options.dismissOnAnchorPointer || !anchor.contains(e.target))) {
       const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
       closeActionMenu({ holdPointerShield: touch });
     }
   };
-  const onKey = (e) => { if (e.key === 'Escape') closeActionMenu(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeActionMenu();
+      if (options.focusFirst || options.restoreFocusOnEscape) anchor.focus?.({ preventScroll: true });
+      return;
+    }
+    if (e.key === 'Tab') {
+      closeActionMenu();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const buttons = [...menu.querySelectorAll('.action-menu-item:not(:disabled)')];
+    if (!buttons.length) return;
+    e.preventDefault();
+    const activeIndex = buttons.indexOf(document.activeElement);
+    let nextIndex = e.key === 'Home' ? 0 : (e.key === 'End' ? buttons.length - 1 : activeIndex);
+    if (e.key === 'ArrowDown') nextIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % buttons.length;
+    if (e.key === 'ArrowUp') nextIndex = activeIndex < 0 ? buttons.length - 1 : (activeIndex - 1 + buttons.length) % buttons.length;
+    buttons[nextIndex].focus({ preventScroll: true });
+  };
   setTimeout(() => document.addEventListener('pointerdown', onDoc), 0);
   document.addEventListener('keydown', onKey);
   actionMenuCleanup = () => {
@@ -2561,6 +2606,7 @@ function openActionMenu(anchor, items, options = {}) {
     document.removeEventListener('keydown', onKey);
     anchor.setAttribute('aria-expanded', 'false');
   };
+  if (options.focusFirst) requestAnimationFrame(() => menu.querySelector('.action-menu-item:not(:disabled)')?.focus({ preventScroll: true }));
   syncSheetScrollLock();
 }
 
@@ -23440,6 +23486,7 @@ function stopGallerySelectionDrag(event) {
 }
 
 function renderGrid() {
+  if (actionMenuEl?.dataset.scope === 'gallery-selection') closeActionMenu();
   const grid = $('#galleryGrid');
   releaseGalleryGridPreviews(grid);
   syncLibraryCollectionControls();
@@ -23631,6 +23678,7 @@ function renderGrid() {
     }
     card.dataset.media = latestVideo ? latestVideo.id : 'image';
     card.draggable = false;
+    if (desktopGalleryContextMenuAvailable()) card.setAttribute('aria-haspopup', 'menu');
     if (entry.items.length > 1) {
       const warmGroupThumbnails = () => preloadLightboxGroupThumbnails(entry.items, it.id);
       card.addEventListener('pointerenter', warmGroupThumbnails, { once: true, passive: true });
@@ -23647,6 +23695,11 @@ function renderGrid() {
     let pointerId = null;
     let desktopPointerCandidate = null;
     card.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) {
+        clearTimeout(lpTimer);
+        desktopPointerCandidate = null;
+        return;
+      }
       if (entry.items.length > 1) preloadLightboxGroupThumbnails(entry.items, it.id);
       lpFired = false;
       pointerId = e.pointerId;
@@ -23718,7 +23771,20 @@ function renderGrid() {
       desktopPointerCandidate = null;
       stopGallerySelectionDrag(event);
     });
-    card.addEventListener('contextmenu', (e) => e.preventDefault());
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      clearTimeout(lpTimer);
+      desktopPointerCandidate = null;
+      if (!desktopGalleryContextMenuAvailable()) return;
+      e.stopPropagation();
+      openGallerySelectionContextMenu(e, it, card);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (!desktopGalleryContextMenuAvailable()
+        || !(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return;
+      e.preventDefault();
+      openGallerySelectionContextMenu(e, it, card, { keyboard: true });
+    });
     card.addEventListener('dragstart', (event) => event.preventDefault());
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
@@ -24876,6 +24942,100 @@ $('#gallerySearchSelectAll').addEventListener('click', () => {
 /* Multi-select                                                        */
 /* ------------------------------------------------------------------ */
 
+function desktopGalleryContextMenuAvailable() {
+  return !!desktopResolutionPickerQuery?.matches && !touchFirstGalleryDevice();
+}
+
+function runSelectionAction(actionId) {
+  const button = $('#' + actionId);
+  if (!button || button.hidden || button.disabled) return;
+  button.click();
+}
+
+function gallerySelectionContextItems() {
+  const selectedCount = state.selected.size;
+  const includedCount = expandedGallerySelection().length;
+  const ungroupAvailable = selectedUngroupableGenerationGroupIds().size > 0;
+  return [
+    {
+      label: 'Save',
+      detail: selectedCount === 1 ? 'Download the selected result' : `Download ${selectedCount} selected results as a ZIP`,
+      icon: 'save',
+      action: () => runSelectionAction('selSave'),
+    },
+    {
+      label: 'Group',
+      detail: selectedCount > 1 ? 'Stack related generations together' : 'Select at least two generations',
+      icon: 'group',
+      disabled: selectedCount < 2,
+      action: () => runSelectionAction('selGroup'),
+    },
+    {
+      label: 'Composite',
+      detail: selectedCount > 1 ? 'Build a contact sheet' : 'Select at least two generations',
+      icon: 'composite',
+      disabled: selectedCount < 2,
+      action: () => runSelectionAction('selComposite'),
+    },
+    {
+      label: 'Move',
+      detail: 'Choose a Library folder',
+      icon: 'result-move',
+      action: () => runSelectionAction('selMove'),
+    },
+    ungroupAvailable && {
+      label: 'Ungroup',
+      detail: 'Separate the saved generation group',
+      icon: 'ungroup',
+      action: () => runSelectionAction('selUngroup'),
+    },
+    {
+      label: 'Delete',
+      detail: `Move ${includedCount} generation${includedCount === 1 ? '' : 's'} to trash`,
+      icon: 'delete',
+      danger: true,
+      action: () => runSelectionAction('selDelete'),
+    },
+  ];
+}
+
+function openGallerySelectionContextMenu(event, item, card, options = {}) {
+  if (!desktopGalleryContextMenuAvailable() || !item || !card) return;
+  if (galleryTap) clearTimeout(galleryTap.timer);
+  galleryTap = null;
+  const additive = state.selectMode && state.selected.size > 0 && (event.ctrlKey || event.metaKey);
+  if (!state.selectMode || (!state.selected.has(item.id) && !additive)) {
+    enterSelectWith(item.id);
+  } else {
+    if (!state.selected.has(item.id)) state.selected.add(item.id);
+    state.selectMode = true;
+    updateSelectBar();
+  }
+  cancelContextualGuide('gallery-selection-actions');
+  const rect = card.getBoundingClientRect();
+  const eventX = Number(event.clientX);
+  const eventY = Number(event.clientY);
+  const pointerPoint = !options.keyboard && Number.isFinite(eventX) && Number.isFinite(eventY)
+    && (eventX !== 0 || eventY !== 0);
+  const anchorPoint = pointerPoint
+    ? { x: eventX, y: eventY }
+    : { x: rect.left + Math.min(rect.width * 0.62, 72), y: rect.top + Math.min(rect.height * 0.45, 64) };
+  const includedCount = expandedGallerySelection().length;
+  const menuTitle = includedCount > state.selected.size
+    ? `${state.selected.size} selected · ${includedCount} included`
+    : `${state.selected.size} selected`;
+  openActionMenu(card, gallerySelectionContextItems(), {
+    menuTitle,
+    tone: 'selection',
+    scope: 'gallery-selection',
+    anchorPoint,
+    nonModal: true,
+    dismissOnAnchorPointer: true,
+    focusFirst: options.keyboard === true,
+    restoreFocusOnEscape: true,
+  });
+}
+
 function enterSelectWith(id) {
   state.selectMode = true;
   state.selected = new Set([id]);
@@ -24964,6 +25124,7 @@ function setSelectionUiActive(active) {
 }
 function exitSelect() {
   cancelContextualGuide('gallery-selection-actions');
+  if (actionMenuEl?.dataset.scope === 'gallery-selection') closeActionMenu();
   if (!state.selectMode && !state.selected.size) { setSelectionUiActive(false); return; }
   state.selectMode = false;
   state.selected = new Set();

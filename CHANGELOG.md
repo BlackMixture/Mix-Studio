@@ -4,6 +4,11 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### Desktop Library actions
+
+- Added an app-styled right-click menu for generation cards in both the full Library and the Create/Edit side panel, with cursor-aware positioning and the existing Save, Group, Composite, Move, Ungroup, and Delete actions.
+- Preserved an existing multi-selection when opening the menu from one of its selected cards, added Ctrl/Command right-click selection, and kept mobile hold-and-sweep selection unchanged.
+
 ### Wan Animate 2 reliability
 
 - Added the required single-video `batch_size` input to Wan Animate 2 conditioning graphs, matching the current native ComfyUI node schema and official workflow template.

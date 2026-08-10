@@ -80,6 +80,33 @@ test('selection bar exposes save, group, ungroup, composite, move, delete, and s
   assert.match(server, /route === '\/api\/items\/download'/);
 });
 
+test('desktop gallery right-click opens the shared selection actions at the pointer', () => {
+  assert.match(app, /function desktopGalleryContextMenuAvailable\(\)[\s\S]{0,140}desktopResolutionPickerQuery\?\.matches[\s\S]{0,80}!touchFirstGalleryDevice\(\)/);
+  assert.match(app, /card\.addEventListener\('pointerdown', \(e\) => \{\s*if \(e\.button !== undefined && e\.button !== 0\) \{[\s\S]{0,120}return;/,
+    'secondary mouse presses must not arm the hold-to-select timer');
+  assert.match(app, /card\.addEventListener\('contextmenu',[\s\S]{0,260}openGallerySelectionContextMenu\(e, it, card\)/);
+  assert.match(app, /e\.key === 'ContextMenu' \|\| \(e\.key === 'F10' && e\.shiftKey\)/);
+  const contextStart = app.indexOf('function openGallerySelectionContextMenu');
+  const contextEnd = app.indexOf('\nfunction enterSelectWith', contextStart);
+  const contextMenu = app.slice(contextStart, contextEnd);
+  assert.match(contextMenu, /!state\.selectMode \|\| \(!state\.selected\.has\(item\.id\) && !additive\)/,
+    'an unselected context target replaces the current selection');
+  assert.match(contextMenu, /if \(!state\.selected\.has\(item\.id\)\) state\.selected\.add\(item\.id\)/,
+    'Ctrl or Command context-click can add a target while selected targets preserve the set');
+  assert.match(contextMenu, /scope: 'gallery-selection'/);
+  assert.match(contextMenu, /anchorPoint,/);
+  assert.match(contextMenu, /nonModal: true/);
+  for (const id of ['selSave', 'selGroup', 'selComposite', 'selMove', 'selUngroup', 'selDelete']) {
+    assert.match(app, new RegExp(`runSelectionAction\\('${id}'\\)`));
+  }
+  assert.match(app, /disabled: selectedCount < 2/);
+  assert.match(app, /const pointX = Number\(options\.anchorPoint\?\.x\)/);
+  assert.match(app, /Math\.max\(8, Math\.min\(window\.innerWidth - menuRect\.width - 8, preferredLeft\)\)/);
+  assert.match(css, /\.action-menu-selection \.action-menu-dot \{[\s\S]*linear-gradient/);
+  assert.match(css, /\.action-menu-item:focus-visible/);
+  assert.match(css, /\.action-menu-item:disabled/);
+});
+
 test('ungroup appears only for a user-created group with multiple live items and sits beside delete', () => {
   assert.match(app, /function selectedUngroupableGenerationGroupIds\(\)/);
   assert.match(app, /\(groupSizes\.get\(groupId\) \|\| 0\) > 1/);
