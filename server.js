@@ -422,9 +422,14 @@ function serializePromptPackMutation(task) {
 
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
 const SPARK_ACCESS_FILE = path.join(DATA, 'spark_access.json');
-const SETTINGS_SCHEMA_VERSION = 2;
+const SETTINGS_SCHEMA_VERSION = 3;
 const LEGACY_H3_TURBO_LORA = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
 const DEFAULT_H3_TURBO_LORA = 'minimax_h3_turbo_v4_step600_ema.safetensors';
+
+function h3FramesTurboDefaultSteps(value) {
+  const filename = String(value || '').trim().replace(/\\/g, '/').split('/').pop().toLowerCase();
+  return filename === LEGACY_H3_TURBO_LORA.toLowerCase() ? 4 : 6;
+}
 const DEFAULT_SYSTEM_PROMPT = `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.
 
 Think step by step about the request before writing the answer:
@@ -558,6 +563,7 @@ function normalizeSettings(s) {
   s.vramProfile = normalizeVramProfile(s.vramProfile);
   s.h3FrameModelVariant = normalizeH3FrameVariant(s.h3FrameModelVariant);
   s.h3ReferenceModelVariant = normalizeH3ReferenceVariant(s.h3ReferenceModelVariant);
+  s.h3TurboLora = String(s.h3TurboLora || '').trim() || DEFAULT_H3_TURBO_LORA;
   s.hfEndpoint = normalizeHuggingFaceEndpoint(s.hfEndpoint);
   if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
   if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
@@ -580,11 +586,10 @@ function normalizeSettings(s) {
 function migrateStoredSettings(value) {
   const stored = value && typeof value === 'object' ? Object.assign({}, value) : {};
   const version = Math.max(0, Math.round(Number(stored.settingsSchemaVersion) || 0));
-  let changed = version < SETTINGS_SCHEMA_VERSION;
-  if (version < 2 && String(stored.h3TurboLora || '').trim().toLowerCase() === LEGACY_H3_TURBO_LORA.toLowerCase()) {
-    stored.h3TurboLora = DEFAULT_H3_TURBO_LORA;
-    changed = true;
-  }
+  const changed = version < SETTINGS_SCHEMA_VERSION;
+  // Schema v3 makes the selected Turbo filename authoritative. In particular,
+  // keep the original ckpt850 four-step adapter when an existing install or a
+  // user explicitly selects it; only brand-new settings inherit the v4 default.
   stored.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION;
   return { stored, changed };
 }
@@ -8558,7 +8563,9 @@ async function handleApi(req, res, url) {
     const sigmaPreset = ['dmd', 'card', 'v5', 'custom'].includes(body.sigmaPreset) ? body.sigmaPreset : 'dmd';
     const sig = erosSigmas(sigmaPreset);
     const videoSteps = engine === 'h3'
-      ? (h3Turbo ? clampInt(body.steps, 4, 100, 6) : clampInt(body.steps, 1, 100, 20))
+      ? (h3Turbo
+        ? clampInt(body.steps, 4, 100, h3ReferenceBacked ? 6 : h3FramesTurboDefaultSteps(settings.h3TurboLora))
+        : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
         : wanAnimate2
@@ -10443,7 +10450,7 @@ async function callSparkMcpTool(name, rawArguments, profile) {
       h3ResolutionSize: engine === 'h3' ? 768 : undefined,
       h3Turbo: turbo,
       h3TurboStrength: turbo ? 1 : undefined,
-      steps: engine === 'h3' ? (turbo ? 4 : 20) : undefined,
+      steps: engine === 'h3' ? (turbo ? h3FramesTurboDefaultSteps(settings.h3TurboLora) : 20) : undefined,
       sageAttention: false,
       fourK: false,
     });

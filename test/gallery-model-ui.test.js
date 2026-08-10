@@ -41,7 +41,9 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /return item\.krea2Turbo === false \? 'Raw' : 'Turbo'/);
   assert.match(app, /className = 'gallery-card-video'/);
   assert.match(app, /preview\.preload = 'none'/);
-  assert.match(app, /preview\.dataset\.src = galleryVideoPreviewSource\(latestVideo\)/);
+  assert.match(app, /function createGalleryCardPreview\(card, source, options = \{\}\)/);
+  assert.match(app, /card\.dataset\.galleryPreviewSrc = previewSource/);
+  assert.match(app, /function ensureMobileGalleryCardPreview\(card\)/);
   assert.match(app, /function galleryVideoPreviewSource\(video\)/);
   assert.match(app, /const MAX_NATIVE_GALLERY_PREVIEW_EDGE = 1440/);
   const previewSourceStart = app.indexOf('function galleryVideoPreviewSource(video)');
@@ -129,6 +131,7 @@ test('gallery cards use lightweight preview proxies and one mobile decoder', () 
   assert.match(app, /entries\.forEach\(\(entry\) => \{[\s\S]*galleryPreviewIntersecting\.add\(entry\.target\)/);
   assert.match(app, /function mobileGalleryPreviewCandidates\(center = window\.innerHeight \/ 2\)/);
   assert.match(app, /document\.elementFromPoint\(x, y\)\?\.closest\?\.\('#galleryGrid \.card'\)/);
+  assert.match(app, /card\?\.isConnected && card\.dataset\.galleryPreviewSrc/);
   assert.match(app, /const previewPool = touchFirst \? mobileGalleryPreviewCandidates\(center\) : \[\.\.\.galleryPreviewIntersecting\]/);
   assert.match(app, /if \(touchFirstGalleryDevice\(\)\) \{\s*scheduleGalleryPreviewPlayback\(180\);\s*return;/);
   assert.match(app, /if \(!galleryPreviewObserver\) return;\s*\$\$\('\.gallery-card-video'\)\.forEach/);
@@ -136,6 +139,7 @@ test('gallery cards use lightweight preview proxies and one mobile decoder', () 
   assert.match(app, /const MOBILE_GALLERY_PREVIEW_ROTATE_MS = 4800/);
   assert.match(app, /settleGalleryPreviewPlayback\(true\)/);
   assert.match(app, /advanceMobile \? \(currentIndex \+ 1\) % ordered\.length : currentIndex/);
+  assert.match(app, /if \(touchFirst\) centered = centered\.map\(ensureMobileGalleryCardPreview\)\.filter\(Boolean\)/);
   const rotationStart = app.indexOf('function scheduleGalleryPreviewRotation()');
   const rotationEnd = app.indexOf('\nfunction galleryPreviewMotionAllowed()', rotationStart);
   const rotation = app.slice(rotationStart, rotationEnd);
@@ -168,7 +172,8 @@ test('mobile gallery overlay paths operate only on tracked preview decoders', ()
   const renderEnd = app.indexOf('\nfunction setDesktopLibraryStageSelection', renderStart);
   const render = app.slice(renderStart, renderEnd);
   assert.match(app, /function playGalleryPreview\(video\)[\s\S]*galleryPreviewLoaded\.add\(video\)/);
-  assert.match(app, /function unloadGalleryPreview\(video\)[\s\S]*galleryPreviewLoaded\.delete\(video\)[\s\S]*if \(video\.dataset\.loaded !== 'true'\) return/);
+  assert.match(app, /function unloadGalleryPreview\(video\)[\s\S]*galleryPreviewLoaded\.delete\(video\)[\s\S]*if \(video\.dataset\.loaded === 'true'\)/);
+  assert.match(app, /video\.dataset\.mobileDynamic === 'true'[\s\S]*video\.remove\(\)/);
   assert.match(suspend, /new Set\(\[\.\.\.galleryPreviewActive, \.\.\.galleryPreviewLoaded\]\)/);
   assert.doesNotMatch(suspend, /\$\$|querySelectorAll|\.gallery-card-video/);
   assert.match(scrolling, /galleryPreviewLoaded\.forEach\(\(video\) => pauseGalleryPreview\(video, 10000\)\)/);
@@ -176,6 +181,8 @@ test('mobile gallery overlay paths operate only on tracked preview decoders', ()
   assert.match(scrub, /galleryPreviewLoaded\.forEach\(\(video\) => video\.pause\(\)\)/);
   assert.doesNotMatch(scrub, /\$\$|querySelectorAll|\.gallery-card-video/);
   assert.match(render, /releaseGalleryGridPreviews\(grid\)[\s\S]*grid\.replaceChildren\(\)/);
+  assert.match(render, /poster\.loading = 'lazy';\s*poster\.decoding = 'async'/);
+  assert.match(render, /touchFirstGalleryDevice\(\) && !desktopWorkspaceActive\(\)[\s\S]*card\.dataset\.galleryPreviewSrc = previewSource/);
   assert.doesNotMatch(render, /preview\.src = preview\.dataset\.src/,
     'rendering thousands of cards must not eagerly initialize video decoders');
 });

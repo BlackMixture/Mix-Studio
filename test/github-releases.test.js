@@ -146,7 +146,7 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(html, /id="updatesSheet"[\s\S]*id="updatesHighlightsBtn"[\s\S]*id="updatesReleaseLink"[\s\S]*id="updatesInstallBtn"/);
   assert.match(html, /id="topbarUpdateBtn"[^>]*hidden/);
   assert.match(html, /id="profileUpdateBadge"[^>]*hidden/);
-  assert.match(html, /id="updateNotice"[\s\S]*id="updateNoticeMedia"[\s\S]*id="updateNoticeDots"[\s\S]*View full changelog/);
+  assert.match(html, /id="updateNotice"[\s\S]*id="updateNoticeMedia"[\s\S]*id="updateNoticePrev"[\s\S]*id="updateNoticeNext"[\s\S]*id="updateNoticeAutoplay"[\s\S]*id="updateNoticeDots"[\s\S]*View full changelog/);
   assert.match(html, /github\.com\/BlackMixture\/Mix-Studio\/releases/);
   assert.doesNotMatch(html, /id="updatePublisher"|id="updatePublishBtn"|Push update/);
   assert.match(css, /\.update-notice \{[\s\S]*position: fixed/);
@@ -169,6 +169,17 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(app, /\$\('#updatesHighlightsBtn'\)\.addEventListener/);
   assert.match(app, /label: 'Update Mix Studio'/);
   assert.match(app, /\$\('#settingsUpdatesBtn'\)\.addEventListener\('click', openUpdatesSheet\)/);
+  assert.match(app, /const UPDATE_SHOWCASE_INTERVAL_MS = 8000/);
+  assert.match(app, /function updateShowcaseSwipeDirection\(startX, startY, endX, endY, width, elapsed\)/);
+  assert.match(app, /Math\.abs\(deltaX\) < Math\.abs\(deltaY\) \* 1\.25/);
+  assert.match(app, /\$\('#updateNoticePrev'\)\.addEventListener\('click'/);
+  assert.match(app, /\$\('#updateNoticeNext'\)\.addEventListener\('click'/);
+  assert.match(app, /\$\('#updateNoticeMedia'\)\.addEventListener\('pointerdown'/);
+  assert.match(app, /function scheduleUpdateShowcaseAutoCycle\(\)/);
+  assert.match(app, /updateShowcaseAutoPaused[\s\S]*document\.hidden[\s\S]*updateShowcaseReducedMotion\(\)/);
+  assert.match(app, /function disposeUpdateShowcaseVideo\(\)[\s\S]*video\.removeAttribute\('src'\)[\s\S]*video\.load\(\)/);
+  assert.match(css, /\.update-showcase-arrow \{[\s\S]*width: 44px;[\s\S]*height: 44px;/);
+  assert.match(css, /\.update-showcase-media \{[\s\S]*touch-action: pan-y;/);
 });
 
 test('release status never labels an older public release as installed or current', () => {

@@ -30,9 +30,10 @@ test('current workspace autosave retains active mode, LoRAs, prompts, and durabl
   assert.match(app, /loadForm\(\);\r?\nsyncGallerySortControl\(\);\r?\nsetPromptDraft\(state\.prompts\[state\.view\] \|\| ''\);/);
 });
 
-test('legacy Frames Turbo workspaces migrate the former four-step default once', () => {
-  assert.match(app, /Number\(f\.workspaceVersion\) < 3 && savedH3TurboSteps === 4/);
-  assert.match(app, /state\.vidH3TurboSteps = Math\.max\(4, Math\.min\(100, migratedH3TurboSteps \|\| 6\)\)/);
+test('saved Frames Turbo workspaces preserve an explicit four-step choice', () => {
+  assert.match(app, /const savedH3TurboSteps = Math\.round\(Number\(f\.vidH3TurboSteps\) \|\| 0\)/);
+  assert.match(app, /state\.vidH3TurboSteps = Math\.max\(4, Math\.min\(100, savedH3TurboSteps \|\| 6\)\)/);
+  assert.doesNotMatch(app, /savedH3TurboSteps === 4[\s\S]{0,120}\? 6/);
 });
 
 test('gallery sorting persists in current and named workspace snapshots', () => {

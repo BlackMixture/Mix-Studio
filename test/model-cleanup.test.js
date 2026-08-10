@@ -10,6 +10,7 @@ const {
   deleteManagedModelCandidate,
   managedModelCleanupCandidates,
 } = require('../lib/model-cleanup');
+const { MODEL_ASSETS } = require('../lib/dependency-installer');
 
 const assets = {
   h3: [['h3Unet', 'diffusion_models', 'https://example.test/minimax_h3_fl2va_pruned_int8_convrot.safetensors']],
@@ -45,4 +46,25 @@ test('model cleanup lists only inactive managed files and requires exact typed c
   assert.equal(fs.existsSync(bf16), false);
   assert.equal(fs.existsSync(standard), true);
   assert.equal(fs.existsSync(unrelated), true);
+});
+
+test('model cleanup keeps the selected H3 Turbo adapter and offers the inactive managed version', async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mix-studio-h3-turbo-cleanup-'));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, 'loras');
+  await fsp.mkdir(folder, { recursive: true });
+  const v4 = 'minimax_h3_turbo_v4_step600_ema.safetensors';
+  const legacy = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
+  await Promise.all([
+    fsp.writeFile(path.join(folder, v4), 'v4'),
+    fsp.writeFile(path.join(folder, legacy), 'legacy'),
+  ]);
+
+  const legacySelected = await managedModelCleanupCandidates(root, { h3TurboLora: legacy }, MODEL_ASSETS);
+  assert.equal(legacySelected.some((entry) => entry.filename === legacy), false);
+  assert.equal(legacySelected.some((entry) => entry.filename === v4), true);
+
+  const v4Selected = await managedModelCleanupCandidates(root, { h3TurboLora: v4 }, MODEL_ASSETS);
+  assert.equal(v4Selected.some((entry) => entry.filename === v4), false);
+  assert.equal(v4Selected.some((entry) => entry.filename === legacy), true);
 });

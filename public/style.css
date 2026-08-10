@@ -547,6 +547,10 @@ html:-webkit-full-screen { background: #000; }
   body.app-drawer-open .generate-dock {
     transform: translateX(min(326px, calc(100vw - 36px)));
   }
+  /* Moving a multi-thousand-card grid forces Chrome mobile to rasterize the
+     whole Library layer before the drawer can paint. The drawer and chrome
+     still animate; keep the dimmed Library itself stationary underneath. */
+  body.app-drawer-open #view-gallery.active { transform: none; }
 }
 @media (max-width: 480px) {
   .brand-wordmark { width: 120px; height: 23px; flex-basis: 120px; }
@@ -6308,6 +6312,13 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   object-fit: cover;
   background: #050609;
 }
+.card .gallery-card-video {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  opacity: 0;
+}
+.card .gallery-card-video.is-ready { opacity: 1; }
 .card .badge {
   position: absolute; top: 8px; left: 8px;
   font-size: 9.5px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;
@@ -6365,6 +6376,14 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   #galleryGrid .card {
     content-visibility: auto;
     contain-intrinsic-size: auto 240px;
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  /* Chrome can enter a prolonged relayout loop when content-visibility is
+     applied to thousands of square cells in the mobile Library grid. */
+  #galleryGrid .card {
+    content-visibility: visible;
+    contain-intrinsic-size: none;
   }
 }
 .card.selected {
@@ -14213,6 +14232,7 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
 .update-showcase-close { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.09); border-radius: 999px; background: rgba(0,0,0,.3); color: var(--muted); }
 .update-showcase-close:hover { border-color: rgba(255,255,255,.2); color: #fff; }
 .update-showcase-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.update-showcase-media-wrap { position: relative; }
 .update-showcase-media {
   position: relative;
   aspect-ratio: 16 / 8.4;
@@ -14222,7 +14242,34 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
   border-radius: 20px;
   background: #080a10;
   box-shadow: 0 22px 50px rgba(0,0,0,.38), 0 1px 0 rgba(255,255,255,.05) inset;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
 }
+.update-showcase-arrow {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 50%;
+  background: rgba(5,7,12,.72);
+  color: #f4f7ff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.42);
+  backdrop-filter: blur(12px);
+  transform: translateY(-50%);
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.update-showcase-arrow:hover { border-color: rgba(255,255,255,.42); background: rgba(13,17,28,.9); transform: translateY(-50%) scale(1.05); }
+.update-showcase-arrow:active { transform: translateY(-50%) scale(.96); }
+.update-showcase-arrow[hidden] { display: none; }
+.update-showcase-arrow svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.update-showcase-prev { left: 12px; }
+.update-showcase-next { right: 12px; }
 .update-showcase-video { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 300ms ease; }
 .update-showcase-media.has-video .update-showcase-video { opacity: 1; }
 .update-showcase-media.has-video .update-showcase-fallback { opacity: 0; }
@@ -14260,11 +14307,34 @@ button[data-icon-tooltip]:not(:disabled):active { translate: 0 0; }
 .update-showcase-fallback-release img { width: 72px; height: 72px; }
 .update-showcase-fallback-release strong { color: #dfe7ff; font-size: 10px; letter-spacing: .2em; }
 @keyframes updateOrbitalSpin { to { transform: rotate(360deg); } }
-.update-showcase-dots { position: relative; z-index: 3; min-height: 32px; margin-top: -32px; display: flex; align-items: center; justify-content: center; gap: 7px; }
-.update-showcase-dots[hidden] { visibility: hidden; }
-.update-showcase-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: rgba(255,255,255,.38); box-shadow: 0 1px 6px rgba(0,0,0,.7); transition: width 180ms var(--ease), background 180ms var(--ease); }
-.update-showcase-dots button.active { width: 24px; background: #e4ebff; }
-.update-notice-copy { min-width: 0; padding: 25px 24px 7px; display: grid; gap: 7px; text-align: center; }
+.update-showcase-nav { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 6px; }
+.update-showcase-autoplay {
+  min-width: 68px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+  color: #aeb8cf;
+  font-size: 9px;
+  font-weight: 850;
+}
+.update-showcase-autoplay:hover { border-color: rgba(255,255,255,.24); color: #fff; }
+.update-showcase-autoplay[hidden] { display: none; }
+.update-showcase-autoplay svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.update-showcase-autoplay .update-showcase-play-icon { display: none; fill: currentColor; stroke: none; }
+.update-showcase-autoplay[aria-pressed="true"] .update-showcase-pause-icon { display: none; }
+.update-showcase-autoplay[aria-pressed="true"] .update-showcase-play-icon { display: block; }
+.update-showcase-dots { position: relative; z-index: 3; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 0; }
+.update-showcase-dots[hidden] { display: none; }
+.update-showcase-dots button { position: relative; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 999px; background: transparent; }
+.update-showcase-dots button::before { content: ''; position: absolute; top: 50%; left: 50%; width: 7px; height: 7px; border-radius: 999px; background: rgba(255,255,255,.38); box-shadow: 0 1px 6px rgba(0,0,0,.7); transform: translate(-50%, -50%); transition: width 180ms var(--ease), background 180ms var(--ease); }
+.update-showcase-dots button.active::before { width: 24px; background: #e4ebff; }
+.update-notice-copy { min-width: 0; padding: 10px 24px 7px; display: grid; gap: 7px; text-align: center; }
 .update-notice-copy > span { color: #91aaf1; font-size: 9px; font-weight: 950; letter-spacing: .15em; text-transform: uppercase; }
 .update-notice-copy strong { color: #f5f7ff; font-size: clamp(23px, 4vw, 34px); font-weight: 900; line-height: 1.12; letter-spacing: -.035em; }
 .update-notice-copy p { max-width: 560px; margin: 3px auto 0; color: #a9b1c4; font-size: 12.5px; font-weight: 580; line-height: 1.58; }
@@ -14342,7 +14412,11 @@ body.update-showcase-open { overflow: hidden; }
   .update-showcase { max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 8px 8px 14px; border-radius: 23px; }
   .update-showcase-head { height: 39px; }
   .update-showcase-media { aspect-ratio: 4 / 3; border-radius: 17px; }
-  .update-notice-copy { padding: 24px 14px 4px; }
+  .update-showcase-arrow { width: 42px; height: 42px; }
+  .update-showcase-prev { left: 9px; }
+  .update-showcase-next { right: 9px; }
+  .update-showcase-nav { min-height: 40px; padding-top: 5px; }
+  .update-notice-copy { padding: 7px 14px 4px; }
   .update-notice-copy strong { font-size: 25px; }
   .update-notice-copy p { font-size: 11.5px; }
   .update-notice-actions { padding: 14px 5px 0; display: grid; grid-template-columns: 1fr 1fr; }
@@ -14357,6 +14431,9 @@ body.update-showcase-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .update-showcase { animation-duration: 1ms; }
   .update-showcase-fallback-h3::before { animation: none; }
+  .update-showcase-video,
+  .update-showcase-arrow,
+  .update-showcase-dots button::before { transition-duration: 1ms; }
 }
 .toast {
   max-width: min(92vw, 480px);

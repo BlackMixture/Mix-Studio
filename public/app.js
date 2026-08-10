@@ -1883,6 +1883,11 @@ const OFFICIAL_RELEASE_SHOWCASES = {
 };
 let updateShowcaseSlide = 0;
 let updateShowcaseReturnFocus = null;
+let updateShowcaseTimer = null;
+let updateShowcaseAutoPaused = false;
+let updateShowcaseHoverPaused = false;
+let updateShowcaseGesture = null;
+const UPDATE_SHOWCASE_INTERVAL_MS = 8000;
 
 function updateSeenKey() {
   return profileStorageKey('ks-update-seen', state.profile?.id);
@@ -1972,12 +1977,65 @@ function updateShowcaseFallbackMarkup(theme) {
   return '<div class="update-showcase-fallback update-showcase-fallback-release" aria-hidden="true"><img src="/mix-studio-logo.svg" alt=""/><strong>NEW VERSION</strong></div>';
 }
 
+function updateShowcaseReducedMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function clearUpdateShowcaseTimer() {
+  clearTimeout(updateShowcaseTimer);
+  updateShowcaseTimer = null;
+}
+
+function disposeUpdateShowcaseVideo() {
+  const media = $('#updateNoticeMedia');
+  const video = media?.querySelector('video');
+  media?.classList.remove('has-video');
+  if (!video) return;
+  try { video.pause(); } catch { /* noop */ }
+  video.removeAttribute('src');
+  video.querySelectorAll('source').forEach((source) => source.removeAttribute('src'));
+  video.load();
+}
+
+function renderUpdateShowcaseAutoplayControl(slideCount) {
+  const control = $('#updateNoticeAutoplay');
+  if (!control) return;
+  const unavailable = slideCount < 2 || updateShowcaseReducedMotion();
+  control.hidden = unavailable;
+  control.setAttribute('aria-pressed', String(updateShowcaseAutoPaused));
+  control.setAttribute('aria-label', updateShowcaseAutoPaused ? 'Play update highlights' : 'Pause update highlights');
+  const label = control.querySelector('span');
+  if (label) label.textContent = updateShowcaseAutoPaused ? 'Play' : 'Pause';
+}
+
+function scheduleUpdateShowcaseAutoCycle() {
+  clearUpdateShowcaseTimer();
+  const notice = $('#updateNotice');
+  const slides = officialReleaseShowcaseSlides(latestOfficialRelease());
+  if (!notice || notice.hidden || slides.length < 2 || updateShowcaseAutoPaused
+    || updateShowcaseHoverPaused || document.hidden || updateShowcaseReducedMotion()) return;
+  updateShowcaseTimer = setTimeout(() => {
+    updateShowcaseTimer = null;
+    renderUpdateShowcaseSlide(updateShowcaseSlide + 1);
+  }, UPDATE_SHOWCASE_INTERVAL_MS);
+}
+
+function updateShowcaseSwipeDirection(startX, startY, endX, endY, width, elapsed) {
+  const deltaX = endX - startX;
+  const deltaY = endY - startY;
+  const threshold = Math.max(44, Number(width || 0) * .12);
+  if (elapsed > 1200 || Math.abs(deltaX) < threshold || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return 0;
+  return deltaX < 0 ? 1 : -1;
+}
+
 function renderUpdateShowcaseSlide(index = 0) {
+  clearUpdateShowcaseTimer();
   const release = latestOfficialRelease();
   const slides = officialReleaseShowcaseSlides(release);
   updateShowcaseSlide = ((Number(index) || 0) + slides.length) % slides.length;
   const slide = slides[updateShowcaseSlide];
   const media = $('#updateNoticeMedia');
+  disposeUpdateShowcaseVideo();
   media.className = `update-showcase-media theme-${slide.theme || 'release'}`;
   media.innerHTML = updateShowcaseFallbackMarkup(slide.theme);
   if (slide.media) {
@@ -2023,6 +2081,12 @@ function renderUpdateShowcaseSlide(index = 0) {
     dot.addEventListener('click', () => renderUpdateShowcaseSlide(dotIndex));
     dots.appendChild(dot);
   });
+  const multiple = slides.length > 1;
+  $('#updateNoticePrev').hidden = !multiple;
+  $('#updateNoticeNext').hidden = !multiple;
+  renderUpdateShowcaseAutoplayControl(slides.length);
+  $('#updateNoticeSlideStatus').textContent = `${slide.title}. Highlight ${updateShowcaseSlide + 1} of ${slides.length}.`;
+  scheduleUpdateShowcaseAutoCycle();
 }
 
 function closeOfficialReleaseNotice() {
@@ -2031,14 +2095,10 @@ function closeOfficialReleaseNotice() {
   notice.hidden = true;
   notice.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('update-showcase-open');
+  clearUpdateShowcaseTimer();
+  updateShowcaseGesture = null;
   const media = $('#updateNoticeMedia');
-  const video = media?.querySelector('video');
-  if (video) {
-    video.pause();
-    video.removeAttribute('src');
-    video.querySelectorAll('source').forEach((source) => source.removeAttribute('src'));
-    video.load();
-  }
+  disposeUpdateShowcaseVideo();
   media?.replaceChildren();
   if (updateShowcaseReturnFocus?.isConnected && updateShowcaseReturnFocus.offsetParent !== null) {
     updateShowcaseReturnFocus.focus();
@@ -2163,12 +2223,14 @@ function showOfficialReleaseNotice(release, options = {}) {
   const eligible = state.officialReleaseUpdateAvailable || officialReleaseMatchesInstalled(release);
   if (!release || (!eligible && !options.force) || (!options.force && officialReleaseNoticeSeen(release))) return;
   updateShowcaseReturnFocus = document.activeElement;
+  updateShowcaseAutoPaused = false;
+  updateShowcaseHoverPaused = false;
   $('#updateNoticeVersion').textContent = release.tagName || `v${release.version}`;
-  renderUpdateShowcaseSlide(0);
   const notice = $('#updateNotice');
   notice.hidden = false;
   notice.setAttribute('aria-hidden', 'false');
   document.body.classList.add('update-showcase-open');
+  renderUpdateShowcaseSlide(0);
   requestAnimationFrame(() => $('.update-showcase').focus({ preventScroll: true }));
 }
 
@@ -2240,10 +2302,69 @@ $('#updateNoticeView').addEventListener('click', openUpdatesSheet);
 $('#updateNoticeDismiss').addEventListener('click', markLatestReleaseSeen);
 $('#updateNoticeClose').addEventListener('click', markLatestReleaseSeen);
 $('#updateNoticeBackdrop').addEventListener('click', markLatestReleaseSeen);
+$('#updateNoticePrev').addEventListener('click', () => renderUpdateShowcaseSlide(updateShowcaseSlide - 1));
+$('#updateNoticeNext').addEventListener('click', () => renderUpdateShowcaseSlide(updateShowcaseSlide + 1));
+$('#updateNoticeAutoplay').addEventListener('click', () => {
+  updateShowcaseAutoPaused = !updateShowcaseAutoPaused;
+  renderUpdateShowcaseAutoplayControl(officialReleaseShowcaseSlides(latestOfficialRelease()).length);
+  scheduleUpdateShowcaseAutoCycle();
+});
+$('#updateNoticeMedia').addEventListener('pointerdown', (event) => {
+  if (event.button !== undefined && event.button !== 0) return;
+  updateShowcaseGesture = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startedAt: performance.now(),
+  };
+  try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* optional */ }
+});
+$('#updateNoticeMedia').addEventListener('pointermove', (event) => {
+  const gesture = updateShowcaseGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return;
+  const deltaX = event.clientX - gesture.startX;
+  const deltaY = event.clientY - gesture.startY;
+  if (Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25 && event.cancelable) event.preventDefault();
+});
+const finishUpdateShowcaseGesture = (event) => {
+  const gesture = updateShowcaseGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return;
+  updateShowcaseGesture = null;
+  const direction = updateShowcaseSwipeDirection(
+    gesture.startX,
+    gesture.startY,
+    event.clientX,
+    event.clientY,
+    event.currentTarget.getBoundingClientRect().width,
+    performance.now() - gesture.startedAt,
+  );
+  if (direction) renderUpdateShowcaseSlide(updateShowcaseSlide + direction);
+};
+$('#updateNoticeMedia').addEventListener('pointerup', finishUpdateShowcaseGesture);
+$('#updateNoticeMedia').addEventListener('pointercancel', () => { updateShowcaseGesture = null; });
+$('.update-showcase').addEventListener('mouseenter', () => {
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  updateShowcaseHoverPaused = true;
+  clearUpdateShowcaseTimer();
+});
+$('.update-showcase').addEventListener('mouseleave', () => {
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  updateShowcaseHoverPaused = false;
+  scheduleUpdateShowcaseAutoCycle();
+});
 $('#updateNotice').addEventListener('keydown', (event) => {
   if (event.key === 'Escape') markLatestReleaseSeen();
-  else if (event.key === 'ArrowLeft') renderUpdateShowcaseSlide(updateShowcaseSlide - 1);
-  else if (event.key === 'ArrowRight') renderUpdateShowcaseSlide(updateShowcaseSlide + 1);
+  else if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    renderUpdateShowcaseSlide(updateShowcaseSlide - 1);
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    renderUpdateShowcaseSlide(updateShowcaseSlide + 1);
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) clearUpdateShowcaseTimer();
+  else scheduleUpdateShowcaseAutoCycle();
 });
 $('#updatesAlertToggle').addEventListener('click', async () => {
   if (!window.isSecureContext || !('Notification' in window)) return;
@@ -3279,10 +3400,7 @@ function loadForm() {
       && state.vidH3Mode !== 'replace';
     state.vidH3TurboStrength = Math.max(0.8, Math.min(1.2, Number(f.vidH3TurboStrength) || 1));
     const savedH3TurboSteps = Math.round(Number(f.vidH3TurboSteps) || 0);
-    const migratedH3TurboSteps = Number(f.workspaceVersion) < 3 && savedH3TurboSteps === 4
-      ? 6
-      : savedH3TurboSteps;
-    state.vidH3TurboSteps = Math.max(4, Math.min(100, migratedH3TurboSteps || 6));
+    state.vidH3TurboSteps = Math.max(4, Math.min(100, savedH3TurboSteps || 6));
     state.vidH3RefTurboSteps = Math.max(4, Math.min(100, Math.round(Number(f.vidH3RefTurboSteps) || 6)));
     state.vidH3Steps = Math.max(1, Math.min(100, Math.round(Number(f.vidH3Steps) || 20)));
     state.vidH3RefImageSize = f.vidH3RefImageSize === 'max' ? 'max' : 'match';
@@ -4248,6 +4366,32 @@ function genLabel() {
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
+const H3_FRAMES_TURBO_LORAS = Object.freeze({
+  v4: 'minimax_h3_turbo_v4_step600_ema.safetensors',
+  'legacy-4step': 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+});
+let configuredH3FramesTurboLora = H3_FRAMES_TURBO_LORAS.v4;
+
+function h3FramesTurboVariant(filename = configuredH3FramesTurboLora) {
+  const basename = String(filename || '').split(/[\\/]/).pop().toLowerCase();
+  return Object.entries(H3_FRAMES_TURBO_LORAS)
+    .find(([, managed]) => managed.toLowerCase() === basename)?.[0] || 'custom';
+}
+
+function setConfiguredH3FramesTurboLora(filename) {
+  configuredH3FramesTurboLora = String(filename || '').trim() || H3_FRAMES_TURBO_LORAS.v4;
+  const select = $('#setH3FramesTurboVariant');
+  if (!select) return;
+  const variant = h3FramesTurboVariant();
+  const custom = select.querySelector('option[value="custom"]');
+  if (custom) custom.hidden = variant !== 'custom';
+  select.value = variant;
+}
+
+function h3FramesTurboIsLegacy() {
+  return h3FramesTurboVariant() === 'legacy-4step';
+}
+
 function renderH3TurboMode() {
   const panel = $('#vidH3TurboPanel');
   const toggle = $('#vidH3TurboToggle');
@@ -4266,8 +4410,9 @@ function renderH3TurboMode() {
   const enabled = state.vidH3Turbo === true;
   const active = enabled;
   const turboSteps = normalizedH3TurboSteps();
+  const legacyFramesTurbo = !referenceMode && h3FramesTurboIsLegacy();
   const nativeAudioSampler = lastMeta?.minimaxH3?.nativeAudioSampling === true;
-  const showV4Caution = h3 && active && !referenceMode && turboSteps === 4;
+  const showV4Caution = h3 && active && !referenceMode && !legacyFramesTurbo && turboSteps === 4;
   panel.hidden = !h3;
   panel.classList.toggle('has-caution', showV4Caution);
   v4Caution.hidden = !showV4Caution;
@@ -4285,6 +4430,9 @@ function renderH3TurboMode() {
   } else if (active && referenceMode) {
     summary.textContent = `${turboSteps} steps${turboSteps === 6 ? '' : ' · 6 recommended'} · LightX2V · audio-safe sampler`;
     toggle.title = 'Reference Turbo uses Kijai’s LightX2V LoRA, MiniMax’s 12/3 audio-video schedule, and the creator’s adaptive sampler. Six steps is the tested default.';
+  } else if (active && legacyFramesTurbo) {
+    summary.textContent = `${turboSteps} steps${turboSteps === 4 ? '' : ' · 4 recommended'} · legacy v1/850 · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
+    toggle.title = 'Legacy Turbo v1/850 is retained for its original four-step workflow. You can switch back to v4 in Preferences → Video Models.';
   } else if (active) {
     summary.textContent = `${turboSteps} steps${turboSteps >= 6 && turboSteps <= 8 ? '' : ' · 6–8 recommended'} · v4/600 · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
     toggle.title = nativeAudioSampler
@@ -4294,7 +4442,7 @@ function renderH3TurboMode() {
     summary.textContent = `${referenceMode ? 'Standard Reference H3' : 'Standard H3'} · ${normalizedH3Steps()} steps`;
     toggle.title = referenceMode
       ? 'Turn on the LightX2V Reference Turbo workflow. Six steps is the tested default.'
-      : 'Turn on the creator Turbo LoRA v4/600. Six steps is the new default, and the step count remains adjustable.';
+      : `Turn on the ${legacyFramesTurbo ? 'legacy Turbo LoRA v1/850 at its four-step default' : 'creator Turbo LoRA v4/600. Six steps is the new default'}, and keep the step count adjustable.`;
   }
   const showStrength = h3TurboActive();
   strengthField.hidden = !showStrength;
@@ -4476,7 +4624,7 @@ function updateVideoPanels() {
   $('#videoAdvancedNote').hidden = !isVideo;
   $('#videoAdvancedNote').textContent = wanAnimate2InputFirst
     ? 'The official workflow uses a fixed six-step LCM schedule. Identity and Motion both default to 1.00.'
-    : 'CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 6–8 recommended for Frames Turbo v4 and 6 for Reference Turbo.';
+    : `CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with ${h3FramesTurboIsLegacy() ? '4 recommended for legacy Frames Turbo' : '6–8 recommended for Frames Turbo v4'} and 6 for Reference Turbo.`;
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   $('#loraPanel').closest('.panel').hidden = isVideo && state.vidEngine === 'h3';
@@ -12490,11 +12638,15 @@ function videoStepSpecification() {
           ? (value === 6
             ? 'H3 Reference Turbo · 6-step LightX2V audio-safe setup'
             : 'H3 Reference Turbo · 6 steps is the tested audio-safe default')
-          : (value === 6
-            ? 'H3 Turbo v4/600 · 6-step quality default'
-            : (value >= 7 && value <= 8
-              ? 'H3 Turbo v4/600 · creator-recommended 6–8 step range'
-              : 'H3 Turbo v4/600 · 6–8 steps recommended')),
+          : (h3FramesTurboIsLegacy()
+            ? (value === 4
+              ? 'H3 Turbo legacy v1/850 · original 4-step default'
+              : 'H3 Turbo legacy v1/850 · 4 steps recommended')
+            : (value === 6
+              ? 'H3 Turbo v4/600 · 6-step quality default'
+              : (value >= 7 && value <= 8
+                ? 'H3 Turbo v4/600 · creator-recommended 6–8 step range'
+                : 'H3 Turbo v4/600 · 6–8 steps recommended'))),
       };
     }
     return { value: normalizedH3Steps(), editable: true, hint: 'MiniMax H3 sampler · adjustable' };
@@ -12644,8 +12796,8 @@ function resetGenerationControl(control) {
     if (h3TurboActive()) {
       const referenceMode = h3ReferenceBackedMode();
       if (referenceMode) state.vidH3RefTurboSteps = 6;
-      else state.vidH3TurboSteps = 6;
-      control.value = 6;
+      else state.vidH3TurboSteps = h3FramesTurboIsLegacy() ? 4 : 6;
+      control.value = referenceMode ? 6 : state.vidH3TurboSteps;
     } else {
       state.vidH3Steps = 20;
       control.value = 20;
@@ -20431,6 +20583,10 @@ function focusCompletedDesktopOutput(itemId, media = 'image') {
   state.desktopSettingsReady = false;
   state.desktopStageDismissed = false;
   const item = state.items.find((entry) => entry.id === itemId) || null;
+  if (!desktopWorkspaceActive()) {
+    setDesktopStageMedia();
+    return;
+  }
   renderDesktopStage(item || undefined, item ? media : undefined);
   syncDesktopGallerySelection();
 }
@@ -20440,6 +20596,7 @@ function setDesktopStageMedia({ image = '', video = '', poster = '' } = {}) {
   const vid = $('#desktopStageVideo');
   const empty = $('#desktopStageEmpty');
   if (!img || !vid || !empty) return;
+  const hadVideoSource = !!(vid.dataset.src || vid.currentSrc || vid.getAttribute('src'));
   try { vid.pause(); } catch { /* noop */ }
   vid.hidden = true;
   img.hidden = true;
@@ -20457,11 +20614,17 @@ function setDesktopStageMedia({ image = '', video = '', poster = '' } = {}) {
       vid.play().catch(() => { /* autoplay is an enhancement */ });
     }
   } else {
-    vid.removeAttribute('src');
-    vid.dataset.src = '';
+    vid.removeAttribute('poster');
+    if (hadVideoSource) {
+      vid.removeAttribute('src');
+      vid.dataset.src = '';
+      vid.load();
+    }
     if (image) {
       img.src = image;
       img.hidden = false;
+    } else {
+      img.removeAttribute('src');
     }
   }
 }
@@ -20483,6 +20646,7 @@ function desktopStageSelection() {
 }
 
 function syncDesktopGallerySelection() {
+  if (!desktopWorkspaceActive()) return;
   $$('#galleryGrid .card').forEach((card) => {
     const groupedIds = (card.dataset.groupItemIds || '').split(',').filter(Boolean);
     const itemMatches = card.dataset.id === state.desktopItemId || groupedIds.includes(state.desktopItemId);
@@ -20649,6 +20813,15 @@ function renderDesktopStagePicker(item, media = 'image') {
 function renderDesktopStage(item, mediaSel) {
   const open = $('#desktopStageOpen');
   if (!open) return;
+  if (!desktopWorkspaceActive()) {
+    setDesktopStageMedia();
+    const picker = $('#desktopStagePicker');
+    if (picker) {
+      picker.replaceChildren();
+      picker.hidden = true;
+    }
+    return;
+  }
   const resolved = item ? { item, media: mediaSel || 'image', selected: !!state.desktopItemId } : desktopStageSelection();
   item = resolved.item;
   const status = $('#desktopStageStatus');
@@ -20733,6 +20906,10 @@ function renderDesktopStage(item, mediaSel) {
 function renderDesktopStageGenerating(statusText = 'Working…') {
   const open = $('#desktopStageOpen');
   if (!open) return;
+  if (!desktopWorkspaceActive()) {
+    setDesktopStageMedia();
+    return;
+  }
   state.desktopStageDismissed = false;
   open.disabled = true;
   $('#desktopStageInfo').disabled = true;
@@ -22482,6 +22659,41 @@ function galleryVideoPreviewSource(video) {
   if (nativePreviewCompatible) return `/videos/${encodeURIComponent(file)}`;
   return `/video-previews/${encodeURIComponent(file)}?size=${resolution}&fps=${frameRate}`;
 }
+function createGalleryCardPreview(card, source, options = {}) {
+  if (!card || !source) return null;
+  const existing = card.querySelector('.gallery-card-video');
+  if (existing) return existing;
+  const preview = document.createElement('video');
+  preview.className = 'gallery-card-video';
+  preview.muted = true;
+  preview.loop = true;
+  preview.playsInline = true;
+  preview.preload = 'none';
+  preview.draggable = false;
+  preview.dataset.src = source;
+  preview.dataset.loaded = 'false';
+  preview.dataset.mobileDynamic = options.mobileDynamic ? 'true' : 'false';
+  preview.tabIndex = -1;
+  preview.setAttribute('aria-hidden', 'true');
+  const reveal = () => preview.classList.add('is-ready');
+  preview.addEventListener('loadeddata', reveal);
+  preview.addEventListener('playing', reveal);
+  const poster = card.querySelector('.gallery-card-poster');
+  if (poster) poster.after(preview);
+  else card.prepend(preview);
+  return preview;
+}
+function ensureMobileGalleryCardPreview(card) {
+  if (!card) return null;
+  return card.querySelector('.gallery-card-video')
+    || createGalleryCardPreview(card, card.dataset.galleryPreviewSrc, { mobileDynamic: true });
+}
+function galleryPreviewCandidateIsActive(candidate) {
+  const preview = candidate?.matches?.('.gallery-card-video')
+    ? candidate
+    : candidate?.querySelector?.('.gallery-card-video');
+  return !!preview && galleryPreviewActive.has(preview);
+}
 function desktopSideLibraryHoverPreviewAllowed() {
   return desktopWorkspaceActive()
     && desktopResolutionPickerQuery.matches
@@ -22502,11 +22714,18 @@ function unloadGalleryPreview(video) {
   cancelGalleryPreviewUnload(video);
   video.pause();
   galleryPreviewLoaded.delete(video);
-  if (video.dataset.loaded !== 'true') return;
-  try { video.currentTime = 0; } catch { /* noop */ }
-  video.removeAttribute('src');
-  video.dataset.loaded = 'false';
-  video.load();
+  video.classList.remove('is-ready');
+  if (video.dataset.loaded === 'true') {
+    try { video.currentTime = 0; } catch { /* noop */ }
+    video.removeAttribute('src');
+    video.dataset.loaded = 'false';
+    video.load();
+  }
+  if (video.dataset.mobileDynamic === 'true') {
+    galleryPreviewActive.delete(video);
+    galleryPreviewIntersecting.delete(video);
+    video.remove();
+  }
 }
 function releaseGalleryGridPreviews(grid) {
   if (!grid) return;
@@ -22601,7 +22820,7 @@ function centeredGalleryPreviewRow(candidates, center) {
   const best = rows.reduce((nearest, row) => (
     Math.abs(row.middle - center) < Math.abs(nearest.middle - center) ? row : nearest
   ));
-  const current = rows.find((row) => row.videos.some((video) => galleryPreviewActive.has(video)));
+  const current = rows.find((row) => row.videos.some(galleryPreviewCandidateIsActive));
   if (current) {
     const hysteresis = Math.max(18, current.height * .12);
     if (Math.abs(current.middle - center) <= Math.abs(best.middle - center) + hysteresis) return current.videos;
@@ -22628,8 +22847,7 @@ function mobileGalleryPreviewCandidates(center = window.innerHeight / 2) {
     for (let column = 0; column < columns; column += 1) {
       const x = left + ((column + .5) * width / columns);
       const card = document.elementFromPoint(x, y)?.closest?.('#galleryGrid .card');
-      const video = card?.querySelector('.gallery-card-video');
-      if (video?.isConnected) videos.add(video);
+      if (card?.isConnected && card.dataset.galleryPreviewSrc) videos.add(card);
     }
   });
   return [...videos];
@@ -22660,10 +22878,11 @@ function settleGalleryPreviewPlayback(advanceMobile = false) {
     const ordered = [...centered].sort((a, b) => (
       a.getBoundingClientRect().left - b.getBoundingClientRect().left
     ));
-    const currentIndex = ordered.findIndex((video) => galleryPreviewActive.has(video));
+    const currentIndex = ordered.findIndex(galleryPreviewCandidateIsActive);
     const nextIndex = currentIndex < 0 ? 0 : (advanceMobile ? (currentIndex + 1) % ordered.length : currentIndex);
     centered = [ordered[nextIndex]];
   }
+  if (touchFirst) centered = centered.map(ensureMobileGalleryCardPreview).filter(Boolean);
   const next = new Set(centered);
   galleryPreviewActive.forEach((video) => {
     if (!next.has(video)) {
@@ -23295,23 +23514,25 @@ function renderGrid() {
       + (hasAttachedComposite ? ' has-attached-composite' : '');
     const latestVideo = latestGalleryVideo(it);
     if (latestVideo && state.mediaPreferences.videoPreviews) {
-      const preview = document.createElement('video');
-      preview.className = 'gallery-card-video';
-      preview.muted = true;
-      preview.loop = true;
-      preview.playsInline = true;
-      preview.preload = 'none';
-      preview.draggable = false;
       const posterSource = galleryImageSource(it);
-      preview.poster = posterSource;
-      useCachedGalleryImage(preview, posterSource, 'poster');
-      preview.dataset.src = galleryVideoPreviewSource(latestVideo);
-      preview.dataset.loaded = 'false';
-      preview.tabIndex = -1;
-      preview.setAttribute('aria-hidden', 'true');
-      card.appendChild(preview);
-      card.addEventListener('pointerenter', () => startDesktopSideLibraryPreview(preview), { passive: true });
-      card.addEventListener('pointerleave', () => stopDesktopSideLibraryPreview(preview), { passive: true });
+      const poster = document.createElement('img');
+      poster.className = 'gallery-card-poster';
+      poster.loading = 'lazy';
+      poster.decoding = 'async';
+      poster.draggable = false;
+      poster.src = posterSource;
+      useCachedGalleryImage(poster, posterSource);
+      card.appendChild(poster);
+      const previewSource = galleryVideoPreviewSource(latestVideo);
+      if (touchFirstGalleryDevice() && !desktopWorkspaceActive()) {
+        // Mobile Chrome eagerly initializes every <video> and poster in a large
+        // grid. Keep only a lazy image until this card is chosen to play.
+        card.dataset.galleryPreviewSrc = previewSource;
+      } else {
+        const preview = createGalleryCardPreview(card, previewSource);
+        card.addEventListener('pointerenter', () => startDesktopSideLibraryPreview(preview), { passive: true });
+        card.addEventListener('pointerleave', () => stopDesktopSideLibraryPreview(preview), { passive: true });
+      }
     } else {
       const img = document.createElement('img');
       img.loading = 'lazy';
@@ -23509,7 +23730,7 @@ function renderGrid() {
   }
   grid.appendChild(fragment);
   resetGalleryPreviewObservation();
-  syncSelectionVisuals();
+  if (state.selectMode || state.selected.size || state.libraryQuery.trim()) syncSelectionVisuals();
   syncDesktopGallerySelection();
   syncGalleryDateScrubber();
   if (state.mediaPreferences.previewCache) schedulePreviewCacheWarmup(items);
@@ -28995,7 +29216,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
-  'setH3FrameModelVariant', 'setH3ReferenceModelVariant',
+  'setH3FrameModelVariant', 'setH3FramesTurboVariant', 'setH3ReferenceModelVariant',
   'setH3Unet', 'setH3RefUnet', 'setH3Bf16Unet', 'setH3Bf16RefUnet', 'setH3DynTimeRefUnet', 'setH3DynTimeRefHqUnet',
   'setH3TurboLora', 'setH3RefTurboLora', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
@@ -29154,7 +29375,7 @@ function settingsPayload() {
     h3Bf16RefUnet: $('#setH3Bf16RefUnet').value,
     h3DynTimeRefUnet: $('#setH3DynTimeRefUnet').value,
     h3DynTimeRefHqUnet: $('#setH3DynTimeRefHqUnet').value,
-    h3TurboLora: $('#setH3TurboLora').value,
+    h3TurboLora: $('#setH3TurboLora').value.trim() || H3_FRAMES_TURBO_LORAS.v4,
     h3RefTurboLora: $('#setH3RefTurboLora').value,
     h3Clip: $('#setH3Clip').value,
     h3VideoVae: $('#setH3VideoVae').value,
@@ -32851,7 +33072,8 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setH3Bf16RefUnet').value = s.h3Bf16RefUnet || '';
     $('#setH3DynTimeRefUnet').value = s.h3DynTimeRefUnet || '';
     $('#setH3DynTimeRefHqUnet').value = s.h3DynTimeRefHqUnet || '';
-    $('#setH3TurboLora').value = s.h3TurboLora || '';
+    $('#setH3TurboLora').value = s.h3TurboLora || H3_FRAMES_TURBO_LORAS.v4;
+    setConfiguredH3FramesTurboLora($('#setH3TurboLora').value);
     $('#setH3RefTurboLora').value = s.h3RefTurboLora || '';
     $('#setH3Clip').value = s.h3Clip || '';
     $('#setH3VideoVae').value = s.h3VideoVae || '';
@@ -32917,6 +33139,23 @@ $('#setKrea2ModelVariant').addEventListener('change', () => {
     refreshH3ModelStatus().catch(() => {});
     refreshModelCleanup().catch(() => {});
   });
+});
+$('#setH3FramesTurboVariant').addEventListener('change', () => {
+  const variant = $('#setH3FramesTurboVariant').value;
+  const filename = H3_FRAMES_TURBO_LORAS[variant];
+  if (!filename) return;
+  $('#setH3TurboLora').value = filename;
+  setConfiguredH3FramesTurboLora(filename);
+  state.vidH3TurboSteps = variant === 'legacy-4step' ? 4 : 6;
+  renderH3TurboMode();
+  renderVideoStepControl();
+  updateVideoPanels();
+  saveForm();
+});
+$('#setH3TurboLora').addEventListener('input', (event) => {
+  setConfiguredH3FramesTurboLora(event.target.value);
+  renderH3TurboMode();
+  renderVideoStepControl();
 });
 $('#h3InstallFrameModel').addEventListener('click', () => installSelectedH3Model('frames'));
 $('#h3InstallReferenceModel').addEventListener('click', () => installSelectedH3Model('reference'));
@@ -34659,6 +34898,9 @@ async function loadMeta(refresh, afterRestart = false) {
     state.loraThumbs = lastMeta.loraThumbs || {};
     state.features = lastMeta.features || {};
     state.videoCapabilities = lastMeta.capabilities?.video || {};
+    if (lastMeta.models?.h3Turbo?.lora?.name) {
+      setConfiguredH3FramesTurboLora(lastMeta.models.h3Turbo.lora.name);
+    }
     renderFeatureVisibility();
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
     renderKrea2Mode();
@@ -34849,6 +35091,7 @@ desktopWorkspaceQuery.addEventListener('change', (event) => {
   applyDesktopPanelLayout();
   syncNavigation();
   if (!$('#lightbox')?.classList.contains('show')) renderDesktopStage();
+  syncDesktopGallerySelection();
 });
 
 initIconTooltips();

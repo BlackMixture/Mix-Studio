@@ -4,6 +4,22 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### Mobile Library responsiveness
+
+- Fixed a Chrome mobile relayout loop caused by applying `content-visibility` to very large Library grids, while retaining the optimization on desktop.
+- Stopped mobile Library cards from mounting hundreds of idle video elements and eager poster requests; only the centered preview selected for playback now creates a decoder.
+- Prevented the desktop-only result stage from loading a hidden full-resolution video on mobile, which was especially costly after RTX 4K passes.
+
+### Update showcase
+
+- Added swipe gestures, large previous and next controls, keyboard navigation, accessible slide announcements, and an eight-second auto-cycle with a visible Pause/Play control.
+- Paused showcase cycling while the tab is hidden, while a desktop pointer hovers the card, and whenever reduced motion is requested; released each preview decoder before changing slides.
+
+### MiniMax H3 Turbo compatibility
+
+- Added an explicit shared Frames Turbo selector for the recommended v4/step600 adapter or the prior v1/ckpt850 four-step adapter, with the active choice reflected in generation guidance.
+- Preserved saved four-step workspaces and made dependency installation resolve the exact selected adapter instead of downloading v4 under a legacy or custom filename.
+
 ## 1.2.4 - 2026-08-09
 
 ### Mobile video previews
@@ -53,7 +69,7 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 
 ### MiniMax H3 Turbo
 
-- Updated Frames Turbo to the creator-recommended `minimax_h3_turbo_v4_step600_ema.safetensors` adapter and made six steps the default. Existing installs using Mix Studio's former v1/850 default migrate automatically, while users can still select that older checkpoint manually for specialized four-step, high-motion work.
+- Updated Frames Turbo to the creator-recommended `minimax_h3_turbo_v4_step600_ema.safetensors` adapter and made six steps the default, while continuing to record and accept an explicitly configured adapter filename.
 - Kept Reference Turbo on its separate Kijai LightX2V adapter and six-step audio-safe sampler path, so the Frames Turbo upgrade does not change the reference-video workflow.
 - Added generation metadata for the exact H3 Turbo adapter used, including gallery and documentation-video details.
 - Added a compact caution icon at four Frames Turbo steps explaining v4's possible smearing or motion trails, with the full guidance available by hover or tap instead of permanent warning text.

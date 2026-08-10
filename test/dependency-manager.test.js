@@ -53,7 +53,7 @@ test('dependency catalog covers every enabled image and video family', () => {
   for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'h3dyntime', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3RefTurbo', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3TurboLegacy', 'h3RefTurbo', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -80,6 +80,7 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.h3.find((asset) => asset[0] === 'h3Unet')[2], /Comfy-Org\/MiniMax-H3.*minimax_h3_fl2va_pruned_int8_convrot/);
   assert.match(MODEL_ASSETS.h3Ref[0][2], /Comfy-Org\/MiniMax-H3.*minimax_h3_ref2va_pruned_int8_convrot/);
   assert.match(MODEL_ASSETS.h3Turbo[0][2], /larryvrh\/MiniMax-H3-Turbo-Lora.*minimax_h3_turbo_v4_step600_ema/);
+  assert.match(MODEL_ASSETS.h3TurboLegacy[0][2], /larryvrh\/MiniMax-H3-Turbo-Lora.*minimax_h3_turbo_4step_ema_ckpt850/);
   assert.match(MODEL_ASSETS.h3RefTurbo[0][2], /Kijai\/MiniMax-H3_comfy.*minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16/);
   assert.deepEqual(COMPONENTS.rife.nodes, ['rife']);
   assert.ok(availableComponents().includes('smartmask'));
@@ -264,6 +265,36 @@ test('Apple LTX setup selects the official BF16 checkpoint', () => {
   assert.equal(plan.settingUpdates.ltxCkpt, 'ltx-2.3-22b-dev.safetensors');
   assert.match(checkpoint[2], /Lightricks\/LTX-2\.3\/resolve\/main\/ltx-2\.3-22b-dev\.safetensors/);
   assert.doesNotMatch(checkpoint[2], /LTX-2\.3-fp8/);
+});
+
+test('MiniMax H3 Turbo installer routes exact managed filenames and keeps custom adapters check-only', async () => {
+  const v4Name = 'minimax_h3_turbo_v4_step600_ema.safetensors';
+  const legacyName = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
+  const v4 = dependencyModelPlan(['h3Turbo'], { h3TurboLora: v4Name });
+  const legacy = dependencyModelPlan(['h3Turbo'], { h3TurboLora: legacyName });
+  const legacySubfolder = dependencyModelPlan(['h3Turbo'], { h3TurboLora: `MiniMax\\${legacyName}` });
+  const custom = dependencyModelPlan(['h3Turbo'], { h3TurboLora: 'my-reviewed-h3-turbo.safetensors' });
+  assert.match(v4.assets[0][2], new RegExp(`${v4Name.replaceAll('.', '\\.')}$`));
+  assert.match(legacy.assets[0][2], new RegExp(`${legacyName.replaceAll('.', '\\.')}$`));
+  assert.match(legacySubfolder.assets[0][2], new RegExp(`${legacyName.replaceAll('.', '\\.')}$`));
+  assert.equal(custom.assets[0][5]?.checkOnly, true);
+  assert.equal(custom.effectiveSettings.h3TurboLora, 'my-reviewed-h3-turbo.safetensors');
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-h3-custom-turbo-'));
+  let fetchCalls = 0;
+  try {
+    await assert.rejects(
+      downloadAsset(custom.assets[0], rootDir, custom.effectiveSettings, () => {}, {
+        fetch: async () => { fetchCalls += 1; throw new Error('must not fetch'); },
+      }),
+      (error) => error.code === 'dependency_custom_model_missing'
+        && error.failedModel === 'my-reviewed-h3-turbo.safetensors'
+        && error.checkOnly === true
+    );
+    assert.equal(fetchCalls, 0, 'custom adapters never download v4 bytes under a custom filename');
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test('automatic Director node installs use the reviewed commit while compatible checkouts are reused', async () => {

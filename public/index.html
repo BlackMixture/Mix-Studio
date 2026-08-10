@@ -801,7 +801,7 @@
           <span class="krea-model-switch-copy"><b>Turbo <span class="h3-turbo-preview">Preview</span></b><small id="vidH3TurboSummary">6 frames · 6 reference · audio-safe</small></span>
           <span class="switch" aria-hidden="true"><i></i></span>
         </button>
-        <button class="h3-long-context-caution h3-turbo-v4-caution" id="vidH3TurboV4Caution" type="button" aria-label="Four-step Turbo v4 quality caution" data-icon-tooltip="Four-step Turbo v4 caution" data-icon-tooltip-detail="At four steps, v4 can smear or trail during large, fast motion. Use six to eight steps for higher quality, or manually select the older v1/850 checkpoint for that narrow four-step case." hidden>
+        <button class="h3-long-context-caution h3-turbo-v4-caution" id="vidH3TurboV4Caution" type="button" aria-label="Four-step Turbo v4 quality caution" data-icon-tooltip="Four-step Turbo v4 caution" data-icon-tooltip-detail="At four steps, v4 can smear or trail during large, fast motion. Use six to eight steps for higher quality, or switch Frames Turbo to Legacy v1 / ckpt850 in Preferences for the original four-step workflow." hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 21 20H3L12 4Z"/><path d="M12 9v5m0 3h.01"/></svg>
         </button>
       </div>
@@ -1371,7 +1371,7 @@
                 <input id="vidWanAnimate2MotionStrength" type="range" min="0" max="2" step="0.05" value="1" />
               </label>
             </div>
-            <div class="video-advanced-note field-span" id="videoAdvancedNote" hidden>CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with 6–8 recommended for Frames Turbo v4 and 6 for Reference Turbo.</div>
+            <div class="video-advanced-note field-span" id="videoAdvancedNote" hidden>CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps remain adjustable for the selected Turbo adapter.</div>
             <div class="field" id="denoiseField" hidden>
               <label>Denoise</label>
               <div class="range-field">
@@ -2689,6 +2689,14 @@
               </select>
             </div>
             <button class="settings-cache-clear h3-model-install" id="h3InstallFrameModel" type="button">Install selected Frames model</button>
+            <div class="field"><label for="setH3FramesTurboVariant">Frames Turbo LoRA</label>
+              <select id="setH3FramesTurboVariant">
+                <option value="v4">v4 / step600 · recommended · 6–8 steps</option>
+                <option value="legacy-4step">Legacy v1 / ckpt850 · 4 steps</option>
+                <option value="custom" hidden>Custom filename</option>
+              </select>
+              <small>The selected adapter is shared by every profile. If it is missing, Generate offers to install the matching file.</small>
+            </div>
             <div class="field"><label for="setH3ReferenceModelVariant">Reference / Replace model</label>
               <select id="setH3ReferenceModelVariant">
                 <option value="standard">Standard · pruned INT8 · 21 GB</option>
@@ -2707,7 +2715,7 @@
               <div class="field"><label>Full BF16 Ref2VA model</label><input id="setH3Bf16RefUnet" type="text" /></div>
               <div class="field"><label>DynTime Ref2VA model</label><input id="setH3DynTimeRefUnet" type="text" /></div>
               <div class="field"><label>DynTime Ref2VA HQ model</label><input id="setH3DynTimeRefHqUnet" type="text" /></div>
-              <div class="field"><label>Frames Turbo LoRA</label><input id="setH3TurboLora" type="text" /></div>
+              <div class="field"><label>Custom Frames Turbo LoRA filename</label><input id="setH3TurboLora" type="text" /></div>
               <div class="field"><label>Reference Turbo LoRA (LightX2V)</label><input id="setH3RefTurboLora" type="text" /></div>
               <div class="field"><label>Qwen3-VL text encoder</label><input id="setH3Clip" type="text" /></div>
               <div class="field"><label>Video VAE</label><input id="setH3VideoVae" type="text" /></div>
@@ -3448,8 +3456,24 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
       </button>
     </header>
-    <div class="update-showcase-media" id="updateNoticeMedia" aria-live="polite"></div>
-    <div class="update-showcase-dots" id="updateNoticeDots" aria-label="Update highlights"></div>
+    <div class="update-showcase-media-wrap" id="updateNoticeMediaWrap">
+      <div class="update-showcase-media" id="updateNoticeMedia"></div>
+      <button class="update-showcase-arrow update-showcase-prev" id="updateNoticePrev" type="button" aria-label="Previous update highlight">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+      </button>
+      <button class="update-showcase-arrow update-showcase-next" id="updateNoticeNext" type="button" aria-label="Next update highlight">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+      </button>
+    </div>
+    <div class="update-showcase-nav">
+      <button class="update-showcase-autoplay" id="updateNoticeAutoplay" type="button" aria-pressed="false" aria-label="Pause update highlights">
+        <svg class="update-showcase-pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12"/></svg>
+        <svg class="update-showcase-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6Z"/></svg>
+        <span>Pause</span>
+      </button>
+      <div class="update-showcase-dots" id="updateNoticeDots" aria-label="Update highlights"></div>
+    </div>
+    <div class="sr-only" id="updateNoticeSlideStatus" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="update-notice-copy">
       <span id="updateNoticeEyebrow">What’s new</span>
       <strong id="updateNoticeTitle"></strong>

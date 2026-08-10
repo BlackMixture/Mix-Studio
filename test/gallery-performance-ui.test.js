@@ -16,6 +16,8 @@ test('offscreen gallery cards retain square layout without permanent GPU promoti
   assert.ok(transitionRule, 'gallery transition rule should exist');
   assert.doesNotMatch(transitionRule, /will-change/);
   assert.match(css, /\.card\.selected,[\s\S]*?\.card\.is-dragging \{ will-change: transform; \}/);
+  assert.match(css, /@media \(hover: none\), \(pointer: coarse\) \{[\s\S]*?#galleryGrid \.card \{[\s\S]*?content-visibility: visible;[\s\S]*?contain-intrinsic-size: none;/,
+    'touch-first Libraries must avoid Chrome mobile\'s large-grid content-visibility relayout loop');
 });
 
 test('gallery rebuilds batch DOM insertion and decode thumbnails asynchronously', () => {
@@ -38,6 +40,19 @@ test('temporary media URLs and hidden gallery videos are explicitly released', (
   assert.match(app, /function suspendGalleryPreviewPlayback\(\)[\s\S]*?unloadGalleryPreview\(video\)/);
   assert.match(app, /if \(!isGallery\) \{[\s\S]{0,160}suspendGalleryPreviewPlayback\(\);[\s\S]{0,40}\}/);
   assert.match(app, /document\.hidden \|\| !galleryPreviewMotionAllowed\(\)[\s\S]*?suspendGalleryPreviewPlayback\(\)/);
+});
+
+test('mobile never initializes the desktop-only full-resolution result stage', () => {
+  assert.match(app, /function renderDesktopStage\(item, mediaSel\) \{[\s\S]{0,220}if \(!desktopWorkspaceActive\(\)\) \{[\s\S]{0,180}setDesktopStageMedia\(\)/);
+  assert.match(app, /function focusCompletedDesktopOutput\(itemId, media = 'image'\) \{[\s\S]{0,420}if \(!desktopWorkspaceActive\(\)\) \{\s*setDesktopStageMedia\(\);\s*return;/);
+  assert.match(app, /function syncDesktopGallerySelection\(\) \{\s*if \(!desktopWorkspaceActive\(\)\) return;/);
+  assert.match(app, /const hadVideoSource = !!\(vid\.dataset\.src \|\| vid\.currentSrc \|\| vid\.getAttribute\('src'\)\)/);
+});
+
+test('mobile drawer leaves the large Library layer stationary', () => {
+  assert.match(css, /body\.app-drawer-open #view-gallery\.active \{ transform: none; \}/);
+  assert.match(css, /\.app-drawer-shell\.show \.app-drawer \{ transform: translateX\(0\); \}/,
+    'the drawer itself keeps its existing slide animation');
 });
 
 test('desktop side library previews play on hover without restoring background autoplay', () => {
