@@ -210,6 +210,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   height: 100%;
   padding: 0;
   border: 0;
+  touch-action: none;
   background: rgba(0,0,0,0.72);
   opacity: 0;
   transition: opacity 260ms var(--ease);
@@ -9387,7 +9388,7 @@ body.sheet-open {
   border-bottom: 0;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: 18px 18px calc(22px + env(safe-area-inset-bottom));
-  max-height: 86vh; overflow-y: auto;
+  max-height: 86vh; overflow-y: auto; overscroll-behavior: contain;
   animation: sheetUp 260ms var(--ease);
 }
 @keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }

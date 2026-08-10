@@ -117,7 +117,7 @@ test('mobile profile menu actions use direct touch activation and pause gallery 
   assert.match(actionMenu, /b\.addEventListener\('click', activate\)/);
   assert.match(actionMenu, /hideIconTooltip\(anchor\)/);
   assert.match(actionMenu, /closeActionMenu\(\{ holdPointerShield: afterTouch \}\)/);
-  assert.match(app, /actionMenuShieldTimer = setTimeout\(removeActionMenuShield, 420\)/);
+  assert.match(app, /actionMenuShieldTimer = setTimeout\(removeActionMenuShield, 160\)/);
   assert.match(actionMenu, /if \(afterTouch\) setTimeout\(\(\) => item\.action\(\), 0\)/);
   assert.match(css, /\.action-menu-shield \{[\s\S]*z-index: 179;[\s\S]*touch-action: none;/);
   assert.match(css, /\.action-menu \{[\s\S]*z-index: 180;/);
@@ -129,6 +129,21 @@ test('mobile profile menu actions use direct touch activation and pause gallery 
     'opening a mobile menu should preserve the loaded decoder for a quick resume');
   assert.doesNotMatch(suspendPreviews, /if \(touchFirst\) unloadGalleryPreview/,
     'mobile menu taps must never synchronously tear down preview sources');
+});
+
+test('mobile Library overlays avoid full-page body reflow and stale touch shields', () => {
+  const lockStart = app.indexOf('function syncSheetScrollLock()');
+  const lockEnd = app.indexOf('\n/* ------------------------------------------------------------------ */\n/* App drawer', lockStart);
+  const scrollLock = app.slice(lockStart, lockEnd);
+  assert.match(scrollLock, /anySheetOpen && actionMenuShield\?\.classList\.contains\('is-catching-release'\)[\s\S]*removeActionMenuShield\(\)/);
+  assert.match(scrollLock, /const lightweightGalleryLock = state\.view === 'gallery'[\s\S]*touchFirstGalleryDevice\(\)[\s\S]*!desktopWorkspaceActive\(\)/);
+  assert.match(scrollLock, /const shouldLockBody = anySheetOpen && !lightweightGalleryLock/);
+  assert.match(scrollLock, /if \(shouldLockBody && !locked\)[\s\S]*document\.body\.classList\.add\('sheet-open'\)/);
+  assert.doesNotMatch(scrollLock, /if \(anySheetOpen && !locked\)/,
+    'opening a sheet must not reposition the complete mounted mobile Library');
+  assert.match(app, /sheet\.addEventListener\('touchmove',[\s\S]*event\.target === sheet[\s\S]*event\.preventDefault\(\)[\s\S]*\{ passive: false \}/);
+  assert.match(css, /\.app-drawer-backdrop \{[\s\S]*touch-action: none;/);
+  assert.match(css, /\.sheet-panel \{[\s\S]*overscroll-behavior: contain;/);
 });
 
 test('only the Resolution section keeps an outer panel surface', () => {

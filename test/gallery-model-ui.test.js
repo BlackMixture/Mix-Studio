@@ -72,7 +72,8 @@ test('mobile gallery videos open immediately and release card preview resources'
   assert.match(tap, /if \(touchFirst\) \{[\s\S]*openLightbox\(item\.id, card\.dataset\.media \|\| 'image'\);[\s\S]*return;/);
   assert.match(app, /function handoffGalleryPreviewsToFocusedMedia\(\)/);
   assert.match(app, /handoffGalleryPreviewsToFocusedMedia\(\);\r?\n  clearLightboxTap\(\)/);
-  assert.match(app, /!\$\('#lightbox'\)\?\.classList\.contains\('show'\)/);
+  assert.match(app, /const focused = \$\('#lightbox'\)\?\.classList\.contains\('show'\)/);
+  assert.match(app, /if \(!video\.isConnected\) \{\s*unloadGalleryPreview\(video\);\s*return;/);
   assert.match(app, /if \(state\.view === 'gallery'\) resetGalleryPreviewObservation\(\)/);
   assert.match(css, /\.card \.gallery-card-video \{[\s\S]{0,100}pointer-events: none;/);
 });
@@ -123,6 +124,7 @@ test('mobile Library gives input priority over preview observer and decoder wake
 });
 
 test('gallery cards use lightweight preview proxies and one mobile decoder', () => {
+  assert.match(app, /let galleryPreviewLoaded = new Set\(\)/);
   assert.match(app, /let galleryPreviewIntersecting = new Set\(\)/);
   assert.match(app, /entries\.forEach\(\(entry\) => \{[\s\S]*galleryPreviewIntersecting\.add\(entry\.target\)/);
   assert.match(app, /function mobileGalleryPreviewCandidates\(center = window\.innerHeight \/ 2\)/);
@@ -152,6 +154,30 @@ test('gallery cards use lightweight preview proxies and one mobile decoder', () 
   assert.match(server, /preview-v2\\0\$\{media\.name\}[\s\S]*\$\{preview\.size\}\\0\$\{preview\.fps\}/);
   assert.match(server, /size: url\.searchParams\.get\('size'\),\s*fps: url\.searchParams\.get\('fps'\)/);
   assert.match(server, /videoPreviewQueue\.then\(create, create\)/);
+});
+
+test('mobile gallery overlay paths operate only on tracked preview decoders', () => {
+  const suspendStart = app.indexOf('function suspendGalleryPreviewPlayback()');
+  const suspendEnd = app.indexOf('\nfunction handoffGalleryPreviewsToFocusedMedia()', suspendStart);
+  const suspend = app.slice(suspendStart, suspendEnd);
+  const scrollStart = app.indexOf("window.addEventListener('scroll', () => {");
+  const scrollEnd = app.indexOf('\nconst galleryDateScrub', scrollStart);
+  const scrolling = app.slice(scrollStart, scrollEnd);
+  const scrub = app.match(/function beginGalleryDateScrub\(\) \{[\s\S]*?\n\}/)?.[0] || '';
+  const renderStart = app.indexOf('function renderGrid()');
+  const renderEnd = app.indexOf('\nfunction setDesktopLibraryStageSelection', renderStart);
+  const render = app.slice(renderStart, renderEnd);
+  assert.match(app, /function playGalleryPreview\(video\)[\s\S]*galleryPreviewLoaded\.add\(video\)/);
+  assert.match(app, /function unloadGalleryPreview\(video\)[\s\S]*galleryPreviewLoaded\.delete\(video\)[\s\S]*if \(video\.dataset\.loaded !== 'true'\) return/);
+  assert.match(suspend, /new Set\(\[\.\.\.galleryPreviewActive, \.\.\.galleryPreviewLoaded\]\)/);
+  assert.doesNotMatch(suspend, /\$\$|querySelectorAll|\.gallery-card-video/);
+  assert.match(scrolling, /galleryPreviewLoaded\.forEach\(\(video\) => pauseGalleryPreview\(video, 10000\)\)/);
+  assert.doesNotMatch(scrolling, /\$\$|querySelectorAll|\.gallery-card-video/);
+  assert.match(scrub, /galleryPreviewLoaded\.forEach\(\(video\) => video\.pause\(\)\)/);
+  assert.doesNotMatch(scrub, /\$\$|querySelectorAll|\.gallery-card-video/);
+  assert.match(render, /releaseGalleryGridPreviews\(grid\)[\s\S]*grid\.replaceChildren\(\)/);
+  assert.doesNotMatch(render, /preview\.src = preview\.dataset\.src/,
+    'rendering thousands of cards must not eagerly initialize video decoders');
 });
 
 test('focused videos leave playback entirely to native controls', () => {

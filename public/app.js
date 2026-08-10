@@ -2342,7 +2342,7 @@ function closeActionMenu(options = {}) {
   if (options.holdPointerShield && actionMenuShield) {
     actionMenuShield.classList.add('is-catching-release');
     clearTimeout(actionMenuShieldTimer);
-    actionMenuShieldTimer = setTimeout(removeActionMenuShield, 420);
+    actionMenuShieldTimer = setTimeout(removeActionMenuShield, 160);
   } else {
     removeActionMenuShield();
   }
@@ -2446,12 +2446,22 @@ function openActionMenu(anchor, items, options = {}) {
 let sheetScrollY = 0;
 function syncSheetScrollLock() {
   const anySheetOpen = $$('.sheet').some((sheet) => sheet.classList.contains('show')) || $('#appDrawer').classList.contains('show');
+  // The release shield catches a synthesized click after a touch menu item is
+  // removed. Once that item opens a real sheet, the sheet itself owns the next
+  // pointer and the shield must not sit above it.
+  if (anySheetOpen && actionMenuShield?.classList.contains('is-catching-release')) removeActionMenuShield();
   const locked = document.body.classList.contains('sheet-open');
-  if (anySheetOpen && !locked) {
+  // Fixed-position body locking forces Chrome to reflow the complete mounted
+  // Library before a top overlay can paint. Its fixed backdrops and contained
+  // panels already own touch input, so keep the gallery scroll position in
+  // place without changing the page's layout mode on touch-first devices.
+  const lightweightGalleryLock = state.view === 'gallery' && touchFirstGalleryDevice() && !desktopWorkspaceActive();
+  const shouldLockBody = anySheetOpen && !lightweightGalleryLock;
+  if (shouldLockBody && !locked) {
     sheetScrollY = desktopWorkspaceActive() ? 0 : (window.scrollY || document.documentElement.scrollTop || 0);
     document.body.style.top = desktopWorkspaceActive() ? '0px' : `-${sheetScrollY}px`;
     document.body.classList.add('sheet-open');
-  } else if (!anySheetOpen && locked) {
+  } else if (!shouldLockBody && locked) {
     document.body.classList.remove('sheet-open');
     if (document.body.classList.contains('modal-open')) {
       document.body.style.top = desktopWorkspaceActive() ? '0px' : `-${savedScrollY}px`;
@@ -22331,6 +22341,7 @@ function useCachedGalleryImage(target, source, property = 'src') {
 
 let galleryPreviewObserver = null;
 let galleryPreviewActive = new Set();
+let galleryPreviewLoaded = new Set();
 let galleryPreviewIntersecting = new Set();
 let galleryPreviewSettleTimer = null;
 let galleryPreviewScrollTimer = null;
@@ -22490,11 +22501,27 @@ function unloadGalleryPreview(video) {
   if (!video) return;
   cancelGalleryPreviewUnload(video);
   video.pause();
+  galleryPreviewLoaded.delete(video);
   if (video.dataset.loaded !== 'true') return;
   try { video.currentTime = 0; } catch { /* noop */ }
   video.removeAttribute('src');
   video.dataset.loaded = 'false';
   video.load();
+}
+function releaseGalleryGridPreviews(grid) {
+  if (!grid) return;
+  const registered = new Set([...galleryPreviewLoaded, ...galleryPreviewActive, ...galleryPreviewIntersecting]);
+  const stale = [...registered].filter((video) => !video.isConnected || grid.contains(video));
+  stale.forEach((video) => {
+    cancelGalleryPreviewUnload(video);
+    galleryPreviewActive.delete(video);
+    galleryPreviewIntersecting.delete(video);
+    galleryPreviewLoaded.delete(video);
+    if (video.dataset.loaded === 'true') {
+      video.pause();
+      video._previewUnloadTimer = setTimeout(() => unloadGalleryPreview(video), 0);
+    }
+  });
 }
 function pauseGalleryPreview(video, unloadDelay = 2800) {
   if (!video) return;
@@ -22525,6 +22552,7 @@ function playGalleryPreview(video) {
     video.src = video.dataset.src;
     video.dataset.loaded = 'true';
   }
+  if (video.dataset.loaded === 'true') galleryPreviewLoaded.add(video);
   video.play().catch(() => { /* autoplay may be blocked */ });
 }
 function startDesktopSideLibraryPreview(video) {
@@ -22670,6 +22698,12 @@ function resetGalleryPreviewObservation() {
   clearTimeout(galleryPreviewSettleTimer);
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   galleryPreviewIntersecting.clear();
+  galleryPreviewLoaded.forEach((video) => {
+    if (!video.isConnected) pauseGalleryPreview(video, 0);
+  });
+  galleryPreviewLoaded = new Set([...galleryPreviewLoaded].filter((video) => (
+    video.isConnected && video.dataset.loaded === 'true'
+  )));
   galleryPreviewActive.forEach((video) => {
     if (!video.isConnected) pauseGalleryPreview(video, 0);
   });
@@ -22693,7 +22727,7 @@ function suspendGalleryPreviewPlayback() {
   galleryPreviewScrollTimer = null;
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   galleryPreviewIntersecting.clear();
-  const loaded = new Set([...galleryPreviewActive, ...$$('.gallery-card-video[data-loaded="true"]')]);
+  const loaded = new Set([...galleryPreviewActive, ...galleryPreviewLoaded]);
   const touchFirst = touchFirstGalleryDevice();
   loaded.forEach((video) => {
     video._desktopSideLibraryHovered = false;
@@ -22723,9 +22757,13 @@ function handoffGalleryPreviewsToFocusedMedia() {
   // Let the expanded player claim the source first, then release the hidden
   // card decoders without holding the tap-to-open path on mobile browsers.
   setTimeout(() => {
-    if (!$('#lightbox')?.classList.contains('show')) return;
+    const focused = $('#lightbox')?.classList.contains('show');
     active.forEach((video) => {
-      if (!video.isConnected) return;
+      if (!video.isConnected) {
+        unloadGalleryPreview(video);
+        return;
+      }
+      if (!focused) return;
       if (touchFirst) pauseGalleryPreview(video, 30000);
       else unloadGalleryPreview(video);
     });
@@ -22739,7 +22777,7 @@ window.addEventListener('scroll', () => {
   clearTimeout(galleryPreviewScrollTimer);
   const touchFirst = touchFirstGalleryDevice();
   if (touchFirst) {
-    $$('.gallery-card-video[data-loaded="true"]').forEach((video) => pauseGalleryPreview(video, 10000));
+    galleryPreviewLoaded.forEach((video) => pauseGalleryPreview(video, 10000));
     return;
   }
   galleryPreviewActive.forEach((video) => pauseGalleryPreview(video, 3600));
@@ -23039,7 +23077,7 @@ function beginGalleryDateScrub() {
   document.body.classList.add('gallery-date-scrubbing');
   galleryDateScrub.previewTarget = galleryScrollTop();
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
-  $$('.gallery-card-video').forEach((video) => video.pause());
+  galleryPreviewLoaded.forEach((video) => video.pause());
   if (navigator.vibrate) navigator.vibrate(10);
 }
 
@@ -23184,6 +23222,7 @@ function stopGallerySelectionDrag(event) {
 
 function renderGrid() {
   const grid = $('#galleryGrid');
+  releaseGalleryGridPreviews(grid);
   syncLibraryCollectionControls();
   const focusedGroup = resolvedLibraryGroupFocus();
   const groupFocusBar = $('#libraryGroupFocus');
@@ -23270,7 +23309,6 @@ function renderGrid() {
       preview.dataset.loaded = 'false';
       preview.tabIndex = -1;
       preview.setAttribute('aria-hidden', 'true');
-      if (!galleryPreviewObserver) preview.src = preview.dataset.src;
       card.appendChild(preview);
       card.addEventListener('pointerenter', () => startDesktopSideLibraryPreview(preview), { passive: true });
       card.addEventListener('pointerleave', () => stopDesktopSideLibraryPreview(preview), { passive: true });
@@ -34792,6 +34830,11 @@ $$('.sheet').forEach((sheet) => {
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet && sheet.id !== 'initialSetupSheet') closeSheet();
   });
+  sheet.addEventListener('touchmove', (event) => {
+    if (state.view === 'gallery' && touchFirstGalleryDevice() && event.target === sheet && event.cancelable) {
+      event.preventDefault();
+    }
+  }, { passive: false });
   sheet.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
   new MutationObserver(syncSheetScrollLock).observe(sheet, { attributes: true, attributeFilter: ['class'] });
 });
