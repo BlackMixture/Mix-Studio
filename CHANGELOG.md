@@ -14,6 +14,7 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Made every new mobile touch or scroll pause previews and restart their decoder wake-up only after a quiet window, keeping Library navigation and controls ahead of background playback.
 - Replaced mobile’s delayed full-Library preview-observer registration with a bounded visible-card sampler, preventing large galleries from blocking the main thread after the page already appears loaded.
 - Reused IntersectionObserver visibility results instead of forcing layout reads across every gallery video whenever preview playback settles.
+- Removed full-Library tooltip rescans from tab changes and mobile viewport resizes, staggered stale-data checks from preview startup, and moved decoder teardown out of tap and menu paths so large Libraries remain clickable while Chrome prepares animated previews.
 - Made mobile profile-menu actions activate directly from completed touch gestures, removed the profile tooltip on touch devices, and added a temporary pointer shield so submenu taps cannot fall through to Library cards below.
 - Kept the original v1.2.0 MiniMax H3, Wan Animate 2, and Mix Packs showcase carousel for the v1.2.4 update notice.
 

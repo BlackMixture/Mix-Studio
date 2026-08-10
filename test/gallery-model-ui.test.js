@@ -44,9 +44,13 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(app, /preview\.dataset\.src = galleryVideoPreviewSource\(latestVideo\)/);
   assert.match(app, /function galleryVideoPreviewSource\(video\)/);
   assert.match(app, /const MAX_NATIVE_GALLERY_PREVIEW_EDGE = 1440/);
-  assert.match(app, /nativePreviewCompatible[\s\S]*Math\.max\(width, height\) <= MAX_NATIVE_GALLERY_PREVIEW_EDGE[\s\S]*sourceFrameRate <= frameRate/);
-  assert.match(app, /if \(nativePreviewCompatible\) return `\/videos\/\$\{encodeURIComponent\(file\)\}`/);
-  assert.match(app, /`\/video-previews\/\$\{encodeURIComponent\(file\)\}\?size=\$\{resolution\}&fps=\$\{frameRate\}`/);
+  const previewSourceStart = app.indexOf('function galleryVideoPreviewSource(video)');
+  const previewSourceEnd = app.indexOf('\nfunction desktopSideLibraryHoverPreviewAllowed()', previewSourceStart);
+  const previewSource = app.slice(previewSourceStart, previewSourceEnd);
+  assert.match(previewSource, /const nativeEdgeLimit = touchFirstGalleryDevice\(\) \? resolution : MAX_NATIVE_GALLERY_PREVIEW_EDGE/);
+  assert.match(previewSource, /nativePreviewCompatible[\s\S]*Math\.max\(width, height\) <= nativeEdgeLimit[\s\S]*sourceFrameRate <= frameRate/);
+  assert.match(previewSource, /if \(nativePreviewCompatible\) return `\/videos\/\$\{encodeURIComponent\(file\)\}`/);
+  assert.match(previewSource, /`\/video-previews\/\$\{encodeURIComponent\(file\)\}\?size=\$\{resolution\}&fps=\$\{frameRate\}`/);
   assert.match(app, /video\.dataset\.loaded !== 'true'/);
   assert.match(app, /let galleryPreviewActive = new Set\(\)/);
   assert.match(app, /function centeredGalleryPreviewRow\(candidates, center\)/);
@@ -78,7 +82,11 @@ test('mobile Library paints its mounted grid before refreshing stale data', () =
   const refreshStart = app.indexOf('function refreshGallery(soft, options = {})');
   const refreshEnd = app.indexOf('\nfunction updatePrivacyButton()', refreshStart);
   const refreshGallery = app.slice(refreshStart, refreshEnd);
-  assert.match(app, /const GALLERY_ENTRY_REFRESH_DELAY_MS = 2200/);
+  const refreshDelay = Number(app.match(/const GALLERY_ENTRY_REFRESH_DELAY_MS = (\d+)/)?.[1]);
+  const previewDelay = Number(app.match(/const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = (\d+)/)?.[1]);
+  assert.ok(refreshDelay > 0, 'the mounted Library should refresh after a short quiet period');
+  assert.ok(previewDelay >= refreshDelay + 1000,
+    'mobile decoder startup must not share the stale-data refresh deadline');
   assert.match(app, /function scheduleGalleryEntryRefresh\(delay = GALLERY_ENTRY_REFRESH_DELAY_MS\)/);
   assert.match(app, /function resumeGalleryPreviewsAfterPaint\(\)/);
   assert.match(setView, /resumeGalleryPreviewsAfterPaint\(\);\s*scheduleGalleryEntryRefresh\(\);/);
@@ -96,14 +104,22 @@ test('mobile Library paints its mounted grid before refreshing stale data', () =
 });
 
 test('mobile Library gives input priority over preview observer and decoder wake-up', () => {
-  assert.match(app, /const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 2200/);
+  assert.match(app, /const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 2600/);
   assert.match(app, /function scheduleGalleryPreviewWake\(delay = null\)/);
   assert.match(app, /function deferGalleryPreviewWakeForInteraction\(\)/);
-  assert.match(app, /galleryPreviewActive\.forEach\(\(video\) => video\.pause\(\)\);\s*scheduleGalleryPreviewWake\(\)/);
+  const deferStart = app.indexOf('function deferGalleryPreviewWakeForInteraction()');
+  const deferEnd = app.indexOf('\nfunction cancelGalleryPreviewRotation()', deferStart);
+  const deferWake = app.slice(deferStart, deferEnd);
+  assert.match(deferWake, /noteGalleryInteraction\(\)/);
+  assert.match(deferWake, /scheduleGalleryPreviewWake\(\)/);
+  assert.doesNotMatch(deferWake, /\.pause\(|unloadGalleryPreview\(/,
+    'document-level pointer capture must remain free of synchronous media work');
+  assert.match(app, /galleryInputPending\(\) \|\| quietFor < MOBILE_GALLERY_PREVIEW_QUIET_MS/);
+  assert.match(app, /if \(galleryRefreshPromise\)[\s\S]{0,500}scheduleGalleryPreviewWake\(650\)/);
   assert.match(app, /state\.view !== 'gallery' \|\| galleryPreviewWakePending/);
   assert.match(app, /document\.addEventListener\('pointerdown',[\s\S]*deferGalleryPreviewWakeForInteraction\(\)/);
   assert.match(app, /window\.addEventListener\('scroll', \(\) => \{\s*deferGalleryPreviewWakeForInteraction\(\)/);
-  assert.match(app, /if \(window\.matchMedia\?\.\('\(hover: none\), \(pointer: coarse\)'\)\.matches\) return;\s*galleryPreviewScrollTimer/);
+  assert.match(app, /if \(touchFirst\) \{[\s\S]{0,220}return;\s*\}\s*galleryPreviewActive\.forEach/);
 });
 
 test('gallery cards use lightweight preview proxies and one mobile decoder', () => {
@@ -112,13 +128,24 @@ test('gallery cards use lightweight preview proxies and one mobile decoder', () 
   assert.match(app, /function mobileGalleryPreviewCandidates\(center = window\.innerHeight \/ 2\)/);
   assert.match(app, /document\.elementFromPoint\(x, y\)\?\.closest\?\.\('#galleryGrid \.card'\)/);
   assert.match(app, /const previewPool = touchFirst \? mobileGalleryPreviewCandidates\(center\) : \[\.\.\.galleryPreviewIntersecting\]/);
-  assert.match(app, /if \(window\.matchMedia\?\.\('\(hover: none\), \(pointer: coarse\)'\)\.matches\) \{\s*scheduleGalleryPreviewPlayback\(180\);\s*return;/);
+  assert.match(app, /if \(touchFirstGalleryDevice\(\)\) \{\s*scheduleGalleryPreviewPlayback\(180\);\s*return;/);
   assert.match(app, /if \(!galleryPreviewObserver\) return;\s*\$\$\('\.gallery-card-video'\)\.forEach/);
   assert.match(app, /const mobileAlternates = touchFirst && centered\.length > 1/);
   assert.match(app, /const MOBILE_GALLERY_PREVIEW_ROTATE_MS = 4800/);
   assert.match(app, /settleGalleryPreviewPlayback\(true\)/);
   assert.match(app, /advanceMobile \? \(currentIndex \+ 1\) % ordered\.length : currentIndex/);
-  assert.match(app, /if \(touchFirst\) unloadGalleryPreview\(video\)/);
+  const rotationStart = app.indexOf('function scheduleGalleryPreviewRotation()');
+  const rotationEnd = app.indexOf('\nfunction galleryPreviewMotionAllowed()', rotationStart);
+  const rotation = app.slice(rotationStart, rotationEnd);
+  assert.match(rotation, /galleryInputPending\(\) \|\| quietFor < MOBILE_GALLERY_PREVIEW_QUIET_MS/);
+  assert.match(rotation, /window\.requestIdleCallback\(rotate\)/,
+    'starting the alternate mobile decoder should wait for a real idle period');
+  const settleStart = app.indexOf('function settleGalleryPreviewPlayback(advanceMobile = false)');
+  const settleEnd = app.indexOf('\nfunction scheduleGalleryPreviewPlayback', settleStart);
+  const settle = app.slice(settleStart, settleEnd);
+  assert.match(settle, /if \(touchFirst\) pauseGalleryPreview\(video, 10000\)/);
+  assert.doesNotMatch(settle, /unloadGalleryPreview\(/,
+    'rotating between visible mobile previews must not tear down a decoder');
   assert.match(server, /url\.pathname\.startsWith\('\/video-previews\/'\)/);
   assert.match(server, /async function cachedVideoPreview\(media, options = \{\}\)/);
   assert.match(server, /normalizeVideoPreviewOptions\(options\)/);

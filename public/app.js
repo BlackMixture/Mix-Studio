@@ -4067,16 +4067,32 @@ function syncNavigation() {
   document.body.classList.toggle('desktop-library-expanded', libraryExpanded);
   if (galleryLayoutSnapshot) startDesktopGalleryLayoutTransition(galleryLayoutSnapshot);
   renderAppDrawerNavigation();
-  requestIconTooltipScan();
 }
 
 const GALLERY_ENTRY_REFRESH_FRESH_MS = 20 * 1000;
-const GALLERY_ENTRY_REFRESH_DELAY_MS = 2200;
+const GALLERY_ENTRY_REFRESH_DELAY_MS = 1100;
 let galleryDataUpdatedAt = 0;
 let galleryDataRevision = '';
 let galleryRefreshPromise = null;
 let galleryEntryRefreshTimer = null;
 let galleryEntryRefreshIdle = null;
+let galleryLastInteractionAt = performance.now();
+
+function touchFirstGalleryDevice() {
+  return !!window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+}
+
+function galleryInputPending() {
+  try {
+    return !!navigator.scheduling?.isInputPending?.({ includeContinuous: true });
+  } catch {
+    return false;
+  }
+}
+
+function noteGalleryInteraction() {
+  galleryLastInteractionAt = performance.now();
+}
 
 function cancelGalleryEntryRefresh() {
   if (galleryEntryRefreshTimer != null) clearTimeout(galleryEntryRefreshTimer);
@@ -4096,6 +4112,10 @@ function scheduleGalleryEntryRefresh(delay = GALLERY_ENTRY_REFRESH_DELAY_MS) {
       galleryEntryRefreshTimer = null;
       galleryEntryRefreshIdle = null;
       if (state.view !== 'gallery') return;
+      if (touchFirstGalleryDevice() && galleryInputPending()) {
+        scheduleGalleryEntryRefresh(700);
+        return;
+      }
       if ($('#lightbox')?.classList.contains('show')) {
         scheduleGalleryEntryRefresh();
         return;
@@ -4104,9 +4124,11 @@ function scheduleGalleryEntryRefresh(delay = GALLERY_ENTRY_REFRESH_DELAY_MS) {
       refreshGallery(true, { conditional: true }).catch(() => { /* keep the mounted Library usable */ });
     };
     if (typeof window.requestIdleCallback === 'function') {
-      galleryEntryRefreshIdle = window.requestIdleCallback(refresh, { timeout: 1400 });
+      galleryEntryRefreshIdle = touchFirstGalleryDevice()
+        ? window.requestIdleCallback(refresh)
+        : window.requestIdleCallback(refresh, { timeout: 1400 });
     } else {
-      galleryEntryRefreshTimer = setTimeout(refresh, 0);
+      galleryEntryRefreshTimer = setTimeout(refresh, touchFirstGalleryDevice() ? 180 : 0);
     }
   }, Math.max(0, delay));
 }
@@ -4156,6 +4178,7 @@ function setView(view, opts = {}) {
   if (isGallery) {
     // The grid stays mounted between tabs. Expose that cached view first so
     // mobile taps can land before any network, DOM, or video-preview work.
+    noteGalleryInteraction();
     resumeGalleryPreviewsAfterPaint();
     scheduleGalleryEntryRefresh();
     if (opts.focusedResult) cancelContextualGuide('library-basics');
@@ -22315,10 +22338,14 @@ let galleryPreviewWakeTimer = null;
 let galleryPreviewWakeIdle = null;
 let galleryPreviewWakePending = false;
 let galleryPreviewRotationTimer = null;
-const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 2200;
+let galleryPreviewRotationIdle = null;
+let galleryPreviewWakeSequence = 0;
+const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 2600;
+const MOBILE_GALLERY_PREVIEW_QUIET_MS = 850;
 const MOBILE_GALLERY_PREVIEW_ROTATE_MS = 4800;
 
 function cancelGalleryPreviewWake() {
+  galleryPreviewWakeSequence += 1;
   if (galleryPreviewWakeTimer != null) clearTimeout(galleryPreviewWakeTimer);
   if (galleryPreviewWakeIdle != null && typeof window.cancelIdleCallback === 'function') {
     window.cancelIdleCallback(galleryPreviewWakeIdle);
@@ -22330,29 +22357,54 @@ function cancelGalleryPreviewWake() {
 
 function scheduleGalleryPreviewWake(delay = null) {
   cancelGalleryPreviewWake();
-  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  const wakeSequence = galleryPreviewWakeSequence;
+  const touchFirst = touchFirstGalleryDevice();
   const wait = delay == null ? (touchFirst ? MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS : 0) : delay;
   galleryPreviewWakePending = true;
   galleryPreviewWakeTimer = setTimeout(() => {
     galleryPreviewWakeTimer = null;
     const wake = () => {
+      if (wakeSequence !== galleryPreviewWakeSequence) return;
       galleryPreviewWakeTimer = null;
       galleryPreviewWakeIdle = null;
+      if (state.view !== 'gallery' || $('#lightbox')?.classList.contains('show')) {
+        galleryPreviewWakePending = false;
+        return;
+      }
+      if (touchFirst) {
+        const quietFor = performance.now() - galleryLastInteractionAt;
+        if (galleryInputPending() || quietFor < MOBILE_GALLERY_PREVIEW_QUIET_MS) {
+          scheduleGalleryPreviewWake(Math.max(300, MOBILE_GALLERY_PREVIEW_QUIET_MS - quietFor));
+          return;
+        }
+        if (galleryRefreshPromise) {
+          const refresh = galleryRefreshPromise;
+          const resume = () => {
+            if (wakeSequence === galleryPreviewWakeSequence && state.view === 'gallery') {
+              scheduleGalleryPreviewWake(650);
+            }
+          };
+          refresh.then(resume, resume);
+          return;
+        }
+      }
       galleryPreviewWakePending = false;
-      if (state.view !== 'gallery' || $('#lightbox')?.classList.contains('show')) return;
       resetGalleryPreviewObservation();
     };
     if (typeof window.requestIdleCallback === 'function') {
-      galleryPreviewWakeIdle = window.requestIdleCallback(wake, { timeout: 900 });
+      galleryPreviewWakeIdle = touchFirst
+        ? window.requestIdleCallback(wake)
+        : window.requestIdleCallback(wake, { timeout: 900 });
     } else {
-      galleryPreviewWakeTimer = setTimeout(wake, 0);
+      galleryPreviewWakeTimer = setTimeout(wake, touchFirst ? 180 : 0);
     }
   }, Math.max(0, wait));
 }
 
 function deferGalleryPreviewWakeForInteraction() {
   if (state.view !== 'gallery') return;
-  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  noteGalleryInteraction();
+  const touchFirst = touchFirstGalleryDevice();
   if (!touchFirst) {
     if (galleryPreviewWakePending) scheduleGalleryPreviewWake();
     return;
@@ -22360,20 +22412,37 @@ function deferGalleryPreviewWakeForInteraction() {
   cancelGalleryPreviewRotation();
   clearTimeout(galleryPreviewSettleTimer);
   galleryPreviewSettleTimer = null;
-  galleryPreviewActive.forEach((video) => video.pause());
   scheduleGalleryPreviewWake();
 }
 
 function cancelGalleryPreviewRotation() {
   if (galleryPreviewRotationTimer != null) clearTimeout(galleryPreviewRotationTimer);
+  if (galleryPreviewRotationIdle != null && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(galleryPreviewRotationIdle);
+  }
   galleryPreviewRotationTimer = null;
+  galleryPreviewRotationIdle = null;
 }
 
 function scheduleGalleryPreviewRotation() {
   cancelGalleryPreviewRotation();
   galleryPreviewRotationTimer = setTimeout(() => {
     galleryPreviewRotationTimer = null;
-    settleGalleryPreviewPlayback(true);
+    const rotate = () => {
+      galleryPreviewRotationIdle = null;
+      if (state.view !== 'gallery') return;
+      const quietFor = performance.now() - galleryLastInteractionAt;
+      if (galleryInputPending() || quietFor < MOBILE_GALLERY_PREVIEW_QUIET_MS) {
+        scheduleGalleryPreviewRotation();
+        return;
+      }
+      settleGalleryPreviewPlayback(true);
+    };
+    if (touchFirstGalleryDevice() && typeof window.requestIdleCallback === 'function') {
+      galleryPreviewRotationIdle = window.requestIdleCallback(rotate);
+    } else {
+      rotate();
+    }
   }, MOBILE_GALLERY_PREVIEW_ROTATE_MS);
 }
 
@@ -22394,9 +22463,10 @@ function galleryVideoPreviewSource(video) {
   const width = Math.round(Number(info.width) || 0);
   const height = Math.round(Number(info.height) || 0);
   const sourceFrameRate = Number(info.fps) || 0;
+  const nativeEdgeLimit = touchFirstGalleryDevice() ? resolution : MAX_NATIVE_GALLERY_PREVIEW_EDGE;
   const nativePreviewCompatible = /\.mp4$/i.test(file)
     && width > 0 && height > 0
-    && Math.max(width, height) <= MAX_NATIVE_GALLERY_PREVIEW_EDGE
+    && Math.max(width, height) <= nativeEdgeLimit
     && sourceFrameRate > 0 && sourceFrameRate <= frameRate;
   if (nativePreviewCompatible) return `/videos/${encodeURIComponent(file)}`;
   return `/video-previews/${encodeURIComponent(file)}?size=${resolution}&fps=${frameRate}`;
@@ -22407,9 +22477,18 @@ function desktopSideLibraryHoverPreviewAllowed() {
     && state.view !== 'gallery'
     && galleryPreviewMotionAllowed();
 }
-function unloadGalleryPreview(video) {
+function cancelGalleryPreviewUnload(video) {
   if (!video) return;
   clearTimeout(video._previewUnloadTimer);
+  video._previewUnloadTimer = null;
+  if (video._previewUnloadIdle != null && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(video._previewUnloadIdle);
+  }
+  video._previewUnloadIdle = null;
+}
+function unloadGalleryPreview(video) {
+  if (!video) return;
+  cancelGalleryPreviewUnload(video);
   video.pause();
   if (video.dataset.loaded !== 'true') return;
   try { video.currentTime = 0; } catch { /* noop */ }
@@ -22420,20 +22499,28 @@ function unloadGalleryPreview(video) {
 function pauseGalleryPreview(video, unloadDelay = 2800) {
   if (!video) return;
   video.pause();
-  clearTimeout(video._previewUnloadTimer);
+  cancelGalleryPreviewUnload(video);
   video._previewUnloadTimer = setTimeout(() => {
-    if (galleryPreviewActive.has(video) || !video.isConnected || video.dataset.loaded !== 'true') return;
-    const rect = video.getBoundingClientRect();
-    if (rect.bottom > 0 && rect.top < window.innerHeight) return;
-    try { video.currentTime = 0; } catch { /* noop */ }
-    video.removeAttribute('src');
-    video.dataset.loaded = 'false';
-    video.load();
+    video._previewUnloadTimer = null;
+    const release = () => {
+      video._previewUnloadIdle = null;
+      if (galleryPreviewActive.has(video) || video.dataset.loaded !== 'true') return;
+      if (video.isConnected) {
+        const rect = video.getBoundingClientRect();
+        if (rect.bottom > 0 && rect.top < window.innerHeight) return;
+      }
+      unloadGalleryPreview(video);
+    };
+    if (touchFirstGalleryDevice() && typeof window.requestIdleCallback === 'function') {
+      video._previewUnloadIdle = window.requestIdleCallback(release);
+    } else {
+      release();
+    }
   }, unloadDelay);
 }
 function playGalleryPreview(video) {
   if (!video || !galleryPreviewMotionAllowed()) return;
-  clearTimeout(video._previewUnloadTimer);
+  cancelGalleryPreviewUnload(video);
   if (video.dataset.loaded !== 'true' && video.dataset.src) {
     video.src = video.dataset.src;
     video.dataset.loaded = 'true';
@@ -22525,7 +22612,14 @@ function settleGalleryPreviewPlayback(advanceMobile = false) {
   cancelGalleryPreviewRotation();
   if (!galleryPreviewMotionAllowed() || state.view !== 'gallery' || galleryPreviewWakePending) return;
   const center = window.innerHeight / 2;
-  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  const touchFirst = touchFirstGalleryDevice();
+  if (touchFirst) {
+    const quietFor = performance.now() - galleryLastInteractionAt;
+    if (galleryInputPending() || quietFor < MOBILE_GALLERY_PREVIEW_QUIET_MS) {
+      scheduleGalleryPreviewWake(Math.max(300, MOBILE_GALLERY_PREVIEW_QUIET_MS - quietFor));
+      return;
+    }
+  }
   const previewPool = touchFirst ? mobileGalleryPreviewCandidates(center) : [...galleryPreviewIntersecting];
   const candidates = previewPool.filter((video) => {
     if (!video.isConnected) return false;
@@ -22545,7 +22639,7 @@ function settleGalleryPreviewPlayback(advanceMobile = false) {
   const next = new Set(centered);
   galleryPreviewActive.forEach((video) => {
     if (!next.has(video)) {
-      if (touchFirst) unloadGalleryPreview(video);
+      if (touchFirst) pauseGalleryPreview(video, 10000);
       else pauseGalleryPreview(video);
     }
   });
@@ -22576,9 +22670,12 @@ function resetGalleryPreviewObservation() {
   clearTimeout(galleryPreviewSettleTimer);
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   galleryPreviewIntersecting.clear();
+  galleryPreviewActive.forEach((video) => {
+    if (!video.isConnected) pauseGalleryPreview(video, 0);
+  });
   galleryPreviewActive = new Set([...galleryPreviewActive].filter((video) => video.isConnected));
   if (state.view !== 'gallery' || galleryPreviewWakePending) return;
-  if (window.matchMedia?.('(hover: none), (pointer: coarse)').matches) {
+  if (touchFirstGalleryDevice()) {
     scheduleGalleryPreviewPlayback(180);
     return;
   }
@@ -22597,10 +22694,12 @@ function suspendGalleryPreviewPlayback() {
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   galleryPreviewIntersecting.clear();
   const loaded = new Set([...galleryPreviewActive, ...$$('.gallery-card-video[data-loaded="true"]')]);
+  const touchFirst = touchFirstGalleryDevice();
   loaded.forEach((video) => {
     video._desktopSideLibraryHovered = false;
-    clearTimeout(video._previewUnloadTimer);
-    unloadGalleryPreview(video);
+    cancelGalleryPreviewUnload(video);
+    if (touchFirst) pauseGalleryPreview(video, 30000);
+    else unloadGalleryPreview(video);
   });
   galleryPreviewActive.clear();
 }
@@ -22615,8 +22714,9 @@ function handoffGalleryPreviewsToFocusedMedia() {
   if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
   galleryPreviewIntersecting.clear();
   const active = [...galleryPreviewActive];
+  const touchFirst = touchFirstGalleryDevice();
   active.forEach((video) => {
-    clearTimeout(video._previewUnloadTimer);
+    cancelGalleryPreviewUnload(video);
     video.pause();
   });
   galleryPreviewActive.clear();
@@ -22625,7 +22725,9 @@ function handoffGalleryPreviewsToFocusedMedia() {
   setTimeout(() => {
     if (!$('#lightbox')?.classList.contains('show')) return;
     active.forEach((video) => {
-      if (video.isConnected) unloadGalleryPreview(video);
+      if (!video.isConnected) return;
+      if (touchFirst) pauseGalleryPreview(video, 30000);
+      else unloadGalleryPreview(video);
     });
   }, 0);
 }
@@ -22635,8 +22737,12 @@ window.addEventListener('scroll', () => {
   if (state.view !== 'gallery' || !galleryPreviewMotionAllowed()) return;
   cancelGalleryPreviewRotation();
   clearTimeout(galleryPreviewScrollTimer);
+  const touchFirst = touchFirstGalleryDevice();
+  if (touchFirst) {
+    $$('.gallery-card-video[data-loaded="true"]').forEach((video) => pauseGalleryPreview(video, 10000));
+    return;
+  }
   galleryPreviewActive.forEach((video) => pauseGalleryPreview(video, 3600));
-  if (window.matchMedia?.('(hover: none), (pointer: coarse)').matches) return;
   galleryPreviewScrollTimer = setTimeout(() => scheduleGalleryPreviewPlayback(0), 150);
 }, { passive: true });
 
@@ -29671,7 +29777,6 @@ let iconTooltipButton = null;
 let iconTooltipShowTimer = null;
 let iconTooltipHideTimer = null;
 let iconTooltipFrame = null;
-let iconTooltipScanFrame = null;
 let iconTooltipPreviousDescription = '';
 const iconTooltipSilentFocusTargets = new WeakSet();
 
@@ -29763,14 +29868,6 @@ function scanIconTooltips(root = document) {
   if (root instanceof HTMLButtonElement) markIconTooltip(root);
   if (root.querySelectorAll) root.querySelectorAll('button').forEach(markIconTooltip);
   if (root.parentElement instanceof HTMLButtonElement) markIconTooltip(root.parentElement);
-}
-
-function requestIconTooltipScan() {
-  if (iconTooltipScanFrame) return;
-  iconTooltipScanFrame = requestAnimationFrame(() => {
-    iconTooltipScanFrame = null;
-    scanIconTooltips();
-  });
 }
 
 function restoreIconTooltipDescription(button) {
@@ -29902,7 +29999,6 @@ function initIconTooltips() {
   window.addEventListener('scroll', () => hideIconTooltip(), { passive: true, capture: true });
   window.addEventListener('resize', () => {
     hideIconTooltip();
-    requestIconTooltipScan();
   }, { passive: true });
   new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {

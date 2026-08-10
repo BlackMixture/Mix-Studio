@@ -108,6 +108,9 @@ test('mobile profile menu actions use direct touch activation and pause gallery 
   const menuStart = app.indexOf('function openActionMenu(anchor, items, options = {})');
   const menuEnd = app.indexOf('\nlet sheetScrollY', menuStart);
   const actionMenu = app.slice(menuStart, menuEnd);
+  const suspendStart = app.indexOf('function suspendGalleryPreviewPlayback()');
+  const suspendEnd = app.indexOf('\nfunction handoffGalleryPreviewsToFocusedMedia()', suspendStart);
+  const suspendPreviews = app.slice(suspendStart, suspendEnd);
   assert.match(actionMenu, /b\.addEventListener\('pointerdown',[\s\S]*event\.pointerType !== 'touch'/);
   assert.match(actionMenu, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*try \{ b\.setPointerCapture/);
   assert.match(actionMenu, /b\.addEventListener\('pointerup',[\s\S]*event\.pointerId !== touchPointerId[\s\S]*activate\(event, true\)/);
@@ -121,6 +124,11 @@ test('mobile profile menu actions use direct touch activation and pause gallery 
   assert.match(app, /const previewOverlayOpen = anySheetOpen \|\| !!actionMenuEl/);
   assert.match(app, /previewOverlayOpen && !galleryOverlayPreviewPaused[\s\S]*suspendGalleryPreviewPlayback\(\)/);
   assert.match(app, /!previewOverlayOpen && galleryOverlayPreviewPaused[\s\S]*scheduleGalleryPreviewWake\(\)/);
+  assert.match(suspendPreviews, /const touchFirst = touchFirstGalleryDevice\(\)/);
+  assert.match(suspendPreviews, /if \(touchFirst\) pauseGalleryPreview\(video, 30000\);\s*else unloadGalleryPreview\(video\);/,
+    'opening a mobile menu should preserve the loaded decoder for a quick resume');
+  assert.doesNotMatch(suspendPreviews, /if \(touchFirst\) unloadGalleryPreview/,
+    'mobile menu taps must never synchronously tear down preview sources');
 });
 
 test('only the Resolution section keeps an outer panel surface', () => {

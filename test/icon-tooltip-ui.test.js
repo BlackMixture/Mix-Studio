@@ -94,12 +94,18 @@ test('disabled icon controls retain concise native help until they become intera
 
 test('responsive icon controls use their rendered labels and concise overrides', () => {
   const tooltipJs = sourceAround(app, 'ICON_TOOLTIP_OVERRIDES', 7000);
+  const navStart = app.indexOf('function syncNavigation()');
+  const navEnd = app.indexOf('\nconst GALLERY_ENTRY_REFRESH_FRESH_MS', navStart);
+  const navigationJs = app.slice(navStart, navEnd);
   assert.match(tooltipJs, /gallerySortTrigger:\s*'Sort'/);
   assert.match(tooltipJs, /likesFilter:\s*'Liked only'/);
   assert.match(tooltipJs, /createImageGuideToggle:[\s\S]{0,120}'Add image'/);
   assert.match(tooltipJs, /getComputedStyle\(parent\)/);
   assert.match(tooltipJs, /style\.display === 'none'/);
-  assert.match(app, /function syncNavigation\(\)[\s\S]{0,2400}requestIconTooltipScan\(\)/);
+  assert.doesNotMatch(navigationJs, /scanIconTooltips\(|requestIconTooltipScan\(/,
+    'tab changes must not rescan every mounted Library button');
+  assert.doesNotMatch(app, /function requestIconTooltipScan\(/,
+    'mobile viewport resizes must rely on the incremental mutation scan');
 });
 
 test('tooltip hover polish is subtle, input-aware, and motion-safe', () => {
