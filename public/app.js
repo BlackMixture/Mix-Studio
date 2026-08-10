@@ -17,6 +17,7 @@ const DEFAULT_GALLERY_PREVIEW_RESOLUTION = 640;
 const DEFAULT_GALLERY_PREVIEW_FRAME_RATE = 24;
 const GALLERY_PREVIEW_RESOLUTION_OPTIONS = Object.freeze([480, 640, 720]);
 const GALLERY_PREVIEW_FRAME_RATE_OPTIONS = Object.freeze([12, 18, 24, 30]);
+const MAX_NATIVE_GALLERY_PREVIEW_EDGE = 1440;
 const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
 // Keep every local workspace write bound to the profile that loaded this
 // document. Profile transitions update localStorage before the old page exits,
@@ -2286,6 +2287,8 @@ window.addEventListener('storage', (event) => {
 
 let actionMenuEl = null;
 let actionMenuCleanup = null;
+let actionMenuShield = null;
+let actionMenuShieldTimer = null;
 let galleryOverlayPreviewPaused = false;
 function actionIconMarkup(icon) {
   const paths = {
@@ -2323,17 +2326,37 @@ function actionIconMarkup(icon) {
   return `<svg class="action-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${paths[icon] || paths.use}</svg>`;
 }
 
-function closeActionMenu() {
+function removeActionMenuShield() {
+  clearTimeout(actionMenuShieldTimer);
+  actionMenuShieldTimer = null;
+  if (actionMenuShield) actionMenuShield.remove();
+  actionMenuShield = null;
+}
+
+function closeActionMenu(options = {}) {
   const hadMenu = !!actionMenuEl;
   if (actionMenuCleanup) actionMenuCleanup();
   actionMenuCleanup = null;
   if (actionMenuEl) actionMenuEl.remove();
   actionMenuEl = null;
+  if (options.holdPointerShield && actionMenuShield) {
+    actionMenuShield.classList.add('is-catching-release');
+    clearTimeout(actionMenuShieldTimer);
+    actionMenuShieldTimer = setTimeout(removeActionMenuShield, 420);
+  } else {
+    removeActionMenuShield();
+  }
   if (hadMenu) syncSheetScrollLock();
 }
 
 function openActionMenu(anchor, items, options = {}) {
   closeActionMenu();
+  hideIconTooltip(anchor);
+  const shield = document.createElement('div');
+  shield.className = 'action-menu-shield';
+  shield.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(shield);
+  actionMenuShield = shield;
   const menu = document.createElement('div');
   menu.className = 'action-menu' + (options.tone ? ` action-menu-${options.tone}` : '');
   menu.setAttribute('role', 'menu');
@@ -2369,13 +2392,18 @@ function openActionMenu(anchor, items, options = {}) {
     const activate = (event, afterTouch = false) => {
       if (!b.isConnected) return;
       event?.preventDefault();
-      closeActionMenu();
+      event?.stopPropagation();
+      closeActionMenu({ holdPointerShield: afterTouch });
       if (afterTouch) setTimeout(() => item.action(), 0);
       else item.action();
     };
     b.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'touch' || event.pointerType === 'pen') touchPointerId = event.pointerId;
-    }, { passive: true });
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      touchPointerId = event.pointerId;
+      event.preventDefault();
+      event.stopPropagation();
+      try { b.setPointerCapture(event.pointerId); } catch { /* optional pointer routing */ }
+    });
     b.addEventListener('pointercancel', () => { touchPointerId = null; });
     b.addEventListener('pointerup', (event) => {
       if (touchPointerId == null || event.pointerId !== touchPointerId) return;
@@ -2399,7 +2427,10 @@ function openActionMenu(anchor, items, options = {}) {
   actionMenuEl = menu;
   anchor.setAttribute('aria-expanded', 'true');
   const onDoc = (e) => {
-    if (!menu.contains(e.target) && !anchor.contains(e.target)) closeActionMenu();
+    if (!menu.contains(e.target) && !anchor.contains(e.target)) {
+      const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
+      closeActionMenu({ holdPointerShield: touch });
+    }
   };
   const onKey = (e) => { if (e.key === 'Escape') closeActionMenu(); };
   setTimeout(() => document.addEventListener('pointerdown', onDoc), 0);
@@ -22283,7 +22314,9 @@ let galleryPreviewScrollTimer = null;
 let galleryPreviewWakeTimer = null;
 let galleryPreviewWakeIdle = null;
 let galleryPreviewWakePending = false;
-const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 1400;
+let galleryPreviewRotationTimer = null;
+const MOBILE_GALLERY_PREVIEW_WAKE_DELAY_MS = 2200;
+const MOBILE_GALLERY_PREVIEW_ROTATE_MS = 4800;
 
 function cancelGalleryPreviewWake() {
   if (galleryPreviewWakeTimer != null) clearTimeout(galleryPreviewWakeTimer);
@@ -22318,7 +22351,30 @@ function scheduleGalleryPreviewWake(delay = null) {
 }
 
 function deferGalleryPreviewWakeForInteraction() {
-  if (state.view === 'gallery' && galleryPreviewWakePending) scheduleGalleryPreviewWake();
+  if (state.view !== 'gallery') return;
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  if (!touchFirst) {
+    if (galleryPreviewWakePending) scheduleGalleryPreviewWake();
+    return;
+  }
+  cancelGalleryPreviewRotation();
+  clearTimeout(galleryPreviewSettleTimer);
+  galleryPreviewSettleTimer = null;
+  galleryPreviewActive.forEach((video) => video.pause());
+  scheduleGalleryPreviewWake();
+}
+
+function cancelGalleryPreviewRotation() {
+  if (galleryPreviewRotationTimer != null) clearTimeout(galleryPreviewRotationTimer);
+  galleryPreviewRotationTimer = null;
+}
+
+function scheduleGalleryPreviewRotation() {
+  cancelGalleryPreviewRotation();
+  galleryPreviewRotationTimer = setTimeout(() => {
+    galleryPreviewRotationTimer = null;
+    settleGalleryPreviewPlayback(true);
+  }, MOBILE_GALLERY_PREVIEW_ROTATE_MS);
 }
 
 function galleryPreviewMotionAllowed() {
@@ -22330,9 +22386,19 @@ function galleryPreviewMotionAllowed() {
     && !actionMenuEl
     && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
-function galleryVideoPreviewSource(file) {
+function galleryVideoPreviewSource(video) {
+  const file = String(video?.file || '');
   const resolution = normalizedGalleryPreviewResolution(state.mediaPreferences.previewResolution);
   const frameRate = normalizedGalleryPreviewFrameRate(state.mediaPreferences.previewFrameRate);
+  const info = video?.info || {};
+  const width = Math.round(Number(info.width) || 0);
+  const height = Math.round(Number(info.height) || 0);
+  const sourceFrameRate = Number(info.fps) || 0;
+  const nativePreviewCompatible = /\.mp4$/i.test(file)
+    && width > 0 && height > 0
+    && Math.max(width, height) <= MAX_NATIVE_GALLERY_PREVIEW_EDGE
+    && sourceFrameRate > 0 && sourceFrameRate <= frameRate;
+  if (nativePreviewCompatible) return `/videos/${encodeURIComponent(file)}`;
   return `/video-previews/${encodeURIComponent(file)}?size=${resolution}&fps=${frameRate}`;
 }
 function desktopSideLibraryHoverPreviewAllowed() {
@@ -22427,9 +22493,10 @@ function centeredGalleryPreviewRow(candidates, center) {
   }
   return best.videos;
 }
-function settleGalleryPreviewPlayback() {
+function settleGalleryPreviewPlayback(advanceMobile = false) {
   galleryPreviewSettleTimer = null;
-  if (!galleryPreviewMotionAllowed() || state.view !== 'gallery') return;
+  cancelGalleryPreviewRotation();
+  if (!galleryPreviewMotionAllowed() || state.view !== 'gallery' || galleryPreviewWakePending) return;
   const center = window.innerHeight / 2;
   const candidates = [...galleryPreviewIntersecting].filter((video) => {
     if (!video.isConnected) return false;
@@ -22437,19 +22504,26 @@ function settleGalleryPreviewPlayback() {
     return rect.bottom > window.innerHeight * 0.16 && rect.top < window.innerHeight * 0.84;
   });
   let centered = centeredGalleryPreviewRow(candidates, center);
-  if (window.matchMedia?.('(hover: none), (pointer: coarse)').matches && centered.length > 1) {
-    centered = [centered.reduce((nearest, video) => {
-      const distance = Math.abs(video.getBoundingClientRect().top + video.offsetHeight / 2 - center);
-      const nearestDistance = Math.abs(nearest.getBoundingClientRect().top + nearest.offsetHeight / 2 - center);
-      return distance < nearestDistance ? video : nearest;
-    })];
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  const mobileAlternates = touchFirst && centered.length > 1;
+  if (mobileAlternates) {
+    const ordered = [...centered].sort((a, b) => (
+      a.getBoundingClientRect().left - b.getBoundingClientRect().left
+    ));
+    const currentIndex = ordered.findIndex((video) => galleryPreviewActive.has(video));
+    const nextIndex = currentIndex < 0 ? 0 : (advanceMobile ? (currentIndex + 1) % ordered.length : currentIndex);
+    centered = [ordered[nextIndex]];
   }
   const next = new Set(centered);
   galleryPreviewActive.forEach((video) => {
-    if (!next.has(video)) pauseGalleryPreview(video);
+    if (!next.has(video)) {
+      if (touchFirst) unloadGalleryPreview(video);
+      else pauseGalleryPreview(video);
+    }
   });
   galleryPreviewActive = next;
   galleryPreviewActive.forEach(playGalleryPreview);
+  if (mobileAlternates) scheduleGalleryPreviewRotation();
 }
 function scheduleGalleryPreviewPlayback(delay = 140) {
   clearTimeout(galleryPreviewSettleTimer);
@@ -22470,6 +22544,7 @@ function ensureGalleryPreviewObserver() {
   });
 }
 function resetGalleryPreviewObservation() {
+  cancelGalleryPreviewRotation();
   if (!galleryPreviewObserver) return;
   clearTimeout(galleryPreviewSettleTimer);
   galleryPreviewObserver.disconnect();
@@ -22482,6 +22557,7 @@ function resetGalleryPreviewObservation() {
 
 function suspendGalleryPreviewPlayback() {
   cancelGalleryPreviewWake();
+  cancelGalleryPreviewRotation();
   clearTimeout(galleryPreviewSettleTimer);
   clearTimeout(galleryPreviewScrollTimer);
   galleryPreviewSettleTimer = null;
@@ -22499,6 +22575,7 @@ function suspendGalleryPreviewPlayback() {
 
 function handoffGalleryPreviewsToFocusedMedia() {
   cancelGalleryPreviewWake();
+  cancelGalleryPreviewRotation();
   clearTimeout(galleryPreviewSettleTimer);
   clearTimeout(galleryPreviewScrollTimer);
   galleryPreviewSettleTimer = null;
@@ -22524,8 +22601,10 @@ function handoffGalleryPreviewsToFocusedMedia() {
 window.addEventListener('scroll', () => {
   deferGalleryPreviewWakeForInteraction();
   if (state.view !== 'gallery' || !galleryPreviewMotionAllowed()) return;
+  cancelGalleryPreviewRotation();
   clearTimeout(galleryPreviewScrollTimer);
   galleryPreviewActive.forEach((video) => pauseGalleryPreview(video, 3600));
+  if (window.matchMedia?.('(hover: none), (pointer: coarse)').matches) return;
   galleryPreviewScrollTimer = setTimeout(() => scheduleGalleryPreviewPlayback(0), 150);
 }, { passive: true });
 
@@ -23049,7 +23128,7 @@ function renderGrid() {
       const posterSource = galleryImageSource(it);
       preview.poster = posterSource;
       useCachedGalleryImage(preview, posterSource, 'poster');
-      preview.dataset.src = galleryVideoPreviewSource(latestVideo.file);
+      preview.dataset.src = galleryVideoPreviewSource(latestVideo);
       preview.dataset.loaded = 'false';
       preview.tabIndex = -1;
       preview.setAttribute('aria-hidden', 'true');

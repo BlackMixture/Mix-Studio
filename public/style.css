@@ -7359,9 +7359,17 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
     white-space: nowrap;
   }
 }
+.action-menu-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 179;
+  background: transparent;
+  touch-action: none;
+}
+.action-menu-shield.is-catching-release { cursor: default; }
 .action-menu {
   position: fixed;
-  z-index: 80;
+  z-index: 180;
   min-width: 224px;
   padding: 7px;
   border: 1px solid rgba(255,255,255,0.15);
@@ -7401,6 +7409,7 @@ body.lightbox-meta-resizing * { cursor: ns-resize !important; user-select: none 
   font-size: 13px;
   font-weight: 800;
   text-align: left;
+  touch-action: manipulation;
 }
 .action-menu-item:active,
 .action-menu-item:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,.08); }

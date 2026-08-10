@@ -8,11 +8,12 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 
 ### Mobile video previews
 
-- Replaced full-resolution gallery-card playback with cached, silent proxy clips while keeping the expanded viewer on the original full-quality video.
+- Replaced oversized or high-frame-rate gallery-card playback with cached, silent proxy clips while keeping compatible videos up to 1440 px on their original file and the expanded viewer at full quality.
 - Added profile-level Preview quality preferences for 480, 640, or 720 px video previews and 12, 18, 24, or 30 fps playback. New and existing profiles default to a sharper 640 px at 24 fps, and the cache keeps each quality combination separate.
-- Limited touch-first devices to one centered animated preview decoder at a time and serialized server-side proxy creation to avoid simultaneous mobile decoder and server transcode spikes.
+- Limited touch-first devices to one centered animated preview decoder at a time, alternated fairly between the left and right cards in a visible row, and serialized server-side proxy creation to avoid simultaneous mobile decoder and server transcode spikes.
+- Made every new mobile touch or scroll pause previews and restart their decoder wake-up only after a quiet window, keeping Library navigation and controls ahead of background playback.
 - Reused IntersectionObserver visibility results instead of forcing layout reads across every gallery video whenever preview playback settles.
-- Made mobile profile-menu actions activate directly from completed touch gestures, and pause gallery decoding while menus, sheets, or the app drawer are open.
+- Made mobile profile-menu actions activate directly from completed touch gestures, removed the profile tooltip on touch devices, and added a temporary pointer shield so submenu taps cannot fall through to Library cards below.
 - Kept the original v1.2.0 MiniMax H3, Wan Animate 2, and Mix Packs showcase carousel for the v1.2.4 update notice.
 
 ## 1.2.3 - 2026-08-09

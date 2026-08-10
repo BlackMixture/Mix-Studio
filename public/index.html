@@ -37,7 +37,7 @@
       <span>Update</span>
       <i aria-hidden="true"></i>
     </button>
-    <button class="profile-chip" id="profileBtn" hidden>
+    <button class="profile-chip" id="profileBtn" data-tooltip-exempt hidden>
       <svg class="profile-chip-icon" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="8" r="3.25" fill="none" stroke="currentColor" stroke-width="1.8" />
         <path d="M5.75 19.25c.55-3.35 2.65-5.25 6.25-5.25s5.7 1.9 6.25 5.25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
@@ -2916,7 +2916,7 @@
             <div class="video-preview-quality" id="videoPreviewQuality">
               <div class="video-preview-quality-heading">
                 <strong>Preview quality</strong>
-                <small>Higher settings look smoother and sharper but use more bandwidth and decoding power.</small>
+                <small>Videos up to 1440 px play directly when compatible. Larger or faster videos use these cached proxy limits.</small>
               </div>
               <div class="video-preview-quality-grid">
                 <label for="setVideoPreviewResolution">

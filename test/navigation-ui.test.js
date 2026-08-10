@@ -98,7 +98,7 @@ test('primary navigation uses the neutral Mix Studio glow treatment', () => {
 });
 
 test('mobile profile control uses a compact vector icon', () => {
-  assert.match(html, /id="profileBtn"[\s\S]*class="profile-chip-icon"[\s\S]*id="profileBtnName"/);
+  assert.match(html, /id="profileBtn"[^>]*data-tooltip-exempt[\s\S]*class="profile-chip-icon"[\s\S]*id="profileBtnName"/);
   assert.match(app, /\$\('#profileBtnName'\)\.textContent = state\.profile\.name/);
   assert.doesNotMatch(app, /btn\.textContent = `👤/);
   assert.match(css, /@media \(max-width: 420px\) \{[\s\S]*\.profile-chip-icon \{ width: 16px; height: 16px; \}/);
@@ -108,10 +108,16 @@ test('mobile profile menu actions use direct touch activation and pause gallery 
   const menuStart = app.indexOf('function openActionMenu(anchor, items, options = {})');
   const menuEnd = app.indexOf('\nlet sheetScrollY', menuStart);
   const actionMenu = app.slice(menuStart, menuEnd);
-  assert.match(actionMenu, /b\.addEventListener\('pointerdown',[\s\S]*event\.pointerType === 'touch'/);
+  assert.match(actionMenu, /b\.addEventListener\('pointerdown',[\s\S]*event\.pointerType !== 'touch'/);
+  assert.match(actionMenu, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*try \{ b\.setPointerCapture/);
   assert.match(actionMenu, /b\.addEventListener\('pointerup',[\s\S]*event\.pointerId !== touchPointerId[\s\S]*activate\(event, true\)/);
   assert.match(actionMenu, /b\.addEventListener\('click', activate\)/);
+  assert.match(actionMenu, /hideIconTooltip\(anchor\)/);
+  assert.match(actionMenu, /closeActionMenu\(\{ holdPointerShield: afterTouch \}\)/);
+  assert.match(app, /actionMenuShieldTimer = setTimeout\(removeActionMenuShield, 420\)/);
   assert.match(actionMenu, /if \(afterTouch\) setTimeout\(\(\) => item\.action\(\), 0\)/);
+  assert.match(css, /\.action-menu-shield \{[\s\S]*z-index: 179;[\s\S]*touch-action: none;/);
+  assert.match(css, /\.action-menu \{[\s\S]*z-index: 180;/);
   assert.match(app, /const previewOverlayOpen = anySheetOpen \|\| !!actionMenuEl/);
   assert.match(app, /previewOverlayOpen && !galleryOverlayPreviewPaused[\s\S]*suspendGalleryPreviewPlayback\(\)/);
   assert.match(app, /!previewOverlayOpen && galleryOverlayPreviewPaused[\s\S]*scheduleGalleryPreviewWake\(\)/);
