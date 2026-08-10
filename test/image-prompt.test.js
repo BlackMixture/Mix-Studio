@@ -14,6 +14,7 @@ const {
 const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const styleCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
 
 test('image recreation instruction asks for faithful text-to-image detail', () => {
   assert.match(IMAGE_RECREATION_INSTRUCTION, /text-to-image/i);
@@ -56,12 +57,16 @@ test('local prompt assistant exposes iterative revision with optional source con
   assert.match(indexHtml, /data-prompt-revision="Change the main subject to /);
   assert.match(indexHtml, /id="promptAssistantSourceToggle"/);
   assert.match(indexHtml, /id="promptAssistantUndo"/);
+  assert.match(indexHtml, /id="promptAssistantProgress"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(appJs, /api\('\/api\/prompt\/revise'/);
   assert.match(appJs, /currentPrompt: before,[\s\S]*changeRequest,[\s\S]*imageName:/);
   assert.match(appJs, /const requestId = newPromptAssistantRequestId\(\)/);
   assert.match(appJs, /fetch\('\/api\/prompt\/revise\/cancel'/);
   assert.match(appJs, /\/api\/prompt\/revise\/status\?requestId=/);
   assert.match(appJs, /signal: requestController\.signal/);
+  assert.match(appJs, /function renderPromptAssistantProgress\(overrides = \{\}\)/);
+  assert.match(appJs, /rewrit\(e\|ing\)\.\*prompt/);
+  assert.match(styleCss, /\.prompt-assistant-progress \{[\s\S]*\.prompt-assistant-progress-track/);
   assert.match(appJs, /state\.enhance = false;[\s\S]*renderEnhance\(\)/);
   assert.match(appJs, /state\.promptRevisionUndo = \{ before, after: revised, view: revisionView \}/);
 });
