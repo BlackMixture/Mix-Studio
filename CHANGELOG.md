@@ -10,6 +10,7 @@
 - Limited touch-first devices to one centered animated preview decoder at a time and serialized server-side proxy creation to avoid simultaneous mobile decoder and server transcode spikes.
 - Reused IntersectionObserver visibility results instead of forcing layout reads across every gallery video whenever preview playback settles.
 - Made mobile profile-menu actions activate directly from completed touch gestures, and pause gallery decoding while menus, sheets, or the app drawer are open.
+- Kept the original v1.2.0 MiniMax H3, Wan Animate 2, and Mix Packs showcase carousel for the v1.2.4 update notice.
 
 ## 1.2.3 - 2026-08-09
 

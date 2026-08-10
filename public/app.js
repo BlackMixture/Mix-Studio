@@ -1812,16 +1812,32 @@ checkAuth();
 /* ------------------------------------------------------------------ */
 
 const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
+const MIX_STUDIO_120_SHOWCASE = [
+  {
+    eyebrow: 'Video generation',
+    title: 'MiniMax H3 + Turbo is here',
+    message: 'Create H3 videos with native audio, reference inputs, guided prompting, and the new Turbo LoRA workflow with its audio-safe custom sampler.',
+    media: '/update-media/v1.2.0-h3-turbo.mp4',
+    theme: 'h3',
+  },
+  {
+    eyebrow: 'Character animation',
+    title: 'Wan Animate 2 is available',
+    message: 'Animate a character image from a performance video with native ComfyUI support for high-fidelity motion, expression, identity, timing, and source audio.',
+    media: '/update-media/v1.2.0-wan-animate2.mp4',
+    theme: 'wan-animate2',
+  },
+  {
+    eyebrow: 'Creative workflow',
+    title: 'Meet Mix Packs',
+    message: 'Browse visual prompt collections, combine multiple looks, and bring the same reusable creative direction into image and video generations.',
+    media: '/update-media/v1.2.0-mix-packs.mp4',
+    mediaMobile: '/update-media/v1.2.0-mix-packs-mobile.mp4',
+    theme: 'packs',
+  },
+];
 const OFFICIAL_RELEASE_SHOWCASES = {
-  '1.2.4': [
-    {
-      eyebrow: 'Mobile performance',
-      title: 'Lighter video previews',
-      message: 'Animated Library cards now use compact preview clips and one centered mobile decoder, while profile menus stay responsive and expanded videos retain full quality.',
-      media: '',
-      theme: 'release',
-    },
-  ],
+  '1.2.4': MIX_STUDIO_120_SHOWCASE,
   '1.2.3': [
     {
       eyebrow: 'Mobile performance',
@@ -1856,30 +1872,7 @@ const OFFICIAL_RELEASE_SHOWCASES = {
       theme: 'h3',
     },
   ],
-  '1.2.0': [
-    {
-      eyebrow: 'Video generation',
-      title: 'MiniMax H3 + Turbo is here',
-      message: 'Create H3 videos with native audio, reference inputs, guided prompting, and the new Turbo LoRA workflow with its audio-safe custom sampler.',
-      media: '/update-media/v1.2.0-h3-turbo.mp4',
-      theme: 'h3',
-    },
-    {
-      eyebrow: 'Character animation',
-      title: 'Wan Animate 2 is available',
-      message: 'Animate a character image from a performance video with native ComfyUI support for high-fidelity motion, expression, identity, timing, and source audio.',
-      media: '/update-media/v1.2.0-wan-animate2.mp4',
-      theme: 'wan-animate2',
-    },
-    {
-      eyebrow: 'Creative workflow',
-      title: 'Meet Mix Packs',
-      message: 'Browse visual prompt collections, combine multiple looks, and bring the same reusable creative direction into image and video generations.',
-      media: '/update-media/v1.2.0-mix-packs.mp4',
-      mediaMobile: '/update-media/v1.2.0-mix-packs-mobile.mp4',
-      theme: 'packs',
-    },
-  ],
+  '1.2.0': MIX_STUDIO_120_SHOWCASE,
 };
 let updateShowcaseSlide = 0;
 let updateShowcaseReturnFocus = null;

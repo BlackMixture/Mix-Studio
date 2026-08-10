@@ -154,7 +154,9 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(css, /\.updates-release-actions \[hidden\] \{ display: none; \}/);
   assert.match(app, /drawerButton\.hidden = !latest/);
   assert.match(app, /OFFICIAL_RELEASE_SHOWCASES/);
-  assert.match(app, /'1\.2\.0': \[/);
+  assert.match(app, /const MIX_STUDIO_120_SHOWCASE = \[/);
+  assert.match(app, /'1\.2\.4': MIX_STUDIO_120_SHOWCASE/);
+  assert.match(app, /'1\.2\.0': MIX_STUDIO_120_SHOWCASE/);
   assert.match(app, /title: 'MiniMax H3 \+ Turbo is here'[\s\S]*title: 'Wan Animate 2 is available'[\s\S]*title: 'Meet Mix Packs'/);
   assert.match(app, /media: '\/update-media\/v1\.2\.0-wan-animate2\.mp4'/);
   assert.match(app, /theme: 'wan-animate2'/);
