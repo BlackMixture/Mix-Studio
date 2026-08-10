@@ -84,6 +84,7 @@ test('Wan Animate 2 graph follows the official six-step native workflow and pres
   assert.deepEqual(graph.conditioning.inputs.reference_image, ['reference_resize', 0]);
   assert.deepEqual(graph.conditioning.inputs.pose_video, ['performance_resize', 0]);
   assert.equal(graph.conditioning.inputs.length, 81);
+  assert.equal(graph.conditioning.inputs.batch_size, 1);
   assert.equal(graph.conditioning.inputs.reference_image_strength, 1.1);
   assert.equal(graph.conditioning.inputs.pose_strength, 0.9);
   assert.equal(graph.scheduler.inputs.steps, 6);

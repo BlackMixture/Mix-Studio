@@ -4,6 +4,10 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### Wan Animate 2 reliability
+
+- Added the required single-video `batch_size` input to Wan Animate 2 conditioning graphs, matching the current native ComfyUI node schema and official workflow template.
+
 ### Mobile Library responsiveness
 
 - Fixed a Chrome mobile relayout loop caused by applying `content-visibility` to very large Library grids, while retaining the optimization on desktop.
