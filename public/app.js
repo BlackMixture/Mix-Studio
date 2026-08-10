@@ -6765,6 +6765,12 @@ let promptAssistantBusy = false;
 let promptAssistantRequestId = '';
 let promptAssistantAbortController = null;
 let promptAssistantProgressTimer = null;
+let promptAssistantProgressState = {
+  title: 'Revising prompt',
+  detail: 'Reviewing your request',
+  value: 'Working',
+  percent: null,
+};
 
 function newPromptAssistantRequestId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -6784,15 +6790,45 @@ async function refreshPromptAssistantProgress(requestId) {
     const response = await fetch(`/api/prompt/revise/status?requestId=${encodeURIComponent(requestId)}`);
     const progress = await response.json().catch(() => ({}));
     if (response.ok && requestId === promptAssistantRequestId && promptAssistantBusy) {
-      setPromptAssistantBusy(true, progress.message || 'Rewriting prompt…');
+      const detail = promptAssistantStageDetail(progress.message || 'Rewriting prompt…');
+      setPromptAssistantBusy(true, '', { detail, value: 'Working' });
     }
   } catch { /* the main request owns connection errors */ }
   if (requestId === promptAssistantRequestId && promptAssistantBusy) {
     promptAssistantProgressTimer = setTimeout(() => refreshPromptAssistantProgress(requestId), 1000);
   }
 }
+function renderPromptAssistantProgress(overrides = {}) {
+  promptAssistantProgressState = Object.assign({}, promptAssistantProgressState, overrides);
+  const progress = $('#promptAssistantProgress');
+  progress.hidden = !promptAssistantBusy;
+  if (!promptAssistantBusy) return;
+  $('#promptAssistantProgressTitle').textContent = promptAssistantProgressState.title;
+  $('#promptAssistantProgressDetail').textContent = promptAssistantProgressState.detail;
+  const hasPercent = promptAssistantProgressState.percent !== null && promptAssistantProgressState.percent !== '';
+  const percent = Number(promptAssistantProgressState.percent);
+  const determinate = hasPercent && Number.isFinite(percent);
+  progress.classList.toggle('determinate', determinate);
+  $('#promptAssistantProgressValue').textContent = determinate
+    ? `${Math.max(0, Math.min(100, Math.round(percent)))}%`
+    : (promptAssistantProgressState.value || 'Working');
+  $('#promptAssistantProgressFill').style.width = determinate
+    ? `${Math.max(0, Math.min(100, percent))}%`
+    : '36%';
+}
 
-function setPromptAssistantBusy(busy, message = '') {
+function promptAssistantStageDetail(value) {
+  const text = String(value || '').replace(/\.{3}$/, '').trim();
+  if (/queue|queued/i.test(text)) return 'Waiting for the local prompt model';
+  if (/loading text encoder/i.test(text)) return 'Loading the local prompt model';
+  if (/load(ing)? image/i.test(text)) return 'Reading the reference image';
+  if (/revis(ing|e).*prompt|rewrit(e|ing).*prompt/i.test(text)) return 'Writing the revised prompt';
+  if (/enhanc(ing)? prompt|textgenerate/i.test(text)) return 'Writing the revised prompt';
+  if (/preview|working/i.test(text)) return 'Finishing the revised prompt';
+  return text || 'Reviewing your request';
+}
+
+function setPromptAssistantBusy(busy, message = '', progress = {}) {
   promptAssistantBusy = busy;
   const form = $('#promptAssistantForm');
   form.setAttribute('aria-busy', String(busy));
@@ -6801,11 +6837,21 @@ function setPromptAssistantBusy(busy, message = '') {
   $('#promptAssistantSourceToggle').disabled = busy || !promptAssistantSourceImage();
   $$('.prompt-assistant-starters button').forEach((button) => { button.disabled = busy; });
   const status = $('#promptAssistantStatus');
-  status.hidden = !message;
+  status.hidden = busy || !message;
   status.textContent = message;
   const cancel = $('#promptAssistantCancel');
   cancel.textContent = busy ? 'Cancel revision' : 'Cancel';
   cancel.disabled = false;
+  if (busy) renderPromptAssistantProgress(progress);
+  else {
+    $('#promptAssistantProgress').hidden = true;
+    promptAssistantProgressState = {
+      title: 'Revising prompt',
+      detail: 'Reviewing your request',
+      value: 'Working',
+      percent: null,
+    };
+  }
 }
 
 function openPromptAssistant() {
@@ -6849,9 +6895,7 @@ function openPromptAssistant() {
     : 'Change the woman to a man in a tailored navy suit, use teal and gold, and keep the lighting and composition.';
   if (!promptAssistantBusy) $('#promptAssistantInput').value = '';
   renderPromptAssistantSource();
-  setPromptAssistantBusy(promptAssistantBusy, promptAssistantBusy
-    ? ($('#promptAssistantStatus').textContent || 'Rewriting the complete prompt…')
-    : '');
+  setPromptAssistantBusy(promptAssistantBusy);
   const undo = state.promptRevisionUndo;
   $('#promptAssistantUndo').hidden = !(undo && undo.view === state.view && currentPrompt === undo.after);
   $('#promptAssistantSheet').classList.add('show');
@@ -6960,7 +7004,12 @@ $('#promptAssistantForm').addEventListener('submit', async (event) => {
   const requestController = new AbortController();
   promptAssistantRequestId = requestId;
   promptAssistantAbortController = requestController;
-  setPromptAssistantBusy(true, before ? 'Rewriting the complete prompt…' : 'Building a generation-ready prompt…');
+  setPromptAssistantBusy(true, '', {
+    title: before ? 'Revising prompt' : 'Building prompt',
+    detail: before ? 'Reviewing your changes' : 'Turning your direction into a generation-ready prompt',
+    value: 'Starting',
+    percent: null,
+  });
   stopPromptAssistantProgress();
   promptAssistantProgressTimer = setTimeout(() => refreshPromptAssistantProgress(requestId), 250);
   checkpointDesktopInputSetup();

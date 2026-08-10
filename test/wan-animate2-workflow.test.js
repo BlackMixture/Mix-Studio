@@ -33,6 +33,7 @@ test('Wan Animate 2 prompt guidance remains optional and scene-focused', () => {
 
 test('Wan Animate 2 graph follows the official six-step native workflow and preserves source media timing', async () => {
   let filtered = false;
+  const orderedClasses = [];
   const graph = await buildWanAnimate2Graph('character.png', {
     prompt: 'A detective in a rainy alley, medium shot',
     driveVideoName: 'performance.mp4',
@@ -44,10 +45,13 @@ test('Wan Animate 2 graph follows the official six-step native workflow and pres
     makePoster: true,
     loras: [{ name: 'style.safetensors', strength: 0.7, on: true }],
   }, settings, {
-    nodeFromOrdered: async (classType, _ordered, links, overrides) => ({
-      class_type: classType,
-      inputs: Object.assign({}, links, overrides),
-    }),
+    nodeFromOrdered: async (classType, _ordered, links, overrides) => {
+      orderedClasses.push(classType);
+      return {
+        class_type: classType,
+        inputs: Object.assign({}, links, overrides),
+      };
+    },
     filterInputs: async (value) => { filtered = true; return value; },
   });
 
@@ -60,6 +64,23 @@ test('Wan Animate 2 graph follows the official six-step native workflow and pres
   assert.equal(graph.cache.inputs.dtype, 'int8');
   assert.equal(graph.performance_load.class_type, 'LoadVideo');
   assert.equal(graph.performance_load.inputs.video, 'performance.mp4');
+  assert.deepEqual(graph.reference_resize.inputs, {
+    input: ['reference_load', 0],
+    resize_type: 'scale dimensions',
+    'resize_type.width': 480,
+    'resize_type.height': 848,
+    'resize_type.crop': 'center',
+    scale_method: 'area',
+  });
+  assert.deepEqual(graph.performance_resize.inputs, {
+    input: ['performance_parts', 0],
+    resize_type: 'scale dimensions',
+    'resize_type.width': 480,
+    'resize_type.height': 848,
+    'resize_type.crop': 'center',
+    scale_method: 'area',
+  });
+  assert.equal(orderedClasses.includes('ResizeImageMaskNode'), false);
   assert.deepEqual(graph.conditioning.inputs.reference_image, ['reference_resize', 0]);
   assert.deepEqual(graph.conditioning.inputs.pose_video, ['performance_resize', 0]);
   assert.equal(graph.conditioning.inputs.length, 81);
