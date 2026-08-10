@@ -4,6 +4,10 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### MiniMax H3 resolution reuse
+
+- Fixed setting reuse for H3 renders with RTX 4K Pass so the picker restores the original S/M/L tier independently from the doubled output dimensions; older gallery entries without saved tier metadata are inferred from their base canvas.
+
 ### Desktop Library actions
 
 - Added an app-styled right-click menu for generation cards in both the full Library and the Create/Edit side panel, with cursor-aware positioning and the existing Save, Group, Composite, Move, Ungroup, and Delete actions.

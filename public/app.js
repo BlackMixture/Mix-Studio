@@ -27067,8 +27067,10 @@ async function reuseVideo(it, v) {
   state.vidH3Mode = reusableH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : reusableH3Mode;
   state.vidH3MatchSource = savedH3MatchSource === true;
   state.vidH3MatchReferenceVideo = savedH3MatchReferenceVideo;
-  state.vidH3Xl = engine === 'h3' && (Number(info.h3ResolutionSize) >= H3Resolution.XL_SIZE
-    || Math.max(Number(info.width) || 0, Number(info.height) || 0) > 1536);
+  const reusedH3ResolutionSize = engine === 'h3'
+    ? H3Resolution.restoredGenerationSize(info, state.mp)
+    : state.mp;
+  state.vidH3Xl = engine === 'h3' && reusedH3ResolutionSize === H3Resolution.XL_SIZE;
   state.vidH3SageAttention = engine === 'h3' ? info.attentionBackend !== 'standard' : true;
   state.vidH3Turbo = engine === 'h3' && info.h3Turbo === true;
   state.vidH3LongContext = engine === 'h3'
@@ -27104,7 +27106,7 @@ async function reuseVideo(it, v) {
   $('#vidDriveVideo').removeAttribute('src');
 
   if (engine === 'h3') {
-    state.mp = normalizeResolutionMegapixels(info.h3ResolutionSize, state.mp);
+    state.mp = normalizeResolutionMegapixels(reusedH3ResolutionSize, state.mp);
     const outputRatio = Number(info.h3AspectRatio)
       || (Number(info.width) / Math.max(1, Number(info.height)))
       || selectedAspectRatio();

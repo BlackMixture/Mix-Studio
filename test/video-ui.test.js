@@ -49,6 +49,28 @@ test('MiniMax H3 resolution picker mirrors the backend S, M, L, and XL canvases'
   assert.match(server, /h3ResolutionSize: engine === 'h3' \? Number\(body\.h3ResolutionSize\)/);
 });
 
+test('MiniMax H3 reuse restores the base tier independently from an RTX 4K pass', () => {
+  assert.equal(H3Resolution.restoredGenerationSize({
+    h3ResolutionSize: 1.75, fourK: true, width: 2688, height: 1536,
+  }), 1.75);
+  assert.equal(H3Resolution.restoredGenerationSize({
+    h3ResolutionSize: 3, fourK: true, width: 3840, height: 2176,
+  }), H3Resolution.XL_SIZE);
+
+  // Backward compatibility for gallery videos created before the H3 tier was
+  // recorded: compare the original canvas after undoing the 2x RTX pass.
+  assert.equal(H3Resolution.restoredGenerationSize({
+    fourK: true, width: 2688, height: 1536,
+  }), 1.75);
+  assert.equal(H3Resolution.restoredGenerationSize({
+    fourK: true, width: 3840, height: 2176,
+  }), H3Resolution.XL_SIZE);
+
+  assert.match(app, /const reusedH3ResolutionSize = engine === 'h3'[\s\S]*H3Resolution\.restoredGenerationSize\(info, state\.mp\)/);
+  assert.match(app, /state\.vidH3Xl = engine === 'h3' && reusedH3ResolutionSize === H3Resolution\.XL_SIZE/);
+  assert.match(app, /\$\('#vid4k'\)\.classList\.toggle\('active', !!info\.fourK\)/);
+});
+
 test('MiniMax H3 preserves normalized portrait aspect ratios from the picker', () => {
   const frontend = H3Resolution.dimensions(9 / 16, 1, 1);
   const backend = h3Dimensions(9 / 16, 1, 1);
