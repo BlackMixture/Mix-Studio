@@ -108,8 +108,11 @@ test('basic contextual tips appear where prompting, models, LoRAs, and Library t
   for (const guide of ['prompt-entry', 'turbo-vs-raw', 'lora-basics', 'library-basics']) {
     assert.match(app, new RegExp(`id: '${guide}'`));
   }
-  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1500}schedulePrimaryOrSidePanelGuide\('library-basics'/);
-  assert.match(app, /setView\(view, opts = \{\}\)[\s\S]{0,1700}schedulePrimaryOrSidePanelGuide\('prompt-entry'/);
+  const setViewStart = app.indexOf('function setView(view, opts = {})');
+  const setViewEnd = app.indexOf('\nfunction setCreateMode(', setViewStart);
+  const setView = app.slice(setViewStart, setViewEnd);
+  assert.match(setView, /schedulePrimaryOrSidePanelGuide\('library-basics'/);
+  assert.match(setView, /schedulePrimaryOrSidePanelGuide\('prompt-entry'/);
   assert.match(app, /function schedulePrimaryOrSidePanelGuide\([\s\S]{0,500}scheduleContextualGuide\(primarySeen \? 'side-panel-access' : primaryId/);
   assert.match(app, /kreaTurboToggle'\)\.addEventListener\('click'[\s\S]{0,900}scheduleContextualGuide\('turbo-vs-raw'/);
   assert.match(app, /loraHeader'\)\.addEventListener\('click'[\s\S]{0,260}scheduleContextualGuide\('lora-basics'/);

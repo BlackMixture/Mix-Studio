@@ -47,6 +47,7 @@ test('official versions accept release tags and compare SemVer precedence', () =
   assert.equal(parseSemver('latest'), null);
   assert.equal(compareSemver('1.2.0', '1.1.9'), 1);
   assert.equal(compareSemver('1.2.0', '1.2.0'), 0);
+  assert.equal(compareSemver('1.2.2', '1.2.1'), 1, 'patch releases trigger update availability');
   assert.equal(compareSemver('1.2.0-beta.2', '1.2.0-beta.10'), -1);
   assert.equal(compareSemver('1.2.0', '1.2.0-rc.1'), 1);
   assert.equal(compareSemver('invalid', '1.2.0'), null);

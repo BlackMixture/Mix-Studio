@@ -6300,6 +6300,7 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
 }
 .card img,
 .card .gallery-card-video {
+  pointer-events: none;
   display: block;
   width: 100%;
   aspect-ratio: 1;

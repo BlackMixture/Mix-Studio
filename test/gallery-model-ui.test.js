@@ -55,6 +55,34 @@ test('gallery cards use compact labels, grouped counts, and middle-of-viewport v
   assert.match(css, /\.card \.gallery-card-video/);
 });
 
+test('mobile gallery videos open immediately and release card preview resources', () => {
+  const tap = app.match(/function handleGalleryTap\(item, card\) \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.match(tap, /const touchFirst = window\.matchMedia\?\.\('\(hover: none\), \(pointer: coarse\)'\)\.matches/);
+  assert.match(tap, /if \(touchFirst\) \{[\s\S]*openLightbox\(item\.id, card\.dataset\.media \|\| 'image'\);[\s\S]*return;/);
+  assert.match(app, /function handoffGalleryPreviewsToFocusedMedia\(\)/);
+  assert.match(app, /handoffGalleryPreviewsToFocusedMedia\(\);\r?\n  clearLightboxTap\(\)/);
+  assert.match(app, /!\$\('#lightbox'\)\?\.classList\.contains\('show'\)/);
+  assert.match(app, /if \(state\.view === 'gallery'\) resetGalleryPreviewObservation\(\)/);
+  assert.match(css, /\.card \.gallery-card-video \{[\s\S]{0,100}pointer-events: none;/);
+});
+
+test('mobile Library paints its mounted grid before refreshing stale data', () => {
+  const setView = app.match(/function setView\(view, opts = \{\}\) \{[\s\S]*?\n\}/)?.[0] || '';
+  const refreshStart = app.indexOf('function refreshGallery(soft)');
+  const refreshEnd = app.indexOf('\nfunction updatePrivacyButton()', refreshStart);
+  const refreshGallery = app.slice(refreshStart, refreshEnd);
+  assert.match(app, /const GALLERY_ENTRY_REFRESH_DELAY_MS = 900/);
+  assert.match(app, /function scheduleGalleryEntryRefresh\(delay = GALLERY_ENTRY_REFRESH_DELAY_MS\)/);
+  assert.match(app, /function resumeGalleryPreviewsAfterPaint\(\)/);
+  assert.match(setView, /resumeGalleryPreviewsAfterPaint\(\);\s*scheduleGalleryEntryRefresh\(\);/);
+  assert.doesNotMatch(setView, /if \(isGallery\) \{\s*refreshGallery\(/);
+  assert.match(setView, /if \(!isGallery\) \{\s*updateVideoPanels\(\);\s*renderEnhance\(\);\s*\}/);
+  assert.match(app, /\$\('#view-gallery'\)\.addEventListener\('pointerdown',[\s\S]*scheduleGalleryEntryRefresh\(\)/);
+  assert.match(app, /if \(galleryRefreshPromise\) return;\s*refreshGallery\(true\)/);
+  assert.match(refreshGallery, /void refreshLoraContext\(\);/);
+  assert.doesNotMatch(refreshGallery, /await refreshLoraContext\(\);/);
+});
+
 test('focused videos leave playback entirely to native controls', () => {
   assert.match(html, /id="lbVideo" controls playsinline loop/);
   assert.doesNotMatch(html, /id="lbVideoPlay"/);

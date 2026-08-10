@@ -36,7 +36,7 @@ test('temporary media URLs and hidden gallery videos are explicitly released', (
   assert.match(app, /function setH3ReplacementAsset[\s\S]*?releaseAssetObjectUrl\(state\.vidH3ReplaceVideo, asset\)/);
   assert.match(app, /function unloadGalleryPreview\(video\)[\s\S]*?video\.removeAttribute\('src'\)[\s\S]*?video\.load\(\)/);
   assert.match(app, /function suspendGalleryPreviewPlayback\(\)[\s\S]*?unloadGalleryPreview\(video\)/);
-  assert.match(app, /if \(!isGallery\) suspendGalleryPreviewPlayback\(\)/);
+  assert.match(app, /if \(!isGallery\) \{[\s\S]{0,160}suspendGalleryPreviewPlayback\(\);[\s\S]{0,40}\}/);
   assert.match(app, /document\.hidden \|\| !galleryPreviewMotionAllowed\(\)[\s\S]*?suspendGalleryPreviewPlayback\(\)/);
 });
 

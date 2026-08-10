@@ -1813,6 +1813,22 @@ checkAuth();
 
 const OFFICIAL_RELEASE_POLL_MS = 6 * 60 * 60 * 1000;
 const OFFICIAL_RELEASE_SHOWCASES = {
+  '1.2.2': [
+    {
+      eyebrow: 'Mobile library',
+      title: 'Videos open faster',
+      message: 'Library tabs respond on the first painted frame, while video cards open on the first tap and hand preview playback directly to the expanded viewer.',
+      media: '',
+      theme: 'release',
+    },
+    {
+      eyebrow: 'Workflow reliability',
+      title: 'Wan Animate 2 refinements',
+      message: 'Reference and performance resizing now follows the current ComfyUI node inputs, with clearer live progress while prompts are revised.',
+      media: '/update-media/v1.2.0-wan-animate2.mp4',
+      theme: 'wan-animate2',
+    },
+  ],
   '1.2.1': [
     {
       eyebrow: 'Video generation',
@@ -3949,6 +3965,54 @@ function syncNavigation() {
   requestIconTooltipScan();
 }
 
+const GALLERY_ENTRY_REFRESH_FRESH_MS = 20 * 1000;
+const GALLERY_ENTRY_REFRESH_DELAY_MS = 900;
+let galleryDataUpdatedAt = 0;
+let galleryRefreshPromise = null;
+let galleryEntryRefreshTimer = null;
+let galleryEntryRefreshIdle = null;
+
+function cancelGalleryEntryRefresh() {
+  if (galleryEntryRefreshTimer != null) clearTimeout(galleryEntryRefreshTimer);
+  if (galleryEntryRefreshIdle != null && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(galleryEntryRefreshIdle);
+  }
+  galleryEntryRefreshTimer = null;
+  galleryEntryRefreshIdle = null;
+}
+
+function scheduleGalleryEntryRefresh(delay = GALLERY_ENTRY_REFRESH_DELAY_MS) {
+  cancelGalleryEntryRefresh();
+  if (galleryDataUpdatedAt && Date.now() - galleryDataUpdatedAt < GALLERY_ENTRY_REFRESH_FRESH_MS) return;
+  galleryEntryRefreshTimer = setTimeout(() => {
+    galleryEntryRefreshTimer = null;
+    const refresh = () => {
+      galleryEntryRefreshTimer = null;
+      galleryEntryRefreshIdle = null;
+      if (state.view !== 'gallery') return;
+      if ($('#lightbox')?.classList.contains('show')) {
+        scheduleGalleryEntryRefresh();
+        return;
+      }
+      if (galleryRefreshPromise) return;
+      refreshGallery(true).catch(() => { /* keep the mounted Library usable */ });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      galleryEntryRefreshIdle = window.requestIdleCallback(refresh, { timeout: 1400 });
+    } else {
+      galleryEntryRefreshTimer = setTimeout(refresh, 0);
+    }
+  }, Math.max(0, delay));
+}
+
+function resumeGalleryPreviewsAfterPaint() {
+  requestAnimationFrame(() => setTimeout(() => {
+    if (state.view === 'gallery' && !$('#lightbox')?.classList.contains('show')) {
+      resetGalleryPreviewObservation();
+    }
+  }, 0));
+}
+
 function setView(view, opts = {}) {
   const prev = state.view;
   if (view !== 'video' && state.directorOpen) closeDirectorMode();
@@ -3972,14 +4036,22 @@ function setView(view, opts = {}) {
   $('#view-create').classList.toggle('active', !isGallery);
   $('#view-gallery').classList.toggle('active', isGallery);
   $('#genDock').style.display = isGallery ? 'none' : '';
-  if (!isGallery) suspendGalleryPreviewPlayback();
+  if (!isGallery) {
+    cancelGalleryEntryRefresh();
+    suspendGalleryPreviewPlayback();
+  }
   $('#refPanel').hidden = view !== 'edit';
   if (prev !== view && !isGallery) restoreGenerationTuning(generationTuningMode(view));
-  updateVideoPanels();
-  renderEnhance();
+  if (!isGallery) {
+    updateVideoPanels();
+    renderEnhance();
+  }
   $('#genLbl').textContent = genLabel();
   if (isGallery) {
-    refreshGallery();
+    // The grid stays mounted between tabs. Expose that cached view first so
+    // mobile taps can land before any network, DOM, or video-preview work.
+    resumeGalleryPreviewsAfterPaint();
+    scheduleGalleryEntryRefresh();
     if (opts.focusedResult) cancelContextualGuide('library-basics');
     else schedulePrimaryOrSidePanelGuide('library-basics', 760);
   } else if (view === 'create' && state.createMode === 'image') {
@@ -4005,6 +4077,11 @@ primaryTabButtons.forEach((button) => button.addEventListener('click', () => {
   if (mode === 'create') setCreateMode(state.createMode || 'image');
   else setView(mode);
 }));
+$('#view-gallery').addEventListener('pointerdown', () => {
+  if (galleryEntryRefreshTimer != null || galleryEntryRefreshIdle != null) {
+    scheduleGalleryEntryRefresh();
+  }
+}, { capture: true, passive: true });
 createTabButtons.forEach((button) => button.addEventListener('click', () => {
   setCreateMode(button.dataset.createMode, button.dataset.createMode === 'region');
 }));
@@ -19839,27 +19916,37 @@ function isUpscaleJob() { return state.upscaling.size > 0; }
 /* Gallery                                                             */
 /* ------------------------------------------------------------------ */
 
-async function refreshGallery(soft) {
-  try {
-    const data = await api('/api/gallery');
-    state.folders = data.folders;
-    state.items = data.items;
-    state.uploadedAssets = Array.isArray(data.uploadedAssets) ? data.uploadedAssets : [];
-    state.privateUnlocked = !!data.unlocked;
-    if (!['all', 'uploaded-assets'].includes(state.activeFolder) && !state.folders.some((f) => f.id === state.activeFolder)) {
-      state.activeFolder = 'all';
+function refreshGallery(soft) {
+  const request = (async () => {
+    try {
+      const data = await api('/api/gallery');
+      state.folders = data.folders;
+      state.items = data.items;
+      state.uploadedAssets = Array.isArray(data.uploadedAssets) ? data.uploadedAssets : [];
+      state.privateUnlocked = !!data.unlocked;
+      galleryDataUpdatedAt = Date.now();
+      if (!['all', 'uploaded-assets'].includes(state.activeFolder) && !state.folders.some((f) => f.id === state.activeFolder)) {
+        state.activeFolder = 'all';
+      }
+      // LoRA context is unrelated to Library rendering; do not hold the grid
+      // behind a second request before it can become interactive.
+      void refreshLoraContext();
+      renderFolders();
+      renderGrid();
+      renderDesktopStage();
+      updatePrivacyButton();
+    } catch (e) {
+      if (!soft) toast(e.message, true);
+    } finally {
+      firstRunTutorialGalleryLoaded = true;
+      maybeShowFirstRunTutorial();
     }
-    await refreshLoraContext();
-    renderFolders();
-    renderGrid();
-    renderDesktopStage();
-    updatePrivacyButton();
-  } catch (e) {
-    if (!soft) toast(e.message, true);
-  } finally {
-    firstRunTutorialGalleryLoaded = true;
-    maybeShowFirstRunTutorial();
-  }
+  })();
+  const tracked = request.finally(() => {
+    if (galleryRefreshPromise === tracked) galleryRefreshPromise = null;
+  });
+  galleryRefreshPromise = tracked;
+  return tracked;
 }
 
 function updatePrivacyButton() {
@@ -22110,6 +22197,7 @@ let galleryPreviewScrollTimer = null;
 function galleryPreviewMotionAllowed() {
   return document.visibilityState === 'visible'
     && state.mediaPreferences.videoPreviews
+    && !$('#lightbox')?.classList.contains('show')
     && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 function desktopSideLibraryHoverPreviewAllowed() {
@@ -22253,6 +22341,28 @@ function suspendGalleryPreviewPlayback() {
     unloadGalleryPreview(video);
   });
   galleryPreviewActive.clear();
+}
+
+function handoffGalleryPreviewsToFocusedMedia() {
+  clearTimeout(galleryPreviewSettleTimer);
+  clearTimeout(galleryPreviewScrollTimer);
+  galleryPreviewSettleTimer = null;
+  galleryPreviewScrollTimer = null;
+  if (galleryPreviewObserver) galleryPreviewObserver.disconnect();
+  const active = [...galleryPreviewActive];
+  active.forEach((video) => {
+    clearTimeout(video._previewUnloadTimer);
+    video.pause();
+  });
+  galleryPreviewActive.clear();
+  // Let the expanded player claim the source first, then release the hidden
+  // card decoders without holding the tap-to-open path on mobile browsers.
+  setTimeout(() => {
+    if (!$('#lightbox')?.classList.contains('show')) return;
+    active.forEach((video) => {
+      if (video.isConnected) unloadGalleryPreview(video);
+    });
+  }, 0);
 }
 
 window.addEventListener('scroll', () => {
@@ -23994,6 +24104,13 @@ function handleGalleryTap(item, card) {
     openLightbox(item.id, media, { focusSource });
     return;
   }
+  const touchFirst = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+  if (touchFirst) {
+    if (galleryTap) clearTimeout(galleryTap.timer);
+    galleryTap = null;
+    openLightbox(item.id, card.dataset.media || 'image');
+    return;
+  }
   const now = Date.now();
   if (galleryTap && galleryTap.itemId === item.id && now - galleryTap.time < 300) {
     clearTimeout(galleryTap.timer);
@@ -24746,6 +24863,7 @@ function preloadLightboxNeighbors(item) {
 function openLightbox(id, mediaSel, options = {}) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
+  handoffGalleryPreviewsToFocusedMedia();
   clearLightboxTap();
   resetLightboxZoom();
   resetLightboxSwipeVisuals();
@@ -25366,6 +25484,7 @@ function closeLightbox(fromPop) {
     try { history.back(); } catch { /* noop */ }
   }
   requestAnimationFrame(() => {
+    if (state.view === 'gallery') resetGalleryPreviewObservation();
     if (!returnFocus?.isConnected || returnFocus.closest('[inert]') || returnFocus.offsetParent === null) return;
     focusIconControlSilently(returnFocus);
   });

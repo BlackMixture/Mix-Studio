@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.2.2 - 2026-08-09
+
+### Mobile library
+
+- Made Create/Edit-to-Library transitions interactive on the first painted frame by reusing the mounted grid, deferring stale-data refresh until idle, and skipping hidden generation-panel rendering.
+- Made video cards open their expanded view immediately on the first mobile tap instead of waiting for the desktop-style double-tap window.
+- Handed active gallery preview playback over to the focused player before it loads, preventing hidden card videos from competing for mobile decoders and bandwidth beneath the expanded view.
+- Made gallery preview videos touch-transparent for more reliable iPhone and Android card taps, then safely resume centered previews after the expanded viewer closes.
+
+### Workflow reliability
+
+- Fixed Wan Animate 2 reference and performance resizing to serialize the current dynamic node inputs explicitly, avoiding validation failures while preserving the selected output dimensions and center crop.
+- Added a dedicated, stage-aware Revise Prompt progress card that distinguishes queueing, model loading, reference reading, writing, and finishing states.
+- Versioned this maintenance set as v1.2.2 so a matching stable GitHub Release is recognized as newer by v1.2.1 installations and triggers the normal Update available card, desktop action, and mobile profile badge.
+
 ## 1.2.1 - 2026-08-09
 
 ### MiniMax H3 Turbo
