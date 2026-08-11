@@ -12,13 +12,17 @@ const {
   extensionJoinArgs,
   joinVideoChunks,
   joinVideoExtension,
+  joinWanAnimate2Chunks,
   mp4TranscodeArgs,
   normalizeVideoPreviewOptions,
   parseFfmpegVideoProbe,
   probeVideoFile,
+  prepareWanAnimate2Performance,
   resolveFfmpegExecutable,
   transcodeVideoFileToMp4,
   transcodeVideoPreview,
+  wanAnimate2ChunkJoinArgs,
+  wanAnimate2PerformanceArgs,
   videoPreviewTranscodeArgs,
   videoChunkJoinArgs,
 } = require('../lib/video-extension-join');
@@ -152,6 +156,62 @@ test('H3 chunk join arguments reject mismatched or unsafe plans', () => {
     sourcePaths: ['/one.mp4', '/two.mp4'], outputPath: '/out.mp4',
     segments: [{ keepFrames: 120 }, { keepFrames: '1;movie=bad' }], fps: 24, width: 1344, height: 768,
   }), /keep at least one frame/);
+});
+
+test('Wan Animate 2 preparation caps source work to exact 24 fps 480p frames', () => {
+  const args = wanAnimate2PerformanceArgs({
+    sourcePath: '/media/4k phone clip.mp4',
+    outputPath: '/temp/wan prepared.mp4',
+    fps: 24,
+    frames: 192,
+    width: 848,
+    height: 480,
+  });
+  assert.deepEqual(args.slice(args.indexOf('-i'), args.indexOf('-t')), [
+    '-i', '/media/4k phone clip.mp4', '-map', '0:v:0', '-map', '0:a:0?',
+  ]);
+  assert.equal(args[args.indexOf('-t') + 1], '8');
+  assert.match(args[args.indexOf('-vf') + 1], /^fps=24,scale=848:480:/);
+  assert.equal(args[args.indexOf('-frames:v') + 1], '192');
+  assert.equal(args[args.indexOf('-preset') + 1], 'veryfast');
+  assert.equal(args.at(-1), '/temp/wan prepared.mp4');
+});
+
+test('Wan Animate 2 joins silent chunks first and muxes source audio only once', () => {
+  const args = wanAnimate2ChunkJoinArgs({
+    sourcePaths: ['/temp/clip 1.mp4', '/temp/clip 2.mp4', '/temp/clip 3.mp4'],
+    outputPath: '/temp/wan joined.mp4',
+    segments: [{ keepFrames: 81 }, { keepFrames: 80 }, { keepFrames: 31 }],
+    fps: 24,
+    width: 848,
+    height: 480,
+    audioSourcePath: '/temp/prepared performance.mp4',
+    sourceHasAudio: true,
+  });
+  const filter = filterFrom(args);
+  assert.deepEqual(args.slice(args.indexOf('-i'), args.indexOf('-filter_complex')), [
+    '-i', '/temp/clip 1.mp4',
+    '-i', '/temp/clip 2.mp4',
+    '-i', '/temp/clip 3.mp4',
+    '-i', '/temp/prepared performance.mp4',
+  ]);
+  assert.match(filter, /\[v0\]\[v1\]\[v2\]concat=n=3:v=1:a=0\[video\]/);
+  assert.match(filter, /\[3:a:0\].*atrim=duration=8,apad=pad_dur=8/s);
+  assert.doesNotMatch(filter, /\[0:a:0\]/);
+  assert.equal(args[args.indexOf('-map') + 1], '[video]');
+  assert.ok(args.includes('[audio]'));
+
+  const silent = wanAnimate2ChunkJoinArgs({
+    sourcePaths: ['/temp/only.mp4'],
+    outputPath: '/temp/silent.mp4',
+    segments: [{ keepFrames: 48 }],
+    fps: 24,
+    width: 480,
+    height: 848,
+    sourceHasAudio: false,
+  });
+  assert.match(filterFrom(silent), /\[v0\]null\[video\]/);
+  assert.ok(silent.includes('-an'));
 });
 
 test('MP4 transcode arguments encode browser recordings as compatible H.264 and AAC', () => {
@@ -474,5 +534,51 @@ test('H3 video chunk join writes every segment and cleans up its temporary direc
   assert.equal(operations.filter(([operation]) => operation === 'writeFile').length, 2);
   assert.equal(invocation.command, '/tools/ffmpeg');
   assert.equal(invocation.args.at(-1), path.join(tempDir, 'joined.mp4'));
+  assert.deepEqual(operations.at(-1), ['rm', tempDir, { recursive: true, force: true }]);
+});
+
+test('Wan Animate 2 prepares bounded media and joins chunk buffers with one cleanup', async () => {
+  let preparation;
+  const prepared = await prepareWanAnimate2Performance({
+    sourcePath: '/media/source.mp4',
+    outputPath: '/cache/prepared.mp4',
+    fps: 24,
+    frames: 192,
+    width: 848,
+    height: 480,
+    ffmpegPath: '/tools/ffmpeg',
+  }, {
+    run: async (command, args, options) => { preparation = { command, args, options }; },
+    fsp: { stat: async () => ({ isFile: () => true, size: 4096 }) },
+  });
+  assert.equal(prepared, '/cache/prepared.mp4');
+  assert.equal(preparation.command, '/tools/ffmpeg');
+  assert.equal(preparation.args[preparation.args.indexOf('-frames:v') + 1], '192');
+
+  const operations = [];
+  const tempDir = '/virtual/tmp/mixstudio-wan-animate2-abc';
+  let joinInvocation;
+  const joined = await joinWanAnimate2Chunks({
+    chunkBuffers: [Buffer.from('first'), Buffer.from('second')],
+    segments: [{ keepFrames: 81 }, { keepFrames: 15 }],
+    fps: 24,
+    width: 848,
+    height: 480,
+    audioSourcePath: '/cache/prepared.mp4',
+    sourceHasAudio: true,
+    ffmpegPath: '/tools/ffmpeg',
+  }, {
+    osTmpdir: '/virtual/tmp',
+    fsp: {
+      mkdtemp: async () => tempDir,
+      writeFile: async (file, data) => { operations.push(['writeFile', file, Buffer.from(data)]); },
+      readFile: async () => Buffer.from('joined Wan video'),
+      rm: async (file, options) => { operations.push(['rm', file, options]); },
+    },
+    run: async (command, args, options) => { joinInvocation = { command, args, options }; },
+  });
+  assert.deepEqual(joined, Buffer.from('joined Wan video'));
+  assert.equal(operations.filter(([operation]) => operation === 'writeFile').length, 2);
+  assert.equal(joinInvocation.command, '/tools/ffmpeg');
   assert.deepEqual(operations.at(-1), ['rm', tempDir, { recursive: true, force: true }]);
 });

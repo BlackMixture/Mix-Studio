@@ -20,7 +20,10 @@ test('Wan Animate 2 presents an input-first character animation workflow', () =>
   assert.match(app, /'Character image'/);
   assert.match(app, /'Performance video'/);
   assert.match(app, /'Scene direction · optional'/);
-  assert.match(app, /81 frames · source timing \+ audio/);
+  assert.match(app, /formatVideoDuration\(duration\)[^\n]*source timing \+ audio/);
+  assert.match(app, /videoDurationMax\(engine\)[\s\S]*engine === 'wan-animate2'[\s\S]*state\.vidDrive\?\.dur/);
+  assert.match(app, /state\.vidEngine === 'wan-animate2' && f\.dur > 0[\s\S]*Math\.round\(f\.dur \* 10\) \/ 10/);
+  assert.doesNotMatch(app, /vidDurationField'\)\.hidden = isVideo && state\.vidEngine === 'wan-animate2'/);
   assert.match(fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8'),
     /\.wan-animate2-prompt \.prompt-camera-btn\s*\{[^}]*right:\s*10px/);
 });
@@ -31,7 +34,16 @@ test('Wan Animate 2 validates both media inputs and sends model-specific control
   assert.match(app, /wanAnimate2MotionStrength: state\.vidEngine === 'wan-animate2'/);
   assert.match(app, /driveVideoName: \(\['scail', 'wan-animate2'\]\.includes\(state\.vidEngine\)/);
   assert.match(server, /buildWanAnimate2Graph\(comfyName, opts, settings/);
-  assert.match(server, /WAN_ANIMATE_2_FRAMES/);
+  assert.match(server, /resolveDurableUploadedVideo\(INPUTS, driveVideoName\)/);
+  assert.match(server, /probeVideoFile\(durablePerformance\.file, videoExtensionFfmpeg\)/);
+  assert.match(server, /wanAnimate2ContinuationPlan\([\s\S]*sourceFrames: performanceProbe\.frames[\s\S]*sourceFps: performanceProbe\.fps/);
+  assert.match(server, /frames = wanAnimate2Plan\.outputFrames/);
+  assert.match(server, /fps = wanAnimate2Plan\.fps/);
+  assert.match(server, /prepareWanAnimate2Performance\(\{/);
+  assert.match(server, /type: 'wan-animate2'/);
+  assert.match(server, /await joinWanAnimate2Chunks\(\{/);
+  assert.match(server, /continuationImageName = await uploadToComfy/);
+  assert.match(server, /needsVideoReconciliation/);
 });
 
 test('Wan Animate 2 setup installs the official native workflow models', () => {

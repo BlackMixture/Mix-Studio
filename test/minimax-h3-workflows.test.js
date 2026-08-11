@@ -166,6 +166,81 @@ test('MiniMax H3 text-to-video does not synthesize placeholder keyframes', async
   assert.equal(graph.condition.inputs.last_frame, undefined);
 });
 
+test('MiniMax H3 applies ordered user LoRAs to the model used by its scheduler and guider', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A dramatic close-up.', W: 1344, H: 768, frames: 124, seed: 7,
+    loras: [
+      { name: 'MiniMax-H3/realism.safetensors', strength: 0.8, on: true },
+      { name: 'MiniMax-H3/off.safetensors', strength: 1, on: false },
+      { name: 'MiniMax-H3/character.safetensors', strength: -0.25, on: true },
+      { name: 'MiniMax-H3/zero.safetensors', strength: 0, on: true },
+    ],
+  }, settings);
+
+  assert.deepEqual(graph.user_lora_1, {
+    class_type: 'LoraLoaderModelOnly',
+    inputs: {
+      model: ['model', 0],
+      lora_name: 'MiniMax-H3/realism.safetensors',
+      strength_model: 0.8,
+    },
+  });
+  assert.deepEqual(graph.user_lora_2.inputs, {
+    model: ['user_lora_1', 0],
+    lora_name: 'MiniMax-H3/character.safetensors',
+    strength_model: -0.25,
+  });
+  assert.deepEqual(graph.user_lora_3.inputs, {
+    model: ['user_lora_2', 0],
+    lora_name: 'MiniMax-H3/zero.safetensors',
+    strength_model: 0,
+  });
+  assert.equal(graph.user_lora_4, undefined);
+  assert.deepEqual(graph.scheduler.inputs.model, ['user_lora_3', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['user_lora_3', 0]);
+});
+
+test('MiniMax H3 user LoRAs stack after Frames Turbo and before native AV sampling and SageAttention', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A singer performs.', W: 1344, H: 768, frames: 124, seed: 17,
+    turbo: true, turboNativeSampler: true, sageAttention: true,
+    loras: [{ name: 'MiniMax-H3/stage-light.safetensors', strength: 1.15, on: true }],
+  }, settings);
+
+  assert.deepEqual(graph.turbo_lora.inputs.model, ['model', 0]);
+  assert.deepEqual(graph.user_lora_1.inputs.model, ['turbo_lora', 0]);
+  assert.deepEqual(graph.native_av_sampling.inputs.model, ['user_lora_1', 0]);
+  assert.deepEqual(graph.scheduler.inputs.model, ['native_av_sampling', 0]);
+  assert.deepEqual(graph.sage_attention.inputs.model, ['native_av_sampling', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['sage_attention', 0]);
+});
+
+test('MiniMax H3 user LoRAs stack after Reference Turbo and before its audio-safe sigma shift', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Use <Picture 1>.', W: 1344, H: 768, frames: 124, seed: 17,
+    turbo: true,
+    references: { images: [{ name: 'hero.png' }] },
+    loras: [{ name: 'MiniMax-H3/film-look.safetensors', strength: 0.65, on: true }],
+  }, settings);
+
+  assert.deepEqual(graph.turbo_lora.inputs.model, ['model', 0]);
+  assert.deepEqual(graph.user_lora_1.inputs.model, ['turbo_lora', 0]);
+  assert.deepEqual(graph.turbo_sampling.inputs.model, ['user_lora_1', 0]);
+  assert.deepEqual(graph.scheduler.inputs.model, ['turbo_sampling', 0]);
+  assert.deepEqual(graph.guider.inputs.model, ['turbo_sampling', 0]);
+});
+
+test('MiniMax H3 rejects standard fused-QKV LoRAs with the experimental DynTime model', async () => {
+  await assert.rejects(buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Use <Picture 1>.', W: 1344, H: 768, frames: 124, seed: 17,
+    references: { images: [{ name: 'hero.png' }] },
+    loras: [{ name: 'MiniMax-H3/film-look.safetensors', strength: 1, on: true }],
+  }, Object.assign({}, settings, {
+    h3ReferenceModelVariant: 'dyntime',
+    h3DynTimeRefUnet: 'MiniMax-H3_Ref2VA-DT-sQKV-INT8-ConvRot.safetensors',
+  })), (error) => error?.code === 'h3_lora_model_incompatible');
+});
+
 test('MiniMax H3 Long context saves the first AV latent and continues later clips through the lossless latent path', async () => {
   const first = await buildMiniMaxH3Graph({
     mode: 'frames', prompt: 'A singer continues the performance.', W: 1344, H: 768,

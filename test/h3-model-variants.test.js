@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   h3EffectiveModelName,
   h3FrameVariant,
+  h3LoraCompatibility,
   h3ReferenceVariant,
   h3TurboCompatibility,
   normalizeH3FrameVariant,
@@ -39,6 +40,8 @@ test('H3 model variants preserve Standard defaults and select explicit BF16 file
   assert.equal(h3EffectiveModelName(bf16, 'reference'), 'full-reference-bf16.safetensors');
   assert.equal(h3TurboCompatibility(bf16, 'frames').supported, true);
   assert.equal(h3TurboCompatibility(bf16, 'reference').supported, true);
+  assert.equal(h3LoraCompatibility(bf16, 'frames').supported, true);
+  assert.equal(h3LoraCompatibility(bf16, 'reference').supported, true);
 });
 
 test('dependency planning downloads the selected H3 model rather than renaming Standard bytes', () => {
@@ -66,6 +69,7 @@ test('DynTime uses its selected graph model and rejects the incompatible current
   }, settings);
   assert.equal(graph.model.inputs.unet_name, 'dyntime-reference.safetensors');
   assert.equal(h3TurboCompatibility(settings, 'reference').supported, false);
+  assert.equal(h3LoraCompatibility(settings, 'reference').supported, false);
   await assert.rejects(
     buildMiniMaxH3Graph({
       mode: 'reference', turbo: true, prompt: 'test', seed: 1, W: 768, H: 768, frames: 124,

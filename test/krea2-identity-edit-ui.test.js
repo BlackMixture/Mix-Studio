@@ -48,7 +48,8 @@ test('Krea 2 Edit applies a configurable sampling preset without warning on its 
   assert.match(app, /function applyKrea2IdentityEditSamplingPreset\(\)/);
   assert.match(app, /applyKrea2IdentityEditSamplingPreset\(\);[\s\S]{0,120}renderLoras\(\)/);
   assert.match(app, /\['krea2', 'krea2ref', 'krea2remix'\]\.includes\(state\.editEngine\)/);
-  assert.match(app, /l\.name && !l\.managed && !allowed\.has/);
+  assert.match(app, /curLoras\(\)\.filter\(\(lora\) => lora && lora\.on && lora\.name && !lora\.managed\)/);
+  assert.match(app, /return selected\.filter\(\(lora\) => !allowed\.has\(loraCategory\(lora\.name\)\)\)/);
   assert.match(server, /p\.steps = clampInt\(p\.steps, 8, 12, 10\); p\.cfg = clampNum\(p\.cfg, 1, 5, 1\)/);
 });
 

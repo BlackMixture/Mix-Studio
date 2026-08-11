@@ -38,6 +38,7 @@ const {
   protectedRuntimeConstraints,
   requirementsArgs,
   sameRepo,
+  uvRequirementsArgs,
   validateModelFile,
 } = require('../lib/dependency-installer');
 const { comfyPort, restartStatus } = require('../lib/comfy-restart');
@@ -63,6 +64,11 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.equal(NODE_PACKS.regional.allowCompatibleMirror, true);
   assert.match(NODE_PACKS.eros.repo, /TenStrip\/10S-Comfy-nodes/);
   assert.deepEqual(COMPONENTS.eros.nodes, ['eros', 'kjnodes']);
+  assert.deepEqual(COMPONENTS.scail.nodes, ['sam3', 'vhs', 'gguf', 'kjnodes']);
+  assert.deepEqual(COMPONENTS.video4k.nodes, ['rtx']);
+  assert.equal(NODE_PACKS.rtx.folder, 'Nvidia_RTX_Nodes_ComfyUI');
+  assert.equal(NODE_PACKS.rtx.repo, 'https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI.git');
+  assert.equal(NODE_PACKS.rtx.ref, '892515e3eb9a4920a131a502a047e47adca9eb0d');
   assert.deepEqual(COMPONENTS.h3.models, ['h3']);
   assert.deepEqual(COMPONENTS.h3turbo.nodes, ['h3Turbo']);
   assert.deepEqual(COMPONENTS.h3turbo.models, ['h3Turbo']);
@@ -215,6 +221,61 @@ test('regional prompting installs the reviewed mirror and reuses a compatible le
     assert.equal(commands.length, 1);
     assert.equal(reports[0].phase, 'existing-node');
     assert.equal(reports[0].detail.compatibleMirror, true);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('RTX 4K setup installs the reviewed NVIDIA node and its nvidia-vfx requirement', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-rtx-node-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const modelsPath = path.join(rootDir, 'models');
+  const pythonPath = path.join(rootDir, '.venv', 'Scripts', 'python.exe');
+  const nodePath = path.join(customNodesPath, NODE_PACKS.rtx.folder);
+  const requirementsPath = path.join(nodePath, 'requirements.txt');
+  const commands = [];
+  const reports = [];
+  try {
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.mkdirSync(modelsPath, { recursive: true });
+    fs.writeFileSync(path.join(rootDir, 'main.py'), '');
+    fs.writeFileSync(pythonPath, '');
+
+    const result = await installComponents({
+      runtime: { comfy: { path: rootDir, modelsPath }, dataDir: path.join(rootDir, 'mix-data') },
+      settings: {},
+      components: ['video4k'],
+      report: (phase, message, detail) => reports.push({ phase, message, detail }),
+      options: {
+        run: async (command, args) => {
+          commands.push([command, args]);
+          if (args[0] === 'clone') {
+            fs.mkdirSync(path.join(nodePath, '.git'), { recursive: true });
+            fs.writeFileSync(requirementsPath, 'nvidia-vfx\n');
+          }
+          if (args.includes('freeze')) return 'torch==2.9.1\nnumpy==2.2.6';
+          return '';
+        },
+      },
+    });
+
+    assert.deepEqual(result.components, ['video4k']);
+    assert.equal(result.completed, 1);
+    assert.equal(result.total, 1);
+    assert.equal(result.restartRequired, true);
+    assert.deepEqual(commands.find(([, args]) => args[0] === 'clone'), [
+      'git', ['clone', NODE_PACKS.rtx.repo, nodePath],
+    ]);
+    assert.deepEqual(commands.find(([, args]) => args.includes('checkout')), [
+      'git', ['-C', nodePath, 'checkout', '--detach', NODE_PACKS.rtx.ref],
+    ]);
+    const requirementsInstall = commands.find(([command, args]) => (
+      command === pythonPath && args.includes('install') && args.includes(requirementsPath)
+    ));
+    assert.ok(requirementsInstall, 'nvidia-vfx requirements are installed into the connected ComfyUI Python');
+    assert.deepEqual(requirementsInstall[1].slice(-2), ['-r', requirementsPath]);
+    assert.equal(fs.readFileSync(requirementsPath, 'utf8'), 'nvidia-vfx\n');
+    assert.ok(reports.some((entry) => entry.phase === 'requirements' && /NVIDIA RTX Nodes/.test(entry.message)));
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -1154,6 +1215,31 @@ test('node installs constrain only the protected runtime instead of freezing pac
   assert.match(constraints, /numpy==2\.2\.6/);
   assert.match(constraints, /opencv-python==4\.12\.0\.88/);
   assert.doesNotMatch(constraints, /setuptools|pip|diffusers|transformers/i);
+});
+
+test('runtime constraints discard stale local wheel references without splitting Windows paths', () => {
+  const constraints = protectedRuntimeConstraints([
+    'numpy @ file:///D:/a/ComfyUI/cu130_python_deps/numpy-2.5.1-cp313-cp313-win_amd64.whl',
+    'torch @ file:///Z:/Stable_Diffusion/Mix Studio/python_embeded/torch-2.9.1.whl',
+    'torchvision==0.24.1+cu130',
+    'torchaudio===2.9.1+cu130',
+    'opencv-python==4.12.0.88',
+    'diffusers==0.39.0',
+  ].join('\n'));
+  assert.doesNotMatch(constraints, /file:|D:\/a|Mix Studio|numpy|(?:^|\n)torch\s*@/i);
+  assert.match(constraints, /^torchvision==0\.24\.1\+cu130$/m);
+  assert.match(constraints, /^torchaudio===2\.9\.1\+cu130$/m);
+  assert.match(constraints, /^opencv-python==4\.12\.0\.88$/m);
+  assert.doesNotMatch(constraints, /diffusers/);
+
+  const requirements = 'Z:\\Stable_Diffusion\\Mix Studio\\custom_nodes\\SeedVR2\\requirements.txt.mixbox-safe';
+  const constraintFile = 'Z:\\Stable_Diffusion\\Mix Studio\\data\\dependency-backups\\runtime-constraints.txt';
+  assert.deepEqual(requirementsArgs(requirements, false, { constraintFile }).slice(-4), [
+    '--constraint', constraintFile, '-r', requirements,
+  ]);
+  assert.deepEqual(uvRequirementsArgs(requirements, 'Z:\\Stable_Diffusion\\ComfyUI\\python_embeded\\python.exe', false, { constraintFile }).slice(-4), [
+    '--constraint', constraintFile, '-r', requirements,
+  ]);
 });
 
 test('repair requirements never reinstall ComfyUI runtime packages from PyPI', () => {

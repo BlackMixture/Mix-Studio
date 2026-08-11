@@ -4416,7 +4416,31 @@ const H3_FRAMES_TURBO_LORAS = Object.freeze({
   v4: 'minimax_h3_turbo_v4_step600_ema.safetensors',
   'legacy-4step': 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
 });
+const H3_REFERENCE_TURBO_LORA = 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors';
 let configuredH3FramesTurboLora = H3_FRAMES_TURBO_LORAS.v4;
+
+function normalizedLoraBasename(value) {
+  return String(value || '').trim().replace(/\\/g, '/').split('/').pop().toLowerCase();
+}
+
+function h3ManagedWorkflowLora(name) {
+  const managed = [
+    ...Object.values(H3_FRAMES_TURBO_LORAS),
+    H3_REFERENCE_TURBO_LORA,
+    configuredH3FramesTurboLora,
+    lastMeta?.models?.h3RefTurbo?.lora?.name,
+  ].map(normalizedLoraBasename).filter(Boolean);
+  return managed.includes(normalizedLoraBasename(name));
+}
+
+function selectedH3LoraCompatibility() {
+  if (state.view !== 'video' || state.vidEngine !== 'h3') return { supported: true };
+  const mode = h3ReferenceBackedMode() ? 'reference' : 'frames';
+  return lastMeta?.minimaxH3?.lora?.[mode]
+    || (lastMeta?.minimaxH3?.[mode === 'reference' ? 'referenceVariant' : 'frameVariant']?.requiresPatch
+      ? { supported: false, variant: 'dyntime' }
+      : { supported: true });
+}
 
 function h3FramesTurboVariant(filename = configuredH3FramesTurboLora) {
   const basename = String(filename || '').split(/[\\/]/).pop().toLowerCase();
@@ -4621,7 +4645,7 @@ function updateVideoPanels() {
   $('#vidOptsPanel').hidden = !isVideo;
   $('#vidScailModeRow').hidden = !(isVideo && state.vidEngine === 'scail');
   $('#vidWanAnimate2Strengths').hidden = !(isVideo && state.vidEngine === 'wan-animate2');
-  $('#vidDurationField').hidden = isVideo && state.vidEngine === 'wan-animate2';
+  $('#vidDurationField').hidden = false;
   $('#vid4k').hidden = isVideo && state.vidEngine === 'wan-animate2';
   renderScailChunkControls();
   $('#enhanceBtn').hidden = isVideo && state.vidEngine === 'ltx-edit';
@@ -4673,7 +4697,7 @@ function updateVideoPanels() {
     : `CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with ${h3FramesTurboIsLegacy() ? '4 recommended for legacy Frames Turbo' : '6–8 recommended for Frames Turbo v4'} and 6 for Reference Turbo.`;
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
-  $('#loraPanel').closest('.panel').hidden = isVideo && state.vidEngine === 'h3';
+  $('#loraPanel').closest('.panel').hidden = false;
   renderLoras();
   schedulePromptIntentHint();
 }
@@ -12473,7 +12497,9 @@ function loraCategory(name) {
 }
 
 function compatibleLoraCategories() {
-  if (state.view === 'video') return ['video', 'unknown'];
+  if (state.view === 'video') return state.vidEngine === 'h3'
+    ? ['h3', 'unknown']
+    : ['video', 'unknown'];
   if (state.view === 'edit') {
     if (state.editEngine === 'qwen') return ['qwen-edit', 'unknown'];
     if (state.editEngine === 'klein9') return ['klein9', 'unknown'];
@@ -12484,14 +12510,25 @@ function compatibleLoraCategories() {
 }
 
 function loraOptionsFor(selected) {
-  if (state.showAllLoras) return state.metaLoras;
+  const options = state.metaLoras.filter((name) => (
+    state.view !== 'video'
+    || state.vidEngine !== 'h3'
+    || name === selected
+    || !h3ManagedWorkflowLora(name)
+  ));
+  if (state.showAllLoras) return options;
   const allowed = new Set(compatibleLoraCategories());
-  return state.metaLoras.filter((name) => name === selected || allowed.has(loraCategory(name)));
+  return options.filter((name) => name === selected || allowed.has(loraCategory(name)));
 }
 
 function incompatibleSelectedLoras() {
   const allowed = new Set(compatibleLoraCategories());
-  return curLoras().filter((l) => l && l.on && l.name && !l.managed && !allowed.has(loraCategory(l.name)));
+  const selected = curLoras().filter((lora) => lora && lora.on && lora.name && !lora.managed);
+  if (state.view === 'video' && state.vidEngine === 'h3') {
+    if (selectedH3LoraCompatibility().supported === false) return selected;
+    return selected.filter((lora) => h3ManagedWorkflowLora(lora.name) || !allowed.has(loraCategory(lora.name)));
+  }
+  return selected.filter((lora) => !allowed.has(loraCategory(lora.name)));
 }
 
 function loraContextProfile(name) {
@@ -13049,8 +13086,16 @@ function renderLoraCompatibility() {
   const warn = $('#loraCompatWarn');
   if (!warn) return;
   const bad = incompatibleSelectedLoras();
-  warn.classList.toggle('hidden', bad.length === 0);
-  const warning = bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : '';
+  const h3DynTime = state.view === 'video' && state.vidEngine === 'h3'
+    && selectedH3LoraCompatibility().supported === false;
+  const duplicateManaged = state.view === 'video' && state.vidEngine === 'h3'
+    && bad.some((lora) => h3ManagedWorkflowLora(lora.name));
+  warn.classList.toggle('hidden', bad.length === 0 && !h3DynTime);
+  const warning = h3DynTime
+    ? 'H3 LoRAs use the standard fused QKV model layout and are unavailable with DynTime. Choose Standard or Full BF16.'
+    : (duplicateManaged
+      ? 'Turbo adapters are applied automatically by the H3 Turbo switch. Remove the duplicate adapter from this LoRA stack.'
+      : (bad.length ? `May not work here: ${bad.map((l) => prettyLora(l.name)).join(', ')}` : ''));
   warn.dataset.iconTooltip = warning || 'LoRA compatibility caution';
   warn.dataset.iconTooltipDetail = warning || 'The selected LoRA may not be compatible with this workflow.';
   warn.setAttribute('aria-label', warning || 'LoRA compatibility caution');
@@ -13103,6 +13148,9 @@ function renderLoras() {
   add.type = 'button';
   add.textContent = '＋';
   add.setAttribute('aria-label', 'Add LoRA');
+  const h3LorasSupported = selectedH3LoraCompatibility().supported !== false;
+  add.disabled = !h3LorasSupported;
+  if (!h3LorasSupported) add.title = 'H3 LoRAs require Standard or Full BF16; DynTime uses a different Q/K/V layout.';
   add.addEventListener('click', () => openLoraPicker());
   list.appendChild(add);
   const loaded = arr.filter((l) => l && l.name).length;
@@ -16123,6 +16171,10 @@ $('#editModelHeader').addEventListener('click', () => {
 
 function videoDurationMax(engine) {
   if (engine === 'scail') return 60;
+  if (engine === 'wan-animate2') {
+    const performanceSeconds = Number(state.vidDrive?.dur) || 0;
+    return performanceSeconds > 0 ? Math.max(1, Math.min(15, performanceSeconds)) : 15;
+  }
   if (engine === 'ltx' && cameraMotionReferenceSelected()) return cameraMotionGuideLimit();
   if (engine === 'ltx') return 20;
   if (engine === 'h3') return h3LongContextActive() ? 120 : 15;
@@ -16409,7 +16461,7 @@ function updateVideoTuningSummary() {
     ? `${state.vidScailMode[0].toUpperCase()}${state.vidScailMode.slice(1)}`
     : '';
   const summary = state.vidEngine === 'wan-animate2'
-    ? '81 frames · source timing + audio'
+    ? `${formatVideoDuration(duration)}s · source timing + audio`
     : scailMode
     ? `${duration}s · ${scailMode}`
     : (motionVisible ? `${duration}s · motion ${motion}` : `${duration}s`);
@@ -18341,7 +18393,12 @@ $('#vidDriveBtn').addEventListener('click', () => {
       f.h = probe.videoHeight || 0;
       f.trimStart = 0;
       f.trimEnd = f.dur;
+      if (state.vidEngine === 'wan-animate2' && f.dur > 0) {
+        $('#vidDur').value = String(Math.max(1, Math.min(15, Math.round(f.dur * 10) / 10)));
+        updateVideoTuningSummary();
+      }
       driveLayout();
+      saveForm();
     };
     renderVidDrive();
     saveForm();
@@ -18353,6 +18410,7 @@ $('#vidDriveX').addEventListener('click', () => {
   $('#vidDriveVideo').removeAttribute('src');
   $('#vidDriveTrimChip').classList.remove('active');
   renderVidDrive();
+  updateVideoTuningSummary();
   saveForm();
 });
 
@@ -19083,7 +19141,7 @@ $('#generateBtn').addEventListener('click', async () => {
       wanAnimate2IdentityStrength: state.vidEngine === 'wan-animate2' ? state.vidWanAnimate2IdentityStrength : undefined,
       wanAnimate2MotionStrength: state.vidEngine === 'wan-animate2' ? state.vidWanAnimate2MotionStrength : undefined,
       sourceItemId: !h3Reference && state.vidRef ? state.vidRef.srcItemId : undefined,
-      loras: state.vidEngine === 'h3' ? [] : state.videoLoras,
+      loras: state.videoLoras,
       h3Mode: state.vidEngine === 'h3'
         ? (state.vidH3Mode === 'replace' && !h3ReplaceAvailable() ? 'frames' : state.vidH3Mode)
         : undefined,
@@ -20075,11 +20133,14 @@ function connectEvents() {
   es.addEventListener('videoChunkStep', (ev) => {
     const d = JSON.parse(ev.data);
     const longContext = d.sequenceKind === 'long-context';
+    const wanAnimate2 = d.sequenceKind === 'wan-animate2';
+    const sequenceLabel = wanAnimate2 ? 'Wan Animate 2 clip' : (longContext ? 'H3 Long context clip' : 'H3 Turbo chunk');
+    const toastLabel = wanAnimate2 ? 'Wan Animate 2 clip' : (longContext ? 'Long context clip' : 'H3 chunk');
     if (state.activeJobs.has(d.jobId)) {
       applyQueueJobMapping({ [d.jobId]: d.nextJobId });
-      setGenerating(true, `${longContext ? 'H3 Long context clip' : 'H3 Turbo chunk'} ${d.nextChunk} of ${d.total}…`);
+      setGenerating(true, `${sequenceLabel} ${d.nextChunk} of ${d.total}…`);
     }
-    toast(`${longContext ? 'Long context clip' : 'H3 chunk'} ${d.completedChunk} complete · running ${d.nextChunk} of ${d.total}`);
+    toast(`${toastLabel} ${d.completedChunk} complete · running ${d.nextChunk} of ${d.total}`);
     queueRefreshSoon();
   });
   es.addEventListener('jobDone', (ev) => {
@@ -27348,6 +27409,8 @@ async function reuseVideo(it, v) {
         d.trimStart = s;
         d.trimEnd = info.driveDurSeconds ? Math.min(d.dur, s + info.driveDurSeconds) : d.dur;
         renderVidDrive();
+        updateVideoTuningSummary();
+        saveForm();
       };
     } catch { missing.push('motion video'); }
   }

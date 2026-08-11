@@ -24,6 +24,11 @@ test('shared sampler nodes describe video jobs as video generation', () => {
   }
 });
 
+test('single-pass video progress reserves final decode and save headroom', () => {
+  const video = job('video', 'SamplerCustom');
+  assert.equal(progressDetailsForJob(video, 'sampler', 6, 6).overallPercent, 96);
+});
+
 test('progress labels retain specialized node descriptions and safe fallback', () => {
   assert.equal(nodeLabelForJob(job('gen', 'Krea2RegionalMultiLoRAV3'), 'sampler'), 'Applying region guidance...');
   assert.equal(nodeLabelForJob(job('video', 'CreateVideo'), 'sampler'), 'Encoding video...');
@@ -80,6 +85,20 @@ test('H3 Long context clips retain one overall progress range with a distinct la
   assert.equal(nodeLabelForJob(h3Job, 'sample'), 'H3 Long context clip 3 of 4');
   assert.equal(progressDetailsForJob(h3Job, 'sample', 5, 10).overallPercent, 60);
   assert.equal(progressPhaseForJob(h3Job, 'sample').phaseLabel, 'H3 Long context clip');
+});
+
+test('Wan Animate 2 clips report sequential progress across bounded prompts', () => {
+  const wanJob = {
+    kind: 'video',
+    graph: { sample: { class_type: 'SamplerCustom' } },
+    videoChunkSequence: {
+      type: 'wan-animate2',
+      index: 1,
+      segments: [{ index: 0 }, { index: 1 }, { index: 2 }],
+    },
+  };
+  assert.equal(nodeLabelForJob(wanJob, 'sample'), 'Wan Animate 2 clip 2 of 3');
+  assert.equal(progressDetailsForJob(wanJob, 'sample', 3, 6).overallPercent, 48);
 });
 
 test('multi-stage video progress names each pass and reports one overall percentage', () => {

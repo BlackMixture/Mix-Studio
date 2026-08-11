@@ -32,11 +32,42 @@ test('classifies Qwen edit LoRAs from key patterns', () => {
   }), 'qwen-edit');
 });
 
+test('classifies MiniMax H3 LoRAs before overlapping transformer-key heuristics', () => {
+  assert.equal(classifyLora({
+    name: 'character-style.safetensors',
+    metadata: { ss_base_model_version: 'MiniMax-H3' },
+    keys: ['transformer.transformer_blocks.0.attn.q_proj.lora_A.weight'],
+  }), 'h3');
+  assert.equal(classifyLora({
+    name: 'MiniMax_H3/film-look.safetensors',
+    metadata: {},
+    keys: [],
+  }), 'h3');
+  assert.equal(classifyLora({
+    name: 'realism-people.safetensors',
+    metadata: {},
+    keys: ['diffusion_model.blocks.0.attn.qkv_proj.lora_A.weight'],
+  }), 'h3');
+});
+
 test('unknown LoRAs are allowed by context filters', () => {
   assert.equal(classifyLora({ name: 'mystery.safetensors', metadata: {}, keys: [] }), 'unknown');
   assert.deepEqual(compatibleCategoriesForContext('edit', 'klein9'), ['klein9', 'unknown']);
   assert.deepEqual(compatibleCategoriesForContext('edit', 'krea2ref'), ['krea2', 'unknown']);
   assert.deepEqual(compatibleCategoriesForContext('edit', 'krea2remix'), ['krea2', 'unknown']);
+  assert.deepEqual(compatibleCategoriesForContext('video', null, 'h3'), ['h3', 'unknown']);
+  assert.deepEqual(compatibleCategoriesForContext('video', null, 'wan'), ['video', 'unknown']);
+});
+
+test('H3 compatibility warning identifies LoRAs made for other video models', () => {
+  const warning = loraCompatibilityWarning(
+    [{ name: 'wan-style.safetensors', on: true }],
+    { 'wan-style.safetensors': { category: 'video' } },
+    'video',
+    null,
+    'h3'
+  );
+  assert.match(warning, /wan-style/);
 });
 
 test('warning lists incompatible selected LoRAs', () => {

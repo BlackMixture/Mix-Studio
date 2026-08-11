@@ -115,6 +115,22 @@ test('MiniMax H3 offers verified SageAttention with an explicit standard-attenti
   assert.match(server, /attentionBackend: engine === 'h3' \? \(opts\.sageAttention \? 'sageattention' : 'standard'\)/);
 });
 
+test('MiniMax H3 exposes the shared LoRA stack and sends it to the video workflow', () => {
+  assert.doesNotMatch(app, /loraPanel'\)\.closest\('\.panel'\)\.hidden = isVideo && state\.vidEngine === 'h3'/);
+  assert.match(app, /function compatibleLoraCategories\(\)[\s\S]{0,180}state\.vidEngine === 'h3'[\s\S]{0,80}\['h3', 'unknown'\]/);
+  assert.match(app, /loras: state\.videoLoras,/);
+  assert.doesNotMatch(app, /loras: state\.vidEngine === 'h3' \? \[\] : state\.videoLoras/);
+  assert.match(app, /function h3ManagedWorkflowLora\(name\)/);
+  assert.match(app, /function selectedH3LoraCompatibility\(\)/);
+  assert.match(app, /H3 LoRAs use the standard fused QKV model layout and are unavailable with DynTime/);
+  assert.match(server, /h3: \['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly'/);
+  assert.match(server, /let requestedVideoLoras = Array\.isArray\(body\.loras\)/);
+  assert.match(server, /code: 'h3_lora_model_incompatible'/);
+  assert.match(server, /code: 'h3_managed_lora_duplicate'/);
+  assert.match(server, /loras: requestedVideoLoras,/);
+  assert.doesNotMatch(server, /loras: engine === 'h3' \? \[\]/);
+});
+
 test('Video frame and media inputs use visual source cards', () => {
   assert.match(html, /class="video-input-grid"/);
   for (const id of ['vidAttachBtn', 'vidDriveBtn', 'vidFaceChip', 'vidEndChip', 'vidAudioChip']) {
@@ -603,13 +619,13 @@ test('MiniMax H3 Frames Turbo defaults new installs to v4 while preserving expli
 test('long H3 Reference Turbo videos advance through five-second jobs and rejoin as one result', () => {
   assert.match(server, /h3TurboReferenceSegments\(frames\)/);
   assert.match(server, /opts\.turboReferenceSegment = h3TurboReferenceChunks\[0\]/);
-  assert.match(server, /async function queueNextH3VideoChunk\(job\)/);
+  assert.match(server, /async function queueNextVideoChunk\(job\)/);
   assert.match(server, /videoChunkSequence\.chunkBuffers\[videoChunkSequence\.index\] = buf/);
   assert.match(server, /await joinVideoChunks\(\{/);
   assert.match(server, /broadcast\('videoChunkStep'/);
   assert.match(app, /if \(result\.sequenceId\) state\.activeJobSequences\.set\(result\.jobId, result\.sequenceId\)/);
   assert.match(app, /es\.addEventListener\('videoChunkStep'/);
-  assert.match(app, /H3 Turbo chunk'\} \$\{d\.nextChunk\} of \$\{d\.total\}/);
+  assert.match(app, /const sequenceLabel = wanAnimate2 \? 'Wan Animate 2 clip'/);
 });
 
 test('MiniMax H3 Long context allows Turbo with an icon-only quality caution', () => {

@@ -49,6 +49,7 @@ const {
   activeH3ModelSettingKeys,
   h3EffectiveModelName,
   h3FrameVariant,
+  h3LoraCompatibility,
   h3ReferenceVariant,
   h3TurboCompatibility,
   h3VariantSettingDefaults,
@@ -217,9 +218,9 @@ const {
   videoProcessInfo,
 } = require('./lib/video-workflows');
 const {
-  WAN_ANIMATE_2_FRAMES,
   WAN_ANIMATE_2_STEPS,
   buildWanAnimate2Graph,
+  wanAnimate2ContinuationPlan,
   wanAnimate2Dimensions,
 } = require('./lib/wan-animate2-workflow');
 const {
@@ -230,7 +231,9 @@ const {
 const {
   joinVideoChunks,
   joinVideoExtension,
+  joinWanAnimate2Chunks,
   normalizeVideoPreviewOptions,
+  prepareWanAnimate2Performance,
   probeVideoFile,
   resolveFfmpegExecutable,
   transcodeVideoFileToMp4,
@@ -2083,11 +2086,18 @@ function handleWsBinary(buf) {
 /* --------------------------- Job lifecycle ------------------------ */
 
 function clearPendingJobState(job) {
-  if (!job || job.kind !== 'upscale' || !job.itemId) return;
-  const item = db.items.find((entry) => entry.id === job.itemId);
-  if (item && item.upscalePending) {
-    item.upscalePending = false;
-    saveDb();
+  if (!job) return;
+  const temporarySourcePath = job.videoChunkSequence?.temporarySourcePath;
+  if (temporarySourcePath) {
+    job.videoChunkSequence.temporarySourcePath = '';
+    fsp.unlink(temporarySourcePath).catch(() => {});
+  }
+  if (job.kind === 'upscale' && job.itemId) {
+    const item = db.items.find((entry) => entry.id === job.itemId);
+    if (item && item.upscalePending) {
+      item.upscalePending = false;
+      saveDb();
+    }
   }
 }
 
@@ -2360,11 +2370,36 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
   broadcast('jobDone', { jobId: pid, items: [composite, ...created], strengthHunt: true, count: created.length });
 }
 
-async function queueNextH3VideoChunk(job) {
+async function queueNextVideoChunk(job) {
   const sequence = job && job.videoChunkSequence;
   if (!sequence || sequence.index >= sequence.segments.length - 1) return null;
   const nextIndex = sequence.index + 1;
   const nextSegment = sequence.segments[nextIndex];
+  if (sequence.type === 'wan-animate2') {
+    const nextOpts = Object.assign({}, sequence.opts, {
+      seed: (Number(sequence.opts.seed) + nextIndex) % (2 ** 48),
+      makePoster: false,
+      wanAnimate2Segment: nextSegment,
+      continuationImageName: sequence.continuationImageName,
+      saveContinuationFrame: nextIndex < sequence.segments.length - 1,
+    });
+    const graph = await buildWanAnimate2Graph(sequence.referenceImageName, nextOpts, settings, {
+      nodeFromOrdered, filterInputs,
+    });
+    const nextPid = await queuePrompt(graph, { profileId: job.profileId });
+    trackJob(nextPid, {
+      kind: 'video',
+      profileId: job.profileId,
+      itemId: job.itemId || null,
+      createItem: job.createItem,
+      graph,
+      videoInfo: job.videoInfo,
+      thumbnailName: job.thumbnailName,
+      videoChunkSequence: Object.assign({}, sequence, { index: nextIndex }),
+    });
+    ensureWs();
+    return nextPid;
+  }
   const nextOpts = sequence.type === 'long-context'
     ? Object.assign({}, sequence.opts, {
       prompt: h3LongContextSegmentPrompt(sequence.basePrompt, nextSegment, sequence.segments.length),
@@ -2457,12 +2492,25 @@ async function completeJob(pid) {
     if (videoChunkSequence) {
       videoChunkSequence.chunkBuffers[videoChunkSequence.index] = buf;
       if (videoChunkSequence.index === 0 && job.createItem && !videoChunkSequence.posterBuffer) {
-        const posters = findOutputFiles(outputs, /\.(png|jpg|jpeg|webp)$/i);
+        const posters = findOutputFiles({ poster_save: outputs.poster_save || {} }, /\.(png|jpg|jpeg|webp)$/i);
         if (posters.length) videoChunkSequence.posterBuffer = await downloadOutput(posters[0]);
       }
       if (videoChunkSequence.index < videoChunkSequence.segments.length - 1) {
         try {
-          const nextJobId = await queueNextH3VideoChunk(job);
+          if (videoChunkSequence.type === 'wan-animate2') {
+            const continuationFiles = findOutputFiles({
+              continuation_save: outputs.continuation_save || {},
+            }, /\.(png|jpg|jpeg|webp)$/i);
+            if (!continuationFiles.length) {
+              throw new Error('ComfyUI did not save the continuation frame');
+            }
+            const continuationBuffer = await downloadOutput(continuationFiles[0]);
+            videoChunkSequence.continuationImageName = await uploadToComfy(
+              continuationBuffer,
+              `ks_wan_continue_${videoChunkSequence.id}_${videoChunkSequence.index + 1}.png`,
+            );
+          }
+          const nextJobId = await queueNextVideoChunk(job);
           jobs.delete(pid);
           broadcast('videoChunkStep', {
             jobId: pid,
@@ -2474,7 +2522,8 @@ async function completeJob(pid) {
             sequenceKind: videoChunkSequence.type || 'turbo-reference',
           });
         } catch (error) {
-          return failJob(pid, `MiniMax H3 chunk ${videoChunkSequence.index + 2} could not start: ${error.message}`);
+          const label = videoChunkSequence.type === 'wan-animate2' ? 'Wan Animate 2 clip' : 'MiniMax H3 chunk';
+          return failJob(pid, `${label} ${videoChunkSequence.index + 2} could not start: ${error.message}`);
         }
         return;
       }
@@ -2482,9 +2531,11 @@ async function completeJob(pid) {
         jobId: pid,
         profileId: job.profileId,
         kind: 'video',
-        text: videoChunkSequence.type === 'long-context'
-          ? 'Joining H3 long-context clips…'
-          : 'Joining H3 video chunks…',
+        text: videoChunkSequence.type === 'wan-animate2'
+          ? 'Joining Wan Animate 2 clips…'
+          : (videoChunkSequence.type === 'long-context'
+            ? 'Joining H3 long-context clips…'
+            : 'Joining H3 video chunks…'),
         itemId: job.itemId || null,
       });
       try {
@@ -2493,15 +2544,30 @@ async function completeJob(pid) {
           || videoChunkSequence.chunkBuffers.some((chunk) => !chunk)) {
           throw new Error('One or more generated chunks are missing');
         }
-        buf = await joinVideoChunks({
-          chunkBuffers: videoChunkSequence.chunkBuffers,
-          segments: videoChunkSequence.segments,
-          fps: videoChunkSequence.fps,
-          width: videoChunkSequence.width,
-          height: videoChunkSequence.height,
-          ffmpegPath,
-        });
+        buf = videoChunkSequence.type === 'wan-animate2'
+          ? await joinWanAnimate2Chunks({
+            chunkBuffers: videoChunkSequence.chunkBuffers,
+            segments: videoChunkSequence.segments,
+            fps: videoChunkSequence.fps,
+            width: videoChunkSequence.width,
+            height: videoChunkSequence.height,
+            audioSourcePath: videoChunkSequence.audioSourcePath,
+            sourceHasAudio: videoChunkSequence.sourceHasAudio,
+            ffmpegPath,
+          })
+          : await joinVideoChunks({
+            chunkBuffers: videoChunkSequence.chunkBuffers,
+            segments: videoChunkSequence.segments,
+            fps: videoChunkSequence.fps,
+            width: videoChunkSequence.width,
+            height: videoChunkSequence.height,
+            ffmpegPath,
+          });
         durationMs = Math.max(jobDurationMs(job), Date.now() - videoChunkSequence.startedAt);
+        if (videoChunkSequence.type === 'wan-animate2' && videoChunkSequence.temporarySourcePath) {
+          await fsp.unlink(videoChunkSequence.temporarySourcePath).catch(() => {});
+          videoChunkSequence.temporarySourcePath = '';
+        }
       } catch (error) {
         return failJob(pid, error.message || 'Could not join the generated H3 video chunks');
       }
@@ -2584,7 +2650,6 @@ async function completeJob(pid) {
           width: probe.width,
           height: probe.height,
           exactFrameCount: true,
-          sourceFrameRate: true,
           driveDurSeconds: probe.durationSeconds,
         });
       } catch { /* The saved video remains valid; browser metadata is the fallback. */ }
@@ -2860,7 +2925,11 @@ setInterval(async () => {
   const socketStale = socketOpen && Date.now() - lastWsMessageAt > 15_000;
   const needsTextReconciliation = [...jobs.values()]
     .some((job) => ['enhance', 'motionPrompt', 'smartMask'].includes(job.kind));
-  if (socketOpen && !socketStale && !needsTextReconciliation) return;
+  // Video encoding/SaveVideo can finish without the browser process receiving
+  // ComfyUI's final executing(node:null) event. Reconcile video history even
+  // while the socket looks healthy so a missed terminal event cannot strand it.
+  const needsVideoReconciliation = [...jobs.values()].some((job) => job.kind === 'video');
+  if (socketOpen && !socketStale && !needsTextReconciliation && !needsVideoReconciliation) return;
   if (socketStale) {
     resetComfyTransport();
     ensureWs();
@@ -5887,7 +5956,7 @@ const REQUIRED_CLASSES = {
     'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
     'LTXVLatentUpsampler', 'LTXVCropGuides', 'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo',
     'SaveVideo', 'ImageScale', 'LTXVPreprocess'],
-  h3: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'MiniMaxH3ImageToVideo', 'RandomNoise', 'BasicGuider',
+  h3: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'MiniMaxH3ImageToVideo', 'RandomNoise', 'BasicGuider',
     'KSamplerSelect', 'BasicScheduler', 'SamplerCustomAdvanced', 'VAEDecode', 'VAEDecodeAudio',
     'CreateVideo', 'SaveVideo', 'ImageFromBatch', 'SaveImage'],
   h3r2v: ['MiniMaxH3ReferenceToVideo', 'VHS_LoadVideo', 'VHS_LoadAudioUpload'],
@@ -5905,9 +5974,9 @@ const REQUIRED_CLASSES = {
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
   wananimate2: ['UNETLoader', 'LoraLoaderModelOnly', 'CLIPLoader', 'CLIPTextEncode', 'CLIPVisionLoader',
-    'CLIPVisionEncode', 'VAELoader', 'LoadImage', 'LoadVideo', 'GetVideoComponents', 'ResizeImageMaskNode',
-    'ImageFromBatch', 'WanAnimate2Cache', 'WanAnimate2ToVideo', 'ModelSamplingSD3', 'BasicScheduler',
-    'KSamplerSelect', 'SamplerCustom', 'TrimVideoLatent', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
+    'CLIPVisionEncode', 'VAELoader', 'LoadImage', 'LoadVideo', 'Video Slice', 'GetVideoComponents',
+    'ResizeImageMaskNode', 'ImageFromBatch', 'WanAnimate2ToVideo', 'ModelSamplingSD3', 'BasicScheduler',
+    'KSamplerSelect', 'SamplerCustom', 'TrimVideoLatent', 'VAEDecode', 'CreateVideo', 'SaveVideo', 'SaveImage'],
   eros: ['CheckpointLoaderSimple', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
     'LTXVPreprocess', 'LTXReferenceEnable', 'LTXReferenceConditioning', 'LoraLoaderModelOnly',
     'EmptyLTXVLatentVideo', 'LTXVEmptyLatentAudio', 'LTXVImgToVideoInplaceKJ', 'LTXVConcatAVLatent',
@@ -5974,14 +6043,27 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, wanAnimate2Cor
 }
 
 function wanAnimate2CoreCompatibility(info, version = '') {
-  const required = ['WanAnimate2ToVideo', 'WanAnimate2Cache', 'LoadVideo', 'GetVideoComponents',
-    'ResizeImageMaskNode', 'TrimVideoLatent', 'CreateVideo', 'SaveVideo'];
+  const required = ['WanAnimate2ToVideo', 'LoadVideo', 'Video Slice', 'GetVideoComponents',
+    'ResizeImageMaskNode', 'ImageFromBatch', 'TrimVideoLatent', 'CreateVideo', 'SaveVideo', 'SaveImage'];
   const missingNodes = required.filter((className) => !info?.[className]);
+  const conditioningInfo = info?.WanAnimate2ToVideo;
+  const inputGroups = conditioningInfo?.input;
+  const inputNames = inputGroups && typeof inputGroups === 'object'
+    ? new Set(Object.values(inputGroups).flatMap((group) => Object.keys(group || {})))
+    : null;
+  const missingInputs = inputNames
+    ? ['continue_motion', 'video_frame_offset'].filter((name) => !inputNames.has(name))
+    : [];
+  const missingOutputs = Array.isArray(conditioningInfo?.output) && conditioningInfo.output.length < 6
+    ? ['trim_image', 'video_frame_offset']
+    : [];
   return {
-    supported: missingNodes.length === 0,
+    supported: missingNodes.length === 0 && missingInputs.length === 0 && missingOutputs.length === 0,
     version: String(version || ''),
     missingNodes,
-    reason: missingNodes.length
+    missingInputs,
+    missingOutputs,
+    reason: missingNodes.length || missingInputs.length || missingOutputs.length
       ? 'Update ComfyUI to a current build with native Wan Animate 2 support, restart it, then check again.'
       : '',
   };
@@ -7003,6 +7085,10 @@ async function handleApi(req, res, url) {
         minimaxH3: Object.assign({}, h3Core, {
           frameVariant: h3FrameVariant(settings),
           referenceVariant: h3ReferenceVariant(settings),
+          lora: {
+            frames: h3LoraCompatibility(settings, 'frames'),
+            reference: h3LoraCompatibility(settings, 'reference'),
+          },
           turbo: {
             frames: h3TurboCompatibility(settings, 'frames'),
             reference: h3TurboCompatibility(settings, 'reference'),
@@ -8122,6 +8208,9 @@ async function handleApi(req, res, url) {
     const h3LongContext = engine === 'h3' && body.h3LongContext === true;
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
+    let requestedVideoLoras = Array.isArray(body.loras)
+      ? body.loras.filter((lora) => lora && lora.on && lora.name && String(lora.name).trim())
+      : [];
     let h3TurboNativeSampler = false;
     const h3AllowedReferenceTokens = h3ReferenceInputTokens(h3References);
     // Every video route except Wan Full Quality is fixed at CFG 1 (or
@@ -8156,6 +8245,56 @@ async function handleApi(req, res, url) {
       }
       const selectedMode = h3ReferenceBacked ? 'reference' : 'frames';
       const selectedVariant = h3SelectedModelVariant;
+      if (requestedVideoLoras.length) {
+        const loraCompatibility = h3LoraCompatibility(settings, selectedMode);
+        if (!loraCompatibility.supported) {
+          return json(res, 409, {
+            error: loraCompatibility.reason,
+            code: 'h3_lora_model_incompatible',
+            modelVariant: loraCompatibility.variant,
+          });
+        }
+        if (!info.LoraLoaderModelOnly) {
+          return json(res, 409, {
+            error: 'MiniMax H3 LoRAs need ComfyUI’s model-only LoRA loader. Update ComfyUI, restart it, and try again.',
+            code: 'h3_lora_loader_unavailable',
+            component: 'h3',
+            missingNodes: ['LoraLoaderModelOnly'],
+          });
+        }
+        const managedTurboNames = new Set([settings.h3TurboLora, settings.h3RefTurboLora]
+          .map((name) => normalizeModelPath(name).split('/').pop())
+          .filter(Boolean));
+        const duplicateManaged = requestedVideoLoras.find((lora) => (
+          managedTurboNames.has(normalizeModelPath(lora.name).split('/').pop())
+        ));
+        if (duplicateManaged) {
+          return json(res, 400, {
+            error: 'The selected Turbo adapter is managed by the H3 Turbo switch and cannot also be added as a user LoRA. Remove it from the LoRA stack and try again.',
+            code: 'h3_managed_lora_duplicate',
+            lora: String(duplicateManaged.name),
+          });
+        }
+        const modelOnlyH3Loras = comboList(info, 'LoraLoaderModelOnly', 'lora_name');
+        const availableH3Loras = modelOnlyH3Loras.length
+          ? modelOnlyH3Loras
+          : comboList(info, 'LoraLoader', 'lora_name');
+        const resolvedH3Loras = requestedVideoLoras.map((lora) => ({
+          lora,
+          resolved: resolveRegisteredModelName(String(lora.name), availableH3Loras),
+        }));
+        const unavailableH3Lora = resolvedH3Loras.find((entry) => !entry.resolved);
+        if (unavailableH3Lora) {
+          return json(res, 409, {
+            error: `MiniMax H3 cannot find this LoRA in ComfyUI: ${String(unavailableH3Lora.lora.name)}`,
+            code: 'h3_lora_unavailable',
+            lora: String(unavailableH3Lora.lora.name),
+          });
+        }
+        requestedVideoLoras = resolvedH3Loras.map(({ lora, resolved }) => (
+          Object.assign({}, lora, { name: resolved })
+        ));
+      }
       if (h3LongContext && h3Mode === 'replace') {
         return json(res, 400, {
           error: 'MiniMax H3 Long context supports Text + Frames and Reference modes. Replace remains a single-clip workflow.',
@@ -8262,17 +8401,20 @@ async function handleApi(req, res, url) {
     }
     if (wanAnimate2) {
       const info = await getObjectInfo();
+      const coreStatus = wanAnimate2CoreCompatibility(info);
       const missingNodes = REQUIRED_CLASSES.wananimate2.filter((className) => !info[className]);
       const modelStatusValue = configuredModelsStatus(info).wanAnimate2;
       const missingModels = Object.entries(modelStatusValue)
         .filter(([key, value]) => key !== 'label' && value?.ok === false)
         .map(([key]) => key);
-      if (missingNodes.length || missingModels.length) {
+      if (!coreStatus.supported || missingNodes.length || missingModels.length) {
         return json(res, 409, {
           error: 'Wan Animate 2 needs the current ComfyUI core nodes and official model pack. Install or repair Wan Animate 2 in Generation Setup, restart ComfyUI, and try again.',
           code: 'wan_animate2_unavailable',
           component: 'wananimate2',
           missingNodes,
+          missingInputs: coreStatus.missingInputs,
+          missingOutputs: coreStatus.missingOutputs,
           missingModels,
         });
       }
@@ -8383,6 +8525,37 @@ async function handleApi(req, res, url) {
       if (err) return json(res, 400, { error: err });
     }
 
+    let wanAnimate2Plan = null;
+    let wanAnimate2SourcePath = '';
+    let wanAnimate2PreparedPath = '';
+    if (wanAnimate2) {
+      if (!videoExtensionFfmpeg) videoExtensionFfmpeg = await resolveFfmpegExecutable(RUNTIME);
+      if (!videoExtensionFfmpeg) {
+        return json(res, 409, {
+          error: 'Wan Animate 2 needs FFmpeg to match the generated video to the performance timing. Install FFmpeg or make the ComfyUI imageio-ffmpeg executable available.',
+          code: 'wan_animate2_probe_unavailable',
+        });
+      }
+      try {
+        const durablePerformance = await resolveDurableUploadedVideo(INPUTS, driveVideoName);
+        wanAnimate2SourcePath = durablePerformance.file;
+        const performanceProbe = await probeVideoFile(durablePerformance.file, videoExtensionFfmpeg);
+        const requestedPerformanceSeconds = Number(body.seconds);
+        wanAnimate2Plan = wanAnimate2ContinuationPlan({
+          sourceFrames: performanceProbe.frames,
+          sourceFps: performanceProbe.fps,
+          requestedSeconds: Number.isFinite(requestedPerformanceSeconds) && requestedPerformanceSeconds > 0
+            ? requestedPerformanceSeconds
+            : (driveDur || performanceProbe.durationSeconds),
+        });
+      } catch (error) {
+        return json(res, 400, {
+          error: `Could not read reliable timing from the Wan Animate 2 performance video. Reattach it and try again. ${String(error.message || error)}`,
+          code: 'wan_animate2_probe_failed',
+        });
+      }
+    }
+
     // Duration: prefer seconds; fall back to legacy frames (25 fps)
     let seconds = Number(body.seconds);
     let h3LongContextPlan = [];
@@ -8394,7 +8567,7 @@ async function handleApi(req, res, url) {
         ? Math.max(H3_MIN_SECONDS, Math.min(H3_LONG_CONTEXT_MAX_SECONDS, seconds))
         : h3DurationSeconds(seconds))
       : wanAnimate2
-        ? WAN_ANIMATE_2_FRAMES / 24
+        ? wanAnimate2Plan.seconds
       : engine === 'scail'
       ? scailDurationSeconds(seconds, driveDur)
       : isLtxEdit && driveDur > 0
@@ -8431,8 +8604,8 @@ async function handleApi(req, res, url) {
       h3OutputAspectRatio = requestedAspectRatio;
       ({ W, H } = h3Dimensions(requestedAspectRatio, 1, body.h3ResolutionSize));
     } else if (wanAnimate2) {
-      fps = 24;
-      frames = WAN_ANIMATE_2_FRAMES;
+      fps = wanAnimate2Plan.fps;
+      frames = wanAnimate2Plan.outputFrames;
       ({ W, H } = wanAnimate2Dimensions(srcW, srcH));
     } else if (engine === 'scail') {
       fps = selectedScailFps;
@@ -8473,6 +8646,34 @@ async function handleApi(req, res, url) {
           code: 'ltx_refine_too_large',
           engine,
         }, refinePreflight));
+      }
+    }
+
+    let graphDriveVideoName = driveVideoName;
+    if (wanAnimate2) {
+      const preparedName = `ks_wan2_${Date.now()}_${crypto.randomBytes(6).toString('hex')}.mp4`;
+      wanAnimate2PreparedPath = path.join(INPUTS, preparedName);
+      try {
+        await prepareWanAnimate2Performance({
+          sourcePath: wanAnimate2SourcePath,
+          outputPath: wanAnimate2PreparedPath,
+          ffmpegPath: videoExtensionFfmpeg,
+          fps: wanAnimate2Plan.fps,
+          frames: wanAnimate2Plan.outputFrames,
+          width: W,
+          height: H,
+        });
+        graphDriveVideoName = await uploadToComfy(
+          await fsp.readFile(wanAnimate2PreparedPath),
+          preparedName,
+        );
+      } catch (error) {
+        await fsp.unlink(wanAnimate2PreparedPath).catch(() => {});
+        wanAnimate2PreparedPath = '';
+        return json(res, 400, {
+          error: String(error.message || error),
+          code: 'wan_animate2_prepare_failed',
+        });
       }
     }
 
@@ -8614,7 +8815,7 @@ async function handleApi(req, res, url) {
       endImageName: !firstH3LongContextSegment || h3LongContextPlan.length === 1 ? endImageName : null,
       sigmaFirst: sig.first,
       sigmaUp: sig.up,
-      driveVideoName,
+      driveVideoName: wanAnimate2 ? graphDriveVideoName : driveVideoName,
       guideVideoName: isLtxEdit ? driveVideoName : null,
       guideSkipFrames: isLtxEdit ? Math.max(0, Math.round(driveStart * fps)) : 0,
       editAnything: isLtxEdit,
@@ -8629,8 +8830,11 @@ async function handleApi(req, res, url) {
       driveAudio: engine === 'scail' && body.driveHasAudio === true,
       identityStrength: clampNum(body.wanAnimate2IdentityStrength, 0, 2, 1),
       motionStrength: clampNum(body.wanAnimate2MotionStrength, 0, 2, 1),
+      wanAnimate2Plan,
+      wanAnimate2Segment: wanAnimate2 ? wanAnimate2Plan.segments[0] : undefined,
+      saveContinuationFrame: wanAnimate2 ? wanAnimate2Plan.segments.length > 1 : undefined,
       smooth,
-      loras: engine === 'h3' ? [] : (Array.isArray(body.loras) ? body.loras.filter((l) => l && l.on && l.name) : []),
+      loras: requestedVideoLoras,
       mode: h3GraphMode,
       turbo: h3Turbo,
       turboStrength: clampNum(body.h3TurboStrength, 0.8, 1.2, 1),
@@ -8664,7 +8868,13 @@ async function handleApi(req, res, url) {
         : engine === 'eros' ? await buildAnimateEros(comfyName, opts)
           : faceImageName ? await buildAnimateFaceId(faceImageName, opts)
             : await buildAnimate(comfyName, opts);
-    const pid = await queuePrompt(graph, { profileId: req.profile.id });
+    let pid;
+    try {
+      pid = await queuePrompt(graph, { profileId: req.profile.id });
+    } catch (error) {
+      if (wanAnimate2PreparedPath) await fsp.unlink(wanAnimate2PreparedPath).catch(() => {});
+      throw error;
+    }
     const h3ChunkSequenceId = h3LongContextPlan.length > 1
       ? h3LongContextChainId
       : (h3TurboReferenceChunks.length > 1 ? uid() : '');
@@ -8697,9 +8907,26 @@ async function handleApi(req, res, url) {
       width: opts.fourK ? W * 2 : W,
       height: opts.fourK ? H * 2 : H,
     } : undefined);
+    const wanAnimate2VideoChunkSequence = wanAnimate2 ? {
+      type: 'wan-animate2',
+      id: uid(),
+      index: 0,
+      segments: wanAnimate2Plan.segments,
+      chunkBuffers: [],
+      posterBuffer: null,
+      startedAt: Date.now(),
+      opts: Object.assign({}, opts),
+      referenceImageName: comfyName,
+      fps: wanAnimate2Plan.fps,
+      width: W,
+      height: H,
+      audioSourcePath: wanAnimate2PreparedPath,
+      temporarySourcePath: wanAnimate2PreparedPath,
+      sourceHasAudio: body.driveHasAudio === true,
+    } : undefined;
     trackJob(pid, {
       kind: 'video', profileId: req.profile.id, itemId: item ? item.id : null, createItem: !item, graph,
-      videoChunkSequence: h3VideoChunkSequence,
+      videoChunkSequence: wanAnimate2VideoChunkSequence || h3VideoChunkSequence,
       videoInfo: {
         engine,
         seconds: opts.seconds,
@@ -8733,7 +8960,9 @@ async function handleApi(req, res, url) {
         scailChunkOverlap: engine === 'scail' ? selectedScailChunkOptions.overlapFrames : undefined,
         wanAnimate2IdentityStrength: wanAnimate2 ? opts.identityStrength : undefined,
         wanAnimate2MotionStrength: wanAnimate2 ? opts.motionStrength : undefined,
-        sourceFrameRate: wanAnimate2 || undefined,
+        wanAnimate2Windows: wanAnimate2 ? wanAnimate2Plan.windowCount : undefined,
+        sourceFrameRate: wanAnimate2 ? wanAnimate2Plan.inputFps : undefined,
+        wanAnimate2PlaybackFps: wanAnimate2 ? wanAnimate2Plan.fps : undefined,
         h3Mode: engine === 'h3' ? h3Mode : undefined,
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
         h3ModelVariant: engine === 'h3' ? h3SelectedModelVariant?.id : undefined,
@@ -8785,7 +9014,7 @@ async function handleApi(req, res, url) {
       h3Turbo: engine === 'h3' ? opts.turbo : undefined,
       h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
       h3LongContextClips: h3LongContextPlan.length > 1 ? h3LongContextPlan.length : undefined,
-      sequenceId: h3ChunkSequenceId || undefined,
+      sequenceId: wanAnimate2VideoChunkSequence?.id || h3ChunkSequenceId || undefined,
       attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
     });
   }
@@ -10278,7 +10507,9 @@ function jobLabel(job) {
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'interpolate') return 'Frame interpolation (RIFE)';
   if (job.kind === 'video' && job.videoInfo && job.videoInfo.processed === 'extend') return 'Video extension (LTX 2.3)';
   if (job.kind === 'video' && job.videoChunkSequence) {
-    const label = job.videoChunkSequence.type === 'long-context' ? 'H3 Long context clip' : 'H3 Turbo chunk';
+    const label = job.videoChunkSequence.type === 'wan-animate2'
+      ? 'Wan Animate 2 clip'
+      : (job.videoChunkSequence.type === 'long-context' ? 'H3 Long context clip' : 'H3 Turbo chunk');
     return `${label} ${job.videoChunkSequence.index + 1}/${job.videoChunkSequence.segments.length}: `
       + ((job.videoInfo && job.videoInfo.motionPrompt) || '').slice(0, 58);
   }

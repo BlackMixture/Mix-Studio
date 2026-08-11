@@ -4,6 +4,15 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### MiniMax H3 LoRAs
+
+- Added native user LoRA stacks for MiniMax H3 Standard and Full BF16 generation, including ordered strengths, trigger phrases, presets, Turbo, Reference Turbo, SageAttention, long-context chunks, generation reuse, and saved metadata.
+- Added H3-aware LoRA filtering and icon-only compatibility guidance, excluded the app-managed Turbo adapters from normal selection, and blocked current fused-QKV H3 LoRAs on the incompatible experimental DynTime layout.
+
+### RTX 4K setup
+
+- Fixed the RTX post-upscale setup loop by connecting the installer to NVIDIA's official RTX ComfyUI node package and its Python requirement instead of completing an empty install plan.
+
 ### MiniMax H3 resolution reuse
 
 - Fixed setting reuse for H3 renders with RTX 4K Pass so the picker restores the original S/M/L tier independently from the doubled output dimensions; older gallery entries without saved tier metadata are inferred from their base canvas.
@@ -16,6 +25,9 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 ### Wan Animate 2 reliability
 
 - Added the required single-video `batch_size` input to Wan Animate 2 conditioning graphs, matching the current native ComfyUI node schema and official workflow template.
+- Prevented end-of-generation stalls by normalizing performance clips to the model-recommended maximum of 24 fps and the selected 480p canvas before ComfyUI decodes them.
+- Replaced memory-heavy multi-window graphs with sequential 81-frame jobs, one-frame continuity handoff, exact overlap trimming, and an FFmpeg join that restores the performance audio once across the finished video.
+- Stopped forcing the optional multi-gigabyte pose cache, reserved visible progress for decode/save, and reconciled completed video history even if ComfyUI's final WebSocket event is missed.
 
 ### Mobile Library responsiveness
 
