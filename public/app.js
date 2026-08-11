@@ -1843,8 +1843,18 @@ const MIX_STUDIO_120_SHOWCASE = [
     theme: 'packs',
   },
 ];
+const MIX_STUDIO_124_SHOWCASE = [
+  {
+    eyebrow: 'Video generation',
+    title: 'LTX 2.5 video generation',
+    message: 'Create LTX 2.5 videos from text, a first frame, or first and last frames with synchronized audio, user LoRAs, RIFE interpolation, and optional RTX 4K processing.',
+    media: '/update-media/v1.2.4-ltx-2.5.mp4',
+    theme: 'release',
+  },
+  ...MIX_STUDIO_120_SHOWCASE,
+];
 const OFFICIAL_RELEASE_SHOWCASES = {
-  '1.2.4': MIX_STUDIO_120_SHOWCASE,
+  '1.2.4': MIX_STUDIO_124_SHOWCASE,
   '1.2.3': [
     {
       eyebrow: 'Mobile performance',

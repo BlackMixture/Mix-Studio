@@ -155,7 +155,8 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(app, /drawerButton\.hidden = !latest/);
   assert.match(app, /OFFICIAL_RELEASE_SHOWCASES/);
   assert.match(app, /const MIX_STUDIO_120_SHOWCASE = \[/);
-  assert.match(app, /'1\.2\.4': MIX_STUDIO_120_SHOWCASE/);
+  assert.match(app, /const MIX_STUDIO_124_SHOWCASE = \[[\s\S]*title: 'LTX 2\.5 video generation'[\s\S]*media: '\/update-media\/v1\.2\.4-ltx-2\.5\.mp4'[\s\S]*\.\.\.MIX_STUDIO_120_SHOWCASE/);
+  assert.match(app, /'1\.2\.4': MIX_STUDIO_124_SHOWCASE/);
   assert.match(app, /'1\.2\.0': MIX_STUDIO_120_SHOWCASE/);
   assert.match(app, /title: 'MiniMax H3 \+ Turbo is here'[\s\S]*title: 'Wan Animate 2 is available'[\s\S]*title: 'Meet Mix Packs'/);
   assert.match(app, /media: '\/update-media\/v1\.2\.0-wan-animate2\.mp4'/);
@@ -180,6 +181,9 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(app, /function disposeUpdateShowcaseVideo\(\)[\s\S]*video\.removeAttribute\('src'\)[\s\S]*video\.load\(\)/);
   assert.match(css, /\.update-showcase-arrow \{[\s\S]*width: 44px;[\s\S]*height: 44px;/);
   assert.match(css, /\.update-showcase-media \{[\s\S]*touch-action: pan-y;/);
+  const ltx25Showcase = path.join(root, 'public', 'update-media', 'v1.2.4-ltx-2.5.mp4');
+  assert.ok(fs.existsSync(ltx25Showcase), 'the LTX 2.5 showcase video should ship with the app');
+  assert.ok(fs.statSync(ltx25Showcase).size > 1024, 'the LTX 2.5 showcase video should not be empty');
 });
 
 test('release status never labels an older public release as installed or current', () => {
