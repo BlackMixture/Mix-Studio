@@ -16,11 +16,24 @@ test('Queue opens as a centered dialog instead of a bottom sheet', () => {
   assert.match(css, /max-height: min\(78dvh, 720px\)/);
 });
 
-test('Queue Jobs and Downloads use the branded animated segmented selector', () => {
+test('Queue Jobs and Downloads use a subtle animated segmented selector', () => {
   assert.match(html, /class="queue-tabs-indicator"/);
   assert.match(html, /class="queue-tab-label">Jobs/);
   assert.match(html, /class="queue-tab-count" id="queueDownloadsCount"/);
-  assert.match(css, /\.queue-tabs-indicator\s*\{[\s\S]{0,500}var\(--gemini\) border-box/);
+  const indicator = css.match(/\.queue-tabs-indicator\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(indicator, /border: 1px solid rgba\(157,173,208,\.28\)/);
+  assert.doesNotMatch(indicator, /var\(--gemini\)/);
   assert.match(css, /transform: translateX\(calc\(var\(--queue-tab-index\) \* 100%\)\)/);
   assert.match(app, /\$\('#queueTabs'\)\.style\.setProperty\('--queue-tab-index', jobsActive \? '0' : '1'\)/);
+});
+
+test('Queue controls stay fixed while only jobs or downloads own the scrollbar', () => {
+  const panel = css.match(/\.sheet\.queue-dialog-sheet\s*>\s*\.sheet-panel\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(panel, /overflow: hidden/);
+  assert.match(panel, /rgba\(8,10,15,\.91\)/);
+  assert.match(css, /#queueJobsPanel:not\(\[hidden\]\),[\s\S]{0,180}display: flex/);
+  assert.match(css, /#queueList,[\s\S]{0,180}overflow-y: auto/);
+  assert.match(css, /scrollbar-gutter: stable/);
+  assert.match(app, /gesture\.row\.closest\('#queueList'\)/);
+  assert.match(css, /#queueList\.queue-drag-scroll-lock/);
 });

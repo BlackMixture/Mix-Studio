@@ -118,7 +118,7 @@ test('queue sheet supports clearing history, gallery navigation, and drag reorde
   assert.match(appJs, /function setQueueDragScrollLock\(gesture, locked\)/);
   assert.match(appJs, /touchmove', preventQueueDragTouchScroll, \{ passive: false, capture: true \}/);
   assert.match(appJs, /setQueueDragScrollLock\(gesture, true\)/);
-  assert.match(styleCss, /\.sheet-panel\.queue-drag-scroll-lock \{[\s\S]*overflow-y: hidden;[\s\S]*touch-action: none;/);
+  assert.match(styleCss, /#queueList\.queue-drag-scroll-lock \{[\s\S]*overflow-y: hidden;[\s\S]*touch-action: none;/);
   assert.match(appJs, /\/api\/queue\/history\/clear/);
   assert.match(appJs, /\/api\/queue\/reorder/);
 });

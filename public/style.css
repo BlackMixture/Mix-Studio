@@ -603,7 +603,7 @@ html:-webkit-full-screen { background: #000; }
 }
 .queue-row[data-reorderable="true"] { touch-action: pan-y; user-select: none; }
 .queue-row[data-reorderable="true"]:active .q-handle { cursor: grabbing; }
-.sheet-panel.queue-drag-scroll-lock {
+#queueList.queue-drag-scroll-lock {
   overflow-y: hidden;
   overscroll-behavior: none;
   touch-action: none;
@@ -655,10 +655,10 @@ html:-webkit-full-screen { background: #000; }
   bottom: 4px;
   left: 4px;
   width: calc((100% - 8px) / 2);
-  border: 1px solid transparent;
+  border: 1px solid rgba(157,173,208,.28);
   border-radius: 999px;
-  background: linear-gradient(#151925,#151925) padding-box, var(--gemini) border-box;
-  box-shadow: 0 8px 20px rgba(0,0,0,.28), 0 0 18px rgba(66,133,244,.08);
+  background: rgba(126,143,177,.11);
+  box-shadow: 0 7px 18px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.035) inset;
   transform: translateX(calc(var(--queue-tab-index) * 100%));
   transition: transform 260ms cubic-bezier(.2,.8,.2,1);
 }
@@ -696,6 +696,30 @@ html:-webkit-full-screen { background: #000; }
   transition: color 180ms var(--ease), background 180ms var(--ease);
 }
 .queue-tabs button.active .queue-tab-count { background: rgba(255,255,255,.1); color: #fff; }
+#queueJobsPanel:not([hidden]),
+#queueDownloadsPanel:not([hidden]) {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+#queueList,
+#queueDownloadsList {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(145,156,180,.38) transparent;
+  scrollbar-width: thin;
+}
+#queueList { flex: 1 1 auto; padding-right: 6px; }
+#queueDownloadsList { flex: 1 1 auto; padding-right: 5px; }
+#queueList::-webkit-scrollbar,
+#queueDownloadsList::-webkit-scrollbar { width: 7px; }
+#queueList::-webkit-scrollbar-track,
+#queueDownloadsList::-webkit-scrollbar-track { background: transparent; }
+#queueList::-webkit-scrollbar-thumb,
+#queueDownloadsList::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: rgba(145,156,180,.4); background-clip: padding-box; }
 .queue-download-card {
   padding: 14px;
   border: 1px solid rgba(var(--mode-rgb),.28);
@@ -9479,7 +9503,12 @@ body.sheet-open {
   max-height: min(78dvh, 720px);
   padding: 20px 20px 22px;
   border-color: rgba(226,232,255,.12);
-  background: radial-gradient(85% 46% at 50% 0%, rgba(66,133,244,.075), transparent 72%), #080a0f;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(85% 46% at 50% 0%, rgba(66,133,244,.07), transparent 72%), rgba(8,10,15,.91);
+  backdrop-filter: blur(18px) saturate(118%);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
   box-shadow: 0 30px 100px rgba(0,0,0,.78), 0 0 0 1px rgba(255,255,255,.025) inset;
 }
 .queue-dialog-sheet .sheet-title { margin-bottom: 16px; color: #f2f5fb; font-size: 16px; }

@@ -19581,7 +19581,7 @@ function preventQueueDragTouchScroll(event) {
 function setQueueDragScrollLock(gesture, locked) {
   if (!gesture) return;
   if (locked) {
-    const panel = gesture.row.closest('.sheet-panel');
+    const panel = gesture.row.closest('#queueList');
     gesture.scrollPanel = panel;
     gesture.scrollTop = panel ? panel.scrollTop : 0;
     if (panel) panel.classList.add('queue-drag-scroll-lock');

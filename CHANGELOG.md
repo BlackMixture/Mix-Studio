@@ -12,6 +12,10 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Marked the workflow as Preview while ComfyUI support PR #15499 remains open, and linked setup directly to that PR instead of sending users through a normal-update loop that cannot yet install the new core nodes.
 - Made the Generation Setup install action acknowledge the first click immediately, and added an inline Hugging Face access panel that saves a read token and resumes gated LTX 2.5 downloads without sending users to Preferences.
 
+### Queue panel
+
+- Refined the centered Queue with a subtle solid Jobs/Downloads selector and a lightly translucent surface, while keeping the tabs, GPU/VRAM status, and history/reset actions fixed as only the job or download list scrolls inside the rounded container.
+
 ### MiniMax H3 LoRAs
 
 - Added native user LoRA stacks for MiniMax H3 Standard and Full BF16 generation, including ordered strengths, trigger phrases, presets, Turbo, Reference Turbo, SageAttention, long-context chunks, generation reuse, and saved metadata.
