@@ -2207,12 +2207,13 @@
 </div>
 
 <!-- queue sheet -->
-<div class="sheet" id="queueSheet">
+<div class="sheet centered-dialog-sheet queue-dialog-sheet" id="queueSheet">
   <div class="sheet-panel">
     <h3 class="sheet-title">Queue <button data-close type="button" aria-label="Close queue">✕</button></h3>
     <div class="queue-tabs" id="queueTabs" role="tablist" aria-label="Queue sections" hidden>
-      <button class="active" id="queueJobsTab" type="button" role="tab" aria-selected="true" data-queue-view="jobs">Jobs <span id="queueJobsCount">0</span></button>
-      <button id="queueDownloadsTab" type="button" role="tab" aria-selected="false" data-queue-view="downloads">Downloads <span id="queueDownloadsCount">0</span></button>
+      <span class="queue-tabs-indicator" aria-hidden="true"></span>
+      <button class="active" id="queueJobsTab" type="button" role="tab" aria-selected="true" data-queue-view="jobs"><span class="queue-tab-label">Jobs</span><span class="queue-tab-count" id="queueJobsCount">0</span></button>
+      <button id="queueDownloadsTab" type="button" role="tab" aria-selected="false" data-queue-view="downloads"><span class="queue-tab-label">Downloads</span><span class="queue-tab-count" id="queueDownloadsCount">0</span></button>
     </div>
     <div id="queueJobsPanel" role="tabpanel" aria-labelledby="queueJobsTab">
       <div class="queue-health" id="queueHealth"></div>
@@ -2361,7 +2362,7 @@
         </div>
         <div class="dependency-access" id="setupDependencyAccess" hidden>
           <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
-          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then add a read token in Preferences → General → Hugging Face token.</small></span>
+          <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then paste a read token in the access panel below.</small></span>
           <a class="dependency-access-link" id="setupDependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
         </div>
         <div class="setup-operation-actions">
@@ -2380,7 +2381,7 @@
         </div>
         <div class="setup-core-update" id="setupCoreUpdate" role="status" hidden>
           <span class="setup-core-update-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg></span>
-          <span><strong>Update ComfyUI before using Krea 2</strong><small id="setupCoreUpdateCopy">The connected core does not include the Krea 2 loader yet.</small></span>
+          <span><strong id="setupCoreUpdateTitle">Update ComfyUI before using Krea 2</strong><small id="setupCoreUpdateCopy">The connected core does not include the Krea 2 loader yet.</small></span>
           <span class="setup-core-update-actions"><a id="setupCoreUpdateGuide" href="https://docs.comfy.org/installation/update_comfyui" target="_blank" rel="noopener noreferrer">Update guide</a><button id="setupCoreUpdateCheck" type="button">Check again</button></span>
         </div>
         <div class="setup-endpoint-choices" id="setupEndpointChoices" hidden>
@@ -2415,6 +2416,19 @@
 
       <section class="setup-pane" id="setupPaneInstall" role="tabpanel" aria-labelledby="setupTabInstall" data-setup-pane="install" hidden>
         <header class="setup-pane-head"><span>Downloads</span><h3>Install what you need</h3><p>Existing files are reused automatically.</p></header>
+        <aside class="setup-hf-access" id="setupHfAccess" data-state="needed" hidden>
+          <div class="setup-hf-access-head">
+            <span class="setup-hf-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
+            <span class="setup-hf-access-copy"><strong>Hugging Face access</strong><small id="setupHfAccessCopy">LTX 2.5 requires accepted model access and a read token.</small></span>
+            <a id="setupHfAccessLink" href="https://huggingface.co/Lightricks/LTX-2.5" target="_blank" rel="noopener noreferrer">Accept model terms</a>
+          </div>
+          <label class="setup-hf-token-label" for="setupHfToken">Read token</label>
+          <div class="setup-hf-token-row">
+            <input id="setupHfToken" type="password" autocomplete="new-password" spellcheck="false" placeholder="Paste an hf_ read token" aria-describedby="setupHfTokenStatus" />
+            <button id="setupSaveHfToken" type="button">Save token</button>
+          </div>
+          <small class="setup-hf-token-status" id="setupHfTokenStatus" aria-live="polite">The token is stored only on this Mix Studio server and is never shown again.</small>
+        </aside>
         <div class="setup-actions">
           <button class="setup-workflow-install" id="setupCurrentWorkflow" type="button">
             <span class="setup-workflow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg></span>

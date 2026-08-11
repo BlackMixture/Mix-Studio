@@ -19834,6 +19834,7 @@ function queueThumbnail(entry) {
 function setQueueView(view) {
   queueView = view === 'downloads' ? 'downloads' : 'jobs';
   const jobsActive = queueView === 'jobs';
+  $('#queueTabs').style.setProperty('--queue-tab-index', jobsActive ? '0' : '1');
   $('#queueJobsPanel').hidden = !jobsActive;
   $('#queueDownloadsPanel').hidden = jobsActive;
   $('#queueJobsTab').classList.toggle('active', jobsActive);
@@ -33539,6 +33540,11 @@ let setupComponentSelectionKey = '';
 let setupSelectedComponents = new Set();
 let setupKnownMissingComponents = null;
 let setupReturnToSettings = false;
+let setupInstallStarting = false;
+let setupHfTokenSaving = false;
+let setupHfPendingComponents = [];
+let setupHfTokenFeedback = '';
+let setupHfTokenFeedbackKind = '';
 const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style']);
@@ -33815,7 +33821,8 @@ function renderSetupFooter() {
   const wanAnimate2CoreBlocked = setupWanAnimate2CoreBlocked(compatibilityComponents);
   const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
   const startBusy = !!comfy.start?.running || comfy.start?.state === 'running';
-  const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
+  const dependencyBusy = setupInstallStarting
+    || ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
   const busy = officialBusy || dependencyBusy || startBusy;
   const cancellable = officialBusy || ['running', 'cancelling'].includes(setupDependencyState?.state);
   const workflowReady = setupGenerationReady();
@@ -33851,6 +33858,11 @@ async function openInitialSetup(options = {}) {
   setupComponentSelectionKey = '';
   setupSelectedComponents = new Set();
   setupKnownMissingComponents = null;
+  setupInstallStarting = false;
+  setupHfTokenSaving = false;
+  setupHfPendingComponents = [];
+  setupHfTokenFeedback = '';
+  setupHfTokenFeedbackKind = '';
   setupStepTouched = false;
   const inferredStep = setupActionForComponents(setupContextComponents) === 'install' ? 'install' : 'connect';
   const initialStep = SETUP_STEPS.includes(options.initialStep)
@@ -33965,6 +33977,63 @@ function renderDependencyAccess(containerSelector, linkSelector, installState) {
     link.removeAttribute('aria-label');
   }
   return accessUrl;
+}
+
+function setupHfTokenConfigured() {
+  return setupViewStatus?.huggingFace?.tokenConfigured === true;
+}
+
+function setupHfRetryComponents(installState = setupDependencyState) {
+  const pending = setupHfPendingComponents.length
+    ? setupHfPendingComponents
+    : (Array.isArray(installState?.components) ? installState.components : []);
+  return [...new Set(pending.filter(Boolean))];
+}
+
+function renderSetupHfAccess(installState = setupDependencyState) {
+  const card = $('#setupHfAccess');
+  if (!card) return;
+  const requested = setupContextComponents.length
+    ? setupContextComponents
+    : (setupViewStatus?.quickComponents || []);
+  const accessUrl = dependencyAccessUrl(installState);
+  const ltx25Requested = requested.includes('ltx25') || setupHfPendingComponents.includes('ltx25');
+  card.hidden = !state.profileIsOwner || (!ltx25Requested && !accessUrl);
+  if (card.hidden) return;
+
+  const configured = setupHfTokenConfigured();
+  const input = $('#setupHfToken');
+  const typedToken = String(input.value || '').trim();
+  const retryComponents = setupHfRetryComponents(installState);
+  const canRetry = !!accessUrl && retryComponents.length > 0;
+  card.dataset.state = configured && !accessUrl ? 'ready' : 'needed';
+  $('#setupHfAccessCopy').textContent = accessUrl
+    ? 'Accept the model terms, then save a read token and retry here.'
+    : (configured
+      ? 'A read token is saved for the official LTX 2.5 downloads.'
+      : 'LTX 2.5 requires accepted model access and a read token.');
+  const link = $('#setupHfAccessLink');
+  link.href = accessUrl || 'https://huggingface.co/Lightricks/LTX-2.5';
+  link.textContent = accessUrl ? 'Open model page' : 'Accept model terms';
+  input.placeholder = configured ? 'Saved · paste a new token to replace it' : 'Paste an hf_ read token';
+
+  const button = $('#setupSaveHfToken');
+  button.textContent = setupHfTokenSaving
+    ? (typedToken ? 'Saving…' : 'Retrying…')
+    : (!configured
+      ? (canRetry ? 'Save & retry' : (setupHfPendingComponents.length ? 'Save & install' : 'Save token'))
+      : (canRetry
+        ? (typedToken ? 'Save & retry' : 'Retry install')
+        : (typedToken ? 'Replace token' : 'Token saved')));
+  button.disabled = setupHfTokenSaving || setupInstallStarting
+    || (!typedToken && !canRetry)
+    || (!typedToken && !configured);
+
+  const status = $('#setupHfTokenStatus');
+  status.className = `setup-hf-token-status${setupHfTokenFeedbackKind ? ` ${setupHfTokenFeedbackKind}` : ''}`;
+  status.textContent = setupHfTokenFeedback || (configured
+    ? 'Token saved securely on this Mix Studio server. Paste another token only to replace it.'
+    : 'The token is stored only on this Mix Studio server and is never shown again.');
 }
 
 function renderSetupEndpointChoices(matches = []) {
@@ -34114,8 +34183,10 @@ function renderInitialSetup() {
   const dependency = setupDependencyState || lastMeta?.dependencies?.install || { state: 'idle' };
   const officialBusy = ['running', 'cancelling'].includes(install.state);
   const startBusy = !!start.running || start.state === 'running';
-  const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(dependency.state);
+  const dependencyBusy = setupInstallStarting
+    || ['running', 'cancelling', 'restarting'].includes(dependency.state);
   const busy = officialBusy || dependencyBusy || startBusy;
+  renderSetupHfAccess(dependency);
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
@@ -34231,6 +34302,13 @@ function renderInitialSetup() {
   $('#setupStartComfy').disabled = busy || !start.canStart || !state.profileIsOwner;
   $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
   $('#setupCoreUpdate').hidden = !(krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked);
+  $('#setupCoreUpdateTitle').textContent = ltx25CoreBlocked
+    ? 'LTX 2.5 core support pending'
+    : (wanAnimate2CoreBlocked
+      ? 'Update ComfyUI before using Wan Animate 2'
+      : (h3CoreBlocked
+        ? 'Update ComfyUI before using MiniMax H3'
+        : 'Update ComfyUI before using Krea 2'));
   const coreUpdateGuide = $('#setupCoreUpdateGuide');
   coreUpdateGuide.href = ltx25CoreBlocked
     ? 'https://github.com/Comfy-Org/ComfyUI/pull/15499'
@@ -34345,7 +34423,7 @@ function renderInitialSetup() {
   current.querySelector('.setup-workflow-detail').textContent = currentFit
     ? `Only missing for this generation · ${currentFit.label}`
     : 'Install only what this generation needs.';
-  current.querySelector('.setup-workflow-verb').textContent = busy ? 'Installing…' : 'Install';
+  current.querySelector('.setup-workflow-verb').textContent = setupInstallStarting ? 'Starting…' : (busy ? 'Installing…' : 'Install');
   current.setAttribute('aria-label', `Install ${currentTitle} for this generation`);
   quick.hidden = (!quickMissing.length)
     || (!!setupContextComponents.length && quickPreset.id !== 'low-vram-klein4');
@@ -34359,7 +34437,10 @@ function renderInitialSetup() {
 
   const operation = $('#setupOperation');
   let operationState = null;
-  if (['running', 'cancelling', 'error', 'cancelled'].includes(install.state)) operationState = install;
+  if (setupInstallStarting) operationState = {
+    state: 'running', phase: 'queued', message: 'Starting dependency installation…',
+  };
+  else if (['running', 'cancelling', 'error', 'cancelled'].includes(install.state)) operationState = install;
   else if (dependency.state && dependency.state !== 'idle') operationState = dependency;
   operation.hidden = !operationState;
   const restartInfo = setupViewStatus.restart || lastMeta?.dependencies?.restart || {};
@@ -34554,6 +34635,31 @@ async function startOfficialComfyFromSetup() {
 async function startSetupDependencies(components) {
   const requested = [...new Set((components || []).filter(Boolean))];
   if (!requested.length) return false;
+  if (setupInstallStarting) return false;
+  if (requested.includes('ltx25') && !setupHfTokenConfigured()) {
+    setupHfPendingComponents = requested;
+    setupHfTokenFeedback = 'Paste a Hugging Face read token to continue this installation.';
+    setupHfTokenFeedbackKind = 'bad';
+    setSetupStep('install', { user: true });
+    renderInitialSetup();
+    requestAnimationFrame(() => $('#setupHfToken')?.focus());
+    return false;
+  }
+  setupInstallStarting = true;
+  setupHfTokenFeedback = '';
+  setupHfTokenFeedbackKind = '';
+  renderInitialSetup();
+  try {
+    const started = await runSetupDependencies(requested);
+    if (started) setupHfPendingComponents = [];
+    return started;
+  } finally {
+    setupInstallStarting = false;
+    renderInitialSetup();
+  }
+}
+
+async function runSetupDependencies(requested) {
   if (!setupViewStatus) setupViewStatus = await api('/api/setup/status');
   const labels = setupComponentLabelMap();
   const difficult = requested.filter((id) => setupComponentFitMap().get(id)?.level === 'difficult'
@@ -34631,6 +34737,63 @@ async function startSetupDependencies(components) {
   return true;
 }
 
+async function saveSetupHfTokenAndContinue() {
+  if (setupHfTokenSaving || setupInstallStarting) return;
+  const input = $('#setupHfToken');
+  const token = String(input.value || '').trim();
+  const configured = setupHfTokenConfigured();
+  const accessError = dependencyAccessUrl(setupDependencyState);
+  const retryComponents = setupHfRetryComponents();
+  if (!token && !configured) {
+    setupHfTokenFeedback = 'Paste a Hugging Face read token first.';
+    setupHfTokenFeedbackKind = 'bad';
+    renderSetupHfAccess();
+    input.focus();
+    return;
+  }
+  if (token && (!token.startsWith('hf_') || token.length < 12)) {
+    setupHfTokenFeedback = 'Hugging Face read tokens begin with hf_. Check the copied token and try again.';
+    setupHfTokenFeedbackKind = 'bad';
+    renderSetupHfAccess();
+    input.focus();
+    return;
+  }
+  if (!token && !accessError) return;
+
+  setupHfTokenSaving = true;
+  setupHfTokenFeedback = token ? 'Saving the token securely…' : 'Retrying the model download…';
+  setupHfTokenFeedbackKind = '';
+  renderSetupHfAccess();
+  try {
+    if (token) {
+      const result = await api('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hfToken: token }),
+      });
+      if (!setupViewStatus.huggingFace) setupViewStatus.huggingFace = {};
+      setupViewStatus.huggingFace.tokenConfigured = result.hfTokenConfigured === true;
+      input.value = '';
+      $('#setHfToken').value = '';
+      $('#setHfToken').placeholder = 'Saved · paste a new token to replace it';
+      setupHfTokenFeedback = retryComponents.length
+        ? 'Token saved. Starting the installation…'
+        : 'Token saved. You can install LTX 2.5 now.';
+      setupHfTokenFeedbackKind = 'ready';
+    }
+    setupHfPendingComponents = [];
+    setupHfTokenSaving = false;
+    renderInitialSetup();
+    if (retryComponents.length) await startSetupDependencies(retryComponents);
+  } catch (error) {
+    setupHfTokenFeedback = error.message || 'The token could not be saved.';
+    setupHfTokenFeedbackKind = 'bad';
+    toast(setupHfTokenFeedback, true);
+  } finally {
+    setupHfTokenSaving = false;
+    renderInitialSetup();
+  }
+}
+
 $('#setupGuideToggle').addEventListener('click', () => {
   setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');
 });
@@ -34649,6 +34812,19 @@ $('#setupCustomToggle').addEventListener('click', () => {
 $('#phoneAccessToggle').addEventListener('click', () => {
   setPhoneAccessExpanded($('#phoneAccessToggle').getAttribute('aria-expanded') !== 'true');
 });
+$('#setupHfToken').addEventListener('input', () => {
+  if (setupHfTokenFeedbackKind === 'bad') {
+    setupHfTokenFeedback = '';
+    setupHfTokenFeedbackKind = '';
+  }
+  renderSetupHfAccess();
+});
+$('#setupHfToken').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  saveSetupHfTokenAndContinue();
+});
+$('#setupSaveHfToken').addEventListener('click', saveSetupHfTokenAndContinue);
 $$('[data-setup-tab]').forEach((tab) => {
   tab.addEventListener('click', () => setSetupStep(tab.dataset.setupTab, { user: true }));
   tab.addEventListener('keydown', (event) => {

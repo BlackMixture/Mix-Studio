@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const style = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 test('LTX 2.5 is a separate curated video choice and leaves LTX 2.3 as default', () => {
   assert.match(html, /class="chip active" data-engine="ltx"[^>]*data-model-label="LTX 2\.3"/);
@@ -46,5 +47,25 @@ test('generation setup opens directly on the LTX 2.5 requirements', () => {
   assert.match(app, /function setupLtx25CoreBlocked\(components\)/);
   assert.match(app, /Native ComfyUI support for LTX 2\.5 is still pending/);
   assert.match(app, /github\.com\/Comfy-Org\/ComfyUI\/pull\/15499/);
+  assert.match(html, /id="setupCoreUpdateTitle"/);
+  assert.match(app, /\$\('#setupCoreUpdateTitle'\)\.textContent = ltx25CoreBlocked[\s\S]*'LTX 2\.5 core support pending'/);
   assert.match(app, /components: \['h3'[\s\S]*'ltx25', 'video'/);
+});
+
+test('LTX 2.5 setup accepts Hugging Face access without leaving the installer', () => {
+  for (const id of ['setupHfAccess', 'setupHfAccessLink', 'setupHfToken', 'setupSaveHfToken', 'setupHfTokenStatus']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(server, /huggingFace:\s*\{[\s\S]{0,120}tokenConfigured: !!String\(settings\.hfToken \|\| process\.env\.HF_TOKEN/);
+  assert.match(server, /Only the owner profile can change the shared Hugging Face token/);
+  assert.match(app, /requested\.includes\('ltx25'\) && !setupHfTokenConfigured\(\)/);
+  assert.match(app, /JSON\.stringify\(\{ hfToken: token \}\)/);
+  assert.match(app, /setupHfPendingComponents[\s\S]{0,220}Save & install/);
+  assert.match(style, /\.setup-hf-access\s*\{/);
+});
+
+test('the setup install button acknowledges its first click before desktop checks finish', () => {
+  assert.match(app, /setupInstallStarting = true;[\s\S]{0,160}renderInitialSetup\(\);[\s\S]{0,160}await runSetupDependencies\(requested\)/);
+  assert.match(app, /setupInstallStarting \? 'Starting…'/);
+  assert.match(app, /if \(setupInstallStarting\) operationState = \{[\s\S]{0,120}Starting dependency installation…/);
 });

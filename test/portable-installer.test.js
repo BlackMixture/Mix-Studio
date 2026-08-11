@@ -470,6 +470,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
     'setupStartCard', 'setupStartComfy', 'setupFindComfy', 'setupEndpointChoices',
     'setupBrowseComfy', 'setupBrowseComfyDetails', 'setupBrowseModels', 'setupComfyPath', 'setupModelsPath',
     'setupHardwareSummary', 'setupShowDetails', 'setupDependencyAccess', 'setupDependencyAccessLink',
+    'setupHfAccess', 'setupHfAccessLink', 'setupHfToken', 'setupSaveHfToken', 'setupHfTokenStatus',
     'setupOperationProgress', 'setupOperationProgressLabel',
     'setupCancel', 'setupBack', 'setupNext', 'setupReturnSettings',
   ]) {

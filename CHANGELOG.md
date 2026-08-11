@@ -10,6 +10,7 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Recreated the official 24 fps distilled workflow with Gemma 4 conditioning, dedicated prompt enhancement, separate audio and video VAEs, dual audio/video CFG, the official two-stage sigma schedules, and x2 latent refinement.
 - Added guided installation for all six official model files, native node capability checks, model filename preferences, generation reuse and metadata, and clear NVIDIA INT8 ConvRot hardware guidance.
 - Marked the workflow as Preview while ComfyUI support PR #15499 remains open, and linked setup directly to that PR instead of sending users through a normal-update loop that cannot yet install the new core nodes.
+- Made the Generation Setup install action acknowledge the first click immediately, and added an inline Hugging Face access panel that saves a read token and resumes gated LTX 2.5 downloads without sending users to Preferences.
 
 ### MiniMax H3 LoRAs
 

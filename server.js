@@ -6213,6 +6213,9 @@ async function setupStatusPayload(forceCompatibility = false) {
       recommended: vramRecommendation,
       effective: resolveVramProfile(settings.vramProfile, hardwareProfile),
     },
+    huggingFace: {
+      tokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
+    },
     restart: Object.assign(restartStatus(RUNTIME), { running: comfyRestartRunning }),
     mobileAccess,
     components: availableComponents().map((id) => setupDependencyComponentInfo(
@@ -6990,6 +6993,11 @@ async function handleApi(req, res, url) {
       'h3TurboLora', 'h3RefTurboLora', 'h3Clip', 'h3VideoVae', 'h3AudioVae',
     ]
       .some((key) => typeof body[key] === 'string' && body[key].trim() !== String(settings[key] || ''));
+    const changesHfToken = body.clearHfToken === true
+      || (typeof body.hfToken === 'string' && body.hfToken.trim());
+    if (changesHfToken && !isAdmin()) {
+      return json(res, 403, { error: 'Only the owner profile can change the shared Hugging Face token' });
+    }
     if ((changesExternalLlm || changesLocalPromptAi || changesH3ModelVariant) && !isAdmin()) {
       return json(res, 403, { error: 'Only the owner profile can change the shared prompt AI settings or shared H3 model settings' });
     }
