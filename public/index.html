@@ -623,6 +623,7 @@
         <div class="model-order-hint" id="videoModelOrderHint">Hold models to reorder · first is default</div>
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model" aria-describedby="videoModelOrderHint">
           <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx" data-task-label="Cinematic Video" data-model-label="LTX 2.3"><b>LTX 2.3</b><small>Cinematic Video</small></button>
+          <button class="chip" data-engine="ltx25" data-feature-engine="video.ltx25" data-task-label="Next-gen Cinematic Video" data-model-label="LTX 2.5"><b>LTX 2.5 <span class="model-status-badge">Preview</span></b><small>Next-gen Cinematic Video</small></button>
           <button class="chip" data-engine="h3" data-feature-engine="video.h3" data-task-label="Omni Video" data-model-label="MiniMax H3"><b>MiniMax H3</b><small>Omni Video + Audio</small></button>
           <button class="chip video-model-option" id="directorModelOption" type="button" data-director-entry data-feature-engine="video.ltx" aria-label="Open LTX Director for directed sequences"><b>LTX Director</b><small>Directed Sequences</small></button>
           <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit" data-task-label="Video Editing" data-model-label="LTX Edit" data-experimental="true"><b>LTX Edit <span class="model-status-badge">Experimental</span></b><small>Video Editing</small></button>
@@ -2242,6 +2243,7 @@
     </div>
     <div class="chip-row" id="animEngineRow">
       <button class="chip active" data-engine="ltx">LTX 2.3</button>
+      <button class="chip" data-engine="ltx25">LTX 2.5</button>
       <button class="chip" data-engine="h3">MiniMax H3</button>
       <button class="chip" data-engine="eros">10Eros DMD</button>
       <button class="chip" data-engine="wan">Wan 2.2</button>
@@ -2379,7 +2381,7 @@
         <div class="setup-core-update" id="setupCoreUpdate" role="status" hidden>
           <span class="setup-core-update-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg></span>
           <span><strong>Update ComfyUI before using Krea 2</strong><small id="setupCoreUpdateCopy">The connected core does not include the Krea 2 loader yet.</small></span>
-          <span class="setup-core-update-actions"><a href="https://docs.comfy.org/installation/update_comfyui" target="_blank" rel="noopener noreferrer">Update guide</a><button id="setupCoreUpdateCheck" type="button">Check again</button></span>
+          <span class="setup-core-update-actions"><a id="setupCoreUpdateGuide" href="https://docs.comfy.org/installation/update_comfyui" target="_blank" rel="noopener noreferrer">Update guide</a><button id="setupCoreUpdateCheck" type="button">Check again</button></span>
         </div>
         <div class="setup-endpoint-choices" id="setupEndpointChoices" hidden>
           <strong>Choose the running ComfyUI</strong>
@@ -2668,6 +2670,15 @@
 
         <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" hidden>
           <div class="settings-pane-head"><h4>Video Models</h4><p>MiniMax H3, LTX, Wan, 10Eros, and SCAIL pipelines.</p></div>
+          <div class="settings-group"><h5>LTX 2.5</h5>
+            <p class="settings-default-note">Official distilled INT8 ConvRot workflow with Gemma 4, separate video/audio VAEs, synchronized audio, and two-stage latent refinement.</p>
+            <div class="field"><label>Diffusion model</label><input id="setLtx25Unet" type="text" /></div>
+            <div class="field"><label>Gemma 4 text encoder</label><input id="setLtx25TextEncoder" type="text" /></div>
+            <div class="field"><label>Prompt enhancer</label><input id="setLtx25PromptEnhancer" type="text" /></div>
+            <div class="field"><label>Video VAE</label><input id="setLtx25VideoVae" type="text" /></div>
+            <div class="field"><label>Audio VAE</label><input id="setLtx25AudioVae" type="text" /></div>
+            <div class="field"><label>Spatial upscaler</label><input id="setLtx25Upscaler" type="text" /></div>
+          </div>
           <div class="settings-group"><h5>LTX 2.3 &amp; Face ID</h5>
             <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
             <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>

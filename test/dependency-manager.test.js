@@ -51,10 +51,10 @@ function safetensorsFixture() {
 }
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'h3dyntime', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltx25', 'h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'h3dyntime', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3TurboLegacy', 'h3RefTurbo', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltx25', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3TurboLegacy', 'h3RefTurbo', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -110,6 +110,11 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.upscale[1][2], /numz\/SeedVR2_comfyUI/);
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxTextEncoder')[2], /Comfy-Org\/ltx-2\/resolve\/main\/split_files\/text_encoders\/gemma_3_12B_it_fp4_mixed\.safetensors/);
   assert.match(MODEL_ASSETS.ltx.find((asset) => asset[0] === 'ltxGemmaLora')[2], /Comfy-Org\/ltx-2/);
+  assert.deepEqual(COMPONENTS.ltx25.models, ['ltx25']);
+  assert.equal(MODEL_ASSETS.ltx25.length, 6);
+  assert.match(MODEL_ASSETS.ltx25.find((asset) => asset[0] === 'ltx25Unet')[2], /Lightricks\/LTX-2\.5.*distilled-transformer-comfy-int8-convrot/);
+  assert.match(MODEL_ASSETS.ltx25.find((asset) => asset[0] === 'ltx25PromptEnhancer')[2], /Comfy-Org\/gemma-4.*gemma4_e2b_it_bf16/);
+  assert.equal(MODEL_ASSETS.ltx25.find((asset) => asset[0] === 'ltx25Upscaler')[1], 'latent_upscale_models');
   assert.match(MODEL_ASSETS.ltxEdit[0][2], /Alissonerdx\/EditAnything/);
   assert.match(MODEL_ASSETS.faceid.find((asset) => asset[0] === 'ltxFaceIdLora')[2], /Alissonerdx\/LTX-Best-Face-ID\/resolve\/main\/Best_FaceID_v1\.0_LoRA\.safetensors/);
   assert.match(MODEL_ASSETS.faceid.find((asset) => asset[0] === 'ltxFaceIdDistilledLora')[2], /Comfy-Org\/ltx-2\.3\/resolve\/main\/split_files\/loras\/ltx_2\.3_22b_distilled_1\.1_lora_dynamic_fro09_avg_rank_111_bf16\.safetensors/);

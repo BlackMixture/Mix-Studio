@@ -77,6 +77,15 @@
       "nodes": ["VideoHelperSuite", "LTXV", "BFS Nodes", "KJNodes"]
     },
     {
+      "id": "video.ltx25",
+      "label": "LTX 2.5 Video",
+      "default": false,
+      "variant": "Official LTX 2.5 distilled INT8 ConvRot transformer and Gemma 4 encoder with native synchronized audio and a two-stage latent refine",
+      "hardware": { "minimumVramGb": 16, "recommendedVramGb": 32, "autoSelect": "recommended", "unsupportedVendors": ["apple", "amd"], "unsupportedReason": "The curated LTX 2.5 workflow uses NVIDIA INT8 ConvRot kernels and is not currently compatible with Apple Metal or AMD ROCm." },
+      "models": ["ltx-2.5-distilled-int8-convrot", "gemma-4-ltx-2.5-int8-convrot", "gemma-4-e2b-prompt-enhancer", "ltx-2.5-video-vae", "ltx-2.5-audio-vae", "ltx-2.5-spatial-upscaler"],
+      "nodes": ["Official ComfyUI LTX 2.5 support PR #15499", "LTXVDualCFGGuider", "LTXVAddGuide", "LTXVAudioVAEDecode"]
+    },
+    {
       "id": "video.h3",
       "label": "MiniMax H3 Video",
       "default": false,

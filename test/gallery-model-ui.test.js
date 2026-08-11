@@ -15,7 +15,7 @@ test('gallery cards identify create, edit, and video generation models', () => {
   assert.match(app, /function galleryImageModelLabel\(item\)/);
   assert.match(app, /item\.krea2Turbo === false \? 'Krea 2 Raw' : 'Krea 2 Turbo'/);
   assert.match(app, /item\.mode === 'edit'.*editEngineLabel\(item\.editEngine \|\| 'klein4'\)/);
-  for (const label of ['LTX 2.3', 'LTX Edit', '10Eros DMD', 'Wan 2.2', 'SCAIL 2']) {
+  for (const label of ['LTX 2.3', 'LTX 2.5', 'LTX Edit', '10Eros DMD', 'Wan 2.2', 'SCAIL 2']) {
     assert.match(app, new RegExp(label.replace('.', '\\.')));
   }
   assert.match(app, /className = 'badge model-badge'/);

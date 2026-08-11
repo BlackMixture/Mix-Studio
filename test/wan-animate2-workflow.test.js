@@ -53,9 +53,9 @@ test('Wan Animate 2 plans fixed 81-frame continuation windows against source tim
     windowCount: 3,
     generatedFrames: 241,
     segments: [
-      { index: 0, startFrame: 0, startSeconds: 0, generationFrames: 81, overlapFrames: 0, keepFrames: 81 },
-      { index: 1, startFrame: 80, startSeconds: 80 / 24, generationFrames: 81, overlapFrames: 1, keepFrames: 80 },
-      { index: 2, startFrame: 160, startSeconds: 160 / 24, generationFrames: 81, overlapFrames: 1, keepFrames: 31 },
+      { index: 0, startFrame: 0, videoFrameOffset: 0, generationFrames: 81, overlapFrames: 0, keepFrames: 81 },
+      { index: 1, startFrame: 80, videoFrameOffset: 81, generationFrames: 81, overlapFrames: 1, keepFrames: 80 },
+      { index: 2, startFrame: 160, videoFrameOffset: 161, generationFrames: 81, overlapFrames: 1, keepFrames: 31 },
     ],
   });
 
@@ -86,6 +86,33 @@ test('Wan Animate 2 plans fixed 81-frame continuation windows against source tim
   });
   assert.equal(phone.fps, 24);
   assert.equal(phone.windowCount, 5);
+});
+
+test('Wan Animate 2 continuation plans preserve exact output boundaries and integer cursors', () => {
+  for (const [frames, expectedKeeps, expectedOffsets] of [
+    [81, [81], [0]],
+    [82, [81, 1], [0, 81]],
+    [161, [81, 80], [0, 81]],
+    [162, [81, 80, 1], [0, 81, 161]],
+  ]) {
+    const plan = wanAnimate2ContinuationPlan({
+      sourceFrames: frames,
+      sourceFps: 24,
+      requestedSeconds: frames / 24,
+    });
+    assert.deepEqual(plan.segments.map((segment) => segment.keepFrames), expectedKeeps);
+    assert.deepEqual(plan.segments.map((segment) => segment.videoFrameOffset), expectedOffsets);
+    assert.equal(plan.segments.reduce((total, segment) => total + segment.keepFrames, 0), frames);
+    const last = plan.segments.at(-1);
+    assert.equal(last.startFrame + last.overlapFrames + last.keepFrames, frames);
+  }
+
+  const fractional = wanAnimate2ContinuationPlan({
+    sourceFrames: 192,
+    sourceFps: 23.98,
+    requestedSeconds: 8,
+  });
+  assert.ok(fractional.segments.every((segment) => Number.isInteger(segment.videoFrameOffset)));
 });
 
 test('Wan Animate 2 graph follows the official six-step native workflow and preserves source media timing', async () => {
@@ -120,13 +147,11 @@ test('Wan Animate 2 graph follows the official six-step native workflow and pres
   assert.deepEqual(graph.sampling.inputs.model, ['user_lora_0', 0]);
   assert.equal(graph.performance_load.class_type, 'LoadVideo');
   assert.equal(graph.performance_load.inputs.video, 'performance.mp4');
-  assert.deepEqual(graph.performance_slice.inputs, {
-    video: ['performance_load', 0],
-    start_time: 0,
-    duration: 81 / 24,
-    strict_duration: false,
+  assert.equal(graph.performance_slice, undefined);
+  assert.deepEqual(graph.performance_parts.inputs.video, ['performance_load', 0]);
+  assert.deepEqual(graph.performance_first.inputs, {
+    image: ['performance_parts', 0], batch_index: 0, length: 1,
   });
-  assert.deepEqual(graph.performance_parts.inputs.video, ['performance_slice', 0]);
   assert.deepEqual(graph.reference_resize.inputs, {
     input: ['reference_load', 0],
     resize_type: 'scale dimensions',
@@ -135,19 +160,13 @@ test('Wan Animate 2 graph follows the official six-step native workflow and pres
     'resize_type.crop': 'center',
     scale_method: 'area',
   });
-  assert.deepEqual(graph.performance_resize.inputs, {
-    input: ['performance_parts', 0],
-    resize_type: 'scale dimensions',
-    'resize_type.width': 480,
-    'resize_type.height': 848,
-    'resize_type.crop': 'center',
-    scale_method: 'area',
-  });
+  assert.equal(graph.performance_resize, undefined);
   assert.equal(orderedClasses.includes('ResizeImageMaskNode'), false);
   assert.deepEqual(graph.conditioning.inputs.reference_image, ['reference_resize', 0]);
-  assert.deepEqual(graph.conditioning.inputs.pose_video, ['performance_resize', 0]);
+  assert.deepEqual(graph.conditioning.inputs.pose_video, ['performance_parts', 0]);
   assert.equal(graph.conditioning.inputs.length, 81);
   assert.equal(graph.conditioning.inputs.batch_size, 1);
+  assert.equal(graph.conditioning.inputs.video_frame_offset, 0);
   assert.equal(graph.conditioning.inputs.reference_image_strength, 1.1);
   assert.equal(graph.conditioning.inputs.pose_strength, 0.9);
   assert.equal(graph.scheduler.inputs.steps, 6);
@@ -184,6 +203,9 @@ test('Wan Animate 2 runs long performances as bounded continuation graphs', asyn
 
   assert.equal(first.conditioning.inputs.length, 81);
   assert.equal(first.conditioning.inputs.continue_motion, undefined);
+  assert.equal(first.conditioning.inputs.video_frame_offset, 0);
+  assert.equal(first.performance_slice, undefined);
+  assert.deepEqual(first.performance_parts.inputs.video, ['performance_load', 0]);
   assert.equal(first.sample.inputs.noise_seed, 100);
   assert.deepEqual(first.continuation_pick.inputs, {
     image: ['decode', 0], batch_index: 80, length: 1,
@@ -191,6 +213,28 @@ test('Wan Animate 2 runs long performances as bounded continuation graphs', asyn
   assert.equal(first.continuation_save.class_type, 'SaveImage');
   assert.equal(Object.values(first).filter((node) => node.class_type === 'SamplerCustom').length, 1);
   assert.equal(Object.values(first).some((node) => node.class_type === 'ImageBatch'), false);
+
+  const middleSegment = plan.segments[1];
+  const middle = await buildWanAnimate2Graph('character.png', {
+    driveVideoName: 'eight-seconds.mp4',
+    W: 848,
+    H: 480,
+    seed: 101,
+    wanAnimate2Plan: plan,
+    wanAnimate2Segment: middleSegment,
+    continuationImageName: 'previous-last-frame.png',
+    saveContinuationFrame: true,
+  }, settings, {
+    nodeFromOrdered: async (classType, _ordered, links, overrides) => (
+      { class_type: classType, inputs: Object.assign({}, links, overrides) }
+    ),
+    filterInputs: async (value) => value,
+  });
+  assert.equal(middle.conditioning.inputs.video_frame_offset, 81);
+  assert.deepEqual(middle.conditioning.inputs.continue_motion, ['continuation_load', 0]);
+  assert.deepEqual(middle.continuation_pick.inputs, {
+    image: ['overlap_trim', 0], batch_index: 79, length: 1,
+  });
 
   const lastSegment = plan.segments[2];
   const continuation = await buildWanAnimate2Graph('character.png', {
@@ -208,8 +252,13 @@ test('Wan Animate 2 runs long performances as bounded continuation graphs', asyn
     filterInputs: async (value) => value,
   });
   assert.deepEqual(continuation.conditioning.inputs.continue_motion, ['continuation_load', 0]);
+  assert.equal(continuation.conditioning.inputs.video_frame_offset, 161);
   assert.equal(continuation.continuation_load.inputs.image, 'previous-last-frame.png');
-  assert.equal(continuation.performance_slice.inputs.start_time, 160 / 24);
+  assert.equal(continuation.performance_slice, undefined);
+  assert.deepEqual(continuation.performance_parts.inputs.video, ['performance_load', 0]);
+  assert.deepEqual(continuation.performance_first.inputs, {
+    image: ['performance_parts', 0], batch_index: 0, length: 1,
+  });
   assert.deepEqual(continuation.overlap_trim.inputs, {
     image: ['decode', 0],
     batch_index: ['conditioning', 4],

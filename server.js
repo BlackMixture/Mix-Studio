@@ -29,6 +29,8 @@ const { h3PerformanceReport } = require('./lib/h3-performance');
 const {
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
+  ltx25Compatibility,
+  ltx25CompatibilityError,
   minimaxH3Compatibility,
   minimaxH3CompatibilityError,
   minimaxH3NativeAudioSampling,
@@ -99,6 +101,13 @@ const {
   ULTIMATE_SD_UPSCALE_MODEL,
   buildUltimateSdUpscaleGraph,
 } = require('./lib/upscale-workflows');
+const {
+  LTX25_FPS,
+  buildLtx25Graph,
+  ltx25Dimensions,
+  ltx25DurationSeconds,
+  ltx25FramesForSeconds,
+} = require('./lib/ltx25-workflow');
 const { IMAGE_RECREATION_INSTRUCTION, imagePromptRevisionParts } = require('./lib/image-prompt');
 const {
   ENHANCE_TAIL,
@@ -497,6 +506,12 @@ const DEFAULT_SETTINGS = {
   ltxTextEncoder: 'gemma_3_12B_it_fp4_mixed.safetensors',
   ltxGemmaLora: 'gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors',
   ltxUpscaler: 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors',
+  ltx25Unet: 'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors',
+  ltx25TextEncoder: 'gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors',
+  ltx25PromptEnhancer: 'gemma4_e2b_it_bf16.safetensors',
+  ltx25VideoVae: 'ltx-2.5-video-vae-bf16.safetensors',
+  ltx25AudioVae: 'ltx-2.5-audio-vae-bf16.safetensors',
+  ltx25Upscaler: 'ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors',
   h3Unet: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
   h3RefUnet: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
   h3Clip: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
@@ -1599,6 +1614,15 @@ function configuredModelsStatus(info) {
       gemmaLora: modelStatus(info, 'LoraLoader', 'lora_name', settings.ltxGemmaLora, loraList),
       upscaler: modelStatus(info, 'LatentUpscaleModelLoader', 'model_name', settings.ltxUpscaler),
     },
+    ltx25: {
+      label: 'LTX 2.5',
+      model: diffusionModelStatus(info, settings.ltx25Unet),
+      textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', settings.ltx25TextEncoder),
+      promptEnhancer: modelStatus(info, 'CLIPLoader', 'clip_name', settings.ltx25PromptEnhancer),
+      videoVae: modelStatus(info, 'VAELoader', 'vae_name', settings.ltx25VideoVae),
+      audioVae: modelStatus(info, 'VAELoader', 'vae_name', settings.ltx25AudioVae),
+      upscaler: modelStatus(info, 'LatentUpscaleModelLoader', 'model_name', settings.ltx25Upscaler),
+    },
     h3: {
       label: 'MiniMax H3',
       model: diffusionModelStatus(info, h3EffectiveModelName(settings, 'frames')),
@@ -1681,6 +1705,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
     upscale: ['upscale'],
     ultimateupscale: ['ultimateupscale'],
     video: ['video'],
+    ltx25: ['ltx25'],
     h3: ['h3'],
     h3r2v: ['h3r2v'],
     h3turbo: ['h3turbo'],
@@ -1711,7 +1736,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
   const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
   if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
   if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
-  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', wanAnimate2: 'wananimate2', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltx25: 'ltx25', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', wanAnimate2: 'wananimate2', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -2669,7 +2694,7 @@ async function completeJob(pid) {
         : (job.videoInfo.processed === 'extend' ? 'Video extension' : (job.videoInfo.composite ? 'Side-by-side' : 'Video')));
     pushHistory({
       kind: 'video', profileId: job.profileId, itemId: item.id, videoId: entry.id, durationMs,
-      label: `${videoActionLabel} (${{ h3: 'MiniMax H3', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
+      label: `${videoActionLabel} (${{ ltx25: 'LTX 2.5', h3: 'MiniMax H3', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros', scail: 'SCAIL 2' }[job.videoInfo.engine] || 'LTX 2.3'}): ${(job.videoInfo.motionPrompt || '').slice(0, 60)}`,
     });
     jobs.delete(pid);
     broadcast('videoDone', { jobId: pid, item });
@@ -5956,6 +5981,14 @@ const REQUIRED_CLASSES = {
     'KSamplerSelect', 'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader',
     'LTXVLatentUpsampler', 'LTXVCropGuides', 'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo',
     'SaveVideo', 'ImageScale', 'LTXVPreprocess'],
+  ltx25: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'CLIPTextEncode', 'TextGenerateLTX2Prompt',
+    'PreviewAny', 'LTXVConditioning', 'EmptyLTXVLatentVideo', 'LTXVImgToVideoInplace',
+    'LTXVAddGuide', 'LTXVCropGuides', 'LTXVEmptyLatentAudio', 'LTXVConcatAVLatent',
+    'LTXVSeparateAVLatent', 'LTXVDualCFGGuider', 'RandomNoise', 'KSamplerSelect',
+    'ManualSigmas', 'SamplerCustomAdvanced', 'LatentUpscaleModelLoader', 'LTXVLatentUpsampler',
+    'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo', 'SaveVideo', 'ImageScale',
+    'LTXVPreprocess', 'LoadImage', 'LoadAudio', 'LTXVAudioVAEEncode', 'SolidMask',
+    'SetLatentNoiseMask', 'ImageFromBatch', 'SaveImage'],
   h3: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'MiniMaxH3ImageToVideo', 'RandomNoise', 'BasicGuider',
     'KSamplerSelect', 'BasicScheduler', 'SamplerCustomAdvanced', 'VAEDecode', 'VAEDecodeAudio',
     'CreateVideo', 'SaveVideo', 'ImageFromBatch', 'SaveImage'],
@@ -5974,7 +6007,7 @@ const REQUIRED_CLASSES = {
   wan: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingSD3',
     'WanImageToVideo', 'KSamplerAdvanced', 'VAEDecode', 'CreateVideo', 'SaveVideo'],
   wananimate2: ['UNETLoader', 'LoraLoaderModelOnly', 'CLIPLoader', 'CLIPTextEncode', 'CLIPVisionLoader',
-    'CLIPVisionEncode', 'VAELoader', 'LoadImage', 'LoadVideo', 'Video Slice', 'GetVideoComponents',
+    'CLIPVisionEncode', 'VAELoader', 'LoadImage', 'LoadVideo', 'GetVideoComponents',
     'ResizeImageMaskNode', 'ImageFromBatch', 'WanAnimate2ToVideo', 'ModelSamplingSD3', 'BasicScheduler',
     'KSamplerSelect', 'SamplerCustom', 'TrimVideoLatent', 'VAEDecode', 'CreateVideo', 'SaveVideo', 'SaveImage'],
   eros: ['CheckpointLoaderSimple', 'LTXVAudioVAELoader', 'LTXAVTextEncoderLoader', 'ImageResizeKJv2',
@@ -6012,7 +6045,7 @@ function dependencyComponentInfo(id, fit = null) {
   };
 }
 
-function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, wanAnimate2Core = null, sageAttention = null) {
+function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = null, wanAnimate2Core = null, sageAttention = null) {
   const component = dependencyComponentInfo(id, fit);
   if (fit?.blocked) {
     component.installable = false;
@@ -6029,6 +6062,11 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, wanAnimate2Cor
     component.blockedBy = 'comfy-core';
     component.installReason = minimaxH3CompatibilityError(h3Core);
   }
+  if (id === 'ltx25' && ltx25Core && ltx25Core.supported !== true) {
+    component.installable = false;
+    component.blockedBy = 'comfy-core';
+    component.installReason = ltx25CompatibilityError(ltx25Core);
+  }
   if (id === 'wananimate2' && wanAnimate2Core && wanAnimate2Core.supported !== true) {
     component.installable = false;
     component.blockedBy = 'comfy-core';
@@ -6043,7 +6081,7 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, wanAnimate2Cor
 }
 
 function wanAnimate2CoreCompatibility(info, version = '') {
-  const required = ['WanAnimate2ToVideo', 'LoadVideo', 'Video Slice', 'GetVideoComponents',
+  const required = ['WanAnimate2ToVideo', 'LoadVideo', 'GetVideoComponents',
     'ResizeImageMaskNode', 'ImageFromBatch', 'TrimVideoLatent', 'CreateVideo', 'SaveVideo', 'SaveImage'];
   const missingNodes = required.filter((className) => !info?.[className]);
   const conditioningInfo = info?.WanAnimate2ToVideo;
@@ -6145,6 +6183,7 @@ async function setupStatusPayload(forceCompatibility = false) {
     ? krea2ClipCompatibility(info, compatibility.version)
     : krea2ClipCompatibility(null, compatibility.version);
   const h3Core = minimaxH3Compatibility(connected ? info : null, compatibility.version);
+  const ltx25Core = ltx25Compatibility(connected ? info : null, compatibility.version);
   const wanAnimate2Core = connected ? wanAnimate2CoreCompatibility(info, compatibility.version) : null;
   const sageRuntime = await probeSageAttention(RUNTIME, {
     status: detected,
@@ -6181,6 +6220,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       guidance[id] || null,
       connected ? krea2Core : null,
       h3Core,
+      ltx25Core,
       wanAnimate2Core,
       sageAttention,
     )),
@@ -6190,6 +6230,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       version: compatibility.version,
       krea2: krea2Core,
       minimaxH3: h3Core,
+      ltx25: ltx25Core,
       wanAnimate2: wanAnimate2Core,
       sageAttention,
       nativeInt8: compatibility,
@@ -7000,6 +7041,7 @@ async function handleApi(req, res, url) {
       const compatibility = await getComfyCompatibility(url.searchParams.has('refresh'));
       const krea2Core = krea2ClipCompatibility(info, compatibility.version);
       const h3Core = minimaxH3Compatibility(info, compatibility.version);
+      const ltx25Core = ltx25Compatibility(info, compatibility.version);
       const wanAnimate2Core = wanAnimate2CoreCompatibility(info, compatibility.version);
       if (h3Core.nativeAudioSampling) {
         // Current ComfyUI supplies the audio-safe AV schedule, so only the
@@ -7062,6 +7104,7 @@ async function handleApi(req, res, url) {
             hardwareGuidance[id] || null,
             krea2Core,
             h3Core,
+            ltx25Core,
             wanAnimate2Core,
             sageAttention,
           )),
@@ -7094,6 +7137,7 @@ async function handleApi(req, res, url) {
             reference: h3TurboCompatibility(settings, 'reference'),
           },
         }),
+        ltx25: ltx25Core,
         wanAnimate2: wanAnimate2Core,
         features: settings.features,
         capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
@@ -8191,7 +8235,7 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/animate' && req.method === 'POST') {
     const body = await readJsonBody(req);
-    const engine = ['h3', 'wan', 'wan-animate2', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
+    const engine = ['ltx25', 'h3', 'wan', 'wan-animate2', 'eros', 'scail', 'ltx-edit'].includes(body.engine) ? body.engine : 'ltx';
     const wanAnimate2 = engine === 'wan-animate2';
     const h3Mode = engine === 'h3' && ['reference', 'replace'].includes(body.h3Mode)
       ? body.h3Mode
@@ -8231,6 +8275,33 @@ async function handleApi(req, res, url) {
         code: 'generation_device_unsupported',
         engine,
       });
+    }
+    if (engine === 'ltx25') {
+      const info = await getObjectInfo();
+      const coreCompatibility = await getComfyCompatibility();
+      const compatibility = ltx25Compatibility(info, coreCompatibility.version);
+      if (compatibility.supported !== true) {
+        return json(res, 409, {
+          error: ltx25CompatibilityError(compatibility),
+          code: 'comfy_ltx25_update_required',
+          component: 'ltx25',
+          compatibility,
+        });
+      }
+      const missingNodes = REQUIRED_CLASSES.ltx25.filter((className) => !info[className]);
+      const modelStatusValue = configuredModelsStatus(info).ltx25;
+      const missingModels = Object.entries(modelStatusValue)
+        .filter(([key, value]) => key !== 'label' && value?.ok === false)
+        .map(([key]) => key);
+      if (missingNodes.length || missingModels.length) {
+        return json(res, 409, {
+          error: 'LTX 2.5 needs its official model pack and current native ComfyUI workflow. Install or repair LTX 2.5 in Generation Setup, restart ComfyUI, and try again.',
+          code: 'ltx25_unavailable',
+          component: 'ltx25',
+          missingNodes,
+          missingModels,
+        });
+      }
     }
     if (engine === 'h3') {
       const info = await getObjectInfo();
@@ -8478,9 +8549,9 @@ async function handleApi(req, res, url) {
       bypass = true;
     }
 
-    if (engine !== 'ltx' && engine !== 'h3' && bypass) {
+    if (engine !== 'ltx' && engine !== 'ltx25' && engine !== 'h3' && bypass) {
       const label = { wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros DMD', scail: 'SCAIL 2', 'ltx-edit': 'LTX Edit' }[engine];
-      return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 for text-to-video.` });
+      return json(res, 400, { error: `${label} needs a source image. Use LTX 2.3 or LTX 2.5 for text-to-video.` });
     }
     if (autoMotionRequested && bypass) {
       return json(res, 400, { error: 'Automatic motion prompts need a first-frame image.' });
@@ -8572,6 +8643,8 @@ async function handleApi(req, res, url) {
       ? scailDurationSeconds(seconds, driveDur)
       : isLtxEdit && driveDur > 0
         ? Math.max(1, Math.min(15, driveDur, seconds))
+        : engine === 'ltx25'
+          ? ltx25DurationSeconds(seconds)
         : engine === 'ltx'
           ? cameraReferenceGuided
             ? ltxCameraDurationSeconds(seconds, cameraGuideVideoName ? cameraGuideSourceDuration : 0, cameraGuideStart)
@@ -8603,6 +8676,11 @@ async function handleApi(req, res, url) {
       );
       h3OutputAspectRatio = requestedAspectRatio;
       ({ W, H } = h3Dimensions(requestedAspectRatio, 1, body.h3ResolutionSize));
+    } else if (engine === 'ltx25') {
+      fps = LTX25_FPS;
+      frames = ltx25FramesForSeconds(seconds);
+      seconds = (frames - 1) / fps;
+      ({ W, H } = ltx25Dimensions(srcW, srcH));
     } else if (wanAnimate2) {
       fps = wanAnimate2Plan.fps;
       frames = wanAnimate2Plan.outputFrames;
@@ -8636,7 +8714,7 @@ async function handleApi(req, res, url) {
       ({ W, H } = cameraReferenceGuided ? cameraMotionDims(srcW, srcH) : videoDims(srcW, srcH));
     }
 
-    if ((engine === 'ltx' || isLtxEdit) && !faceImageName) {
+    if ((engine === 'ltx' || engine === 'ltx25' || isLtxEdit) && !faceImageName) {
       const refinePreflight = ltxRefinePreflight({
         width: W, height: H, frames, fps, profile: generationHardwareProfile,
       });
@@ -8769,6 +8847,8 @@ async function handleApi(req, res, url) {
         : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
+        : engine === 'ltx25'
+          ? (body.endImageName ? 8 : 11)
         : wanAnimate2
           ? WAN_ANIMATE_2_STEPS
         : engine === 'scail'
@@ -8779,9 +8859,9 @@ async function handleApi(req, res, url) {
               ? manualSigmaStepCount(LTX_SIGMAS_BASE)
               : manualSigmaStepCount(LTX_SIGMAS_BASE) + manualSigmaStepCount(LTX_SIGMAS_REFINE);
     // RIFE frame interpolation for LTX, Wan, and SCAIL video outputs.
-    const smooth = (engine === 'ltx' || isLtxEdit || engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
+    const smooth = (engine === 'ltx' || engine === 'ltx25' || isLtxEdit || engine === 'wan' || engine === 'scail') && [2, 3].includes(Number(body.smooth))
       ? Number(body.smooth) : 1;
-    const isLtxLike = engine === 'ltx' || engine === 'eros';
+    const isLtxLike = engine === 'ltx' || engine === 'ltx25' || engine === 'eros';
     const audioName = isLtxLike && body.audioName ? String(body.audioName) : null;
     const endImageName = (isLtxLike || (engine === 'h3' && h3Mode === 'frames'))
       && !faceImageName && body.endImageName ? String(body.endImageName) : null;
@@ -8862,6 +8942,10 @@ async function handleApi(req, res, url) {
     const graph = engine === 'h3' ? await buildMiniMaxH3Graph(opts, settings, {
       nodeFromOrdered, filterInputs, rtxVideoSuperResolutionNode,
     })
+      : engine === 'ltx25' ? await buildLtx25Graph(comfyName, opts, settings, {
+        filterInputs, chainModelLoras, textGenInputs, audioLatentNodes,
+        rifeSmooth, rtxVideoSuperResolutionNode,
+      })
       : wanAnimate2 ? await buildWanAnimate2Graph(comfyName, opts, settings, { nodeFromOrdered, filterInputs })
       : engine === 'scail' ? await buildAnimateScail(comfyName, opts)
       : engine === 'wan' ? await buildAnimateWan(comfyName, opts)
@@ -8967,6 +9051,7 @@ async function handleApi(req, res, url) {
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
         h3ModelVariant: engine === 'h3' ? h3SelectedModelVariant?.id : undefined,
         h3ModelName: engine === 'h3' ? h3EffectiveModelName(settings, h3GraphMode) : undefined,
+        ltx25ModelName: engine === 'ltx25' ? settings.ltx25Unet : undefined,
         h3TurboLora: engine === 'h3' && opts.turbo
           ? (h3ReferenceBacked ? settings.h3RefTurboLora : settings.h3TurboLora)
           : undefined,

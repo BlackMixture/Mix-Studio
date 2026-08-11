@@ -20,7 +20,7 @@ test('README feature descriptions are technical, current, and free of em dashes'
 
   for (const feature of [
     'Flux 2 Klein', 'Qwen Image Edit', 'Krea 2', 'Krea 2 Remix', 'Reference boost',
-    'LTX 2.3', 'Face ID', 'LTX Edit', '10Eros', 'Wan 2.2', 'SCAIL 2',
+    'LTX 2.3', 'LTX 2.5', 'Face ID', 'LTX Edit', '10Eros', 'Wan 2.2', 'SCAIL 2',
     'Strength Hunt', 'Generation setup',
   ]) assert.match(readme, new RegExp(feature));
 });

@@ -197,15 +197,16 @@ test('Video model selection sits above the prompt and collapses after choosing',
 test('Video choices lead with model names and keep tasks secondary', () => {
   const choices = [
     ['ltx', 'Cinematic Video', 'LTX 2.3'],
+    ['ltx25', 'Next-gen Cinematic Video', 'LTX 2.5'],
     ['ltx-edit', 'Video Editing', 'LTX Edit'],
     ['eros', 'Image Animation', '10Eros DMD'],
     ['wan', 'Complex Motion', 'Wan 2.2'],
     ['scail', 'Motion Transfer', 'SCAIL 2'],
   ];
   for (const [engine, task, model] of choices) {
-    assert.match(html, new RegExp(`data-engine="${engine}"[^>]*data-task-label="${regexEscape(task)}"[^>]*data-model-label="${regexEscape(model)}"[^>]*><b>${regexEscape(model)}(?:\\s*<span class="model-status-badge">Experimental</span>)?</b><small>${regexEscape(task)}</small>`));
+    assert.match(html, new RegExp(`data-engine="${engine}"[^>]*data-task-label="${regexEscape(task)}"[^>]*data-model-label="${regexEscape(model)}"[^>]*><b>${regexEscape(model)}(?:\\s*<span class="model-status-badge">(?:Experimental|Preview)</span>)?</b><small>${regexEscape(task)}</small>`));
   }
-  assert.match(app, /const VIDEO_ENGINE_TASKS = \{[\s\S]*task: 'Cinematic Video', model: 'LTX 2\.3'[\s\S]*task: 'Motion Transfer', model: 'SCAIL 2'/);
+  assert.match(app, /const VIDEO_ENGINE_TASKS = \{[\s\S]*task: 'Cinematic Video', model: 'LTX 2\.3'[\s\S]*task: 'Next-gen Cinematic Video', model: 'LTX 2\.5'[\s\S]*task: 'Motion Transfer', model: 'SCAIL 2'/);
   assert.match(app, /\$\('#vidEngineSelected'\)\.textContent = definition\.model/);
   assert.match(app, /\$\('#vidEngineNote'\)\.textContent = faceMode \? 'Character Performance' : definition\.task/);
 });
@@ -349,11 +350,11 @@ test('Duration is the first video control and Motion Freedom is a separate setti
   assert.doesNotMatch(app, /openDurationPicker|durationPickerSheet|vidDurScrub/);
 });
 
-test('LTX 2.3 and MiniMax H3 expose their supported duration limits', () => {
+test('LTX 2.3, LTX 2.5, and MiniMax H3 expose their supported duration limits', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(html, /id="vidDur"[^>]*max="20"/);
   assert.match(html, /id="animDur"[^>]*max="20"/);
-  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx'\) return 20;[\s\S]*engine === 'h3'\) return h3LongContextActive\(\) \? 120 : 15;[\s\S]*return 15;/);
+  assert.match(app, /function videoDurationMax\(engine\)[\s\S]*engine === 'scail'\) return 60;[\s\S]*cameraMotionReferenceSelected\(\)\) return cameraMotionGuideLimit\(\);[\s\S]*engine === 'ltx' \|\| engine === 'ltx25'\) return 20;[\s\S]*engine === 'h3'\) return h3LongContextActive\(\) \? 120 : 15;[\s\S]*return 15;/);
   assert.match(app, /Math\.min\(Number\(durEl\.max\) \|\| 15, Math\.round\(len\)\)/);
   assert.match(server, /engine === 'ltx'[\s\S]*ltxDurationSeconds\(seconds\)/);
   assert.match(server, /seconds: opts\.seconds/);
@@ -362,9 +363,9 @@ test('LTX 2.3 and MiniMax H3 expose their supported duration limits', () => {
 test('LTX settings avoid duplicate pipeline and playback summaries', () => {
   assert.doesNotMatch(html, /id="vidLtx(?:Generation|Playback)/);
   assert.doesNotMatch(app, /vidLtx(?:Generation|Playback)/);
-  assert.match(app, /const ltxFamily = engine === 'ltx' \|\| ltxEdit/);
+  assert.match(app, /const ltxFamily = engine === 'ltx' \|\| engine === 'ltx25' \|\| ltxEdit/);
   assert.match(app, /function renderVideoFpsChoices\(\)/);
-  assert.match(app, /const baseFps = ltx \? \(state\.vidFace \? 24 : 25\) : \(state\.vidEngine === 'scail' \? state\.vidScailFps : 16\)/);
+  assert.match(app, /const baseFps = state\.vidEngine === 'ltx25'[\s\S]{0,160}\? 24[\s\S]{0,160}state\.vidEngine === 'scail'/);
   assert.match(app, /\$\('#vidFpsRow'\)\.hidden = h3 \|\| !\(ltxFamily \|\| wanOrScail\)/);
   assert.match(app, /\$\('#vidScailFpsField'\)\.hidden = !\(isVideo && state\.vidEngine === 'scail'\)/);
   assert.match(app, /\$\{baseFps \* multiplier\} fps · RIFE/);
@@ -372,7 +373,7 @@ test('LTX settings avoid duplicate pipeline and playback summaries', () => {
 
 test('LTX requests can pass through the same RIFE interpolation stage as Wan and SCAIL', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(server, /const smooth = \(engine === 'ltx' \|\| isLtxEdit \|\| engine === 'wan' \|\| engine === 'scail'\)/);
+  assert.match(server, /const smooth = \(engine === 'ltx' \|\| engine === 'ltx25' \|\| isLtxEdit \|\| engine === 'wan' \|\| engine === 'scail'\)/);
   assert.match(server, /frameSource = await rifeSmooth\(graph, frameSource, opts\.smooth\);/);
   assert.match(server, /fps: opts\.fps \* \(opts\.smooth > 1 \? opts\.smooth : 1\)/);
 });
@@ -674,7 +675,7 @@ test('Gallery Animate routes an image into the full Video tab as either a start 
   assert.match(app, /openAnimateRouteSheet\(it\)/);
   assert.match(app, /function galleryImageDestinationActions\(item[\s\S]*label: 'First frame'[^\n]*sendToVideoTab\(item, 'start'\)/);
   assert.match(app, /function galleryImageDestinationActions\(item[\s\S]*label: 'Last frame'[^\n]*sendToVideoTab\(item, 'end'\)/);
-  assert.match(app, /const endEngine = \['ltx', 'h3', 'eros'\]\.find/);
+  assert.match(app, /const endEngine = \['ltx25', 'ltx', 'h3', 'eros'\]\.find/);
   assert.match(html, /id="animateRouteStart"[\s\S]*<b>First frame<\/b>/);
   assert.match(html, /id="animateRouteEnd"[\s\S]*<b>Last frame<\/b>/);
 });
@@ -688,7 +689,7 @@ test('MiniMax H3 keeps its frame and reference-backed downloads independent', ()
   assert.doesNotMatch(html, /Reference mode installs its separate Ref2VA model only when you first use it\./);
   assert.doesNotMatch(html, /Text \+ frames does not download that model\./);
   assert.doesNotMatch(html, /id="vidH3ModeCopy"/);
-  assert.match(app, /const byEngine = \{ ltx: 'video', h3: 'h3'/);
+  assert.match(app, /const byEngine = \{ ltx: 'video', ltx25: 'ltx25', h3: 'h3'/);
   assert.match(app, /state\.vidEngine === 'h3' && h3ReferenceBackedMode\(\)\) components\.add\('h3r2v'\)/);
   assert.match(app, /sourceItemId: !h3Reference && state\.vidRef \? state\.vidRef\.srcItemId : undefined/);
   assert.match(fs.readFileSync(path.join(root, 'server.js'), 'utf8'), /!item && body\.sourceItemId && !h3ReferenceBacked/);

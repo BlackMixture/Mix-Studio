@@ -83,7 +83,7 @@ const state = {
   editEngine: 'klein9',
   editEngineOrder: [...DEFAULT_EDIT_ENGINE_ORDER],
   editEngineDefault: 'klein9',
-  videoEngineOrder: ['ltx', 'h3', 'ltx-edit', 'eros', 'wan', 'wan-animate2', 'scail'],
+  videoEngineOrder: ['ltx', 'ltx25', 'h3', 'ltx-edit', 'eros', 'wan', 'wan-animate2', 'scail'],
   videoEngineDefault: 'ltx',
   appRelease: { version: '', releasedAt: null, revision: '', instanceId: '' },
   officialRelease: null,
@@ -329,7 +329,7 @@ const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
 const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref', krea2remix: 'edit.krea2remix' };
-const VIDEO_FEATURES = { ltx: 'video.ltx', h3: 'video.h3', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', 'wan-animate2': 'video.wanAnimate2', scail: 'video.scail' };
+const VIDEO_FEATURES = { ltx: 'video.ltx', ltx25: 'video.ltx25', h3: 'video.h3', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', 'wan-animate2': 'video.wanAnimate2', scail: 'video.scail' };
 const VIDEO_ENGINES = Object.keys(VIDEO_FEATURES);
 
 function normalizeEngineOrder(order, engines) {
@@ -9910,6 +9910,7 @@ wireEndFrame('anim', 'animEnd');
 /* Swap first/last frame in the Video tab */
 function videoSupportsEndFrame() {
   return state.vidEngine === 'ltx'
+    || state.vidEngine === 'ltx25'
     || state.vidEngine === 'eros'
     || (state.vidEngine === 'h3' && state.vidH3Mode === 'frames');
 }
@@ -11474,7 +11475,7 @@ function cameraMotionGuideLimit(guide = state.videoCameraGuide) {
 }
 
 function cameraMotionEngineLabel() {
-  return { ltx: 'LTX 2.3', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2' }[state.vidEngine] || 'this model';
+  return { ltx: 'LTX 2.3', ltx25: 'LTX 2.5', 'ltx-edit': 'LTX Edit', eros: '10Eros DMD', wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2' }[state.vidEngine] || 'this model';
 }
 
 function cameraMotionModeText(guide = state.videoCameraGuide, motions = state.videoCameraMotions) {
@@ -12754,6 +12755,11 @@ function videoStepSpecification() {
       ? { value: 12, editable: false, hint: '8 base + 4 refinement · fixed sigmas' }
       : { value: 12, editable: false, hint: '9 base + 3 refinement · fixed sigmas' };
   }
+  if (state.vidEngine === 'ltx25') {
+    return state.vidEnd
+      ? { value: 8, editable: false, hint: 'First + last frames · native single-stage distilled schedule' }
+      : { value: 11, editable: false, hint: '8 base + 3 refinement · official LTX 2.5 schedule' };
+  }
   if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) {
     return { value: 8, editable: false, hint: 'Face ID base schedule · fixed' };
   }
@@ -13505,6 +13511,12 @@ const VIDEO_ENGINE_TASKS = {
     task: 'Cinematic Video', model: 'LTX 2.3',
     detail: 'Text or image + audio',
     copy: 'Create from a prompt or first frame, with native audio and Face ID.',
+    preview: { type: 'video', src: '/guides/ltx-motorcycle-highway.mp4' },
+  },
+  ltx25: {
+    task: 'Next-gen Cinematic Video', model: 'LTX 2.5',
+    detail: 'Text or frames + synchronized audio',
+    copy: 'Generate at 24 fps with the official Gemma 4 prompt stack and two-stage latent refinement.',
     preview: { type: 'video', src: '/guides/ltx-motorcycle-highway.mp4' },
   },
   h3: {
@@ -16176,7 +16188,7 @@ function videoDurationMax(engine) {
     return performanceSeconds > 0 ? Math.max(1, Math.min(15, performanceSeconds)) : 15;
   }
   if (engine === 'ltx' && cameraMotionReferenceSelected()) return cameraMotionGuideLimit();
-  if (engine === 'ltx') return 20;
+  if (engine === 'ltx' || engine === 'ltx25') return 20;
   if (engine === 'h3') return h3LongContextActive() ? 120 : 15;
   return 15;
 }
@@ -16448,7 +16460,7 @@ function syncAnimateDurationLimit() {
   const input = $('#animDur');
   clampVideoDurationInput(input, state.animEngine);
   $('#animDurVal').textContent = input.value;
-  $('#animDurationHint').hidden = !(state.animEngine === 'ltx' && Number(input.value) > 15);
+  $('#animDurationHint').hidden = !(['ltx', 'ltx25'].includes(state.animEngine) && Number(input.value) > 15);
 }
 
 function updateVideoTuningSummary() {
@@ -16975,12 +16987,12 @@ function pickRef(idx) {
 async function sendToVideoTab(item, role = 'start') {
   try {
     const enabled = supportedVideoEngines();
-    if (role === 'end' && !['ltx', 'h3', 'eros'].includes(state.vidEngine)) {
-      const endEngine = ['ltx', 'h3', 'eros'].find((engine) => enabled.includes(engine));
-      if (!endEngine) throw new Error('Enable MiniMax H3, LTX 2.3, or 10Eros to use a gallery image as the last frame');
+    if (role === 'end' && !['ltx', 'ltx25', 'h3', 'eros'].includes(state.vidEngine)) {
+      const endEngine = ['ltx25', 'ltx', 'h3', 'eros'].find((engine) => enabled.includes(engine));
+      if (!endEngine) throw new Error('Enable MiniMax H3, LTX 2.3, LTX 2.5, or 10Eros to use a gallery image as the last frame');
       state.vidEngine = endEngine;
     } else if (role === 'start' && state.vidEngine === 'ltx-edit') {
-      state.vidEngine = ['ltx', 'h3', 'eros', 'wan', 'scail'].find((engine) => enabled.includes(engine)) || state.vidEngine;
+      state.vidEngine = ['ltx25', 'ltx', 'h3', 'eros', 'wan', 'scail'].find((engine) => enabled.includes(engine)) || state.vidEngine;
     }
     const blob = await (await fetch('/images/' + item.file)).blob();
     const buf = await blob.arrayBuffer();
@@ -17953,7 +17965,7 @@ function renderVidFace() {
   const ltx = state.vidEngine === 'ltx';
   const h3 = state.vidEngine === 'h3';
   const ltxEdit = state.vidEngine === 'ltx-edit';
-  const ltxFamily = ltx || ltxEdit;
+  const ltxFamily = ltx || state.vidEngine === 'ltx25' || ltxEdit;
   const has = !!state.vidFace;
   const faceMode = ltx && has;
   // Face ID is t2v-based: hide it when a source image (i2v) is attached,
@@ -18004,7 +18016,9 @@ function renderVidFace() {
 
 function renderVideoFpsChoices() {
   const ltx = state.vidEngine === 'ltx' || state.vidEngine === 'ltx-edit';
-  const baseFps = ltx ? (state.vidFace ? 24 : 25) : (state.vidEngine === 'scail' ? state.vidScailFps : 16);
+  const baseFps = state.vidEngine === 'ltx25'
+    ? 24
+    : (ltx ? (state.vidFace ? 24 : 25) : (state.vidEngine === 'scail' ? state.vidScailFps : 16));
   renderScailFpsControls();
   $$('#vidFpsRow .chip').forEach((chip) => {
     const multiplier = Number(chip.dataset.smooth) || 1;
@@ -18955,7 +18969,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   const wanAnimate2 = engine === 'wan-animate2';
   const scail = engine === 'scail';
   const ltxEdit = engine === 'ltx-edit';
-  const ltxFamily = engine === 'ltx' || ltxEdit;
+  const ltxFamily = engine === 'ltx' || engine === 'ltx25' || ltxEdit;
   $('#vidFreeField').hidden = h3 || wan || wanAnimate2 || scail || ltxEdit;
   $('#vidQuality').hidden = !wan;
   $('#vidSigmaRow').hidden = engine !== 'eros';
@@ -19085,9 +19099,9 @@ $('#generateBtn').addEventListener('click', async () => {
       if (!state.vidH3ReplaceVideo) return toast('Replace mode needs the master video', true);
       if (!state.vidH3ReplaceImage) return toast('Replace mode needs the replacement image', true);
     }
-    if (!ltxEdit && !['ltx', 'h3'].includes(state.vidEngine) && !state.vidRef) {
+    if (!ltxEdit && !['ltx', 'ltx25', 'h3'].includes(state.vidEngine) && !state.vidRef) {
       const lbl = { wan: 'Wan 2.2', 'wan-animate2': 'Wan Animate 2', eros: '10Eros DMD', scail: 'SCAIL 2' }[state.vidEngine];
-      return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 for text-to-video`, true);
+      return toast(`${lbl} needs a source image — add one, or switch to LTX 2.3 or LTX 2.5 for text-to-video`, true);
     }
     if (ltxEdit && !state.vidDrive) {
       return toast('LTX Edit needs the source video you want to edit', true);
@@ -19100,7 +19114,7 @@ $('#generateBtn').addEventListener('click', async () => {
     }
     if (!(await ensureGenerationSetup())) return;
     let vidAudioName;
-    if (state.vidAudio && (state.vidEngine === 'ltx' || state.vidEngine === 'eros')) {
+    if (state.vidAudio && (state.vidEngine === 'ltx' || state.vidEngine === 'ltx25' || state.vidEngine === 'eros')) {
       try { vidAudioName = await ensureAudioUploaded(state.vidAudio); }
       catch (e) { return toast('Audio upload failed: ' + e.message, true); }
     }
@@ -20642,6 +20656,7 @@ function videoEngineLabel(engine, info) {
   }
   return {
     ltx: 'LTX 2.3',
+    ltx25: 'LTX 2.5',
     h3: 'MiniMax H3',
     'ltx-edit': 'LTX Edit',
     eros: '10Eros DMD',
@@ -27081,7 +27096,7 @@ async function reuseItem(it, useEnhanced) {
 async function reuseVideo(it, v) {
   const options = arguments[2] || {};
   const info = v.info || {};
-  const engine = ['h3', 'wan', 'wan-animate2', 'eros', 'scail', 'ltx-edit'].includes(info.engine) ? info.engine : 'ltx';
+  const engine = ['ltx25', 'h3', 'wan', 'wan-animate2', 'eros', 'scail', 'ltx-edit'].includes(info.engine) ? info.engine : 'ltx';
   const savedH3MatchSource = engine === 'h3' && typeof info.h3MatchSource === 'boolean'
     ? info.h3MatchSource
     : null;
@@ -29440,6 +29455,8 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setKlein9Unet', 'setKlein9Clip', 'setKlein9ConsistencyLora', 'setKlein9ConsistencyTrigger',
   'setKleinVae', 'setQeUnet', 'setQeClip', 'setQeLora', 'setQeAnglesLora',
   'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
+  'setLtx25Unet', 'setLtx25TextEncoder', 'setLtx25PromptEnhancer',
+  'setLtx25VideoVae', 'setLtx25AudioVae', 'setLtx25Upscaler',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
   'setH3FrameModelVariant', 'setH3FramesTurboVariant', 'setH3ReferenceModelVariant',
@@ -29583,6 +29600,12 @@ function settingsPayload() {
     seedvr2Vae: $('#setSvVae').value,
     seedvr2Attention: $('#setSvAttn').value,
     systemPrompt: $('#setSysPrompt').value,
+    ltx25Unet: $('#setLtx25Unet').value,
+    ltx25TextEncoder: $('#setLtx25TextEncoder').value,
+    ltx25PromptEnhancer: $('#setLtx25PromptEnhancer').value,
+    ltx25VideoVae: $('#setLtx25VideoVae').value,
+    ltx25AudioVae: $('#setLtx25AudioVae').value,
+    ltx25Upscaler: $('#setLtx25Upscaler').value,
     ltxCkpt: $('#setLtxCkpt').value,
     ltxDistilledLora: $('#setLtxLora').value,
     ltxCameramanLora: $('#setLtxCameraLora').value,
@@ -33280,6 +33303,12 @@ $('#settingsBtn').addEventListener('click', async () => {
     setSvAttnValue(s.seedvr2Attention || 'sdpa');
     applySvAttnVendorFilter(s.gpuVendor || '');
     $('#setSysPrompt').value = s.systemPrompt || '';
+    $('#setLtx25Unet').value = s.ltx25Unet || '';
+    $('#setLtx25TextEncoder').value = s.ltx25TextEncoder || '';
+    $('#setLtx25PromptEnhancer').value = s.ltx25PromptEnhancer || '';
+    $('#setLtx25VideoVae').value = s.ltx25VideoVae || '';
+    $('#setLtx25AudioVae').value = s.ltx25AudioVae || '';
+    $('#setLtx25Upscaler').value = s.ltx25Upscaler || '';
     $('#setLtxCkpt').value = s.ltxCkpt || '';
     $('#setLtxLora').value = s.ltxDistilledLora || '';
     $('#setLtxCameraLora').value = s.ltxCameramanLora || '';
@@ -33516,7 +33545,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'ltx25', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -33556,6 +33585,17 @@ function setupWanAnimate2CoreBlocked(components) {
     && setupViewStatus?.comfy?.wanAnimate2?.supported !== true;
 }
 
+function setupLtx25CoreBlocked(components) {
+  const requested = (components || []).filter(Boolean);
+  return setupViewStatus?.comfy?.connected === true
+    && requested.includes('ltx25')
+    && setupViewStatus?.comfy?.ltx25?.supported !== true;
+}
+
+function setupLtx25CoreMessage() {
+  return 'This ComfyUI build does not expose native LTX 2.5 yet. Its official support PR is still pending; use an LTX 2.5-capable build or wait for it to merge, then restart ComfyUI and press Check again.';
+}
+
 function setupWanAnimate2CoreMessage() {
   return setupViewStatus?.comfy?.wanAnimate2?.reason
     || 'Update ComfyUI to a current build with native Wan Animate 2 support, restart it, then press Check again.';
@@ -33588,7 +33628,7 @@ function setupNativeInt8Message() {
 function generationSetupComponents() {
   const components = new Set();
   if (state.view === 'video') {
-    const byEngine = { ltx: 'video', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', 'wan-animate2': 'wananimate2', scail: 'scail' };
+    const byEngine = { ltx: 'video', ltx25: 'ltx25', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', 'wan-animate2': 'wananimate2', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
     if (h3TurboActive()) components.add(h3ReferenceBackedMode() ? 'h3turbor2v' : 'h3turbo');
     if (h3LongContextActive()) components.add('h3context');
@@ -33641,8 +33681,10 @@ function setupActionForComponents(required) {
   if (!lastMeta.ok) return 'connect';
   const requiresKrea2 = components.some((id) => KREA2_MODEL_COMPONENTS.has(id));
   const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context');
+  const requiresLtx25 = components.includes('ltx25');
   const requiresWanAnimate2 = components.includes('wananimate2');
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
+  if (requiresLtx25 && lastMeta?.ltx25?.supported !== true) return 'update';
   if (requiresWanAnimate2 && lastMeta?.wanAnimate2?.supported !== true) return 'update';
   if (requiresKrea2 && lastMeta?.models?.krea2?.clipType?.ok !== true) return 'update';
   if (requiresKrea2
@@ -33666,9 +33708,11 @@ async function ensureGenerationSetup() {
     && lastMeta?.models?.krea2?.clipType?.ok !== true;
   const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context')
     && lastMeta?.minimaxH3?.supported !== true;
+  const ltx25CoreBlocked = required.includes('ltx25')
+    && lastMeta?.ltx25?.supported !== true;
   const wanAnimate2CoreBlocked = required.includes('wananimate2')
     && lastMeta?.wanAnimate2?.supported !== true;
-  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked && !wanAnimate2CoreBlocked) return true;
+  if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked && !ltx25CoreBlocked && !wanAnimate2CoreBlocked) return true;
   const setupAction = setupActionForComponents(required);
   saveForm();
   await openInitialSetup({
@@ -33676,6 +33720,8 @@ async function ensureGenerationSetup() {
     initialStep: setupAction === 'install' ? 'install' : 'connect',
     message: h3CoreBlocked
       ? 'Update ComfyUI to 0.30.0 or newer before using MiniMax H3.'
+      : (ltx25CoreBlocked
+      ? 'Native ComfyUI support for LTX 2.5 is still pending in the official support PR.'
       : (wanAnimate2CoreBlocked
       ? 'Update ComfyUI to a current build with native Wan Animate 2 support.'
       : (krea2CoreBlocked
@@ -33684,7 +33730,7 @@ async function ensureGenerationSetup() {
       ? 'Update ComfyUI for Krea 2 INT8 ConvRot, or choose the compatible FP8 route.'
       : (lastMeta?.ok
       ? 'This workflow needs a few desktop tools before it can run.'
-      : 'Connect ComfyUI, then install what this workflow needs.')))),
+      : 'Connect ComfyUI, then install what this workflow needs.'))))),
   });
   return false;
 }
@@ -33752,6 +33798,7 @@ function setupGenerationReady() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   if (setupKrea2CoreBlocked(compatibilityComponents)) return false;
   if (setupH3CoreBlocked(compatibilityComponents)) return false;
+  if (setupLtx25CoreBlocked(compatibilityComponents)) return false;
   if (setupWanAnimate2CoreBlocked(compatibilityComponents)) return false;
   if (setupNativeInt8Blocked(compatibilityComponents)) return false;
   const missing = missingSetupComponents(compatibilityComponents);
@@ -33764,6 +33811,7 @@ function renderSetupFooter() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
+  const ltx25CoreBlocked = setupLtx25CoreBlocked(compatibilityComponents);
   const wanAnimate2CoreBlocked = setupWanAnimate2CoreBlocked(compatibilityComponents);
   const officialBusy = ['running', 'cancelling'].includes(comfy.install?.state);
   const startBusy = !!comfy.start?.running || comfy.start?.state === 'running';
@@ -33779,8 +33827,10 @@ function renderSetupFooter() {
   cancel.disabled = comfy.install?.state === 'cancelling' || setupDependencyState?.state === 'cancelling';
   const next = $('#setupNext');
   if (setupActiveStep === 'connect') {
-    next.textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'Update ComfyUI first' : 'Continue';
-    next.disabled = busy || !comfy.connected || krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked;
+    next.textContent = ltx25CoreBlocked
+      ? 'Native support pending'
+      : (krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'Update ComfyUI first' : 'Continue');
+    next.disabled = busy || !comfy.connected || krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked;
   } else if (setupActiveStep === 'install') {
     next.textContent = 'Review';
     next.disabled = busy || (!workflowReady && !restartRequired);
@@ -34069,9 +34119,10 @@ function renderInitialSetup() {
   const compatibilityComponents = setupContextComponents.length ? setupContextComponents : (setupViewStatus.quickComponents || []);
   const krea2CoreBlocked = setupKrea2CoreBlocked(compatibilityComponents);
   const h3CoreBlocked = setupH3CoreBlocked(compatibilityComponents);
+  const ltx25CoreBlocked = setupLtx25CoreBlocked(compatibilityComponents);
   const wanAnimate2CoreBlocked = setupWanAnimate2CoreBlocked(compatibilityComponents);
   const int8Blocked = setupNativeInt8Blocked(compatibilityComponents);
-  const comfyCompatibilityBlocked = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked || int8Blocked;
+  const comfyCompatibilityBlocked = krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked || int8Blocked;
   const incompleteComfy = !!comfy.partialPath && !comfy.detectedPath;
   const comfyCard = $('#setupComfyStatus');
   comfyCard.classList.toggle('ready', !!comfy.connected && !comfyCompatibilityBlocked);
@@ -34079,11 +34130,13 @@ function renderInitialSetup() {
   $('#setupComfyStatusCopy').textContent = comfy.connected
     ? (h3CoreBlocked
       ? `Update to ${comfy.minimaxH3?.minimumVersion || '0.30.0'}+ for MiniMax H3`
+      : (ltx25CoreBlocked
+      ? 'Native LTX 2.5 support pending'
       : (wanAnimate2CoreBlocked
       ? 'Update for native Wan Animate 2 support'
       : (krea2CoreBlocked
       ? `Update to ${comfy.krea2?.minimumVersion || '0.26.0'}+ for Krea 2`
-      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`))))
+      : (int8Blocked ? `Update to ${comfy.nativeInt8?.minimumVersion || '0.27.0'}+ for Krea INT8` : `Connected${comfy.version ? ` · ${comfy.version}` : ''}`)))))
     : (incompleteComfy ? 'Incomplete · finish in Comfy Desktop'
       : ((comfy.configuredPath || comfy.detectedPath) ? 'Found · start ComfyUI' : 'Connection needed'));
 
@@ -34105,6 +34158,8 @@ function renderInitialSetup() {
   $('#setupWorkflowStatus strong').textContent = setupContextComponents.length ? 'Current workflow' : 'Image generation';
   $('#setupWorkflowStatusCopy').textContent = h3CoreBlocked
     ? 'ComfyUI update needed for MiniMax H3'
+    : (ltx25CoreBlocked
+    ? 'ComfyUI update needed for LTX 2.5'
     : (wanAnimate2CoreBlocked
     ? 'ComfyUI update needed for Wan Animate 2'
     : (krea2CoreBlocked
@@ -34115,11 +34170,11 @@ function renderInitialSetup() {
       ? (workflowReady ? 'Ready' : `${contextMissing.length || setupContextComponents.length} group${(contextMissing.length || setupContextComponents.length) === 1 ? '' : 's'} needed`)
       : (comfy.connected ? (workflowReady
         ? (additionalMissing.length ? `Ready · ${additionalMissing.length} more workflows available` : 'Ready')
-        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI')))));
+        : `${contextMissing.length || activeWorkflowComponents.length || 1} starter needed`) : 'Waiting for ComfyUI'))))));
 
-  const connectReady = !!comfy.connected && !krea2CoreBlocked && !h3CoreBlocked && !wanAnimate2CoreBlocked;
+  const connectReady = !!comfy.connected && !krea2CoreBlocked && !h3CoreBlocked && !ltx25CoreBlocked && !wanAnimate2CoreBlocked;
   const installReady = workflowReady || restartRequired;
-  $('#setupTabConnectStatus').textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'Update core'
+  $('#setupTabConnectStatus').textContent = krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked ? 'Update core'
     : (connectReady ? 'Connected'
     : (incompleteComfy ? 'Incomplete' : ((comfy.detectedPath || comfy.configuredPath) ? 'Found' : 'Needed')));
   $('#setupTabInstallStatus').textContent = dependencyBusy ? 'In progress' : (installReady ? 'Ready' : `${contextMissing.length || activeWorkflowComponents.length || 1} needed`);
@@ -34137,9 +34192,11 @@ function renderInitialSetup() {
     : 'No compatible GPU detected';
   $('#setupHardwareFit').textContent = krea2CoreBlocked
     ? 'Update ComfyUI for Krea 2'
-    : (wanAnimate2CoreBlocked
+    : (ltx25CoreBlocked
+      ? 'Update ComfyUI for LTX 2.5'
+      : (wanAnimate2CoreBlocked
       ? 'Update ComfyUI for Wan Animate 2'
-      : (int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available')));
+      : (int8Blocked ? 'Update ComfyUI for native Krea INT8' : (quickFit.label || 'Compatibility not yet available'))));
   $('#setupHardwareSummary').title = quickFit.detail || 'Recommendations match the generation computer.';
   $('#setupHardwareSummary').dataset.fit = quickFit.level || 'unknown';
   const recommendedKrea2 = setupViewStatus.modelRecommendations?.krea2;
@@ -34149,6 +34206,7 @@ function renderInitialSetup() {
   }
   if (int8Blocked) $('#setupHardwareSummary').title += ` ${setupNativeInt8Message()}`;
   if (krea2CoreBlocked) $('#setupHardwareSummary').title += ` ${setupKrea2CoreMessage()}`;
+  if (ltx25CoreBlocked) $('#setupHardwareSummary').title += ` ${setupLtx25CoreMessage()}`;
   if (wanAnimate2CoreBlocked) $('#setupHardwareSummary').title += ` ${setupWanAnimate2CoreMessage()}`;
   const pathValue = comfy.configuredPath || comfy.detectedPath || '';
   const modelsValue = comfy.modelsPath || setupLocalPath(pathValue, 'models');
@@ -34172,15 +34230,24 @@ function renderInitialSetup() {
   $('#setupStartComfy').textContent = desktopStart ? 'Open Comfy Desktop' : 'Start ComfyUI';
   $('#setupStartComfy').disabled = busy || !start.canStart || !state.profileIsOwner;
   $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
-  $('#setupCoreUpdate').hidden = !(krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked);
-  const coreUpdateMessage = wanAnimate2CoreBlocked
+  $('#setupCoreUpdate').hidden = !(krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked);
+  const coreUpdateGuide = $('#setupCoreUpdateGuide');
+  coreUpdateGuide.href = ltx25CoreBlocked
+    ? 'https://github.com/Comfy-Org/ComfyUI/pull/15499'
+    : 'https://docs.comfy.org/installation/update_comfyui';
+  coreUpdateGuide.textContent = ltx25CoreBlocked ? 'Follow support PR' : 'Update guide';
+  const coreUpdateMessage = ltx25CoreBlocked
+    ? setupLtx25CoreMessage()
+    : wanAnimate2CoreBlocked
     ? setupWanAnimate2CoreMessage()
     : (h3CoreBlocked ? setupH3CoreMessage() : setupKrea2CoreMessage());
-  $('#setupCoreUpdateCopy').textContent = start.kind === 'desktop'
-    ? `${coreUpdateMessage} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
-    : (setupViewStatus.platform === 'darwin'
-      ? `${coreUpdateMessage} Update the source checkout from Terminal, then restart ComfyUI.`
-      : `${coreUpdateMessage} For Portable, run update\\update_comfyui.bat from the portable folder.`);
+  $('#setupCoreUpdateCopy').textContent = ltx25CoreBlocked
+    ? `${coreUpdateMessage} A normal stable update may not include it until that PR merges.`
+    : (start.kind === 'desktop'
+      ? `${coreUpdateMessage} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
+      : (setupViewStatus.platform === 'darwin'
+        ? `${coreUpdateMessage} Update the source checkout from Terminal, then restart ComfyUI.`
+        : `${coreUpdateMessage} For Portable, run update\\update_comfyui.bat from the portable folder.`));
   $('#setupCoreUpdateCheck').disabled = busy;
   const endpointMatches = setupDiscoveredMatches.length ? setupDiscoveredMatches : (start.matches || []);
   renderSetupEndpointChoices(endpointMatches);
@@ -34195,10 +34262,11 @@ function renderInitialSetup() {
   $('#setupConnectionChoices').hidden = connectionChoicesHidden;
   $('#setupConnectionChoices').classList.toggle('start-offered', canOfferStart);
   $('#setupUseDetected').hidden = canOfferStart;
-  $('#setupConnectHeading').textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'ComfyUI update needed'
-    : (comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI'));
-  $('#setupConnectCopy').textContent = krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked
-    ? `Mix Studio reached ComfyUI, but this core is missing ${wanAnimate2CoreBlocked ? 'native Wan Animate 2 support' : (h3CoreBlocked ? 'MiniMax H3 support' : 'the required Krea 2 support')}.`
+  $('#setupConnectHeading').textContent = ltx25CoreBlocked ? 'LTX 2.5 core support pending'
+    : (krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'ComfyUI update needed'
+    : (comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI')));
+  $('#setupConnectCopy').textContent = krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked
+    ? `Mix Studio reached ComfyUI, but this core is missing ${ltx25CoreBlocked ? 'native LTX 2.5 support' : (wanAnimate2CoreBlocked ? 'native Wan Animate 2 support' : (h3CoreBlocked ? 'MiniMax H3 support' : 'the required Krea 2 support'))}.`
     : (comfy.connected
     ? 'Connection details are available below if a path changes.'
     : (nodeSetupActive ? 'Resolve the install issue from the Install step. Paths remain available below.' : 'Start a detected installation or choose another location. Mix Studio finds the port automatically.'));
@@ -34526,6 +34594,11 @@ async function startSetupDependencies(components) {
   if (setupH3CoreBlocked(requested)) {
     setSetupStep('connect', { user: true });
     toast(setupH3CoreMessage(), true);
+    return false;
+  }
+  if (setupLtx25CoreBlocked(requested)) {
+    setSetupStep('connect', { user: true });
+    toast(setupLtx25CoreMessage(), true);
     return false;
   }
   if (setupWanAnimate2CoreBlocked(requested)) {

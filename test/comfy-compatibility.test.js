@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   KREA2_MIN_VERSION,
+  LTX25_SUPPORT_PR_URL,
   MINIMAX_H3_MIN_VERSION,
   NATIVE_INT8_MIN_VERSION,
   compareVersions,
@@ -14,6 +15,8 @@ const {
   detectNativeInt8Compatibility,
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
+  ltx25Compatibility,
+  ltx25CompatibilityError,
   minimaxH3Compatibility,
   minimaxH3CompatibilityError,
   minimaxH3NativeAudioSampling,
@@ -110,6 +113,28 @@ test('MiniMax H3 detects the native AV audio schedule by its renamed core node',
   assert.equal(minimaxH3NativeAudioSampling(legacy), false);
   assert.equal(minimaxH3NativeAudioSampling(native), true);
   assert.equal(minimaxH3Compatibility(native).nativeAudioSampling, true);
+});
+
+test('LTX 2.5 requires the native AV graph contract instead of trusting a version number', () => {
+  assert.match(LTX25_SUPPORT_PR_URL, /ComfyUI\/pull\/15499/);
+  const supported = {
+    LTXVDualCFGGuider: {},
+    LTXVAddGuide: {},
+    LTXVCropGuides: {},
+    CLIPLoader: { input: { required: { type: [['stable_diffusion', 'ltxv']] } } },
+  };
+  assert.equal(ltx25Compatibility(supported, '0.31.0').supported, true);
+  const missing = ltx25Compatibility({
+    LTXVAddGuide: {},
+    LTXVCropGuides: {},
+    CLIPLoader: { input: { required: { type: [['stable_diffusion']] } } },
+  }, '0.30.0');
+  assert.equal(missing.supported, false);
+  assert.deepEqual(missing.missingNodes, ['LTXVDualCFGGuider']);
+  assert.equal(missing.missingClipType, true);
+  assert.equal(ltx25Compatibility(null, '0.31.0').supported, null);
+  assert.match(ltx25CompatibilityError(missing), /official ComfyUI support PR is still pending/);
+  assert.match(ltx25Compatibility(null, '0.31.0').supportPrUrl, /ComfyUI\/pull\/15499/);
 });
 
 test('the standalone H3 compatibility check reads system stats and object info', async () => {

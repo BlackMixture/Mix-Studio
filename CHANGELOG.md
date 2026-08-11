@@ -4,6 +4,13 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### LTX 2.5 video generation
+
+- Added LTX 2.5 as a separate curated video model while preserving LTX 2.3 as the default, with text-to-video, image-to-video, first/last-frame guidance, synchronized audio, user LoRA stacks, RIFE interpolation, and RTX 4K post-processing.
+- Recreated the official 24 fps distilled workflow with Gemma 4 conditioning, dedicated prompt enhancement, separate audio and video VAEs, dual audio/video CFG, the official two-stage sigma schedules, and x2 latent refinement.
+- Added guided installation for all six official model files, native node capability checks, model filename preferences, generation reuse and metadata, and clear NVIDIA INT8 ConvRot hardware guidance.
+- Marked the workflow as Preview while ComfyUI support PR #15499 remains open, and linked setup directly to that PR instead of sending users through a normal-update loop that cannot yet install the new core nodes.
+
 ### MiniMax H3 LoRAs
 
 - Added native user LoRA stacks for MiniMax H3 Standard and Full BF16 generation, including ordered strengths, trigger phrases, presets, Turbo, Reference Turbo, SageAttention, long-context chunks, generation reuse, and saved metadata.
@@ -27,6 +34,7 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Added the required single-video `batch_size` input to Wan Animate 2 conditioning graphs, matching the current native ComfyUI node schema and official workflow template.
 - Prevented end-of-generation stalls by normalizing performance clips to the model-recommended maximum of 24 fps and the selected 480p canvas before ComfyUI decodes them.
 - Replaced memory-heavy multi-window graphs with sequential 81-frame jobs, one-frame continuity handoff, exact overlap trimming, and an FFmpeg join that restores the performance audio once across the finished video.
+- Fixed longer performance clips repeating their opening motion by carrying ComfyUI's native Wan Animate 2 frame cursor across sequential jobs instead of resetting every conditioning pass to pose frame zero.
 - Stopped forcing the optional multi-gigabyte pose cache, reserved visible progress for decode/save, and reconciled completed video history even if ComfyUI's final WebSocket event is missed.
 
 ### Mobile Library responsiveness

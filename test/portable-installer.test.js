@@ -102,7 +102,7 @@ test('README presents the product positioning and credits while contribution det
   const contributing = fs.readFileSync(path.join(root, 'CONTRIBUTING.md'), 'utf8');
   assert.match(readme, /Mix Studio is a local web interface that builds and submits ComfyUI API graphs/);
   assert.match(readme, /image generation, regional prompting, image editing, video generation, motion transfer, and upscaling/);
-  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2\.3, Wan 2\.2, 10Eros, and SCAIL 2/);
+  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2\.3, LTX 2\.5, Wan 2\.2, 10Eros, and SCAIL 2/);
   assert.match(readme, /## Acknowledgments & Attribution/);
   assert.match(readme, /\[Contributing\]\(CONTRIBUTING\.md\)/);
   assert.match(contributing, /## Contribute a workflow/);
@@ -111,7 +111,7 @@ test('README presents the product positioning and credits while contribution det
   assert.match(contributing, /github\.com\/BlackMixture\/Mix-Studio\/discussions/);
   assert.match(contributing, /github\.com\/BlackMixture\/Mix-Studio\/pulls/);
   assert.match(readme, /\*\*ComfyUI:\*\* Executes the API-format graphs built by the Mix Studio server/);
-  assert.match(readme, /Black Forest Labs \(Flux 2\), MiniMax \(H3\), Lightricks \(LTX 2\.3\), Krea AI, and the Wan team/);
+  assert.match(readme, /Black Forest Labs \(Flux 2\), MiniMax \(H3\), Lightricks \(LTX 2\.3 and LTX 2\.5\), Krea AI, and the Wan team/);
   assert.match(readme, /SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3/);
   assert.match(readme, /Dell provided the Dell Pro Max T2 Tower/);
   assert.match(readme, /\*\*NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM\*\*/);

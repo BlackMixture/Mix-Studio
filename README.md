@@ -18,7 +18,7 @@
 
 ![Mix Studio Create workspace running a curated Krea 2 workflow](docs/download/mix-studio-create.webp)
 
-Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2.3, Wan 2.2, 10Eros, and SCAIL 2, plus Wan Animate 2.
+Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2.3, LTX 2.5, Wan 2.2, 10Eros, and SCAIL 2, plus Wan Animate 2.
 
 Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remix** workflow, with an advanced Reference boost control for stronger identity and subject guidance.
 
@@ -33,7 +33,7 @@ Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remi
 2. Open the `.bat` on Windows, run `zsh ~/Downloads/install_MixStudio.command` on macOS, or clone the repository and run `./start-mixstudio.sh` on Linux.
 3. Mix Studio opens in your browser, detects an existing ComfyUI installation, and guides you through the files required by the workflows you choose.
 
-Windows with NVIDIA supports the full curated workflow set. Linux with NVIDIA is supported through an existing source-based ComfyUI environment or an explicitly configured user service. Apple Silicon macOS uses a Metal-compatible subset with official BF16 LTX 2.3 weights. The curated MiniMax H3 route uses NVIDIA-specific NVFP4/AWQ and INT8 ConvRot weights, so it is unavailable on Apple Metal and AMD ROCm for now. AMD ROCm on Windows or Linux is experimental and requires a working ROCm-enabled ComfyUI/PyTorch environment; Mix Studio detects AMD telemetry, keeps compatible FP8 routes, and replaces NVIDIA-only SeedVR2 attention modes with SDPA. The lowest discrete-GPU guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
+Windows with NVIDIA supports the full curated workflow set. Linux with NVIDIA is supported through an existing source-based ComfyUI environment or an explicitly configured user service. Apple Silicon macOS uses a Metal-compatible subset with official BF16 LTX 2.3 weights. The curated LTX 2.5 and MiniMax H3 routes use NVIDIA-specific INT8 ConvRot or NVFP4/AWQ weights, so they are unavailable on Apple Metal and AMD ROCm for now. AMD ROCm on Windows or Linux is experimental and requires a working ROCm-enabled ComfyUI/PyTorch environment; Mix Studio detects AMD telemetry, keeps compatible FP8 routes, and replaces NVIDIA-only SeedVR2 attention modes with SDPA. The lowest discrete-GPU guided route is a 4 GB offloaded edit workflow; 16 GB VRAM is the practical image recommendation and 24 GB is recommended for larger video workflows.
 
 For manual Git setup, detailed VRAM guidance, shared-model discovery, phone access, troubleshooting, and uninstall behavior, see **[Installation and operations](docs/installation-and-operations.md)**. Do not use GitHub's **Download ZIP** if you want in-app updates.
 
@@ -44,7 +44,7 @@ For manual Git setup, detailed VRAM guidance, shared-model discovery, phone acce
 | **Create** | Krea 2 Turbo and Raw, exact resolution and seed controls, batching, LoRAs, prompt enhancement, reference, style, and depth guidance. |
 | **Region** | Aspect-correct boxes with independent prompts, LoRA stacks, and reference images combined into one coherent generation. |
 | **Edit** | Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix with multiple inputs, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
-| **Video** | MiniMax H3 text, first/last-frame, reference-to-video, user LoRA stacks, and experimental long-context generation; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
+| **Video** | MiniMax H3 text, first/last-frame, reference-to-video, user LoRA stacks, and experimental long-context generation; LTX 2.5 text/frame generation with synchronized audio and two-stage refinement; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
 | **Upscale** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
 | **Library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
 
@@ -102,7 +102,7 @@ Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix in one wor
 
 ### Video
 
-MiniMax H3, LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 controls. H3 Reference mode accepts images, videos, and audio; its separate Ref2VA model is downloaded only when that mode is used. Wan Animate 2 combines a character image with a performance video, carrying across body motion, expression, source timing, and audio with the official six-step LightX2V workflow; longer clips run as bounded sequential passes and are joined automatically.
+MiniMax H3, LTX 2.5, LTX 2.3, Director, Face ID, LTX Edit, 10Eros, Wan 2.2, and SCAIL 2 controls. LTX 2.5 uses the official distilled transformer, Gemma 4 prompt stack, separate audio/video VAEs, and a 24 fps two-stage workflow. H3 Reference mode accepts images, videos, and audio; its separate Ref2VA model is downloaded only when that mode is used. Wan Animate 2 combines a character image with a performance video, carrying across body motion, expression, source timing, and audio with the official six-step LightX2V workflow; longer clips run as bounded sequential passes with native motion cursors and are joined automatically.
 
 ![LTX 2.3 video workspace with motion prompt, last frame, and audio waveform](docs/download/mix-studio-video.png)
 
@@ -172,7 +172,7 @@ The GPL applies to Mix Studio's source code and documentation unless a file says
 
 **ComfyUI:** Executes the API-format graphs built by the Mix Studio server.
 
-**Model creators:** Black Forest Labs (Flux 2), MiniMax (H3), Lightricks (LTX 2.3), Krea AI, and the Wan team provide the primary image and video model families used by the curated workflows.
+**Model creators:** Black Forest Labs (Flux 2), MiniMax (H3), Lightricks (LTX 2.3 and LTX 2.5), Krea AI, and the Wan team provide the primary image and video model families used by the curated workflows.
 
 **Community projects:** SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3, and the required ComfyUI custom-node projects provide specialized conditioning, tracking, sampling, and upscaling components.
 
