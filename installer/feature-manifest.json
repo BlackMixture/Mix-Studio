@@ -83,7 +83,16 @@
       "variant": "Official LTX 2.5 distilled INT8 ConvRot transformer and Gemma 4 encoder with native synchronized audio and a two-stage latent refine",
       "hardware": { "minimumVramGb": 16, "recommendedVramGb": 32, "autoSelect": "recommended", "unsupportedVendors": ["apple", "amd"], "unsupportedReason": "The curated LTX 2.5 workflow uses NVIDIA INT8 ConvRot kernels and is not currently compatible with Apple Metal or AMD ROCm." },
       "models": ["ltx-2.5-distilled-int8-convrot", "gemma-4-ltx-2.5-int8-convrot", "gemma-4-e2b-prompt-enhancer", "ltx-2.5-video-vae", "ltx-2.5-audio-vae", "ltx-2.5-spatial-upscaler"],
-      "nodes": ["Official ComfyUI LTX 2.5 support PR #15499", "LTXVDualCFGGuider", "LTXVAddGuide", "LTXVAudioVAEDecode"]
+      "nodes": ["Native ComfyUI LTX 2.5 support", "LTXVDualCFGGuider", "LTXVAddGuide", "LTXVAudioVAEDecode"]
+    },
+    {
+      "id": "video.ltx25Quality",
+      "label": "LTX 2.5 Quality",
+      "default": false,
+      "variant": "Full LTX 2.5 Dev BF16 transformer and Gemma 4 encoder with native CFG, STG, audio-video modality guidance, and distilled high-resolution refinement",
+      "hardware": { "minimumVramGb": 24, "recommendedVramGb": 48, "autoSelect": "supported", "unsupportedVendors": ["apple", "amd"], "unsupportedReason": "The curated LTX 2.5 workflow is currently supported on NVIDIA generation devices only." },
+      "models": ["ltx-2.5-dev-bf16", "gemma-4-ltx-2.5-bf16", "ltx-2.5-distilled-refinement-lora"],
+      "nodes": ["LTXVScheduler", "LTXVSpatioTemporalGuidance", "LTXVModalityGuidance"]
     },
     {
       "id": "video.h3",

@@ -149,6 +149,8 @@ const state = {
   vidH3ReplaceImage: null,
   vidWanAnimate2IdentityStrength: 1,
   vidWanAnimate2MotionStrength: 1,
+  vidWanQuality: false,
+  vidLtx25Quality: false,
   h3PromptStructure: null,    // fingerprint + frame/reference context from the last validated rewrite
   directorOpen: false,
   directorProject: null,
@@ -3231,7 +3233,9 @@ function saveForm() {
       videoDuration: $('#vidDur').value,
       videoMotionFreedom: $('#vidFree').value,
       videoFourK: $('#vid4k').classList.contains('active'),
-      videoQuality: $('#vidQuality').classList.contains('active'),
+      videoQuality: videoQualityActive(),
+      videoWanQuality: state.vidWanQuality,
+      videoLtx25Quality: state.vidLtx25Quality,
       directorProject: directorSerializableProject(),
       directorComposerMode: state.directorComposerMode,
       directorOpen: state.directorOpen === true,
@@ -3359,6 +3363,10 @@ function loadForm() {
     state.videoEngineOrder = promoteEngineDefault(f.videoEngineOrder, videoDefault, VIDEO_ENGINES);
     state.videoEngineDefault = state.videoEngineOrder[0];
     state.vidEngine = VIDEO_ENGINES.includes(f.vidEngine) ? f.vidEngine : state.videoEngineDefault;
+    state.vidWanQuality = f.videoWanQuality === true
+      || (f.videoWanQuality == null && state.vidEngine === 'wan' && f.videoQuality === true);
+    state.vidLtx25Quality = f.videoLtx25Quality === true
+      || (f.videoLtx25Quality == null && state.vidEngine === 'ltx25' && f.videoQuality === true);
     state.editLorasByEngine = {};
     if (f.editLorasByEngine && typeof f.editLorasByEngine === 'object') {
       EDIT_ENGINES.forEach((engine) => {
@@ -10291,7 +10299,8 @@ function restorePersistedWorkspaceControls() {
   if (controls.duration != null) $('#vidDur').value = controls.duration;
   if (controls.motionFreedom != null) $('#vidFree').value = controls.motionFreedom;
   $('#vid4k').classList.toggle('active', controls.fourK);
-  $('#vidQuality').classList.toggle('active', controls.quality);
+  if (controls.quality === true) setVideoQualityMode(true);
+  renderVideoQualityControl();
   syncVideoDurationLimit();
   updateVideoPanels();
 }
@@ -12678,13 +12687,53 @@ function generationTuningMode(view = state.view) {
   return null;
 }
 
+function videoQualityActive(engine = state.vidEngine) {
+  if (engine === 'ltx25') return state.vidLtx25Quality === true;
+  if (engine === 'wan') return state.vidWanQuality === true;
+  return false;
+}
+
+function setVideoQualityMode(quality, engine = state.vidEngine) {
+  if (engine === 'ltx25') state.vidLtx25Quality = quality === true;
+  if (engine === 'wan') state.vidWanQuality = quality === true;
+  renderVideoQualityControl();
+}
+
+function renderVideoQualityControl() {
+  const control = $('#vidQualityControl');
+  const summary = $('#vidQualitySummary');
+  const caution = $('#vidQualityCaution');
+  if (!control || !summary || !caution) return;
+  const visible = state.vidEngine === 'ltx25' || state.vidEngine === 'wan';
+  const quality = videoQualityActive();
+  control.hidden = !visible;
+  control.querySelectorAll('[data-video-quality]').forEach((button) => {
+    const active = (button.dataset.videoQuality === 'quality') === quality;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  if (state.vidEngine === 'ltx25') {
+    summary.textContent = quality
+      ? '30 guided + 3 refine · full BF16'
+      : '8 + 3 steps · distilled INT8';
+    caution.hidden = !quality;
+  } else {
+    summary.textContent = quality ? '20 steps · full quality' : '4 steps · fast';
+    caution.hidden = true;
+  }
+}
+
 function negativePromptAvailability(view = state.view) {
   if (view === 'create') return { supported: true, hint: 'Most effective above CFG 1' };
   if (view === 'video') {
-    if (state.vidEngine === 'wan' && $('#vidQuality')?.classList.contains('active')) {
+    if (state.vidEngine === 'wan' && videoQualityActive()) {
       return { supported: true, hint: 'Available with Wan Full Quality' };
     }
+    if (state.vidEngine === 'ltx25' && videoQualityActive()) {
+      return { supported: true, hint: 'Available with LTX 2.5 Quality guidance' };
+    }
     if (state.vidEngine === 'wan') return { supported: false, hint: 'Wan Fast uses CFG 1' };
+    if (state.vidEngine === 'ltx25') return { supported: false, hint: 'LTX 2.5 Fast uses CFG 1' };
     if (state.vidEngine === 'eros') return { supported: false, hint: '10Eros uses zero-negative conditioning' };
     return { supported: false, hint: 'This video workflow uses fixed CFG 1' };
   }
@@ -12746,7 +12795,7 @@ function videoStepSpecification() {
     return { value: normalizedH3Steps(), editable: true, hint: 'MiniMax H3 sampler · adjustable' };
   }
   if (state.vidEngine === 'wan') {
-    const full = $('#vidQuality')?.classList.contains('active');
+    const full = videoQualityActive();
     return full
       ? { value: 20, editable: false, hint: 'Full Quality · fixed two-model handoff' }
       : { value: 4, editable: false, hint: 'Fast distilled schedule · fixed' };
@@ -12766,9 +12815,9 @@ function videoStepSpecification() {
       : { value: 12, editable: false, hint: '9 base + 3 refinement · fixed sigmas' };
   }
   if (state.vidEngine === 'ltx25') {
-    return state.vidEnd
-      ? { value: 8, editable: false, hint: 'First + last frames · native single-stage distilled schedule' }
-      : { value: 11, editable: false, hint: '8 base + 3 refinement · official LTX 2.5 schedule' };
+    return videoQualityActive()
+      ? { value: 33, editable: false, hint: '30 guided Dev + 3 distilled refinement steps' }
+      : { value: 11, editable: false, hint: '8 distilled + 3 deterministic refinement steps' };
   }
   if (state.vidEngine === 'ltx' && state.vidFace && !state.vidRef) {
     return { value: 8, editable: false, hint: 'Face ID base schedule · fixed' };
@@ -18020,6 +18069,7 @@ function renderVidFace() {
   $('#vidEngineSelected').textContent = definition.model;
   $('#vidEngineBadge').hidden = !definition.experimental;
   $('#vidEngineNote').textContent = faceMode ? 'Character Performance' : definition.task;
+  renderVideoQualityControl();
   renderVideoStepControl();
   updateVideoTuningSummary();
 }
@@ -18685,12 +18735,12 @@ $('#vidDriveFrameChip').addEventListener('click', () => {
     { label: 'Depth guide', detail: 'Preserve camera and scene structure', icon: 'depth', tone: 'reuse', action: () => useDriveFirstFrame('depth') },
   ], { menuTitle: 'Use first frame', tone: 'image' });
 });
-$('#vidQuality').addEventListener('click', () => {
-  $('#vidQuality').classList.toggle('active');
+$$('[data-video-quality]').forEach((button) => button.addEventListener('click', () => {
+  setVideoQualityMode(button.dataset.videoQuality === 'quality');
   renderNegativePromptControl();
   renderVideoStepControl();
   saveForm();
-});
+}));
 $('#animQuality').addEventListener('click', () => $('#animQuality').classList.toggle('active'));
 
 const MODEL_ORDER_CONFIG = {
@@ -18981,7 +19031,7 @@ wireEngineRow('vidEngineRow', (engine) => {
   const ltxEdit = engine === 'ltx-edit';
   const ltxFamily = engine === 'ltx' || engine === 'ltx25' || ltxEdit;
   $('#vidFreeField').hidden = h3 || wan || wanAnimate2 || scail || ltxEdit;
-  $('#vidQuality').hidden = !wan;
+  renderVideoQualityControl();
   $('#vidSigmaRow').hidden = engine !== 'eros';
   $('#vidFpsRow').hidden = h3 || !(ltxFamily || wan || scail);
   $('#vidExtras').hidden = wan || wanAnimate2 || scail || ltxEdit || (h3 && h3ReferenceBackedMode());
@@ -19153,7 +19203,7 @@ $('#generateBtn').addEventListener('click', async () => {
         : Number($('#vidDur').value) || 5,
       enhance: ltxEdit ? false : state.enhance,
       fourK: state.vidEngine === 'wan-animate2' ? false : $('#vid4k').classList.contains('active'),
-      fast: !$('#vidQuality').classList.contains('active'),
+      fast: !videoQualityActive(),
       motionFreedom: Number($('#vidFree').value),
       sigmaPreset: state.vidSigma,
       smooth: state.vidEngine === 'wan-animate2' ? 1 : state.vidSmooth,
@@ -21132,7 +21182,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaMaskBoxes', 'kreaMaskActiveBoxId',
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
-  'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth',
+  'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth', 'vidWanQuality', 'vidLtx25Quality',
   'vidH3Mode', 'vidH3MatchSource', 'vidH3MatchReferenceVideo', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3LongContext', 'vidH3TurboStrength', 'vidH3TurboSteps', 'vidH3RefTurboSteps', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
@@ -21167,7 +21217,7 @@ function captureDesktopInputSetup() {
       duration: $('#vidDur').value,
       motionFreedom: $('#vidFree').value,
       fourK: $('#vid4k').classList.contains('active'),
-      quality: $('#vidQuality').classList.contains('active'),
+      quality: videoQualityActive(),
     },
   };
 }
@@ -21224,7 +21274,8 @@ function restoreDesktopInputSetup(snapshot) {
   $('#vidDur').value = controls.duration ?? state.userDefaults.video.duration;
   $('#vidFree').value = controls.motionFreedom ?? state.userDefaults.video.motionFreedom;
   $('#vid4k').classList.toggle('active', controls.fourK === true);
-  $('#vidQuality').classList.toggle('active', controls.quality === true);
+  if (controls.quality != null) setVideoQualityMode(controls.quality === true);
+  renderVideoQualityControl();
   setPromptDraft(state.prompts[state.view] || '');
   markEngineRow('editEngineRow', state.editEngine);
   markEngineRow('vidEngineRow', state.vidEngine);
@@ -27242,7 +27293,9 @@ async function reuseVideo(it, v) {
   state.enhance = engine === 'wan-animate2' ? false : !!info.enhance;
   renderEnhance();
   $('#vid4k').classList.toggle('active', !!info.fourK);
-  $('#vidQuality').classList.toggle('active', engine === 'wan' && info.fast === false);
+  if (engine === 'wan') state.vidWanQuality = info.fast === false;
+  if (engine === 'ltx25') state.vidLtx25Quality = info.fast === false || info.ltx25Quality === true;
+  renderVideoQualityControl();
   renderVideoStepControl();
   if (info.motionFreedom !== undefined && info.motionFreedom !== null) {
     $('#vidFree').value = info.motionFreedom;
@@ -29466,7 +29519,8 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setKlein9Unet', 'setKlein9Clip', 'setKlein9ConsistencyLora', 'setKlein9ConsistencyTrigger',
   'setKleinVae', 'setQeUnet', 'setQeClip', 'setQeLora', 'setQeAnglesLora',
   'setDit', 'setSvVae', 'setSysPrompt', 'setLtxCkpt', 'setLtxLora',
-  'setLtx25Unet', 'setLtx25TextEncoder', 'setLtx25PromptEnhancer',
+  'setLtx25Unet', 'setLtx25TextEncoder', 'setLtx25QualityUnet', 'setLtx25QualityTextEncoder',
+  'setLtx25DistilledLora', 'setLtx25PromptEnhancer',
   'setLtx25VideoVae', 'setLtx25AudioVae', 'setLtx25Upscaler',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
@@ -29613,6 +29667,9 @@ function settingsPayload() {
     systemPrompt: $('#setSysPrompt').value,
     ltx25Unet: $('#setLtx25Unet').value,
     ltx25TextEncoder: $('#setLtx25TextEncoder').value,
+    ltx25QualityUnet: $('#setLtx25QualityUnet').value,
+    ltx25QualityTextEncoder: $('#setLtx25QualityTextEncoder').value,
+    ltx25DistilledLora: $('#setLtx25DistilledLora').value,
     ltx25PromptEnhancer: $('#setLtx25PromptEnhancer').value,
     ltx25VideoVae: $('#setLtx25VideoVae').value,
     ltx25AudioVae: $('#setLtx25AudioVae').value,
@@ -33316,6 +33373,9 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setSysPrompt').value = s.systemPrompt || '';
     $('#setLtx25Unet').value = s.ltx25Unet || '';
     $('#setLtx25TextEncoder').value = s.ltx25TextEncoder || '';
+    $('#setLtx25QualityUnet').value = s.ltx25QualityUnet || '';
+    $('#setLtx25QualityTextEncoder').value = s.ltx25QualityTextEncoder || '';
+    $('#setLtx25DistilledLora').value = s.ltx25DistilledLora || '';
     $('#setLtx25PromptEnhancer').value = s.ltx25PromptEnhancer || '';
     $('#setLtx25VideoVae').value = s.ltx25VideoVae || '';
     $('#setLtx25AudioVae').value = s.ltx25AudioVae || '';
@@ -33561,7 +33621,7 @@ const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2r
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
-  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'ltx25', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
+  { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'ltx25', 'ltx25quality', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
 ];
 
 function setupSelectedKrea2Variant() {
@@ -33604,12 +33664,12 @@ function setupWanAnimate2CoreBlocked(components) {
 function setupLtx25CoreBlocked(components) {
   const requested = (components || []).filter(Boolean);
   return setupViewStatus?.comfy?.connected === true
-    && requested.includes('ltx25')
+    && requested.some((id) => id === 'ltx25' || id === 'ltx25quality')
     && setupViewStatus?.comfy?.ltx25?.supported !== true;
 }
 
 function setupLtx25CoreMessage() {
-  return 'This ComfyUI build does not expose native LTX 2.5 yet. Its official support PR is still pending; use an LTX 2.5-capable build or wait for it to merge, then restart ComfyUI and press Check again.';
+  return 'This ComfyUI build does not expose the current native LTX 2.5 nodes. Update ComfyUI to the latest stable build, restart it, then press Check again.';
 }
 
 function setupWanAnimate2CoreMessage() {
@@ -33646,6 +33706,7 @@ function generationSetupComponents() {
   if (state.view === 'video') {
     const byEngine = { ltx: 'video', ltx25: 'ltx25', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', 'wan-animate2': 'wananimate2', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
+    if (state.vidEngine === 'ltx25' && videoQualityActive()) components.add('ltx25quality');
     if (h3TurboActive()) components.add(h3ReferenceBackedMode() ? 'h3turbor2v' : 'h3turbo');
     if (h3LongContextActive()) components.add('h3context');
     if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
@@ -33697,7 +33758,7 @@ function setupActionForComponents(required) {
   if (!lastMeta.ok) return 'connect';
   const requiresKrea2 = components.some((id) => KREA2_MODEL_COMPONENTS.has(id));
   const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context');
-  const requiresLtx25 = components.includes('ltx25');
+  const requiresLtx25 = components.some((id) => id === 'ltx25' || id === 'ltx25quality');
   const requiresWanAnimate2 = components.includes('wananimate2');
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
   if (requiresLtx25 && lastMeta?.ltx25?.supported !== true) return 'update';
@@ -33724,7 +33785,7 @@ async function ensureGenerationSetup() {
     && lastMeta?.models?.krea2?.clipType?.ok !== true;
   const h3CoreBlocked = required.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context')
     && lastMeta?.minimaxH3?.supported !== true;
-  const ltx25CoreBlocked = required.includes('ltx25')
+  const ltx25CoreBlocked = required.some((id) => id === 'ltx25' || id === 'ltx25quality')
     && lastMeta?.ltx25?.supported !== true;
   const wanAnimate2CoreBlocked = required.includes('wananimate2')
     && lastMeta?.wanAnimate2?.supported !== true;
@@ -33737,7 +33798,7 @@ async function ensureGenerationSetup() {
     message: h3CoreBlocked
       ? 'Update ComfyUI to 0.30.0 or newer before using MiniMax H3.'
       : (ltx25CoreBlocked
-      ? 'Native ComfyUI support for LTX 2.5 is still pending in the official support PR.'
+      ? 'Update ComfyUI to the latest stable build before using LTX 2.5.'
       : (wanAnimate2CoreBlocked
       ? 'Update ComfyUI to a current build with native Wan Animate 2 support.'
       : (krea2CoreBlocked
@@ -34007,7 +34068,8 @@ function renderSetupHfAccess(installState = setupDependencyState) {
     ? setupContextComponents
     : (setupViewStatus?.quickComponents || []);
   const accessUrl = dependencyAccessUrl(installState);
-  const ltx25Requested = requested.includes('ltx25') || setupHfPendingComponents.includes('ltx25');
+  const ltx25Requested = requested.some((id) => id === 'ltx25' || id === 'ltx25quality')
+    || setupHfPendingComponents.some((id) => id === 'ltx25' || id === 'ltx25quality');
   card.hidden = !state.profileIsOwner || (!ltx25Requested && !accessUrl);
   if (card.hidden) return;
 
@@ -34313,29 +34375,25 @@ function renderInitialSetup() {
   $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
   $('#setupCoreUpdate').hidden = !(krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked);
   $('#setupCoreUpdateTitle').textContent = ltx25CoreBlocked
-    ? 'LTX 2.5 core support pending'
+    ? 'Update ComfyUI before using LTX 2.5'
     : (wanAnimate2CoreBlocked
       ? 'Update ComfyUI before using Wan Animate 2'
       : (h3CoreBlocked
         ? 'Update ComfyUI before using MiniMax H3'
         : 'Update ComfyUI before using Krea 2'));
   const coreUpdateGuide = $('#setupCoreUpdateGuide');
-  coreUpdateGuide.href = ltx25CoreBlocked
-    ? 'https://github.com/Comfy-Org/ComfyUI/pull/15499'
-    : 'https://docs.comfy.org/installation/update_comfyui';
-  coreUpdateGuide.textContent = ltx25CoreBlocked ? 'Follow support PR' : 'Update guide';
+  coreUpdateGuide.href = 'https://docs.comfy.org/installation/update_comfyui';
+  coreUpdateGuide.textContent = 'Update guide';
   const coreUpdateMessage = ltx25CoreBlocked
     ? setupLtx25CoreMessage()
     : wanAnimate2CoreBlocked
     ? setupWanAnimate2CoreMessage()
     : (h3CoreBlocked ? setupH3CoreMessage() : setupKrea2CoreMessage());
-  $('#setupCoreUpdateCopy').textContent = ltx25CoreBlocked
-    ? `${coreUpdateMessage} A normal stable update may not include it until that PR merges.`
-    : (start.kind === 'desktop'
+  $('#setupCoreUpdateCopy').textContent = start.kind === 'desktop'
       ? `${coreUpdateMessage} On the generation computer, use Comfy Desktop → Menu → Help → Check for Updates.`
       : (setupViewStatus.platform === 'darwin'
         ? `${coreUpdateMessage} Update the source checkout from Terminal, then restart ComfyUI.`
-        : `${coreUpdateMessage} For Portable, run update\\update_comfyui.bat from the portable folder.`));
+        : `${coreUpdateMessage} For Portable, run update\\update_comfyui.bat from the portable folder.`);
   $('#setupCoreUpdateCheck').disabled = busy;
   const endpointMatches = setupDiscoveredMatches.length ? setupDiscoveredMatches : (start.matches || []);
   renderSetupEndpointChoices(endpointMatches);
@@ -34350,9 +34408,8 @@ function renderInitialSetup() {
   $('#setupConnectionChoices').hidden = connectionChoicesHidden;
   $('#setupConnectionChoices').classList.toggle('start-offered', canOfferStart);
   $('#setupUseDetected').hidden = canOfferStart;
-  $('#setupConnectHeading').textContent = ltx25CoreBlocked ? 'LTX 2.5 core support pending'
-    : (krea2CoreBlocked || h3CoreBlocked || wanAnimate2CoreBlocked ? 'ComfyUI update needed'
-    : (comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI')));
+  $('#setupConnectHeading').textContent = krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked ? 'ComfyUI update needed'
+    : (comfy.connected ? 'ComfyUI connected' : (nodeSetupActive ? 'Connection saved' : 'Connect ComfyUI'));
   $('#setupConnectCopy').textContent = krea2CoreBlocked || h3CoreBlocked || ltx25CoreBlocked || wanAnimate2CoreBlocked
     ? `Mix Studio reached ComfyUI, but this core is missing ${ltx25CoreBlocked ? 'native LTX 2.5 support' : (wanAnimate2CoreBlocked ? 'native Wan Animate 2 support' : (h3CoreBlocked ? 'MiniMax H3 support' : 'the required Krea 2 support'))}.`
     : (comfy.connected
@@ -34646,7 +34703,7 @@ async function startSetupDependencies(components) {
   const requested = [...new Set((components || []).filter(Boolean))];
   if (!requested.length) return false;
   if (setupInstallStarting) return false;
-  if (requested.includes('ltx25') && !setupHfTokenConfigured()) {
+  if (requested.some((id) => id === 'ltx25' || id === 'ltx25quality') && !setupHfTokenConfigured()) {
     setupHfPendingComponents = requested;
     setupHfTokenFeedback = 'Paste a Hugging Face read token to continue this installation.';
     setupHfTokenFeedbackKind = 'bad';
@@ -35524,7 +35581,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltx25: 'LTX 2.5 native nodes', ltx25quality: 'LTX 2.5 Quality guidance nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -35532,7 +35589,7 @@ function renderHealth() {
       ? `<span class="bad">●</span> ${escapeHtml(label)}: missing ${missing.map(escapeHtml).join(', ')}`
       : `<span class="ok">●</span> ${escapeHtml(label)}: OK`);
   }
-  const fieldLabels = { unet: 'UNET', turbo: 'Turbo UNET', raw: 'Raw UNET', turboLora: 'Turbo LoRA', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA', angles: 'multi-angle LoRA', dit: 'DiT', checkpoint: 'checkpoint', distilled: 'distilled LoRA', textEncoder: 'text encoder', gemmaLora: 'Gemma LoRA', upscaler: 'spatial upscaler', faceLora: 'Face ID LoRA', high: 'high-noise UNET', low: 'low-noise UNET', highLora: 'high-noise LoRA', lowLora: 'low-noise LoRA', lightx: 'lightx2v LoRA', clipVision: 'CLIP Vision', sam: 'SAM3 checkpoint' };
+  const fieldLabels = { unet: 'UNET', turbo: 'Turbo UNET', raw: 'Raw UNET', turboLora: 'Turbo LoRA', clip: 'text encoder', vae: 'VAE', lora: 'LoRA', node: 'node', pusa: 'Pusa LoRA', angles: 'multi-angle LoRA', dit: 'DiT', checkpoint: 'checkpoint', distilled: 'distilled LoRA', distilledLora: 'distilled refinement LoRA', textEncoder: 'text encoder', gemmaLora: 'Gemma LoRA', upscaler: 'spatial upscaler', faceLora: 'Face ID LoRA', high: 'high-noise UNET', low: 'low-noise UNET', highLora: 'high-noise LoRA', lowLora: 'low-noise LoRA', lightx: 'lightx2v LoRA', clipVision: 'CLIP Vision', sam: 'SAM3 checkpoint' };
   for (const engine of Object.values(lastMeta.models || {})) {
     const checks = Object.entries(engine).filter(([, v]) => v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'ok'));
     const missing = checks.filter(([, v]) => !v.ok);

@@ -37,6 +37,7 @@ test('installer manifest exposes optional edit and video components', () => {
   assert.ok(ids.includes('edit.qwen'));
   assert.ok(ids.includes('video.ltxEdit'));
   assert.ok(ids.includes('video.ltx25'));
+  assert.ok(ids.includes('video.ltx25Quality'));
   assert.ok(ids.includes('video.h3'));
   assert.ok(ids.includes('video.h3R2V'));
   assert.ok(ids.includes('video.eros'));

@@ -4464,6 +4464,16 @@ body.model-order-dragging .video-choice-grid .chip[data-engine] { cursor: grabbi
   color: var(--text);
   background: rgba(255,255,255,.1);
 }
+.video-quality-control { margin: 14px 0 0; }
+.video-quality-control + .video-output-row { margin-top: 8px; }
+.video-quality-heading { display: flex; align-items: center; gap: 6px; }
+.video-quality-caution {
+  width: 20px;
+  height: 20px;
+  border-width: 0;
+  background: transparent;
+}
+.video-quality-caution svg { width: 13px; height: 13px; }
 .adv-grid input:disabled { opacity: .58; cursor: not-allowed; }
 .adv-grid input.fixed-sampling { color: var(--muted); background: rgba(255,255,255,.025); cursor: default; }
 .preserve-icon { width: 34px; height: 34px; padding: 0; color: var(--muted); }

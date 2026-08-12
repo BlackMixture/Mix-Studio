@@ -508,6 +508,9 @@ const DEFAULT_SETTINGS = {
   ltxUpscaler: 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors',
   ltx25Unet: 'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors',
   ltx25TextEncoder: 'gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors',
+  ltx25QualityUnet: 'ltx-2.5-22b-dev-transformer-bf16.safetensors',
+  ltx25QualityTextEncoder: 'gemma4-12b-with-proj-ltx-2.5-bf16.safetensors',
+  ltx25DistilledLora: 'ltx-2.5-22b-distilled-lora-450-bf16.safetensors',
   ltx25PromptEnhancer: 'gemma4_e2b_it_bf16.safetensors',
   ltx25VideoVae: 'ltx-2.5-video-vae-bf16.safetensors',
   ltx25AudioVae: 'ltx-2.5-audio-vae-bf16.safetensors',
@@ -1623,6 +1626,12 @@ function configuredModelsStatus(info) {
       audioVae: modelStatus(info, 'VAELoader', 'vae_name', settings.ltx25AudioVae),
       upscaler: modelStatus(info, 'LatentUpscaleModelLoader', 'model_name', settings.ltx25Upscaler),
     },
+    ltx25Quality: {
+      label: 'LTX 2.5 Quality',
+      model: diffusionModelStatus(info, settings.ltx25QualityUnet),
+      textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', settings.ltx25QualityTextEncoder),
+      distilledLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.ltx25DistilledLora, loraList),
+    },
     h3: {
       label: 'MiniMax H3',
       model: diffusionModelStatus(info, h3EffectiveModelName(settings, 'frames')),
@@ -1706,6 +1715,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
     ultimateupscale: ['ultimateupscale'],
     video: ['video'],
     ltx25: ['ltx25'],
+    ltx25quality: ['ltx25quality'],
     h3: ['h3'],
     h3r2v: ['h3r2v'],
     h3turbo: ['h3turbo'],
@@ -1736,7 +1746,7 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
   const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
   if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
   if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
-  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltx25: 'ltx25', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', wanAnimate2: 'wananimate2', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
+  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltx25: 'ltx25', ltx25Quality: 'ltx25quality', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', wanAnimate2: 'wananimate2', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
     if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
@@ -5989,6 +5999,7 @@ const REQUIRED_CLASSES = {
     'VAEDecodeTiled', 'LTXVAudioVAEDecode', 'CreateVideo', 'SaveVideo', 'ImageScale',
     'LTXVPreprocess', 'LoadImage', 'LoadAudio', 'LTXVAudioVAEEncode', 'SolidMask',
     'SetLatentNoiseMask', 'ImageFromBatch', 'SaveImage'],
+  ltx25quality: ['LTXVScheduler', 'LTXVSpatioTemporalGuidance', 'LTXVModalityGuidance'],
   h3: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'MiniMaxH3ImageToVideo', 'RandomNoise', 'BasicGuider',
     'KSamplerSelect', 'BasicScheduler', 'SamplerCustomAdvanced', 'VAEDecode', 'VAEDecodeAudio',
     'CreateVideo', 'SaveVideo', 'ImageFromBatch', 'SaveImage'],
@@ -6062,7 +6073,7 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = nu
     component.blockedBy = 'comfy-core';
     component.installReason = minimaxH3CompatibilityError(h3Core);
   }
-  if (id === 'ltx25' && ltx25Core && ltx25Core.supported !== true) {
+  if ((id === 'ltx25' || id === 'ltx25quality') && ltx25Core && ltx25Core.supported !== true) {
     component.installable = false;
     component.blockedBy = 'comfy-core';
     component.installReason = ltx25CompatibilityError(ltx25Core);
@@ -8257,6 +8268,7 @@ async function handleApi(req, res, url) {
     const h3ReplaceTarget = String(body.h3ReplaceTarget || '').trim().slice(0, 240);
     const h3TurboRequested = engine === 'h3' && body.h3Turbo === true;
     const h3Turbo = h3TurboRequested;
+    const ltx25Quality = engine === 'ltx25' && body.fast === false;
     const h3LongContext = engine === 'h3' && body.h3LongContext === true;
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
     const h3References = normalizeH3References(body.h3References);
@@ -8265,10 +8277,10 @@ async function handleApi(req, res, url) {
       : [];
     let h3TurboNativeSampler = false;
     const h3AllowedReferenceTokens = h3ReferenceInputTokens(h3References);
-    // Every video route except Wan Full Quality is fixed at CFG 1 (or
+    // Every video route except Wan Full Quality and LTX 2.5 Quality is fixed at CFG 1 (or
     // explicitly zeroes negative conditioning), so a negative prompt cannot
     // influence sampling there. Do not silently retain a placebo setting.
-    const negativePrompt = engine === 'wan' && body.fast === false
+    const negativePrompt = ((engine === 'wan' && body.fast === false) || ltx25Quality)
       ? normalizeNegativePrompt(body.negativePrompt)
       : '';
     if (settings.features[VIDEO_FEATURES[engine]] === false) {
@@ -8296,16 +8308,24 @@ async function handleApi(req, res, url) {
           compatibility,
         });
       }
-      const missingNodes = REQUIRED_CLASSES.ltx25.filter((className) => !info[className]);
-      const modelStatusValue = configuredModelsStatus(info).ltx25;
-      const missingModels = Object.entries(modelStatusValue)
+      const requiredNodes = ltx25Quality
+        ? [...REQUIRED_CLASSES.ltx25, ...REQUIRED_CLASSES.ltx25quality]
+        : REQUIRED_CLASSES.ltx25;
+      const missingNodes = requiredNodes.filter((className) => !info[className]);
+      const modelStatuses = configuredModelsStatus(info);
+      const selectedStatuses = ltx25Quality
+        ? [modelStatuses.ltx25, modelStatuses.ltx25Quality]
+        : [modelStatuses.ltx25];
+      const missingModels = selectedStatuses.flatMap((modelStatusValue) => Object.entries(modelStatusValue)
         .filter(([key, value]) => key !== 'label' && value?.ok === false)
-        .map(([key]) => key);
+        .map(([key]) => key));
       if (missingNodes.length || missingModels.length) {
         return json(res, 409, {
-          error: 'LTX 2.5 needs its official model pack and current native ComfyUI workflow. Install or repair LTX 2.5 in Generation Setup, restart ComfyUI, and try again.',
+          error: ltx25Quality
+            ? 'LTX 2.5 Quality needs the full Dev model, BF16 text encoder, distilled refinement LoRA, and current native ComfyUI workflow. Install or repair LTX 2.5 Quality in Generation Setup, restart ComfyUI, and try again.'
+            : 'LTX 2.5 needs its official model pack and current native ComfyUI workflow. Install or repair LTX 2.5 in Generation Setup, restart ComfyUI, and try again.',
           code: 'ltx25_unavailable',
-          component: 'ltx25',
+          component: ltx25Quality ? 'ltx25quality' : 'ltx25',
           missingNodes,
           missingModels,
         });
@@ -8856,7 +8876,7 @@ async function handleApi(req, res, url) {
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
         : engine === 'ltx25'
-          ? (body.endImageName ? 8 : 11)
+          ? (ltx25Quality ? 33 : 11)
         : wanAnimate2
           ? WAN_ANIMATE_2_STEPS
         : engine === 'scail'
@@ -8899,6 +8919,7 @@ async function handleApi(req, res, url) {
       makePoster: !item,
       imgCompression: clampInt(body.motionFreedom, 0, 100, 35),
       fast: body.fast !== false,
+      quality: ltx25Quality,
       audioName,
       endImageName: !firstH3LongContextSegment || h3LongContextPlan.length === 1 ? endImageName : null,
       sigmaFirst: sig.first,
@@ -9059,7 +9080,11 @@ async function handleApi(req, res, url) {
         h3Turbo: engine === 'h3' ? opts.turbo || undefined : undefined,
         h3ModelVariant: engine === 'h3' ? h3SelectedModelVariant?.id : undefined,
         h3ModelName: engine === 'h3' ? h3EffectiveModelName(settings, h3GraphMode) : undefined,
-        ltx25ModelName: engine === 'ltx25' ? settings.ltx25Unet : undefined,
+        ltx25ModelName: engine === 'ltx25'
+          ? (ltx25Quality ? settings.ltx25QualityUnet : settings.ltx25Unet)
+          : undefined,
+        ltx25Quality: engine === 'ltx25' ? ltx25Quality || undefined : undefined,
+        ltx25RefinementLora: ltx25Quality ? settings.ltx25DistilledLora : undefined,
         h3TurboLora: engine === 'h3' && opts.turbo
           ? (h3ReferenceBacked ? settings.h3RefTurboLora : settings.h3TurboLora)
           : undefined,

@@ -31,7 +31,8 @@ test('Advanced only exposes the negative prompt control for supported workflows'
   assert.match(html, /id="advBody"[\s\S]*id="negativePromptField"[\s\S]*id="negativePromptInput"[^>]*maxlength="4000"[^>]*aria-describedby="negativePromptHint"/);
   assert.match(css, /\.negative-prompt-field label \{[^}]*display: flex/);
   assert.match(app, /function negativePromptAvailability\(view = state\.view\)/);
-  assert.match(app, /state\.vidEngine === 'wan' && \$\('#vidQuality'\)\?\.classList\.contains\('active'\)/);
+  assert.match(app, /state\.vidEngine === 'wan' && videoQualityActive\(\)/);
+  assert.match(app, /state\.vidEngine === 'ltx25' && videoQualityActive\(\)/);
   assert.match(app, /state\.vidEngine === 'wan'[\s\S]{0,180}Wan Fast uses CFG 1/);
   assert.match(app, /state\.vidEngine === 'eros'[\s\S]{0,180}10Eros uses zero-negative conditioning/);
   assert.match(app, /state\.editEngine === 'qwen' && state\.qwenQuality !== 'fast'/);

@@ -1193,9 +1193,18 @@
           </button>
           <input id="vidFree" type="hidden" min="0" max="100" step="1" value="35" />
         </div>
+        <div class="qwen-quality-control video-quality-control" id="vidQualityControl" hidden>
+          <span class="qwen-quality-copy">
+            <span class="video-quality-heading"><b>Sampling</b><button class="caution-icon video-quality-caution" id="vidQualityCaution" type="button" aria-label="LTX 2.5 Quality resource caution" data-icon-tooltip="LTX 2.5 Quality" data-icon-tooltip-detail="Quality uses the full BF16 Dev model, guided sampling, and a large refinement LoRA. It downloads substantially more model data and is much slower than Fast; 48 GB VRAM is recommended." hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Zm0 6v5m0 3.2v.1"/></svg></button></span>
+            <small id="vidQualitySummary">8 + 3 steps · distilled INT8</small>
+          </span>
+          <span class="qwen-quality-options" role="group" aria-label="Video sampling quality">
+            <button type="button" data-video-quality="fast" aria-pressed="true">Fast</button>
+            <button type="button" data-video-quality="quality" aria-pressed="false">Quality</button>
+          </span>
+        </div>
         <div class="chip-row video-output-row">
           <button class="chip" id="vid4k">RTX 4K pass</button>
-          <button class="chip" id="vidQuality" hidden>Full quality · 20 steps</button>
         </div>
       </div>
     </div>
@@ -2685,9 +2694,12 @@
         <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" hidden>
           <div class="settings-pane-head"><h4>Video Models</h4><p>MiniMax H3, LTX, Wan, 10Eros, and SCAIL pipelines.</p></div>
           <div class="settings-group"><h5>LTX 2.5</h5>
-            <p class="settings-default-note">Official distilled INT8 ConvRot workflow with Gemma 4, separate video/audio VAEs, synchronized audio, and two-stage latent refinement.</p>
-            <div class="field"><label>Diffusion model</label><input id="setLtx25Unet" type="text" /></div>
-            <div class="field"><label>Gemma 4 text encoder</label><input id="setLtx25TextEncoder" type="text" /></div>
+            <p class="settings-default-note">Fast uses the distilled INT8 workflow. Quality uses the full BF16 Dev model with native guidance and a distilled high-resolution refinement pass.</p>
+            <div class="field"><label>Fast diffusion model</label><input id="setLtx25Unet" type="text" /></div>
+            <div class="field"><label>Fast Gemma 4 text encoder</label><input id="setLtx25TextEncoder" type="text" /></div>
+            <div class="field"><label>Quality Dev diffusion model</label><input id="setLtx25QualityUnet" type="text" /></div>
+            <div class="field"><label>Quality Gemma 4 text encoder</label><input id="setLtx25QualityTextEncoder" type="text" /></div>
+            <div class="field"><label>Quality refinement LoRA</label><input id="setLtx25DistilledLora" type="text" /></div>
             <div class="field"><label>Prompt enhancer</label><input id="setLtx25PromptEnhancer" type="text" /></div>
             <div class="field"><label>Video VAE</label><input id="setLtx25VideoVae" type="text" /></div>
             <div class="field"><label>Audio VAE</label><input id="setLtx25AudioVae" type="text" /></div>

@@ -121,6 +121,9 @@ test('LTX 2.5 requires the native AV graph contract instead of trusting a versio
     LTXVDualCFGGuider: {},
     LTXVAddGuide: {},
     LTXVCropGuides: {},
+    LTXVScheduler: {},
+    LTXVSpatioTemporalGuidance: {},
+    LTXVModalityGuidance: {},
     CLIPLoader: { input: { required: { type: [['stable_diffusion', 'ltxv']] } } },
   };
   assert.equal(ltx25Compatibility(supported, '0.31.0').supported, true);
@@ -130,10 +133,11 @@ test('LTX 2.5 requires the native AV graph contract instead of trusting a versio
     CLIPLoader: { input: { required: { type: [['stable_diffusion']] } } },
   }, '0.30.0');
   assert.equal(missing.supported, false);
-  assert.deepEqual(missing.missingNodes, ['LTXVDualCFGGuider']);
+  assert.ok(missing.missingNodes.includes('LTXVDualCFGGuider'));
+  assert.ok(missing.missingNodes.includes('LTXVSpatioTemporalGuidance'));
   assert.equal(missing.missingClipType, true);
   assert.equal(ltx25Compatibility(null, '0.31.0').supported, null);
-  assert.match(ltx25CompatibilityError(missing), /official ComfyUI support PR is still pending/);
+  assert.match(ltx25CompatibilityError(missing), /latest stable build/);
   assert.match(ltx25Compatibility(null, '0.31.0').supportPrUrl, /ComfyUI\/pull\/15499/);
 });
 
