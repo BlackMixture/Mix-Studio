@@ -6,8 +6,10 @@ const test = require('node:test');
 const {
   H3_TURBO_LORAS,
   h3TurboDefaultSteps,
+  h3TurboFixedCanvas,
   h3TurboPreset,
   h3TurboReferenceIsExperimental,
+  h3TurboSigmaShifts,
   h3TurboUsesStandardLoader,
 } = require('../lib/h3-turbo-presets');
 
@@ -35,6 +37,26 @@ test('LightX2V v1.0 is an eight-step standard-loader adapter with experimental R
   assert.equal(h3TurboReferenceIsExperimental(settings), true);
 });
 
+test('LightX2V v1.0 four-step 768p applies its fixed canvas and 6/3 schedule', () => {
+  const settings = {
+    h3TurboLora: H3_TURBO_LORAS.lightx4_768p,
+    h3RefTurboLora: `MiniMax-H3\\${H3_TURBO_LORAS.lightx4_768p}`,
+  };
+  assert.equal(h3TurboPreset(settings).id, 'lightx4_768p');
+  assert.equal(h3TurboDefaultSteps(settings, 'frames'), 4);
+  assert.equal(h3TurboDefaultSteps(settings, 'reference'), 4);
+  assert.equal(h3TurboUsesStandardLoader(settings, 'frames'), true);
+  assert.equal(h3TurboUsesStandardLoader(settings, 'reference'), true);
+  assert.equal(h3TurboReferenceIsExperimental(settings), true);
+  assert.deepEqual(h3TurboSigmaShifts(settings, 'frames'), { video: 6, audio: 3 });
+  assert.deepEqual(h3TurboFixedCanvas(settings, 'frames'), {
+    width: 1344, height: 768, aspectRatio: 16 / 9, resolutionSize: 1.75,
+  });
+  assert.deepEqual(h3TurboFixedCanvas(settings, 'reference'), {
+    width: 1344, height: 768, aspectRatio: 16 / 9, resolutionSize: 1.75,
+  });
+});
+
 test('legacy and custom adapter choices retain safe defaults', () => {
   const legacy = {
     h3TurboLora: H3_TURBO_LORAS.legacyFrames,
@@ -44,4 +66,6 @@ test('legacy and custom adapter choices retain safe defaults', () => {
   assert.equal(h3TurboDefaultSteps(legacy, 'frames'), 4);
   assert.equal(h3TurboDefaultSteps(legacy, 'reference'), 6);
   assert.equal(h3TurboPreset({ h3TurboLora: 'custom.safetensors' }).id, 'custom');
+  assert.equal(h3TurboFixedCanvas(legacy, 'frames'), null);
+  assert.deepEqual(h3TurboSigmaShifts(legacy, 'frames'), { video: 12, audio: 3 });
 });

@@ -61,8 +61,10 @@ const {
 const {
   H3_TURBO_LORAS,
   h3TurboDefaultSteps,
+  h3TurboFixedCanvas,
   h3TurboPreset,
   h3TurboReferenceIsExperimental,
+  h3TurboSigmaShifts,
   h3TurboUsesStandardLoader,
 } = require('./lib/h3-turbo-presets');
 const { dynTimePatchStatus, restoreDynTimePatch } = require('./lib/h3-dyntime-patch');
@@ -8283,6 +8285,7 @@ async function handleApi(req, res, url) {
     const h3ReplaceTarget = String(body.h3ReplaceTarget || '').trim().slice(0, 240);
     const h3TurboRequested = engine === 'h3' && body.h3Turbo === true;
     const h3Turbo = h3TurboRequested;
+    const h3TurboCanvas = h3Turbo ? h3TurboFixedCanvas(settings, h3GraphMode) : null;
     const ltx25Quality = engine === 'ltx25' && body.fast === false;
     const h3LongContext = engine === 'h3' && body.h3LongContext === true;
     const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
@@ -8357,10 +8360,9 @@ async function handleApi(req, res, url) {
           compatibility: h3Compatibility,
         });
       }
-      const selectedMode = h3ReferenceBacked ? 'reference' : 'frames';
       const selectedVariant = h3SelectedModelVariant;
       if (requestedVideoLoras.length) {
-        const loraCompatibility = h3LoraCompatibility(settings, selectedMode);
+        const loraCompatibility = h3LoraCompatibility(settings, h3GraphMode);
         if (!loraCompatibility.supported) {
           return json(res, 409, {
             error: loraCompatibility.reason,
@@ -8443,7 +8445,7 @@ async function handleApi(req, res, url) {
           });
         }
       }
-      const selectedModel = diffusionModelStatus(info, h3EffectiveModelName(settings, selectedMode));
+      const selectedModel = diffusionModelStatus(info, h3EffectiveModelName(settings, h3GraphMode));
       if (!selectedModel.ok) {
         return json(res, 409, {
           error: `MiniMax H3 needs this ${selectedVariant.label} model in ComfyUI: ${selectedModel.name}`,
@@ -8453,7 +8455,7 @@ async function handleApi(req, res, url) {
         });
       }
       if (h3Turbo) {
-        const turboCompatibility = h3TurboCompatibility(settings, selectedMode);
+        const turboCompatibility = h3TurboCompatibility(settings, h3GraphMode);
         if (!turboCompatibility.supported) {
           return json(res, 409, {
             error: turboCompatibility.reason,
@@ -8463,7 +8465,7 @@ async function handleApi(req, res, url) {
         }
         h3TurboNativeSampler = minimaxH3NativeAudioSampling(info);
         const referenceTurbo = h3ReferenceBacked;
-        const standardTurboLoader = h3TurboUsesStandardLoader(settings, selectedMode);
+        const standardTurboLoader = h3TurboUsesStandardLoader(settings, h3GraphMode);
         const requiredTurboNodes = h3TurboNativeSampler
           ? [standardTurboLoader ? 'LoraLoaderModelOnly' : 'MiniMaxH3TurboLoRA', 'MiniMaxH3SigmaShift']
           : (referenceTurbo || standardTurboLoader
@@ -8696,7 +8698,7 @@ async function handleApi(req, res, url) {
             ? ltxCameraDurationSeconds(seconds, cameraGuideVideoName ? cameraGuideSourceDuration : 0, cameraGuideStart)
             : ltxDurationSeconds(seconds)
           : Math.max(1, Math.min(15, seconds));
-    let frames; let fps; let W; let H; let h3OutputAspectRatio;
+    let frames; let fps; let W; let H; let h3OutputAspectRatio; let h3OutputResolutionSize;
     if (engine === 'h3') {
       fps = H3_FPS;
       if (h3LongContext) {
@@ -8712,16 +8714,24 @@ async function handleApi(req, res, url) {
       // H3's first frame supplies visual conditioning, not the output canvas.
       // Honor the aspect and S/M/L size captured by this submission so lower
       // memory tiers also work for image-to-video and gallery reuse.
-      const requestedWidth = clampInt(body.width, 64, 8192, srcW);
-      const requestedHeight = clampInt(body.height, 64, 8192, srcH);
-      const requestedAspectRatio = clampNum(
-        body.h3AspectRatio,
-        0.25,
-        4,
-        requestedWidth / Math.max(1, requestedHeight)
-      );
-      h3OutputAspectRatio = requestedAspectRatio;
-      ({ W, H } = h3Dimensions(requestedAspectRatio, 1, body.h3ResolutionSize));
+      if (h3TurboCanvas) {
+        W = h3TurboCanvas.width;
+        H = h3TurboCanvas.height;
+        h3OutputAspectRatio = h3TurboCanvas.aspectRatio;
+        h3OutputResolutionSize = h3TurboCanvas.resolutionSize;
+      } else {
+        const requestedWidth = clampInt(body.width, 64, 8192, srcW);
+        const requestedHeight = clampInt(body.height, 64, 8192, srcH);
+        const requestedAspectRatio = clampNum(
+          body.h3AspectRatio,
+          0.25,
+          4,
+          requestedWidth / Math.max(1, requestedHeight)
+        );
+        h3OutputAspectRatio = requestedAspectRatio;
+        h3OutputResolutionSize = Number(body.h3ResolutionSize) || 1;
+        ({ W, H } = h3Dimensions(requestedAspectRatio, 1, h3OutputResolutionSize));
+      }
     } else if (engine === 'ltx25') {
       fps = LTX25_FPS;
       frames = ltx25FramesForSeconds(seconds);
@@ -8889,7 +8899,7 @@ async function handleApi(req, res, url) {
     const sig = erosSigmas(sigmaPreset);
     const videoSteps = engine === 'h3'
       ? (h3Turbo
-        ? clampInt(body.steps, 4, 100, h3TurboDefaultSteps(settings, selectedMode))
+        ? clampInt(body.steps, 4, 100, h3TurboDefaultSteps(settings, h3GraphMode))
         : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
@@ -9107,6 +9117,7 @@ async function handleApi(req, res, url) {
           ? (h3ReferenceBacked ? settings.h3RefTurboLora : settings.h3TurboLora)
           : undefined,
         h3TurboPreset: engine === 'h3' && opts.turbo ? h3TurboPreset(settings).id : undefined,
+        h3TurboSigmaShifts: engine === 'h3' && opts.turbo ? h3TurboSigmaShifts(settings, h3GraphMode) : undefined,
         h3TurboReferenceExperimental: engine === 'h3' && opts.turbo && h3ReferenceBacked
           ? h3TurboReferenceIsExperimental(settings) || undefined
           : undefined,
@@ -9120,7 +9131,7 @@ async function handleApi(req, res, url) {
         h3LongContextClips: h3LongContextPlan.length > 1 ? h3LongContextPlan.length : undefined,
         h3LongContextFrames: h3LongContextPlan.length > 1 ? 22 : undefined,
         h3AspectRatio: engine === 'h3' ? h3OutputAspectRatio : undefined,
-        h3ResolutionSize: engine === 'h3' ? Number(body.h3ResolutionSize) || 1 : undefined,
+        h3ResolutionSize: engine === 'h3' ? h3OutputResolutionSize : undefined,
         h3MatchSource: engine === 'h3' && h3Mode === 'frames' ? body.h3MatchSource === true : undefined,
         h3MatchReferenceVideo: engine === 'h3' && h3Mode === 'reference'
           ? body.h3MatchReferenceVideo === true : undefined,

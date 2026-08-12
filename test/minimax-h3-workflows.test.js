@@ -449,6 +449,34 @@ test('MiniMax H3 LightX2V v1.0 uses the standard LoRA loader and eight-step sche
   assert.deepEqual(reference.sample.inputs.sampler, ['sampler_select', 0]);
 });
 
+test('MiniMax H3 LightX2V v1.0 four-step 768p uses its 6/3 sampling shifts', async () => {
+  const filename = 'minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors';
+  const lightx = Object.assign({}, settings, {
+    h3TurboLora: filename,
+    h3RefTurboLora: filename,
+  });
+  const frames = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A dancer crosses a sunlit studio.', W: 1344, H: 768,
+    frames: 124, seed: 25, turbo: true, turboNativeSampler: true,
+  }, lightx);
+  assert.equal(frames.turbo_lora.class_type, 'LoraLoaderModelOnly');
+  assert.equal(frames.scheduler.inputs.steps, 4);
+  assert.deepEqual(frames.turbo_sampling.inputs, {
+    model: ['turbo_lora', 0], shift_video: 6, shift_audio: 3,
+  });
+  assert.deepEqual(frames.sample.inputs.sampler, ['sampler_select', 0]);
+
+  const reference = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Restyle <Picture 1>.', W: 1344, H: 768,
+    frames: 124, seed: 26, turbo: true, turboNativeSampler: true,
+    references: { images: [{ name: 'subject.png' }] },
+  }, lightx);
+  assert.equal(reference.scheduler.inputs.steps, 4);
+  assert.deepEqual(reference.turbo_sampling.inputs, {
+    model: ['turbo_lora', 0], shift_video: 6, shift_audio: 3,
+  });
+});
+
 test('MiniMax H3 Reference Turbo renders a planned long-video segment inside the five-second safety window', async () => {
   const segment = h3TurboReferenceSegments(362)[1];
   const graph = await buildMiniMaxH3Graph({

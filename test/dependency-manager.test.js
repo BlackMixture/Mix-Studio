@@ -54,7 +54,7 @@ test('dependency catalog covers every enabled image and video family', () => {
   for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltx25', 'ltx25quality', 'h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'h3dyntime', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
-  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltx25', 'ltx25Quality', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3TurboLegacy', 'h3TurboLightx8', 'h3RefTurbo', 'h3RefTurboLightx8', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
+  for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltx25', 'ltx25Quality', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3TurboLegacy', 'h3TurboLightx8', 'h3TurboLightx4_768p', 'h3RefTurbo', 'h3RefTurboLightx8', 'h3RefTurboLightx4_768p', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
     assert.ok(MODEL_ASSETS[group]?.length, `${group} has model downloads`);
   }
   assert.ok(Object.values(NODE_PACKS).every((pack) => pack.repo.startsWith('https://github.com/')));
@@ -90,6 +90,8 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.match(MODEL_ASSETS.h3RefTurbo[0][2], /Kijai\/MiniMax-H3_comfy.*minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16/);
   assert.match(MODEL_ASSETS.h3TurboLightx8[0][2], /lightx2v\/Minimax-h3-Turbo\/resolve\/[a-f0-9]{40}\/minimax_h3_fl2v_turbo_8step_v1\.0_comfyui_bf16/);
   assert.match(MODEL_ASSETS.h3RefTurboLightx8[0][2], /lightx2v\/Minimax-h3-Turbo/);
+  assert.match(MODEL_ASSETS.h3TurboLightx4_768p[0][2], /lightx2v\/Minimax-h3-Turbo\/resolve\/56961dfe1e808ff02cbda58e61157141bff3938d\/minimax_h3_fl2v_turbo_4step_v1\.0_768p_comfyui_bf16/);
+  assert.match(MODEL_ASSETS.h3RefTurboLightx4_768p[0][2], /lightx2v\/Minimax-h3-Turbo/);
   assert.deepEqual(COMPONENTS.rife.nodes, ['rife']);
   assert.ok(availableComponents().includes('smartmask'));
   assert.equal(COMPONENTS.krea2raw.optional, true);
@@ -344,10 +346,13 @@ test('MiniMax H3 Turbo installer routes exact managed filenames and keeps custom
   const v4Name = 'minimax_h3_turbo_v4_step600_ema.safetensors';
   const legacyName = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
   const lightxName = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors';
+  const lightx4Name = 'minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors';
   const v4 = dependencyModelPlan(['h3Turbo'], { h3TurboLora: v4Name });
   const legacy = dependencyModelPlan(['h3Turbo'], { h3TurboLora: legacyName });
   const lightx = dependencyModelPlan(['h3Turbo'], { h3TurboLora: lightxName });
   const lightxReference = dependencyModelPlan(['h3RefTurbo'], { h3RefTurboLora: lightxName });
+  const lightx4 = dependencyModelPlan(['h3Turbo'], { h3TurboLora: lightx4Name });
+  const lightx4Reference = dependencyModelPlan(['h3RefTurbo'], { h3RefTurboLora: lightx4Name });
   const legacySubfolder = dependencyModelPlan(['h3Turbo'], { h3TurboLora: `MiniMax\\${legacyName}` });
   const custom = dependencyModelPlan(['h3Turbo'], { h3TurboLora: 'my-reviewed-h3-turbo.safetensors' });
   assert.match(v4.assets[0][2], new RegExp(`${v4Name.replaceAll('.', '\\.')}$`));
@@ -356,6 +361,9 @@ test('MiniMax H3 Turbo installer routes exact managed filenames and keeps custom
   assert.match(lightx.assets[0][2], new RegExp(`/lightx2v/Minimax-h3-Turbo/resolve/[0-9a-f]{40}/${lightxName.replaceAll('.', '\\.')}$`));
   assert.equal(lightxReference.assets[0][0], 'h3RefTurboLora');
   assert.match(lightxReference.assets[0][2], new RegExp(`${lightxName.replaceAll('.', '\\.')}$`));
+  assert.match(lightx4.assets[0][2], new RegExp(`${lightx4Name.replaceAll('.', '\\.')}$`));
+  assert.equal(lightx4Reference.assets[0][0], 'h3RefTurboLora');
+  assert.match(lightx4Reference.assets[0][2], new RegExp(`${lightx4Name.replaceAll('.', '\\.')}$`));
   assert.equal(custom.assets[0][5]?.checkOnly, true);
   assert.equal(custom.effectiveSettings.h3TurboLora, 'my-reviewed-h3-turbo.safetensors');
 

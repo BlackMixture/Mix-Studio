@@ -18,14 +18,16 @@ test('H3 Preferences exposes deliberate Standard, BF16, and DynTime choices', ()
 });
 
 test('H3 Preferences exposes compact managed Turbo setups without adding generation controls', () => {
-  assert.match(html, /id="setH3TurboSetup"[\s\S]*value="recommended"[\s\S]*value="lightx8"[\s\S]*value="legacy"/);
+  assert.match(html, /id="setH3TurboSetup"[\s\S]*value="recommended"[\s\S]*value="lightx8"[\s\S]*value="lightx4_768p"[\s\S]*value="legacy"/);
   assert.match(html, /LightX2V v1\.0 · 8 steps · experimental Reference/);
+  assert.match(html, /LightX2V v1\.0 · 4 steps · 768p · experimental Reference/);
   assert.match(app, /'setH3FrameModelVariant', 'setH3TurboSetup', 'setH3ReferenceModelVariant'/);
   assert.match(app, /\$\('#setH3TurboSetup'\)\.addEventListener\('change'/);
   assert.match(app, /\$\('#setH3TurboLora'\)\.value = setup\.frames/);
   assert.match(app, /\$\('#setH3RefTurboLora'\)\.value = setup\.reference/);
   assert.match(app, /setConfiguredH3FramesTurboLora\(lastMeta\.models\.h3Turbo\.lora\.name\)/);
   assert.match(app, /setConfiguredH3ReferenceTurboLora\(lastMeta\.models\.h3RefTurbo\.lora\.name\)/);
+  assert.match(app, /function applyH3TurboCanvasProfile\(\)[\s\S]{0,500}state\.aspect = '16:9'[\s\S]{0,240}state\.mp = 1\.75/);
 });
 
 test('Queue tabs appear only with active downloads and cleanup uses typed filenames', () => {

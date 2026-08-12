@@ -45,8 +45,8 @@ test('MiniMax H3 resolution picker mirrors the backend S, M, L, and XL canvases'
   assert.match(app, /Match frame[\s\S]*state\.vidH3MatchSource = true/);
   assert.match(app, /#resPanel'\)\.hidden = state\.view === 'edit'[\s\S]*isVideo && !!state\.vidRef && state\.vidEngine !== 'h3'/);
   assert.match(app, /width: state\.vidEngine === 'h3'[\s\S]*\? state\.width[\s\S]*height: state\.vidEngine === 'h3'[\s\S]*\? state\.height/);
-  assert.match(server, /h3Dimensions\(requestedAspectRatio, 1, body\.h3ResolutionSize\)/);
-  assert.match(server, /h3ResolutionSize: engine === 'h3' \? Number\(body\.h3ResolutionSize\)/);
+  assert.match(server, /h3Dimensions\(requestedAspectRatio, 1, h3OutputResolutionSize\)/);
+  assert.match(server, /h3ResolutionSize: engine === 'h3' \? h3OutputResolutionSize/);
 });
 
 test('MiniMax H3 reuse restores the base tier independently from an RTX 4K pass', () => {
@@ -580,7 +580,7 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(css, /\.h3-turbo-strength-slider::before[\s\S]{0,500}--h3-turbo-progress/);
   assert.match(html, /id="setH3TurboLora"/);
   assert.match(html, /id="setH3RefTurboLora"/);
-  assert.match(html, /id="setH3TurboSetup"[\s\S]*value="recommended"[\s\S]*value="lightx8"[\s\S]*value="legacy"/);
+  assert.match(html, /id="setH3TurboSetup"[\s\S]*value="recommended"[\s\S]*value="lightx8"[\s\S]*value="lightx4_768p"[\s\S]*value="legacy"/);
   assert.match(app, /vidH3Turbo: false/);
   assert.match(app, /vidH3TurboSteps: 6/);
   assert.match(app, /vidH3RefTurboSteps: 6/);
@@ -592,6 +592,7 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(app, /H3 Turbo legacy v1\/850 · original 4-step default/);
   assert.match(app, /const H3_TURBO_SETUPS = Object\.freeze/);
   assert.match(app, /lightx8:[\s\S]{0,220}minimax_h3_fl2v_turbo_8step_v1\.0_comfyui_bf16\.safetensors/);
+  assert.match(app, /lightx4_768p:[\s\S]{0,220}minimax_h3_fl2v_turbo_4step_v1\.0_768p_comfyui_bf16\.safetensors/);
   assert.match(app, /state\.vidH3TurboSteps = setup\.framesSteps/);
   assert.match(app, /state\.vidH3RefTurboSteps = setup\.referenceSteps/);
   assert.match(app, /6–8 steps recommended/);
@@ -600,8 +601,11 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(app, /h3Turbo: state\.vidEngine === 'h3' \? h3TurboActive\(\) : undefined/);
   assert.match(server, /const h3Turbo = h3TurboRequested;/);
   assert.doesNotMatch(server, /h3_turbo_reference_unsupported/);
-  assert.match(server, /clampInt\(body\.steps, 4, 100, h3TurboDefaultSteps\(settings, selectedMode\)\)/);
+  assert.match(server, /clampInt\(body\.steps, 4, 100, h3TurboDefaultSteps\(settings, h3GraphMode\)\)/);
+  assert.doesNotMatch(server, /\bselectedMode\b/);
   assert.match(server, /h3TurboNativeSampler = minimaxH3NativeAudioSampling\(info\)/);
+  assert.match(server, /const h3TurboCanvas = h3Turbo \? h3TurboFixedCanvas\(settings, h3GraphMode\) : null/);
+  assert.match(server, /if \(h3TurboCanvas\)[\s\S]{0,300}W = h3TurboCanvas\.width[\s\S]{0,160}H = h3TurboCanvas\.height/);
   assert.match(server, /if \(h3Core\.nativeAudioSampling\)[\s\S]{0,500}h3TurboUsesStandardLoader\(settings, 'frames'\)[\s\S]{0,240}'MiniMaxH3SigmaShift'/);
   assert.match(server, /h3turbo: \['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'\]/);
   assert.match(server, /h3turbor2v: \['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'\]/);
@@ -612,7 +616,7 @@ test('MiniMax H3 Frames Turbo defaults new installs to v4 while preserving expli
   assert.match(server, /const SETTINGS_SCHEMA_VERSION = 3/);
   assert.doesNotMatch(server, /stored\.h3TurboLora = DEFAULT_H3_TURBO_LORA/);
   assert.match(server, /keep the original ckpt850 four-step adapter/);
-  assert.match(server, /h3TurboDefaultSteps\(settings, selectedMode\)/);
+  assert.match(server, /h3TurboDefaultSteps\(settings, h3GraphMode\)/);
   assert.match(server, /stored\.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION/);
   assert.match(server, /h3TurboLora: engine === 'h3' && opts\.turbo/);
   assert.match(app, /copyableMeta\('Turbo adapter', prettyLora\(String\(info\.h3TurboLora\)\)\)/);

@@ -56,11 +56,13 @@ test('model cleanup keeps the selected H3 Turbo adapter and offers the inactive 
   const v4 = 'minimax_h3_turbo_v4_step600_ema.safetensors';
   const legacy = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
   const lightx = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors';
+  const lightx4 = 'minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors';
   const reference = 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors';
   await Promise.all([
     fsp.writeFile(path.join(folder, v4), 'v4'),
     fsp.writeFile(path.join(folder, legacy), 'legacy'),
     fsp.writeFile(path.join(folder, lightx), 'lightx'),
+    fsp.writeFile(path.join(folder, lightx4), 'lightx4'),
   ]);
 
   const legacySelected = await managedModelCleanupCandidates(root, {
@@ -69,6 +71,7 @@ test('model cleanup keeps the selected H3 Turbo adapter and offers the inactive 
   assert.equal(legacySelected.some((entry) => entry.filename === legacy), false);
   assert.equal(legacySelected.some((entry) => entry.filename === v4), true);
   assert.equal(legacySelected.some((entry) => entry.filename === lightx), true);
+  assert.equal(legacySelected.some((entry) => entry.filename === lightx4), true);
 
   const v4Selected = await managedModelCleanupCandidates(root, {
     h3TurboLora: v4, h3RefTurboLora: reference,
@@ -83,4 +86,11 @@ test('model cleanup keeps the selected H3 Turbo adapter and offers the inactive 
   assert.equal(lightxSelected.some((entry) => entry.filename === lightx), false);
   assert.equal(lightxSelected.some((entry) => entry.filename === v4), true);
   assert.equal(lightxSelected.some((entry) => entry.filename === legacy), true);
+
+  const lightx4Selected = await managedModelCleanupCandidates(root, {
+    h3TurboLora: lightx4,
+    h3RefTurboLora: lightx4,
+  }, MODEL_ASSETS);
+  assert.equal(lightx4Selected.some((entry) => entry.filename === lightx4), false);
+  assert.equal(lightx4Selected.some((entry) => entry.filename === lightx), true);
 });

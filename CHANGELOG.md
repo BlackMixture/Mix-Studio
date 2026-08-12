@@ -58,6 +58,8 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Added an explicit shared Frames Turbo selector for the recommended v4/step600 adapter or the prior v1/ckpt850 four-step adapter, with the active choice reflected in generation guidance.
 - Preserved saved four-step workspaces and made dependency installation resolve the exact selected adapter instead of downloading v4 under a legacy or custom filename.
 - Added the official LightX2V v1.0 eight-step FL2VA/T2VA adapter as a compact shared Turbo setup for Frames generation and experimental community-tested Ref2V, with pinned installation, standard ComfyUI LoRA loading, the 12/3 audio-video schedule, native audio-safe sampling when supported, and an icon-only Reference caution.
+- Added the official LightX2V v1.0 four-step 768p FL2VA/T2VA adapter as an optional Preferences-only Turbo setup, with pinned installation, automatic four-step sampling, 6/3 video-audio shifts, and an enforced 1344×768 canvas; Reference use remains clearly marked experimental.
+- Fixed an H3 generation regression where Turbo step selection referenced a block-scoped mode variable after validation, causing `selectedMode is not defined` before the graph could be queued.
 
 ## 1.2.4 - 2026-08-09
 
