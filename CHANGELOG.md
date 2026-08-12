@@ -4,6 +4,10 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### Preferences
+
+- Replaced the always-expanded Video model settings with a compact, single-open model-family list. All model names remain visible at once, while variants and filenames appear only when their family is opened.
+
 ### LTX 2.5 video generation
 
 - Added LTX 2.5 as a separate curated video model while preserving LTX 2.3 as the default, with text-to-video, image-to-video, first/last-frame guidance, synchronized audio, user LoRA stacks, RIFE interpolation, and RTX 4K post-processing.

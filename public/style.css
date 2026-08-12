@@ -11686,6 +11686,77 @@ body.sheet-open {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.settings-model-disclosure {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(226,232,255,.1);
+  border-radius: 15px;
+  background: rgba(5,7,11,.64);
+  transition: border-color 180ms ease, background 180ms ease;
+}
+.settings-model-disclosure + .settings-model-disclosure {
+  margin-top: 10px;
+  padding-top: 0;
+}
+.settings-model-summary {
+  min-height: 58px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  list-style: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+  transition: color 180ms ease, background 180ms ease;
+}
+.settings-model-summary::-webkit-details-marker { display: none; }
+.settings-model-summary::marker { content: ""; }
+.settings-model-summary:hover { color: var(--ink); background: rgba(226,232,255,.035); }
+.settings-model-summary:focus-visible {
+  outline: 2px solid rgba(234,67,53,.68);
+  outline-offset: -3px;
+  border-radius: 13px;
+}
+.settings-model-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-model-summary svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: var(--muted-2);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms var(--ease), stroke 180ms ease;
+}
+.settings-model-disclosure[open] {
+  border-color: rgba(234,67,53,.3);
+  background: rgba(7,8,12,.9);
+}
+.settings-model-disclosure[open] > .settings-model-summary {
+  color: var(--ink);
+  background: rgba(234,67,53,.055);
+}
+.settings-model-disclosure[open] > .settings-model-summary svg {
+  stroke: #ff8d85;
+  transform: rotate(180deg);
+}
+.settings-model-body {
+  min-width: 0;
+  padding: 16px 16px 4px;
+  border-top: 1px solid rgba(226,232,255,.08);
+}
+.settings-model-body > :first-child { margin-top: 0; }
 .h3-model-install { width: 100%; margin: -2px 0 12px; }
 .h3-patch-restore { width: 100%; margin: -4px 0 12px; color: #ffcf93; }
 .h3-model-compatibility {
@@ -12386,6 +12457,9 @@ body.sheet-open {
 @media (prefers-reduced-motion: reduce) {
   .camera-motion-card,
   .video-camera-motion-trigger { transition-duration: 1ms; }
+  .settings-model-disclosure,
+  .settings-model-summary,
+  .settings-model-summary svg { transition-duration: 1ms; }
   .settings-choice-trigger svg,
   .settings-choice-list,
   .hardware-meter i { transition-duration: 1ms; }

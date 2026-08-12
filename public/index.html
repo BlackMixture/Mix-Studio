@@ -2692,8 +2692,10 @@
         </section>
 
         <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" hidden>
-          <div class="settings-pane-head"><h4>Video Models</h4><p>MiniMax H3, LTX, Wan, 10Eros, and SCAIL pipelines.</p></div>
-          <div class="settings-group"><h5>LTX 2.5</h5>
+          <div class="settings-pane-head"><h4>Video Models</h4><p>Choose a model family to manage its variants and files.</p></div>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="ltx25">
+            <summary class="settings-model-summary"><span class="settings-model-name">LTX 2.5</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <p class="settings-default-note">Fast uses the distilled INT8 workflow. Quality uses the full BF16 Dev model with native guidance and a distilled high-resolution refinement pass.</p>
             <div class="field"><label>Fast diffusion model</label><input id="setLtx25Unet" type="text" /></div>
             <div class="field"><label>Fast Gemma 4 text encoder</label><input id="setLtx25TextEncoder" type="text" /></div>
@@ -2704,8 +2706,11 @@
             <div class="field"><label>Video VAE</label><input id="setLtx25VideoVae" type="text" /></div>
             <div class="field"><label>Audio VAE</label><input id="setLtx25AudioVae" type="text" /></div>
             <div class="field"><label>Spatial upscaler</label><input id="setLtx25Upscaler" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>LTX 2.3 &amp; Face ID</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="ltx23">
+            <summary class="settings-model-summary"><span class="settings-model-name">LTX 2.3 &amp; Face ID</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
             <div class="field"><label>Distilled LoRA</label><input id="setLtxLora" type="text" /></div>
             <div class="field"><label>Camera Motion IC-LoRA</label><input id="setLtxCameraLora" type="text" /></div>
@@ -2716,8 +2721,11 @@
             <div class="field"><label>Spatial upscaler</label><input id="setLtxUps" type="text" /></div>
             <div class="field"><label>Face ID LoRA</label><input id="setFaceIdLora" type="text" /></div>
             <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>MiniMax H3</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="h3">
+            <summary class="settings-model-summary"><span class="settings-model-name">MiniMax H3</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <p class="settings-default-note">The standard pruned INT8 models remain the default. Full BF16 needs unusually large memory; DynTime modifies three ComfyUI core files only after explicit setup and keeps verified backups.</p>
             <div class="field"><label for="setH3FrameModelVariant">Text + Frames model</label>
               <select id="setH3FrameModelVariant">
@@ -2760,36 +2768,49 @@
               <div class="field"><label>Video VAE</label><input id="setH3VideoVae" type="text" /></div>
               <div class="field"><label>Audio VAE</label><input id="setH3AudioVae" type="text" /></div>
             </details>
-          </div>
-          <div class="settings-group"><h5>Wan 2.2</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="wan22">
+            <summary class="settings-model-summary"><span class="settings-model-name">Wan 2.2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>High-noise diffusion model (.safetensors or .gguf)</label><input id="setWanHigh" type="text" /></div>
             <div class="field"><label>Low-noise diffusion model (.safetensors or .gguf)</label><input id="setWanLow" type="text" /></div>
             <div class="field"><label>UMT5 text encoder</label><input id="setWanClip" type="text" /></div>
             <div class="field"><label>Wan VAE</label><input id="setWanVae" type="text" /></div>
             <div class="field"><label>lightx2v high LoRA</label><input id="setWanHighLora" type="text" /></div>
             <div class="field"><label>lightx2v low LoRA</label><input id="setWanLowLora" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>10Eros DMD</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="eros">
+            <summary class="settings-model-summary"><span class="settings-model-name">10Eros DMD</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>10Eros checkpoint</label><input id="setErosCkpt" type="text" /></div>
             <div class="field"><label>Gemma biproj encoder</label><input id="setErosTe" type="text" /></div>
             <div class="field"><label>DMD LoRA</label><input id="setErosDmd" type="text" /></div>
             <div class="field"><label>Custom sigmas — first pass (comma list ending in 0.0)</label><input id="setErosSigF" type="text" placeholder="e.g. 1.0, 0.99, 0.9, 0.7, 0.42, 0.0" /></div>
             <div class="field"><label>Custom sigmas — upscale pass</label><input id="setErosSigU" type="text" placeholder="e.g. 0.92, 0.725, 0.42, 0.0" /></div>
-          </div>
-          <div class="settings-group"><h5>SCAIL 2 Motion Transfer</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="scail">
+            <summary class="settings-model-summary"><span class="settings-model-name">SCAIL 2 Motion Transfer</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>SCAIL-2 diffusion model (.safetensors or .gguf)</label><input id="setScailUnet" type="text" /></div>
             <div class="field"><label>lightx2v distill LoRA</label><input id="setScailLora" type="text" /></div>
             <div class="field"><label>Pusa LoRA</label><input id="setScailPusaLora" type="text" /></div>
             <div class="field"><label>CLIP Vision</label><input id="setScailCv" type="text" /></div>
             <div class="field"><label>SAM3 checkpoint</label><input id="setScailSam" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>Wan Animate 2</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-video-model-section="wan-animate2">
+            <summary class="settings-model-summary"><span class="settings-model-name">Wan Animate 2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>Animate 2 diffusion model</label><input id="setWanAnimate2Unet" type="text" /></div>
             <div class="field"><label>LightX2V 480p LoRA</label><input id="setWanAnimate2Lora" type="text" /></div>
             <div class="field"><label>UMT5 text encoder</label><input id="setWanAnimate2Clip" type="text" /></div>
             <div class="field"><label>CLIP Vision</label><input id="setWanAnimate2Cv" type="text" /></div>
             <div class="field"><label>Wan 2.1 BF16 VAE</label><input id="setWanAnimate2Vae" type="text" /></div>
-          </div>
+            </div>
+          </details>
         </section>
 
         <section class="settings-pane" id="settingsPaneDefaults" role="tabpanel" aria-labelledby="settingsTabDefaults" data-settings-pane="defaults" hidden>

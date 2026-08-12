@@ -33339,6 +33339,16 @@ $$('[data-settings-tab]').forEach((tab) => {
   });
 });
 
+const videoModelDisclosures = $$('#settingsPaneVideo [data-video-model-section]');
+videoModelDisclosures.forEach((disclosure) => {
+  disclosure.addEventListener('toggle', () => {
+    if (!disclosure.open) return;
+    videoModelDisclosures.forEach((other) => {
+      if (other !== disclosure && other.open) other.open = false;
+    });
+  });
+});
+
 $$('#defaultSeedMode button').forEach((button) => button.addEventListener('click', () => {
   $$('#defaultSeedMode button').forEach((item) => item.classList.toggle('active', item === button));
   $('#defaultSeedValueField').hidden = button.dataset.seedMode !== 'fixed';

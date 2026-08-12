@@ -59,6 +59,22 @@ test('model settings retain one field each and follow logical pipeline groups', 
   assert.match(html, /data-settings-pane="video"[\s\S]*LTX 2\.3[\s\S]*Wan 2\.2[\s\S]*10Eros DMD[\s\S]*SCAIL 2 Motion Transfer/);
 });
 
+test('Video model settings use a compact single-open disclosure list', () => {
+  const pane = html.match(/id="settingsPaneVideo"([\s\S]*?)<section class="settings-pane" id="settingsPaneDefaults"/)?.[1] || '';
+  const sections = pane.match(/<details class="settings-group settings-model-disclosure" data-video-model-section="[^"]+">/g) || [];
+  assert.equal(sections.length, 7);
+  assert.equal((pane.match(/<summary class="settings-model-summary">/g) || []).length, 7);
+  assert.equal((pane.match(/<div class="settings-model-body">/g) || []).length, 7);
+  assert.doesNotMatch(pane, /data-video-model-section="[^"]+"[^>]*\sopen(?:\s|>)/);
+  for (const name of ['LTX 2.5', 'LTX 2.3 &amp; Face ID', 'MiniMax H3', 'Wan 2.2', '10Eros DMD', 'SCAIL 2 Motion Transfer', 'Wan Animate 2']) {
+    assert.match(pane, new RegExp(`<span class="settings-model-name">${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
+  }
+  assert.match(app, /const videoModelDisclosures = \$\$\('#settingsPaneVideo \[data-video-model-section\]'\)/);
+  assert.match(app, /if \(other !== disclosure && other\.open\) other\.open = false/);
+  assert.match(css, /\.settings-model-disclosure \{[\s\S]*border-radius: 15px/);
+  assert.match(css, /\.settings-model-disclosure\[open\] > \.settings-model-summary svg[\s\S]*transform: rotate\(180deg\)/);
+});
+
 test('settings tabs switch panes, support keyboard navigation, and keep content scrollable', () => {
   assert.match(app, /function setSettingsTab\(name, focus = false\)/);
   assert.match(app, /tab\.setAttribute\('aria-selected', String\(active\)\)/);
