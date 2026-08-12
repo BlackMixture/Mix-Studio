@@ -2514,6 +2514,11 @@
   <div class="sheet-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <h3 class="sheet-title" id="settingsTitle">
       <span class="settings-title-copy">Preferences <small id="settingsSaveStatus" role="status" aria-live="polite"></small></span>
+      <label class="settings-global-search" for="settingsSearchInput">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m20 20-4.5-4.5M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
+        <input id="settingsSearchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search all settings" aria-label="Search all settings" aria-controls="settingsSearchResults" />
+        <button id="settingsSearchClear" type="button" aria-label="Clear settings search" hidden>×</button>
+      </label>
       <span class="settings-title-actions">
         <button class="settings-restart-apply" id="settingsRestartApply" type="button" hidden>Restart to Apply</button>
         <button class="settings-close" data-close type="button" aria-label="Close preferences">✕</button>
@@ -2548,6 +2553,12 @@
       </nav>
 
       <div class="settings-content">
+        <section class="settings-search-results" id="settingsSearchResults" aria-labelledby="settingsSearchResultsTitle" aria-live="polite" hidden>
+          <div class="settings-search-results-head">
+            <span><h4 id="settingsSearchResultsTitle">Settings Search</h4><p id="settingsSearchResultsSummary">Type to search every preference.</p></span>
+          </div>
+          <div class="settings-search-results-list" id="settingsSearchResultsList"></div>
+        </section>
         <section class="settings-pane active" id="settingsPaneGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-pane="general">
           <div class="settings-pane-head"><h4>General</h4><p>Guidance, early-access features, and privacy.</p></div>
           <div class="guided-tour-setting">

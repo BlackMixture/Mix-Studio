@@ -33392,9 +33392,188 @@ $('#addonPackList').addEventListener('click', (event) => {
 
 let settingsActiveTab = 'general';
 const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions', 'addons', 'system', 'community'];
+const SETTINGS_SEARCH_TAB_COLORS = Object.freeze({
+  general: '66, 133, 244', image: '52, 168, 83', video: '234, 67, 53', defaults: '255, 183, 77',
+  suggestions: '57, 189, 164', addons: '56, 189, 248', system: '169, 102, 255', community: '255, 91, 126',
+});
+let settingsSearchMatches = [];
+let settingsSearchTargetTimer = null;
+
+function settingsSearchText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function settingsSearchElementAvailable(element, pane) {
+  for (let node = element; node && node !== pane; node = node.parentElement) {
+    if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+  }
+  return true;
+}
+
+function settingsSearchEntryTitle(element) {
+  if (element.matches('details')) {
+    return settingsSearchText(element.querySelector(':scope > summary .settings-model-name, :scope > summary .settings-preference-summary-copy strong')?.textContent);
+  }
+  if (element.classList.contains('field')) {
+    return settingsSearchText(element.querySelector(':scope > label')?.textContent);
+  }
+  if (element.classList.contains('guided-tour-setting')) {
+    return settingsSearchText(element.querySelector('.guided-tour-setting-copy strong')?.textContent);
+  }
+  return settingsSearchText(
+    element.querySelector('.context-preference-title strong, .addon-pack-title strong, .community-link-copy strong, .settings-media-toggle-copy strong, .generation-setup-entry-copy strong, .dependency-card-copy strong, .spark-access-head strong, .export-location-heading strong, strong, h5')?.textContent
+      || element.getAttribute('aria-label'),
+  );
+}
+
+function settingsSearchEntryDescription(element) {
+  if (element.matches('details')) {
+    return settingsSearchText(element.querySelector(':scope > summary .settings-preference-summary-copy small')?.textContent);
+  }
+  return settingsSearchText(
+    element.querySelector('.settings-note, .settings-media-toggle-copy small, .generation-setup-entry-copy small, .dependency-card-copy p, .community-link-copy small, .guided-tour-setting-copy small, .context-preference-title small, p, small')?.textContent,
+  );
+}
+
+function settingsSearchEntries() {
+  const entries = [];
+  const candidates = '.field, .settings-media-toggle, .generation-setup-entry, .dependency-card, .settings-update-info, .community-link, .addon-drop-zone, .addon-pack-card, .context-preference-card, .guided-tour-setting, .guided-guides-reset, .spark-access-card, .export-location';
+  $$('[data-settings-pane]').forEach((pane) => {
+    const tab = pane.dataset.settingsPane;
+    const tabLabel = settingsSearchText($(`[data-settings-tab="${tab}"] span`)?.textContent);
+    const paneTitle = settingsSearchText(pane.querySelector(':scope > .settings-pane-head h4')?.textContent);
+    const paneDescription = settingsSearchText(pane.querySelector(':scope > .settings-pane-head p')?.textContent);
+    if (paneTitle) entries.push({ tab, tabLabel, title: paneTitle, description: paneDescription, section: '', target: pane });
+    const elements = [
+      ...pane.querySelectorAll(':scope > details'),
+      ...pane.querySelectorAll(candidates),
+    ];
+    const seen = new Set();
+    elements.forEach((element) => {
+      if (seen.has(element) || !settingsSearchElementAvailable(element, pane)) return;
+      seen.add(element);
+      const title = settingsSearchEntryTitle(element);
+      if (!title) return;
+      const description = settingsSearchEntryDescription(element);
+      const disclosure = element.matches('details') ? element : element.closest('details');
+      const section = disclosure && disclosure !== element ? settingsSearchEntryTitle(disclosure) : '';
+      entries.push({ tab, tabLabel, title, description, section, target: element });
+    });
+  });
+  return entries;
+}
+
+function settingsSearchScore(entry, query) {
+  const title = entry.title.toLowerCase();
+  const section = entry.section.toLowerCase();
+  const description = entry.description.toLowerCase();
+  const phrase = query.toLowerCase();
+  const tokens = phrase.split(/\s+/).filter(Boolean);
+  const searchable = `${title} ${section} ${description}`;
+  if (!tokens.every((token) => searchable.includes(token))) return -1;
+  let score = title === phrase ? 500 : title.startsWith(phrase) ? 350 : title.includes(phrase) ? 250 : 0;
+  if (section.includes(phrase)) score += 120;
+  if (description.includes(phrase)) score += 50;
+  score += tokens.filter((token) => title.includes(token)).length * 20;
+  return score;
+}
+
+function renderSettingsSearch() {
+  const input = $('#settingsSearchInput');
+  const content = $('.settings-content');
+  const results = $('#settingsSearchResults');
+  const list = $('#settingsSearchResultsList');
+  const summary = $('#settingsSearchResultsSummary');
+  const clear = $('#settingsSearchClear');
+  if (!input || !content || !results || !list) return;
+  const query = settingsSearchText(input.value);
+  const searching = query.length > 0;
+  content.classList.toggle('searching', searching);
+  results.hidden = !searching;
+  clear.hidden = !searching;
+  if (!searching) {
+    settingsSearchMatches = [];
+    list.replaceChildren();
+    summary.textContent = 'Type to search every preference.';
+    return;
+  }
+  settingsSearchMatches = settingsSearchEntries()
+    .map((entry, order) => ({ entry, order, score: settingsSearchScore(entry, query) }))
+    .filter((match) => match.score >= 0)
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, 40)
+    .map((match) => match.entry);
+  list.replaceChildren();
+  summary.textContent = settingsSearchMatches.length
+    ? `${settingsSearchMatches.length} matching setting${settingsSearchMatches.length === 1 ? '' : 's'}`
+    : `No settings found for “${query}”`;
+  if (!settingsSearchMatches.length) {
+    const empty = document.createElement('div');
+    empty.className = 'settings-search-empty';
+    empty.textContent = 'Try a model name, workflow, feature, or control such as “H3,” “preview quality,” or “Hugging Face.”';
+    list.appendChild(empty);
+    return;
+  }
+  settingsSearchMatches.forEach((entry, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'settings-search-result';
+    button.dataset.settingsSearchIndex = String(index);
+    button.style.setProperty('--settings-search-rgb', SETTINGS_SEARCH_TAB_COLORS[entry.tab] || SETTINGS_SEARCH_TAB_COLORS.general);
+    const copy = document.createElement('span');
+    copy.className = 'settings-search-result-copy';
+    const title = document.createElement('strong');
+    title.textContent = entry.title;
+    const description = document.createElement('small');
+    description.textContent = entry.section && entry.section !== entry.title
+      ? [entry.section, entry.description].filter(Boolean).join(' · ')
+      : entry.description;
+    copy.append(title, description);
+    const tab = document.createElement('span');
+    tab.className = 'settings-search-result-tab';
+    tab.textContent = entry.tabLabel;
+    button.append(copy, tab);
+    button.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>');
+    list.appendChild(button);
+  });
+}
+
+function clearSettingsSearch(options = {}) {
+  const input = $('#settingsSearchInput');
+  if (!input) return;
+  input.value = '';
+  renderSettingsSearch();
+  if (options.restoreFocus) input.focus();
+}
+
+function revealSettingsSearchEntry(entry) {
+  if (!entry?.target?.isConnected) return;
+  setSettingsTab(entry.tab);
+  const pane = entry.target.closest('[data-settings-pane]');
+  const disclosures = [];
+  let node = entry.target.matches('details') ? entry.target : entry.target.parentElement;
+  while (node && node !== pane) {
+    if (node.matches?.('details')) disclosures.push(node);
+    node = node.parentElement;
+  }
+  disclosures.reverse().forEach((disclosure) => { disclosure.open = true; });
+  const target = entry.target.matches('[data-settings-pane]') ? entry.target.querySelector('.settings-pane-head') : entry.target;
+  clearTimeout(settingsSearchTargetTimer);
+  $$('.settings-search-target').forEach((element) => element.classList.remove('settings-search-target'));
+  target.classList.add('settings-search-target');
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    const focusTarget = target.matches('button, input, select, textarea, a[href], summary')
+      ? target
+      : target.querySelector('input:not([type="hidden"]), select, textarea, button, a[href], summary');
+    focusTarget?.focus({ preventScroll: true });
+  });
+  settingsSearchTargetTimer = setTimeout(() => target.classList.remove('settings-search-target'), 1600);
+}
 
 function setSettingsTab(name, focus = false) {
   if (!settingsTabNames.includes(name)) name = 'general';
+  if ($('#settingsSearchInput')?.value) clearSettingsSearch();
   if (name !== 'video') setSvAttnPickerOpen(false);
   settingsActiveTab = name;
   $$('[data-settings-tab]').forEach((tab) => {
@@ -33426,6 +33605,20 @@ $$('[data-settings-tab]').forEach((tab) => {
         : (current + (event.key === 'ArrowDown' ? 1 : -1) + settingsTabNames.length) % settingsTabNames.length;
     setSettingsTab(settingsTabNames[next], true);
   });
+});
+
+$('#settingsSearchInput').addEventListener('input', renderSettingsSearch);
+$('#settingsSearchInput').addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !event.currentTarget.value) return;
+  event.preventDefault();
+  clearSettingsSearch({ restoreFocus: true });
+});
+$('#settingsSearchClear').addEventListener('click', () => clearSettingsSearch({ restoreFocus: true }));
+$('#settingsSearchResultsList').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-settings-search-index]');
+  if (!button) return;
+  const entry = settingsSearchMatches[Number(button.dataset.settingsSearchIndex)];
+  if (entry) revealSettingsSearchEntry(entry);
 });
 
 $$('[data-settings-disclosure-group]').forEach((pane) => {

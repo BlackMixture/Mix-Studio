@@ -100,6 +100,23 @@ test('settings tabs switch panes, support keyboard navigation, and keep content 
   assert.match(tabRail, /background-color: #000/);
 });
 
+test('Preferences search finds and reveals settings across every tab', () => {
+  assert.match(html, /id="settingsSearchInput"[^>]+type="search"[^>]+placeholder="Search all settings"[^>]+aria-controls="settingsSearchResults"/);
+  assert.match(html, /id="settingsSearchClear"[^>]+aria-label="Clear settings search"[^>]+hidden/);
+  assert.match(html, /id="settingsSearchResults"[^>]+aria-live="polite"[^>]+hidden/);
+  assert.match(app, /function settingsSearchEntries\(\)/);
+  assert.match(app, /function settingsSearchScore\(entry, query\)/);
+  assert.match(app, /function renderSettingsSearch\(\)/);
+  assert.match(app, /function revealSettingsSearchEntry\(entry\)/);
+  assert.match(app, /disclosures\.reverse\(\)\.forEach\(\(disclosure\) => \{ disclosure\.open = true; \}\)/);
+  assert.match(app, /setSettingsTab\(entry\.tab\)/);
+  assert.match(app, /target\.scrollIntoView\(\{ block: 'center'/);
+  assert.match(css, /\.settings-global-search \{[\s\S]*grid-template-columns: 16px minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.settings-content\.searching > \.settings-pane \{ display: none; \}/);
+  assert.match(css, /\.settings-search-result \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto 17px/);
+  assert.match(css, /@media \(max-width: 420px\) \{[\s\S]*\.settings-global-search \{ grid-column: 1 \/ -1/);
+});
+
 test('advanced settings exposes generation setup as a dedicated status entry', () => {
   const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<section class="settings-pane community-pane"/)?.[1] || '';
   assert.match(systemPane, /class="generation-setup-entry"[^>]+id="dependencyOpenSetup"/);
