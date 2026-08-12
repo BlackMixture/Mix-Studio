@@ -58,6 +58,13 @@ const {
   normalizeH3FrameVariant,
   normalizeH3ReferenceVariant,
 } = require('./lib/h3-model-variants');
+const {
+  H3_TURBO_LORAS,
+  h3TurboDefaultSteps,
+  h3TurboPreset,
+  h3TurboReferenceIsExperimental,
+  h3TurboUsesStandardLoader,
+} = require('./lib/h3-turbo-presets');
 const { dynTimePatchStatus, restoreDynTimePatch } = require('./lib/h3-dyntime-patch');
 const {
   deleteManagedModelCandidate,
@@ -435,13 +442,7 @@ function serializePromptPackMutation(task) {
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
 const SPARK_ACCESS_FILE = path.join(DATA, 'spark_access.json');
 const SETTINGS_SCHEMA_VERSION = 3;
-const LEGACY_H3_TURBO_LORA = 'minimax_h3_turbo_4step_ema_ckpt850.safetensors';
-const DEFAULT_H3_TURBO_LORA = 'minimax_h3_turbo_v4_step600_ema.safetensors';
-
-function h3FramesTurboDefaultSteps(value) {
-  const filename = String(value || '').trim().replace(/\\/g, '/').split('/').pop().toLowerCase();
-  return filename === LEGACY_H3_TURBO_LORA.toLowerCase() ? 4 : 6;
-}
+const DEFAULT_H3_TURBO_LORA = H3_TURBO_LORAS.framesRecommended;
 const DEFAULT_SYSTEM_PROMPT = `You are an expert prompt engineer for text-to-image models. Your task is to expand the user's prompt into a highly effective image-generation prompt.
 
 Think step by step about the request before writing the answer:
@@ -521,7 +522,7 @@ const DEFAULT_SETTINGS = {
   h3VideoVae: 'minimax_h3_video_vae_fp16.safetensors',
   h3AudioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   h3TurboLora: DEFAULT_H3_TURBO_LORA,
-  h3RefTurboLora: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
+  h3RefTurboLora: H3_TURBO_LORAS.referenceRecommended,
   ...h3VariantSettingDefaults(),
   wanHighUnet: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',
   wanLowUnet: 'wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors',
@@ -585,6 +586,7 @@ function normalizeSettings(s) {
   s.h3FrameModelVariant = normalizeH3FrameVariant(s.h3FrameModelVariant);
   s.h3ReferenceModelVariant = normalizeH3ReferenceVariant(s.h3ReferenceModelVariant);
   s.h3TurboLora = String(s.h3TurboLora || '').trim() || DEFAULT_H3_TURBO_LORA;
+  s.h3RefTurboLora = String(s.h3RefTurboLora || '').trim() || H3_TURBO_LORAS.referenceRecommended;
   s.hfEndpoint = normalizeHuggingFaceEndpoint(s.hfEndpoint);
   if (!s.klein4Unet) s.klein4Unet = s.kleinUnet || DEFAULT_SETTINGS.klein4Unet;
   if (!s.klein4Clip) s.klein4Clip = s.kleinClip || DEFAULT_SETTINGS.klein4Clip;
@@ -1645,7 +1647,13 @@ function configuredModelsStatus(info) {
     },
     h3Turbo: {
       label: 'MiniMax H3 Turbo',
-      lora: modelStatus(info, 'MiniMaxH3TurboLoRA', 'lora_name', settings.h3TurboLora, loraList),
+      lora: modelStatus(
+        info,
+        h3TurboUsesStandardLoader(settings, 'frames') ? 'LoraLoaderModelOnly' : 'MiniMaxH3TurboLoRA',
+        'lora_name',
+        settings.h3TurboLora,
+        loraList,
+      ),
     },
     h3RefTurbo: {
       label: 'MiniMax H3 Reference Turbo',
@@ -6769,6 +6777,7 @@ async function handleApi(req, res, url) {
       turbo: {
         frames: h3TurboCompatibility(settings, 'frames'),
         reference: h3TurboCompatibility(settings, 'reference'),
+        preset: h3TurboPreset(settings),
       },
       dynTimePatch: await dynTimePatchStatus(RUNTIME),
     });
@@ -7063,9 +7072,15 @@ async function handleApi(req, res, url) {
       const ltx25Core = ltx25Compatibility(info, compatibility.version);
       const wanAnimate2Core = wanAnimate2CoreCompatibility(info, compatibility.version);
       if (h3Core.nativeAudioSampling) {
-        // Current ComfyUI supplies the audio-safe AV schedule, so only the
-        // Turbo LoRA loader is needed; the legacy custom sampler is bypassed.
-        missing.h3turbo = ['MiniMaxH3TurboLoRA'].filter((className) => !info[className]);
+        // Current ComfyUI supplies the audio-safe AV schedule, so the legacy
+        // custom sampler is bypassed. LightX2V's generic ComfyUI adapter uses
+        // the stock model-only loader; Larry's adapters retain their loader.
+        missing.h3turbo = [
+          h3TurboUsesStandardLoader(settings, 'frames') ? 'LoraLoaderModelOnly' : 'MiniMaxH3TurboLoRA',
+          'MiniMaxH3SigmaShift',
+        ].filter((className) => !info[className]);
+        missing.h3turbor2v = ['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift']
+          .filter((className) => !info[className]);
       }
       const sageRuntime = await probeSageAttention(RUNTIME, {
         status: installStatus,
@@ -8448,9 +8463,12 @@ async function handleApi(req, res, url) {
         }
         h3TurboNativeSampler = minimaxH3NativeAudioSampling(info);
         const referenceTurbo = h3ReferenceBacked;
-        const requiredTurboNodes = referenceTurbo
-          ? REQUIRED_CLASSES.h3turbor2v
-          : (h3TurboNativeSampler ? ['MiniMaxH3TurboLoRA'] : REQUIRED_CLASSES.h3turbo);
+        const standardTurboLoader = h3TurboUsesStandardLoader(settings, selectedMode);
+        const requiredTurboNodes = h3TurboNativeSampler
+          ? [standardTurboLoader ? 'LoraLoaderModelOnly' : 'MiniMaxH3TurboLoRA', 'MiniMaxH3SigmaShift']
+          : (referenceTurbo || standardTurboLoader
+            ? REQUIRED_CLASSES.h3turbor2v
+            : REQUIRED_CLASSES.h3turbo);
         const missingTurboNodes = requiredTurboNodes.filter((className) => !info[className]);
         const turboLora = configuredModelsStatus(info)[referenceTurbo ? 'h3RefTurbo' : 'h3Turbo'].lora;
         if (missingTurboNodes.length || !turboLora.ok) {
@@ -8871,7 +8889,7 @@ async function handleApi(req, res, url) {
     const sig = erosSigmas(sigmaPreset);
     const videoSteps = engine === 'h3'
       ? (h3Turbo
-        ? clampInt(body.steps, 4, 100, h3ReferenceBacked ? 6 : h3FramesTurboDefaultSteps(settings.h3TurboLora))
+        ? clampInt(body.steps, 4, 100, h3TurboDefaultSteps(settings, selectedMode))
         : clampInt(body.steps, 1, 100, 20))
       : engine === 'wan'
         ? (body.fast !== false ? 4 : 20)
@@ -9088,10 +9106,14 @@ async function handleApi(req, res, url) {
         h3TurboLora: engine === 'h3' && opts.turbo
           ? (h3ReferenceBacked ? settings.h3RefTurboLora : settings.h3TurboLora)
           : undefined,
+        h3TurboPreset: engine === 'h3' && opts.turbo ? h3TurboPreset(settings).id : undefined,
+        h3TurboReferenceExperimental: engine === 'h3' && opts.turbo && h3ReferenceBacked
+          ? h3TurboReferenceIsExperimental(settings) || undefined
+          : undefined,
         h3TurboStrength: engine === 'h3' && opts.turbo ? opts.turboStrength : undefined,
         h3TurboLowVram: engine === 'h3' && opts.turbo ? opts.turboLowVram || undefined : undefined,
         h3TurboSampler: engine === 'h3' && opts.turbo
-          ? (h3ReferenceBacked ? 'creator-reference' : (opts.turboNativeSampler ? 'native-euler' : 'creator-legacy'))
+          ? (opts.turboNativeSampler ? 'native-euler' : (h3ReferenceBacked ? 'creator-reference' : 'creator-legacy'))
           : undefined,
         h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
         h3LongContext: h3LongContextPlan.length > 1 || undefined,
@@ -10799,7 +10821,7 @@ async function callSparkMcpTool(name, rawArguments, profile) {
       h3ResolutionSize: engine === 'h3' ? 768 : undefined,
       h3Turbo: turbo,
       h3TurboStrength: turbo ? 1 : undefined,
-      steps: engine === 'h3' ? (turbo ? h3FramesTurboDefaultSteps(settings.h3TurboLora) : 20) : undefined,
+      steps: engine === 'h3' ? (turbo ? h3TurboDefaultSteps(settings, 'frames') : 20) : undefined,
       sageAttention: false,
       fourK: false,
     });

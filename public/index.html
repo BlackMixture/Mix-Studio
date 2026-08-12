@@ -802,7 +802,7 @@
           <span class="krea-model-switch-copy"><b>Turbo <span class="h3-turbo-preview">Preview</span></b><small id="vidH3TurboSummary">6 frames · 6 reference · audio-safe</small></span>
           <span class="switch" aria-hidden="true"><i></i></span>
         </button>
-        <button class="h3-long-context-caution h3-turbo-v4-caution" id="vidH3TurboV4Caution" type="button" aria-label="Four-step Turbo v4 quality caution" data-icon-tooltip="Four-step Turbo v4 caution" data-icon-tooltip-detail="At four steps, v4 can smear or trail during large, fast motion. Use six to eight steps for higher quality, or switch Frames Turbo to Legacy v1 / ckpt850 in Preferences for the original four-step workflow." hidden>
+        <button class="h3-long-context-caution h3-turbo-v4-caution" id="vidH3TurboCaution" type="button" aria-label="MiniMax H3 Turbo caution" data-icon-tooltip="MiniMax H3 Turbo caution" data-icon-tooltip-detail="Check the selected Turbo adapter guidance." hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 21 20H3L12 4Z"/><path d="M12 9v5m0 3h.01"/></svg>
         </button>
       </div>
@@ -2726,13 +2726,14 @@
               </select>
             </div>
             <button class="settings-cache-clear h3-model-install" id="h3InstallFrameModel" type="button">Install selected Frames model</button>
-            <div class="field"><label for="setH3FramesTurboVariant">Frames Turbo LoRA</label>
-              <select id="setH3FramesTurboVariant">
-                <option value="v4">v4 / step600 · recommended · 6–8 steps</option>
-                <option value="legacy-4step">Legacy v1 / ckpt850 · 4 steps</option>
+            <div class="field"><label for="setH3TurboSetup">Turbo setup</label>
+              <select id="setH3TurboSetup">
+                <option value="recommended">Recommended · v4 Frames + audio-safe Reference</option>
+                <option value="lightx8">LightX2V v1.0 · 8 steps · experimental Reference</option>
+                <option value="legacy">Legacy Frames · 4 steps</option>
                 <option value="custom" hidden>Custom filename</option>
               </select>
-              <small>The selected adapter is shared by every profile. If it is missing, Generate offers to install the matching file.</small>
+              <small>Shared by every profile. The main generation view stays on a single Turbo switch; Mix Studio chooses the matching Frames and Reference adapters here.</small>
             </div>
             <div class="field"><label for="setH3ReferenceModelVariant">Reference / Replace model</label>
               <select id="setH3ReferenceModelVariant">

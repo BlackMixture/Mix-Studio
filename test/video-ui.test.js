@@ -569,7 +569,7 @@ test('Video exposes model-aware step counts and keeps fixed schedules read-only'
 test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-safe setup paths', () => {
   assert.match(html, /id="vidH3TurboToggle"[^>]*role="switch"[^>]*aria-checked="false"/);
   assert.match(html, /id="vidH3TurboSummary">6 frames · 6 reference · audio-safe/);
-  assert.match(html, /id="vidH3TurboV4Caution"[^>]*data-icon-tooltip="Four-step Turbo v4 caution"/);
+  assert.match(html, /id="vidH3TurboCaution"[^>]*data-icon-tooltip="MiniMax H3 Turbo caution"/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*min="0\.8"[^>]*max="1\.2"[^>]*value="1"/);
   assert.match(html, /<label for="vidH3TurboStrength">Turbo LoRA strength<\/label>/);
   assert.match(html, /id="vidH3TurboStrength"[^>]*aria-describedby="vidH3TurboStrengthHelp vidH3TurboStrengthScale"/);
@@ -580,7 +580,7 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(css, /\.h3-turbo-strength-slider::before[\s\S]{0,500}--h3-turbo-progress/);
   assert.match(html, /id="setH3TurboLora"/);
   assert.match(html, /id="setH3RefTurboLora"/);
-  assert.match(html, /id="setH3FramesTurboVariant"[\s\S]*value="v4"[\s\S]*value="legacy-4step"/);
+  assert.match(html, /id="setH3TurboSetup"[\s\S]*value="recommended"[\s\S]*value="lightx8"[\s\S]*value="legacy"/);
   assert.match(app, /vidH3Turbo: false/);
   assert.match(app, /vidH3TurboSteps: 6/);
   assert.match(app, /vidH3RefTurboSteps: 6/);
@@ -590,28 +590,29 @@ test('MiniMax H3 Turbo supports Frames and Reference modes with separate audio-s
   assert.match(app, /LightX2V · audio-safe sampler/);
   assert.match(app, /H3 Turbo v4\/600 · 6-step quality default/);
   assert.match(app, /H3 Turbo legacy v1\/850 · original 4-step default/);
-  assert.match(app, /const H3_FRAMES_TURBO_LORAS = Object\.freeze/);
-  assert.match(app, /'legacy-4step': 'minimax_h3_turbo_4step_ema_ckpt850\.safetensors'/);
-  assert.match(app, /state\.vidH3TurboSteps = variant === 'legacy-4step' \? 4 : 6/);
+  assert.match(app, /const H3_TURBO_SETUPS = Object\.freeze/);
+  assert.match(app, /lightx8:[\s\S]{0,220}minimax_h3_fl2v_turbo_8step_v1\.0_comfyui_bf16\.safetensors/);
+  assert.match(app, /state\.vidH3TurboSteps = setup\.framesSteps/);
+  assert.match(app, /state\.vidH3RefTurboSteps = setup\.referenceSteps/);
   assert.match(app, /6–8 steps recommended/);
   assert.match(app, /native audio-safe sampler/);
   assert.match(app, /if \(h3TurboActive\(\)\) components\.add\(h3ReferenceBackedMode\(\) \? 'h3turbor2v' : 'h3turbo'\)/);
   assert.match(app, /h3Turbo: state\.vidEngine === 'h3' \? h3TurboActive\(\) : undefined/);
   assert.match(server, /const h3Turbo = h3TurboRequested;/);
   assert.doesNotMatch(server, /h3_turbo_reference_unsupported/);
-  assert.match(server, /clampInt\(body\.steps, 4, 100, h3ReferenceBacked \? 6 : h3FramesTurboDefaultSteps\(settings\.h3TurboLora\)\)/);
+  assert.match(server, /clampInt\(body\.steps, 4, 100, h3TurboDefaultSteps\(settings, selectedMode\)\)/);
   assert.match(server, /h3TurboNativeSampler = minimaxH3NativeAudioSampling\(info\)/);
-  assert.match(server, /if \(h3Core\.nativeAudioSampling\)[\s\S]{0,260}missing\.h3turbo = \['MiniMaxH3TurboLoRA'\]/);
+  assert.match(server, /if \(h3Core\.nativeAudioSampling\)[\s\S]{0,500}h3TurboUsesStandardLoader\(settings, 'frames'\)[\s\S]{0,240}'MiniMaxH3SigmaShift'/);
   assert.match(server, /h3turbo: \['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'\]/);
   assert.match(server, /h3turbor2v: \['LoraLoaderModelOnly', 'MiniMaxH3SigmaShift', 'MiniMaxH3TurboSampler'\]/);
 });
 
 test('MiniMax H3 Frames Turbo defaults new installs to v4 while preserving explicit legacy and manual adapters', () => {
-  assert.match(server, /const DEFAULT_H3_TURBO_LORA = 'minimax_h3_turbo_v4_step600_ema\.safetensors'/);
+  assert.match(server, /const DEFAULT_H3_TURBO_LORA = H3_TURBO_LORAS\.framesRecommended/);
   assert.match(server, /const SETTINGS_SCHEMA_VERSION = 3/);
   assert.doesNotMatch(server, /stored\.h3TurboLora = DEFAULT_H3_TURBO_LORA/);
   assert.match(server, /keep the original ckpt850 four-step adapter/);
-  assert.match(server, /function h3FramesTurboDefaultSteps\([\s\S]{0,220}LEGACY_H3_TURBO_LORA[\s\S]{0,80}\? 4 : 6/);
+  assert.match(server, /h3TurboDefaultSteps\(settings, selectedMode\)/);
   assert.match(server, /stored\.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION/);
   assert.match(server, /h3TurboLora: engine === 'h3' && opts\.turbo/);
   assert.match(app, /copyableMeta\('Turbo adapter', prettyLora\(String\(info\.h3TurboLora\)\)\)/);

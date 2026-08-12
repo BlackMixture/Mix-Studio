@@ -4430,12 +4430,28 @@ function genLabel() {
   return state.view === 'edit' ? 'Generate Edit' : (state.view === 'video' ? 'Generate Video' : 'Generate');
 }
 
-const H3_FRAMES_TURBO_LORAS = Object.freeze({
-  v4: 'minimax_h3_turbo_v4_step600_ema.safetensors',
-  'legacy-4step': 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+const H3_TURBO_SETUPS = Object.freeze({
+  recommended: Object.freeze({
+    frames: 'minimax_h3_turbo_v4_step600_ema.safetensors',
+    reference: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
+    framesSteps: 6,
+    referenceSteps: 6,
+  }),
+  lightx8: Object.freeze({
+    frames: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
+    reference: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
+    framesSteps: 8,
+    referenceSteps: 8,
+  }),
+  legacy: Object.freeze({
+    frames: 'minimax_h3_turbo_4step_ema_ckpt850.safetensors',
+    reference: 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors',
+    framesSteps: 4,
+    referenceSteps: 6,
+  }),
 });
-const H3_REFERENCE_TURBO_LORA = 'minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors';
-let configuredH3FramesTurboLora = H3_FRAMES_TURBO_LORAS.v4;
+let configuredH3FramesTurboLora = H3_TURBO_SETUPS.recommended.frames;
+let configuredH3ReferenceTurboLora = H3_TURBO_SETUPS.recommended.reference;
 
 function normalizedLoraBasename(value) {
   return String(value || '').trim().replace(/\\/g, '/').split('/').pop().toLowerCase();
@@ -4443,9 +4459,9 @@ function normalizedLoraBasename(value) {
 
 function h3ManagedWorkflowLora(name) {
   const managed = [
-    ...Object.values(H3_FRAMES_TURBO_LORAS),
-    H3_REFERENCE_TURBO_LORA,
+    ...Object.values(H3_TURBO_SETUPS).flatMap((setup) => [setup.frames, setup.reference]),
     configuredH3FramesTurboLora,
+    configuredH3ReferenceTurboLora,
     lastMeta?.models?.h3RefTurbo?.lora?.name,
   ].map(normalizedLoraBasename).filter(Boolean);
   return managed.includes(normalizedLoraBasename(name));
@@ -4460,24 +4476,51 @@ function selectedH3LoraCompatibility() {
       : { supported: true });
 }
 
-function h3FramesTurboVariant(filename = configuredH3FramesTurboLora) {
-  const basename = String(filename || '').split(/[\\/]/).pop().toLowerCase();
-  return Object.entries(H3_FRAMES_TURBO_LORAS)
-    .find(([, managed]) => managed.toLowerCase() === basename)?.[0] || 'custom';
+function h3TurboSetupVariant(
+  frames = configuredH3FramesTurboLora,
+  reference = configuredH3ReferenceTurboLora,
+) {
+  const frameName = normalizedLoraBasename(frames);
+  const referenceName = normalizedLoraBasename(reference);
+  return Object.entries(H3_TURBO_SETUPS).find(([, setup]) => (
+    normalizedLoraBasename(setup.frames) === frameName
+      && normalizedLoraBasename(setup.reference) === referenceName
+  ))?.[0] || 'custom';
 }
 
-function setConfiguredH3FramesTurboLora(filename) {
-  configuredH3FramesTurboLora = String(filename || '').trim() || H3_FRAMES_TURBO_LORAS.v4;
-  const select = $('#setH3FramesTurboVariant');
+function syncH3TurboSetupSelector() {
+  const select = $('#setH3TurboSetup');
   if (!select) return;
-  const variant = h3FramesTurboVariant();
+  const variant = h3TurboSetupVariant();
   const custom = select.querySelector('option[value="custom"]');
   if (custom) custom.hidden = variant !== 'custom';
   select.value = variant;
 }
 
+function setConfiguredH3FramesTurboLora(filename) {
+  configuredH3FramesTurboLora = String(filename || '').trim() || H3_TURBO_SETUPS.recommended.frames;
+  syncH3TurboSetupSelector();
+}
+
+function setConfiguredH3ReferenceTurboLora(filename) {
+  configuredH3ReferenceTurboLora = String(filename || '').trim() || H3_TURBO_SETUPS.recommended.reference;
+  syncH3TurboSetupSelector();
+}
+
 function h3FramesTurboIsLegacy() {
-  return h3FramesTurboVariant() === 'legacy-4step';
+  return normalizedLoraBasename(configuredH3FramesTurboLora)
+    === normalizedLoraBasename(H3_TURBO_SETUPS.legacy.frames);
+}
+
+function h3TurboUsesLightx8(referenceMode = h3ReferenceBackedMode()) {
+  const selected = referenceMode ? configuredH3ReferenceTurboLora : configuredH3FramesTurboLora;
+  return normalizedLoraBasename(selected) === normalizedLoraBasename(H3_TURBO_SETUPS.lightx8.frames);
+}
+
+function h3TurboDefaultStepsForMode(referenceMode = h3ReferenceBackedMode()) {
+  if (h3TurboUsesLightx8(referenceMode)) return 8;
+  if (!referenceMode && h3FramesTurboIsLegacy()) return 4;
+  return 6;
 }
 
 function renderH3TurboMode() {
@@ -4488,8 +4531,8 @@ function renderH3TurboMode() {
   const strength = $('#vidH3TurboStrength');
   const strengthValue = $('#vidH3TurboStrengthVal');
   const strengthSlider = $('#vidH3TurboStrengthSlider');
-  const v4Caution = $('#vidH3TurboV4Caution');
-  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider || !v4Caution) return;
+  const caution = $('#vidH3TurboCaution');
+  if (!panel || !toggle || !summary || !strengthField || !strength || !strengthValue || !strengthSlider || !caution) return;
   const h3 = state.view === 'video' && state.vidEngine === 'h3';
   const referenceMode = h3 && h3ReferenceBackedMode();
   const selectedTurboCompatibility = lastMeta?.minimaxH3?.turbo?.[referenceMode ? 'reference' : 'frames'];
@@ -4499,11 +4542,23 @@ function renderH3TurboMode() {
   const active = enabled;
   const turboSteps = normalizedH3TurboSteps();
   const legacyFramesTurbo = !referenceMode && h3FramesTurboIsLegacy();
+  const lightx8 = h3TurboUsesLightx8();
   const nativeAudioSampler = lastMeta?.minimaxH3?.nativeAudioSampling === true;
-  const showV4Caution = h3 && active && !referenceMode && !legacyFramesTurbo && turboSteps === 4;
+  const showLightxReferenceCaution = h3 && active && referenceMode && lightx8;
+  const showV4Caution = h3 && active && !referenceMode && !legacyFramesTurbo && !lightx8 && turboSteps === 4;
+  const showCaution = showLightxReferenceCaution || showV4Caution;
   panel.hidden = !h3;
-  panel.classList.toggle('has-caution', showV4Caution);
-  v4Caution.hidden = !showV4Caution;
+  panel.classList.toggle('has-caution', showCaution);
+  caution.hidden = !showCaution;
+  if (showLightxReferenceCaution) {
+    caution.setAttribute('aria-label', 'Experimental LightX2V Reference mode');
+    caution.dataset.iconTooltip = 'Experimental LightX2V Reference mode';
+    caution.dataset.iconTooltipDetail = 'LightX2V v1.0 is officially trained for Frames and Text generation. Reference-to-video works in community testing, but a dedicated Ref2V adapter has not been released yet. Choose Recommended in Preferences if reliability matters most.';
+  } else {
+    caution.setAttribute('aria-label', 'Four-step Turbo v4 caution');
+    caution.dataset.iconTooltip = 'Four-step Turbo v4 caution';
+    caution.dataset.iconTooltipDetail = 'The v4/600 Turbo LoRA is tuned for six to eight steps. Four steps can reduce quality; use Legacy Frames in Preferences for the original four-step adapter.';
+  }
   toggle.disabled = !modelSupportsTurbo;
   toggle.setAttribute('aria-disabled', String(!modelSupportsTurbo));
   toggle.setAttribute('aria-checked', String(active));
@@ -4515,9 +4570,15 @@ function renderH3TurboMode() {
   } else if (active && missing) {
     summary.textContent = `${turboSteps} steps · install ${referenceMode ? 'Reference ' : ''}Turbo on generate`;
     toggle.title = `${referenceMode ? 'The LightX2V Reference Turbo LoRA and creator sampler' : 'The Turbo LoRA workflow'} will be installed before generation.`;
+  } else if (active && referenceMode && lightx8) {
+    summary.textContent = `${turboSteps} steps${turboSteps === 8 ? '' : ' · 8 recommended'} · LightX2V v1.0 · experimental Ref2V`;
+    toggle.title = 'LightX2V v1.0 uses the official eight-step FL2VA/T2VA adapter. Its Reference-to-video support is experimental and based on community testing.';
   } else if (active && referenceMode) {
     summary.textContent = `${turboSteps} steps${turboSteps === 6 ? '' : ' · 6 recommended'} · LightX2V · audio-safe sampler`;
     toggle.title = 'Reference Turbo uses Kijai’s LightX2V LoRA, MiniMax’s 12/3 audio-video schedule, and the creator’s adaptive sampler. Six steps is the tested default.';
+  } else if (active && lightx8) {
+    summary.textContent = `${turboSteps} steps${turboSteps === 8 ? '' : ' · 8 recommended'} · LightX2V v1.0 · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
+    toggle.title = 'LightX2V v1.0 uses its official eight-step FL2VA/T2VA Turbo adapter and MiniMax’s 12/3 audio-video schedule.';
   } else if (active && legacyFramesTurbo) {
     summary.textContent = `${turboSteps} steps${turboSteps === 4 ? '' : ' · 4 recommended'} · legacy v1/850 · ${nativeAudioSampler ? 'native audio-safe sampler' : 'creator audio sampler'}`;
     toggle.title = 'Legacy Turbo v1/850 is retained for its original four-step workflow. You can switch back to v4 in Preferences → Video Models.';
@@ -4528,9 +4589,13 @@ function renderH3TurboMode() {
       : 'Turbo LoRA v4/600 with the creator sampler for older ComfyUI cores. Six to eight steps is the creator-recommended quality range.';
   } else {
     summary.textContent = `${referenceMode ? 'Standard Reference H3' : 'Standard H3'} · ${normalizedH3Steps()} steps`;
-    toggle.title = referenceMode
-      ? 'Turn on the LightX2V Reference Turbo workflow. Six steps is the tested default.'
-      : `Turn on the ${legacyFramesTurbo ? 'legacy Turbo LoRA v1/850 at its four-step default' : 'creator Turbo LoRA v4/600. Six steps is the new default'}, and keep the step count adjustable.`;
+    if (lightx8) {
+      toggle.title = `Turn on LightX2V v1.0 at its eight-step default${referenceMode ? '. Reference mode is experimental.' : '.'}`;
+    } else {
+      toggle.title = referenceMode
+        ? 'Turn on the LightX2V Reference Turbo workflow. Six steps is the tested default.'
+        : `Turn on the ${legacyFramesTurbo ? 'legacy Turbo LoRA v1/850 at its four-step default' : 'creator Turbo LoRA v4/600. Six steps is the new default'}, and keep the step count adjustable.`;
+    }
   }
   const showStrength = h3TurboActive();
   strengthField.hidden = !showStrength;
@@ -4712,7 +4777,7 @@ function updateVideoPanels() {
   $('#videoAdvancedNote').hidden = !isVideo;
   $('#videoAdvancedNote').textContent = wanAnimate2InputFirst
     ? 'The official workflow uses a fixed six-step LCM schedule. Identity and Motion both default to 1.00.'
-    : `CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps are adjustable, with ${h3FramesTurboIsLegacy() ? '4 recommended for legacy Frames Turbo' : '6–8 recommended for Frames Turbo v4'} and 6 for Reference Turbo.`;
+    : `CFG follows the selected video model. Fixed schedules are read-only; MiniMax H3 steps stay adjustable${h3TurboUsesLightx8() ? ', with 8 recommended for LightX2V v1.0' : `, with ${h3FramesTurboIsLegacy() ? '4 recommended for legacy Frames Turbo' : '6–8 recommended for Frames Turbo v4'} and 6 for Reference Turbo`}.`;
   renderNegativePromptControl();
   if (isVideo) { renderVidAttach(); renderVidDrive(); }
   $('#loraPanel').closest('.panel').hidden = false;
@@ -12762,7 +12827,7 @@ function normalizedH3Steps(value = state.vidH3Steps) {
 
 function normalizedH3TurboSteps(value) {
   const referenceMode = h3ReferenceBackedMode();
-  const fallback = 6;
+  const fallback = h3TurboDefaultStepsForMode(referenceMode);
   const configured = value === undefined
     ? (referenceMode ? state.vidH3RefTurboSteps : state.vidH3TurboSteps)
     : value;
@@ -12777,7 +12842,11 @@ function videoStepSpecification() {
       return {
         value,
         editable: true,
-        hint: referenceMode
+        hint: h3TurboUsesLightx8()
+          ? (value === 8
+            ? `H3 Turbo LightX2V v1.0 · 8-step ${referenceMode ? 'experimental Reference' : 'quality'} setup`
+            : `H3 Turbo LightX2V v1.0 · 8 steps recommended${referenceMode ? ' · Reference is experimental' : ''}`)
+          : referenceMode
           ? (value === 6
             ? 'H3 Reference Turbo · 6-step LightX2V audio-safe setup'
             : 'H3 Reference Turbo · 6 steps is the tested audio-safe default')
@@ -12943,9 +13012,10 @@ function resetGenerationControl(control) {
     if (state.vidEngine !== 'h3') return renderVideoStepControl();
     if (h3TurboActive()) {
       const referenceMode = h3ReferenceBackedMode();
-      if (referenceMode) state.vidH3RefTurboSteps = 6;
-      else state.vidH3TurboSteps = h3FramesTurboIsLegacy() ? 4 : 6;
-      control.value = referenceMode ? 6 : state.vidH3TurboSteps;
+      const defaultSteps = h3TurboDefaultStepsForMode(referenceMode);
+      if (referenceMode) state.vidH3RefTurboSteps = defaultSteps;
+      else state.vidH3TurboSteps = defaultSteps;
+      control.value = defaultSteps;
     } else {
       state.vidH3Steps = 20;
       control.value = 20;
@@ -21346,8 +21416,8 @@ function resetActiveGenerationForm() {
     state.vidH3Turbo = false;
     state.vidH3LongContext = false;
     state.vidH3TurboStrength = 1;
-    state.vidH3TurboSteps = 6;
-    state.vidH3RefTurboSteps = 6;
+    state.vidH3TurboSteps = h3TurboDefaultStepsForMode(false);
+    state.vidH3RefTurboSteps = h3TurboDefaultStepsForMode(true);
     state.vidH3Steps = 20;
     state.vidH3RefImageSize = 'match';
     state.vidH3RefSlots = 1;
@@ -29524,7 +29594,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setLtx25VideoVae', 'setLtx25AudioVae', 'setLtx25Upscaler',
   'setLtxCameraLora', 'setLtxEditLora', 'setLtxDirectorLora', 'setLtxTe',
   'setLtxGemmaLora', 'setLtxUps', 'setFaceIdLora', 'setFaceIdDistilled',
-  'setH3FrameModelVariant', 'setH3FramesTurboVariant', 'setH3ReferenceModelVariant',
+  'setH3FrameModelVariant', 'setH3TurboSetup', 'setH3ReferenceModelVariant',
   'setH3Unet', 'setH3RefUnet', 'setH3Bf16Unet', 'setH3Bf16RefUnet', 'setH3DynTimeRefUnet', 'setH3DynTimeRefHqUnet',
   'setH3TurboLora', 'setH3RefTurboLora', 'setH3Clip', 'setH3VideoVae', 'setH3AudioVae',
   'setWanHigh', 'setWanLow', 'setWanClip', 'setWanVae', 'setWanHighLora',
@@ -29692,8 +29762,8 @@ function settingsPayload() {
     h3Bf16RefUnet: $('#setH3Bf16RefUnet').value,
     h3DynTimeRefUnet: $('#setH3DynTimeRefUnet').value,
     h3DynTimeRefHqUnet: $('#setH3DynTimeRefHqUnet').value,
-    h3TurboLora: $('#setH3TurboLora').value.trim() || H3_FRAMES_TURBO_LORAS.v4,
-    h3RefTurboLora: $('#setH3RefTurboLora').value,
+    h3TurboLora: $('#setH3TurboLora').value.trim() || H3_TURBO_SETUPS.recommended.frames,
+    h3RefTurboLora: $('#setH3RefTurboLora').value.trim() || H3_TURBO_SETUPS.recommended.reference,
     h3Clip: $('#setH3Clip').value,
     h3VideoVae: $('#setH3VideoVae').value,
     h3AudioVae: $('#setH3AudioVae').value,
@@ -33398,9 +33468,10 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setH3Bf16RefUnet').value = s.h3Bf16RefUnet || '';
     $('#setH3DynTimeRefUnet').value = s.h3DynTimeRefUnet || '';
     $('#setH3DynTimeRefHqUnet').value = s.h3DynTimeRefHqUnet || '';
-    $('#setH3TurboLora').value = s.h3TurboLora || H3_FRAMES_TURBO_LORAS.v4;
+    $('#setH3TurboLora').value = s.h3TurboLora || H3_TURBO_SETUPS.recommended.frames;
     setConfiguredH3FramesTurboLora($('#setH3TurboLora').value);
-    $('#setH3RefTurboLora').value = s.h3RefTurboLora || '';
+    $('#setH3RefTurboLora').value = s.h3RefTurboLora || H3_TURBO_SETUPS.recommended.reference;
+    setConfiguredH3ReferenceTurboLora($('#setH3RefTurboLora').value);
     $('#setH3Clip').value = s.h3Clip || '';
     $('#setH3VideoVae').value = s.h3VideoVae || '';
     $('#setH3AudioVae').value = s.h3AudioVae || '';
@@ -33466,13 +33537,15 @@ $('#setKrea2ModelVariant').addEventListener('change', () => {
     refreshModelCleanup().catch(() => {});
   });
 });
-$('#setH3FramesTurboVariant').addEventListener('change', () => {
-  const variant = $('#setH3FramesTurboVariant').value;
-  const filename = H3_FRAMES_TURBO_LORAS[variant];
-  if (!filename) return;
-  $('#setH3TurboLora').value = filename;
-  setConfiguredH3FramesTurboLora(filename);
-  state.vidH3TurboSteps = variant === 'legacy-4step' ? 4 : 6;
+$('#setH3TurboSetup').addEventListener('change', () => {
+  const setup = H3_TURBO_SETUPS[$('#setH3TurboSetup').value];
+  if (!setup) return;
+  $('#setH3TurboLora').value = setup.frames;
+  $('#setH3RefTurboLora').value = setup.reference;
+  setConfiguredH3FramesTurboLora(setup.frames);
+  setConfiguredH3ReferenceTurboLora(setup.reference);
+  state.vidH3TurboSteps = setup.framesSteps;
+  state.vidH3RefTurboSteps = setup.referenceSteps;
   renderH3TurboMode();
   renderVideoStepControl();
   updateVideoPanels();
@@ -33480,6 +33553,11 @@ $('#setH3FramesTurboVariant').addEventListener('change', () => {
 });
 $('#setH3TurboLora').addEventListener('input', (event) => {
   setConfiguredH3FramesTurboLora(event.target.value);
+  renderH3TurboMode();
+  renderVideoStepControl();
+});
+$('#setH3RefTurboLora').addEventListener('input', (event) => {
+  setConfiguredH3ReferenceTurboLora(event.target.value);
   renderH3TurboMode();
   renderVideoStepControl();
 });
@@ -35442,6 +35520,9 @@ async function loadMeta(refresh, afterRestart = false) {
     state.videoCapabilities = lastMeta.capabilities?.video || {};
     if (lastMeta.models?.h3Turbo?.lora?.name) {
       setConfiguredH3FramesTurboLora(lastMeta.models.h3Turbo.lora.name);
+    }
+    if (lastMeta.models?.h3RefTurbo?.lora?.name) {
+      setConfiguredH3ReferenceTurboLora(lastMeta.models.h3RefTurbo.lora.name);
     }
     renderFeatureVisibility();
     $('#connDot').className = 'conn-dot ' + (lastMeta.ok ? 'ok' : 'bad');
