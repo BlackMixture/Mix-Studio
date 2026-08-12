@@ -2534,10 +2534,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h16v2H4V5Zm3 6h13v2H7v-2Zm-3 6h16v2H4v-2Zm1-7h2v5H5v-5Zm11-6h2v5h-2V4Zm-5 12h2v5h-2v-5Z"/></svg><span>Defaults</span>
         </button>
         <button id="settingsTabSuggestions" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneSuggestions" data-settings-tab="suggestions" tabindex="-1">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 1 4 12.7V18H8v-3.3A7 7 0 0 1 12 2Zm-2 18h4v2h-4v-2Zm2-16a5 5 0 0 0-2.8 9.1l.8.6V16h4v-2.3l.8-.6A5 5 0 0 0 12 4Z"/></svg><span>Suggestions</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 1 4 12.7V18H8v-3.3A7 7 0 0 1 12 2Zm-2 18h4v2h-4v-2Zm2-16a5 5 0 0 0-2.8 9.1l.8.6V16h4v-2.3l.8-.6A5 5 0 0 0 12 4Z"/></svg><span>Prompting</span>
         </button>
         <button id="settingsTabAddons" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneAddons" data-settings-tab="addons" tabindex="-1">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm12.5 0a1.5 1.5 0 0 1 1.5 1.5V16h1.5a1.5 1.5 0 0 1 0 3H18v1.5a1.5 1.5 0 0 1-3 0V19h-1.5a1.5 1.5 0 0 1 0-3H15v-1.5a1.5 1.5 0 0 1 1.5-1.5Z"/></svg><span>Add-ons</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm12.5 0a1.5 1.5 0 0 1 1.5 1.5V16h1.5a1.5 1.5 0 0 1 0 3H18v1.5a1.5 1.5 0 0 1-3 0V19h-1.5a1.5 1.5 0 0 1 0-3H15v-1.5a1.5 1.5 0 0 1 1.5-1.5Z"/></svg><span>Mix Packs</span>
         </button>
         <button id="settingsTabSystem" type="button" role="tab" aria-selected="false" aria-controls="settingsPaneSystem" data-settings-tab="system" tabindex="-1">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3v2H8v-2h3v-2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v9h14V6H5Z"/></svg><span>System</span>
@@ -2549,7 +2549,7 @@
 
       <div class="settings-content">
         <section class="settings-pane active" id="settingsPaneGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-pane="general">
-          <div class="settings-pane-head"><h4>General</h4><p>Tutorial, connection, access, and installation health.</p></div>
+          <div class="settings-pane-head"><h4>General</h4><p>Guidance, early-access features, and privacy.</p></div>
           <div class="guided-tour-setting">
             <span class="guided-tour-setting-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 4h14v11H9l-4 4V4Zm3 4h8M8 11h5"/></svg>
@@ -2569,95 +2569,17 @@
             <span class="settings-media-toggle-copy"><strong>Experimental Features</strong><small>Show early-access tools and workflows that may still change.</small></span>
             <span class="settings-media-switch" aria-hidden="true"><i></i></span>
           </button>
-          <button class="generation-setup-entry" id="dependencyOpenSetup" type="button" data-state="checking" aria-describedby="generationSetupSettingsCopy">
-            <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
-            <span class="generation-setup-entry-copy"><strong>Generation setup</strong><small id="generationSetupSettingsCopy">Connection, models, and workflow requirements.</small></span>
-            <span class="generation-setup-entry-status" id="generationSetupSettingsStatus">Checking</span>
-            <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-          </button>
-          <button class="generation-setup-entry phone-access-entry" id="phoneAccessOpen" type="button" data-state="ready" aria-describedby="phoneAccessSettingsCopy">
-            <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 3h4M11 18h2"/></svg></span>
-            <span class="generation-setup-entry-copy"><strong>Phone access</strong><small id="phoneAccessSettingsCopy">Same Wi-Fi and private Tailscale access.</small></span>
-            <span class="generation-setup-entry-status" id="phoneAccessSettingsStatus">Guide</span>
-            <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-          </button>
-          <section class="spark-access-card" id="sparkAccessCard" aria-labelledby="sparkAccessTitle" hidden>
-            <div class="spark-access-head">
-              <span class="spark-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2 14 8l6 2-6 2-2 6-2-6-6-2 6-2 2-6Zm7 13 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/></svg></span>
-              <span><strong id="sparkAccessTitle">Gemini Spark</strong><small id="sparkAccessStatus">Private · not connected</small></span>
-              <span class="spark-access-badge" id="sparkAccessBadge">Off</span>
-            </div>
-            <p>Connect Spark through a secret MCP endpoint. It can check status, review recent generations, and queue images or videos. Destructive and administrative controls are not exposed.</p>
-            <div class="spark-access-url" id="sparkAccessUrl" hidden><code></code><button id="sparkAccessCopy" type="button">Copy MCP URL</button></div>
-            <div class="spark-access-actions">
-              <button class="primary" id="sparkAccessEnable" type="button">Enable Spark connection</button>
-              <button id="sparkAccessDisable" type="button" hidden>Disconnect</button>
-            </div>
-            <small class="spark-access-security">Uses Tailscale Funnel on HTTPS port 8443 and exposes only the secret MCP path—not the Mix Studio web app.</small>
-          </section>
-          <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
-          <div class="field">
-            <label>Hugging Face token</label>
-            <input id="setHfToken" type="password" autocomplete="new-password" placeholder="Paste an hf_ read token" />
-            <div class="settings-note">Gated models may require access approval and a read token.</div>
-          </div>
-          <div class="field">
-            <label>Hugging Face download endpoint</label>
-            <input id="setHfEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="Official endpoint (default)" />
-            <div class="settings-note">Optional HTTPS mirror for networks that cannot reach huggingface.co. Access tokens are never sent to a custom endpoint.</div>
-          </div>
-          <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
-          <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
-          <div class="dependency-card" id="sam3DependencyCard">
-            <div class="dependency-card-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a2 2 0 0 1 2 2v1.1A7 7 0 0 1 18.9 10H20a2 2 0 1 1 0 4h-1.1a7 7 0 0 1-4.9 4.9V20a2 2 0 1 1-4 0v-1.1A7 7 0 0 1 5.1 14H4a2 2 0 1 1 0-4h1.1A7 7 0 0 1 10 5.1V4a2 2 0 0 1 2-2Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg>
-            </div>
-            <div class="dependency-card-copy">
-              <div><strong>Smart Mask Tools</strong><span id="sam3DependencyBadge">Checking</span></div>
-              <p id="sam3DependencyStatus">Checking the SAM3 nodes used by tap and text selection…</p>
-            </div>
-            <div class="dependency-card-actions">
-              <button class="dependency-install" id="sam3DependencyInstall" type="button">Install required tools</button>
-              <button class="dependency-check" id="sam3DependencyCheck" type="button">Check again</button>
-            </div>
-          </div>
-          <div class="dependency-card dependency-manager" id="dependencyManagerCard">
-            <div class="dependency-card-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 2a8 8 0 1 1-8 8 8 8 0 0 1 8-8Zm-1 3v5.6l4 2.4 1-1.7-3-1.8V7h-2Z"/></svg>
-            </div>
-            <div class="dependency-card-copy">
-              <div><strong>Desktop Dependencies</strong><span id="dependencyManagerBadge">Checking</span></div>
-              <p id="dependencyManagerStatus">Checking every configured model and node…</p>
-            </div>
-            <div class="dependency-progress" id="dependencyProgress" hidden><span id="dependencyProgressFill"></span></div>
-            <div class="dependency-access" id="dependencyAccess" hidden>
-              <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
-              <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then paste a read token in Preferences → General → Hugging Face token.</small></span>
-              <a class="dependency-access-link" id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
-            </div>
-            <div class="dependency-selection-head" id="dependencySelectionHead" hidden>
-              <span>Choose downloads</span>
-              <button id="dependencyToggleAll" type="button">Clear</button>
-            </div>
-            <div class="dependency-missing-list" id="dependencyMissingList"></div>
-            <div class="dependency-card-actions dependency-manager-actions">
-              <button class="dependency-install" id="dependencyInstallMissing" type="button">Install missing</button>
-              <button class="dependency-cancel" id="dependencyCancelInstall" type="button" hidden>Cancel download</button>
-              <button class="dependency-check" id="dependencyRepairMissing" type="button">Repair missing tools</button>
-              <button class="dependency-check dependency-restart" id="dependencyRestartComfy" type="button" title="Restarts ComfyUI when the generation queue is idle">Restart ComfyUI</button>
-              <button class="dependency-check" id="dependencyCheckAll" type="button">Check again</button>
-            </div>
-          </div>
-          <div class="health-list" id="healthList"></div>
           <button class="settings-media-toggle analytics-toggle" id="analyticsToggle" type="button" role="switch" aria-checked="true" aria-labelledby="analyticsToggleLabel" aria-describedby="analyticsToggleStatus" hidden>
             <span class="settings-media-toggle-copy"><strong id="analyticsToggleLabel">Anonymous analytics</strong><small id="analyticsToggleStatus">On · app launches and model starts only. Never prompts, media, or screen recordings.</small></span>
             <span class="settings-media-switch" aria-hidden="true"><i></i></span>
           </button>
         </section>
 
-        <section class="settings-pane" id="settingsPaneImage" role="tabpanel" aria-labelledby="settingsTabImage" data-settings-pane="image" hidden>
-          <div class="settings-pane-head"><h4>Image Models</h4><p>Create, edit, and upscale pipelines.</p></div>
-          <div class="settings-group"><h5>Krea 2</h5>
+        <section class="settings-pane" id="settingsPaneImage" role="tabpanel" aria-labelledby="settingsTabImage" data-settings-pane="image" data-settings-disclosure-group hidden>
+          <div class="settings-pane-head"><h4>Image Models</h4><p>Choose a model family to manage its variants and files.</p></div>
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="krea2">
+            <summary class="settings-model-summary"><span class="settings-model-name">Krea 2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>Model precision</label><select id="setKrea2ModelVariant"><option value="fp8">FP8 · standard 8-bit</option><option value="int8-convrot">INT8 ConvRot · optimized 8-bit</option></select></div>
             <div class="field"><label>Turbo UNET</label><input id="setUnet" type="text" /></div>
             <div class="field"><label>Raw UNET</label><input id="setKrea2RawUnet" type="text" /></div>
@@ -2667,8 +2589,11 @@
             <div class="field"><label>Depth Anything V3 model</label><input id="setDepthAnythingV3Model" type="text" /></div>
             <div class="field"><label>Text encoder (CLIP)</label><input id="setClip" type="text" /></div>
             <div class="field"><label>VAE</label><input id="setVae" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>Flux 2 Klein Edit</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="klein">
+            <summary class="settings-model-summary"><span class="settings-model-name">Flux 2 Klein Edit</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>Klein 4B diffusion model (.safetensors or .gguf)</label><input id="setKlein4Unet" type="text" /></div>
             <div class="field"><label>Klein 4B text encoder</label><input id="setKlein4Clip" type="text" /></div>
             <div class="field"><label>Klein 4B Expand consistency LoRA</label><input id="setKlein4ConsistencyLora" type="text" /></div>
@@ -2678,22 +2603,29 @@
             <div class="field"><label>Klein 9B Expand consistency LoRA</label><input id="setKlein9ConsistencyLora" type="text" /></div>
             <div class="field"><label>Klein 9B consistency trigger</label><input id="setKlein9ConsistencyTrigger" type="text" /></div>
             <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>Qwen Image Edit</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="qwen">
+            <summary class="settings-model-summary"><span class="settings-model-name">Qwen Image Edit</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>Qwen edit diffusion model (.safetensors or .gguf)</label><input id="setQeUnet" type="text" /></div>
             <div class="field"><label>Qwen edit text encoder</label><input id="setQeClip" type="text" /></div>
             <div class="field"><label>Lightning LoRA</label><input id="setQeLora" type="text" /></div>
             <div class="field"><label>Multiple Angles LoRA</label><input id="setQeAnglesLora" type="text" /></div>
-          </div>
-          <div class="settings-group"><h5>SeedVR2 Upscale</h5>
+            </div>
+          </details>
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="seedvr2">
+            <summary class="settings-model-summary"><span class="settings-model-name">SeedVR2 Upscale</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
             <div class="field"><label>SeedVR2 DiT model</label><input id="setDit" type="text" /></div>
             <div class="field"><label>SeedVR2 VAE</label><input id="setSvVae" type="text" /></div>
-          </div>
+            </div>
+          </details>
         </section>
 
-        <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" hidden>
+        <section class="settings-pane" id="settingsPaneVideo" role="tabpanel" aria-labelledby="settingsTabVideo" data-settings-pane="video" data-settings-disclosure-group hidden>
           <div class="settings-pane-head"><h4>Video Models</h4><p>Choose a model family to manage its variants and files.</p></div>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="ltx25">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="ltx25">
             <summary class="settings-model-summary"><span class="settings-model-name">LTX 2.5</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <p class="settings-default-note">Fast uses the distilled INT8 workflow. Quality uses the full BF16 Dev model with native guidance and a distilled high-resolution refinement pass.</p>
@@ -2708,7 +2640,7 @@
             <div class="field"><label>Spatial upscaler</label><input id="setLtx25Upscaler" type="text" /></div>
             </div>
           </details>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="ltx23">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="ltx23">
             <summary class="settings-model-summary"><span class="settings-model-name">LTX 2.3 &amp; Face ID</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <div class="field"><label>LTX checkpoint</label><input id="setLtxCkpt" type="text" /></div>
@@ -2723,7 +2655,7 @@
             <div class="field"><label>Face ID distilled LoRA</label><input id="setFaceIdDistilled" type="text" /></div>
             </div>
           </details>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="h3">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="h3">
             <summary class="settings-model-summary"><span class="settings-model-name">MiniMax H3</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <p class="settings-default-note">The standard pruned INT8 models remain the default. Full BF16 needs unusually large memory; DynTime modifies three ComfyUI core files only after explicit setup and keeps verified backups.</p>
@@ -2770,7 +2702,7 @@
             </details>
             </div>
           </details>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="wan22">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="wan22">
             <summary class="settings-model-summary"><span class="settings-model-name">Wan 2.2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <div class="field"><label>High-noise diffusion model (.safetensors or .gguf)</label><input id="setWanHigh" type="text" /></div>
@@ -2781,7 +2713,7 @@
             <div class="field"><label>lightx2v low LoRA</label><input id="setWanLowLora" type="text" /></div>
             </div>
           </details>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="eros">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="eros">
             <summary class="settings-model-summary"><span class="settings-model-name">10Eros DMD</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <div class="field"><label>10Eros checkpoint</label><input id="setErosCkpt" type="text" /></div>
@@ -2791,7 +2723,7 @@
             <div class="field"><label>Custom sigmas — upscale pass</label><input id="setErosSigU" type="text" placeholder="e.g. 0.92, 0.725, 0.42, 0.0" /></div>
             </div>
           </details>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="scail">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="scail">
             <summary class="settings-model-summary"><span class="settings-model-name">SCAIL 2 Motion Transfer</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <div class="field"><label>SCAIL-2 diffusion model (.safetensors or .gguf)</label><input id="setScailUnet" type="text" /></div>
@@ -2801,7 +2733,7 @@
             <div class="field"><label>SAM3 checkpoint</label><input id="setScailSam" type="text" /></div>
             </div>
           </details>
-          <details class="settings-group settings-model-disclosure" data-video-model-section="wan-animate2">
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="wan-animate2">
             <summary class="settings-model-summary"><span class="settings-model-name">Wan Animate 2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
             <div class="field"><label>Animate 2 diffusion model</label><input id="setWanAnimate2Unet" type="text" /></div>
@@ -2811,53 +2743,219 @@
             <div class="field"><label>Wan 2.1 BF16 VAE</label><input id="setWanAnimate2Vae" type="text" /></div>
             </div>
           </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="video-post-processing">
+            <summary class="settings-preference-summary">
+              <span class="settings-preference-summary-copy"><strong>Post-processing</strong><small>SeedVR2 upscaling performance</small></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+            </summary>
+            <div class="settings-preference-body">
+              <div class="field">
+                <label>SeedVR2 attention</label>
+                <div class="settings-choice" id="svAttnPicker">
+                  <input id="setSvAttn" type="hidden" value="sdpa" />
+                  <button class="settings-choice-trigger" id="svAttnTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="svAttnList">
+                    <span><strong id="svAttnLabel">SDPA</strong><small id="svAttnDescription">Safest · no extra DLLs</small></span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+                  </button>
+                  <div class="settings-choice-list" id="svAttnList" role="listbox" aria-label="SeedVR2 attention" aria-hidden="true" inert>
+                    <button type="button" role="option" aria-selected="true" data-attention="sdpa"><span><b>SDPA</b><small>Safest · no extra DLLs</small></span><i>✓</i></button>
+                    <button type="button" role="option" aria-selected="false" data-attention="sageattn_2"><span><b>SageAttention 2</b><small>Faster · requires Triton</small></span><i>✓</i></button>
+                    <button type="button" role="option" aria-selected="false" data-attention="sageattn_3"><span><b>SageAttention 3</b><small>RTX 50-series only</small></span><i>✓</i></button>
+                    <button type="button" role="option" aria-selected="false" data-attention="flash_attn_2"><span><b>Flash Attention 2</b><small>Flash Attention compatible GPUs</small></span><i>✓</i></button>
+                    <button type="button" role="option" aria-selected="false" data-attention="flash_attn_3"><span><b>Flash Attention 3</b><small>Hopper generation and newer</small></span><i>✓</i></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
         </section>
 
-        <section class="settings-pane" id="settingsPaneDefaults" role="tabpanel" aria-labelledby="settingsTabDefaults" data-settings-pane="defaults" hidden>
-          <div class="settings-pane-head"><h4>Generation Defaults</h4><p>Starting values for this profile. Individual generations can still override them.</p></div>
-          <div class="settings-group"><h5>Seed</h5>
-            <div class="settings-segment" id="defaultSeedMode"><button class="active" type="button" data-seed-mode="random">Random</button><button type="button" data-seed-mode="fixed">Fixed</button></div>
-            <div class="field" id="defaultSeedValueField" hidden><label>Fixed seed</label><input id="defaultSeedValue" type="number" min="0" step="1" value="0" /></div>
-          </div>
-          <div class="settings-group settings-default-grid"><h5>Create Image</h5>
-            <div class="field"><label>Steps</label><input id="defaultCreateSteps" type="number" min="1" max="100" value="12" /></div>
-            <div class="field"><label>CFG</label><input id="defaultCreateCfg" type="number" min="0" max="30" step="0.1" value="1" /></div>
-            <div class="field"><label>Batch</label><input id="defaultCreateBatch" type="number" min="1" max="8" value="1" /></div>
-          </div>
-          <div class="settings-group settings-default-grid"><h5>Edit Image</h5>
-            <div class="field"><label>Steps</label><input id="defaultEditSteps" type="number" min="1" max="100" value="4" /></div>
-            <div class="field"><label>CFG</label><input id="defaultEditCfg" type="number" min="0" max="30" step="0.1" value="1" /></div>
-            <div class="field"><label>Batch</label><input id="defaultEditBatch" type="number" min="1" max="8" value="1" /></div>
-            <div class="field"><label>Denoise</label><input id="defaultEditDenoise" type="number" min="0.1" max="1" step="0.05" value="0.4" /></div>
-          </div>
-          <div class="settings-group settings-default-grid"><h5>Krea 2 Edit</h5>
-            <p class="settings-default-note">Applied when switching to Krea 2 Edit. Recommended: 10 steps · CFG 1.</p>
-            <div class="field"><label>Steps</label><input id="defaultKrea2EditSteps" type="number" min="8" max="12" step="1" value="10" /></div>
-            <div class="field"><label>CFG</label><input id="defaultKrea2EditCfg" type="number" min="1" max="5" step="0.1" value="1" /></div>
-          </div>
-          <div class="settings-group"><h5>Visual Presets</h5>
-            <button class="settings-media-toggle" id="defaultPresetVisualTreatment" type="button" role="switch" aria-checked="false">
-              <span class="settings-media-toggle-copy"><strong>Use “Visual treatment:” format</strong><small>Send the scene first, followed by “Visual treatment:” and the selected preset. Off keeps the original direct prompt format.</small></span>
-              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-            </button>
-            <button class="settings-media-toggle" id="defaultPresetCards" type="button" role="switch" aria-checked="true">
-              <span class="settings-media-toggle-copy"><strong>Show preset cards in prompts</strong><small>Display applied looks as thumbnail cards. Off shows the full preset wording without changing what is generated.</small></span>
-              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-            </button>
-          </div>
-          <div class="settings-group settings-default-grid"><h5>Video</h5>
-            <div class="field"><label>Duration</label><input id="defaultVideoDuration" type="number" min="1" max="60" step="0.1" value="5" /></div>
-            <div class="field"><label>Motion freedom</label><input id="defaultVideoMotion" type="number" min="0" max="100" value="35" /></div>
-          </div>
+        <section class="settings-pane" id="settingsPaneDefaults" role="tabpanel" aria-labelledby="settingsTabDefaults" data-settings-pane="defaults" data-settings-disclosure-group hidden>
+          <div class="settings-pane-head"><h4>Generation Defaults</h4><p>Starting values for this profile. Open a section to make changes.</p></div>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="defaults-seed">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Seed</strong><small id="defaultSeedSummary">Random</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <div class="settings-segment" id="defaultSeedMode"><button class="active" type="button" data-seed-mode="random">Random</button><button type="button" data-seed-mode="fixed">Fixed</button></div>
+              <div class="field" id="defaultSeedValueField" hidden><label>Fixed seed</label><input id="defaultSeedValue" type="number" min="0" step="1" value="0" /></div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="defaults-create">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Create Image</strong><small id="defaultCreateSummary">12 steps · CFG 1 · Batch 1</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body settings-default-grid">
+              <div class="field"><label>Steps</label><input id="defaultCreateSteps" type="number" min="1" max="100" value="12" /></div>
+              <div class="field"><label>CFG</label><input id="defaultCreateCfg" type="number" min="0" max="30" step="0.1" value="1" /></div>
+              <div class="field"><label>Batch</label><input id="defaultCreateBatch" type="number" min="1" max="8" value="1" /></div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="defaults-edit">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Edit Image</strong><small id="defaultEditSummary">4 steps · CFG 1 · Batch 1</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <div class="settings-default-grid">
+                <div class="field"><label>Steps</label><input id="defaultEditSteps" type="number" min="1" max="100" value="4" /></div>
+                <div class="field"><label>CFG</label><input id="defaultEditCfg" type="number" min="0" max="30" step="0.1" value="1" /></div>
+                <div class="field"><label>Batch</label><input id="defaultEditBatch" type="number" min="1" max="8" value="1" /></div>
+                <div class="field"><label>Denoise</label><input id="defaultEditDenoise" type="number" min="0.1" max="1" step="0.05" value="0.4" /></div>
+              </div>
+              <div class="settings-default-subsection">
+                <h5>Krea 2 Edit override</h5>
+                <p class="settings-default-note">Applied when switching to Krea 2 Edit. Recommended: 10 steps · CFG 1.</p>
+                <div class="settings-default-grid">
+                  <div class="field"><label>Steps</label><input id="defaultKrea2EditSteps" type="number" min="8" max="12" step="1" value="10" /></div>
+                  <div class="field"><label>CFG</label><input id="defaultKrea2EditCfg" type="number" min="1" max="5" step="0.1" value="1" /></div>
+                </div>
+              </div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="defaults-video">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Video</strong><small id="defaultVideoSummary">5 seconds · Motion 35</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body settings-default-grid">
+              <div class="field"><label>Duration</label><input id="defaultVideoDuration" type="number" min="1" max="60" step="0.1" value="5" /></div>
+              <div class="field"><label>Motion freedom</label><input id="defaultVideoMotion" type="number" min="0" max="100" value="35" /></div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="defaults-prompt-appearance">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Prompt Appearance</strong><small id="defaultPresetSummary">Preset cards on</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <button class="settings-media-toggle" id="defaultPresetVisualTreatment" type="button" role="switch" aria-checked="false">
+                <span class="settings-media-toggle-copy"><strong>Use “Visual treatment:” format</strong><small>Send the scene first, followed by “Visual treatment:” and the selected preset. Off keeps the original direct prompt format.</small></span>
+                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+              </button>
+              <button class="settings-media-toggle" id="defaultPresetCards" type="button" role="switch" aria-checked="true">
+                <span class="settings-media-toggle-copy"><strong>Show preset cards in prompts</strong><small>Display applied looks as thumbnail cards. Off shows the full preset wording without changing what is generated.</small></span>
+                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+              </button>
+            </div>
+          </details>
         </section>
 
-        <section class="settings-pane" id="settingsPaneSuggestions" role="tabpanel" aria-labelledby="settingsTabSuggestions" data-settings-pane="suggestions" hidden>
-          <div class="settings-pane-head"><h4>Contextual Suggestions</h4><p>Edit the prompt phrase and default strength learned for each LoRA, or disable its suggestion.</p></div>
-          <div class="context-preference-list" id="contextPreferenceList"></div>
+        <section class="settings-pane" id="settingsPaneSuggestions" role="tabpanel" aria-labelledby="settingsTabSuggestions" data-settings-pane="suggestions" data-settings-disclosure-group hidden>
+          <div class="settings-pane-head"><h4>Prompting</h4><p>Prompt models, external routing, LoRA suggestions, and enhancement instructions.</p></div>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-local">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Local Prompt AI</strong><small id="localPromptAiSummary">ComfyUI prompt model</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body local-prompt-ai-settings" id="localPromptAiSettings">
+              <p class="settings-default-note">Choose the ComfyUI text encoder used for local Revise Prompt and Prompt Enhance. Generation models remain unchanged.</p>
+              <div class="field">
+                <label for="setLocalPromptAiClip">Prompt model</label>
+                <select id="setLocalPromptAiClip" aria-describedby="localPromptAiHint">
+                  <option value="">Automatic · Krea 2 prompt model</option>
+                </select>
+              </div>
+              <div class="field" id="localPromptAiClipTypeField">
+                <label for="setLocalPromptAiClipType">Loader type</label>
+                <select id="setLocalPromptAiClipType">
+                  <option value="krea2">Krea 2 / Qwen3-VL</option>
+                </select>
+              </div>
+              <p class="local-prompt-ai-hint" id="localPromptAiHint">Vision-capable Qwen3-VL models are recommended for frame- and reference-aware prompts.</p>
+              <div class="local-prompt-ai-actions">
+                <button class="settings-cache-clear" id="refreshLocalPromptAiModels" type="button">Refresh models</button>
+                <button class="settings-cache-clear" id="testLocalPromptAiModel" type="button">Test model</button>
+                <span id="localPromptAiStatus" role="status" aria-live="polite">Loading installed models…</span>
+              </div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-external">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>External Prompt AI</strong><small id="externalPromptAiSummary">Optional provider overrides</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body external-llm-settings" id="externalLlmSettings">
+              <p class="settings-default-note">Use one shared provider for prompt revision and enhancement. API keys stay on this Mix Studio server and are never returned to the browser.</p>
+              <div class="field">
+                <label for="setExternalLlmProvider">Provider</label>
+                <select id="setExternalLlmProvider">
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="ollama">Ollama</option>
+                </select>
+              </div>
+              <div class="external-llm-provider" data-external-llm-provider="openai">
+                <div class="field">
+                  <label for="setExternalLlmOpenAiModel">OpenAI model</label>
+                  <input id="setExternalLlmOpenAiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-5.6-luna" />
+                </div>
+                <div class="field">
+                  <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
+                  <div class="external-llm-secret-row">
+                    <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                    <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
+                  </div>
+                </div>
+              </div>
+              <div class="external-llm-provider" data-external-llm-provider="gemini" hidden>
+                <div class="field">
+                  <label for="setExternalLlmGeminiModel">Gemini model</label>
+                  <input id="setExternalLlmGeminiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemini-3.6-flash" />
+                </div>
+                <div class="field">
+                  <label for="setExternalLlmGeminiApiKey">Gemini API key</label>
+                  <div class="external-llm-secret-row">
+                    <input id="setExternalLlmGeminiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                    <button class="settings-cache-clear" id="clearExternalLlmGeminiApiKey" type="button" hidden>Clear</button>
+                  </div>
+                </div>
+              </div>
+              <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
+                <div class="field">
+                  <label for="setExternalLlmOllamaUrl">Ollama URL</label>
+                  <input id="setExternalLlmOllamaUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434" />
+                </div>
+                <div class="field">
+                  <label for="setExternalLlmOllamaModel">Ollama model</label>
+                  <input id="setExternalLlmOllamaModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemma3" />
+                </div>
+              </div>
+              <div class="external-llm-routing">
+                <h6>Use external AI for</h6>
+                <button class="settings-media-toggle" id="externalLlmImageRevise" type="button" role="switch" aria-checked="false">
+                  <span class="settings-media-toggle-copy"><strong>Image · Revise Prompt</strong><small>Rewrite image prompts with the selected provider.</small></span>
+                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+                </button>
+                <button class="settings-media-toggle" id="externalLlmImageEnhance" type="button" role="switch" aria-checked="false">
+                  <span class="settings-media-toggle-copy"><strong>Image · Prompt Enhance</strong><small>Enhance global and regional image prompts externally.</small></span>
+                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+                </button>
+                <button class="settings-media-toggle" id="externalLlmVideoRevise" type="button" role="switch" aria-checked="false">
+                  <span class="settings-media-toggle-copy"><strong>Video · Revise Prompt</strong><small>Rewrite video prompts with the selected provider.</small></span>
+                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+                </button>
+                <button class="settings-media-toggle" id="externalLlmVideoEnhance" type="button" role="switch" aria-checked="false">
+                  <span class="settings-media-toggle-copy"><strong>Video · Prompt Enhance</strong><small>Use the provider before building H3, LTX, Wan, Eros, and SCAIL graphs.</small></span>
+                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+                </button>
+              </div>
+              <p class="external-llm-privacy">When visual context is enabled, prompt text and the selected reference image are sent to the chosen provider. Ollama remains local when its URL points to this computer.</p>
+              <div class="external-llm-test-row">
+                <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
+                <span id="externalLlmStatus" role="status" aria-live="polite"></span>
+              </div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-suggestions">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>LoRA Suggestions</strong><small id="contextPreferenceSummary">Learned prompt phrases and strengths</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <div class="context-preference-tools" id="contextPreferenceTools" hidden>
+                <label class="context-preference-search"><span>Search suggestions</span><input id="contextPreferenceSearch" type="search" autocomplete="off" placeholder="Search LoRAs…" /></label>
+                <div class="settings-segment context-preference-filter" id="contextPreferenceFilter" aria-label="Suggestion status">
+                  <button class="active" type="button" data-context-filter="all">All</button>
+                  <button type="button" data-context-filter="enabled">On</button>
+                  <button type="button" data-context-filter="disabled">Off</button>
+                </div>
+                <label class="context-preference-sort"><span>Sort</span><select id="contextPreferenceSort"><option value="uses">Most used</option><option value="name">Name</option></select></label>
+              </div>
+              <div class="context-preference-list" id="contextPreferenceList"></div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-advanced">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Advanced Instructions</strong><small>Prompt-enhance system prompt</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <div class="field">
+                <label>Prompt-enhance system prompt</label>
+                <textarea class="settings-system-prompt" id="setSysPrompt" rows="12"></textarea>
+              </div>
+            </div>
+          </details>
         </section>
 
         <section class="settings-pane addons-pane" id="settingsPaneAddons" role="tabpanel" aria-labelledby="settingsTabAddons" data-settings-pane="addons" hidden>
-          <div class="settings-pane-head"><h4>Add-ons</h4><p>Install visual preset packs with thumbnails and prompt styles. Packs are available to every profile on this Mix Studio.</p></div>
+          <div class="settings-pane-head"><h4>Mix Packs</h4><p>Install visual preset packs with thumbnails and prompt styles. Packs are available to every profile on this Mix Studio.</p></div>
           <input id="addonFileInput" type="file" accept=".mixpack" multiple hidden />
           <div class="addon-drop-zone" id="addonDropZone" role="button" tabindex="0" aria-describedby="addonDropNote">
             <span class="addon-drop-icon" aria-hidden="true">
@@ -2902,8 +3000,8 @@
           <div class="addon-pack-list" id="addonPackList"></div>
         </section>
 
-        <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" hidden>
-          <div class="settings-pane-head"><h4>System</h4><p>Runtime, storage, and prompt enhancement.</p></div>
+        <section class="settings-pane" id="settingsPaneSystem" role="tabpanel" aria-labelledby="settingsTabSystem" data-settings-pane="system" data-settings-disclosure-group hidden>
+          <div class="settings-pane-head"><h4>System</h4><p>Setup, connections, runtime, storage, and maintenance.</p></div>
           <button class="settings-group settings-update-info" id="settingsUpdatesBtn" type="button" data-state="checking" aria-label="Open release updates">
             <span class="settings-update-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg>
@@ -2911,9 +3009,110 @@
             <span class="settings-update-copy"><small>Release updates</small><strong id="settingsUpdatesStatus">Checking official releases…</strong></span>
             <span class="settings-update-requirement"><span>Installed <b id="settingsAppVersion">Loading…</b></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
           </button>
-          <div class="settings-group hardware-group">
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="system-installation">
+            <summary class="settings-preference-summary">
+              <span class="settings-preference-summary-copy"><strong>Generation Setup</strong><small id="systemInstallationSummary">Checking generation setup…</small></span>
+              <span class="settings-preference-summary-tail"><span class="settings-preference-state" id="systemInstallationState">Checking</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></span>
+            </summary>
+            <div class="settings-preference-body">
+              <button class="generation-setup-entry" id="dependencyOpenSetup" type="button" data-state="checking" aria-describedby="generationSetupSettingsCopy">
+                <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 16h6M12 17v3"/><path d="M8 9h8M8 12h5"/></svg></span>
+                <span class="generation-setup-entry-copy"><strong>Generation setup</strong><small id="generationSetupSettingsCopy">Connection, models, and workflow requirements.</small></span>
+                <span class="generation-setup-entry-status" id="generationSetupSettingsStatus">Checking</span>
+                <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+              <div class="settings-preference-subsection">
+                <h5>Download access</h5>
+                <div class="field">
+                  <label>Hugging Face token</label>
+                  <input id="setHfToken" type="password" autocomplete="new-password" placeholder="Paste an hf_ read token" />
+                  <div class="settings-note">Gated models may require access approval and a read token.</div>
+                </div>
+                <div class="field">
+                  <label>Hugging Face download endpoint</label>
+                  <input id="setHfEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="Official endpoint (default)" />
+                  <div class="settings-note">Optional HTTPS mirror for networks that cannot reach huggingface.co. Access tokens are never sent to a custom endpoint.</div>
+                </div>
+              </div>
+              <div class="settings-preference-subsection">
+                <h5>Managed dependencies</h5>
+                <div class="dependency-card" id="sam3DependencyCard">
+                  <div class="dependency-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a2 2 0 0 1 2 2v1.1A7 7 0 0 1 18.9 10H20a2 2 0 1 1 0 4h-1.1a7 7 0 0 1-4.9 4.9V20a2 2 0 1 1-4 0v-1.1A7 7 0 0 1 5.1 14H4a2 2 0 1 1 0-4h1.1A7 7 0 0 1 10 5.1V4a2 2 0 0 1 2-2Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg>
+                  </div>
+                  <div class="dependency-card-copy">
+                    <div><strong>Smart Mask Tools</strong><span id="sam3DependencyBadge">Checking</span></div>
+                    <p id="sam3DependencyStatus">Checking the SAM3 nodes used by tap and text selection…</p>
+                  </div>
+                  <div class="dependency-card-actions">
+                    <button class="dependency-install" id="sam3DependencyInstall" type="button">Install required tools</button>
+                    <button class="dependency-check" id="sam3DependencyCheck" type="button">Check again</button>
+                  </div>
+                </div>
+                <div class="dependency-card dependency-manager" id="dependencyManagerCard">
+                  <div class="dependency-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 2a8 8 0 1 1-8 8 8 8 0 0 1 8-8Zm-1 3v5.6l4 2.4 1-1.7-3-1.8V7h-2Z"/></svg>
+                  </div>
+                  <div class="dependency-card-copy">
+                    <div><strong>Desktop Dependencies</strong><span id="dependencyManagerBadge">Checking</span></div>
+                    <p id="dependencyManagerStatus">Checking every configured model and node…</p>
+                  </div>
+                  <div class="dependency-progress" id="dependencyProgress" hidden><span id="dependencyProgressFill"></span></div>
+                  <div class="dependency-access" id="dependencyAccess" hidden>
+                    <span class="dependency-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10Zm6 4v2"/></svg></span>
+                    <span class="dependency-access-copy"><strong>Hugging Face access required</strong><small>Accept the model license, then paste a read token in Preferences → System → Installation &amp; Downloads.</small></span>
+                    <a class="dependency-access-link" id="dependencyAccessLink" target="_blank" rel="noopener noreferrer"><span>Open model page</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M13 11l6-6M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg></a>
+                  </div>
+                  <div class="dependency-selection-head" id="dependencySelectionHead" hidden>
+                    <span>Choose downloads</span>
+                    <button id="dependencyToggleAll" type="button">Clear</button>
+                  </div>
+                  <div class="dependency-missing-list" id="dependencyMissingList"></div>
+                  <div class="dependency-card-actions dependency-manager-actions">
+                    <button class="dependency-install" id="dependencyInstallMissing" type="button">Install missing</button>
+                    <button class="dependency-cancel" id="dependencyCancelInstall" type="button" hidden>Cancel download</button>
+                    <button class="dependency-check" id="dependencyRepairMissing" type="button">Repair missing tools</button>
+                    <button class="dependency-check dependency-restart" id="dependencyRestartComfy" type="button" title="Restarts ComfyUI when the generation queue is idle">Restart ComfyUI</button>
+                    <button class="dependency-check" id="dependencyCheckAll" type="button">Check again</button>
+                  </div>
+                </div>
+                <div class="health-list" id="healthList"></div>
+                <div class="settings-note">Model names must match the files installed in your ComfyUI folders.</div>
+              </div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="system-access">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Connection &amp; Access</strong><small>ComfyUI, phone, private tools, and gallery security</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <div class="field"><label>ComfyUI URL</label><input id="setComfy" type="text" /></div>
+              <button class="generation-setup-entry phone-access-entry" id="phoneAccessOpen" type="button" data-state="ready" aria-describedby="phoneAccessSettingsCopy">
+                <span class="generation-setup-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 3h4M11 18h2"/></svg></span>
+                <span class="generation-setup-entry-copy"><strong>Phone access</strong><small id="phoneAccessSettingsCopy">Same Wi-Fi and private Tailscale access.</small></span>
+                <span class="generation-setup-entry-status" id="phoneAccessSettingsStatus">Guide</span>
+                <svg class="generation-setup-entry-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+              <section class="spark-access-card" id="sparkAccessCard" aria-labelledby="sparkAccessTitle" hidden>
+                <div class="spark-access-head">
+                  <span class="spark-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2 14 8l6 2-6 2-2 6-2-6-6-2 6-2 2-6Zm7 13 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/></svg></span>
+                  <span><strong id="sparkAccessTitle">Gemini Spark</strong><small id="sparkAccessStatus">Private · not connected</small></span>
+                  <span class="spark-access-badge" id="sparkAccessBadge">Off</span>
+                </div>
+                <p>Connect Spark through a secret MCP endpoint. It can check status, review recent generations, and queue images or videos. Destructive and administrative controls are not exposed.</p>
+                <div class="spark-access-url" id="sparkAccessUrl" hidden><code></code><button id="sparkAccessCopy" type="button">Copy MCP URL</button></div>
+                <div class="spark-access-actions">
+                  <button class="primary" id="sparkAccessEnable" type="button">Enable Spark connection</button>
+                  <button id="sparkAccessDisable" type="button" hidden>Disconnect</button>
+                </div>
+                <small class="spark-access-security">Uses Tailscale Funnel on HTTPS port 8443 and exposes only the secret MCP path—not the Mix Studio web app.</small>
+              </section>
+              <div class="field"><label>Gallery password</label><input id="galleryPasswordInput" type="password" value="1234" autocomplete="new-password" /></div>
+            </div>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="system-hardware">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Hardware &amp; Runtime</strong><small id="systemHardwareSummary">GPU, memory, storage, and ComfyUI runtime</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body hardware-group">
             <div class="hardware-group-head">
-              <h5>Hardware</h5>
+              <h5>System profile</h5>
               <button class="hardware-refresh" id="hardwareRefresh" type="button" aria-label="Refresh hardware information" title="Refresh hardware information">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.2-2.1L20 10M4 14l2.7 3.1A7 7 0 0 0 17.9 15"/></svg>
               </button>
@@ -2949,33 +3148,37 @@
                 <option value="standard">Standard · 16 GB+</option>
               </select>
             </label>
-            <div class="export-location" id="exportLocationControl">
-              <div class="export-location-heading">
-                <span class="export-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
-                <span><strong>Default save folder</strong><small>Save a computer-side copy while keeping normal device downloads.</small></span>
-              </div>
-              <div class="export-location-editor">
-                <input id="exportDirectory" type="text" autocomplete="off" spellcheck="false" placeholder="D:\Mix Studio Exports" aria-label="Default save folder path" />
-                <button id="exportDirectoryApply" type="button">Apply</button>
-                <button id="exportDirectoryClear" type="button" aria-label="Clear default save folder" title="Use browser downloads only">×</button>
-              </div>
-              <p class="export-location-status" id="exportDirectoryStatus" role="status" aria-live="polite">Browser downloads only</p>
             </div>
-          </div>
-          <div class="settings-group"><h5>File naming</h5>
+          </details>
+          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="system-storage">
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Storage &amp; Maintenance</strong><small>Exports, file names, previews, models, and trash</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-preference-body">
+              <div class="export-location" id="exportLocationControl">
+                <div class="export-location-heading">
+                  <span class="export-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
+                  <span><strong>Default save folder</strong><small>Save a computer-side copy while keeping normal device downloads.</small></span>
+                </div>
+                <div class="export-location-editor">
+                  <input id="exportDirectory" type="text" autocomplete="off" spellcheck="false" placeholder="D:\Mix Studio Exports" aria-label="Default save folder path" />
+                  <button id="exportDirectoryApply" type="button">Apply</button>
+                  <button id="exportDirectoryClear" type="button" aria-label="Clear default save folder" title="Use browser downloads only">×</button>
+                </div>
+                <p class="export-location-status" id="exportDirectoryStatus" role="status" aria-live="polite">Browser downloads only</p>
+              </div>
+              <div class="settings-preference-subsection"><h5>File naming</h5>
             <button class="settings-media-toggle" id="setSmartFilenames" type="button" role="switch" aria-checked="true">
               <span class="settings-media-toggle-copy"><strong>Smart file names</strong><small>Use a short phrase from the prompt for new image and video files. A short ID prevents duplicates.</small></span>
               <span class="settings-media-switch" aria-hidden="true"><i></i></span>
             </button>
-          </div>
-          <div class="settings-group model-cleanup" id="modelCleanup" hidden>
+              </div>
+              <div class="settings-preference-subsection model-cleanup" id="modelCleanup" hidden>
             <h5>Model cleanup</h5>
             <p class="settings-default-note">Review inactive model files installed from Mix Studio’s managed catalog. Active models and unrelated ComfyUI files are never listed.</p>
             <div class="model-cleanup-summary" id="modelCleanupSummary">Checking managed models…</div>
             <div class="model-cleanup-list" id="modelCleanupList"></div>
             <button class="settings-cache-clear" id="modelCleanupRefresh" type="button">Refresh model list</button>
-          </div>
-          <div class="settings-group">
+              </div>
+              <div class="settings-preference-subsection">
             <h5>Gallery performance</h5>
             <button class="settings-media-toggle" id="setVideoPreviews" type="button" role="switch" aria-checked="true">
               <span class="settings-media-toggle-copy"><strong>Video previews</strong><small>Play muted video previews while they are centered in the gallery.</small></span>
@@ -3012,129 +3215,16 @@
             </button>
             <div class="media-cache-status" id="previewCacheStatus" role="status" aria-live="polite">Off · no background preview work</div>
             <button class="settings-cache-clear" id="previewCacheClear" type="button" disabled>Clear preview cache</button>
-          </div>
-          <div class="settings-group trash-management" id="trashManagement" hidden>
+              </div>
+              <div class="settings-preference-subsection trash-management" id="trashManagement" hidden>
             <h5>Trash</h5>
             <div class="trash-management-row">
               <span><strong>Deleted files</strong><small id="trashStatus">Checking Mix Studio trash...</small></span>
               <button class="settings-cache-clear trash-empty" id="trashEmpty" type="button" disabled>Empty trash</button>
             </div>
-          </div>
-          <div class="settings-group local-prompt-ai-settings" id="localPromptAiSettings">
-            <h5>Local prompt AI</h5>
-            <p class="settings-default-note">Choose the ComfyUI text encoder used for local Revise Prompt and Prompt Enhance. Generation models remain unchanged.</p>
-            <div class="field">
-              <label for="setLocalPromptAiClip">Prompt model</label>
-              <select id="setLocalPromptAiClip" aria-describedby="localPromptAiHint">
-                <option value="">Automatic · Krea 2 prompt model</option>
-              </select>
-            </div>
-            <div class="field" id="localPromptAiClipTypeField">
-              <label for="setLocalPromptAiClipType">Loader type</label>
-              <select id="setLocalPromptAiClipType">
-                <option value="krea2">Krea 2 / Qwen3-VL</option>
-              </select>
-            </div>
-            <p class="local-prompt-ai-hint" id="localPromptAiHint">Vision-capable Qwen3-VL models are recommended for frame- and reference-aware prompts.</p>
-            <div class="local-prompt-ai-actions">
-              <button class="settings-cache-clear" id="refreshLocalPromptAiModels" type="button">Refresh models</button>
-              <button class="settings-cache-clear" id="testLocalPromptAiModel" type="button">Test model</button>
-              <span id="localPromptAiStatus" role="status" aria-live="polite">Loading installed models…</span>
-            </div>
-          </div>
-          <div class="settings-group external-llm-settings" id="externalLlmSettings">
-            <h5>External prompt AI</h5>
-            <p class="settings-default-note">Use one shared provider for prompt revision and enhancement. API keys stay on this Mix Studio server and are never returned to the browser.</p>
-            <div class="field">
-              <label for="setExternalLlmProvider">Provider</label>
-              <select id="setExternalLlmProvider">
-                <option value="openai">OpenAI</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="ollama">Ollama</option>
-              </select>
-            </div>
-            <div class="external-llm-provider" data-external-llm-provider="openai">
-              <div class="field">
-                <label for="setExternalLlmOpenAiModel">OpenAI model</label>
-                <input id="setExternalLlmOpenAiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-5.6-luna" />
-              </div>
-              <div class="field">
-                <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
-                <div class="external-llm-secret-row">
-                  <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
-                  <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
-                </div>
               </div>
             </div>
-            <div class="external-llm-provider" data-external-llm-provider="gemini" hidden>
-              <div class="field">
-                <label for="setExternalLlmGeminiModel">Gemini model</label>
-                <input id="setExternalLlmGeminiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemini-3.6-flash" />
-              </div>
-              <div class="field">
-                <label for="setExternalLlmGeminiApiKey">Gemini API key</label>
-                <div class="external-llm-secret-row">
-                  <input id="setExternalLlmGeminiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
-                  <button class="settings-cache-clear" id="clearExternalLlmGeminiApiKey" type="button" hidden>Clear</button>
-                </div>
-              </div>
-            </div>
-            <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
-              <div class="field">
-                <label for="setExternalLlmOllamaUrl">Ollama URL</label>
-                <input id="setExternalLlmOllamaUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434" />
-              </div>
-              <div class="field">
-                <label for="setExternalLlmOllamaModel">Ollama model</label>
-                <input id="setExternalLlmOllamaModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemma3" />
-              </div>
-            </div>
-            <div class="external-llm-routing">
-              <h6>Use external AI for</h6>
-              <button class="settings-media-toggle" id="externalLlmImageRevise" type="button" role="switch" aria-checked="false">
-                <span class="settings-media-toggle-copy"><strong>Image · Revise Prompt</strong><small>Rewrite image prompts with the selected provider.</small></span>
-                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-              </button>
-              <button class="settings-media-toggle" id="externalLlmImageEnhance" type="button" role="switch" aria-checked="false">
-                <span class="settings-media-toggle-copy"><strong>Image · Prompt Enhance</strong><small>Enhance global and regional image prompts externally.</small></span>
-                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-              </button>
-              <button class="settings-media-toggle" id="externalLlmVideoRevise" type="button" role="switch" aria-checked="false">
-                <span class="settings-media-toggle-copy"><strong>Video · Revise Prompt</strong><small>Rewrite video prompts with the selected provider.</small></span>
-                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-              </button>
-              <button class="settings-media-toggle" id="externalLlmVideoEnhance" type="button" role="switch" aria-checked="false">
-                <span class="settings-media-toggle-copy"><strong>Video · Prompt Enhance</strong><small>Use the provider before building H3, LTX, Wan, Eros, and SCAIL graphs.</small></span>
-                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-              </button>
-            </div>
-            <p class="external-llm-privacy">When visual context is enabled, prompt text and the selected reference image are sent to the chosen provider. Ollama remains local when its URL points to this computer.</p>
-            <div class="external-llm-test-row">
-              <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
-              <span id="externalLlmStatus" role="status" aria-live="polite"></span>
-            </div>
-          </div>
-          <div class="field">
-            <label>SeedVR2 attention</label>
-            <div class="settings-choice" id="svAttnPicker">
-              <input id="setSvAttn" type="hidden" value="sdpa" />
-              <button class="settings-choice-trigger" id="svAttnTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="svAttnList">
-                <span><strong id="svAttnLabel">SDPA</strong><small id="svAttnDescription">Safest · no extra DLLs</small></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
-              </button>
-              <div class="settings-choice-list" id="svAttnList" role="listbox" aria-label="SeedVR2 attention" aria-hidden="true" inert>
-                <button type="button" role="option" aria-selected="true" data-attention="sdpa"><span><b>SDPA</b><small>Safest · no extra DLLs</small></span><i>✓</i></button>
-                <button type="button" role="option" aria-selected="false" data-attention="sageattn_2"><span><b>SageAttention 2</b><small>Faster · requires Triton</small></span><i>✓</i></button>
-                <button type="button" role="option" aria-selected="false" data-attention="sageattn_3"><span><b>SageAttention 3</b><small>RTX 50-series only</small></span><i>✓</i></button>
-                <button type="button" role="option" aria-selected="false" data-attention="flash_attn_2"><span><b>Flash Attention 2</b><small>Flash Attention compatible GPUs</small></span><i>✓</i></button>
-                <button type="button" role="option" aria-selected="false" data-attention="flash_attn_3"><span><b>Flash Attention 3</b><small>Hopper generation and newer</small></span><i>✓</i></button>
-              </div>
-            </div>
-          </div>
-          <div class="field">
-            <label>Prompt-enhance system prompt</label>
-            <textarea class="settings-system-prompt" id="setSysPrompt" rows="12"></textarea>
-          </div>
+          </details>
         </section>
 
         <section class="settings-pane community-pane" id="settingsPaneCommunity" role="tabpanel" aria-labelledby="settingsTabCommunity" data-settings-pane="community" hidden>

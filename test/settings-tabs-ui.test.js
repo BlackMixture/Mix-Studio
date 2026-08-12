@@ -12,15 +12,17 @@ const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 test('advanced settings are split into accessible side tabs', () => {
   assert.match(html, /class="settings-tabs"[^>]+role="tablist"[^>]+aria-orientation="vertical"/);
-  for (const name of ['General', 'Image', 'Video', 'System', 'Community']) {
+  for (const name of ['General', 'Image', 'Video', 'Defaults', 'Suggestions', 'Addons', 'System', 'Community']) {
     assert.match(html, new RegExp(`id="settingsTab${name}"[^>]+role="tab"[^>]+aria-controls="settingsPane${name}"`));
     assert.match(html, new RegExp(`id="settingsPane${name}"[^>]+role="tabpanel"[^>]+aria-labelledby="settingsTab${name}"`));
   }
   assert.match(html, /id="settingsPaneGeneral"[^>]+data-settings-pane="general">/);
-  assert.match(html, /id="settingsPaneImage"[^>]+data-settings-pane="image" hidden>/);
-  assert.match(html, /id="settingsPaneVideo"[^>]+data-settings-pane="video" hidden>/);
-  assert.match(html, /id="settingsPaneSystem"[^>]+data-settings-pane="system" hidden>/);
+  assert.match(html, /id="settingsPaneImage"[^>]+data-settings-pane="image"[^>]+hidden>/);
+  assert.match(html, /id="settingsPaneVideo"[^>]+data-settings-pane="video"[^>]+hidden>/);
+  assert.match(html, /id="settingsPaneSystem"[^>]+data-settings-pane="system"[^>]+hidden>/);
   assert.match(html, /id="settingsPaneCommunity"[^>]+data-settings-pane="community" hidden>/);
+  assert.ok(html.includes('<span>Prompting</span>'));
+  assert.ok(html.includes('<span>Mix Packs</span>'));
   const drawer = html.match(/<div class="app-drawer-shell"([\s\S]*?)<\/aside>/)?.[1] || '';
   const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<\/section>/)?.[1] || '';
   assert.doesNotMatch(drawer, /Update channel/);
@@ -29,9 +31,9 @@ test('advanced settings are split into accessible side tabs', () => {
 });
 
 test('Hugging Face token guidance uses the quiet settings note treatment', () => {
-  const generalPane = html.match(/id="settingsPaneGeneral"([\s\S]*?)<section class="settings-pane" id="settingsPaneImage"/)?.[1] || '';
-  assert.match(generalPane, /id="setHfToken"[\s\S]*<div class="settings-note">Gated models may require access approval and a read token\.<\/div>/);
-  assert.doesNotMatch(generalPane, /Some gated downloads require both/);
+  const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<section class="settings-pane community-pane"/)?.[1] || '';
+  assert.match(systemPane, /id="setHfToken"[\s\S]*<div class="settings-note">Gated models may require access approval and a read token\.<\/div>/);
+  assert.doesNotMatch(systemPane, /Some gated downloads require both/);
 });
 
 test('community settings link to each official Black Mixture destination', () => {
@@ -59,20 +61,31 @@ test('model settings retain one field each and follow logical pipeline groups', 
   assert.match(html, /data-settings-pane="video"[\s\S]*LTX 2\.3[\s\S]*Wan 2\.2[\s\S]*10Eros DMD[\s\S]*SCAIL 2 Motion Transfer/);
 });
 
-test('Video model settings use a compact single-open disclosure list', () => {
+test('Image and Video model settings use compact single-open disclosure lists', () => {
+  const imagePane = html.match(/id="settingsPaneImage"([\s\S]*?)<section class="settings-pane" id="settingsPaneVideo"/)?.[1] || '';
   const pane = html.match(/id="settingsPaneVideo"([\s\S]*?)<section class="settings-pane" id="settingsPaneDefaults"/)?.[1] || '';
-  const sections = pane.match(/<details class="settings-group settings-model-disclosure" data-video-model-section="[^"]+">/g) || [];
+  const imageSections = imagePane.match(/<details class="settings-group settings-model-disclosure" data-settings-model-section="[^"]+">/g) || [];
+  const sections = pane.match(/<details class="settings-group settings-model-disclosure" data-settings-model-section="[^"]+">/g) || [];
+  assert.equal(imageSections.length, 4);
   assert.equal(sections.length, 7);
+  assert.equal((imagePane.match(/<summary class="settings-model-summary">/g) || []).length, 4);
   assert.equal((pane.match(/<summary class="settings-model-summary">/g) || []).length, 7);
+  assert.equal((imagePane.match(/<div class="settings-model-body">/g) || []).length, 4);
   assert.equal((pane.match(/<div class="settings-model-body">/g) || []).length, 7);
-  assert.doesNotMatch(pane, /data-video-model-section="[^"]+"[^>]*\sopen(?:\s|>)/);
+  assert.doesNotMatch(imagePane + pane, /data-settings-model-section="[^"]+"[^>]*\sopen(?:\s|>)/);
+  for (const name of ['Krea 2', 'Flux 2 Klein Edit', 'Qwen Image Edit', 'SeedVR2 Upscale']) {
+    assert.match(imagePane, new RegExp(`<span class="settings-model-name">${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
+  }
   for (const name of ['LTX 2.5', 'LTX 2.3 &amp; Face ID', 'MiniMax H3', 'Wan 2.2', '10Eros DMD', 'SCAIL 2 Motion Transfer', 'Wan Animate 2']) {
     assert.match(pane, new RegExp(`<span class="settings-model-name">${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
   }
-  assert.match(app, /const videoModelDisclosures = \$\$\('#settingsPaneVideo \[data-video-model-section\]'\)/);
+  assert.match(app, /\$\$\('\[data-settings-disclosure-group\]'\)\.forEach/);
+  assert.match(app, /pane\.querySelectorAll\(':scope > \[data-settings-model-section\], :scope > \[data-settings-preference-section\]'\)/);
   assert.match(app, /if \(other !== disclosure && other\.open\) other\.open = false/);
-  assert.match(css, /\.settings-model-disclosure \{[\s\S]*border-radius: 15px/);
-  assert.match(css, /\.settings-model-disclosure\[open\] > \.settings-model-summary svg[\s\S]*transform: rotate\(180deg\)/);
+  assert.match(css, /\.settings-model-disclosure,[\s\S]*\.settings-preference-disclosure \{[\s\S]*border-radius: 15px/);
+  assert.match(css, /\.settings-pane\[data-settings-pane="image"\] \{ --settings-model-rgb: 52, 168, 83; \}/);
+  assert.match(css, /\.settings-pane\[data-settings-pane="video"\] \{ --settings-model-rgb: 234, 67, 53; \}/);
+  assert.match(css, /settings-preference-disclosure\)\[open\][\s\S]*transform: rotate\(180deg\)/);
 });
 
 test('settings tabs switch panes, support keyboard navigation, and keep content scrollable', () => {
@@ -88,15 +101,48 @@ test('settings tabs switch panes, support keyboard navigation, and keep content 
 });
 
 test('advanced settings exposes generation setup as a dedicated status entry', () => {
-  const generalPane = html.match(/id="settingsPaneGeneral"([\s\S]*?)<section class="settings-pane" id="settingsPaneImage"/)?.[1] || '';
-  assert.match(generalPane, /class="generation-setup-entry"[^>]+id="dependencyOpenSetup"/);
-  assert.match(generalPane, /id="generationSetupSettingsCopy"/);
-  assert.match(generalPane, /id="generationSetupSettingsStatus"/);
+  const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<section class="settings-pane community-pane"/)?.[1] || '';
+  assert.match(systemPane, /class="generation-setup-entry"[^>]+id="dependencyOpenSetup"/);
+  assert.match(systemPane, /id="generationSetupSettingsCopy"/);
+  assert.match(systemPane, /id="generationSetupSettingsStatus"/);
+  assert.match(systemPane, /id="systemInstallationState"/);
   assert.doesNotMatch(html.match(/id="dependencyManagerCard"([\s\S]*?)<\/section>/)?.[1] || '', /id="dependencyOpenSetup"/);
   assert.match(app, /function renderGenerationSetupEntry\(\)/);
   assert.match(app, /openInitialSetup\(\{ returnToSettings: true \}\)/);
   assert.match(html, /id="setupReturnSettings"[^>]*hidden/);
   assert.match(css, /\.generation-setup-entry \{[\s\S]*grid-template-columns: 40px minmax\(0, 1fr\) auto 18px/);
+});
+
+test('General keeps experience and privacy controls while setup moves to System', () => {
+  const generalPane = html.match(/id="settingsPaneGeneral"([\s\S]*?)<section class="settings-pane" id="settingsPaneImage"/)?.[1] || '';
+  const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<section class="settings-pane community-pane"/)?.[1] || '';
+  assert.match(generalPane, /id="guidedTourStart"[\s\S]*id="guidedTipsToggle"[\s\S]*id="experimentalFeaturesToggle"[\s\S]*id="analyticsToggle"/);
+  assert.doesNotMatch(generalPane, /id="(?:setComfy|setHfToken|dependencyOpenSetup|dependencyManagerCard|phoneAccessOpen)"/);
+  for (const section of ['system-installation', 'system-access', 'system-hardware', 'system-storage']) {
+    assert.ok(systemPane.includes(`data-settings-preference-section="${section}"`));
+  }
+});
+
+test('Prompting owns prompt AI, suggestions, filters, and advanced instructions', () => {
+  const promptingPane = html.match(/id="settingsPaneSuggestions"([\s\S]*?)<section class="settings-pane addons-pane"/)?.[1] || '';
+  const systemPane = html.match(/id="settingsPaneSystem"([\s\S]*?)<section class="settings-pane community-pane"/)?.[1] || '';
+  for (const id of ['localPromptAiSettings', 'externalLlmSettings', 'contextPreferenceSearch', 'contextPreferenceFilter', 'contextPreferenceSort', 'setSysPrompt']) {
+    assert.ok(promptingPane.includes(`id="${id}"`));
+    assert.ok(!systemPane.includes(`id="${id}"`));
+  }
+  assert.match(app, /function renderPromptingSummaries\(\)/);
+  assert.match(app, /No suggestions match this search and filter/);
+  assert.match(css, /\.context-preference-card-summary \{/);
+});
+
+test('Generation Defaults use compact summaries and merge the Krea 2 edit override', () => {
+  const pane = html.match(/id="settingsPaneDefaults"([\s\S]*?)<section class="settings-pane" id="settingsPaneSuggestions"/)?.[1] || '';
+  assert.equal((pane.match(/data-settings-preference-section="defaults-[^"]+"/g) || []).length, 5);
+  assert.match(pane, /data-settings-preference-section="defaults-edit"[\s\S]*id="defaultEditSteps"[\s\S]*Krea 2 Edit override[\s\S]*id="defaultKrea2EditSteps"/);
+  for (const id of ['defaultSeedSummary', 'defaultCreateSummary', 'defaultEditSummary', 'defaultVideoSummary', 'defaultPresetSummary']) {
+    assert.ok(pane.includes(`id="${id}"`));
+  }
+  assert.match(app, /function renderGenerationDefaultSummaries\(\)/);
 });
 
 test('each active settings tab uses a unique full-tile color without a side stripe', () => {

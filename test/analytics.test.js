@@ -146,10 +146,10 @@ test('the analytics switch is the compact final control in General settings', ()
   const generalStart = html.indexOf('id="settingsPaneGeneral"');
   const generalEnd = html.indexOf('id="settingsPaneImage"', generalStart);
   const general = html.slice(generalStart, generalEnd);
-  const health = general.indexOf('id="healthList"');
+  const experimental = general.indexOf('id="experimentalFeaturesToggle"');
   const analytics = general.indexOf('id="analyticsToggle"');
 
-  assert.ok(health >= 0 && analytics > health, 'analytics should follow the health report at the end of General settings');
+  assert.ok(experimental >= 0 && analytics > experimental, 'analytics should follow the experience controls at the end of General settings');
   assert.equal(general.lastIndexOf('<button'), general.lastIndexOf('<button', analytics),
     'analytics should be the final interactive control in General settings');
 

@@ -13113,6 +13113,26 @@ function renderGenerationDefaults() {
   setMediaPreferenceControl('defaultPresetCards', d.visualPresets?.showCards !== false);
   $$('#defaultSeedMode button').forEach((button) => button.classList.toggle('active', button.dataset.seedMode === d.seed.mode));
   $('#defaultSeedValueField').hidden = d.seed.mode !== 'fixed';
+  renderGenerationDefaultSummaries();
+}
+
+function renderGenerationDefaultSummaries() {
+  const value = (id, fallback = '') => String($('#' + id)?.value ?? fallback);
+  const seedMode = $('#defaultSeedMode .active')?.dataset.seedMode || 'random';
+  const seed = $('#defaultSeedSummary');
+  const create = $('#defaultCreateSummary');
+  const edit = $('#defaultEditSummary');
+  const video = $('#defaultVideoSummary');
+  const presets = $('#defaultPresetSummary');
+  if (seed) seed.textContent = seedMode === 'fixed' ? `Fixed · ${value('defaultSeedValue', '0')}` : 'Random';
+  if (create) create.textContent = `${value('defaultCreateSteps')} steps · CFG ${value('defaultCreateCfg')} · Batch ${value('defaultCreateBatch')}`;
+  if (edit) edit.textContent = `${value('defaultEditSteps')} steps · CFG ${value('defaultEditCfg')} · Batch ${value('defaultEditBatch')}`;
+  if (video) video.textContent = `${value('defaultVideoDuration')} seconds · Motion ${value('defaultVideoMotion')}`;
+  if (presets) {
+    const cards = mediaPreferenceControlValue('defaultPresetCards') ? 'Cards on' : 'Cards off';
+    const treatment = mediaPreferenceControlValue('defaultPresetVisualTreatment') ? 'Visual treatment on' : 'Direct format';
+    presets.textContent = `${cards} · ${treatment}`;
+  }
 }
 
 function applyGenerationDefaults() {
@@ -13172,9 +13192,38 @@ function renderContextPreferences() {
   const list = $('#contextPreferenceList');
   if (!list) return;
   list.replaceChildren();
-  const entries = Object.entries(state.loraContext).sort(([a], [b]) => prettyLora(a).localeCompare(prettyLora(b)));
-  if (!entries.length) {
+  const tools = $('#contextPreferenceTools');
+  const summary = $('#contextPreferenceSummary');
+  const query = String($('#contextPreferenceSearch')?.value || '').trim().toLowerCase();
+  const filter = $('#contextPreferenceFilter .active')?.dataset.contextFilter || 'all';
+  const sort = $('#contextPreferenceSort')?.value || 'uses';
+  const allEntries = Object.entries(state.loraContext);
+  if (tools) tools.hidden = allEntries.length === 0;
+  if (summary) {
+    const enabled = allEntries.filter(([name]) => state.contextOverrides[name]?.disabled !== true).length;
+    summary.textContent = allEntries.length
+      ? `${allEntries.length} learned · ${enabled} on`
+      : 'No learned suggestions yet';
+  }
+  if (!allEntries.length) {
     list.innerHTML = '<div class="queue-empty">No learned LoRA suggestions yet. They appear after a LoRA is used repeatedly with similar prompt phrases.</div>';
+    return;
+  }
+  const entries = allEntries.filter(([name, profile]) => {
+    const override = state.contextOverrides[name] || {};
+    const disabled = override.disabled === true;
+    if (filter === 'enabled' && disabled) return false;
+    if (filter === 'disabled' && !disabled) return false;
+    if (!query) return true;
+    const phrase = override.suggestion ?? profile.learnedSuggestion ?? profile.suggestion ?? '';
+    return `${prettyLora(name)} ${phrase}`.toLowerCase().includes(query);
+  }).sort(([nameA, profileA], [nameB, profileB]) => {
+    if (sort === 'name') return prettyLora(nameA).localeCompare(prettyLora(nameB));
+    const uses = Number(profileB.uses || 0) - Number(profileA.uses || 0);
+    return uses || prettyLora(nameA).localeCompare(prettyLora(nameB));
+  });
+  if (!entries.length) {
+    list.innerHTML = '<div class="queue-empty">No suggestions match this search and filter.</div>';
     return;
   }
   entries.forEach(([name, profile]) => {
@@ -13182,11 +13231,13 @@ function renderContextPreferences() {
       defaultStrength: profile.learnedDefaultStrength ?? profile.defaultStrength,
       suggestion: profile.learnedSuggestion ?? profile.suggestion,
     };
-    const card = document.createElement('div');
+    const card = document.createElement('details');
     card.className = 'context-preference-card';
-    const title = document.createElement('div');
-    title.className = 'context-preference-title';
-    title.innerHTML = `<strong>${escapeHtml(prettyLora(name))}</strong><small>${profile.uses || 0} uses</small>`;
+    const cardSummary = document.createElement('summary');
+    cardSummary.className = 'context-preference-card-summary';
+    cardSummary.innerHTML = `<span class="context-preference-title"><strong>${escapeHtml(prettyLora(name))}</strong><small>${profile.uses || 0} uses</small></span><span class="context-preference-card-state"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>`;
+    const body = document.createElement('div');
+    body.className = 'context-preference-card-body';
     const strength = document.createElement('label');
     strength.innerHTML = '<span>Default strength</span>';
     const strengthInput = document.createElement('input');
@@ -13211,14 +13262,21 @@ function renderContextPreferences() {
     enabled.type = 'button'; enabled.className = 'context-preference-toggle';
     const syncEnabled = () => {
       const disabled = state.contextOverrides[name]?.disabled === true;
+      card.dataset.enabled = String(!disabled);
       enabled.classList.toggle('off', disabled);
       enabled.setAttribute('aria-pressed', String(!disabled));
       enabled.textContent = disabled ? 'Suggestion off' : 'Suggestion on';
+      cardSummary.querySelector('.context-preference-card-state').textContent = disabled ? 'Off' : 'On';
     };
     enabled.addEventListener('click', () => {
       state.contextOverrides[name] = { ...state.contextOverrides[name], disabled: !(state.contextOverrides[name]?.disabled === true) };
       syncEnabled();
       scheduleSettingsAutosave('preferences', 0);
+      if (filter !== 'all') renderContextPreferences();
+      else if (summary) {
+        const enabledCount = allEntries.filter(([entryName]) => state.contextOverrides[entryName]?.disabled !== true).length;
+        summary.textContent = `${allEntries.length} learned · ${enabledCount} on`;
+      }
     });
     syncEnabled();
     const reset = document.createElement('button');
@@ -13228,7 +13286,14 @@ function renderContextPreferences() {
       renderContextPreferences();
       scheduleSettingsAutosave('preferences', 0);
     });
-    card.append(title, strength, phrase, enabled, reset);
+    body.append(strength, phrase, enabled, reset);
+    card.append(cardSummary, body);
+    card.addEventListener('toggle', () => {
+      if (!card.open) return;
+      $$('#contextPreferenceList .context-preference-card[open]').forEach((other) => {
+        if (other !== card) other.open = false;
+      });
+    });
     list.appendChild(card);
   });
 }
@@ -29518,6 +29583,21 @@ function localPromptAiModelLabel(value) {
   return `${parts.at(-1)} · ${parts.slice(0, -1).join('/')}`;
 }
 
+function renderPromptingSummaries() {
+  const local = $('#localPromptAiSummary');
+  const external = $('#externalPromptAiSummary');
+  if (local) {
+    const model = $('#setLocalPromptAiClip')?.value;
+    local.textContent = model ? localPromptAiModelLabel(model) : 'Automatic · Krea 2 prompt model';
+  }
+  if (external) {
+    const provider = $('#setExternalLlmProvider')?.selectedOptions?.[0]?.textContent || 'OpenAI';
+    const routed = ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
+      .filter((id) => mediaPreferenceControlValue(id)).length;
+    external.textContent = routed ? `${provider} · ${routed} feature${routed === 1 ? '' : 's'} routed` : `${provider} · No feature overrides`;
+  }
+}
+
 function ensureSelectChoice(select, value, label) {
   if (!select || !value || [...select.options].some((option) => option.value === value)) return;
   select.add(new Option(label || value, value));
@@ -29531,17 +29611,20 @@ function renderLocalPromptAiStatus(catalog = null) {
     status.textContent = custom
       ? `Custom · ${localPromptAiModelLabel(custom)}`
       : `Automatic · ${localPromptAiModelLabel(localPromptAiSettings.clip || localPromptAiSettings.activeModel) || 'Krea 2 prompt model'}`;
+    renderPromptingSummaries();
     return;
   }
   if (custom && catalog.available === false && custom === catalog.configuredModel) {
     status.className = 'bad';
     status.textContent = 'Configured model is not listed by ComfyUI';
+    renderPromptingSummaries();
     return;
   }
   status.className = 'ready';
   status.textContent = custom
     ? `Ready · ${localPromptAiModelLabel(custom)}`
     : `Automatic · ${localPromptAiModelLabel(catalog.activeModel || localPromptAiSettings.clip) || 'Krea 2 prompt model'}`;
+  renderPromptingSummaries();
 }
 
 function syncLocalPromptAiTypeAvailability() {
@@ -29623,6 +29706,7 @@ function renderExternalLlmPreferences() {
     'setExternalLlmOllamaModel', 'externalLlmImageRevise', 'externalLlmImageEnhance',
     'externalLlmVideoRevise', 'externalLlmVideoEnhance', 'testExternalLlm',
   ].forEach((id) => { $('#' + id).disabled = readonly; });
+  renderPromptingSummaries();
 }
 
 function applyExternalLlmSettings(settings = {}) {
@@ -30359,6 +30443,10 @@ function renderHardwareInfo(info) {
     gpuDevices.length > 1 ? `+${gpuDevices.length - 1} more` : '',
   ].filter(Boolean).join(' · ') : 'No compatible GPU reported by the system';
   setHardwareRow('hardwareGpu', 'hardwareGpuDetail', gpu?.name || 'Unavailable', gpuDetail);
+  const hardwareSummary = $('#systemHardwareSummary');
+  if (hardwareSummary) hardwareSummary.textContent = gpu
+    ? [gpu.name, gpu.memoryBytes ? formatHardwareBytes(gpu.memoryBytes) : ''].filter(Boolean).join(' · ')
+    : 'GPU, memory, storage, and ComfyUI runtime';
 
   const cores = Number(info?.cpu?.logicalCores) || 0;
   setHardwareRow('hardwareCpu', 'hardwareCpuDetail', info?.cpu?.name, cores ? `${cores} logical cores` : '');
@@ -30447,6 +30535,7 @@ async function loadHardwareInfo(force = false) {
     $('#runtimeRecommendationTitle').textContent = 'Runtime status unavailable';
     $('#runtimeRecommendationDetail').textContent = 'Mix Studio could not inspect the ComfyUI generation environment.';
     $('#runtimeUpdateGuide').hidden = true;
+    if ($('#systemHardwareSummary')) $('#systemHardwareSummary').textContent = 'System information unavailable';
     list.setAttribute('aria-busy', 'false');
     throw error;
   }).finally(() => {
@@ -33306,7 +33395,7 @@ const settingsTabNames = ['general', 'image', 'video', 'defaults', 'suggestions'
 
 function setSettingsTab(name, focus = false) {
   if (!settingsTabNames.includes(name)) name = 'general';
-  if (name !== 'system') setSvAttnPickerOpen(false);
+  if (name !== 'video') setSvAttnPickerOpen(false);
   settingsActiveTab = name;
   $$('[data-settings-tab]').forEach((tab) => {
     const active = tab.dataset.settingsTab === name;
@@ -33339,12 +33428,15 @@ $$('[data-settings-tab]').forEach((tab) => {
   });
 });
 
-const videoModelDisclosures = $$('#settingsPaneVideo [data-video-model-section]');
-videoModelDisclosures.forEach((disclosure) => {
-  disclosure.addEventListener('toggle', () => {
-    if (!disclosure.open) return;
-    videoModelDisclosures.forEach((other) => {
-      if (other !== disclosure && other.open) other.open = false;
+$$('[data-settings-disclosure-group]').forEach((pane) => {
+  const disclosures = [...pane.querySelectorAll(':scope > [data-settings-model-section], :scope > [data-settings-preference-section]')];
+  disclosures.forEach((disclosure) => {
+    disclosure.addEventListener('toggle', () => {
+      if (!disclosure.open && disclosure.querySelector('#svAttnPicker')) setSvAttnPickerOpen(false);
+      if (!disclosure.open) return;
+      disclosures.forEach((other) => {
+        if (other !== disclosure && other.open) other.open = false;
+      });
     });
   });
 });
@@ -33352,6 +33444,7 @@ videoModelDisclosures.forEach((disclosure) => {
 $$('#defaultSeedMode button').forEach((button) => button.addEventListener('click', () => {
   $$('#defaultSeedMode button').forEach((item) => item.classList.toggle('active', item === button));
   $('#defaultSeedValueField').hidden = button.dataset.seedMode !== 'fixed';
+  renderGenerationDefaultSummaries();
   scheduleSettingsAutosave('preferences', 0);
 }));
 
@@ -33366,7 +33459,17 @@ $$('#defaultSeedMode button').forEach((button) => button.addEventListener('click
     if (id === 'defaultPresetCards') {
       renderPromptComposer();
     }
+    renderGenerationDefaultSummaries();
     scheduleSettingsAutosave('preferences', 0);
+  });
+});
+
+$('#contextPreferenceSearch').addEventListener('input', renderContextPreferences);
+$('#contextPreferenceSort').addEventListener('change', renderContextPreferences);
+$$('#contextPreferenceFilter [data-context-filter]').forEach((button) => {
+  button.addEventListener('click', () => {
+    $$('#contextPreferenceFilter [data-context-filter]').forEach((item) => item.classList.toggle('active', item === button));
+    renderContextPreferences();
   });
 });
 
@@ -33379,12 +33482,14 @@ function settingsAutosaveKindForControl(control) {
 
 $('#settingsSheet').addEventListener('input', (event) => {
   if (event.target.matches('select')) return;
+  if (event.target.closest('#settingsPaneDefaults')) renderGenerationDefaultSummaries();
   const kind = settingsAutosaveKindForControl(event.target);
   if (kind) scheduleSettingsAutosave(kind);
 });
 
 $('#settingsSheet').addEventListener('change', (event) => {
   if (!event.target.matches('select')) return;
+  if (event.target.closest('#settingsPaneDefaults')) renderGenerationDefaultSummaries();
   const kind = settingsAutosaveKindForControl(event.target);
   if (kind) scheduleSettingsAutosave(kind, 0);
 });
@@ -33424,6 +33529,7 @@ $('#testLocalPromptAiModel').addEventListener('click', async () => {
   $('#' + id).addEventListener('click', () => {
     if (!state.profileIsOwner) return;
     setMediaPreferenceControl(id, !mediaPreferenceControlValue(id));
+    renderPromptingSummaries();
     scheduleSettingsAutosave('server', 0);
   });
 });
@@ -34176,7 +34282,7 @@ function setupFitForComponents(components) {
 function conciseSetupError(value) {
   const message = String(value || '');
   if (/Could not download|fetch failed|reviewed sources were unavailable/i.test(message)) {
-    return 'The model host could not be reached. Check the connection or add a trusted HTTPS download endpoint in Preferences → General, then retry.';
+    return 'The model host could not be reached. Check the connection or add a trusted HTTPS download endpoint in Preferences → System → Generation Setup, then retry.';
   }
   if (/ResolutionImpossible|conflicting dependencies|dependency conflict/i.test(message)) {
     return 'Python packages could not be resolved. Retry the install; open Details if it happens again.';
@@ -35372,6 +35478,15 @@ $('#phoneAccessShare').addEventListener('click', async () => {
   catch (error) { if (error?.name !== 'AbortError') toast(error.message, true); }
 });
 
+function renderSystemInstallationSummary(stateName, statusText, copyText) {
+  const summary = $('#systemInstallationSummary');
+  const stateBadge = $('#systemInstallationState');
+  if (summary) summary.textContent = copyText || 'Connection, models, and workflow requirements.';
+  if (!stateBadge) return;
+  stateBadge.textContent = statusText || 'Checking';
+  stateBadge.className = `settings-preference-state ${stateName === 'ready' ? 'ready' : stateName === 'working' ? 'working' : stateName === 'attention' ? 'attention' : ''}`.trim();
+}
+
 function renderGenerationSetupEntry() {
   const entry = $('#dependencyOpenSetup');
   if (!entry) return;
@@ -35422,6 +35537,7 @@ function renderGenerationSetupEntry() {
   entry.dataset.state = stateName;
   status.textContent = statusText;
   copy.textContent = copyText;
+  renderSystemInstallationSummary(stateName, statusText, copyText);
 }
 
 function renderDependencyManager() {

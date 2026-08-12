@@ -6,7 +6,9 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 
 ### Preferences
 
-- Replaced the always-expanded Video model settings with a compact, single-open model-family list. All model names remain visible at once, while variants and filenames appear only when their family is opened.
+- Replaced the always-expanded Image and Video model settings with compact, single-open model-family lists. All model names remain visible at once, while variants and filenames appear only when their family is opened.
+- Reorganized Preferences around user tasks: General now contains guidance and privacy, Prompting contains local/external prompt AI and searchable LoRA suggestions, and System groups setup, access, hardware, storage, and maintenance into status-aware disclosures.
+- Added compact value summaries for generation defaults, merged the Krea 2 Edit override into Edit Image, moved SeedVR2 attention into Video post-processing, and renamed Add-ons to Mix Packs.
 
 ### LTX 2.5 video generation
 
