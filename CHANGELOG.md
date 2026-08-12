@@ -11,6 +11,14 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Added compact value summaries for generation defaults, merged the Krea 2 Edit override into Edit Image, moved SeedVR2 attention into Video post-processing, and renamed Add-ons to Mix Packs.
 - Added a global Preferences search that finds settings across every tab, including controls inside collapsed sections, then opens and focuses the selected result.
 
+### Generation setup
+
+- Expanded automatic discovery to standard nested ComfyUI Portable folders in Desktop, Downloads, nearby install folders, and known drive roots.
+- Made Windows folder dialogs foreground reliably, kept browsing on the Connection step, saved a chosen models folder immediately, and added a clear manual save action for pasted paths.
+- Added an explicit option to continue with an existing ComfyUI setup without installing the Krea 2 starter; curated workflow requirements are still checked only when that workflow is selected.
+- Let the setup dialog use more height and a three-column component grid on large desktop displays while preserving the existing laptop and mobile layout.
+- Made every image aspect ratio through 21:9 visible in the desktop Create panel instead of hiding later landscape choices in an unmarked horizontal scroller.
+
 ### LTX 2.5 video generation
 
 - Added LTX 2.5 as a separate curated video model while preserving LTX 2.3 as the default, with text-to-video, image-to-video, first/last-frame guidance, synchronized audio, user LoRA stacks, RIFE interpolation, and RTX 4K post-processing.

@@ -2406,7 +2406,7 @@
           </button>
           <button class="setup-choice setup-choice-violet" id="setupBrowseComfy" type="button">
             <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></span>
-            <span><strong>Browse computer</strong><small>Choose the local ComfyUI source folder.</small></span><i aria-hidden="true">›</i>
+            <span><strong>Choose existing ComfyUI</strong><small>Open a folder picker on the generation computer.</small></span><i aria-hidden="true">›</i>
           </button>
           <button class="setup-choice setup-choice-red" id="setupInstallComfy" type="button">
             <span class="setup-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg></span>
@@ -2420,6 +2420,8 @@
             <label><span>ComfyUI folder</span><span class="setup-input-row"><input id="setupComfyPath" type="text" placeholder="C:\ComfyUI" autocomplete="off" spellcheck="false" /><button class="setup-icon-action" id="setupBrowseComfyDetails" type="button" aria-label="Browse for ComfyUI folder" title="Browse for ComfyUI folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></button></span></label>
             <label><span>Models folder</span><span class="setup-input-row"><input id="setupModelsPath" type="text" placeholder="C:\ComfyUI\models" autocomplete="off" spellcheck="false" /><button class="setup-icon-action" id="setupBrowseModels" type="button" aria-label="Browse for models folder" title="Browse for models folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg></button></span></label>
           </div>
+          <small class="setup-picker-note">Folder pickers open on the computer running Mix Studio. You can also paste absolute paths here.</small>
+          <button class="setup-save-paths" id="setupSavePaths" type="button">Save connection and folders</button>
         </div>
       </section>
 
@@ -2445,6 +2447,7 @@
             <span class="setup-workflow-verb">Install</span>
           </button>
           <button class="setup-secondary setup-recommended" id="setupQuickStart" type="button"><strong>Recommended setup</strong><span>Install a useful image starter.</span></button>
+          <button class="setup-skip-starter" id="setupSkipStarter" type="button" hidden><strong>Continue without a starter workflow</strong><span>Keep this ComfyUI setup. Mix Studio will ask for its tested files only when you choose a workflow that needs them.</span></button>
         </div>
         <div class="setup-hardware" id="setupHardwareSummary">
           <span aria-hidden="true">GPU</span>

@@ -127,6 +127,25 @@ test('SAM3 installer locates the configured ComfyUI base and its private Python'
   assert.equal(status.downloaded, false);
 });
 
+test('ComfyUI discovery finds the standard Windows Portable folder in user download locations', () => {
+  const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'mix-comfy-portable-discovery-'));
+  const home = path.join(temp, 'home');
+  const portableRoot = path.join(home, 'Downloads', 'ComfyUI_windows_portable_nvidia');
+  const base = path.join(portableRoot, 'ComfyUI');
+  const python = path.join(portableRoot, 'python_embeded', 'python.exe');
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.mkdirSync(path.join(base, 'models'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'main.py'), '');
+  fs.writeFileSync(python, '');
+  try {
+    const options = { env: { HOME: home }, home, fsImpl: fs, appRoot: path.join(temp, 'Mix Studio') };
+    assert.equal(findComfyBase({ appRoot: options.appRoot }, options), base);
+    assert.equal(sam3InstallStatus({ appRoot: options.appRoot }, options).canInstall, true);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test('SAM3 installer updates a fixed upstream checkout and uses the ComfyUI environment', async () => {
   const base = path.resolve('/tmp/mixbox-comfy');
   const customNodes = path.join(base, 'custom_nodes');

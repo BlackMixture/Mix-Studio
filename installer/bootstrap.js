@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { portableInstallationCandidates } = require('../lib/sam3-installer');
 
 function readJson(file, fsImpl = fs) {
   try {
@@ -39,7 +40,7 @@ function runnableComfyPath(base, fsImpl = fs, pathImpl = path) {
   return pythonCandidates.some((candidate) => fsImpl.existsSync(candidate)) ? base : '';
 }
 
-function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path) {
+function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path, options = {}) {
   const appData = String(env.APPDATA || '').trim();
   if (appData) {
     const registryFile = pathImpl.join(appData, 'Comfy Desktop', 'installations.json');
@@ -71,6 +72,14 @@ function desktopComfyPath(env = process.env, fsImpl = fs, pathImpl = path) {
   const home = String(env.HOME || env.USERPROFILE || '').trim();
   const candidates = [
     String(env.COMFYUI_PATH || '').trim(),
+    ...portableInstallationCandidates({ appRoot: options.appRoot || '' }, {
+      env,
+      fsImpl,
+      pathApi: pathImpl,
+      home,
+      appRoot: options.appRoot || '',
+      platform: options.platform || process.platform,
+    }),
     home ? pathImpl.join(home, 'ComfyUI') : '',
     home ? pathImpl.join(home, 'Documents', 'ComfyUI') : '',
   ];
@@ -119,7 +128,7 @@ function portableBootstrapConfig(root, options = {}) {
   const hasLocalConfig = Object.keys(localConfig).length > 0;
   const source = hasLocalConfig ? localConfig : preservedConfig;
   const sourceComfy = existingObject(source.comfy);
-  const detectedComfy = desktopComfyPath(env, fsImpl, pathImpl);
+  const detectedComfy = desktopComfyPath(env, fsImpl, pathImpl, { appRoot: root });
   const comfyPath = String(sourceComfy.path || detectedComfy || '').trim();
   const modelsPath = String(sourceComfy.modelsPath || (comfyPath ? pathImpl.join(comfyPath, 'models') : '')).trim();
   const configuredDataDir = String(source.dataDir || '').trim();

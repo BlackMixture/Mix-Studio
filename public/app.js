@@ -34887,6 +34887,7 @@ function renderInitialSetup() {
   $('#setupInstallComfy').hidden = !comfy.canInstallOfficial;
   $('#setupInstallComfy').title = comfy.canInstallOfficial ? 'Opens the official Comfy Desktop app or downloads its signed installer' : 'Available when Mix Studio is running on Windows';
   $('#setupSaveConnection').disabled = busy || !state.profileIsOwner;
+  $('#setupSavePaths').disabled = busy || !state.profileIsOwner;
   const canBrowse = ['win32', 'darwin'].includes(setupViewStatus.platform) && state.profileIsOwner && !busy;
   $('#setupBrowseComfy').disabled = !canBrowse;
   $('#setupBrowseComfyDetails').disabled = !canBrowse;
@@ -34941,6 +34942,7 @@ function renderInitialSetup() {
 
   const quick = $('#setupQuickStart');
   const current = $('#setupCurrentWorkflow');
+  const skipStarter = $('#setupSkipStarter');
   const requiredNow = contextMissing.length ? contextMissing : setupContextComponents;
   const currentFit = setupFitForComponents(requiredNow);
   const componentLabels = setupComponentLabelMap();
@@ -34964,9 +34966,13 @@ function renderInitialSetup() {
   quick.disabled = busy || !state.profileIsOwner;
   current.hidden = !setupContextComponents.length || workflowReady;
   current.disabled = busy || !state.profileIsOwner;
+  const starterIsOptional = setupFirstRun || setupContextComponents.length === 0;
+  skipStarter.hidden = !starterIsOptional || !comfy.connected || workflowReady;
+  skipStarter.disabled = busy || !state.profileIsOwner;
   const setupActions = quick.closest('.setup-actions');
-  setupActions.hidden = quick.hidden && current.hidden;
-  setupActions.classList.toggle('single', quick.hidden !== current.hidden);
+  const visibleSetupActions = [quick, current, skipStarter].filter((button) => !button.hidden).length;
+  setupActions.hidden = visibleSetupActions === 0;
+  setupActions.classList.toggle('single', visibleSetupActions === 1);
   setupActions.classList.toggle('has-current', !current.hidden);
 
   const operation = $('#setupOperation');
@@ -35418,6 +35424,7 @@ $('#setupUseDetected').addEventListener('click', async () => {
 async function browseSetupDirectory(kind, trigger) {
   const button = trigger || (kind === 'models' ? $('#setupBrowseModels') : $('#setupBrowseComfy'));
   const previousLabel = button.getAttribute('aria-label');
+  setSetupStep('connect', { user: true });
   button.disabled = true;
   button.classList.add('working');
   if (previousLabel) button.setAttribute('aria-label', 'Opening folder picker');
@@ -35429,10 +35436,13 @@ async function browseSetupDirectory(kind, trigger) {
     setSetupGuideExpanded(true);
     if (kind === 'models') {
       $('#setupModelsPath').value = result.directory;
+      await saveSetupConnection();
+      toast('Models folder saved');
     } else {
       $('#setupComfyPath').value = result.directory;
       $('#setupModelsPath').value = '';
       await saveSetupConnection(result.directory);
+      toast('ComfyUI folder saved');
     }
   } catch (error) {
     toast(error.message, true);
@@ -35455,6 +35465,33 @@ $('#setupInstallComfy').addEventListener('click', async () => {
 $('#setupSaveConnection').addEventListener('click', async () => {
   try { await saveSetupConnection(); toast('ComfyUI connection saved'); }
   catch (error) { toast(error.message, true); }
+});
+$('#setupSavePaths').addEventListener('click', async () => {
+  try {
+    setSetupStep('connect', { user: true });
+    await saveSetupConnection();
+    toast('Connection and folders saved');
+  } catch (error) { toast(error.message, true); }
+});
+$('#setupSkipStarter').addEventListener('click', () => {
+  if ((!setupFirstRun && setupContextComponents.length) || !setupViewStatus?.comfy?.connected) return;
+  const returnToSettings = setupReturnToSettings;
+  if (setupFirstRun) {
+    const tutorialKey = firstRunTutorialStorageKey();
+    if (tutorialKey) localStorage.setItem(tutorialKey, 'skipped');
+    firstRunTutorialAfterSetupProfile = '';
+    firstImageTutorialAwaitingSetup = false;
+    firstImageTutorialPhase = '';
+  }
+  setupFirstRun = false;
+  closeGenerationSetup({ completed: true });
+  if (returnToSettings) {
+    setSettingsTab(settingsActiveTab);
+    $('#settingsSheet').classList.add('show');
+    renderHealth();
+    syncSheetScrollLock();
+  }
+  toast('ComfyUI is connected. Mix Studio will check each curated workflow when you choose it.');
 });
 $('#setupComponentList').addEventListener('change', (event) => {
   const option = event.target.closest('input[data-component]');

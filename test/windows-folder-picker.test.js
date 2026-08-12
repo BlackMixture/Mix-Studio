@@ -9,6 +9,8 @@ const { browseWindowsFolder, folderPickerScript } = require('../lib/windows-fold
 test('Windows picker falls back to the Shell folder browser', () => {
   const script = folderPickerScript('Choose ComfyUI');
   assert.match(script, /System\.Windows\.Forms\.FolderBrowserDialog/);
+  assert.match(script, /\$owner\.TopMost = \$true/);
+  assert.match(script, /ShowDialog\(\$owner\)/);
   assert.match(script, /Shell\.Application/);
   assert.match(script, /BrowseForFolder/);
 });
