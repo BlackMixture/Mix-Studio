@@ -107,6 +107,25 @@ test('the picker opens on named Mix Pack cards before showing a pack detail page
   assert.match(styleCss, /prefers-reduced-motion:\s*reduce/);
 });
 
+test('Mix Packs render MP4 thumbnails as decoder-bounded animated previews', () => {
+  assert.match(appJs, /function isPromptPresetVideoThumbnail/);
+  assert.match(appJs, /class="prompt-preset-preview-video"[^>]*muted loop playsinline preload="none"/);
+  assert.match(appJs, /new IntersectionObserver/);
+  assert.match(appJs, /promptPresetPreviewCapacity/);
+  assert.match(appJs, /\(pointer: coarse\)'\)\.matches \? 1 : 3/);
+  assert.match(appJs, /candidates\.slice\(0, promptPresetPreviewCapacity\(\)\)/);
+  assert.match(appJs, /if \(reduceMotion\) \{[\s\S]{0,120}video\.pause\(\)/);
+  assert.match(appJs, /promptPresetThumbnailMarkup\(preset\.thumbnail/);
+  assert.match(styleCss, /\.camera-preset-image video\s*\{[^}]*object-fit:\s*cover/s);
+  assert.match(styleCss, /\.addon-pack-mosaic :is\(img, video\)/);
+});
+
+test('generation-specific Mix Packs appear only in their compatible context', () => {
+  assert.match(appJs, /function promptPackCurrentContexts/);
+  assert.match(appJs, /return \['video', `video\.\$\{state\.vidEngine\}`\]/);
+  assert.match(appJs, /if \(!promptPackMatchesCurrentContext\(pack\)\) continue/);
+});
+
 test('Mix Pack details search the selected pack from one responsive field', () => {
   assert.match(indexHtml, /id="promptPresetSearch"[^>]*type="search"/);
   assert.match(indexHtml, /id="promptPresetSearchStatus"[^>]*aria-live="polite"/);

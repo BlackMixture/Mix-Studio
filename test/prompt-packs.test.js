@@ -12,6 +12,7 @@ const {
   MAX_PROMPT_PACK_BYTES,
   MAX_PROMPT_PACK_PRESETS,
   MAX_PROMPT_PACK_THUMBNAIL_BYTES,
+  MAX_PROMPT_PACK_VIDEO_THUMBNAIL_BYTES,
   PROMPT_PACK_FORMAT,
   comparePackVersions,
   inspectPromptPackBuffer,
@@ -24,6 +25,31 @@ const {
 } = require('../lib/prompt-packs');
 
 const thumbnail = fs.readFileSync(path.join(__dirname, '..', 'public', 'assets', 'camera-presets', 'cinematic-arri.jpg'));
+
+function mp4Box(type, payload) {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(payload.length + 8, 0);
+  header.write(type, 4, 4, 'ascii');
+  return Buffer.concat([header, payload]);
+}
+
+function animatedThumbnail() {
+  const ftyp = mp4Box('ftyp', Buffer.from([
+    0x69, 0x73, 0x6f, 0x6d, 0x00, 0x00, 0x02, 0x00,
+    0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32,
+  ]));
+  const mvhd = Buffer.alloc(100);
+  mvhd.writeUInt32BE(1000, 12);
+  mvhd.writeUInt32BE(4000, 16);
+  const tkhd = Buffer.alloc(84);
+  tkhd.writeUInt32BE(640 * 65536, 76);
+  tkhd.writeUInt32BE(360 * 65536, 80);
+  const moov = mp4Box('moov', Buffer.concat([
+    mp4Box('mvhd', mvhd),
+    mp4Box('trak', mp4Box('tkhd', tkhd)),
+  ]));
+  return Buffer.concat([ftyp, moov]);
+}
 
 function pack(overrides = {}) {
   return Object.assign({
@@ -71,6 +97,7 @@ test('prompt pack limits support 200-preset atlases and their larger thumbnail b
   assert.equal(MAX_PROMPT_PACK_BYTES, 64 * 1024 * 1024);
   assert.equal(MAX_PROMPT_PACK_ASSET_BYTES, 48 * 1024 * 1024);
   assert.equal(MAX_PROMPT_PACK_THUMBNAIL_BYTES, 1024 * 1024);
+  assert.equal(MAX_PROMPT_PACK_VIDEO_THUMBNAIL_BYTES, 6 * 1024 * 1024);
 
   const maximum = pack();
   maximum.categories[0].presets = Array.from({ length: MAX_PROMPT_PACK_PRESETS }, (_, index) => ({
@@ -99,7 +126,7 @@ test('prompt packs reject code-oriented types, unsafe IDs, unsupported images, a
     mime: 'image/svg+xml',
     data: Buffer.from('<svg><script>alert(1)</script></svg>').toString('base64'),
   };
-  assert.throws(() => inspectPromptPackBuffer(encoded(svg)), /JPEG, PNG, or WebP/);
+  assert.throws(() => inspectPromptPackBuffer(encoded(svg)), /JPEG, PNG, WebP, or MP4/);
   const oversized = pack();
   oversized.categories[0].presets = Array.from({ length: 201 }, (_, index) => ({
     id: `style-${index}`,
@@ -108,6 +135,25 @@ test('prompt packs reject code-oriented types, unsafe IDs, unsupported images, a
     thumbnail: { mime: 'image/jpeg', data: thumbnail.toString('base64') },
   }));
   assert.throws(() => inspectPromptPackBuffer(encoded(oversized)), /200-preset limit/);
+});
+
+test('prompt packs accept bounded MP4 previews and retain H3-only discovery metadata', () => {
+  const source = pack({
+    contexts: ['video.h3'],
+    credits: 'Original prompts inspired by a CC BY prompt taxonomy.',
+    sourceUrl: 'https://github.com/AtlasCloudAI/awesome-minimax-h3-prompts',
+  });
+  source.categories[0].presets[0].thumbnail = {
+    mime: 'video/mp4',
+    data: animatedThumbnail().toString('base64'),
+  };
+  const inspected = inspectPromptPackBuffer(encoded(source));
+  assert.deepEqual(inspected.manifest.contexts, ['video.h3']);
+  assert.match(inspected.manifest.sourceUrl, /^https:\/\/github\.com\/AtlasCloudAI\//);
+  assert.equal(inspected.manifest.categories[0].presets[0].thumbnailFile, 'style-neo-noir.mp4');
+  assert.equal(inspected.assets[0].width, 640);
+  assert.equal(inspected.assets[0].height, 360);
+  assert.equal(inspected.assets[0].duration, 4);
 });
 
 test('prompt pack semantic versions compare updates and downgrades', () => {

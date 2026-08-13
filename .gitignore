@@ -24,6 +24,10 @@ docs/superpowers/
 # Scratch copies of third-party sources
 _tmp/
 
+# Private Mix Pack production sources and media
+/mix-packs/minimax-h3-story-lab/
+/test/h3-mix-pack.test.js
+
 # Archived agent scratch (probe/deploy/test remnants)
 _archive/
 

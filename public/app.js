@@ -733,12 +733,16 @@ function promptPresetPackCatalog() {
   }
   for (const pack of state.promptPacks || []) {
     if (pack.enabled === false) continue;
+    if (!promptPackMatchesCurrentContext(pack)) continue;
     packs.push({
       id: pack.id,
       name: pack.name,
       author: pack.author,
       version: pack.version,
       description: pack.description || '',
+      credits: pack.credits || '',
+      sourceUrl: pack.sourceUrl || '',
+      contexts: Array.isArray(pack.contexts) ? pack.contexts : [],
       builtin: false,
       categories: (pack.categories || []).map((source) => ({
         id: source.id,
@@ -763,6 +767,18 @@ function promptPresetPackCatalog() {
     });
   }
   return packs;
+}
+
+function promptPackCurrentContexts() {
+  if (state.view !== 'video') return [state.view];
+  return ['video', `video.${state.vidEngine}`];
+}
+
+function promptPackMatchesCurrentContext(pack) {
+  const contexts = Array.isArray(pack?.contexts) ? pack.contexts.filter(Boolean) : [];
+  if (!contexts.length) return true;
+  const active = promptPackCurrentContexts();
+  return contexts.some((context) => active.includes(context));
 }
 
 function promptPresetCatalog() {
@@ -1054,7 +1070,7 @@ function makePromptPresetToken(preset) {
   open.className = 'prompt-preset-open';
   open.dataset.openPromptPreset = preset.presetId;
   open.setAttribute('aria-label', `Open ${preset.label || 'visual preset'} in Visual Presets`);
-  if (preset.thumbnail) {
+  if (preset.thumbnail && !isPromptPresetVideoThumbnail(preset.thumbnail)) {
     const image = document.createElement('img');
     image.src = preset.thumbnail;
     image.alt = '';
@@ -10943,8 +10959,110 @@ function promptPresetPackThumbnail(pack) {
     .flatMap((category) => category.presets || [])
     .find((preset) => preset.thumbnail)?.thumbnail;
   return source
-    ? `<img src="${escapeHtml(source)}" alt="" loading="lazy">`
+    ? promptPresetThumbnailMarkup(source)
     : '<span aria-hidden="true">M</span>';
+}
+
+function isPromptPresetVideoThumbnail(source) {
+  const value = String(source || '').trim().toLowerCase();
+  return value.startsWith('data:video/mp4') || /\.mp4(?:[?#].*)?$/.test(value);
+}
+
+function promptPresetThumbnailMarkup(source, alt = '') {
+  if (!source) return '';
+  if (!isPromptPresetVideoThumbnail(source)) {
+    return `<img src="${escapeHtml(source)}" alt="${escapeHtml(alt)}" loading="lazy">`;
+  }
+  return `<video class="prompt-preset-preview-video" muted loop playsinline preload="none" data-prompt-preview data-preview-src="${escapeHtml(source)}" aria-hidden="true"></video>`;
+}
+
+let promptPresetPreviewObserver = null;
+let promptPresetPreviewFrame = 0;
+const promptPresetPreviewEntries = new Map();
+
+function promptPresetPreviewCapacity() {
+  return window.matchMedia?.('(pointer: coarse)').matches ? 1 : 3;
+}
+
+function hydratePromptPresetPreview(video) {
+  if (!video || video.getAttribute('src')) return;
+  const source = video.dataset.previewSrc;
+  if (!source) return;
+  video.src = source;
+  video.load();
+}
+
+function syncPromptPresetPreviewPlayback() {
+  cancelAnimationFrame(promptPresetPreviewFrame);
+  promptPresetPreviewFrame = requestAnimationFrame(() => {
+    promptPresetPreviewFrame = 0;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    const candidates = [];
+    for (const [video, entry] of promptPresetPreviewEntries) {
+      if (!video.isConnected) {
+        promptPresetPreviewEntries.delete(video);
+        promptPresetPreviewObserver?.unobserve(video);
+        continue;
+      }
+      if (entry.ratio <= 0 || video.closest('[hidden]')) continue;
+      const bounds = video.getBoundingClientRect();
+      candidates.push({
+        video,
+        ratio: entry.ratio,
+        pinned: video.dataset.previewPinned === 'true',
+        distance: Math.abs((bounds.top + bounds.height / 2) - window.innerHeight / 2),
+      });
+    }
+    candidates.sort((left, right) => (
+      Number(right.pinned) - Number(left.pinned)
+      || right.ratio - left.ratio
+      || left.distance - right.distance
+    ));
+    const active = new Set(candidates.slice(0, promptPresetPreviewCapacity()).map((entry) => entry.video));
+    for (const [video] of promptPresetPreviewEntries) {
+      if (!active.has(video)) {
+        video.pause();
+        continue;
+      }
+      hydratePromptPresetPreview(video);
+      if (reduceMotion) {
+        video.pause();
+        continue;
+      }
+      const play = video.play();
+      if (play?.catch) play.catch(() => {});
+    }
+  });
+}
+
+function observePromptPresetPreviews(root = document) {
+  if (typeof IntersectionObserver === 'undefined') return;
+  if (!promptPresetPreviewObserver) {
+    promptPresetPreviewObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        promptPresetPreviewEntries.set(entry.target, { ratio: entry.intersectionRatio });
+      }
+      syncPromptPresetPreviewPlayback();
+    }, { threshold: [0, .25, .6, .9] });
+  }
+  root.querySelectorAll?.('video[data-prompt-preview]').forEach((video) => {
+    if (promptPresetPreviewEntries.has(video)) return;
+    promptPresetPreviewEntries.set(video, { ratio: 0 });
+    promptPresetPreviewObserver.observe(video);
+    const pin = () => {
+      video.dataset.previewPinned = 'true';
+      syncPromptPresetPreviewPlayback();
+    };
+    const unpin = () => {
+      delete video.dataset.previewPinned;
+      syncPromptPresetPreviewPlayback();
+    };
+    video.closest('button, article')?.addEventListener('pointerenter', pin);
+    video.closest('button, article')?.addEventListener('pointerleave', unpin);
+    video.closest('button, article')?.addEventListener('focusin', pin);
+    video.closest('button, article')?.addEventListener('focusout', unpin);
+  });
+  syncPromptPresetPreviewPlayback();
 }
 
 function normalizedPromptPresetSearch(value) {
@@ -11010,7 +11128,7 @@ function renderPromptPresetSummary() {
     remove.dataset.presetAccent = preset.accent || 'violet';
     remove.title = `Remove ${preset.label || 'visual preset'}`;
     remove.setAttribute('aria-label', `Remove ${preset.label || 'visual preset'}`);
-    if (preset.thumbnail) {
+    if (preset.thumbnail && !isPromptPresetVideoThumbnail(preset.thumbnail)) {
       const image = document.createElement('img');
       image.src = preset.thumbnail;
       image.alt = '';
@@ -11287,6 +11405,7 @@ function renderCameraPicker() {
   requestAnimationFrame(syncPromptPresetPackNameOverflow);
   if (promptPresetPackView === 'catalog') {
     container.replaceChildren();
+    observePromptPresetPreviews($('#cameraSheet'));
     return;
   }
   $('#promptPresetPackTitle').textContent = activePack?.name || '';
@@ -11401,6 +11520,7 @@ function renderCameraPicker() {
     }
   }
   renderPromptPresetSummary();
+  observePromptPresetPreviews($('#cameraSheet'));
   requestAnimationFrame(() => {
     syncPromptPresetCategoryOverflow();
     if (promptPresetSearchQuery) return;
@@ -11432,7 +11552,7 @@ function createPromptPresetCard(preset, category, options = {}) {
   button.title = `${preset.label} · ${preset.packName}`;
   button.innerHTML = `
     <span class="camera-preset-image">
-      <img src="${escapeHtml(preset.thumbnail)}" alt="${escapeHtml(preset.thumbnailAlt || '')}" loading="lazy">
+      ${promptPresetThumbnailMarkup(preset.thumbnail, preset.thumbnailAlt || '')}
       <span class="camera-preset-check" aria-hidden="true">✓</span>
     </span>
     <span class="camera-preset-copy">
@@ -11440,8 +11560,8 @@ function createPromptPresetCard(preset, category, options = {}) {
       <small>${escapeHtml(preset.note || preset.packName || '')}</small>
       ${options.context ? `<span class="preset-search-context" title="${escapeHtml(options.context)}">${escapeHtml(options.context)}</span>` : ''}
     </span>`;
-  const image = button.querySelector('img');
-  image.addEventListener('error', () => button.classList.add('image-missing'), { once: true });
+  const media = button.querySelector('img, video');
+  media?.addEventListener('error', () => button.classList.add('image-missing'), { once: true });
   button.addEventListener('click', () => {
     applyPromptPresetSelection(category.id, preset);
   });
@@ -32946,10 +33066,8 @@ function promptPackThumbnails(pack, limit = 4) {
 }
 
 function addonMosaicMarkup(sources, label) {
-  const images = sources.slice(0, 4).map((src) => (
-    `<img src="${escapeHtml(src)}" alt="" loading="lazy">`
-  )).join('');
-  return images || `<span class="addon-mosaic-fallback">${escapeHtml(label || 'Preset pack')}</span>`;
+  const media = sources.slice(0, 4).map((src) => promptPresetThumbnailMarkup(src)).join('');
+  return media || `<span class="addon-mosaic-fallback">${escapeHtml(label || 'Preset pack')}</span>`;
 }
 
 function builtinCameraPack() {
@@ -32999,6 +33117,7 @@ function renderPromptPacks() {
   if (!list) return;
   const packs = [builtinCameraPack(), ...state.promptPacks];
   list.innerHTML = packs.map(renderAddonPackCard).join('');
+  observePromptPresetPreviews(list);
   const installed = state.promptPacks.length;
   $('#addonPackStatus').textContent = installed
     ? `${installed} installed pack${installed === 1 ? '' : 's'} · available to all profiles`
@@ -33099,6 +33218,7 @@ function renderPromptPackInspectionQueue() {
       : (current ? 'Update' : 'Install');
     list.appendChild(card);
   }
+  observePromptPresetPreviews(list);
 }
 
 function renderPromptPackInspection(result) {

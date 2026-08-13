@@ -504,6 +504,22 @@ test('MiniMax H3 Reference Turbo renders a planned long-video segment inside the
   assert.deepEqual(graph.poster_pick.inputs.image, ['decode', 0]);
 });
 
+test('MiniMax H3 Reference Turbo plans a single five-second video without an external chunk segment', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Replace the chair in <Video 1> with <Picture 1>.', W: 1344, H: 768,
+    frames: 124, seed: 19, turbo: true,
+    references: {
+      images: [{ name: 'stool.png' }],
+      videos: [{ name: 'chair.mp4', hasAudio: true }],
+    },
+  }, settings);
+
+  assert.equal(graph.condition.inputs.length, 124);
+  assert.equal(graph.ref_video_0_0.inputs.frame_load_cap, 124);
+  assert.equal(graph.ref_video_0_0.inputs.skip_first_frames, 0);
+  assert.deepEqual(graph.condition.inputs['ref_video_audios.ref_video_audio_0'], ['ref_video_0_0', 2]);
+});
+
 test('MiniMax H3 Reference Turbo rejects an unplanned long video graph', async () => {
   await assert.rejects(buildMiniMaxH3Graph({
     mode: 'reference', prompt: 'Restyle <Video 1>.', W: 1344, H: 768,

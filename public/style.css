@@ -10506,6 +10506,13 @@ body.sheet-open {
   object-fit: contain;
   transition: transform .3s ease;
 }
+.preset-pack-card-media video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: transform .3s ease;
+}
 .preset-pack-card-copy {
   min-width: 0;
   display: grid;
@@ -10566,7 +10573,7 @@ body.sheet-open {
   background: #090c13;
   box-shadow: 0 18px 38px rgba(0,0,0,.26);
 }
-.preset-pack-card:hover .preset-pack-card-media img { transform: scale(1.025); }
+.preset-pack-card:hover .preset-pack-card-media :is(img, video) { transform: scale(1.025); }
 .preset-pack-card:hover > svg { color: #c5d5f3; transform: translateX(2px); }
 .preset-pack-detail {
   display: flex;
@@ -10626,7 +10633,7 @@ body.sheet-open {
 @media (prefers-reduced-motion: reduce) {
   .camera-panel { animation: none; }
   .preset-pack-card,
-  .preset-pack-card-media img,
+  .preset-pack-card-media :is(img, video),
   .preset-pack-card > svg { transition: none; }
   .preset-pack-card-copy strong.is-overflowing > span { animation: none; }
   .preset-category-filter-indicator.is-ready,
@@ -10956,8 +10963,17 @@ body.sheet-open {
   object-fit: contain;
   transition: filter .2s ease;
 }
-.camera-preset-card:hover img { filter: brightness(1.04); }
-.camera-preset-card.image-missing img { display: none; }
+.camera-preset-image video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: filter .2s ease;
+}
+.camera-preset-card:hover :is(img, video) { filter: brightness(1.04); }
+.camera-preset-card.image-missing img,
+.camera-preset-card.image-missing video { display: none; }
+.prompt-preset-preview-video { background: #080a10; }
 .camera-preset-check {
   position: absolute;
   z-index: 1;
@@ -11676,10 +11692,10 @@ body.sheet-open {
   border-radius: 12px;
   background: #0b1019;
 }
-.addon-inspection-preview img,
-.addon-pack-mosaic img { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; object-fit: cover; }
-.addon-inspection-preview img:only-child,
-.addon-pack-mosaic img:only-child { grid-column: 1 / -1; grid-row: 1 / -1; }
+.addon-inspection-preview :is(img, video),
+.addon-pack-mosaic :is(img, video) { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; object-fit: cover; }
+.addon-inspection-preview :is(img, video):only-child,
+.addon-pack-mosaic :is(img, video):only-child { grid-column: 1 / -1; grid-row: 1 / -1; }
 .addon-inspection-copy { min-width: 0; }
 .addon-kicker {
   color: #69d5ff;
