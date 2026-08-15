@@ -624,6 +624,8 @@ test('MiniMax H3 Frames Turbo defaults new installs to v4 while preserving expli
 
 test('long H3 Reference Turbo videos advance through five-second jobs and rejoin as one result', () => {
   assert.match(server, /h3TurboReferenceSegments\(frames\)/);
+  assert.doesNotMatch(server, /h3References\.videos\.length && frames > H3_TURBO_REFERENCE_CHUNK_FRAMES/);
+  assert.match(server, /if \(h3TurboReferenceChunks\.length\) \{[\s\S]{0,120}opts\.turboReferenceSegment = h3TurboReferenceChunks\[0\]/);
   assert.match(server, /opts\.turboReferenceSegment = h3TurboReferenceChunks\[0\]/);
   assert.match(server, /async function queueNextVideoChunk\(job\)/);
   assert.match(server, /videoChunkSequence\.chunkBuffers\[videoChunkSequence\.index\] = buf/);

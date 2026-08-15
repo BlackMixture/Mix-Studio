@@ -520,6 +520,18 @@ test('MiniMax H3 Reference Turbo plans a single five-second video without an ext
   assert.deepEqual(graph.condition.inputs['ref_video_audios.ref_video_audio_0'], ['ref_video_0_0', 2]);
 });
 
+test('MiniMax H3 Reference Turbo accepts a normalized five-second frame value with float drift', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Restyle <Video 1>.', W: 1344, H: 768,
+    frames: 124.0000000001, seed: 20, turbo: true,
+    references: { videos: [{ name: 'source.mp4', hasAudio: true }] },
+  }, settings);
+
+  assert.equal(graph.condition.inputs.length, 124);
+  assert.equal(graph.ref_video_0_0.inputs.frame_load_cap, 124);
+  assert.equal(graph.ref_video_0_0.inputs.skip_first_frames, 0);
+});
+
 test('MiniMax H3 Reference Turbo rejects an unplanned long video graph', async () => {
   await assert.rejects(buildMiniMaxH3Graph({
     mode: 'reference', prompt: 'Restyle <Video 1>.', W: 1344, H: 768,

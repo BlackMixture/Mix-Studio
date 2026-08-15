@@ -8989,11 +8989,14 @@ async function handleApi(req, res, url) {
     if (h3LongContextTurboVideo && firstH3LongContextSegment) {
       opts.turboReferenceSegment = firstH3LongContextSegment;
     }
+    // Always attach the normalized plan, including the single five-second
+    // segment. This keeps short Reference Turbo requests independent of raw
+    // floating-point duration values and reserves orchestration for 2+ chunks.
     const h3TurboReferenceChunks = engine === 'h3' && h3ReferenceBacked && h3Turbo
-      && !h3LongContext && h3References.videos.length && frames > H3_TURBO_REFERENCE_CHUNK_FRAMES
+      && !h3LongContext && h3References.videos.length
       ? h3TurboReferenceSegments(frames)
       : [];
-    if (h3TurboReferenceChunks.length > 1) {
+    if (h3TurboReferenceChunks.length) {
       opts.turboReferenceSegment = h3TurboReferenceChunks[0];
     }
     const graph = engine === 'h3' ? await buildMiniMaxH3Graph(opts, settings, {
