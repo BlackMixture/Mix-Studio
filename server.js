@@ -3230,7 +3230,8 @@ function finishPromptRevisionRequest(record, stage, details = {}) {
   if (stage === 'error') console.error('[prompt-revise]', JSON.stringify(summary));
   else console.info('[prompt-revise]', JSON.stringify(summary));
   const timer = setTimeout(() => {
-    if (promptRevisionRequests.get(record.requestId) === record) {
+    const current = promptRevisionRequests.get(record.requestId);
+    if (current === record && current.profileId === record.profileId) {
       promptRevisionRequests.delete(record.requestId);
     }
   }, 5 * 60_000);
