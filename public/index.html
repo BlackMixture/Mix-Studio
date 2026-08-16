@@ -3550,6 +3550,32 @@
   </div>
 </div>
 
+<div class="sheet centered-dialog-sheet" id="h3ReferenceTrimSheet">
+  <div class="sheet-panel h3-reference-trim-panel" role="dialog" aria-modal="true" aria-labelledby="h3ReferenceTrimTitle">
+    <h3 class="sheet-title"><span id="h3ReferenceTrimTitle">Trim reference video</span><button data-close aria-label="Close video trimmer">✕</button></h3>
+    <div class="h3-reference-trim-preview">
+      <video id="h3ReferenceTrimVideo" muted playsinline preload="metadata"></video>
+    </div>
+    <div class="audio-trim h3-reference-trim-track">
+      <div class="trim-row">
+        <button class="icon-btn trim-play" id="h3ReferenceTrimPlay" type="button" aria-label="Play trimmed preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13L18 12 8 5.5Z" fill="currentColor"/></svg></button>
+        <span class="trim-label" id="h3ReferenceTrimLabel"></span>
+      </div>
+      <div class="wave-wrap" id="h3ReferenceTrimWave" aria-label="Video trim range. Drag either edge to adjust the selection.">
+        <canvas class="wave-canvas" id="h3ReferenceTrimFilmstrip" aria-hidden="true"></canvas>
+        <div class="wave-shade left" id="h3ReferenceTrimShadeL"></div>
+        <div class="wave-shade wave-shade-r" id="h3ReferenceTrimShadeR"></div>
+        <div class="wave-sel" id="h3ReferenceTrimSelection"></div>
+        <div class="playhead" id="h3ReferenceTrimPlayhead"></div>
+      </div>
+    </div>
+    <div class="h3-reference-trim-actions">
+      <button type="button" id="h3ReferenceTrimReset">Use full video</button>
+      <button class="sheet-cta" type="button" id="h3ReferenceTrimApply">Apply trim</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet" id="motionPickerSheet">
   <div class="sheet-panel duration-picker-panel">
     <h3 class="sheet-title">Motion freedom <button data-close aria-label="Close motion freedom picker">✕</button></h3>

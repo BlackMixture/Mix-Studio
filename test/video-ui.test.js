@@ -756,6 +756,9 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /<(?:\(\?:)?Picture\|Video\|Audio\) \\\\d\+>/);
   assert.match(app, /state\.view === 'edit' \|\| h3ReferenceModeActive\(\)[\s\S]{0,100}event\.data === '@'/);
   assert.match(app, /function renderPromptMentionPicker\(\)[\s\S]{0,760}h3PromptReferenceEntries\(\)/);
+  assert.match(app, /media = document\.createElement\('video'\);[\s\S]{0,180}media\.className = 'prompt-mention-video'/);
+  assert.match(app, /entry\.role === 'embedded-audio' \? 'Audio from video'/);
+  assert.doesNotMatch(app, /detail\.textContent = h3Reference \? \(ref\.label \|\| ref\.name\)/);
   assert.match(app, /Remove empty H3 reference input \$\{slotIndex \+ 1\}/);
   assert.match(app, /state\.vidH3RefSlots = Math\.max\(1, visibleSlots - 1\)/);
   assert.match(app, /state\.vidH3RefSlots = Math\.max\(1, h3ReferenceCount\(\)\);[\s\S]{0,260}renderPromptComposer\(\)/);
@@ -768,11 +771,14 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(app, /refs\[kind\]\[index\] = asset/);
   assert.match(app, /prompt kept/);
   assert.match(app, /swap\.className = 'ref-swap'/);
+  assert.match(app, /openH3ReferenceTools\(swap, entry\)/);
   assert.match(app, /pickH3ReferenceReplacement\(kind, index\)/);
   assert.match(css, /\.h3-reference-grid \.ref-swap/);
   assert.doesNotMatch(app, /h3-reference-name/);
   assert.match(css, /\.h3-reference-grid \.ref-slot/);
-  assert.match(css, /\.h3-reference-grid \.ref-slot \.ref-role \{[\s\S]*background: transparent;/);
+  assert.match(css, /\.h3-reference-panel \{[\s\S]*border: 0;[\s\S]*background: transparent;/);
+  assert.match(css, /\.h3-reference-grid,\s*\.h3-reference-grid\[data-slots="1"\][\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.h3-reference-grid \.ref-slot \.ref-role \{[\s\S]*background: linear-gradient/);
   assert.match(css, /\.video-input-grid\.h3-frame-inputs \.media-input-filled \.attach-info \{[\s\S]*background: transparent;/);
   assert.match(css, /\.video-input-grid\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.prompt-h3-audio/);
@@ -780,6 +786,18 @@ test('MiniMax H3 Reference mode uses progressive media slots and prompt mention 
   assert.match(css, /\.prompt-mention-option\.current/);
   assert.match(css, /\.h3-reference-grid \.ref-slot\.filled \{ cursor: grab;/);
   assert.match(html, /class="sheet centered-dialog-sheet" id="promptMentionSheet"/);
+});
+
+test('MiniMax H3 reference cards reuse crop, lossless trim, and first-frame tools', () => {
+  assert.match(html, /id="h3ReferenceTrimSheet"[\s\S]*id="h3ReferenceTrimVideo"[\s\S]*id="h3ReferenceTrimWave"[\s\S]*id="h3ReferenceTrimApply"/);
+  assert.match(app, /function openH3ReferenceTools\(anchor, entry\)/);
+  assert.match(app, /openInputImageCrop\(asset, \(next\) => commitH3ReferenceEdit\(kind, index, next\)/);
+  assert.match(app, /label: 'Preview and trim'[\s\S]{0,180}openH3ReferenceTrim\(kind, index\)/);
+  assert.match(app, /label: 'Extract first frame'[\s\S]{0,180}addH3ReferenceFirstFrame\(asset\)/);
+  assert.match(app, /async function extractVideoFirstFrameAsset\(asset, requestedTime = 0/);
+  assert.match(app, /trimStart: Math\.max\(0, Number\(asset\.trimStart\) \|\| 0\)/);
+  assert.match(app, /trimEnd: Math\.max\(0, Number\(asset\.trimEnd\) \|\| 0\)/);
+  assert.match(css, /\.h3-reference-trim-preview video \{[^}]*object-fit: contain/);
 });
 
 test('MiniMax H3 Reference mode offers local multi-style video restyling', () => {

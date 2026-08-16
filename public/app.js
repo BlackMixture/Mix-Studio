@@ -1343,17 +1343,34 @@ function renderPromptMentionPicker() {
       media = document.createElement('img');
       media.src = ref.displayUrl || ref.url || `/api/input?name=${encodeURIComponent(ref.name)}`;
       media.alt = '';
+    } else if (entry.mediaKind === 'video') {
+      media = document.createElement('video');
+      media.className = 'prompt-mention-video';
+      media.src = ref.displayUrl || ref.url || `/api/input?name=${encodeURIComponent(ref.name)}`;
+      media.muted = true;
+      media.playsInline = true;
+      media.preload = 'metadata';
+      media.tabIndex = -1;
+      media.setAttribute('aria-hidden', 'true');
+      media.addEventListener('loadedmetadata', () => {
+        const start = Math.max(0, Number(ref.trimStart) || 0);
+        try { media.currentTime = Math.min(start + 0.05, Math.max(0, (media.duration || 0) - 0.05)); } catch { /* preview remains on its poster frame */ }
+      }, { once: true });
     } else {
       media = document.createElement('span');
       media.className = `prompt-mention-media ${entry.mediaKind}`;
       media.setAttribute('aria-hidden', 'true');
-      media.textContent = entry.mediaKind === 'audio' ? '♫' : '▶';
+      media.textContent = '♫';
     }
     const copy = document.createElement('span');
     const title = document.createElement('b');
     title.textContent = entry.label;
     const detail = document.createElement('small');
-    detail.textContent = h3Reference ? (ref.label || ref.name) : 'Insert reference into prompt';
+    detail.textContent = h3Reference
+      ? (entry.mediaKind === 'video'
+        ? 'Video reference'
+        : (entry.role === 'embedded-audio' ? 'Audio from video' : `${entry.mediaKind[0].toUpperCase()}${entry.mediaKind.slice(1)} reference`))
+      : 'Insert reference into prompt';
     copy.append(title, detail);
     const add = document.createElement('i');
     add.textContent = current ? '✓' : (replacingH3Reference ? '→' : '+');
@@ -2475,6 +2492,8 @@ function actionIconMarkup(icon) {
     switch: '<path d="m15 4 5 4-5 4V9H5V7h10V4Zm-6 8v3h10v2H9v3l-5-4 5-4Z"/>',
     updates: '<path d="M12 5a7 7 0 0 1 6.3 4H16l3.3 3.3L22.6 9h-2.2A9 9 0 0 0 4 8.2L5.7 9A7 7 0 0 1 12 5Zm-7.3 6.7L1.4 15h2.2A9 9 0 0 0 20 15.8l-1.7-.8A7 7 0 0 1 5.7 15H8l-3.3-3.3Z"/>',
     image: '<path d="M4 4h16v16H4V4Zm2 2v12h12V6H6Zm2 9 3-4 2.4 2.7 1.8-2.1L18 15H8Zm7-7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/>',
+    crop: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M7 3v14a2 2 0 0 0 2 2h12M3 7h14a2 2 0 0 1 2 2v12"/>',
+    trim: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 17h16M8 4v6m8 4v6M8 10a2 2 0 1 0 0 4m8-4a2 2 0 1 1 0 4"/>',
     eye: '<path d="M12 5c5.2 0 9 5.3 9 7s-3.8 7-9 7-9-5.3-9-7 3.8-7 9-7Zm0 2c-3.8 0-6.7 3.7-7 5 .3 1.3 3.2 5 7 5s6.7-3.7 7-5c-.3-1.3-3.2-5-7-5Zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>',
     enhance: '<path d="m12 2 1.2 4.1L17 8l-3.8 1.9L12 14l-1.2-4.1L7 8l3.8-1.9L12 2Zm6 10 .8 2.7L21 16l-2.2 1.3L18 20l-.8-2.7L15 16l2.2-1.3L18 12ZM6 13l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3Z"/>',
     heart: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/>',
@@ -17799,6 +17818,161 @@ function pickH3ReferenceReplacement(kind, index) {
   pickUpload(`${mediaKind}/*`, (asset) => replaceH3Reference(kind, index, asset), `Replace ${labels[kind]} ${index + 1}`);
 }
 
+function commitH3ReferenceEdit(kind, index, asset) {
+  const refs = h3References();
+  if (!refs[kind]?.[index] || !asset) return;
+  refs[kind][index] = asset;
+  renderH3References();
+  renderPromptComposer();
+  refreshH3ReferenceResolution();
+  saveForm();
+}
+
+let h3ReferenceTrimState = null;
+let h3ReferenceTrimFilmstripToken = 0;
+
+function layoutH3ReferenceTrim() {
+  const trim = h3ReferenceTrimState;
+  if (!trim?.duration) return;
+  const start = Math.max(0, Math.min(trim.start, trim.duration));
+  const end = Math.max(start, Math.min(trim.end, trim.duration));
+  const startPct = (start / trim.duration) * 100;
+  const endPct = (end / trim.duration) * 100;
+  $('#h3ReferenceTrimSelection').style.left = `${startPct}%`;
+  $('#h3ReferenceTrimSelection').style.width = `${endPct - startPct}%`;
+  $('#h3ReferenceTrimShadeL').style.width = `${startPct}%`;
+  $('#h3ReferenceTrimShadeR').style.width = `${100 - endPct}%`;
+  $('#h3ReferenceTrimLabel').textContent = `${fmtT(start)} – ${fmtT(end)} · ${(end - start).toFixed(1)}s of ${trim.duration.toFixed(1)}s`;
+}
+
+async function drawH3ReferenceTrimFilmstrip() {
+  const trim = h3ReferenceTrimState;
+  const wrap = $('#h3ReferenceTrimWave');
+  const canvas = $('#h3ReferenceTrimFilmstrip');
+  if (!trim?.duration || !wrap.clientWidth) return;
+  const token = ++h3ReferenceTrimFilmstripToken;
+  const dpr = window.devicePixelRatio || 1;
+  const width = wrap.clientWidth;
+  const height = wrap.clientHeight;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  const context = canvas.getContext('2d');
+  context.scale(dpr, dpr);
+  context.fillStyle = 'rgba(255,255,255,.04)';
+  context.fillRect(0, 0, width, height);
+  try {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.src = trim.asset.url || `/api/input?name=${encodeURIComponent(trim.asset.name)}`;
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = resolve;
+      video.onerror = () => reject(new Error('Could not read video preview'));
+    });
+    const count = Math.max(6, Math.floor(width / 58));
+    const tileWidth = width / count;
+    const seek = (time) => new Promise((resolve) => {
+      video.onseeked = resolve;
+      video.currentTime = time;
+    });
+    for (let index = 0; index < count; index += 1) {
+      if (token !== h3ReferenceTrimFilmstripToken || h3ReferenceTrimState !== trim) return;
+      await seek(Math.max(0, Math.min(trim.duration - .05, ((index + .5) / count) * trim.duration)));
+      const scale = Math.max(tileWidth / (video.videoWidth || 1), height / (video.videoHeight || 1));
+      const drawWidth = (video.videoWidth || 1) * scale;
+      const drawHeight = (video.videoHeight || 1) * scale;
+      context.save();
+      context.beginPath();
+      context.rect(index * tileWidth, 0, tileWidth, height);
+      context.clip();
+      context.drawImage(video, index * tileWidth + (tileWidth - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+      context.restore();
+    }
+  } catch { /* The range remains fully usable without decorative frames. */ }
+}
+
+function closeH3ReferenceTrim() {
+  const video = $('#h3ReferenceTrimVideo');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  $('#h3ReferenceTrimSheet').classList.remove('show');
+  h3ReferenceTrimState = null;
+  h3ReferenceTrimFilmstripToken += 1;
+  syncSheetScrollLock();
+}
+
+async function openH3ReferenceTrim(kind, index) {
+  const asset = h3References()[kind]?.[index];
+  if (!asset || kind !== 'videos') return;
+  await prepareH3ReferenceAsset(asset);
+  const video = $('#h3ReferenceTrimVideo');
+  const src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
+  h3ReferenceTrimState = {
+    kind,
+    index,
+    asset,
+    duration: Math.max(0, Number(asset.dur) || 0),
+    start: Math.max(0, Number(asset.trimStart) || 0),
+    end: Math.max(0, Number(asset.trimEnd) || Number(asset.dur) || 0),
+    drag: null,
+  };
+  $('#h3ReferenceTrimTitle').textContent = `Trim ${asset.label || `Video ${index + 1}`}`;
+  video.src = src;
+  video.onloadedmetadata = () => {
+    const trim = h3ReferenceTrimState;
+    if (!trim || trim.asset !== asset) return;
+    trim.duration = Number(video.duration) || trim.duration || 0;
+    trim.start = Math.min(trim.start, Math.max(0, trim.duration - .5));
+    trim.end = Math.max(trim.start + .5, Math.min(trim.end || trim.duration, trim.duration));
+    asset.dur = trim.duration;
+    asset.w = Number(asset.w) || Number(video.videoWidth) || 0;
+    asset.h = Number(asset.h) || Number(video.videoHeight) || 0;
+    try { video.currentTime = trim.start; } catch { /* preview can remain at frame zero */ }
+    layoutH3ReferenceTrim();
+    drawH3ReferenceTrimFilmstrip();
+  };
+  $('#h3ReferenceTrimSheet').classList.add('show');
+  syncSheetScrollLock();
+  requestAnimationFrame(layoutH3ReferenceTrim);
+}
+
+async function addH3ReferenceFirstFrame(asset) {
+  try {
+    const frame = await extractVideoFirstFrameAsset(asset, Number(asset.trimStart) || 0, 'H3 video first frame');
+    await addH3Reference(Object.assign({}, frame, { kind: 'image' }));
+    toast('First frame added as the next Picture reference');
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+function openH3ReferenceTools(anchor, entry) {
+  const { kind, index, asset, tag } = entry;
+  const label = tag.replace(/[<>]/g, '');
+  const items = [];
+  if (kind === 'images') {
+    items.push({
+      label: 'Crop picture', detail: 'Reframe this reference', icon: 'crop', tone: 'edit',
+      action: () => openInputImageCrop(asset, (next) => commitH3ReferenceEdit(kind, index, next), `Crop ${label}`),
+    });
+  } else if (kind === 'videos') {
+    items.push({
+      label: 'Preview and trim', detail: 'Choose the section H3 receives', icon: 'trim', tone: 'video',
+      action: () => openH3ReferenceTrim(kind, index),
+    }, {
+      label: 'Extract first frame', detail: 'Add it as a Picture reference', icon: 'first-frame', tone: 'reuse',
+      action: () => addH3ReferenceFirstFrame(asset),
+    });
+  }
+  items.push({
+    label: `Replace ${label}`, detail: 'Keep the prompt card in place', icon: 'switch',
+    action: () => pickH3ReferenceReplacement(kind, index),
+  });
+  openActionMenu(anchor, items, { menuTitle: `${label} tools`, tone: kind === 'videos' ? 'video' : 'image' });
+}
+
 function removeH3Reference(kind, index) {
   const before = h3PromptReferenceEntries();
   const [removed] = h3References()[kind].splice(index, 1);
@@ -18193,12 +18367,12 @@ function renderH3References() {
       const swap = document.createElement('button');
       swap.className = 'ref-swap';
       swap.type = 'button';
-      swap.setAttribute('aria-label', `Replace ${tag.replace(/[<>]/g, '')} and keep its prompt reference`);
-      swap.title = `Replace ${tag.replace(/[<>]/g, '')}`;
-      swap.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h12m0 0-3-3m3 3-3 3M19 16H7m0 0 3-3m-3 3 3 3"/></svg>';
+      swap.setAttribute('aria-label', `Open tools for ${tag.replace(/[<>]/g, '')}`);
+      swap.title = `${tag.replace(/[<>]/g, '')} tools`;
+      swap.innerHTML = '<svg class="h3-reference-more" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
       swap.addEventListener('click', (event) => {
         event.stopPropagation();
-        pickH3ReferenceReplacement(kind, index);
+        openH3ReferenceTools(swap, entry);
       });
       slot.append(role, swap, remove);
       slot.setAttribute('aria-label', `${role.textContent}, ${asset.label || asset.name}`);
@@ -18296,6 +18470,107 @@ $('#vidH3AddReference').addEventListener('click', () => {
   renderH3References();
   saveForm();
 });
+
+{
+  const wrap = $('#h3ReferenceTrimWave');
+  const video = $('#h3ReferenceTrimVideo');
+  const timeAt = (clientX) => {
+    const trim = h3ReferenceTrimState;
+    const rect = wrap.getBoundingClientRect();
+    if (!trim?.duration || !rect.width) return 0;
+    return Math.max(0, Math.min(trim.duration, ((clientX - rect.left) / rect.width) * trim.duration));
+  };
+  const applyDrag = (time) => {
+    const trim = h3ReferenceTrimState;
+    if (!trim?.duration || !trim.drag) return;
+    const minimum = Math.min(.5, trim.duration);
+    if (trim.drag.mode === 'start') trim.start = Math.max(0, Math.min(time, trim.end - minimum));
+    else if (trim.drag.mode === 'end') trim.end = Math.min(trim.duration, Math.max(time, trim.start + minimum));
+    else {
+      const length = trim.end - trim.start;
+      const start = Math.max(0, Math.min(trim.duration - length, time - trim.drag.offset));
+      trim.start = start;
+      trim.end = start + length;
+    }
+    layoutH3ReferenceTrim();
+  };
+  wrap.addEventListener('pointerdown', (event) => {
+    const trim = h3ReferenceTrimState;
+    if (!trim?.duration) return;
+    const time = timeAt(event.clientX);
+    const pixelsPerSecond = wrap.getBoundingClientRect().width / trim.duration;
+    const startDistance = Math.abs(time - trim.start) * pixelsPerSecond;
+    const endDistance = Math.abs(time - trim.end) * pixelsPerSecond;
+    let mode;
+    let offset = 0;
+    if (startDistance < 28 && startDistance <= endDistance) mode = 'start';
+    else if (endDistance < 28) mode = 'end';
+    else if (time > trim.start && time < trim.end) {
+      mode = 'move';
+      offset = time - trim.start;
+    } else mode = time < trim.start ? 'start' : 'end';
+    trim.drag = { pointerId: event.pointerId, mode, offset };
+    applyDrag(time);
+    try { wrap.setPointerCapture(event.pointerId); } catch { /* optional pointer capture */ }
+  });
+  wrap.addEventListener('pointermove', (event) => {
+    if (h3ReferenceTrimState?.drag?.pointerId === event.pointerId) applyDrag(timeAt(event.clientX));
+  });
+  const finish = (event) => {
+    const trim = h3ReferenceTrimState;
+    if (!trim?.drag || trim.drag.pointerId !== event.pointerId) return;
+    trim.drag = null;
+    try { video.currentTime = trim.start; } catch { /* preview can remain in place */ }
+  };
+  wrap.addEventListener('pointerup', finish);
+  wrap.addEventListener('pointercancel', finish);
+  video.addEventListener('timeupdate', () => {
+    const trim = h3ReferenceTrimState;
+    if (!trim?.duration) return;
+    if (!video.paused && video.currentTime >= trim.end - .02) {
+      try { video.currentTime = trim.start; } catch { /* allow playback to end */ }
+    }
+    const playhead = $('#h3ReferenceTrimPlayhead');
+    playhead.style.display = 'block';
+    playhead.style.left = `${Math.min(100, (video.currentTime / trim.duration) * 100)}%`;
+  });
+  video.addEventListener('play', () => setTrimPlaybackIcon($('#h3ReferenceTrimPlay'), true));
+  video.addEventListener('pause', () => setTrimPlaybackIcon($('#h3ReferenceTrimPlay'), false));
+  $('#h3ReferenceTrimPlay').addEventListener('click', () => {
+    const trim = h3ReferenceTrimState;
+    if (!trim) return;
+    if (video.paused) {
+      if (video.currentTime < trim.start || video.currentTime >= trim.end) video.currentTime = trim.start;
+      video.play().catch(() => {});
+    } else video.pause();
+  });
+  $('#h3ReferenceTrimReset').addEventListener('click', () => {
+    const trim = h3ReferenceTrimState;
+    if (!trim) return;
+    trim.start = 0;
+    trim.end = trim.duration;
+    layoutH3ReferenceTrim();
+    try { video.currentTime = 0; } catch { /* preview can remain in place */ }
+  });
+  $('#h3ReferenceTrimApply').addEventListener('click', () => {
+    const trim = h3ReferenceTrimState;
+    if (!trim) return;
+    const next = Object.assign({}, trim.asset, {
+      dur: trim.duration,
+      trimStart: trim.start,
+      trimEnd: trim.end,
+    });
+    commitH3ReferenceEdit(trim.kind, trim.index, next);
+    closeH3ReferenceTrim();
+    toast(`Reference trim applied · ${(next.trimEnd - next.trimStart).toFixed(1)}s`);
+  });
+  $('#h3ReferenceTrimSheet [data-close]').addEventListener('click', closeH3ReferenceTrim);
+  window.addEventListener('resize', () => {
+    if (!h3ReferenceTrimState || !$('#h3ReferenceTrimSheet').classList.contains('show')) return;
+    layoutH3ReferenceTrim();
+    drawH3ReferenceTrimFilmstrip();
+  });
+}
 
 function renderVidAttach() {
   if (h3ResolutionActive()) {
@@ -18978,17 +19253,16 @@ $('#driveTrimPlay').addEventListener('click', () => {
 
 /* Extract the first frame of the trimmed motion video once, then route it to
    Edit, image-to-image, or depth guidance without asking for another upload. */
-async function extractDriveFirstFrame() {
-  const d = state.vidDrive;
-  if (!d) throw new Error('Add a motion video first');
-  const trimStart = Number(d.trimStart) || 0;
-  if (d.firstFrame && Math.abs(Number(d.firstFrame.trimStart) - trimStart) < 0.001) return d.firstFrame;
+async function extractVideoFirstFrameAsset(asset, requestedTime = 0, label = 'Video first frame') {
+  if (!asset) throw new Error('Add a video first');
+  const trimStart = Math.max(0, Number(requestedTime) || 0);
+  if (asset.firstFrame && Math.abs(Number(asset.firstFrame.trimStart) - trimStart) < 0.001) return asset.firstFrame;
   toast('Extracting first frame…');
   const video = document.createElement('video');
   video.muted = true;
   video.playsInline = true;
   video.preload = 'auto';
-  video.src = d.url;
+  video.src = asset.url || `/api/input?name=${encodeURIComponent(asset.name)}`;
   await new Promise((resolve, reject) => {
     video.onloadedmetadata = resolve;
     video.onerror = () => reject(new Error('Could not read the video'));
@@ -19008,16 +19282,22 @@ async function extractDriveFirstFrame() {
     headers: { 'x-filename': encodeURIComponent('motion_first_frame.png') },
     body: await blob.arrayBuffer(),
   });
-  if (d.firstFrame?.url) try { URL.revokeObjectURL(d.firstFrame.url); } catch { /* noop */ }
-  d.firstFrame = {
+  if (asset.firstFrame?.url) try { URL.revokeObjectURL(asset.firstFrame.url); } catch { /* noop */ }
+  asset.firstFrame = {
     name: response.name,
     url: URL.createObjectURL(blob),
     w: canvas.width,
     h: canvas.height,
-    label: 'Motion video first frame',
+    label,
     trimStart,
   };
-  return d.firstFrame;
+  return asset.firstFrame;
+}
+
+async function extractDriveFirstFrame() {
+  const drive = state.vidDrive;
+  if (!drive) throw new Error('Add a motion video first');
+  return extractVideoFirstFrameAsset(drive, Number(drive.trimStart) || 0, 'Motion video first frame');
 }
 
 async function useDriveFirstFrame(destination) {
@@ -19568,6 +19848,9 @@ $('#generateBtn').addEventListener('click', async () => {
           hasAudio: asset.hasAudio === true,
           w: Math.max(0, Math.round(Number(asset.w) || 0)),
           h: Math.max(0, Math.round(Number(asset.h) || 0)),
+          dur: Math.max(0, Number(asset.dur) || 0),
+          trimStart: Math.max(0, Number(asset.trimStart) || 0),
+          trimEnd: Math.max(0, Number(asset.trimEnd) || 0),
         })),
       ])) : undefined,
       cameraMotions: cameraMotionsForEngine(),

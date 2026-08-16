@@ -586,6 +586,21 @@ test('MiniMax H3 reference inputs are limited to the native node capacities', ()
   assert.equal(refs.audios.length, 3);
 });
 
+test('MiniMax H3 reference video trims map to lossless VHS frame offsets', async () => {
+  const refs = normalizeH3References({
+    videos: [{ name: 'source.mp4', dur: 12, trimStart: 2.5, trimEnd: 7.5, hasAudio: true }],
+  });
+  assert.equal(refs.videos[0].trimStart, 2.5);
+  assert.equal(refs.videos[0].trimEnd, 7.5);
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'reference', prompt: 'Use <Video 1>.', W: 1344, H: 768, frames: 124, seed: 31,
+    references: refs,
+  }, settings);
+  assert.equal(graph.ref_video_0.inputs.skip_first_frames, 60);
+  assert.equal(graph.ref_video_0.inputs.frame_load_cap, 120);
+  assert.deepEqual(graph.condition.inputs['ref_video_audios.ref_video_audio_0'], ['ref_video_0', 2]);
+});
+
 test('MiniMax H3 reference mode rejects an empty reference set', async () => {
   await assert.rejects(
     buildMiniMaxH3Graph({ mode: 'reference', prompt: 'Empty', W: 768, H: 768, frames: 124 }, settings),
