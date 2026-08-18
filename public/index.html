@@ -75,7 +75,7 @@
             <span class="app-drawer-create-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h16v14H4V5Zm2 2v10h12V7H6Zm2 8 2.8-3 2.1 2.1 1.7-1.8L17 15H8Zm1-6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg></span>
             <span>Image</span>
           </button>
-          <button class="app-drawer-create-item" type="button" data-drawer-create-mode="region">
+          <button class="app-drawer-create-item" id="drawerMiddleCreate" type="button" data-drawer-create-mode="region">
             <span class="app-drawer-create-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 3h6v2H6v4H4V3Zm10 0h6v6h-2V5h-4V3ZM4 15h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg></span>
             <span>Region</span>
           </button>
@@ -174,7 +174,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg>
       <span>Image</span>
     </button>
-    <button class="tab create-tab" data-create-mode="region">
+    <button class="tab create-tab" id="createMiddleTab" data-create-mode="region">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z"/></svg>
       <span>Region</span>
     </button>
@@ -201,6 +201,48 @@
       </button>
     </nav>
   </div>
+  <section class="smart-workspace" id="smartWorkspace" aria-label="Smart production" hidden>
+    <header class="smart-head">
+      <span class="smart-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Zm7 12 .9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9L19 14Z"/></svg></span>
+      <span><small>Experimental orchestration</small><h2>Smart production</h2></span>
+      <span class="smart-provider" id="smartProvider">AI planner</span>
+    </header>
+    <div class="smart-layout">
+      <section class="smart-brief-card">
+        <div class="smart-section-label"><span>01</span> Creative brief</div>
+        <h3>Describe the finished piece</h3>
+        <p>Speak naturally or type one idea. Smart will choose the workflows, build a production plan, and prepare the queue.</p>
+        <label class="sr-only" for="smartBriefInput">Creative brief</label>
+        <textarea id="smartBriefInput" rows="7" maxlength="8000" placeholder="Make a 120-second cinematic video about a lion navigating a series of surreal city scenarios…"></textarea>
+        <div class="smart-brief-actions">
+          <button class="smart-voice-btn" id="smartVoiceBtn" type="button" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 1 0-7 0v5A3.5 3.5 0 0 0 12 15Zm-7-4a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg>
+            <span id="smartVoiceLabel">Speak brief</span><i id="smartVoiceTime"></i>
+          </button>
+          <button class="smart-plan-btn" id="smartPlanBtn" type="button"><span>Build production plan</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        </div>
+        <div class="smart-status" id="smartStatus" role="status" aria-live="polite"></div>
+        <div class="smart-examples" aria-label="Example briefs">
+          <span>Try an example</span>
+          <button type="button" data-smart-example="Create a 20-second vertical fashion film featuring the same silver robot walking through three different weather conditions.">Robot fashion film</button>
+          <button type="button" data-smart-example="Make a cinematic still of a tiny greenhouse glowing inside a dark brutalist apartment.">Cinematic still</button>
+        </div>
+      </section>
+      <section class="smart-production-card" id="smartBoard" aria-live="polite">
+        <div class="smart-board-empty">
+          <span class="smart-empty-orbit" aria-hidden="true"><i></i><b></b></span>
+          <small>Production plan</small>
+          <h3>Your workflow will appear here</h3>
+          <p>Smart reasons about continuity, reference assets, model choice, duration, and queue order before anything is generated.</p>
+          <ol><li><span>1</span>Understand the brief</li><li><span>2</span>Build reference assets</li><li><span>3</span>Queue final generations</li></ol>
+        </div>
+      </section>
+    </div>
+    <section class="smart-recent" id="smartRecent" hidden>
+      <div class="smart-section-label"><span>RECENT</span> Productions</div>
+      <div class="smart-recent-list" id="smartRecentList"></div>
+    </section>
+  </section>
   <section class="director-workspace" id="directorWorkspace" aria-label="LTX 2.3 Director workspace" hidden>
     <header class="director-head">
       <section class="video-model-panel director-model-panel" id="directorModelPanel" aria-label="Director video model">
@@ -2583,6 +2625,12 @@
             <span class="settings-media-toggle-copy"><strong>Experimental Features</strong><small>Show early-access tools and workflows that may still change.</small></span>
             <span class="settings-media-switch" aria-hidden="true"><i></i></span>
           </button>
+          <div class="smart-mode-setting" id="smartModeExperimentalRow" hidden>
+            <button class="settings-media-toggle smart-mode-toggle" id="smartModeToggle" type="button" role="switch" aria-checked="false">
+              <span class="settings-media-toggle-copy"><strong>Smart mode <em>Experimental</em></strong><small>Replace Region with an AI production planner. Turn it off any time to restore the original Region workflow.</small></span>
+              <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+            </button>
+          </div>
           <button class="settings-media-toggle analytics-toggle" id="analyticsToggle" type="button" role="switch" aria-checked="true" aria-labelledby="analyticsToggleLabel" aria-describedby="analyticsToggleStatus" hidden>
             <span class="settings-media-toggle-copy"><strong id="analyticsToggleLabel">Anonymous analytics</strong><small id="analyticsToggleStatus">On · app launches and model starts only. Never prompts, media, or screen recordings.</small></span>
             <span class="settings-media-switch" aria-hidden="true"><i></i></span>

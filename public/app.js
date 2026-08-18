@@ -35,7 +35,7 @@ let firstRunTutorialGalleryLoaded = false;
 
 const state = {
   view: 'create',            // create | video | edit | gallery
-  createMode: 'image',       // image | region | video (nested under Create)
+  createMode: 'image',       // image | region | smart | video (nested under Create)
   enhance: true,
   aspect: '1:1',
   mp: 1,
@@ -179,6 +179,7 @@ const state = {
     previewFrameRate: DEFAULT_GALLERY_PREVIEW_FRAME_RATE,
     previewCache: false,
     experimentalFeatures: false,
+    smartMode: false,
   },
   metaLoras: [],
   metaLorasInfo: {},
@@ -592,6 +593,10 @@ function h3ReferenceBackedMode(mode = state.vidH3Mode) {
 
 function experimentalFeaturesEnabled() {
   return state.mediaPreferences.experimentalFeatures === true;
+}
+
+function smartModeEnabled() {
+  return experimentalFeaturesEnabled() && state.mediaPreferences.smartMode === true;
 }
 
 function h3ReplaceAvailable() {
@@ -3109,6 +3114,7 @@ function defaultMediaPreferences() {
     previewFrameRate: DEFAULT_GALLERY_PREVIEW_FRAME_RATE,
     previewCache: false,
     experimentalFeatures: false,
+    smartMode: false,
   };
 }
 
@@ -3116,6 +3122,7 @@ function loadMediaPreferences() {
   const key = mediaPreferencesKey();
   if (!key) {
     state.mediaPreferences = defaultMediaPreferences();
+    renderSmartFeatureAccess();
     return;
   }
   try {
@@ -3126,10 +3133,12 @@ function loadMediaPreferences() {
       previewFrameRate: normalizedGalleryPreviewFrameRate(saved?.previewFrameRate),
       previewCache: saved?.previewCache === true,
       experimentalFeatures: saved?.experimentalFeatures === true,
+      smartMode: saved?.smartMode === true,
     };
   } catch {
     state.mediaPreferences = defaultMediaPreferences();
   }
+  renderSmartFeatureAccess();
 }
 
 function saveMediaPreferences(next) {
@@ -3139,6 +3148,7 @@ function saveMediaPreferences(next) {
     previewFrameRate: normalizedGalleryPreviewFrameRate(next.previewFrameRate),
     previewCache: next.previewCache === true,
     experimentalFeatures: next.experimentalFeatures === true,
+    smartMode: next.experimentalFeatures === true && next.smartMode === true,
   };
   const key = mediaPreferencesKey();
   if (key) {
@@ -3445,7 +3455,8 @@ function loadForm() {
     });
     state.editLoras = state.editLorasByEngine[state.editEngine] || [];
     state.editLorasByEngine[state.editEngine] = state.editLoras;
-    state.createMode = ['image', 'region', 'video'].includes(f.createMode) ? f.createMode : 'image';
+    state.createMode = ['image', 'region', 'video'].includes(f.createMode) || (f.createMode === 'smart' && smartModeEnabled())
+      ? f.createMode : 'image';
     const savedCreateInfluence = Number(f.createInfluence);
     state.createInfluence = Number.isFinite(savedCreateInfluence)
       ? Math.max(0, Math.min(100, savedCreateInfluence)) : 55;
@@ -4248,6 +4259,338 @@ function restoreGalleryZoom() {
 $('#galleryZoom').addEventListener('input', (event) => applyGalleryZoom(event.target.value, { animate: true }));
 $('#galleryZoom').addEventListener('change', (event) => applyGalleryZoom(event.target.value, { persist: true }));
 
+let smartPlan = null;
+let smartPlanHash = '';
+let smartPlanProvider = null;
+let smartRun = null;
+let smartRuns = [];
+let smartRunsLoaded = false;
+let smartBusy = false;
+let smartClientToken = '';
+let smartRecorder = null;
+let smartRecordingChunks = [];
+let smartRecordingStartedAt = 0;
+let smartRecordingTimer = null;
+let smartRecordingLimitTimer = null;
+
+function newSmartClientToken() {
+  return globalThis.crypto?.randomUUID?.() || `smart_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function setSmartStatus(message = '', error = false) {
+  const status = $('#smartStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('error', error);
+}
+
+function smartDuration(value) {
+  const seconds = Math.max(0, Number(value) || 0);
+  if (seconds < 60) return `${Number(seconds.toFixed(1))} sec`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return remainder ? `${minutes}m ${remainder}s` : `${minutes} min`;
+}
+
+function smartStatusLabel(status) {
+  return ({
+    ready: 'Ready', queueing: 'Queueing', running: 'In production', review: 'Needs review',
+    complete: 'Complete', failed: 'Needs attention', attention: 'Interrupted', cancelled: 'Cancelled',
+    pending: 'Pending',
+  })[status] || String(status || 'Ready');
+}
+
+function smartPlanSteps(plan) {
+  const steps = [];
+  if (plan?.output?.kind === 'image') steps.push({ kind: 'image', label: 'Create final image' });
+  else {
+    if (plan?.subject?.needsReference) steps.push({ kind: 'reference', label: 'Create canonical reference' });
+    steps.push({ kind: 'video', label: `Create ${smartDuration(plan?.output?.durationSeconds)} H3 video` });
+  }
+  return steps;
+}
+
+function smartStepDetail(step, plan) {
+  if (step.kind === 'reference') return 'Krea 2 · one canonical identity image';
+  if (step.kind === 'video') {
+    const longContext = Number(plan?.output?.durationSeconds) > 10 ? ' · Long context' : '';
+    return `MiniMax H3${plan?.subject?.needsReference ? ' · Reference' : ''}${longContext}`;
+  }
+  return 'Krea 2 · final image';
+}
+
+function renderSmartRecent() {
+  const section = $('#smartRecent');
+  const list = $('#smartRecentList');
+  if (!section || !list) return;
+  const visible = smartRuns.slice(0, 6);
+  section.hidden = !visible.length;
+  list.innerHTML = visible.map((run) => `
+    <button class="smart-recent-item" type="button" data-smart-run-id="${escapeHtml(run.id)}">
+      <strong>${escapeHtml(run.title || run.plan?.title || 'Smart production')}</strong>
+      <small>${escapeHtml(smartStatusLabel(run.status))} · ${escapeHtml(new Date(run.updatedAt || run.createdAt).toLocaleDateString())}</small>
+    </button>`).join('');
+}
+
+function smartSceneMarkup(plan) {
+  if (!Array.isArray(plan?.scenes) || !plan.scenes.length) return '';
+  return `<div class="smart-scene-list">${plan.scenes.map((scene) => `
+    <article class="smart-scene">
+      <span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(0)}–${Number(scene.endSeconds || 0).toFixed(0)} sec`)}</span>
+      <strong>${escapeHtml(scene.title)}</strong>
+      <p>${escapeHtml(scene.description)}</p>
+    </article>`).join('')}</div>`;
+}
+
+function renderSmartWorkspace() {
+  const board = $('#smartBoard');
+  if (!board) return;
+  renderSmartRecent();
+  if (!smartPlan && !smartRun) return;
+  const run = smartRun;
+  const plan = run?.plan || smartPlan;
+  if (!plan) return;
+  const steps = run?.steps || smartPlanSteps(plan).map((step) => Object.assign(step, { status: 'pending' }));
+  const reference = steps.find((step) => step.kind === 'reference' && step.result?.thumbnail);
+  const status = run?.status || 'ready';
+  const action = run
+    ? (run.status === 'review' ? ['resume', 'Continue to video']
+      : (['failed', 'attention'].includes(run.status) ? ['retry', 'Retry interrupted step']
+        : (['running', 'queueing'].includes(run.status) ? ['cancel', 'Cancel remaining']
+          : (run.status === 'complete' ? ['library', 'Open Library'] : null))))
+    : ['queue', 'Queue production'];
+  board.innerHTML = `
+    <div class="smart-plan-head">
+      <span><small>${run ? 'Production run' : 'Proposed production plan'}</small><h3>${escapeHtml(plan.title)}</h3><p>${escapeHtml(plan.summary)}</p></span>
+      <span class="smart-run-status">${escapeHtml(smartStatusLabel(status))}</span>
+    </div>
+    <div class="smart-plan-facts">
+      <span><b>Output</b>${escapeHtml(plan.output.kind)}</span>
+      ${plan.output.kind === 'video' ? `<span><b>Runtime</b>${escapeHtml(smartDuration(plan.output.durationSeconds))}</span>` : ''}
+      <span><b>Frame</b>${escapeHtml(plan.output.aspectRatio)}</span>
+      <span><b>Quality</b>${escapeHtml(plan.output.quality)}</span>
+      <span><b>Queue</b>${steps.length} step${steps.length === 1 ? '' : 's'}</span>
+    </div>
+    <div class="smart-step-list">${steps.map((step, index) => `
+      <article class="smart-step ${escapeHtml(step.status || 'pending')}">
+        <span class="smart-step-index">0${index + 1}</span>
+        <span><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(smartStepDetail(step, plan))}${step.progress ? ` · ${step.progress.completed}/${step.progress.total} clips` : ''}</small></span>
+        <span class="smart-step-state">${escapeHtml(smartStatusLabel(step.status))}</span>
+      </article>`).join('')}</div>
+    ${reference ? `<div class="smart-reference-result"><img src="${escapeHtml(reference.result.thumbnail)}" alt="Generated canonical reference" /><span><strong>Canonical reference ready</strong><br>${run.status === 'review' ? 'Review this identity before H3 begins.' : 'Attached automatically to the H3 generation.'}</span></div>` : ''}
+    ${smartSceneMarkup(plan)}
+    ${!run && plan.subject.needsReference ? `<label class="smart-review-toggle"><input id="smartReviewReference" type="checkbox" ${plan.reviewReference ? 'checked' : ''}/> Pause after the character reference so I can review it</label>` : ''}
+    ${run?.error ? `<div class="smart-run-error">${escapeHtml(run.error)}</div>` : ''}
+    <div class="smart-board-actions">
+      ${!run ? '<button class="smart-board-action" type="button" data-smart-action="reset">Start over</button>' : ''}
+      ${action ? `<button class="smart-board-action ${action[0] === 'cancel' ? '' : 'primary'}" type="button" data-smart-action="${action[0]}">${escapeHtml(action[1])}</button>` : ''}
+    </div>`;
+}
+
+function mergeSmartRun(run) {
+  if (!run) return;
+  smartRuns = [run, ...smartRuns.filter((candidate) => candidate.id !== run.id)]
+    .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
+  if (!smartRun || smartRun.id === run.id) {
+    smartRun = run;
+    smartPlan = run.plan;
+    smartPlanHash = run.planHash;
+  }
+  renderSmartWorkspace();
+}
+
+async function loadSmartRuns(force = false) {
+  if (smartRunsLoaded && !force) {
+    renderSmartWorkspace();
+    return;
+  }
+  const result = await api('/api/smart/runs');
+  smartRuns = result.runs || [];
+  smartRunsLoaded = true;
+  renderSmartRecent();
+}
+
+async function buildSmartPlan() {
+  const brief = $('#smartBriefInput').value.trim();
+  if (!brief) {
+    setSmartStatus('Describe the finished piece first.', true);
+    $('#smartBriefInput').focus();
+    return;
+  }
+  smartBusy = true;
+  $('#smartPlanBtn').disabled = true;
+  setSmartStatus('Building a production plan…');
+  try {
+    const result = await api('/api/smart/plan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brief }),
+    });
+    smartPlan = result.plan;
+    smartPlanHash = result.planHash;
+    smartPlanProvider = result.provider;
+    smartRun = null;
+    smartClientToken = newSmartClientToken();
+    $('#smartProvider').textContent = `${result.provider.label} · ${result.provider.model}`;
+    setSmartStatus('Plan ready. Review the workflow before queueing.');
+    renderSmartWorkspace();
+  } catch (error) {
+    setSmartStatus(error.message, true);
+  } finally {
+    smartBusy = false;
+    $('#smartPlanBtn').disabled = false;
+  }
+}
+
+async function queueSmartProduction() {
+  if (!smartPlan || !smartPlanHash || smartBusy) return;
+  smartBusy = true;
+  setSmartStatus('Queueing the first production step…');
+  renderSmartWorkspace();
+  try {
+    const result = await api('/api/smart/runs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plan: smartPlan, planHash: smartPlanHash, clientToken: smartClientToken || newSmartClientToken(),
+        reviewReference: $('#smartReviewReference')?.checked === true,
+      }),
+    });
+    mergeSmartRun(result.run);
+    setSmartStatus('Production queued. You can leave Smart mode while it runs.');
+    queueRefreshSoon();
+  } catch (error) {
+    setSmartStatus(error.message, true);
+  } finally {
+    smartBusy = false;
+    renderSmartWorkspace();
+  }
+}
+
+async function actOnSmartRun(action) {
+  if (!smartRun || smartBusy) return;
+  if (action === 'library') {
+    setView('gallery');
+    return;
+  }
+  smartBusy = true;
+  setSmartStatus(action === 'cancel' ? 'Cancelling remaining work…' : 'Updating production…');
+  try {
+    const result = await api(`/api/smart/runs/${encodeURIComponent(smartRun.id)}/${action}`, { method: 'POST' });
+    mergeSmartRun(result.run);
+    if (action === 'resume') setSmartStatus('Reference approved. H3 is now queueing.');
+    else if (action === 'retry') setSmartStatus('Interrupted step queued again.');
+    else setSmartStatus('Production cancelled.');
+  } catch (error) {
+    setSmartStatus(error.message, true);
+  } finally {
+    smartBusy = false;
+    renderSmartWorkspace();
+  }
+}
+
+function resetSmartComposer() {
+  smartPlan = null;
+  smartPlanHash = '';
+  smartPlanProvider = null;
+  smartRun = null;
+  smartClientToken = '';
+  $('#smartBriefInput').value = '';
+  $('#smartProvider').textContent = 'AI planner';
+  setSmartStatus('');
+  $('#smartBoard').innerHTML = '<div class="smart-board-empty"><span class="smart-empty-orbit" aria-hidden="true"><i></i><b></b></span><small>Production plan</small><h3>Your workflow will appear here</h3><p>Smart reasons about continuity, reference assets, model choice, duration, and queue order before anything is generated.</p><ol><li><span>1</span>Understand the brief</li><li><span>2</span>Build reference assets</li><li><span>3</span>Queue final generations</li></ol></div>';
+  $('#smartBriefInput').focus();
+}
+
+function stopSmartRecording() {
+  if (smartRecorder && smartRecorder.state !== 'inactive') smartRecorder.stop();
+}
+
+function renderSmartRecordingTime() {
+  const elapsed = Math.floor((Date.now() - smartRecordingStartedAt) / 1000);
+  $('#smartVoiceTime').textContent = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+}
+
+async function startSmartRecording() {
+  if (smartRecorder && smartRecorder.state !== 'inactive') {
+    stopSmartRecording();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    setSmartStatus('Voice input is unavailable in this browser. You can still type the brief.', true);
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const preferred = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus']
+      .find((type) => MediaRecorder.isTypeSupported?.(type));
+    smartRecordingChunks = [];
+    smartRecorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+    smartRecorder.addEventListener('dataavailable', (event) => { if (event.data.size) smartRecordingChunks.push(event.data); });
+    smartRecorder.addEventListener('stop', async () => {
+      clearInterval(smartRecordingTimer);
+      clearTimeout(smartRecordingLimitTimer);
+      stream.getTracks().forEach((track) => track.stop());
+      const button = $('#smartVoiceBtn');
+      button.classList.remove('recording');
+      button.setAttribute('aria-pressed', 'false');
+      $('#smartVoiceLabel').textContent = 'Speak brief';
+      $('#smartVoiceTime').textContent = '';
+      const blob = new Blob(smartRecordingChunks, { type: smartRecorder.mimeType || 'audio/webm' });
+      if (!blob.size) return setSmartStatus('No audio was captured. Try again.', true);
+      button.disabled = true;
+      setSmartStatus('Transcribing your brief…');
+      try {
+        const result = await api('/api/smart/transcribe', {
+          method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob,
+        });
+        const current = $('#smartBriefInput').value.trim();
+        $('#smartBriefInput').value = [current, result.text].filter(Boolean).join(current ? '\n' : '');
+        setSmartStatus('Voice brief ready. Edit it if needed, then build the plan.');
+      } catch (error) {
+        setSmartStatus(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    }, { once: true });
+    smartRecorder.start(500);
+    smartRecordingStartedAt = Date.now();
+    const button = $('#smartVoiceBtn');
+    button.classList.add('recording');
+    button.setAttribute('aria-pressed', 'true');
+    $('#smartVoiceLabel').textContent = 'Stop recording';
+    renderSmartRecordingTime();
+    smartRecordingTimer = setInterval(renderSmartRecordingTime, 1000);
+    smartRecordingLimitTimer = setTimeout(stopSmartRecording, 120000);
+    setSmartStatus('Listening… speak naturally. Recording stops after two minutes.');
+  } catch (error) {
+    setSmartStatus(error.name === 'NotAllowedError'
+      ? 'Microphone access was denied. Allow it in the browser or type the brief.'
+      : `Could not start voice input: ${error.message}`, true);
+  }
+}
+
+function renderSmartFeatureAccess() {
+  const experimental = experimentalFeaturesEnabled();
+  const enabled = smartModeEnabled();
+  const row = $('#smartModeExperimentalRow');
+  if (row) row.hidden = !experimental;
+  const toggle = $('#smartModeToggle');
+  if (toggle) toggle.setAttribute('aria-checked', String(enabled));
+  const tab = $('#createMiddleTab');
+  const drawer = $('#drawerMiddleCreate');
+  const regionPath = 'M3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4ZM8 8h8v8H8V8Zm2 2v4h4v-4h-4Z';
+  const smartPath = 'm12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Zm7 12 .9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9L19 14Z';
+  if (tab) {
+    tab.dataset.createMode = enabled ? 'smart' : 'region';
+    tab.querySelector('span').textContent = enabled ? 'Smart' : 'Region';
+    tab.querySelector('path').setAttribute('d', enabled ? smartPath : regionPath);
+    tab.setAttribute('aria-label', enabled ? 'Smart production · experimental' : 'Region');
+  }
+  if (drawer) {
+    drawer.dataset.drawerCreateMode = enabled ? 'smart' : 'region';
+    drawer.querySelectorAll('span')[1].textContent = enabled ? 'Smart' : 'Region';
+    drawer.querySelector('path').setAttribute('d', enabled ? smartPath : regionPath);
+  }
+}
+
 function syncNavigation() {
   const createActive = state.view === 'create' || state.view === 'video';
   const focusedResult = desktopWorkspaceActive() && document.body.classList.contains('desktop-focused-result');
@@ -4364,7 +4707,8 @@ function setView(view, opts = {}) {
   }
   if (view === 'video') state.createMode = 'video';
   if (view === 'create') {
-    state.createMode = ['image', 'region'].includes(opts.createMode) ? opts.createMode : 'image';
+    const allowedCreateModes = smartModeEnabled() ? ['image', 'smart'] : ['image', 'region'];
+    state.createMode = allowedCreateModes.includes(opts.createMode) ? opts.createMode : 'image';
     if (state.createMode === 'region' && !state.regions.length) createRegion();
   }
   state.view = view;
@@ -4399,6 +4743,8 @@ function setView(view, opts = {}) {
     else schedulePrimaryOrSidePanelGuide('library-basics', 760);
   } else if (view === 'create' && state.createMode === 'image') {
     schedulePrimaryOrSidePanelGuide('prompt-entry', 960);
+  } else if (view === 'create' && state.createMode === 'smart') {
+    loadSmartRuns().catch((error) => setSmartStatus(error.message, true));
   } else if (view === 'edit' && prev !== view) {
     scheduleContextualGuide('edit-inputs', 760);
   }
@@ -4430,6 +4776,29 @@ document.addEventListener('pointerdown', () => {
 createTabButtons.forEach((button) => button.addEventListener('click', () => {
   setCreateMode(button.dataset.createMode, button.dataset.createMode === 'region');
 }));
+$('#smartPlanBtn').addEventListener('click', buildSmartPlan);
+$('#smartVoiceBtn').addEventListener('click', startSmartRecording);
+$$('[data-smart-example]').forEach((button) => button.addEventListener('click', () => {
+  $('#smartBriefInput').value = button.dataset.smartExample;
+  setSmartStatus('Example loaded. Make it yours, then build the plan.');
+  $('#smartBriefInput').focus();
+}));
+$('#smartBoard').addEventListener('click', (event) => {
+  const action = event.target.closest('[data-smart-action]')?.dataset.smartAction;
+  if (!action) return;
+  if (action === 'reset') resetSmartComposer();
+  else if (action === 'queue') queueSmartProduction();
+  else actOnSmartRun(action);
+});
+$('#smartRecentList').addEventListener('click', (event) => {
+  const id = event.target.closest('[data-smart-run-id]')?.dataset.smartRunId;
+  const run = smartRuns.find((candidate) => candidate.id === id);
+  if (!run) return;
+  smartRun = run;
+  smartPlan = run.plan;
+  smartPlanHash = run.planHash;
+  renderSmartWorkspace();
+});
 
 function genLabel() {
   const setupAction = currentGenerationSetupAction();
@@ -4744,6 +5113,9 @@ function updateVideoPanels() {
   const isVideo = state.view === 'video';
   const isEdit = state.view === 'edit';
   const isRegion = state.view === 'create' && state.createMode === 'region';
+  const isSmart = state.view === 'create' && state.createMode === 'smart' && smartModeEnabled();
+  $('#smartWorkspace').hidden = !isSmart;
+  if (isSmart) renderSmartWorkspace();
   const useSharedRegionResolution = isRegion && wideRegionResolutionQuery.matches;
   if (isVideo) syncVideoDurationLimit();
   const promptPanel = $('#promptPanel');
@@ -20544,6 +20916,19 @@ function connectEvents() {
     toast(`${toastLabel} ${d.completedChunk} complete · running ${d.nextChunk} of ${d.total}`);
     queueRefreshSoon();
   });
+  es.addEventListener('smartRunUpdated', (ev) => {
+    const data = JSON.parse(ev.data);
+    mergeSmartRun(data.run);
+    if (data.run?.status === 'complete') {
+      setSmartStatus('Production complete. The result is ready in Library.');
+      refreshGallery(true);
+    } else if (data.run?.status === 'review') {
+      setSmartStatus('Canonical reference ready. Review it before continuing to video.');
+      refreshGallery(true);
+    } else if (['failed', 'attention'].includes(data.run?.status)) {
+      setSmartStatus(data.run.error || 'This production needs attention.', true);
+    }
+  });
   es.addEventListener('jobDone', (ev) => {
     const d = JSON.parse(ev.data);
     if (d.jobId === firstImageTutorialJobId && d.items && d.items[0]) {
@@ -30131,6 +30516,7 @@ function flushSettingsAutosave() {
         previewFrameRate: $('#setVideoPreviewFrameRate').value,
         previewCache: mediaPreferenceControlValue('setPreviewCache'),
         experimentalFeatures: mediaPreferenceControlValue('experimentalFeaturesToggle'),
+        smartMode: mediaPreferenceControlValue('smartModeToggle'),
       });
     }
     if (savedSettings) {
@@ -30363,18 +30749,28 @@ async function emptyTrashFromSettings() {
   await refreshTrashStatus();
 }
 
-['experimentalFeaturesToggle', 'setVideoPreviews', 'setPreviewCache', 'setSmartFilenames'].forEach((id) => {
+['experimentalFeaturesToggle', 'smartModeToggle', 'setVideoPreviews', 'setPreviewCache', 'setSmartFilenames'].forEach((id) => {
   $('#' + id).addEventListener('click', () => {
     const button = $('#' + id);
     const enabled = !mediaPreferenceControlValue(id);
     button.setAttribute('aria-checked', String(enabled));
     if (id === 'experimentalFeaturesToggle') {
       state.mediaPreferences.experimentalFeatures = enabled;
+      if (!enabled) state.mediaPreferences.smartMode = false;
       if (!enabled && state.vidH3Mode === 'replace') state.vidH3Mode = 'frames';
       if (!enabled) state.vidH3LongContext = false;
+      if (!enabled && state.createMode === 'smart') state.createMode = 'region';
+      renderSmartFeatureAccess();
       updateVideoPanels();
       renderPromptComposer();
       saveForm();
+    }
+    if (id === 'smartModeToggle') {
+      if (!experimentalFeaturesEnabled()) return;
+      state.mediaPreferences.smartMode = enabled;
+      renderSmartFeatureAccess();
+      setCreateMode(enabled ? 'smart' : 'region');
+      updateVideoPanels();
     }
     if (id === 'setVideoPreviews') renderVideoPreviewQualityControls();
     scheduleSettingsAutosave(id === 'setSmartFilenames' ? 'server' : 'media', 0);
@@ -34009,6 +34405,7 @@ $('#settingsBtn').addEventListener('click', async () => {
   $('#setVideoPreviewFrameRate').value = String(state.mediaPreferences.previewFrameRate);
   setMediaPreferenceControl('setPreviewCache', state.mediaPreferences.previewCache);
   setMediaPreferenceControl('experimentalFeaturesToggle', state.mediaPreferences.experimentalFeatures);
+  renderSmartFeatureAccess();
   renderVideoPreviewQualityControls();
   refreshPreviewCacheStatus();
   refreshTrashStatus().catch(() => {});

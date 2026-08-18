@@ -9,6 +9,7 @@ const {
   externalLlmEnabled,
   externalLlmProviderConfig,
   externalLlmRequest,
+  externalLlmStructuredRequest,
   normalizeExternalLlmSettings,
   normalizeOllamaUrl,
   ollamaChatUrl,
@@ -205,6 +206,34 @@ test('external adapters report missing credentials and provider errors clearly',
 
 test('output extraction supports nested OpenAI response content', () => {
   assert.equal(outputText({ output: [{ content: [{ type: 'output_text', text: 'Finished prompt' }] }] }), 'Finished prompt');
+});
+
+test('structured requests use each provider native JSON schema mode and parse the result', async () => {
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['title'],
+    properties: { title: { type: 'string' } },
+  };
+  const bodies = {};
+  for (const provider of ['openai', 'gemini', 'ollama']) {
+    const result = await externalLlmStructuredRequest({
+      provider, model: `${provider}-test`, apiKey: provider === 'ollama' ? '' : 'test-key',
+      baseUrl: 'http://127.0.0.1:11434', instruction: 'Plan.', userInput: 'A film.',
+      schema, schemaName: 'production_plan',
+      fetchImpl: async (_url, init) => {
+        bodies[provider] = JSON.parse(init.body);
+        if (provider === 'openai') return jsonResponse({ output_text: '{"title":"OpenAI plan"}' });
+        if (provider === 'gemini') return jsonResponse({ candidates: [{ content: { parts: [{ text: '{"title":"Gemini plan"}' }] } }] });
+        return jsonResponse({ message: { content: '```json\n{"title":"Ollama plan"}\n```' } });
+      },
+    });
+    assert.match(result.title, /plan$/);
+  }
+  assert.deepEqual(bodies.openai.text.format, {
+    type: 'json_schema', name: 'production_plan', strict: true, schema,
+  });
+  assert.equal(bodies.gemini.generationConfig.responseMimeType, 'application/json');
+  assert.deepEqual(bodies.gemini.generationConfig.responseJsonSchema, schema);
+  assert.deepEqual(bodies.ollama.format, schema);
 });
 
 test('server routes independent image and video revise/enhance paths through the shared provider', () => {

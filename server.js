@@ -138,9 +138,17 @@ const {
   externalLlmEnabled,
   externalLlmProviderConfig,
   externalLlmRequest,
+  externalLlmStructuredRequest,
   normalizeExternalLlmSettings,
   normalizeOllamaUrl,
 } = require('./lib/external-llm');
+const {
+  SMART_PLAN_SCHEMA,
+  compileSmartSteps,
+  normalizeSmartPlan,
+  smartPlanHash,
+  smartPlanningPrompt,
+} = require('./lib/smart-mode');
 const {
   localPromptAiCatalog,
   localPromptAiConfig,
@@ -813,6 +821,16 @@ if (!Array.isArray(db.loraPresets)) db.loraPresets = [];
 if (!Array.isArray(db.userPreferences)) db.userPreferences = [];
 if (!Array.isArray(db.faces)) db.faces = [];
 if (!Array.isArray(db.uploadedAssets)) db.uploadedAssets = [];
+if (!Array.isArray(db.smartRuns)) db.smartRuns = [];
+for (const run of db.smartRuns) {
+  if (!run || !['running', 'queueing'].includes(run.status)) continue;
+  run.status = 'attention';
+  run.error = 'Mix Studio restarted while this production was active. Review it, then retry the interrupted step.';
+  run.updatedAt = Date.now();
+  for (const step of run.steps || []) {
+    if (['running', 'queueing'].includes(step.status)) step.status = 'attention';
+  }
+}
 
 /* ---------------------- Profiles (accounts) ------------------------ */
 // Signing secret persists so logins survive server restarts
@@ -2165,6 +2183,7 @@ function cancelJob(pid, message = 'Cancelled') {
   const job = jobs.get(pid);
   if (!job) return false;
   const durationMs = jobDurationMs(job);
+  failSmartJob(job, message, true);
   jobs.delete(pid);
   clearPendingJobState(job);
   broadcast('jobCancelled', {
@@ -2187,6 +2206,7 @@ function cancelJob(pid, message = 'Cancelled') {
 function failJob(pid, message) {
   const job = jobs.get(pid);
   const durationMs = job ? jobDurationMs(job) : undefined;
+  failSmartJob(job, message, false);
   jobs.delete(pid);
   if (job && (job.kind === 'enhance' || job.kind === 'motionPrompt' || job.kind === 'smartMask')) {
     job.reject(new Error(message));
@@ -2556,6 +2576,7 @@ async function completeJob(pid) {
             );
           }
           const nextJobId = await queueNextVideoChunk(job);
+          updateSmartChunkJob(job, nextJobId, videoChunkSequence.index + 1, videoChunkSequence.segments.length);
           jobs.delete(pid);
           broadcast('videoChunkStep', {
             jobId: pid,
@@ -2706,6 +2727,7 @@ async function completeJob(pid) {
       info: completedVideoInfo,
     };
     item.videos = (Array.isArray(item.videos) ? item.videos : []).concat([entry]);
+    completeSmartJob(job, [item]);
     saveDb();
     const videoActionLabel = job.videoInfo.processed === 'upscale'
       ? `Video upscale (${{ seedvr2: 'SeedVR2', rtx: 'RTX' }[job.videoInfo.upscaleEngine] || 'RTX'})`
@@ -2938,6 +2960,7 @@ async function completeJob(pid) {
   for (const it of created) {
     pushHistory({ kind: it.mode === 'edit' ? 'edit' : 'gen', profileId: job.profileId, itemId: it.id, durationMs, label: `${it.mode === 'edit' ? 'Edit' : 'Create'}: ${(it.prompt || '').slice(0, 60)}` });
   }
+  completeSmartJob(job, created);
   if (editSequence && !sequenceFinal) {
     try {
       const next = await queueNextSequentialEdit(job, created[0]);
@@ -3007,6 +3030,232 @@ function configuredExternalLlm() {
     externalLlmOpenAiApiKey: settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '',
     externalLlmGeminiApiKey: settings.externalLlmGeminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
   }));
+}
+
+const SMART_RUN_LIMIT = 50;
+const SMART_AUDIO_LIMIT = 25 * 1024 * 1024;
+
+function smartRunForProfile(id, profileId) {
+  return db.smartRuns.find((run) => run.id === id && run.profileId === profileId) || null;
+}
+
+function smartStepResultItems(step, profileId) {
+  const ids = new Set(Array.isArray(step?.resultItemIds) ? step.resultItemIds : []);
+  return db.items.filter((item) => ids.has(item.id) && item.profileId === profileId);
+}
+
+function publicSmartRun(run) {
+  if (!run) return null;
+  return {
+    id: run.id,
+    profileId: run.profileId,
+    title: run.plan?.title || 'Smart production',
+    status: run.status,
+    error: run.error || '',
+    plan: run.plan,
+    planHash: run.planHash,
+    reviewReference: run.reviewReference === true,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt,
+    steps: (run.steps || []).map((step) => {
+      const items = smartStepResultItems(step, run.profileId);
+      return {
+        id: step.id,
+        kind: step.kind,
+        label: step.label,
+        status: step.status,
+        dependsOn: step.dependsOn || [],
+        jobId: step.jobId || null,
+        resultItemIds: step.resultItemIds || [],
+        progress: step.progress || null,
+        error: step.error || '',
+        result: items[0] ? {
+          itemId: items[0].id,
+          thumbnail: `/images/${encodeURIComponent(items[0].file)}`,
+          width: items[0].width,
+          height: items[0].height,
+          videoId: items[0].videos?.at(-1)?.id || null,
+        } : null,
+      };
+    }),
+  };
+}
+
+function broadcastSmartRun(run) {
+  run.updatedAt = Date.now();
+  saveDb();
+  broadcast('smartRunUpdated', { profileId: run.profileId, run: publicSmartRun(run) });
+}
+
+function retainSmartRuns(profileId) {
+  const own = db.smartRuns
+    .filter((run) => run.profileId === profileId)
+    .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
+  if (own.length <= SMART_RUN_LIMIT) return;
+  const keep = new Set(own.slice(0, SMART_RUN_LIMIT).map((run) => run.id));
+  db.smartRuns = db.smartRuns.filter((run) => run.profileId !== profileId || keep.has(run.id));
+}
+
+function smartRunFinished(run) {
+  return ['complete', 'failed', 'cancelled'].includes(run?.status);
+}
+
+async function smartReferenceForStep(run, step) {
+  const dependency = (run.steps || []).find((candidate) => step.dependsOn?.includes(candidate.id)
+    && candidate.kind === 'reference');
+  const item = dependency && smartStepResultItems(dependency, run.profileId)[0];
+  if (!item?.file) throw new Error('The canonical reference image is unavailable');
+  const buffer = await fsp.readFile(path.join(IMAGES, item.file));
+  const comfyName = await uploadToComfy(buffer, `ks_smart_reference_${run.id}_${item.id}.png`);
+  return { name: comfyName, label: 'Canonical subject', w: item.width || 1024, h: item.height || 1024 };
+}
+
+async function advanceSmartRun(run) {
+  if (!run || smartRunFinished(run) || run.status === 'review') return;
+  if ((run.steps || []).some((step) => ['running', 'queueing'].includes(step.status))) return;
+  const step = (run.steps || []).find((candidate) => candidate.status === 'pending'
+    && (candidate.dependsOn || []).every((id) => run.steps.some((dependency) => dependency.id === id && dependency.status === 'complete')));
+  if (!step) {
+    if ((run.steps || []).every((candidate) => candidate.status === 'complete')) {
+      run.status = 'complete';
+      run.error = '';
+      broadcastSmartRun(run);
+    }
+    return;
+  }
+  const profile = db.profiles.find((candidate) => candidate.id === run.profileId);
+  if (!profile) {
+    run.status = 'failed';
+    run.error = 'The profile for this Smart production no longer exists.';
+    broadcastSmartRun(run);
+    return;
+  }
+  run.status = 'queueing';
+  run.error = '';
+  step.status = 'queueing';
+  step.error = '';
+  broadcastSmartRun(run);
+  try {
+    const body = JSON.parse(JSON.stringify(step.request.body));
+    if (step.kind === 'video' && step.dependsOn?.length) {
+      const reference = await smartReferenceForStep(run, step);
+      body.h3References = { images: [reference], videos: [], audios: [] };
+    }
+    const queued = await mcpOwnerApi(profile, step.request.route, body);
+    const jobId = String(queued.jobId || '');
+    if (!jobId) throw new Error('Mix Studio did not return a queued job');
+    step.jobId = jobId;
+    step.status = 'running';
+    run.status = 'running';
+    const tracked = jobs.get(jobId);
+    if (tracked) {
+      tracked.smartRunId = run.id;
+      tracked.smartStepId = step.id;
+    }
+    broadcastSmartRun(run);
+  } catch (error) {
+    step.status = 'failed';
+    step.error = String(error.message || error).slice(0, 1000);
+    run.status = 'failed';
+    run.error = step.error;
+    broadcastSmartRun(run);
+  }
+}
+
+function completeSmartJob(job, items) {
+  if (!job?.smartRunId || !job.smartStepId) return;
+  const run = smartRunForProfile(job.smartRunId, job.profileId);
+  if (!run || run.status === 'cancelled') return;
+  const step = run.steps.find((candidate) => candidate.id === job.smartStepId);
+  if (!step) return;
+  const resultItems = (items || []).filter(Boolean);
+  for (const item of resultItems) {
+    item.smartRunId = run.id;
+    item.smartStepId = step.id;
+  }
+  step.status = 'complete';
+  step.jobId = null;
+  step.progress = null;
+  step.error = '';
+  step.resultItemIds = resultItems.map((item) => item.id);
+  if (step.kind === 'reference' && run.reviewReference) {
+    run.status = 'review';
+    broadcastSmartRun(run);
+    return;
+  }
+  run.status = 'running';
+  broadcastSmartRun(run);
+  setImmediate(() => advanceSmartRun(run).catch((error) => {
+    run.status = 'failed';
+    run.error = String(error.message || error);
+    broadcastSmartRun(run);
+  }));
+}
+
+function updateSmartChunkJob(job, nextJobId, completedChunk, total) {
+  if (!job?.smartRunId || !job.smartStepId) return;
+  const next = jobs.get(nextJobId);
+  if (next) {
+    next.smartRunId = job.smartRunId;
+    next.smartStepId = job.smartStepId;
+  }
+  const run = smartRunForProfile(job.smartRunId, job.profileId);
+  const step = run?.steps.find((candidate) => candidate.id === job.smartStepId);
+  if (!run || !step || run.status === 'cancelled') return;
+  step.jobId = nextJobId;
+  step.progress = { completed: completedChunk, total };
+  broadcastSmartRun(run);
+}
+
+function failSmartJob(job, message, cancelled = false) {
+  if (!job?.smartRunId || !job.smartStepId) return;
+  const run = smartRunForProfile(job.smartRunId, job.profileId);
+  if (!run || run.status === 'cancelled') return;
+  const step = run.steps.find((candidate) => candidate.id === job.smartStepId);
+  if (!step) return;
+  step.jobId = null;
+  step.status = cancelled ? 'cancelled' : 'failed';
+  step.error = String(message || (cancelled ? 'Cancelled' : 'Generation failed')).slice(0, 1000);
+  run.status = cancelled ? 'cancelled' : 'failed';
+  run.error = step.error;
+  broadcastSmartRun(run);
+}
+
+async function transcribeSmartAudio(buffer, contentType) {
+  const apiKey = String(settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '').trim();
+  if (!apiKey) {
+    const error = new Error('Voice transcription needs an OpenAI API key in Preferences. Text planning still works with any configured provider.');
+    error.code = 'smart_transcription_unavailable';
+    throw error;
+  }
+  const mime = /^audio\/[a-z0-9.+-]+$/i.test(contentType) ? contentType.toLowerCase() : 'audio/webm';
+  const extension = ({
+    'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'audio/wav': 'wav',
+    'audio/flac': 'flac', 'audio/webm': 'webm', 'audio/aac': 'aac',
+  })[mime] || 'webm';
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: mime }), `smart-brief.${extension}`);
+  form.append('model', 'gpt-transcribe');
+  form.append('response_format', 'json');
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form,
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(180_000) : undefined,
+    });
+  } catch (error) {
+    throw new Error(`Voice transcription failed: ${error.message || error}`);
+  }
+  const raw = await response.text().catch(() => '');
+  let payload;
+  try { payload = JSON.parse(raw || '{}'); } catch { payload = {}; }
+  if (!response.ok) {
+    const detail = String(payload?.error?.message || payload?.error || raw || `HTTP ${response.status}`).slice(0, 600);
+    throw new Error(`Voice transcription failed: ${detail}`);
+  }
+  const text = String(payload.text || '').trim();
+  if (!text) throw new Error('Voice transcription returned no text');
+  return text.slice(0, 8000);
 }
 
 function externalPromptStatus(action, provider) {
@@ -6439,6 +6688,7 @@ async function handleApi(req, res, url) {
     db.history = db.history.filter((h) => h.profileId !== target.id);
     db.loraPresets = db.loraPresets.filter((p) => p.profileId !== target.id);
     db.userPreferences = db.userPreferences.filter((p) => p.profileId !== target.id);
+    db.smartRuns = db.smartRuns.filter((run) => run.profileId !== target.id);
     for (const asset of db.uploadedAssets.filter((entry) => entry.profileId === target.id && !entry.deletedAt)) {
       const durable = inputAssetPath(INPUTS, asset.name);
       await fsp.rename(durable, path.join(TRASH, path.basename(durable))).catch(() => { /* noop */ });
@@ -6457,6 +6707,140 @@ async function handleApi(req, res, url) {
   // previews, and completed gallery records and are always profile-scoped.
   if (!profile && route !== '/api/meta') {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
+  }
+
+  if (route === '/api/smart/plan' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const brief = String(body.brief || '').trim().slice(0, 8000);
+    if (!brief) return json(res, 400, { error: 'Describe what you want Smart mode to create' });
+    const provider = configuredExternalLlm();
+    const prompt = smartPlanningPrompt(brief);
+    try {
+      const rawPlan = await externalLlmStructuredRequest({
+        provider: provider.provider,
+        model: provider.model,
+        apiKey: provider.apiKey,
+        baseUrl: provider.baseUrl,
+        instruction: prompt.instruction,
+        userInput: prompt.userInput,
+        schema: SMART_PLAN_SCHEMA,
+        schemaName: 'mix_studio_smart_plan',
+        maxTokens: 4096,
+      });
+      const plan = normalizeSmartPlan(rawPlan, brief);
+      return json(res, 200, {
+        plan,
+        planHash: smartPlanHash(plan),
+        provider: { provider: provider.provider, label: provider.label, model: provider.model },
+      });
+    } catch (error) {
+      const needsConfig = /API key|Choose an external prompt provider/i.test(String(error.message || ''));
+      return json(res, needsConfig ? 409 : 502, {
+        error: String(error.message || error),
+        code: needsConfig ? 'smart_provider_unavailable' : 'smart_plan_failed',
+      });
+    }
+  }
+
+  if (route === '/api/smart/transcribe' && req.method === 'POST') {
+    const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!contentType.startsWith('audio/')) {
+      req.resume();
+      return json(res, 415, { error: 'Smart voice input accepts an audio recording' });
+    }
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > SMART_AUDIO_LIMIT) {
+      req.resume();
+      return json(res, 413, { error: 'Voice recording is larger than 25 MB' });
+    }
+    try {
+      const audio = await readBody(req, SMART_AUDIO_LIMIT);
+      if (!audio.length) return json(res, 400, { error: 'No voice recording received' });
+      return json(res, 200, { text: await transcribeSmartAudio(audio, contentType) });
+    } catch (error) {
+      return json(res, error.code === 'smart_transcription_unavailable' ? 409 : 502, {
+        error: String(error.message || error), code: error.code || 'smart_transcription_failed',
+      });
+    }
+  }
+
+  if (route === '/api/smart/runs' && req.method === 'GET') {
+    const runs = db.smartRuns
+      .filter((run) => run.profileId === req.profile.id)
+      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
+      .slice(0, SMART_RUN_LIMIT)
+      .map(publicSmartRun);
+    return json(res, 200, { runs });
+  }
+
+  if (route === '/api/smart/runs' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const plan = normalizeSmartPlan(body.plan, body.plan?.summary || '');
+    const planHash = String(body.planHash || '');
+    if (!/^[a-f0-9]{64}$/.test(planHash) || smartPlanHash(plan) !== planHash) {
+      return json(res, 409, { error: 'This Smart plan changed after review. Build the plan again before queueing.', code: 'smart_plan_changed' });
+    }
+    const clientToken = String(body.clientToken || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 96);
+    if (clientToken) {
+      const existing = db.smartRuns.find((run) => run.profileId === req.profile.id && run.clientToken === clientToken);
+      if (existing) return json(res, 200, { run: publicSmartRun(existing), existing: true });
+    }
+    const now = Date.now();
+    const run = {
+      id: uid(), profileId: req.profile.id, clientToken: clientToken || uid(),
+      planHash, plan, reviewReference: plan.subject.needsReference && body.reviewReference === true,
+      steps: compileSmartSteps(plan), status: 'ready', error: '', createdAt: now, updatedAt: now,
+    };
+    db.smartRuns.push(run);
+    retainSmartRuns(req.profile.id);
+    broadcastSmartRun(run);
+    await advanceSmartRun(run);
+    return json(res, 201, { run: publicSmartRun(run) });
+  }
+
+  const smartRunAction = route.match(/^\/api\/smart\/runs\/([a-f0-9]+)\/(resume|retry|cancel)$/);
+  if (smartRunAction && req.method === 'POST') {
+    const run = smartRunForProfile(smartRunAction[1], req.profile.id);
+    if (!run) return json(res, 404, { error: 'Smart production not found' });
+    const action = smartRunAction[2];
+    if (action === 'cancel') {
+      if (smartRunFinished(run)) return json(res, 200, { run: publicSmartRun(run) });
+      const active = run.steps.find((step) => ['running', 'queueing'].includes(step.status));
+      run.status = 'cancelled';
+      run.error = 'Cancelled';
+      if (active) {
+        active.status = 'cancelled';
+        active.error = 'Cancelled';
+      }
+      broadcastSmartRun(run);
+      if (active?.jobId) {
+        await stopComfyPrompt(active.jobId);
+        cancelJob(active.jobId, 'Smart production cancelled');
+      }
+      return json(res, 200, { run: publicSmartRun(run) });
+    }
+    if (action === 'resume') {
+      if (run.status !== 'review') return json(res, 409, { error: 'This Smart production is not waiting for review' });
+      run.status = 'running';
+      run.error = '';
+      broadcastSmartRun(run);
+      await advanceSmartRun(run);
+      return json(res, 200, { run: publicSmartRun(run) });
+    }
+    if (!['failed', 'attention'].includes(run.status)) {
+      return json(res, 409, { error: 'This Smart production does not have a failed step to retry' });
+    }
+    const step = run.steps.find((candidate) => ['failed', 'attention'].includes(candidate.status));
+    if (!step) return json(res, 409, { error: 'No interrupted Smart step was found' });
+    step.status = 'pending';
+    step.jobId = null;
+    step.progress = null;
+    step.error = '';
+    run.status = 'running';
+    run.error = '';
+    broadcastSmartRun(run);
+    await advanceSmartRun(run);
+    return json(res, 200, { run: publicSmartRun(run) });
   }
 
   if (route === '/api/spark-access' && req.method === 'GET') {
