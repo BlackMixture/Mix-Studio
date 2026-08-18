@@ -4290,11 +4290,15 @@ let smartRuns = [];
 let smartRunsLoaded = false;
 let smartBusy = false;
 let smartClientToken = '';
+let smartReferences = [];
 let smartRecorder = null;
 let smartRecordingChunks = [];
 let smartRecordingStartedAt = 0;
 let smartRecordingTimer = null;
 let smartRecordingLimitTimer = null;
+let smartVoiceFileFallback = false;
+
+const SMART_EMPTY_BOARD = '<div class="smart-board-empty"><span class="smart-empty-orbit" aria-hidden="true"><i></i><b></b></span><small>Production plan</small><h3>Your workflow will appear here</h3><p>Smart reasons about continuity, reference assets, model choice, duration, and queue order before anything is generated.</p><ol><li><span>1</span>Understand the brief</li><li><span>2</span>Build reference assets</li><li><span>3</span>Queue final generations</li></ol></div>';
 
 function newSmartClientToken() {
   return globalThis.crypto?.randomUUID?.() || `smart_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -4305,6 +4309,72 @@ function setSmartStatus(message = '', error = false) {
   if (!status) return;
   status.textContent = message;
   status.classList.toggle('error', error);
+}
+
+function smartReferencePayload() {
+  return smartReferences.slice(0, 2).map((reference, index) => ({
+    name: String(reference?.name || ''),
+    label: String(reference?.label || `Reference ${index + 1}`),
+    w: Number(reference?.w) || 0,
+    h: Number(reference?.h) || 0,
+  })).filter((reference) => reference.name);
+}
+
+function smartReferenceUrl(reference) {
+  return reference?.url || (reference?.name ? `/api/input?name=${encodeURIComponent(reference.name)}` : '');
+}
+
+function renderSmartReferences() {
+  const list = $('#smartReferenceList');
+  const add = $('#smartAddReference');
+  if (!list || !add) return;
+  add.disabled = smartReferences.length >= 2;
+  if (!smartReferences.length) {
+    list.innerHTML = '<p>Guide character identity, product details, composition, or visual style.</p>';
+    return;
+  }
+  list.innerHTML = smartReferences.map((reference, index) => `
+    <article class="smart-reference-card">
+      <img src="${escapeHtml(smartReferenceUrl(reference))}" alt="" />
+      <span><strong>${escapeHtml(reference.label || `Reference ${index + 1}`)}</strong><small>Reference ${index + 1}</small></span>
+      <button class="smart-reference-remove" type="button" data-smart-reference-remove="${index}" aria-label="Remove reference ${index + 1}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </article>`).join('');
+}
+
+function invalidateSmartPlan(message) {
+  if (smartPlan || smartRun) {
+    smartPlan = null;
+    smartPlanHash = '';
+    smartPlanProvider = null;
+    smartRun = null;
+    smartClientToken = '';
+    $('#smartProvider').textContent = 'AI planner';
+    $('#smartBoard').innerHTML = SMART_EMPTY_BOARD;
+  }
+  setSmartStatus(message || 'References changed. Build a new plan.');
+}
+
+function addSmartReferences(assets) {
+  const available = Math.max(0, 2 - smartReferences.length);
+  const existing = new Set(smartReferences.map((reference) => reference.name));
+  const candidates = (Array.isArray(assets) ? assets : [assets])
+    .filter((asset) => asset?.name && !existing.has(asset.name))
+    .slice(0, available);
+  if (!candidates.length) return;
+  smartReferences.push(...candidates);
+  invalidateSmartPlan('References added. Build a plan when the brief is ready.');
+  renderSmartReferences();
+  if ((Array.isArray(assets) ? assets.length : 1) > candidates.length) toast('Smart mode accepts up to two image references', true);
+}
+
+function openSmartReferencePicker() {
+  const available = Math.max(0, 2 - smartReferences.length);
+  if (!available) return toast('Smart mode already has two references', true);
+  openAssetPicker('image/*', addSmartReferences, 'Add Smart references', {
+    multiple: true,
+    multipleLabel: 'reference',
+    maxSelections: available,
+  });
 }
 
 function smartDuration(value) {
@@ -4368,6 +4438,7 @@ function smartSceneMarkup(plan) {
 function renderSmartWorkspace() {
   const board = $('#smartBoard');
   if (!board) return;
+  renderSmartReferences();
   renderSmartRecent();
   if (!smartPlan && !smartRun) return;
   const run = smartRun;
@@ -4375,6 +4446,7 @@ function renderSmartWorkspace() {
   if (!plan) return;
   const steps = run?.steps || smartPlanSteps(plan).map((step) => Object.assign(step, { status: 'pending' }));
   const reference = steps.find((step) => step.kind === 'reference' && step.result?.thumbnail);
+  const attachedReferences = run?.references || smartReferences;
   const status = run?.status || 'ready';
   const action = run
     ? (run.status === 'review' ? ['resume', 'Continue to video']
@@ -4392,6 +4464,7 @@ function renderSmartWorkspace() {
       ${plan.output.kind === 'video' ? `<span><b>Runtime</b>${escapeHtml(smartDuration(plan.output.durationSeconds))}</span>` : ''}
       <span><b>Frame</b>${escapeHtml(plan.output.aspectRatio)}</span>
       <span><b>Quality</b>${escapeHtml(plan.output.quality)}</span>
+      ${attachedReferences.length ? `<span><b>References</b>${attachedReferences.length} image${attachedReferences.length === 1 ? '' : 's'}</span>` : ''}
       <span><b>Queue</b>${steps.length} step${steps.length === 1 ? '' : 's'}</span>
     </div>
     <div class="smart-step-list">${steps.map((step, index) => `
@@ -4410,6 +4483,24 @@ function renderSmartWorkspace() {
     </div>`;
 }
 
+function openSmartAiSettings() {
+  setSettingsTab('suggestions');
+  const providerSettings = $('[data-settings-preference-section="prompting-external"]');
+  if (providerSettings) providerSettings.open = true;
+  $('#settingsBtn').click();
+  let attempts = 0;
+  const reveal = () => {
+    if ($('#settingsSheet').classList.contains('show')) {
+      providerSettings?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      $('#setExternalLlmProvider')?.focus({ preventScroll: true });
+      return;
+    }
+    attempts += 1;
+    if (attempts < 30) setTimeout(reveal, 80);
+  };
+  reveal();
+}
+
 function mergeSmartRun(run) {
   if (!run) return;
   smartRuns = [run, ...smartRuns.filter((candidate) => candidate.id !== run.id)]
@@ -4418,7 +4509,9 @@ function mergeSmartRun(run) {
     smartRun = run;
     smartPlan = run.plan;
     smartPlanHash = run.planHash;
+    smartReferences = Array.isArray(run.references) ? run.references.slice(0, 2) : [];
   }
+  renderSmartReferences();
   renderSmartWorkspace();
 }
 
@@ -4445,11 +4538,19 @@ async function buildSmartPlan() {
   setSmartStatus('Building a production plan…');
   try {
     const result = await api('/api/smart/plan', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brief }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brief, references: smartReferencePayload() }),
     });
     smartPlan = result.plan;
     smartPlanHash = result.planHash;
     smartPlanProvider = result.provider;
+    if (Array.isArray(result.references)) {
+      const localByName = new Map(smartReferences.map((reference) => [reference.name, reference]));
+      smartReferences = result.references.map((reference) => Object.assign({}, reference, {
+        url: localByName.get(reference.name)?.url || '',
+      }));
+      renderSmartReferences();
+    }
     smartRun = null;
     smartClientToken = newSmartClientToken();
     $('#smartProvider').textContent = `${result.provider.label} · ${result.provider.model}`;
@@ -4473,6 +4574,7 @@ async function queueSmartProduction() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         plan: smartPlan, planHash: smartPlanHash, clientToken: smartClientToken || newSmartClientToken(),
+        references: smartReferencePayload(),
         reviewReference: $('#smartReviewReference')?.checked === true,
       }),
     });
@@ -4510,15 +4612,20 @@ async function actOnSmartRun(action) {
 }
 
 function resetSmartComposer() {
+  smartReferences.forEach((reference) => {
+    if (String(reference?.url || '').startsWith('blob:')) URL.revokeObjectURL(reference.url);
+  });
   smartPlan = null;
   smartPlanHash = '';
   smartPlanProvider = null;
   smartRun = null;
   smartClientToken = '';
+  smartReferences = [];
   $('#smartBriefInput').value = '';
   $('#smartProvider').textContent = 'AI planner';
   setSmartStatus('');
-  $('#smartBoard').innerHTML = '<div class="smart-board-empty"><span class="smart-empty-orbit" aria-hidden="true"><i></i><b></b></span><small>Production plan</small><h3>Your workflow will appear here</h3><p>Smart reasons about continuity, reference assets, model choice, duration, and queue order before anything is generated.</p><ol><li><span>1</span>Understand the brief</li><li><span>2</span>Build reference assets</li><li><span>3</span>Queue final generations</li></ol></div>';
+  $('#smartBoard').innerHTML = SMART_EMPTY_BOARD;
+  renderSmartReferences();
   $('#smartBriefInput').focus();
 }
 
@@ -4531,13 +4638,60 @@ function renderSmartRecordingTime() {
   $('#smartVoiceTime').textContent = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 }
 
+function smartAudioContentType(audio) {
+  const declared = String(audio?.type || '').split(';')[0].trim().toLowerCase();
+  if (declared.startsWith('audio/')) return declared;
+  const extension = /\.([a-z0-9]+)$/i.exec(String(audio?.name || ''))?.[1]?.toLowerCase();
+  return ({
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', wav: 'audio/wav',
+    webm: 'audio/webm', ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac', aac: 'audio/aac',
+  })[extension] || '';
+}
+
+async function transcribeSmartAudio(audio) {
+  if (!audio?.size) return setSmartStatus('No audio was captured. Try again.', true);
+  const contentType = smartAudioContentType(audio);
+  if (!contentType) return setSmartStatus('Choose an MP3, M4A, WAV, WebM, OGG, FLAC, or AAC recording.', true);
+  const button = $('#smartVoiceBtn');
+  button.disabled = true;
+  setSmartStatus('Transcribing your brief…');
+  try {
+    const result = await api('/api/smart/transcribe', {
+      method: 'POST', headers: { 'Content-Type': contentType }, body: audio,
+    });
+    const current = $('#smartBriefInput').value.trim();
+    $('#smartBriefInput').value = [current, result.text].filter(Boolean).join(current ? '\n' : '');
+    invalidateSmartPlan('Voice brief ready. Edit it if needed, then build the plan.');
+  } catch (error) {
+    setSmartStatus(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function openSmartVoiceFileFallback(message) {
+  const input = $('#smartVoiceFile');
+  input.value = '';
+  setSmartStatus(message);
+  input.click();
+}
+
 async function startSmartRecording() {
   if (smartRecorder && smartRecorder.state !== 'inactive') {
     stopSmartRecording();
     return;
   }
+  if (smartVoiceFileFallback) {
+    smartVoiceFileFallback = false;
+    openSmartVoiceFileFallback('Opening your phone recorder instead…');
+    return;
+  }
+  if (!window.isSecureContext) {
+    openSmartVoiceFileFallback('Chrome requires HTTPS for live microphone access on a phone. Opening the phone recorder instead; enable the private HTTPS address in Preferences → System → Phone access for one-tap recording.');
+    return;
+  }
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-    setSmartStatus('Voice input is unavailable in this browser. You can still type the brief.', true);
+    openSmartVoiceFileFallback('Live microphone recording is unavailable here. Opening your phone recorder instead…');
     return;
   }
   try {
@@ -4557,21 +4711,7 @@ async function startSmartRecording() {
       $('#smartVoiceLabel').textContent = 'Speak brief';
       $('#smartVoiceTime').textContent = '';
       const blob = new Blob(smartRecordingChunks, { type: smartRecorder.mimeType || 'audio/webm' });
-      if (!blob.size) return setSmartStatus('No audio was captured. Try again.', true);
-      button.disabled = true;
-      setSmartStatus('Transcribing your brief…');
-      try {
-        const result = await api('/api/smart/transcribe', {
-          method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob,
-        });
-        const current = $('#smartBriefInput').value.trim();
-        $('#smartBriefInput').value = [current, result.text].filter(Boolean).join(current ? '\n' : '');
-        setSmartStatus('Voice brief ready. Edit it if needed, then build the plan.');
-      } catch (error) {
-        setSmartStatus(error.message, true);
-      } finally {
-        button.disabled = false;
-      }
+      await transcribeSmartAudio(blob);
     }, { once: true });
     smartRecorder.start(500);
     smartRecordingStartedAt = Date.now();
@@ -4584,9 +4724,10 @@ async function startSmartRecording() {
     smartRecordingLimitTimer = setTimeout(stopSmartRecording, 120000);
     setSmartStatus('Listening… speak naturally. Recording stops after two minutes.');
   } catch (error) {
-    setSmartStatus(error.name === 'NotAllowedError'
-      ? 'Microphone access was denied. Allow it in the browser or type the brief.'
-      : `Could not start voice input: ${error.message}`, true);
+    if (error.name === 'NotAllowedError') {
+      smartVoiceFileFallback = true;
+      setSmartStatus('Microphone access was denied. Allow it in Chrome, or tap Speak brief again to use the phone recorder.', true);
+    } else setSmartStatus(`Could not start voice input: ${error.message}`, true);
   }
 }
 
@@ -4801,6 +4942,22 @@ createTabButtons.forEach((button) => button.addEventListener('click', () => {
 }));
 $('#smartPlanBtn').addEventListener('click', buildSmartPlan);
 $('#smartVoiceBtn').addEventListener('click', startSmartRecording);
+$('#smartVoiceFile').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (file) await transcribeSmartAudio(file);
+  event.target.value = '';
+});
+$('#smartConfigureAi').addEventListener('click', openSmartAiSettings);
+$('#smartAddReference').addEventListener('click', openSmartReferencePicker);
+$('#smartReferenceList').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-smart-reference-remove]');
+  if (!button) return;
+  const index = Number(button.dataset.smartReferenceRemove);
+  const [removed] = smartReferences.splice(index, 1);
+  if (String(removed?.url || '').startsWith('blob:')) URL.revokeObjectURL(removed.url);
+  invalidateSmartPlan('Reference removed. Build a new plan when ready.');
+  renderSmartReferences();
+});
 $$('[data-smart-example]').forEach((button) => button.addEventListener('click', () => {
   $('#smartBriefInput').value = button.dataset.smartExample;
   setSmartStatus('Example loaded. Make it yours, then build the plan.');
@@ -4820,6 +4977,8 @@ $('#smartRecentList').addEventListener('click', (event) => {
   smartRun = run;
   smartPlan = run.plan;
   smartPlanHash = run.planHash;
+  smartReferences = Array.isArray(run.references) ? run.references.slice(0, 2) : [];
+  renderSmartReferences();
   renderSmartWorkspace();
 });
 
@@ -5600,10 +5759,11 @@ function renderAssetPickerMultiBar() {
   if (!bar) return;
   const multiple = assetPickerState?.multiple === true;
   const count = multiple ? assetPickerState.selected.size : 0;
+  const noun = assetPickerState?.multipleLabel || 'keyframe';
   bar.hidden = !multiple;
   $('#assetPickerMultiCount').textContent = `${count} image${count === 1 ? '' : 's'} selected`;
   $('#assetPickerMultiUse').disabled = count === 0;
-  $('#assetPickerMultiUse').textContent = count ? `Add ${count} keyframe${count === 1 ? '' : 's'}` : 'Add keyframes';
+  $('#assetPickerMultiUse').textContent = count ? `Add ${count} ${noun}${count === 1 ? '' : 's'}` : `Add ${noun}s`;
 }
 
 function renderAssetPickerList() {
@@ -5686,7 +5846,9 @@ function renderAssetPickerList() {
     button.addEventListener('click', () => {
       if (!assetPickerState?.multiple) return openAssetPickerPreview(asset);
       if (assetPickerState.selected.has(asset.key)) assetPickerState.selected.delete(asset.key);
-      else assetPickerState.selected.set(asset.key, asset);
+      else if (assetPickerState.maxSelections && assetPickerState.selected.size >= assetPickerState.maxSelections) {
+        toast(`Choose up to ${assetPickerState.maxSelections} ${assetPickerState.multipleLabel || 'image'}${assetPickerState.maxSelections === 1 ? '' : 's'}`, true);
+      } else assetPickerState.selected.set(asset.key, asset);
       renderAssetPickerList();
     });
     list.appendChild(button);
@@ -5777,6 +5939,8 @@ function openAssetPicker(accept, callback, title, options = {}) {
     accept, callback, query: '', preview: null, assets: [], folder, mediaKind: 'all',
     galleryReference: options.galleryReference === true,
     multiple: options.multiple === true && assetPickerKind(accept) === 'image',
+    multipleLabel: String(options.multipleLabel || 'keyframe').replace(/[^a-z\s-]/gi, '').trim() || 'keyframe',
+    maxSelections: Math.max(0, Math.round(Number(options.maxSelections) || 0)),
     selected: new Map(),
     likes: state.likesOnly === true,
     sort: ['new', 'active', 'old', 'az'].includes(state.sortMode) ? state.sortMode : 'new',
@@ -30555,7 +30719,7 @@ function renderPromptingSummaries() {
     const provider = $('#setExternalLlmProvider')?.selectedOptions?.[0]?.textContent || 'OpenAI';
     const routed = ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
       .filter((id) => mediaPreferenceControlValue(id)).length;
-    external.textContent = routed ? `${provider} · ${routed} feature${routed === 1 ? '' : 's'} routed` : `${provider} · No feature overrides`;
+    external.textContent = `${provider} · Smart planner${routed ? ` + ${routed} prompt tool${routed === 1 ? '' : 's'}` : ''}`;
   }
 }
 

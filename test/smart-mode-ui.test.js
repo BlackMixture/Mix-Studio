@@ -27,15 +27,31 @@ test('Smart replaces only the middle Region navigation entry when enabled', () =
 });
 
 test('Smart workspace provides typed, voice, plan, review, queue, retry, and cancel controls', () => {
-  for (const id of ['smartWorkspace', 'smartBriefInput', 'smartVoiceBtn', 'smartPlanBtn', 'smartBoard', 'smartRecent']) {
+  for (const id of ['smartWorkspace', 'smartBriefInput', 'smartVoiceBtn', 'smartVoiceFile', 'smartPlanBtn', 'smartBoard', 'smartRecent']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(app, /navigator\.mediaDevices\.getUserMedia\(\{ audio: true \}\)/);
+  assert.match(app, /if \(!window\.isSecureContext\)[\s\S]*Chrome requires HTTPS[\s\S]*openSmartVoiceFileFallback/);
+  assert.match(app, /smartVoiceFile[\s\S]*transcribeSmartAudio\(file\)/);
   assert.match(app, /api\('\/api\/smart\/transcribe'/);
   assert.match(app, /api\('\/api\/smart\/plan'/);
   assert.match(app, /api\('\/api\/smart\/runs'/);
   assert.match(app, /\['failed', 'attention'\]/);
   assert.match(app, /\['running', 'queueing'\]\.includes\(run\.status\) \? \['cancel', 'Cancel remaining'\]/);
+});
+
+test('Smart exposes planner configuration and reusable image references', () => {
+  for (const id of ['smartConfigureAi', 'smartAddReference', 'smartReferenceList']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(html, /Smart Planner Provider/);
+  assert.match(html, /Choose Ollama to keep planning local/);
+  assert.match(html, /Used for OpenAI planning and Smart voice transcription/);
+  assert.match(app, /openAssetPicker\('image\/\*', addSmartReferences, 'Add Smart references'/);
+  assert.match(app, /references: smartReferencePayload\(\)/);
+  assert.match(app, /setSettingsTab\('suggestions'\)[\s\S]*prompting-external/);
+  assert.match(server, /images = await Promise\.all\(references\.map[\s\S]*externalLlmStructuredRequest\([\s\S]*images,/);
+  assert.match(server, /compileSmartSteps\(plan, \{\}, references\)/);
 });
 
 test('Smart mode spans the inputs and stage columns while keeping Library mounted', () => {

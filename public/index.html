@@ -205,7 +205,10 @@
     <header class="smart-head">
       <span class="smart-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Zm7 12 .9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9L19 14Z"/></svg></span>
       <span><small>Experimental orchestration</small><h2>Smart production</h2></span>
-      <span class="smart-provider" id="smartProvider">AI planner</span>
+      <button class="smart-provider" id="smartConfigureAi" type="button" title="Configure the Smart planner">
+        <span id="smartProvider">AI planner</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
     </header>
     <div class="smart-layout">
       <section class="smart-brief-card">
@@ -214,11 +217,19 @@
         <p>Speak naturally or type one idea. Smart will choose the workflows, build a production plan, and prepare the queue.</p>
         <label class="sr-only" for="smartBriefInput">Creative brief</label>
         <textarea id="smartBriefInput" rows="7" maxlength="8000" placeholder="Make a 120-second cinematic video about a lion navigating a series of surreal city scenarios…"></textarea>
+        <div class="smart-reference-inputs">
+          <div class="smart-reference-inputs-head">
+            <span><strong>References</strong><small>Optional · up to 2 images</small></span>
+            <button id="smartAddReference" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add</button>
+          </div>
+          <div class="smart-reference-list" id="smartReferenceList"><p>Guide character identity, product details, composition, or visual style.</p></div>
+        </div>
         <div class="smart-brief-actions">
           <button class="smart-voice-btn" id="smartVoiceBtn" type="button" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 1 0-7 0v5A3.5 3.5 0 0 0 12 15Zm-7-4a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg>
             <span id="smartVoiceLabel">Speak brief</span><i id="smartVoiceTime"></i>
           </button>
+          <input id="smartVoiceFile" type="file" accept="audio/*" capture="user" hidden />
           <button class="smart-plan-btn" id="smartPlanBtn" type="button"><span>Build production plan</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
         </div>
         <div class="smart-status" id="smartStatus" role="status" aria-live="polite"></div>
@@ -2925,9 +2936,9 @@
             </div>
           </details>
           <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-external">
-            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>External Prompt AI</strong><small id="externalPromptAiSummary">Optional provider overrides</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Smart Planner Provider</strong><small id="externalPromptAiSummary">OpenAI, Gemini, or local Ollama</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-preference-body external-llm-settings" id="externalLlmSettings">
-              <p class="settings-default-note">Use one shared provider for prompt revision and enhancement. API keys stay on this Mix Studio server and are never returned to the browser.</p>
+              <p class="settings-default-note">Smart mode always uses this provider for production planning. Choose Ollama to keep planning local, or connect OpenAI or Gemini with an API key. The optional switches below also route existing prompt tools through it.</p>
               <div class="field">
                 <label for="setExternalLlmProvider">Provider</label>
                 <select id="setExternalLlmProvider">
@@ -2940,13 +2951,6 @@
                 <div class="field">
                   <label for="setExternalLlmOpenAiModel">OpenAI model</label>
                   <input id="setExternalLlmOpenAiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-5.6-luna" />
-                </div>
-                <div class="field">
-                  <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
-                  <div class="external-llm-secret-row">
-                    <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
-                    <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
-                  </div>
                 </div>
               </div>
               <div class="external-llm-provider" data-external-llm-provider="gemini" hidden>
@@ -2961,6 +2965,14 @@
                     <button class="settings-cache-clear" id="clearExternalLlmGeminiApiKey" type="button" hidden>Clear</button>
                   </div>
                 </div>
+              </div>
+              <div class="field">
+                <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
+                <div class="external-llm-secret-row">
+                  <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                  <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
+                </div>
+                <small class="external-llm-field-note">Used for OpenAI planning and Smart voice transcription. It is optional with Gemini or Ollama unless you want voice input.</small>
               </div>
               <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
                 <div class="field">
@@ -2991,7 +3003,7 @@
                   <span class="settings-media-switch" aria-hidden="true"><i></i></span>
                 </button>
               </div>
-              <p class="external-llm-privacy">When visual context is enabled, prompt text and the selected reference image are sent to the chosen provider. Ollama remains local when its URL points to this computer.</p>
+              <p class="external-llm-privacy">Smart briefs and attached references are sent to the chosen planner. Other prompt tools send visual context only when enabled. Ollama remains local when its URL points to this computer.</p>
               <div class="external-llm-test-row">
                 <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
                 <span id="externalLlmStatus" role="status" aria-live="polite"></span>

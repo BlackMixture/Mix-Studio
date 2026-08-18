@@ -151,6 +151,7 @@ const {
   SMART_PLAN_SCHEMA,
   compileSmartSteps,
   normalizeSmartPlan,
+  normalizeSmartReferences,
   smartPlanHash,
   smartPlanningPrompt,
 } = require('./lib/smart-mode');
@@ -3059,6 +3060,7 @@ function publicSmartRun(run) {
     error: run.error || '',
     plan: run.plan,
     planHash: run.planHash,
+    references: normalizeSmartReferences(run.references),
     reviewReference: run.reviewReference === true,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
@@ -3235,8 +3237,9 @@ async function transcribeSmartAudio(buffer, contentType) {
   }
   const mime = /^audio\/[a-z0-9.+-]+$/i.test(contentType) ? contentType.toLowerCase() : 'audio/webm';
   const extension = ({
-    'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'audio/wav': 'wav',
-    'audio/flac': 'flac', 'audio/webm': 'webm', 'audio/aac': 'aac',
+    'audio/mp4': 'm4a', 'audio/m4a': 'm4a', 'audio/x-m4a': 'm4a',
+    'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-wav': 'wav',
+    'audio/vnd.wave': 'wav', 'audio/flac': 'flac', 'audio/webm': 'webm', 'audio/aac': 'aac',
   })[mime] || 'webm';
   const form = new FormData();
   form.append('file', new Blob([buffer], { type: mime }), `smart-brief.${extension}`);
@@ -6718,9 +6721,11 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const brief = String(body.brief || '').trim().slice(0, 8000);
     if (!brief) return json(res, 400, { error: 'Describe what you want Smart mode to create' });
+    const references = normalizeSmartReferences(body.references);
     const provider = configuredExternalLlm();
-    const prompt = smartPlanningPrompt(brief);
+    const prompt = smartPlanningPrompt(brief, { referenceCount: references.length });
     try {
+      const images = await Promise.all(references.map((reference) => externalPromptImage(reference.name, req.profile.id)));
       const rawPlan = await externalLlmStructuredRequest({
         provider: provider.provider,
         model: provider.model,
@@ -6728,14 +6733,17 @@ async function handleApi(req, res, url) {
         baseUrl: provider.baseUrl,
         instruction: prompt.instruction,
         userInput: prompt.userInput,
+        images,
         schema: SMART_PLAN_SCHEMA,
         schemaName: 'mix_studio_smart_plan',
         maxTokens: 4096,
       });
       const plan = normalizeSmartPlan(rawPlan, brief);
+      if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
       return json(res, 200, {
         plan,
-        planHash: smartPlanHash(plan),
+        references,
+        planHash: smartPlanHash(plan, references),
         provider: { provider: provider.provider, label: provider.label, model: provider.model },
       });
     } catch (error) {
@@ -6781,9 +6789,16 @@ async function handleApi(req, res, url) {
   if (route === '/api/smart/runs' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const plan = normalizeSmartPlan(body.plan, body.plan?.summary || '');
+    const references = normalizeSmartReferences(body.references);
+    if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
     const planHash = String(body.planHash || '');
-    if (!/^[a-f0-9]{64}$/.test(planHash) || smartPlanHash(plan) !== planHash) {
+    if (!/^[a-f0-9]{64}$/.test(planHash) || smartPlanHash(plan, references) !== planHash) {
       return json(res, 409, { error: 'This Smart plan changed after review. Build the plan again before queueing.', code: 'smart_plan_changed' });
+    }
+    try {
+      await Promise.all(references.map((reference) => externalPromptImage(reference.name, req.profile.id)));
+    } catch (error) {
+      return json(res, 409, { error: String(error.message || error), code: 'smart_reference_unavailable' });
     }
     const clientToken = String(body.clientToken || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 96);
     if (clientToken) {
@@ -6793,8 +6808,9 @@ async function handleApi(req, res, url) {
     const now = Date.now();
     const run = {
       id: uid(), profileId: req.profile.id, clientToken: clientToken || uid(),
-      planHash, plan, reviewReference: plan.subject.needsReference && body.reviewReference === true,
-      steps: compileSmartSteps(plan), status: 'ready', error: '', createdAt: now, updatedAt: now,
+      planHash, plan, references,
+      reviewReference: plan.subject.needsReference && body.reviewReference === true,
+      steps: compileSmartSteps(plan, {}, references), status: 'ready', error: '', createdAt: now, updatedAt: now,
     };
     db.smartRuns.push(run);
     retainSmartRuns(req.profile.id);

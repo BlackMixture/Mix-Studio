@@ -12492,6 +12492,7 @@ body.sheet-open {
 .external-llm-provider .field { margin: 0; }
 .external-llm-secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
 .external-llm-secret-row .settings-cache-clear { min-width: 54px; margin-top: 0; }
+.external-llm-field-note { display: block; margin: 7px 1px 0; color: var(--muted-2); font-size: 9.5px; font-weight: 650; line-height: 1.45; }
 .external-llm-routing { margin-top: 16px; }
 .external-llm-routing h6 {
   margin: 0 0 5px;
@@ -13080,15 +13081,21 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 .smart-head h2 { margin: 4px 0 0; font-size: clamp(20px, 2vw, 27px); letter-spacing: -.035em; }
 .smart-provider {
   align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 6px 9px;
   border: 1px solid var(--smart-line);
   border-radius: 999px;
+  background: rgba(255,255,255,.025);
   color: var(--muted);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: .06em;
   white-space: nowrap;
 }
+.smart-provider:hover { border-color: rgba(169,102,255,.4); color: var(--ink); }
+.smart-provider svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; }
 .smart-layout { display: grid; grid-template-columns: minmax(270px,.8fr) minmax(360px,1.35fr); gap: 12px; align-items: start; }
 .smart-brief-card,
 .smart-production-card,
@@ -13121,6 +13128,24 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 }
 #smartBriefInput:focus { border-color: rgba(169,102,255,.58); box-shadow: 0 0 0 3px rgba(169,102,255,.1); }
 #smartBriefInput::placeholder { color: rgba(184,191,210,.44); }
+.smart-reference-inputs { margin-top: 12px; padding: 11px; border: 1px solid rgba(226,232,255,.1); border-radius: 14px; background: rgba(5,6,9,.28); }
+.smart-reference-inputs-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.smart-reference-inputs-head > span { min-width: 0; }
+.smart-reference-inputs-head strong { display: block; font-size: 10px; letter-spacing: .01em; }
+.smart-reference-inputs-head small { display: block; margin-top: 2px; color: var(--muted-2); font-size: 8.5px; }
+.smart-reference-inputs-head button { min-height: 29px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border-color: rgba(169,102,255,.26); color: #d7bcff; font-size: 9px; font-weight: 850; }
+.smart-reference-inputs-head button:disabled { opacity: .42; }
+.smart-reference-inputs-head svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; }
+.smart-reference-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin-top: 9px; }
+.smart-reference-list > p { grid-column: 1 / -1; margin: 0; color: var(--muted-2); font-size: 9px; line-height: 1.45; }
+.smart-reference-card { position: relative; min-width: 0; display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: center; gap: 8px; padding: 5px 28px 5px 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(255,255,255,.025); }
+.smart-reference-card img { width: 42px; height: 42px; border-radius: 7px; object-fit: cover; background: #08090c; }
+.smart-reference-card span { min-width: 0; }
+.smart-reference-card strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
+.smart-reference-card small { display: block; margin-top: 3px; color: var(--muted-2); font-size: 7.5px; }
+.smart-reference-remove { position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted-2); }
+.smart-reference-remove:hover { color: #ff9cac; }
+.smart-reference-remove svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; }
 .smart-brief-actions { display: grid; grid-template-columns: minmax(122px,.68fr) minmax(170px,1fr); gap: 8px; margin-top: 10px; }
 .smart-voice-btn,
 .smart-plan-btn,
@@ -13223,6 +13248,7 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
   .smart-provider { grid-column: 1 / -1; justify-self: start; }
   .smart-layout { grid-template-columns: 1fr; }
   .smart-brief-card { position: static; padding: 16px; }
+  .smart-reference-list { grid-template-columns: 1fr; }
   .smart-production-card { min-height: 420px; padding: 16px; }
   .smart-brief-actions { grid-template-columns: 1fr; }
   .smart-scene-list { grid-template-columns: 1fr; }

@@ -8,6 +8,7 @@ const {
   buildH3Prompt,
   compileSmartSteps,
   normalizeSmartPlan,
+  normalizeSmartReferences,
   smartPlanHash,
   smartPlanningPrompt,
 } = require('../lib/smart-mode');
@@ -68,6 +69,21 @@ test('Smart compiles identity video into a Krea reference followed by H3 long co
   assert.equal(steps[1].request.body.h3ResolutionSize, 1);
 });
 
+test('attached references are bounded, hashed, and synthesized through Krea 2 Edit', () => {
+  const references = normalizeSmartReferences([
+    { name: 'lion.png', label: 'Lion identity', w: 1200, h: 900 },
+    { name: 'style.jpg', label: 'Lighting style', w: 800, h: 1200 },
+    { name: 'ignored.png', label: 'Third image' },
+  ]);
+  assert.deepEqual(references.map((reference) => reference.name), ['lion.png', 'style.jpg']);
+  const steps = compileSmartSteps(lionPlan(), { imageId: 'reference-step', videoId: 'video-step' }, references);
+  assert.equal(steps[0].request.body.mode, 'edit');
+  assert.equal(steps[0].request.body.editEngine, 'krea2ref');
+  assert.deepEqual(steps[0].request.body.refImages, ['lion.png', 'style.jpg']);
+  assert.deepEqual(steps[1].dependsOn, ['reference-step']);
+  assert.notEqual(smartPlanHash(lionPlan()), smartPlanHash(lionPlan(), references));
+});
+
 test('H3 prompt refers to the canonical image and includes timed scene transitions', () => {
   const prompt = buildH3Prompt(normalizeSmartPlan(lionPlan()));
   assert.match(prompt, /<Picture 1>/);
@@ -89,6 +105,15 @@ test('image-only Smart requests stay a single Krea generation', () => {
   assert.deepEqual([steps[0].request.body.width, steps[0].request.body.height], [912, 1216]);
 });
 
+test('image-only Smart requests use attached images as Krea references', () => {
+  const raw = lionPlan();
+  raw.output = { kind: 'image', durationSeconds: 0, aspectRatio: '1:1', quality: 'balanced' };
+  const [step] = compileSmartSteps(raw, { imageId: 'image-step' }, [{ name: 'product.png', label: 'Product' }]);
+  assert.equal(step.request.body.mode, 'edit');
+  assert.equal(step.request.body.editEngine, 'krea2ref');
+  assert.deepEqual(step.request.body.refImages, ['product.png']);
+});
+
 test('plan hash is stable across normalized equivalents and changes with production intent', () => {
   const source = lionPlan();
   assert.equal(smartPlanHash(source), smartPlanHash(normalizeSmartPlan(source)));
@@ -98,8 +123,10 @@ test('plan hash is stable across normalized equivalents and changes with product
 });
 
 test('planner instruction explicitly routes persistent subjects through one canonical reference', () => {
-  const prompt = smartPlanningPrompt('A lion crosses several scenes');
+  const prompt = smartPlanningPrompt('A lion crosses several scenes', { referenceCount: 2 });
   assert.match(prompt.instruction, /persistent named character/i);
   assert.match(prompt.instruction, /one clean canonical identity image/i);
+  assert.match(prompt.instruction, /attached 2 image references/i);
+  assert.match(prompt.instruction, /identity, visual style, wardrobe, product appearance, or composition/i);
   assert.equal(prompt.userInput, 'A lion crosses several scenes');
 });
