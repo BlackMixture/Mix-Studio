@@ -295,6 +295,56 @@ test('RTX 4K setup installs the reviewed NVIDIA node and its nvidia-vfx requirem
   }
 });
 
+test('already-present dependencies are checked without requesting another restart', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-existing-dependencies-'));
+  const customNodesPath = path.join(rootDir, 'custom_nodes');
+  const modelsPath = path.join(rootDir, 'models');
+  const pythonPath = path.join(rootDir, '.venv', 'Scripts', 'python.exe');
+  const rtxPath = path.join(customNodesPath, NODE_PACKS.rtx.folder);
+  try {
+    fs.mkdirSync(path.join(rtxPath, '.git'), { recursive: true });
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.mkdirSync(modelsPath, { recursive: true });
+    fs.writeFileSync(path.join(rootDir, 'main.py'), '');
+    fs.writeFileSync(pythonPath, '');
+
+    const nodeResult = await installComponents({
+      runtime: { comfy: { path: rootDir, modelsPath } },
+      settings: {},
+      components: ['video4k'],
+      options: {
+        run: async (_command, args) => {
+          if (args.includes('get-url')) return NODE_PACKS.rtx.repo;
+          if (args.includes('rev-parse')) return NODE_PACKS.rtx.ref;
+          return '';
+        },
+      },
+    });
+    assert.equal(nodeResult.completed, 1);
+    assert.equal(nodeResult.changed, 0);
+    assert.deepEqual(nodeResult.changedItems, []);
+    assert.equal(nodeResult.restartRequired, false);
+
+    const registeredModels = MODEL_ASSETS.image.map((asset) => asset[2].split('/').pop());
+    const modelResult = await installComponents({
+      runtime: { comfy: { path: rootDir, modelsPath } },
+      settings: {},
+      components: ['image'],
+      options: {
+        disableHfAcceleration: true,
+        availableModelNames: registeredModels,
+        fetch: async () => { throw new Error('registered models must not download'); },
+      },
+    });
+    assert.equal(modelResult.completed, MODEL_ASSETS.image.length);
+    assert.equal(modelResult.changed, 0);
+    assert.deepEqual(modelResult.changedItems, []);
+    assert.equal(modelResult.restartRequired, false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('uv is bootstrapped into the ComfyUI Python environment with a clear failure code', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mixbox-uv-bootstrap-'));
   const pythonPath = path.join(rootDir, 'python.exe');
@@ -1078,6 +1128,15 @@ test('an explicit post-restart check clears stale restart-required state', () =>
   assert.match(server, /Still needed: \$\{checkedMissingLabels\.join\(', '\)\}/);
   assert.match(server, /restartRequired: false/);
   assert.match(app, /loadMeta\(true, true\)/);
+  assert.match(server, /dependencyReadinessDiagnostics/);
+  assert.match(server, /missingNodes/);
+  assert.match(server, /missingModels/);
+  assert.match(server, /customNodesPath: isAdmin\(\)/);
+  assert.match(app, /Installed files are not loading/);
+  assert.match(app, /Reinstalling the same files will not help/);
+  assert.match(app, /Already installed — resolve loading issue below/);
+  assert.match(html, /id="setupReadinessDiagnostic"/);
+  assert.match(css, /\.setup-operation\.not-loaded/);
 });
 
 test('Settings presents a compact dependency manager with progress and restart controls', () => {

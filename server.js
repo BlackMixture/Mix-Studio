@@ -1024,6 +1024,11 @@ let dependencyInstallState = {
   completed: 0,
   total: 0,
   restartRequired: false,
+  changed: 0,
+  changedItems: [],
+  checkedComponents: [],
+  checkedMissingComponents: [],
+  readinessDiagnostics: [],
   error: null,
   errorCode: null,
   accessUrl: null,
@@ -1736,9 +1741,7 @@ function configuredModelsStatus(info) {
   };
 }
 
-function missingDependencyComponentIds(missing, models, capabilities = {}) {
-  const ids = new Set();
-  const nodeToComponent = {
+const DEPENDENCY_NODE_GROUP_COMPONENTS = Object.freeze({
     regional: ['regional'],
     krea2ref: ['krea2ref'],
     krea2remix: ['krea2remix'],
@@ -1772,23 +1775,113 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
     krea2inpaint: ['image'],
     krea2depth: ['krea2depth'],
     krea2style: ['krea2style'],
-  };
+});
+
+const DEPENDENCY_MODEL_GROUP_COMPONENTS = Object.freeze({
+  krea2Depth: ['krea2depth'],
+  krea2IdentityEdit: ['krea2ref', 'krea2outpaint'],
+  klein4: ['klein4'],
+  klein9: ['klein9'],
+  qwen: ['qwen'],
+  upscale: ['upscale'],
+  ltx: ['video'],
+  ltx25: ['ltx25'],
+  ltx25Quality: ['ltx25quality'],
+  h3: ['h3'],
+  h3Ref: ['h3r2v'],
+  h3Turbo: ['h3turbo'],
+  h3RefTurbo: ['h3turbor2v'],
+  ltxDirector: ['ltxdirector'],
+  ltxCamera: ['ltxcamera'],
+  ltxEdit: ['videoedit'],
+  faceid: ['faceid'],
+  wan: ['wan'],
+  wanAnimate2: ['wananimate2'],
+  eros: ['eros'],
+  scail: ['scail'],
+  scailInfinity: ['scailinfinity'],
+});
+
+function missingDependencyComponentIds(missing, models, capabilities = {}) {
+  const ids = new Set();
   for (const [group, classes] of Object.entries(missing || {})) {
-    if (Array.isArray(classes) && classes.length) for (const component of nodeToComponent[group] || []) ids.add(component);
+    if (Array.isArray(classes) && classes.length) for (const component of DEPENDENCY_NODE_GROUP_COMPONENTS[group] || []) ids.add(component);
   }
   const krea2 = models?.krea2 || {};
   const krea2CoreChecks = ['turbo', 'clip', 'vae'].map((key) => krea2[key]).filter(Boolean);
   if (krea2CoreChecks.some((check) => !check.ok)) ids.add('image');
   if (krea2.raw && !krea2.raw.ok) ids.add('krea2raw');
-  const modelToComponent = { krea2Depth: 'krea2depth', krea2IdentityEdit: 'krea2ref', klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', upscale: 'upscale', ltx: 'video', ltx25: 'ltx25', ltx25Quality: 'ltx25quality', h3: 'h3', h3Ref: 'h3r2v', h3Turbo: 'h3turbo', h3RefTurbo: 'h3turbor2v', ltxDirector: 'ltxdirector', ltxCamera: 'ltxcamera', ltxEdit: 'videoedit', faceid: 'faceid', wan: 'wan', wanAnimate2: 'wananimate2', eros: 'eros', scail: 'scail', scailInfinity: 'scailinfinity' };
   for (const [model, value] of Object.entries(models || {})) {
     const checks = Object.values(value || {}).filter((check) => check && typeof check === 'object' && Object.prototype.hasOwnProperty.call(check, 'ok'));
-    if (checks.some((check) => !check.ok) && modelToComponent[model]) ids.add(modelToComponent[model]);
+    if (checks.some((check) => !check.ok)) {
+      for (const component of DEPENDENCY_MODEL_GROUP_COMPONENTS[model] || []) ids.add(component);
+    }
   }
   if (Object.prototype.hasOwnProperty.call(capabilities, 'sageAttention')
     && capabilities.sageAttention?.ready !== true) ids.add('h3sage');
   for (const component of capabilities.repairComponents || []) ids.add(component);
   return [...ids];
+}
+
+function dependencyReadinessDiagnostics(componentIds, missing, models, capabilities = {}, installStatus = {}) {
+  const requested = new Set((componentIds || []).filter(Boolean));
+  const diagnostics = new Map([...requested].map((id) => [id, {
+    id,
+    label: DEPENDENCY_COMPONENTS[id]?.label || id,
+    missingNodes: [],
+    missingModels: [],
+    nodePacks: [],
+    reasons: [],
+  }]));
+  for (const [group, classes] of Object.entries(missing || {})) {
+    if (!Array.isArray(classes) || !classes.length) continue;
+    for (const componentId of DEPENDENCY_NODE_GROUP_COMPONENTS[group] || []) {
+      const diagnostic = diagnostics.get(componentId);
+      if (diagnostic) diagnostic.missingNodes.push(...classes);
+    }
+  }
+  for (const [modelGroup, value] of Object.entries(models || {})) {
+    const missingNames = Object.values(value || {})
+      .filter((check) => check && typeof check === 'object' && check.ok === false && check.name)
+      .map((check) => String(check.name));
+    if (!missingNames.length) continue;
+    for (const componentId of DEPENDENCY_MODEL_GROUP_COMPONENTS[modelGroup] || []) {
+      const diagnostic = diagnostics.get(componentId);
+      if (diagnostic) diagnostic.missingModels.push(...missingNames);
+    }
+  }
+  const krea2 = models?.krea2 || {};
+  const krea2CoreNames = ['turbo', 'clip', 'vae']
+    .map((key) => krea2[key])
+    .filter((check) => check?.ok === false && check.name)
+    .map((check) => String(check.name));
+  if (diagnostics.has('image')) diagnostics.get('image').missingModels.push(...krea2CoreNames);
+  if (diagnostics.has('krea2raw') && krea2.raw?.ok === false && krea2.raw.name) {
+    diagnostics.get('krea2raw').missingModels.push(String(krea2.raw.name));
+  }
+  for (const componentId of capabilities.repairComponents || []) {
+    const diagnostic = diagnostics.get(componentId);
+    if (diagnostic) diagnostic.reasons.push('A reviewed custom-node update is required.');
+  }
+  if (diagnostics.has('h3sage') && capabilities.sageAttention?.ready !== true) {
+    diagnostics.get('h3sage').reasons.push(capabilities.sageAttention?.reason || 'SageAttention is not ready in the connected ComfyUI runtime.');
+  }
+  for (const [componentId, diagnostic] of diagnostics) {
+    const nodeIds = DEPENDENCY_COMPONENTS[componentId]?.nodes || [];
+    diagnostic.nodePacks = nodeIds.map((nodeId) => {
+      const pack = DEPENDENCY_NODE_PACKS[nodeId];
+      return {
+        label: pack?.label || nodeId,
+        path: installStatus.customNodesPath && pack?.folder
+          ? path.join(installStatus.customNodesPath, pack.folder)
+          : '',
+      };
+    });
+    diagnostic.missingNodes = [...new Set(diagnostic.missingNodes)];
+    diagnostic.missingModels = [...new Set(diagnostic.missingModels)];
+    diagnostic.reasons = [...new Set(diagnostic.reasons)];
+  }
+  return [...diagnostics.values()];
 }
 
 const LORA_INFO_TTL = 5 * 60 * 1000;
@@ -7563,6 +7656,10 @@ async function handleApi(req, res, url) {
         sageAttention,
         repairComponents: nodeRevisions.components,
       });
+      const readinessDiagnostics = dependencyReadinessDiagnostics(missingComponents, missing, models, {
+        sageAttention,
+        repairComponents: nodeRevisions.components,
+      }, installStatus);
       if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
         const checkedComponents = Array.isArray(dependencyInstallState.components)
           ? dependencyInstallState.components.filter(Boolean)
@@ -7573,6 +7670,7 @@ async function handleApi(req, res, url) {
         const checkedMissingLabels = checkedMissingComponents.map((component) => (
           DEPENDENCY_COMPONENTS[component]?.label || component
         ));
+        const checkedDiagnostics = readinessDiagnostics.filter((entry) => checkedMissingComponents.includes(entry.id));
         updateDependencyInstallState({
           state: 'complete',
           phase: 'checked',
@@ -7581,6 +7679,7 @@ async function handleApi(req, res, url) {
             : 'ComfyUI was checked after restart. Installed dependencies are ready.',
           checkedComponents,
           checkedMissingComponents,
+          readinessDiagnostics: checkedDiagnostics,
           restartRequired: false,
           error: null,
           ...EMPTY_DEPENDENCY_FAILURE,
@@ -7607,6 +7706,13 @@ async function handleApi(req, res, url) {
             sageAttention,
           )),
           missingComponents,
+          diagnostics: {
+            components: readinessDiagnostics,
+            comfyPath: isAdmin() ? (RUNTIME.comfy.path || installStatus.basePath || '') : '',
+            customNodesPath: isAdmin() ? (installStatus.customNodesPath || '') : '',
+            modelsPath: isAdmin() ? (RUNTIME.comfy.modelsPath || '') : '',
+            comfyUrl: isAdmin() ? (settings.comfyUrl || '') : '',
+          },
           repairComponents: nodeRevisions.components,
           outdatedNodes: nodeRevisions.nodes,
           install: dependencyInstallState,
@@ -7976,7 +8082,8 @@ async function handleApi(req, res, url) {
     dependencyInstallRunning = true;
     updateDependencyInstallState({
       state: 'running', phase: 'queued', message: 'Starting dependency installation…',
-      components, repair, completed: 0, total: 0, restartRequired: false, error: null,
+      components, repair, completed: 0, total: 0, restartRequired: false,
+      changed: 0, changedItems: [], checkedComponents: [], checkedMissingComponents: [], readinessDiagnostics: [], error: null,
       ...EMPTY_DEPENDENCY_FAILURE,
     });
     (async () => {
@@ -8015,6 +8122,8 @@ async function handleApi(req, res, url) {
             phase: 'partial-complete',
             message: `Installed compatible dependencies; ${result.failures.length} node pack${result.failures.length === 1 ? '' : 's'} need attention.`,
             restartRequired: result.restartRequired,
+            changed: result.changed,
+            changedItems: result.changedItems,
             environmentSnapshot: result.environmentSnapshot || null,
             error: result.failures.map((failure) => failure.message).join('\n'),
             errorCode: firstFailure.code,
@@ -8025,7 +8134,19 @@ async function handleApi(req, res, url) {
             nodeFailures: result.failures,
           });
         } else {
-          updateDependencyInstallState({ state: 'complete', phase: 'complete', message: repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.', restartRequired: result.restartRequired, environmentSnapshot: result.environmentSnapshot || null, error: null, ...EMPTY_DEPENDENCY_FAILURE });
+          updateDependencyInstallState({
+            state: 'complete',
+            phase: result.restartRequired ? 'complete' : 'already-present',
+            message: result.restartRequired
+              ? (repair ? 'Repair finished. Restart ComfyUI, then Check again.' : 'Dependencies installed. Restart ComfyUI to load new nodes, then Check again.')
+              : 'Selected files are already installed. Mix Studio is checking what the connected ComfyUI has loaded.',
+            restartRequired: result.restartRequired,
+            changed: result.changed,
+            changedItems: result.changedItems,
+            environmentSnapshot: result.environmentSnapshot || null,
+            error: null,
+            ...EMPTY_DEPENDENCY_FAILURE,
+          });
         }
       } catch (error) {
         if (installController.signal.aborted || error?.code === 'dependency_cancelled' || error?.name === 'AbortError') {

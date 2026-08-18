@@ -36045,6 +36045,36 @@ function conciseSetupError(value) {
   return 'The install did not finish. Open Details for the diagnostic, then retry.';
 }
 
+function setupReadinessDiagnostics(installState) {
+  if (!installState || installState.restartRequired) return [];
+  if (!['already-present', 'checked', 'reconnected'].includes(String(installState.phase || ''))) return [];
+  const missing = new Set(lastMeta?.dependencies?.missingComponents || []);
+  const checked = Array.isArray(installState.checkedMissingComponents) && installState.checkedMissingComponents.length
+    ? installState.checkedMissingComponents
+    : (Array.isArray(installState.components) ? installState.components : []);
+  const relevant = new Set(checked.filter((id) => missing.has(id)));
+  const diagnostics = Array.isArray(installState.readinessDiagnostics) && installState.readinessDiagnostics.length
+    ? installState.readinessDiagnostics
+    : (lastMeta?.dependencies?.diagnostics?.components || []);
+  return diagnostics.filter((entry) => relevant.has(entry.id));
+}
+
+function setupReadinessDiagnosticText(diagnostics) {
+  const lines = diagnostics.map((entry) => {
+    const details = [];
+    if (entry.missingNodes?.length) details.push(`Missing node classes: ${entry.missingNodes.join(', ')}`);
+    if (entry.missingModels?.length) details.push(`Missing models: ${entry.missingModels.join(', ')}`);
+    if (entry.reasons?.length) details.push(...entry.reasons);
+    if (entry.nodePacks?.length) details.push(`Checked node folders: ${entry.nodePacks.map((pack) => pack.path || pack.label).join(', ')}`);
+    return `${entry.label}: ${details.join('. ') || 'ComfyUI did not report this workflow as ready.'}`;
+  });
+  const paths = lastMeta?.dependencies?.diagnostics || {};
+  if (paths.comfyUrl) lines.push(`Connected ComfyUI: ${paths.comfyUrl}`);
+  if (paths.comfyPath) lines.push(`ComfyUI folder: ${paths.comfyPath}`);
+  if (paths.modelsPath) lines.push(`Models folder: ${paths.modelsPath}`);
+  return lines.join('\n');
+}
+
 function dependencyAccessUrl(installState) {
   if (installState?.state !== 'error' || installState?.errorCode !== 'dependency_model_access_required') return '';
   try {
@@ -36317,6 +36347,9 @@ function renderInitialSetup() {
   const workflowCard = $('#setupWorkflowStatus');
   const workflowReady = setupGenerationReady();
   const restartRequired = !!dependency.restartRequired;
+  const readinessDiagnostics = setupReadinessDiagnostics(dependency);
+  const notLoadedComponents = new Set(readinessDiagnostics.map((entry) => entry.id));
+  const installedButNotLoaded = !workflowReady && readinessDiagnostics.length > 0;
   if (!setupContextComponents.length && workflowReady) {
     $('#setupTitle').textContent = 'Ready to generate';
     $('#setupIntro').textContent = 'Krea 2 Image is installed. Add other workflows only when you need them.';
@@ -36481,12 +36514,13 @@ function renderInitialSetup() {
       const installed = readinessKnown && !missingSet.has(entry.id);
       const unavailable = entry.installable === false && !installed;
       const coreUpdate = entry.blockedBy === 'comfy-core' && !installed;
+      const notLoaded = notLoadedComponents.has(entry.id);
       const checked = installed || selected.has(entry.id);
-      const disabled = installed || unavailable || busy || !state.profileIsOwner;
-      const status = installed ? 'Installed' : (repairNeeded ? 'Update' : (coreUpdate ? 'Update ComfyUI' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked')))));
+      const disabled = installed || unavailable || notLoaded || busy || !state.profileIsOwner;
+      const status = installed ? 'Installed' : (notLoaded ? 'Not loaded' : (repairNeeded ? 'Update' : (coreUpdate ? 'Update ComfyUI' : (unavailable ? 'Manual' : (selected.has(entry.id) ? 'Selected' : (readinessKnown ? 'Not installed' : 'Not checked'))))));
       const detail = entry.installReason || fit?.detail || entry.label;
-      const readinessLabel = repairNeeded ? 'Reviewed custom-node update required' : (coreUpdate ? 'ComfyUI 0.26.0+ required' : (fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements')));
-      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${repairNeeded ? ' repair-needed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(readinessLabel)}</small></span><span class="setup-component-state">${status}</span></label>`;
+      const readinessLabel = notLoaded ? 'Files found · ComfyUI did not register a requirement' : (repairNeeded ? 'Reviewed custom-node update required' : (coreUpdate ? 'ComfyUI 0.26.0+ required' : (fit?.label || (unavailable ? 'Manual installation required' : 'Check requirements'))));
+      return `<label class="setup-component-option${checked ? ' selected' : ''}${installed ? ' installed' : ''}${notLoaded ? ' not-loaded' : ''}${repairNeeded ? ' repair-needed' : ''}${unavailable ? ' unavailable' : ''}" data-fit="${escapeHtml(fit?.level || 'unknown')}" title="${escapeHtml(detail)}"><input type="checkbox" data-component="${escapeHtml(entry.id)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="setup-component-check" aria-hidden="true"></span><span class="setup-component-copy"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(readinessLabel)}</small></span><span class="setup-component-state">${status}</span></label>`;
     }).join('');
     const count = readinessKnown ? `${installedCount} of ${entries.length} installed` : `${entries.length} workflows`;
     const action = selectableEntries.length
@@ -36495,8 +36529,11 @@ function renderInitialSetup() {
     return `<section class="setup-component-group" data-component-category="${category.id}"><header><span><strong>${category.label}</strong><small>${category.description}</small></span><span class="setup-component-group-actions"><em>${count}</em>${action}</span></header><div>${rows}</div></section>`;
   }).join('');
   $('#setupComponentEmpty').hidden = !!components.length;
-  $('#setupInstallSelected').disabled = busy || !selected.size || !comfy.canInstallDependencies;
-  $('#setupInstallSelected').textContent = `Install selected components${selected.size ? ` (${selected.size})` : ''}`;
+  const selectedOnlyNotLoaded = selected.size > 0 && [...selected].every((id) => notLoadedComponents.has(id));
+  $('#setupInstallSelected').disabled = busy || !selected.size || selectedOnlyNotLoaded || !comfy.canInstallDependencies;
+  $('#setupInstallSelected').textContent = selectedOnlyNotLoaded
+    ? 'Already installed — resolve loading issue below'
+    : `Install selected components${selected.size ? ` (${selected.size})` : ''}`;
 
   const quick = $('#setupQuickStart');
   const current = $('#setupCurrentWorkflow');
@@ -36519,10 +36556,10 @@ function renderInitialSetup() {
     : 'Install only what this generation needs.';
   current.querySelector('.setup-workflow-verb').textContent = setupInstallStarting ? 'Starting…' : (busy ? 'Installing…' : 'Install');
   current.setAttribute('aria-label', `Install ${currentTitle} for this generation`);
-  quick.hidden = (!quickMissing.length)
+  quick.hidden = installedButNotLoaded || (!quickMissing.length)
     || (!!setupContextComponents.length && quickPreset.id !== 'low-vram-klein4');
   quick.disabled = busy || !state.profileIsOwner;
-  current.hidden = !setupContextComponents.length || workflowReady;
+  current.hidden = installedButNotLoaded || !setupContextComponents.length || workflowReady;
   current.disabled = busy || !state.profileIsOwner;
   const starterIsOptional = setupFirstRun || setupContextComponents.length === 0;
   skipStarter.hidden = !starterIsOptional || !comfy.connected || workflowReady;
@@ -36544,20 +36581,39 @@ function renderInitialSetup() {
   const restartInfo = setupViewStatus.restart || lastMeta?.dependencies?.restart || {};
   const restartNeeded = !!dependency.restartRequired;
   operation.classList.toggle('restart-needed', restartNeeded);
-  setupOperationDiagnostic = operationState?.error ? String(operationState.error) : '';
+  operation.classList.toggle('not-loaded', installedButNotLoaded);
+  setupOperationDiagnostic = operationState?.error
+    ? String(operationState.error)
+    : (installedButNotLoaded ? setupReadinessDiagnosticText(readinessDiagnostics) : '');
   $('#setupShowDetails').hidden = !setupOperationDiagnostic;
+  const readinessPanel = $('#setupReadinessDiagnostic');
+  readinessPanel.hidden = !installedButNotLoaded;
+  $('#setupReadinessItems').innerHTML = installedButNotLoaded ? readinessDiagnostics.map((entry) => {
+    const details = [];
+    if (entry.missingNodes?.length) details.push(`Nodes: ${entry.missingNodes.join(', ')}`);
+    if (entry.missingModels?.length) details.push(`Models: ${entry.missingModels.join(', ')}`);
+    if (entry.reasons?.length) details.push(...entry.reasons);
+    return `<div><strong>${escapeHtml(entry.label)}</strong><code>${escapeHtml(details.join(' · ') || 'Not reported as ready')}</code></div>`;
+  }).join('') : '';
+  const diagnosticPaths = lastMeta?.dependencies?.diagnostics || {};
+  $('#setupReadinessPaths').textContent = installedButNotLoaded
+    ? [diagnosticPaths.comfyUrl && `Connected: ${diagnosticPaths.comfyUrl}`, diagnosticPaths.comfyPath && `ComfyUI: ${diagnosticPaths.comfyPath}`, diagnosticPaths.modelsPath && `Models: ${diagnosticPaths.modelsPath}`].filter(Boolean).join(' · ')
+    : '';
   const setupAccessUrl = renderDependencyAccess('#setupDependencyAccess', '#setupDependencyAccessLink', operationState);
   if (operationState) {
-    $('#setupOperationTitle').textContent = restartNeeded ? 'Restart ComfyUI to finish'
+    $('#setupOperationTitle').textContent = installedButNotLoaded ? 'Installed files are not loading'
+      : (restartNeeded ? 'Restart ComfyUI to finish'
       : (operationState.state === 'error' ? 'Setup needs attention'
-        : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up')));
-    $('#setupOperationCopy').textContent = restartNeeded
+        : (operationState.state === 'cancelled' ? 'Setup stopped' : (operationState.state === 'complete' ? 'Install finished' : 'Setting up'))));
+    $('#setupOperationCopy').textContent = installedButNotLoaded
+      ? 'The files are present, but the connected ComfyUI still does not report the requirement below. Reinstalling the same files will not help. Confirm these paths, then check the ComfyUI startup console for a custom-node import or model-folder error.'
+      : (restartNeeded
       ? (restartInfo.kind === 'desktop'
         ? 'Downloads are complete. In Comfy Desktop, stop and start this installation, then return here and press Check again.'
         : 'Downloads are complete. Restart ComfyUI so it can register the installed models and nodes.')
       : (operationState.error
       ? (setupAccessUrl ? 'This model needs Hugging Face access before installation can continue.' : conciseSetupError(operationState.error))
-      : (operationState.message || 'Working…'));
+      : (operationState.message || 'Working…')));
     const progress = dependencyProgressMetrics(operationState);
     const progressTrack = $('#setupOperationProgress');
     progressTrack.classList.toggle('indeterminate', !progress.determinate && operationState.state === 'running');
@@ -36581,7 +36637,7 @@ function renderInitialSetup() {
 
   $('#setupFinishNote').textContent = workflowReady
     ? (additionalMissing.length ? 'Ready to generate. Other workflows can be added whenever you need them.' : 'Ready to generate.')
-    : (restartRequired ? 'Restart ComfyUI, then check again.' : 'Complete the highlighted step first.');
+    : (restartRequired ? 'Restart ComfyUI, then check again.' : (installedButNotLoaded ? 'Resolve the loading problem shown above.' : 'Complete the highlighted step first.'));
 
   let recommendedStep = !comfy.connected ? 'connect' : (installReady ? 'finish' : 'install');
   if (krea2CoreBlocked) recommendedStep = 'connect';
@@ -37286,6 +37342,7 @@ function renderGenerationSetupEntry() {
   const repairCount = missing.filter((entry) => entry.repair).length;
   const imageReady = imageGenerationReady();
   const busy = ['running', 'cancelling', 'restarting'].includes(install.state);
+  const loadingDiagnostics = setupReadinessDiagnostics(install);
   let stateName = 'checking';
   let statusText = 'Checking';
   let copyText = 'Connection, models, and workflow requirements.';
@@ -37307,6 +37364,10 @@ function renderGenerationSetupEntry() {
     stateName = 'attention';
     statusText = 'Review';
     copyText = 'The last setup operation needs attention.';
+  } else if (loadingDiagnostics.length) {
+    stateName = 'attention';
+    statusText = 'Not loaded';
+    copyText = 'The selected files are installed, but the connected ComfyUI did not register them. Open Generation Setup for the exact requirement and paths.';
   } else if (repairCount) {
     stateName = 'attention';
     statusText = 'Update';
@@ -37351,13 +37412,20 @@ function renderDependencyManager() {
   const check = $('#dependencyCheckAll');
   const accessUrl = renderDependencyAccess('#dependencyAccess', '#dependencyAccessLink', installState);
   const selected = syncDependencySelection(missing);
+  const loadingDiagnostics = setupReadinessDiagnostics(installState);
+  const notLoadedComponents = new Set(loadingDiagnostics.map((entry) => entry.id));
+  notLoadedComponents.forEach((id) => selected.delete(id));
   const selectedCount = selected.size;
   const busy = ['running', 'cancelling', 'restarting'].includes(installState.state);
   const cancellable = installState.state === 'running' || installState.state === 'cancelling';
   const ready = imageReady && !busy && !repairCount;
   card.classList.toggle('ready', ready);
   card.classList.toggle('installing', busy);
-  list.innerHTML = missing.map((entry) => `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}${entry.repair ? ' repair-needed' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(entry.repair ? `${entry.repairLabel || entry.label} needs the reviewed version` : entry.label)}"${busy || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}${entry.repair ? '<small>Update</small>' : ''}</button>`).join('');
+  list.innerHTML = missing.map((entry) => {
+    const notLoaded = notLoadedComponents.has(entry.id);
+    const detail = notLoaded ? 'Files are installed, but ComfyUI did not register a requirement' : (entry.repair ? `${entry.repairLabel || entry.label} needs the reviewed version` : entry.label);
+    return `<button class="dependency-option${selected.has(entry.id) ? ' selected' : ''}${notLoaded ? ' not-loaded' : ''}${entry.repair ? ' repair-needed' : ''}" type="button" data-component="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}" title="${escapeHtml(detail)}"${busy || notLoaded || !state.profileIsOwner ? ' disabled' : ''}>${escapeHtml(entry.label)}${notLoaded ? '<small>Not loaded</small>' : (entry.repair ? '<small>Update</small>' : '')}</button>`;
+  }).join('');
   selectionHead.hidden = !missing.length || busy || !state.profileIsOwner;
   toggleAll.textContent = selectedCount === missing.length ? 'Clear' : 'Select all';
   install.disabled = busy;
@@ -37389,6 +37457,9 @@ function renderDependencyManager() {
   } else if (!lastMeta?.ok) {
     badge.textContent = 'Offline';
     status.textContent = 'Start ComfyUI to scan models and nodes. You can still install trusted missing packs once its folder is configured.';
+  } else if (loadingDiagnostics.length) {
+    badge.textContent = 'Not loaded';
+    status.textContent = 'The files are already installed, but ComfyUI did not register the required model or node. Open Generation Setup to review the exact requirement and configured paths.';
   } else if (repairCount) {
     badge.textContent = 'Update available';
     status.textContent = `${repairCount} installed workflow${repairCount === 1 ? '' : 's'} need${repairCount === 1 ? 's' : ''} a reviewed custom-node update. Select and repair, then restart ComfyUI.`;
@@ -37440,7 +37511,7 @@ function scheduleDependencyPoll() {
       if (lastMeta && lastMeta.dependencies) lastMeta.dependencies.install = status;
       renderDependencyManager();
       renderSam3Dependency();
-      if (status.state === 'complete' && status.phase === 'reconnected') await loadMeta(true);
+      if (status.state === 'complete' && ['reconnected', 'already-present', 'checked'].includes(status.phase)) await loadMeta(true);
     } catch { /* keep the last visible progress while the desktop reconnects */ }
     scheduleDependencyPoll();
   }, 1000);

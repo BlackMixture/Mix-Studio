@@ -552,7 +552,7 @@ test('generation setup lives in the web app and gates only a generation attempt'
   assert.match(app, /renderDependencyAccess\('#setupDependencyAccess', '#setupDependencyAccessLink', operationState\)/);
   assert.match(app, /This model needs Hugging Face access before installation can continue\./);
   assert.match(app, /showErrorDetail\(setupOperationDiagnostic, 'Setup diagnostic'\)/);
-  assert.match(app, /quick\.hidden = \(!quickMissing\.length\)[\s\S]{0,120}quickPreset\.id !== 'low-vram-klein4'/);
+  assert.match(app, /quick\.hidden = installedButNotLoaded \|\| \(!quickMissing\.length\)[\s\S]{0,120}quickPreset\.id !== 'low-vram-klein4'/);
   assert.match(app, /connectionChoicesHidden = !!comfy\.connected \|\| nodeSetupActive/);
   assert.match(app, /e\.target === sheet && sheet\.id !== 'initialSetupSheet'/);
   assert.match(app, /Generation setup is still needed\. Press Generate or open Preferences to continue\./);
