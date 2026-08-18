@@ -10,6 +10,10 @@ const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const smartCss = css.slice(
+  css.indexOf('/* ---------------- Smart production (experimental) ---------------- */'),
+  css.indexOf('/* ---------------- desktop studio workspace ---------------- */'),
+);
 
 test('Smart mode is a dedicated disabled-by-default child experiment', () => {
   assert.match(html, /id="experimentalFeaturesToggle"[\s\S]*id="smartModeExperimentalRow" hidden[\s\S]*id="smartModeToggle"/);
@@ -35,7 +39,13 @@ test('Smart workspace provides typed, voice, plan, review, queue, retry, and can
   assert.match(app, /smartVoiceFile[\s\S]*transcribeSmartAudio\(file\)/);
   assert.match(app, /api\('\/api\/smart\/transcribe'/);
   assert.match(app, /api\('\/api\/smart\/plan'/);
+  assert.match(app, /api\('\/api\/smart\/plan\/review'/);
   assert.match(app, /api\('\/api\/smart\/runs'/);
+  assert.match(app, /approved: true/);
+  assert.match(app, /Approve &amp; queue/);
+  assert.match(app, /function beginSmartPlanEdit\(\)/);
+  assert.match(app, /function saveSmartPlanEdit\(\)/);
+  assert.match(app, /data-smart-scene-field="usesSubjectReference"/);
   assert.match(app, /\['failed', 'attention'\]/);
   assert.match(app, /\['running', 'queueing'\]\.includes\(run\.status\) \? \['cancel', 'Cancel remaining'\]/);
 });
@@ -52,6 +62,16 @@ test('Smart exposes planner configuration and reusable image references', () => 
   assert.match(app, /setSettingsTab\('suggestions'\)[\s\S]*prompting-external/);
   assert.match(server, /images = await Promise\.all\(references\.map[\s\S]*externalLlmStructuredRequest\([\s\S]*images,/);
   assert.match(server, /compileSmartSteps\(plan, \{\}, references\)/);
+  assert.match(server, /route === '\/api\/smart\/plan\/review'/);
+  assert.match(server, /body\.approved !== true/);
+});
+
+test('Smart typography and reference controls use the native Mix Studio design language', () => {
+  assert.doesNotMatch(smartCss, /ui-monospace|SFMono|--font/);
+  assert.match(smartCss, /\.smart-workspace \{[\s\S]{0,160}font-family: inherit/);
+  assert.match(smartCss, /\.smart-plan-editor select \{[^}]*font-family: inherit/);
+  assert.match(smartCss, /\.smart-reference-inputs-head button \{[^}]*width: 30px[^}]*height: 30px[^}]*border: 1px solid var\(--line\)[^}]*background: rgba\(255,255,255,\.025\)/);
+  assert.match(html, /id="smartAddReference"[^>]*aria-label="Add reference images"[^>]*title="Add reference images"/);
 });
 
 test('Smart mode spans the inputs and stage columns while keeping Library mounted', () => {

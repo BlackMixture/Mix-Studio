@@ -3069,6 +3069,8 @@ function publicSmartRun(run) {
       return {
         id: step.id,
         kind: step.kind,
+        sceneIndex: Number.isInteger(step.sceneIndex) ? step.sceneIndex : null,
+        clip: step.clip || null,
         label: step.label,
         status: step.status,
         dependsOn: step.dependsOn || [],
@@ -6736,7 +6738,7 @@ async function handleApi(req, res, url) {
         images,
         schema: SMART_PLAN_SCHEMA,
         schemaName: 'mix_studio_smart_plan',
-        maxTokens: 4096,
+        maxTokens: 8192,
       });
       const plan = normalizeSmartPlan(rawPlan, brief);
       if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
@@ -6753,6 +6755,18 @@ async function handleApi(req, res, url) {
         code: needsConfig ? 'smart_provider_unavailable' : 'smart_plan_failed',
       });
     }
+  }
+
+  if (route === '/api/smart/plan/review' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const references = normalizeSmartReferences(body.references);
+    const plan = normalizeSmartPlan(body.plan, body.plan?.summary || '');
+    if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
+    return json(res, 200, {
+      plan,
+      references,
+      planHash: smartPlanHash(plan, references),
+    });
   }
 
   if (route === '/api/smart/transcribe' && req.method === 'POST') {
@@ -6788,6 +6802,12 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/smart/runs' && req.method === 'POST') {
     const body = await readJsonBody(req);
+    if (body.approved !== true) {
+      return json(res, 409, {
+        error: 'Review and approve this Smart plan before queueing it.',
+        code: 'smart_plan_not_approved',
+      });
+    }
     const plan = normalizeSmartPlan(body.plan, body.plan?.summary || '');
     const references = normalizeSmartReferences(body.references);
     if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
@@ -6806,11 +6826,12 @@ async function handleApi(req, res, url) {
       if (existing) return json(res, 200, { run: publicSmartRun(existing), existing: true });
     }
     const now = Date.now();
+    const steps = compileSmartSteps(plan, {}, references);
     const run = {
       id: uid(), profileId: req.profile.id, clientToken: clientToken || uid(),
       planHash, plan, references,
-      reviewReference: plan.subject.needsReference && body.reviewReference === true,
-      steps: compileSmartSteps(plan, {}, references), status: 'ready', error: '', createdAt: now, updatedAt: now,
+      reviewReference: steps.some((step) => step.kind === 'reference') && body.reviewReference === true,
+      steps, status: 'ready', error: '', createdAt: now, updatedAt: now,
     };
     db.smartRuns.push(run);
     retainSmartRuns(req.profile.id);
