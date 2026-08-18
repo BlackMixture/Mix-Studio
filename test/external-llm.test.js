@@ -275,6 +275,67 @@ test('Gemini structured output removes unsupported JSON Schema keywords recursiv
   assert.match(JSON.stringify(compatible), /minItems|maxItems|minimum|maximum/);
 });
 
+test('Gemini retries schema-complexity rejections in JSON mode with the schema in its instruction', async () => {
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['scenes'],
+    properties: {
+      scenes: {
+        type: 'array', maxItems: 12,
+        items: {
+          type: 'object', required: ['timeline'],
+          properties: {
+            timeline: {
+              type: 'array', maxItems: 6,
+              items: {
+                type: 'object', required: ['time', 'kind'],
+                properties: {
+                  time: { type: 'number', minimum: 0.1, maximum: 10 },
+                  kind: { type: 'string', enum: ['action', 'camera', 'cut'] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  const bodies = [];
+  const result = await externalLlmStructuredRequest({
+    provider: 'gemini', model: 'gemini-test', apiKey: 'test-key',
+    instruction: 'Build a plan.', userInput: 'A timed film.', schema,
+    fetchImpl: async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      if (bodies.length === 1) {
+        return jsonResponse({
+          error: { code: 400, message: 'Request contains an invalid argument.', status: 'INVALID_ARGUMENT' },
+        }, 400);
+      }
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: '{"scenes":[]}' }] } }] });
+    },
+  });
+  assert.deepEqual(result, { scenes: [] });
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(bodies[0].generationConfig.responseJsonSchema, schema);
+  assert.equal(bodies[1].generationConfig.responseJsonSchema, undefined);
+  assert.equal(bodies[1].generationConfig.responseMimeType, 'application/json');
+  assert.match(bodies[1].systemInstruction.parts[0].text, /Return only one valid JSON object/);
+  assert.match(bodies[1].systemInstruction.parts[0].text, /"timeline"/);
+});
+
+test('Gemini does not retry credential failures as schema fallbacks', async () => {
+  let calls = 0;
+  await assert.rejects(externalLlmStructuredRequest({
+    provider: 'gemini', model: 'gemini-test', apiKey: 'bad-key',
+    instruction: 'Build a plan.', userInput: 'A film.',
+    schema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({ error: { message: 'API key rejected', status: 'PERMISSION_DENIED' } }, 400);
+    },
+  }), /API key rejected/);
+  assert.equal(calls, 1);
+});
+
 test('server routes independent image and video revise/enhance paths through the shared provider', () => {
   assert.match(serverSource, /function enhancePrompt\([\s\S]*shouldUseExternalPrompt\('image', 'enhance'\)/);
   assert.match(serverSource, /function reviseImagePrompt\([\s\S]*shouldUseExternalPrompt\('image', 'revise'\)/);
