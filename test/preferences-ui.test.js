@@ -21,6 +21,7 @@ test('Preferences exposes profile defaults and contextual suggestions', () => {
   assert.match(html, /id="defaultKrea2EditCfg"[^>]*min="1"[^>]*max="5"/);
   assert.match(html, /id="defaultVideoMotion"/);
   assert.match(html, /id="defaultVideoDuration"[^>]*step="0\.1"/);
+  assert.match(html, /id="assetPickerRecentLimit"[^>]*min="5"[^>]*max="20"[^>]*value="10"/);
   assert.match(html, /id="contextPreferenceList"/);
 });
 
@@ -35,6 +36,8 @@ test('profile preferences save separately from machine model settings', () => {
   assert.match(server, /route === '\/api\/preferences'/);
   assert.match(server, /db\.userPreferences/);
   assert.match(server, /mergeContextOverrides\(learned/);
+  assert.match(server, /assetPicker: normalizeAssetPickerPreferences/);
+  assert.match(app, /rememberRecentlyUsedAssets\(chosen\)/);
   assert.match(app, /async function loadUserPreferences\(\)/);
   assert.match(app, /async function saveUserPreferences\(options = \{\}\)/);
   assert.match(app, /await saveUserPreferences\(\{ refreshContext: false \}\)/);

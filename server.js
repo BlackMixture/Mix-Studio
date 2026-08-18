@@ -75,7 +75,12 @@ const {
 const { discoverModels } = require('./installer/model-discovery');
 const { restartComfy, restartStatus, startComfy, startStatus } = require('./lib/comfy-restart');
 const { discoverComfyEndpoints, probeComfyUrl } = require('./lib/comfy-discovery');
-const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('./lib/user-preferences');
+const {
+  normalizeGenerationDefaults,
+  normalizeAssetPickerPreferences,
+  normalizeContextOverrides,
+  mergeContextOverrides,
+} = require('./lib/user-preferences');
 const {
   EDIT_FEATURES,
   VIDEO_FEATURES,
@@ -10325,6 +10330,7 @@ async function handleApi(req, res, url) {
     const prefs = ownPreferences();
     return json(res, 200, {
       defaults: normalizeGenerationDefaults(prefs && prefs.defaults),
+      assetPicker: normalizeAssetPickerPreferences(prefs && prefs.assetPicker),
       contextOverrides: normalizeContextOverrides(prefs && prefs.contextOverrides),
     });
   }
@@ -10336,9 +10342,16 @@ async function handleApi(req, res, url) {
       db.userPreferences.push(prefs);
     }
     if (body.defaults) prefs.defaults = normalizeGenerationDefaults(body.defaults);
+    if (Object.prototype.hasOwnProperty.call(body, 'assetPicker')) {
+      prefs.assetPicker = normalizeAssetPickerPreferences(body.assetPicker);
+    }
     if (body.contextOverrides) prefs.contextOverrides = normalizeContextOverrides(body.contextOverrides);
     saveDb();
-    return json(res, 200, { defaults: normalizeGenerationDefaults(prefs.defaults), contextOverrides: normalizeContextOverrides(prefs.contextOverrides) });
+    return json(res, 200, {
+      defaults: normalizeGenerationDefaults(prefs.defaults),
+      assetPicker: normalizeAssetPickerPreferences(prefs.assetPicker),
+      contextOverrides: normalizeContextOverrides(prefs.contextOverrides),
+    });
   }
 
   if (route === '/api/context') {

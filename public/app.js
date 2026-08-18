@@ -180,6 +180,10 @@ const state = {
     previewCache: false,
     experimentalFeatures: false,
   },
+  assetPickerPreferences: {
+    recentLimit: 10,
+    recentKeys: [],
+  },
   metaLoras: [],
   metaLorasInfo: {},
   loraContext: {},
@@ -4911,6 +4915,85 @@ let assetPickerState = null;
 let assetPickerReturnFocus = null;
 let resetAssetPickerSwipeVisuals = () => {};
 let animateAssetPickerNavigation = () => {};
+let assetPickerPreferenceSave = Promise.resolve();
+
+const ASSET_PICKER_RECENT_FOLDER = 'recently-used';
+
+function normalizedAssetPickerPreferences(value = state.assetPickerPreferences) {
+  const source = value && typeof value === 'object' ? value : {};
+  const recentKeys = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(source.recentKeys) ? source.recentKeys : []) {
+    const key = typeof raw === 'string' ? raw.trim().slice(0, 500) : '';
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    recentKeys.push(key);
+    if (recentKeys.length >= 20) break;
+  }
+  const requestedLimit = Number(source.recentLimit);
+  return {
+    recentLimit: Number.isFinite(requestedLimit) ? Math.round(Math.max(5, Math.min(20, requestedLimit))) : 10,
+    recentKeys,
+  };
+}
+
+function assetPickerRecentKey(asset) {
+  return String(asset?.recentKey || asset?.key || '').trim();
+}
+
+function allAssetPickerAssets(accept) {
+  return [...uploadedAssetPickerAssets(accept), ...previousGenerationAssets(accept)];
+}
+
+function recentlyUsedAssetPickerAssets(accept) {
+  const preferences = normalizedAssetPickerPreferences();
+  const byKey = new Map(allAssetPickerAssets(accept).map((asset) => [assetPickerRecentKey(asset), asset]));
+  return preferences.recentKeys.slice(0, preferences.recentLimit)
+    .map((key) => byKey.get(key))
+    .filter(Boolean);
+}
+
+function renderAssetPickerRecentAction() {
+  const button = $('#assetPickerRecent');
+  const copy = $('#assetPickerRecentCopy');
+  if (!button || !copy || !assetPickerState) return;
+  const preferences = normalizedAssetPickerPreferences();
+  const available = recentlyUsedAssetPickerAssets(assetPickerState.accept).length;
+  button.disabled = available === 0;
+  copy.textContent = available
+    ? `${available} of the last ${preferences.recentLimit} selections`
+    : 'Used assets will appear here';
+}
+
+function persistAssetPickerPreferences() {
+  const snapshot = normalizedAssetPickerPreferences();
+  state.assetPickerPreferences = snapshot;
+  assetPickerPreferenceSave = assetPickerPreferenceSave.catch(() => {}).then(async () => {
+    const prefs = await api('/api/preferences', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetPicker: snapshot }),
+    });
+    state.assetPickerPreferences = normalizedAssetPickerPreferences(prefs.assetPicker);
+    renderAssetPickerPreferenceControl();
+    renderAssetPickerRecentAction();
+  }).catch(() => { /* recency never blocks using the selected asset */ });
+  return assetPickerPreferenceSave;
+}
+
+function rememberRecentlyUsedAssets(assets) {
+  const keys = (Array.isArray(assets) ? assets : [assets])
+    .map(assetPickerRecentKey)
+    .filter(Boolean);
+  if (!keys.length) return;
+  const current = normalizedAssetPickerPreferences();
+  const used = new Set(keys);
+  state.assetPickerPreferences = {
+    recentLimit: current.recentLimit,
+    recentKeys: [...keys, ...current.recentKeys.filter((key) => !used.has(key))].slice(0, 20),
+  };
+  renderAssetPickerPreferenceControl();
+  persistAssetPickerPreferences();
+}
 
 function assetPickerKinds(accept) {
   const normalized = String(accept || '').toLowerCase();
@@ -4942,6 +5025,7 @@ function uploadedAssetPickerAssets(accept) {
         .filter(Boolean).join(' · ');
       return {
         key: `upload:${asset.id}`,
+        recentKey: `upload:${asset.id}`,
         id: asset.id,
         uploaded: true,
         kind,
@@ -4971,6 +5055,7 @@ function previousGenerationAssets(accept) {
         const createdAt = Number(video.createdAt || item.createdAt || 0);
         assets.push({
           key: `${item.id}:video:${video.id || video.file}`,
+          recentKey: `generation:${item.id}:video:${video.id || video.file}`,
           kind: 'video', file: video.file, itemId: item.id, videoId: video.id,
           label: video.info?.motionPrompt || item.prompt || 'Previous video',
           detail: `${engine} · ${new Date(createdAt || Date.now()).toLocaleDateString()}`,
@@ -4985,6 +5070,7 @@ function previousGenerationAssets(accept) {
       const createdAt = Number(item.createdAt || 0);
       assets.push({
         key: `${item.id}:image:${item.upscaled || item.file}`,
+        recentKey: `generation:${item.id}:image`,
         kind: 'image', file: item.upscaled || item.file, itemId: item.id,
         label: item.prompt || 'Previous image',
         detail: `${model || 'Image'} · ${new Date(item.createdAt || Date.now()).toLocaleDateString()}`,
@@ -5016,20 +5102,25 @@ function assetMatchesQuery(asset, query) {
 
 function assetPickerVisibleAssets() {
   if (!assetPickerState) return [];
-  const source = assetPickerState.folder === 'uploaded-assets'
-    ? uploadedAssetPickerAssets(assetPickerState.accept)
-    : previousGenerationAssets(assetPickerState.accept);
+  const recent = assetPickerState.folder === ASSET_PICKER_RECENT_FOLDER;
+  const source = recent
+    ? recentlyUsedAssetPickerAssets(assetPickerState.accept)
+    : (assetPickerState.folder === 'uploaded-assets'
+      ? uploadedAssetPickerAssets(assetPickerState.accept)
+      : previousGenerationAssets(assetPickerState.accept));
   let assets = source.filter((asset) => {
     if (assetPickerState.mediaKind !== 'all' && asset.kind !== assetPickerState.mediaKind) return false;
     if (!assetMatchesQuery(asset, assetPickerState.query)) return false;
-    if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && asset.folder !== assetPickerState.folder) return false;
+    if (!['all', 'uploaded-assets', ASSET_PICKER_RECENT_FOLDER].includes(assetPickerState.folder) && asset.folder !== assetPickerState.folder) return false;
     if (assetPickerState.likes && !asset.liked) return false;
     return true;
   });
-  if (assetPickerState.sort === 'old') assets.sort((a, b) => a.createdAt - b.createdAt);
-  else if (assetPickerState.sort === 'az') assets.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
-  else if (assetPickerState.sort === 'active') assets.sort((a, b) => b.activity - a.activity);
-  else assets.sort((a, b) => b.createdAt - a.createdAt);
+  if (!recent) {
+    if (assetPickerState.sort === 'old') assets.sort((a, b) => a.createdAt - b.createdAt);
+    else if (assetPickerState.sort === 'az') assets.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+    else if (assetPickerState.sort === 'active') assets.sort((a, b) => b.activity - a.activity);
+    else assets.sort((a, b) => b.createdAt - a.createdAt);
+  }
   assetPickerState.assets = assets;
   return assets;
 }
@@ -5067,13 +5158,16 @@ function renderAssetPickerFilters() {
   kindFilter.classList.toggle('has-audio', visibleKindButtons.length === 4);
   kindFilter.style.setProperty('--filter-index', String(Math.max(0, visibleKindButtons.indexOf(activeKindButton))));
   const folder = (state.folders || []).find((entry) => entry.id === assetPickerState.folder);
-  if (!['all', 'uploaded-assets'].includes(assetPickerState.folder) && !folder) assetPickerState.folder = 'all';
+  if (!['all', 'uploaded-assets', ASSET_PICKER_RECENT_FOLDER].includes(assetPickerState.folder) && !folder) assetPickerState.folder = 'all';
+  const recent = assetPickerState.folder === ASSET_PICKER_RECENT_FOLDER;
   $('#assetPickerFolderLabel').textContent = assetPickerState.folder === 'uploaded-assets'
-    ? 'Uploaded assets' : (folder?.name || 'All generations');
+    ? 'Uploaded assets' : (recent ? 'Recently used' : (folder?.name || 'All generations'));
   const uploads = assetPickerState.folder === 'uploaded-assets';
   $('#assetPickerLikes').hidden = uploads;
   if (uploads) assetPickerState.likes = false;
   $('#assetPickerLikes').setAttribute('aria-pressed', String(assetPickerState.likes));
+  $('#assetPickerSortDropdown').hidden = recent;
+  if (recent) closeAssetPickerMenus();
   const sortLabels = { new: 'Newest', active: 'Active', old: 'Oldest', az: 'A–Z' };
   $('#assetPickerSortLabel').textContent = sortLabels[assetPickerState.sort] || 'Newest';
   $$('#assetPickerSortMenu [data-asset-sort]').forEach((button) => {
@@ -5085,6 +5179,7 @@ function renderAssetPickerFilters() {
   menu.replaceChildren();
   [
     { id: 'all', name: 'All generations' },
+    { id: ASSET_PICKER_RECENT_FOLDER, name: 'Recently used', virtual: true, recent: true },
     { id: 'uploaded-assets', name: 'Uploaded assets', virtual: true },
     ...(state.folders || []),
   ].forEach((entry) => {
@@ -5095,7 +5190,9 @@ function renderAssetPickerFilters() {
     const folderIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     folderIcon.setAttribute('viewBox', '0 0 24 24');
     folderIcon.setAttribute('aria-hidden', 'true');
-    folderIcon.innerHTML = '<path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>';
+    folderIcon.innerHTML = entry.recent
+      ? '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>'
+      : '<path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>';
     const label = document.createElement('span');
     label.textContent = entry.name;
     button.append(folderIcon, label);
@@ -5143,21 +5240,24 @@ function renderAssetPickerList() {
   const count = $('#assetPickerCount');
   if (!list || !gallery || !assetPickerState) return;
   const browsingUploads = assetPickerState.folder === 'uploaded-assets';
-  const allAssets = browsingUploads
-    ? uploadedAssetPickerAssets(assetPickerState.accept)
-    : previousGenerationAssets(assetPickerState.accept);
+  const browsingRecent = assetPickerState.folder === ASSET_PICKER_RECENT_FOLDER;
+  const allAssets = browsingRecent
+    ? recentlyUsedAssetPickerAssets(assetPickerState.accept)
+    : (browsingUploads
+      ? uploadedAssetPickerAssets(assetPickerState.accept)
+      : previousGenerationAssets(assetPickerState.accept));
   const assets = assetPickerVisibleAssets();
   list.replaceChildren();
   const filtered = assetPickerState.mediaKind !== 'all' || assetPickerState.query
-    || (!browsingUploads && assetPickerState.folder !== 'all') || assetPickerState.likes;
+    || (!browsingUploads && !browsingRecent && assetPickerState.folder !== 'all') || assetPickerState.likes;
   count.textContent = filtered
     ? `${assets.length} of ${allAssets.length}`
-    : `${allAssets.length} available`;
+    : (browsingRecent ? `${allAssets.length} used recently` : `${allAssets.length} available`);
   if (!assets.length) {
     const kind = assetPickerKind(assetPickerState.accept);
     list.innerHTML = `<div class="asset-picker-empty">${allAssets.length
-      ? `No ${browsingUploads ? 'uploads' : 'generations'} match these filters.`
-      : (browsingUploads ? `No uploaded ${kind}s yet.` : `No previous ${kind} generations yet.`)}</div>`;
+      ? `No ${browsingRecent ? 'recent items' : (browsingUploads ? 'uploads' : 'generations')} match these filters.`
+      : (browsingRecent ? `No recently used ${kind}s yet.` : (browsingUploads ? `No uploaded ${kind}s yet.` : `No previous ${kind} generations yet.`))}</div>`;
     renderAssetPickerMultiBar();
     return;
   }
@@ -5263,7 +5363,9 @@ function openAssetPickerPreview(asset) {
   $('#assetPickerPreviewPrompt').textContent = canonical.label || '';
   $('#assetPickerPreviewUse').textContent = canonical.kind === 'audio'
     ? 'Use audio' : (canonical.kind === 'video' ? 'Use video' : 'Use image');
-  $('#assetPickerPreviewBack').textContent = canonical.uploaded ? '‹ Back to uploads' : '‹ Back to generations';
+  $('#assetPickerPreviewBack').textContent = assetPickerState.folder === ASSET_PICKER_RECENT_FOLDER
+    ? '‹ Back to recently used'
+    : (canonical.uploaded ? '‹ Back to uploads' : '‹ Back to generations');
 }
 
 function closeAssetPickerPreview() {
@@ -5327,6 +5429,7 @@ function openAssetPicker(accept, callback, title, options = {}) {
       ? 'Use an image, video, or audio clip from your device, generations, or uploaded assets.'
       : `Use ${kind === 'audio' ? 'audio' : `a ${kind}`} from your device, generations, or uploaded assets.`);
   renderAssetPickerMultiBar();
+  renderAssetPickerRecentAction();
   $('#assetPickerSheet').classList.add('show');
   animateAssetPickerEntrance(panel, assetPickerReturnFocus);
   $('#assetPickerGallery').hidden = true;
@@ -5451,10 +5554,18 @@ function pickDeviceUpload(accept, cb, options = {}) {
           const metadata = await directorProbeVideo(url);
           dims = { w: metadata.width, h: metadata.height, dur: metadata.seconds };
         }
-        assets.push({ kind, name: res.name, url, w: dims.w, h: dims.h, dur: dims.dur, label: file.name, hasAudio: res.hasAudio === true });
+        assets.push({
+          kind, name: res.name, url, w: dims.w, h: dims.h, dur: dims.dur,
+          label: file.name, hasAudio: res.hasAudio === true,
+          uploadedAssetId: res.asset?.id,
+          recentKey: res.asset?.id ? `upload:${res.asset.id}` : '',
+        });
       } catch (e) { toast(`${file.name}: ${e.message}`, true); }
     }
-    if (assets.length) await cb(input.multiple ? assets : assets[0]);
+    if (assets.length) {
+      await cb(input.multiple ? assets : assets[0]);
+      rememberRecentlyUsedAssets(assets);
+    }
   });
   input.click();
 }
@@ -5993,6 +6104,7 @@ async function usePreviousGenerations(assets) {
       }
       closeAssetPicker();
       await picker.callback(picker.multiple ? prepared : prepared[0]);
+      rememberRecentlyUsedAssets(chosen);
       return;
     }
     if (picker.galleryReference) {
@@ -6016,11 +6128,32 @@ async function usePreviousGenerations(assets) {
         return result;
       }));
       await picker.callback(picker.multiple ? prepared : prepared[0]);
+      rememberRecentlyUsedAssets(chosen);
       return;
     }
     toast(chosen.length > 1 ? `Loading ${chosen.length} previous generations…` : 'Loading previous generation…');
     const prepared = [];
     for (const asset of chosen) {
+      if (asset.uploaded) {
+        const url = assetPickerMediaUrl(asset);
+        const metadata = asset.kind === 'video' ? await directorProbeVideo(url) : null;
+        const dims = asset.kind === 'image' ? await imageDimensions(url) : {
+          w: metadata?.width || 0,
+          h: metadata?.height || 0,
+        };
+        prepared.push({
+          kind: asset.kind,
+          name: asset.file,
+          url,
+          w: dims.w,
+          h: dims.h,
+          dur: metadata?.seconds || 0,
+          label: asset.label || `Uploaded ${asset.kind}`,
+          hasAudio: asset.hasAudio === true,
+          uploadedAssetId: asset.id,
+        });
+        continue;
+      }
       const path = asset.kind === 'video' ? '/videos/' : '/images/';
       const response = await fetch(path + encodeURIComponent(asset.file));
       if (!response.ok) throw new Error(`${asset.label || asset.file} is no longer available`);
@@ -6042,6 +6175,7 @@ async function usePreviousGenerations(assets) {
     }
     closeAssetPicker();
     await picker.callback(picker.multiple ? prepared : prepared[0]);
+    rememberRecentlyUsedAssets(chosen);
   } catch (e) {
     toast(e.message, true);
   }
@@ -6296,6 +6430,18 @@ $('#assetPickerPrevious').addEventListener('click', () => {
   panel.scrollTop = 0;
   panel.classList.add('browsing');
   $('#assetPickerGallery').hidden = false;
+  renderAssetPickerList();
+  requestAnimationFrame(() => $('#assetPickerSearch').focus());
+});
+$('#assetPickerRecent').addEventListener('click', () => {
+  if (!assetPickerState || $('#assetPickerRecent').disabled) return;
+  assetPickerState.folder = ASSET_PICKER_RECENT_FOLDER;
+  assetPickerState.likes = false;
+  const panel = $('#assetPickerSheet .asset-picker-panel');
+  panel.scrollTop = 0;
+  panel.classList.add('browsing');
+  $('#assetPickerGallery').hidden = false;
+  renderAssetPickerFilters();
   renderAssetPickerList();
   requestAnimationFrame(() => $('#assetPickerSearch').focus());
 });
@@ -13305,8 +13451,10 @@ async function loadUserPreferences() {
   try {
     const prefs = await api('/api/preferences');
     state.userDefaults = prefs.defaults || state.userDefaults;
+    state.assetPickerPreferences = normalizedAssetPickerPreferences(prefs.assetPicker);
     state.contextOverrides = prefs.contextOverrides || {};
     renderGenerationDefaults();
+    renderAssetPickerPreferenceControl();
     applyGenerationDefaults();
     renderPromptComposer();
   } catch { /* profile gate handles auth */ }
@@ -13314,17 +13462,42 @@ async function loadUserPreferences() {
 
 async function saveUserPreferences(options = {}) {
   state.userDefaults = generationDefaultsFromControls();
+  state.assetPickerPreferences = assetPickerPreferencesFromControls();
   const prefs = await api('/api/preferences', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ defaults: state.userDefaults, contextOverrides: state.contextOverrides }),
+    body: JSON.stringify({
+      defaults: state.userDefaults,
+      assetPicker: state.assetPickerPreferences,
+      contextOverrides: state.contextOverrides,
+    }),
   });
   state.userDefaults = prefs.defaults;
+  state.assetPickerPreferences = normalizedAssetPickerPreferences(prefs.assetPicker);
   state.contextOverrides = prefs.contextOverrides;
   renderGenerationDefaults();
+  renderAssetPickerPreferenceControl();
   applyGenerationDefaults();
   renderPromptComposer();
   if (options.refreshContext !== false) await refreshLoraContext();
   else renderPromptSuggestions();
+}
+
+function assetPickerPreferencesFromControls() {
+  const current = normalizedAssetPickerPreferences();
+  const control = $('#assetPickerRecentLimit');
+  return normalizedAssetPickerPreferences({
+    recentLimit: control ? control.value : current.recentLimit,
+    recentKeys: current.recentKeys,
+  });
+}
+
+function renderAssetPickerPreferenceControl() {
+  const control = $('#assetPickerRecentLimit');
+  const value = $('#assetPickerRecentLimitValue');
+  const preferences = normalizedAssetPickerPreferences();
+  state.assetPickerPreferences = preferences;
+  if (control) control.value = String(preferences.recentLimit);
+  if (value) value.textContent = String(preferences.recentLimit);
 }
 
 function renderContextPreferences() {
@@ -30166,6 +30339,7 @@ const SETTINGS_PREFERENCE_CONTROL_IDS = new Set([
   'defaultEditSteps', 'defaultEditCfg', 'defaultEditBatch', 'defaultEditDenoise',
   'defaultKrea2EditSteps', 'defaultKrea2EditCfg',
   'defaultVideoDuration', 'defaultVideoMotion',
+  'assetPickerRecentLimit',
 ]);
 
 let settingsLoading = false;
@@ -34078,6 +34252,10 @@ function settingsAutosaveKindForControl(control) {
 
 $('#settingsSheet').addEventListener('input', (event) => {
   if (event.target.matches('select')) return;
+  if (event.target.id === 'assetPickerRecentLimit') {
+    state.assetPickerPreferences = assetPickerPreferencesFromControls();
+    renderAssetPickerPreferenceControl();
+  }
   if (event.target.closest('#settingsPaneDefaults')) renderGenerationDefaultSummaries();
   const kind = settingsAutosaveKindForControl(event.target);
   if (kind) scheduleSettingsAutosave(kind);

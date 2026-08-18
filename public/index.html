@@ -2583,6 +2583,14 @@
             <span class="settings-media-toggle-copy"><strong>Experimental Features</strong><small>Show early-access tools and workflows that may still change.</small></span>
             <span class="settings-media-switch" aria-hidden="true"><i></i></span>
           </button>
+          <div class="settings-media-toggle asset-picker-recent-setting">
+            <span class="settings-media-toggle-copy"><strong>Recently used Library items</strong><small>Choose how many previously selected inputs appear in the source picker.</small></span>
+            <label class="asset-picker-recent-range" for="assetPickerRecentLimit">
+              <output id="assetPickerRecentLimitValue" for="assetPickerRecentLimit">10</output>
+              <input id="assetPickerRecentLimit" type="range" min="5" max="20" step="1" value="10" aria-label="Number of recently used Library items" />
+              <span aria-hidden="true"><i>5</i><i>20</i></span>
+            </label>
+          </div>
           <button class="settings-media-toggle analytics-toggle" id="analyticsToggle" type="button" role="switch" aria-checked="true" aria-labelledby="analyticsToggleLabel" aria-describedby="analyticsToggleStatus" hidden>
             <span class="settings-media-toggle-copy"><strong id="analyticsToggleLabel">Anonymous analytics</strong><small id="analyticsToggleStatus">On · app launches and model starts only. Never prompts, media, or screen recordings.</small></span>
             <span class="settings-media-switch" aria-hidden="true"><i></i></span>
@@ -3449,6 +3457,10 @@
       <button class="asset-picker-action" id="assetPickerPrevious" type="button">
         <span class="asset-picker-action-icon" aria-hidden="true">✦</span>
         <span><b>Browse Library</b><small>Generations and uploaded assets</small></span>
+      </button>
+      <button class="asset-picker-action" id="assetPickerRecent" type="button">
+        <span class="asset-picker-action-icon asset-picker-recent-icon" aria-hidden="true">↺</span>
+        <span><b>Recently used</b><small id="assetPickerRecentCopy">Used assets will appear here</small></span>
       </button>
     </div>
     <div class="asset-picker-gallery" id="assetPickerGallery" hidden>

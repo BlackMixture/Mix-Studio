@@ -1,7 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeGenerationDefaults, normalizeContextOverrides, mergeContextOverrides } = require('../lib/user-preferences');
+const {
+  normalizeGenerationDefaults,
+  normalizeAssetPickerPreferences,
+  normalizeContextOverrides,
+  mergeContextOverrides,
+} = require('../lib/user-preferences');
 
 test('generation defaults are safe and preserve legacy behavior', () => {
   const defaults = normalizeGenerationDefaults();
@@ -38,6 +43,16 @@ test('Krea 2 Edit presets stay within the supported sampling range', () => {
 test('video duration defaults preserve supported tenth-second precision', () => {
   assert.equal(normalizeGenerationDefaults({ video: { duration: 12.44 } }).video.duration, 12.4);
   assert.equal(normalizeGenerationDefaults({ video: { duration: 12.46 } }).video.duration, 12.5);
+});
+
+test('recent asset picker history defaults to 10 and stays within the 5 to 20 range', () => {
+  assert.deepEqual(normalizeAssetPickerPreferences(), { recentLimit: 10, recentKeys: [] });
+  assert.equal(normalizeAssetPickerPreferences({ recentLimit: 1 }).recentLimit, 5);
+  assert.equal(normalizeAssetPickerPreferences({ recentLimit: 99 }).recentLimit, 20);
+  const keys = Array.from({ length: 24 }, (_, index) => `asset-${index}`);
+  const normalized = normalizeAssetPickerPreferences({ recentLimit: 12, recentKeys: ['asset-1', ...keys, 'asset-2'] });
+  assert.equal(normalized.recentKeys.length, 20);
+  assert.equal(new Set(normalized.recentKeys).size, normalized.recentKeys.length);
 });
 
 test('context overrides adjust suggestions without changing observations', () => {

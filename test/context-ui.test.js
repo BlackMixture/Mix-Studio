@@ -56,6 +56,7 @@ test('generation media inputs offer device upload or reusable Library assets', (
   assert.match(indexHtml, /id="assetPickerSheet"/);
   assert.match(indexHtml, /id="assetPickerUpload"/);
   assert.match(indexHtml, /id="assetPickerPrevious"/);
+  assert.match(indexHtml, /id="assetPickerRecent"/);
   assert.match(appJs, /function openAssetPicker/);
   assert.match(appJs, /function previousGenerationAssets/);
   assert.doesNotMatch(appJs, /return assets\.sort\([\s\S]{0,240}\.slice\(0, 80\)/);
@@ -73,6 +74,9 @@ test('generation media inputs offer device upload or reusable Library assets', (
   assert.match(indexHtml, /<b>Browse Library<\/b><small>Generations and uploaded assets<\/small>/);
   assert.match(appJs, /function assetMatchesQuery\(asset, query\)/);
   assert.match(appJs, /function assetPickerVisibleAssets\(\)/);
+  assert.match(appJs, /function recentlyUsedAssetPickerAssets\(accept\)/);
+  assert.match(appJs, /ASSET_PICKER_RECENT_FOLDER = 'recently-used'/);
+  assert.match(appJs, /if \(asset\.uploaded\) \{[\s\S]{0,700}uploadedAssetId: asset\.id/);
   assert.match(appJs, /assetPickerState\.mediaKind !== 'all' && asset\.kind !== assetPickerState\.mediaKind/);
   assert.match(appJs, /mediaKind: 'all'/);
   assert.match(appJs, /#assetPickerKindFilter \[data-asset-kind\]/);
