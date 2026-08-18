@@ -4403,7 +4403,9 @@ function smartPlanSteps(plan) {
   const steps = [];
   if (plan?.output?.kind === 'image') steps.push({ kind: 'image', label: 'Create final image' });
   else {
-    if (smartPlanUsesReference(plan)) steps.push({ kind: 'reference', label: 'Create canonical reference' });
+    smartUsedReferenceStates(plan).forEach((state) => steps.push({
+      kind: 'reference', referenceState: state, label: `Create ${state.label} reference`,
+    }));
     (plan?.scenes || []).forEach((scene, index) => steps.push({
       kind: 'video',
       sceneIndex: index,
@@ -4411,11 +4413,31 @@ function smartPlanSteps(plan) {
         title: scene.title,
         durationSeconds: scene.durationSeconds,
         usesSubjectReference: smartSceneUsesReference(plan, scene),
+        referenceStateId: smartSceneUsesReference(plan, scene) ? smartSceneReferenceState(plan, scene).id : '',
+        referenceStateLabel: smartSceneUsesReference(plan, scene) ? smartSceneReferenceState(plan, scene).label : '',
       },
       label: `Clip ${index + 1} · ${scene.title} (${Number(scene.durationSeconds)}s)`,
     }));
   }
   return steps;
+}
+
+function smartReferenceStates(plan) {
+  const states = Array.isArray(plan?.subject?.referenceStates) ? plan.subject.referenceStates : [];
+  return states.length ? states : [{ id: 'default', label: 'Default', description: plan?.subject?.description || 'Primary subject' }];
+}
+
+function smartSceneReferenceState(plan, scene) {
+  const states = smartReferenceStates(plan);
+  return states.find((state) => state.id === scene?.referenceStateId) || states[0];
+}
+
+function smartUsedReferenceStates(plan) {
+  if (plan?.output?.kind !== 'video' || plan?.subject?.needsReference !== true) return [];
+  const ids = new Set((plan.scenes || [])
+    .filter((scene) => smartSceneUsesReference(plan, scene))
+    .map((scene) => smartSceneReferenceState(plan, scene).id));
+  return smartReferenceStates(plan).filter((state) => ids.has(state.id));
 }
 
 function smartSceneUsesReference(plan, scene) {
@@ -4428,11 +4450,14 @@ function smartPlanUsesReference(plan) {
 }
 
 function smartStepDetail(step, plan) {
-  if (step.kind === 'reference') return 'Krea 2 · one canonical identity image';
+  if (step.kind === 'reference') {
+    const type = ({ character: 'three-panel character', object: 'multi-angle object', place: 'wide place master' })[plan?.subject?.referenceType] || 'canonical';
+    return `Krea 2 · ${type} · ${step.referenceState?.label || 'Default'} state`;
+  }
   if (step.kind === 'video') {
     const scene = step.clip || plan?.scenes?.[step.sceneIndex];
     const usesReference = scene?.usesSubjectReference === true;
-    return `MiniMax H3 · Individual clip · ${usesReference ? 'Identity reference' : 'No reference'}`;
+    return `MiniMax H3 · Individual clip · ${usesReference ? `${scene.referenceStateLabel || smartSceneReferenceState(plan, scene).label} reference` : 'No reference'}`;
   }
   return 'Krea 2 · final image';
 }
@@ -4454,7 +4479,7 @@ function smartSceneMarkup(plan) {
   if (!Array.isArray(plan?.scenes) || !plan.scenes.length) return '';
   return `<div class="smart-scene-list">${plan.scenes.map((scene) => `
     <article class="smart-scene ${smartSceneUsesReference(plan, scene) ? 'with-reference' : 'without-reference'}">
-      <header><span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(1)}–${Number(scene.endSeconds || 0).toFixed(1)} sec`)}</span><i>${smartSceneUsesReference(plan, scene) ? 'Reference on' : 'No reference'}</i></header>
+      <header><span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(1)}–${Number(scene.endSeconds || 0).toFixed(1)} sec`)}</span><i>${smartSceneUsesReference(plan, scene) ? `Reference · ${escapeHtml(smartSceneReferenceState(plan, scene).label)}` : 'No reference'}</i></header>
       <strong>${escapeHtml(scene.title)}</strong>
       <em>${escapeHtml(scene.shot || 'Directed shot')}</em>
       <p>${escapeHtml(scene.description)}</p>
@@ -4472,7 +4497,19 @@ function smartPlanEditorMarkup(plan) {
     .map((value) => `<option value="${value}" ${plan.output.aspectRatio === value ? 'selected' : ''}>${value}</option>`).join('');
   const qualityOptions = ['fast', 'balanced', 'quality']
     .map((value) => `<option value="${value}" ${plan.output.quality === value ? 'selected' : ''}>${value}</option>`).join('');
-  const sceneEditors = (plan.scenes || []).map((scene, index) => `
+  const referenceTypeOptions = [
+    ['character', 'Character / person'], ['object', 'Object / product'], ['place', 'Place / environment'],
+  ].map(([value, label]) => `<option value="${value}" ${plan.subject.referenceType === value ? 'selected' : ''}>${label}</option>`).join('');
+  const referenceStates = smartReferenceStates(plan);
+  const referenceStateEditors = referenceStates.map((state, index) => `
+    <article class="smart-scene-editor smart-reference-state-editor" data-smart-reference-state-index="${index}" data-smart-reference-state-id="${escapeHtml(state.id)}">
+      <header><span>Reference state ${index + 1}</span><div><button type="button" data-smart-action="delete-reference-state" data-smart-reference-state-index="${index}" ${referenceStates.length > 1 ? '' : 'disabled'}>Remove</button></div></header>
+      <label>State name<input data-smart-reference-state-field="label" maxlength="100" value="${escapeHtml(state.label || '')}" /></label>
+      <label>Complete visible state<textarea data-smart-reference-state-field="description" rows="2" maxlength="1200">${escapeHtml(state.description || '')}</textarea></label>
+    </article>`).join('');
+  const sceneEditors = (plan.scenes || []).map((scene, index) => {
+    const stateOptions = referenceStates.map((state) => `<option value="${escapeHtml(state.id)}" ${smartSceneReferenceState(plan, scene).id === state.id ? 'selected' : ''}>${escapeHtml(state.label)}</option>`).join('');
+    return `
     <article class="smart-scene-editor" data-smart-scene-index="${index}">
       <header><span>Clip ${index + 1}</span><div>
         <button type="button" data-smart-action="move-clip-up" data-smart-scene-index="${index}" ${index ? '' : 'disabled'} aria-label="Move clip earlier">↑</button>
@@ -4492,7 +4529,9 @@ function smartPlanEditorMarkup(plan) {
       </div>
       <label>Continuity<textarea data-smart-scene-field="continuity" rows="2" maxlength="800">${escapeHtml(scene.continuity || '')}</textarea></label>
       <label class="smart-reference-switch"><input data-smart-scene-field="usesSubjectReference" type="checkbox" ${smartSceneUsesReference(plan, scene) ? 'checked' : ''} ${plan.subject.needsReference ? '' : 'disabled'} /> Attach the canonical subject reference to this clip</label>
-    </article>`).join('');
+      ${plan.subject.needsReference ? `<label>Reference state<select data-smart-scene-field="referenceStateId">${stateOptions}</select></label>` : ''}
+    </article>`;
+  }).join('');
   return `
     <div class="smart-plan-editor">
       <div class="smart-editor-grid">
@@ -4506,6 +4545,13 @@ function smartPlanEditorMarkup(plan) {
       </div>
       <label>Visual style<textarea data-smart-plan-field="visualStyle" rows="2" maxlength="1200">${escapeHtml(plan.visualStyle || '')}</textarea></label>
       ${plan.output.kind === 'video' ? `
+        <div class="smart-editor-grid">
+          <label>Reference subject<textarea data-smart-subject-field="description" rows="2" maxlength="1200">${escapeHtml(plan.subject.description || '')}</textarea></label>
+          <label>Reference template<select data-smart-subject-field="referenceType">${referenceTypeOptions}</select></label>
+        </div>
+        ${plan.subject.needsReference ? `
+          <div class="smart-editor-clips-head"><span><strong>Reference states</strong><small>Create a new state only when appearance, condition, or environment materially changes.</small></span><button type="button" data-smart-action="add-reference-state" ${referenceStates.length >= 6 ? 'disabled' : ''}>+ Add state</button></div>
+          <div class="smart-scene-editor-list smart-reference-state-list">${referenceStateEditors}</div>` : ''}
         <label>Directorial approach<textarea data-smart-plan-field="directorialApproach" rows="3" maxlength="1600">${escapeHtml(plan.directorialApproach || '')}</textarea></label>
         <label>Story and motion direction<textarea data-smart-plan-field="videoPrompt" rows="3" maxlength="12000">${escapeHtml(plan.videoPrompt || '')}</textarea></label>
         <div class="smart-editor-clips-head"><span><strong>Editorial clips</strong><small>Each card becomes one independent H3 generation.</small></span><button type="button" data-smart-action="add-clip" ${plan.scenes.length >= 12 ? 'disabled' : ''}>+ Add clip</button></div>
@@ -4524,7 +4570,7 @@ function renderSmartWorkspace() {
   const plan = run?.plan || smartPlan;
   if (!plan) return;
   const steps = run?.steps || smartPlanSteps(plan).map((step) => Object.assign(step, { status: 'pending' }));
-  const reference = steps.find((step) => step.kind === 'reference' && step.result?.thumbnail);
+  const referenceResults = steps.filter((step) => step.kind === 'reference' && step.result?.thumbnail);
   const attachedReferences = run?.references || smartReferences;
   const status = run?.status || (smartPlanEditing ? 'editing' : 'approval');
   const action = run
@@ -4558,9 +4604,11 @@ function renderSmartWorkspace() {
       <span><b>Frame</b>${escapeHtml(plan.output.aspectRatio)}</span>
       <span><b>Quality</b>${escapeHtml(plan.output.quality)}</span>
       ${attachedReferences.length ? `<span><b>References</b>${attachedReferences.length} image${attachedReferences.length === 1 ? '' : 's'}</span>` : ''}
+      ${smartUsedReferenceStates(plan).length ? `<span><b>States</b>${smartUsedReferenceStates(plan).length} visual state${smartUsedReferenceStates(plan).length === 1 ? '' : 's'}</span>` : ''}
       ${plan.output.kind === 'video' ? `<span><b>Editorial</b>${videoClips} independent clip${videoClips === 1 ? '' : 's'}</span>` : ''}
       <span><b>Queue</b>${steps.length} job${steps.length === 1 ? '' : 's'}</span>
     </div>
+    ${run?.brief ? `<div class="smart-original-brief"><span>Original prompt</span><p>${escapeHtml(run.brief)}</p></div>` : ''}
     ${plan.output.kind === 'video' ? `<div class="smart-director-treatment"><span>Director's treatment</span><p>${escapeHtml(plan.directorialApproach || 'Purposeful shot progression with motivated cuts and visual continuity.')}</p></div>` : ''}
     <div class="smart-step-list">${steps.map((step, index) => `
       <article class="smart-step ${escapeHtml(step.status || 'pending')}">
@@ -4568,9 +4616,9 @@ function renderSmartWorkspace() {
         <span><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(smartStepDetail(step, plan))}${step.progress ? ` · ${step.progress.completed}/${step.progress.total} clips` : ''}</small></span>
         <span class="smart-step-state">${escapeHtml(smartStatusLabel(step.status))}</span>
       </article>`).join('')}</div>
-    ${reference ? `<div class="smart-reference-result"><img src="${escapeHtml(reference.result.thumbnail)}" alt="Generated canonical reference" /><span><strong>Canonical reference ready</strong><br>${run.status === 'review' ? 'Review this identity before H3 begins.' : 'Attached automatically to the H3 generation.'}</span></div>` : ''}
+    ${referenceResults.length ? `<div class="smart-reference-results">${referenceResults.map((reference) => `<div class="smart-reference-result"><img src="${escapeHtml(reference.result.thumbnail)}" alt="Generated ${escapeHtml(reference.referenceState?.label || 'canonical')} reference" /><span><strong>${escapeHtml(reference.referenceState?.label || 'Canonical')} reference ready</strong><br>${run.status === 'review' ? 'Review this state before H3 begins.' : 'Attached only to clips using this state.'}</span></div>`).join('')}</div>` : ''}
     ${smartSceneMarkup(plan)}
-    ${!run && smartPlanUsesReference(plan) ? `<label class="smart-review-toggle"><input id="smartReviewReference" type="checkbox" ${plan.reviewReference ? 'checked' : ''}/> Pause after the canonical reference so I can review it</label>` : ''}
+    ${!run && smartPlanUsesReference(plan) ? `<label class="smart-review-toggle"><input id="smartReviewReference" type="checkbox" ${plan.reviewReference || $('#smartPauseReferences')?.getAttribute('aria-checked') === 'true' ? 'checked' : ''}/> Pause after all reference states so I can review them before H3 begins</label>` : ''}
     ${run?.error ? `<div class="smart-run-error">${escapeHtml(run.error)}</div>` : ''}
     <div class="smart-board-actions">
       ${!run ? '<button class="smart-board-action" type="button" data-smart-action="reset">Start over</button><button class="smart-board-action" type="button" data-smart-action="edit-plan">Modify plan</button>' : ''}
@@ -4594,6 +4642,18 @@ function captureSmartPlanEditor() {
   next.directorialApproach = planValue('directorialApproach', next.directorialApproach);
   next.videoPrompt = planValue('videoPrompt', next.videoPrompt);
   next.imagePrompt = planValue('imagePrompt', next.imagePrompt);
+  const subjectValue = (field, fallback = '') => $(`[data-smart-subject-field="${field}"]`)?.value ?? fallback;
+  next.subject.description = subjectValue('description', next.subject.description);
+  next.subject.referenceType = subjectValue('referenceType', next.subject.referenceType || 'character');
+  const stateCards = $$('.smart-reference-state-editor');
+  if (stateCards.length) next.subject.referenceStates = stateCards.map((card, index) => {
+    const value = (field, fallback = '') => card.querySelector(`[data-smart-reference-state-field="${field}"]`)?.value ?? fallback;
+    return {
+      id: card.dataset.smartReferenceStateId || `state-${index + 1}`,
+      label: value('label', index ? `State ${index + 1}` : 'Default'),
+      description: value('description', next.subject.description),
+    };
+  });
   if (next.output.kind === 'video') next.output.durationSeconds = Number(outputValue('durationSeconds', next.output.durationSeconds));
   next.output.aspectRatio = outputValue('aspectRatio', next.output.aspectRatio);
   next.output.quality = outputValue('quality', next.output.quality);
@@ -4611,6 +4671,8 @@ function captureSmartPlanEditor() {
         continuity: value('continuity', ''),
         audio: value('audio', ''),
         usesSubjectReference: next.subject.needsReference === true && referenceToggle?.checked === true,
+        referenceStateId: next.subject.needsReference === true && referenceToggle?.checked === true
+          ? value('referenceStateId', next.subject.referenceStates?.[0]?.id || 'default') : '',
       };
     });
   }
@@ -4653,6 +4715,8 @@ function mutateSmartPlanClips(action, index) {
       continuity: previous?.continuity || 'Preserve screen direction, location, lighting, and spatial logic',
       audio: previous?.audio || 'Natural environmental sound',
       usesSubjectReference: smartPlan.subject.needsReference === true && previous?.usesSubjectReference === true,
+      referenceStateId: previous?.usesSubjectReference
+        ? (previous.referenceStateId || smartReferenceStates(smartPlan)[0].id) : '',
     });
   } else if (action === 'delete-clip' && scenes.length > 1 && scenes[index]) {
     scenes.splice(index, 1);
@@ -4660,6 +4724,29 @@ function mutateSmartPlanClips(action, index) {
     [scenes[index - 1], scenes[index]] = [scenes[index], scenes[index - 1]];
   } else if (action === 'move-clip-down' && index < scenes.length - 1 && scenes[index]) {
     [scenes[index + 1], scenes[index]] = [scenes[index], scenes[index + 1]];
+  }
+  renderSmartWorkspace();
+}
+
+function mutateSmartReferenceStates(action, index) {
+  if (!smartPlanEditing || smartBusy) return;
+  smartPlan = captureSmartPlanEditor() || smartPlan;
+  const states = smartPlan.subject.referenceStates || (smartPlan.subject.referenceStates = []);
+  if (action === 'add-reference-state' && states.length < 6) {
+    const used = new Set(states.map((state) => state.id));
+    let number = states.length + 1;
+    while (used.has(`state-${number}`)) number += 1;
+    states.push({
+      id: `state-${number}`,
+      label: `State ${number}`,
+      description: `${smartPlan.subject.description}. Describe the complete changed appearance or condition for this state.`,
+    });
+  } else if (action === 'delete-reference-state' && states.length > 1 && states[index]) {
+    const [removed] = states.splice(index, 1);
+    const fallbackId = states[0].id;
+    (smartPlan.scenes || []).forEach((scene) => {
+      if (scene.referenceStateId === removed.id) scene.referenceStateId = fallbackId;
+    });
   }
   renderSmartWorkspace();
 }
@@ -4746,6 +4833,7 @@ async function buildSmartPlan() {
   smartBusy = true;
   $('#smartPlanBtn').disabled = true;
   setSmartStatus('Building a production plan…');
+  let autoQueue = false;
   try {
     const result = await api('/api/smart/plan', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4767,7 +4855,8 @@ async function buildSmartPlan() {
     smartPlanEditBackup = null;
     smartPlanEditHash = '';
     $('#smartProvider').textContent = `${result.provider.label} · ${result.provider.model}`;
-    setSmartStatus('Plan ready. Review the workflow before queueing.');
+    autoQueue = smartExecutionOption('smartAutoApprove');
+    setSmartStatus(autoQueue ? 'Plan ready. Auto approve is queueing production…' : 'Plan ready. Review the workflow before queueing.');
     renderSmartWorkspace();
   } catch (error) {
     setSmartStatus(error.message, true);
@@ -4775,10 +4864,17 @@ async function buildSmartPlan() {
     smartBusy = false;
     $('#smartPlanBtn').disabled = false;
   }
+  if (autoQueue && smartPlan && !smartRun) {
+    await queueSmartProduction({ reviewReference: smartExecutionOption('smartPauseReferences') });
+  }
 }
 
-async function queueSmartProduction() {
+async function queueSmartProduction(options = {}) {
   if (!smartPlan || !smartPlanHash || smartBusy || smartPlanEditing) return;
+  const reviewCheckbox = $('#smartReviewReference');
+  const reviewReference = options.reviewReference
+    ?? (reviewCheckbox ? reviewCheckbox.checked : smartExecutionOption('smartPauseReferences'));
+  const brief = $('#smartBriefInput').value.trim();
   smartBusy = true;
   setSmartStatus('Queueing the first production step…');
   renderSmartWorkspace();
@@ -4787,9 +4883,10 @@ async function queueSmartProduction() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         plan: smartPlan, planHash: smartPlanHash, clientToken: smartClientToken || newSmartClientToken(),
+        brief,
         references: smartReferencePayload(),
         approved: true,
-        reviewReference: $('#smartReviewReference')?.checked === true,
+        reviewReference,
       }),
     });
     mergeSmartRun(result.run);
@@ -4800,6 +4897,22 @@ async function queueSmartProduction() {
   } finally {
     smartBusy = false;
     renderSmartWorkspace();
+  }
+}
+
+function smartExecutionOption(id) {
+  return $(`#${id}`)?.getAttribute('aria-checked') === 'true';
+}
+
+function toggleSmartExecutionOption(button) {
+  if (!button) return;
+  const enabled = button.getAttribute('aria-checked') !== 'true';
+  button.setAttribute('aria-checked', String(enabled));
+  if (button.id === 'smartAutoApprove') {
+    $('#smartPlanBtn span').textContent = enabled ? 'Plan & queue' : "Build director's plan";
+    setSmartStatus(enabled
+      ? 'Auto approve enabled. The next plan will queue without waiting for plan review.'
+      : 'Plan review enabled. The next plan will wait for your approval.');
   }
 }
 
@@ -4816,7 +4929,10 @@ async function actOnSmartRun(action) {
     mergeSmartRun(result.run);
     if (action === 'resume') setSmartStatus('Reference approved. H3 is now queueing.');
     else if (action === 'retry') setSmartStatus('Interrupted step queued again.');
-    else setSmartStatus('Production cancelled.');
+    else {
+      setSmartStatus('Production cancelled. The queue now shows the cancelled run.');
+      await refreshQueue().catch(() => { /* the Smart run is already safely cancelled */ });
+    }
   } catch (error) {
     setSmartStatus(error.message, true);
   } finally {
@@ -5166,6 +5282,8 @@ $('#smartVoiceFile').addEventListener('change', async (event) => {
 });
 $('#smartConfigureAi').addEventListener('click', openSmartAiSettings);
 $('#smartAddReference').addEventListener('click', openSmartReferencePicker);
+$('#smartAutoApprove').addEventListener('click', (event) => toggleSmartExecutionOption(event.currentTarget));
+$('#smartPauseReferences').addEventListener('click', (event) => toggleSmartExecutionOption(event.currentTarget));
 $('#smartReferenceList').addEventListener('click', (event) => {
   const button = event.target.closest('[data-smart-reference-remove]');
   if (!button) return;
@@ -5191,6 +5309,9 @@ $('#smartBoard').addEventListener('click', (event) => {
   else if (['add-clip', 'delete-clip', 'move-clip-up', 'move-clip-down'].includes(action)) {
     mutateSmartPlanClips(action, Number(control.dataset.smartSceneIndex));
   }
+  else if (['add-reference-state', 'delete-reference-state'].includes(action)) {
+    mutateSmartReferenceStates(action, Number(control.dataset.smartReferenceStateIndex));
+  }
   else if (action === 'queue') queueSmartProduction();
   else actOnSmartRun(action);
 });
@@ -5201,6 +5322,7 @@ $('#smartRecentList').addEventListener('click', (event) => {
   smartRun = run;
   smartPlan = run.plan;
   smartPlanHash = run.planHash;
+  if (run.brief) $('#smartBriefInput').value = run.brief;
   smartReferences = Array.isArray(run.references) ? run.references.slice(0, 2) : [];
   smartPlanEditing = false;
   smartPlanEditBackup = null;
@@ -21593,14 +21715,16 @@ function renderQueue(q) {
     h.textContent = 'Recent';
     list.appendChild(h);
     for (const e of hist) {
+      const cancelled = e.kind === 'cancelled';
       const row = document.createElement('div');
-      row.className = 'queue-row' + (e.itemId ? ' q-click' : '');
+      row.className = 'queue-row' + (cancelled ? ' cancelled' : '') + (e.itemId ? ' q-click' : '');
       const st = document.createElement('span');
-      st.className = 'q-state' + (e.kind === 'error' ? ' q-err' : '');
-      st.textContent = agoStr(e.ts);
+      st.className = 'q-state' + (e.kind === 'error' ? ' q-err' : '') + (cancelled ? ' cancelled' : '');
+      st.textContent = cancelled ? 'Cancelled' : agoStr(e.ts);
       const lb = document.createElement('span');
       lb.className = 'q-label';
       lb.textContent = (e.kind === 'error' ? '⚠ ' : '') + e.label;
+      if (cancelled) lb.textContent += ` · ${agoStr(e.ts)} ago`;
       if (e.durationMs) lb.textContent += ` - ${formatDuration(e.durationMs)}`;
       row.append(queueThumbnail(e), st, lb);
       if (e.itemId) row.addEventListener('click', () => openFromQueue(e.itemId, e.videoId));

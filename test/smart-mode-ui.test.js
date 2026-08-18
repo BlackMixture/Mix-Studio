@@ -46,8 +46,34 @@ test('Smart workspace provides typed, voice, plan, review, queue, retry, and can
   assert.match(app, /function beginSmartPlanEdit\(\)/);
   assert.match(app, /function saveSmartPlanEdit\(\)/);
   assert.match(app, /data-smart-scene-field="usesSubjectReference"/);
+  assert.match(app, /data-smart-scene-field="referenceStateId"/);
   assert.match(app, /\['failed', 'attention'\]/);
   assert.match(app, /\['running', 'queueing'\]\.includes\(run\.status\) \? \['cancel', 'Cancel remaining'\]/);
+});
+
+test('Smart can auto approve plans while keeping reference review as a separate checkpoint', () => {
+  assert.match(html, /id="smartAutoApprove"[^>]*role="switch"[^>]*aria-checked="false"/);
+  assert.match(html, /id="smartPauseReferences"[^>]*role="switch"[^>]*aria-checked="false"/);
+  assert.match(app, /autoQueue = smartExecutionOption\('smartAutoApprove'\)/);
+  assert.match(app, /await queueSmartProduction\(\{ reviewReference: smartExecutionOption\('smartPauseReferences'\) \}\)/);
+  assert.match(app, /const reviewCheckbox = \$\('#smartReviewReference'\)[\s\S]*const reviewReference = options\.reviewReference[\s\S]*reviewCheckbox\.checked/);
+  assert.match(server, /moreReferencesPending[\s\S]*step\.kind === 'reference'[\s\S]*!moreReferencesPending/);
+});
+
+test('Smart persists and restores the creator original prompt independently of the plan summary', () => {
+  assert.match(app, /brief,[\s\S]*references: smartReferencePayload/);
+  assert.match(app, /run\?\.brief[\s\S]*Original prompt/);
+  assert.match(app, /if \(run\.brief\) \$\('#smartBriefInput'\)\.value = run\.brief/);
+  assert.match(server, /brief: String\(run\.brief \|\| run\.plan\?\.summary/);
+  assert.match(server, /brief: String\(body\.brief \|\| plan\.summary/);
+});
+
+test('Smart reference states are editable and use normalized character, object, and place templates', () => {
+  assert.match(app, /Character \/ person[\s\S]*Object \/ product[\s\S]*Place \/ environment/);
+  assert.match(app, /data-smart-reference-state-field="description"/);
+  assert.match(app, /data-smart-action="add-reference-state"/);
+  assert.match(app, /function mutateSmartReferenceStates\(/);
+  assert.match(app, /smartUsedReferenceStates\(plan\)/);
 });
 
 test('Smart exposes planner configuration and reusable image references', () => {

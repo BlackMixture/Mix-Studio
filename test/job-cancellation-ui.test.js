@@ -58,6 +58,22 @@ test('cancelled jobs clear browser state without opening the error sheet', () =>
   assert.match(failed, /d\.profileId !== state\.profile\.id/);
 });
 
+test('Smart cancellation leaves a neutral cancelled record in queue history', () => {
+  const smartCancel = between(server, "if (action === 'cancel')", "if (action === 'resume')");
+  const queueHistory = between(app, '// Recent generations (history)', 'let queuePoll = null;');
+  const smartAction = between(app, 'async function actOnSmartRun(', 'function resetSmartComposer(');
+
+  assert.match(smartCancel, /pushHistory\(\{[\s\S]*kind: 'cancelled'/);
+  assert.match(smartCancel, /label: `Smart:/);
+  assert.match(smartCancel, /smartRunId: run\.id/);
+  assert.doesNotMatch(smartCancel, /kind: 'error'/);
+  assert.match(queueHistory, /const cancelled = e\.kind === 'cancelled'/);
+  assert.match(queueHistory, /st\.textContent = cancelled \? 'Cancelled'/);
+  assert.match(queueHistory, /cancelled \? ' cancelled'/);
+  assert.match(smartAction, /The queue now shows the cancelled run/);
+  assert.match(smartAction, /await refreshQueue\(\)/);
+});
+
 test('queue controls and preprocessing cancellation stay profile-safe and neutral', () => {
   assert.match(app, /x\.hidden = !!j\.finalizing \|\| j\.owned !== true/);
   assert.match(app, /error\.code = data\.code \|\| ''/);

@@ -10,6 +10,7 @@ const {
   compileSmartSteps,
   normalizeSmartPlan,
   normalizeSmartReferences,
+  smartReferenceSpec,
   smartPlanHash,
   smartPlanningPrompt,
 } = require('../lib/smart-mode');
@@ -20,7 +21,12 @@ function lionPlan() {
     title: 'Lion across worlds',
     summary: 'A continuous cinematic journey with one recognizable lion.',
     output: { kind: 'video', durationSeconds: 120, aspectRatio: '16:9', quality: 'balanced' },
-    subject: { needsReference: true, description: 'A regal male lion with a dark amber mane and a small scar above the left eye' },
+    subject: {
+      needsReference: true,
+      referenceType: 'character',
+      description: 'A regal male lion with a dark amber mane and a small scar above the left eye',
+      referenceStates: [{ id: 'default', label: 'Default', description: 'The lion is healthy with an intact dark amber mane' }],
+    },
     visualStyle: 'Cinematic magical realism, warm highlights, deep blue shadows',
     directorialApproach: 'Progress from low heroic wides into intimate close-ups, then release into a final crane shot with motivated hard cuts.',
     imagePrompt: 'A regal male lion with a dark amber mane and a small scar above the left eye, full body, centered',
@@ -44,6 +50,9 @@ test('Smart plan schema is strict and suitable for structured provider output', 
   assert.equal(SMART_PLAN_SCHEMA.properties.scenes.maxItems, 12);
   assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.durationSeconds.maximum, 10);
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('usesSubjectReference'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('referenceStateId'));
+  assert.deepEqual(SMART_PLAN_SCHEMA.properties.subject.properties.referenceType.enum, ['character', 'object', 'place']);
+  assert.equal(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.maxItems, 6);
 });
 
 test('Smart planner expands a 120-second treatment into bounded clips and preserves exact running time', () => {
@@ -65,8 +74,12 @@ test('Smart compiles identity video into a Krea reference followed by individual
   assert.equal(steps.length, 13);
   assert.equal(steps[0].kind, 'reference');
   assert.equal(steps[0].request.route, '/api/generate');
-  assert.match(steps[0].request.body.prompt, /one subject only/i);
-  assert.match(steps[0].request.body.prompt, /no contact sheet/i);
+  assert.match(steps[0].request.body.prompt, /three-panel character reference sheet/i);
+  assert.match(steps[0].request.body.prompt, /front-facing full-body/i);
+  assert.match(steps[0].request.body.prompt, /back-facing full-body/i);
+  assert.match(steps[0].request.body.prompt, /close-up front-facing face/i);
+  assert.match(steps[0].request.body.prompt, /neutral mid-grey/i);
+  assert.deepEqual([steps[0].request.body.width, steps[0].request.body.height], [1344, 768]);
   assert.deepEqual(steps[1].dependsOn, ['reference-step']);
   assert.equal(steps[1].id, 'video-1');
   assert.equal(steps[1].request.route, '/api/animate');
@@ -115,7 +128,7 @@ test('clips without the recurring subject omit the reference dependency and Pict
   assert.deepEqual(steps[1].dependsOn, []);
   assert.equal(steps[1].request.body.h3Mode, 'frames');
   assert.doesNotMatch(steps[1].request.body.prompt, /<Picture 1>/);
-  assert.match(steps[1].request.body.prompt, /canonical subject is not present/i);
+  assert.match(steps[1].request.body.prompt, /canonical reference target is not present/i);
   assert.deepEqual(steps[2].dependsOn, ['reference-step']);
   assert.equal(steps[2].request.body.h3Mode, 'reference');
   assert.match(steps[2].request.body.prompt, /<Picture 1>/);
@@ -152,10 +165,50 @@ test('plan hash is stable across normalized equivalents and changes with product
   assert.notEqual(smartPlanHash(source), smartPlanHash(changed));
 });
 
+test('materially changed states create separate references and route each clip to the correct state', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 20;
+  raw.subject.referenceStates = [
+    { id: 'formal', label: 'Formal outfit', description: 'The lion wears a pristine dark blue ceremonial coat' },
+    { id: 'damaged', label: 'Damaged outfit', description: 'The same coat is torn and mud-streaked, with a scratch on the lion cheek' },
+  ];
+  raw.scenes = [
+    { title: 'Arrival', durationSeconds: 10, description: 'The lion arrives in the pristine coat', shot: 'Wide', camera: 'Track', transition: 'Open', continuity: 'Pristine coat', audio: 'Wind', usesSubjectReference: true, referenceStateId: 'formal' },
+    { title: 'Aftermath', durationSeconds: 10, description: 'The lion emerges with the damaged coat', shot: 'Medium', camera: 'Push in', transition: 'Cut', continuity: 'Damaged coat', audio: 'Rain', usesSubjectReference: true, referenceStateId: 'damaged' },
+  ];
+  const steps = compileSmartSteps(raw, {
+    referenceIds: ['formal-ref', 'damaged-ref'], videoIds: ['formal-clip', 'damaged-clip'],
+  });
+  assert.equal(steps.length, 4);
+  assert.deepEqual(steps.slice(0, 2).map((step) => step.referenceState.id), ['formal', 'damaged']);
+  assert.match(steps[0].request.body.prompt, /pristine dark blue ceremonial coat/i);
+  assert.match(steps[1].request.body.prompt, /torn and mud-streaked/i);
+  assert.deepEqual(steps[2].dependsOn, ['formal-ref']);
+  assert.deepEqual(steps[3].dependsOn, ['damaged-ref']);
+  assert.match(steps[2].request.body.prompt, /"Formal outfit" state/i);
+  assert.match(steps[3].request.body.prompt, /"Damaged outfit" state/i);
+});
+
+test('objects use multi-angle sheets while places use one coherent master view', () => {
+  const objectPlan = lionPlan();
+  objectPlan.subject.referenceType = 'object';
+  assert.match(smartReferenceSpec(objectPlan).prompt, /front three-quarter view/i);
+  assert.match(smartReferenceSpec(objectPlan).prompt, /rear three-quarter view/i);
+  assert.match(smartReferenceSpec(objectPlan).prompt, /side-profile view/i);
+  const placePlan = lionPlan();
+  placePlan.subject.referenceType = 'place';
+  assert.match(smartReferenceSpec(placePlan).prompt, /one coherent wide master environment reference/i);
+  assert.match(smartReferenceSpec(placePlan).prompt, /foreground, midground, background/i);
+  assert.doesNotMatch(smartReferenceSpec(placePlan).prompt, /three-panel/i);
+});
+
 test('planner instruction explicitly routes persistent subjects through one canonical reference', () => {
   const prompt = smartPlanningPrompt('A lion crosses several scenes', { referenceCount: 2 });
   assert.match(prompt.instruction, /persistent named character/i);
-  assert.match(prompt.instruction, /one clean canonical identity image/i);
+  assert.match(prompt.instruction, /front full-body, back full-body, and face close-up panels/i);
+  assert.match(prompt.instruction, /materially distinct visual state/i);
+  assert.match(prompt.instruction, /wardrobe changes, injuries, dirt, damage/i);
+  assert.match(prompt.instruction, /referenceStateId to the exact state depicted/i);
   assert.match(prompt.instruction, /attached 2 image references/i);
   assert.match(prompt.instruction, /identity, visual style, wardrobe, product appearance, or composition/i);
   assert.match(prompt.instruction, /independently generated editorial clip/i);

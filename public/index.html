@@ -214,7 +214,7 @@
       <section class="smart-brief-card">
         <div class="smart-section-label"><span>01</span> Creative brief</div>
         <h3>Describe the finished piece</h3>
-        <p>Speak naturally or type one idea. Smart will direct it shot by shot, choose the workflows, and wait for your approval before queueing.</p>
+        <p>Speak naturally or type one idea. Smart will direct it shot by shot, choose the workflows, and either wait for review or run automatically.</p>
         <label class="sr-only" for="smartBriefInput">Creative brief</label>
         <textarea id="smartBriefInput" rows="7" maxlength="8000" placeholder="Make a 120-second cinematic video about a lion navigating a series of surreal city scenarios…"></textarea>
         <div class="smart-reference-inputs">
@@ -223,6 +223,14 @@
             <button id="smartAddReference" type="button" aria-label="Add reference images" title="Add reference images"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
           <div class="smart-reference-list" id="smartReferenceList"><p>Guide character identity, product details, composition, or visual style.</p></div>
+        </div>
+        <div class="smart-execution-options">
+          <button class="smart-execution-toggle" id="smartAutoApprove" type="button" role="switch" aria-checked="false">
+            <span><strong>Auto approve</strong><small>Queue the director's plan immediately</small></span><i aria-hidden="true"><b></b></i>
+          </button>
+          <button class="smart-execution-toggle" id="smartPauseReferences" type="button" role="switch" aria-checked="false">
+            <span><strong>Review references</strong><small>Pause once all required states are ready</small></span><i aria-hidden="true"><b></b></i>
+          </button>
         </div>
         <div class="smart-brief-actions">
           <button class="smart-voice-btn" id="smartVoiceBtn" type="button" aria-pressed="false">

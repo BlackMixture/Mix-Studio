@@ -3056,6 +3056,7 @@ function publicSmartRun(run) {
     id: run.id,
     profileId: run.profileId,
     title: run.plan?.title || 'Smart production',
+    brief: String(run.brief || run.plan?.summary || '').slice(0, 8000),
     status: run.status,
     error: run.error || '',
     plan: run.plan,
@@ -3071,6 +3072,7 @@ function publicSmartRun(run) {
         kind: step.kind,
         sceneIndex: Number.isInteger(step.sceneIndex) ? step.sceneIndex : null,
         clip: step.clip || null,
+        referenceState: step.referenceState || null,
         label: step.label,
         status: step.status,
         dependsOn: step.dependsOn || [],
@@ -3116,7 +3118,12 @@ async function smartReferenceForStep(run, step) {
   if (!item?.file) throw new Error('The canonical reference image is unavailable');
   const buffer = await fsp.readFile(path.join(IMAGES, item.file));
   const comfyName = await uploadToComfy(buffer, `ks_smart_reference_${run.id}_${item.id}.png`);
-  return { name: comfyName, label: 'Canonical subject', w: item.width || 1024, h: item.height || 1024 };
+  return {
+    name: comfyName,
+    label: dependency.referenceState?.label || 'Canonical reference',
+    w: item.width || 1024,
+    h: item.height || 1024,
+  };
 }
 
 async function advanceSmartRun(run) {
@@ -3187,7 +3194,9 @@ function completeSmartJob(job, items) {
   step.progress = null;
   step.error = '';
   step.resultItemIds = resultItems.map((item) => item.id);
-  if (step.kind === 'reference' && run.reviewReference) {
+  const moreReferencesPending = (run.steps || []).some((candidate) => candidate.kind === 'reference'
+    && ['pending', 'queueing', 'running'].includes(candidate.status));
+  if (step.kind === 'reference' && run.reviewReference && !moreReferencesPending) {
     run.status = 'review';
     broadcastSmartRun(run);
     return;
@@ -6829,6 +6838,7 @@ async function handleApi(req, res, url) {
     const steps = compileSmartSteps(plan, {}, references);
     const run = {
       id: uid(), profileId: req.profile.id, clientToken: clientToken || uid(),
+      brief: String(body.brief || plan.summary || '').trim().slice(0, 8000),
       planHash, plan, references,
       reviewReference: steps.some((step) => step.kind === 'reference') && body.reviewReference === true,
       steps, status: 'ready', error: '', createdAt: now, updatedAt: now,
@@ -6848,12 +6858,21 @@ async function handleApi(req, res, url) {
     if (action === 'cancel') {
       if (smartRunFinished(run)) return json(res, 200, { run: publicSmartRun(run) });
       const active = run.steps.find((step) => ['running', 'queueing'].includes(step.status));
+      const activeJob = active?.jobId ? jobs.get(active.jobId) : null;
       run.status = 'cancelled';
       run.error = 'Cancelled';
       if (active) {
         active.status = 'cancelled';
         active.error = 'Cancelled';
       }
+      pushHistory({
+        kind: 'cancelled',
+        profileId: run.profileId,
+        itemId: activeJob?.itemId || null,
+        durationMs: activeJob ? jobDurationMs(activeJob) : Math.max(0, Date.now() - Number(run.createdAt || Date.now())),
+        label: `Smart: ${run.plan?.title || 'production'}`,
+        smartRunId: run.id,
+      });
       broadcastSmartRun(run);
       if (active?.jobId) {
         await stopComfyPrompt(active.jobId);
