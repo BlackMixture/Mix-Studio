@@ -10,6 +10,7 @@ const {
   externalLlmProviderConfig,
   externalLlmRequest,
   externalLlmStructuredRequest,
+  geminiResponseJsonSchema,
   normalizeExternalLlmSettings,
   normalizeOllamaUrl,
   ollamaChatUrl,
@@ -234,6 +235,44 @@ test('structured requests use each provider native JSON schema mode and parse th
   assert.equal(bodies.gemini.generationConfig.responseMimeType, 'application/json');
   assert.deepEqual(bodies.gemini.generationConfig.responseJsonSchema, schema);
   assert.deepEqual(bodies.ollama.format, schema);
+});
+
+test('Gemini structured output removes unsupported JSON Schema keywords recursively', async () => {
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['title', 'clips'],
+    properties: {
+      title: { type: 'string', minLength: 1, maxLength: 100 },
+      clips: {
+        type: 'array', minItems: 1, maxItems: 12,
+        items: {
+          type: 'object', additionalProperties: false, required: ['duration', 'description'],
+          properties: {
+            duration: { type: 'number', minimum: 0.1, maximum: 10 },
+            description: { type: 'string', minLength: 1, maxLength: 600, pattern: '.+' },
+          },
+        },
+      },
+    },
+  };
+  const compatible = geminiResponseJsonSchema(schema);
+  assert.deepEqual(compatible, {
+    type: 'object', additionalProperties: false, required: ['title', 'clips'],
+    properties: {
+      title: { type: 'string' },
+      clips: {
+        type: 'array', minItems: 1, maxItems: 12,
+        items: {
+          type: 'object', additionalProperties: false, required: ['duration', 'description'],
+          properties: {
+            duration: { type: 'number', minimum: 0.1, maximum: 10 },
+            description: { type: 'string' },
+          },
+        },
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(compatible), /minLength|maxLength|pattern/);
+  assert.match(JSON.stringify(compatible), /minItems|maxItems|minimum|maximum/);
 });
 
 test('server routes independent image and video revise/enhance paths through the shared provider', () => {
