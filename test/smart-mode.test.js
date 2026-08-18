@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const H3PromptGuide = require('../public/h3-prompt-guide');
 
 const {
   SMART_PLAN_SCHEMA,
@@ -51,6 +52,14 @@ test('Smart plan schema is strict and suitable for structured provider output', 
   assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.durationSeconds.maximum, 10);
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('usesSubjectReference'));
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('referenceStateId'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('spatialComposition'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('dialogue'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('timelineBeats'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('music'));
+  assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.dialogue.maxItems, 6);
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.properties.dialogue.items.required.includes('timeSeconds'));
+  assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.timelineBeats.maxItems, 6);
+  assert.deepEqual(SMART_PLAN_SCHEMA.properties.scenes.items.properties.timelineBeats.items.properties.kind.enum, ['action', 'camera', 'cut']);
   assert.deepEqual(SMART_PLAN_SCHEMA.properties.subject.properties.referenceType.enum, ['character', 'object', 'place']);
   assert.equal(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.maxItems, 6);
 });
@@ -88,8 +97,13 @@ test('Smart compiles identity video into a Krea reference followed by individual
   assert.equal(steps[1].request.body.h3LongContext, false);
   assert.equal(steps[1].request.body.seconds, 10);
   assert.equal(steps[1].request.body.h3ResolutionSize, 1);
-  assert.match(steps[1].request.body.prompt, /one continuous editorial shot/i);
-  assert.match(steps[1].request.body.prompt, /do not perform an internal editorial cut/i);
+  assert.match(steps[1].request.body.prompt, /^subject_definitions:/);
+  assert.match(steps[1].request.body.prompt, /summary:\n\[reference generation\]/);
+  assert.match(steps[1].request.body.prompt, /retention_analysis:/);
+  assert.match(steps[1].request.body.prompt, /detailed_description:\n[\s\S]*\[Shot 1\]/);
+  assert.match(steps[1].request.body.prompt, /overall_soundscape:/);
+  assert.match(steps[1].request.body.prompt, /non_diegetic_music:\nN\/A$/);
+  assert.doesNotMatch(steps[1].request.body.prompt, /clip \d+ of|finished sequence|editorial transition|directorial intent/i);
 });
 
 test('attached references are bounded, hashed, and synthesized through Krea 2 Edit', () => {
@@ -107,12 +121,11 @@ test('attached references are bounded, hashed, and synthesized through Krea 2 Ed
   assert.notEqual(smartPlanHash(lionPlan()), smartPlanHash(lionPlan(), references));
 });
 
-test('H3 prompt refers to the canonical image and includes timed scene transitions', () => {
+test('combined H3 preview keeps references and scene boundaries without leaking film timing', () => {
   const prompt = buildH3Prompt(normalizeSmartPlan(lionPlan()));
   assert.match(prompt, /<Picture 1>/);
-  assert.match(prompt, /0\.0-10\.0 seconds/);
   assert.match(prompt, /<scenetrans>/);
-  assert.match(prompt, /110\.0-120\.0 seconds/);
+  assert.doesNotMatch(prompt, /clip \d+ of|finished sequence|positioned at/i);
 });
 
 test('clips without the recurring subject omit the reference dependency and Picture language', () => {
@@ -128,7 +141,10 @@ test('clips without the recurring subject omit the reference dependency and Pict
   assert.deepEqual(steps[1].dependsOn, []);
   assert.equal(steps[1].request.body.h3Mode, 'frames');
   assert.doesNotMatch(steps[1].request.body.prompt, /<Picture 1>/);
-  assert.match(steps[1].request.body.prompt, /canonical reference target is not present/i);
+  assert.match(steps[1].request.body.prompt, /^integrated_multimodal_description:\n\[Shot 1\]/);
+  assert.match(steps[1].request.body.prompt, /overall_soundscape:\nWind/);
+  assert.doesNotMatch(steps[1].request.body.prompt, /canonical|recurring|not present|do not introduce|clip \d+ of|finished sequence/i);
+  assert.doesNotMatch(steps[1].request.body.prompt, /Open on a hard cut|Progress from low heroic wides|lion crosses a changing world/i);
   assert.deepEqual(steps[2].dependsOn, ['reference-step']);
   assert.equal(steps[2].request.body.h3Mode, 'reference');
   assert.match(steps[2].request.body.prompt, /<Picture 1>/);
@@ -185,8 +201,10 @@ test('materially changed states create separate references and route each clip t
   assert.match(steps[1].request.body.prompt, /torn and mud-streaked/i);
   assert.deepEqual(steps[2].dependsOn, ['formal-ref']);
   assert.deepEqual(steps[3].dependsOn, ['damaged-ref']);
-  assert.match(steps[2].request.body.prompt, /"Formal outfit" state/i);
-  assert.match(steps[3].request.body.prompt, /"Damaged outfit" state/i);
+  assert.match(steps[2].request.body.prompt, /pristine dark blue ceremonial coat/i);
+  assert.doesNotMatch(steps[2].request.body.prompt, /torn and mud-streaked/i);
+  assert.match(steps[3].request.body.prompt, /torn and mud-streaked/i);
+  assert.doesNotMatch(steps[3].request.body.prompt, /pristine dark blue ceremonial coat/i);
 });
 
 test('objects use multi-angle sheets while places use one coherent master view', () => {
@@ -202,6 +220,104 @@ test('objects use multi-angle sheets while places use one coherent master view',
   assert.doesNotMatch(smartReferenceSpec(placePlan).prompt, /three-panel/i);
 });
 
+test('standalone H3 clips use concise spatial, dialogue, soundscape, and music controls', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 10;
+  raw.scenes = [{
+    title: 'Platform warning', durationSeconds: 10,
+    description: 'Maya stands beneath a flickering platform sign while rain blows through the station',
+    shot: 'Low medium two-shot', camera: 'Slow push in', transition: 'Cut on the warning light',
+    spatialComposition: 'Maya holds the screen-left foreground; Tomas stands in the screen-right midground; the tracks recede into deep background',
+    continuity: 'Maya keeps her clean blue coat and remains screen-left under the cold overhead key light',
+    audio: 'Heavy rain, electrical buzzing, and water striking the platform roof',
+    music: 'A sparse low cello pulse at a slow tempo',
+    dialogue: [
+      { speaker: 'Maya', line: 'Stay behind me.', language: 'English', delivery: 'whispers', isReferenceSubject: true },
+      { speaker: 'Tomas', line: 'The lights are moving.', language: 'English', delivery: 'says quietly', isReferenceSubject: false },
+      { speaker: 'Maya', line: 'Run.', language: 'English', delivery: 'shouts', isReferenceSubject: true },
+    ],
+    usesSubjectReference: true, referenceStateId: 'default',
+  }];
+  const plan = normalizeSmartPlan(raw);
+  const prompt = buildH3ClipPrompt(plan, plan.scenes[0]);
+  assert.match(prompt, /screen-left foreground[\s\S]*screen-right midground[\s\S]*deep background/i);
+  assert.match(prompt, /<Subject 1> \(S1\) whispers: <d>\[English\] Stay behind me\.<\/d>/);
+  assert.match(prompt, /Tomas \(S2\) says quietly: <d>\[English\] The lights are moving\.<\/d>/);
+  assert.match(prompt, /<Subject 1> \(S1\) shouts: <d>\[English\] Run\.<\/d>/);
+  assert.match(prompt, /overall_soundscape:\nHeavy rain, electrical buzzing/);
+  assert.match(prompt, /non_diegetic_music:\nA sparse low cello pulse/);
+  assert.doesNotMatch(prompt, /Cut on the warning light|clip \d+|finished sequence|directorial intent/i);
+  assert.equal(H3PromptGuide.auditStructure(prompt, {
+    mode: 'reference', seconds: 10,
+    expectedReferenceTokens: ['<Picture 1>'],
+    allowedReferenceTokens: ['<Picture 1>'],
+  }).ready, true);
+});
+
+test('one H3 generation can use clip-local timed actions, camera moves, dialogue, and cuts', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 10;
+  raw.visualStyle = '1990s anime OVA animation';
+  raw.scenes = [{
+    title: 'Tunnel decision', durationSeconds: 10,
+    description: 'Maya watches a dark railway tunnel from an empty platform',
+    shot: 'Wide profile view', camera: 'A restrained static frame', transition: 'Editor chooses the next clip later',
+    spatialComposition: 'Maya stands screen-left while the tunnel mouth fills the screen-right background',
+    continuity: 'Maya wears an intact blue coat under cold fluorescent light throughout the generation',
+    audio: 'Rain on the roof, fluorescent hum, and distant rail vibration', music: '',
+    timelineBeats: [
+      { timeSeconds: 7, kind: 'camera', description: 'slowly arcs clockwise behind Maya' },
+      { timeSeconds: 2, kind: 'cut', description: 'cut to a front close-up of Maya listening' },
+      { timeSeconds: 4.5, kind: 'action', description: 'Maya turns toward the tunnel as its light flickers' },
+      { timeSeconds: 10, kind: 'cut', description: 'an invalid end-frame view' },
+    ],
+    dialogue: [{
+      speaker: 'Maya', line: 'Not yet.', language: 'English', delivery: 'whispers',
+      isReferenceSubject: true, timeSeconds: 3,
+    }],
+    usesSubjectReference: true, referenceStateId: 'default',
+  }];
+  const plan = normalizeSmartPlan(raw);
+  assert.deepEqual(plan.scenes[0].timelineBeats.map((beat) => [beat.timeSeconds, beat.kind]), [
+    [2, 'cut'], [4.5, 'action'], [7, 'camera'],
+  ]);
+  const prompt = buildH3ClipPrompt(plan, plan.scenes[0]);
+  assert.match(prompt, /\[Shot 2\] At 00:02\.000, the camera cuts to a front close-up of Maya listening\./);
+  assert.match(prompt, /At 00:03\.000, <Subject 1> \(S1\) whispers: <d>\[English\] Not yet\.<\/d>/);
+  assert.match(prompt, /At 00:04\.500, Maya turns toward the tunnel as its light flickers\./);
+  assert.match(prompt, /At 00:07\.000, the camera slowly arcs clockwise behind Maya\./);
+  assert.match(prompt, /Style: 1990s anime OVA animation\.\n\noverall_soundscape:/);
+  assert.match(prompt, /non_diegetic_music:\nN\/A$/);
+  assert.doesNotMatch(prompt, /00:10\.000|Editor chooses the next clip later/);
+  assert.equal(H3PromptGuide.auditStructure(prompt, {
+    mode: 'reference', seconds: 10,
+    expectedReferenceTokens: ['<Picture 1>'],
+    allowedReferenceTokens: ['<Picture 1>'],
+  }).ready, true);
+});
+
+test('Smart never invents dialogue and formats supplied voiceover without lip movement', () => {
+  const silent = lionPlan();
+  silent.output.durationSeconds = 10;
+  silent.scenes = [Object.assign({}, silent.scenes[0], { durationSeconds: 10, dialogue: [] })];
+  const silentPlan = normalizeSmartPlan(silent);
+  assert.doesNotMatch(buildH3ClipPrompt(silentPlan, silentPlan.scenes[0]), /<d>|\(S1\)/);
+
+  const voiced = lionPlan();
+  voiced.output.durationSeconds = 10;
+  voiced.scenes = [Object.assign({}, voiced.scenes[0], {
+    durationSeconds: 10,
+    dialogue: [{
+      speaker: 'Lion', line: 'The city remembers.', language: 'English',
+      delivery: 'voiceover', isReferenceSubject: true,
+    }],
+  })];
+  const voicedPlan = normalizeSmartPlan(voiced);
+  const prompt = buildH3ClipPrompt(voicedPlan, voicedPlan.scenes[0]);
+  assert.match(prompt, /<Subject 1> \(S1\) says in an off-screen voiceover: <d>\[English\] The city remembers\.<\/d>/);
+  assert.match(prompt, /lips remain completely closed/i);
+});
+
 test('planner instruction explicitly routes persistent subjects through one canonical reference', () => {
   const prompt = smartPlanningPrompt('A lion crosses several scenes', { referenceCount: 2 });
   assert.match(prompt.instruction, /persistent named character/i);
@@ -212,6 +328,19 @@ test('planner instruction explicitly routes persistent subjects through one cano
   assert.match(prompt.instruction, /attached 2 image references/i);
   assert.match(prompt.instruction, /identity, visual style, wardrobe, product appearance, or composition/i);
   assert.match(prompt.instruction, /independently generated editorial clip/i);
+  assert.match(prompt.instruction, /H3 receives no information about any other clip/i);
+  assert.match(prompt.instruction, /Never mention a clip number/);
+  assert.match(prompt.instruction, /transition as editor-only metadata/i);
+  assert.match(prompt.instruction, /Use spatialComposition/);
+  assert.match(prompt.instruction, /Dialogue must contain only words explicitly supplied/);
+  assert.match(prompt.instruction, /Use audio only for ambience/);
+  assert.match(prompt.instruction, /non_diegetic_music: N\/A/);
+  assert.match(prompt.instruction, /Use timelineBeats/);
+  assert.match(prompt.instruction, /kind action/);
+  assert.match(prompt.instruction, /kind camera/);
+  assert.match(prompt.instruction, /kind cut/);
+  assert.match(prompt.instruction, /Style: visualStyle tag/);
+  assert.match(prompt.instruction, /Favor compact prompts/);
   assert.match(prompt.instruction, /usesSubjectReference true only/i);
   assert.match(prompt.instruction, /vary shot size and angle/i);
   assert.equal(prompt.userInput, 'A lion crosses several scenes');

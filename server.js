@@ -3126,6 +3126,22 @@ async function smartReferenceForStep(run, step) {
   };
 }
 
+function currentSmartStepRequest(run, step) {
+  const compiled = compileSmartSteps(run.plan, {}, run.references);
+  let current = null;
+  if (step.kind === 'video') {
+    current = compiled.find((candidate) => candidate.kind === 'video'
+      && candidate.sceneIndex === step.sceneIndex);
+  } else if (step.kind === 'reference') {
+    const stateId = step.referenceState?.id;
+    current = compiled.find((candidate) => candidate.kind === 'reference'
+      && (!stateId || candidate.referenceState?.id === stateId));
+  } else {
+    current = compiled.find((candidate) => candidate.kind === step.kind);
+  }
+  return current?.request || step.request;
+}
+
 async function advanceSmartRun(run) {
   if (!run || smartRunFinished(run) || run.status === 'review') return;
   if ((run.steps || []).some((step) => ['running', 'queueing'].includes(step.status))) return;
@@ -3152,6 +3168,7 @@ async function advanceSmartRun(run) {
   step.error = '';
   broadcastSmartRun(run);
   try {
+    step.request = currentSmartStepRequest(run, step);
     const body = JSON.parse(JSON.stringify(step.request.body));
     if (step.kind === 'video' && step.dependsOn?.length) {
       const reference = await smartReferenceForStep(run, step);

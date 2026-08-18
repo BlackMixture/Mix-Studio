@@ -76,6 +76,23 @@ test('Smart reference states are editable and use normalized character, object, 
   assert.match(app, /smartUsedReferenceStates\(plan\)/);
 });
 
+test('Smart plan editing exposes concise H3 spatiality, timeline, dialogue, soundscape, and music controls', () => {
+  assert.match(app, /data-smart-scene-field="spatialComposition"/);
+  assert.match(app, /data-smart-scene-field="timelineBeats"/);
+  assert.match(app, /data-smart-scene-field="dialogue"/);
+  assert.match(app, /data-smart-scene-field="music"/);
+  assert.match(app, /function smartTimelineEditorText\(/);
+  assert.match(app, /function smartTimelineFromEditor\(/);
+  assert.match(app, /function smartDialogueEditorText\(/);
+  assert.match(app, /function smartDialogueFromEditor\(/);
+  assert.match(app, /2 \| cut \| a front close-up of Maya/);
+  assert.match(app, /2\.5 \| Maya \[reference; English; whispers\]: Exact words/);
+  assert.match(app, /<dt>Spatial<\/dt>/);
+  assert.match(app, /<dt>Timed beats<\/dt>/);
+  assert.match(app, /<dt>Dialogue<\/dt>/);
+  assert.match(app, /Defaults to N\/A; add only when requested/);
+});
+
 test('Smart exposes planner configuration and reusable image references', () => {
   for (const id of ['smartConfigureAi', 'smartAddReference', 'smartReferenceList']) {
     assert.match(html, new RegExp(`id="${id}"`));

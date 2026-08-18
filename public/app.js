@@ -4462,6 +4462,55 @@ function smartStepDetail(step, plan) {
   return 'Krea 2 · final image';
 }
 
+function smartDialogueEditorText(dialogue) {
+  return (Array.isArray(dialogue) ? dialogue : []).map((entry) => {
+    const role = entry.isReferenceSubject ? 'reference' : 'other';
+    const time = Number(entry.timeSeconds) > 0 ? `${Number(entry.timeSeconds)} | ` : '';
+    return `${time}${entry.speaker} [${role}; ${entry.language || 'English'}; ${entry.delivery || 'says'}]: ${entry.line}`;
+  }).join('\n');
+}
+
+function smartDialogueFromEditor(value) {
+  return String(value || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 6)
+    .flatMap((line) => {
+      const timed = line.match(/^(\d+(?:\.\d+)?)\s*\|\s*(.+)$/);
+      const timeSeconds = timed ? Number(timed[1]) : 0;
+      const content = timed ? timed[2] : line;
+      const structured = content.match(/^(.*?)\s*\[(reference|other)\s*;\s*([^;]+)\s*;\s*([^\]]+)\]\s*:\s*(.+)$/i);
+      if (structured) return [{
+        speaker: structured[1].trim(),
+        isReferenceSubject: structured[2].toLowerCase() === 'reference',
+        language: structured[3].trim() || 'English',
+        delivery: structured[4].trim() || 'says',
+        line: structured[5].trim(),
+        timeSeconds,
+      }];
+      const simple = content.match(/^([^:]+):\s*(.+)$/);
+      return simple ? [{
+        speaker: simple[1].trim(), line: simple[2].trim(), language: 'English',
+        delivery: 'says', isReferenceSubject: false, timeSeconds,
+      }] : [];
+    });
+}
+
+function smartTimelineEditorText(timelineBeats) {
+  return (Array.isArray(timelineBeats) ? timelineBeats : []).map((beat) => (
+    `${Number(beat.timeSeconds)} | ${beat.kind || 'action'} | ${beat.description || ''}`
+  )).join('\n');
+}
+
+function smartTimelineFromEditor(value) {
+  return String(value || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 6)
+    .flatMap((line) => {
+      const match = line.match(/^(\d+(?:\.\d+)?)\s*\|\s*(action|camera|cut)\s*\|\s*(.+)$/i);
+      return match ? [{
+        timeSeconds: Number(match[1]),
+        kind: match[2].toLowerCase(),
+        description: match[3].trim(),
+      }] : [];
+    });
+}
+
 function renderSmartRecent() {
   const section = $('#smartRecent');
   const list = $('#smartRecentList');
@@ -4485,9 +4534,13 @@ function smartSceneMarkup(plan) {
       <p>${escapeHtml(scene.description)}</p>
       <dl>
         <div><dt>Camera</dt><dd>${escapeHtml(scene.camera || '')}</dd></div>
+        <div><dt>Spatial</dt><dd>${escapeHtml(scene.spatialComposition || '')}</dd></div>
         <div><dt>Cut</dt><dd>${escapeHtml(scene.transition || '')}</dd></div>
+        ${scene.timelineBeats?.length ? `<div><dt>Timed beats</dt><dd>${escapeHtml(scene.timelineBeats.map((beat) => `${Number(beat.timeSeconds)}s ${beat.kind}: ${beat.description}`).join(' · '))}</dd></div>` : ''}
         <div><dt>Continuity</dt><dd>${escapeHtml(scene.continuity || '')}</dd></div>
         <div><dt>Audio</dt><dd>${escapeHtml(scene.audio || '')}</dd></div>
+        ${scene.music ? `<div><dt>Music</dt><dd>${escapeHtml(scene.music)}</dd></div>` : ''}
+        ${scene.dialogue?.length ? `<div><dt>Dialogue</dt><dd>${escapeHtml(scene.dialogue.map((entry) => `${Number(entry.timeSeconds) > 0 ? `${Number(entry.timeSeconds)}s ` : ''}${entry.speaker}: “${entry.line}”`).join(' · '))}</dd></div>` : ''}
       </dl>
     </article>`).join('')}</div>`;
 }
@@ -4521,13 +4574,17 @@ function smartPlanEditorMarkup(plan) {
         <label>Seconds<input data-smart-scene-field="durationSeconds" type="number" min="1" max="10" step="0.5" value="${escapeHtml(Number(scene.durationSeconds) || 1)}" /></label>
       </div>
       <label>Visible action<textarea data-smart-scene-field="description" rows="3" maxlength="1600">${escapeHtml(scene.description || '')}</textarea></label>
+      <label>Spatial composition<textarea data-smart-scene-field="spatialComposition" rows="2" maxlength="800">${escapeHtml(scene.spatialComposition || '')}</textarea></label>
       <div class="smart-editor-grid">
         <label>Shot size & angle<input data-smart-scene-field="shot" maxlength="600" value="${escapeHtml(scene.shot || '')}" /></label>
         <label>Camera movement<input data-smart-scene-field="camera" maxlength="600" value="${escapeHtml(scene.camera || '')}" /></label>
         <label>Transition / cut<input data-smart-scene-field="transition" maxlength="400" value="${escapeHtml(scene.transition || '')}" /></label>
         <label>Audio<input data-smart-scene-field="audio" maxlength="600" value="${escapeHtml(scene.audio || '')}" /></label>
+        <label>Audience-only music<input data-smart-scene-field="music" maxlength="600" value="${escapeHtml(scene.music || '')}" placeholder="Defaults to N/A; add only when requested" /></label>
       </div>
       <label>Continuity<textarea data-smart-scene-field="continuity" rows="2" maxlength="800">${escapeHtml(scene.continuity || '')}</textarea></label>
+      <label>Timed actions, camera moves & cuts <small>One per line: 2 | cut | a front close-up of Maya</small><textarea data-smart-scene-field="timelineBeats" rows="3" maxlength="4000" placeholder="4.5 | action | Maya turns toward the tunnel\n7 | camera | slowly arcs clockwise behind Maya">${escapeHtml(smartTimelineEditorText(scene.timelineBeats))}</textarea></label>
+      <label>Dialogue <small>Optional local time: 2.5 | Maya [reference; English; whispers]: Exact words</small><textarea data-smart-scene-field="dialogue" rows="2" maxlength="4000" placeholder="Leave empty unless the original brief supplies dialogue">${escapeHtml(smartDialogueEditorText(scene.dialogue))}</textarea></label>
       <label class="smart-reference-switch"><input data-smart-scene-field="usesSubjectReference" type="checkbox" ${smartSceneUsesReference(plan, scene) ? 'checked' : ''} ${plan.subject.needsReference ? '' : 'disabled'} /> Attach the canonical subject reference to this clip</label>
       ${plan.subject.needsReference ? `<label>Reference state<select data-smart-scene-field="referenceStateId">${stateOptions}</select></label>` : ''}
     </article>`;
@@ -4668,8 +4725,12 @@ function captureSmartPlanEditor() {
         shot: value('shot', ''),
         camera: value('camera', ''),
         transition: value('transition', ''),
+        spatialComposition: value('spatialComposition', ''),
         continuity: value('continuity', ''),
         audio: value('audio', ''),
+        music: value('music', ''),
+        timelineBeats: smartTimelineFromEditor(value('timelineBeats', '')),
+        dialogue: smartDialogueFromEditor(value('dialogue', '')),
         usesSubjectReference: next.subject.needsReference === true && referenceToggle?.checked === true,
         referenceStateId: next.subject.needsReference === true && referenceToggle?.checked === true
           ? value('referenceStateId', next.subject.referenceStates?.[0]?.id || 'default') : '',
@@ -4712,8 +4773,12 @@ function mutateSmartPlanClips(action, index) {
       shot: 'Purposeful contrasting shot size and angle',
       camera: 'Controlled camera movement motivated by the action',
       transition: 'Hard cut on action or a visual match',
-      continuity: previous?.continuity || 'Preserve screen direction, location, lighting, and spatial logic',
+      spatialComposition: previous?.spatialComposition || 'Readable foreground, midground, and background separation with one uncluttered focal plane',
+      continuity: previous?.continuity || 'The location geometry, palette, screen direction, key-light direction, and spatial layout remain stable for the full shot',
       audio: previous?.audio || 'Natural environmental sound',
+      music: previous?.music || '',
+      timelineBeats: [],
+      dialogue: [],
       usesSubjectReference: smartPlan.subject.needsReference === true && previous?.usesSubjectReference === true,
       referenceStateId: previous?.usesSubjectReference
         ? (previous.referenceStateId || smartReferenceStates(smartPlan)[0].id) : '',
