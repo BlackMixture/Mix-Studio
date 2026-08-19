@@ -12592,15 +12592,11 @@ body.sheet-open {
 .external-llm-secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
 .external-llm-secret-row .settings-cache-clear { min-width: 54px; margin-top: 0; }
 .external-llm-field-note { display: block; margin: 7px 1px 0; color: var(--muted-2); font-size: 9.5px; font-weight: 650; line-height: 1.45; }
-.external-llm-routing { margin-top: 16px; }
-.external-llm-routing h6 {
-  margin: 0 0 5px;
-  color: var(--muted-2);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
+.prompt-ai-routing-note { margin: 13px 1px 0; display: flex; align-items: center; gap: 9px; }
+.prompt-ai-routing-note > i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #63e6be; box-shadow: 0 0 10px rgba(99,230,190,.28); }
+.prompt-ai-routing-note > span { min-width: 0; display: grid; gap: 2px; }
+.prompt-ai-routing-note strong { color: var(--ink); font-size: 10px; font-weight: 850; }
+.prompt-ai-routing-note small { color: var(--muted-2); font-size: 9.5px; font-weight: 650; line-height: 1.4; }
 .external-llm-privacy { margin: 12px 1px 0; color: var(--muted-2); font-size: 10.5px; font-weight: 650; line-height: 1.45; }
 .external-llm-test-row { margin-top: 11px; display: flex; align-items: center; gap: 10px; }
 .external-llm-test-row .settings-cache-clear { flex: 0 0 auto; margin-top: 0; }

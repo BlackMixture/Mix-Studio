@@ -2927,11 +2927,11 @@
           <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-external">
             <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Prompt AI</strong><small id="externalPromptAiSummary">Local · ComfyUI</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-preference-body external-llm-settings" id="externalLlmSettings">
-              <p class="settings-default-note">Smart planning always uses this AI. The optional routing switches below can use it for existing prompt tools too.</p>
+              <p class="settings-default-note">Choose once for all prompt assistance. Smart planning, Revise Prompt, and Prompt Enhance automatically use this AI across Image and Video.</p>
               <div class="prompt-ai-location">
                 <div class="prompt-ai-location-copy">
                   <strong id="promptAiModeLabel">Where should AI run?</strong>
-                  <small id="promptAiModeDescription">Local keeps planning on your generation machine.</small>
+                  <small id="promptAiModeDescription">Local keeps prompt assistance on your generation machine.</small>
                 </div>
                 <button class="prompt-ai-mode-switch" id="promptAiModeSwitch" type="button" role="switch" aria-checked="false" aria-labelledby="promptAiModeLabel" aria-describedby="promptAiModeDescription">
                   <span data-prompt-ai-mode-label="local">Local</span>
@@ -3024,26 +3024,8 @@
                   <small class="external-llm-field-note">Smart voice transcription uses OpenAI even when another planner is selected. Leave blank if voice input is not needed.</small>
                 </div>
               </details>
-              <div class="external-llm-routing">
-                <h6>Use selected planner for</h6>
-                <button class="settings-media-toggle" id="externalLlmImageRevise" type="button" role="switch" aria-checked="false">
-                  <span class="settings-media-toggle-copy"><strong>Image · Revise Prompt</strong><small>Rewrite image prompts with the selected planner.</small></span>
-                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-                </button>
-                <button class="settings-media-toggle" id="externalLlmImageEnhance" type="button" role="switch" aria-checked="false">
-                  <span class="settings-media-toggle-copy"><strong>Image · Prompt Enhance</strong><small>Enhance global and regional image prompts with the selected planner.</small></span>
-                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-                </button>
-                <button class="settings-media-toggle" id="externalLlmVideoRevise" type="button" role="switch" aria-checked="false">
-                  <span class="settings-media-toggle-copy"><strong>Video · Revise Prompt</strong><small>Rewrite video prompts with the selected provider.</small></span>
-                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-                </button>
-                <button class="settings-media-toggle" id="externalLlmVideoEnhance" type="button" role="switch" aria-checked="false">
-                  <span class="settings-media-toggle-copy"><strong>Video · Prompt Enhance</strong><small>Use the provider before building H3, LTX, Wan, Eros, and SCAIL graphs.</small></span>
-                  <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-                </button>
-              </div>
-              <p class="external-llm-privacy">Smart briefs and attached references are sent only to the chosen planner. Local ComfyUI stays inside the generation machine; Ollama remains local when its URL points to that machine.</p>
+              <p class="prompt-ai-routing-note"><i aria-hidden="true"></i><span><strong>Applied everywhere</strong><small>Smart planning · Image prompts · Video prompts</small></span></p>
+              <p class="external-llm-privacy">When External is selected, prompts and relevant attached references are sent only to the chosen provider. Local ComfyUI stays inside the generation machine; Ollama remains local when its URL points to that machine.</p>
               <div class="external-llm-test-row">
                 <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
                 <span id="externalLlmStatus" role="status" aria-live="polite"></span>

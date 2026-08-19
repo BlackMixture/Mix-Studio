@@ -62,9 +62,12 @@ test('shared external prompt AI preferences autosave without exposing API keys',
   for (const id of [
     'promptAiModeSwitch', 'setExternalLlmProvider', 'setExternalLlmLocalProvider',
     'setExternalLlmExternalProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmGeminiApiKey',
-    'setExternalLlmOllamaUrl', 'externalLlmImageRevise', 'externalLlmImageEnhance',
-    'externalLlmVideoRevise', 'externalLlmVideoEnhance', 'testExternalLlm',
+    'setExternalLlmOllamaUrl', 'testExternalLlm',
   ]) assert.match(html, new RegExp(`id="${id}"`));
+  for (const id of ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']) {
+    assert.doesNotMatch(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(html, /Revise Prompt, and Prompt Enhance automatically use this AI/);
   assert.match(app, /externalLlmProvider: \$\('#setExternalLlmProvider'\)\.value/);
   assert.match(app, /externalLlmLocalProvider: \$\('#setExternalLlmLocalProvider'\)\.value/);
   assert.match(app, /externalLlmExternalProvider: \$\('#setExternalLlmExternalProvider'\)\.value/);

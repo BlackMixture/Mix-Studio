@@ -574,10 +574,10 @@ const DEFAULT_SETTINGS = {
   externalLlmGeminiModel: EXTERNAL_LLM_DEFAULTS.externalLlmGeminiModel,
   externalLlmOllamaUrl: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaUrl,
   externalLlmOllamaModel: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaModel,
-  externalLlmImageRevise: false,
-  externalLlmImageEnhance: false,
-  externalLlmVideoRevise: false,
-  externalLlmVideoEnhance: false,
+  externalLlmImageRevise: true,
+  externalLlmImageEnhance: true,
+  externalLlmVideoRevise: true,
+  externalLlmVideoEnhance: true,
   localPromptAiClip: '',
   localPromptAiClipType: 'krea2',
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
@@ -3474,7 +3474,7 @@ function h3PromptPartsWithVisionOrder(parts, options = {}, layout = 'attachments
   return Object.assign({}, parts, { instruction: `${parts.instruction}\n\n${note}` });
 }
 
-async function runConfiguredExternalPrompt(parts, maxTokens, options = {}) {
+async function runConfiguredPromptAi(parts, maxTokens, options = {}) {
   const provider = configuredExternalLlm();
   const imageNames = orderedPromptImageNames(options);
   parts = h3PromptPartsWithVisionOrder(parts, options, 'attachments');
@@ -3507,7 +3507,7 @@ async function runConfiguredExternalPrompt(parts, maxTokens, options = {}) {
   });
 }
 
-function shouldUseExternalPrompt(domain, action) {
+function shouldUseConfiguredPromptAi(domain, action) {
   return externalLlmEnabled(settings, domain, action);
 }
 
@@ -3656,12 +3656,12 @@ async function appendPromptVisionImages(graph, options = {}) {
 /** Vision pass: Qwen3-VL looks at the image and suggests a motion prompt. */
 function suggestMotionPrompt(comfyImageName, seed, profileId, userPrompt = '', options = {}) {
   const imageNames = orderedPromptImageNames(Object.assign({ imageName: comfyImageName }, options));
-  if (shouldUseExternalPrompt('video', 'enhance')) {
+  if (shouldUseConfiguredPromptAi('video', 'enhance')) {
     const parts = appendH3ValidationFeedback(
       motionPromptEnhanceParts(userPrompt, options),
       String(options.engine || '').toLowerCase() === 'h3' ? options.validationFeedback : '',
     );
-    return runConfiguredExternalPrompt(parts, String(options.engine || '').toLowerCase() === 'h3' ? h3PromptMaxTokens(options.mode) : 384, Object.assign({}, options, {
+    return runConfiguredPromptAi(parts, String(options.engine || '').toLowerCase() === 'h3' ? h3PromptMaxTokens(options.mode) : 384, Object.assign({}, options, {
       action: 'enhance',
       imageName: comfyImageName,
       imageNames,
@@ -3864,8 +3864,8 @@ async function requestSmartPlan(provider, prompt, references, profileId) {
 
 function enhancePrompt(p, profileId) {
   const parts = promptEnhanceParts(settings.systemPrompt, p.prompt);
-  if (shouldUseExternalPrompt('image', 'enhance')) {
-    return runConfiguredExternalPrompt(parts, 512, { action: 'enhance', profileId });
+  if (shouldUseConfiguredPromptAi('image', 'enhance')) {
+    return runConfiguredPromptAi(parts, 512, { action: 'enhance', profileId });
   }
   return queueTextEnhancement(
     parts,
@@ -3879,8 +3879,8 @@ function enhancePrompt(p, profileId) {
 function reviseImagePrompt(currentPrompt, changeRequest, seed, options = {}) {
   const parts = imagePromptRevisionParts(currentPrompt, changeRequest, { hasImage: !!options.imageName });
   parts.userInput += ENHANCE_TAIL;
-  if (shouldUseExternalPrompt('image', 'revise')) {
-    return runConfiguredExternalPrompt(parts, 384, Object.assign({ action: 'revise' }, options));
+  if (shouldUseConfiguredPromptAi('image', 'revise')) {
+    return runConfiguredPromptAi(parts, 384, Object.assign({ action: 'revise' }, options));
   }
   return queueTextEnhancement(
     parts,
@@ -3904,8 +3904,8 @@ function reviseVideoPrompt(currentPrompt, changeRequest, seed, options = {}) {
   }), options.engine === 'h3' ? options.validationFeedback : '');
   if (options.engine === 'h3') parts = h3PromptPartsWithAllowedReferences(parts, options);
   parts.userInput += ENHANCE_TAIL;
-  if (shouldUseExternalPrompt('video', 'revise')) {
-    return runConfiguredExternalPrompt(parts, options.engine === 'h3' ? h3PromptMaxTokens(options.mode) : 384, Object.assign({ action: 'revise' }, options));
+  if (shouldUseConfiguredPromptAi('video', 'revise')) {
+    return runConfiguredPromptAi(parts, options.engine === 'h3' ? h3PromptMaxTokens(options.mode) : 384, Object.assign({ action: 'revise' }, options));
   }
   return queueTextEnhancement(
     parts,
@@ -3928,8 +3928,8 @@ function enhanceH3Prompt(userPrompt, seed, options = {}) {
     hasEndImage: h3Options.hasLastFrame === true,
   }), h3Options.validationFeedback);
   parts = h3PromptPartsWithAllowedReferences(parts, h3Options);
-  if (shouldUseExternalPrompt('video', 'enhance')) {
-    return runConfiguredExternalPrompt(parts, h3PromptMaxTokens(h3Options.mode), Object.assign({ action: 'enhance' }, h3Options));
+  if (shouldUseConfiguredPromptAi('video', 'enhance')) {
+    return runConfiguredPromptAi(parts, h3PromptMaxTokens(h3Options.mode), Object.assign({ action: 'enhance' }, h3Options));
   }
   return queueTextEnhancement(
     parts,
@@ -3978,8 +3978,8 @@ function enhanceRegionPrompt(description, globalPrompt, seed, options = {}) {
   const parts = regionPromptEnhanceParts(settings.systemPrompt, globalPrompt, description, {
     hasReference: !!options.imageName,
   });
-  if (shouldUseExternalPrompt('image', 'enhance')) {
-    return runConfiguredExternalPrompt(parts, 384, Object.assign({ action: 'enhance' }, options));
+  if (shouldUseConfiguredPromptAi('image', 'enhance')) {
+    return runConfiguredPromptAi(parts, 384, Object.assign({ action: 'enhance' }, options));
   }
   return queueTextEnhancement(
     parts,
@@ -3994,8 +3994,8 @@ function enhanceRegionPrompt(description, globalPrompt, seed, options = {}) {
 function wanEnhance(comfyImageName, userPrompt, seed, profileId) {
   const instruction = "Look at the provided image. Rewrite the user's motion idea into one vivid video-generation prompt paragraph (under 90 words) for an image-to-video model: describe subject actions, secondary motion, camera behavior and atmosphere, staying faithful to what is actually in the image and to the user's intent. Use present-progressive verbs.";
   const promptInput = `User's motion idea: ${userPrompt}`;
-  if (shouldUseExternalPrompt('video', 'enhance')) {
-    return runConfiguredExternalPrompt({ instruction, userInput: promptInput + ENHANCE_TAIL }, 384, {
+  if (shouldUseConfiguredPromptAi('video', 'enhance')) {
+    return runConfiguredPromptAi({ instruction, userInput: promptInput + ENHANCE_TAIL }, 384, {
       action: 'enhance', imageName: comfyImageName, profileId,
     });
   }
@@ -9457,7 +9457,7 @@ async function handleApi(req, res, url) {
     let prompt = motionPrompt;
     let refinedMotionPrompt = null;
     const frameAwareEnhance = !bypass && !faceImageName && !isLtxEdit && engine !== 'h3';
-    if (engine !== 'h3' && shouldUseExternalPrompt('video', 'enhance') && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
+    if (engine !== 'h3' && shouldUseConfiguredPromptAi('video', 'enhance') && enhance && suppliedMotionPrompt && !autoGeneratedMotion) {
       const externalImageNames = [faceImageName || (!bypass ? comfyName : undefined)].filter(Boolean);
       const externalImageName = externalImageNames[0];
       const parts = videoPromptEnhanceParts(motionPrompt, {
@@ -9466,7 +9466,7 @@ async function handleApi(req, res, url) {
         mode: h3GraphMode,
         hasImage: !!externalImageName,
       });
-      const raw = await runConfiguredExternalPrompt(parts, 384, {
+      const raw = await runConfiguredPromptAi(parts, 384, {
         action: 'enhance',
         imageName: externalImageName,
         imageNames: externalImageNames,

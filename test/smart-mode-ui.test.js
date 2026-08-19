@@ -102,6 +102,7 @@ test('Smart exposes planner configuration and reusable image references', () => 
   assert.match(html, /value="local">ComfyUI/);
   assert.match(html, /Vision-capable Qwen3-VL models are recommended/);
   assert.match(html, /Smart voice transcription uses OpenAI/);
+  assert.match(html, /Applied everywhere[\s\S]*Smart planning · Image prompts · Video prompts/);
   assert.match(app, /openAssetPicker\('image\/\*', addSmartReferences, 'Add Smart references'/);
   assert.match(app, /references: smartReferencePayload\(\)/);
   assert.match(app, /setSettingsTab\('suggestions'\)[\s\S]*prompting-external/);

@@ -26,14 +26,14 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-test('external LLM settings normalize providers, models, URLs, and independent routes', () => {
+test('prompt AI settings normalize providers and always route every prompt tool', () => {
   const settings = normalizeExternalLlmSettings({
     externalLlmProvider: 'ollama',
     externalLlmExternalProvider: 'gemini',
     externalLlmOllamaUrl: 'http://127.0.0.1:11434/',
     externalLlmOllamaModel: 'qwen3-vl',
-    externalLlmImageRevise: true,
-    externalLlmVideoEnhance: true,
+    externalLlmImageRevise: false,
+    externalLlmVideoEnhance: false,
   });
   assert.equal(settings.externalLlmProvider, 'ollama');
   assert.equal(settings.externalLlmLocalProvider, 'ollama');
@@ -41,8 +41,10 @@ test('external LLM settings normalize providers, models, URLs, and independent r
   assert.equal(settings.externalLlmOllamaUrl, 'http://127.0.0.1:11434');
   assert.equal(settings.externalLlmOllamaModel, 'qwen3-vl');
   assert.equal(externalLlmEnabled(settings, 'image', 'revise'), true);
-  assert.equal(externalLlmEnabled(settings, 'image', 'enhance'), false);
+  assert.equal(externalLlmEnabled(settings, 'image', 'enhance'), true);
   assert.equal(externalLlmEnabled(settings, 'video', 'enhance'), true);
+  assert.equal(settings.externalLlmImageRevise, true);
+  assert.equal(settings.externalLlmVideoEnhance, true);
 });
 
 test('prompt AI remembers one provider for each Local and External mode', () => {
@@ -383,13 +385,13 @@ test('Gemini does not retry credential failures as schema fallbacks', async () =
   assert.equal(calls, 1);
 });
 
-test('server routes independent image and video revise/enhance paths through the shared provider', () => {
-  assert.match(serverSource, /function enhancePrompt\([\s\S]*shouldUseExternalPrompt\('image', 'enhance'\)/);
-  assert.match(serverSource, /function reviseImagePrompt\([\s\S]*shouldUseExternalPrompt\('image', 'revise'\)/);
-  assert.match(serverSource, /function reviseVideoPrompt\([\s\S]*shouldUseExternalPrompt\('video', 'revise'\)/);
-  assert.match(serverSource, /function enhanceRegionPrompt\([\s\S]*shouldUseExternalPrompt\('image', 'enhance'\)/);
-  assert.match(serverSource, /function suggestMotionPrompt\([\s\S]*shouldUseExternalPrompt\('video', 'enhance'\)/);
-  assert.match(serverSource, /shouldUseExternalPrompt\('video', 'enhance'\) && enhance && suppliedMotionPrompt/);
+test('server routes every image and video prompt tool through the selected Prompt AI', () => {
+  assert.match(serverSource, /function enhancePrompt\([\s\S]*shouldUseConfiguredPromptAi\('image', 'enhance'\)/);
+  assert.match(serverSource, /function reviseImagePrompt\([\s\S]*shouldUseConfiguredPromptAi\('image', 'revise'\)/);
+  assert.match(serverSource, /function reviseVideoPrompt\([\s\S]*shouldUseConfiguredPromptAi\('video', 'revise'\)/);
+  assert.match(serverSource, /function enhanceRegionPrompt\([\s\S]*shouldUseConfiguredPromptAi\('image', 'enhance'\)/);
+  assert.match(serverSource, /function suggestMotionPrompt\([\s\S]*shouldUseConfiguredPromptAi\('video', 'enhance'\)/);
+  assert.match(serverSource, /shouldUseConfiguredPromptAi\('video', 'enhance'\) && enhance && suppliedMotionPrompt/);
   assert.match(serverSource, /videoPromptEnhanceParts\(motionPrompt/);
   assert.match(serverSource, /route === '\/api\/prompt\/provider\/test'/);
 });
@@ -403,8 +405,8 @@ test('server preserves ordered H3 first and last frames for external and local p
   assert.match(serverSource, /left panel is Picture 1, the first frame at 0\.00 seconds/);
   assert.match(serverSource, /right panel is Picture 2, the last frame at the effective duration/);
   const externalBlock = serverSource.slice(
-    serverSource.indexOf('async function runConfiguredExternalPrompt'),
-    serverSource.indexOf('function shouldUseExternalPrompt'),
+    serverSource.indexOf('async function runConfiguredPromptAi'),
+    serverSource.indexOf('function shouldUseConfiguredPromptAi'),
   );
   assert.match(externalBlock, /const imageNames = orderedPromptImageNames\(options\)/);
   assert.match(externalBlock, /h3PromptPartsWithVisionOrder\(parts, options, 'attachments'\)/);
