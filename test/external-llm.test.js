@@ -29,17 +29,38 @@ function jsonResponse(payload, status = 200) {
 test('external LLM settings normalize providers, models, URLs, and independent routes', () => {
   const settings = normalizeExternalLlmSettings({
     externalLlmProvider: 'ollama',
+    externalLlmExternalProvider: 'gemini',
     externalLlmOllamaUrl: 'http://127.0.0.1:11434/',
     externalLlmOllamaModel: 'qwen3-vl',
     externalLlmImageRevise: true,
     externalLlmVideoEnhance: true,
   });
   assert.equal(settings.externalLlmProvider, 'ollama');
+  assert.equal(settings.externalLlmLocalProvider, 'ollama');
+  assert.equal(settings.externalLlmExternalProvider, 'gemini');
   assert.equal(settings.externalLlmOllamaUrl, 'http://127.0.0.1:11434');
   assert.equal(settings.externalLlmOllamaModel, 'qwen3-vl');
   assert.equal(externalLlmEnabled(settings, 'image', 'revise'), true);
   assert.equal(externalLlmEnabled(settings, 'image', 'enhance'), false);
   assert.equal(externalLlmEnabled(settings, 'video', 'enhance'), true);
+});
+
+test('prompt AI remembers one provider for each Local and External mode', () => {
+  const local = normalizeExternalLlmSettings({
+    externalLlmProvider: 'local',
+    externalLlmLocalProvider: 'ollama',
+    externalLlmExternalProvider: 'gemini',
+  });
+  assert.equal(local.externalLlmLocalProvider, 'local');
+  assert.equal(local.externalLlmExternalProvider, 'gemini');
+
+  const external = normalizeExternalLlmSettings({
+    externalLlmProvider: 'gemini',
+    externalLlmLocalProvider: 'ollama',
+    externalLlmExternalProvider: 'openai',
+  });
+  assert.equal(external.externalLlmLocalProvider, 'ollama');
+  assert.equal(external.externalLlmExternalProvider, 'gemini');
 });
 
 test('Ollama URL handling accepts HTTP endpoints without embedded credentials', () => {
@@ -58,6 +79,20 @@ test('provider config selects the active model and keeps keys server-side', () =
   });
   assert.deepEqual(config, {
     provider: 'gemini', label: 'Gemini', model: 'gemini-test', apiKey: 'secret-key',
+  });
+});
+
+test('provider config can route Smart planning through the configured local ComfyUI model', () => {
+  const config = externalLlmProviderConfig({
+    externalLlmProvider: 'local',
+    localPromptAiClip: 'prompt\\qwen3-vl-8b.safetensors',
+    localPromptAiClipType: 'qwen_image',
+    clip: 'generation-model.safetensors',
+    clipType: 'krea2',
+  });
+  assert.deepEqual(config, {
+    provider: 'local', label: 'Local ComfyUI',
+    model: 'prompt\\qwen3-vl-8b.safetensors', type: 'qwen_image', apiKey: '',
   });
 });
 
@@ -207,6 +242,18 @@ test('external adapters report missing credentials and provider errors clearly',
 
 test('output extraction supports nested OpenAI response content', () => {
   assert.equal(outputText({ output: [{ content: [{ type: 'output_text', text: 'Finished prompt' }] }] }), 'Finished prompt');
+});
+
+test('structured parsing recovers one JSON object from local-model commentary', async () => {
+  const result = await externalLlmStructuredRequest({
+    provider: 'ollama', model: 'local-test', baseUrl: 'http://127.0.0.1:11434',
+    instruction: 'Plan.', userInput: 'A film.',
+    schema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+    fetchImpl: async () => jsonResponse({
+      message: { content: 'Here is the plan:\n{"title":"Recovered local plan"}\nDone.' },
+    }),
+  });
+  assert.deepEqual(result, { title: 'Recovered local plan' });
 });
 
 test('structured requests use each provider native JSON schema mode and parse the result', async () => {

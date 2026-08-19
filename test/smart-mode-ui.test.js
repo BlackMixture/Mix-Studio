@@ -97,13 +97,16 @@ test('Smart exposes planner configuration and reusable image references', () => 
   for (const id of ['smartConfigureAi', 'smartAddReference', 'smartReferenceList']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(html, /Smart Planner Provider/);
-  assert.match(html, /Choose Ollama to keep planning local/);
-  assert.match(html, /Used for OpenAI planning and Smart voice transcription/);
+  assert.match(html, /<strong>Prompt AI<\/strong>/);
+  assert.match(html, /id="promptAiModeSwitch"[^>]*role="switch"/);
+  assert.match(html, /value="local">ComfyUI/);
+  assert.match(html, /Vision-capable Qwen3-VL models are recommended/);
+  assert.match(html, /Smart voice transcription uses OpenAI/);
   assert.match(app, /openAssetPicker\('image\/\*', addSmartReferences, 'Add Smart references'/);
   assert.match(app, /references: smartReferencePayload\(\)/);
   assert.match(app, /setSettingsTab\('suggestions'\)[\s\S]*prompting-external/);
-  assert.match(server, /images = await Promise\.all\(references\.map[\s\S]*externalLlmStructuredRequest\([\s\S]*images,/);
+  assert.match(server, /function requestSmartPlan\([\s\S]*provider\.provider === 'local'[\s\S]*queueTextEnhancement\([\s\S]*SMART_PLAN_SCHEMA/);
+  assert.match(server, /requestSmartPlan\(provider, prompt, references, req\.profile\.id\)/);
   assert.match(server, /compileSmartSteps\(plan, \{\}, references\)/);
   assert.match(server, /route === '\/api\/smart\/plan\/review'/);
   assert.match(server, /body\.approved !== true/);

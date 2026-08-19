@@ -146,6 +146,7 @@ const {
   externalLlmStructuredRequest,
   normalizeExternalLlmSettings,
   normalizeOllamaUrl,
+  parseStructuredText,
 } = require('./lib/external-llm');
 const {
   SMART_PLAN_SCHEMA,
@@ -565,6 +566,8 @@ const DEFAULT_SETTINGS = {
   wanAnimate2Vae: 'Wan2_1_VAE_bf16.safetensors',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   externalLlmProvider: EXTERNAL_LLM_DEFAULTS.externalLlmProvider,
+  externalLlmLocalProvider: EXTERNAL_LLM_DEFAULTS.externalLlmLocalProvider,
+  externalLlmExternalProvider: EXTERNAL_LLM_DEFAULTS.externalLlmExternalProvider,
   externalLlmOpenAiApiKey: '',
   externalLlmOpenAiModel: EXTERNAL_LLM_DEFAULTS.externalLlmOpenAiModel,
   externalLlmGeminiApiKey: '',
@@ -3475,6 +3478,15 @@ async function runConfiguredExternalPrompt(parts, maxTokens, options = {}) {
   const provider = configuredExternalLlm();
   const imageNames = orderedPromptImageNames(options);
   parts = h3PromptPartsWithVisionOrder(parts, options, 'attachments');
+  if (provider.provider === 'local') {
+    return queueTextEnhancement(
+      parts,
+      Math.floor(Math.random() * 2 ** 31),
+      options.statusText === false ? '' : (options.statusText || externalPromptStatus(options.action, provider)),
+      maxTokens,
+      Object.assign({}, options, { imageNames, profileId: options.profileId }),
+    );
+  }
   const images = await Promise.all(imageNames.map((name) => externalPromptImage(name, options.profileId)));
   if (options.statusText !== false) {
     broadcast('status', {
@@ -3816,6 +3828,37 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
         });
       }
     })().catch(reject);
+  });
+}
+
+async function requestSmartPlan(provider, prompt, references, profileId) {
+  if (provider.provider === 'local') {
+    const raw = await queueTextEnhancement({
+      instruction: [
+        prompt.instruction,
+        'Return only one valid JSON object with the exact property names and value types in this schema. Do not use Markdown, XML, commentary, or a code fence.',
+        JSON.stringify(SMART_PLAN_SCHEMA),
+      ].join('\n\n'),
+      userInput: prompt.userInput,
+    }, Math.floor(Math.random() * 2 ** 31), 'Building Smart plan with the local model...', 6144, {
+      profileId,
+      imageNames: references.map((reference) => reference.name),
+      broadcastStatus: false,
+    });
+    return parseStructuredText(raw, provider.label);
+  }
+  const images = await Promise.all(references.map((reference) => externalPromptImage(reference.name, profileId)));
+  return externalLlmStructuredRequest({
+    provider: provider.provider,
+    model: provider.model,
+    apiKey: provider.apiKey,
+    baseUrl: provider.baseUrl,
+    instruction: prompt.instruction,
+    userInput: prompt.userInput,
+    images,
+    schema: SMART_PLAN_SCHEMA,
+    schemaName: 'mix_studio_smart_plan',
+    maxTokens: 8192,
   });
 }
 
@@ -6846,19 +6889,7 @@ async function handleApi(req, res, url) {
     const provider = configuredExternalLlm();
     const prompt = smartPlanningPrompt(brief, { referenceCount: references.length });
     try {
-      const images = await Promise.all(references.map((reference) => externalPromptImage(reference.name, req.profile.id)));
-      const rawPlan = await externalLlmStructuredRequest({
-        provider: provider.provider,
-        model: provider.model,
-        apiKey: provider.apiKey,
-        baseUrl: provider.baseUrl,
-        instruction: prompt.instruction,
-        userInput: prompt.userInput,
-        images,
-        schema: SMART_PLAN_SCHEMA,
-        schemaName: 'mix_studio_smart_plan',
-        maxTokens: 8192,
-      });
+      const rawPlan = await requestSmartPlan(provider, prompt, references, req.profile.id);
       const plan = normalizeSmartPlan(rawPlan, brief);
       if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
       return json(res, 200, {
@@ -7558,7 +7589,7 @@ async function handleApi(req, res, url) {
     const changesExternalLlm = body.clearExternalLlmOpenAiApiKey === true
       || body.clearExternalLlmGeminiApiKey === true
       || ['externalLlmOpenAiApiKey', 'externalLlmGeminiApiKey'].some((key) => typeof body[key] === 'string' && body[key].trim())
-      || ['externalLlmProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel']
+      || ['externalLlmProvider', 'externalLlmLocalProvider', 'externalLlmExternalProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel']
         .some((key) => typeof body[key] === 'string' && body[key].trim() && body[key].trim() !== String(settings[key] || ''))
       || ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
         .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
@@ -10343,17 +10374,25 @@ async function handleApi(req, res, url) {
   }
 
   if (route === '/api/prompt/provider/test' && req.method === 'POST') {
-    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can test the shared external prompt provider' });
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can test the shared prompt planner' });
     const provider = configuredExternalLlm();
-    const text = await externalLlmRequest({
-      provider: provider.provider,
-      model: provider.model,
-      apiKey: provider.apiKey,
-      baseUrl: provider.baseUrl,
+    const parts = {
       instruction: 'You are checking a prompt-writing connection. Follow the user request exactly.',
       userInput: 'Reply with exactly: Connection ready',
-      maxTokens: 64,
-    });
+    };
+    const text = provider.provider === 'local'
+      ? await queueTextEnhancement(parts, Math.floor(Math.random() * 2 ** 31), '', 64, {
+        profileId: req.profile.id, broadcastStatus: false,
+      })
+      : await externalLlmRequest({
+        provider: provider.provider,
+        model: provider.model,
+        apiKey: provider.apiKey,
+        baseUrl: provider.baseUrl,
+        instruction: parts.instruction,
+        userInput: parts.userInput,
+        maxTokens: 64,
+      });
     return json(res, 200, {
       ok: true,
       provider: provider.provider,

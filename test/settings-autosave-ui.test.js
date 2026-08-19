@@ -60,11 +60,14 @@ test('only a changed ComfyUI URL currently requests a Mix Studio restart', () =>
 
 test('shared external prompt AI preferences autosave without exposing API keys', () => {
   for (const id of [
-    'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmGeminiApiKey',
+    'promptAiModeSwitch', 'setExternalLlmProvider', 'setExternalLlmLocalProvider',
+    'setExternalLlmExternalProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmGeminiApiKey',
     'setExternalLlmOllamaUrl', 'externalLlmImageRevise', 'externalLlmImageEnhance',
     'externalLlmVideoRevise', 'externalLlmVideoEnhance', 'testExternalLlm',
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(app, /externalLlmProvider: \$\('#setExternalLlmProvider'\)\.value/);
+  assert.match(app, /externalLlmLocalProvider: \$\('#setExternalLlmLocalProvider'\)\.value/);
+  assert.match(app, /externalLlmExternalProvider: \$\('#setExternalLlmExternalProvider'\)\.value/);
   assert.match(app, /scheduleSettingsAutosave\('server', 0\)/);
   assert.match(app, /api\('\/api\/prompt\/provider\/test', \{ method: 'POST' \}\)/);
   assert.match(server, /Only the owner profile can change the shared prompt AI settings/);

@@ -537,7 +537,7 @@
               <label>Duration <span class="director-unit">frames</span><input id="directorRangeLength" type="number" min="1" max="480" step="1" /></label>
             </div>
           </div>
-        </details>
+          </details>
       </section>
     </div>
   </section>
@@ -2923,88 +2923,115 @@
         </section>
 
         <section class="settings-pane" id="settingsPaneSuggestions" role="tabpanel" aria-labelledby="settingsTabSuggestions" data-settings-pane="suggestions" data-settings-disclosure-group hidden>
-          <div class="settings-pane-head"><h4>Prompting</h4><p>Prompt models, external routing, LoRA suggestions, and enhancement instructions.</p></div>
-          <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-local">
-            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Local Prompt AI</strong><small id="localPromptAiSummary">ComfyUI prompt model</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
-            <div class="settings-preference-body local-prompt-ai-settings" id="localPromptAiSettings">
-              <p class="settings-default-note">Choose the ComfyUI text encoder used for local Revise Prompt and Prompt Enhance. Generation models remain unchanged.</p>
-              <div class="field">
-                <label for="setLocalPromptAiClip">Prompt model</label>
-                <select id="setLocalPromptAiClip" aria-describedby="localPromptAiHint">
-                  <option value="">Automatic · Krea 2 prompt model</option>
-                </select>
-              </div>
-              <div class="field" id="localPromptAiClipTypeField">
-                <label for="setLocalPromptAiClipType">Loader type</label>
-                <select id="setLocalPromptAiClipType">
-                  <option value="krea2">Krea 2 / Qwen3-VL</option>
-                </select>
-              </div>
-              <p class="local-prompt-ai-hint" id="localPromptAiHint">Vision-capable Qwen3-VL models are recommended for frame- and reference-aware prompts.</p>
-              <div class="local-prompt-ai-actions">
-                <button class="settings-cache-clear" id="refreshLocalPromptAiModels" type="button">Refresh models</button>
-                <button class="settings-cache-clear" id="testLocalPromptAiModel" type="button">Test model</button>
-                <span id="localPromptAiStatus" role="status" aria-live="polite">Loading installed models…</span>
-              </div>
-            </div>
-          </details>
+          <div class="settings-pane-head"><h4>Prompting</h4><p>Choose how prompt AI runs, then configure suggestions and enhancement instructions.</p></div>
           <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-external">
-            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Smart Planner Provider</strong><small id="externalPromptAiSummary">OpenAI, Gemini, or local Ollama</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Prompt AI</strong><small id="externalPromptAiSummary">Local · ComfyUI</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-preference-body external-llm-settings" id="externalLlmSettings">
-              <p class="settings-default-note">Smart mode always uses this provider for production planning. Choose Ollama to keep planning local, or connect OpenAI or Gemini with an API key. The optional switches below also route existing prompt tools through it.</p>
-              <div class="field">
-                <label for="setExternalLlmProvider">Provider</label>
-                <select id="setExternalLlmProvider">
-                  <option value="openai">OpenAI</option>
-                  <option value="gemini">Google Gemini</option>
-                  <option value="ollama">Ollama</option>
-                </select>
+              <p class="settings-default-note">Smart planning always uses this AI. The optional routing switches below can use it for existing prompt tools too.</p>
+              <div class="prompt-ai-location">
+                <div class="prompt-ai-location-copy">
+                  <strong id="promptAiModeLabel">Where should AI run?</strong>
+                  <small id="promptAiModeDescription">Local keeps planning on your generation machine.</small>
+                </div>
+                <button class="prompt-ai-mode-switch" id="promptAiModeSwitch" type="button" role="switch" aria-checked="false" aria-labelledby="promptAiModeLabel" aria-describedby="promptAiModeDescription">
+                  <span data-prompt-ai-mode-label="local">Local</span>
+                  <span class="prompt-ai-mode-track" aria-hidden="true"><i></i></span>
+                  <span data-prompt-ai-mode-label="external">External</span>
+                </button>
               </div>
-              <div class="external-llm-provider" data-external-llm-provider="openai">
+              <input id="setExternalLlmProvider" type="hidden" value="local" />
+
+              <div class="prompt-ai-mode-panel" data-prompt-ai-mode-panel="local">
                 <div class="field">
-                  <label for="setExternalLlmOpenAiModel">OpenAI model</label>
-                  <input id="setExternalLlmOpenAiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-5.6-luna" />
+                  <label for="setExternalLlmLocalProvider">Local source</label>
+                  <select id="setExternalLlmLocalProvider">
+                    <option value="local">ComfyUI</option>
+                    <option value="ollama">Ollama</option>
+                  </select>
+                </div>
+                <div class="external-llm-provider local-prompt-ai-settings" id="localPromptAiSettings" data-external-llm-provider="local">
+                  <div class="field">
+                    <label for="setLocalPromptAiClip">Prompt model</label>
+                    <select id="setLocalPromptAiClip" aria-describedby="localPromptAiHint">
+                      <option value="">Automatic · Krea 2 prompt model</option>
+                    </select>
+                  </div>
+                  <div class="field" id="localPromptAiClipTypeField">
+                    <label for="setLocalPromptAiClipType">Loader type</label>
+                    <select id="setLocalPromptAiClipType">
+                      <option value="krea2">Krea 2 / Qwen3-VL</option>
+                    </select>
+                  </div>
+                  <p class="local-prompt-ai-hint" id="localPromptAiHint">Vision-capable Qwen3-VL models are recommended for frame- and reference-aware planning. Generation models remain unchanged.</p>
+                  <div class="local-prompt-ai-actions">
+                    <button class="settings-cache-clear" id="refreshLocalPromptAiModels" type="button">Refresh models</button>
+                    <span id="localPromptAiStatus" role="status" aria-live="polite">Loading installed models…</span>
+                  </div>
+                </div>
+                <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
+                  <div class="field">
+                    <label for="setExternalLlmOllamaUrl">Ollama URL</label>
+                    <input id="setExternalLlmOllamaUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434" />
+                  </div>
+                  <div class="field">
+                    <label for="setExternalLlmOllamaModel">Ollama model</label>
+                    <input id="setExternalLlmOllamaModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemma3" />
+                  </div>
+                  <p class="external-llm-field-note">Ollama remains local when this URL points to your generation machine.</p>
                 </div>
               </div>
-              <div class="external-llm-provider" data-external-llm-provider="gemini" hidden>
+
+              <div class="prompt-ai-mode-panel" data-prompt-ai-mode-panel="external" hidden>
                 <div class="field">
-                  <label for="setExternalLlmGeminiModel">Gemini model</label>
-                  <input id="setExternalLlmGeminiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemini-3.6-flash" />
+                  <label for="setExternalLlmExternalProvider">External provider</label>
+                  <select id="setExternalLlmExternalProvider">
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Google Gemini</option>
+                  </select>
                 </div>
-                <div class="field">
-                  <label for="setExternalLlmGeminiApiKey">Gemini API key</label>
-                  <div class="external-llm-secret-row">
-                    <input id="setExternalLlmGeminiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
-                    <button class="settings-cache-clear" id="clearExternalLlmGeminiApiKey" type="button" hidden>Clear</button>
+                <div class="external-llm-provider" data-external-llm-provider="openai" hidden>
+                  <div class="field">
+                    <label for="setExternalLlmOpenAiModel">OpenAI model</label>
+                    <input id="setExternalLlmOpenAiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-5.6-luna" />
+                  </div>
+                </div>
+                <div class="external-llm-provider" data-external-llm-provider="gemini" hidden>
+                  <div class="field">
+                    <label for="setExternalLlmGeminiModel">Gemini model</label>
+                    <input id="setExternalLlmGeminiModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemini-3.6-flash" />
+                  </div>
+                  <div class="field">
+                    <label for="setExternalLlmGeminiApiKey">Gemini API key</label>
+                    <div class="external-llm-secret-row">
+                      <input id="setExternalLlmGeminiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                      <button class="settings-cache-clear" id="clearExternalLlmGeminiApiKey" type="button" hidden>Clear</button>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="field">
-                <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
-                <div class="external-llm-secret-row">
-                  <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
-                  <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
+
+              <details class="prompt-ai-access-disclosure" id="promptAiOpenAiAccess">
+                <summary>
+                  <span><strong id="promptAiOpenAiAccessTitle">Voice transcription</strong><small id="promptAiOpenAiAccessPurpose">Optional · uses OpenAI</small></span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+                </summary>
+                <div class="field prompt-ai-openai-access-field">
+                  <label for="setExternalLlmOpenAiApiKey">OpenAI API key</label>
+                  <div class="external-llm-secret-row">
+                    <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
+                    <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
+                  </div>
+                  <small class="external-llm-field-note">Smart voice transcription uses OpenAI even when another planner is selected. Leave blank if voice input is not needed.</small>
                 </div>
-                <small class="external-llm-field-note">Used for OpenAI planning and Smart voice transcription. It is optional with Gemini or Ollama unless you want voice input.</small>
-              </div>
-              <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
-                <div class="field">
-                  <label for="setExternalLlmOllamaUrl">Ollama URL</label>
-                  <input id="setExternalLlmOllamaUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434" />
-                </div>
-                <div class="field">
-                  <label for="setExternalLlmOllamaModel">Ollama model</label>
-                  <input id="setExternalLlmOllamaModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemma3" />
-                </div>
-              </div>
+              </details>
               <div class="external-llm-routing">
-                <h6>Use external AI for</h6>
+                <h6>Use selected planner for</h6>
                 <button class="settings-media-toggle" id="externalLlmImageRevise" type="button" role="switch" aria-checked="false">
-                  <span class="settings-media-toggle-copy"><strong>Image · Revise Prompt</strong><small>Rewrite image prompts with the selected provider.</small></span>
+                  <span class="settings-media-toggle-copy"><strong>Image · Revise Prompt</strong><small>Rewrite image prompts with the selected planner.</small></span>
                   <span class="settings-media-switch" aria-hidden="true"><i></i></span>
                 </button>
                 <button class="settings-media-toggle" id="externalLlmImageEnhance" type="button" role="switch" aria-checked="false">
-                  <span class="settings-media-toggle-copy"><strong>Image · Prompt Enhance</strong><small>Enhance global and regional image prompts externally.</small></span>
+                  <span class="settings-media-toggle-copy"><strong>Image · Prompt Enhance</strong><small>Enhance global and regional image prompts with the selected planner.</small></span>
                   <span class="settings-media-switch" aria-hidden="true"><i></i></span>
                 </button>
                 <button class="settings-media-toggle" id="externalLlmVideoRevise" type="button" role="switch" aria-checked="false">
@@ -3016,7 +3043,7 @@
                   <span class="settings-media-switch" aria-hidden="true"><i></i></span>
                 </button>
               </div>
-              <p class="external-llm-privacy">Smart briefs and attached references are sent to the chosen planner. Other prompt tools send visual context only when enabled. Ollama remains local when its URL points to this computer.</p>
+              <p class="external-llm-privacy">Smart briefs and attached references are sent only to the chosen planner. Local ComfyUI stays inside the generation machine; Ollama remains local when its URL points to that machine.</p>
               <div class="external-llm-test-row">
                 <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
                 <span id="externalLlmStatus" role="status" aria-live="polite"></span>

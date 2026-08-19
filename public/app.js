@@ -4851,7 +4851,7 @@ function openSmartAiSettings() {
   const reveal = () => {
     if ($('#settingsSheet').classList.contains('show')) {
       providerSettings?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      $('#setExternalLlmProvider')?.focus({ preventScroll: true });
+      $('#promptAiModeSwitch')?.focus({ preventScroll: true });
       return;
     }
     attempts += 1;
@@ -31125,17 +31125,19 @@ function localPromptAiModelLabel(value) {
 }
 
 function renderPromptingSummaries() {
-  const local = $('#localPromptAiSummary');
   const external = $('#externalPromptAiSummary');
-  if (local) {
-    const model = $('#setLocalPromptAiClip')?.value;
-    local.textContent = model ? localPromptAiModelLabel(model) : 'Automatic · Krea 2 prompt model';
-  }
   if (external) {
-    const provider = $('#setExternalLlmProvider')?.selectedOptions?.[0]?.textContent || 'OpenAI';
+    const provider = $('#setExternalLlmProvider')?.value || 'local';
+    const localMode = ['local', 'ollama'].includes(provider);
+    const providerLabel = {
+      local: 'ComfyUI',
+      ollama: 'Ollama',
+      openai: 'OpenAI',
+      gemini: 'Gemini',
+    }[provider] || provider;
     const routed = ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
       .filter((id) => mediaPreferenceControlValue(id)).length;
-    external.textContent = `${provider} · Smart planner${routed ? ` + ${routed} prompt tool${routed === 1 ? '' : 's'}` : ''}`;
+    external.textContent = `${localMode ? 'Local' : 'External'} · ${providerLabel}${routed ? ` + ${routed} prompt tool${routed === 1 ? '' : 's'}` : ''}`;
   }
 }
 
@@ -31194,6 +31196,7 @@ function applyLocalPromptAiSettings(settings = {}) {
   const readonly = !state.profileIsOwner;
   $('#localPromptAiSettings').dataset.readonly = String(readonly);
   [model, type, $('#refreshLocalPromptAiModels'), $('#testLocalPromptAiModel')]
+    .filter(Boolean)
     .forEach((control) => { control.disabled = readonly; });
   syncLocalPromptAiTypeAvailability();
   renderLocalPromptAiStatus();
@@ -31230,6 +31233,18 @@ async function refreshLocalPromptAiModels(force = false) {
 
 function renderExternalLlmPreferences() {
   const provider = $('#setExternalLlmProvider').value || 'openai';
+  const mode = ['local', 'ollama'].includes(provider) ? 'local' : 'external';
+  const modeSwitch = $('#promptAiModeSwitch');
+  modeSwitch.setAttribute('aria-checked', String(mode === 'external'));
+  $('#promptAiModeDescription').textContent = mode === 'local'
+    ? 'Local keeps planning on your generation machine.'
+    : 'External sends planning to the provider you connect.';
+  $$('[data-prompt-ai-mode-label]').forEach((label) => {
+    label.classList.toggle('active', label.dataset.promptAiModeLabel === mode);
+  });
+  $$('[data-prompt-ai-mode-panel]').forEach((section) => {
+    section.hidden = section.dataset.promptAiModePanel !== mode;
+  });
   $$('[data-external-llm-provider]').forEach((section) => {
     section.hidden = section.dataset.externalLlmProvider !== provider;
   });
@@ -31239,10 +31254,19 @@ function renderExternalLlmPreferences() {
   geminiKey.placeholder = externalLlmKeyConfigured.gemini ? 'Saved · paste a new key to replace it' : 'Paste an API key';
   $('#clearExternalLlmOpenAiApiKey').hidden = !externalLlmKeyStored.openai || !state.profileIsOwner;
   $('#clearExternalLlmGeminiApiKey').hidden = !externalLlmKeyStored.gemini || !state.profileIsOwner;
+  const openAiAccess = $('#promptAiOpenAiAccess');
+  const openAiActive = provider === 'openai';
+  $('#promptAiOpenAiAccessTitle').textContent = openAiActive ? 'OpenAI access' : 'Voice transcription';
+  $('#promptAiOpenAiAccessPurpose').textContent = openAiActive
+    ? 'Required for planning · also powers voice'
+    : 'Optional · uses OpenAI';
+  openAiAccess.open = openAiActive;
+  $('#testExternalLlm').textContent = mode === 'local' ? 'Test local AI' : 'Test external AI';
   const readonly = !state.profileIsOwner;
   $('#externalLlmSettings').dataset.readonly = String(readonly);
   [
-    'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
+    'promptAiModeSwitch', 'setExternalLlmLocalProvider', 'setExternalLlmExternalProvider',
+    'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
     'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl',
     'setExternalLlmOllamaModel', 'externalLlmImageRevise', 'externalLlmImageEnhance',
     'externalLlmVideoRevise', 'externalLlmVideoEnhance', 'testExternalLlm',
@@ -31251,8 +31275,15 @@ function renderExternalLlmPreferences() {
 }
 
 function applyExternalLlmSettings(settings = {}) {
-  $('#setExternalLlmProvider').value = ['openai', 'gemini', 'ollama'].includes(settings.externalLlmProvider)
-    ? settings.externalLlmProvider : 'openai';
+  const provider = ['local', 'openai', 'gemini', 'ollama'].includes(settings.externalLlmProvider)
+    ? settings.externalLlmProvider : 'local';
+  $('#setExternalLlmProvider').value = provider;
+  $('#setExternalLlmLocalProvider').value = ['local', 'ollama'].includes(settings.externalLlmLocalProvider)
+    ? settings.externalLlmLocalProvider
+    : (['local', 'ollama'].includes(provider) ? provider : 'local');
+  $('#setExternalLlmExternalProvider').value = ['openai', 'gemini'].includes(settings.externalLlmExternalProvider)
+    ? settings.externalLlmExternalProvider
+    : (['openai', 'gemini'].includes(provider) ? provider : 'openai');
   $('#setExternalLlmOpenAiApiKey').value = '';
   $('#setExternalLlmOpenAiModel').value = settings.externalLlmOpenAiModel || 'gpt-5.6-luna';
   $('#setExternalLlmGeminiApiKey').value = '';
@@ -31277,7 +31308,8 @@ function applyExternalLlmSettings(settings = {}) {
 const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setComfy', 'setHfToken', 'setHfEndpoint', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
   'setLocalPromptAiClip', 'setLocalPromptAiClipType',
-  'setExternalLlmProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
+  'setExternalLlmProvider', 'setExternalLlmLocalProvider', 'setExternalLlmExternalProvider',
+  'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
   'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl', 'setExternalLlmOllamaModel',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
   'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
@@ -31390,6 +31422,8 @@ function settingsPayload() {
     hfToken: $('#setHfToken').value,
     hfEndpoint: $('#setHfEndpoint').value,
     externalLlmProvider: $('#setExternalLlmProvider').value,
+    externalLlmLocalProvider: $('#setExternalLlmLocalProvider').value,
+    externalLlmExternalProvider: $('#setExternalLlmExternalProvider').value,
     externalLlmOpenAiApiKey: $('#setExternalLlmOpenAiApiKey').value,
     externalLlmOpenAiModel: $('#setExternalLlmOpenAiModel').value,
     externalLlmGeminiApiKey: $('#setExternalLlmGeminiApiKey').value,
@@ -35244,10 +35278,28 @@ $('#settingsSheet').addEventListener('change', (event) => {
   if (kind) scheduleSettingsAutosave(kind, 0);
 });
 
-$('#setExternalLlmProvider').addEventListener('change', () => {
+function setPromptAiProvider(provider) {
+  $('#setExternalLlmProvider').value = provider;
   $('#externalLlmStatus').textContent = '';
   $('#externalLlmStatus').className = '';
   renderExternalLlmPreferences();
+}
+
+$('#promptAiModeSwitch').addEventListener('click', () => {
+  if (!state.profileIsOwner) return;
+  const external = $('#promptAiModeSwitch').getAttribute('aria-checked') === 'true';
+  setPromptAiProvider(external
+    ? $('#setExternalLlmLocalProvider').value
+    : $('#setExternalLlmExternalProvider').value);
+  scheduleSettingsAutosave('server', 0);
+});
+
+$('#setExternalLlmLocalProvider').addEventListener('change', (event) => {
+  setPromptAiProvider(event.target.value);
+});
+
+$('#setExternalLlmExternalProvider').addEventListener('change', (event) => {
+  setPromptAiProvider(event.target.value);
 });
 
 $('#setLocalPromptAiClip').addEventListener('change', () => {
@@ -35255,25 +35307,6 @@ $('#setLocalPromptAiClip').addEventListener('change', () => {
   renderLocalPromptAiStatus();
 });
 $('#refreshLocalPromptAiModels').addEventListener('click', () => refreshLocalPromptAiModels(true));
-$('#testLocalPromptAiModel').addEventListener('click', async () => {
-  if (!state.profileIsOwner) return;
-  const button = $('#testLocalPromptAiModel');
-  const status = $('#localPromptAiStatus');
-  button.disabled = true;
-  status.className = '';
-  status.textContent = 'Saving and testing…';
-  try {
-    await flushSettingsAutosave();
-    const result = await api('/api/prompt/local-model/test', { method: 'POST' });
-    status.className = 'ready';
-    status.textContent = `Ready · ${localPromptAiModelLabel(result.model)}`;
-  } catch (error) {
-    status.className = 'bad';
-    status.textContent = error.message || 'Local model test failed';
-  } finally {
-    button.disabled = !state.profileIsOwner;
-  }
-});
 
 ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance'].forEach((id) => {
   $('#' + id).addEventListener('click', () => {
