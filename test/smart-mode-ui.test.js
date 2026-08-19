@@ -116,9 +116,33 @@ test('Smart exposes planner configuration and reusable image references', () => 
 test('Smart typography and reference controls use the native Mix Studio design language', () => {
   assert.doesNotMatch(smartCss, /ui-monospace|SFMono|--font/);
   assert.match(smartCss, /\.smart-workspace \{[\s\S]{0,160}font-family: inherit/);
-  assert.match(smartCss, /\.smart-plan-editor select \{[^}]*font-family: inherit/);
+  assert.match(smartCss, /\.smart-plan-editor \.smart-select-trigger \{[^}]*font-family: inherit/);
   assert.match(smartCss, /\.smart-reference-inputs-head button \{[^}]*width: 30px[^}]*height: 30px[^}]*border: 1px solid var\(--line\)[^}]*background: rgba\(255,255,255,\.025\)/);
   assert.match(html, /id="smartAddReference"[^>]*aria-label="Add reference images"[^>]*title="Add reference images"/);
+});
+
+test('Smart uses app listboxes instead of native selectors throughout plan editing', () => {
+  assert.doesNotMatch(app, /<select data-smart-(?:output|subject|scene)-field=/);
+  assert.match(app, /function smartSelectMarkup\(/);
+  assert.match(app, /class="smart-select-trigger"[\s\S]*aria-haspopup="listbox"/);
+  assert.match(app, /class="smart-select-menu"[\s\S]*role="listbox"/);
+  assert.match(app, /chooseSmartSelectOption\(selectOption\)/);
+  assert.match(app, /\['ArrowDown', 'ArrowUp'\]/);
+  assert.match(smartCss, /\.smart-select-menu \{/);
+  assert.match(smartCss, /\.smart-select-menu button\[aria-selected="true"\]/);
+});
+
+test('Smart brief is unnumbered and recent productions occupy the desktop left column', () => {
+  assert.doesNotMatch(html, /<div class="smart-section-label"><span>01<\/span> Creative brief<\/div>/);
+  assert.match(html, /class="smart-layout"[\s\S]*class="smart-brief-card"[\s\S]*id="smartBoard"[\s\S]*id="smartRecent"[\s\S]*<\/div>\s*<\/section>/);
+  assert.match(smartCss, /\.smart-production-card \{ grid-column: 2; grid-row: 1 \/ span 2; \}/);
+  assert.match(smartCss, /\.smart-recent \{ grid-column: 1; grid-row: 2;/);
+  assert.match(smartCss, /\.smart-recent-list \{[^}]*grid-template-columns: 1fr/);
+  assert.match(smartCss, /\.smart-brief-actions \{[^}]*grid-template-columns: 1fr/);
+  assert.match(smartCss, /\.smart-brief-actions > button \{[^}]*max-width: 100%/);
+  assert.match(html, /class="smart-brief-input-wrap"[\s\S]*id="smartBriefInput"[\s\S]*class="smart-voice-icon" id="smartVoiceBtn"/);
+  assert.doesNotMatch(html, /id="smartVoiceLabel"/);
+  assert.match(smartCss, /\.smart-voice-icon \{[^}]*position: absolute;[^}]*right: 10px;[^}]*bottom: 10px;/);
 });
 
 test('Smart mode spans the inputs and stage columns while keeping Library mounted', () => {

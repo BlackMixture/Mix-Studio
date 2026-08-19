@@ -4511,6 +4511,81 @@ function smartTimelineFromEditor(value) {
     });
 }
 
+function smartSelectMarkup(id, value, options, fieldAttribute, ariaLabel) {
+  const normalized = (Array.isArray(options) ? options : []).map((option) => ({
+    value: String(option?.value ?? ''),
+    label: String(option?.label ?? option?.value ?? ''),
+  }));
+  const current = normalized.find((option) => option.value === String(value)) || normalized[0] || { value: '', label: '' };
+  return `
+    <div class="smart-select" data-smart-select>
+      <button class="smart-select-trigger" id="${escapeHtml(id)}" type="button" ${fieldAttribute}
+        value="${escapeHtml(current.value)}" aria-label="${escapeHtml(ariaLabel)}"
+        aria-haspopup="listbox" aria-expanded="false" aria-controls="${escapeHtml(id)}-menu">
+        <span data-smart-select-label>${escapeHtml(current.label)}</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+      </button>
+      <div class="smart-select-menu" id="${escapeHtml(id)}-menu" role="listbox"
+        aria-label="${escapeHtml(ariaLabel)}" aria-hidden="true" hidden inert>
+        ${normalized.map((option) => `
+          <button type="button" role="option" data-smart-select-option
+            data-smart-select-value="${escapeHtml(option.value)}"
+            aria-selected="${option.value === current.value ? 'true' : 'false'}">
+            <span>${escapeHtml(option.label)}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function closeSmartSelects(except = null) {
+  $$('.smart-select.open').forEach((select) => {
+    if (select === except) return;
+    select.classList.remove('open');
+    const trigger = select.querySelector('.smart-select-trigger');
+    const menu = select.querySelector('.smart-select-menu');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (menu) {
+      menu.hidden = true;
+      menu.inert = true;
+      menu.setAttribute('aria-hidden', 'true');
+    }
+  });
+}
+
+function openSmartSelect(trigger, focusOption = false) {
+  const select = trigger?.closest('.smart-select');
+  const menu = select?.querySelector('.smart-select-menu');
+  if (!select || !menu) return;
+  closeSmartSelects(select);
+  select.classList.add('open');
+  trigger.setAttribute('aria-expanded', 'true');
+  menu.hidden = false;
+  menu.inert = false;
+  menu.setAttribute('aria-hidden', 'false');
+  if (focusOption) {
+    requestAnimationFrame(() => (menu.querySelector('[aria-selected="true"]') || menu.querySelector('[role="option"]'))?.focus());
+  }
+}
+
+function chooseSmartSelectOption(option) {
+  const select = option?.closest('.smart-select');
+  const trigger = select?.querySelector('.smart-select-trigger');
+  if (!select || !trigger) return;
+  const value = String(option.dataset.smartSelectValue || '');
+  const label = option.querySelector('span')?.textContent || value;
+  trigger.value = value;
+  trigger.setAttribute('value', value);
+  const labelNode = trigger.querySelector('[data-smart-select-label]');
+  if (labelNode) labelNode.textContent = label;
+  select.querySelectorAll('[role="option"]').forEach((candidate) => {
+    candidate.setAttribute('aria-selected', String(candidate === option));
+  });
+  closeSmartSelects();
+  trigger.dispatchEvent(new Event('change', { bubbles: true }));
+  trigger.focus();
+}
+
 function renderSmartRecent() {
   const section = $('#smartRecent');
   const list = $('#smartRecentList');
@@ -4546,13 +4621,14 @@ function smartSceneMarkup(plan) {
 }
 
 function smartPlanEditorMarkup(plan) {
-  const aspectOptions = ['1:1', '16:9', '9:16', '4:3', '3:4']
-    .map((value) => `<option value="${value}" ${plan.output.aspectRatio === value ? 'selected' : ''}>${value}</option>`).join('');
-  const qualityOptions = ['fast', 'balanced', 'quality']
-    .map((value) => `<option value="${value}" ${plan.output.quality === value ? 'selected' : ''}>${value}</option>`).join('');
+  const aspectOptions = ['1:1', '16:9', '9:16', '4:3', '3:4'].map((value) => ({ value, label: value }));
+  const qualityOptions = ['fast', 'balanced', 'quality'].map((value) => ({
+    value,
+    label: value[0].toUpperCase() + value.slice(1),
+  }));
   const referenceTypeOptions = [
     ['character', 'Character / person'], ['object', 'Object / product'], ['place', 'Place / environment'],
-  ].map(([value, label]) => `<option value="${value}" ${plan.subject.referenceType === value ? 'selected' : ''}>${label}</option>`).join('');
+  ].map(([value, label]) => ({ value, label }));
   const referenceStates = smartReferenceStates(plan);
   const referenceStateEditors = referenceStates.map((state, index) => `
     <article class="smart-scene-editor smart-reference-state-editor" data-smart-reference-state-index="${index}" data-smart-reference-state-id="${escapeHtml(state.id)}">
@@ -4561,7 +4637,7 @@ function smartPlanEditorMarkup(plan) {
       <label>Complete visible state<textarea data-smart-reference-state-field="description" rows="2" maxlength="1200">${escapeHtml(state.description || '')}</textarea></label>
     </article>`).join('');
   const sceneEditors = (plan.scenes || []).map((scene, index) => {
-    const stateOptions = referenceStates.map((state) => `<option value="${escapeHtml(state.id)}" ${smartSceneReferenceState(plan, scene).id === state.id ? 'selected' : ''}>${escapeHtml(state.label)}</option>`).join('');
+    const stateOptions = referenceStates.map((state) => ({ value: state.id, label: state.label }));
     return `
     <article class="smart-scene-editor" data-smart-scene-index="${index}">
       <header><span>Clip ${index + 1}</span><div>
@@ -4586,7 +4662,13 @@ function smartPlanEditorMarkup(plan) {
       <label>Timed actions, camera moves & cuts <small>One per line: 2 | cut | a front close-up of Maya</small><textarea data-smart-scene-field="timelineBeats" rows="3" maxlength="4000" placeholder="4.5 | action | Maya turns toward the tunnel\n7 | camera | slowly arcs clockwise behind Maya">${escapeHtml(smartTimelineEditorText(scene.timelineBeats))}</textarea></label>
       <label>Dialogue <small>Optional local time: 2.5 | Maya [reference; English; whispers]: Exact words</small><textarea data-smart-scene-field="dialogue" rows="2" maxlength="4000" placeholder="Leave empty unless the original brief supplies dialogue">${escapeHtml(smartDialogueEditorText(scene.dialogue))}</textarea></label>
       <label class="smart-reference-switch"><input data-smart-scene-field="usesSubjectReference" type="checkbox" ${smartSceneUsesReference(plan, scene) ? 'checked' : ''} ${plan.subject.needsReference ? '' : 'disabled'} /> Attach the canonical subject reference to this clip</label>
-      ${plan.subject.needsReference ? `<label>Reference state<select data-smart-scene-field="referenceStateId">${stateOptions}</select></label>` : ''}
+      ${plan.subject.needsReference ? `<label>Reference state${smartSelectMarkup(
+    `smart-scene-${index}-reference-state`,
+    smartSceneReferenceState(plan, scene).id,
+    stateOptions,
+    'data-smart-scene-field="referenceStateId"',
+    `Reference state for clip ${index + 1}`,
+  )}</label>` : ''}
     </article>`;
   }).join('');
   return `
@@ -4597,14 +4679,14 @@ function smartPlanEditorMarkup(plan) {
       </div>
       <div class="smart-editor-grid compact">
         ${plan.output.kind === 'video' ? `<label>Total runtime<input data-smart-output-field="durationSeconds" type="number" min="1" max="120" step="1" value="${escapeHtml(plan.output.durationSeconds)}" /></label>` : ''}
-        <label>Frame<select data-smart-output-field="aspectRatio">${aspectOptions}</select></label>
-        <label>Quality<select data-smart-output-field="quality">${qualityOptions}</select></label>
+        <label>Frame${smartSelectMarkup('smart-output-frame', plan.output.aspectRatio, aspectOptions, 'data-smart-output-field="aspectRatio"', 'Output frame')}</label>
+        <label>Quality${smartSelectMarkup('smart-output-quality', plan.output.quality, qualityOptions, 'data-smart-output-field="quality"', 'Output quality')}</label>
       </div>
       <label>Visual style<textarea data-smart-plan-field="visualStyle" rows="2" maxlength="1200">${escapeHtml(plan.visualStyle || '')}</textarea></label>
       ${plan.output.kind === 'video' ? `
         <div class="smart-editor-grid">
           <label>Reference subject<textarea data-smart-subject-field="description" rows="2" maxlength="1200">${escapeHtml(plan.subject.description || '')}</textarea></label>
-          <label>Reference template<select data-smart-subject-field="referenceType">${referenceTypeOptions}</select></label>
+          <label>Reference template${smartSelectMarkup('smart-reference-template', plan.subject.referenceType, referenceTypeOptions, 'data-smart-subject-field="referenceType"', 'Reference template')}</label>
         </div>
         ${plan.subject.needsReference ? `
           <div class="smart-editor-clips-head"><span><strong>Reference states</strong><small>Create a new state only when appearance, condition, or environment materially changes.</small></span><button type="button" data-smart-action="add-reference-state" ${referenceStates.length >= 6 ? 'disabled' : ''}>+ Add state</button></div>
@@ -5106,7 +5188,8 @@ async function startSmartRecording() {
       const button = $('#smartVoiceBtn');
       button.classList.remove('recording');
       button.setAttribute('aria-pressed', 'false');
-      $('#smartVoiceLabel').textContent = 'Speak brief';
+      button.setAttribute('aria-label', 'Speak brief');
+      button.title = 'Speak brief';
       $('#smartVoiceTime').textContent = '';
       const blob = new Blob(smartRecordingChunks, { type: smartRecorder.mimeType || 'audio/webm' });
       await transcribeSmartAudio(blob);
@@ -5116,7 +5199,8 @@ async function startSmartRecording() {
     const button = $('#smartVoiceBtn');
     button.classList.add('recording');
     button.setAttribute('aria-pressed', 'true');
-    $('#smartVoiceLabel').textContent = 'Stop recording';
+    button.setAttribute('aria-label', 'Stop recording');
+    button.title = 'Stop recording';
     renderSmartRecordingTime();
     smartRecordingTimer = setInterval(renderSmartRecordingTime, 1000);
     smartRecordingLimitTimer = setTimeout(stopSmartRecording, 120000);
@@ -5124,7 +5208,7 @@ async function startSmartRecording() {
   } catch (error) {
     if (error.name === 'NotAllowedError') {
       smartVoiceFileFallback = true;
-      setSmartStatus('Microphone access was denied. Allow it in Chrome, or tap Speak brief again to use the phone recorder.', true);
+      setSmartStatus('Microphone access was denied. Allow it in Chrome, or tap the microphone again to use the phone recorder.', true);
     } else setSmartStatus(`Could not start voice input: ${error.message}`, true);
   }
 }
@@ -5364,6 +5448,18 @@ $$('[data-smart-example]').forEach((button) => button.addEventListener('click', 
   $('#smartBriefInput').focus();
 }));
 $('#smartBoard').addEventListener('click', (event) => {
+  const selectOption = event.target.closest('[data-smart-select-option]');
+  if (selectOption) {
+    chooseSmartSelectOption(selectOption);
+    return;
+  }
+  const selectTrigger = event.target.closest('.smart-select-trigger');
+  if (selectTrigger) {
+    const select = selectTrigger.closest('.smart-select');
+    if (select?.classList.contains('open')) closeSmartSelects();
+    else openSmartSelect(selectTrigger);
+    return;
+  }
   const control = event.target.closest('[data-smart-action]');
   const action = control?.dataset.smartAction;
   if (!action) return;
@@ -5379,6 +5475,43 @@ $('#smartBoard').addEventListener('click', (event) => {
   }
   else if (action === 'queue') queueSmartProduction();
   else actOnSmartRun(action);
+});
+$('#smartBoard').addEventListener('keydown', (event) => {
+  const trigger = event.target.closest('.smart-select-trigger');
+  const option = event.target.closest('[data-smart-select-option]');
+  if (trigger && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+    event.preventDefault();
+    openSmartSelect(trigger, true);
+    return;
+  }
+  if (!option) {
+    if (event.key === 'Escape') closeSmartSelects();
+    return;
+  }
+  const menu = option.closest('.smart-select-menu');
+  const options = Array.from(menu?.querySelectorAll('[data-smart-select-option]') || []);
+  const currentIndex = options.indexOf(option);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const offset = event.key === 'ArrowDown' ? 1 : -1;
+    options[(currentIndex + offset + options.length) % options.length]?.focus();
+  } else if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    options[event.key === 'Home' ? 0 : options.length - 1]?.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    chooseSmartSelectOption(option);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    const owner = option.closest('.smart-select')?.querySelector('.smart-select-trigger');
+    closeSmartSelects();
+    owner?.focus();
+  } else if (event.key === 'Tab') {
+    closeSmartSelects();
+  }
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('.smart-select')) closeSmartSelects();
 });
 $('#smartRecentList').addEventListener('click', (event) => {
   const id = event.target.closest('[data-smart-run-id]')?.dataset.smartRunId;

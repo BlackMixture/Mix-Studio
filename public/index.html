@@ -212,11 +212,17 @@
     </header>
     <div class="smart-layout">
       <section class="smart-brief-card">
-        <div class="smart-section-label"><span>01</span> Creative brief</div>
         <h3>Describe the finished piece</h3>
         <p>Speak naturally or type one idea. Smart will direct it shot by shot, choose the workflows, and either wait for review or run automatically.</p>
         <label class="sr-only" for="smartBriefInput">Creative brief</label>
-        <textarea id="smartBriefInput" rows="7" maxlength="8000" placeholder="Make a 120-second cinematic video about a lion navigating a series of surreal city scenarios…"></textarea>
+        <div class="smart-brief-input-wrap">
+          <textarea id="smartBriefInput" rows="7" maxlength="8000" placeholder="Make a 120-second cinematic video about a lion navigating a series of surreal city scenarios…"></textarea>
+          <button class="smart-voice-icon" id="smartVoiceBtn" type="button" aria-label="Speak brief" title="Speak brief" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 1 0-7 0v5A3.5 3.5 0 0 0 12 15Zm-7-4a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg>
+            <i id="smartVoiceTime"></i>
+          </button>
+          <input id="smartVoiceFile" type="file" accept="audio/*" capture="user" hidden />
+        </div>
         <div class="smart-reference-inputs">
           <div class="smart-reference-inputs-head">
             <span><strong>References</strong><small>Optional · up to 2 images</small></span>
@@ -233,11 +239,6 @@
           </button>
         </div>
         <div class="smart-brief-actions">
-          <button class="smart-voice-btn" id="smartVoiceBtn" type="button" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 1 0-7 0v5A3.5 3.5 0 0 0 12 15Zm-7-4a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg>
-            <span id="smartVoiceLabel">Speak brief</span><i id="smartVoiceTime"></i>
-          </button>
-          <input id="smartVoiceFile" type="file" accept="audio/*" capture="user" hidden />
           <button class="smart-plan-btn" id="smartPlanBtn" type="button"><span>Build director's plan</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
         </div>
         <div class="smart-status" id="smartStatus" role="status" aria-live="polite"></div>
@@ -256,11 +257,11 @@
           <ol><li><span>1</span>Direct the brief</li><li><span>2</span>Review or modify</li><li><span>3</span>Approve the clip queue</li></ol>
         </div>
       </section>
+      <section class="smart-recent" id="smartRecent" hidden>
+        <div class="smart-section-label"><span>RECENT</span> Productions</div>
+        <div class="smart-recent-list" id="smartRecentList"></div>
+      </section>
     </div>
-    <section class="smart-recent" id="smartRecent" hidden>
-      <div class="smart-section-label"><span>RECENT</span> Productions</div>
-      <div class="smart-recent-list" id="smartRecentList"></div>
-    </section>
   </section>
   <section class="director-workspace" id="directorWorkspace" aria-label="LTX 2.3 Director workspace" hidden>
     <header class="director-head">

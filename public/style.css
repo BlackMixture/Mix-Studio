@@ -13211,16 +13211,18 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
     linear-gradient(145deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 18px 60px -50px rgba(169,102,255,.7);
 }
-.smart-brief-card { position: sticky; top: 0; padding: 20px; }
+.smart-brief-card { grid-column: 1; grid-row: 1; position: sticky; top: 0; padding: 20px; }
+.smart-production-card { grid-column: 2; grid-row: 1 / span 2; }
 .smart-section-label { display: flex; align-items: center; gap: 8px; }
 .smart-section-label span { color: #c5a0ff; }
-.smart-brief-card h3 { margin: 16px 0 8px; font-size: 20px; letter-spacing: -.025em; }
+.smart-brief-card h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: -.025em; }
 .smart-brief-card > p { margin: 0 0 17px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.smart-brief-input-wrap { position: relative; }
 #smartBriefInput {
   width: 100%;
   min-height: 168px;
   resize: vertical;
-  padding: 15px;
+  padding: 15px 56px 54px 15px;
   border: 1px solid rgba(226,232,255,.15);
   border-radius: 15px;
   outline: 0;
@@ -13232,6 +13234,43 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 }
 #smartBriefInput:focus { border-color: rgba(169,102,255,.58); box-shadow: 0 0 0 3px rgba(169,102,255,.1); }
 #smartBriefInput::placeholder { color: rgba(184,191,210,.44); }
+.smart-voice-icon {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(226,232,255,.15);
+  border-radius: 11px;
+  background: rgba(14,16,23,.92);
+  color: var(--muted);
+  transition: color 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease), transform 140ms var(--ease);
+}
+.smart-voice-icon:hover,
+.smart-voice-icon:focus-visible { outline: 0; border-color: rgba(169,102,255,.52); background: rgba(169,102,255,.12); color: var(--ink); }
+.smart-voice-icon:active { transform: scale(.94); }
+.smart-voice-icon:disabled { opacity: .45; }
+.smart-voice-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.smart-voice-icon i {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 6px);
+  padding: 4px 6px;
+  border: 1px solid rgba(255,82,110,.28);
+  border-radius: 999px;
+  background: rgba(11,12,17,.96);
+  color: #ff9aaa;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-50%);
+}
+.smart-voice-icon i:empty { display: none; }
+.smart-voice-icon.recording { border-color: rgba(255,82,110,.58); background: rgba(255,82,110,.12); color: #ff9aaa; animation: smart-record 1.4s ease-in-out infinite; }
 .smart-reference-inputs { margin-top: 12px; padding: 11px; border: 1px solid rgba(226,232,255,.1); border-radius: 14px; background: rgba(5,6,9,.28); }
 .smart-reference-inputs-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .smart-reference-inputs-head > span { min-width: 0; }
@@ -13262,8 +13301,9 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 .smart-execution-toggle[aria-checked="true"] { border-color: rgba(169,102,255,.32); background: rgba(169,102,255,.07); }
 .smart-execution-toggle[aria-checked="true"] > i { border-color: rgba(169,102,255,.5); background: rgba(169,102,255,.35); }
 .smart-execution-toggle[aria-checked="true"] > i b { background: white; transform: translateX(11px); }
-.smart-brief-actions { display: grid; grid-template-columns: minmax(122px,.68fr) minmax(170px,1fr); gap: 8px; margin-top: 10px; }
-.smart-voice-btn,
+.smart-brief-actions { width: 100%; min-width: 0; display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
+.smart-brief-actions > button { width: 100%; min-width: 0; max-width: 100%; }
+.smart-brief-actions > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .smart-plan-btn,
 .smart-board-action,
 .smart-recent-item {
@@ -13272,10 +13312,6 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
   border-radius: 12px;
   background: rgba(255,255,255,.035);
 }
-.smart-voice-btn { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--ink-soft); font-size: 11px; font-weight: 800; }
-.smart-voice-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
-.smart-voice-btn i { color: #ff8d9a; font-size: 9px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-.smart-voice-btn.recording { border-color: rgba(255,82,110,.52); background: rgba(255,82,110,.08); color: #ff9aaa; animation: smart-record 1.4s ease-in-out infinite; }
 @keyframes smart-record { 50% { box-shadow: 0 0 0 4px rgba(255,82,110,.07); } }
 .smart-plan-btn {
   display: flex;
@@ -13360,11 +13396,55 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 .smart-editor-grid > label { display: grid; gap: 5px; min-width: 0; color: var(--muted-2); font-size: 8px; font-weight: 900; line-height: 1.2; letter-spacing: .05em; text-transform: uppercase; }
 .smart-plan-editor input,
 .smart-plan-editor textarea,
-.smart-plan-editor select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid rgba(226,232,255,.13); border-radius: 9px; outline: 0; background: rgba(0,0,0,.24); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 500; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+.smart-plan-editor .smart-select-trigger { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid rgba(226,232,255,.13); border-radius: 9px; outline: 0; background: rgba(0,0,0,.24); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 500; line-height: 1.4; letter-spacing: 0; text-transform: none; }
 .smart-plan-editor textarea { resize: vertical; }
 .smart-plan-editor input:focus,
 .smart-plan-editor textarea:focus,
-.smart-plan-editor select:focus { border-color: rgba(169,102,255,.5); box-shadow: 0 0 0 2px rgba(169,102,255,.08); }
+.smart-plan-editor .smart-select-trigger:focus { border-color: rgba(169,102,255,.5); box-shadow: 0 0 0 2px rgba(169,102,255,.08); }
+.smart-select { position: relative; min-width: 0; }
+.smart-plan-editor .smart-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; cursor: pointer; }
+.smart-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smart-select-trigger > svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; transition: transform 160ms var(--ease); }
+.smart-select.open .smart-select-trigger { border-color: rgba(169,102,255,.55); background: rgba(169,102,255,.08); box-shadow: 0 0 0 2px rgba(169,102,255,.08); }
+.smart-select.open .smart-select-trigger > svg { transform: rotate(180deg); }
+.smart-select-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid rgba(169,102,255,.34);
+  border-radius: 11px;
+  background: rgba(8,9,14,.98);
+  box-shadow: 0 18px 44px rgba(0,0,0,.58), inset 0 1px rgba(255,255,255,.04);
+}
+.smart-select-menu[hidden] { display: none; }
+.smart-select-menu button {
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+.smart-select-menu button:hover,
+.smart-select-menu button:focus-visible { outline: 0; background: rgba(255,255,255,.055); color: var(--ink); }
+.smart-select-menu button[aria-selected="true"] { background: linear-gradient(100deg, rgba(169,102,255,.18), rgba(82,125,255,.1)); color: #e4d7ff; }
+.smart-select-menu button svg { width: 13px; height: 13px; flex: 0 0 auto; fill: none; stroke: #c59eff; stroke-width: 2.2; opacity: 0; }
+.smart-select-menu button[aria-selected="true"] svg { opacity: 1; }
 .smart-editor-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
 .smart-editor-grid.compact { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .smart-editor-clips-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 3px; padding-top: 12px; border-top: 1px solid var(--smart-line); }
@@ -13395,8 +13475,8 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 .smart-original-brief span { color: var(--muted-2); font-size: 8px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .smart-original-brief p { margin: 6px 0 0; color: var(--ink-soft); font-size: 10px; line-height: 1.5; white-space: pre-wrap; }
 .smart-run-error { margin-top: 12px; padding: 9px 10px; border: 1px solid rgba(255,92,118,.2); border-radius: 10px; background: rgba(255,92,118,.06); color: #ffabb6; font-size: 9.5px; line-height: 1.45; }
-.smart-recent { margin-top: 12px; padding: 15px; }
-.smart-recent-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin-top: 10px; }
+.smart-recent { grid-column: 1; grid-row: 2; padding: 15px; }
+.smart-recent-list { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 10px; }
 .smart-recent-item { min-width: 0; padding: 9px 10px; text-align: left; }
 .smart-recent-item strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .smart-recent-item small { display: block; margin-top: 4px; color: var(--muted); font-size: 8.5px; text-transform: capitalize; }
@@ -13408,6 +13488,9 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
   .smart-provider { grid-column: 1 / -1; justify-self: start; }
   .smart-layout { grid-template-columns: 1fr; }
   .smart-brief-card { position: static; padding: 16px; }
+  .smart-brief-card,
+  .smart-production-card,
+  .smart-recent { grid-column: auto; grid-row: auto; }
   .smart-reference-list { grid-template-columns: 1fr; }
   .smart-execution-options,
   .smart-reference-results { grid-template-columns: 1fr; }
