@@ -48,7 +48,8 @@ test('Smart can select the installed local ComfyUI prompt model without Ollama',
 test('the dedicated Smart model toggle leaves general prompt enhancement routing unchanged', () => {
   assert.match(app, /smartPlannerModelOverride[\s\S]*syncSmartPlannerModelControls\(\)[\s\S]*scheduleSettingsAutosave\('server', 0\)/);
   assert.match(server, /smartPlannerModelOverride: false[\s\S]*smartPlannerClip: ''[\s\S]*smartPlannerClipType: 'krea2'/);
-  assert.match(server, /const provider = configuredSmartPlannerLlm\(\);[\s\S]*requestSmartPlan\(provider/);
+  assert.match(server, /const provider = configuredSmartPlannerLlm\(\)/);
+  assert.match(server, /executeSmartPlanRequest\(request, provider, prompt, references\)/);
   assert.match(server, /function enhancePrompt\([\s\S]*runConfiguredPromptAi/);
 });
 

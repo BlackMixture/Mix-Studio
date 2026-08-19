@@ -3853,7 +3853,7 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
   });
 }
 
-async function requestSmartPlan(provider, prompt, references, profileId) {
+async function requestSmartPlan(provider, prompt, references, profileId, onProgress = () => {}) {
   if (provider.provider === 'local') {
     const schemaInstruction = [
       prompt.instruction,
@@ -3861,17 +3861,29 @@ async function requestSmartPlan(provider, prompt, references, profileId) {
       'Return only one valid JSON object with the exact property names and value types in this schema. Do not use Markdown, XML, commentary, ellipses, placeholders, or a code fence.',
       JSON.stringify(SMART_PLAN_SCHEMA),
     ].join('\n\n');
-    const queueLocalPlan = (userInput) => queueTextEnhancement({
-      instruction: schemaInstruction,
-      userInput,
-    }, Math.floor(Math.random() * 2 ** 31), 'Building Smart plan with the local model...', 8192, {
-      profileId,
-      clipConfig: { model: provider.model, type: provider.type },
-      imageNames: references.map((reference) => reference.name),
-      requireVision: references.length > 0,
-      broadcastStatus: false,
-    });
-    const raw = await queueLocalPlan(prompt.userInput);
+    const queueLocalPlan = (userInput, pass) => {
+      onProgress(pass, pass === 'repair'
+        ? 'Completing missing shots in the local draft…'
+        : 'The local model is writing the production plan…');
+      return queueTextEnhancement({
+        instruction: schemaInstruction,
+        userInput,
+      }, Math.floor(Math.random() * 2 ** 31), 'Building Smart plan with the local model...', 8192, {
+        profileId,
+        clipConfig: { model: provider.model, type: provider.type },
+        imageNames: references.map((reference) => reference.name),
+        requireVision: references.length > 0,
+        broadcastStatus: false,
+        onPromptJobQueued: (promptId) => onProgress(pass, pass === 'repair'
+          ? 'The completion pass is queued in ComfyUI…'
+          : 'The production plan is queued in ComfyUI…', promptId),
+        onPromptJobSettled: () => onProgress(pass, pass === 'repair'
+          ? 'Checking the completed production plan…'
+          : 'Checking the first production draft…', ''),
+      });
+    };
+    const raw = await queueLocalPlan(prompt.userInput, 'draft');
+    onProgress('audit', 'Checking shot coverage, timing, and continuity…');
     let plan = null;
     let audit;
     try {
@@ -3898,7 +3910,7 @@ async function requestSmartPlan(provider, prompt, references, profileId) {
       issueLines,
       '</required_corrections>',
       'Rewrite the incomplete draft as one complete production plan. Preserve the creator brief as the binding instruction, replace repeated or missing beats with distinct renderable scenes, cover the exact full runtime, and return the entire JSON object rather than a patch or explanation.',
-    ].join('\n'));
+    ].join('\n'), 'repair');
     const repairedPlan = parseStructuredText(repairedRaw, provider.label);
     const repairedAudit = smartPlanAudit(repairedPlan);
     if (!repairedAudit.complete) {
@@ -3909,6 +3921,7 @@ async function requestSmartPlan(provider, prompt, references, profileId) {
     }
     return repairedPlan;
   }
+  onProgress('draft', `Waiting for ${provider.label} to return the production plan…`);
   const images = await Promise.all(references.map((reference) => externalPromptImage(reference.name, profileId)));
   return externalLlmStructuredRequest({
     provider: provider.provider,
@@ -3922,6 +3935,84 @@ async function requestSmartPlan(provider, prompt, references, profileId) {
     schemaName: 'mix_studio_smart_plan',
     maxTokens: 8192,
   });
+}
+
+const smartPlanRequests = new Map();
+const SMART_PLAN_REQUEST_TTL_MS = 30 * 60_000;
+
+function smartPlanRequestId(value) {
+  const id = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{8,96}$/.test(id) ? id : '';
+}
+
+function pruneSmartPlanRequests(now = Date.now()) {
+  for (const [id, request] of smartPlanRequests) {
+    const settled = request.status === 'complete' || request.status === 'failed';
+    const age = now - Number(request.updatedAt || request.createdAt || now);
+    if ((settled && age > SMART_PLAN_REQUEST_TTL_MS) || age > 2 * SMART_PLAN_REQUEST_TTL_MS) {
+      smartPlanRequests.delete(id);
+    }
+  }
+}
+
+function smartPlanRequestStatus(request) {
+  let message = request.message;
+  if (request.promptId) {
+    const promptJob = jobs.get(request.promptId);
+    if (promptJob && !promptJob.startedAt) {
+      message = request.phase === 'repair'
+        ? 'The completion pass is waiting for ComfyUI…'
+        : 'The production plan is waiting for ComfyUI…';
+    }
+  }
+  return {
+    requestId: request.id,
+    status: request.status,
+    phase: request.phase,
+    message,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    provider: request.provider,
+    result: request.status === 'complete' ? request.result : undefined,
+    error: request.status === 'failed' ? request.error : undefined,
+    code: request.status === 'failed' ? request.code : undefined,
+  };
+}
+
+async function executeSmartPlanRequest(request, provider, prompt, references) {
+  const progress = (phase, message, promptId = request.promptId) => {
+    request.status = 'planning';
+    request.phase = phase;
+    request.message = message;
+    request.promptId = promptId;
+    request.updatedAt = Date.now();
+  };
+  try {
+    progress('starting', 'Preparing the production planner…', '');
+    const rawPlan = await requestSmartPlan(provider, prompt, references, request.profileId, progress);
+    progress('finalizing', 'Finalizing reference routing and clip timing…', '');
+    const plan = reconcileSmartPlanReferences(normalizeSmartPlan(rawPlan, request.brief), references);
+    request.result = {
+      plan,
+      references,
+      planHash: smartPlanHash(plan, references),
+      provider: request.provider,
+    };
+    request.status = 'complete';
+    request.phase = 'complete';
+    request.message = 'Production plan ready.';
+    request.promptId = '';
+    request.updatedAt = Date.now();
+  } catch (error) {
+    const needsConfig = /API key|Choose an external prompt provider/i.test(String(error.message || ''));
+    request.status = 'failed';
+    request.phase = 'failed';
+    request.message = '';
+    request.promptId = '';
+    request.error = String(error.message || error);
+    request.code = needsConfig ? 'smart_provider_unavailable' : (error.code || 'smart_plan_failed');
+    request.updatedAt = Date.now();
+  }
 }
 
 function enhancePrompt(p, profileId) {
@@ -6943,29 +7034,60 @@ async function handleApi(req, res, url) {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
   }
 
+  if (route === '/api/smart/plan/status' && req.method === 'GET') {
+    pruneSmartPlanRequests();
+    const requestId = smartPlanRequestId(url.searchParams.get('id'));
+    const request = requestId ? smartPlanRequests.get(requestId) : null;
+    if (!request || request.profileId !== req.profile.id) {
+      return json(res, 404, { error: 'Smart planning request not found', code: 'smart_plan_request_missing' });
+    }
+    res.setHeader('Retry-After', '2');
+    return json(res, 200, smartPlanRequestStatus(request));
+  }
+
   if (route === '/api/smart/plan' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const brief = String(body.brief || '').trim().slice(0, 8000);
     if (!brief) return json(res, 400, { error: 'Describe what you want Smart mode to create' });
     const references = normalizeSmartReferences(body.references);
+    const requestId = smartPlanRequestId(body.requestId) || crypto.randomUUID();
     const provider = configuredSmartPlannerLlm();
     const prompt = smartPlanningPrompt(brief, { references });
-    try {
-      const rawPlan = await requestSmartPlan(provider, prompt, references, req.profile.id);
-      const plan = reconcileSmartPlanReferences(normalizeSmartPlan(rawPlan, brief), references);
-      return json(res, 200, {
-        plan,
-        references,
-        planHash: smartPlanHash(plan, references),
-        provider: { provider: provider.provider, label: provider.label, model: provider.model },
-      });
-    } catch (error) {
-      const needsConfig = /API key|Choose an external prompt provider/i.test(String(error.message || ''));
-      return json(res, needsConfig ? 409 : 502, {
-        error: String(error.message || error),
-        code: needsConfig ? 'smart_provider_unavailable' : 'smart_plan_failed',
-      });
+    const publicProvider = { provider: provider.provider, label: provider.label, model: provider.model };
+    const signature = crypto.createHash('sha256').update(JSON.stringify([
+      req.profile.id, brief, references, publicProvider,
+    ])).digest('hex');
+    pruneSmartPlanRequests();
+    const existing = smartPlanRequests.get(requestId);
+    if (existing) {
+      if (existing.profileId !== req.profile.id || existing.signature !== signature) {
+        return json(res, 409, {
+          error: 'That Smart planning request belongs to different inputs',
+          code: 'smart_plan_request_conflict',
+        });
+      }
+      return json(res, 202, smartPlanRequestStatus(existing));
     }
+    const request = {
+      id: requestId,
+      profileId: req.profile.id,
+      signature,
+      brief,
+      provider: publicProvider,
+      status: 'queued',
+      phase: 'queued',
+      message: 'Smart planning request accepted…',
+      promptId: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      result: null,
+      error: '',
+      code: '',
+    };
+    smartPlanRequests.set(requestId, request);
+    executeSmartPlanRequest(request, provider, prompt, references);
+    res.setHeader('Retry-After', '2');
+    return json(res, 202, smartPlanRequestStatus(request));
   }
 
   if (route === '/api/smart/plan/review' && req.method === 'POST') {

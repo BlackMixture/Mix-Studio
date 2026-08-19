@@ -56,7 +56,7 @@ test('Smart workspace provides typed, voice, plan, review, queue, retry, and can
 test('Smart can auto approve plans while keeping reference review as a separate checkpoint', () => {
   assert.match(html, /id="smartAutoApprove"[^>]*role="switch"[^>]*aria-checked="false"/);
   assert.match(html, /id="smartPauseReferences"[^>]*role="switch"[^>]*aria-checked="false"/);
-  assert.match(app, /autoQueue = smartExecutionOption\('smartAutoApprove'\)/);
+  assert.match(app, /return smartExecutionOption\('smartAutoApprove'\)/);
   assert.match(app, /await queueSmartProduction\(\{ reviewReference: smartExecutionOption\('smartPauseReferences'\) \}\)/);
   assert.match(app, /const reviewCheckbox = \$\('#smartReviewReference'\)[\s\S]*const reviewReference = options\.reviewReference[\s\S]*reviewCheckbox\.checked/);
   assert.match(server, /moreReferencesPending[\s\S]*step\.kind === 'reference'[\s\S]*!moreReferencesPending/);
@@ -113,12 +113,25 @@ test('Smart exposes planner configuration and reusable image references', () => 
   assert.match(app, /Auto matched/);
   assert.match(app, /setSettingsTab\('suggestions'\)[\s\S]*prompting-external/);
   assert.match(server, /function requestSmartPlan\([\s\S]*provider\.provider === 'local'[\s\S]*queueTextEnhancement\([\s\S]*SMART_PLAN_SCHEMA/);
-  assert.match(server, /requestSmartPlan\(provider, prompt, references, req\.profile\.id\)/);
+  assert.match(server, /requestSmartPlan\(provider, prompt, references, request\.profileId, progress\)/);
   assert.match(server, /compileSmartSteps\(plan, \{\}, references\)/);
   assert.match(server, /requireVision: references\.length > 0/);
   assert.match(server, /local Prompt AI workflow cannot inspect images/);
   assert.match(server, /route === '\/api\/smart\/plan\/review'/);
   assert.match(server, /body\.approved !== true/);
+});
+
+test('Smart planning survives slow local models and transient browser connections', () => {
+  assert.match(server, /const smartPlanRequests = new Map\(\)/);
+  assert.match(server, /route === '\/api\/smart\/plan\/status' && req\.method === 'GET'/);
+  assert.match(server, /executeSmartPlanRequest\(request, provider, prompt, references\)/);
+  assert.match(server, /return json\(res, 202, smartPlanRequestStatus\(request\)\)/);
+  assert.match(server, /Completing missing shots in the local draft/);
+  assert.match(app, /function rememberSmartPlanRequest\(/);
+  assert.match(app, /async function waitForSmartPlanRequest\(/);
+  assert.match(app, /Connection interrupted while Smart continues on the generation computer/);
+  assert.match(app, /async function resumeSmartPlanRequest\(/);
+  assert.match(app, /loadSmartRuns\(\)[\s\S]{0,120}resumeSmartPlanRequest\(\)/);
 });
 
 test('Smart typography and reference controls use the native Mix Studio design language', () => {

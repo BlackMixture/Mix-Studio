@@ -4290,6 +4290,8 @@ let smartRuns = [];
 let smartRunsLoaded = false;
 let smartBusy = false;
 let smartClientToken = '';
+let smartPlanRequestId = '';
+let smartPlanResumeStarted = false;
 let smartReferences = [];
 let smartPlanEditing = false;
 let smartPlanEditBackup = null;
@@ -4305,6 +4307,94 @@ const SMART_EMPTY_BOARD = '<div class="smart-board-empty"><span class="smart-emp
 
 function newSmartClientToken() {
   return globalThis.crypto?.randomUUID?.() || `smart_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function smartPlanRequestStorageKey() {
+  return profileStorageKey('ks-smart-plan-request');
+}
+
+function rememberSmartPlanRequest(requestId, brief, references) {
+  const key = smartPlanRequestStorageKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      requestId,
+      brief,
+      references,
+      createdAt: Date.now(),
+    }));
+  } catch { /* planning still works without resumable browser storage */ }
+}
+
+function forgetSmartPlanRequest(requestId = '') {
+  const key = smartPlanRequestStorageKey();
+  if (!key) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!requestId || saved?.requestId === requestId) localStorage.removeItem(key);
+  } catch {
+    localStorage.removeItem(key);
+  }
+}
+
+function storedSmartPlanRequest() {
+  const key = smartPlanRequestStorageKey();
+  if (!key) return null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!saved?.requestId || Date.now() - Number(saved.createdAt || 0) > 60 * 60_000) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return saved;
+  } catch {
+    localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function smartPlanDelay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function smartPlanProgressMessage(update) {
+  const seconds = Math.max(0, Math.round((Date.now() - Number(update?.createdAt || Date.now())) / 1000));
+  const elapsed = seconds >= 60
+    ? `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+    : `${seconds}s`;
+  return `${update?.message || 'Smart is building the production plan…'} ${elapsed} elapsed. You can leave Smart mode while it continues.`;
+}
+
+async function waitForSmartPlanRequest(requestId) {
+  const deadline = Date.now() + 45 * 60_000;
+  let connectionFailures = 0;
+  while (Date.now() < deadline) {
+    if (smartPlanRequestId !== requestId) {
+      const error = new Error('Smart plan polling stopped');
+      error.code = 'smart_plan_poll_stopped';
+      throw error;
+    }
+    try {
+      const update = await api(`/api/smart/plan/status?id=${encodeURIComponent(requestId)}`);
+      connectionFailures = 0;
+      if (update.status === 'complete' && update.result) return update.result;
+      if (update.status === 'failed') {
+        const error = new Error(update.error || 'Smart could not build the production plan');
+        error.code = update.code || 'smart_plan_failed';
+        error.smartTerminal = true;
+        throw error;
+      }
+      setSmartStatus(smartPlanProgressMessage(update));
+    } catch (error) {
+      if (error.smartTerminal || error.code === 'smart_plan_poll_stopped' || error.status === 404) throw error;
+      connectionFailures += 1;
+      setSmartStatus(`Connection interrupted while Smart continues on the generation computer. Reconnecting${connectionFailures > 1 ? ` · attempt ${connectionFailures}` : ''}…`);
+    }
+    await smartPlanDelay(Math.min(5000, 1800 + connectionFailures * 600));
+  }
+  const error = new Error('Smart planning is still running after 45 minutes. You can reopen Smart mode to reconnect to it.');
+  error.code = 'smart_plan_wait_timeout';
+  throw error;
 }
 
 function setSmartStatus(message = '', error = false) {
@@ -4986,6 +5076,56 @@ async function loadSmartRuns(force = false) {
   renderSmartRecent();
 }
 
+function acceptSmartPlanResult(result, requestId) {
+  smartPlan = result.plan;
+  smartPlanHash = result.planHash;
+  smartPlanProvider = result.provider;
+  if (Array.isArray(result.references)) {
+    const localByName = new Map(smartReferences.map((reference) => [reference.name, reference]));
+    smartReferences = result.references.map((reference) => Object.assign({}, reference, {
+      url: localByName.get(reference.name)?.url || '',
+    }));
+    renderSmartReferences();
+  }
+  smartRun = null;
+  smartClientToken = requestId || newSmartClientToken();
+  smartPlanEditing = false;
+  smartPlanEditBackup = null;
+  smartPlanEditHash = '';
+  $('#smartProvider').textContent = `${result.provider.label} · ${result.provider.model}`;
+  renderSmartWorkspace();
+  return smartExecutionOption('smartAutoApprove');
+}
+
+async function startAndWaitForSmartPlan(brief, references, requestId) {
+  let accepted = null;
+  let startError = null;
+  for (let attempt = 0; attempt < 2 && !accepted; attempt += 1) {
+    try {
+      accepted = await api('/api/smart/plan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brief, references, requestId }),
+      });
+    } catch (error) {
+      if (error.status) throw error;
+      startError = error;
+      setSmartStatus('Connection interrupted while starting Smart. Checking the generation computer…');
+      await smartPlanDelay(1000 + attempt * 800);
+    }
+  }
+  if (accepted?.status === 'complete' && accepted.result) return accepted.result;
+  try {
+    return await waitForSmartPlanRequest(requestId);
+  } catch (error) {
+    if (error.status === 404 && startError) {
+      const connectionError = new Error('Could not reach the generation computer to start Smart planning. Check the connection and try again.');
+      connectionError.code = 'smart_plan_start_failed';
+      throw connectionError;
+    }
+    throw error;
+  }
+}
+
 async function buildSmartPlan() {
   const brief = $('#smartBriefInput').value.trim();
   if (!brief) {
@@ -4995,36 +5135,62 @@ async function buildSmartPlan() {
   }
   smartBusy = true;
   $('#smartPlanBtn').disabled = true;
-  setSmartStatus('Building a production plan…');
+  setSmartStatus('Starting the production planner…');
+  let autoQueue = false;
+  const requestId = newSmartClientToken();
+  const references = smartReferencePayload();
+  smartPlanRequestId = requestId;
+  rememberSmartPlanRequest(requestId, brief, references);
+  try {
+    const result = await startAndWaitForSmartPlan(brief, references, requestId);
+    autoQueue = acceptSmartPlanResult(result, requestId);
+    forgetSmartPlanRequest(requestId);
+    setSmartStatus(autoQueue ? 'Plan ready. Auto approve is queueing production…' : 'Plan ready. Review the workflow before queueing.');
+  } catch (error) {
+    if (error.code !== 'smart_plan_poll_stopped') setSmartStatus(error.message, true);
+    if (error.code !== 'smart_plan_wait_timeout') forgetSmartPlanRequest(requestId);
+  } finally {
+    if (smartPlanRequestId === requestId) smartPlanRequestId = '';
+    smartBusy = false;
+    $('#smartPlanBtn').disabled = false;
+  }
+  if (autoQueue && smartPlan && !smartRun) {
+    await queueSmartProduction({ reviewReference: smartExecutionOption('smartPauseReferences') });
+  }
+}
+
+async function resumeSmartPlanRequest() {
+  if (smartPlanResumeStarted || smartBusy || smartPlan) return;
+  const saved = storedSmartPlanRequest();
+  if (!saved) return;
+  smartPlanResumeStarted = true;
+  smartBusy = true;
+  smartPlanRequestId = saved.requestId;
+  $('#smartPlanBtn').disabled = true;
+  if (saved.brief) $('#smartBriefInput').value = saved.brief;
+  if (Array.isArray(saved.references)) {
+    smartReferences = saved.references.slice(0, 2);
+    renderSmartReferences();
+  }
+  setSmartStatus('Reconnecting to the production planner…');
   let autoQueue = false;
   try {
-    const result = await api('/api/smart/plan', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brief, references: smartReferencePayload() }),
-    });
-    smartPlan = result.plan;
-    smartPlanHash = result.planHash;
-    smartPlanProvider = result.provider;
-    if (Array.isArray(result.references)) {
-      const localByName = new Map(smartReferences.map((reference) => [reference.name, reference]));
-      smartReferences = result.references.map((reference) => Object.assign({}, reference, {
-        url: localByName.get(reference.name)?.url || '',
-      }));
-      renderSmartReferences();
-    }
-    smartRun = null;
-    smartClientToken = newSmartClientToken();
-    smartPlanEditing = false;
-    smartPlanEditBackup = null;
-    smartPlanEditHash = '';
-    $('#smartProvider').textContent = `${result.provider.label} · ${result.provider.model}`;
-    autoQueue = smartExecutionOption('smartAutoApprove');
+    const result = await waitForSmartPlanRequest(saved.requestId);
+    autoQueue = acceptSmartPlanResult(result, saved.requestId);
+    forgetSmartPlanRequest(saved.requestId);
     setSmartStatus(autoQueue ? 'Plan ready. Auto approve is queueing production…' : 'Plan ready. Review the workflow before queueing.');
-    renderSmartWorkspace();
   } catch (error) {
-    setSmartStatus(error.message, true);
+    if (error.status === 404) {
+      forgetSmartPlanRequest(saved.requestId);
+      setSmartStatus('The previous Smart planning request is no longer available. Build the plan again.', true);
+    } else if (error.code !== 'smart_plan_poll_stopped') {
+      setSmartStatus(error.message, true);
+      if (error.code !== 'smart_plan_wait_timeout') forgetSmartPlanRequest(saved.requestId);
+    }
   } finally {
+    if (smartPlanRequestId === saved.requestId) smartPlanRequestId = '';
     smartBusy = false;
+    smartPlanResumeStarted = false;
     $('#smartPlanBtn').disabled = false;
   }
   if (autoQueue && smartPlan && !smartRun) {
@@ -5105,6 +5271,8 @@ async function actOnSmartRun(action) {
 }
 
 function resetSmartComposer() {
+  if (smartPlanRequestId) forgetSmartPlanRequest(smartPlanRequestId);
+  smartPlanRequestId = '';
   smartReferences.forEach((reference) => {
     if (String(reference?.url || '').startsWith('blob:')) URL.revokeObjectURL(reference.url);
   });
@@ -5406,7 +5574,9 @@ function setView(view, opts = {}) {
   } else if (view === 'create' && state.createMode === 'image') {
     schedulePrimaryOrSidePanelGuide('prompt-entry', 960);
   } else if (view === 'create' && state.createMode === 'smart') {
-    loadSmartRuns().catch((error) => setSmartStatus(error.message, true));
+    loadSmartRuns()
+      .then(() => resumeSmartPlanRequest())
+      .catch((error) => setSmartStatus(error.message, true));
   } else if (view === 'edit' && prev !== view) {
     scheduleContextualGuide('edit-inputs', 760);
   }
