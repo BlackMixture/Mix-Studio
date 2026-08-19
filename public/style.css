@@ -13211,7 +13211,7 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
     linear-gradient(145deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 18px 60px -50px rgba(169,102,255,.7);
 }
-.smart-brief-card { grid-column: 1; grid-row: 1; position: sticky; top: 0; padding: 20px; }
+.smart-brief-card { grid-column: 1; grid-row: 1; position: static; padding: 20px; }
 .smart-production-card { grid-column: 2; grid-row: 1 / span 2; }
 .smart-section-label { display: flex; align-items: center; gap: 8px; }
 .smart-section-label span { color: #c5a0ff; }

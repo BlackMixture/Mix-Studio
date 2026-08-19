@@ -135,6 +135,8 @@ test('Smart uses app listboxes instead of native selectors throughout plan editi
 test('Smart brief is unnumbered and recent productions occupy the desktop left column', () => {
   assert.doesNotMatch(html, /<div class="smart-section-label"><span>01<\/span> Creative brief<\/div>/);
   assert.match(html, /class="smart-layout"[\s\S]*class="smart-brief-card"[\s\S]*id="smartBoard"[\s\S]*id="smartRecent"[\s\S]*<\/div>\s*<\/section>/);
+  assert.match(smartCss, /\.smart-brief-card \{[^}]*position: static;/);
+  assert.doesNotMatch(smartCss, /\.smart-brief-card \{[^}]*position: sticky;/);
   assert.match(smartCss, /\.smart-production-card \{ grid-column: 2; grid-row: 1 \/ span 2; \}/);
   assert.match(smartCss, /\.smart-recent \{ grid-column: 1; grid-row: 2;/);
   assert.match(smartCss, /\.smart-recent-list \{[^}]*grid-template-columns: 1fr/);
