@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const H3PromptGuide = require('../public/h3-prompt-guide');
 
 const {
+  SMART_LOCAL_PLAN_SCHEMA,
   SMART_PLAN_SCHEMA,
   buildH3ClipPrompt,
   buildH3Prompt,
@@ -68,6 +69,46 @@ test('Smart plan schema is strict and suitable for structured provider output', 
   assert.equal(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.maxItems, 6);
 });
 
+test('local Smart planning establishes story before compact reference metadata', () => {
+  const prompt = smartPlanningPrompt('A lion loses its way in a flooded city and must find its pride before nightfall', {
+    references: [{ name: 'lion.png', label: 'Lion identity', w: 1200, h: 900 }],
+  });
+  const propertyOrder = Object.keys(SMART_LOCAL_PLAN_SCHEMA.properties);
+  assert.ok(propertyOrder.indexOf('videoPrompt') < propertyOrder.indexOf('subject'));
+  assert.ok(propertyOrder.indexOf('subject') < propertyOrder.indexOf('scenes'));
+  assert.match(prompt.localInstruction, /PRIORITY 1 — STORY AND ACTION/);
+  assert.match(prompt.localInstruction, /setup, a goal or pressure, escalating actions, a meaningful turn, and a payoff or resolution/);
+  assert.match(prompt.localInstruction, /majority of scene detail must describe action, obstacle, reaction, environment, cause-and-effect, and progression/i);
+  assert.match(prompt.localInstruction, /REFERENCE CONTINUITY IS SUPPORTING METADATA, NOT THE STORY/);
+  assert.match(prompt.localInstruction, /subject\.description must be a compact identity specification of at most 60 words/);
+  assert.match(prompt.localInstruction, /referenceStates description must be at most 45 words/);
+  assert.match(prompt.localInstruction, /Do not repeat the full subject description in scene descriptions/);
+});
+
+test('video reference metadata is bounded and never labels the clip as a reference generation', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 10;
+  raw.scenes = [raw.scenes[0]];
+  raw.subject.description = Array.from({ length: 90 }, (_, index) => `identity${index}`).join(' ');
+  raw.subject.referenceStates = [{
+    id: 'default', label: 'Default', description: raw.subject.description,
+  }];
+  raw.imagePrompt = Array.from({ length: 130 }, (_, index) => `appearance${index}`).join(' ');
+  const audit = smartPlanAudit(raw);
+  assert.match(audit.issues.join(' '), /60-word continuity budget/);
+  assert.match(audit.issues.join(' '), /100-word video-reference budget/);
+  assert.match(audit.issues.join(' '), /45-word continuity budget/);
+
+  const plan = normalizeSmartPlan(raw);
+  assert.equal(plan.subject.description.split(/\s+/).length, 60);
+  assert.equal(plan.subject.referenceStates[0].description.split(/\s+/).length, 45);
+  assert.equal(plan.imagePrompt.split(/\s+/).length, 100);
+  const clipPrompt = buildH3ClipPrompt(plan, plan.scenes[0]);
+  assert.doesNotMatch(clipPrompt, /\[reference generation\]/i);
+  assert.match(clipPrompt, /summary:\nThe lion enters an empty city at dawn/);
+  assert.match(clipPrompt, /retention_analysis:\n<Subject 1>: fully_preserved while visible/);
+});
+
 test('Smart planner expands a 120-second treatment into bounded clips and preserves exact running time', () => {
   const plan = normalizeSmartPlan(lionPlan(), 'Make a two-minute lion film');
   assert.equal(plan.output.durationSeconds, 120);
@@ -102,7 +143,8 @@ test('Smart compiles identity video into a Krea reference followed by individual
   assert.equal(steps[1].request.body.seconds, 10);
   assert.equal(steps[1].request.body.h3ResolutionSize, 1);
   assert.match(steps[1].request.body.prompt, /^subject_definitions:/);
-  assert.match(steps[1].request.body.prompt, /summary:\n\[reference generation\]/);
+  assert.match(steps[1].request.body.prompt, /summary:\nThe lion enters an empty city at dawn/);
+  assert.doesNotMatch(steps[1].request.body.prompt, /\[reference generation\]/i);
   assert.match(steps[1].request.body.prompt, /retention_analysis:/);
   assert.match(steps[1].request.body.prompt, /detailed_description:\n[\s\S]*\[Shot 1\]/);
   assert.match(steps[1].request.body.prompt, /overall_soundscape:/);

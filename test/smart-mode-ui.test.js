@@ -112,7 +112,9 @@ test('Smart exposes planner configuration and reusable image references', () => 
   assert.match(app, /guide the canonical/);
   assert.match(app, /Auto matched/);
   assert.match(app, /setSettingsTab\('suggestions'\)[\s\S]*prompting-external/);
-  assert.match(server, /function requestSmartPlan\([\s\S]*provider\.provider === 'local'[\s\S]*queueTextEnhancement\([\s\S]*SMART_PLAN_SCHEMA/);
+  assert.match(server, /function requestSmartPlan\([\s\S]*provider\.provider === 'local'/);
+  assert.match(server, /prompt\.localInstruction \|\| prompt\.instruction/);
+  assert.match(server, /JSON\.stringify\(SMART_LOCAL_PLAN_SCHEMA\)/);
   assert.match(server, /requestSmartPlan\(provider, prompt, references, request\.profileId, progress\)/);
   assert.match(server, /compileSmartSteps\(plan, \{\}, references\)/);
   assert.match(server, /requireVision: references\.length > 0/);

@@ -149,6 +149,7 @@ const {
   parseStructuredText,
 } = require('./lib/external-llm');
 const {
+  SMART_LOCAL_PLAN_SCHEMA,
   SMART_PLAN_SCHEMA,
   compileSmartSteps,
   normalizeSmartPlan,
@@ -3856,10 +3857,10 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
 async function requestSmartPlan(provider, prompt, references, profileId, onProgress = () => {}) {
   if (provider.provider === 'local') {
     const schemaInstruction = [
-      prompt.instruction,
-      'Produce the entire production plan in one response. Every requested second must be represented by a distinct scene of no more than 10 seconds, and every scene must contain its own renderable action, shot, camera, spatial composition, continuity, audio, and reference decision.',
+      prompt.localInstruction || prompt.instruction,
+      'Produce the entire production plan in one response. Every requested second must be represented by a distinct scene of no more than 10 seconds, and every scene must contain its own renderable action, shot, camera, spatial composition, continuity, audio, and reference decision. Develop the narrative or purposeful action progression before spending words on reference continuity.',
       'Return only one valid JSON object with the exact property names and value types in this schema. Do not use Markdown, XML, commentary, ellipses, placeholders, or a code fence.',
-      JSON.stringify(SMART_PLAN_SCHEMA),
+      JSON.stringify(SMART_LOCAL_PLAN_SCHEMA),
     ].join('\n\n');
     const queueLocalPlan = (userInput, pass) => {
       onProgress(pass, pass === 'repair'
@@ -3909,7 +3910,7 @@ async function requestSmartPlan(provider, prompt, references, profileId, onProgr
       '<required_corrections>',
       issueLines,
       '</required_corrections>',
-      'Rewrite the incomplete draft as one complete production plan. Preserve the creator brief as the binding instruction, replace repeated or missing beats with distinct renderable scenes, cover the exact full runtime, and return the entire JSON object rather than a patch or explanation.',
+      'Rewrite the incomplete draft as one complete production plan. Preserve the creator brief as the binding instruction, replace repeated or missing beats with distinct causal or purposeful actions, cover the exact full runtime, and return the entire JSON object rather than a patch or explanation. Keep subject.description, referenceStates, and imagePrompt compact; spend the output budget on the story spine and scene progression.',
     ].join('\n'), 'repair');
     const repairedPlan = parseStructuredText(repairedRaw, provider.label);
     const repairedAudit = smartPlanAudit(repairedPlan);
