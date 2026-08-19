@@ -2928,7 +2928,7 @@
           <details class="settings-group settings-preference-disclosure" data-settings-preference-section="prompting-external">
             <summary class="settings-preference-summary"><span class="settings-preference-summary-copy"><strong>Prompt AI</strong><small id="externalPromptAiSummary">Local · ComfyUI</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-preference-body external-llm-settings" id="externalLlmSettings">
-              <p class="settings-default-note">Choose once for all prompt assistance. Smart planning, Revise Prompt, and Prompt Enhance automatically use this AI across Image and Video.</p>
+              <p class="settings-default-note">Choose where prompt assistance runs. Revise Prompt and Prompt Enhance share the model below; Smart planning can optionally use its own local model.</p>
               <div class="prompt-ai-location">
                 <div class="prompt-ai-location-copy">
                   <strong id="promptAiModeLabel">Where should AI run?</strong>
@@ -2952,7 +2952,7 @@
                 </div>
                 <div class="external-llm-provider local-prompt-ai-settings" id="localPromptAiSettings" data-external-llm-provider="local">
                   <div class="field">
-                    <label for="setLocalPromptAiClip">Prompt model</label>
+                    <label for="setLocalPromptAiClip">Prompt enhance model</label>
                     <select id="setLocalPromptAiClip" aria-describedby="localPromptAiHint">
                       <option value="">Automatic · Krea 2 prompt model</option>
                     </select>
@@ -2963,10 +2963,32 @@
                       <option value="krea2">Krea 2 / Qwen3-VL</option>
                     </select>
                   </div>
-                  <p class="local-prompt-ai-hint" id="localPromptAiHint">Vision-capable Qwen3-VL models are recommended for frame- and reference-aware planning. Generation models remain unchanged.</p>
+                  <p class="local-prompt-ai-hint" id="localPromptAiHint">Used by Revise Prompt and Prompt Enhance. Generation models remain unchanged.</p>
                   <div class="local-prompt-ai-actions">
                     <button class="settings-cache-clear" id="refreshLocalPromptAiModels" type="button">Refresh models</button>
                     <span id="localPromptAiStatus" role="status" aria-live="polite">Loading installed models…</span>
+                  </div>
+                  <div class="smart-planner-model-setting">
+                    <button class="settings-media-toggle" id="smartPlannerModelOverride" type="button" role="switch" aria-checked="false">
+                      <span class="settings-media-toggle-copy"><strong>Dedicated Smart planner model</strong><small>Use a different ComfyUI model only for full production planning.</small></span>
+                      <span class="settings-media-switch" aria-hidden="true"><i></i></span>
+                    </button>
+                    <div class="smart-planner-model-fields" id="smartPlannerModelFields" hidden>
+                      <div class="field">
+                        <label for="setSmartPlannerClip">Smart planner model</label>
+                        <select id="setSmartPlannerClip" aria-describedby="smartPlannerModelHint">
+                          <option value="">Choose an installed model…</option>
+                        </select>
+                      </div>
+                      <div class="field" id="smartPlannerClipTypeField">
+                        <label for="setSmartPlannerClipType">Loader type</label>
+                        <select id="setSmartPlannerClipType">
+                          <option value="krea2">Krea 2 / Qwen3-VL</option>
+                        </select>
+                      </div>
+                      <p class="local-prompt-ai-hint" id="smartPlannerModelHint">A capable Qwen3-VL model is recommended for complete shot planning and attached-reference analysis.</p>
+                      <span id="smartPlannerModelStatus" role="status" aria-live="polite"></span>
+                    </div>
                   </div>
                 </div>
                 <div class="external-llm-provider" data-external-llm-provider="ollama" hidden>
@@ -3025,7 +3047,7 @@
                   <small class="external-llm-field-note">Smart voice transcription uses OpenAI even when another planner is selected. Leave blank if voice input is not needed.</small>
                 </div>
               </details>
-              <p class="prompt-ai-routing-note"><i aria-hidden="true"></i><span><strong>Applied everywhere</strong><small>Smart planning · Image prompts · Video prompts</small></span></p>
+              <p class="prompt-ai-routing-note"><i aria-hidden="true"></i><span><strong>Routing coverage</strong><small>Image prompts · Video prompts · Smart planner or its local override</small></span></p>
               <p class="external-llm-privacy">When External is selected, prompts and relevant attached references are sent only to the chosen provider. Local ComfyUI stays inside the generation machine; Ollama remains local when its URL points to that machine.</p>
               <div class="external-llm-test-row">
                 <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>

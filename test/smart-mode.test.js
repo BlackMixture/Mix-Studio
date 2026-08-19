@@ -11,7 +11,9 @@ const {
   compileSmartSteps,
   normalizeSmartPlan,
   normalizeSmartReferences,
+  reconcileSmartPlanReferences,
   smartReferenceSpec,
+  smartPlanAudit,
   smartPlanHash,
   smartPlanningPrompt,
 } = require('../lib/smart-mode');
@@ -25,6 +27,7 @@ function lionPlan() {
     subject: {
       needsReference: true,
       referenceType: 'character',
+      referenceTarget: 'lion',
       description: 'A regal male lion with a dark amber mane and a small scar above the left eye',
       referenceStates: [{ id: 'default', label: 'Default', description: 'The lion is healthy with an intact dark amber mane' }],
     },
@@ -61,6 +64,7 @@ test('Smart plan schema is strict and suitable for structured provider output', 
   assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.timelineBeats.maxItems, 6);
   assert.deepEqual(SMART_PLAN_SCHEMA.properties.scenes.items.properties.timelineBeats.items.properties.kind.enum, ['action', 'camera', 'cut']);
   assert.deepEqual(SMART_PLAN_SCHEMA.properties.subject.properties.referenceType.enum, ['character', 'object', 'place']);
+  assert.ok(SMART_PLAN_SCHEMA.properties.subject.required.includes('referenceTarget'));
   assert.equal(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.maxItems, 6);
 });
 
@@ -119,6 +123,54 @@ test('attached references are bounded, hashed, and synthesized through Krea 2 Ed
   assert.deepEqual(steps[0].request.body.refImages, ['lion.png', 'style.jpg']);
   assert.deepEqual(steps[1].dependsOn, ['reference-step']);
   assert.notEqual(smartPlanHash(lionPlan()), smartPlanHash(lionPlan(), references));
+});
+
+test('attached references repair an incorrect local-model scene flag only when the target is renderable', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 20;
+  raw.subject.needsReference = false;
+  raw.scenes = [
+    {
+      title: 'Empty avenue', durationSeconds: 10,
+      description: 'An empty avenue at dawn before anyone arrives', shot: 'Wide establishing shot',
+      camera: 'Slow push in', transition: 'Opening image', spatialComposition: 'The vacant avenue recedes into haze',
+      continuity: 'Warm dawn light', audio: 'Wind', music: '', dialogue: [], timelineBeats: [],
+      usesSubjectReference: false, referenceStateId: '',
+    },
+    {
+      title: 'Arrival', durationSeconds: 10,
+      description: 'The lion enters the avenue from frame left', shot: 'Low tracking shot',
+      camera: 'Track beside the lion', transition: 'Hard cut', spatialComposition: 'The lion occupies the foreground',
+      continuity: 'The dark amber mane stays visible', audio: 'Footsteps', music: '', dialogue: [], timelineBeats: [],
+      usesSubjectReference: false, referenceStateId: '',
+    },
+  ];
+  const references = [{ name: 'lion.png', label: 'Lion identity' }];
+  const plan = reconcileSmartPlanReferences(raw, references);
+  assert.equal(plan.subject.needsReference, true);
+  assert.deepEqual(plan.scenes.map((scene) => scene.usesSubjectReference), [false, true]);
+  assert.deepEqual(plan.scenes.map((scene) => scene.referenceUseSource), ['planner', 'detected']);
+  assert.equal(reconcileSmartPlanReferences(plan, references).scenes[1].referenceUseSource, 'detected');
+  assert.equal(smartPlanHash(raw, references), smartPlanHash(plan, references));
+  const steps = compileSmartSteps(raw, { imageId: 'reference-step', videoIds: ['empty-step', 'lion-step'] }, references);
+  assert.equal(steps[0].kind, 'reference');
+  assert.equal(steps[1].request.body.h3Mode, 'frames');
+  assert.equal(steps[2].request.body.h3Mode, 'reference');
+  assert.deepEqual(steps[2].dependsOn, ['reference-step']);
+});
+
+test('manual reference routing remains authoritative during plan review', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 10;
+  raw.scenes = [Object.assign({}, raw.scenes[0], {
+    durationSeconds: 10,
+    usesSubjectReference: false,
+    referenceUseSource: 'manual',
+    referenceStateId: '',
+  })];
+  const plan = reconcileSmartPlanReferences(raw, [{ name: 'lion.png', label: 'Lion identity' }]);
+  assert.equal(plan.scenes[0].usesSubjectReference, false);
+  assert.equal(plan.scenes[0].referenceUseSource, 'manual');
 });
 
 test('combined H3 preview keeps references and scene boundaries without leaking film timing', () => {
@@ -319,13 +371,21 @@ test('Smart never invents dialogue and formats supplied voiceover without lip mo
 });
 
 test('planner instruction explicitly routes persistent subjects through one canonical reference', () => {
-  const prompt = smartPlanningPrompt('A lion crosses several scenes', { referenceCount: 2 });
+  const prompt = smartPlanningPrompt('A lion crosses several scenes', { references: [
+    { name: 'lion.png', label: 'Lion identity', w: 1200, h: 900 },
+    { name: 'style.png', label: '1990s anime look', w: 800, h: 1200 },
+  ] });
   assert.match(prompt.instruction, /persistent named character/i);
   assert.match(prompt.instruction, /front full-body, back full-body, and face close-up panels/i);
   assert.match(prompt.instruction, /materially distinct visual state/i);
   assert.match(prompt.instruction, /wardrobe changes, injuries, dirt, damage/i);
   assert.match(prompt.instruction, /referenceStateId to the exact state depicted/i);
   assert.match(prompt.instruction, /attached 2 image references/i);
+  assert.match(prompt.instruction, /Reference 1 is labelled "Lion identity"/);
+  assert.match(prompt.instruction, /Reference 2 is labelled "1990s anime look"/);
+  assert.match(prompt.instruction, /Reference 1 is the left panel and Reference 2 is the right panel/);
+  assert.match(prompt.instruction, /subject\.referenceTarget/);
+  assert.match(prompt.instruction, /repeat this exact identifier/i);
   assert.match(prompt.instruction, /identity, visual style, wardrobe, product appearance, or composition/i);
   assert.match(prompt.instruction, /independently generated editorial clip/i);
   assert.match(prompt.instruction, /H3 receives no information about any other clip/i);
@@ -343,5 +403,24 @@ test('planner instruction explicitly routes persistent subjects through one cano
   assert.match(prompt.instruction, /Favor compact prompts/);
   assert.match(prompt.instruction, /usesSubjectReference true only/i);
   assert.match(prompt.instruction, /vary shot size and angle/i);
-  assert.equal(prompt.userInput, 'A lion crosses several scenes');
+  assert.match(prompt.userInput, /^CREATOR BRIEF/);
+  assert.match(prompt.userInput, /<creator_brief>\nA lion crosses several scenes\n<\/creator_brief>/);
+  assert.match(prompt.userInput, /binding instruction/i);
+  assert.match(prompt.userInput, /do not merely summarize/i);
+});
+
+test('raw Smart plan audit detects partial local plans before normalization hides the gaps', () => {
+  const partial = smartPlanAudit(lionPlan());
+  assert.equal(partial.complete, false);
+  assert.equal(partial.expectedClipCount, 12);
+  assert.match(partial.issues.join(' '), /only 4 of at least 12 required clips/i);
+  assert.match(partial.issues.join(' '), /durationSeconds must be between 1 and 10/i);
+
+  const completePlan = normalizeSmartPlan(lionPlan());
+  completePlan.scenes = completePlan.scenes.map((scene, index) => Object.assign({}, scene, {
+    description: `${scene.description}. Distinct production beat ${index + 1}`,
+  }));
+  assert.deepEqual(smartPlanAudit(completePlan), {
+    complete: true, issues: [], expectedClipCount: 12, sceneCount: 12,
+  });
 });

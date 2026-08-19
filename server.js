@@ -153,6 +153,8 @@ const {
   compileSmartSteps,
   normalizeSmartPlan,
   normalizeSmartReferences,
+  reconcileSmartPlanReferences,
+  smartPlanAudit,
   smartPlanHash,
   smartPlanningPrompt,
 } = require('./lib/smart-mode');
@@ -160,6 +162,7 @@ const {
   localPromptAiCatalog,
   localPromptAiConfig,
   normalizeLocalPromptAiSettings,
+  smartPlannerPromptAiConfig,
 } = require('./lib/local-prompt-ai');
 const { combineNegativePrompts, normalizeNegativePrompt } = require('./lib/negative-prompt');
 const {
@@ -580,6 +583,9 @@ const DEFAULT_SETTINGS = {
   externalLlmVideoEnhance: true,
   localPromptAiClip: '',
   localPromptAiClipType: 'krea2',
+  smartPlannerModelOverride: false,
+  smartPlannerClip: '',
+  smartPlannerClipType: 'krea2',
   galleryPassword: DEFAULT_PRIVATE_PASSWORD,
   exportDir: '',
   smartFilenames: true,
@@ -3134,6 +3140,17 @@ function configuredExternalLlm() {
   }));
 }
 
+function configuredSmartPlannerLlm() {
+  const provider = configuredExternalLlm();
+  if (provider.provider !== 'local') return provider;
+  const planner = smartPlannerPromptAiConfig(settings);
+  return Object.assign({}, provider, {
+    model: planner.model,
+    type: planner.type,
+    label: planner.override ? 'Local ComfyUI · Smart model' : provider.label,
+  });
+}
+
 const SMART_RUN_LIMIT = 50;
 const SMART_AUDIO_LIMIT = 25 * 1024 * 1024;
 
@@ -3527,8 +3544,8 @@ function textGenInputs(seed, maxLength) {
   };
 }
 
-function localPromptAiLoaderInputs() {
-  const promptAi = localPromptAiConfig(settings);
+function localPromptAiLoaderInputs(override = null) {
+  const promptAi = override?.model ? override : localPromptAiConfig(settings);
   return { clip_name: promptAi.model, type: promptAi.type, device: 'default' };
 }
 
@@ -3785,7 +3802,7 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
     (async () => {
       const graph = {};
       parts = h3PromptPartsWithVisionOrder(parts, options, 'stitched');
-      graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs() };
+      graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs(options.clipConfig) };
       const promptImage = await appendPromptVisionImages(graph, options);
       graph.concat = {
         class_type: 'StringConcatenate',
@@ -3799,6 +3816,11 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
       };
       graph.show = { class_type: 'PreviewAny', inputs: { source: ['refine', 0] } };
       await filterInputs(graph);
+      if (promptImage && options.requireVision === true && !graph.refine.inputs.image) {
+        const error = new Error('The selected local Prompt AI workflow cannot inspect images. Choose a vision-capable Qwen3-VL model or switch Prompt AI to External.');
+        error.code = 'local_prompt_ai_vision_required';
+        throw error;
+      }
       const pid = await queuePrompt(graph, { profileId: options.profileId, front: true });
       let clearDeadline = () => {};
       trackJob(pid, {
@@ -3833,19 +3855,59 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
 
 async function requestSmartPlan(provider, prompt, references, profileId) {
   if (provider.provider === 'local') {
-    const raw = await queueTextEnhancement({
-      instruction: [
-        prompt.instruction,
-        'Return only one valid JSON object with the exact property names and value types in this schema. Do not use Markdown, XML, commentary, or a code fence.',
-        JSON.stringify(SMART_PLAN_SCHEMA),
-      ].join('\n\n'),
-      userInput: prompt.userInput,
-    }, Math.floor(Math.random() * 2 ** 31), 'Building Smart plan with the local model...', 6144, {
+    const schemaInstruction = [
+      prompt.instruction,
+      'Produce the entire production plan in one response. Every requested second must be represented by a distinct scene of no more than 10 seconds, and every scene must contain its own renderable action, shot, camera, spatial composition, continuity, audio, and reference decision.',
+      'Return only one valid JSON object with the exact property names and value types in this schema. Do not use Markdown, XML, commentary, ellipses, placeholders, or a code fence.',
+      JSON.stringify(SMART_PLAN_SCHEMA),
+    ].join('\n\n');
+    const queueLocalPlan = (userInput) => queueTextEnhancement({
+      instruction: schemaInstruction,
+      userInput,
+    }, Math.floor(Math.random() * 2 ** 31), 'Building Smart plan with the local model...', 8192, {
       profileId,
+      clipConfig: { model: provider.model, type: provider.type },
       imageNames: references.map((reference) => reference.name),
+      requireVision: references.length > 0,
       broadcastStatus: false,
     });
-    return parseStructuredText(raw, provider.label);
+    const raw = await queueLocalPlan(prompt.userInput);
+    let plan = null;
+    let audit;
+    try {
+      plan = parseStructuredText(raw, provider.label);
+      audit = smartPlanAudit(plan);
+    } catch (error) {
+      audit = {
+        complete: false,
+        issues: [`The first response was not valid complete JSON: ${String(error.message || error).slice(0, 240)}`],
+      };
+    }
+    if (audit.complete) return plan;
+    console.info('[smart-plan]', JSON.stringify({
+      provider: 'local', pass: 'repair', issueCount: audit.issues.length,
+      issues: audit.issues.slice(0, 8),
+    }));
+    const issueLines = audit.issues.slice(0, 16).map((issue) => `- ${issue}`).join('\n');
+    const repairedRaw = await queueLocalPlan([
+      prompt.userInput,
+      '<incomplete_draft>',
+      String(raw || '').slice(0, 30000),
+      '</incomplete_draft>',
+      '<required_corrections>',
+      issueLines,
+      '</required_corrections>',
+      'Rewrite the incomplete draft as one complete production plan. Preserve the creator brief as the binding instruction, replace repeated or missing beats with distinct renderable scenes, cover the exact full runtime, and return the entire JSON object rather than a patch or explanation.',
+    ].join('\n'));
+    const repairedPlan = parseStructuredText(repairedRaw, provider.label);
+    const repairedAudit = smartPlanAudit(repairedPlan);
+    if (!repairedAudit.complete) {
+      console.warn('[smart-plan]', JSON.stringify({
+        provider: 'local', pass: 'repair-incomplete', issueCount: repairedAudit.issues.length,
+        issues: repairedAudit.issues.slice(0, 8),
+      }));
+    }
+    return repairedPlan;
   }
   const images = await Promise.all(references.map((reference) => externalPromptImage(reference.name, profileId)));
   return externalLlmStructuredRequest({
@@ -6886,12 +6948,11 @@ async function handleApi(req, res, url) {
     const brief = String(body.brief || '').trim().slice(0, 8000);
     if (!brief) return json(res, 400, { error: 'Describe what you want Smart mode to create' });
     const references = normalizeSmartReferences(body.references);
-    const provider = configuredExternalLlm();
-    const prompt = smartPlanningPrompt(brief, { referenceCount: references.length });
+    const provider = configuredSmartPlannerLlm();
+    const prompt = smartPlanningPrompt(brief, { references });
     try {
       const rawPlan = await requestSmartPlan(provider, prompt, references, req.profile.id);
-      const plan = normalizeSmartPlan(rawPlan, brief);
-      if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
+      const plan = reconcileSmartPlanReferences(normalizeSmartPlan(rawPlan, brief), references);
       return json(res, 200, {
         plan,
         references,
@@ -6910,8 +6971,9 @@ async function handleApi(req, res, url) {
   if (route === '/api/smart/plan/review' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const references = normalizeSmartReferences(body.references);
-    const plan = normalizeSmartPlan(body.plan, body.plan?.summary || '');
-    if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
+    const plan = reconcileSmartPlanReferences(
+      normalizeSmartPlan(body.plan, body.plan?.summary || ''), references,
+    );
     return json(res, 200, {
       plan,
       references,
@@ -6958,9 +7020,10 @@ async function handleApi(req, res, url) {
         code: 'smart_plan_not_approved',
       });
     }
-    const plan = normalizeSmartPlan(body.plan, body.plan?.summary || '');
     const references = normalizeSmartReferences(body.references);
-    if (references.length && plan.output.kind === 'video') plan.subject.needsReference = true;
+    const plan = reconcileSmartPlanReferences(
+      normalizeSmartPlan(body.plan, body.plan?.summary || ''), references,
+    );
     const planHash = String(body.planHash || '');
     if (!/^[a-f0-9]{64}$/.test(planHash) || smartPlanHash(plan, references) !== planHash) {
       return json(res, 409, { error: 'This Smart plan changed after review. Build the plan again before queueing.', code: 'smart_plan_changed' });
@@ -7593,8 +7656,10 @@ async function handleApi(req, res, url) {
         .some((key) => typeof body[key] === 'string' && body[key].trim() && body[key].trim() !== String(settings[key] || ''))
       || ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
         .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
-    const changesLocalPromptAi = ['localPromptAiClip', 'localPromptAiClipType']
-      .some((key) => typeof body[key] === 'string' && body[key].trim() !== String(settings[key] || ''));
+    const changesLocalPromptAi = ['localPromptAiClip', 'localPromptAiClipType', 'smartPlannerClip', 'smartPlannerClipType']
+      .some((key) => typeof body[key] === 'string' && body[key].trim() !== String(settings[key] || ''))
+      || (typeof body.smartPlannerModelOverride === 'boolean'
+        && body.smartPlannerModelOverride !== settings.smartPlannerModelOverride);
     const changesH3ModelVariant = [
       'h3FrameModelVariant', 'h3ReferenceModelVariant', 'h3Unet', 'h3RefUnet',
       'h3Bf16Unet', 'h3Bf16RefUnet', 'h3DynTimeRefUnet', 'h3DynTimeRefHqUnet',
@@ -7620,6 +7685,13 @@ async function handleApi(req, res, url) {
     if (typeof body.localPromptAiClip === 'string') settings.localPromptAiClip = body.localPromptAiClip.trim();
     if (typeof body.localPromptAiClipType === 'string' && body.localPromptAiClipType.trim()) {
       settings.localPromptAiClipType = body.localPromptAiClipType.trim();
+    }
+    if (typeof body.smartPlannerModelOverride === 'boolean') {
+      settings.smartPlannerModelOverride = body.smartPlannerModelOverride;
+    }
+    if (typeof body.smartPlannerClip === 'string') settings.smartPlannerClip = body.smartPlannerClip.trim();
+    if (typeof body.smartPlannerClipType === 'string' && body.smartPlannerClipType.trim()) {
+      settings.smartPlannerClipType = body.smartPlannerClipType.trim();
     }
     if (typeof body.smartFilenames === 'boolean') settings.smartFilenames = body.smartFilenames;
     if (body.clearHfToken === true) settings.hfToken = '';

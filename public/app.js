@@ -4603,7 +4603,7 @@ function smartSceneMarkup(plan) {
   if (!Array.isArray(plan?.scenes) || !plan.scenes.length) return '';
   return `<div class="smart-scene-list">${plan.scenes.map((scene) => `
     <article class="smart-scene ${smartSceneUsesReference(plan, scene) ? 'with-reference' : 'without-reference'}">
-      <header><span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(1)}–${Number(scene.endSeconds || 0).toFixed(1)} sec`)}</span><i>${smartSceneUsesReference(plan, scene) ? `Reference · ${escapeHtml(smartSceneReferenceState(plan, scene).label)}` : 'No reference'}</i></header>
+      <header><span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(1)}–${Number(scene.endSeconds || 0).toFixed(1)} sec`)}</span><i>${smartSceneUsesReference(plan, scene) ? `${scene.referenceUseSource === 'detected' ? 'Auto matched' : (scene.referenceUseSource === 'manual' ? 'Manual' : 'Planned')} · ${escapeHtml(smartSceneReferenceState(plan, scene).label)}` : 'No reference'}</i></header>
       <strong>${escapeHtml(scene.title)}</strong>
       <em>${escapeHtml(scene.shot || 'Directed shot')}</em>
       <p>${escapeHtml(scene.description)}</p>
@@ -4685,9 +4685,10 @@ function smartPlanEditorMarkup(plan) {
       <label>Visual style<textarea data-smart-plan-field="visualStyle" rows="2" maxlength="1200">${escapeHtml(plan.visualStyle || '')}</textarea></label>
       ${plan.output.kind === 'video' ? `
         <div class="smart-editor-grid">
-          <label>Reference subject<textarea data-smart-subject-field="description" rows="2" maxlength="1200">${escapeHtml(plan.subject.description || '')}</textarea></label>
+          <label>Reference target<input data-smart-subject-field="referenceTarget" maxlength="100" value="${escapeHtml(plan.subject.referenceTarget || '')}" /><small>Repeat this exact name in clips where the target is visible.</small></label>
           <label>Reference template${smartSelectMarkup('smart-reference-template', plan.subject.referenceType, referenceTypeOptions, 'data-smart-subject-field="referenceType"', 'Reference template')}</label>
         </div>
+        <label>Reference subject<textarea data-smart-subject-field="description" rows="2" maxlength="1200">${escapeHtml(plan.subject.description || '')}</textarea></label>
         ${plan.subject.needsReference ? `
           <div class="smart-editor-clips-head"><span><strong>Reference states</strong><small>Create a new state only when appearance, condition, or environment materially changes.</small></span><button type="button" data-smart-action="add-reference-state" ${referenceStates.length >= 6 ? 'disabled' : ''}>+ Add state</button></div>
           <div class="smart-scene-editor-list smart-reference-state-list">${referenceStateEditors}</div>` : ''}
@@ -4732,6 +4733,14 @@ function renderSmartWorkspace() {
     return;
   }
   const videoClips = steps.filter((step) => step.kind === 'video').length;
+  const referenceClipCount = (plan.scenes || []).filter((scene) => smartSceneUsesReference(plan, scene)).length;
+  const referenceRoute = plan.output.kind === 'video' && attachedReferences.length ? `
+    <div class="smart-reference-route ${referenceClipCount ? '' : 'warning'}">
+      <span>Reference pipeline</span>
+      <p><strong>${escapeHtml(attachedReferences.map((reference, index) => reference.label || `Reference ${index + 1}`).join(' + '))}</strong> ${referenceClipCount
+        ? `guide the canonical ${escapeHtml(plan.subject.referenceTarget || 'subject')} reference. That generated reference is attached to ${referenceClipCount} of ${plan.scenes.length} H3 clip${plan.scenes.length === 1 ? '' : 's'}; clips where the target is absent remain reference-free.`
+        : `were inspected by the planner, but no clip currently contains the canonical ${escapeHtml(plan.subject.referenceTarget || 'subject')} target. Modify the plan if that target should appear on screen.`}</p>
+    </div>` : '';
   board.innerHTML = `
     <div class="smart-plan-head">
       <span><small>${run ? 'Production run' : 'Proposed production plan'}</small><h3>${escapeHtml(plan.title)}</h3><p>${escapeHtml(plan.summary)}</p></span>
@@ -4749,6 +4758,7 @@ function renderSmartWorkspace() {
     </div>
     ${run?.brief ? `<div class="smart-original-brief"><span>Original prompt</span><p>${escapeHtml(run.brief)}</p></div>` : ''}
     ${plan.output.kind === 'video' ? `<div class="smart-director-treatment"><span>Director's treatment</span><p>${escapeHtml(plan.directorialApproach || 'Purposeful shot progression with motivated cuts and visual continuity.')}</p></div>` : ''}
+    ${referenceRoute}
     <div class="smart-step-list">${steps.map((step, index) => `
       <article class="smart-step ${escapeHtml(step.status || 'pending')}">
         <span class="smart-step-index">0${index + 1}</span>
@@ -4782,6 +4792,7 @@ function captureSmartPlanEditor() {
   next.videoPrompt = planValue('videoPrompt', next.videoPrompt);
   next.imagePrompt = planValue('imagePrompt', next.imagePrompt);
   const subjectValue = (field, fallback = '') => $(`[data-smart-subject-field="${field}"]`)?.value ?? fallback;
+  next.subject.referenceTarget = subjectValue('referenceTarget', next.subject.referenceTarget || 'Primary subject');
   next.subject.description = subjectValue('description', next.subject.description);
   next.subject.referenceType = subjectValue('referenceType', next.subject.referenceType || 'character');
   const stateCards = $$('.smart-reference-state-editor');
@@ -4797,9 +4808,12 @@ function captureSmartPlanEditor() {
   next.output.aspectRatio = outputValue('aspectRatio', next.output.aspectRatio);
   next.output.quality = outputValue('quality', next.output.quality);
   if (next.output.kind === 'video') {
+    const previousScenes = Array.isArray(next.scenes) ? next.scenes : [];
     next.scenes = $$('.smart-scene-editor').map((card, index) => {
       const value = (field, fallback = '') => card.querySelector(`[data-smart-scene-field="${field}"]`)?.value ?? fallback;
       const referenceToggle = card.querySelector('[data-smart-scene-field="usesSubjectReference"]');
+      const usesSubjectReference = next.subject.needsReference === true && referenceToggle?.checked === true;
+      const previousScene = previousScenes[index] || {};
       return {
         title: value('title', `Clip ${index + 1}`),
         durationSeconds: Number(value('durationSeconds', 5)),
@@ -4813,8 +4827,10 @@ function captureSmartPlanEditor() {
         music: value('music', ''),
         timelineBeats: smartTimelineFromEditor(value('timelineBeats', '')),
         dialogue: smartDialogueFromEditor(value('dialogue', '')),
-        usesSubjectReference: next.subject.needsReference === true && referenceToggle?.checked === true,
-        referenceStateId: next.subject.needsReference === true && referenceToggle?.checked === true
+        usesSubjectReference,
+        referenceUseSource: previousScene.usesSubjectReference === usesSubjectReference
+          ? (previousScene.referenceUseSource || 'planner') : 'manual',
+        referenceStateId: usesSubjectReference
           ? value('referenceStateId', next.subject.referenceStates?.[0]?.id || 'default') : '',
       };
     });
@@ -31239,7 +31255,10 @@ function renderVideoPreviewQualityControls() {
 
 let externalLlmKeyConfigured = { openai: false, gemini: false };
 let externalLlmKeyStored = { openai: false, gemini: false };
-let localPromptAiSettings = { clip: '', clipType: 'krea2', activeModel: '', activeType: 'krea2' };
+let localPromptAiSettings = {
+  clip: '', clipType: 'krea2', activeModel: '', activeType: 'krea2',
+  smartPlannerOverride: false, smartPlannerModel: '', smartPlannerType: 'krea2',
+};
 
 function localPromptAiTypeLabel(value) {
   return {
@@ -31309,12 +31328,52 @@ function syncLocalPromptAiTypeAvailability() {
   $('#localPromptAiClipTypeField').classList.toggle('is-inherited', !model.value);
 }
 
+function renderSmartPlannerModelStatus(catalog = null) {
+  const status = $('#smartPlannerModelStatus');
+  const enabled = $('#smartPlannerModelOverride').getAttribute('aria-checked') === 'true';
+  const model = $('#setSmartPlannerClip').value;
+  status.className = '';
+  if (!enabled) {
+    status.textContent = 'Using the Prompt enhance model above';
+    return;
+  }
+  if (!model) {
+    status.className = 'bad';
+    status.textContent = 'Choose a model to enable the Smart-only override';
+    return;
+  }
+  if (catalog && !catalog.models.includes(model)) {
+    status.className = 'bad';
+    status.textContent = 'Configured Smart model is not listed by ComfyUI';
+    return;
+  }
+  status.className = 'ready';
+  status.textContent = `Smart only · ${localPromptAiModelLabel(model)}`;
+}
+
+function syncSmartPlannerModelControls(catalog = null) {
+  const toggle = $('#smartPlannerModelOverride');
+  const fields = $('#smartPlannerModelFields');
+  const model = $('#setSmartPlannerClip');
+  const type = $('#setSmartPlannerClipType');
+  const enabled = toggle.getAttribute('aria-checked') === 'true';
+  const readonly = !state.profileIsOwner;
+  fields.hidden = !enabled;
+  model.disabled = readonly || !enabled;
+  type.disabled = readonly || !enabled || !model.value;
+  $('#smartPlannerClipTypeField').classList.toggle('is-inherited', !model.value);
+  renderSmartPlannerModelStatus(catalog);
+}
+
 function applyLocalPromptAiSettings(settings = {}) {
   localPromptAiSettings = {
     clip: settings.clip || '',
     clipType: settings.clipType || 'krea2',
     activeModel: settings.localPromptAiClip || settings.clip || '',
     activeType: settings.localPromptAiClip ? (settings.localPromptAiClipType || 'krea2') : (settings.clipType || 'krea2'),
+    smartPlannerOverride: settings.smartPlannerModelOverride === true,
+    smartPlannerModel: settings.smartPlannerClip || '',
+    smartPlannerType: settings.smartPlannerClipType || 'krea2',
   };
   const model = $('#setLocalPromptAiClip');
   const type = $('#setLocalPromptAiClipType');
@@ -31324,12 +31383,21 @@ function applyLocalPromptAiSettings(settings = {}) {
   ensureSelectChoice(type, configuredType, localPromptAiTypeLabel(configuredType));
   model.value = configuredModel;
   type.value = configuredType;
+  const smartToggle = $('#smartPlannerModelOverride');
+  const smartModel = $('#setSmartPlannerClip');
+  const smartType = $('#setSmartPlannerClipType');
+  smartToggle.setAttribute('aria-checked', String(localPromptAiSettings.smartPlannerOverride));
+  ensureSelectChoice(smartModel, localPromptAiSettings.smartPlannerModel, localPromptAiModelLabel(localPromptAiSettings.smartPlannerModel));
+  ensureSelectChoice(smartType, localPromptAiSettings.smartPlannerType, localPromptAiTypeLabel(localPromptAiSettings.smartPlannerType));
+  smartModel.value = localPromptAiSettings.smartPlannerModel;
+  smartType.value = localPromptAiSettings.smartPlannerType;
   const readonly = !state.profileIsOwner;
   $('#localPromptAiSettings').dataset.readonly = String(readonly);
-  [model, type, $('#refreshLocalPromptAiModels'), $('#testLocalPromptAiModel')]
+  [model, type, smartToggle, smartModel, smartType, $('#refreshLocalPromptAiModels'), $('#testLocalPromptAiModel')]
     .filter(Boolean)
     .forEach((control) => { control.disabled = readonly; });
   syncLocalPromptAiTypeAvailability();
+  syncSmartPlannerModelControls();
   renderLocalPromptAiStatus();
 }
 
@@ -31338,6 +31406,10 @@ async function refreshLocalPromptAiModels(force = false) {
   const type = $('#setLocalPromptAiClipType');
   const selectedModel = model.value;
   const selectedType = type.value || 'krea2';
+  const smartModel = $('#setSmartPlannerClip');
+  const smartType = $('#setSmartPlannerClipType');
+  const selectedSmartModel = smartModel.value;
+  const selectedSmartType = smartType.value || 'krea2';
   const status = $('#localPromptAiStatus');
   status.className = '';
   status.textContent = 'Reading installed ComfyUI models…';
@@ -31351,7 +31423,16 @@ async function refreshLocalPromptAiModels(force = false) {
     ensureSelectChoice(type, selectedType, localPromptAiTypeLabel(selectedType));
     model.value = selectedModel;
     type.value = selectedType;
+    smartModel.replaceChildren(new Option('Choose an installed model…', ''));
+    catalog.models.forEach((name) => smartModel.add(new Option(localPromptAiModelLabel(name), name)));
+    ensureSelectChoice(smartModel, selectedSmartModel, `${localPromptAiModelLabel(selectedSmartModel)} · unavailable`);
+    smartType.replaceChildren();
+    catalog.types.forEach((value) => smartType.add(new Option(localPromptAiTypeLabel(value), value)));
+    ensureSelectChoice(smartType, selectedSmartType, localPromptAiTypeLabel(selectedSmartType));
+    smartModel.value = selectedSmartModel;
+    smartType.value = selectedSmartType;
     syncLocalPromptAiTypeAvailability();
+    syncSmartPlannerModelControls(catalog);
     renderLocalPromptAiStatus(Object.assign({}, catalog, {
       available: !model.value || catalog.models.includes(model.value),
       configuredModel: model.value,
@@ -31359,6 +31440,9 @@ async function refreshLocalPromptAiModels(force = false) {
   } catch (error) {
     status.className = 'bad';
     status.textContent = error.message || 'Could not read ComfyUI models';
+    const smartStatus = $('#smartPlannerModelStatus');
+    smartStatus.className = 'bad';
+    smartStatus.textContent = error.message || 'Could not read ComfyUI models';
   }
 }
 
@@ -31433,7 +31517,7 @@ function applyExternalLlmSettings(settings = {}) {
 
 const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setComfy', 'setHfToken', 'setHfEndpoint', 'galleryPasswordInput', 'setVramProfile', 'setKrea2ModelVariant',
-  'setLocalPromptAiClip', 'setLocalPromptAiClipType',
+  'setLocalPromptAiClip', 'setLocalPromptAiClipType', 'setSmartPlannerClip', 'setSmartPlannerClipType',
   'setExternalLlmProvider', 'setExternalLlmLocalProvider', 'setExternalLlmExternalProvider',
   'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
   'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl', 'setExternalLlmOllamaModel',
@@ -31558,6 +31642,9 @@ function settingsPayload() {
     externalLlmOllamaModel: $('#setExternalLlmOllamaModel').value,
     localPromptAiClip: $('#setLocalPromptAiClip').value,
     localPromptAiClipType: $('#setLocalPromptAiClipType').value,
+    smartPlannerModelOverride: $('#smartPlannerModelOverride').getAttribute('aria-checked') === 'true',
+    smartPlannerClip: $('#setSmartPlannerClip').value,
+    smartPlannerClipType: $('#setSmartPlannerClipType').value,
     galleryPassword: $('#galleryPasswordInput').value.trim() || '1234',
     vramProfile: $('#setVramProfile').value,
     krea2ModelVariant: $('#setKrea2ModelVariant').value,
@@ -35428,6 +35515,15 @@ $('#setLocalPromptAiClip').addEventListener('change', () => {
   syncLocalPromptAiTypeAvailability();
   renderLocalPromptAiStatus();
 });
+$('#smartPlannerModelOverride').addEventListener('click', () => {
+  if (!state.profileIsOwner) return;
+  const toggle = $('#smartPlannerModelOverride');
+  const enabled = toggle.getAttribute('aria-checked') !== 'true';
+  toggle.setAttribute('aria-checked', String(enabled));
+  syncSmartPlannerModelControls();
+  scheduleSettingsAutosave('server', 0);
+});
+$('#setSmartPlannerClip').addEventListener('change', () => syncSmartPlannerModelControls());
 $('#refreshLocalPromptAiModels').addEventListener('click', () => refreshLocalPromptAiModels(true));
 
 async function clearExternalLlmApiKey(provider) {
