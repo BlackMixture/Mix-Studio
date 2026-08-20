@@ -75,7 +75,7 @@ test('Smart cancellation leaves a neutral cancelled record in queue history', ()
 });
 
 test('queue controls and preprocessing cancellation stay profile-safe and neutral', () => {
-  assert.match(app, /x\.hidden = !!j\.finalizing \|\| j\.owned !== true/);
+  assert.match(app, /x\.hidden = !!j\.preparing \|\| !!j\.finalizing \|\| j\.cancellable === false \|\| j\.owned !== true/);
   assert.match(app, /error\.code = data\.code \|\| ''/);
   assert.match(app, /function isJobCancellation\(error\)/);
   assert.match(server, /error\.code = 'job_cancelled'/);

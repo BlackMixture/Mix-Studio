@@ -21614,15 +21614,16 @@ let queueDownloadsWereActive = false;
 async function refreshQueue() {
   const q = await api('/api/queue');
   reconcileGenerationState(q);
-  const total = (q.running || []).length + (q.pending || []).length + (q.finalizing || []).length + (q.downloads || []).length;
+  const total = (q.preparing || []).length + (q.running || []).length + (q.pending || []).length
+    + (q.finalizing || []).length + (q.downloads || []).length;
   $('#queueCount').hidden = total === 0;
   $('#queueCount').textContent = String(total);
   if ($('#queueSheet').classList.contains('show')) renderQueue(q);
   return q;
 }
-function queueRefreshSoon() {
+function queueRefreshSoon(force = false) {
   const now = Date.now();
-  if (now - queueRefreshAt > 2500) {
+  if (force || now - queueRefreshAt > 2500) {
     queueRefreshAt = now;
     refreshQueue().catch(() => { /* noop */ });
   }
@@ -21956,7 +21957,8 @@ function setQueueView(view) {
 
 function syncQueueTabs(q) {
   const downloads = q.downloads || [];
-  const jobs = (q.running || []).length + (q.pending || []).length + (q.finalizing || []).length;
+  const jobs = (q.preparing || []).length + (q.running || []).length
+    + (q.pending || []).length + (q.finalizing || []).length;
   const hasDownloads = downloads.length > 0;
   $('#queueTabs').hidden = !hasDownloads;
   $('#queueJobsCount').textContent = String(jobs);
@@ -22020,6 +22022,7 @@ function renderQueue(q) {
   const list = $('#queueList');
   list.innerHTML = '';
   const rows = [
+    ...(q.preparing || []).map((j) => ({ ...j, run: true, preparing: true })),
     ...(q.running || []).map((j) => ({ ...j, run: true })),
     ...(q.finalizing || []).map((j) => ({ ...j, run: true, finalizing: true })),
     ...(q.pending || []).map((j) => ({ ...j, run: false })),
@@ -22042,7 +22045,7 @@ function renderQueue(q) {
     st.dataset.jobId = j.jobId;
     const pct = state.queueProgress[j.jobId];
     const elapsed = j.elapsedMs != null ? formatDuration(j.elapsedMs) : '';
-    st.textContent = j.finalizing ? 'Finalizing' : (j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued');
+    st.textContent = j.preparing ? 'Enhancing' : (j.finalizing ? 'Finalizing' : (j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued'));
     const lb = document.createElement('span');
     lb.className = 'q-label';
     lb.textContent = elapsed ? `${j.label} - ${elapsed}` : j.label;
@@ -22060,7 +22063,7 @@ function renderQueue(q) {
     x.textContent = '✕';
     x.type = 'button';
     x.setAttribute('aria-label', j.run ? 'Stop job' : 'Remove queued job');
-    x.hidden = !!j.finalizing || j.owned !== true;
+    x.hidden = !!j.preparing || !!j.finalizing || j.cancellable === false || j.owned !== true;
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!await askConfirm({
@@ -22239,6 +22242,11 @@ function connectEvents() {
   });
   es.addEventListener('status', (ev) => {
     renderGenerationStatus(JSON.parse(ev.data));
+  });
+  es.addEventListener('queueChanged', (ev) => {
+    const data = JSON.parse(ev.data);
+    if (data.profileId && (!state.profile || data.profileId !== state.profile.id)) return;
+    queueRefreshSoon(true);
   });
   es.addEventListener('preview', (ev) => {
     const d = JSON.parse(ev.data);

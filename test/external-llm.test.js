@@ -396,6 +396,26 @@ test('server routes every image and video prompt tool through the selected Promp
   assert.match(serverSource, /route === '\/api\/prompt\/provider\/test'/);
 });
 
+test('external generation enhancement is visible while Ollama runs before ComfyUI queueing', () => {
+  const configuredBlock = serverSource.slice(
+    serverSource.indexOf('async function runConfiguredPromptAi'),
+    serverSource.indexOf('function shouldUseConfiguredPromptAi'),
+  );
+  const queueBlock = serverSource.slice(
+    serverSource.indexOf("if (route === '/api/queue')"),
+    serverSource.indexOf("if (route === '/api/queue/history/clear'"),
+  );
+  assert.match(serverSource, /const externalPromptPreflights = new Map\(\)/);
+  assert.match(serverSource, /function startExternalPromptPreflight[\s\S]*options\.action !== 'enhance'/);
+  assert.match(configuredBlock, /const preflight = startExternalPromptPreflight\(provider, options\)/);
+  assert.match(configuredBlock, /jobId: preflight \? 'pre' : 'external-prompt'/);
+  assert.match(configuredBlock, /scope: preflight \? 'generation-preflight' : undefined/);
+  assert.match(configuredBlock, /finally \{[\s\S]*finishExternalPromptPreflight\(preflight\)/);
+  assert.match(queueBlock, /const preparing = \[\.\.\.externalPromptPreflights\.values\(\)\]/);
+  assert.match(queueBlock, /cancellable: false/);
+  assert.match(queueBlock, /ok: true,[\s\S]*preparing,[\s\S]*running,/);
+});
+
 test('server preserves ordered H3 first and last frames for external and local prompt vision', () => {
   assert.match(serverSource, /function h3ReferenceInputTokens\([\s\S]{0,500}<Picture \$\{index \+ 1\}>[\s\S]{0,500}<Audio \$\{audioIndex\}>/);
   assert.match(serverSource, /function h3PromptPartsWithAllowedReferences\(/);

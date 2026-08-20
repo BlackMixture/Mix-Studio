@@ -473,6 +473,10 @@ test('Video exposes the shared prompt revision assistant with H3-aware context',
   assert.match(server, /scope: 'generation-preflight'/);
   assert.match(app, /d\.jobId === 'pre'[\s\S]{0,160}d\.scope !== 'generation-preflight'[\s\S]{0,100}generationPreflightRequests < 1/);
   assert.match(app, /async function generationApi\([\s\S]{0,260}generationPreflightRequests = Math\.max/);
+  assert.match(app, /const total = \(q\.preparing \|\| \[\]\)\.length/);
+  assert.match(app, /\.\.\.\(q\.preparing \|\| \[\]\)\.map\(\(j\) => \(\{ \.\.\.j, run: true, preparing: true \}\)\)/);
+  assert.match(app, /j\.preparing \? 'Enhancing'/);
+  assert.match(app, /es\.addEventListener\('queueChanged'[\s\S]{0,220}queueRefreshSoon\(true\)/);
   assert.doesNotMatch(galleryAnimate, /generationApi\(/);
   assert.match(app, /finally \{[\s\S]{0,520}refreshQueue\(\)\.catch/);
   assert.match(promptEnhance, /Preserve every <Picture n>, <Video n>, and <Audio n>/);

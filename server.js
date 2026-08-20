@@ -998,6 +998,7 @@ const CLIENT_ID = 'kreastudio-' + crypto.randomBytes(6).toString('hex');
 // network request.
 const SERVER_INSTANCE_ID = crypto.randomBytes(12).toString('hex');
 const jobs = new Map(); // promptId -> job
+const externalPromptPreflights = new Map(); // synthetic id -> external prompt enhancement
 const queueHealthState = { lowGpuSince: null };
 let dependencyInstallRunning = false;
 let dependencyInstallController = null;
@@ -1303,7 +1304,9 @@ async function assertDesktopIsIdle() {
     error.code = 'desktop_busy';
     return error;
   };
-  if (jobs.size) throw busy('Wait for the Mix Studio queue to finish before changing desktop dependencies.');
+  if (jobs.size || externalPromptPreflights.size) {
+    throw busy('Wait for the Mix Studio queue to finish before changing desktop dependencies.');
+  }
   try {
     const queue = await (await comfyFetch('/queue')).json();
     if ((queue.queue_running || []).length || (queue.queue_pending || []).length) {
@@ -3413,6 +3416,28 @@ function externalPromptStatus(action, provider) {
   return `${verb} prompt with ${provider.label}...`;
 }
 
+function startExternalPromptPreflight(provider, options = {}) {
+  if (options.action !== 'enhance') return null;
+  const jobId = `prompt-preflight-${crypto.randomUUID()}`;
+  const imageName = orderedPromptImageNames(options)[0] || '';
+  const entry = {
+    jobId,
+    kind: 'enhance',
+    profileId: options.profileId,
+    label: String(options.statusText || externalPromptStatus(options.action, provider)).replace(/\.{3}$/, ''),
+    thumbnail: imageName ? '/api/input?name=' + encodeURIComponent(imageName) : null,
+    queuedAt: Date.now(),
+  };
+  externalPromptPreflights.set(jobId, entry);
+  broadcast('queueChanged', { profileId: options.profileId });
+  return entry;
+}
+
+function finishExternalPromptPreflight(entry) {
+  if (!entry || !externalPromptPreflights.delete(entry.jobId)) return;
+  broadcast('queueChanged', { profileId: entry.profileId });
+}
+
 async function externalPromptImage(imageName, profileId) {
   const name = String(imageName || '').trim();
   if (!name) return null;
@@ -3505,24 +3530,31 @@ async function runConfiguredPromptAi(parts, maxTokens, options = {}) {
       Object.assign({}, options, { imageNames, profileId: options.profileId }),
     );
   }
-  const images = await Promise.all(imageNames.map((name) => externalPromptImage(name, options.profileId)));
+  const preflight = startExternalPromptPreflight(provider, options);
+  const statusText = options.statusText || externalPromptStatus(options.action, provider);
   if (options.statusText !== false) {
     broadcast('status', {
-      jobId: 'external-prompt',
+      jobId: preflight ? 'pre' : 'external-prompt',
       profileId: options.profileId,
-      text: options.statusText || externalPromptStatus(options.action, provider),
+      scope: preflight ? 'generation-preflight' : undefined,
+      text: statusText,
     });
   }
-  return externalLlmRequest({
-    provider: provider.provider,
-    model: provider.model,
-    apiKey: provider.apiKey,
-    baseUrl: provider.baseUrl,
-    instruction: parts.instruction,
-    userInput: parts.userInput,
-    images,
-    maxTokens,
-  });
+  try {
+    const images = await Promise.all(imageNames.map((name) => externalPromptImage(name, options.profileId)));
+    return await externalLlmRequest({
+      provider: provider.provider,
+      model: provider.model,
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl,
+      instruction: parts.instruction,
+      userInput: parts.userInput,
+      images,
+      maxTokens,
+    });
+  } finally {
+    finishExternalPromptPreflight(preflight);
+  }
 }
 
 function shouldUseConfiguredPromptAi(domain, action) {
@@ -7971,10 +8003,20 @@ async function handleApi(req, res, url) {
         wanAnimate2: wanAnimate2Core,
         features: settings.features,
         capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
-        queue: jobs.size,
+        queue: jobs.size + externalPromptPreflights.size,
       });
     } catch (e) {
-      return json(res, 200, { ok: false, app, error: String(e.message || e), loras: [], lorasInfo: {}, missing: null, models: null, features: settings.features, queue: jobs.size });
+      return json(res, 200, {
+        ok: false,
+        app,
+        error: String(e.message || e),
+        loras: [],
+        lorasInfo: {},
+        missing: null,
+        models: null,
+        features: settings.features,
+        queue: jobs.size + externalPromptPreflights.size,
+      });
     }
   }
 
@@ -10704,7 +10746,7 @@ async function handleApi(req, res, url) {
       const q = await (await comfyFetch('/queue')).json();
       // Other profiles' jobs stay visible (shared GPU) but get redacted labels
       const sanitize = (row) => {
-        const job = jobs.get(row.jobId);
+        const job = jobs.get(row.jobId) || externalPromptPreflights.get(row.jobId);
         const owned = !!job && job.profileId === req.profile.id;
         if (job && job.profileId && job.profileId !== req.profile.id) {
           const who = db.profiles.find((p) => p.id === job.profileId);
@@ -10729,6 +10771,19 @@ async function handleApi(req, res, url) {
       };
       const running = (q.queue_running || []).map((entry) => markReorderable(sanitize(describeQueueEntry(entry, true))));
       const pending = (q.queue_pending || []).map((entry) => markReorderable(sanitize(describeQueueEntry(entry, false))));
+      const preparing = [...externalPromptPreflights.values()].map((entry) => markReorderable(sanitize({
+        jobId: entry.jobId,
+        kind: entry.kind,
+        itemId: null,
+        thumbnail: entry.thumbnail,
+        label: entry.label,
+        queuedAt: entry.queuedAt,
+        startedAt: entry.queuedAt,
+        elapsedMs: Math.max(0, queueNow - entry.queuedAt),
+        durationMs: Math.max(0, queueNow - entry.queuedAt),
+        preparing: true,
+        cancellable: false,
+      })));
       const queuedIds = new Set([...running, ...pending].map((row) => row.jobId));
       const now = Date.now();
       const finalizing = [...jobs.entries()]
@@ -10747,6 +10802,7 @@ async function handleApi(req, res, url) {
         })));
       return json(res, 200, {
         ok: true,
+        preparing,
         running,
         pending,
         finalizing,
@@ -10758,7 +10814,7 @@ async function handleApi(req, res, url) {
         }),
       });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), running: [], pending: [], finalizing: [], downloads: activeDownloads });
+      return json(res, 200, { ok: false, error: String(e.message || e), preparing: [], running: [], pending: [], finalizing: [], downloads: activeDownloads });
     }
   }
 
