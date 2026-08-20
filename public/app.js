@@ -4503,8 +4503,10 @@ function smartPlanSteps(plan) {
         title: scene.title,
         durationSeconds: scene.durationSeconds,
         usesSubjectReference: smartSceneUsesReference(plan, scene),
-        referenceStateId: smartSceneUsesReference(plan, scene) ? smartSceneReferenceState(plan, scene).id : '',
-        referenceStateLabel: smartSceneUsesReference(plan, scene) ? smartSceneReferenceState(plan, scene).label : '',
+        referenceStateIds: smartSceneReferenceStates(plan, scene).map((state) => state.id),
+        referenceStateLabels: smartSceneReferenceStates(plan, scene).map((state) => state.label),
+        referenceStateId: smartSceneReferenceStates(plan, scene)[0]?.id || '',
+        referenceStateLabel: smartSceneReferenceStates(plan, scene)[0]?.label || '',
       },
       label: `Clip ${index + 1} · ${scene.title} (${Number(scene.durationSeconds)}s)`,
     }));
@@ -4514,7 +4516,10 @@ function smartPlanSteps(plan) {
 
 function smartReferenceStates(plan) {
   const states = Array.isArray(plan?.subject?.referenceStates) ? plan.subject.referenceStates : [];
-  return states.length ? states : [{ id: 'default', label: 'Default', description: plan?.subject?.description || 'Primary subject' }];
+  return states.length ? states : [{
+    id: 'default', label: 'Default', referenceTarget: plan?.subject?.referenceTarget || 'Primary subject',
+    referenceType: plan?.subject?.referenceType || 'character', description: plan?.subject?.description || 'Primary subject',
+  }];
 }
 
 function smartSceneReferenceState(plan, scene) {
@@ -4522,16 +4527,24 @@ function smartSceneReferenceState(plan, scene) {
   return states.find((state) => state.id === scene?.referenceStateId) || states[0];
 }
 
+function smartSceneReferenceStates(plan, scene) {
+  const ids = Array.isArray(scene?.referenceStateIds) && scene.referenceStateIds.length
+    ? scene.referenceStateIds : [scene?.referenceStateId].filter(Boolean);
+  const byId = new Map(smartReferenceStates(plan).map((state) => [state.id, state]));
+  return [...new Map(ids.map((id) => byId.get(id)).filter(Boolean).map((state) => [state.id, state])).values()];
+}
+
 function smartUsedReferenceStates(plan) {
   if (plan?.output?.kind !== 'video' || plan?.subject?.needsReference !== true) return [];
   const ids = new Set((plan.scenes || [])
     .filter((scene) => smartSceneUsesReference(plan, scene))
-    .map((scene) => smartSceneReferenceState(plan, scene).id));
+    .flatMap((scene) => smartSceneReferenceStates(plan, scene).map((state) => state.id)));
   return smartReferenceStates(plan).filter((state) => ids.has(state.id));
 }
 
 function smartSceneUsesReference(plan, scene) {
-  return plan?.subject?.needsReference === true && scene?.usesSubjectReference === true;
+  return plan?.subject?.needsReference === true && scene?.usesSubjectReference === true
+    && smartSceneReferenceStates(plan, scene).length > 0;
 }
 
 function smartPlanUsesReference(plan) {
@@ -4541,13 +4554,15 @@ function smartPlanUsesReference(plan) {
 
 function smartStepDetail(step, plan) {
   if (step.kind === 'reference') {
-    const type = ({ character: 'three-panel character', object: 'multi-angle object', place: 'wide place master' })[plan?.subject?.referenceType] || 'canonical';
-    return `Krea 2 · ${type} · ${step.referenceState?.label || 'Default'} state`;
+    const type = ({ character: 'three-panel character', object: 'multi-angle object', place: 'wide place master' })[step.referenceState?.referenceType || plan?.subject?.referenceType] || 'canonical';
+    return `Krea 2 · ${type} · ${step.referenceState?.referenceTarget || step.referenceState?.label || 'Default'}`;
   }
   if (step.kind === 'video') {
     const scene = step.clip || plan?.scenes?.[step.sceneIndex];
     const usesReference = scene?.usesSubjectReference === true;
-    return `MiniMax H3 · Individual clip · ${usesReference ? `${scene.referenceStateLabel || smartSceneReferenceState(plan, scene).label} reference` : 'No reference'}`;
+    const labels = scene.referenceStateLabels?.length
+      ? scene.referenceStateLabels : smartSceneReferenceStates(plan, scene).map((state) => state.label);
+    return `MiniMax H3 · Individual clip · ${usesReference ? `${labels.join(' + ')} reference${labels.length === 1 ? '' : 's'}` : 'No reference'}`;
   }
   return 'Krea 2 · final image';
 }
@@ -4691,9 +4706,11 @@ function renderSmartRecent() {
 
 function smartSceneMarkup(plan) {
   if (!Array.isArray(plan?.scenes) || !plan.scenes.length) return '';
-  return `<div class="smart-scene-list">${plan.scenes.map((scene) => `
+  return `<div class="smart-scene-list">${plan.scenes.map((scene) => {
+    const sceneReferences = smartSceneReferenceStates(plan, scene);
+    return `
     <article class="smart-scene ${smartSceneUsesReference(plan, scene) ? 'with-reference' : 'without-reference'}">
-      <header><span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(1)}–${Number(scene.endSeconds || 0).toFixed(1)} sec`)}</span><i>${smartSceneUsesReference(plan, scene) ? `${scene.referenceUseSource === 'detected' ? 'Auto matched' : (scene.referenceUseSource === 'manual' ? 'Manual' : 'Planned')} · ${escapeHtml(smartSceneReferenceState(plan, scene).label)}` : 'No reference'}</i></header>
+      <header><span>${escapeHtml(`${Number(scene.startSeconds || 0).toFixed(1)}–${Number(scene.endSeconds || 0).toFixed(1)} sec`)}</span><i>${smartSceneUsesReference(plan, scene) ? `${scene.referenceUseSource === 'detected' ? 'Auto matched' : (scene.referenceUseSource === 'manual' ? 'Manual' : 'Planned')} · ${escapeHtml(sceneReferences.map((state) => state.referenceTarget || state.label).join(' + '))}` : 'No reference'}</i></header>
       <strong>${escapeHtml(scene.title)}</strong>
       <em>${escapeHtml(scene.shot || 'Directed shot')}</em>
       <p>${escapeHtml(scene.description)}</p>
@@ -4707,7 +4724,8 @@ function smartSceneMarkup(plan) {
         ${scene.music ? `<div><dt>Music</dt><dd>${escapeHtml(scene.music)}</dd></div>` : ''}
         ${scene.dialogue?.length ? `<div><dt>Dialogue</dt><dd>${escapeHtml(scene.dialogue.map((entry) => `${Number(entry.timeSeconds) > 0 ? `${Number(entry.timeSeconds)}s ` : ''}${entry.speaker}: “${entry.line}”`).join(' · '))}</dd></div>` : ''}
       </dl>
-    </article>`).join('')}</div>`;
+    </article>`;
+  }).join('')}</div>`;
 }
 
 function smartPlanEditorMarkup(plan) {
@@ -4722,12 +4740,16 @@ function smartPlanEditorMarkup(plan) {
   const referenceStates = smartReferenceStates(plan);
   const referenceStateEditors = referenceStates.map((state, index) => `
     <article class="smart-scene-editor smart-reference-state-editor" data-smart-reference-state-index="${index}" data-smart-reference-state-id="${escapeHtml(state.id)}">
-      <header><span>Reference state ${index + 1}</span><div><button type="button" data-smart-action="delete-reference-state" data-smart-reference-state-index="${index}" ${referenceStates.length > 1 ? '' : 'disabled'}>Remove</button></div></header>
-      <label>State name<input data-smart-reference-state-field="label" maxlength="100" value="${escapeHtml(state.label || '')}" /></label>
-      <label>Complete visible state<textarea data-smart-reference-state-field="description" rows="2" maxlength="1200">${escapeHtml(state.description || '')}</textarea></label>
+      <header><span>Reference unit ${index + 1}</span><div><button type="button" data-smart-action="delete-reference-state" data-smart-reference-state-index="${index}" ${referenceStates.length > 1 ? '' : 'disabled'}>Remove</button></div></header>
+      <div class="smart-editor-grid">
+        <label>Character / asset name<input data-smart-reference-state-field="referenceTarget" maxlength="100" value="${escapeHtml(state.referenceTarget || state.label || '')}" /></label>
+        <label>Reference template${smartSelectMarkup(`smart-reference-state-${index}-type`, state.referenceType || plan.subject.referenceType, referenceTypeOptions, 'data-smart-reference-state-field="referenceType"', `Reference template for unit ${index + 1}`)}</label>
+      </div>
+      <label>State label<input data-smart-reference-state-field="label" maxlength="100" value="${escapeHtml(state.label || '')}" /></label>
+      <label>Complete visible identity and state<textarea data-smart-reference-state-field="description" rows="2" maxlength="1200">${escapeHtml(state.description || '')}</textarea></label>
     </article>`).join('');
   const sceneEditors = (plan.scenes || []).map((scene, index) => {
-    const stateOptions = referenceStates.map((state) => ({ value: state.id, label: state.label }));
+    const selectedReferenceIds = new Set(smartSceneReferenceStates(plan, scene).map((state) => state.id));
     return `
     <article class="smart-scene-editor" data-smart-scene-index="${index}">
       <header><span>Clip ${index + 1}</span><div>
@@ -4737,7 +4759,7 @@ function smartPlanEditorMarkup(plan) {
       </div></header>
       <div class="smart-editor-grid compact">
         <label>Title<input data-smart-scene-field="title" maxlength="100" value="${escapeHtml(scene.title || '')}" /></label>
-        <label>Seconds<input data-smart-scene-field="durationSeconds" type="number" min="1" max="10" step="0.5" value="${escapeHtml(Number(scene.durationSeconds) || 1)}" /></label>
+        <label>Seconds<input data-smart-scene-field="durationSeconds" type="number" min="5" max="10" step="0.5" value="${escapeHtml(Number(scene.durationSeconds) || 5)}" /></label>
       </div>
       <label>Visible action<textarea data-smart-scene-field="description" rows="3" maxlength="1600">${escapeHtml(scene.description || '')}</textarea></label>
       <label>Spatial composition<textarea data-smart-scene-field="spatialComposition" rows="2" maxlength="800">${escapeHtml(scene.spatialComposition || '')}</textarea></label>
@@ -4751,14 +4773,8 @@ function smartPlanEditorMarkup(plan) {
       <label>Continuity<textarea data-smart-scene-field="continuity" rows="2" maxlength="800">${escapeHtml(scene.continuity || '')}</textarea></label>
       <label>Timed actions, camera moves & cuts <small>One per line: 2 | cut | a front close-up of Maya</small><textarea data-smart-scene-field="timelineBeats" rows="3" maxlength="4000" placeholder="4.5 | action | Maya turns toward the tunnel\n7 | camera | slowly arcs clockwise behind Maya">${escapeHtml(smartTimelineEditorText(scene.timelineBeats))}</textarea></label>
       <label>Dialogue <small>Optional local time: 2.5 | Maya [reference; English; whispers]: Exact words</small><textarea data-smart-scene-field="dialogue" rows="2" maxlength="4000" placeholder="Leave empty unless the original brief supplies dialogue">${escapeHtml(smartDialogueEditorText(scene.dialogue))}</textarea></label>
-      <label class="smart-reference-switch"><input data-smart-scene-field="usesSubjectReference" type="checkbox" ${smartSceneUsesReference(plan, scene) ? 'checked' : ''} ${plan.subject.needsReference ? '' : 'disabled'} /> Attach the canonical subject reference to this clip</label>
-      ${plan.subject.needsReference ? `<label>Reference state${smartSelectMarkup(
-    `smart-scene-${index}-reference-state`,
-    smartSceneReferenceState(plan, scene).id,
-    stateOptions,
-    'data-smart-scene-field="referenceStateId"',
-    `Reference state for clip ${index + 1}`,
-  )}</label>` : ''}
+      ${plan.subject.needsReference ? `<fieldset class="smart-scene-reference-bindings"><legend>Recurring references visible in this clip</legend>${referenceStates.map((state) => `
+        <label><input type="checkbox" data-smart-scene-reference-id value="${escapeHtml(state.id)}" ${selectedReferenceIds.has(state.id) ? 'checked' : ''} /> <span><strong>${escapeHtml(state.referenceTarget || state.label)}</strong><small>${escapeHtml(state.label)}</small></span></label>`).join('')}</fieldset>` : ''}
     </article>`;
   }).join('');
   return `
@@ -4768,7 +4784,7 @@ function smartPlanEditorMarkup(plan) {
         <label>Summary<textarea data-smart-plan-field="summary" rows="2" maxlength="500">${escapeHtml(plan.summary || '')}</textarea></label>
       </div>
       <div class="smart-editor-grid compact">
-        ${plan.output.kind === 'video' ? `<label>Total runtime<input data-smart-output-field="durationSeconds" type="number" min="1" max="120" step="1" value="${escapeHtml(plan.output.durationSeconds)}" /></label>` : ''}
+        ${plan.output.kind === 'video' ? `<label>Total runtime<input data-smart-output-field="durationSeconds" type="number" min="5" max="120" step="1" value="${escapeHtml(plan.output.durationSeconds)}" /></label>` : ''}
         <label>Frame${smartSelectMarkup('smart-output-frame', plan.output.aspectRatio, aspectOptions, 'data-smart-output-field="aspectRatio"', 'Output frame')}</label>
         <label>Quality${smartSelectMarkup('smart-output-quality', plan.output.quality, qualityOptions, 'data-smart-output-field="quality"', 'Output quality')}</label>
       </div>
@@ -4780,7 +4796,7 @@ function smartPlanEditorMarkup(plan) {
         </div>
         <label>Reference subject<textarea data-smart-subject-field="description" rows="2" maxlength="1200">${escapeHtml(plan.subject.description || '')}</textarea></label>
         ${plan.subject.needsReference ? `
-          <div class="smart-editor-clips-head"><span><strong>Reference states</strong><small>Create a new state only when appearance, condition, or environment materially changes.</small></span><button type="button" data-smart-action="add-reference-state" ${referenceStates.length >= 6 ? 'disabled' : ''}>+ Add state</button></div>
+          <div class="smart-editor-clips-head"><span><strong>Reference roster</strong><small>Create one unit per recurring character, object, place, and materially changed state.</small></span><button type="button" data-smart-action="add-reference-state" ${referenceStates.length >= 6 ? 'disabled' : ''}>+ Add reference</button></div>
           <div class="smart-scene-editor-list smart-reference-state-list">${referenceStateEditors}</div>` : ''}
         <label>Directorial approach<textarea data-smart-plan-field="directorialApproach" rows="3" maxlength="1600">${escapeHtml(plan.directorialApproach || '')}</textarea></label>
         <label>Story and motion direction<textarea data-smart-plan-field="videoPrompt" rows="3" maxlength="12000">${escapeHtml(plan.videoPrompt || '')}</textarea></label>
@@ -4856,7 +4872,7 @@ function renderSmartWorkspace() {
         <span class="smart-step-state">${escapeHtml(smartStatusLabel(step.status))}</span>
       </article>`).join('')}</div>
     ${referenceResults.length ? `<div class="smart-reference-results">${referenceResults.map((reference) => {
-      const referenceLabel = reference.referenceState?.label || 'Canonical';
+      const referenceLabel = reference.referenceState?.referenceTarget || reference.referenceState?.label || 'Canonical';
       return `<article class="smart-reference-result">
         <button class="smart-reference-result-preview" type="button" data-smart-reference-item="${escapeHtml(reference.result.itemId)}" aria-label="Open ${escapeHtml(referenceLabel)} reference in Library" title="Open full image in Library">
           <img src="${escapeHtml(reference.result.thumbnail)}" alt="Generated ${escapeHtml(referenceLabel)} reference" />
@@ -4904,6 +4920,8 @@ function captureSmartPlanEditor() {
     return {
       id: card.dataset.smartReferenceStateId || `state-${index + 1}`,
       label: value('label', index ? `State ${index + 1}` : 'Default'),
+      referenceTarget: value('referenceTarget', next.subject.referenceTarget || `Reference ${index + 1}`),
+      referenceType: value('referenceType', next.subject.referenceType || 'character'),
       description: value('description', next.subject.description),
     };
   });
@@ -4914,9 +4932,13 @@ function captureSmartPlanEditor() {
     const previousScenes = Array.isArray(next.scenes) ? next.scenes : [];
     next.scenes = $$('.smart-scene-editor').map((card, index) => {
       const value = (field, fallback = '') => card.querySelector(`[data-smart-scene-field="${field}"]`)?.value ?? fallback;
-      const referenceToggle = card.querySelector('[data-smart-scene-field="usesSubjectReference"]');
-      const usesSubjectReference = next.subject.needsReference === true && referenceToggle?.checked === true;
+      const referenceStateIds = next.subject.needsReference === true
+        ? Array.from(card.querySelectorAll('[data-smart-scene-reference-id]:checked')).map((input) => input.value)
+        : [];
+      const usesSubjectReference = referenceStateIds.length > 0;
       const previousScene = previousScenes[index] || {};
+      const previousReferenceIds = Array.isArray(previousScene.referenceStateIds)
+        ? previousScene.referenceStateIds : [previousScene.referenceStateId].filter(Boolean);
       return {
         title: value('title', `Clip ${index + 1}`),
         durationSeconds: Number(value('durationSeconds', 5)),
@@ -4932,9 +4954,10 @@ function captureSmartPlanEditor() {
         dialogue: smartDialogueFromEditor(value('dialogue', '')),
         usesSubjectReference,
         referenceUseSource: previousScene.usesSubjectReference === usesSubjectReference
+          && previousReferenceIds.join('|') === referenceStateIds.join('|')
           ? (previousScene.referenceUseSource || 'planner') : 'manual',
-        referenceStateId: usesSubjectReference
-          ? value('referenceStateId', next.subject.referenceStates?.[0]?.id || 'default') : '',
+        referenceStateIds,
+        referenceStateId: referenceStateIds[0] || '',
       };
     });
   }
@@ -4969,7 +4992,7 @@ function mutateSmartPlanClips(action, index) {
     const previous = scenes.at(-1);
     scenes.push({
       title: `New clip ${scenes.length + 1}`,
-      durationSeconds: Math.min(10, Math.max(1, Number(previous?.durationSeconds) || 5)),
+      durationSeconds: Math.min(10, Math.max(5, Number(previous?.durationSeconds) || 7)),
       description: previous?.description || 'Describe one visible action for this editorial beat',
       shot: 'Purposeful contrasting shot size and angle',
       camera: 'Controlled camera movement motivated by the action',
@@ -4981,6 +5004,8 @@ function mutateSmartPlanClips(action, index) {
       timelineBeats: [],
       dialogue: [],
       usesSubjectReference: smartPlan.subject.needsReference === true && previous?.usesSubjectReference === true,
+      referenceStateIds: previous?.usesSubjectReference
+        ? smartSceneReferenceStates(smartPlan, previous).map((state) => state.id) : [],
       referenceStateId: previous?.usesSubjectReference
         ? (previous.referenceStateId || smartReferenceStates(smartPlan)[0].id) : '',
     });
@@ -5004,14 +5029,18 @@ function mutateSmartReferenceStates(action, index) {
     while (used.has(`state-${number}`)) number += 1;
     states.push({
       id: `state-${number}`,
-      label: `State ${number}`,
-      description: `${smartPlan.subject.description}. Describe the complete changed appearance or condition for this state.`,
+      label: `Reference ${number}`,
+      referenceTarget: `Character or asset ${number}`,
+      referenceType: smartPlan.subject.referenceType || 'character',
+      description: 'Describe this recurring character, object, or place with every visible trait needed for continuity.',
     });
   } else if (action === 'delete-reference-state' && states.length > 1 && states[index]) {
     const [removed] = states.splice(index, 1);
-    const fallbackId = states[0].id;
     (smartPlan.scenes || []).forEach((scene) => {
-      if (scene.referenceStateId === removed.id) scene.referenceStateId = fallbackId;
+      scene.referenceStateIds = (Array.isArray(scene.referenceStateIds)
+        ? scene.referenceStateIds : [scene.referenceStateId]).filter((id) => id && id !== removed.id);
+      scene.referenceStateId = scene.referenceStateIds[0] || '';
+      scene.usesSubjectReference = scene.referenceStateIds.length > 0;
     });
   }
   renderSmartWorkspace();
@@ -21666,7 +21695,7 @@ async function refreshQueue() {
   const q = await api('/api/queue');
   reconcileGenerationState(q);
   const total = (q.preparing || []).length + (q.running || []).length + (q.pending || []).length
-    + (q.finalizing || []).length + (q.downloads || []).length;
+    + (q.upcoming || []).length + (q.finalizing || []).length + (q.downloads || []).length;
   $('#queueCount').hidden = total === 0;
   $('#queueCount').textContent = String(total);
   if ($('#queueSheet').classList.contains('show')) renderQueue(q);
@@ -22009,7 +22038,7 @@ function setQueueView(view) {
 function syncQueueTabs(q) {
   const downloads = q.downloads || [];
   const jobs = (q.preparing || []).length + (q.running || []).length
-    + (q.pending || []).length + (q.finalizing || []).length;
+    + (q.pending || []).length + (q.upcoming || []).length + (q.finalizing || []).length;
   const hasDownloads = downloads.length > 0;
   $('#queueTabs').hidden = !hasDownloads;
   $('#queueJobsCount').textContent = String(jobs);
@@ -22077,6 +22106,7 @@ function renderQueue(q) {
     ...(q.running || []).map((j) => ({ ...j, run: true })),
     ...(q.finalizing || []).map((j) => ({ ...j, run: true, finalizing: true })),
     ...(q.pending || []).map((j) => ({ ...j, run: false })),
+    ...(q.upcoming || []).map((j) => ({ ...j, run: false, upcoming: true })),
   ];
   if (!rows.length) {
     list.innerHTML = '<div class="queue-empty">Queue is empty — nothing running.</div>';
@@ -22096,7 +22126,9 @@ function renderQueue(q) {
     st.dataset.jobId = j.jobId;
     const pct = state.queueProgress[j.jobId];
     const elapsed = j.elapsedMs != null ? formatDuration(j.elapsedMs) : '';
-    st.textContent = j.preparing ? 'Enhancing' : (j.finalizing ? 'Finalizing' : (j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued'));
+    st.textContent = j.preparing ? 'Enhancing' : (j.finalizing ? 'Finalizing'
+      : (j.upcoming ? (j.waitingForReview ? 'Review' : 'Upcoming')
+        : (j.run ? (pct != null ? pct + '%' : 'Running') : 'Queued')));
     const lb = document.createElement('span');
     lb.className = 'q-label';
     lb.textContent = elapsed ? `${j.label} - ${elapsed}` : j.label;

@@ -3231,19 +3231,22 @@ function smartRunFinished(run) {
   return ['complete', 'failed', 'cancelled'].includes(run?.status);
 }
 
-async function smartReferenceForStep(run, step) {
-  const dependency = (run.steps || []).find((candidate) => step.dependsOn?.includes(candidate.id)
-    && candidate.kind === 'reference');
-  const item = dependency && smartStepResultItems(dependency, run.profileId)[0];
-  if (!item?.file) throw new Error('The canonical reference image is unavailable');
-  const buffer = await fsp.readFile(path.join(IMAGES, item.file));
-  const comfyName = await uploadToComfy(buffer, `ks_smart_reference_${run.id}_${item.id}.png`);
-  return {
-    name: comfyName,
-    label: dependency.referenceState?.label || 'Canonical reference',
-    w: item.width || 1024,
-    h: item.height || 1024,
-  };
+async function smartReferencesForStep(run, step) {
+  const dependencies = (step.dependsOn || []).map((id) => (run.steps || [])
+    .find((candidate) => candidate.id === id && candidate.kind === 'reference')).filter(Boolean);
+  if (!dependencies.length) throw new Error('The required Smart reference images are unavailable');
+  return Promise.all(dependencies.map(async (dependency, index) => {
+    const item = smartStepResultItems(dependency, run.profileId)[0];
+    if (!item?.file) throw new Error(`${dependency.referenceState?.label || 'A required'} reference image is unavailable`);
+    const buffer = await fsp.readFile(path.join(IMAGES, item.file));
+    const comfyName = await uploadToComfy(buffer, `ks_smart_reference_${run.id}_${item.id}_${index + 1}.png`);
+    return {
+      name: comfyName,
+      label: dependency.referenceState?.referenceTarget || dependency.referenceState?.label || `Reference ${index + 1}`,
+      w: item.width || 1024,
+      h: item.height || 1024,
+    };
+  }));
 }
 
 function currentSmartStepRequest(run, step) {
@@ -3294,8 +3297,8 @@ async function advanceSmartRun(run) {
       body.prompt = smartReferenceRerollPrompt(body.prompt, step.referenceFeedback);
     }
     if (step.kind === 'video' && step.dependsOn?.length) {
-      const reference = await smartReferenceForStep(run, step);
-      body.h3References = { images: [reference], videos: [], audios: [] };
+      const references = await smartReferencesForStep(run, step);
+      body.h3References = { images: references, videos: [], audios: [] };
     }
     const queued = await mcpOwnerApi(profile, step.request.route, body);
     const jobId = String(queued.jobId || '');
@@ -3896,7 +3899,7 @@ async function requestSmartPlan(provider, prompt, references, profileId, onProgr
   if (provider.provider === 'local') {
     const schemaInstruction = [
       prompt.localInstruction || prompt.instruction,
-      'Produce the entire production plan in one response. Every requested second must be represented by a distinct scene of no more than 10 seconds, and every scene must contain its own renderable action, shot, camera, spatial composition, continuity, audio, and reference decision. Develop the narrative or purposeful action progression before spending words on reference continuity.',
+      'Produce the entire production plan in one response. Cover the exact requested runtime with scene-driven 5–10 second clips rather than uniform ten-second blocks, and give every scene its own renderable action, shot, camera, spatial composition, continuity, audio, cut strategy, and complete reference-state list. Develop the narrative or purposeful action progression before spending words on reference continuity.',
       'Return only one valid JSON object with the exact property names and value types in this schema. Do not use Markdown, XML, commentary, ellipses, placeholders, or a code fence.',
       JSON.stringify(SMART_LOCAL_PLAN_SCHEMA),
     ].join('\n\n');
@@ -10820,6 +10823,21 @@ async function handleApi(req, res, url) {
         preparing: true,
         cancellable: false,
       })));
+      const upcoming = db.smartRuns
+        .filter((run) => run.profileId === req.profile.id && ['ready', 'running', 'queueing', 'review'].includes(run.status))
+        .flatMap((run) => (run.steps || []).filter((step) => step.status === 'pending').map((step) => ({
+          jobId: `smart-${run.id}-${step.id}`,
+          kind: step.kind === 'video' ? 'video' : 'image',
+          itemId: null,
+          thumbnail: null,
+          label: `${run.plan?.title || 'Smart production'} · ${step.label || 'Upcoming step'}`,
+          queuedAt: run.createdAt || queueNow,
+          upcoming: true,
+          waitingForReview: run.status === 'review',
+          cancellable: false,
+          reorderable: false,
+          owned: true,
+        })));
       const queuedIds = new Set([...running, ...pending].map((row) => row.jobId));
       const now = Date.now();
       const finalizing = [...jobs.entries()]
@@ -10841,6 +10859,7 @@ async function handleApi(req, res, url) {
         preparing,
         running,
         pending,
+        upcoming,
         finalizing,
         downloads: activeDownloads,
         health: await queueHealth(running, pending),
@@ -10850,7 +10869,7 @@ async function handleApi(req, res, url) {
         }),
       });
     } catch (e) {
-      return json(res, 200, { ok: false, error: String(e.message || e), preparing: [], running: [], pending: [], finalizing: [], downloads: activeDownloads });
+      return json(res, 200, { ok: false, error: String(e.message || e), preparing: [], running: [], pending: [], upcoming: [], finalizing: [], downloads: activeDownloads });
     }
   }
 

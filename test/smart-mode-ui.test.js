@@ -45,10 +45,13 @@ test('Smart workspace provides typed, voice, plan, review, queue, retry, and can
   assert.match(app, /Approve &amp; queue/);
   assert.match(app, /function beginSmartPlanEdit\(\)/);
   assert.match(app, /function saveSmartPlanEdit\(\)/);
-  assert.match(app, /data-smart-scene-field="usesSubjectReference"/);
-  assert.match(app, /data-smart-scene-field="referenceStateId"/);
+  assert.match(app, /data-smart-scene-reference-id/);
+  assert.match(app, /const referenceStateIds = next\.subject\.needsReference/);
   assert.match(app, /data-smart-subject-field="referenceTarget"/);
-  assert.match(app, /referenceUseSource: previousScene\.usesSubjectReference === usesSubjectReference/);
+  assert.match(app, /data-smart-reference-state-field="referenceTarget"/);
+  assert.match(app, /data-smart-reference-state-field="referenceType"/);
+  assert.match(app, /data-smart-output-field="durationSeconds" type="number" min="5" max="120"/);
+  assert.match(app, /previousReferenceIds\.join\('\|'\) === referenceStateIds\.join\('\|'\)/);
   assert.match(app, /\['failed', 'attention'\]/);
   assert.match(app, /\['running', 'queueing'\]\.includes\(run\.status\) \? \['cancel', 'Cancel remaining'\]/);
 });
@@ -199,4 +202,15 @@ test('server persists profile-scoped runs and advances them from generation comp
   assert.match(server, /completeSmartJob\(job, \[item\]\)/);
   assert.match(server, /broadcast\('smartRunUpdated'/);
   assert.match(app, /addEventListener\('smartRunUpdated'/);
+});
+
+test('queue includes every pending Smart production step as an upcoming job', () => {
+  assert.match(server, /const upcoming = db\.smartRuns/);
+  assert.match(server, /step\.status === 'pending'/);
+  assert.match(server, /jobId: `smart-\$\{run\.id\}-\$\{step\.id\}`/);
+  assert.match(server, /waitingForReview: run\.status === 'review'/);
+  assert.match(server, /pending,[\s\S]{0,80}upcoming,[\s\S]{0,80}finalizing/);
+  assert.match(app, /\+ \(q\.upcoming \|\| \[\]\)\.length/);
+  assert.match(app, /\.\.\.\(q\.upcoming \|\| \[\]\)\.map\(\(j\) => \(\{ \.\.\.j, run: false, upcoming: true \}\)\)/);
+  assert.match(app, /j\.waitingForReview \? 'Review' : 'Upcoming'/);
 });

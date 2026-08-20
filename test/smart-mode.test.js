@@ -54,9 +54,10 @@ test('Smart plan schema is strict and suitable for structured provider output', 
     'directorialApproach', 'imagePrompt', 'videoPrompt', 'scenes', 'reviewReference',
   ]);
   assert.equal(SMART_PLAN_SCHEMA.properties.scenes.maxItems, 12);
+  assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.durationSeconds.minimum, 5);
   assert.equal(SMART_PLAN_SCHEMA.properties.scenes.items.properties.durationSeconds.maximum, 10);
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('usesSubjectReference'));
-  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('referenceStateId'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('referenceStateIds'));
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('spatialComposition'));
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('dialogue'));
   assert.ok(SMART_PLAN_SCHEMA.properties.scenes.items.required.includes('timelineBeats'));
@@ -68,6 +69,8 @@ test('Smart plan schema is strict and suitable for structured provider output', 
   assert.deepEqual(SMART_PLAN_SCHEMA.properties.subject.properties.referenceType.enum, ['character', 'object', 'place']);
   assert.ok(SMART_PLAN_SCHEMA.properties.subject.required.includes('referenceTarget'));
   assert.equal(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.maxItems, 6);
+  assert.ok(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.items.required.includes('referenceTarget'));
+  assert.ok(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.items.required.includes('referenceType'));
 });
 
 test('reference rerolls preserve the base specification and apply bounded review feedback', () => {
@@ -89,8 +92,9 @@ test('local Smart planning establishes story before compact reference metadata',
   assert.match(prompt.localInstruction, /setup, a goal or pressure, escalating actions, a meaningful turn, and a payoff or resolution/);
   assert.match(prompt.localInstruction, /majority of scene detail must describe action, obstacle, reaction, environment, cause-and-effect, and progression/i);
   assert.match(prompt.localInstruction, /REFERENCE CONTINUITY IS SUPPORTING METADATA, NOT THE STORY/);
-  assert.match(prompt.localInstruction, /subject\.description must be a compact identity specification of at most 60 words/);
-  assert.match(prompt.localInstruction, /referenceStates description must be at most 45 words/);
+  assert.match(prompt.localInstruction, /subject\.description must be a compact continuity-roster summary of at most 60 words/);
+  assert.match(prompt.localInstruction, /description must be a complete identity\/state specification of at most 45 words/);
+  assert.match(prompt.localInstruction, /Multiple recurring characters require separate entries/);
   assert.match(prompt.localInstruction, /Do not repeat the full subject description in scene descriptions/);
 });
 
@@ -178,18 +182,18 @@ test('attached references are bounded, hashed, and synthesized through Krea 2 Ed
 
 test('attached references repair an incorrect local-model scene flag only when the target is renderable', () => {
   const raw = lionPlan();
-  raw.output.durationSeconds = 20;
+  raw.output.durationSeconds = 10;
   raw.subject.needsReference = false;
   raw.scenes = [
     {
-      title: 'Empty avenue', durationSeconds: 10,
+      title: 'Empty avenue', durationSeconds: 5,
       description: 'An empty avenue at dawn before anyone arrives', shot: 'Wide establishing shot',
       camera: 'Slow push in', transition: 'Opening image', spatialComposition: 'The vacant avenue recedes into haze',
       continuity: 'Warm dawn light', audio: 'Wind', music: '', dialogue: [], timelineBeats: [],
       usesSubjectReference: false, referenceStateId: '',
     },
     {
-      title: 'Arrival', durationSeconds: 10,
+      title: 'Arrival', durationSeconds: 5,
       description: 'The lion enters the avenue from frame left', shot: 'Low tracking shot',
       camera: 'Track beside the lion', transition: 'Hard cut', spatialComposition: 'The lion occupies the foreground',
       continuity: 'The dark amber mane stays visible', audio: 'Footsteps', music: '', dialogue: [], timelineBeats: [],
@@ -233,10 +237,10 @@ test('combined H3 preview keeps references and scene boundaries without leaking 
 
 test('clips without the recurring subject omit the reference dependency and Picture language', () => {
   const raw = lionPlan();
-  raw.output.durationSeconds = 20;
+  raw.output.durationSeconds = 10;
   raw.scenes = [
-    { title: 'Empty city', durationSeconds: 10, description: 'An empty avenue at dawn before anyone arrives', shot: 'Wide establishing shot', camera: 'Slow push in', transition: 'Opening image', continuity: 'Warm dawn light and left-to-right screen direction', audio: 'Wind', usesSubjectReference: false },
-    { title: 'Lion arrives', durationSeconds: 10, description: 'The lion enters the avenue from frame left', shot: 'Low medium tracking shot', camera: 'Track beside the lion', transition: 'Cut on the first footfall', continuity: 'Same avenue and dawn light', audio: 'Footsteps', usesSubjectReference: true },
+    { title: 'Empty city', durationSeconds: 5, description: 'An empty avenue at dawn before anyone arrives', shot: 'Wide establishing shot', camera: 'Slow push in', transition: 'Opening image', continuity: 'Warm dawn light and left-to-right screen direction', audio: 'Wind', usesSubjectReference: false },
+    { title: 'Lion arrives', durationSeconds: 5, description: 'The lion enters the avenue from frame left', shot: 'Low medium tracking shot', camera: 'Track beside the lion', transition: 'Cut on the first footfall', continuity: 'Same avenue and dawn light', audio: 'Footsteps', usesSubjectReference: true },
   ];
   const plan = normalizeSmartPlan(raw);
   const steps = compileSmartSteps(plan, { imageId: 'reference-step', videoIds: ['empty-step', 'lion-step'] });
@@ -286,14 +290,14 @@ test('plan hash is stable across normalized equivalents and changes with product
 
 test('materially changed states create separate references and route each clip to the correct state', () => {
   const raw = lionPlan();
-  raw.output.durationSeconds = 20;
+  raw.output.durationSeconds = 10;
   raw.subject.referenceStates = [
     { id: 'formal', label: 'Formal outfit', description: 'The lion wears a pristine dark blue ceremonial coat' },
     { id: 'damaged', label: 'Damaged outfit', description: 'The same coat is torn and mud-streaked, with a scratch on the lion cheek' },
   ];
   raw.scenes = [
-    { title: 'Arrival', durationSeconds: 10, description: 'The lion arrives in the pristine coat', shot: 'Wide', camera: 'Track', transition: 'Open', continuity: 'Pristine coat', audio: 'Wind', usesSubjectReference: true, referenceStateId: 'formal' },
-    { title: 'Aftermath', durationSeconds: 10, description: 'The lion emerges with the damaged coat', shot: 'Medium', camera: 'Push in', transition: 'Cut', continuity: 'Damaged coat', audio: 'Rain', usesSubjectReference: true, referenceStateId: 'damaged' },
+    { title: 'Arrival', durationSeconds: 5, description: 'The lion arrives in the pristine coat', shot: 'Wide', camera: 'Track', transition: 'Open', continuity: 'Pristine coat', audio: 'Wind', usesSubjectReference: true, referenceStateId: 'formal' },
+    { title: 'Aftermath', durationSeconds: 5, description: 'The lion emerges with the damaged coat', shot: 'Medium', camera: 'Push in', transition: 'Cut', continuity: 'Damaged coat', audio: 'Rain', usesSubjectReference: true, referenceStateId: 'damaged' },
   ];
   const steps = compileSmartSteps(raw, {
     referenceIds: ['formal-ref', 'damaged-ref'], videoIds: ['formal-clip', 'damaged-clip'],
@@ -308,6 +312,51 @@ test('materially changed states create separate references and route each clip t
   assert.doesNotMatch(steps[2].request.body.prompt, /torn and mud-streaked/i);
   assert.match(steps[3].request.body.prompt, /torn and mud-streaked/i);
   assert.doesNotMatch(steps[3].request.body.prompt, /pristine dark blue ceremonial coat/i);
+});
+
+test('multiple recurring characters get separate sheets and share ordered H3 references when they interact', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 15;
+  raw.subject.referenceTarget = 'Maya';
+  raw.subject.description = 'Maya and Theo are recurring human characters with distinct identities';
+  raw.subject.referenceStates = [
+    { id: 'maya', label: 'Maya default', referenceTarget: 'Maya', referenceType: 'character', description: 'Maya has a sharp black bob, amber jacket, dark jeans, and silver boots' },
+    { id: 'theo', label: 'Theo default', referenceTarget: 'Theo', referenceType: 'character', description: 'Theo has close-cropped curls, a cobalt coat, charcoal trousers, and red glasses' },
+  ];
+  raw.scenes = [
+    { title: 'Search', durationSeconds: 7, description: 'Maya searches the rain-soaked platform', shot: 'Wide tracking shot', camera: 'Track beside Maya', transition: 'Open', spatialComposition: 'Maya crosses the foreground', continuity: 'Amber jacket and wet platform', audio: 'Rain', music: '', dialogue: [], timelineBeats: [], usesSubjectReference: true, referenceStateIds: ['maya'] },
+    { title: 'Meeting', durationSeconds: 8, description: 'Maya finds Theo beneath the station clock and they exchange a relieved look', shot: 'Two-shot moving into reactions', camera: 'Slow arc around Maya and Theo', transition: 'Cut on Maya looking up', spatialComposition: 'Maya screen-left and Theo screen-right', continuity: 'Preserve both identities, eye-lines, and wardrobe', audio: 'Rain and train brakes', music: '', dialogue: [], timelineBeats: [], usesSubjectReference: true, referenceStateIds: ['maya', 'theo'] },
+  ];
+  const steps = compileSmartSteps(raw, {
+    referenceIds: ['maya-ref', 'theo-ref'], videoIds: ['search-clip', 'meeting-clip'],
+  });
+  assert.deepEqual(steps.slice(0, 2).map((step) => step.referenceState.referenceTarget), ['Maya', 'Theo']);
+  assert.deepEqual(steps[2].dependsOn, ['maya-ref']);
+  assert.deepEqual(steps[3].dependsOn, ['maya-ref', 'theo-ref']);
+  assert.match(steps[3].request.body.prompt, /<Subject 1> is Maya[\s\S]*<Picture 1>/);
+  assert.match(steps[3].request.body.prompt, /<Subject 2> is Theo[\s\S]*<Picture 2>/);
+  assert.match(steps[3].request.body.prompt, /\[Shot 2\] At 00:/);
+});
+
+test('Smart pacing varies 5–10 second clips by scene weight and creates real internal H3 cuts', () => {
+  const raw = lionPlan();
+  raw.output.durationSeconds = 30;
+  raw.subject.needsReference = false;
+  raw.scenes = [
+    { title: 'Insert', durationSeconds: 5, description: 'A key turns once in a brass lock', shot: 'Detail insert', camera: 'Static macro view', transition: 'Open', spatialComposition: 'Lock fills the frame', continuity: 'Warm side light', audio: 'Metal click', music: '', dialogue: [], timelineBeats: [], usesSubjectReference: false, referenceStateIds: [] },
+    { title: 'Reaction', durationSeconds: 6, description: 'A courier hears the lock and looks over one shoulder', shot: 'Reaction close-up', camera: 'Short push in', transition: 'Hard cut', spatialComposition: 'Courier foreground, doorway behind', continuity: 'Warm side light', audio: 'Breath and room tone', music: '', dialogue: [], timelineBeats: [], usesSubjectReference: false, referenceStateIds: [] },
+    { title: 'Crossing', durationSeconds: 9, description: 'The courier sprints across the warehouse while security shutters descend', shot: 'Low wide tracking shot', camera: 'Fast lateral track', transition: 'Cut on movement', spatialComposition: 'Courier crosses left to right through layered machinery', continuity: 'Stable direction and lighting', audio: 'Footsteps and shutters', music: '', dialogue: [], timelineBeats: [], usesSubjectReference: false, referenceStateIds: [] },
+    { title: 'Confrontation', durationSeconds: 10, description: 'The courier reaches the exit and confronts the waiting guard before choosing another route', shot: 'Medium two-shot', camera: 'Arc into opposing close-ups', transition: 'Match cut', spatialComposition: 'Courier left, guard right, exit centered', continuity: 'Stable eye-lines and wardrobe', audio: 'Alarm and footsteps', music: '', dialogue: [], timelineBeats: [], usesSubjectReference: false, referenceStateIds: [] },
+  ];
+  const plan = normalizeSmartPlan(raw);
+  const durations = plan.scenes.map((scene) => scene.durationSeconds);
+  assert.equal(durations.reduce((sum, seconds) => sum + seconds, 0), 30);
+  assert.ok(durations.every((seconds) => seconds >= 5 && seconds <= 10));
+  assert.ok(new Set(durations).size > 1);
+  assert.ok(plan.scenes.filter((scene) => scene.durationSeconds >= 6)
+    .every((scene) => scene.timelineBeats.some((beat) => beat.kind === 'cut')));
+  const multiShot = plan.scenes.find((scene) => scene.durationSeconds >= 6);
+  assert.match(buildH3ClipPrompt(plan, multiShot), /\[Shot 2\] At 00:/);
 });
 
 test('objects use multi-angle sheets while places use one coherent master view', () => {
@@ -421,22 +470,22 @@ test('Smart never invents dialogue and formats supplied voiceover without lip mo
   assert.match(prompt, /lips remain completely closed/i);
 });
 
-test('planner instruction explicitly routes persistent subjects through one canonical reference', () => {
+test('planner instruction explicitly builds a complete recurring-subject reference roster', () => {
   const prompt = smartPlanningPrompt('A lion crosses several scenes', { references: [
     { name: 'lion.png', label: 'Lion identity', w: 1200, h: 900 },
     { name: 'style.png', label: '1990s anime look', w: 800, h: 1200 },
   ] });
   assert.match(prompt.instruction, /persistent named character/i);
   assert.match(prompt.instruction, /front full-body, back full-body, and face close-up panels/i);
-  assert.match(prompt.instruction, /materially distinct visual state/i);
-  assert.match(prompt.instruction, /wardrobe changes, injuries, dirt, damage/i);
-  assert.match(prompt.instruction, /referenceStateId to the exact state depicted/i);
+  assert.match(prompt.instruction, /materially changed state/i);
+  assert.match(prompt.instruction, /story with two recurring characters must create at least two reference units/i);
+  assert.match(prompt.instruction, /referenceStateIds to every exact reference-state id/i);
   assert.match(prompt.instruction, /attached 2 image references/i);
   assert.match(prompt.instruction, /Reference 1 is labelled "Lion identity"/);
   assert.match(prompt.instruction, /Reference 2 is labelled "1990s anime look"/);
   assert.match(prompt.instruction, /Reference 1 is the left panel and Reference 2 is the right panel/);
   assert.match(prompt.instruction, /subject\.referenceTarget/);
-  assert.match(prompt.instruction, /repeat this exact identifier/i);
+  assert.match(prompt.instruction, /repeat that identifier/i);
   assert.match(prompt.instruction, /identity, visual style, wardrobe, product appearance, or composition/i);
   assert.match(prompt.instruction, /independently generated editorial clip/i);
   assert.match(prompt.instruction, /H3 receives no information about any other clip/i);
@@ -452,7 +501,7 @@ test('planner instruction explicitly routes persistent subjects through one cano
   assert.match(prompt.instruction, /kind cut/);
   assert.match(prompt.instruction, /Style: visualStyle tag/);
   assert.match(prompt.instruction, /Favor compact prompts/);
-  assert.match(prompt.instruction, /usesSubjectReference true only/i);
+  assert.match(prompt.instruction, /usesSubjectReference true exactly/i);
   assert.match(prompt.instruction, /vary shot size and angle/i);
   assert.match(prompt.userInput, /^CREATOR BRIEF/);
   assert.match(prompt.userInput, /<creator_brief>\nA lion crosses several scenes\n<\/creator_brief>/);
@@ -465,7 +514,7 @@ test('raw Smart plan audit detects partial local plans before normalization hide
   assert.equal(partial.complete, false);
   assert.equal(partial.expectedClipCount, 12);
   assert.match(partial.issues.join(' '), /only 4 of at least 12 required clips/i);
-  assert.match(partial.issues.join(' '), /durationSeconds must be between 1 and 10/i);
+  assert.match(partial.issues.join(' '), /durationSeconds must be between 5 and 10/i);
 
   const completePlan = normalizeSmartPlan(lionPlan());
   completePlan.scenes = completePlan.scenes.map((scene, index) => Object.assign({}, scene, {

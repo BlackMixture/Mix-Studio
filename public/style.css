@@ -13479,6 +13479,15 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 .smart-scene-editor > header > div { display: flex; gap: 4px; }
 .smart-reference-switch { grid-template-columns: auto minmax(0,1fr) !important; align-items: center; justify-content: start; color: var(--muted) !important; font-family: inherit !important; font-weight: 650 !important; letter-spacing: 0 !important; text-transform: none !important; }
 .smart-reference-switch input { width: auto; accent-color: #a966ff; }
+.smart-scene-reference-bindings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin: 0; padding: 9px; border: 1px solid rgba(169,102,255,.18); border-radius: 10px; }
+.smart-scene-reference-bindings legend { padding: 0 4px; color: var(--muted-2); font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.smart-scene-reference-bindings label { min-width: 0; display: flex; align-items: center; gap: 7px; padding: 7px; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; background: rgba(255,255,255,.02); color: var(--muted); font-size: 8.5px; }
+.smart-scene-reference-bindings input { width: auto; flex: 0 0 auto; accent-color: #a966ff; }
+.smart-scene-reference-bindings span { min-width: 0; }
+.smart-scene-reference-bindings strong,
+.smart-scene-reference-bindings small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smart-scene-reference-bindings strong { color: var(--ink-soft); font-size: 8.5px; }
+.smart-scene-reference-bindings small { margin-top: 2px; color: var(--muted-2); font-size: 7px; }
 .smart-review-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 9.5px; }
 .smart-review-toggle input { accent-color: #a966ff; }
 .smart-board-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--smart-line); }
@@ -13530,6 +13539,7 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
   .smart-scene-list { grid-template-columns: 1fr; }
   .smart-editor-grid,
   .smart-editor-grid.compact { grid-template-columns: 1fr; }
+  .smart-scene-reference-bindings { grid-template-columns: 1fr; }
   .smart-board-actions { flex-wrap: wrap; }
   .smart-board-action { flex: 1 1 auto; }
   .smart-recent-list { grid-template-columns: 1fr; }
