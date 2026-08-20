@@ -3967,6 +3967,7 @@ async function requestSmartPlan(provider, prompt, references, profileId, onProgr
     schema: SMART_PLAN_SCHEMA,
     schemaName: 'mix_studio_smart_plan',
     maxTokens: 8192,
+    timeoutMs: 10 * 60_000,
   });
 }
 

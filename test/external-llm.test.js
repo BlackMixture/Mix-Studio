@@ -153,6 +153,7 @@ test('Ollama adapter uses native non-streaming chat and optional vision input', 
     instruction: 'Return one prompt.',
     userInput: 'Camera pushes forward.',
     image: { data: Buffer.from('image-bytes'), mimeType: 'image/webp' },
+    maxTokens: 8192,
     fetchImpl: async (url, init) => {
       request = { url, body: JSON.parse(init.body) };
       return jsonResponse({ message: { role: 'assistant', content: 'The camera pushes steadily forward.' }, done: true });
@@ -162,6 +163,7 @@ test('Ollama adapter uses native non-streaming chat and optional vision input', 
   assert.equal(request.url, 'http://127.0.0.1:11434/api/chat');
   assert.equal(request.body.stream, false);
   assert.equal(request.body.think, false);
+  assert.equal(request.body.options.num_predict, 8192);
   assert.equal(request.body.messages[0].role, 'system');
   assert.equal(request.body.messages[1].images.length, 1);
 });
@@ -414,6 +416,14 @@ test('external generation enhancement is visible while Ollama runs before ComfyU
   assert.match(queueBlock, /const preparing = \[\.\.\.externalPromptPreflights\.values\(\)\]/);
   assert.match(queueBlock, /cancellable: false/);
   assert.match(queueBlock, /ok: true,[\s\S]*preparing,[\s\S]*running,/);
+});
+
+test('external Smart planning keeps its full output budget and a long local-model timeout', () => {
+  const smartBlock = serverSource.slice(
+    serverSource.indexOf('async function requestSmartPlan'),
+    serverSource.indexOf('const smartPlanRequests = new Map'),
+  );
+  assert.match(smartBlock, /externalLlmStructuredRequest\(\{[\s\S]*maxTokens: 8192,[\s\S]*timeoutMs: 10 \* 60_000,/);
 });
 
 test('server preserves ordered H3 first and last frames for external and local prompt vision', () => {
