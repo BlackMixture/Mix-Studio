@@ -13484,9 +13484,20 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
 .smart-board-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--smart-line); }
 .smart-board-action { min-height: 38px; padding: 0 13px; color: var(--ink-soft); font-size: 10px; font-weight: 800; }
 .smart-board-action.primary { border-color: rgba(169,102,255,.48); background: linear-gradient(110deg, rgba(169,102,255,.9), rgba(82,125,255,.9)); color: white; }
-.smart-reference-result { display: flex; align-items: center; gap: 10px; margin-top: 13px; padding: 9px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; }
-.smart-reference-result img { width: 58px; height: 58px; border-radius: 9px; object-fit: cover; background: #090a0d; }
-.smart-reference-result span { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.smart-reference-result { display: grid; grid-template-columns: 64px minmax(0,1fr); align-items: center; gap: 10px; margin-top: 13px; padding: 9px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; }
+.smart-reference-result-preview { position: relative; width: 64px; height: 64px; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; background: #090a0d; color: white; }
+.smart-reference-result-preview img { width: 100%; height: 100%; object-fit: cover; background: #090a0d; transition: transform 180ms var(--ease), opacity 180ms var(--ease); }
+.smart-reference-result-preview small { position: absolute; right: 4px; bottom: 4px; padding: 3px 5px; border-radius: 5px; background: rgba(0,0,0,.76); color: white; font-size: 6.5px; font-weight: 900; line-height: 1; letter-spacing: .06em; text-transform: uppercase; }
+.smart-reference-result-preview:hover img,
+.smart-reference-result-preview:focus-visible img { transform: scale(1.04); opacity: .84; }
+.smart-reference-result-copy { min-width: 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.smart-reference-result-copy strong { display: block; color: var(--ink-soft); font-size: 9.5px; }
+.smart-reference-result-copy p { margin: 4px 0 0; }
+.smart-reference-feedback { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 7px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.065); }
+.smart-reference-feedback label { display: grid; gap: 5px; color: var(--muted-2); font-size: 7.5px; font-weight: 900; line-height: 1; letter-spacing: .06em; text-transform: uppercase; }
+.smart-reference-feedback textarea { width: 100%; min-height: 48px; padding: 8px 9px; resize: vertical; border: 1px solid rgba(226,232,255,.13); border-radius: 8px; outline: 0; background: rgba(0,0,0,.24); color: var(--ink); font-family: inherit; font-size: 9px; font-weight: 500; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+.smart-reference-feedback textarea:focus { border-color: rgba(169,102,255,.5); box-shadow: 0 0 0 2px rgba(169,102,255,.08); }
+.smart-reference-feedback button { min-height: 48px; padding: 0 10px; border: 1px solid rgba(169,102,255,.38); border-radius: 8px; background: rgba(169,102,255,.1); color: #d8c0ff; font-size: 8px; font-weight: 850; white-space: nowrap; }
 .smart-reference-results { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin-top: 13px; }
 .smart-reference-results .smart-reference-result { margin-top: 0; }
 .smart-original-brief { margin: 0 0 14px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(0,0,0,.16); }
@@ -13512,6 +13523,8 @@ body[data-ui-mode="smart"] #genDock { display: none !important; }
   .smart-reference-list { grid-template-columns: 1fr; }
   .smart-execution-options,
   .smart-reference-results { grid-template-columns: 1fr; }
+  .smart-reference-feedback { grid-template-columns: 1fr; }
+  .smart-reference-feedback button { min-height: 40px; }
   .smart-production-card { min-height: 420px; padding: 16px; }
   .smart-brief-actions { grid-template-columns: 1fr; }
   .smart-scene-list { grid-template-columns: 1fr; }

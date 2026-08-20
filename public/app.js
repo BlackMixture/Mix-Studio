@@ -4855,7 +4855,20 @@ function renderSmartWorkspace() {
         <span><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(smartStepDetail(step, plan))}${step.progress ? ` · ${step.progress.completed}/${step.progress.total} clips` : ''}</small></span>
         <span class="smart-step-state">${escapeHtml(smartStatusLabel(step.status))}</span>
       </article>`).join('')}</div>
-    ${referenceResults.length ? `<div class="smart-reference-results">${referenceResults.map((reference) => `<div class="smart-reference-result"><img src="${escapeHtml(reference.result.thumbnail)}" alt="Generated ${escapeHtml(reference.referenceState?.label || 'canonical')} reference" /><span><strong>${escapeHtml(reference.referenceState?.label || 'Canonical')} reference ready</strong><br>${run.status === 'review' ? 'Review this state before H3 begins.' : 'Attached only to clips using this state.'}</span></div>`).join('')}</div>` : ''}
+    ${referenceResults.length ? `<div class="smart-reference-results">${referenceResults.map((reference) => {
+      const referenceLabel = reference.referenceState?.label || 'Canonical';
+      return `<article class="smart-reference-result">
+        <button class="smart-reference-result-preview" type="button" data-smart-reference-item="${escapeHtml(reference.result.itemId)}" aria-label="Open ${escapeHtml(referenceLabel)} reference in Library" title="Open full image in Library">
+          <img src="${escapeHtml(reference.result.thumbnail)}" alt="Generated ${escapeHtml(referenceLabel)} reference" />
+          <small>Open</small>
+        </button>
+        <div class="smart-reference-result-copy"><strong>${escapeHtml(referenceLabel)} reference ready</strong><p>${run.status === 'review' ? 'Review this state before H3 begins.' : 'Attached only to clips using this state.'}</p></div>
+        ${run.status === 'review' ? `<div class="smart-reference-feedback">
+          <label>Optional feedback<textarea data-smart-reference-feedback="${escapeHtml(reference.id)}" rows="2" maxlength="1000" placeholder="Example: keep the face, but make the jacket dark red and simplify the boots.">${escapeHtml(reference.referenceFeedback || '')}</textarea></label>
+          <button type="button" data-smart-action="reroll-reference" data-smart-step-id="${escapeHtml(reference.id)}">Regenerate reference</button>
+        </div>` : ''}
+      </article>`;
+    }).join('')}</div>` : ''}
     ${smartSceneMarkup(plan)}
     ${!run && smartPlanUsesReference(plan) ? `<label class="smart-review-toggle"><input id="smartReviewReference" type="checkbox" ${plan.reviewReference || $('#smartPauseReferences')?.getAttribute('aria-checked') === 'true' ? 'checked' : ''}/> Pause after all reference states so I can review them before H3 begins</label>` : ''}
     ${run?.error ? `<div class="smart-run-error">${escapeHtml(run.error)}</div>` : ''}
@@ -5270,6 +5283,38 @@ async function actOnSmartRun(action) {
   }
 }
 
+async function rerollSmartReference(stepId) {
+  if (!smartRun || smartRun.status !== 'review' || smartBusy || !stepId) return;
+  const feedback = $(`[data-smart-reference-feedback="${stepId}"]`)?.value.trim() || '';
+  smartBusy = true;
+  setSmartStatus(feedback ? 'Regenerating this reference with your feedback…' : 'Generating a new reference variation…');
+  renderSmartWorkspace();
+  try {
+    const result = await api(`/api/smart/runs/${encodeURIComponent(smartRun.id)}/references/${encodeURIComponent(stepId)}/reroll`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feedback }),
+    });
+    mergeSmartRun(result.run);
+    setSmartStatus('Reference regeneration queued. Smart will pause here again when it is ready.');
+    queueRefreshSoon();
+  } catch (error) {
+    setSmartStatus(error.message, true);
+  } finally {
+    smartBusy = false;
+    renderSmartWorkspace();
+  }
+}
+
+async function openSmartReferenceInLibrary(itemId) {
+  if (!itemId) return;
+  if (!state.items.some((item) => item.id === itemId)) await refreshGallery(true);
+  if (!state.items.some((item) => item.id === itemId)) {
+    toast('That reference is no longer available in the Library.', true);
+    return;
+  }
+  setView('gallery', { focusedResult: true });
+  openLightbox(itemId, 'image');
+}
+
 function resetSmartComposer() {
   if (smartPlanRequestId) forgetSmartPlanRequest(smartPlanRequestId);
   smartPlanRequestId = '';
@@ -5634,6 +5679,11 @@ $$('[data-smart-example]').forEach((button) => button.addEventListener('click', 
   $('#smartBriefInput').focus();
 }));
 $('#smartBoard').addEventListener('click', (event) => {
+  const referencePreview = event.target.closest('[data-smart-reference-item]');
+  if (referencePreview) {
+    openSmartReferenceInLibrary(referencePreview.dataset.smartReferenceItem).catch((error) => toast(error.message, true));
+    return;
+  }
   const selectOption = event.target.closest('[data-smart-select-option]');
   if (selectOption) {
     chooseSmartSelectOption(selectOption);
@@ -5659,6 +5709,7 @@ $('#smartBoard').addEventListener('click', (event) => {
   else if (['add-reference-state', 'delete-reference-state'].includes(action)) {
     mutateSmartReferenceStates(action, Number(control.dataset.smartReferenceStateIndex));
   }
+  else if (action === 'reroll-reference') rerollSmartReference(control.dataset.smartStepId);
   else if (action === 'queue') queueSmartProduction();
   else actOnSmartRun(action);
 });

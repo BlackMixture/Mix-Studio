@@ -14,6 +14,7 @@ const {
   normalizeSmartReferences,
   reconcileSmartPlanReferences,
   smartReferenceSpec,
+  smartReferenceRerollPrompt,
   smartPlanAudit,
   smartPlanHash,
   smartPlanningPrompt,
@@ -67,6 +68,14 @@ test('Smart plan schema is strict and suitable for structured provider output', 
   assert.deepEqual(SMART_PLAN_SCHEMA.properties.subject.properties.referenceType.enum, ['character', 'object', 'place']);
   assert.ok(SMART_PLAN_SCHEMA.properties.subject.required.includes('referenceTarget'));
   assert.equal(SMART_PLAN_SCHEMA.properties.subject.properties.referenceStates.maxItems, 6);
+});
+
+test('reference rerolls preserve the base specification and apply bounded review feedback', () => {
+  const prompt = smartReferenceRerollPrompt('Three-panel character sheet.', 'Keep the face; change the jacket to dark red.');
+  assert.match(prompt, /^Three-panel character sheet\./);
+  assert.match(prompt, /distinctly new alternative reference image/i);
+  assert.match(prompt, /change the jacket to dark red/i);
+  assert.ok(smartReferenceRerollPrompt('Base.', 'x'.repeat(2000)).length < 15000);
 });
 
 test('local Smart planning establishes story before compact reference metadata', () => {

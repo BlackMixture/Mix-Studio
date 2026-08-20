@@ -60,6 +60,20 @@ test('Smart can auto approve plans while keeping reference review as a separate 
   assert.match(app, /await queueSmartProduction\(\{ reviewReference: smartExecutionOption\('smartPauseReferences'\) \}\)/);
   assert.match(app, /const reviewCheckbox = \$\('#smartReviewReference'\)[\s\S]*const reviewReference = options\.reviewReference[\s\S]*reviewCheckbox\.checked/);
   assert.match(server, /moreReferencesPending[\s\S]*step\.kind === 'reference'[\s\S]*!moreReferencesPending/);
+  assert.match(app, /data-smart-reference-feedback=/);
+  assert.match(app, /data-smart-action="reroll-reference"/);
+  assert.match(app, /function rerollSmartReference\(stepId\)/);
+  assert.match(app, /\/references\/\$\{encodeURIComponent\(stepId\)\}\/reroll/);
+  assert.match(server, /smartReferenceReroll[\s\S]*run\.status !== 'review'/);
+  assert.match(server, /step\.referenceFeedback[\s\S]*step\.rerollCount[\s\S]*step\.status = 'pending'/);
+  assert.match(server, /step\.kind === 'reference'[\s\S]*smartReferenceRerollPrompt\(body\.prompt, step\.referenceFeedback\)/);
+});
+
+test('generated Smart references open their full Library image from the review thumbnail', () => {
+  assert.match(app, /data-smart-reference-item="\$\{escapeHtml\(reference\.result\.itemId\)\}"/);
+  assert.match(app, /title="Open full image in Library"/);
+  assert.match(app, /function openSmartReferenceInLibrary\(itemId\)/);
+  assert.match(app, /setView\('gallery', \{ focusedResult: true \}\);[\s\S]*openLightbox\(itemId, 'image'\)/);
 });
 
 test('Smart persists and restores the creator original prompt independently of the plan summary', () => {

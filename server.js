@@ -158,6 +158,7 @@ const {
   smartPlanAudit,
   smartPlanHash,
   smartPlanningPrompt,
+  smartReferenceRerollPrompt,
 } = require('./lib/smart-mode');
 const {
   localPromptAiCatalog,
@@ -3197,6 +3198,8 @@ function publicSmartRun(run) {
         resultItemIds: step.resultItemIds || [],
         progress: step.progress || null,
         error: step.error || '',
+        referenceFeedback: step.referenceFeedback || '',
+        rerollCount: Math.max(0, Number(step.rerollCount) || 0),
         result: items[0] ? {
           itemId: items[0].id,
           thumbnail: `/images/${encodeURIComponent(items[0].file)}`,
@@ -3287,6 +3290,9 @@ async function advanceSmartRun(run) {
   try {
     step.request = currentSmartStepRequest(run, step);
     const body = JSON.parse(JSON.stringify(step.request.body));
+    if (step.kind === 'reference' && Number(step.rerollCount) > 0) {
+      body.prompt = smartReferenceRerollPrompt(body.prompt, step.referenceFeedback);
+    }
     if (step.kind === 'video' && step.dependsOn?.length) {
       const reference = await smartReferenceForStep(run, step);
       body.h3References = { images: [reference], videos: [], audios: [] };
@@ -7211,6 +7217,35 @@ async function handleApi(req, res, url) {
   }
 
   const smartRunAction = route.match(/^\/api\/smart\/runs\/([a-f0-9]+)\/(resume|retry|cancel)$/);
+
+  const smartReferenceReroll = route.match(/^\/api\/smart\/runs\/([a-f0-9]+)\/references\/([a-f0-9-]+)\/reroll$/);
+  if (smartReferenceReroll && req.method === 'POST') {
+    const run = smartRunForProfile(smartReferenceReroll[1], req.profile.id);
+    if (!run) return json(res, 404, { error: 'Smart production not found' });
+    if (run.status !== 'review') {
+      return json(res, 409, { error: 'References can only be regenerated while this production is waiting for reference review' });
+    }
+    const step = run.steps.find((candidate) => candidate.id === smartReferenceReroll[2]);
+    if (!step || step.kind !== 'reference' || step.status !== 'complete') {
+      return json(res, 409, { error: 'That completed reference is not available to regenerate' });
+    }
+    if (run.steps.some((candidate) => candidate.kind === 'video' && candidate.status !== 'pending')) {
+      return json(res, 409, { error: 'Reference regeneration is unavailable after video generation has started' });
+    }
+    const body = await readJsonBody(req);
+    step.referenceFeedback = String(body.feedback || '').trim().slice(0, 1000);
+    step.rerollCount = Math.max(0, Number(step.rerollCount) || 0) + 1;
+    step.status = 'pending';
+    step.jobId = null;
+    step.progress = null;
+    step.error = '';
+    run.status = 'running';
+    run.error = '';
+    broadcastSmartRun(run);
+    await advanceSmartRun(run);
+    return json(res, 202, { run: publicSmartRun(run) });
+  }
+
   if (smartRunAction && req.method === 'POST') {
     const run = smartRunForProfile(smartRunAction[1], req.profile.id);
     if (!run) return json(res, 404, { error: 'Smart production not found' });
