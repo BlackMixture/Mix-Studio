@@ -152,7 +152,7 @@ test('Smart planning survives slow local models and transient browser connection
   assert.match(app, /async function waitForSmartPlanRequest\(/);
   assert.match(app, /Connection interrupted while Smart continues on the generation computer/);
   assert.match(app, /async function resumeSmartPlanRequest\(/);
-  assert.match(app, /loadSmartRuns\(\)[\s\S]{0,120}resumeSmartPlanRequest\(\)/);
+  assert.match(app, /loadSmartRuns\(true\)[\s\S]{0,120}resumeSmartPlanRequest\(\)/);
 });
 
 test('Smart typography and reference controls use the native Mix Studio design language', () => {
@@ -204,6 +204,20 @@ test('server persists profile-scoped runs and advances them from generation comp
   assert.match(server, /completeSmartJob\(job, \[item\]\)/);
   assert.match(server, /broadcast\('smartRunUpdated'/);
   assert.match(app, /addEventListener\('smartRunUpdated'/);
+});
+
+test('Smart restores its latest saved plan and automatically resumes safe work after restart', () => {
+  assert.match(app, /function activateSmartRun\(run, options = \{\}\)/);
+  assert.match(app, /const activeRun = smartRuns\.find\(\(run\) => \['ready', 'running', 'queueing', 'review', 'failed', 'attention'\]\.includes\(run\.status\)\)/);
+  assert.match(app, /activateSmartRun\(restorableRun, \{ render: false \}\)/);
+  assert.match(app, /if \(run\.brief\) \$\('#smartBriefInput'\)\.value = run\.brief/);
+  assert.match(app, /createMode === 'smart'[\s\S]{0,100}loadSmartRuns\(true\)/);
+  assert.match(server, /markSmartRunsInterruptedForRecovery\(db\.smartRuns\)/);
+  assert.match(server, /async function recoverInterruptedSmartRuns\(\)/);
+  assert.match(server, /interruptedSmartJobIds\(run\)[\s\S]{0,100}stopComfyPrompt\(jobId\)/);
+  assert.match(server, /prepareSmartRunResume\(run\)/);
+  assert.match(server, /kickStrandedSmartRuns\(req\.profile\.id\)/);
+  assert.match(server, /scheduleSmartRunRecovery\(250\)/);
 });
 
 test('queue includes every pending Smart production step as an upcoming job', () => {

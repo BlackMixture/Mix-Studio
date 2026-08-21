@@ -163,6 +163,11 @@ const {
   smartReferenceRerollPrompt,
 } = require('./lib/smart-mode');
 const {
+  interruptedSmartJobIds,
+  markSmartRunsInterruptedForRecovery,
+  prepareSmartRunResume,
+} = require('./lib/smart-run-recovery');
+const {
   localPromptAiCatalog,
   localPromptAiConfig,
   normalizeLocalPromptAiSettings,
@@ -841,15 +846,7 @@ if (!Array.isArray(db.userPreferences)) db.userPreferences = [];
 if (!Array.isArray(db.faces)) db.faces = [];
 if (!Array.isArray(db.uploadedAssets)) db.uploadedAssets = [];
 if (!Array.isArray(db.smartRuns)) db.smartRuns = [];
-for (const run of db.smartRuns) {
-  if (!run || !['running', 'queueing'].includes(run.status)) continue;
-  run.status = 'attention';
-  run.error = 'Mix Studio restarted while this production was active. Review it, then retry the interrupted step.';
-  run.updatedAt = Date.now();
-  for (const step of run.steps || []) {
-    if (['running', 'queueing'].includes(step.status)) step.status = 'attention';
-  }
-}
+const interruptedSmartRunIds = markSmartRunsInterruptedForRecovery(db.smartRuns);
 
 /* ---------------------- Profiles (accounts) ------------------------ */
 // Signing secret persists so logins survive server restarts
@@ -3329,6 +3326,72 @@ async function advanceSmartRun(run) {
     run.status = 'failed';
     run.error = step.error;
     broadcastSmartRun(run);
+  }
+}
+
+const pendingSmartRecoveryIds = new Set(interruptedSmartRunIds);
+let smartRunRecoveryActive = false;
+let smartRunRecoveryTimer = null;
+
+function scheduleSmartRunRecovery(delayMs = 4000) {
+  if (!pendingSmartRecoveryIds.size || smartRunRecoveryTimer) return;
+  smartRunRecoveryTimer = setTimeout(() => {
+    smartRunRecoveryTimer = null;
+    recoverInterruptedSmartRuns().catch((error) => {
+      console.error('[smart] automatic recovery failed:', error.message);
+      scheduleSmartRunRecovery();
+    });
+  }, delayMs);
+  smartRunRecoveryTimer.unref();
+}
+
+async function recoverInterruptedSmartRuns() {
+  if (smartRunRecoveryActive || !pendingSmartRecoveryIds.size) return;
+  smartRunRecoveryActive = true;
+  try {
+    for (const runId of [...pendingSmartRecoveryIds]) {
+      const run = db.smartRuns.find((candidate) => candidate.id === runId);
+      if (!run || run.status !== 'attention') {
+        pendingSmartRecoveryIds.delete(runId);
+        continue;
+      }
+      try {
+        // Confirm ComfyUI is reachable before changing the durable run. Any old
+        // prompt is removed or interrupted first so resubmission cannot create
+        // two visible copies of the same Smart step.
+        await comfyFetch('/queue');
+        for (const jobId of interruptedSmartJobIds(run)) await stopComfyPrompt(jobId);
+        await comfyFetch('/queue');
+        if (!prepareSmartRunResume(run)) {
+          pendingSmartRecoveryIds.delete(runId);
+          continue;
+        }
+        pendingSmartRecoveryIds.delete(runId);
+        broadcastSmartRun(run);
+        await advanceSmartRun(run);
+      } catch (error) {
+        const message = `Waiting for ComfyUI to reconnect so this Smart production can resume automatically: ${String(error.message || error).slice(0, 600)}`;
+        if (run.error !== message) {
+          run.error = message;
+          broadcastSmartRun(run);
+        }
+      }
+    }
+  } finally {
+    smartRunRecoveryActive = false;
+    if (pendingSmartRecoveryIds.size) scheduleSmartRunRecovery();
+  }
+}
+
+function kickStrandedSmartRuns(profileId) {
+  const runs = db.smartRuns.filter((run) => run.profileId === profileId
+    && ['ready', 'running', 'queueing'].includes(run.status));
+  for (const run of runs) {
+    setImmediate(() => advanceSmartRun(run).catch((error) => {
+      run.status = 'failed';
+      run.error = String(error.message || error).slice(0, 1000);
+      broadcastSmartRun(run);
+    }));
   }
 }
 
@@ -7205,6 +7268,7 @@ async function handleApi(req, res, url) {
       .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
       .slice(0, SMART_RUN_LIMIT)
       .map(publicSmartRun);
+    kickStrandedSmartRuns(req.profile.id);
     return json(res, 200, { runs });
   }
 
@@ -12076,4 +12140,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('    Note: Node < 22 detected - live progress disabled (polling fallback).');
   }
   console.log('');
+  if (pendingSmartRecoveryIds.size) scheduleSmartRunRecovery(250);
 });

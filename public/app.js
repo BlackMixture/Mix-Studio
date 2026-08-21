@@ -5112,19 +5112,31 @@ function openSmartAiSettings() {
   reveal();
 }
 
+function activateSmartRun(run, options = {}) {
+  if (!run) return false;
+  smartRun = run;
+  smartPlan = run.plan;
+  smartPlanHash = run.planHash;
+  smartReferences = Array.isArray(run.references) ? run.references.slice(0, 2) : [];
+  smartPlanEditing = false;
+  smartPlanEditBackup = null;
+  smartPlanEditHash = '';
+  if (run.brief) $('#smartBriefInput').value = run.brief;
+  if (options.render !== false) {
+    renderSmartReferences();
+    renderSmartWorkspace();
+  }
+  return true;
+}
+
 function mergeSmartRun(run) {
   if (!run) return;
   smartRuns = [run, ...smartRuns.filter((candidate) => candidate.id !== run.id)]
     .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
   if (!smartRun || smartRun.id === run.id) {
-    smartRun = run;
-    smartPlan = run.plan;
-    smartPlanHash = run.planHash;
-    smartReferences = Array.isArray(run.references) ? run.references.slice(0, 2) : [];
-    smartPlanEditing = false;
-    smartPlanEditBackup = null;
-    smartPlanEditHash = '';
+    activateSmartRun(run, { render: false });
   }
+  renderSmartRecent();
   renderSmartReferences();
   renderSmartWorkspace();
 }
@@ -5137,7 +5149,15 @@ async function loadSmartRuns(force = false) {
   const result = await api('/api/smart/runs');
   smartRuns = result.runs || [];
   smartRunsLoaded = true;
+  const refreshedCurrent = smartRun && smartRuns.find((run) => run.id === smartRun.id);
+  const activeRun = smartRuns.find((run) => ['ready', 'running', 'queueing', 'review', 'failed', 'attention'].includes(run.status));
+  const restorableRun = refreshedCurrent
+    || activeRun
+    || (!storedSmartPlanRequest() ? smartRuns[0] : null);
+  if (restorableRun && (!smartPlan || refreshedCurrent)) activateSmartRun(restorableRun, { render: false });
   renderSmartRecent();
+  renderSmartReferences();
+  renderSmartWorkspace();
 }
 
 function acceptSmartPlanResult(result, requestId) {
@@ -5673,7 +5693,7 @@ function setView(view, opts = {}) {
   } else if (view === 'create' && state.createMode === 'image') {
     schedulePrimaryOrSidePanelGuide('prompt-entry', 960);
   } else if (view === 'create' && state.createMode === 'smart') {
-    loadSmartRuns()
+    loadSmartRuns(true)
       .then(() => resumeSmartPlanRequest())
       .catch((error) => setSmartStatus(error.message, true));
   } else if (view === 'edit' && prev !== view) {
@@ -5808,16 +5828,7 @@ $('#smartRecentList').addEventListener('click', (event) => {
   const id = event.target.closest('[data-smart-run-id]')?.dataset.smartRunId;
   const run = smartRuns.find((candidate) => candidate.id === id);
   if (!run) return;
-  smartRun = run;
-  smartPlan = run.plan;
-  smartPlanHash = run.planHash;
-  if (run.brief) $('#smartBriefInput').value = run.brief;
-  smartReferences = Array.isArray(run.references) ? run.references.slice(0, 2) : [];
-  smartPlanEditing = false;
-  smartPlanEditBackup = null;
-  smartPlanEditHash = '';
-  renderSmartReferences();
-  renderSmartWorkspace();
+  activateSmartRun(run);
 });
 
 function genLabel() {
