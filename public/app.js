@@ -22166,6 +22166,13 @@ function renderQueue(q) {
   if (hint) hint.hidden = !canReorder;
   const clearHistory = $('#queueClearHistoryBtn');
   if (clearHistory) clearHistory.disabled = !(q.history || []).length;
+  const reviewRows = (q.upcoming || []).filter((job) => job.waitingForReview && job.smartRunId);
+  const clearReviews = $('#queueClearReviewsBtn');
+  if (clearReviews) {
+    clearReviews.hidden = !reviewRows.length;
+    clearReviews.dataset.itemCount = String(reviewRows.length);
+    clearReviews.dataset.runCount = String(new Set(reviewRows.map((job) => job.smartRunId)).size);
+  }
   for (const j of rows) {
     const row = document.createElement('div');
     row.className = 'queue-row';
@@ -22194,23 +22201,25 @@ function renderQueue(q) {
     x.className = 'q-cancel';
     x.textContent = '✕';
     x.type = 'button';
-    x.setAttribute('aria-label', j.run ? 'Stop job' : 'Remove queued job');
+    x.setAttribute('aria-label', j.waitingForReview ? 'Remove Smart review items' : (j.run ? 'Stop job' : 'Remove queued job'));
     x.hidden = !!j.preparing || !!j.finalizing || j.cancellable === false || j.owned !== true;
     x.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!await askConfirm({
-        title: j.run ? 'Stop this job?' : 'Remove queued job?',
-        message: j.run ? 'The current generation will be interrupted.' : 'This generation will not run.',
-        confirmLabel: j.run ? 'Stop job' : 'Remove job',
+        title: j.waitingForReview ? 'Remove this Smart production?' : (j.run ? 'Stop this job?' : 'Remove queued job?'),
+        message: j.waitingForReview
+          ? 'All clips from this production that are waiting for review will be removed. Completed gallery media will not be deleted.'
+          : (j.run ? 'The current generation will be interrupted.' : 'This generation will not run.'),
+        confirmLabel: j.waitingForReview ? 'Remove reviews' : (j.run ? 'Stop job' : 'Remove job'),
         danger: true,
       })) return;
       try {
-        await api('/api/queue/cancel', {
+        await api(j.waitingForReview ? '/api/queue/reviews/clear' : '/api/queue/cancel', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobId: j.jobId }),
+          body: JSON.stringify(j.waitingForReview ? { smartRunId: j.smartRunId } : { jobId: j.jobId }),
         });
-        toast(j.run ? 'Job stopped' : 'Removed from queue');
+        toast(j.waitingForReview ? 'Smart review items removed' : (j.run ? 'Job stopped' : 'Removed from queue'));
         refreshQueue();
       } catch (e2) { toast(e2.message, true); }
     });
@@ -22292,6 +22301,33 @@ $('#queueClearHistoryBtn').addEventListener('click', async () => {
     await refreshQueue();
   } catch (error) {
     toast(error.message, true);
+    btn.disabled = false;
+  }
+});
+
+$('#queueClearReviewsBtn').addEventListener('click', async () => {
+  const btn = $('#queueClearReviewsBtn');
+  if (btn.hidden || btn.disabled) return;
+  const itemCount = Math.max(0, Number(btn.dataset.itemCount) || 0);
+  const runCount = Math.max(0, Number(btn.dataset.runCount) || 0);
+  if (!await askConfirm({
+    title: `Remove ${itemCount} Smart review item${itemCount === 1 ? '' : 's'}?`,
+    message: `${runCount} pending Smart production${runCount === 1 ? '' : 's'} will be cancelled. Completed gallery media will not be deleted.`,
+    confirmLabel: 'Clear reviews',
+    danger: true,
+  })) return;
+  btn.disabled = true;
+  try {
+    const result = await api('/api/queue/reviews/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    toast(`${result.clearedItems || 0} Smart review item${result.clearedItems === 1 ? '' : 's'} removed`);
+    await refreshQueue();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
     btn.disabled = false;
   }
 });

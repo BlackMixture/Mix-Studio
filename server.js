@@ -10963,6 +10963,7 @@ async function handleApi(req, res, url) {
         .filter((run) => run.profileId === req.profile.id && ['ready', 'running', 'queueing', 'review'].includes(run.status))
         .flatMap((run) => (run.steps || []).filter((step) => step.status === 'pending').map((step) => ({
           jobId: `smart-${run.id}-${step.id}`,
+          smartRunId: run.id,
           kind: step.kind === 'video' ? 'video' : 'image',
           itemId: null,
           thumbnail: null,
@@ -10970,7 +10971,7 @@ async function handleApi(req, res, url) {
           queuedAt: run.createdAt || queueNow,
           upcoming: true,
           waitingForReview: run.status === 'review',
-          cancellable: false,
+          cancellable: run.status === 'review',
           reorderable: false,
           owned: true,
         })));
@@ -11016,6 +11017,39 @@ async function handleApi(req, res, url) {
     saveDb();
     broadcast('queueHistoryCleared', { profileId: req.profile.id, cleared });
     return json(res, 200, { ok: true, cleared });
+  }
+
+  if (route === '/api/queue/reviews/clear' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const requestedRunId = String(body.smartRunId || '');
+    const reviewRuns = db.smartRuns.filter((run) => run.profileId === req.profile.id
+      && run.status === 'review'
+      && (!requestedRunId || run.id === requestedRunId));
+    const clearedItems = reviewRuns.reduce((total, run) => total
+      + (run.steps || []).filter((step) => step.status === 'pending').length, 0);
+    const now = Date.now();
+    for (const run of reviewRuns) {
+      run.status = 'cancelled';
+      run.error = 'Removed from queue';
+      run.updatedAt = now;
+      for (const step of run.steps || []) {
+        if (step.status !== 'pending') continue;
+        step.status = 'cancelled';
+        step.error = 'Removed from queue';
+      }
+    }
+    if (reviewRuns.length) {
+      saveDb();
+      for (const run of reviewRuns) {
+        broadcast('smartRunUpdated', { profileId: run.profileId, run: publicSmartRun(run) });
+      }
+      broadcast('smartReviewQueueCleared', {
+        profileId: req.profile.id,
+        clearedRuns: reviewRuns.length,
+        clearedItems,
+      });
+    }
+    return json(res, 200, { ok: true, clearedRuns: reviewRuns.length, clearedItems });
   }
 
   if (route === '/api/queue/reorder' && req.method === 'POST') {

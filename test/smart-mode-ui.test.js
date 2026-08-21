@@ -225,8 +225,21 @@ test('queue includes every pending Smart production step as an upcoming job', ()
   assert.match(server, /step\.status === 'pending'/);
   assert.match(server, /jobId: `smart-\$\{run\.id\}-\$\{step\.id\}`/);
   assert.match(server, /waitingForReview: run\.status === 'review'/);
+  assert.match(server, /smartRunId: run\.id/);
+  assert.match(server, /cancellable: run\.status === 'review'/);
   assert.match(server, /pending,[\s\S]{0,80}upcoming,[\s\S]{0,80}finalizing/);
   assert.match(app, /\+ \(q\.upcoming \|\| \[\]\)\.length/);
   assert.match(app, /\.\.\.\(q\.upcoming \|\| \[\]\)\.map\(\(j\) => \(\{ \.\.\.j, run: false, upcoming: true \}\)\)/);
   assert.match(app, /j\.waitingForReview \? 'Review' : 'Upcoming'/);
+});
+
+test('queue can safely remove Smart productions waiting for review', () => {
+  assert.match(server, /\/api\/queue\/reviews\/clear/);
+  assert.match(server, /run\.profileId === req\.profile\.id/);
+  assert.match(server, /run\.status === 'review'/);
+  assert.match(server, /run\.status = 'cancelled'/);
+  assert.match(server, /step\.status = 'cancelled'/);
+  assert.match(html, /id="queueClearReviewsBtn"/);
+  assert.match(app, /\/api\/queue\/reviews\/clear/);
+  assert.match(app, /Completed gallery media will not be deleted/);
 });

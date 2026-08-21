@@ -744,8 +744,9 @@ html:-webkit-full-screen { background: #000; }
 @keyframes queueDownloadSweep { from { transform: translateX(-90%); } to { transform: translateX(285%); } }
 .queue-download-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; font-weight: 800; }
 .queue-download-footer button { border: 0; background: transparent; color: #ffaaa3; font-size: 11px; font-weight: 900; }
-.queue-tools { display: flex; justify-content: flex-end; margin: -4px 0 8px; }
+.queue-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin: -4px 0 8px; }
 .queue-clear-btn,
+.queue-review-clear-btn,
 .queue-reset-btn {
   height: 34px;
   padding: 0 12px;
@@ -760,6 +761,13 @@ html:-webkit-full-screen { background: #000; }
   color: var(--ink-soft);
 }
 .queue-clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.queue-review-clear-btn {
+  border: 1px solid rgba(142,171,255,.34);
+  background: rgba(91,124,250,.1);
+  color: #c9d5ff;
+}
+.queue-review-clear-btn[hidden] { display: none; }
+.queue-review-clear-btn:active { transform: scale(0.97); }
 .queue-reset-btn {
   border: 1px solid rgba(234,67,53,0.45);
   background: rgba(234,67,53,0.12);
