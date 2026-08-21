@@ -25,6 +25,8 @@ const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { probeSageAttention } = require('./lib/sage-attention');
+const { probeH3SlaAttention } = require('./lib/h3-sla-attention');
+const { h3AttentionOptions, normalizeH3AttentionBackend } = require('./lib/h3-attention');
 const { h3PerformanceReport } = require('./lib/h3-performance');
 const {
   krea2ClipCompatibility,
@@ -1773,6 +1775,7 @@ const DEPENDENCY_NODE_GROUP_COMPONENTS = Object.freeze({
     h3turbor2v: ['h3turbor2v'],
     h3context: ['h3context'],
     h3sage: ['h3sage'],
+    h3sla: ['h3sla'],
     ltxcamera: ['ltxcamera'],
     ltxdirector: ['ltxdirector'],
     videoedit: ['videoedit'],
@@ -1833,6 +1836,8 @@ function missingDependencyComponentIds(missing, models, capabilities = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(capabilities, 'sageAttention')
     && capabilities.sageAttention?.ready !== true) ids.add('h3sage');
+  if (Object.prototype.hasOwnProperty.call(capabilities, 'slaAttention')
+    && capabilities.slaAttention?.ready !== true) ids.add('h3sla');
   for (const component of capabilities.repairComponents || []) ids.add(component);
   return [...ids];
 }
@@ -1879,6 +1884,9 @@ function dependencyReadinessDiagnostics(componentIds, missing, models, capabilit
   }
   if (diagnostics.has('h3sage') && capabilities.sageAttention?.ready !== true) {
     diagnostics.get('h3sage').reasons.push(capabilities.sageAttention?.reason || 'SageAttention is not ready in the connected ComfyUI runtime.');
+  }
+  if (diagnostics.has('h3sla') && capabilities.slaAttention?.ready !== true) {
+    diagnostics.get('h3sla').reasons.push(capabilities.slaAttention?.reason || 'H3 SLA is not ready in the connected ComfyUI runtime.');
   }
   for (const [componentId, diagnostic] of diagnostics) {
     const nodeIds = DEPENDENCY_COMPONENTS[componentId]?.nodes || [];
@@ -3180,6 +3188,7 @@ function publicSmartRun(run) {
     plan: run.plan,
     planHash: run.planHash,
     references: normalizeSmartReferences(run.references),
+    attentionBackend: normalizeH3AttentionBackend(run.attentionBackend, false),
     reviewReference: run.reviewReference === true,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
@@ -3250,7 +3259,9 @@ async function smartReferencesForStep(run, step) {
 }
 
 function currentSmartStepRequest(run, step) {
-  const compiled = compileSmartSteps(run.plan, {}, run.references);
+  const compiled = compileSmartSteps(run.plan, {
+    attentionBackend: normalizeH3AttentionBackend(run.attentionBackend, false),
+  }, run.references);
   let current = null;
   if (step.kind === 'video') {
     current = compiled.find((candidate) => candidate.kind === 'video'
@@ -6636,6 +6647,7 @@ const REQUIRED_CLASSES = {
   h3context: ['MiniMaxH3MotionContext', 'MiniMaxH3MotionContextTrim',
     'MiniMaxH3MotionContextSaveLatent', 'MiniMaxH3MotionContextLoadLatent'],
   h3sage: ['PathchSageAttentionKJ'],
+  h3sla: ['H3SLAAttention'],
   ltxdirector: ['LTXDirector', 'LTXDirectorGuide', 'LTXDirectorCropGuides'],
   ltxcamera: ['LTXICLoRALoaderModelOnly', 'LTXAddVideoICLoRAGuide', 'LTXVImgToVideoConditionOnly',
     'VHS_LoadVideo', 'ImageBatch'],
@@ -6664,7 +6676,7 @@ const REQUIRED_CLASSES = {
 const KREA2_DEPENDENCY_COMPONENTS = new Set([
   'image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style',
 ]);
-const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3dyntime']);
+const H3_DEPENDENCY_COMPONENTS = new Set(['h3', 'h3r2v', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3sla', 'h3dyntime']);
 
 function dependencyComponentInfo(id, fit = null) {
   const component = DEPENDENCY_COMPONENTS[id] || {};
@@ -6683,7 +6695,7 @@ function dependencyComponentInfo(id, fit = null) {
   };
 }
 
-function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = null, wanAnimate2Core = null, sageAttention = null) {
+function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = null, wanAnimate2Core = null, sageAttention = null, slaAttention = null) {
   const component = dependencyComponentInfo(id, fit);
   if (fit?.blocked) {
     component.installable = false;
@@ -6714,6 +6726,11 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = nu
     component.installable = false;
     component.blockedBy = 'sage-runtime';
     component.installReason = sageAttention.reason || 'SageAttention cannot be installed automatically in this ComfyUI Python environment.';
+  }
+  if (id === 'h3sla' && slaAttention && slaAttention.ready !== true && slaAttention.installable !== true) {
+    component.installable = false;
+    component.blockedBy = 'sla-runtime';
+    component.installReason = slaAttention.reason || 'H3 SLA cannot be installed automatically in this ComfyUI Python environment.';
   }
   return component;
 }
@@ -6835,6 +6852,18 @@ async function setupStatusPayload(forceCompatibility = false) {
   if (sageRuntime.ready === true && !sageAttention.nodeReady) {
     sageAttention.reason = 'ComfyUI-KJNodes is needed for the H3 SageAttention graph patch.';
   }
+  const slaRuntime = await probeH3SlaAttention(RUNTIME, {
+    status: detected,
+    force: forceCompatibility,
+  });
+  const slaAttention = Object.assign({}, slaRuntime, {
+    runtimeReady: slaRuntime.ready === true,
+    nodeReady: !!info?.H3SLAAttention,
+    ready: slaRuntime.ready === true && !!info?.H3SLAAttention,
+  });
+  if (slaRuntime.ready === true && !slaAttention.nodeReady) {
+    slaAttention.reason = 'The pinned H3 SLA custom node is not loaded in ComfyUI.';
+  }
   const detectedModelsPath = await connectedModelsPath(detected.basePath || RUNTIME.comfy.path);
   return {
     appReady: true,
@@ -6864,6 +6893,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       ltx25Core,
       wanAnimate2Core,
       sageAttention,
+      slaAttention,
     )),
     comfy: {
       connected,
@@ -6874,6 +6904,7 @@ async function setupStatusPayload(forceCompatibility = false) {
       ltx25: ltx25Core,
       wanAnimate2: wanAnimate2Core,
       sageAttention,
+      slaAttention,
       nativeInt8: compatibility,
       url: settings.comfyUrl,
       configuredPath: RUNTIME.comfy.path || '',
@@ -7204,11 +7235,12 @@ async function handleApi(req, res, url) {
       if (existing) return json(res, 200, { run: publicSmartRun(existing), existing: true });
     }
     const now = Date.now();
-    const steps = compileSmartSteps(plan, {}, references);
+    const attentionBackend = normalizeH3AttentionBackend(body.attentionBackend, body.sageAttention);
+    const steps = compileSmartSteps(plan, { attentionBackend }, references);
     const run = {
       id: uid(), profileId: req.profile.id, clientToken: clientToken || uid(),
       brief: String(body.brief || plan.summary || '').trim().slice(0, 8000),
-      planHash, plan, references,
+      planHash, plan, references, attentionBackend,
       reviewReference: steps.some((step) => step.kind === 'reference') && body.reviewReference === true,
       steps, status: 'ready', error: '', createdAt: now, updatedAt: now,
     };
@@ -7948,13 +7980,27 @@ async function handleApi(req, res, url) {
       if (sageRuntime.ready === true && !sageAttention.nodeReady) {
         sageAttention.reason = 'ComfyUI-KJNodes is needed for the H3 SageAttention graph patch.';
       }
+      const slaRuntime = await probeH3SlaAttention(RUNTIME, {
+        status: installStatus,
+        force: url.searchParams.has('refresh'),
+      });
+      const slaAttention = Object.assign({}, slaRuntime, {
+        runtimeReady: slaRuntime.ready === true,
+        nodeReady: !missing.h3sla.length,
+        ready: slaRuntime.ready === true && !missing.h3sla.length,
+      });
+      if (slaRuntime.ready === true && !slaAttention.nodeReady) {
+        slaAttention.reason = 'The pinned H3 SLA custom node is not loaded in ComfyUI.';
+      }
       const nodeRevisions = await pinnedNodeRevisionStatus(installStatus, url.searchParams.has('refresh'));
       const missingComponents = missingDependencyComponentIds(missing, models, {
         sageAttention,
+        slaAttention,
         repairComponents: nodeRevisions.components,
       });
       const readinessDiagnostics = dependencyReadinessDiagnostics(missingComponents, missing, models, {
         sageAttention,
+        slaAttention,
         repairComponents: nodeRevisions.components,
       }, installStatus);
       if (url.searchParams.has('afterRestart') && dependencyInstallState.restartRequired) {
@@ -8001,6 +8047,7 @@ async function handleApi(req, res, url) {
             ltx25Core,
             wanAnimate2Core,
             sageAttention,
+            slaAttention,
           )),
           missingComponents,
           diagnostics: {
@@ -8015,6 +8062,7 @@ async function handleApi(req, res, url) {
           install: dependencyInstallState,
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
           sageAttention,
+          slaAttention,
         },
         models,
         krea2: {
@@ -9178,7 +9226,11 @@ async function handleApi(req, res, url) {
     const h3TurboCanvas = h3Turbo ? h3TurboFixedCanvas(settings, h3GraphMode) : null;
     const ltx25Quality = engine === 'ltx25' && body.fast === false;
     const h3LongContext = engine === 'h3' && body.h3LongContext === true;
-    const h3SageAttention = engine === 'h3' && body.sageAttention !== false;
+    const h3Attention = engine === 'h3'
+      ? h3AttentionOptions(body.attentionBackend, body.sageAttention)
+      : h3AttentionOptions('standard', false);
+    const h3SageAttention = engine === 'h3' && h3Attention.sageAttention;
+    const h3SlaAttention = engine === 'h3' && h3Attention.slaAttention;
     const h3References = normalizeH3References(body.h3References);
     let requestedVideoLoras = Array.isArray(body.loras)
       ? body.loras.filter((lora) => lora && lora.on && lora.name && String(lora.name).trim())
@@ -9389,6 +9441,24 @@ async function handleApi(req, res, url) {
               packageReady: sageRuntime.ready === true,
               nodeReady,
               ready: sageRuntime.ready === true && nodeReady,
+            }),
+          });
+        }
+      }
+      if (h3SlaAttention) {
+        const slaRuntime = await probeH3SlaAttention(RUNTIME, { status: sam3InstallStatus(RUNTIME) });
+        const nodeReady = !!info.H3SLAAttention;
+        if (!slaRuntime.ready || !nodeReady) {
+          return json(res, 409, {
+            error: !nodeReady
+              ? 'MiniMax H3 SLA needs the pinned sparse-attention node. Install the H3 SLA workflow, restart ComfyUI, and try again.'
+              : (slaRuntime.reason || 'H3 SLA is not ready in the ComfyUI Python environment.'),
+            code: 'h3_sla_attention_unavailable',
+            component: 'h3sla',
+            slaAttention: Object.assign({}, slaRuntime, {
+              runtimeReady: slaRuntime.ready === true,
+              nodeReady,
+              ready: slaRuntime.ready === true && nodeReady,
             }),
           });
         }
@@ -9867,7 +9937,9 @@ async function handleApi(req, res, url) {
       turboStrength: clampNum(body.h3TurboStrength, 0.8, 1.2, 1),
       turboLowVram: body.h3TurboLowVram === true,
       turboNativeSampler: h3TurboNativeSampler,
+      attentionBackend: h3Attention.attentionBackend,
       sageAttention: h3SageAttention,
+      slaAttention: h3SlaAttention,
       firstImageName: engine === 'h3' && !bypass && h3Mode === 'frames' ? comfyName : null,
       references: h3References,
       refImageSize: body.h3RefImageSize === 'max' ? 'max' : 'match',
@@ -10028,7 +10100,7 @@ async function handleApi(req, res, url) {
         h3MatchSource: engine === 'h3' && h3Mode === 'frames' ? body.h3MatchSource === true : undefined,
         h3MatchReferenceVideo: engine === 'h3' && h3Mode === 'reference'
           ? body.h3MatchReferenceVideo === true : undefined,
-        attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
+        attentionBackend: engine === 'h3' ? opts.attentionBackend : undefined,
         h3RefImageSize: h3ReferenceBacked ? opts.refImageSize : undefined,
         h3References: h3ReferenceBacked ? h3References : undefined,
         h3ReplaceKind: engine === 'h3' && h3Mode === 'replace' ? h3ReplaceKind : undefined,
@@ -10059,7 +10131,7 @@ async function handleApi(req, res, url) {
       h3TurboChunks: h3TurboReferenceChunks.length > 1 ? h3TurboReferenceChunks.length : undefined,
       h3LongContextClips: h3LongContextPlan.length > 1 ? h3LongContextPlan.length : undefined,
       sequenceId: wanAnimate2VideoChunkSequence?.id || h3ChunkSequenceId || undefined,
-      attentionBackend: engine === 'h3' ? (opts.sageAttention ? 'sageattention' : 'standard') : undefined,
+      attentionBackend: engine === 'h3' ? opts.attentionBackend : undefined,
     });
   }
 

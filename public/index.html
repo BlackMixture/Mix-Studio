@@ -1410,14 +1410,16 @@
                 <button class="chip" type="button" data-scail-fps="24">24 fps · experimental</button>
               </div>
             </div>
-            <div class="field field-span h3-sage-field" id="vidH3SageField" hidden>
-              <button class="settings-media-toggle h3-sage-toggle" id="vidH3SageToggle" type="button" role="switch" aria-checked="true">
-                <span class="settings-media-toggle-copy">
-                  <strong>SageAttention acceleration</strong>
-                  <small id="vidH3SageStatus">Verifying the ComfyUI runtime…</small>
-                </span>
-                <span class="settings-media-switch" aria-hidden="true"><i></i></span>
-              </button>
+            <div class="field field-span h3-attention-field" id="vidH3AttentionField" hidden>
+              <div class="h3-attention-heading">
+                <span><strong>Attention backend</strong><small id="vidH3AttentionStatus">Verifying the ComfyUI runtime…</small></span>
+                <em>Experimental</em>
+              </div>
+              <div class="h3-attention-options" role="radiogroup" aria-label="MiniMax H3 attention backend">
+                <button type="button" role="radio" aria-checked="false" data-h3-attention="standard"><strong>Standard</strong><small>Reliable</small></button>
+                <button type="button" role="radio" aria-checked="true" data-h3-attention="sageattention"><strong>Sage</strong><small>Verified speed</small></button>
+                <button type="button" role="radio" aria-checked="false" data-h3-attention="sla"><strong>SLA Sparse</strong><small>Long clips</small></button>
+              </div>
             </div>
             <div class="h3-turbo-strength-field field-span" id="vidH3TurboStrengthField" hidden>
               <div class="h3-turbo-strength-head">

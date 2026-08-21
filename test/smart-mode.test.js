@@ -153,6 +153,8 @@ test('Smart compiles identity video into a Krea reference followed by individual
   assert.equal(steps[1].request.body.engine, 'h3');
   assert.equal(steps[1].request.body.h3Mode, 'reference');
   assert.equal(steps[1].request.body.h3LongContext, false);
+  assert.equal(steps[1].request.body.attentionBackend, 'standard');
+  assert.equal(steps[1].request.body.sageAttention, false);
   assert.equal(steps[1].request.body.seconds, 10);
   assert.equal(steps[1].request.body.h3ResolutionSize, 1);
   assert.match(steps[1].request.body.prompt, /^subject_definitions:/);
@@ -163,6 +165,16 @@ test('Smart compiles identity video into a Krea reference followed by individual
   assert.match(steps[1].request.body.prompt, /overall_soundscape:/);
   assert.match(steps[1].request.body.prompt, /non_diegetic_music:\nN\/A$/);
   assert.doesNotMatch(steps[1].request.body.prompt, /clip \d+ of|finished sequence|editorial transition|directorial intent/i);
+});
+
+test('Smart video clips inherit an explicitly selected SLA backend', () => {
+  const steps = compileSmartSteps(lionPlan(), {
+    imageId: 'reference-step', videoId: 'video-step', attentionBackend: 'sla',
+  });
+  const videos = steps.filter((step) => step.kind === 'video');
+  assert.ok(videos.length > 0);
+  assert.ok(videos.every((step) => step.request.body.attentionBackend === 'sla'));
+  assert.ok(videos.every((step) => step.request.body.sageAttention === false));
 });
 
 test('attached references are bounded, hashed, and synthesized through Krea 2 Edit', () => {

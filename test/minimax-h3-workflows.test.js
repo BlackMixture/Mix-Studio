@@ -339,6 +339,28 @@ test('MiniMax H3 SageAttention patches only the guider model and leaves schedule
   assert.deepEqual(standard.guider.inputs.model, ['model', 0]);
 });
 
+test('MiniMax H3 SLA applies conservative block sparsity as the final patch for its guider and scheduler', async () => {
+  const graph = await buildMiniMaxH3Graph({
+    mode: 'frames', prompt: 'A storm rolls across the sea.', W: 1344, H: 768, frames: 124, seed: 7,
+    attentionBackend: 'sla',
+  }, settings);
+  assert.equal(graph.sage_attention, undefined);
+  assert.deepEqual(graph.sla_attention, {
+    class_type: 'H3SLAAttention',
+    inputs: {
+      model: ['model', 0],
+      sparsity_ratio: 0.85,
+      block_size: '64',
+      min_seq_len: 8192,
+      dense_last_steps: 0,
+      protect_audio: true,
+      enabled: true,
+    },
+  });
+  assert.deepEqual(graph.guider.inputs.model, ['sla_attention', 0]);
+  assert.deepEqual(graph.scheduler.inputs.model, ['sla_attention', 0]);
+});
+
 test('MiniMax H3 Turbo keeps the creator sampler as a legacy-core fallback with adjustable steps', async () => {
   const graph = await buildMiniMaxH3Graph({
     mode: 'frames', prompt: 'A singer performs under soft stage light.', W: 1344, H: 768,

@@ -101,18 +101,22 @@ test('MiniMax H3 Reference mode can match Video 1 aspect and labels video thumbn
   assert.match(server, /h3MatchReferenceVideo: engine === 'h3' && h3Mode === 'reference'/);
 });
 
-test('MiniMax H3 offers verified SageAttention with an explicit standard-attention bypass', () => {
-  assert.match(html, /id="vidH3SageToggle"[^>]*role="switch"[^>]*aria-checked="true"/);
-  assert.match(html, /id="vidH3SageStatus">Verifying the ComfyUI runtime/);
-  assert.match(app, /vidH3SageAttention: true/);
-  assert.match(app, /function renderH3SageAttention\(\)/);
-  assert.match(app, /sageAttention: state\.vidEngine === 'h3' \? state\.vidH3SageAttention !== false : undefined/);
-  assert.match(app, /if \(state\.vidEngine === 'h3' && state\.vidH3SageAttention !== false\) components\.add\('h3sage'\)/);
-  assert.match(app, /info\.attentionBackend === 'sageattention' \? 'SageAttention \(verified\)' : 'Standard PyTorch'/);
-  assert.match(css, /\.h3-sage-toggle\[data-ready="false"\]\[aria-checked="true"\]/);
-  assert.match(server, /const h3SageAttention = engine === 'h3' && body\.sageAttention !== false/);
+test('MiniMax H3 offers mutually exclusive Standard, SageAttention, and experimental SLA backends', () => {
+  assert.match(html, /role="radiogroup" aria-label="MiniMax H3 attention backend"/);
+  assert.match(html, /data-h3-attention="standard"/);
+  assert.match(html, /data-h3-attention="sageattention"[^>]*><strong>Sage<\/strong>/);
+  assert.match(html, /data-h3-attention="sla"[^>]*><strong>SLA Sparse<\/strong>/);
+  assert.match(app, /vidH3AttentionBackend: 'sageattention'/);
+  assert.match(app, /function renderH3AttentionBackend\(\)/);
+  assert.match(app, /attentionBackend: state\.vidEngine === 'h3' \? selectedH3AttentionBackend\(\) : undefined/);
+  assert.match(app, /selectedH3AttentionBackend\(\) === 'sageattention'\) components\.add\('h3sage'\)/);
+  assert.match(app, /selectedH3AttentionBackend\(\) === 'sla'\) components\.add\('h3sla'\)/);
+  assert.match(app, /attentionBackend: selectedH3AttentionBackend\(\)/);
+  assert.match(css, /\.h3-attention-options button\[data-ready="false"\]\[aria-checked="true"\]/);
+  assert.match(server, /const h3Attention = engine === 'h3'[\s\S]{0,120}h3AttentionOptions\(body\.attentionBackend, body\.sageAttention\)/);
   assert.match(server, /code: 'h3_sage_attention_unavailable'/);
-  assert.match(server, /attentionBackend: engine === 'h3' \? \(opts\.sageAttention \? 'sageattention' : 'standard'\)/);
+  assert.match(server, /code: 'h3_sla_attention_unavailable'/);
+  assert.match(server, /attentionBackend: engine === 'h3' \? opts\.attentionBackend : undefined/);
 });
 
 test('MiniMax H3 exposes the shared LoRA stack and sends it to the video workflow', () => {

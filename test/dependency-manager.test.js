@@ -51,7 +51,7 @@ function safetensorsFixture() {
 }
 
 test('dependency catalog covers every enabled image and video family', () => {
-  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltx25', 'ltx25quality', 'h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3r2v', 'h3dyntime', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
+  for (const component of ['image', 'krea2raw', 'krea2depth', 'krea2style', 'krea2outpaint', 'editoutpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'video', 'ltx25', 'ltx25quality', 'h3', 'h3turbo', 'h3turbor2v', 'h3sage', 'h3sla', 'h3r2v', 'h3dyntime', 'ltxcamera', 'ltxdirector', 'videoedit', 'faceid', 'wan', 'eros', 'rife', 'scail', 'scailinfinity', 'smartmask', 'regional']) {
     assert.ok(COMPONENTS[component], `${component} is installable`);
   }
   for (const group of ['image', 'krea2Raw', 'krea2Depth', 'krea2Outpaint', 'klein4', 'klein9', 'qwen', 'upscale', 'ltx', 'ltx25', 'ltx25Quality', 'h3', 'h3RefCommon', 'h3Ref', 'h3Bf16', 'h3RefBf16', 'h3DynTimeRef', 'h3DynTimeRefHq', 'h3Turbo', 'h3TurboLegacy', 'h3TurboLightx8', 'h3TurboLightx4_768p', 'h3RefTurbo', 'h3RefTurboLightx8', 'h3RefTurboLightx4_768p', 'ltxCamera', 'ltxDirector', 'ltxEdit', 'faceid', 'wan', 'eros', 'scail']) {
@@ -78,6 +78,13 @@ test('dependency catalog covers every enabled image and video family', () => {
   assert.deepEqual(COMPONENTS.h3sage.nodes, ['kjnodes']);
   assert.deepEqual(COMPONENTS.h3sage.pythonPackages, ['sageattention']);
   assert.equal(COMPONENTS.h3sage.optional, true);
+  assert.deepEqual(COMPONENTS.h3sla.nodes, ['h3Sla']);
+  assert.deepEqual(COMPONENTS.h3sla.pythonPackages, ['h3sla']);
+  assert.equal(COMPONENTS.h3sla.optional, true);
+  assert.equal(NODE_PACKS.h3Sla.folder, 'ComfyUI-PlagueKind-Nodes');
+  assert.equal(NODE_PACKS.h3Sla.ref, '6ca3037bd16dc143b6d461c67c87a28ca8074063');
+  assert.equal(NODE_PACKS.h3Sla.enforceRevision, true);
+  assert.match(NODE_PACKS.h3Sla.repo, /PlagueKind\/ComfyUI-PlagueKind-Nodes/);
   assert.deepEqual(COMPONENTS.h3r2v.models, ['h3RefCommon', 'h3Ref']);
   assert.deepEqual(COMPONENTS.h3turbor2v.nodes, ['h3Turbo']);
   assert.deepEqual(COMPONENTS.h3turbor2v.models, ['h3RefTurbo']);

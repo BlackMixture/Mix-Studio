@@ -133,7 +133,9 @@ test('Smart exposes planner configuration and reusable image references', () => 
   assert.match(server, /prompt\.localInstruction \|\| prompt\.instruction/);
   assert.match(server, /JSON\.stringify\(SMART_LOCAL_PLAN_SCHEMA\)/);
   assert.match(server, /requestSmartPlan\(provider, prompt, references, request\.profileId, progress\)/);
-  assert.match(server, /compileSmartSteps\(plan, \{\}, references\)/);
+  assert.match(server, /compileSmartSteps\(plan, \{ attentionBackend \}, references\)/);
+  assert.match(app, /attentionBackend: selectedH3AttentionBackend\(\)/);
+  assert.match(app, /if \(!\(await ensureGenerationSetup\(\)\)\) return/);
   assert.match(server, /requireVision: references\.length > 0/);
   assert.match(server, /local Prompt AI workflow cannot inspect images/);
   assert.match(server, /route === '\/api\/smart\/plan\/review'/);

@@ -133,7 +133,7 @@ const state = {
   vidH3MatchSource: true,    // keep frame-mode output at the first frame's aspect unless explicitly overridden
   vidH3MatchReferenceVideo: false,
   vidH3Xl: false,
-  vidH3SageAttention: true,
+  vidH3AttentionBackend: 'sageattention',
   vidH3Turbo: false,
   vidH3LongContext: false,
   vidH3TurboStrength: 1,
@@ -248,6 +248,23 @@ function h3ResolutionActive() {
 
 function h3TurboActive() {
   return h3ResolutionActive() && state.vidH3Turbo === true;
+}
+
+function normalizeH3AttentionBackend(value, legacySageAttention = true) {
+  const requested = String(value || '').trim().toLowerCase();
+  if (requested === 'sage') return 'sageattention';
+  if (['standard', 'sageattention', 'sla'].includes(requested)) return requested;
+  return legacySageAttention === false ? 'standard' : 'sageattention';
+}
+
+function selectedH3AttentionBackend() {
+  return normalizeH3AttentionBackend(state.vidH3AttentionBackend);
+}
+
+function h3AttentionBackendLabel(value) {
+  const backend = normalizeH3AttentionBackend(value, false);
+  if (backend === 'sla') return 'SLA Sparse (experimental)';
+  return backend === 'sageattention' ? 'SageAttention (verified)' : 'Standard PyTorch';
 }
 
 function h3TurboFixed768pActive() {
@@ -3245,7 +3262,9 @@ function saveForm() {
       vidH3MatchSource: state.vidH3MatchSource,
       vidH3MatchReferenceVideo: state.vidH3MatchReferenceVideo,
       vidH3Xl: state.vidH3Xl,
-      vidH3SageAttention: state.vidH3SageAttention,
+      vidH3AttentionBackend: selectedH3AttentionBackend(),
+      // Keep the legacy boolean so an older local checkout can still open this workspace.
+      vidH3SageAttention: selectedH3AttentionBackend() === 'sageattention',
       vidH3Turbo: state.vidH3Turbo,
       vidH3LongContext: state.vidH3LongContext,
       vidH3TurboStrength: state.vidH3TurboStrength,
@@ -3513,7 +3532,10 @@ function loadForm() {
     state.vidH3MatchSource = f.vidH3MatchSource !== false;
     state.vidH3MatchReferenceVideo = f.vidH3MatchReferenceVideo === true;
     state.vidH3Xl = f.vidH3Xl === true;
-    state.vidH3SageAttention = f.vidH3SageAttention !== false;
+    state.vidH3AttentionBackend = normalizeH3AttentionBackend(
+      f.vidH3AttentionBackend,
+      f.vidH3SageAttention !== false,
+    );
     state.vidH3Turbo = f.vidH3Turbo === true;
     state.vidH3LongContext = f.vidH3LongContext === true
       && experimentalFeaturesEnabled()
@@ -5242,6 +5264,7 @@ async function resumeSmartPlanRequest() {
 
 async function queueSmartProduction(options = {}) {
   if (!smartPlan || !smartPlanHash || smartBusy || smartPlanEditing) return;
+  if (!(await ensureGenerationSetup())) return;
   const reviewCheckbox = $('#smartReviewReference');
   const reviewReference = options.reviewReference
     ?? (reviewCheckbox ? reviewCheckbox.checked : smartExecutionOption('smartPauseReferences'));
@@ -5258,6 +5281,8 @@ async function queueSmartProduction(options = {}) {
         references: smartReferencePayload(),
         approved: true,
         reviewReference,
+        attentionBackend: selectedH3AttentionBackend(),
+        sageAttention: selectedH3AttentionBackend() === 'sageattention',
       }),
     });
     mergeSmartRun(result.run);
@@ -6078,29 +6103,41 @@ function renderH3LongContext() {
   }
 }
 
-function renderH3SageAttention() {
-  const field = $('#vidH3SageField');
-  const toggle = $('#vidH3SageToggle');
-  const status = $('#vidH3SageStatus');
-  if (!field || !toggle || !status) return;
+function renderH3AttentionBackend() {
+  const field = $('#vidH3AttentionField');
+  const status = $('#vidH3AttentionStatus');
+  const buttons = $$('[data-h3-attention]');
+  if (!field || !status || !buttons.length) return;
   const visible = state.view === 'video' && state.vidEngine === 'h3';
   field.hidden = !visible;
-  const enabled = state.vidH3SageAttention !== false;
-  const capability = lastMeta?.dependencies?.sageAttention;
-  toggle.setAttribute('aria-checked', String(enabled));
-  toggle.dataset.ready = String(capability?.ready === true);
-  if (!enabled) {
-    status.textContent = 'Off · use standard PyTorch attention';
-    toggle.title = 'H3 will use the standard attention backend.';
+  const selected = selectedH3AttentionBackend();
+  const capability = selected === 'sageattention'
+    ? lastMeta?.dependencies?.sageAttention
+    : (selected === 'sla' ? lastMeta?.dependencies?.slaAttention : { ready: true });
+  buttons.forEach((button) => {
+    const active = button.dataset.h3Attention === selected;
+    const backendCapability = button.dataset.h3Attention === 'sageattention'
+      ? lastMeta?.dependencies?.sageAttention
+      : (button.dataset.h3Attention === 'sla' ? lastMeta?.dependencies?.slaAttention : { ready: true });
+    button.setAttribute('aria-checked', String(active));
+    button.dataset.ready = String(backendCapability?.ready === true);
+  });
+  if (selected === 'standard') {
+    status.textContent = 'Built in · maximum compatibility';
+    field.title = 'H3 will use the standard PyTorch attention backend.';
   } else if (capability?.ready === true) {
-    status.textContent = `Verified in ComfyUI${capability.sageVersion ? ` · SageAttention ${capability.sageVersion}` : ''}`;
-    toggle.title = 'The matching package, Triton runtime, CUDA kernel, and KJ graph patch are verified.';
+    status.textContent = selected === 'sla'
+      ? `Runtime ready${capability.tritonVersion ? ` · Triton ${capability.tritonVersion}` : ''} · self-checks on first run`
+      : `Verified in ComfyUI${capability.sageVersion ? ` · SageAttention ${capability.sageVersion}` : ''}`;
+    field.title = selected === 'sla'
+      ? 'The pinned H3 SLA node and compatible CUDA Triton runtime are present. SLA is experimental, most useful for longer sequences, and safely falls back to dense attention if its kernel cannot run.'
+      : 'The matching package, Triton runtime, CUDA kernel, and KJ graph patch are verified.';
   } else if (capability) {
-    status.textContent = capability.reason || 'Install the H3 SageAttention workflow to enable acceleration';
-    toggle.title = status.textContent;
+    status.textContent = capability.reason || `Install the H3 ${selected === 'sla' ? 'SLA' : 'SageAttention'} workflow to use this backend`;
+    field.title = status.textContent;
   } else {
     status.textContent = 'Verifying the ComfyUI runtime…';
-    toggle.title = status.textContent;
+    field.title = status.textContent;
   }
 }
 
@@ -6198,7 +6235,7 @@ function updateVideoPanels() {
   $('#vidScailFpsField').hidden = !(isVideo && state.vidEngine === 'scail');
   renderH3LongContext();
   renderH3TurboMode();
-  renderH3SageAttention();
+  renderH3AttentionBackend();
   renderWanAnimate2Strengths();
   renderVideoStepControl();
   $('#videoAdvancedNote').hidden = !isVideo;
@@ -6212,12 +6249,12 @@ function updateVideoPanels() {
   schedulePromptIntentHint();
 }
 
-$('#vidH3SageToggle').addEventListener('click', () => {
-  state.vidH3SageAttention = state.vidH3SageAttention === false;
-  renderH3SageAttention();
+$$('[data-h3-attention]').forEach((button) => button.addEventListener('click', () => {
+  state.vidH3AttentionBackend = normalizeH3AttentionBackend(button.dataset.h3Attention);
+  renderH3AttentionBackend();
   $('#genLbl').textContent = genLabel();
   saveForm();
-});
+}));
 
 $('#vidH3TurboToggle').addEventListener('click', () => {
   if ($('#vidH3TurboToggle').disabled) return;
@@ -21360,7 +21397,8 @@ $('#generateBtn').addEventListener('click', async () => {
         ? h3MatchSourceActive() : undefined,
       h3MatchReferenceVideo: state.vidEngine === 'h3' && state.vidH3Mode === 'reference'
         ? h3MatchReferenceVideoActive() : undefined,
-      sageAttention: state.vidEngine === 'h3' ? state.vidH3SageAttention !== false : undefined,
+      attentionBackend: state.vidEngine === 'h3' ? selectedH3AttentionBackend() : undefined,
+      sageAttention: state.vidEngine === 'h3' ? selectedH3AttentionBackend() === 'sageattention' : undefined,
       h3RefImageSize: h3Reference ? state.vidH3RefImageSize : undefined,
       h3References: h3Reference ? Object.fromEntries(Object.entries(h3GenerationReferences).map(([kind, assets]) => [
         kind,
@@ -23340,7 +23378,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'kreaBrush', 'kreaMaskFeather', 'editMaskInfluence', 'editMaskExpand', 'kreaMaskInvert', 'kreaMaskPoints',
   'kreaMaskPointForeground', 'kreaMaskPointDeleteMode', 'kreaMaskPreviewCutout', 'kreaMaskViewMode',
   'vidRef', 'vidEnd', 'vidDrive', 'vidFace', 'vidAudio', 'vidEngine', 'vidSigma', 'vidSmooth', 'vidWanQuality', 'vidLtx25Quality',
-  'vidH3Mode', 'vidH3MatchSource', 'vidH3MatchReferenceVideo', 'vidH3Xl', 'vidH3SageAttention', 'vidH3Turbo', 'vidH3LongContext', 'vidH3TurboStrength', 'vidH3TurboSteps', 'vidH3RefTurboSteps', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
+  'vidH3Mode', 'vidH3MatchSource', 'vidH3MatchReferenceVideo', 'vidH3Xl', 'vidH3AttentionBackend', 'vidH3Turbo', 'vidH3LongContext', 'vidH3TurboStrength', 'vidH3TurboSteps', 'vidH3RefTurboSteps', 'vidH3Steps', 'vidH3RefImageSize', 'vidH3RefSlots', 'vidH3References',
   'vidScailMode', 'vidScailFps', 'vidScailStableTracking', 'vidScailChunkFrames', 'vidScailChunkOverlap', 'vidAutoMotionPrompt',
   'videoCameraMotions', 'videoCameraMotionPhrase', 'videoCameraGuide',
   'generationTuning',
@@ -23499,7 +23537,7 @@ function resetActiveGenerationForm() {
     state.vidH3MatchSource = true;
     state.vidH3MatchReferenceVideo = false;
     state.vidH3Xl = false;
-    state.vidH3SageAttention = true;
+    state.vidH3AttentionBackend = 'sageattention';
     state.vidH3Turbo = false;
     state.vidH3LongContext = false;
     state.vidH3TurboStrength = 1;
@@ -28140,7 +28178,7 @@ function openLightbox(id, mediaSel, options = {}) {
     const workflowModel = info.workflow === 'director' ? videoEngineLabel(info.engine, info) : model;
     meta.push(`<b>Model:</b> ${escapeHtml(workflowModel)}`);
     if (info.attentionBackend) {
-      meta.push(`<b>Attention:</b> ${info.attentionBackend === 'sageattention' ? 'SageAttention (verified)' : 'Standard PyTorch'}`);
+      meta.push(`<b>Attention:</b> ${escapeHtml(h3AttentionBackendLabel(info.attentionBackend))}`);
     }
     if (hasDocumentationValue(info.steps)) meta.push(`<b>Steps:</b> ${escapeHtml(String(info.steps))}`);
     if (info.h3TurboLora) meta.push(copyableMeta('Turbo adapter', prettyLora(String(info.h3TurboLora))));
@@ -29366,7 +29404,9 @@ async function reuseVideo(it, v) {
     ? H3Resolution.restoredGenerationSize(info, state.mp)
     : state.mp;
   state.vidH3Xl = engine === 'h3' && reusedH3ResolutionSize === H3Resolution.XL_SIZE;
-  state.vidH3SageAttention = engine === 'h3' ? info.attentionBackend !== 'standard' : true;
+  state.vidH3AttentionBackend = engine === 'h3'
+    ? normalizeH3AttentionBackend(info.attentionBackend, true)
+    : 'sageattention';
   state.vidH3Turbo = engine === 'h3' && info.h3Turbo === true;
   state.vidH3LongContext = engine === 'h3'
     && info.h3LongContext === true
@@ -30516,9 +30556,7 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
     ['Inputs', inputSummary],
-    ['Attention', info.attentionBackend === 'sageattention'
-      ? 'SageAttention (verified)'
-      : (info.attentionBackend === 'standard' ? 'Standard PyTorch' : '')],
+    ['Attention', info.attentionBackend ? h3AttentionBackendLabel(info.attentionBackend) : ''],
     ['Options', options],
     ['Mix Pack presets', promptPresetNames(promptPresets).join(', ')],
     ['Seed', hasDocumentationValue(info.seed) ? info.seed : ''],
@@ -36231,13 +36269,36 @@ function setupNativeInt8Message() {
 
 function generationSetupComponents() {
   const components = new Set();
+  if (state.view === 'create' && state.createMode === 'smart' && smartPlan) {
+    const attachedReferences = smartReferencePayload();
+    if (smartPlan.output?.kind !== 'video') {
+      components.add(attachedReferences.length ? 'krea2ref' : 'image');
+      return [...components];
+    }
+    const scenes = Array.isArray(smartPlan.scenes) ? smartPlan.scenes : [];
+    const hasReferenceClips = scenes.some((scene) => smartSceneUsesReference(smartPlan, scene));
+    const hasFrameClips = scenes.some((scene) => !smartSceneUsesReference(smartPlan, scene));
+    if (hasReferenceClips) {
+      components.add(attachedReferences.length ? 'krea2ref' : 'image');
+      components.add('h3r2v');
+    }
+    if (hasFrameClips || !hasReferenceClips) components.add('h3');
+    if (smartPlan.output?.quality === 'fast') {
+      if (hasReferenceClips) components.add('h3turbor2v');
+      if (hasFrameClips || !hasReferenceClips) components.add('h3turbo');
+    }
+    if (selectedH3AttentionBackend() === 'sageattention') components.add('h3sage');
+    if (selectedH3AttentionBackend() === 'sla') components.add('h3sla');
+    return [...components];
+  }
   if (state.view === 'video') {
     const byEngine = { ltx: 'video', ltx25: 'ltx25', h3: 'h3', 'ltx-edit': 'videoedit', eros: 'eros', wan: 'wan', 'wan-animate2': 'wananimate2', scail: 'scail' };
     components.add(byEngine[state.vidEngine] || 'video');
     if (state.vidEngine === 'ltx25' && videoQualityActive()) components.add('ltx25quality');
     if (h3TurboActive()) components.add(h3ReferenceBackedMode() ? 'h3turbor2v' : 'h3turbo');
     if (h3LongContextActive()) components.add('h3context');
-    if (state.vidEngine === 'h3' && state.vidH3SageAttention !== false) components.add('h3sage');
+    if (state.vidEngine === 'h3' && selectedH3AttentionBackend() === 'sageattention') components.add('h3sage');
+    if (state.vidEngine === 'h3' && selectedH3AttentionBackend() === 'sla') components.add('h3sla');
     if (state.vidEngine === 'h3' && h3ReferenceBackedMode()) components.add('h3r2v');
     if (state.directorOpen) components.add('ltxdirector');
     if (state.vidEngine === 'ltx-edit') components.add('video');
@@ -38101,7 +38162,7 @@ async function loadMeta(refresh, afterRestart = false) {
     renderDependencyManager();
     renderH3LongContext();
     renderH3TurboMode();
-    renderH3SageAttention();
+    renderH3AttentionBackend();
     renderAspects();
     renderDims();
     $('#genLbl').textContent = genLabel();
@@ -38233,7 +38294,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltx25: 'LTX 2.5 native nodes', ltx25quality: 'LTX 2.5 Quality guidance nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltx25: 'LTX 2.5 native nodes', ltx25quality: 'LTX 2.5 Quality guidance nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', h3sla: 'MiniMax H3 SLA Sparse Attention nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');
