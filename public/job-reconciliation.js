@@ -15,6 +15,7 @@
     const empty = {
       authoritative: false,
       migrations: [],
+      adoptedJobs: [],
       staleJobIds: [],
       staleCompositeJobIds: [],
       staleAnimatingItemIds: [],
@@ -35,8 +36,9 @@
     const migrations = [];
     const migratedOldIds = new Set();
     const claimedNewIds = new Set();
+    const activeJobIds = stringSet(current.activeJobIds);
 
-    for (const oldJobId of stringSet(current.activeJobIds)) {
+    for (const oldJobId of activeJobIds) {
       if (liveJobIds.has(oldJobId)) continue;
       const sequenceId = sequenceByJob instanceof Map
         ? sequenceByJob.get(oldJobId)
@@ -50,6 +52,20 @@
       migratedOldIds.add(oldJobId);
       claimedNewIds.add(newJobId);
     }
+
+    // Browser state is intentionally ephemeral, while the server retains
+    // ownership for jobs it submitted to ComfyUI. Recover only primary
+    // generations explicitly marked by the server; utility work and jobs
+    // belonging to another profile must never take over the result card.
+    const adoptedJobs = ownedRows
+      .filter((row) => row.recoverableGeneration === true && row.jobId)
+      .filter((row) => !activeJobIds.has(String(row.jobId)) && !claimedNewIds.has(String(row.jobId)))
+      .map((row) => ({
+        jobId: String(row.jobId),
+        sequenceId: row.sequenceId ? String(row.sequenceId) : '',
+        kind: String(row.kind || ''),
+        phase: row.finalizing ? 'finalizing' : ((snapshot.running || []).includes(row) ? 'running' : 'pending'),
+      }));
 
     const staleJobIds = [...stringSet(current.activeJobIds)]
       .filter((jobId) => !liveJobIds.has(jobId) && !migratedOldIds.has(jobId));
@@ -69,6 +85,7 @@
     return {
       authoritative: true,
       migrations,
+      adoptedJobs,
       staleJobIds,
       staleCompositeJobIds,
       staleAnimatingItemIds,

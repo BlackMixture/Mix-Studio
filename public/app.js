@@ -21981,6 +21981,11 @@ function reconcileGenerationState(queue) {
   if (!plan.authoritative) return false;
 
   let changed = false;
+  for (const adoption of plan.adoptedJobs || []) {
+    state.activeJobs.add(adoption.jobId);
+    if (adoption.sequenceId) state.activeJobSequences.set(adoption.jobId, adoption.sequenceId);
+    changed = true;
+  }
   for (const migration of plan.migrations) {
     applyQueueJobMapping({ [migration.oldJobId]: migration.newJobId });
     changed = true;
@@ -22008,7 +22013,13 @@ function reconcileGenerationState(queue) {
   }
   if (!changed) return false;
 
-  if (!state.activeJobs.size && !state.motionPromptRequestsPending) {
+  if ((plan.adoptedJobs || []).length) {
+    const phases = new Set(plan.adoptedJobs.map((job) => job.phase));
+    const status = phases.has('running')
+      ? 'Generation in progress…'
+      : (phases.has('finalizing') ? 'Finalizing generation…' : 'Generation queued…');
+    setGenerating(true, status);
+  } else if (!state.activeJobs.size && !state.motionPromptRequestsPending) {
     stopLivePreviewSimulation();
     setGenerating(false);
     $('#liveStatusText').textContent = 'Finished — check Library';
@@ -23663,14 +23674,11 @@ function resetActiveGenerationForm() {
 }
 
 function clearDesktopStageSelection() {
-  checkpointDesktopInputSetup();
   state.desktopReuseToken += 1;
   state.desktopItemId = null;
   state.desktopMediaId = 'image';
   state.desktopSettingsReady = false;
   state.desktopStageDismissed = true;
-  resetActiveGenerationForm();
-  appendDesktopInputSetup();
   renderDesktopStage();
   syncDesktopGallerySelection();
 }
@@ -30322,10 +30330,14 @@ function documentationVideoMimeType() {
   ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 
-async function convertDocumentationVideoToMp4(blob, signal) {
+async function convertDocumentationVideoToMp4(blob, fps, signal) {
   const response = await fetch('/api/video/convert-mp4', {
     method: 'POST',
-    headers: { 'Content-Type': blob.type || 'video/webm', Accept: 'video/mp4' },
+    headers: {
+      'Content-Type': blob.type || 'video/webm',
+      'X-Video-FPS': String(Math.max(1, Math.min(120, Number(fps) || 30))),
+      Accept: 'video/mp4',
+    },
     body: blob,
     signal,
   });
@@ -30987,16 +30999,23 @@ async function recordDocumentationVideo(run) {
     let exportBlob = recordedBlob;
     let extension = 'mp4';
     let conversionError = null;
-    if (recordedBlob.type !== 'video/mp4') {
-      run.phase = 'converting';
-      syncDocumentationVideoAspectControls(run);
-      updateDocumentationVideoProgress(1, 'Converting WebM recording to MP4…');
-      try {
-        exportBlob = await convertDocumentationVideoToMp4(recordedBlob, run.abortController.signal);
-      } catch (error) {
-        if (run.cancelled || error?.name === 'AbortError') throw error;
+    run.phase = 'converting';
+    syncDocumentationVideoAspectControls(run);
+    updateDocumentationVideoProgress(1, 'Finalizing editor-compatible MP4…');
+    try {
+      // Even a native MediaRecorder MP4 needs this pass: Chromium commonly
+      // emits fragmented browser timing that plays on the web but is rejected
+      // or misread by NLEs. The server rebuilds conventional CFR metadata.
+      exportBlob = await convertDocumentationVideoToMp4(recordedBlob, captureFps, run.abortController.signal);
+    } catch (error) {
+      if (run.cancelled || error?.name === 'AbortError') throw error;
+      if (recordedBlob.type !== 'video/mp4') {
         conversionError = error;
         extension = 'webm';
+      } else {
+        const finalizationError = new Error(`Could not finalize an editor-compatible MP4: ${error.message}`);
+        finalizationError.cause = error;
+        throw finalizationError;
       }
     }
     if (run.cancelled || documentationVideoRun !== run) return;
@@ -36232,6 +36251,7 @@ const setupConfirmedDifficultComponents = new Set();
 const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style']);
 const SETUP_COMPONENT_CATEGORIES = [
+  { id: 'prompting', label: 'Prompt AI', description: 'Local prompt enhancement used before generation', components: ['promptai'] },
   { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
   { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'ltx25', 'ltx25quality', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
@@ -36354,6 +36374,9 @@ function generationSetupComponents() {
     if (state.vidEngine === 'scail' && state.vidScailMode === 'infinity') components.add('scailinfinity');
     if (state.vidEngine !== 'wan-animate2'
       && (state.directorOpen ? state.directorProject?.output?.fourK : $('#vid4k').classList.contains('active'))) components.add('video4k');
+    if (state.enhance
+      && !['ltx-edit', 'wan-animate2'].includes(state.vidEngine)
+      && ($('#setExternalLlmProvider')?.value || 'local') === 'local') components.add('promptai');
     return [...components];
   }
   if (state.view === 'edit') {
@@ -36364,6 +36387,7 @@ function generationSetupComponents() {
     if (state.editEngine === 'krea2' && hasEditMask()
       && (state.kreaMaskKind === 'smart' || state.kreaMaskTool === 'smart')) components.add('smartmask');
     if (state.editUpscaleEnabled) components.add('upscale');
+    if (state.enhance && ($('#setExternalLlmProvider')?.value || 'local') === 'local') components.add('promptai');
     return [...components];
   }
   components.add(state.createMode === 'region' ? 'regional' : 'image');
@@ -36371,6 +36395,7 @@ function generationSetupComponents() {
   if (state.createMode === 'image' && state.createGuideActive && state.createRef && state.createGuideMode === 'depth') components.add('krea2depth');
   if (state.createMode === 'image' && state.createGuideActive && state.createRef && state.createGuideMode === 'style') components.add('krea2style');
   if (state.createUpscaleEnabled) components.add('upscale');
+  if (state.enhance && ($('#setExternalLlmProvider')?.value || 'local') === 'local') components.add('promptai');
   return [...components];
 }
 
@@ -38341,7 +38366,7 @@ function renderHealth() {
     return;
   }
   const rows = [`<span class="ok">● Connected</span> — ${state.metaLoras.length} LoRAs found`];
-  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltx25: 'LTX 2.5 native nodes', ltx25quality: 'LTX 2.5 Quality guidance nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', h3sla: 'MiniMax H3 SLA Sparse Attention nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
+  const labels = { core: 'Core nodes', enhance: 'Prompt enhance (TextGenerate)', promptai: 'Local Prompt AI', klein: 'Edit (Flux 2 Klein) nodes', qwenedit: 'Edit (Qwen Image Edit) nodes', regional: 'Krea2 regional prompting nodes', krea2inpaint: 'Krea2 Fill nodes', krea2ref: 'Krea 2 Identity Edit nodes', krea2remix: 'Krea 2 Remix (Rebalance) nodes', krea2outpaint: 'Krea 2 Expand nodes', editoutpaint: 'Klein / Qwen Expand nodes', smartmask: 'Smart Mask (SAM3) nodes', upscale: 'SeedVR2 nodes', ultimateupscale: 'Ultimate SD Upscale nodes', video: 'LTX 2.3 video nodes', ltx25: 'LTX 2.5 native nodes', ltx25quality: 'LTX 2.5 Quality guidance nodes', h3: 'MiniMax H3 native nodes', h3turbo: 'MiniMax H3 Turbo creator nodes', h3turbor2v: 'MiniMax H3 Reference Turbo sampler', h3context: 'MiniMax H3 Motion Context nodes', h3r2v: 'MiniMax H3 reference-input nodes', h3sage: 'MiniMax H3 SageAttention patch', h3sla: 'MiniMax H3 SLA Sparse Attention nodes', ltxdirector: 'LTX Director nodes', videoedit: 'LTX Edit guide-video nodes', video4k: 'RTX 4K pass (optional)', rife: 'RIFE frame interpolation nodes', wan: 'Wan 2.2 nodes', wananimate2: 'Wan Animate 2 native nodes', eros: '10Eros DMD nodes', scail: 'SCAIL 2 motion transfer nodes', scailinfinity: 'SCAIL 2 Infinity node', faceid: 'LTX Face ID (BFS) nodes' };
   for (const [group, missing] of Object.entries(lastMeta.missing || {})) {
     if (group === 'smartmask') continue; // The actionable installer card above owns this status.
     const label = labels[group] || group.replace(/([a-z])([A-Z])/g, '$1 $2');

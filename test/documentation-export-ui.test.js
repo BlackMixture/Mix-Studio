@@ -193,17 +193,21 @@ test('documentation video recording follows result fps and retains result audio 
   assert.match(app, /run\.inputs \|\| \[\][\s\S]*input\.media\.pause\(\)/);
 });
 
-test('documentation video recording prefers MP4 while retaining a WebM fallback', () => {
+test('documentation video recording normalizes native MP4 and retains a WebM fallback', () => {
   const mp4 = app.indexOf("'video/mp4;codecs=avc1.42E01E,mp4a.40.2'");
   const bareMp4 = app.indexOf("'video/mp4'");
   const webm = app.indexOf("'video/webm;codecs=vp9'");
   assert.ok(mp4 >= 0 && bareMp4 > mp4 && webm > bareMp4);
-  assert.match(app, /function convertDocumentationVideoToMp4\(blob, signal\)/);
+  assert.match(app, /function convertDocumentationVideoToMp4\(blob, fps, signal\)/);
   assert.match(app, /fetch\('\/api\/video\/convert-mp4'/);
-  assert.match(app, /recordedBlob\.type !== 'video\/mp4'[\s\S]*await convertDocumentationVideoToMp4/);
+  assert.match(app, /await convertDocumentationVideoToMp4\(recordedBlob, captureFps, run\.abortController\.signal\)/);
+  assert.doesNotMatch(app, /if \(recordedBlob\.type !== 'video\/mp4'\) \{\s*run\.phase = 'converting'/);
   assert.match(app, /conversionError[\s\S]*extension = 'webm'/);
+  assert.match(app, /Finalizing editor-compatible MP4/);
   assert.match(app, /Documentation video saved as MP4/);
   assert.match(server, /route === '\/api\/video\/convert-mp4'/);
+  assert.match(server, /\['video\/mp4', 'video\/webm'/);
+  assert.match(server, /'x-video-fps'/);
   assert.match(server, /receiveInputFile\(req, source, MAX_DOCUMENTATION_VIDEO_BYTES\)/);
   assert.match(server, /transcodeVideoFileToMp4\(\{/);
   assert.match(server, /'Content-Type': 'video\/mp4'/);

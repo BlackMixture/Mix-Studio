@@ -1381,6 +1381,12 @@ function jobDurationMs(job, now = Date.now()) {
   return Math.max(0, now - jobBaseTime(job));
 }
 
+function recoverableGenerationJob(job) {
+  if (!job || job.smartRunId) return false;
+  if (job.kind === 'gen' || job.kind === 'loraHunt') return true;
+  return job.kind === 'video' && !job.videoInfo?.processed;
+}
+
 function queueEntryCreatedAt(entry) {
   const t = entry && entry[3] && Number(entry[3].create_time);
   return Number.isFinite(t) && t > 0 ? t : null;
@@ -1609,7 +1615,12 @@ function configuredModelsStatus(info) {
     ? comboList(info, 'LoraLoaderModelOnly', 'lora_name')
     : comboList(info, 'LoraLoader', 'lora_name');
   const krea2Core = krea2ClipCompatibility(info);
+  const promptAi = localPromptAiConfig(settings);
   return {
+    promptAi: {
+      label: 'Local Prompt AI',
+      textEncoder: modelStatus(info, 'CLIPLoader', 'clip_name', promptAi.model),
+    },
     krea2: {
       label: 'Krea 2',
       turbo: diffusionModelStatus(info, settings.unet),
@@ -1755,6 +1766,7 @@ function configuredModelsStatus(info) {
 }
 
 const DEPENDENCY_NODE_GROUP_COMPONENTS = Object.freeze({
+    enhance: ['promptai'],
     regional: ['regional'],
     krea2ref: ['krea2ref'],
     krea2remix: ['krea2remix'],
@@ -1792,6 +1804,7 @@ const DEPENDENCY_NODE_GROUP_COMPONENTS = Object.freeze({
 });
 
 const DEPENDENCY_MODEL_GROUP_COMPONENTS = Object.freeze({
+  promptAi: ['promptai'],
   krea2Depth: ['krea2depth'],
   krea2IdentityEdit: ['krea2ref', 'krea2outpaint'],
   klein4: ['klein4'],
@@ -10272,9 +10285,9 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/video/convert-mp4' && req.method === 'POST') {
     const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (!['video/webm', 'video/x-matroska', 'application/octet-stream'].includes(contentType)) {
+    if (!['video/mp4', 'video/webm', 'video/x-matroska', 'application/octet-stream'].includes(contentType)) {
       req.resume();
-      return json(res, 415, { error: 'MP4 conversion accepts WebM video recordings only' });
+      return json(res, 415, { error: 'MP4 finalization accepts MP4 or WebM video recordings only' });
     }
     const contentLength = Number(req.headers['content-length']);
     if (Number.isFinite(contentLength) && contentLength > MAX_DOCUMENTATION_VIDEO_BYTES) {
@@ -10290,14 +10303,19 @@ async function handleApi(req, res, url) {
     let temporaryDirectory = '';
     try {
       temporaryDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'mixstudio-documentation-video-'));
-      const source = path.join(temporaryDirectory, 'recording.webm');
+      const source = path.join(temporaryDirectory, contentType === 'video/mp4' ? 'recording.mp4' : 'recording.webm');
       const output = path.join(temporaryDirectory, 'documentation.mp4');
       const bytes = await receiveInputFile(req, source, MAX_DOCUMENTATION_VIDEO_BYTES);
-      if (!bytes) return json(res, 400, { error: 'No WebM recording received' });
+      if (!bytes) return json(res, 400, { error: 'No video recording received' });
+      const requestedFps = Number(req.headers['x-video-fps']);
+      const fps = Number.isFinite(requestedFps) && requestedFps > 0
+        ? Math.max(1, Math.min(120, requestedFps))
+        : 30;
       await transcodeVideoFileToMp4({
         sourcePath: source,
         outputPath: output,
         ffmpegPath: videoExtensionFfmpeg,
+        fps,
       });
       const stat = await fsp.stat(output);
       res.writeHead(200, {
@@ -10933,6 +10951,7 @@ async function handleApi(req, res, url) {
         }
         return Object.assign({}, row, {
           owned,
+          recoverableGeneration: owned && recoverableGenerationJob(job),
           sequenceId: owned && job.params && job.params.editSequence
             ? job.params.editSequence.id
             : (owned && job.videoChunkSequence ? job.videoChunkSequence.id : undefined),

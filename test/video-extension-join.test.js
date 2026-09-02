@@ -216,18 +216,27 @@ test('Wan Animate 2 joins silent chunks first and muxes source audio only once',
 
 test('MP4 transcode arguments encode browser recordings as compatible H.264 and AAC', () => {
   const args = mp4TranscodeArgs({
-    sourcePath: '/temp/documentation recording.webm',
+    sourcePath: '/temp/browser recording.mp4',
     outputPath: '/temp/documentation recording.mp4',
+    fps: 24,
   });
   assert.deepEqual(args.slice(args.indexOf('-i'), args.indexOf('-vf')), [
-    '-i', '/temp/documentation recording.webm',
+    '-i', '/temp/browser recording.mp4',
     '-map', '0:v:0',
     '-map', '0:a:0?',
+    '-map_metadata', '-1',
+    '-map_chapters', '-1',
   ]);
+  assert.equal(args[args.indexOf('-fflags') + 1], '+genpts');
   assert.equal(args[args.indexOf('-c:v') + 1], 'libx264');
   assert.equal(args.includes('-pix_fmt'), false);
-  assert.match(args[args.indexOf('-vf') + 1], /trunc\(iw\/2\)\*2.*format=yuv420p/);
+  assert.match(args[args.indexOf('-vf') + 1], /^setpts=PTS-STARTPTS,.*setsar=1,fps=24,format=yuv420p$/);
+  assert.equal(args[args.indexOf('-tag:v') + 1], 'avc1');
+  assert.equal(args[args.indexOf('-r') + 1], '24');
+  assert.equal(args[args.indexOf('-fps_mode') + 1], 'cfr');
   assert.equal(args[args.indexOf('-c:a') + 1], 'aac');
+  assert.match(args[args.indexOf('-af') + 1], /first_pts=0,asetpts=PTS-STARTPTS/);
+  assert.equal(args[args.indexOf('-video_track_timescale') + 1], '90000');
   assert.equal(args[args.indexOf('-movflags') + 1], '+faststart');
   assert.equal(args[args.indexOf('-f') + 1], 'mp4');
   assert.equal(args.at(-1), '/temp/documentation recording.mp4');
@@ -239,6 +248,7 @@ test('MP4 transcoding invokes FFmpeg and verifies the output file', async () => 
     sourcePath: '/temp/source.webm',
     outputPath: '/temp/result.mp4',
     ffmpegPath: '/tools/ffmpeg',
+    fps: 29.97,
   }, {
     run: async (command, args, options) => { invocation = { command, args, options }; },
     fsp: { stat: async () => ({ isFile: () => true, size: 4096 }) },
@@ -246,6 +256,7 @@ test('MP4 transcoding invokes FFmpeg and verifies the output file', async () => 
   assert.equal(output, '/temp/result.mp4');
   assert.equal(invocation.command, '/tools/ffmpeg');
   assert.equal(invocation.args.at(-1), '/temp/result.mp4');
+  assert.match(invocation.args[invocation.args.indexOf('-vf') + 1], /fps=29\.97/);
   assert.equal(invocation.options.cwd, '/temp');
 });
 

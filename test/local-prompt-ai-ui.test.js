@@ -35,6 +35,14 @@ test('local prompt model settings drive only prompt TextGenerate loaders', () =>
   assert.match(server, /route === '\/api\/prompt\/local-model\/test'/);
 });
 
+test('local Prompt AI requirements are checked before enhanced generations are submitted', () => {
+  assert.match(server, /enhance: \['promptai'\]/);
+  assert.match(server, /promptAi: \['promptai'\]/);
+  assert.match(server, /label: 'Local Prompt AI',[\s\S]{0,120}textEncoder: modelStatus/);
+  assert.match(app, /state\.enhance[\s\S]{0,180}setExternalLlmProvider[\s\S]{0,120}components\.add\('promptai'\)/);
+  assert.match(app, /label: 'Prompt AI'[\s\S]{0,140}components: \['promptai'\]/);
+});
+
 test('Smart can select the installed local ComfyUI prompt model without Ollama', () => {
   assert.match(html, /id="setExternalLlmLocalProvider"[\s\S]*value="local">ComfyUI/);
   assert.match(app, /\['local', 'openai', 'gemini', 'ollama'\]\.includes\(settings\.externalLlmProvider\)/);
