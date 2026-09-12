@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { pipeline } = require('stream/promises');
 const { gitCommand, readAppRelease, updateFromGit } = require('./lib/app-update');
+const { updateFromRelease } = require('./lib/release-update');
 const {
   inspectCriticalPublicAssets,
   isCriticalPublicAsset,
@@ -418,10 +419,16 @@ const PUBLIC = path.join(ROOT, 'public');
 const CRITICAL_PUBLIC_STARTUP_CACHE = loadCriticalPublicAssetCache(ROOT);
 const CRITICAL_PUBLIC_GIT_CACHE = new Map();
 const officialReleaseChecker = createGithubReleaseChecker();
+const previewReleaseChecker = createGithubReleaseChecker({ channel: 'preview' });
 const SETUP_FEATURE_MANIFEST = loadJson(path.join(ROOT, 'installer', 'feature-manifest.json'), { features: [] });
 let RUNTIME = resolveRuntimeConfig(ROOT);
 let videoExtensionFfmpeg = '';
 const DATA = RUNTIME.dataDir;
+const UPDATE_CHANNEL_FILE = path.join(DATA, 'update-channel.json');
+const savedUpdateChannel = loadJson(UPDATE_CHANNEL_FILE, {}).channel;
+let appReleaseChannel = process.env.MIXBOX_RELEASE_CHANNEL || savedUpdateChannel || RUNTIME.update.releaseChannel || 'stable';
+if (!['stable', 'preview', 'development'].includes(appReleaseChannel)) appReleaseChannel = 'stable';
+function selectedReleaseChecker(channel = appReleaseChannel) { return channel === 'preview' ? previewReleaseChecker : officialReleaseChecker; }
 const IMAGES = path.join(DATA, 'images');
 const VIDEOS = path.join(DATA, 'videos');
 const VIDEO_PREVIEWS = path.join(DATA, 'video-previews');
@@ -7605,7 +7612,9 @@ async function handleApi(req, res, url) {
   if (route === '/api/releases/latest' && req.method === 'GET') {
     try {
       const app = readAppRelease(ROOT);
-      return json(res, 200, await officialReleaseChecker.check(app.version));
+      const channel = appReleaseChannel;
+      if (channel === 'development') return json(res, 200, { channel, installedVersion: app.version, latest: null, updateAvailable: false });
+      return json(res, 200, { ...await selectedReleaseChecker(channel).check(app.version), channel });
     } catch (error) {
       return json(res, 503, {
         error: String(error.message || 'Could not check official Mix Studio releases'),
@@ -7636,6 +7645,28 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (route === '/api/update/channel' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner can change the update channel' });
+    if (appUpdateRunning) return json(res, 409, { error: 'An update is running' });
+    if (process.env.MIXBOX_RELEASE_CHANNEL) return json(res, 409, { error: 'The update channel is managed by MIXBOX_RELEASE_CHANNEL' });
+    const body = await readJsonBody(req);
+    if (appUpdateRunning) return json(res, 409, { error: 'An update is running' });
+    if (!['stable', 'preview', 'development'].includes(body.channel)) return json(res, 400, { error: 'Choose Stable, Preview, or Development' });
+    saveJsonSync(UPDATE_CHANNEL_FILE, { channel: body.channel });
+    appReleaseChannel = body.channel;
+    return json(res, 200, { channel: appReleaseChannel });
+  }
+
+  if (route === '/api/update/diagnostics' && req.method === 'GET') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner can inspect update diagnostics' });
+    const runGit = (args) => gitCommand(ROOT, args, { gitExecutable: RUNTIME.update.gitExecutable });
+    const revision = await runGit(['rev-parse', 'HEAD']).then((s) => s.trim()).catch(() => null);
+    const branch = await runGit(['rev-parse', '--abbrev-ref', 'HEAD']).then((s) => s.trim()).catch(() => null);
+    return json(res, 200, { app: readAppRelease(ROOT), revision, branch, channel: appReleaseChannel,
+      configuredBranch: RUNTIME.update.channel, installMode: RUNTIME.installMode, platform: process.platform,
+      node: process.version, updater: RUNTIME.update.provider });
+  }
+
   if (route === '/api/update' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can update Mix Studio' });
     if (appUpdateRunning) return json(res, 409, { error: 'A Mix Studio update is already running', code: 'app_updating' });
@@ -7645,11 +7676,26 @@ async function handleApi(req, res, url) {
       // Enter maintenance before the first queue check so another browser
       // cannot submit work while the network-bound fast-forward is running.
       await assertDesktopIsIdle();
-      const update = await updateFromGit(ROOT, {
+      const body = await readJsonBody(req);
+      if (body.channel !== appReleaseChannel) return json(res, 409, { error: 'The update channel changed. Refresh and retry.', code: 'update_release_changed' });
+      const updateOptions = {
         channel: RUNTIME.update.channel,
         gitExecutable: RUNTIME.update.gitExecutable,
         inspectAssets: () => inspectCriticalPublicAssets(ROOT),
-      });
+      };
+      let update;
+      if (appReleaseChannel === 'development') {
+        update = await updateFromGit(ROOT, updateOptions);
+      } else {
+        const offered = await selectedReleaseChecker().check(readAppRelease(ROOT).version);
+        if (offered.stale || !offered.latest || body.tagName !== offered.latest.tagName || body.channel !== appReleaseChannel) {
+          return json(res, 409, { error: 'Refresh the Updates inbox and select an available release before installing.', code: 'update_release_changed' });
+        }
+        update = await updateFromRelease(ROOT, { ...updateOptions, target: offered.latest,
+          releaseChannel: appReleaseChannel, dataDir: DATA, updatesDir: RUNTIME.updatesDir, configFile: RUNTIME.configFile,
+          beforeApply: () => assertDesktopIsIdle(),
+        });
+      }
       // ComfyUI can receive work outside Mix Studio. Check it again directly
       // before scheduling a process restart. If that race occurs after Git has
       // already updated the checkout, keep maintenance active and restart as
@@ -7684,7 +7730,7 @@ async function handleApi(req, res, url) {
       }
       return;
     } catch (e) {
-      const status = ['desktop_busy', 'update_dirty', 'update_branch', 'update_channel', 'update_origin'].includes(e.code) ? 409 : 500;
+      const status = ['desktop_busy', 'update_dirty', 'update_branch', 'update_channel', 'update_origin', 'update_ahead', 'update_changed', 'update_release_invalid'].includes(e.code) ? 409 : 500;
       const payload = { error: String(e.message || e), code: e.code || 'update_failed' };
       if (e.code === 'update_dirty' && Array.isArray(e.dirtyFiles)) {
         payload.dirtyFiles = e.dirtyFiles;
@@ -8015,6 +8061,8 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/meta') {
     const app = Object.assign(readAppRelease(ROOT), { instanceId: SERVER_INSTANCE_ID });
+    app.revision = await gitCommand(ROOT, ['rev-parse', '--short=12', 'HEAD'], { gitExecutable: RUNTIME.update.gitExecutable }).then((value) => value.trim()).catch(() => '');
+    app.channel = appReleaseChannel;
     try {
       const info = await getObjectInfo(url.searchParams.has('refresh'));
       const loras = (info.LoraLoader?.input?.required?.lora_name?.[0]) || [];

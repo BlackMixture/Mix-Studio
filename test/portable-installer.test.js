@@ -40,7 +40,7 @@ test('macOS installer clones the official checkout and launches through the rest
   const installer = fs.readFileSync(path.join(root, 'install_MixStudio.command'), 'utf8');
   const start = fs.readFileSync(path.join(root, 'start.command'), 'utf8');
   assert.match(installer, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
-  assert.match(installer, /clone --depth 1 --branch main --single-branch/);
+  assert.match(installer, /clone --depth 1 --branch "\$RELEASE_TAG" --single-branch/);
   assert.match(installer, /Node\.js 22 or newer/);
   assert.match(installer, /installer\/bootstrap\.js/);
   assert.match(installer, /exec \/bin\/zsh "\$MIX_STUDIO_HOME\/start\.command"/);
@@ -66,7 +66,7 @@ test('standalone installer downloads the official Git checkout before opening th
   const launcher = fs.readFileSync(path.join(root, 'install_MixStudio.bat'), 'utf8');
   assert.match(launcher, /https:\/\/github\.com\/BlackMixture\/Mix-Studio\.git/);
   assert.match(launcher, /winget install --id Git\.Git/);
-  assert.match(launcher, /clone --depth 1 --branch main --single-branch/);
+  assert.match(launcher, /clone --depth 1 --branch "%MIX_STUDIO_RELEASE_TAG%" --single-branch/);
   assert.match(launcher, /set "MIX_STUDIO_HOME=%~dp0Mix Studio"/i);
   assert.match(launcher, /set "MIX_STUDIO_STAGE=%~dp0Mix Studio\.download"/i);
   assert.doesNotMatch(launcher, /%USERPROFILE%\\Mix Studio/);
@@ -84,7 +84,9 @@ test('standalone installer downloads the official Git checkout before opening th
   assert.doesNotMatch(launcher, /for \/f[^\r\n]*process\.versions\.node/i);
   assert.match(launcher, /quarantine_incomplete_checkout/i);
   assert.match(launcher, /if not exist "%MIX_STUDIO_HOME%\\data\\" call :refresh_unconfigured_checkout/i);
-  assert.match(launcher, /pull --ff-only origin main/i);
+  assert.doesNotMatch(launcher, /pull --ff-only origin main/i);
+  assert.match(launcher, /releases\/latest/);
+  assert.match(launcher, /switch -c main/);
   assert.match(launcher, /unfinished first-time setup could not be refreshed/i);
   assert.match(launcher, /verify_writable_destination/i);
   assert.match(launcher, /del \/f \/q "%MIX_STUDIO_WRITE_PROBE%\\write\.test"[\s\S]{0,160}rmdir "%MIX_STUDIO_WRITE_PROBE%"/i);

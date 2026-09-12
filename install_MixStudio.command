@@ -31,8 +31,11 @@ else
     NORMALIZED_ORIGIN="${ORIGIN%.git}"
     [[ "${NORMALIZED_ORIGIN:l}" == "https://github.com/blackmixture/mix-studio" || "${NORMALIZED_ORIGIN:l}" == "git@github.com:blackmixture/mix-studio" ]] || fail "The existing checkout does not point to the official Mix Studio repository."
   else
-    print "Downloading Mix Studio…"
-    "$GIT_EXE" clone --depth 1 --branch main --single-branch "$REPOSITORY_URL" "$MIX_STUDIO_HOME" || fail "Git could not download Mix Studio."
+    print "Checking the latest stable Mix Studio release…"
+    RELEASE_TAG="$("$NODE_EXE" -e 'fetch("https://api.github.com/repos/BlackMixture/Mix-Studio/releases/latest",{headers:{"User-Agent":"Mix-Studio-installer"},signal:AbortSignal.timeout(15000)}).then(async r=>{if(!r.ok)throw Error("Release check failed");const v=await r.json();if(v.draft||v.prerelease||!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(v.tag_name))throw Error("Invalid stable release");process.stdout.write(v.tag_name)}).catch(e=>{console.error(e.message);process.exit(1)})')" || fail "Could not verify a stable release. Try again later."
+    print "Downloading Mix Studio $RELEASE_TAG…"
+    "$GIT_EXE" clone --depth 1 --branch "$RELEASE_TAG" --single-branch "$REPOSITORY_URL" "$MIX_STUDIO_HOME" || fail "Git could not download Mix Studio."
+    "$GIT_EXE" -C "$MIX_STUDIO_HOME" switch -c main || fail "Could not prepare the release checkout."
   fi
 fi
 

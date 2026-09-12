@@ -1,0 +1,32 @@
+name: Prepare release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+  draft:
+    needs: quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create reviewed release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          args=(--draft --verify-tag --generate-notes --title "Mix Studio $RELEASE_TAG")
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to replace its metadata or assets.'
+            exit 1
+          fi
+          sha256sum install_MixStudio.bat install_MixStudio.command > SHA256SUMS
+          gh release create "$RELEASE_TAG" "${args[@]}" install_MixStudio.bat install_MixStudio.command SHA256SUMS

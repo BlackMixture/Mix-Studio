@@ -4,6 +4,13 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### Release channels
+
+- Default community updates to exact published Stable releases, with opt-in Preview and explicit Development branch updates.
+- Validate release files before applying, refuse downgrades and local-work replacement, and preserve recovery metadata/configuration snapshots.
+- Add owner-controlled channel selection and safe update diagnostics; make fresh installers select published stable releases.
+- Prepare draft GitHub Releases after cross-platform checks, leaving publication as an explicit maintainer action.
+
 ### Preferences
 
 - Replaced the always-expanded Image and Video model settings with compact, single-open model-family lists. All model names remain visible at once, while variants and filenames appear only when their family is opened.

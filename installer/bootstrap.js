@@ -155,6 +155,7 @@ function portableBootstrapConfig(root, options = {}) {
   const update = Object.assign({}, sourceUpdate, {
     provider: 'git',
     channel: String(sourceUpdate.channel || 'main'),
+    releaseChannel: ['stable', 'preview', 'development'].includes(sourceUpdate.releaseChannel) ? sourceUpdate.releaseChannel : 'stable',
   });
   if (gitPath) update.gitPath = gitPath;
 

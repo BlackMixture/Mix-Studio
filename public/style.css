@@ -16576,3 +16576,8 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
   .director-timeline-canvas, .director-disclosure > span:last-child, .director-mode-indicator, .director-workflow-cards > button { transition-duration: 1ms; }
   .director-inspector.show { animation-duration: 1ms; }
 }
+
+.update-channel-field { display: grid; gap: 8px; margin: 0 0 16px; }
+.update-channel-field select { width: 100%; min-height: 44px; }
+#updateChannelHelp { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+#copyUpdateDiagnostics { justify-self: start; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: inherit; }

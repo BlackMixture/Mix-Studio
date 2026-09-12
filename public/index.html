@@ -3400,6 +3400,12 @@
 <div class="sheet" id="updatesSheet">
   <section class="sheet-panel updates-panel" role="dialog" aria-modal="true" aria-labelledby="updatesTitle">
     <h3 class="sheet-title"><span id="updatesTitle">Mix Studio updates</span><button data-close type="button" aria-label="Close updates">✕</button></h3>
+    <div class="field update-channel-field">
+      <label for="updateChannel">Update channel</label>
+      <select id="updateChannel" aria-describedby="updateChannelHelp" disabled><option value="stable">Stable — recommended</option><option value="preview">Preview — early testing</option><option value="development">Development — configured Git branch</option></select>
+      <p id="updateChannelHelp">Stable installs published releases. Changing channels never downgrades your installation.</p>
+      <button id="copyUpdateDiagnostics" type="button" hidden>Copy update diagnostics</button>
+    </div>
     <button class="updates-alert-toggle" id="updatesAlertToggle" type="button" role="switch" aria-checked="false">
       <span><strong>Browser alerts</strong><small id="updatesAlertStatus">Get an alert while Mix Studio is open.</small></span>
       <span class="settings-media-switch" aria-hidden="true"><i></i></span>
