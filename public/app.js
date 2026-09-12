@@ -36476,6 +36476,15 @@ function currentGenerationSetupAction() {
 }
 
 async function ensureGenerationSetup() {
+  if (!lastMeta?.ok) {
+    const managed = await api('/api/comfy/lifecycle');
+    if (managed.active) {
+      toast('Starting ComfyUI…');
+      await api('/api/comfy/lifecycle/ensure', { method: 'POST' });
+      await loadMeta(true);
+    }
+  }
+
   const required = generationSetupComponents();
   if (!lastMeta?.ok) await loadMeta(true);
   const missing = missingSetupComponents(required);
@@ -36981,6 +36990,16 @@ function setupLocalPath(base, child) {
 function renderInitialSetup() {
   if (!setupViewStatus) return;
   const comfy = setupViewStatus.comfy || {};
+  const managed = comfy.lifecycle || {};
+  $('#setupManagedComfy').hidden = !state.profileIsOwner || !(managed.available || managed.owned);
+  if (document.activeElement !== $('#setupManagedEnabled')) $('#setupManagedEnabled').value = String(!!managed.enabled);
+  $('#setupManagedEnabled').disabled = !managed.enabled && (!managed.available || !managed.supported);
+  if (document.activeElement !== $('#setupManagedIdle')) $('#setupManagedIdle').value = String(managed.idleMinutes || 0);
+  $('#setupManagedStatus').textContent = managed.error || managed.reason || (managed.owned
+    ? (managed.released ? 'Model-memory release requested. The backend stays ready for your next generation.' : `Managed backend: ${managed.phase}.`)
+    : (managed.phase === 'shared' ? 'Connected to a shared backend. Mix Studio will not unload or stop it.' : (managed.active ? 'Automatic startup is enabled.' : 'Automatic startup is off.')));
+  $('#setupManagedRelease').disabled = !managed.active || !managed.owned || managed.busy || managed.released;
+  $('#setupManagedStop').disabled = !managed.canStop;
   const install = comfy.install || {};
   const start = comfy.start || {};
   const dependency = setupDependencyState || lastMeta?.dependencies?.install || { state: 'idle' };
@@ -37096,14 +37115,14 @@ function renderInitialSetup() {
   const startCard = $('#setupStartCard');
   startCard.hidden = !canOfferStart;
   startCard.dataset.state = start.state || (start.canStart ? 'idle' : 'error');
-  const desktopStart = start.kind === 'desktop';
+  const desktopStart = start.kind === 'desktop' && !managed.active;
   $('#setupStartTitle').textContent = startBusy ? 'Waiting for ComfyUI'
     : (start.state === 'error' ? 'ComfyUI has not connected yet'
       : (desktopStart ? 'Comfy Desktop is installed' : 'ComfyUI is ready to start'));
   const startMessage = start.state && start.state !== 'idle' ? start.message : '';
   $('#setupStartCopy').textContent = startMessage || (desktopStart
     ? `${start.installationName ? `Open Comfy Desktop and press Play on ${start.installationName}. ` : 'Open Comfy Desktop and press Play on the installed ComfyUI. '}Mix Studio will find the port automatically.`
-    : 'Start the detected portable installation. Mix Studio will find its local port automatically.');
+    : (managed.active ? 'Start the configured Python backend directly. Mix Studio will verify its port before connecting.' : 'Start the detected portable installation. Mix Studio will find its local port automatically.'));
   $('#setupStartComfy').textContent = desktopStart ? 'Open Comfy Desktop' : 'Start ComfyUI';
   $('#setupStartComfy').disabled = busy || !start.canStart || !state.profileIsOwner;
   $('#setupFindComfy').disabled = officialBusy || dependencyBusy || !state.profileIsOwner;
@@ -37332,7 +37351,7 @@ function scheduleSetupPoll() {
   clearTimeout(setupPollTimer);
   if (!$('#initialSetupSheet').classList.contains('show')) return;
   const comfyBusy = ['running', 'cancelling'].includes(setupViewStatus?.comfy?.install?.state);
-  const comfyStartBusy = !!setupViewStatus?.comfy?.start?.running || setupViewStatus?.comfy?.start?.state === 'running';
+  const comfyStartBusy = ['starting', 'stopping'].includes(setupViewStatus?.comfy?.lifecycle?.phase) || !!setupViewStatus?.comfy?.start?.running || setupViewStatus?.comfy?.start?.state === 'running';
   const dependencyBusy = ['running', 'cancelling', 'restarting'].includes(setupDependencyState?.state);
   if (!comfyBusy && !comfyStartBusy && !dependencyBusy && !setupPendingComponents.length) return;
   setupPollTimer = setTimeout(() => refreshSetupStatus(), 1000);
@@ -37627,6 +37646,16 @@ async function saveSetupHfTokenAndContinue() {
 $('#setupGuideToggle').addEventListener('click', () => {
   setSetupGuideExpanded($('#setupGuideToggle').getAttribute('aria-expanded') !== 'true');
 });
+async function updateManagedComfy(action) {
+  try {
+    await api('/api/comfy/lifecycle', { method: 'POST', body: JSON.stringify({ action,
+      enabled: $('#setupManagedEnabled').value === 'true', idleMinutes: Number($('#setupManagedIdle').value) }) });
+    await refreshSetupStatus();
+  } catch (error) { toast(error.message, true); }
+}
+$('#setupManagedSave').addEventListener('click', () => updateManagedComfy('configure'));
+$('#setupManagedRelease').addEventListener('click', () => updateManagedComfy('release'));
+$('#setupManagedStop').addEventListener('click', () => updateManagedComfy('stop'));
 $('#setupStartComfy').addEventListener('click', async () => {
   try { await startComfyFromSetup(); }
   catch (error) { toast(error.message, true); }

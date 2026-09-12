@@ -16581,3 +16581,10 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
 .update-channel-field select { width: 100%; min-height: 44px; }
 #updateChannelHelp { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 #copyUpdateDiagnostics { justify-self: start; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: inherit; }
+
+/* Optional Preview backend controls share the setup connection layout. */
+.setup-managed { margin: 14px 0; padding: 16px; border: 1px solid var(--border, #383838); border-radius: 14px; }
+.setup-managed[hidden] { display: none; }
+.setup-managed p, .setup-managed small { font-size: 13px; line-height: 1.5; }
+.setup-managed label { display: flex; align-items: center; gap: 10px; margin: 12px 0; font-size: 13px; }
+.setup-managed .setup-start-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }

@@ -2458,6 +2458,15 @@
           <span class="setup-start-copy"><strong id="setupStartTitle">ComfyUI is installed</strong><small id="setupStartCopy">Start it here and Mix Studio will find the local port automatically.</small></span>
           <span class="setup-start-actions"><button id="setupStartComfy" type="button">Start ComfyUI</button><button id="setupFindComfy" type="button">Find running ComfyUI</button></span>
         </div>
+        <div class="setup-managed" id="setupManagedComfy" hidden>
+          <strong>Managed ComfyUI · Preview</strong>
+          <p>Start a supported local backend when you generate. Browsing your gallery keeps it off. Use this for a dedicated Mix Studio backend; separately started instances remain shared.</p>
+          <label>Start ComfyUI automatically <select id="setupManagedEnabled"><option value="false">Off</option><option value="true">On</option></select></label>
+          <label>Release idle model memory <select id="setupManagedIdle"><option value="0">Never</option><option value="5">After 5 minutes</option><option value="10">After 10 minutes</option><option value="30">After 30 minutes</option><option value="60">After 60 minutes</option></select></label>
+          <p id="setupManagedStatus" role="status"></p>
+          <div class="setup-start-actions"><button type="button" id="setupManagedSave">Save</button><button type="button" id="setupManagedRelease">Release model memory</button><button type="button" id="setupManagedStop">Stop managed ComfyUI</button></div>
+          <small>Closing Mix Studio does not stop generation. After a Mix Studio server restart, a surviving backend becomes shared and must be stopped separately.</small>
+        </div>
         <div class="setup-core-update" id="setupCoreUpdate" role="status" hidden>
           <span class="setup-core-update-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg></span>
           <span><strong id="setupCoreUpdateTitle">Update ComfyUI before using Krea 2</strong><small id="setupCoreUpdateCopy">The connected core does not include the Krea 2 loader yet.</small></span>

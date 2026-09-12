@@ -4,6 +4,12 @@
 
 All shipped changes from v1.2.0 onward are recorded below by release.
 
+### Managed ComfyUI (Preview only)
+
+- Add optional direct startup for detected Python and registered Desktop installations when generating, with owner controls in Setup.
+- Verify process ownership before requesting idle model-memory release or stopping an idle managed backend; preserve separately started backends.
+- Keep management off by default and limit availability to Preview/Development. Portable batch files and services retain their existing launch behavior.
+
 ### Release channels
 
 - Default community updates to exact published Stable releases, with opt-in Preview and explicit Development branch updates.
