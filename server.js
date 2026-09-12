@@ -98,6 +98,7 @@ const {
   canMoveToFolder,
   parseCookies,
 } = require('./lib/private-gallery');
+const { createComfyLifecycle, managedLaunchPlan, normalizeLifecycleConfig } = require('./lib/comfy-lifecycle');
 const { comfyResetRequests } = require('./lib/comfy-reset');
 const {
   assessQueueHealth,
@@ -1144,6 +1145,27 @@ async function getSetupHardwareInfo(force = false) {
   return setupHardwareSnapshot;
 }
 
+const COMFY_LIFECYCLE_FILE = path.join(DATA, 'comfy-lifecycle.json');
+let comfyLifecycleConfig = normalizeLifecycleConfig();
+try { comfyLifecycleConfig = normalizeLifecycleConfig(JSON.parse(fs.readFileSync(COMFY_LIFECYCLE_FILE, 'utf8'))); } catch { /* opt-in defaults */ }
+const comfyLifecycle = createComfyLifecycle({
+  config: () => comfyLifecycleConfig,
+  available: () => ['preview', 'development'].includes(appReleaseChannel),
+  plan: () => managedLaunchPlan({ ...RUNTIME, comfy: { ...RUNTIME.comfy, url: settings.comfyUrl } }),
+  launchBusy: () => !!(jobs.size || dependencyInstallRunning || comfyRestartRunning || comfyStartRunning || comfySetupProcess || appUpdateRunning),
+  busy: () => !!(jobs.size || externalPromptPreflights.size || dependencyInstallRunning
+    || comfyRestartRunning || comfyStartRunning || comfySetupProcess || appUpdateRunning
+    || [...smartPlanRequests.values()].some((request) => !['complete', 'failed'].includes(request.status))),
+});
+setInterval(() => { comfyLifecycle.tick(); }, 30000).unref();
+const MANAGED_GENERATION_ROUTES = new Set([
+  '/api/upload', '/api/edit-mask/sam3', '/api/generate', '/api/upscale',
+  '/api/director/assets', '/api/director/generate', '/api/animate',
+  '/api/video/upscale', '/api/video/interpolate', '/api/composite',
+  '/api/depth-preview', '/api/image-composite', '/api/motionprompt', '/api/imageprompt',
+  '/api/prompt/local-model/test',
+]);
+
 async function activeVramProfile() {
   try {
     const hardware = setupHardwareProfile(await getSetupHardwareInfo());
@@ -1154,6 +1176,7 @@ async function activeVramProfile() {
 }
 
 function applySetupConnection(values) {
+  if (comfyLifecycle.status().owned) throw new Error('Stop the managed ComfyUI instance before changing its connection.');
   const previousUrl = settings.comfyUrl;
   const config = portableSetupConfig(ROOT, RUNTIME, values);
   // Installation completion can intentionally leave endpoint selection
@@ -3934,8 +3957,10 @@ function suggestImagePrompt(comfyImageName, seed, profileId) {
 }
 
 function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options = {}) {
+  const releaseManaged = comfyLifecycle.reserve();
   return new Promise((resolve, reject) => {
     (async () => {
+      await comfyLifecycle.ensure();
       const graph = {};
       parts = h3PromptPartsWithVisionOrder(parts, options, 'stitched');
       graph.clip = { class_type: 'CLIPLoader', inputs: localPromptAiLoaderInputs(options.clipConfig) };
@@ -3986,7 +4011,7 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
         });
       }
     })().catch(reject);
-  });
+  }).finally(releaseManaged);
 }
 
 async function requestSmartPlan(provider, prompt, references, profileId, onProgress = () => {}) {
@@ -6981,6 +7006,7 @@ async function setupStatusPayload(forceCompatibility = false) {
     comfy: {
       connected,
       connectionError,
+      lifecycle: comfyLifecycle.status(),
       version: compatibility.version,
       krea2: krea2Core,
       minimaxH3: h3Core,
@@ -7005,6 +7031,11 @@ async function setupStatusPayload(forceCompatibility = false) {
 }
 
 async function handleApi(req, res, url) {
+  try { return await handleApiRequest(req, res, url); }
+  finally { req.releaseComfyLifecycle?.(); }
+}
+
+async function handleApiRequest(req, res, url) {
   const route = url.pathname;
 
   if (route === '/api/analytics-config' && req.method === 'GET') {
@@ -7096,6 +7127,7 @@ async function handleApi(req, res, url) {
   // Profile management: you can manage yourself; the first profile (owner)
   // can manage everyone.
   const isAdmin = () => profile && db.profiles[0] && profile.id === db.profiles[0].id;
+
   const canManage = (target) => profile && target && (profile.id === target.id || isAdmin());
   const profAvatar = route.match(/^\/api\/profiles\/([\w]+)\/avatar$/);
   if (profAvatar && req.method === 'POST') {
@@ -7189,6 +7221,50 @@ async function handleApi(req, res, url) {
   // previews, and completed gallery records and are always profile-scoped.
   if (!profile && route !== '/api/meta') {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
+  }
+
+  if (route === '/api/comfy/lifecycle' && req.method === 'GET') return json(res, 200, comfyLifecycle.status());
+  if (route === '/api/comfy/lifecycle/ensure' && req.method === 'POST') {
+    try { return json(res, 200, await comfyLifecycle.ensure()); }
+    catch (error) { return json(res, 409, { error: error.message }); }
+  }
+  if (route === '/api/comfy/lifecycle' && req.method === 'POST') {
+    if (!isAdmin()) return json(res, 403, { error: 'Only the owner can manage ComfyUI.' });
+    const body = await readJsonBody(req);
+    try {
+      if (body.action === 'stop') {
+        const stopped = await comfyLifecycle.stop();
+        objectInfoCache = null;
+        objectInfoAt = 0;
+        return json(res, 200, stopped);
+      }
+      if (body.action === 'release') {
+        const released = await comfyLifecycle.releaseModels(true);
+        if (!released) return json(res, 409, { error: 'Memory can only be released from an idle, verified managed backend with management enabled.' });
+        return json(res, 200, comfyLifecycle.status());
+      }
+      if (body.action !== 'configure' || typeof body.enabled !== 'boolean'
+        || ![0, 5, 10, 30, 60].includes(body.idleMinutes)) return json(res, 400, { error: 'Choose valid managed backend settings.' });
+      const status = comfyLifecycle.status();
+      if (body.enabled && (!status.available || !status.supported)) return json(res, 409, { error: status.reason || 'Managed ComfyUI is available in Preview and Development only.' });
+      await comfyLifecycle.synchronize(() => {
+        const next = normalizeLifecycleConfig(body);
+        saveJsonSync(COMFY_LIFECYCLE_FILE, next);
+        comfyLifecycleConfig = next;
+      });
+      return json(res, 200, comfyLifecycle.status());
+    } catch (error) { return json(res, 409, { error: error.message }); }
+  }
+  // Hold cleanup while a request is preparing/submitting work, even before it
+  // enters the tracked queue. Reads (including gallery browsing) never start it.
+  if (req.method === 'POST') {
+    const done = comfyLifecycle.reserve();
+    req.releaseComfyLifecycle = done;
+    try {
+      if (MANAGED_GENERATION_ROUTES.has(route)) await comfyLifecycle.ensure();
+      else await comfyLifecycle.synchronize(() => {});
+    }
+    catch (error) { done(); return json(res, 409, { error: error.message }); }
   }
 
   if (route === '/api/smart/plan/status' && req.method === 'GET') {
@@ -8342,6 +8418,10 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/comfy/start' && req.method === 'POST') {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner profile can start ComfyUI' });
+    if (comfyLifecycle.status().active) {
+      try { await comfyLifecycle.ensure(); return json(res, 200, { ok: true, status: await setupStatusPayload() }); }
+      catch (error) { return json(res, 409, { error: error.message }); }
+    }
     if (dependencyInstallRunning || comfyRestartRunning || comfyStartRunning || comfySetupProcess) {
       return json(res, 409, { error: 'Wait for the current desktop operation to finish.' });
     }
