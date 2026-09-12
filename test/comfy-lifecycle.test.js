@@ -10,6 +10,9 @@ function fixture(overrides = {}) {
   const state = { enabled: true, available: true, busy: false, listener: [], queue: { queue_running: [], queue_pending: [] },
     child: null, spawns: [], calls: [], kills: [], idleMinutes: 10 };
   const options = {
+    platform: 'linux',
+    execFile: () => { throw new Error('A unit fixture must never execute an OS command'); },
+    processInfo: async () => null,
     config: () => state,
     available: () => state.available,
     busy: () => state.busy,
