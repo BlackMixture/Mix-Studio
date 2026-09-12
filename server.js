@@ -8463,7 +8463,7 @@ async function handleApiRequest(req, res, url) {
       if (launch.kind === 'desktop') {
         updateComfyStartState({
           state: 'running', phase: 'desktop',
-          message: `Comfy Desktop is open.${launch.installationName ? ` Choose ${launch.installationName} and press Play.` : ' Press Play on the ComfyUI installation.'} Mix Studio will connect automatically.`,
+          message: `Launch requested for Comfy Desktop.${launch.installationName ? ` Choose ${launch.installationName} and press Play.` : ' Press Play on the ComfyUI installation.'} Mix Studio will connect automatically.`,
         });
       }
       (async () => {
