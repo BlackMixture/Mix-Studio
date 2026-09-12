@@ -7232,7 +7232,12 @@ async function handleApiRequest(req, res, url) {
     if (!isAdmin()) return json(res, 403, { error: 'Only the owner can manage ComfyUI.' });
     const body = await readJsonBody(req);
     try {
-      if (body.action === 'stop') return json(res, 200, await comfyLifecycle.stop());
+      if (body.action === 'stop') {
+        const stopped = await comfyLifecycle.stop();
+        objectInfoCache = null;
+        objectInfoAt = 0;
+        return json(res, 200, stopped);
+      }
       if (body.action === 'release') {
         const released = await comfyLifecycle.releaseModels(true);
         if (!released) return json(res, 409, { error: 'Memory can only be released from an idle, verified managed backend with management enabled.' });
@@ -7261,7 +7266,6 @@ async function handleApiRequest(req, res, url) {
     }
     catch (error) { done(); return json(res, 409, { error: error.message }); }
   }
-
 
   if (route === '/api/smart/plan/status' && req.method === 'GET') {
     pruneSmartPlanRequests();
