@@ -2252,7 +2252,7 @@ function renderOfficialRelease() {
 
   if (!latest) {
     setReleaseStatus('No public releases yet', 'current');
-    list.innerHTML = '<p class="updates-empty">No stable GitHub Release has been published yet.</p>';
+    list.textContent = state.releaseChannel === 'development' ? 'Development mode updates the configured Git branch. Use Update app in the menu.' : 'No release is available for this channel.';
     actions.hidden = true;
     installStatus.textContent = '';
     return;
@@ -2283,7 +2283,7 @@ function renderOfficialRelease() {
     : state.officialReleaseError
       ? 'Showing the last successful GitHub check.'
       : latestMatchesInstalled
-        ? 'This installation matches the latest stable release.'
+        ? 'This installation matches the selected channel’s release.'
         : 'This installation is newer than the latest published GitHub release.';
 }
 
@@ -2339,7 +2339,7 @@ function receiveOfficialRelease(result, options = {}) {
     closeOfficialReleaseNotice();
     return;
   }
-  showOfficialReleaseNotice(state.officialRelease);
+  if (options.showNotice !== false) showOfficialReleaseNotice(state.officialRelease);
   if (options.notify && officialReleaseId() !== previousId) showSystemUpdateNotification(state.officialRelease);
 }
 
@@ -2349,6 +2349,10 @@ async function loadOfficialRelease(options = {}) {
   renderOfficialRelease();
   try {
     const result = await api('/api/releases/latest');
+    state.releaseChannel = result.channel || 'stable';
+    $('#updateChannel').value = state.releaseChannel;
+    $('#updateChannel').disabled = !state.profileIsOwner;
+    $('#copyUpdateDiagnostics').hidden = !state.profileIsOwner;
     receiveOfficialRelease(result, options);
     renderUpdateNotificationPreference();
   } catch (error) {
@@ -2466,6 +2470,29 @@ function installOfficialRelease() {
   openAppDrawer();
   $('#appUpdateBtn').click();
 }
+
+$('#updateChannel').addEventListener('change', async () => {
+  const select = $('#updateChannel');
+  const previous = state.releaseChannel || 'stable';
+  const channel = select.value;
+  if (channel !== 'stable' && !await askConfirm({ title: 'Change update channel', message: channel === 'preview'
+    ? 'Preview releases may contain unfinished features. Switch this installation to Preview?'
+    : 'Development updates install unreleased commits from the configured Git branch. Continue?', confirmLabel: 'Switch channel' })) { select.value = previous; return; }
+  select.disabled = true;
+  try {
+    await api('/api/update/channel', { method: 'POST', body: JSON.stringify({ channel }) });
+    state.releaseChannel = channel;
+    state.officialRelease = null;
+    state.officialReleaseUpdateAvailable = false;
+    await loadOfficialRelease({ showNotice: false });
+    toast(`Update channel: ${channel}`);
+  } catch (error) { select.value = previous; toast(error.message, true); }
+  finally { select.disabled = !state.profileIsOwner; }
+});
+$('#copyUpdateDiagnostics').addEventListener('click', async () => {
+  try { const report = await api('/api/update/diagnostics'); await copyTextToClipboard(JSON.stringify(report, null, 2)); toast('Update diagnostics copied'); }
+  catch (error) { toast(error.message, true); }
+});
 
 $('#updatesInstallBtn').addEventListener('click', installOfficialRelease);
 $('#updateNoticeInstall').addEventListener('click', installOfficialRelease);
@@ -2915,7 +2942,7 @@ function renderAppRelease(release = {}) {
   const label = formatAppVersion(state.appRelease.version, state.appRelease.revision);
   const drawer = $('#appVersionLabel');
   const settings = $('#settingsAppVersion');
-  if (drawer) drawer.textContent = label;
+  if (drawer) drawer.textContent = `${label}${state.appRelease.revision ? ` · ${state.appRelease.revision.slice(0, 7)}` : ''}`;
   if (settings) settings.textContent = label;
   return label;
 }
@@ -3048,10 +3075,23 @@ $('#appUpdateBtn').addEventListener('click', async () => {
   button.disabled = true;
   button.classList.add('busy');
   label.textContent = 'Checking for updates…';
-  setAppUpdateStatus('Connecting to GitHub and checking the current branch…');
+  setAppUpdateStatus('Checking the selected update channel…');
   try {
     const previousInstanceId = state.appRelease.instanceId;
-    const result = await api('/api/update', { method: 'POST' });
+    const offered = await api('/api/releases/latest');
+    const channel = offered.channel || 'stable';
+    if (channel !== 'development' && (offered.stale || !offered.latest)) throw new Error('No verified release is available. Try again later.');
+    const tagName = offered.latest?.tagName;
+    if (!await askConfirm({ title: 'Install update', message: channel === 'development'
+      ? 'Update from the configured development branch? This can include unreleased changes.'
+      : `Install Mix Studio ${tagName} from ${channel}? Both generation queues must be idle.`, confirmLabel: 'Install' })) {
+      appUpdateRunning = false;
+      button.classList.remove('busy');
+      setAppUpdateStatus('Update cancelled');
+      renderAppUpdateAccess();
+      return;
+    }
+    const result = await api('/api/update', { method: 'POST', body: JSON.stringify({ channel, tagName }) });
     const versionLabel = renderAppRelease(result);
     button.classList.remove('busy');
     if (!result.updated) {

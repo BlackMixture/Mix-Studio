@@ -127,7 +127,7 @@ test('drawer selections use black borders against the drawer canvas', () => {
 
 test('the update flow pulls safely and waits for a conditional restart', () => {
   assert.match(server, /route === '\/api\/update'/);
-  assert.match(server, /updateFromGit\(ROOT,\s*\{/);
+  assert.match(server, /updateFromGit\(ROOT, updateOptions\)/);
   assert.match(server, /await assertDesktopIsIdle\(\)/);
   assert.match(server, /appUpdateRunning/);
   assert.match(app, /waitForAppRestart/);

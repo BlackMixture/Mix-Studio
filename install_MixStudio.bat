@@ -60,8 +60,14 @@ if exist "%MIX_STUDIO_HOME%\" (
 :download_mix_studio
 call :quarantine_stale_stage
 if errorlevel 1 goto staging_in_use
-echo Downloading Mix Studio...
-"%GIT_EXE%" clone --depth 1 --branch main --single-branch "%MIX_STUDIO_REPO%" "%MIX_STUDIO_STAGE%"
+echo Checking the latest stable Mix Studio release...
+set "MIX_STUDIO_RELEASE_TAG="
+for /f "delims=" %%R in ('powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; $r=Invoke-RestMethod -TimeoutSec 15 -Headers @{'User-Agent'='Mix-Studio-installer'} 'https://api.github.com/repos/BlackMixture/Mix-Studio/releases/latest'; if($r.draft -or $r.prerelease -or $r.tag_name -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$'){exit 1}; Write-Output $r.tag_name"') do set "MIX_STUDIO_RELEASE_TAG=%%R"
+if not defined MIX_STUDIO_RELEASE_TAG goto release_check_failed
+echo Downloading Mix Studio %MIX_STUDIO_RELEASE_TAG%...
+"%GIT_EXE%" clone --depth 1 --branch "%MIX_STUDIO_RELEASE_TAG%" --single-branch "%MIX_STUDIO_REPO%" "%MIX_STUDIO_STAGE%"
+if errorlevel 1 goto cleanup_failed_clone
+"%GIT_EXE%" -C "%MIX_STUDIO_STAGE%" switch -c main
 if errorlevel 1 goto cleanup_failed_clone
 call :validate_checkout "%MIX_STUDIO_STAGE%"
 if errorlevel 1 goto cleanup_invalid_clone
@@ -223,8 +229,8 @@ exit /b %ERRORLEVEL%
 
 :refresh_unconfigured_checkout
 echo Refreshing the unfinished first-time setup...
-"%GIT_EXE%" -C "%MIX_STUDIO_HOME%" pull --ff-only origin main
-exit /b %ERRORLEVEL%
+rem Existing checkouts update through the app; never pull unreleased main here.
+exit /b 0
 
 :quarantine_incomplete_checkout
 set "MIX_STUDIO_INCOMPLETE=%~dp0Mix Studio.incomplete-%RANDOM%-%RANDOM%"
@@ -391,5 +397,11 @@ exit /b 1
 echo.
 echo Mix Studio was prepared, but the web app did not answer at http://127.0.0.1:3300/.
 echo Check the Mix Studio window for details, then run start.bat again.
+pause
+exit /b 1
+
+:release_check_failed
+echo Could not verify the latest stable release. No development build was installed.
+echo Check your connection and try again later.
 pause
 exit /b 1
