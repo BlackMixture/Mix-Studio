@@ -333,3 +333,41 @@ test('Linux Desktop 2 installations stay app-managed instead of bypassing their 
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('Desktop detection includes the nested official Windows installation folder', () => {
+  const { findComfyDesktopApp } = require('../lib/comfy-restart');
+  const expected = 'C:\\Users\\Test\\AppData\\Local\\Programs\\ComfyUI\\Comfy Desktop\\Comfy Desktop.exe';
+  assert.equal(findComfyDesktopApp({ env: { LOCALAPPDATA: 'C:\\Users\\Test\\AppData\\Local' },
+    pathApi: path.win32, existsSync: (candidate) => candidate === expected }), expected);
+});
+
+test('Desktop spawn errors propagate without reporting a successful launch', async () => {
+  const { EventEmitter } = require('node:events');
+  const { launchComfyDesktop } = require('../lib/comfy-restart');
+  await assert.rejects(launchComfyDesktop({ desktopApp: '/missing/Desktop.exe' }, {
+    spawnProcess: () => { const child = new EventEmitter(); queueMicrotask(() => child.emit('error', new Error('ENOENT'))); return child; },
+  }), /ENOENT/);
+});
+
+test('Desktop launch uses a visible window and waits for spawn acceptance', async () => {
+  const { EventEmitter } = require('node:events');
+  const { launchComfyDesktop } = require('../lib/comfy-restart');
+  let detached = false;
+  await launchComfyDesktop({ desktopApp: '/Comfy/Desktop.exe' }, {
+    spawnProcess: (file, args, options) => {
+      assert.equal(file, '/Comfy/Desktop.exe'); assert.equal(options.windowsHide, false);
+      const child = new EventEmitter(); child.unref = () => { detached = true; };
+      queueMicrotask(() => child.emit('spawn')); return child;
+    },
+  });
+  assert.equal(detached, true);
+});
+
+test('Desktop Start-menu fallback waits for errors instead of silently detaching', async () => {
+  const { launchComfyDesktop } = require('../lib/comfy-restart');
+  await assert.rejects(launchComfyDesktop({ desktopApp: '' }, { env: {}, run: async (file, args) => {
+    assert.match(args.at(-1), /ErrorAction Stop/);
+    assert.ok(args.at(-1).includes('shell:AppsFolder\\'));
+    throw new Error('Start menu launch failed');
+  } }), /Start menu launch failed/);
+});
