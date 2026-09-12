@@ -63,7 +63,7 @@ test('registered Desktop plan preserves adopted data and custom flags, forcing t
   });
   assert.equal(plan.supported, true);
   assert.equal(plan.cwd, 'C:\\Source');
-  assert.deepEqual(plan.args, ['C:\\Source\\main.py', '--enable-manager', '--extra-model-paths-config', 'C:\\Model Paths.yaml', '--port', '8161', '--base-directory', 'C:\\User Data', '--listen', '127.0.0.1', '--disable-auto-launch']);
+  assert.deepEqual(plan.args, ['-s', 'C:\\Source\\main.py', '--enable-manager', '--extra-model-paths-config', 'C:\\Model Paths.yaml', '--port', '8161', '--base-directory', 'C:\\User Data', '--user-directory', 'C:\\User Data\\user', '--database-url', 'sqlite:///C:\\User Data\\user\\comfyui.db', '--listen', '127.0.0.1', '--disable-auto-launch']);
 });
 
 test('macOS source launch retains the supported Python and MPS settings', () => {
@@ -205,4 +205,22 @@ test('Windows venv listener must be the known launcher’s direct ComfyUI child'
   parent = 42; command = 'python unrelated.py'; await assert.rejects(controller.stop(), /Only a ComfyUI process/);
   command = 'python C:\\ComfyUI\\main.py'; await controller.stop();
   assert.deepEqual(calls, [{ file: 'taskkill', args: ['/PID', '42', '/T', '/F'] }]);
+});
+
+test('Desktop automatic startup retains its shared models and custom output directory', () => {
+  const modelConfig = 'C:\\AppData\\Comfy Desktop\\instance-model-paths\\inst-test.yaml';
+  const record = { id: 'inst-test', adoptedBaseDir: 'C:\\Data', inputDir: 'C:\\Data\\input', outputDir: 'D:\\output', useSharedModels: true };
+  const options = { platform: 'win32', pathApi: path.win32, env: { APPDATA: 'C:\\AppData' },
+    startStatus: () => ({ kind: 'desktop', mainPy: 'C:\\Source\\main.py', basePath: 'C:\\Source', pythonPath: 'C:\\Data\\.venv\\Scripts\\python.exe', port: 8161 }),
+    desktopRecordForBase: () => record, existsSync: (file) => file === modelConfig };
+  const runtime = { comfy: { url: 'http://127.0.0.1:8161' } };
+  const plan = managedLaunchPlan(runtime, options);
+  assert.equal(plan.supported, true);
+  assert.equal(plan.args[plan.args.indexOf('--output-directory') + 1], 'D:\\output');
+  assert.equal(plan.args[plan.args.indexOf('--input-directory') + 1], 'C:\\Data\\input');
+  assert.equal(plan.args[plan.args.indexOf('--extra-model-paths-config') + 1], modelConfig);
+  assert.equal(plan.args[plan.args.indexOf('--database-url') + 1], 'sqlite:///C:\\Data\\user\\comfyui.db');
+  assert.equal(managedLaunchPlan(runtime, { ...options, existsSync: () => false }).supported, false);
+  record.useSharedOutput = true;
+  assert.equal(managedLaunchPlan(runtime, options).supported, false);
 });
