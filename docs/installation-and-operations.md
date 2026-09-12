@@ -133,9 +133,15 @@ After the Owner profile has a PIN, the console prints local network URLs and Gen
 - `Local: http://localhost:3300` opens on the desktop.
 - `Phone: http://192.168.x.x:3300` opens on a phone connected to the same Wi-Fi.
 
-Use **Copy** or **Share** to send the selected address to a phone. Add a PIN to the Owner profile before sharing access beyond the desktop. On the phone, use **Add to Home Screen** for an app-like fullscreen experience.
+Use **Copy** or **Share** to send the selected address to a phone. Add a PIN to the Owner profile before sharing access beyond the desktop. HTTP phone addresses support browser access, but mobile app installation requires HTTPS; adding an HTTP address to the home screen can create only a browser shortcut.
 
 For private access away from home, install [Tailscale](https://tailscale.com/download) on both devices and sign them into the same tailnet. Refresh the Phone access card, then copy or share its Tailscale URL. The desktop continues to host ComfyUI, models, and media; the phone remains the control surface.
+
+For app installation, use the secure-address action in **Preferences → System → Phone access**, then open the resulting HTTPS address on the phone. In Chrome on Android, choose **Install app**. On iPhone, use Safari's **Share → Add to Home Screen**. Keep Tailscale connected when using the private address.
+
+If Tailscale Serve already hosts another app, Mix Studio refuses to replace that configuration. An operator can configure an unused HTTPS port with `tailscale serve --bg --https=8443 http://127.0.0.1:3300` after checking that port 8443 is free, then use `https://<device>.<tailnet>.ts.net:8443/`. This is private Tailscale Serve access; it does not require Funnel. The current Phone access card detects the default HTTPS endpoint, so retain the explicit URL when using an alternate port.
+
+If Chrome offers **Open another app** instead of installing Mix Studio, check that the full address includes the intended port. An existing Android web app on the same hostname can also claim its links. In Android's **Settings → Apps → [that app] → Open by default**, turn off **Open supported links**, reopen the Mix Studio HTTPS address directly in Chrome, and retry installation. This changes phone link handling, not the other app's desktop installation.
 
 If the phone cannot connect over the local network, allow Node through Windows Defender Firewall, macOS network security controls, or the Linux host firewall for private networks. Set a different application port with the `PORT` environment variable when required.
 
