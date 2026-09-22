@@ -8931,8 +8931,8 @@ async function handleApiRequest(req, res, url) {
     delete p.lowVramChoice;
     if (p.editOutpaint) Object.assign(p, normalizeOutpaintDimensions(p.width, p.height));
     p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
-    p.steps = clampInt(p.steps, 1, 100, (p.mode === 'edit' ? p.editEngine : p.imageEngine) === 'qwen21' ? 25 : (p.mode === 't2i' && p.krea2Turbo ? 8 : 12));
-    p.cfg = clampNum(p.cfg, 0, 30, 1);
+    p.steps = clampInt(p.steps, 1, 100, (p.mode === 'edit' ? p.editEngine : p.imageEngine) === 'qwen21' ? 40 : (p.mode === 't2i' && p.krea2Turbo ? 8 : 12));
+    p.cfg = clampNum(p.cfg, 0, 30, (p.mode === 'edit' ? p.editEngine : p.imageEngine) === 'qwen21' ? 2.5 : 1);
     p.krea2RawTurboLora = p.krea2Turbo || !p.krea2RawTurboLora || typeof p.krea2RawTurboLora !== 'object'
       ? undefined
       : {

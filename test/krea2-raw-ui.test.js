@@ -21,7 +21,7 @@ test('Create Image exposes a Turbo switch that defaults on', () => {
   assert.match(app, /button\.setAttribute\('aria-checked', String\(state\.krea2Turbo\)\)/);
   assert.match(app, /`Krea 2 · fast · \$\{steps\} steps`/);
   assert.doesNotMatch(app, /\$\('#stepsInput'\)\.value = 8;/);
-  assert.match(server, /p\.steps = clampInt\(p\.steps, 1, 100, .*'qwen21' \? 25 : \(p\.mode === 't2i' && p\.krea2Turbo \? 8 : 12\)\)/);
+  assert.match(server, /p\.steps = clampInt\(p\.steps, 1, 100, .*'qwen21' \? 40 : \(p\.mode === 't2i' && p\.krea2Turbo \? 8 : 12\)\)/);
 });
 
 test('Raw mode manages the Turbo LoRA without overwriting user sampling values', () => {
