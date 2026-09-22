@@ -113,7 +113,7 @@ test('prefers a populated external library over an empty built-in model tree', a
   fs.writeFileSync(path.join(sharedCheckpoints, 'krea-model.safetensors'), 'fixture');
   fs.writeFileSync(path.join(comfy, 'extra_model_paths.yaml'), `shared:\n  base_path: ${shared}\n  checkpoints: checkpoints\n`);
   try {
-    const result = await discoverModels({ comfyUrl: '', comfyPath: comfy });
+    const result = await discoverModels({ comfyUrl: '', comfyPath: comfy, home: temp, env: {} });
     assert.deepEqual(result.populatedModelRoots, [shared]);
     assert.equal(result.preferredModelsPath, shared);
   } finally {
