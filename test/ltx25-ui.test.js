@@ -14,7 +14,7 @@ const style = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 test('LTX 2.5 is a separate curated video choice and leaves LTX 2.3 as default', () => {
   assert.match(html, /class="chip active" data-engine="ltx"[^>]*data-model-label="LTX 2\.3"/);
   assert.match(html, /data-engine="ltx25" data-feature-engine="video\.ltx25"[^>]*data-model-label="LTX 2\.5"/);
-  assert.match(html, /LTX 2\.5 <span class="model-status-badge">Preview<\/span>/);
+  assert.doesNotMatch(html, /LTX 2\.5 <span class="model-status-badge">Preview<\/span>/);
   assert.match(app, /videoEngineDefault: 'ltx'/);
   assert.match(app, /videoEngineOrder: \['ltx', 'ltx25', 'h3'/);
   assert.match(app, /ltx25: 'LTX 2\.5'/);

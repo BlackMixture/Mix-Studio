@@ -542,6 +542,19 @@
       </section>
     </div>
   </section>
+  <section class="panel video-model-panel" id="imageModelPanel">
+    <button class="video-model-header" id="imageModelHeader" type="button" aria-expanded="false" aria-controls="imageModelBody">
+      <span class="video-model-kicker">Image model</span>
+      <span class="model-current"><span class="model-current-title"><span class="video-model-selected" id="imageEngineSelected">Krea 2</span></span><span class="video-model-note" id="imageEngineNote">Fast image generation</span></span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m6 9 6 6 6-6H6Z"/></svg>
+    </button>
+    <div class="video-model-body" id="imageModelBody" aria-hidden="true" inert><div class="video-model-body-inner">
+      <div class="chip-row video-choice-grid" id="imageEngineRow" aria-label="Image model">
+        <button class="chip active" type="button" data-image-engine="krea2" aria-pressed="true"><b>Krea 2</b><small>Fast image generation</small></button>
+        <button class="chip" type="button" data-image-engine="qwen21" aria-pressed="false"><b>Qwen Image 2.1</b><small>Text + detailed compositions</small></button>
+      </div>
+    </div></div>
+  </section>
   <section class="panel video-model-panel edit-model-panel" id="editModelPanel" hidden>
     <button class="video-model-header" id="editModelHeader" type="button" aria-expanded="false" aria-controls="editModelBody">
       <span class="video-model-kicker">Edit model</span>
@@ -557,6 +570,7 @@
         <div class="chip-row video-choice-grid edit-engine-row" id="editEngineRow" aria-label="Edit model" aria-describedby="editModelOrderHint">
           <button class="chip active" data-engine="klein9" data-feature-engine="edit.klein9" data-task-label="Precision Editing" data-model-label="Flux Klein 9B"><b>Flux Klein 9B</b><small>Precision Editing</small></button>
           <button class="chip" data-engine="klein4" data-feature-engine="edit.klein4" data-task-label="Fast Edits" data-model-label="Flux Klein 4B"><b>Flux Klein 4B</b><small>Fast Edits</small></button>
+          <button class="chip" data-engine="qwen21" data-feature-engine="edit.qwen21" data-task-label="Detailed Image Editing" data-model-label="Qwen Image 2.1"><b>Qwen Image 2.1</b><small>Detailed Image Editing</small></button>
           <button class="chip" data-engine="qwen" data-feature-engine="edit.qwen" data-task-label="Combine Images" data-model-label="Qwen Edit"><b>Qwen Edit</b><small>Combine Images</small></button>
           <button class="chip" data-engine="krea2ref" data-feature-engine="edit.krea2ref" data-task-label="Identity Editing" data-model-label="Krea 2 Edit"><b>Krea 2 Edit</b><small>Identity Editing</small></button>
           <button class="chip" data-engine="krea2remix" data-feature-engine="edit.krea2remix" data-task-label="Reference Remix" data-model-label="Krea 2 Remix"><b>Krea 2 Remix</b><small>Reference Remix</small></button>
@@ -567,6 +581,10 @@
         </button>
       </div>
     </div>
+  </section>
+  <section class="panel" id="qwen21SamplingPanel" hidden>
+    <div class="field"><label for="qwen21Sampling">Sampling</label><select id="qwen21Sampling" data-model-select><option value="25">Balanced · 25 steps</option><option value="40">Quality · 40 steps</option></select></div>
+    <p class="external-llm-field-note">Qwen Research License · research and evaluation only. <a href="https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE" target="_blank" rel="noopener">License details</a></p>
   </section>
   <section class="panel" id="refPanel" hidden>
     <div class="panel-label edit-inputs-label"><span>Input images</span>
@@ -685,7 +703,7 @@
         <div class="model-order-hint" id="videoModelOrderHint">Hold models to reorder · first is default</div>
         <div class="chip-row video-choice-grid" id="vidEngineRow" aria-label="Video model" aria-describedby="videoModelOrderHint">
           <button class="chip active" data-engine="ltx" data-feature-engine="video.ltx" data-task-label="Cinematic Video" data-model-label="LTX 2.3"><b>LTX 2.3</b><small>Cinematic Video</small></button>
-          <button class="chip" data-engine="ltx25" data-feature-engine="video.ltx25" data-task-label="Next-gen Cinematic Video" data-model-label="LTX 2.5"><b>LTX 2.5 <span class="model-status-badge">Preview</span></b><small>Next-gen Cinematic Video</small></button>
+          <button class="chip" data-engine="ltx25" data-feature-engine="video.ltx25" data-task-label="Next-gen Cinematic Video" data-model-label="LTX 2.5"><b>LTX 2.5</b><small>Next-gen Cinematic Video</small></button>
           <button class="chip" data-engine="h3" data-feature-engine="video.h3" data-task-label="Omni Video" data-model-label="MiniMax H3"><b>MiniMax H3</b><small>Omni Video + Audio</small></button>
           <button class="chip video-model-option" id="directorModelOption" type="button" data-director-entry data-feature-engine="video.ltx" aria-label="Open LTX Director for directed sequences"><b>LTX Director</b><small>Directed Sequences</small></button>
           <button class="chip" data-engine="ltx-edit" data-feature-engine="video.ltxEdit" data-task-label="Video Editing" data-model-label="LTX Edit" data-experimental="true"><b>LTX Edit <span class="model-status-badge">Experimental</span></b><small>Video Editing</small></button>
@@ -2712,6 +2730,15 @@
             <div class="field"><label>Klein VAE</label><input id="setKleinVae" type="text" /></div>
             </div>
           </details>
+          <details class="settings-group settings-model-disclosure" data-settings-model-section="qwen21">
+            <summary class="settings-model-summary"><span class="settings-model-name">Qwen Image 2.1</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="settings-model-body">
+              <div class="field"><label for="setQwen21ModelVariant">Download preference</label><select id="setQwen21ModelVariant" data-model-select><option value="auto">Automatic · match this computer</option><option value="compact">Lower memory · INT8 + 4-bit encoder</option><option value="balanced">Balanced · INT8</option><option value="bf16">Full precision · BF16</option></select></div>
+              <button class="settings-cache-clear" id="installQwen21Models" type="button">Download selected model files</button>
+              <p class="external-llm-field-note">One download for Create and Edit. Automatic recommends a smaller encoder below 16 GB VRAM on NVIDIA; other GPUs use BF16. Offloading also needs system RAM. Choices apply to the next model installation.</p>
+              <p class="external-llm-field-note">No Hugging Face token required. <a href="https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE" target="_blank" rel="noopener">Qwen Research License</a>: research and evaluation only; commercial use needs a separate license.</p>
+            </div>
+          </details>
           <details class="settings-group settings-model-disclosure" data-settings-model-section="qwen">
             <summary class="settings-model-summary"><span class="settings-model-name">Qwen Image Edit</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></summary>
             <div class="settings-model-body">
@@ -2960,6 +2987,7 @@
                   <select id="setExternalLlmLocalProvider">
                     <option value="local">ComfyUI</option>
                     <option value="ollama">Ollama</option>
+                    <option value="lmstudio">LM Studio</option>
                   </select>
                 </div>
                 <div class="external-llm-provider local-prompt-ai-settings" id="localPromptAiSettings" data-external-llm-provider="local">
@@ -3014,6 +3042,17 @@
                   </div>
                   <p class="external-llm-field-note">Ollama remains local when this URL points to your generation machine.</p>
                 </div>
+                <div class="external-llm-provider" data-external-llm-provider="lmstudio" hidden>
+                  <div class="field">
+                    <label for="setExternalLlmLmStudioUrl">LM Studio URL</label>
+                    <input id="setExternalLlmLmStudioUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:1234/v1" />
+                  </div>
+                  <div class="field">
+                    <label for="setExternalLlmLmStudioModel">LM Studio model identifier</label>
+                    <input id="setExternalLlmLmStudioModel" type="text" autocomplete="off" spellcheck="false" placeholder="Copy from LM Studio’s Developer tab" />
+                  </div>
+                  <p class="external-llm-field-note">Start the local server in LM Studio’s Developer tab. Vision references require a loaded vision-capable model.</p>
+                </div>
               </div>
 
               <div class="prompt-ai-mode-panel" data-prompt-ai-mode-panel="external" hidden>
@@ -3060,7 +3099,7 @@
                 </div>
               </details>
               <p class="prompt-ai-routing-note"><i aria-hidden="true"></i><span><strong>Routing coverage</strong><small>Image prompts · Video prompts · Smart planner or its local override</small></span></p>
-              <p class="external-llm-privacy">When External is selected, prompts and relevant attached references are sent only to the chosen provider. Local ComfyUI stays inside the generation machine; Ollama remains local when its URL points to that machine.</p>
+              <p class="external-llm-privacy">When External is selected, prompts and relevant attached references are sent only to the chosen provider. ComfyUI, Ollama, and LM Studio remain local when their URLs point to the generation machine.</p>
               <div class="external-llm-test-row">
                 <button class="settings-cache-clear" id="testExternalLlm" type="button">Test connection</button>
                 <span id="externalLlmStatus" role="status" aria-live="polite"></span>
@@ -3826,5 +3865,6 @@
 <script src="/h3-prompt-guide.js"></script>
 <script src="/release-notes.js"></script>
 <script src="/app.js"></script>
+<script src="/model-select.js"></script>
 </body>
 </html>

@@ -32,6 +32,15 @@
       "nodes": ["Flux2Scheduler", "ReferenceLatent", "ComfyUI-SAM3", "KJNodes outpaint", "ComfyUI-GGUF"]
     },
     {
+      "id": "edit.qwen21",
+      "label": "Qwen Image 2.1 · Create + Edit",
+      "default": false,
+      "variant": "INT8 with a smaller encoder below 16 GB NVIDIA VRAM; BF16 on other backends. Research license; no token required.",
+      "hardware": { "minimumVramGb": 8, "recommendedVramGb": 16, "autoSelect": "recommended" },
+      "models": ["qwen-image-2.1", "qwen3vl-8b", "qwen-image-2.1-vae"],
+      "nodes": ["TextEncodeQwenImage21"]
+    },
+    {
       "id": "edit.qwen",
       "label": "Qwen Edit + Outpaint + multi-angle",
       "default": false,

@@ -18,7 +18,7 @@
 
 ![Mix Studio Create workspace running a curated Krea 2 workflow](docs/download/mix-studio-create.webp)
 
-Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2.3, LTX 2.5, Wan 2.2, 10Eros, and SCAIL 2, plus Wan Animate 2.
+Mix Studio is a local web interface that builds and submits ComfyUI API graphs for image generation, regional prompting, image editing, video generation, motion transfer, and upscaling. Its curated model families include Krea 2, Flux 2 Klein, Qwen Image 2.1, Qwen Image Edit, MiniMax H3, LTX 2.3, LTX 2.5, Wan 2.2, 10Eros, and SCAIL 2, plus Wan Animate 2.
 
 Krea 2 editing includes Identity Edit v1.2 and the multi-reference **Krea 2 Remix** workflow, with an advanced Reference boost control for stronger identity and subject guidance.
 
@@ -41,9 +41,9 @@ For manual Git setup, detailed VRAM guidance, shared-model discovery, phone acce
 
 | Workspace | Highlights |
 | --- | --- |
-| **Create** | Krea 2 Turbo and Raw, exact resolution and seed controls, batching, LoRAs, prompt enhancement, reference, style, and depth guidance. |
+| **Create** | Krea 2 Turbo and Raw, Qwen Image 2.1, exact resolution and seed controls, batching, LoRAs, prompt enhancement, reference, style, and depth guidance. |
 | **Region** | Aspect-correct boxes with independent prompts, LoRA stacks, and reference images combined into one coherent generation. |
-| **Edit** | Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix with multiple inputs, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
+| **Edit** | Qwen Image 2.1 whole-image editing, Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix with multiple inputs, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
 | **Video** | MiniMax H3 text, first/last-frame, reference-to-video, user LoRA stacks, and experimental long-context generation; LTX 2.5 text/frame generation with synchronized audio and two-stage refinement; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
 | **Upscale** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
 | **Library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
@@ -177,3 +177,5 @@ The GPL applies to Mix Studio's source code and documentation unless a file says
 **Community projects:** SCAIL 2, 10Eros, SeedVR2, Ultimate SD Upscale, Depth Anything V3, and the required ComfyUI custom-node projects provide specialized conditioning, tracking, sampling, and upscaling components.
 
 **Hardware:** Dell provided the Dell Pro Max T2 Tower used for development and high-memory benchmarking. The test system contains an **NVIDIA RTX PRO 6000 Blackwell GPU with 96 GB VRAM**.
+
+Qwen Image 2.1 supports Create and whole-image Edit with hardware-aware downloads. Its model weights use a research-only license. See the [Qwen setup, sampling, and license guide](docs/qwen-image-2.1.md).

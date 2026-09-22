@@ -51,7 +51,7 @@ test('negative prompt text persists per mode, submits, and restores from gallery
 
 test('generation graphs apply only supported negative conditioning', () => {
   assert.match(server, /p\.negativePrompt = normalizeNegativePrompt\(p\.negativePrompt\)/);
-  assert.match(server, /p\.editEngine !== 'qwen' \|\| p\.qwenQuality !== 'quality'\) p\.negativePrompt = ''/);
+  assert.match(server, /p\.editEngine !== 'qwen' \|\| p\.qwenQuality !== 'quality'\)\) p\.negativePrompt = ''/);
   assert.match(server, /engine === 'wan' && body\.fast === false[\s\S]{0,100}normalizeNegativePrompt\(body\.negativePrompt\)/);
   assert.match(server, /graph\.neg = p\.negativePrompt[\s\S]{0,180}class_type: 'CLIPTextEncode'/);
   assert.match(server, /prompt: p\.negativePrompt \|\| ''/);

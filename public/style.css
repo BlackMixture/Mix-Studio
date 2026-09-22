@@ -2979,7 +2979,7 @@ html:-webkit-full-screen { background: #000; }
   font-weight: 750;
   letter-spacing: .02em;
 }
-.video-choice-grid :is(.chip[data-engine], .video-model-option) {
+.video-choice-grid :is(.chip[data-engine], .chip[data-image-engine], .video-model-option) {
   position: relative;
   min-height: 50px;
   display: grid;
@@ -2995,10 +2995,10 @@ html:-webkit-full-screen { background: #000; }
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.video-choice-grid :is(.chip[data-engine], .video-model-option) b { color: var(--ink-soft); font-size: 10.5px; line-height: 1.2; }
+.video-choice-grid :is(.chip[data-engine], .chip[data-image-engine], .video-model-option) b { color: var(--ink-soft); font-size: 10.5px; line-height: 1.2; }
 .video-choice-grid .chip[data-engine] b .model-status-badge { margin-left: 3px; vertical-align: 1px; }
-.video-choice-grid :is(.chip[data-engine], .video-model-option) small { color: var(--muted-2); font-size: 8.5px; font-weight: 750; line-height: 1.2; }
-.video-choice-grid .chip[data-engine].active b { color: #fff; }
+.video-choice-grid :is(.chip[data-engine], .chip[data-image-engine], .video-model-option) small { color: var(--muted-2); font-size: 8.5px; font-weight: 750; line-height: 1.2; }
+.video-choice-grid :is(.chip[data-engine], .chip[data-image-engine]).active b { color: #fff; }
 .video-choice-grid .video-model-option {
   cursor: pointer; touch-action: manipulation; border-color: var(--line);
   background: rgba(255,255,255,.025);
@@ -3012,7 +3012,7 @@ html:-webkit-full-screen { background: #000; }
 }
 .director-model-options .video-model-option.active b { color: #fff; }
 @media (max-width: 420px) {
-  .video-choice-grid :is(.chip[data-engine], .video-model-option) {
+  .video-choice-grid :is(.chip[data-engine], .chip[data-image-engine], .video-model-option) {
     justify-items: center;
     padding: 8px 10px;
     text-align: center;
@@ -15838,7 +15838,7 @@ body.update-showcase-open { overflow: hidden; }
 .director-head small { overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .director-model-panel { min-width: 0; margin: 0; background: #050507; }
 .director-model-panel .video-model-header { min-height: 52px; }
-.director-model-options :is(.chip[data-engine], .video-model-option) { cursor: pointer; touch-action: manipulation; }
+.director-model-options :is(.chip[data-engine], .chip[data-image-engine], .video-model-option) { cursor: pointer; touch-action: manipulation; }
 .director-head-actions { min-height: 52px; display: flex; align-items: center; gap: 8px; }
 
 @media (min-width: 721px) {
@@ -16588,3 +16588,18 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
 .setup-managed p, .setup-managed small { font-size: 13px; line-height: 1.5; }
 .setup-managed label { display: flex; align-items: center; gap: 10px; margin: 12px 0; font-size: 13px; }
 .setup-managed .setup-start-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+/* Image-model selectors share the app's disclosure motion and surfaces. */
+#imageEngineRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#imageEngineRow .chip { min-width: 0; white-space: normal; }
+#imageEngineRow .chip b { overflow-wrap: anywhere; }
+.model-select { position: relative; min-width: 0; }
+.model-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.model-select-trigger > span:first-child { min-width: 0; }
+.model-select-options { position: absolute; z-index: 80; top: calc(100% + 6px); left: 0; right: 0; display: grid; gap: 3px; padding: 5px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-strong); box-shadow: 0 10px 30px #0005; opacity: 0; visibility: hidden; transform: translateY(-5px); transition: opacity 160ms var(--ease), transform 160ms var(--ease), visibility 160ms; }
+.model-select.open .model-select-options { opacity: 1; visibility: visible; transform: translateY(0); }
+.model-select-options button { border: 0; border-radius: 9px; padding: 12px; min-height: 44px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.model-select-options button[aria-selected="true"] { background: var(--blue); color: #fff; }
+.model-select-trigger:focus-visible, .model-select-options button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+#qwen21SamplingPanel .field { margin-bottom: 0; }
+#qwen21SamplingPanel .external-llm-field-note { margin-bottom: 0; }
+@media (prefers-reduced-motion: reduce) { .model-select-options { transition: none; } }
