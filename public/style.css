@@ -16600,6 +16600,6 @@ body.director-open #directorTimelineViewport.gallery-drop-active {
 .model-select-options button { border: 0; border-radius: 9px; padding: 12px; min-height: 44px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .model-select-options button[aria-selected="true"] { background: var(--blue); color: #fff; }
 .model-select-trigger:focus-visible, .model-select-options button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-#qwen21SamplingPanel .field { margin-bottom: 0; }
+#refPanel > #qwen21SamplingPanel { padding: 0; margin-top: 16px; }
 #qwen21SamplingPanel .external-llm-field-note { margin-bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .model-select-options { transition: none; } }

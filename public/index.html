@@ -582,10 +582,6 @@
       </div>
     </div>
   </section>
-  <section class="panel" id="qwen21SamplingPanel" hidden>
-    <div class="field"><label for="qwen21Sampling">Sampling</label><select id="qwen21Sampling" data-model-select><option value="25">Balanced · 25 steps</option><option value="40">Quality · 40 steps</option></select></div>
-    <p class="external-llm-field-note">Qwen Research License · research and evaluation only. <a href="https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE" target="_blank" rel="noopener">License details</a></p>
-  </section>
   <section class="panel" id="refPanel" hidden>
     <div class="panel-label edit-inputs-label"><span>Input images</span>
       <button class="edit-reference-add" id="addEditReference" type="button" aria-label="Add another input image" title="Add another input image">
@@ -1325,6 +1321,15 @@
       <span class="krea-model-switch-copy"><b>Turbo</b><small id="kreaModelSummary">Krea 2 · fast</small></span>
       <span class="switch" aria-hidden="true"><i></i></span>
     </button>
+  </section>
+
+  <section class="panel krea-model-panel" id="qwen21SamplingPanel" hidden>
+    <button class="krea-model-switch" id="qwen21QualityToggle" type="button" role="switch" aria-label="Quality mode" aria-checked="false">
+      <span class="krea-model-switch-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg></span>
+      <span class="krea-model-switch-copy"><b id="qwen21QualityLabel">Balance</b><small id="qwen21QualitySummary">Qwen 2.1 · faster</small></span>
+      <span class="switch" aria-hidden="true"><i></i></span>
+    </button>
+    <p class="external-llm-field-note">Qwen Research License · research and evaluation only. <a href="https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE" target="_blank" rel="noopener">License details</a></p>
   </section>
 
   <section class="panel">

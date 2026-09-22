@@ -18223,9 +18223,14 @@ function renderImageModel() {
 }
 function renderQwen21Sampling() {
   const active = usingQwen21();
-  $('#qwen21SamplingPanel').hidden = !active;
-  $('#qwen21Sampling').value = String(state.qwen21Steps);
-  $('#qwen21Sampling').modelSelectSync?.();
+  const panel = $('#qwen21SamplingPanel');
+  panel.hidden = !active;
+  const anchor = state.view === 'edit' ? $('#editAspectControl') : $('#kreaModelPanel');
+  if (panel.previousElementSibling !== anchor) anchor.after(panel);
+  const quality = state.qwen21Steps === 40;
+  $('#qwen21QualityToggle').setAttribute('aria-checked', String(quality));
+  $('#qwen21QualityLabel').textContent = quality ? 'Quality' : 'Balance';
+  $('#qwen21QualitySummary').textContent = quality ? 'Qwen 2.1 · more refinement' : 'Qwen 2.1 · faster';
   if (active) {
     $('#stepsInput').value = state.qwen21Steps;
     $('#cfgInput').value = 1;
@@ -18246,8 +18251,8 @@ $$('#imageEngineRow button').forEach((button) => button.addEventListener('click'
   $('#imageModelHeader').focus({ preventScroll: true });
   saveForm();
 }));
-$('#qwen21Sampling').addEventListener('change', () => {
-  state.qwen21Steps = Number($('#qwen21Sampling').value) === 40 ? 40 : 25;
+$('#qwen21QualityToggle').addEventListener('click', () => {
+  state.qwen21Steps = state.qwen21Steps === 40 ? 25 : 40;
   renderQwen21Sampling(); saveForm();
 });
 

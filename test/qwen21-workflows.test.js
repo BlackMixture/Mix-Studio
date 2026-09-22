@@ -81,3 +81,34 @@ test('Qwen sampling restoration preserves shared seed and batch without overwrit
   assert.equal(state.generationTuning.create.batch,2); assert.equal(state.generationTuning.create.seed,'42');
   assert.equal(controls['#stepsInput'].value,40);
 });
+test('Qwen quality toggle updates sampling and follows Create and Edit settings', () => {
+  const source = fs.readFileSync(require.resolve('../public/app.js'), 'utf8');
+  const controls = Object.fromEntries(['qwen21SamplingPanel', 'kreaModelPanel', 'editAspectControl', 'qwen21QualityToggle', 'qwen21QualityLabel', 'qwen21QualitySummary', 'stepsInput', 'cfgInput'].map(id => ['#' + id, {
+    setAttribute(key, value) { this[key] = value; },
+    addEventListener(event, handler) { this[event] = handler; },
+    after(panel) { panel.previousElementSibling = this; },
+  }]));
+  const state = {view: 'create', qwen21Steps: 25};
+  let saved = 0;
+  const context = vm.createContext({state, $: id => controls[id], usingQwen21: () => true, saveForm() { saved++; }});
+  const render = source.slice(source.indexOf('function renderQwen21Sampling()'), source.indexOf("$('#imageModelHeader').addEventListener"));
+  const start = source.indexOf("$('#qwen21QualityToggle').addEventListener");
+  const handler = source.slice(start, source.indexOf('\n\nfunction setEditModelExpanded', start));
+  vm.runInContext(render + handler + '\nrenderQwen21Sampling();', context);
+  const toggle = controls['#qwen21QualityToggle'];
+  assert.equal(toggle['aria-checked'], 'false');
+  assert.equal(controls['#qwen21QualityLabel'].textContent, 'Balance');
+  assert.equal(controls['#qwen21SamplingPanel'].previousElementSibling, controls['#kreaModelPanel']);
+  toggle.click();
+  assert.equal(state.qwen21Steps, 40);
+  assert.equal(controls['#stepsInput'].value, 40);
+  assert.equal(toggle['aria-checked'], 'true');
+  assert.equal(controls['#qwen21QualityLabel'].textContent, 'Quality');
+  state.view = 'edit';
+  vm.runInContext('renderQwen21Sampling();', context);
+  assert.equal(controls['#qwen21SamplingPanel'].previousElementSibling, controls['#editAspectControl']);
+  assert.equal(state.qwen21Steps, 40);
+  toggle.click();
+  assert.equal(state.qwen21Steps, 25);
+  assert.equal(saved, 2);
+});

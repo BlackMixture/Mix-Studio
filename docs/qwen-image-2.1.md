@@ -1,6 +1,6 @@
 # Qwen Image 2.1
 
-Choose **Qwen Image 2.1** in Create’s Image model control or the Edit model picker. Krea 2 remains the default. Qwen uses the official ComfyUI workflow, with Balanced (25 steps) and Quality (40 steps) sampling. The older Qwen Edit 2511 Lightning LoRA is not compatible with 2.1 and is not loaded for it. Masks, Expand, regional, depth, and camera tools remain with their existing models.
+Choose **Qwen Image 2.1** in Create’s Image model control or the Edit model picker. Krea 2 remains the default. Qwen uses the official ComfyUI workflow, with a Balance/Quality toggle alongside the generation settings. Balance uses 25 steps; Quality uses 40 steps. The older Qwen Edit 2511 Lightning LoRA is not compatible with 2.1 and is not loaded for it. Masks, Expand, regional, depth, and camera tools remain with their existing models.
 
 Generation setup downloads three official [ComfyUI model files](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) without requiring a Hugging Face token. Preferences → Models → Qwen Image 2.1 offers automatic hardware selection or an explicit choice:
 
