@@ -66,11 +66,11 @@ test('Image and Video model settings use compact single-open disclosure lists', 
   const pane = html.match(/id="settingsPaneVideo"([\s\S]*?)<section class="settings-pane" id="settingsPaneDefaults"/)?.[1] || '';
   const imageSections = imagePane.match(/<details class="settings-group settings-model-disclosure" data-settings-model-section="[^"]+">/g) || [];
   const sections = pane.match(/<details class="settings-group settings-model-disclosure" data-settings-model-section="[^"]+">/g) || [];
-  assert.equal(imageSections.length, 4);
+  assert.equal(imageSections.length, 5);
   assert.equal(sections.length, 7);
-  assert.equal((imagePane.match(/<summary class="settings-model-summary">/g) || []).length, 4);
+  assert.equal((imagePane.match(/<summary class="settings-model-summary">/g) || []).length, 5);
   assert.equal((pane.match(/<summary class="settings-model-summary">/g) || []).length, 7);
-  assert.equal((imagePane.match(/<div class="settings-model-body">/g) || []).length, 4);
+  assert.equal((imagePane.match(/<div class="settings-model-body">/g) || []).length, 5);
   assert.equal((pane.match(/<div class="settings-model-body">/g) || []).length, 7);
   assert.doesNotMatch(imagePane + pane, /data-settings-model-section="[^"]+"[^>]*\sopen(?:\s|>)/);
   for (const name of ['Krea 2', 'Flux 2 Klein Edit', 'Qwen Image Edit', 'SeedVR2 Upscale']) {

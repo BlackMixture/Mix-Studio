@@ -18,7 +18,7 @@ const DEFAULT_GALLERY_PREVIEW_FRAME_RATE = 24;
 const GALLERY_PREVIEW_RESOLUTION_OPTIONS = Object.freeze([480, 640, 720]);
 const GALLERY_PREVIEW_FRAME_RATE_OPTIONS = Object.freeze([12, 18, 24, 30]);
 const MAX_NATIVE_GALLERY_PREVIEW_EDGE = 1440;
-const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
+const DEFAULT_EDIT_ENGINE_ORDER = Object.freeze(['klein9', 'klein4', 'qwen21', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
 // Keep every local workspace write bound to the profile that loaded this
 // document. Profile transitions update localStorage before the old page exits,
 // so consulting the live key during pagehide can otherwise copy one profile's
@@ -36,6 +36,9 @@ let firstRunTutorialGalleryLoaded = false;
 const state = {
   view: 'create',            // create | video | edit | gallery
   createMode: 'image',       // image | region | smart | video (nested under Create)
+  imageEngine: 'krea2',
+  qwen21Steps: 25,
+  qwen21Loras: [],
   enhance: true,
   aspect: '1:1',
   mp: 1,
@@ -354,11 +357,11 @@ const QWEN_ANGLE_DISTANCES = [
   { id: 'wide shot', label: 'Wide' },
 ];
 const EDIT_ENGINES = [...DEFAULT_EDIT_ENGINE_ORDER];
-const OUTPAINT_EDIT_ENGINES = new Set(EDIT_ENGINES.filter((engine) => engine !== 'krea2remix'));
+const OUTPAINT_EDIT_ENGINES = new Set(EDIT_ENGINES.filter((engine) => !['krea2remix', 'qwen21'].includes(engine)));
 const ANGLE_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen']);
 const SEQUENTIAL_EDIT_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix']);
 const EDIT_MASK_ENGINES = new Set(['klein4', 'klein9', 'qwen', 'krea2']);
-const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref', krea2remix: 'edit.krea2remix' };
+const EDIT_FEATURES = { klein4: 'edit.klein4', klein9: 'edit.klein9', qwen21: 'edit.qwen21', qwen: 'edit.qwen', krea2: 'edit.krea2', krea2ref: 'edit.krea2ref', krea2remix: 'edit.krea2remix' };
 const VIDEO_FEATURES = { ltx: 'video.ltx', ltx25: 'video.ltx25', h3: 'video.h3', 'ltx-edit': 'video.ltxEdit', eros: 'video.eros', wan: 'video.wan', 'wan-animate2': 'video.wanAnimate2', scail: 'video.scail' };
 const VIDEO_ENGINES = Object.keys(VIDEO_FEATURES);
 
@@ -3297,6 +3300,7 @@ function saveForm() {
       kleinOutpaintConsistencyLoras: state.kleinOutpaintConsistencyLoras,
       editAutomaticLoras: state.editAutomaticLoras,
       loraTriggers: state.loraTriggers,
+      imageEngine: state.imageEngine, qwen21Steps: state.qwen21Steps, qwen21Loras: state.qwen21Loras,
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       vidH3Mode: state.vidH3Mode,
       vidH3MatchSource: state.vidH3MatchSource,
@@ -3422,6 +3426,9 @@ function loadForm() {
     state.aspect = f.aspect || '1:1';
     state.mp = f.mp || 1;
     state.editAspectOverride = f.editAspectOverride === true;
+    state.imageEngine = f.imageEngine === 'qwen21' ? 'qwen21' : 'krea2';
+    state.qwen21Steps = Number(f.qwen21Steps) === 40 ? 40 : 25;
+    state.qwen21Loras = Array.isArray(f.qwen21Loras) ? f.qwen21Loras : [];
     state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
     state.editWidth = round32(Number(f.editWidth) || 1024);
     state.editHeight = round32(Number(f.editHeight) || 1024);
@@ -6238,6 +6245,8 @@ function updateVideoPanels() {
         : 'Describe your image…'));
   $('#vidAttachRow').hidden = !isVideo;
   $('#vidModelPanel').hidden = !isVideo;
+  $('#imageModelPanel').hidden = state.view !== 'create' || state.createMode !== 'image';
+  renderImageModel();
   $('#editModelPanel').hidden = !isEdit;
   if (!isEdit) setEditModelExpanded(false);
   $('#vidOptsPanel').hidden = !isVideo;
@@ -6289,6 +6298,7 @@ function updateVideoPanels() {
   renderH3AttentionBackend();
   renderWanAnimate2Strengths();
   renderVideoStepControl();
+  renderQwen21Sampling();
   $('#videoAdvancedNote').hidden = !isVideo;
   $('#videoAdvancedNote').textContent = wanAnimate2InputFirst
     ? 'The official workflow uses a fixed six-step LCM schedule. Identity and Motion both default to 1.00.'
@@ -8177,7 +8187,7 @@ function detachKrea2RawTurboLora() {
 function renderKrea2Mode() {
   const button = $('#kreaTurboToggle');
   if (!button) return;
-  const visible = state.view === 'create' && state.createMode === 'image';
+  const visible = state.view === 'create' && state.createMode === 'image' && state.imageEngine !== 'qwen21';
   $('#kreaModelPanel').hidden = !visible;
   button.hidden = !visible;
   if (!visible) {
@@ -8591,7 +8601,7 @@ function renderCreateImageGuide() {
   const chip = $('#createImageGuideChip');
   const toggle = $('#createImageGuideToggle');
   const toolbar = $('#createPromptTools');
-  const visible = state.view === 'create' && state.createMode === 'image';
+  const visible = state.view === 'create' && state.createMode === 'image' && state.imageEngine !== 'qwen21';
   if (section.previousElementSibling !== toolbar) toolbar.after(section);
   section.hidden = !visible;
   chip.hidden = !visible;
@@ -10229,7 +10239,7 @@ function syncEditAreaChrome() {
   const outpaint = editOutpaintActive();
   const localizedActive = active && !outpaint;
   const preserve = $('#editComposite');
-  preserve.hidden = localizedActive || (!outpaint && (kreaEdit || kreaRef || kreaRemix));
+  preserve.hidden = usingQwen21() || localizedActive || (!outpaint && (kreaEdit || kreaRef || kreaRemix));
   const preserveLabel = outpaint ? 'Keep the source at native resolution and blend the generated border' : 'Preserve unchanged areas';
   preserve.setAttribute('aria-label', preserveLabel);
   preserve.title = preserveLabel;
@@ -14358,7 +14368,7 @@ for (const id of ['#wInput', '#hInput']) {
 function curLoras() {
   if (state.view === 'video') return state.videoLoras;
   if (state.view === 'edit') return state.editLoras;
-  return state.loras;
+  return state.view === 'create' && state.createMode === 'image' && state.imageEngine === 'qwen21' ? state.qwen21Loras : state.loras;
 }
 
 function loraCategory(name) {
@@ -14366,6 +14376,7 @@ function loraCategory(name) {
 }
 
 function compatibleLoraCategories() {
+  if (usingQwen21()) return ['qwen21', 'unknown'];
   if (state.view === 'video') return state.vidEngine === 'h3'
     ? ['h3', 'unknown']
     : ['video', 'unknown'];
@@ -14573,6 +14584,7 @@ function renderVideoQualityControl() {
 }
 
 function negativePromptAvailability(view = state.view) {
+  if (usingQwen21()) return { supported: false, hint: 'Qwen Image 2.1 uses CFG 1' };
   if (view === 'create') return { supported: true, hint: 'Most effective above CFG 1' };
   if (view === 'video') {
     if (state.vidEngine === 'wan' && videoQualityActive()) {
@@ -14761,7 +14773,7 @@ function normalizeGenerationTuning(mode, value) {
 function captureGenerationTuning(mode = generationTuningMode()) {
   if (!mode) return;
   const previous = state.generationTuning[mode] || defaultGenerationTuning(mode);
-  const qwenLocked = mode === 'edit' && state.editEngine === 'qwen';
+  const qwenLocked = usingQwen21() || (mode === 'edit' && state.editEngine === 'qwen');
   state.generationTuning[mode] = normalizeGenerationTuning(mode, {
     steps: mode === 'video'
       ? (h3TurboActive() ? normalizedH3TurboSteps() : normalizedH3Steps())
@@ -14789,6 +14801,7 @@ function restoreGenerationTuning(mode = generationTuningMode()) {
   renderNegativePromptControl();
   renderVideoStepControl();
   renderKrea2Mode();
+  if (usingQwen21()) renderQwen21Sampling();
 }
 
 function resetGenerationControl(control) {
@@ -15510,6 +15523,7 @@ function editEngineLabel(engine) {
   if (engine === 'krea2') return 'Krea2';
   if (engine === 'krea2ref') return 'Krea 2 Edit';
   if (engine === 'krea2remix') return 'Krea 2 Remix';
+  if (engine === 'qwen21') return 'Qwen Image 2.1';
   if (engine === 'qwen') return 'Qwen Edit';
   if (engine === 'klein9') return 'Flux Klein 9B';
   return 'Flux Klein 4B';
@@ -15568,6 +15582,7 @@ const VIDEO_ENGINE_TASKS = {
 };
 
 const EDIT_ENGINE_TASKS = {
+  qwen21: { task: 'Detailed Image Editing', model: 'Qwen Image 2.1', copy: 'Follow detailed instructions and combine references. Research and evaluation only.' },
   klein9: {
     task: 'Precision Editing', model: 'Flux Klein 9B',
     copy: 'Best detail retention and instruction fit.',
@@ -18176,6 +18191,64 @@ window.addEventListener('resize', () => {
   if (!directorAutoFit) directorPixelsPerSecond = directorComfortableTimelineScale();
   renderDirector();
   requestAnimationFrame(directorRevealSelection);
+});
+
+$('#installQwen21Models').addEventListener('click', async () => {
+  if (!state.profileIsOwner) return;
+  try {
+    await openInitialSetup({ components: ['qwen21'], initialStep: 'install' });
+    await startSetupDependencies(['qwen21']);
+  } catch (error) { toast(error.message, true); }
+});
+
+function usingQwen21() {
+  return state.view === 'edit' ? state.editEngine === 'qwen21'
+    : state.view === 'create' && state.createMode === 'image' && state.imageEngine === 'qwen21';
+}
+function setImageModelExpanded(open) {
+  $('#imageModelPanel').classList.toggle('expanded', open);
+  $('#imageModelBody').inert = !open;
+  $('#imageModelBody').setAttribute('aria-hidden', String(!open));
+  $('#imageModelHeader').setAttribute('aria-expanded', String(open));
+}
+function renderImageModel() {
+  const qwen = state.imageEngine === 'qwen21';
+  $('#imageEngineSelected').textContent = qwen ? 'Qwen Image 2.1' : 'Krea 2';
+  $('#imageEngineNote').textContent = qwen ? 'Text + detailed compositions' : 'Fast image generation';
+  $$('#imageEngineRow button').forEach((button) => {
+    const active = button.dataset.imageEngine === state.imageEngine;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+function renderQwen21Sampling() {
+  const active = usingQwen21();
+  $('#qwen21SamplingPanel').hidden = !active;
+  $('#qwen21Sampling').value = String(state.qwen21Steps);
+  $('#qwen21Sampling').modelSelectSync?.();
+  if (active) {
+    $('#stepsInput').value = state.qwen21Steps;
+    $('#cfgInput').value = 1;
+    $('#stepsInput').disabled = true;
+    $('#cfgInput').disabled = true;
+  }
+}
+$('#imageModelHeader').addEventListener('click', () => setImageModelExpanded($('#imageModelHeader').getAttribute('aria-expanded') !== 'true'));
+$('#imageModelPanel').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') { setImageModelExpanded(false); $('#imageModelHeader').focus(); }
+});
+$$('#imageEngineRow button').forEach((button) => button.addEventListener('click', () => {
+  if (!usingQwen21()) captureGenerationTuning();
+  state.imageEngine = button.dataset.imageEngine;
+  setImageModelExpanded(false);
+  restoreGenerationTuning();
+  updateVideoPanels();
+  $('#imageModelHeader').focus({ preventScroll: true });
+  saveForm();
+}));
+$('#qwen21Sampling').addEventListener('change', () => {
+  state.qwen21Steps = Number($('#qwen21Sampling').value) === 40 ? 40 : 25;
+  renderQwen21Sampling(); saveForm();
 });
 
 function setEditModelExpanded(open) {
@@ -21540,7 +21613,7 @@ $('#generateBtn').addEventListener('click', async () => {
   const sequenceSteps = mode === 'edit' && !outpaintActive && state.editSequential && SEQUENTIAL_EDIT_ENGINES.has(state.editEngine)
     ? sequentialEditPrompts(prompt)
     : [];
-  const strengthHuntLoras = (mode === 'edit' ? state.editLoras : state.loras)
+  const strengthHuntLoras = curLoras()
     .filter((lora) => lora && lora.name && lora.on && lora.strengthHunt);
   const strengthHuntAxes = strengthHuntLoras.map((lora) => ({
     lora,
@@ -21570,10 +21643,10 @@ $('#generateBtn').addEventListener('click', async () => {
     if (!confirmed) return;
   }
   if (!(await ensureGenerationSetup())) return;
-  const createImageGuide = mode === 't2i' && state.createMode === 'image' && state.createGuideActive
+  const createImageGuide = mode === 't2i' && state.createMode === 'image' && state.imageEngine !== 'qwen21' && state.createGuideActive
     ? state.createRef : null;
   const createImageGuideName = createImageGuide ? createGuideInput(createImageGuide).name : undefined;
-  const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.krea2Turbo === false;
+  const krea2Raw = mode === 't2i' && state.createMode === 'image' && state.imageEngine !== 'qwen21' && state.krea2Turbo === false;
   const seedRaw = $('#seedInput').value.trim();
   const nativePreserve = mode === 'edit'
     && !$('#editComposite').hidden
@@ -21601,6 +21674,7 @@ $('#generateBtn').addEventListener('click', async () => {
   };
   const body = {
     mode,
+    imageEngine: mode === 't2i' && state.createMode === 'image' ? state.imageEngine : 'krea2',
     editEngine: mode === 'edit' ? state.editEngine : undefined,
     qwenQuality: mode === 'edit' && state.editEngine === 'qwen' ? state.qwenQuality : undefined,
     krea2RefBoost: mode === 'edit'
@@ -21633,13 +21707,13 @@ $('#generateBtn').addEventListener('click', async () => {
       profile: upscaleFinish.profile,
       noise: upscaleFinish.noise,
     } : undefined,
-    steps: Number($('#stepsInput').value) || (mode === 't2i' && state.krea2Turbo ? 8 : 12),
-    cfg: Number($('#cfgInput').value) || 1,
+    steps: usingQwen21() ? state.qwen21Steps : Number($('#stepsInput').value) || (mode === 't2i' && state.krea2Turbo ? 8 : 12),
+    cfg: usingQwen21() ? 1 : Number($('#cfgInput').value) || 1,
     batch: sequenceSteps.length ? 1 : (strengthHuntCount ? 1 : (Number($('#batchInput').value) || 1)),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)
       : (createImageGuide && state.createGuideMode === 'image' ? createDenoiseFromInfluence() : 1),
     seed: seedRaw === '' ? undefined : Number(seedRaw),
-    loras: mode === 'edit' ? state.editLoras : state.loras,
+    loras: curLoras(),
     refImages: mode === 'edit'
       ? state.refs.slice(0, editReferenceCapacity()).filter(Boolean).map((r) => r.name)
       : [],
@@ -23023,12 +23097,14 @@ function videoEngineLabel(engine, info) {
 function galleryImageModelLabel(item) {
   if (!item) return '';
   if (item.mode === 'edit') return editEngineLabel(item.editEngine || 'klein4');
+  if (item.mode === 't2i' && item.imageEngine === 'qwen21') return 'Qwen Image 2.1';
   if (item.mode === 't2i') return item.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo';
   return '';
 }
 
 function galleryCardModelLabel(item) {
   if (!item) return '';
+  if (item.mode === 't2i' && item.imageEngine === 'qwen21') return 'Qwen Image 2.1';
   if (item.mode === 't2i') return item.krea2Turbo === false ? 'Raw' : 'Turbo';
   return galleryImageModelLabel(item);
 }
@@ -23467,6 +23543,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'editAspectOverride', 'editAspect', 'editMp', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather', 'editOutpaintMaskOffset',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
+  'imageEngine', 'qwen21Steps', 'qwen21Loras',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality', 'krea2RefBoost',
   'prompts', 'promptPresetSelections', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs', 'promptSourceImage', 'promptAssistantUseSource',
   'createRef', 'createImageGuideOpen', 'createGuideMode', 'createGuideActive', 'createMatchSource', 'createMatchNative',
@@ -29144,7 +29221,7 @@ function restoredLoraList(loras) {
 }
 
 function restoredEditEngine(engine) {
-  return ['qwen', 'klein9', 'krea2', 'krea2ref', 'krea2remix'].includes(engine) ? engine : 'klein4';
+  return ['qwen21', 'qwen', 'klein9', 'krea2', 'krea2ref', 'krea2remix'].includes(engine) ? engine : 'klein4';
 }
 
 function restoredEditAspect(width, height) {
@@ -29303,7 +29380,8 @@ async function reuseItem(it, useEnhanced) {
   } else {
     restoreCreateResolution(it.width, it.height);
   }
-  state.loras = restoringEdit ? state.loras : restoredLoraList(it.loras);
+  if (!restoringEdit && it.imageEngine === 'qwen21') state.qwen21Loras = restoredLoraList(it.loras);
+  else state.loras = restoringEdit ? state.loras : restoredLoraList(it.loras);
   state.regions = restoringEdit ? state.regions : restoredRegions;
   if (!restoringEdit) {
     state.createRef = null;
@@ -29331,6 +29409,8 @@ async function reuseItem(it, useEnhanced) {
     state.createUpscaleNoise = ['off', 'low', 'medium'].includes(it.postUpscale?.noise) ? it.postUpscale.noise : 'low';
   }
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
+  if (!restoringEdit) state.imageEngine = it.imageEngine === 'qwen21' ? 'qwen21' : 'krea2';
+  if (it.imageEngine === 'qwen21' || it.editEngine === 'qwen21') state.qwen21Steps = Number(it.steps) === 40 ? 40 : 25;
   if (restoringEdit) {
     switchEditEngine(restoredEditEngine(it.editEngine));
     state.editOutpaint = OUTPAINT_EDIT_ENGINES.has(state.editEngine) && !!it.editOutpaint;
@@ -31685,10 +31765,11 @@ function renderPromptingSummaries() {
   const external = $('#externalPromptAiSummary');
   if (external) {
     const provider = $('#setExternalLlmProvider')?.value || 'local';
-    const localMode = ['local', 'ollama'].includes(provider);
+    const localMode = ['local', 'ollama', 'lmstudio'].includes(provider);
     const providerLabel = {
       local: 'ComfyUI',
       ollama: 'Ollama',
+      lmstudio: 'LM Studio',
       openai: 'OpenAI',
       gemini: 'Gemini',
     }[provider] || provider;
@@ -31853,7 +31934,7 @@ async function refreshLocalPromptAiModels(force = false) {
 
 function renderExternalLlmPreferences() {
   const provider = $('#setExternalLlmProvider').value || 'openai';
-  const mode = ['local', 'ollama'].includes(provider) ? 'local' : 'external';
+  const mode = ['local', 'ollama', 'lmstudio'].includes(provider) ? 'local' : 'external';
   const modeSwitch = $('#promptAiModeSwitch');
   modeSwitch.setAttribute('aria-checked', String(mode === 'external'));
   $('#promptAiModeDescription').textContent = mode === 'local'
@@ -31888,18 +31969,19 @@ function renderExternalLlmPreferences() {
     'promptAiModeSwitch', 'setExternalLlmLocalProvider', 'setExternalLlmExternalProvider',
     'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
     'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl',
-    'setExternalLlmOllamaModel', 'testExternalLlm',
+    'setExternalLlmOllamaModel', 'setExternalLlmLmStudioUrl', 'setExternalLlmLmStudioModel',
+    'testExternalLlm',
   ].forEach((id) => { $('#' + id).disabled = readonly; });
   renderPromptingSummaries();
 }
 
 function applyExternalLlmSettings(settings = {}) {
-  const provider = ['local', 'openai', 'gemini', 'ollama'].includes(settings.externalLlmProvider)
+  const provider = ['local', 'openai', 'gemini', 'ollama', 'lmstudio'].includes(settings.externalLlmProvider)
     ? settings.externalLlmProvider : 'local';
   $('#setExternalLlmProvider').value = provider;
-  $('#setExternalLlmLocalProvider').value = ['local', 'ollama'].includes(settings.externalLlmLocalProvider)
+  $('#setExternalLlmLocalProvider').value = ['local', 'ollama', 'lmstudio'].includes(settings.externalLlmLocalProvider)
     ? settings.externalLlmLocalProvider
-    : (['local', 'ollama'].includes(provider) ? provider : 'local');
+    : (['local', 'ollama', 'lmstudio'].includes(provider) ? provider : 'local');
   $('#setExternalLlmExternalProvider').value = ['openai', 'gemini'].includes(settings.externalLlmExternalProvider)
     ? settings.externalLlmExternalProvider
     : (['openai', 'gemini'].includes(provider) ? provider : 'openai');
@@ -31909,6 +31991,8 @@ function applyExternalLlmSettings(settings = {}) {
   $('#setExternalLlmGeminiModel').value = settings.externalLlmGeminiModel || 'gemini-3.6-flash';
   $('#setExternalLlmOllamaUrl').value = settings.externalLlmOllamaUrl || 'http://127.0.0.1:11434';
   $('#setExternalLlmOllamaModel').value = settings.externalLlmOllamaModel || 'gemma3';
+  $('#setExternalLlmLmStudioUrl').value = settings.externalLlmLmStudioUrl || 'http://127.0.0.1:1234/v1';
+  $('#setExternalLlmLmStudioModel').value = settings.externalLlmLmStudioModel || '';
   externalLlmKeyConfigured = {
     openai: settings.externalLlmOpenAiApiKeyConfigured === true,
     gemini: settings.externalLlmGeminiApiKeyConfigured === true,
@@ -31926,6 +32010,8 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setExternalLlmProvider', 'setExternalLlmLocalProvider', 'setExternalLlmExternalProvider',
   'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
   'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl', 'setExternalLlmOllamaModel',
+  'setExternalLlmLmStudioUrl', 'setExternalLlmLmStudioModel',
+  'setQwen21ModelVariant',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
   'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
   'setKlein4Unet', 'setKlein4Clip', 'setKlein4ConsistencyLora', 'setKlein4ConsistencyTrigger',
@@ -32045,6 +32131,8 @@ function settingsPayload() {
     externalLlmGeminiModel: $('#setExternalLlmGeminiModel').value,
     externalLlmOllamaUrl: $('#setExternalLlmOllamaUrl').value,
     externalLlmOllamaModel: $('#setExternalLlmOllamaModel').value,
+    externalLlmLmStudioUrl: $('#setExternalLlmLmStudioUrl').value,
+    externalLlmLmStudioModel: $('#setExternalLlmLmStudioModel').value,
     localPromptAiClip: $('#setLocalPromptAiClip').value,
     localPromptAiClipType: $('#setLocalPromptAiClipType').value,
     smartPlannerModelOverride: $('#smartPlannerModelOverride').getAttribute('aria-checked') === 'true',
@@ -32072,6 +32160,7 @@ function settingsPayload() {
     klein9ConsistencyLora: $('#setKlein9ConsistencyLora').value,
     klein9ConsistencyTrigger: $('#setKlein9ConsistencyTrigger').value,
     kleinVae: $('#setKleinVae').value,
+    qwen21ModelVariant: $('#setQwen21ModelVariant').value,
     qwenEditUnet: $('#setQeUnet').value,
     qwenEditClip: $('#setQeClip').value,
     qwenEditLora: $('#setQeLora').value,
@@ -36016,6 +36105,10 @@ $('#settingsBtn').addEventListener('click', async () => {
     $('#setKlein9ConsistencyLora').value = s.klein9ConsistencyLora || '';
     $('#setKlein9ConsistencyTrigger').value = s.klein9ConsistencyTrigger || '';
     $('#setKleinVae').value = s.kleinVae || '';
+    $('#setQwen21ModelVariant').value = s.qwen21ModelVariant || 'auto';
+    $('#setQwen21ModelVariant').modelSelectSync?.();
+    $('#setQwen21ModelVariant').disabled = !state.profileIsOwner;
+    $('#installQwen21Models').disabled = !state.profileIsOwner;
     $('#setQeUnet').value = s.qwenEditUnet || '';
     $('#setQeClip').value = s.qwenEditClip || '';
     $('#setQeLora').value = s.qwenEditLora || '';
@@ -36292,7 +36385,7 @@ const SETUP_STEPS = ['connect', 'install', 'finish'];
 const KREA2_MODEL_COMPONENTS = new Set(['image', 'krea2raw', 'regional', 'krea2ref', 'krea2remix', 'krea2outpaint', 'krea2depth', 'krea2style']);
 const SETUP_COMPONENT_CATEGORIES = [
   { id: 'prompting', label: 'Prompt AI', description: 'Local prompt enhancement used before generation', components: ['promptai'] },
-  { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
+  { id: 'image', label: 'Image', description: 'Generation, regional control, guides, and upscaling', components: ['image', 'qwen21', 'krea2raw', 'regional', 'krea2depth', 'krea2style', 'upscale', 'ultimateupscale'] },
   { id: 'edit', label: 'Edit', description: 'Klein, Qwen, Krea editing, masks, and outpainting', components: ['klein4', 'klein9', 'qwen', 'krea2ref', 'krea2remix', 'krea2outpaint', 'editoutpaint', 'smartmask'] },
   { id: 'video', label: 'Video', description: 'MiniMax H3, LTX, Wan, SCAIL, Director, Face ID, and video tools', components: ['h3', 'h3turbo', 'h3turbor2v', 'h3context', 'h3sage', 'h3r2v', 'ltx25', 'ltx25quality', 'video', 'ltxdirector', 'ltxcamera', 'videoedit', 'faceid', 'eros', 'wan', 'wananimate2', 'scail', 'scailinfinity', 'video4k'] },
 ];
@@ -36420,13 +36513,19 @@ function generationSetupComponents() {
     return [...components];
   }
   if (state.view === 'edit') {
-    components.add({ klein4: 'klein4', klein9: 'klein9', qwen: 'qwen', krea2: 'image', krea2ref: 'krea2ref', krea2remix: 'krea2remix' }[state.editEngine] || 'image');
+    components.add({ klein4: 'klein4', klein9: 'klein9', qwen21: 'qwen21', qwen: 'qwen', krea2: 'image', krea2ref: 'krea2ref', krea2remix: 'krea2remix' }[state.editEngine] || 'image');
     if (state.editOutpaint) components.add(state.editEngine === 'krea2'
       ? 'krea2outpaint'
       : (state.editEngine === 'krea2ref' ? 'krea2outpaint' : 'editoutpaint'));
     if (state.editEngine === 'krea2' && hasEditMask()
       && (state.kreaMaskKind === 'smart' || state.kreaMaskTool === 'smart')) components.add('smartmask');
     if (state.editUpscaleEnabled) components.add('upscale');
+    if (state.enhance && ($('#setExternalLlmProvider')?.value || 'local') === 'local') components.add('promptai');
+    return [...components];
+  }
+  if (usingQwen21()) {
+    components.add('qwen21');
+    if (state.createUpscaleEnabled) components.add('upscale');
     if (state.enhance && ($('#setExternalLlmProvider')?.value || 'local') === 'local') components.add('promptai');
     return [...components];
   }
@@ -36461,6 +36560,7 @@ function setupActionForComponents(required) {
   const requiresH3 = components.some((id) => id === 'h3' || id === 'h3r2v' || id === 'h3turbo' || id === 'h3turbor2v' || id === 'h3context');
   const requiresLtx25 = components.some((id) => id === 'ltx25' || id === 'ltx25quality');
   const requiresWanAnimate2 = components.includes('wananimate2');
+  if (components.includes('qwen21') && lastMeta?.qwen21?.supported !== true) return 'update';
   if (requiresH3 && lastMeta?.minimaxH3?.supported !== true) return 'update';
   if (requiresLtx25 && lastMeta?.ltx25?.supported !== true) return 'update';
   if (requiresWanAnimate2 && lastMeta?.wanAnimate2?.supported !== true) return 'update';
@@ -36499,6 +36599,10 @@ async function ensureGenerationSetup() {
     && lastMeta?.ltx25?.supported !== true;
   const wanAnimate2CoreBlocked = required.includes('wananimate2')
     && lastMeta?.wanAnimate2?.supported !== true;
+  if (required.includes('qwen21') && lastMeta?.qwen21?.supported !== true) {
+    await openInitialSetup({ components: required, initialStep: 'connect', message: lastMeta?.qwen21?.reason || 'Update ComfyUI for Qwen Image 2.1, restart it, then check again.' });
+    return false;
+  }
   if (lastMeta?.ok && !missing.length && !nativeInt8Blocked && !krea2CoreBlocked && !h3CoreBlocked && !ltx25CoreBlocked && !wanAnimate2CoreBlocked) return true;
   const setupAction = setupActionForComponents(required);
   saveForm();
@@ -37024,7 +37128,7 @@ function renderInitialSetup() {
     ? (h3CoreBlocked
       ? `Update to ${comfy.minimaxH3?.minimumVersion || '0.30.0'}+ for MiniMax H3`
       : (ltx25CoreBlocked
-      ? 'Native LTX 2.5 support pending'
+      ? 'Update for native LTX 2.5 support'
       : (wanAnimate2CoreBlocked
       ? 'Update for native Wan Animate 2 support'
       : (krea2CoreBlocked
@@ -37541,6 +37645,10 @@ async function runSetupDependencies(requested) {
       : (setupViewStatus.comfy?.dependencyReason || 'Connect an initialized ComfyUI folder first.'), true);
     return false;
   }
+  if (requested.includes('qwen21') && setupViewStatus?.comfy?.qwen21?.supported !== true) {
+    toast(setupViewStatus?.comfy?.qwen21?.reason || 'Update ComfyUI for Qwen Image 2.1, restart it, then check again.', true);
+    return false;
+  }
   if (setupKrea2CoreBlocked(requested)) {
     setSetupStep('connect', { user: true });
     toast(setupKrea2CoreMessage(), true);
@@ -37575,7 +37683,7 @@ async function runSetupDependencies(requested) {
   const result = await api('/api/dependencies/install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       components: filtered,
-      modelVariants: { krea2: setupSelectedKrea2Variant() },
+      modelVariants: { krea2: setupSelectedKrea2Variant(), qwen21: $('#setQwen21ModelVariant').value || 'auto' },
     }),
   });
   setupDependencyState = result.install;

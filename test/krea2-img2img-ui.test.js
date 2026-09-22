@@ -78,7 +78,7 @@ test('Create Image uploads, persists, and submits the guide with inverse denoise
   assert.match(app, /function createDenoiseFromInfluence\(influence = state\.createInfluence\)/);
   assert.match(app, /1 - normalized \* 0\.95/);
   assert.match(app, /function pickCreateImageGuide\(\)/);
-  assert.match(app, /const createImageGuide = mode === 't2i' && state\.createMode === 'image' && state\.createGuideActive/);
+  assert.match(app, /const createImageGuide = mode === 't2i' && state\.createMode === 'image' && state\.imageEngine !== 'qwen21' && state\.createGuideActive/);
   assert.match(app, /createPromptFromImageName\(state\.createRef\);[\s\S]{0,120}state\.createGuideActive = false/);
   assert.match(app, /imageName: createImageGuideName/);
   assert.match(app, /createImageGuide && state\.createGuideMode === 'image' \? createDenoiseFromInfluence\(\) : 1/);

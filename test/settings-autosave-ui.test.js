@@ -62,7 +62,7 @@ test('shared external prompt AI preferences autosave without exposing API keys',
   for (const id of [
     'promptAiModeSwitch', 'setExternalLlmProvider', 'setExternalLlmLocalProvider',
     'setExternalLlmExternalProvider', 'setExternalLlmOpenAiApiKey', 'setExternalLlmGeminiApiKey',
-    'setExternalLlmOllamaUrl', 'testExternalLlm',
+    'setExternalLlmOllamaUrl', 'setExternalLlmLmStudioUrl', 'setExternalLlmLmStudioModel', 'testExternalLlm',
   ]) assert.match(html, new RegExp(`id="${id}"`));
   for (const id of ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']) {
     assert.doesNotMatch(html, new RegExp(`id="${id}"`));
@@ -71,6 +71,8 @@ test('shared external prompt AI preferences autosave without exposing API keys',
   assert.match(app, /externalLlmProvider: \$\('#setExternalLlmProvider'\)\.value/);
   assert.match(app, /externalLlmLocalProvider: \$\('#setExternalLlmLocalProvider'\)\.value/);
   assert.match(app, /externalLlmExternalProvider: \$\('#setExternalLlmExternalProvider'\)\.value/);
+  assert.match(app, /externalLlmLmStudioUrl: \$\('#setExternalLlmLmStudioUrl'\)\.value/);
+  assert.match(app, /externalLlmLmStudioModel: \$\('#setExternalLlmLmStudioModel'\)\.value/);
   assert.match(app, /smartPlannerModelOverride: \$\('#smartPlannerModelOverride'\)\.getAttribute\('aria-checked'\) === 'true'/);
   assert.match(app, /scheduleSettingsAutosave\('server', 0\)/);
   assert.match(app, /api\('\/api\/prompt\/provider\/test', \{ method: 'POST' \}\)/);

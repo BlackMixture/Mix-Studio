@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   KREA2_MIN_VERSION,
-  LTX25_SUPPORT_PR_URL,
+  COMFYUI_RELEASES_URL,
   MINIMAX_H3_MIN_VERSION,
   NATIVE_INT8_MIN_VERSION,
   compareVersions,
@@ -116,7 +116,7 @@ test('MiniMax H3 detects the native AV audio schedule by its renamed core node',
 });
 
 test('LTX 2.5 requires the native AV graph contract instead of trusting a version number', () => {
-  assert.match(LTX25_SUPPORT_PR_URL, /ComfyUI\/pull\/15499/);
+  assert.match(COMFYUI_RELEASES_URL, /ComfyUI\/releases/);
   const supported = {
     LTXVDualCFGGuider: {},
     LTXVAddGuide: {},
@@ -138,7 +138,7 @@ test('LTX 2.5 requires the native AV graph contract instead of trusting a versio
   assert.equal(missing.missingClipType, true);
   assert.equal(ltx25Compatibility(null, '0.31.0').supported, null);
   assert.match(ltx25CompatibilityError(missing), /latest stable build/);
-  assert.match(ltx25Compatibility(null, '0.31.0').supportPrUrl, /ComfyUI\/pull\/15499/);
+  assert.match(ltx25Compatibility(null, '0.31.0').updateUrl, /ComfyUI\/releases/);
 });
 
 test('the standalone H3 compatibility check reads system stats and object info', async () => {

@@ -153,6 +153,9 @@ test('Smart planning survives slow local models and transient browser connection
   assert.match(app, /Connection interrupted while Smart continues on the generation computer/);
   assert.match(app, /async function resumeSmartPlanRequest\(/);
   assert.match(app, /loadSmartRuns\(true\)[\s\S]{0,120}resumeSmartPlanRequest\(\)/);
+  assert.match(server, /promptDeadline: \{[\s\S]{0,180}runningTimeoutMs: 30 \* 60_000,[\s\S]{0,120}maxRunningMs: 90 \* 60_000/);
+  assert.match(server, /job\.lastActivityAt = Date\.now\(\)/);
+  assert.match(server, /const SMART_PLAN_ACTIVE_TTL_MS = 2 \* 60 \* 60_000/);
 });
 
 test('Smart typography and reference controls use the native Mix Studio design language', () => {

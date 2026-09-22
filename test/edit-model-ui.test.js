@@ -45,7 +45,7 @@ test('Edit choices lead with models and keep outcomes as supporting context', ()
     assert.match(html, new RegExp(`data-engine="${engine}"[^>]*data-task-label="${taskPattern}"[^>]*data-model-label="${modelPattern}"[^>]*><b>${modelPattern}</b><small>${taskPattern}</small>`));
   }
   const modelRow = html.slice(html.indexOf('id="editEngineRow"'), html.indexOf('id="editEngineInfoBtn"'));
-  assert.deepEqual([...modelRow.matchAll(/data-engine="([^"]+)"/g)].map((match) => match[1]), ['klein9', 'klein4', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
+  assert.deepEqual([...modelRow.matchAll(/data-engine="([^"]+)"/g)].map((match) => match[1]), ['klein9', 'klein4', 'qwen21', 'qwen', 'krea2ref', 'krea2remix', 'krea2']);
   assert.match(app, /editEngine: 'klein9'[\s\S]*editEngineOrder: \[\.\.\.DEFAULT_EDIT_ENGINE_ORDER\][\s\S]*editEngineDefault: 'klein9'/);
   assert.match(app, /qwen: \{[\s\S]*copy: 'Combine references and create multi-angle image sets\.'/);
   assert.match(app, /krea2: \{[\s\S]*task: 'Inpaint \+ Outpaint'[\s\S]*copy: 'Inpaint selected areas or outpaint beyond the frame\.'/);

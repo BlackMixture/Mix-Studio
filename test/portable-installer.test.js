@@ -104,7 +104,7 @@ test('README presents the product positioning and credits while contribution det
   const contributing = fs.readFileSync(path.join(root, 'CONTRIBUTING.md'), 'utf8');
   assert.match(readme, /Mix Studio is a local web interface that builds and submits ComfyUI API graphs/);
   assert.match(readme, /image generation, regional prompting, image editing, video generation, motion transfer, and upscaling/);
-  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image Edit, MiniMax H3, LTX 2\.3, LTX 2\.5, Wan 2\.2, 10Eros, and SCAIL 2/);
+  assert.match(readme, /Krea 2, Flux 2 Klein, Qwen Image 2\.1, Qwen Image Edit, MiniMax H3, LTX 2\.3, LTX 2\.5, Wan 2\.2, 10Eros, and SCAIL 2/);
   assert.match(readme, /## Acknowledgments & Attribution/);
   assert.match(readme, /\[Contributing\]\(CONTRIBUTING\.md\)/);
   assert.match(contributing, /## Contribute a workflow/);

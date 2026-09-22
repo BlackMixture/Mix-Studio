@@ -500,7 +500,7 @@ test('Director keeps mobile storyboard text focused while the software keyboard 
 });
 
 test('Video model cards are centered and Director uses a neutral selected treatment', () => {
-  assert.match(css, /\.video-choice-grid :is\(\.chip\[data-engine\], \.video-model-option\)\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center/);
+  assert.match(css, /\.video-choice-grid :is\(\.chip\[data-engine\], \.chip\[data-image-engine\], \.video-model-option\)\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center/);
   assert.match(css, /\.video-choice-grid \.video-model-option\s*\{[^}]*border-color:\s*var\(--line\);[^}]*background:\s*rgba\(255,255,255,\.025\)/);
   assert.match(css, /\.director-model-options \.video-model-option\.active\s*\{[^}]*border-color:\s*rgba\(226,232,255,\.3\);[^}]*box-shadow:\s*none/);
 });

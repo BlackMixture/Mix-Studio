@@ -11,13 +11,16 @@ const {
   externalLlmRequest,
   externalLlmStructuredRequest,
   geminiResponseJsonSchema,
+  lmStudioChatUrl,
   normalizeExternalLlmSettings,
+  normalizeLmStudioUrl,
   normalizeOllamaUrl,
   ollamaChatUrl,
   outputText,
 } = require('../lib/external-llm');
 
 const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const externalLlmSource = fs.readFileSync(path.join(__dirname, '..', 'lib', 'external-llm.js'), 'utf8');
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -71,6 +74,15 @@ test('Ollama URL handling accepts HTTP endpoints without embedded credentials', 
   assert.equal(ollamaChatUrl('https://host.example/ollama/api'), 'https://host.example/ollama/api/chat');
   assert.throws(() => normalizeOllamaUrl('file:///tmp/ollama'), /HTTP or HTTPS/);
   assert.throws(() => normalizeOllamaUrl('http://user:secret@localhost:11434'), /credentials/);
+});
+
+test('LM Studio URL handling targets its OpenAI-compatible chat endpoint', () => {
+  assert.equal(normalizeLmStudioUrl('http://localhost:1234/v1/'), 'http://localhost:1234/v1');
+  assert.equal(lmStudioChatUrl('http://localhost:1234'), 'http://localhost:1234/v1/chat/completions');
+  assert.equal(lmStudioChatUrl('http://localhost:1234/v1'), 'http://localhost:1234/v1/chat/completions');
+  assert.equal(lmStudioChatUrl('https://host.example/v1/chat/completions'), 'https://host.example/v1/chat/completions');
+  assert.throws(() => normalizeLmStudioUrl('file:///tmp/lmstudio'), /HTTP or HTTPS/);
+  assert.throws(() => normalizeLmStudioUrl('http://user:secret@localhost:1234/v1'), /credentials/);
 });
 
 test('provider config selects the active model and keeps keys server-side', () => {
@@ -168,6 +180,41 @@ test('Ollama adapter uses native non-streaming chat and optional vision input', 
   assert.equal(request.body.messages[1].images.length, 1);
 });
 
+test('LM Studio adapter uses OpenAI-compatible chat, vision, and structured output', async () => {
+  let request;
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['title'],
+    properties: { title: { type: 'string' } },
+  };
+  const result = await externalLlmStructuredRequest({
+    provider: 'lmstudio',
+    model: 'qwen3-vl-local',
+    baseUrl: 'http://127.0.0.1:1234/v1',
+    instruction: 'Return a complete production plan.',
+    userInput: 'A lion crosses a flooded city.',
+    image: { data: Buffer.from('image-bytes'), mimeType: 'image/png' },
+    schema,
+    schemaName: 'production_plan',
+    maxTokens: 8192,
+    fetchImpl: async (url, init) => {
+      request = { url, init, body: JSON.parse(init.body) };
+      return jsonResponse({ choices: [{ message: { role: 'assistant', content: '{"title":"Lion plan"}' } }] });
+    },
+  });
+  assert.deepEqual(result, { title: 'Lion plan' });
+  assert.equal(request.url, 'http://127.0.0.1:1234/v1/chat/completions');
+  assert.equal(request.init.headers.Authorization, undefined);
+  assert.equal(request.body.stream, false);
+  assert.equal(request.body.max_tokens, 8192);
+  assert.equal(request.body.messages[0].role, 'system');
+  assert.equal(request.body.messages[1].content[1].type, 'image_url');
+  assert.match(request.body.messages[1].content[1].image_url.url, /^data:image\/png;base64,/);
+  assert.deepEqual(request.body.response_format, {
+    type: 'json_schema',
+    json_schema: { name: 'production_plan', strict: true, schema },
+  });
+});
+
 test('external adapters preserve ordered multiple vision images for every provider', async () => {
   const first = { data: Buffer.from('first-image'), mimeType: 'image/jpeg' };
   const second = { data: Buffer.from('second-image'), mimeType: 'image/webp' };
@@ -179,7 +226,7 @@ test('external adapters preserve ordered multiple vision images for every provid
     await externalLlmRequest({
       provider,
       model: `${provider}-test`,
-      apiKey: provider === 'ollama' ? '' : 'test-key',
+      apiKey: ['ollama', 'lmstudio'].includes(provider) ? '' : 'test-key',
       baseUrl: 'http://127.0.0.1:11434',
       instruction: 'Return one prompt.',
       userInput: 'Compare both references.',
@@ -266,16 +313,17 @@ test('structured requests use each provider native JSON schema mode and parse th
     properties: { title: { type: 'string' } },
   };
   const bodies = {};
-  for (const provider of ['openai', 'gemini', 'ollama']) {
+  for (const provider of ['openai', 'gemini', 'ollama', 'lmstudio']) {
     const result = await externalLlmStructuredRequest({
-      provider, model: `${provider}-test`, apiKey: provider === 'ollama' ? '' : 'test-key',
+      provider, model: `${provider}-test`, apiKey: ['ollama', 'lmstudio'].includes(provider) ? '' : 'test-key',
       baseUrl: 'http://127.0.0.1:11434', instruction: 'Plan.', userInput: 'A film.',
       schema, schemaName: 'production_plan',
       fetchImpl: async (_url, init) => {
         bodies[provider] = JSON.parse(init.body);
         if (provider === 'openai') return jsonResponse({ output_text: '{"title":"OpenAI plan"}' });
         if (provider === 'gemini') return jsonResponse({ candidates: [{ content: { parts: [{ text: '{"title":"Gemini plan"}' }] } }] });
-        return jsonResponse({ message: { content: '```json\n{"title":"Ollama plan"}\n```' } });
+        if (provider === 'ollama') return jsonResponse({ message: { content: '```json\n{"title":"Ollama plan"}\n```' } });
+        return jsonResponse({ choices: [{ message: { content: '{"title":"LM Studio plan"}' } }] });
       },
     });
     assert.match(result.title, /plan$/);
@@ -286,6 +334,9 @@ test('structured requests use each provider native JSON schema mode and parse th
   assert.equal(bodies.gemini.generationConfig.responseMimeType, 'application/json');
   assert.deepEqual(bodies.gemini.generationConfig.responseJsonSchema, schema);
   assert.deepEqual(bodies.ollama.format, schema);
+  assert.deepEqual(bodies.lmstudio.response_format, {
+    type: 'json_schema', json_schema: { name: 'production_plan', strict: true, schema },
+  });
 });
 
 test('Gemini structured output removes unsupported JSON Schema keywords recursively', async () => {
@@ -418,12 +469,13 @@ test('external generation enhancement is visible while Ollama runs before ComfyU
   assert.match(queueBlock, /ok: true,[\s\S]*preparing,[\s\S]*running,/);
 });
 
-test('external Smart planning keeps its full output budget and a long local-model timeout', () => {
+test('external Smart planning keeps its full output budget and gives local API models a longer timeout', () => {
   const smartBlock = serverSource.slice(
     serverSource.indexOf('async function requestSmartPlan'),
     serverSource.indexOf('const smartPlanRequests = new Map'),
   );
-  assert.match(smartBlock, /externalLlmStructuredRequest\(\{[\s\S]*maxTokens: 8192,[\s\S]*timeoutMs: 10 \* 60_000,/);
+  assert.match(smartBlock, /externalLlmStructuredRequest\(\{[\s\S]*maxTokens: 8192,[\s\S]*\['ollama', 'lmstudio'\]\.includes\(provider\.provider\) \? 45 \* 60_000 : 10 \* 60_000,/);
+  assert.match(externalLlmSource, /const timeoutCeilingMs = \['ollama', 'lmstudio'\]\.includes\(provider\) \? 90 \* 60_000 : 15 \* 60_000/);
 });
 
 test('server preserves ordered H3 first and last frames for external and local prompt vision', () => {

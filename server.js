@@ -149,6 +149,7 @@ const {
   externalLlmRequest,
   externalLlmStructuredRequest,
   normalizeExternalLlmSettings,
+  normalizeLmStudioUrl,
   normalizeOllamaUrl,
   parseStructuredText,
 } = require('./lib/external-llm');
@@ -212,6 +213,7 @@ const {
   publicUploadedAsset,
 } = require('./lib/uploaded-assets');
 const { normalizeEditSequence, supportsSequentialEdit } = require('./lib/edit-sequence');
+const { buildQwen21Graph, QWEN21_CLASSES, qwen21Compatibility, recommendedQwen21Variant } = require('./lib/qwen21-workflows');
 const { normalizeQwenEditQuality, qwenEditPreset } = require('./lib/qwen-edit');
 const { normalizeEditAngle, supportsEditAngles, editAnglePrompt } = require('./lib/edit-angle');
 const {
@@ -532,6 +534,10 @@ const DEFAULT_SETTINGS = {
   klein9ConsistencyLora: 'f2k_9B_lcs_consist_20260415.safetensors',
   klein9ConsistencyTrigger: 'restore image details',
   kleinVae: 'flux2-vae.safetensors',
+  qwen21ModelVariant: 'auto',
+  qwen21Unet: 'qwen_image_2.1_int8_convrot.safetensors',
+  qwen21Clip: 'qwen3vl_8b_w4a8.safetensors',
+  qwen21Vae: 'qwen_image_2.1_vae_bf16.safetensors',
   qwenEditUnet: 'qwen_image_edit_2511_bf16.safetensors',
   qwenEditClip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
   qwenEditLora: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
@@ -594,6 +600,8 @@ const DEFAULT_SETTINGS = {
   externalLlmGeminiModel: EXTERNAL_LLM_DEFAULTS.externalLlmGeminiModel,
   externalLlmOllamaUrl: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaUrl,
   externalLlmOllamaModel: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaModel,
+  externalLlmLmStudioUrl: EXTERNAL_LLM_DEFAULTS.externalLlmLmStudioUrl,
+  externalLlmLmStudioModel: EXTERNAL_LLM_DEFAULTS.externalLlmLmStudioModel,
   externalLlmImageRevise: true,
   externalLlmImageEnhance: true,
   externalLlmVideoRevise: true,
@@ -1400,7 +1408,7 @@ async function waitForStartedComfy(timeoutMs = 5 * 60_000, expectedBasePath = ''
 
 function trackJob(pid, job) {
   const now = Date.now();
-  jobs.set(pid, Object.assign({ enqueuedAt: now, startedAt: null }, job));
+  jobs.set(pid, Object.assign({ enqueuedAt: now, startedAt: null, lastActivityAt: now }, job));
 }
 
 function jobBaseTime(job) {
@@ -1683,6 +1691,12 @@ function configuredModelsStatus(info) {
       vae: modelStatus(info, 'VAELoader', 'vae_name', settings.kleinVae),
       consistencyLora: modelStatus(info, 'LoraLoaderModelOnly', 'lora_name', settings.klein9ConsistencyLora, loraList),
     },
+    qwen21: {
+      label: 'Qwen Image 2.1',
+      unet: diffusionModelStatus(info, settings.qwen21Unet),
+      clip: modelStatus(info, 'CLIPLoader', 'clip_name', settings.qwen21Clip),
+      vae: modelStatus(info, 'VAELoader', 'vae_name', settings.qwen21Vae),
+    },
     qwen: {
       label: 'Qwen Edit',
       unet: diffusionModelStatus(info, settings.qwenEditUnet),
@@ -1827,6 +1841,7 @@ const DEPENDENCY_NODE_GROUP_COMPONENTS = Object.freeze({
     scailinfinity: ['scailinfinity'],
     faceid: ['faceid'],
     klein: ['klein4', 'klein9'],
+    qwen21: ['qwen21'],
     qwenedit: ['qwen'],
     krea2inpaint: ['image'],
     krea2depth: ['krea2depth'],
@@ -1839,6 +1854,7 @@ const DEPENDENCY_MODEL_GROUP_COMPONENTS = Object.freeze({
   krea2IdentityEdit: ['krea2ref', 'krea2outpaint'],
   klein4: ['klein4'],
   klein9: ['klein9'],
+  qwen21: ['qwen21'],
   qwen: ['qwen'],
   upscale: ['upscale'],
   ltx: ['video'],
@@ -2255,6 +2271,7 @@ function handleWsMessage(msg) {
   const pid = d.prompt_id;
   if (msg.type === 'progress' && pid && jobs.has(pid)) {
     const job = jobs.get(pid);
+    job.lastActivityAt = Date.now();
     const phase = progressDetailsForJob(job, d.node ?? null, d.value, d.max);
     broadcast('progress', {
       jobId: pid,
@@ -2267,6 +2284,7 @@ function handleWsMessage(msg) {
     });
   } else if (msg.type === 'executing' && pid && jobs.has(pid)) {
     const job = jobs.get(pid);
+    job.lastActivityAt = Date.now();
     activeWsPromptId = d.node === null ? '' : pid;
     if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();
     if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
@@ -2450,7 +2468,8 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
       file: fname,
       name: settings.smartFilenames ? smartGenerationName(job.params.prompt, `Strength Hunt ${index + 1}`) : undefined,
       mode: job.params.mode,
-      krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
+      imageEngine: job.params.mode === 't2i' ? (job.params.imageEngine || 'krea2') : undefined,
+      krea2Turbo: job.params.mode === 't2i' && job.params.imageEngine !== 'qwen21' ? job.params.krea2Turbo !== false : undefined,
       imageGuideMode: job.params.mode === 't2i' && job.params.imageName ? job.params.imageGuideMode : undefined,
       depthStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'depth' ? job.params.depthStrength : undefined,
       styleStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'style' ? job.params.styleStrength : undefined,
@@ -2501,8 +2520,8 @@ async function completeStrengthHuntJob(pid, job, outputFiles, durationMs, textOu
     });
   }
   const model = job.params.mode === 'edit'
-    ? ({ qwen: 'Qwen Edit', klein9: 'Flux Klein 9B', krea2: 'Krea 2', krea2ref: 'Krea 2 Edit', krea2remix: 'Krea 2 Remix' }[job.params.editEngine] || 'Flux Klein 4B')
-    : (job.params.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo');
+    ? ({ qwen21: 'Qwen Image 2.1', qwen: 'Qwen Edit', klein9: 'Flux Klein 9B', krea2: 'Krea 2', krea2ref: 'Krea 2 Edit', krea2remix: 'Krea 2 Remix' }[job.params.editEngine] || 'Flux Klein 4B')
+    : (job.params.imageEngine === 'qwen21' ? 'Qwen Image 2.1' : (job.params.krea2Turbo === false ? 'Krea 2 Raw' : 'Krea 2 Turbo'));
   const documentationInfo = {
     columns: plan.columns,
     rows: plan.rows,
@@ -3032,7 +3051,8 @@ async function completeJob(pid) {
         ? smartGenerationName(job.params.prompt, job.params.mode === 'edit' ? 'Untitled edit' : 'Untitled image')
         : undefined,
       mode: job.params.mode,
-      krea2Turbo: job.params.mode === 't2i' ? job.params.krea2Turbo !== false : undefined,
+      imageEngine: job.params.mode === 't2i' ? (job.params.imageEngine || 'krea2') : undefined,
+      krea2Turbo: job.params.mode === 't2i' && job.params.imageEngine !== 'qwen21' ? job.params.krea2Turbo !== false : undefined,
       krea2RawTurboLora: job.params.mode === 't2i' ? job.params.krea2RawTurboLora : undefined,
       imageGuideMode: job.params.mode === 't2i' && job.params.imageName ? job.params.imageGuideMode : undefined,
       depthStrength: job.params.mode === 't2i' && job.params.imageGuideMode === 'depth' ? job.params.depthStrength : undefined,
@@ -3708,7 +3728,7 @@ function localPromptAiLoaderInputs(override = null) {
   return { clip_name: promptAi.model, type: promptAi.type, device: 'default' };
 }
 
-function armPromptJobDeadline(pid, reject, label) {
+function armPromptJobDeadline(pid, reject, label, options = {}) {
   let stopped = false;
   let timer = null;
   const check = () => {
@@ -3718,9 +3738,20 @@ function armPromptJobDeadline(pid, reject, label) {
     // Prompt tools share ComfyUI with long video generations. Waiting in the
     // queue is not a failed prompt; only apply the short deadline once the
     // text graph actually starts executing.
-    const base = job.startedAt || job.enqueuedAt || Date.now();
-    const limit = job.startedAt ? 5 * 60_000 : 20 * 60_000;
-    const remaining = limit - (Date.now() - base);
+    const now = Date.now();
+    const running = Number(job.startedAt) > 0;
+    const queueTimeoutMs = Math.max(60_000, Number(options.queueTimeoutMs) || 20 * 60_000);
+    const runningTimeoutMs = Math.max(60_000, Number(options.runningTimeoutMs) || 5 * 60_000);
+    const maxRunningMs = Math.max(runningTimeoutMs, Number(options.maxRunningMs) || runningTimeoutMs);
+    const activityAt = Math.max(
+      Number(job.startedAt) || 0,
+      Number(job.lastActivityAt) || 0,
+      Number(job.enqueuedAt) || now,
+    );
+    const inactivityRemaining = (running ? runningTimeoutMs : queueTimeoutMs)
+      - (now - (running ? activityAt : (job.enqueuedAt || now)));
+    const hardRemaining = running ? maxRunningMs - (now - job.startedAt) : inactivityRemaining;
+    const remaining = Math.min(inactivityRemaining, hardRemaining);
     if (remaining <= 0) {
       stopped = true;
       const timedOutJob = jobs.get(pid);
@@ -3729,7 +3760,9 @@ function armPromptJobDeadline(pid, reject, label) {
         timedOutJob.cancelMessage = `${label} timed out`;
       }
       jobs.delete(pid);
-      const error = new Error(`${label} timed out`);
+      const error = new Error(running && inactivityRemaining <= 0
+        ? `${label} stopped reporting progress and timed out`
+        : `${label} timed out`);
       error.code = 'prompt_timeout';
       reject(error);
       stopComfyPrompt(pid).catch(() => { /* best-effort orphan cleanup */ });
@@ -3999,7 +4032,7 @@ function queueTextEnhancement(parts, seed, statusText, maxTokens = 512, options 
           reject(e);
         },
       });
-      clearDeadline = armPromptJobDeadline(pid, reject, 'Prompt enhance');
+      clearDeadline = armPromptJobDeadline(pid, reject, 'Prompt enhance', options.promptDeadline);
       if (typeof options.onPromptJobQueued === 'function') options.onPromptJobQueued(pid);
       ensureWs();
       if (statusText && options.broadcastStatus !== false) {
@@ -4034,6 +4067,11 @@ async function requestSmartPlan(provider, prompt, references, profileId, onProgr
         clipConfig: { model: provider.model, type: provider.type },
         imageNames: references.map((reference) => reference.name),
         requireVision: references.length > 0,
+        promptDeadline: {
+          queueTimeoutMs: 45 * 60_000,
+          runningTimeoutMs: 30 * 60_000,
+          maxRunningMs: 90 * 60_000,
+        },
         broadcastStatus: false,
         onPromptJobQueued: (promptId) => onProgress(pass, pass === 'repair'
           ? 'The completion pass is queued in ComfyUI…'
@@ -4095,12 +4133,13 @@ async function requestSmartPlan(provider, prompt, references, profileId, onProgr
     schema: SMART_PLAN_SCHEMA,
     schemaName: 'mix_studio_smart_plan',
     maxTokens: 8192,
-    timeoutMs: 10 * 60_000,
+    timeoutMs: ['ollama', 'lmstudio'].includes(provider.provider) ? 45 * 60_000 : 10 * 60_000,
   });
 }
 
 const smartPlanRequests = new Map();
 const SMART_PLAN_REQUEST_TTL_MS = 30 * 60_000;
+const SMART_PLAN_ACTIVE_TTL_MS = 2 * 60 * 60_000;
 
 function smartPlanRequestId(value) {
   const id = String(value || '').trim();
@@ -4111,7 +4150,8 @@ function pruneSmartPlanRequests(now = Date.now()) {
   for (const [id, request] of smartPlanRequests) {
     const settled = request.status === 'complete' || request.status === 'failed';
     const age = now - Number(request.updatedAt || request.createdAt || now);
-    if ((settled && age > SMART_PLAN_REQUEST_TTL_MS) || age > 2 * SMART_PLAN_REQUEST_TTL_MS) {
+    if (!settled && request.promptId && jobs.has(request.promptId)) continue;
+    if ((settled && age > SMART_PLAN_REQUEST_TTL_MS) || (!settled && age > SMART_PLAN_ACTIVE_TTL_MS)) {
       smartPlanRequests.delete(id);
     }
   }
@@ -4949,6 +4989,7 @@ async function buildEdit(p, refNames) {
 }
 
 async function buildGenerationGraph(p, refNames) {
+  if ((p.mode === 'edit' ? p.editEngine : p.imageEngine) === 'qwen21') return filterInputs(buildQwen21Graph(p, settings, refNames));
   if (p.mode === 'edit') {
     if (p.editOutpaint && p.editEngine === 'qwen') return buildEditQwenOutpaint(p, refNames);
     if (p.editOutpaint && (p.editEngine === 'klein4' || p.editEngine === 'klein9')) return buildEditKleinOutpaint(p, refNames);
@@ -6713,6 +6754,7 @@ const REQUIRED_CLASSES = {
     'ReferenceLatent', 'GetImageSize', 'EmptyFlux2LatentImage', 'Flux2Scheduler', 'CFGGuider',
     'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage',
     'ImageToMask', 'GrowMask', 'SetLatentNoiseMask', 'ImageCompositeMasked'],
+  qwen21: QWEN21_CLASSES,
   qwenedit: ['UNETLoader', 'CLIPLoader', 'VAELoader', 'LoraLoaderModelOnly', 'ModelSamplingAuraFlow',
     'CFGNorm', 'FluxKontextImageScale', 'TextEncodeQwenImageEditPlus', 'FluxKontextMultiReferenceLatentMethod',
     'VAEEncode', 'KSampler', 'VAEDecode', 'SaveImage', 'ImageToMask', 'GrowMask',
@@ -6803,7 +6845,7 @@ function dependencyComponentInfo(id, fit = null) {
   };
 }
 
-function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = null, wanAnimate2Core = null, sageAttention = null, slaAttention = null) {
+function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = null, wanAnimate2Core = null, sageAttention = null, slaAttention = null, qwen21Core = null) {
   const component = dependencyComponentInfo(id, fit);
   if (fit?.blocked) {
     component.installable = false;
@@ -6824,6 +6866,9 @@ function setupDependencyComponentInfo(id, fit, krea2Core, h3Core, ltx25Core = nu
     component.installable = false;
     component.blockedBy = 'comfy-core';
     component.installReason = ltx25CompatibilityError(ltx25Core);
+  }
+  if (id === 'qwen21' && qwen21Core && qwen21Core.supported !== true) {
+    component.installable = false; component.blockedBy = 'comfy-core'; component.installReason = qwen21Core.reason;
   }
   if (id === 'wananimate2' && wanAnimate2Core && wanAnimate2Core.supported !== true) {
     component.installable = false;
@@ -6981,8 +7026,8 @@ async function setupStatusPayload(forceCompatibility = false) {
     quickFit: combinedHardwareFit(quickSetup.components, guidance),
     hardware: hardwareProfile,
     capabilities: { video: configuredVideoEngineCapabilities(hardwareProfile, settings) },
-    modelRecommendations: { krea2: krea2Recommendation },
-    modelVariants: { krea2: settings.krea2ModelVariant },
+    modelRecommendations: { krea2: krea2Recommendation, qwen21: recommendedQwen21Variant(hardwareProfile) },
+    modelVariants: { krea2: settings.krea2ModelVariant, qwen21: settings.qwen21ModelVariant },
     vramProfile: {
       configured: settings.vramProfile,
       recommended: vramRecommendation,
@@ -7002,12 +7047,14 @@ async function setupStatusPayload(forceCompatibility = false) {
       wanAnimate2Core,
       sageAttention,
       slaAttention,
+      qwen21Compatibility(info),
     )),
     comfy: {
       connected,
       connectionError,
       lifecycle: comfyLifecycle.status(),
       version: compatibility.version,
+      qwen21: qwen21Compatibility(info),
       krea2: krea2Core,
       minimaxH3: h3Core,
       ltx25: ltx25Core,
@@ -8074,10 +8121,14 @@ async function handleApiRequest(req, res, url) {
       try { body.externalLlmOllamaUrl = normalizeOllamaUrl(body.externalLlmOllamaUrl); }
       catch (error) { return json(res, 400, { error: String(error.message || error) }); }
     }
+    if (typeof body.externalLlmLmStudioUrl === 'string' && body.externalLlmLmStudioUrl.trim()) {
+      try { body.externalLlmLmStudioUrl = normalizeLmStudioUrl(body.externalLlmLmStudioUrl); }
+      catch (error) { return json(res, 400, { error: String(error.message || error) }); }
+    }
     const changesExternalLlm = body.clearExternalLlmOpenAiApiKey === true
       || body.clearExternalLlmGeminiApiKey === true
       || ['externalLlmOpenAiApiKey', 'externalLlmGeminiApiKey'].some((key) => typeof body[key] === 'string' && body[key].trim())
-      || ['externalLlmProvider', 'externalLlmLocalProvider', 'externalLlmExternalProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel']
+      || ['externalLlmProvider', 'externalLlmLocalProvider', 'externalLlmExternalProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel', 'externalLlmLmStudioUrl', 'externalLlmLmStudioModel']
         .some((key) => typeof body[key] === 'string' && body[key].trim() && body[key].trim() !== String(settings[key] || ''))
       || ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
         .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
@@ -8086,6 +8137,7 @@ async function handleApiRequest(req, res, url) {
       || (typeof body.smartPlannerModelOverride === 'boolean'
         && body.smartPlannerModelOverride !== settings.smartPlannerModelOverride);
     const changesH3ModelVariant = [
+      'qwen21ModelVariant', 'qwen21Unet', 'qwen21Clip', 'qwen21Vae',
       'h3FrameModelVariant', 'h3ReferenceModelVariant', 'h3Unet', 'h3RefUnet',
       'h3Bf16Unet', 'h3Bf16RefUnet', 'h3DynTimeRefUnet', 'h3DynTimeRefHqUnet',
       'h3TurboLora', 'h3RefTurboLora', 'h3Clip', 'h3VideoVae', 'h3AudioVae',
@@ -8249,6 +8301,7 @@ async function handleApiRequest(req, res, url) {
             wanAnimate2Core,
             sageAttention,
             slaAttention,
+            qwen21Compatibility(info),
           )),
           missingComponents,
           diagnostics: {
@@ -8287,6 +8340,7 @@ async function handleApiRequest(req, res, url) {
             reference: h3TurboCompatibility(settings, 'reference'),
           },
         }),
+        qwen21: qwen21Compatibility(info),
         ltx25: ltx25Core,
         wanAnimate2: wanAnimate2Core,
         features: settings.features,
@@ -8546,7 +8600,7 @@ async function handleApiRequest(req, res, url) {
       ? body.modelVariants.krea2
       : '';
     const krea2Variant = effectiveKrea2Variant(requestedKrea2Variant, settings);
-    const modelVariants = { krea2: krea2Variant };
+    const modelVariants = { krea2: krea2Variant, qwen21: body.modelVariants?.qwen21 || settings.qwen21ModelVariant };
     const components = [...new Set(requested.filter((id) => Object.prototype.hasOwnProperty.call(DEPENDENCY_COMPONENTS, id)))];
     if (!components.length) return json(res, 400, { error: 'Choose at least one missing model or node group to install.' });
     const hardwareProfile = setupHardwareProfile(await getSetupHardwareInfo());
@@ -8560,6 +8614,10 @@ async function handleApiRequest(req, res, url) {
         code: 'generation_device_unsupported',
         component: hardwareBlocked.id,
       });
+    }
+    if (components.includes('qwen21')) {
+      const compatibility = qwen21Compatibility(await getObjectInfo(true));
+      if (!compatibility.supported) return json(res, 409, { error: compatibility.reason, code: 'comfy_qwen21_update_required', compatibility });
     }
     const installsKrea2 = components.some((id) => KREA2_DEPENDENCY_COMPONENTS.has(id));
     const installsH3 = components.some((id) => H3_DEPENDENCY_COMPONENTS.has(id));
@@ -8658,6 +8716,7 @@ async function handleApiRequest(req, res, url) {
             availableModelNames,
             availableModelRoots,
             modelVariants,
+            vramGb: hardwareProfile.vramGb,
             gpuVendor: hardwareProfile.gpuVendor,
             platform: process.platform,
             hfToken: settings.hfToken,
@@ -8811,6 +8870,7 @@ async function handleApiRequest(req, res, url) {
 
   if (route === '/api/generate' && req.method === 'POST') {
     const p = await readJsonBody(req);
+    p.imageEngine = p.imageEngine === 'qwen21' ? 'qwen21' : 'krea2';
     p.prompt = String(p.prompt || '').trim();
     p.negativePrompt = normalizeNegativePrompt(p.negativePrompt);
     p.promptTemplate = (p.mode === 'edit' || p.mode === 't2i')
@@ -8871,7 +8931,7 @@ async function handleApiRequest(req, res, url) {
     delete p.lowVramChoice;
     if (p.editOutpaint) Object.assign(p, normalizeOutpaintDimensions(p.width, p.height));
     p.krea2Turbo = p.mode === 'edit' ? true : p.krea2Turbo !== false;
-    p.steps = clampInt(p.steps, 1, 100, p.mode === 't2i' && p.krea2Turbo ? 8 : 12);
+    p.steps = clampInt(p.steps, 1, 100, (p.mode === 'edit' ? p.editEngine : p.imageEngine) === 'qwen21' ? 25 : (p.mode === 't2i' && p.krea2Turbo ? 8 : 12));
     p.cfg = clampNum(p.cfg, 0, 30, 1);
     p.krea2RawTurboLora = p.krea2Turbo || !p.krea2RawTurboLora || typeof p.krea2RawTurboLora !== 'object'
       ? undefined
@@ -8911,10 +8971,19 @@ async function handleApiRequest(req, res, url) {
     p.maskInfluence = maskInfluence(p.maskInfluence);
     p.maskExpand = maskExpand(p.maskExpand);
     if (p.mode === 'edit') {
-      const editEngines = ['qwen', 'klein9', 'krea2', 'krea2ref', 'krea2remix'];
+      const editEngines = ['qwen21', 'qwen', 'klein9', 'krea2', 'krea2ref', 'krea2remix'];
       p.editEngine = editEngines.includes(p.editEngine) ? p.editEngine : 'klein4';
     }
-    const usesKrea2Model = p.mode !== 'edit' || ['krea2', 'krea2ref', 'krea2remix'].includes(p.editEngine);
+    const usesQwen21 = (p.mode === 'edit' ? p.editEngine : p.imageEngine) === 'qwen21';
+    if (usesQwen21) {
+      const compatibility = qwen21Compatibility(await getObjectInfo());
+      if (!compatibility.supported) return json(res, 409, { error: compatibility.reason, code: 'comfy_qwen21_update_required', compatibility });
+      if (p.maskImageName || p.editOutpaint || p.qwenAngle || hasActiveRegions(p.regions) || (p.imageName && p.imageGuideMode !== 'image')) return json(res, 400, { error: 'Qwen Image 2.1 supports whole-image generation and editing. Select Krea 2 for regional or guide tools.' });
+      p.steps = clampInt(p.steps, 1, 100, 25);
+      p.width = Math.round(p.width / 32) * 32; p.height = Math.round(p.height / 32) * 32;
+      p.krea2Turbo = undefined; p.krea2RawTurboLora = undefined; p.composite = false;
+    }
+    const usesKrea2Model = (p.mode !== 'edit' && !usesQwen21) || ['krea2', 'krea2ref', 'krea2remix'].includes(p.editEngine);
     if (usesKrea2Model) {
       const info = await getObjectInfo();
       const coreCompatibility = await getComfyCompatibility();
@@ -8967,7 +9036,7 @@ async function handleApiRequest(req, res, url) {
 
     const refNames = p.mode === 'edit'
       ? (Array.isArray(p.refImages)
-        ? p.refImages.filter(Boolean).slice(0, p.editEngine === 'krea2ref' ? 2 : 3)
+        ? p.refImages.filter(Boolean).slice(0, p.editEngine === 'qwen21' ? 10 : (p.editEngine === 'krea2ref' ? 2 : 3))
         : [])
       : (p.imageName ? [p.imageName] : []);
     if (p.mode !== 'edit') p.editSequence = undefined;
@@ -9012,8 +9081,8 @@ async function handleApiRequest(req, res, url) {
       if (p.qwenAngle && !refNames.length) {
         return json(res, 400, { error: 'Camera variations need a source image in reference slot 1' });
       }
-      if (['qwen', 'krea2ref', 'krea2remix'].includes(p.editEngine) && !refNames.length) {
-        const label = p.editEngine === 'qwen' ? 'Qwen Edit' : (p.editEngine === 'krea2remix' ? 'Krea 2 Remix' : 'Krea 2 Edit');
+      if (['qwen21', 'qwen', 'krea2ref', 'krea2remix'].includes(p.editEngine) && !refNames.length) {
+        const label = p.editEngine === 'qwen21' ? 'Qwen Image 2.1' : p.editEngine === 'qwen' ? 'Qwen Edit' : (p.editEngine === 'krea2remix' ? 'Krea 2 Remix' : 'Krea 2 Edit');
         return json(res, 400, { error: `${label} needs at least one reference image` });
       }
       if (p.editOutpaint && !refNames.length) {
@@ -9042,6 +9111,8 @@ async function handleApiRequest(req, res, url) {
         p.steps = clampInt(p.steps, 8, 12, 10); p.cfg = clampNum(p.cfg, 1, 5, 1); p.denoise = null;
       } else if (p.editEngine === 'krea2remix') {
         p.steps = clampInt(p.steps, 4, 20, 8); p.cfg = 1; p.denoise = null;
+      } else if (p.editEngine === 'qwen21') {
+        p.steps = clampInt(p.steps, 1, 100, 25); p.denoise = null;
       } else if (p.editEngine === 'qwen') {
         p.qwenQuality = normalizeQwenEditQuality(p.qwenQuality);
         const preset = qwenEditPreset(p.qwenQuality);
@@ -9049,7 +9120,7 @@ async function handleApiRequest(req, res, url) {
       } else {
         p.steps = 4; p.cfg = 1; p.denoise = null;
       }
-      if (p.editEngine !== 'qwen' || p.qwenQuality !== 'quality') p.negativePrompt = '';
+      if (p.editEngine !== 'qwen21' && (p.editEngine !== 'qwen' || p.qwenQuality !== 'quality')) p.negativePrompt = '';
       // Pixel compositing needs identical source/output dimensions. A custom
       // output ratio intentionally changes the canvas, so retain the edit
       // itself but skip the incompatible preservation pass.

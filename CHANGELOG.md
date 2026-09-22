@@ -16,6 +16,16 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Validate release files before applying, refuse downgrades and local-work replacement, and preserve recovery metadata/configuration snapshots.
 - Add owner-controlled channel selection and safe update diagnostics; make fresh installers select published stable releases.
 - Prepare draft GitHub Releases after cross-platform checks, leaving publication as an explicit maintainer action.
+### Qwen Image 2.1
+
+- Added model selection to Create and Qwen Image 2.1 whole-image editing, preserving Krea 2 defaults and independent LoRA stacks.
+- Added hardware-aware, token-free downloads of official INT8/W4A8/BF16 variants, native ComfyUI capability checks, and a visible research-license notice.
+- Added animated, keyboard-accessible model settings, 25/40-step sampling presets, and model-aware gallery reuse and metadata.
+
+### Prompt AI
+
+- Added LM Studio as a local Prompt AI source through its OpenAI-compatible chat endpoint, including vision references, structured Smart plans, connection testing, and saved URL/model settings.
+- Let long local Smart plans run independently from the five-minute prompt-polish deadline, extend Ollama and LM Studio planning waits, refresh ComfyUI deadlines from activity, and remain reconnectable for up to two hours while planning continues.
 
 ### Preferences
 
@@ -37,7 +47,7 @@ All shipped changes from v1.2.0 onward are recorded below by release.
 - Added LTX 2.5 as a separate curated video model while preserving LTX 2.3 as the default, with text-to-video, image-to-video, first/last-frame guidance, synchronized audio, user LoRA stacks, RIFE interpolation, and RTX 4K post-processing.
 - Recreated the official 24 fps distilled workflow with Gemma 4 conditioning, dedicated prompt enhancement, separate audio and video VAEs, dual audio/video CFG, the official two-stage sigma schedules, and x2 latent refinement.
 - Added guided installation for all six official model files, native node capability checks, model filename preferences, generation reuse and metadata, and clear NVIDIA INT8 ConvRot hardware guidance.
-- Marked the workflow as Preview while ComfyUI support PR #15499 remains open, and linked setup directly to that PR instead of sending users through a normal-update loop that cannot yet install the new core nodes.
+- Promoted LTX 2.5 from Preview after native support merged into ComfyUI, while retaining graph-capability checks and directing older installations to the current stable releases.
 - Made the Generation Setup install action acknowledge the first click immediately, and added an inline Hugging Face access panel that saves a read token and resumes gated LTX 2.5 downloads without sending users to Preferences.
 
 ### Queue panel

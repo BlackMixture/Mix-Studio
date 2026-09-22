@@ -121,7 +121,7 @@ test('setup and settings expose the low-VRAM choice and persist installer update
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   const installer = fs.readFileSync(path.join(root, 'installer', 'install-dependencies.js'), 'utf8');
   assert.match(html, /INT8 ConvRot · optimized 8-bit/);
-  assert.match(app, /modelVariants: \{ krea2: setupSelectedKrea2Variant\(\) \}/);
+  assert.match(app, /modelVariants: \{ krea2: setupSelectedKrea2Variant\(\), qwen21:/);
   assert.match(app, /krea2_turbo_int8_convrot\.safetensors/);
   assert.doesNotMatch(server, /OTUNetLoaderW8A8/);
   assert.match(server, /result\.settingUpdates/);

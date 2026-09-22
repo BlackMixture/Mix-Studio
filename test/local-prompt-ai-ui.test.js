@@ -43,9 +43,9 @@ test('local Prompt AI requirements are checked before enhanced generations are s
   assert.match(app, /label: 'Prompt AI'[\s\S]{0,140}components: \['promptai'\]/);
 });
 
-test('Smart can select the installed local ComfyUI prompt model without Ollama', () => {
-  assert.match(html, /id="setExternalLlmLocalProvider"[\s\S]*value="local">ComfyUI/);
-  assert.match(app, /\['local', 'openai', 'gemini', 'ollama'\]\.includes\(settings\.externalLlmProvider\)/);
+test('Smart can select ComfyUI, Ollama, or LM Studio as its local prompt source', () => {
+  assert.match(html, /id="setExternalLlmLocalProvider"[\s\S]*value="local">ComfyUI[\s\S]*value="ollama">Ollama[\s\S]*value="lmstudio">LM Studio/);
+  assert.match(app, /\['local', 'openai', 'gemini', 'ollama', 'lmstudio'\]\.includes\(settings\.externalLlmProvider\)/);
   assert.match(server, /function requestSmartPlan\([\s\S]*Building Smart plan with the local model/);
   assert.match(server, /imageNames: references\.map\(\(reference\) => reference\.name\)/);
   assert.match(server, /provider\.provider === 'local'[\s\S]*queueTextEnhancement\(/);
