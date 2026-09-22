@@ -88,7 +88,7 @@ test('Qwen quality toggle updates sampling and follows Create and Edit settings'
     addEventListener(event, handler) { this[event] = handler; },
     after(panel) { panel.previousElementSibling = this; },
   }]));
-  const state = {view: 'create', qwen21Steps: 25};
+  const state = {view: 'create', qwen21Steps: 25, qwen21Cfg: 2.5};
   let saved = 0;
   const context = vm.createContext({state, $: id => controls[id], usingQwen21: () => true, saveForm() { saved++; }});
   const render = source.slice(source.indexOf('function renderQwen21Sampling()'), source.indexOf("$('#imageModelHeader').addEventListener"));
@@ -102,6 +102,8 @@ test('Qwen quality toggle updates sampling and follows Create and Edit settings'
   toggle.click();
   assert.equal(state.qwen21Steps, 40);
   assert.equal(controls['#stepsInput'].value, 40);
+  assert.equal(controls['#cfgInput'].value, 2.5);
+  assert.equal(controls['#cfgInput'].disabled, false);
   assert.equal(toggle['aria-checked'], 'true');
   assert.equal(controls['#qwen21QualityLabel'].textContent, 'Quality');
   state.view = 'edit';
@@ -111,4 +113,44 @@ test('Qwen quality toggle updates sampling and follows Create and Edit settings'
   toggle.click();
   assert.equal(state.qwen21Steps, 25);
   assert.equal(saved, 2);
+});
+
+test('Qwen defaults to 40 steps and honors explicit Balance and guidance', () => {
+  assert.equal(buildQwen21Graph({...params, steps:undefined},settings).sampler.inputs.steps,40);
+  const graph=buildQwen21Graph({...params,steps:25,cfg:2.5,negativePrompt:'extra limbs'},settings);
+  assert.equal(graph.sampler.inputs.steps,25);
+  assert.equal(graph.sampler.inputs.cfg,2.5);
+  assert.equal(graph.text.inputs.negative_prompt,'extra limbs');
+});
+test('Qwen native sizes and model switching preserve independent resolution choices', () => {
+  const source=fs.readFileSync(require.resolve('../public/app.js'),'utf8');
+  const helpers=source.slice(source.indexOf('const QWEN21_NATIVE_MP'),source.indexOf('\nconst ',source.indexOf('function switchImageResolution')));
+  const compute=source.slice(source.indexOf('function computeDims()'),source.indexOf('/* Form state is per profile'));
+  const state={imageEngine:'krea2',createMode:'image',aspect:'1:1',mp:0.75,width:864,height:864,customDims:false,imageResolutions:{}};
+  const context=vm.createContext({state,ASPECTS:[{label:'1:1',ar:1},{label:'16:9',ar:16/9}],round32:v=>Math.round(v/32)*32,h3ResolutionActive:()=>false});
+  vm.runInContext(helpers+'\n'+compute+'\nswitchImageResolution("qwen21",96);',context);
+  assert.equal(state.width,2048);assert.equal(state.height,2048);
+  vm.runInContext('state.aspect="16:9";computeDims();',context);
+  assert.equal(state.width,2752);assert.equal(state.height,1536);
+  vm.runInContext('switchImageResolution("krea2");',context);
+  assert.equal(state.mp,0.75);assert.equal(state.aspect,'1:1');
+  vm.runInContext('switchImageResolution("qwen21",96);',context);
+  assert.equal(state.width,2752);
+  vm.runInContext('switchImageResolution("krea2");delete state.imageResolutions.qwen21;switchImageResolution("qwen21",8);',context);
+  assert.equal(state.mp,1);
+});
+
+test('Qwen guidance edits persist independently and negative prompting stays available', () => {
+  const source=fs.readFileSync(require.resolve('../public/app.js'),'utf8');
+  const controls=Object.fromEntries(['stepsInput','cfgInput','batchInput','seedInput','negativePromptInput'].map(k=>['#'+k,{value:''}]));
+  controls['#cfgInput'].value='3';controls['#negativePromptInput'].value='extra fingers';
+  const state={view:'create',qwen21Cfg:2.5,generationTuning:{create:{steps:12,cfg:1,batch:1}}};
+  const context=vm.createContext({state,$:key=>controls[key],usingQwen21:()=>true,generationTuningMode:()=> 'create',normalizeGenerationTuning:(_,v)=>v});
+  const capture=source.slice(source.indexOf('function captureGenerationTuning('),source.indexOf('function restoreGenerationTuning('));
+  const negative=source.slice(source.indexOf('function negativePromptAvailability('),source.indexOf('function renderNegativePromptControl('));
+  vm.runInContext(capture+negative+'\ncaptureGenerationTuning();globalThis.available=negativePromptAvailability();',context);
+  assert.equal(state.qwen21Cfg,3);
+  assert.equal(state.generationTuning.create.cfg,1);
+  assert.equal(state.generationTuning.create.negativePrompt,'extra fingers');
+  assert.equal(context.available.supported,true);
 });

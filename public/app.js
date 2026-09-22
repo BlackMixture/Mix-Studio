@@ -37,7 +37,9 @@ const state = {
   view: 'create',            // create | video | edit | gallery
   createMode: 'image',       // image | region | smart | video (nested under Create)
   imageEngine: 'krea2',
-  qwen21Steps: 25,
+  qwen21Steps: 40,
+  qwen21Cfg: 2.5,
+  imageResolutions: {},
   qwen21Loras: [],
   enhance: true,
   aspect: '1:1',
@@ -244,6 +246,33 @@ const ASPECTS = [
   { label: '21:9', ar: 21 / 9 },
 ];
 const RESOLUTION_SIZE_OPTIONS = [0.75, 1, 1.75];
+const QWEN21_NATIVE_MP = 2048 * 2048 / 1e6;
+const QWEN21_NATIVE_SIZES = {
+  '1:1': [2048, 2048], '4:3': [2400, 1792], '3:4': [1792, 2400],
+  '3:2': [2528, 1696], '2:3': [1696, 2528],
+  '16:9': [2752, 1536], '9:16': [1536, 2752],
+};
+function qwen21NativeDimensions(aspect) {
+  const size = QWEN21_NATIVE_SIZES[aspect];
+  if (size) return { w: size[0], h: size[1] };
+  const ratio = ASPECTS.find(a => a.label === aspect)?.ar || 1;
+  return { w: round32(Math.sqrt(2048 * 2048 * ratio)), h: round32(Math.sqrt(2048 * 2048 / ratio)) };
+}
+function captureImageResolution() {
+  return { aspect: state.aspect, mp: state.mp, width: state.width, height: state.height, customDims: state.customDims };
+}
+function switchImageResolution(engine, vramGb = 0) {
+  state.imageResolutions ||= {};
+  state.imageResolutions[state.imageEngine] = captureImageResolution();
+  const saved = state.imageResolutions[engine];
+  state.imageEngine = engine;
+  if (saved) Object.assign(state, saved);
+  else if (!state.customDims && !state.createMatchSource) {
+    // Conservative automatic choice; native 2K remains available on all machines.
+    state.mp = engine === 'qwen21' && Number(vramGb) >= 32 ? QWEN21_NATIVE_MP : 1;
+  }
+  computeDims();
+}
 
 function h3ResolutionActive() {
   return state.view === 'video' && state.vidEngine === 'h3';
@@ -3146,6 +3175,7 @@ $('#appRestartBtn').addEventListener('click', async () => {
 function round32(n) { return Math.max(64, Math.round(n / 32) * 32); }
 
 function computeDims() {
+  if (state.mp === QWEN21_NATIVE_MP && (state.createMode !== 'image' || state.imageEngine !== 'qwen21')) state.mp = 1;
   if (h3ResolutionActive()) {
     const dimensions = h3CurrentDimensions();
     state.customDims = false;
@@ -3155,6 +3185,12 @@ function computeDims() {
   }
   if (state.customDims) return;
   const a = ASPECTS.find((x) => x.label === state.aspect) || ASPECTS[0];
+  if (state.imageEngine === 'qwen21' && state.createMode === 'image' && state.mp === QWEN21_NATIVE_MP) {
+    const dims = qwen21NativeDimensions(state.aspect);
+    state.width = dims.w;
+    state.height = dims.h;
+    return;
+  }
   const px = state.mp * 1e6;
   state.width = round32(Math.sqrt(px * a.ar));
   state.height = round32(Math.sqrt(px / a.ar));
@@ -3300,7 +3336,7 @@ function saveForm() {
       kleinOutpaintConsistencyLoras: state.kleinOutpaintConsistencyLoras,
       editAutomaticLoras: state.editAutomaticLoras,
       loraTriggers: state.loraTriggers,
-      imageEngine: state.imageEngine, qwen21Steps: state.qwen21Steps, qwen21Loras: state.qwen21Loras,
+      imageResolutions: state.imageResolutions, imageEngine: state.imageEngine, qwen21Steps: state.qwen21Steps, qwen21Cfg: state.qwen21Cfg, qwen21Loras: state.qwen21Loras,
       editEngine: state.editEngine, vidEngine: state.vidEngine, vidScailMode: state.vidScailMode,
       vidH3Mode: state.vidH3Mode,
       vidH3MatchSource: state.vidH3MatchSource,
@@ -3427,7 +3463,17 @@ function loadForm() {
     state.mp = f.mp || 1;
     state.editAspectOverride = f.editAspectOverride === true;
     state.imageEngine = f.imageEngine === 'qwen21' ? 'qwen21' : 'krea2';
-    state.qwen21Steps = Number(f.qwen21Steps) === 40 ? 40 : 25;
+    state.qwen21Steps = Number(f.qwen21Steps) === 25 ? 25 : 40;
+    state.qwen21Cfg = Number.isFinite(f.qwen21Cfg) ? Math.max(1, Math.min(30, f.qwen21Cfg)) : 2.5;
+    state.imageResolutions = {};
+    for (const engine of ['krea2', 'qwen21']) {
+      const saved = f.imageResolutions?.[engine];
+      if (saved && ASPECTS.some(a => a.label === saved.aspect)
+          && [0.75, 1, 1.75, ...(engine === 'qwen21' ? [QWEN21_NATIVE_MP] : [])].includes(saved.mp)
+          && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+        state.imageResolutions[engine] = { aspect: saved.aspect, mp: saved.mp, width: round32(saved.width), height: round32(saved.height), customDims: saved.customDims === true };
+      }
+    }
     state.qwen21Loras = Array.isArray(f.qwen21Loras) ? f.qwen21Loras : [];
     state.editAspect = ASPECTS.some((a) => a.label === f.editAspect) ? f.editAspect : '1:1';
     state.editWidth = round32(Number(f.editWidth) || 1024);
@@ -8407,6 +8453,7 @@ function derivedAspectLabel(width, height) {
 }
 
 function createSizeLabel(megapixels = state.mp) {
+  if (Number(megapixels) === QWEN21_NATIVE_MP) return '2K';
   return Number(megapixels) === 0.75 ? 'S' : (Number(megapixels) === 1.75 ? 'L' : 'M');
 }
 
@@ -8455,6 +8502,16 @@ function resolutionPresetForDimensions(width, height) {
 function restoreCreateResolution(width, height) {
   const actualWidth = Math.max(64, Math.round(Number(width) || 1024));
   const actualHeight = Math.max(64, Math.round(Number(height) || 1024));
+  if (state.imageEngine === 'qwen21') {
+    const aspect = ASPECTS.find(a => {
+      const size = qwen21NativeDimensions(a.label);
+      return size.w === actualWidth && size.h === actualHeight;
+    });
+    if (aspect) {
+      Object.assign(state, { aspect: aspect.label, mp: QWEN21_NATIVE_MP, width: actualWidth, height: actualHeight, customDims: false });
+      return { aspect: aspect.label, megapixels: QWEN21_NATIVE_MP, width: actualWidth, height: actualHeight };
+    }
+  }
   const preset = resolutionPresetForDimensions(actualWidth, actualHeight);
   if (preset) {
     state.aspect = preset.aspect;
@@ -13830,7 +13887,9 @@ function renderDims() {
   }
   $$('#sizeSeg button').forEach((b) => {
     const fixedCanvasSize = !b.hasAttribute('data-h3-xl') && Number(b.dataset.mp) === 1.75;
-    b.hidden = h3FixedTurboCanvas ? !fixedCanvasSize : (b.hasAttribute('data-h3-xl') && !h3Resolution);
+    b.hidden = b.hasAttribute('data-qwen-native')
+      ? !(state.createMode === 'image' && state.imageEngine === 'qwen21')
+      : h3FixedTurboCanvas ? !fixedCanvasSize : (b.hasAttribute('data-h3-xl') && !h3Resolution);
     const selected = h3FixedTurboCanvas
       ? fixedCanvasSize
       : h3Resolution
@@ -13840,7 +13899,7 @@ function renderDims() {
     b.classList.toggle('active', selected);
     b.setAttribute('aria-pressed', String(selected));
     b.disabled = false;
-    b.title = h3FixedTurboCanvas ? 'LightX2V v1.0 four-step 768p requires this L canvas.' : '';
+    b.title = b.hasAttribute('data-qwen-native') ? 'Native 2K · more detail, more memory' : h3FixedTurboCanvas ? 'LightX2V v1.0 four-step 768p requires this L canvas.' : '';
   });
   syncRegionStageAspect();
   renderRegionResolutionPicker();
@@ -14334,7 +14393,7 @@ $$('#sizeSeg button').forEach((b) => b.addEventListener('click', async () => {
     state.vidH3Xl = false;
     state.mp = Number(b.dataset.mp);
   }
-  const keepImageMatch = !h3ResolutionActive() && state.createMatchSource && !!state.createRef;
+  const keepImageMatch = !b.hasAttribute('data-qwen-native') && !h3ResolutionActive() && state.createMatchSource && !!state.createRef;
   if (keepImageMatch) {
     applyCreateMatchedDimensions();
   } else {
@@ -14584,7 +14643,7 @@ function renderVideoQualityControl() {
 }
 
 function negativePromptAvailability(view = state.view) {
-  if (usingQwen21()) return { supported: false, hint: 'Qwen Image 2.1 uses CFG 1' };
+  if (usingQwen21()) return { supported: true, hint: 'Effective above CFG 1; use to describe unwanted details' };
   if (view === 'create') return { supported: true, hint: 'Most effective above CFG 1' };
   if (view === 'video') {
     if (state.vidEngine === 'wan' && videoQualityActive()) {
@@ -14773,6 +14832,7 @@ function normalizeGenerationTuning(mode, value) {
 function captureGenerationTuning(mode = generationTuningMode()) {
   if (!mode) return;
   const previous = state.generationTuning[mode] || defaultGenerationTuning(mode);
+  if (usingQwen21() && $('#cfgInput').value !== '') state.qwen21Cfg = Math.max(1, Math.min(30, Number($('#cfgInput').value) || 1));
   const qwenLocked = usingQwen21() || (mode === 'edit' && state.editEngine === 'qwen');
   state.generationTuning[mode] = normalizeGenerationTuning(mode, {
     steps: mode === 'video'
@@ -14821,7 +14881,8 @@ function resetGenerationControl(control) {
       state.vidH3Steps = 20;
       control.value = 20;
     }
-  } else if (key === 'seed') control.value = defaults.seed;
+  } else if (usingQwen21() && key === 'cfg') control.value = 2.5;
+  else if (key === 'seed') control.value = defaults.seed;
   else if (Object.prototype.hasOwnProperty.call(defaults, key)) control.value = defaults[key];
   if (key === 'denoise') $('#denoiseVal').textContent = Number(control.value).toFixed(2);
   captureGenerationTuning(mode);
@@ -18233,18 +18294,33 @@ function renderQwen21Sampling() {
   $('#qwen21QualitySummary').textContent = quality ? 'Qwen 2.1 · more refinement' : 'Qwen 2.1 · faster';
   if (active) {
     $('#stepsInput').value = state.qwen21Steps;
-    $('#cfgInput').value = 1;
+    $('#cfgInput').value = state.qwen21Cfg;
     $('#stepsInput').disabled = true;
-    $('#cfgInput').disabled = true;
+    $('#cfgInput').disabled = false;
+    $('#cfgInput').title = 'Qwen guidance · 2–3 recommended; 1 disables negative guidance';
   }
 }
 $('#imageModelHeader').addEventListener('click', () => setImageModelExpanded($('#imageModelHeader').getAttribute('aria-expanded') !== 'true'));
 $('#imageModelPanel').addEventListener('keydown', (event) => {
   if (event.key === 'Escape') { setImageModelExpanded(false); $('#imageModelHeader').focus(); }
 });
-$$('#imageEngineRow button').forEach((button) => button.addEventListener('click', () => {
+let imageEngineSelection = 0;
+$$('#imageEngineRow button').forEach((button) => button.addEventListener('click', async () => {
+  const selection = ++imageEngineSelection;
+  const originalView = state.view;
+  const originalMode = state.createMode;
+  const engine = button.dataset.imageEngine;
+  if (engine === state.imageEngine) { setImageModelExpanded(false); return; }
+  let vramGb = setupViewStatus?.hardware?.vramGb || 0;
+  if (engine === 'qwen21' && !state.imageResolutions?.qwen21 && !vramGb) {
+    const info = await api('/api/setup/status').catch(() => null);
+    vramGb = info?.hardware?.vramGb || 0;
+  }
+  if (selection !== imageEngineSelection || state.view !== originalView || state.createMode !== originalMode) return;
   if (!usingQwen21()) captureGenerationTuning();
-  state.imageEngine = button.dataset.imageEngine;
+  switchImageResolution(engine, vramGb);
+  renderAspects();
+  renderDims();
   setImageModelExpanded(false);
   restoreGenerationTuning();
   updateVideoPanels();
@@ -21713,7 +21789,7 @@ $('#generateBtn').addEventListener('click', async () => {
       noise: upscaleFinish.noise,
     } : undefined,
     steps: usingQwen21() ? state.qwen21Steps : Number($('#stepsInput').value) || (mode === 't2i' && state.krea2Turbo ? 8 : 12),
-    cfg: usingQwen21() ? 1 : Number($('#cfgInput').value) || 1,
+    cfg: usingQwen21() ? state.qwen21Cfg : Number($('#cfgInput').value) || 1,
     batch: sequenceSteps.length ? 1 : (strengthHuntCount ? 1 : (Number($('#batchInput').value) || 1)),
     denoise: mode === 'edit' ? Number($('#denoiseInput').value)
       : (createImageGuide && state.createGuideMode === 'image' ? createDenoiseFromInfluence() : 1),
@@ -23548,7 +23624,7 @@ const DESKTOP_INPUT_STATE_KEYS = [
   'editAspectOverride', 'editAspect', 'editMp', 'editWidth', 'editHeight', 'editOutpaint', 'editOutpaintPosition', 'editOutpaintOffsetX', 'editOutpaintOffsetY', 'editOutpaintScale', 'editOutpaintFeather', 'editOutpaintMaskOffset',
   'editUpscaleEnabled', 'editUpscaleResolution', 'editUpscaleProfile', 'editUpscaleNoise', 'editUpscaleExpanded', 'editSequential',
   'createUpscaleEnabled', 'createUpscaleResolution', 'createUpscaleProfile', 'createUpscaleNoise', 'createUpscaleExpanded',
-  'imageEngine', 'qwen21Steps', 'qwen21Loras',
+  'imageEngine', 'qwen21Steps', 'qwen21Cfg', 'qwen21Loras', 'imageResolutions',
   'qwenAngles', 'qwenAnglesMode', 'qwenAngleElevations', 'qwenAngleDistances', 'qwenQuality', 'krea2RefBoost',
   'prompts', 'promptPresetSelections', 'loras', 'videoLoras', 'editLoras', 'editLorasByEngine', 'editEngine', 'refs', 'promptSourceImage', 'promptAssistantUseSource',
   'createRef', 'createImageGuideOpen', 'createGuideMode', 'createGuideActive', 'createMatchSource', 'createMatchNative',
@@ -29415,7 +29491,10 @@ async function reuseItem(it, useEnhanced) {
   }
   state.activeRegionId = state.regions[0] ? state.regions[0].id : null;
   if (!restoringEdit) state.imageEngine = it.imageEngine === 'qwen21' ? 'qwen21' : 'krea2';
-  if (it.imageEngine === 'qwen21' || it.editEngine === 'qwen21') state.qwen21Steps = Number(it.steps) === 40 ? 40 : 25;
+  if (it.imageEngine === 'qwen21' || it.editEngine === 'qwen21') {
+    state.qwen21Steps = Number(it.steps) === 40 ? 40 : 25;
+    state.qwen21Cfg = Number.isFinite(Number(it.cfg)) ? Math.max(1, Math.min(30, Number(it.cfg))) : 1;
+  }
   if (restoringEdit) {
     switchEditEngine(restoredEditEngine(it.editEngine));
     state.editOutpaint = OUTPAINT_EDIT_ENGINES.has(state.editEngine) && !!it.editOutpaint;
