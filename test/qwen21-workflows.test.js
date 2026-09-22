@@ -82,7 +82,7 @@ test('Qwen sampling restoration preserves shared seed and batch without overwrit
   assert.equal(controls['#stepsInput'].value,40);
 });
 test('Qwen quality toggle updates sampling and follows Create and Edit settings', () => {
-  const source = fs.readFileSync(require.resolve('../public/app.js'), 'utf8');
+  const source = fs.readFileSync(require.resolve('../public/app.js'), 'utf8').replace(/\r\n/g, '\n');
   const controls = Object.fromEntries(['qwen21SamplingPanel', 'kreaModelPanel', 'editAspectControl', 'qwen21QualityToggle', 'qwen21QualityLabel', 'qwen21QualitySummary', 'stepsInput', 'cfgInput'].map(id => ['#' + id, {
     setAttribute(key, value) { this[key] = value; },
     addEventListener(event, handler) { this[event] = handler; },
