@@ -4080,7 +4080,7 @@ desktopWorkspaceQuery.addEventListener('change', () => {
   if (lightboxOpen && state.currentItem) {
     const media = state.currentMedia?.type === 'video'
       ? state.currentMedia.id
-      : (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : 'image');
+      : (state.currentMedia?.type === 'splat' ? `splat:${state.currentMedia.id}` : (state.currentMedia?.type === 'composite' ? `composite:${state.currentMedia.id}` : 'image'));
     openLightbox(state.currentItem.id, media);
   }
   document.body.classList.toggle('desktop-focused-result', !!focused);
@@ -28308,6 +28308,7 @@ function preloadLightboxNeighbors(item) {
 function openLightbox(id, mediaSel, options = {}) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
+  resetLibrarySplat();
   handoffGalleryPreviewsToFocusedMedia();
   clearLightboxTap();
   resetLightboxZoom();
@@ -28333,11 +28334,12 @@ function openLightbox(id, mediaSel, options = {}) {
   preloadLightboxGroupThumbnails(generationItems.length > 1 ? generationItems : angleItems, it.id);
   const videos = Array.isArray(it.videos) ? it.videos : [];
   const composites = Array.isArray(it.composites) ? it.composites : [];
+  const selSplat = (it.splats || []).find(scene => 'splat:' + scene.id === mediaSel) || null;
   let sel = mediaSel;
-  if (sel !== 'image' && !videos.some((v) => v.id === sel) && !composites.some((composite) => 'composite:' + composite.id === sel)) sel = 'image';
+  if (!selSplat && sel !== 'image' && !videos.some((v) => v.id === sel) && !composites.some((composite) => 'composite:' + composite.id === sel)) sel = 'image';
   const selVideo = videos.find((v) => v.id === sel) || null;
   const selComposite = composites.find((composite) => 'composite:' + composite.id === sel) || null;
-  state.currentMedia = selVideo ? { type: 'video', id: selVideo.id }
+  state.currentMedia = selSplat ? { type: 'splat', id: selSplat.id } : selVideo ? { type: 'video', id: selVideo.id }
     : (selComposite ? { type: 'composite', id: selComposite.id } : { type: 'image', id: 'image' });
   if (desktopWorkspaceActive()) {
     document.body.classList.add('desktop-focused-result');
@@ -28458,7 +28460,7 @@ function openLightbox(id, mediaSel, options = {}) {
         : '<svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><circle cx="7" cy="8" r="1.5"/><path d="m5 14 4-4 2.5 2 1.5-1.5 2 3.5"/></svg>');
     const mkChip = (label, key, liked = false, kind = 'image') => {
       const b = document.createElement('button');
-      b.className = 'chip' + ((key === 'image' ? (!selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
+      b.className = 'chip' + ((key === 'image' ? (!selSplat && !selVideo && !selComposite) : (selVideo && selVideo.id === key) || (selComposite && 'composite:' + selComposite.id === key)) ? ' active' : '');
       b.innerHTML = `<span class="lb-media-kind-icon" aria-hidden="true">${mediaGlyph(kind)}</span><span>${escapeHtml(label)}</span>${liked ? '<span class="lb-media-like" aria-label="Liked">♥</span>' : ''}`;
       b.addEventListener('click', () => openFocusedGalleryItem(it, key));
       mediaOptions.appendChild(b);
@@ -28469,7 +28471,7 @@ function openLightbox(id, mediaSel, options = {}) {
     (it.splats || []).forEach((scene, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'chip splat-media-chip';
+      button.className = 'chip splat-media-chip' + (selSplat?.id === scene.id ? ' active' : '');
       button.setAttribute('aria-label', 'Open 3D scene: ' + scene.title);
       const thumbnail = document.createElement('img');
       thumbnail.src = '/images/' + (it.upscaled || it.file);
@@ -28591,6 +28593,13 @@ function openLightbox(id, mediaSel, options = {}) {
       toast(`Could not copy ${copy.label.toLowerCase()}`, true);
     }
   }));
+
+  if (selSplat) {
+    mountLibrarySplat(selSplat, it);
+    if (freshOpen) requestAnimationFrame(() => focusIconControlSilently($('#lbClose')));
+    if (focusFromExpandedLibrary) startDesktopSharedFocusTransition(options.focusSource);
+    return;
+  }
 
   const actions = $('#lbActions');
   actions.innerHTML = '';
@@ -28915,6 +28924,7 @@ function openLightbox(id, mediaSel, options = {}) {
   if (focusFromExpandedLibrary) startDesktopSharedFocusTransition(options.focusSource);
 }
 function closeLightbox(fromPop) {
+  resetLibrarySplat();
   const returnFocus = lightboxReturnFocus;
   lightboxReturnFocus = null;
   clearLightboxTap();
