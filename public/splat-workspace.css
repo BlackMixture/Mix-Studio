@@ -44,6 +44,6 @@ body[data-ui-mode="splat"] #desktopStage > .desktop-stage-shell { display:none; 
 #splatExpand[hidden] { display:none!important; }
 .splat-result .splat-result-switch { margin-left:auto; }
 
-.splat-viewer-actions { display:flex; align-items:center; justify-content:flex-end; gap:16px; padding-top:14px; }
-#splatViewerStatus { flex:1; color:var(--muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.splat-viewer-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; padding-top:14px; }
+#splatViewerStatus { flex:1 1 100%; min-width:0; color:var(--muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
 body:has(#splatLibraryViewerSheet.show) #documentationVideoSheet { z-index:80; }
