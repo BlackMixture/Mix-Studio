@@ -185,6 +185,8 @@ async function refreshSplatViewer() {
     else if (record && !record.canRefine) $('#splatViewerStatus').textContent = 'Original training data is needed to refine this scene.';
   } catch (error) { if (id === splatViewerSceneId) $('#splatViewerStatus').textContent = error.message; }
 }
+$('#splatProcess').insertAdjacentHTML('afterbegin', actionIconMarkup('result-process'));
+$('#splatDocument').insertAdjacentHTML('afterbegin', actionIconMarkup('documentation'));
 $('#splatProcess').onclick = () => {
   const id = splatViewerSceneId;
   openActionMenu($('#splatProcess'), [5000, 10000].map(extraSteps => ({
