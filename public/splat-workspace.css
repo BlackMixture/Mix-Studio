@@ -26,8 +26,8 @@ body[data-ui-mode="splat"] #desktopStage > .desktop-stage-shell { display:none; 
 #createTabs:has(#splatModeTab:not([hidden])) { grid-template-columns:repeat(4,minmax(0,1fr)); }
 #createTabs:has(#splatModeTab:not([hidden])) .tab-pill { width:calc((100% - 8px) / 4); }
 
-.splat-library-viewer { width:min(1100px,96vw); max-width:1100px; height:85dvh; display:flex; flex-direction:column; }
-#splatLibraryViewerFrame { width:100%; flex:1; min-height:0; border:0; border-radius:16px; }
+#splatLibraryViewerFrame { position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+#splatLibraryViewerFrame[hidden] { display:none; }
 
 .splat-badge { top:9px; right:9px; left:auto; bottom:auto; display:flex; align-items:center; gap:4px; background:#14151de8; border:1px solid #ffffff24; }
 .splat-badge svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linejoin:round; }
@@ -44,6 +44,4 @@ body[data-ui-mode="splat"] #desktopStage > .desktop-stage-shell { display:none; 
 #splatExpand[hidden] { display:none!important; }
 .splat-result .splat-result-switch { margin-left:auto; }
 
-.splat-viewer-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; padding-top:14px; }
-#splatViewerStatus { flex:1 1 100%; min-width:0; color:var(--muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
-body:has(#splatLibraryViewerSheet.show) #documentationVideoSheet { z-index:80; }
+#splatViewerStatus { display:block; margin-top:8px; color:var(--muted); overflow-wrap:anywhere; }

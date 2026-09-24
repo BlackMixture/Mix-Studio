@@ -36,7 +36,7 @@ On Windows/Blackwell, ComfyUI may report `HostBuffer.read_file_slice failed` dur
 
 ## Viewing and Library
 
-A completed photo-to-3D scene uses its existing orbit-video thumbnail in Library, with a small 3D badge. Tap the card to open the normal gallery viewer, including its generation settings and actions. Select the 3D thumbnail to open the dedicated scene viewer. Closing it returns to the same gallery view. The Create result also has an expand button. Orbit-video and PLY import APIs remain available, but are not exposed on the simplified Create 3D form.
+A completed photo-to-3D scene uses its existing orbit-video thumbnail in Library, with a small 3D badge. Tap the card to open the normal gallery viewer, including its generation settings and actions. Select the 3D thumbnail to interact with the scene in that same preview area. Image, video and 3D selections share the close button, information panel and action bar. The Create result also has an expand button. Orbit-video and PLY import APIs remain available, but are not exposed on the simplified Create 3D form.
 
 The expanded viewer’s Process menu can add 5,000 or 10,000 training steps, up to 50,000 total. It starts from the saved PLY and camera reconstruction, with a new optimizer; this is not an exact optimizer-checkpoint resume. Each result is a separate version and preserves the original. Imported scenes without the source dataset cannot be refined.
 

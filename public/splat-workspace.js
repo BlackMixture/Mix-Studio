@@ -137,34 +137,58 @@ $('#splatShow3D').onclick=()=>{splatView='3d';renderSplatResult();};
 setInterval(()=>{if(splatModeActive() && !document.hidden)void refreshSplats();},3500);
 renderSplatWorkspace();
 
-// Open 3D above the existing gallery viewer so closing returns to its media and settings.
-let splatViewerTrigger = null;
+// The splat is another media selection in the shared gallery preview.
 let splatViewerSceneId = null;
 let splatViewerRefinementId = null;
+function resetLibrarySplat() {
+  $('#splatLibraryViewerFrame').hidden = true;
+  $('#splatLibraryViewerFrame').removeAttribute('src');
+  splatViewerSceneId = null;
+  splatViewerRefinementId = null;
+}
 function openLibrarySplat(scene, item) {
-  splatViewerTrigger = document.activeElement;
+  const source = item || state.items.find(entry => entry.id === scene.sourceItemId || entry.splats?.some(splat => splat.id === scene.id));
+  if (!source) { toast('This scene’s gallery item is unavailable.', true); return; }
+  openLightbox(source.id, 'splat:' + scene.id);
+}
+function mountLibrarySplat(scene, item) {
   $('#splatViewerFrame').removeAttribute('src');
   $('#splatOrbitVideo').pause();
+  $('#lbVideo').pause();
+  $('#lbVideo').hidden = true;
+  $('#lbVideo').removeAttribute('src');
+  $('#lbImg').hidden = true;
+  $('#lbCompareBtn').hidden = true;
   splatViewerSceneId = scene.id;
-  splatViewerRefinementId = null;
-  $('#splatProcess').disabled = true;
-  $('#splatDocument').disabled = true;
-  $('#splatViewerStatus').textContent = '';
+  const frame = $('#splatLibraryViewerFrame');
+  frame.hidden = false;
+  frame.src = '/splats.html?id=' + scene.id;
+  $('#lbMeta').innerHTML = `<b>3D scene:</b> ${escapeHtml(scene.title || '3D')}<br><span id="splatViewerDetails"></span><span id="splatViewerStatus" role="status" aria-live="polite"></span>`;
+  const actions = $('#lbActions');
+  actions.replaceChildren();
+  const make = (id, icon, label, handler, menu = false) => {
+    const button = document.createElement('button');
+    button.id = id;
+    button.className = 'action-btn icon-only result-action-icon' + (menu ? ' menu-trigger' : '');
+    button.type = 'button';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    if (menu) { button.setAttribute('aria-haspopup', 'menu'); button.setAttribute('aria-expanded', 'false'); }
+    button.innerHTML = actionIconMarkup(icon) + `<span class="result-action-label">${label}</span>`;
+    button.onclick = handler;
+    actions.append(button);
+    return button;
+  };
+  make('splatProcess', 'result-process', 'Process', openSplatProcessMenu, true).disabled = true;
+  make('splatMove', 'result-move', 'Move', () => openMoveSheet(item));
+  make('splatDocument', 'documentation', 'Documentation', documentLibrarySplat).disabled = true;
+  make('splatSave', 'result-save', 'Save', () => {
+    const link = document.createElement('a');
+    link.href = `/api/splats/${splatViewerSceneId}/file?download=1`;
+    link.download = 'scene.ply'; link.click();
+  });
   void refreshSplatViewer();
-  $('#splatLibraryViewerTitle').textContent = scene.title;
-  $('#splatLibraryViewerFrame').src = '/splats.html?id=' + scene.id;
-  $('#splatLibraryViewerSheet').classList.add('show'); syncSheetScrollLock();
-  $('#splatLibraryViewerSheet [data-close]').focus({ preventScroll: true });
 }
-new MutationObserver(() => {
-  if (!$('#splatLibraryViewerSheet').classList.contains('show')) {
-    $('#splatLibraryViewerFrame').removeAttribute('src');
-    if (splatViewerTrigger?.isConnected) splatViewerTrigger.focus({ preventScroll: true });
-    splatViewerTrigger = null;
-    splatViewerSceneId = null; splatViewerRefinementId = null;
-    if (splatModeActive()) renderSplatResult();
-  }
-}).observe($('#splatLibraryViewerSheet'), { attributes:true, attributeFilter:['class'] });
 
 async function refreshSplatViewer() {
   const id = splatViewerSceneId;
@@ -174,20 +198,22 @@ async function refreshSplatViewer() {
     if (id !== splatViewerSceneId) return;
     const record = status.records.find(record => record.id === id);
     const refinement = status.records.find(record => record.id === splatViewerRefinementId);
+    $('#splatViewerDetails').textContent = record ? `${Number(record.count || 0).toLocaleString()} splats · ${Number(record.trainingSteps || 0).toLocaleString()} training steps` : '';
     $('#splatProcess').disabled = !record?.canRefine || status.busy;
     $('#splatDocument').disabled = !record?.sourceItemId || !$('#splatLibraryViewerFrame').contentWindow?.mixSplatDocumentation;
     if (refinement?.status === 'complete') {
       splatViewerSceneId = refinement.id; splatViewerRefinementId = null;
       $('#splatLibraryViewerFrame').src = '/splats.html?id=' + refinement.id;
-      $('#splatLibraryViewerTitle').textContent = refinement.title;
+      state.currentMedia = { type: 'splat', id: refinement.id };
+      await refreshGallery(true);
+      if (splatViewerSceneId !== refinement.id) return;
+      openLightbox(refinement.sourceItemId, 'splat:' + refinement.id);
       $('#splatViewerStatus').textContent = 'Refined version ready. Original kept in Library.';
     } else if (refinement) $('#splatViewerStatus').textContent = refinement.stage;
     else if (record && !record.canRefine) $('#splatViewerStatus').textContent = 'Original training data is needed to refine this scene.';
   } catch (error) { if (id === splatViewerSceneId) $('#splatViewerStatus').textContent = error.message; }
 }
-$('#splatProcess').insertAdjacentHTML('afterbegin', actionIconMarkup('result-process'));
-$('#splatDocument').insertAdjacentHTML('afterbegin', actionIconMarkup('documentation'));
-$('#splatProcess').onclick = () => {
+function openSplatProcessMenu() {
   const id = splatViewerSceneId;
   openActionMenu($('#splatProcess'), [5000, 10000].map(extraSteps => ({
     label: `Train ${extraSteps.toLocaleString()} more steps`,
@@ -206,13 +232,14 @@ $('#splatProcess').onclick = () => {
 };
 setInterval(() => { if (splatViewerSceneId && !document.hidden) void refreshSplatViewer(); }, 3500);
 
-$('#splatDocument').onclick = async () => {
+async function documentLibrarySplat() {
   try {
     const id = splatViewerSceneId;
     const status = await api('/api/splats');
     const record = status.records.find(record => record.id === id);
     if (!record || id !== splatViewerSceneId) return;
     await refreshGallery(true);
+    if (id !== splatViewerSceneId) return;
     const item = state.items.find(item => item.id === record.sourceItemId);
     const video = item?.videos?.find(video => video.id === record.videoId);
     const renderer = $('#splatLibraryViewerFrame').contentWindow?.mixSplatDocumentation;
@@ -224,5 +251,5 @@ $('#splatDocument').onclick = async () => {
         { type:'video', label:'Generated orbit', accent:'#7b9fff', src:'/videos/' + video.file, startAt:0, duration:0 },
       ],
     });
-  } catch (error) { $('#splatViewerStatus').textContent = error.message; }
+  } catch (error) { if ($('#splatViewerStatus')) $('#splatViewerStatus').textContent = error.message; }
 };

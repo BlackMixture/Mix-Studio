@@ -35,7 +35,15 @@ el('splatFlip').onclick=()=>{up *= -1;reset();save();};
 el('splatLimit').onclick=()=>{limit=!limit;applyRange();};
 el('splatRange').oninput=()=>{range=Number(el('splatRange').value)/100;applyRange();};
 el('splatRestore').onclick=()=>{center.fromArray(record.center);up=-1;range=1;limit=true;el('splatRange').value=100;applyRange();reset();};
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){pickMode(false);el('splatViewOptions').hidden=true;el('splatOptions').setAttribute('aria-expanded','false');el('splatOptions').focus();}});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (picking || !el('splatViewOptions').hidden) {
+    pickMode(false); el('splatViewOptions').hidden = true;
+    el('splatOptions').setAttribute('aria-expanded', 'false'); el('splatOptions').focus();
+  } else if (window.frameElement?.id === 'splatLibraryViewerFrame') {
+    window.parent.closeLightbox();
+  }
+});
 let down;
 el('splatViewer').addEventListener('pointerdown',event=>{down=[event.clientX,event.clientY];});
 el('splatViewer').addEventListener('pointerup',event=>{
