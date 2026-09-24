@@ -7,6 +7,7 @@
 'use strict';
 
 const http = require('http');
+const { createSplatService, orbitOptions, buildSplatOrbitGraph, ORBIT_PROMPT, ORBIT_SECONDS } = require('./lib/gaussian-splats');
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
@@ -27,7 +28,7 @@ const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-c
 const { sam3InstallStatus } = require('./lib/sam3-installer');
 const { probeSageAttention } = require('./lib/sage-attention');
 const { probeH3SlaAttention } = require('./lib/h3-sla-attention');
-const { h3AttentionOptions, normalizeH3AttentionBackend } = require('./lib/h3-attention');
+const { h3AttentionOptions, normalizeH3AttentionBackend, kitchenAttentionCapability } = require('./lib/h3-attention');
 const { h3PerformanceReport } = require('./lib/h3-performance');
 const {
   krea2ClipCompatibility,
@@ -2286,6 +2287,8 @@ function handleWsMessage(msg) {
     const job = jobs.get(pid);
     job.lastActivityAt = Date.now();
     activeWsPromptId = d.node === null ? '' : pid;
+    if (job.splatStage && d.node === 'rife') job.splatStage('Smoothing orbit video · RIFE 2×');
+    else if (job.splatStage && d.node === 'save') job.splatStage('Saving smooth orbit video');
     if (job && d.node !== null && !job.startedAt) job.startedAt = Date.now();
     if (d.node === null) completeJob(pid).catch((e) => failJob(pid, e.message));
     else broadcast('status', {
@@ -2385,6 +2388,7 @@ function cancelJob(pid, message = 'Cancelled') {
 function failJob(pid, message) {
   const job = jobs.get(pid);
   const durationMs = job ? jobDurationMs(job) : undefined;
+  job?.splatReject?.(new Error(message));
   failSmartJob(job, message, false);
   jobs.delete(pid);
   if (job && (job.kind === 'enhance' || job.kind === 'motionPrompt' || job.kind === 'smartMask')) {
@@ -2920,6 +2924,7 @@ async function completeJob(pid) {
     });
     jobs.delete(pid);
     broadcast('videoDone', { jobId: pid, item });
+    job.splatResolve?.({ path: storedVideoPath, videoUrl: '/videos/' + fname, itemId: item.id, videoId: entry.id });
     return;
   }
 
@@ -7077,6 +7082,62 @@ async function setupStatusPayload(forceCompatibility = false) {
   };
 }
 
+async function generateSplatOrbit({ image, profileId, quality, signal, onSubmitted, onStage }) {
+  signal.throwIfAborted();
+  await comfyLifecycle.ensure();
+  const buffer = await fsp.readFile(image);
+  const dimensions = pngDims(buffer);
+  if (!dimensions) throw new Error('Could not read the source photo.');
+  const input = await uploadToComfy(buffer, `ks_splat_${uid()}.png`);
+  const seed = crypto.randomInt(0, 2147483647);
+  const frames = h3FramesForSeconds(ORBIT_SECONDS);
+  const opts = orbitOptions({ imageName: input, width: dimensions.w, height: dimensions.h, quality, seed, frames });
+  const { W, H } = opts;
+  const graph = await buildSplatOrbitGraph(opts, settings, { buildMiniMaxH3Graph, nodeFromOrdered, filterInputs, rtxVideoSuperResolutionNode, rifeSmooth });
+  signal.throwIfAborted();
+  const pid = await queuePrompt(graph, { profileId });
+  return new Promise((resolve, reject) => {
+    const abort = async () => {
+      try {
+        const queue = await (await comfyFetch('/queue')).json();
+        if ((queue.queue_running || []).some((row) => row[1] === pid)) await comfyFetch('/interrupt', { method: 'POST' });
+        else await comfyFetch('/queue', { method: 'POST', body: JSON.stringify({ delete: [pid] }), headers: { 'Content-Type': 'application/json' } });
+      } catch { /* A disconnected backend will be reconciled by normal job tracking. */ }
+      failJob(pid, 'Splat generation cancelled.');
+    };
+    const finish = (callback, value) => { signal.removeEventListener('abort', abort); callback(value); };
+    trackJob(pid, { kind: 'video', profileId, createItem: true, graph,
+      videoInfo: { engine: 'h3', motionPrompt: ORBIT_PROMPT, width: W, height: H, frames: (frames - 1) * opts.smooth + 1, sourceFrames: frames, fps: H3_FPS * opts.smooth, smooth: opts.smooth, exactFrameCount: true, seconds: ((frames - 1) * opts.smooth + 1) / (H3_FPS * opts.smooth), seed, steps: 20, h3Mode: 'frames', imageName: input, endImageName: input, endFrame: true, t2v: false, splatOrbit: true },
+      splatStage: onStage,
+      splatResolve: (value) => finish(resolve, { ...value, frames: (frames - 1) * opts.smooth + 1, fps: H3_FPS * opts.smooth, interpolation: 'RIFE 2×' }), splatReject: (error) => finish(reject, error),
+    });
+    ensureWs();
+    signal.addEventListener('abort', abort, { once: true });
+    onSubmitted(pid);
+    if (signal.aborted) void abort();
+  });
+}
+
+const splatService = createSplatService({
+  dataDir: DATA,
+  generateOrbit: generateSplatOrbit,
+  releaseGpu: async () => {
+    await assertDesktopIsIdle();
+    try { await comfyFetch('/free', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }) }); } catch { /* ComfyUI may already be stopped. */ }
+  },
+  resolveFfmpeg: () => resolveFfmpegExecutable(RUNTIME),
+  assertIdle: assertDesktopIsIdle,
+  visibleSourceIds: (req) => new Set(galleryView(db, isPrivateUnlocked(req)).items.filter((item) => item.profileId === req.profile.id).map((item) => item.id)),
+  getSource: (req, body) => {
+    const item = galleryView(db, isPrivateUnlocked(req)).items.find((entry) => entry.id === body.itemId && entry.profileId === req.profile.id);
+    const video = item?.videos?.find((entry) => entry.id === body.videoId);
+    const media = video && safeMediaPath(VIDEOS, video.file);
+    return media ? { path: media.file, itemId: item.id, videoId: video.id, videoUrl: '/videos/' + video.file, title: String(item.prompt || 'Orbit splat').slice(0, 100) } : null;
+  },
+  isOwner: (req) => req.profile?.id === db.profiles[0]?.id,
+  readBody, readJsonBody, json, serveFile,
+});
+
 async function handleApi(req, res, url) {
   try { return await handleApiRequest(req, res, url); }
   finally { req.releaseComfyLifecycle?.(); }
@@ -7268,6 +7329,11 @@ async function handleApiRequest(req, res, url) {
   // previews, and completed gallery records and are always profile-scoped.
   if (!profile && route !== '/api/meta') {
     return json(res, 401, { error: 'Sign in to continue', code: 'auth' });
+  }
+
+  if (route.startsWith('/api/splats')) return await splatService.handle(req, res, url);
+  if (req.method === 'POST' && splatService.busy() && (MANAGED_GENERATION_ROUTES.has(route) || ['/api/update', '/api/app/restart'].includes(route) || route.startsWith('/api/dependencies/') || route.startsWith('/api/smart/') || route.startsWith('/api/setup/') || route.startsWith('/api/comfy/'))) {
+    return json(res, 409, { error: 'Wait for the splat operation to finish, or cancel it in Gaussian Splats.' });
   }
 
   if (route === '/api/comfy/lifecycle' && req.method === 'GET') return json(res, 200, comfyLifecycle.status());
@@ -8317,6 +8383,7 @@ async function handleApiRequest(req, res, url) {
           sam3: { canInstall: installStatus.canInstall, downloaded: installStatus.downloaded, reason: installStatus.reason },
           sageAttention,
           slaAttention,
+          kitchenAttention: kitchenAttentionCapability(info),
         },
         models,
         krea2: {
@@ -9577,6 +9644,9 @@ async function handleApiRequest(req, res, url) {
           code: 'comfy_h3_update_required',
           compatibility: h3Compatibility,
         });
+      }
+      if (h3Attention.attentionBackend === 'kitchen' && !kitchenAttentionCapability(info).ready) {
+        return json(res, 409, { error: kitchenAttentionCapability(info).reason, code: 'h3_kitchen_unavailable' });
       }
       const selectedVariant = h3SelectedModelVariant;
       if (requestedVideoLoras.length) {
@@ -11376,12 +11446,14 @@ async function handleApiRequest(req, res, url) {
 
   if (route === '/api/gallery') {
     const unlocked = isPrivateUnlocked(req);
-    const revision = `${SERVER_INSTANCE_ID}.${dbRevision}`;
+    const scenes = splatService.galleryScenes(req);
+    const sceneRevision = scenes.map(scene => scene.id).join(',');
+    const revision = `${SERVER_INSTANCE_ID}.${dbRevision}.${crypto.createHash('sha256').update(sceneRevision).digest('hex').slice(0, 12)}`;
     if (url.searchParams.get('revision') === revision) {
       return json(res, 200, { unchanged: true, revision });
     }
     const view = galleryView(db, unlocked);
-    view.items = view.items.filter((it) => it.profileId === req.profile.id);
+    view.items = view.items.filter((it) => it.profileId === req.profile.id).map(item => ({ ...item, splats: scenes.filter(scene => scene.sourceItemId === item.id).map(({ id, title, count, videoId }) => ({ id, title, count, videoId })) }));
     view.folders = view.folders.filter((f) => f.profileId === req.profile.id);
     const uploadedAssets = db.uploadedAssets
       .filter((asset) => asset.profileId === req.profile.id && !asset.deletedAt)

@@ -1,0 +1,39 @@
+body.splat-viewer-page { min-height:100dvh; overflow:hidden; background:#000; }
+body.splat-viewer-page::before { display:none; }
+#splatViewer { position:absolute; inset:0; touch-action:none; }
+.splat-toolbar { position:absolute; top:12px; left:12px; display:flex; gap:5px; padding:5px; border:1px solid rgba(255,255,255,.13); border-radius:16px; background:rgba(10,11,15,.95); box-shadow:0 6px 24px #0005; z-index:2; }
+.splat-icon { position:relative; display:flex; align-items:center; justify-content:center; width:40px; height:40px; padding:0; border:1px solid transparent; border-radius:11px; color:var(--muted-2); background:transparent; text-decoration:none; transition:background 160ms var(--ease),color 160ms var(--ease); }
+.splat-icon svg,.splat-menu-actions svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.splat-icon:hover,.splat-icon[aria-expanded="true"],.splat-icon[aria-pressed="true"] { color:var(--ink); background:#ffffff10; border-color:#ffffff12; }
+.splat-icon:disabled { color:#535865; pointer-events:none; }
+.splat-icon::after { content:attr(data-tip); position:absolute; top:calc(100% + 14px); left:0; white-space:nowrap; padding:7px 9px; color:var(--ink-soft); background:#181a20; border:1px solid #ffffff19; border-radius:8px; font-size:11px; pointer-events:none; opacity:0; transform:translateY(-3px); transition:opacity 140ms ease,transform 140ms ease; }
+.splat-icon:focus-visible::after,.splat-icon:hover::after { opacity:1; transform:translateY(0); transition-delay:350ms; }
+.splat-icon:focus-visible,.splat-view-options button:focus-visible,.splat-view-options input:focus-visible { outline:2px solid #a9b6cd; outline-offset:3px; }
+.picking-center canvas { cursor:crosshair!important; }
+.splat-view-options { position:absolute; top:76px; left:12px; z-index:3; width:min(290px,calc(100% - 24px)); padding:7px; border:1px solid rgba(255,255,255,.15); border-radius:16px; background:rgba(10,11,15,.985); box-shadow:0 20px 55px #0009,0 0 0 1px #0005; transform-origin:top left; animation:splat-menu-in 160ms var(--ease) both; }
+.splat-view-options[hidden] { display:none; }
+.splat-menu-title { padding:8px 10px 9px; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted-2); }
+.splat-view-options .settings-media-toggle { margin:0; border:0; border-radius:10px; background:transparent; padding:10px; min-height:54px; }
+.splat-view-options .settings-media-toggle:hover { background:#ffffff06; }
+.splat-view-options .settings-media-toggle span { flex:1; }
+.splat-view-options strong { display:block; font-size:12px; font-weight:550; }
+.splat-view-options small { display:block; margin-top:4px; font-size:10px; color:var(--muted); }
+.splat-toggle-track { display:block; width:29px; height:17px; border-radius:20px; background:#2b2f38; padding:3px; transition:background 160ms ease; }
+.splat-toggle-track::after { content:''; display:block; width:11px; height:11px; border-radius:50%; background:#81899a; transition:transform 160ms ease,background 160ms ease; }
+[aria-checked="true"] .splat-toggle-track { background:#d2d8e3; }
+[aria-checked="true"] .splat-toggle-track::after { transform:translateX(12px); background:#242831; }
+.splat-range-field { margin:5px 10px 9px; padding-top:12px; border-top:1px solid var(--line); }
+.splat-range-field label { display:flex; justify-content:space-between; font-size:11px; color:var(--ink-soft); }
+.splat-range-field output { color:var(--muted-2); font-variant-numeric:tabular-nums; }
+.splat-range-field input { width:100%; margin:14px 0 4px; accent-color:#c4cddd; }
+.splat-range-field p { margin:3px 0 12px; color:var(--muted); font-size:10px; }
+.splat-menu-actions { border-top:1px solid var(--line); padding-top:5px; }
+.splat-menu-actions button { display:flex; align-items:center; gap:10px; width:100%; background:transparent; color:var(--ink-soft); border:0; border-radius:9px; min-height:38px; padding:9px 10px; text-align:left; font-size:12px; }
+.splat-menu-actions button:hover { background:#ffffff09; }
+.splat-menu-actions svg { width:16px; height:16px; color:var(--muted-2); }
+#splatNotice { position:absolute; top:50%; left:15%; right:15%; font-size:13px; line-height:1.6; text-align:center; pointer-events:none; }
+#splatNotice:empty { display:none; }
+.splat-help { position:absolute; bottom:16px; left:12px; right:12px; text-align:center; font-size:11px; color:#c9d2e7; pointer-events:none; text-shadow:0 1px 6px #000; }
+@keyframes splat-menu-in { from { opacity:0; transform:translateY(-5px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+@media(prefers-reduced-motion:reduce) { .splat-view-options { animation:none; } .splat-icon,.splat-icon::after,.splat-toggle-track,.splat-toggle-track::after { transition:none; } }
+@media(hover:none) { .splat-icon::after { display:none; } }

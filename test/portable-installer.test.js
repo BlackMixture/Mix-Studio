@@ -179,7 +179,7 @@ test('GitHub Pages publishes the canonical installer from a branded download pag
   assert.match(page, /does not enforce a VRAM cutoff/);
   assert.match(page, /A clean, responsive AI workspace built on ComfyUI\./);
   assert.match(page, /Run highly tuned image and video workflows flawlessly from your desktop or your phone\./);
-  assert.match(page, /Features curated setups for Krea 2, Flux Klein, Qwen Edit, MiniMax H3, LTX 2\.3, Wan 2\.2, and SCAIL 2\./);
+  assert.match(page, /Features curated setups for Krea 2, Flux Klein, Qwen Image 2\.1 and Qwen Edit, MiniMax H3, LTX 2\.3 \/ 2\.5, Wan 2\.2, and SCAIL 2\./);
   assert.match(page, /Most local tools chain you to a desk\./);
   assert.match(page, /full creative control from anywhere\./);
   assert.match(page, /RTX PRO 6000 Blackwell · 96 GB VRAM · Jul 2026/);

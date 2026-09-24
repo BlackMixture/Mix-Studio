@@ -1,0 +1,49 @@
+body[data-ui-mode="splat"] { --mode-color:#a58aff; --mode-color-2:#6288ff; --mode-rgb:165,138,255; }
+.create-tabs .tab[data-create-mode="splat"] { --tab-color:#a58aff; }
+body[data-ui-mode="splat"] #view-create > :not(#splatInputs):not(#splatResult):not(.desktop-inputs-head) { display:none!important; }
+body[data-ui-mode="splat"] #desktopStage > .desktop-stage-shell { display:none; }
+.splat-inputs { padding:18px 4px; }
+.splat-experimental { font-size:11px; color:var(--muted); }
+.splat-photo-pick img { display:block; max-width:100%; max-height:250px; border-radius:12px; object-fit:contain; margin-bottom:12px; }
+.splat-photo-pick:hover { border-color:#aa98e0; background:#000; }
+#splatProgressText { font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.splat-result { min-height:0; display:flex; flex-direction:column; gap:14px; padding:20px 22px 14px; }
+.splat-result .desktop-stage-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.splat-result h1 { margin:0 0 6px; font-size:18px; letter-spacing:-.035em; }
+.splat-result-switch { flex-shrink:0; position:relative; padding:4px; border:1px solid var(--line); background:#10131d; border-radius:14px; display:flex; }
+.splat-result-switch::before { content:''; position:absolute; inset:4px auto 4px 4px; width:calc(50% - 4px); border-radius:10px; background:#303149; transition:transform 220ms var(--ease); }
+.splat-result-switch[data-selected="3d"]::before { transform:translateX(100%); }
+.splat-result-switch button { position:relative; min-width:56px; min-height:34px; background:transparent!important; border:0; border-radius:10px; font-size:12px; z-index:1; }
+.splat-result-media { flex:1; position:relative; min-height:330px; border:1px solid var(--line); background:#05070c; border-radius:20px; overflow:hidden; }
+#splatResultEmpty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; color:var(--muted); text-align:center; padding:24px; font-size:13px; line-height:1.7; }
+#splatResultEmpty svg { width:85px; fill:none; stroke:#7b7999; stroke-width:1; margin-bottom:12px; }
+#splatOrbitVideo,#splatViewerFrame { position:absolute; inset:0; width:100%; height:100%; border:0; object-fit:contain; }
+:is(.splat-inputs,.splat-result) [hidden] { display:none!important; }
+:is(.splat-inputs,.splat-result) :is(button,summary):focus-visible { outline:2px solid #b5a0ff; outline-offset:3px; border-radius:12px; }
+@media(max-width:1179px) { .splat-inputs { padding:8px 0; } .splat-result { padding:16px 0; height:56dvh; min-height:420px; } .splat-result .desktop-stage-heading { min-width:0; } .splat-photo-pick { min-height:180px; } }
+@media(prefers-reduced-motion:reduce) { .splat-result-switch::before { transition:none; } }
+#splatInputs[hidden],#splatResult[hidden],#splatModeTab[hidden],#openSplats[hidden] { display:none!important; }
+#createTabs:has(#splatModeTab:not([hidden])) { grid-template-columns:repeat(4,minmax(0,1fr)); }
+#createTabs:has(#splatModeTab:not([hidden])) .tab-pill { width:calc((100% - 8px) / 4); }
+
+.splat-library-viewer { width:min(1100px,96vw); max-width:1100px; height:85dvh; display:flex; flex-direction:column; }
+#splatLibraryViewerFrame { width:100%; flex:1; min-height:0; border:0; border-radius:16px; }
+
+.splat-badge { top:9px; right:9px; left:auto; bottom:auto; display:flex; align-items:center; gap:4px; background:#14151de8; border:1px solid #ffffff24; }
+.splat-badge svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linejoin:round; }
+
+.splat-media-chip img { width:28px; height:28px; object-fit:cover; border-radius:7px; }
+
+.splat-photo-pick { width:100%; min-height:220px; margin:0 0 18px; background:#000; flex-direction:column; }
+.splat-inputs .panel { margin:0; }
+#splatResultSwitch[hidden],#splatSetupCard[hidden] { display:none!important; }
+.splat-result-switch { background:var(--panel); }
+.splat-result-switch::before { background:var(--line-strong); }
+.splat-result-media { background:#000; }
+
+#splatExpand[hidden] { display:none!important; }
+.splat-result .splat-result-switch { margin-left:auto; }
+
+.splat-viewer-actions { display:flex; align-items:center; justify-content:flex-end; gap:16px; padding-top:14px; }
+#splatViewerStatus { flex:1; color:var(--muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+body:has(#splatLibraryViewerSheet.show) #documentationVideoSheet { z-index:80; }

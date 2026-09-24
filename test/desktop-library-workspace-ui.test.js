@@ -197,7 +197,7 @@ test('grouped desktop results use the mobile parent and attached-media hierarchy
   assert.match(app, /angleGroupItems\(item\)/);
   assert.match(app, /generationGroupItems\(item\)/);
   assert.match(app, /selectDesktopLibraryItem\(choice\.item, choice\.media\)/);
-  assert.match(app, /button\.addEventListener\('click', \(\) => selectDesktopLibraryItem\(choice\.item, choice\.media\)\)/);
+  assert.match(app, /button\.addEventListener\('click', \(\) => choice\.splat \? openLibrarySplat\(choice\.splat, choice\.item\) : selectDesktopLibraryItem\(choice\.item, choice\.media\)\)/);
   assert.match(app, /thumbnail\.className = 'desktop-stage-choice-thumb'/);
   assert.match(app, /button\.appendChild\(thumbnail\)/);
   assert.doesNotMatch(app, /desktop-stage-choice-copy/);

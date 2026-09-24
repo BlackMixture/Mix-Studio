@@ -285,7 +285,7 @@ function h3TurboActive() {
 function normalizeH3AttentionBackend(value, legacySageAttention = true) {
   const requested = String(value || '').trim().toLowerCase();
   if (requested === 'sage') return 'sageattention';
-  if (['standard', 'sageattention', 'sla'].includes(requested)) return requested;
+  if (['standard', 'sageattention', 'sla', 'kitchen'].includes(requested)) return requested;
   return legacySageAttention === false ? 'standard' : 'sageattention';
 }
 
@@ -296,6 +296,7 @@ function selectedH3AttentionBackend() {
 function h3AttentionBackendLabel(value) {
   const backend = normalizeH3AttentionBackend(value, false);
   if (backend === 'sla') return 'SLA Sparse (experimental)';
+  if (backend === 'kitchen') return 'Comfy Kitchen (experimental)';
   return backend === 'sageattention' ? 'SageAttention (verified)' : 'Standard PyTorch';
 }
 
@@ -1952,7 +1953,34 @@ const MIX_STUDIO_124_SHOWCASE = [
   },
   ...MIX_STUDIO_120_SHOWCASE,
 ];
+const MIX_STUDIO_130_SHOWCASE = [
+  {
+    eyebrow: 'Additional image model',
+    title: 'Create and edit with Qwen 2.1',
+    message: 'Choose Qwen Image 2.1 for image generation and whole-image edits, with Balance / Quality controls and hardware-aware downloads. Krea 2 remains your default.',
+    media: '/update-media/v1.3.0-qwen-2.1.mp4',
+    poster: '/update-media/v1.3.0-qwen-2.1.jpg',
+    theme: 'release',
+  },
+  {
+    eyebrow: 'Experimental · Create → 3D',
+    title: 'Turn a photo into a scene',
+    message: 'Generate an orbit video, reconstruct a Gaussian splat, and explore it in Mix Studio. Center your view, hide distant splats, and reopen scenes from Library. Enable Experimental Features to create.',
+    media: '/update-media/v1.3.0-photo-to-3d.mp4',
+    poster: '/update-media/v1.3.0-photo-to-3d.jpg',
+    theme: 'release',
+  },
+  {
+    eyebrow: 'A smoother workspace',
+    title: 'Find settings. Keep creating.',
+    message: 'Search across Preferences, use LM Studio for local Prompt AI, and choose Stable or Preview updates. Setup and video workflows include reliability improvements.',
+    media: '',
+    theme: 'release',
+  },
+  ...MIX_STUDIO_124_SHOWCASE,
+];
 const OFFICIAL_RELEASE_SHOWCASES = {
+  '1.3.0': MIX_STUDIO_130_SHOWCASE,
   '1.2.4': MIX_STUDIO_124_SHOWCASE,
   '1.2.3': [
     {
@@ -1996,7 +2024,7 @@ let updateShowcaseTimer = null;
 let updateShowcaseAutoPaused = false;
 let updateShowcaseHoverPaused = false;
 let updateShowcaseGesture = null;
-const UPDATE_SHOWCASE_INTERVAL_MS = 8000;
+const UPDATE_SHOWCASE_INTERVAL_MS = 10000;
 
 function updateSeenKey() {
   return profileStorageKey('ks-update-seen', state.profile?.id);
@@ -2152,7 +2180,8 @@ function renderUpdateShowcaseSlide(index = 0) {
     video.className = 'update-showcase-video';
     video.muted = true;
     video.loop = true;
-    video.autoplay = true;
+    video.autoplay = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (slide.poster) video.poster = slide.poster;
     video.playsInline = true;
     video.preload = 'metadata';
     video.setAttribute('aria-label', `${slide.title} preview`);
@@ -3590,7 +3619,7 @@ function loadForm() {
     });
     state.editLoras = state.editLorasByEngine[state.editEngine] || [];
     state.editLorasByEngine[state.editEngine] = state.editLoras;
-    state.createMode = ['image', 'region', 'video'].includes(f.createMode) || (f.createMode === 'smart' && smartModeEnabled())
+    state.createMode = ['image', 'region', 'video'].includes(f.createMode) || (f.createMode === 'splat' && experimentalFeaturesEnabled()) || (f.createMode === 'smart' && smartModeEnabled())
       ? f.createMode : 'image';
     const savedCreateInfluence = Number(f.createInfluence);
     state.createInfluence = Number.isFinite(savedCreateInfluence)
@@ -5612,6 +5641,8 @@ async function startSmartRecording() {
 function renderSmartFeatureAccess() {
   const experimental = experimentalFeaturesEnabled();
   const enabled = smartModeEnabled();
+  $('#openSplats').hidden = !experimental;
+  $('#splatModeTab').hidden = !experimental;
   const row = $('#smartModeExperimentalRow');
   if (row) row.hidden = !experimental;
   const toggle = $('#smartModeToggle');
@@ -5750,6 +5781,7 @@ function setView(view, opts = {}) {
   if (view === 'video') state.createMode = 'video';
   if (view === 'create') {
     const allowedCreateModes = smartModeEnabled() ? ['image', 'smart'] : ['image', 'region'];
+    if (experimentalFeaturesEnabled()) allowedCreateModes.push('splat');
     state.createMode = allowedCreateModes.includes(opts.createMode) ? opts.createMode : 'image';
     if (state.createMode === 'region' && !state.regions.length) createRegion();
   }
@@ -5925,6 +5957,7 @@ $('#smartRecentList').addEventListener('click', (event) => {
 });
 
 function genLabel() {
+  if (state.view === 'create' && state.createMode === 'splat') return window.mixSplatBusy ? 'Creating 3D…' : 'Generate 3D';
   const setupAction = currentGenerationSetupAction();
   const generateButton = $('#generateBtn');
   if (generateButton) {
@@ -6217,16 +6250,19 @@ function renderH3AttentionBackend() {
   const selected = selectedH3AttentionBackend();
   const capability = selected === 'sageattention'
     ? lastMeta?.dependencies?.sageAttention
-    : (selected === 'sla' ? lastMeta?.dependencies?.slaAttention : { ready: true });
+    : (selected === 'sla' ? lastMeta?.dependencies?.slaAttention : selected === 'kitchen' ? lastMeta?.dependencies?.kitchenAttention : { ready: true });
   buttons.forEach((button) => {
     const active = button.dataset.h3Attention === selected;
     const backendCapability = button.dataset.h3Attention === 'sageattention'
       ? lastMeta?.dependencies?.sageAttention
-      : (button.dataset.h3Attention === 'sla' ? lastMeta?.dependencies?.slaAttention : { ready: true });
+      : (button.dataset.h3Attention === 'sla' ? lastMeta?.dependencies?.slaAttention : button.dataset.h3Attention === 'kitchen' ? lastMeta?.dependencies?.kitchenAttention : { ready: true });
     button.setAttribute('aria-checked', String(active));
     button.dataset.ready = String(backendCapability?.ready === true);
   });
-  if (selected === 'standard') {
+  if (selected === 'kitchen') {
+    status.textContent = capability?.ready ? 'Built in · experimental INT8 attention' : capability?.reason || 'Checking ComfyUI support…';
+    field.title = 'Native Comfy Kitchen attention. Speed and output can vary by GPU. Uses one backend at a time; does not stack with Sage or SLA.';
+  } else if (selected === 'standard') {
     status.textContent = 'Built in · maximum compatibility';
     field.title = 'H3 will use the standard PyTorch attention backend.';
   } else if (capability?.ready === true) {
@@ -6246,6 +6282,7 @@ function renderH3AttentionBackend() {
 }
 
 function updateVideoPanels() {
+  if (typeof renderSplatWorkspace === 'function') renderSplatWorkspace();
   const isVideo = state.view === 'video';
   const isEdit = state.view === 'edit';
   const isRegion = state.view === 'create' && state.createMode === 'region';
@@ -19317,8 +19354,22 @@ function galleryImageDestinationActions(item, { includeReuse = true } = {}) {
     { label: 'Depth guide', detail: 'Preserve camera and scene structure', icon: 'depth', tone: 'reuse', action: () => useGalleryItemAsGuide(item, 'depth') },
     { label: 'First frame', detail: 'Start a video here', icon: 'first-frame', tone: 'video', action: () => sendToVideoTab(item, 'start') },
     { label: 'Last frame', detail: 'End a video here', icon: 'last-frame', tone: 'video', action: () => sendToVideoTab(item, 'end') },
+    experimentalFeaturesEnabled() ? { label: 'Create 3D splat', detail: 'Experimental · photo to 3D', icon: 'depth', action: () => prepareSplatOrbit(item) } : null,
     includeReuse ? { label: 'Reuse', detail: 'Load generation settings', icon: 'reuse', tone: 'reuse', action: () => reuseItem(item) } : null,
   ].filter(Boolean);
+}
+
+function openSplatWorkspace(item, video) {
+  if (!experimentalFeaturesEnabled()) return;
+  closeLightbox(); $('#settingsSheet').classList.remove('show');
+  setCreateMode('splat');
+  if (typeof selectSplatVideo === 'function' && item && video) selectSplatVideo(item, video);
+}
+$('#openSplats').addEventListener('click', () => openSplatWorkspace());
+function prepareSplatOrbit(item) {
+  if (!experimentalFeaturesEnabled()) return;
+  openSplatWorkspace();
+  if (typeof selectSplatPhoto === 'function') selectSplatPhoto(item);
 }
 
 async function continueEditingResult(item) {
@@ -21474,6 +21525,7 @@ $('#editComposite').addEventListener('click', () => {
   saveForm();
 });
 $('#generateBtn').addEventListener('click', async () => {
+  if (state.view === 'create' && state.createMode === 'splat') { await generateSplat(); return; }
   if (currentGenerationSetupAction()) {
     await ensureGenerationSetup();
     $('#genLbl').textContent = genLabel();
@@ -23330,6 +23382,11 @@ function desktopStageChoices(item) {
       });
     });
   });
+  group.forEach((groupItem) => (groupItem.splats || []).forEach((scene) => choices.push({
+    item: groupItem, media: 'splat:' + scene.id, splat: scene,
+    src: '/images/' + (groupItem.upscaled || groupItem.file),
+    label: 'Open 3D scene: ' + scene.title, badge: '3D', video: false,
+  })));
   return choices;
 }
 
@@ -23433,7 +23490,7 @@ function renderDesktopStagePicker(item, media = 'image') {
       : escapeHtml(choice.badge);
     thumbnail.appendChild(badge);
     button.appendChild(thumbnail);
-    button.addEventListener('click', () => selectDesktopLibraryItem(choice.item, choice.media));
+    button.addEventListener('click', () => choice.splat ? openLibrarySplat(choice.splat, choice.item) : selectDesktopLibraryItem(choice.item, choice.media));
     picker.appendChild(button);
   });
   picker.scrollLeft = previousScrollLeft;
@@ -23444,6 +23501,7 @@ function renderDesktopStagePicker(item, media = 'image') {
 }
 
 function renderDesktopStage(item, mediaSel) {
+  if (state.view === 'create' && state.createMode === 'splat') return;
   const open = $('#desktopStageOpen');
   if (!open) return;
   if (!desktopWorkspaceActive()) {
@@ -26256,6 +26314,12 @@ function renderGrid() {
       ov.innerHTML = `<span><span class="spin"></span> ${state.animating.has(it.id) ? 'Animating…' : 'Upscaling…'}</span>`;
       card.appendChild(ov);
     }
+    const splat = it.splats?.[0];
+    if (splat) {
+      const badge = document.createElement('span'); badge.className = 'badge splat-badge';
+      badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 9 8-4.5M12 12 4 7.5M12 12v9"/></svg>3D';
+      card.append(badge); card.setAttribute('aria-label', `${splat.title} · Open 3D scene`);
+    }
     card.dataset.id = it.id;
     card.dataset.groupItemIds = entry.items.map((groupItem) => groupItem.id).join(',');
     if (galleryGroup) {
@@ -26375,6 +26439,7 @@ function renderGrid() {
     card.addEventListener('click', () => {
       if (lpFired) { lpFired = false; return; }
       if (state.selectMode) toggleSelect(it.id);
+      else if (state.view === 'create' && state.createMode === 'splat') openLightbox(it.id, card.dataset.media || 'image');
       else if (desktopWorkspaceActive() && ($('#lightbox').classList.contains('show') || state.view !== 'gallery')) handleDesktopGalleryTap(it, card, galleryGroup);
       else handleGalleryTap(it, card);
     });
@@ -28374,7 +28439,7 @@ function openLightbox(id, mediaSel, options = {}) {
       generationOptions.appendChild(button);
     });
   }
-  if (generationItems.length > 1 || videos.length || composites.length) {
+  if (generationItems.length > 1 || videos.length || composites.length || it.splats?.length) {
     const groupedGeneration = generationItems.length > 1;
     let mediaLabel = groupedGeneration ? `Generation ${generationIndex + 1} media` : 'Media';
     if (groupedGeneration && strengthHuntItemLabel(it)) mediaLabel = `${strengthHuntItemLabel(it)} media`;
@@ -28401,6 +28466,20 @@ function openLightbox(id, mediaSel, options = {}) {
     mkChip('Image', 'image', !!it.liked);
     composites.forEach((composite) => mkChip(composite.label || 'Before + after', 'composite:' + composite.id, false, 'composite'));
     videos.forEach((v, i) => mkChip(`Video ${i + 1}`, v.id, !!v.liked, 'video'));
+    (it.splats || []).forEach((scene, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chip splat-media-chip';
+      button.setAttribute('aria-label', 'Open 3D scene: ' + scene.title);
+      const thumbnail = document.createElement('img');
+      thumbnail.src = '/images/' + (it.upscaled || it.file);
+      thumbnail.alt = '';
+      const label = document.createElement('span');
+      label.textContent = it.splats.length > 1 ? `3D ${index + 1}` : '3D';
+      button.append(thumbnail, label);
+      button.addEventListener('click', () => openLibrarySplat(scene, it));
+      mediaOptions.appendChild(button);
+    });
   }
   headerContext.hidden = !activeGroup && headerMedia.hidden;
   $$('#lbMedia .lb-media-options, #lbHeaderMedia').forEach((mediaOptionsElement) => {
@@ -28711,6 +28790,7 @@ function openLightbox(id, mediaSel, options = {}) {
   if (selVideo) {
     const vinfo = selVideo.info || {};
     const videoUseItems = [];
+    if (experimentalFeaturesEnabled() && !vinfo.composite) videoUseItems.push({ label: 'Create Gaussian splat', detail: 'Experimental · reconstruct this orbit', icon: 'depth', action: () => openSplatWorkspace(it, selVideo) });
     if (!vinfo.composite) videoUseItems.push({ label: 'Extend video', detail: 'Continue from its last frame', icon: 'extend', tone: 'video', action: () => openDirectorExtension(it, selVideo) });
     if (!vinfo.composite) videoUseItems.push({ label: 'Reuse', detail: 'Settings', icon: 'reuse', tone: 'reuse', action: () => reuseVideo(it, selVideo) });
     // Toggle between the result and the motion video that drove it
@@ -30602,7 +30682,7 @@ function applyDocumentationVideoAspect(run, aspect) {
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
     syncDocumentationVideoInputs(run.inputs || [], run.video.currentTime || 0);
-    drawDocumentationVideoFrame(canvas.getContext('2d'), canvas, run.inputs || [], run.item, run.videoRecord, run.video);
+    drawDocumentationVideoFrame(canvas.getContext('2d'), canvas, run.inputs || [], run.item, run.videoRecord, run.video, run.splatRenderer);
   }
   syncDocumentationVideoAspectControls(run);
 }
@@ -30814,7 +30894,9 @@ function documentationVideoDetails(item, video, inputMedia = [], resultMedia = n
     info.processed === 'extend' && 'Video extension',
   ].filter(Boolean).join(', ');
   const facts = [
-    ['Model', videoEngineLabel(info.engine, info)],
+    ['Model', info.splatDocumentation ? 'MiniMax H3 → Brush' : videoEngineLabel(info.engine, info)],
+    ['Splats', info.splatDocumentation ? Number(info.splatCount).toLocaleString() : ''],
+    ['Training', info.splatDocumentation && info.trainingSteps ? `${Number(info.trainingSteps).toLocaleString()} steps` : ''],
     ['Turbo adapter', info.h3TurboLora ? prettyLora(String(info.h3TurboLora)) : ''],
     ['Size', width && height ? `${width} × ${height}` : ''],
     ['Playback', seconds ? `${seconds.toFixed(1)}s${info.fps ? ` · ${info.fps} fps` : ''}` : ''],
@@ -31011,7 +31093,7 @@ function syncDocumentationVideoInputs(inputMedia, resultTime) {
   });
 }
 
-function drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, resultMedia) {
+function drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, resultMedia, splatRenderer = null) {
   ctx.fillStyle = '#050506';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const mediaWidth = resultMedia.videoWidth || resultMedia.naturalWidth || resultMedia.width || canvas.width;
@@ -31019,7 +31101,8 @@ function drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, resul
   const storyboardMedia = inputMedia.filter((input) => input.storyboard);
   const standardInputMedia = inputMedia.filter((input) => !input.storyboard);
   const layout = documentationVideoLayout(canvas.width, canvas.height, mediaWidth / mediaHeight, standardInputMedia.length, storyboardMedia.length);
-  drawDocumentationVideoMedia(ctx, resultMedia, layout.result, 'Final Result', '#ea4335', { quiet: true });
+  const finalMedia = splatRenderer ? splatRenderer.frame(resultMedia.currentTime / resultMedia.duration) : resultMedia;
+  drawDocumentationVideoMedia(ctx, finalMedia, layout.result, splatRenderer ? '3D scene' : 'Final Result', '#ea4335', { quiet: true });
   standardInputMedia.forEach((input, index) => {
     const box = layout.inputs[index];
     if (box) drawDocumentationVideoMedia(ctx, input.media, box, input.label, input.accent);
@@ -31060,6 +31143,7 @@ function documentationResultAudioStream(result) {
 
 function cleanupDocumentationVideoRun(run) {
   if (!run) return;
+  try { run.splatRenderer?.end(); } catch { /* scene may have closed */ }
   try { run.video && run.video.pause(); } catch { /* noop */ }
   (run.inputs || []).forEach((input) => {
     if (input.type !== 'video' || !input.media) return;
@@ -31084,7 +31168,7 @@ function closeDocumentationVideoExport() {
   syncSheetScrollLock();
 }
 
-async function saveDocumentationVideo(item, video) {
+async function saveDocumentationVideo(item, video, options = {}) {
   const mimeType = documentationVideoMimeType();
   const canvas = $('#documentationVideoCanvas');
   if (!mimeType || !canvas.captureStream) {
@@ -31116,7 +31200,10 @@ async function saveDocumentationVideo(item, video) {
   updateDocumentationVideoProgress(0, 'Preparing aspect-ratio preview…');
 
   try {
-    const inputMedia = await loadDocumentationVideoInputs(item, video);
+    const inputMedia = options.inputs
+      ? await Promise.all(options.inputs.map(async spec => ({ ...spec, media: await loadDocumentationMedia(spec) })))
+      : await loadDocumentationVideoInputs(item, video);
+    if (options.splatRenderer) { run.splatRenderer = options.splatRenderer; run.splatRenderer.begin(); }
     run.inputs = inputMedia;
     if (run.cancelled || documentationVideoRun !== run) return;
     const result = document.createElement('video');
@@ -31163,7 +31250,7 @@ async function recordDocumentationVideo(run) {
 
   try {
     syncDocumentationVideoInputs(inputMedia, 0);
-    drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result);
+    drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result, run.splatRenderer);
 
     const savedInfo = video.info || {};
     const savedSeconds = savedInfo.frames && savedInfo.fps ? savedInfo.frames / savedInfo.fps : 0;
@@ -31191,7 +31278,7 @@ async function recordDocumentationVideo(run) {
     recorder.start(500);
     while (!run.cancelled && documentationVideoRun === run) {
       syncDocumentationVideoInputs(inputMedia, result.currentTime);
-      drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result);
+      drawDocumentationVideoFrame(ctx, canvas, inputMedia, item, video, result, run.splatRenderer);
       updateDocumentationVideoProgress(Math.min(1, result.currentTime * 1000 / durationMs), 'Recording combined documentation view…');
       if (result.ended || result.currentTime >= result.duration - .04) break;
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -32617,7 +32704,7 @@ async function emptyTrashFromSettings() {
       if (!enabled) state.mediaPreferences.smartMode = false;
       if (!enabled && state.vidH3Mode === 'replace') state.vidH3Mode = 'frames';
       if (!enabled) state.vidH3LongContext = false;
-      if (!enabled && state.createMode === 'smart') state.createMode = 'region';
+      if (!enabled && ['smart', 'splat'].includes(state.createMode)) state.createMode = 'region';
       renderSmartFeatureAccess();
       updateVideoPanels();
       renderPromptComposer();
@@ -36656,6 +36743,7 @@ function setupActionForComponents(required) {
 }
 
 function currentGenerationSetupAction() {
+  if (state.view === 'create' && state.createMode === 'splat') return null;
   return setupActionForComponents(generationSetupComponents());
 }
 
