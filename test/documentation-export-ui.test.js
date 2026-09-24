@@ -113,8 +113,8 @@ test('focused videos can export source, generation details, and result in one pe
   assert.match(html, /Generation inputs, settings, and the complete result stay together in one view/);
   assert.match(app, /const boardRatio = portrait \? ratio \/ 1\.32 : ratio \+ \.52/);
   assert.match(app, /function documentationVideoLayout\(width, height, mediaRatio = width \/ height, inputCount = 1, storyboardCount = 0\)/);
-  assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, inputMedia, item, video, resultMedia\)/);
-  assert.match(app, /drawDocumentationVideoMedia\(ctx, resultMedia, layout\.result, 'Final Result', '#ea4335', \{ quiet: true \}\)/);
+  assert.match(app, /function drawDocumentationVideoFrame\(ctx, canvas, inputMedia, item, video, resultMedia, splatRenderer = null\)/);
+  assert.match(app, /drawDocumentationVideoMedia\(ctx, finalMedia, layout\.result, splatRenderer \? '3D scene' : 'Final Result', '#ea4335', \{ quiet: true \}\)/);
   assert.match(app, /inputMedia\.forEach\(\(input, index\) => \{[\s\S]*drawDocumentationVideoMedia\(ctx, input\.media, box, input\.label, input\.accent\)/);
   assert.match(app, /function drawDocumentationVideoMedia[\s\S]*setDocumentationFont\(ctx, quiet \? 650 : 700, fontSize\)/);
   assert.match(app, /quiet[\s\S]*Math\.min\(12, Math\.round\(scaledFontSize \* \.78\)\)/);

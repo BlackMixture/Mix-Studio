@@ -12490,7 +12490,7 @@ body.sheet-open {
   letter-spacing: .07em;
   text-transform: uppercase;
 }
-.h3-attention-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.h3-attention-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
 .h3-attention-options button {
   min-width: 0;
   min-height: 46px;

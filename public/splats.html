@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>3D viewer · Mix Studio</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/splats.css"><script type="importmap">{"imports":{"three":"/vendor/splats/three.module.js"}}</script><script type="module" src="/splats.js"></script></head>
+<body class="splat-viewer-page"><div id="splatViewer"></div>
+<div class="splat-toolbar" role="toolbar" aria-label="3D view controls">
+<button id="splatReset" class="splat-icon" aria-label="Frame view" data-tip="Frame view" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M9 9h6v6H9Z"/></svg></button>
+<button id="splatCenter" class="splat-icon" aria-label="Center on subject" data-tip="Center on subject" aria-pressed="false" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="1"/></svg></button>
+<button id="splatOptions" class="splat-icon" aria-label="View options" data-tip="View options" aria-expanded="false" aria-controls="splatViewOptions" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h7m4 0h5M4 12h2m4 0h10M4 18h10m4 0h2"/><circle cx="13" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg></button>
+<a id="splatDownload" class="splat-icon" aria-label="Download PLY" data-tip="Download PLY" download><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg></a>
+</div>
+<div id="splatViewOptions" class="splat-view-options" role="region" aria-label="View options" hidden>
+<div class="splat-menu-title">View options</div>
+<button id="splatLimit" class="settings-media-toggle" role="switch" aria-checked="true"><span><strong>Hide distant splats</strong><small>Keep the subject in view</small></span><i class="splat-toggle-track" aria-hidden="true"></i></button>
+<div class="splat-range-field"><label for="splatRange">Visible range <output id="splatRangeValue">100%</output></label><input id="splatRange" type="range" min="10" max="200" value="100" step="1"><p>Distance from your chosen center</p></div>
+<div class="splat-menu-actions"><button id="splatFlip"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 3-4 4 4 4M4 7h11a5 5 0 0 1 0 10h-3m4 4 4-4-4-4"/></svg>Flip up</button><button id="splatRestore"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5v5h5M5 9a7 7 0 1 1 0 7"/></svg>Reset framing</button></div>
+</div>
+<p id="splatNotice" role="status">Loading 3D scene…</p><div id="splatHelp" class="splat-help" role="status">Drag to orbit · Right-drag to pan · Scroll or pinch to zoom</div></body></html>

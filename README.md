@@ -45,8 +45,11 @@ For manual Git setup, detailed VRAM guidance, shared-model discovery, phone acce
 | **Region** | Aspect-correct boxes with independent prompts, LoRA stacks, and reference images combined into one coherent generation. |
 | **Edit** | Qwen Image 2.1 whole-image editing, Flux 2 Klein, Qwen Image Edit, Krea 2 Identity Edit, and Krea 2 Remix with multiple inputs, `@Image` tokens, masks, inpainting, outpainting, and source preservation. |
 | **Video** | MiniMax H3 text, first/last-frame, reference-to-video, user LoRA stacks, and experimental long-context generation; LTX 2.5 text/frame generation with synchronized audio and two-stage refinement; plus LTX 2.3, Director, Face ID lipsync, LTX Edit, 10Eros, Wan 2.2, Wan Animate 2 character animation, and SCAIL 2 motion transfer. |
+| **3D (experimental)** | Photo → H3 orbit video → Gaussian splat, local COLMAP/Brush setup, interactive viewing with subject centering and visible-range controls, Library access, and PLY export. |
 | **Upscale** | SeedVR2 and Ultimate SD Upscale with synchronized zoom, pan, and an interactive before-and-after reveal. |
 | **Library** | Searchable images, videos, and uploads with profiles, folders, groups, reusable settings, metadata, recoverable trash, and ZIP export. |
+
+The optional [photo-to-3D workflow](docs/gaussian-splats.md) is experimental: generated backgrounds may contain inconsistent geometry or floaters.
 
 Mix Studio also includes thumbnail-based Visual Presets, installable prompt preset packs, LoRA presets and **Strength Hunt**, guided Generation setup, live queue progress and cancellation, automatic database backups, and a responsive desktop and phone interface.
 

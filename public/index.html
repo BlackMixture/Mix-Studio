@@ -15,6 +15,7 @@
 <link rel="icon" href="/app-icon-192.png" type="image/png" sizes="192x192" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="/splat-workspace.css">
 </head>
 <body>
 
@@ -182,6 +183,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h11a2 2 0 0 1 2 2v2.2l5-3v11.6l-5-3V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7H4Zm13 4.5v1l3 1.8V9.7l-3 1.8Z"/></svg>
       <span>Video</span>
     </button>
+    <button class="tab create-tab" id="splatModeTab" data-create-mode="splat" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 9 8-4.5M12 12 4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.7"/></svg><span>3D</span></button>
   </div>
 </div>
 
@@ -201,6 +203,22 @@
       </button>
     </nav>
   </div>
+  <section id="splatInputs" class="splat-inputs" hidden>
+    <button id="splatPhotoPick" class="create-image-guide-empty splat-photo-pick" type="button">
+      <img id="splatPhotoPreview" alt="Source photo" hidden>
+      <span class="create-image-guide-icon" id="splatPhotoIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm3.5 2.5A1.5 1.5 0 1 1 6 10a1.5 1.5 0 0 1 1.5-1.5ZM5 16l4-4.5 3 3 2-2.5 5 4H5Z"/></svg><i>+</i></span>
+      <span><b id="splatPhotoLabel">Choose image</b></span>
+    </button>
+    <input id="splatPhotoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+    <section class="panel krea-model-panel">
+      <button id="splatQualityToggle" class="krea-model-switch" type="button" role="switch" aria-label="Quality mode" aria-checked="false">
+        <span class="krea-model-switch-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg></span>
+        <span class="krea-model-switch-copy"><b id="splatQualityLabel">Balance</b><small id="splatQualityHint">Faster generation</small></span>
+        <span class="switch" aria-hidden="true"><i></i></span>
+      </button>
+    </section>
+    <p id="splatProgressText" role="status" aria-live="polite" hidden></p>
+  </section>
   <section class="smart-workspace" id="smartWorkspace" aria-label="Smart production" hidden>
     <header class="smart-head">
       <span class="smart-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Zm7 12 .9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9L19 14Z"/></svg></span>
@@ -1443,6 +1461,7 @@
                 <button type="button" role="radio" aria-checked="false" data-h3-attention="standard"><strong>Standard</strong><small>Reliable</small></button>
                 <button type="button" role="radio" aria-checked="true" data-h3-attention="sageattention"><strong>Sage</strong><small>Verified speed</small></button>
                 <button type="button" role="radio" aria-checked="false" data-h3-attention="sla"><strong>SLA Sparse</strong><small>Long clips</small></button>
+                <button type="button" role="radio" aria-checked="false" data-h3-attention="kitchen"><strong>Kitchen</strong><small>Experimental</small></button>
               </div>
             </div>
             <div class="h3-turbo-strength-field field-span" id="vidH3TurboStrengthField" hidden>
@@ -1498,6 +1517,10 @@
 </main>
 
 <section class="desktop-stage" id="desktopStage" aria-label="Generation stage">
+  <section id="splatResult" class="splat-result" hidden>
+    <header class="desktop-stage-head"><div class="desktop-stage-heading"><h1 id="splatResultTitle">Ready to create</h1><span class="splat-experimental" id="splatResultStatus">Ready</span></div><div class="size-seg splat-result-switch" id="splatResultSwitch"><button id="splatShowVideo" class="active" type="button">Video</button><button id="splatShow3D" type="button">3D</button></div><button id="splatExpand" class="desktop-stage-info" type="button" aria-label="Expand 3D view" title="Expand 3D view" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button></header>
+    <div class="splat-result-media"><div id="splatResultEmpty"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="m50 12 33 19v38L50 88 17 69V31Zm0 0v38m33-19L50 50 17 31m33 19v38"/></svg><p>Your 3D scene will appear here.</p></div><video id="splatOrbitVideo" controls loop playsinline hidden></video><iframe id="splatViewerFrame" title="Interactive Gaussian splat" hidden></iframe></div>
+  </section>
   <div class="desktop-stage-shell">
     <header class="desktop-stage-head">
       <div class="desktop-stage-heading">
@@ -2328,6 +2351,8 @@
   </div>
 </div>
 
+<div class="sheet" id="splatLibraryViewerSheet"><div class="sheet-panel splat-library-viewer"><h3 class="sheet-title"><span id="splatLibraryViewerTitle">3D scene</span><button data-close type="button" aria-label="Close 3D scene">✕</button></h3><iframe id="splatLibraryViewerFrame" title="Interactive 3D scene"></iframe><footer class="splat-viewer-actions"><span id="splatViewerStatus" role="status" aria-live="polite"></span><button id="splatDocument" class="action-btn" type="button" disabled>Documentation</button><button id="splatProcess" class="action-btn" type="button" disabled>Process</button></footer></div></div>
+
 <!-- animate sheet -->
 <div class="sheet" id="animateSheet">
   <div class="sheet-panel">
@@ -2694,6 +2719,11 @@
               <span aria-hidden="true"><i>5</i><i>20</i></span>
             </label>
           </div>
+          <button class="settings-media-toggle" id="openSplats" type="button" hidden>
+            <span class="settings-media-toggle-copy"><strong>Gaussian Splats <em>Experimental</em></strong><small>Create an orbit video and interactive 3D scene from one photo.</small></span>
+            <span aria-hidden="true">↗</span>
+          </button>
+          <div id="splatSetupCard" hidden><p id="splatSetupStatus" class="external-llm-field-note"></p><button id="splatSetupInstall" class="action-btn" type="button" hidden>Install 3D tools</button></div>
           <div class="smart-mode-setting" id="smartModeExperimentalRow" hidden>
             <button class="settings-media-toggle smart-mode-toggle" id="smartModeToggle" type="button" role="switch" aria-checked="false">
               <span class="settings-media-toggle-copy"><strong>Smart mode <em>Experimental</em></strong><small>Replace Region with an AI production planner. Turn it off any time to restore the original Region workflow.</small></span>
@@ -3872,5 +3902,6 @@
 <script src="/release-notes.js"></script>
 <script src="/app.js"></script>
 <script src="/model-select.js"></script>
+<script src="/splat-workspace.js"></script>
 </body>
 </html>

@@ -170,7 +170,7 @@ test('release notes include an owner-only install action and no bundled publishe
   assert.match(app, /\$\('#updatesHighlightsBtn'\)\.addEventListener/);
   assert.match(app, /label: 'Update Mix Studio'/);
   assert.match(app, /\$\('#settingsUpdatesBtn'\)\.addEventListener\('click', openUpdatesSheet\)/);
-  assert.match(app, /const UPDATE_SHOWCASE_INTERVAL_MS = 8000/);
+  assert.match(app, /const UPDATE_SHOWCASE_INTERVAL_MS = 10000/);
   assert.match(app, /function updateShowcaseSwipeDirection\(startX, startY, endX, endY, width, elapsed\)/);
   assert.match(app, /Math\.abs\(deltaX\) < Math\.abs\(deltaY\) \* 1\.25/);
   assert.match(app, /\$\('#updateNoticePrev'\)\.addEventListener\('click'/);
