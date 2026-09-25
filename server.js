@@ -26,7 +26,7 @@ const {
 const { createGithubReleaseChecker } = require('./lib/github-releases');
 const { resolveRuntimeConfig, publicAnalyticsConfig } = require('./lib/runtime-config');
 const { sam3InstallStatus } = require('./lib/sam3-installer');
-const { probeSageAttention } = require('./lib/sage-attention');
+const { h3SageAttentionDecision, probeSageAttention } = require('./lib/sage-attention');
 const { probeH3SlaAttention } = require('./lib/h3-sla-attention');
 const { h3AttentionOptions, normalizeH3AttentionBackend, kitchenAttentionCapability } = require('./lib/h3-attention');
 const { h3PerformanceReport } = require('./lib/h3-performance');
@@ -9569,10 +9569,13 @@ async function handleApiRequest(req, res, url) {
     const h3TurboCanvas = h3Turbo ? h3TurboFixedCanvas(settings, h3GraphMode) : null;
     const ltx25Quality = engine === 'ltx25' && body.fast === false;
     const h3LongContext = engine === 'h3' && body.h3LongContext === true;
-    const h3Attention = engine === 'h3'
+    let h3Attention = engine === 'h3'
       ? h3AttentionOptions(body.attentionBackend, body.sageAttention)
       : h3AttentionOptions('standard', false);
-    const h3SageAttention = engine === 'h3' && h3Attention.sageAttention;
+    // Assignable: the SageAttention gate below rewrites these two together when the
+    // local probe could not inspect this machine, so the backend name and the boolean
+    // can never disagree. SLA is resolved before that gate and is never rewritten.
+    let h3SageAttention = engine === 'h3' && h3Attention.sageAttention;
     const h3SlaAttention = engine === 'h3' && h3Attention.slaAttention;
     const h3References = normalizeH3References(body.h3References);
     let requestedVideoLoras = Array.isArray(body.loras)
@@ -9776,7 +9779,16 @@ async function handleApiRequest(req, res, url) {
       if (h3SageAttention) {
         const sageRuntime = await probeSageAttention(RUNTIME, { status: sam3InstallStatus(RUNTIME) });
         const nodeReady = !!info.PathchSageAttentionKJ;
-        if (!sageRuntime.ready || !nodeReady) {
+        // An accelerator that could not be inspected on this machine is not a broken
+        // accelerator: when ComfyUI runs on another host the probe has no interpreter to
+        // inspect and reports verifiable === false. Degrade that to standard attention
+        // instead of refusing the render -- the options are rewritten below through the
+        // same factory that built them, so the graph builder and the job record both say
+        // 'standard' rather than naming a backend that was never verified. A probe that
+        // ran and found SageAttention unusable, and a ComfyUI without the KJNodes patch
+        // node, still block with the 409 below.
+        const sageGate = h3SageAttentionDecision(sageRuntime, nodeReady);
+        if (sageGate.block) {
           return json(res, 409, {
             error: !nodeReady
               ? 'MiniMax H3 SageAttention needs the KJNodes patch node. Install the H3 SageAttention workflow, restart ComfyUI, and try again.'
@@ -9790,6 +9802,12 @@ async function handleApiRequest(req, res, url) {
             }),
           });
         }
+        if (!sageGate.sageAttention) {
+          // Rewritten as a pair from the same factory, so no path can clear the boolean
+          // while attentionBackend still names the backend that was not verified.
+          h3Attention = h3AttentionOptions('standard', false);
+        }
+        h3SageAttention = h3Attention.sageAttention;
       }
       if (h3SlaAttention) {
         const slaRuntime = await probeH3SlaAttention(RUNTIME, { status: sam3InstallStatus(RUNTIME) });
