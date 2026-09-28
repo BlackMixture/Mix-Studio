@@ -152,6 +152,7 @@ const {
   normalizeExternalLlmSettings,
   normalizeLmStudioUrl,
   normalizeOllamaUrl,
+  openAiCompatibleTranscriptionUrl,
   parseStructuredText,
 } = require('./lib/external-llm');
 const {
@@ -603,6 +604,10 @@ const DEFAULT_SETTINGS = {
   externalLlmOllamaModel: EXTERNAL_LLM_DEFAULTS.externalLlmOllamaModel,
   externalLlmLmStudioUrl: EXTERNAL_LLM_DEFAULTS.externalLlmLmStudioUrl,
   externalLlmLmStudioModel: EXTERNAL_LLM_DEFAULTS.externalLlmLmStudioModel,
+  externalLlmOpenAiCompatibleUrl: EXTERNAL_LLM_DEFAULTS.externalLlmOpenAiCompatibleUrl,
+  externalLlmOpenAiCompatibleModel: EXTERNAL_LLM_DEFAULTS.externalLlmOpenAiCompatibleModel,
+  externalLlmOpenAiCompatibleApiKey: '',
+  externalLlmOpenAiCompatibleTranscriptionModel: EXTERNAL_LLM_DEFAULTS.externalLlmOpenAiCompatibleTranscriptionModel,
   externalLlmImageRevise: true,
   externalLlmImageEnhance: true,
   externalLlmVideoRevise: true,
@@ -687,14 +692,17 @@ function settingsResponse() {
     hfTokenConfigured: !!String(settings.hfToken || process.env.HF_TOKEN || '').trim(),
     externalLlmOpenAiApiKeyConfigured: !!String(settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '').trim(),
     externalLlmGeminiApiKeyConfigured: !!String(settings.externalLlmGeminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim(),
+    externalLlmOpenAiCompatibleApiKeyConfigured: !!String(settings.externalLlmOpenAiCompatibleApiKey || process.env.OPENAI_COMPATIBLE_API_KEY || '').trim(),
     externalLlmOpenAiApiKeyStored: !!String(settings.externalLlmOpenAiApiKey || '').trim(),
     externalLlmGeminiApiKeyStored: !!String(settings.externalLlmGeminiApiKey || '').trim(),
+    externalLlmOpenAiCompatibleApiKeyStored: !!String(settings.externalLlmOpenAiCompatibleApiKey || '').trim(),
     appRestartRequired: settingsRequireAppRestart(),
     gpuVendor: setupHardwareProfile(setupHardwareSnapshot || {}).gpuVendor || '',
   });
   delete response.hfToken;
   delete response.externalLlmOpenAiApiKey;
   delete response.externalLlmGeminiApiKey;
+  delete response.externalLlmOpenAiCompatibleApiKey;
   return response;
 }
 
@@ -3525,8 +3533,12 @@ function failSmartJob(job, message, cancelled = false) {
 }
 
 async function transcribeSmartAudio(buffer, contentType) {
-  const apiKey = String(settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '').trim();
-  if (!apiKey) {
+  const normalized = normalizeExternalLlmSettings(settings);
+  const provider = normalized.externalLlmProvider;
+  const useOpenAiCompatible = provider === 'openai-compatible';
+  const openAiCompatibleKey = String(normalized.externalLlmOpenAiCompatibleApiKey || process.env.OPENAI_COMPATIBLE_API_KEY || '').trim();
+  const cloudApiKey = String(settings.externalLlmOpenAiApiKey || process.env.OPENAI_API_KEY || '').trim();
+  if (!useOpenAiCompatible && !cloudApiKey) {
     const error = new Error('Voice transcription needs an OpenAI API key in Preferences. Text planning still works with any configured provider.');
     error.code = 'smart_transcription_unavailable';
     throw error;
@@ -3539,12 +3551,23 @@ async function transcribeSmartAudio(buffer, contentType) {
   })[mime] || 'webm';
   const form = new FormData();
   form.append('file', new Blob([buffer], { type: mime }), `smart-brief.${extension}`);
-  form.append('model', 'gpt-transcribe');
+  form.append('model', useOpenAiCompatible
+    ? (normalized.externalLlmOpenAiCompatibleTranscriptionModel || 'whisper-1')
+    : 'gpt-transcribe');
   form.append('response_format', 'json');
+  const transcriptionUrl = useOpenAiCompatible
+    ? openAiCompatibleTranscriptionUrl(normalized.externalLlmOpenAiCompatibleUrl)
+    : 'https://api.openai.com/v1/audio/transcriptions';
+  const headers = {};
+  if (useOpenAiCompatible) {
+    if (openAiCompatibleKey) headers.Authorization = `Bearer ${openAiCompatibleKey}`;
+  } else {
+    headers.Authorization = `Bearer ${cloudApiKey}`;
+  }
   let response;
   try {
-    response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form,
+    response = await fetch(transcriptionUrl, {
+      method: 'POST', headers, body: form,
       signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(180_000) : undefined,
     });
   } catch (error) {
@@ -4138,7 +4161,7 @@ async function requestSmartPlan(provider, prompt, references, profileId, onProgr
     schema: SMART_PLAN_SCHEMA,
     schemaName: 'mix_studio_smart_plan',
     maxTokens: 8192,
-    timeoutMs: ['ollama', 'lmstudio'].includes(provider.provider) ? 45 * 60_000 : 10 * 60_000,
+    timeoutMs: ['ollama', 'lmstudio', 'openai-compatible'].includes(provider.provider) ? 45 * 60_000 : 10 * 60_000,
   });
 }
 
@@ -8191,10 +8214,15 @@ async function handleApiRequest(req, res, url) {
       try { body.externalLlmLmStudioUrl = normalizeLmStudioUrl(body.externalLlmLmStudioUrl); }
       catch (error) { return json(res, 400, { error: String(error.message || error) }); }
     }
+    if (typeof body.externalLlmOpenAiCompatibleUrl === 'string' && body.externalLlmOpenAiCompatibleUrl.trim()) {
+      try { body.externalLlmOpenAiCompatibleUrl = normalizeLmStudioUrl(body.externalLlmOpenAiCompatibleUrl); }
+      catch (error) { return json(res, 400, { error: String(error.message || error) }); }
+    }
     const changesExternalLlm = body.clearExternalLlmOpenAiApiKey === true
       || body.clearExternalLlmGeminiApiKey === true
-      || ['externalLlmOpenAiApiKey', 'externalLlmGeminiApiKey'].some((key) => typeof body[key] === 'string' && body[key].trim())
-      || ['externalLlmProvider', 'externalLlmLocalProvider', 'externalLlmExternalProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel', 'externalLlmLmStudioUrl', 'externalLlmLmStudioModel']
+      || body.clearExternalLlmOpenAiCompatibleApiKey === true
+      || ['externalLlmOpenAiApiKey', 'externalLlmGeminiApiKey', 'externalLlmOpenAiCompatibleApiKey'].some((key) => typeof body[key] === 'string' && body[key].trim())
+      || ['externalLlmProvider', 'externalLlmLocalProvider', 'externalLlmExternalProvider', 'externalLlmOpenAiModel', 'externalLlmGeminiModel', 'externalLlmOllamaUrl', 'externalLlmOllamaModel', 'externalLlmLmStudioUrl', 'externalLlmLmStudioModel', 'externalLlmOpenAiCompatibleUrl', 'externalLlmOpenAiCompatibleModel', 'externalLlmOpenAiCompatibleTranscriptionModel']
         .some((key) => typeof body[key] === 'string' && body[key].trim() && body[key].trim() !== String(settings[key] || ''))
       || ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']
         .some((key) => typeof body[key] === 'boolean' && body[key] !== settings[key]);
@@ -8240,6 +8268,7 @@ async function handleApiRequest(req, res, url) {
     if (body.clearHfToken === true) settings.hfToken = '';
     if (body.clearExternalLlmOpenAiApiKey === true) settings.externalLlmOpenAiApiKey = '';
     if (body.clearExternalLlmGeminiApiKey === true) settings.externalLlmGeminiApiKey = '';
+    if (body.clearExternalLlmOpenAiCompatibleApiKey === true) settings.externalLlmOpenAiCompatibleApiKey = '';
     for (const key of ['externalLlmImageRevise', 'externalLlmImageEnhance', 'externalLlmVideoRevise', 'externalLlmVideoEnhance']) {
       if (typeof body[key] === 'boolean') settings[key] = body[key];
     }

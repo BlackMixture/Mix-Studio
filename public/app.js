@@ -31946,11 +31946,12 @@ function renderPromptingSummaries() {
   const external = $('#externalPromptAiSummary');
   if (external) {
     const provider = $('#setExternalLlmProvider')?.value || 'local';
-    const localMode = ['local', 'ollama', 'lmstudio'].includes(provider);
+    const localMode = ['local', 'ollama', 'lmstudio', 'openai-compatible'].includes(provider);
     const providerLabel = {
       local: 'ComfyUI',
       ollama: 'Ollama',
       lmstudio: 'LM Studio',
+      'openai-compatible': 'OpenAI-compatible',
       openai: 'OpenAI',
       gemini: 'Gemini',
     }[provider] || provider;
@@ -32115,7 +32116,7 @@ async function refreshLocalPromptAiModels(force = false) {
 
 function renderExternalLlmPreferences() {
   const provider = $('#setExternalLlmProvider').value || 'openai';
-  const mode = ['local', 'ollama', 'lmstudio'].includes(provider) ? 'local' : 'external';
+  const mode = ['local', 'ollama', 'lmstudio', 'openai-compatible'].includes(provider) ? 'local' : 'external';
   const modeSwitch = $('#promptAiModeSwitch');
   modeSwitch.setAttribute('aria-checked', String(mode === 'external'));
   $('#promptAiModeDescription').textContent = mode === 'local'
@@ -32151,18 +32152,19 @@ function renderExternalLlmPreferences() {
     'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
     'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl',
     'setExternalLlmOllamaModel', 'setExternalLlmLmStudioUrl', 'setExternalLlmLmStudioModel',
+    'setExternalLlmOpenAiCompatibleUrl', 'setExternalLlmOpenAiCompatibleModel', 'setExternalLlmOpenAiCompatibleTranscriptionModel', 'setExternalLlmOpenAiCompatibleApiKey',
     'testExternalLlm',
-  ].forEach((id) => { $('#' + id).disabled = readonly; });
+  ].forEach((id) => { const el = $('#' + id); if (el) el.disabled = readonly; });
   renderPromptingSummaries();
 }
 
 function applyExternalLlmSettings(settings = {}) {
-  const provider = ['local', 'openai', 'gemini', 'ollama', 'lmstudio'].includes(settings.externalLlmProvider)
+  const provider = ['local', 'openai', 'gemini', 'ollama', 'lmstudio', 'openai-compatible'].includes(settings.externalLlmProvider)
     ? settings.externalLlmProvider : 'local';
   $('#setExternalLlmProvider').value = provider;
-  $('#setExternalLlmLocalProvider').value = ['local', 'ollama', 'lmstudio'].includes(settings.externalLlmLocalProvider)
+  $('#setExternalLlmLocalProvider').value = ['local', 'ollama', 'lmstudio', 'openai-compatible'].includes(settings.externalLlmLocalProvider)
     ? settings.externalLlmLocalProvider
-    : (['local', 'ollama', 'lmstudio'].includes(provider) ? provider : 'local');
+    : (['local', 'ollama', 'lmstudio', 'openai-compatible'].includes(provider) ? provider : 'local');
   $('#setExternalLlmExternalProvider').value = ['openai', 'gemini'].includes(settings.externalLlmExternalProvider)
     ? settings.externalLlmExternalProvider
     : (['openai', 'gemini'].includes(provider) ? provider : 'openai');
@@ -32174,13 +32176,23 @@ function applyExternalLlmSettings(settings = {}) {
   $('#setExternalLlmOllamaModel').value = settings.externalLlmOllamaModel || 'gemma3';
   $('#setExternalLlmLmStudioUrl').value = settings.externalLlmLmStudioUrl || 'http://127.0.0.1:1234/v1';
   $('#setExternalLlmLmStudioModel').value = settings.externalLlmLmStudioModel || '';
+  const oacApiKey = $('#setExternalLlmOpenAiCompatibleApiKey');
+  const oacUrl = $('#setExternalLlmOpenAiCompatibleUrl');
+  const oacModel = $('#setExternalLlmOpenAiCompatibleModel');
+  const oacTranscriptionModel = $('#setExternalLlmOpenAiCompatibleTranscriptionModel');
+  if (oacApiKey) oacApiKey.value = '';
+  if (oacUrl) oacUrl.value = settings.externalLlmOpenAiCompatibleUrl || 'http://127.0.0.1:8000/v1';
+  if (oacModel) oacModel.value = settings.externalLlmOpenAiCompatibleModel || '';
+  if (oacTranscriptionModel) oacTranscriptionModel.value = settings.externalLlmOpenAiCompatibleTranscriptionModel || 'whisper-1';
   externalLlmKeyConfigured = {
     openai: settings.externalLlmOpenAiApiKeyConfigured === true,
     gemini: settings.externalLlmGeminiApiKeyConfigured === true,
+    'openai-compatible': settings.externalLlmOpenAiCompatibleApiKeyConfigured === true,
   };
   externalLlmKeyStored = {
     openai: settings.externalLlmOpenAiApiKeyStored === true,
     gemini: settings.externalLlmGeminiApiKeyStored === true,
+    'openai-compatible': settings.externalLlmOpenAiCompatibleApiKeyStored === true,
   };
   renderExternalLlmPreferences();
 }
@@ -32192,6 +32204,7 @@ const SETTINGS_SERVER_CONTROL_IDS = new Set([
   'setExternalLlmOpenAiApiKey', 'setExternalLlmOpenAiModel',
   'setExternalLlmGeminiApiKey', 'setExternalLlmGeminiModel', 'setExternalLlmOllamaUrl', 'setExternalLlmOllamaModel',
   'setExternalLlmLmStudioUrl', 'setExternalLlmLmStudioModel',
+  'setExternalLlmOpenAiCompatibleUrl', 'setExternalLlmOpenAiCompatibleModel', 'setExternalLlmOpenAiCompatibleTranscriptionModel', 'setExternalLlmOpenAiCompatibleApiKey',
   'setQwen21ModelVariant',
   'setUnet', 'setKrea2RawUnet', 'setKrea2TurboLora', 'setKrea2DepthLora',
   'setKrea2OutpaintLora', 'setDepthAnythingV3Model', 'setClip', 'setVae',
@@ -32314,6 +32327,10 @@ function settingsPayload() {
     externalLlmOllamaModel: $('#setExternalLlmOllamaModel').value,
     externalLlmLmStudioUrl: $('#setExternalLlmLmStudioUrl').value,
     externalLlmLmStudioModel: $('#setExternalLlmLmStudioModel').value,
+    externalLlmOpenAiCompatibleUrl: $('#setExternalLlmOpenAiCompatibleUrl')?.value || '',
+    externalLlmOpenAiCompatibleModel: $('#setExternalLlmOpenAiCompatibleModel')?.value || '',
+    externalLlmOpenAiCompatibleTranscriptionModel: $('#setExternalLlmOpenAiCompatibleTranscriptionModel')?.value || '',
+    externalLlmOpenAiCompatibleApiKey: $('#setExternalLlmOpenAiCompatibleApiKey')?.value || '',
     localPromptAiClip: $('#setLocalPromptAiClip').value,
     localPromptAiClipType: $('#setLocalPromptAiClipType').value,
     smartPlannerModelOverride: $('#smartPlannerModelOverride').getAttribute('aria-checked') === 'true',
@@ -36169,12 +36186,21 @@ function setPromptAiProvider(provider) {
   renderExternalLlmPreferences();
 }
 
-$('#promptAiModeSwitch').addEventListener('click', () => {
+$('#promptAiModeSwitch').addEventListener('click', (event) => {
   if (!state.profileIsOwner) return;
-  const external = $('#promptAiModeSwitch').getAttribute('aria-checked') === 'true';
-  setPromptAiProvider(external
-    ? $('#setExternalLlmLocalProvider').value
-    : $('#setExternalLlmExternalProvider').value);
+  const clickedLabel = event.target.closest('[data-prompt-ai-mode-label]');
+  const currentlyExternal = $('#promptAiModeSwitch').getAttribute('aria-checked') === 'true';
+  let targetProvider;
+  if (clickedLabel && clickedLabel.dataset.promptAiModeLabel === 'local') {
+    targetProvider = $('#setExternalLlmLocalProvider').value;
+  } else if (clickedLabel && clickedLabel.dataset.promptAiModeLabel === 'external') {
+    targetProvider = $('#setExternalLlmExternalProvider').value;
+  } else {
+    targetProvider = currentlyExternal
+      ? $('#setExternalLlmLocalProvider').value
+      : $('#setExternalLlmExternalProvider').value;
+  }
+  setPromptAiProvider(targetProvider);
   scheduleSettingsAutosave('server', 0);
 });
 
@@ -36203,12 +36229,20 @@ $('#refreshLocalPromptAiModels').addEventListener('click', () => refreshLocalPro
 
 async function clearExternalLlmApiKey(provider) {
   if (!state.profileIsOwner) return;
-  const label = provider === 'gemini' ? 'Gemini' : 'OpenAI';
+  const labelMap = { openai: 'OpenAI', gemini: 'Gemini', 'openai-compatible': 'OpenAI-compatible' };
+  const keyMap = {
+    openai: 'clearExternalLlmOpenAiApiKey',
+    gemini: 'clearExternalLlmGeminiApiKey',
+    'openai-compatible': 'clearExternalLlmOpenAiCompatibleApiKey',
+  };
+  const label = labelMap[provider] || 'LLM';
+  const key = keyMap[provider];
+  if (!key) return;
   try {
     await flushSettingsAutosave();
     const result = await api('/api/settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [provider === 'gemini' ? 'clearExternalLlmGeminiApiKey' : 'clearExternalLlmOpenAiApiKey']: true }),
+      body: JSON.stringify({ [key]: true }),
     });
     applyExternalLlmSettings(result);
     setSettingsSaveStatus(`${label} key cleared`, 'saved');
@@ -36220,6 +36254,7 @@ async function clearExternalLlmApiKey(provider) {
 
 $('#clearExternalLlmOpenAiApiKey').addEventListener('click', () => clearExternalLlmApiKey('openai'));
 $('#clearExternalLlmGeminiApiKey').addEventListener('click', () => clearExternalLlmApiKey('gemini'));
+$('#clearExternalLlmOpenAiCompatibleApiKey')?.addEventListener('click', () => clearExternalLlmApiKey('openai-compatible'));
 $('#testExternalLlm').addEventListener('click', async () => {
   if (!state.profileIsOwner) return;
   const button = $('#testExternalLlm');

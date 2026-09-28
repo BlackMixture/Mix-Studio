@@ -16,6 +16,8 @@ const {
   normalizeLmStudioUrl,
   normalizeOllamaUrl,
   ollamaChatUrl,
+  openAiCompatibleChatUrl,
+  openAiCompatibleTranscriptionUrl,
   outputText,
 } = require('../lib/external-llm');
 
@@ -213,6 +215,129 @@ test('LM Studio adapter uses OpenAI-compatible chat, vision, and structured outp
     type: 'json_schema',
     json_schema: { name: 'production_plan', strict: true, schema },
   });
+});
+
+test('OpenAI-compatible adapter targets chat completions with optional auth and structured output', async () => {
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['title'],
+    properties: { title: { type: 'string' } },
+  };
+  let request;
+  const result = await externalLlmStructuredRequest({
+    provider: 'openai-compatible',
+    model: 'llama-3.1-8b-instruct',
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    apiKey: 'local-secret',
+    instruction: 'Return a complete production plan.',
+    userInput: 'A lion crosses a flooded city.',
+    schema,
+    schemaName: 'production_plan',
+    maxTokens: 8192,
+    fetchImpl: async (url, init) => {
+      request = { url, init, body: JSON.parse(init.body) };
+      return jsonResponse({ choices: [{ message: { role: 'assistant', content: '{"title":"Lion plan"}' } }] });
+    },
+  });
+  assert.deepEqual(result, { title: 'Lion plan' });
+  assert.equal(request.url, 'http://127.0.0.1:8000/v1/chat/completions');
+  assert.equal(request.init.headers.Authorization, 'Bearer local-secret');
+  assert.equal(request.body.stream, false);
+  assert.equal(request.body.max_tokens, 8192);
+  assert.equal(request.body.messages[0].role, 'system');
+  assert.equal(request.body.messages[1].role, 'user');
+  assert.deepEqual(request.body.response_format, {
+    type: 'json_schema',
+    json_schema: { name: 'production_plan', strict: true, schema },
+  });
+  assert.equal(request.body.temperature, 0);
+
+  // Without an API key the Authorization header must be omitted (keyless local servers).
+  let keyless;
+  await externalLlmRequest({
+    provider: 'openai-compatible',
+    model: 'llama-3.1-8b-instruct',
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    instruction: 'Return one prompt.',
+    userInput: 'A lion.',
+    fetchImpl: async (url, init) => {
+      keyless = { url, init };
+      return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'Done.' } }] });
+    },
+  });
+  assert.equal(keyless.init.headers.Authorization, undefined);
+  assert.equal(keyless.url, 'http://127.0.0.1:8000/v1/chat/completions');
+});
+
+test('OpenAI-compatible folds the schema into the instruction when images are present', async () => {
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['title'],
+    properties: { title: { type: 'string' } },
+  };
+  let request;
+  const result = await externalLlmStructuredRequest({
+    provider: 'openai-compatible',
+    model: 'halogen-flash',
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    apiKey: 'local-secret',
+    instruction: 'Return a complete production plan.',
+    userInput: 'A lion crosses a flooded city.',
+    image: { data: Buffer.from('image-bytes'), mimeType: 'image/png' },
+    schema,
+    schemaName: 'production_plan',
+    maxTokens: 8192,
+    fetchImpl: async (url, init) => {
+      request = { url, init, body: JSON.parse(init.body) };
+      return jsonResponse({ choices: [{ message: { role: 'assistant', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'production_plan', arguments: '{"title":"Lion plan"}' } }] } }] });
+    },
+  });
+  assert.deepEqual(result, { title: 'Lion plan' });
+  assert.equal(request.url, 'http://127.0.0.1:8000/v1/chat/completions');
+  // This engine refuses any response_format with images, so the image path forces a tool call.
+  assert.equal(request.body.response_format, undefined);
+  assert.deepEqual(request.body.tools, [{
+    type: 'function',
+    function: { name: 'production_plan', description: 'Return the structured result as JSON.', parameters: schema },
+  }]);
+  assert.deepEqual(request.body.tool_choice, { type: 'function', function: { name: 'production_plan' } });
+  assert.equal(request.body.messages[1].content[1].type, 'image_url');
+  assert.match(request.body.messages[0].content, /Return only one valid JSON object/);
+  assert.match(request.body.messages[0].content, /"title"/);
+});
+
+test('OpenAI-compatible transcription URL targets audio transcriptions from any base shape', () => {
+  assert.equal(
+    openAiCompatibleTranscriptionUrl('http://127.0.0.1:8000/v1'),
+    'http://127.0.0.1:8000/v1/audio/transcriptions',
+  );
+  assert.equal(
+    openAiCompatibleTranscriptionUrl('http://127.0.0.1:8000'),
+    'http://127.0.0.1:8000/v1/audio/transcriptions',
+  );
+  assert.equal(
+    openAiCompatibleTranscriptionUrl('http://127.0.0.1:8000/v1/audio/transcriptions'),
+    'http://127.0.0.1:8000/v1/audio/transcriptions',
+  );
+  assert.equal(
+    openAiCompatibleTranscriptionUrl('https://gpu.example.com:9000/v1/'),
+    'https://gpu.example.com:9000/v1/audio/transcriptions',
+  );
+});
+
+test('voice transcription routes through the OpenAI-compatible endpoint when that provider is selected', () => {
+  const fn = serverSource.slice(
+    serverSource.indexOf('async function transcribeSmartAudio'),
+    serverSource.indexOf('function externalPromptStatus'),
+  );
+  // Branches on the active provider and uses the OpenAI-compatible transcription URL helper.
+  assert.match(fn, /provider === 'openai-compatible'/);
+  assert.match(fn, /openAiCompatibleTranscriptionUrl\(normalized\.externalLlmOpenAiCompatibleUrl\)/);
+  // Uses the configured transcription model with a whisper-1 fallback.
+  assert.match(fn, /externalLlmOpenAiCompatibleTranscriptionModel \|\| 'whisper-1'/);
+  // Optional auth: only sets a Bearer header when a key is present for the local endpoint.
+  assert.match(fn, /if \(openAiCompatibleKey\) headers\.Authorization = `Bearer \$\{openAiCompatibleKey\}`/);
+  // Cloud path is preserved and still requires a key before transcribing.
+  assert.match(fn, /https:\/\/api\.openai\.com\/v1\/audio\/transcriptions/);
+  assert.match(fn, /if \(!useOpenAiCompatible && !cloudApiKey\)/);
 });
 
 test('external adapters preserve ordered multiple vision images for every provider', async () => {
@@ -474,8 +599,8 @@ test('external Smart planning keeps its full output budget and gives local API m
     serverSource.indexOf('async function requestSmartPlan'),
     serverSource.indexOf('const smartPlanRequests = new Map'),
   );
-  assert.match(smartBlock, /externalLlmStructuredRequest\(\{[\s\S]*maxTokens: 8192,[\s\S]*\['ollama', 'lmstudio'\]\.includes\(provider\.provider\) \? 45 \* 60_000 : 10 \* 60_000,/);
-  assert.match(externalLlmSource, /const timeoutCeilingMs = \['ollama', 'lmstudio'\]\.includes\(provider\) \? 90 \* 60_000 : 15 \* 60_000/);
+  assert.match(smartBlock, /externalLlmStructuredRequest\(\{[\s\S]*maxTokens: 8192,[\s\S]*\['ollama', 'lmstudio', 'openai-compatible'\]\.includes\(provider\.provider\) \? 45 \* 60_000 : 10 \* 60_000,/);
+  assert.match(externalLlmSource, /const timeoutCeilingMs = \['ollama', 'lmstudio', 'openai-compatible'\]\.includes\(provider\) \? 90 \* 60_000 : 15 \* 60_000/);
 });
 
 test('server preserves ordered H3 first and last frames for external and local prompt vision', () => {
