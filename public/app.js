@@ -28308,7 +28308,7 @@ function preloadLightboxNeighbors(item) {
 function openLightbox(id, mediaSel, options = {}) {
   const it = state.items.find((x) => x.id === id);
   if (!it) return;
-  resetLibrarySplat();
+  if (typeof resetLibrarySplat === 'function') resetLibrarySplat();
   handoffGalleryPreviewsToFocusedMedia();
   clearLightboxTap();
   resetLightboxZoom();
@@ -28924,7 +28924,7 @@ function openLightbox(id, mediaSel, options = {}) {
   if (focusFromExpandedLibrary) startDesktopSharedFocusTransition(options.focusSource);
 }
 function closeLightbox(fromPop) {
-  resetLibrarySplat();
+  if (typeof resetLibrarySplat === 'function') resetLibrarySplat();
   const returnFocus = lightboxReturnFocus;
   lightboxReturnFocus = null;
   clearLightboxTap();
