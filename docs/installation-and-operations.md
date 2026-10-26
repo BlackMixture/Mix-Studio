@@ -100,6 +100,27 @@ Low VRAM mode never silently changes a request. If an image exceeds roughly one 
 
 Lower resolution or duration, ComfyUI offloading, and manually configured quantized weights can allow some workflows below their listed tier, with slower generation and a greater out-of-memory risk. Mix Studio warns before a below-tier install or generation and lets the user continue unchanged.
 
+### System memory (RAM) and Windows crashes
+
+Model weights that do not fit in VRAM are staged in system RAM, so system memory pressure can fail a run even when VRAM looks fine. Current ComfyUI builds also reserve page-locked (pinned) RAM for faster offloading: the ComfyUI console prints `Enabled pinned memory <MB>` and `Using async weight offloading` at startup. Pinned memory cannot be paged out, so when RAM is tight, for example 32 GB with a large model, Windows' committed memory can climb past physical RAM during a large load. Symptoms reported in [issue #79](https://github.com/BlackMixture/Mix-Studio/issues/79) include Explorer, the browser, or the NVIDIA driver crashing while dedicated VRAM stays below its limit. Other 32 GB systems run the same workflows without trouble, so treat this as a troubleshooting path rather than a hard requirement.
+
+When a run fails with one of these messages, Mix Studio adds an explanation to the error details:
+
+| ComfyUI message | What it means |
+| --- | --- |
+| `hostbuf_file_reader_read failed`, `HostBuffer.read_file_slice failed`, or `cuMemAllocHost ... out of memory` | ComfyUI could not reserve more pinned system memory while streaming weights |
+| `WinError 1455` or `The paging file is too small` | Windows ran out of virtual memory (commit) while loading a model |
+| `CUDA out of memory` or `OutOfMemoryError` | The GPU itself ran out of memory |
+
+To reduce system-memory pressure:
+
+1. Restart ComfyUI with `--disable-pinned-memory --disable-async-offload`. [Upstream issue 15337](https://github.com/Comfy-Org/ComfyUI/issues/15337) reports these flags as a workaround, and the issue #79 reporter found they resolved most crashes. Add them to the launch line of the ComfyUI you use, such as `run_nvidia_gpu.bat` for portable installs, or to the launch arguments of your Comfy Desktop installation. Mix Studio does not change ComfyUI launch flags for you. When Mix Studio starts or restarts a Python (git or venv) install of ComfyUI itself, it runs `main.py` without these flags, so start that ComfyUI yourself while you need them.
+2. Keep the Windows page file system-managed on an SSD with free space. Models stored on a hard drive also load much more slowly.
+3. Close other memory-heavy applications, including extra browser tabs, before large Krea 2, H3, or video runs.
+4. Use the lighter model variants and the Low VRAM profile that setup recommends for smaller GPUs.
+
+For a bug report, include the ComfyUI log lines that start with `Total VRAM`, `pytorch version`, `Enabled pinned memory`, and `Using async weight offloading`, the failing error text (the Copy error button in Mix Studio copies it), and the peak committed memory shown in Windows Task Manager under Performance → Memory.
+
 Configured `.gguf` diffusion models automatically use the ComfyUI-GGUF loader in supported Klein, Qwen, Wan, and SCAIL graphs. Guided setup installs that loader but does not download third-party GGUF weights or quantized text encoders. LTX 2.3 and 10Eros use combined audio and video checkpoints and cannot use a transformer-only GGUF file as a drop-in replacement. Krea 2 INT8 ConvRot is not GGUF and uses ComfyUI's standard diffusion loader.
 
 ## ComfyUI and shared models

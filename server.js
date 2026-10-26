@@ -30,6 +30,7 @@ const { probeSageAttention } = require('./lib/sage-attention');
 const { probeH3SlaAttention } = require('./lib/h3-sla-attention');
 const { h3AttentionOptions, normalizeH3AttentionBackend, kitchenAttentionCapability } = require('./lib/h3-attention');
 const { h3PerformanceReport } = require('./lib/h3-performance');
+const { explainComfyFailure, historyExecutionError } = require('./lib/memory-diagnostics');
 const {
   krea2ClipCompatibility,
   krea2ClipCompatibilityError,
@@ -2300,7 +2301,7 @@ function handleWsMessage(msg) {
       ...progressPhaseForJob(job, d.node),
     });
   } else if (msg.type === 'execution_error' && pid && jobs.has(pid)) {
-    failJob(pid, (d.exception_message || 'execution error') + (d.node_type ? ` (${d.node_type})` : ''));
+    failJob(pid, explainComfyFailure((d.exception_message || 'execution error') + (d.node_type ? ` (${d.node_type})` : '')));
   } else if (msg.type === 'execution_interrupted' && pid && jobs.has(pid)) {
     const job = jobs.get(pid);
     if (job.cancelRequested) cancelJob(pid, job.cancelMessage || 'Cancelled');
@@ -3192,7 +3193,9 @@ setInterval(async () => {
     try {
       const hist = (await (await comfyFetch(`/history/${pid}`)).json())[pid];
       if (hist && hist.status && hist.status.completed) await completeJob(pid);
-      else if (hist && hist.status && hist.status.status_str === 'error') failJob(pid, 'Execution error (see ComfyUI console)');
+      else if (hist && hist.status && hist.status.status_str === 'error') {
+        failJob(pid, explainComfyFailure(historyExecutionError(hist) || 'Execution error (see ComfyUI console)'));
+      }
     } catch (error) {
       if (jobs.get(pid)?.completing) failJob(pid, error.message || 'Could not finalize ComfyUI output');
       // Otherwise ComfyUI is temporarily offline; retry on the next poll.
@@ -5208,6 +5211,8 @@ async function waitForComfyImage(pid, timeoutMs = 3 * 60 * 1000) {
     } catch { continue; }
     if (!entry) continue;
     if (entry.status && entry.status.status_str === 'error') {
+      const detail = historyExecutionError(entry);
+      if (detail) throw new Error(`ComfyUI failed: ${explainComfyFailure(detail)}`);
       const messages = JSON.stringify(entry.status.messages || []).slice(0, 300);
       throw new Error(`ComfyUI failed: ${messages}`);
     }
