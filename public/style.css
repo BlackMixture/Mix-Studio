@@ -6797,6 +6797,11 @@ body.selection-console-expanded .gallery-date-scrubber { opacity: 0; pointer-eve
   transition: opacity 130ms ease;
 }
 .lightbox-reference-preview.active { opacity: 1; }
+/* Hold-to-preview keeps the result's zoom and region (#64). */
+.lightbox-reference-preview { transform-origin: var(--lightbox-zoom-x, 50%) var(--lightbox-zoom-y, 50%); }
+.lightbox-reference-preview.zoom-matched {
+  transform: translate3d(var(--lightbox-pan-x, 0px), var(--lightbox-pan-y, 0px), 0) scale(var(--lightbox-zoom-scale, 1));
+}
 .lightbox-img-wrap.reference-preview-active #lbImg { visibility: hidden; }
 .lightbox-img-wrap.is-swiping .lightbox-reference-preview { opacity: 0; }
 .lightbox-swipe-preview {

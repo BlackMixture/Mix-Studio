@@ -26953,6 +26953,86 @@ function renderLightboxZoom() {
   image.style.setProperty('--lightbox-pan-x', `${lightboxZoomState.panX}px`);
   image.style.setProperty('--lightbox-pan-y', `${lightboxZoomState.panY}px`);
   image.setAttribute('aria-label', `Return to Create view. Image zoom ${Math.round(lightboxZoomState.scale * 100)} percent${lightboxZoomState.active ? '. Drag to pan' : ''}`);
+  syncLightboxReferenceZoom();
+}
+
+// The hold-to-preview original sits in the same box as the result, so the
+// same transform shows the same region whenever the two share an aspect
+// ratio. Different shapes (an expanded canvas) stay fitted instead of
+// showing a misleading crop.
+function lightboxReferenceZoomMatches() {
+  const image = $('#lbImg');
+  const reference = $('#lbReferenceImg');
+  if (!reference || reference === image || reference.hidden || !lightboxZoomState.active) return false;
+  return typeof ZoomMatch !== 'undefined'
+    && ZoomMatch.sameAspect(image.naturalWidth, image.naturalHeight, reference.naturalWidth, reference.naturalHeight);
+}
+
+function syncLightboxReferenceZoom() {
+  const image = $('#lbImg');
+  const reference = $('#lbReferenceImg');
+  if (!reference || reference === image || typeof reference.style?.setProperty !== 'function') return false;
+  reference.style.setProperty('--lightbox-zoom-x', `${lightboxZoomState.x}%`);
+  reference.style.setProperty('--lightbox-zoom-y', `${lightboxZoomState.y}%`);
+  reference.style.setProperty('--lightbox-zoom-scale', String(lightboxZoomState.scale));
+  reference.style.setProperty('--lightbox-pan-x', `${lightboxZoomState.panX}px`);
+  reference.style.setProperty('--lightbox-pan-y', `${lightboxZoomState.panY}px`);
+  const matched = lightboxReferenceZoomMatches();
+  reference.classList.toggle('zoom-matched', matched);
+  return matched;
+}
+
+// Normalized region the lightbox is showing, used to open the comparison or
+// the original image on the same detail.
+function currentLightboxFocus() {
+  if (!lightboxZoomState.active) return null;
+  const image = $('#lbImg');
+  return Object.assign(ZoomMatch.lightboxFocus({
+    boxWidth: image.clientWidth,
+    boxHeight: image.clientHeight,
+    naturalWidth: image.naturalWidth,
+    naturalHeight: image.naturalHeight,
+    scale: lightboxZoomState.scale,
+    originX: lightboxZoomState.x,
+    originY: lightboxZoomState.y,
+    panX: lightboxZoomState.panX,
+    panY: lightboxZoomState.panY,
+  }), { naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight });
+}
+
+// Show the normalized point `focus` at the viewport center with the same
+// zoom, when the newly loaded image has the same shape as the one the focus
+// was taken from.
+function applyLightboxFocus(focus) {
+  const image = $('#lbImg');
+  if (!focus || image.hidden || !image.naturalWidth || !image.clientWidth) return false;
+  if (!ZoomMatch.sameAspect(focus.naturalWidth, focus.naturalHeight, image.naturalWidth, image.naturalHeight)) return false;
+  const view = ZoomMatch.lightboxView(
+    Object.assign({}, focus, { zoom: Math.max(LIGHTBOX_ZOOM_MIN, Math.min(LIGHTBOX_ZOOM_MAX, Number(focus.zoom) || 1)) }),
+    { boxWidth: image.clientWidth, boxHeight: image.clientHeight, naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight },
+  );
+  lightboxZoomState.scale = view.scale;
+  lightboxZoomState.active = view.scale > 1;
+  lightboxZoomState.x = view.originX;
+  lightboxZoomState.y = view.originY;
+  lightboxZoomState.panX = 0;
+  lightboxZoomState.panY = 0;
+  return setLightboxPan(view.panX, view.panY);
+}
+
+let lightboxPendingFocus = null;
+
+// Which detail comparison the lightbox offers: upscaled items keep the
+// original-vs-upscaled view; edits compare against their source image when
+// both share a shape (an expanded canvas cannot be overlaid one-to-one).
+function lightboxCompareKind(it) {
+  if (!it) return '';
+  if (it.upscaled) return 'upscale';
+  if (it.mode !== 'edit' || !it.sourceFile) return '';
+  const source = it.sourceItemId ? state.items.find((entry) => entry.id === it.sourceItemId) : null;
+  if (source?.width && source?.height && it.width && it.height
+    && !ZoomMatch.sameAspect(source.width, source.height, it.width, it.height)) return '';
+  return 'edit';
 }
 
 function cancelLightboxPan() {
@@ -28093,7 +28173,7 @@ function unlockScroll() {
   }
 }
 window.addEventListener('popstate', () => {
-  if ($('#compare').classList.contains('show')) { $('#compare').classList.remove('show'); return; }
+  if ($('#compare').classList.contains('show')) { $('#compare').classList.remove('show'); restoreCompareFocus(); return; }
   if ($('#lightbox').classList.contains('show')) closeLightbox(true);
 });
 
@@ -28312,6 +28392,7 @@ function openLightbox(id, mediaSel, options = {}) {
   handoffGalleryPreviewsToFocusedMedia();
   clearLightboxTap();
   resetLightboxZoom();
+  lightboxPendingFocus = options.zoomFocus && options.zoomFocus.zoom > 1 ? Object.assign({ itemId: id }, options.zoomFocus) : null;
   resetLightboxSwipeVisuals();
   const freshOpen = !$('#lightbox').classList.contains('show');
   const focusFromExpandedLibrary = freshOpen
@@ -28382,7 +28463,9 @@ function openLightbox(id, mediaSel, options = {}) {
   }
   if (activeGroup) $('#lbGroupTitle').title = `${activeGroup.name || 'Untitled group'} · ${activeGroup.position}`;
   else $('#lbTitle').title = focusedPosition;
-  $('#lbCompareBtn').hidden = !(!selVideo && !selComposite && it.upscaled);
+  const compareKind = !selVideo && !selComposite ? lightboxCompareKind(it) : '';
+  $('#lbCompareBtn').hidden = !compareKind;
+  $('#lbCompareBtn').title = compareKind === 'edit' ? 'Compare original and edited at the same zoom' : 'Compare original and upscaled at the same zoom';
 
   // media switcher keeps attached composites with the image they describe.
   const mrow = $('#lbMedia');
@@ -28695,7 +28778,7 @@ function openLightbox(id, mediaSel, options = {}) {
 
     const imageUseItems = galleryImageDestinationActions(it);
     if (it.sourceItemId && state.items.some((x) => x.id === it.sourceItemId)) {
-      imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId) });
+      imageUseItems.push({ label: 'Original', detail: 'Source image', icon: 'original', action: () => openLightbox(it.sourceItemId, undefined, { zoomFocus: currentLightboxFocus() }) });
     }
     mkMenu('Use', '', imageUseItems, { icon: 'result-use', iconOnly: true, ariaLabel: 'Use image', menuTitle: 'Use image', tone: 'image' });
   }
@@ -28746,6 +28829,11 @@ function openLightbox(id, mediaSel, options = {}) {
       referenceWrap.classList.remove('reference-preview-active');
       try { await referencePreview.decode?.(); } catch { /* use the loaded frame when available */ }
       if (token !== referenceFadeToken || !hb.classList.contains('pressed')) return;
+      // Keep the zoom and region the result is showing (#64).
+      const zoomMatched = syncLightboxReferenceZoom();
+      hb.title = lightboxZoomState.active && !zoomMatched
+        ? `${holdLabel} (different shape, shown fitted)`
+        : holdLabel;
       referencePreview.classList.add('active');
       referenceSuppressTimer = setTimeout(() => {
         if (token === referenceFadeToken && referencePreview.classList.contains('active')) {
@@ -28771,6 +28859,18 @@ function openLightbox(id, mediaSel, options = {}) {
     hb.addEventListener('pointercancel', hide);
     hb.addEventListener('pointerleave', hide);
     hb.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Keyboard hold: Space or Enter shows the original until released.
+    hb.addEventListener('keydown', (event) => {
+      if (![' ', 'Enter'].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      if (!event.repeat && !hb.classList.contains('pressed')) show(event);
+    });
+    hb.addEventListener('keyup', (event) => {
+      if (![' ', 'Enter'].includes(event.key)) return;
+      event.preventDefault();
+      hide();
+    });
+    hb.addEventListener('blur', () => { if (hb.classList.contains('pressed')) hide(); });
   }
 
   // Region-prompted images: hold to overlay the color-coded boxes.
@@ -29039,8 +29139,15 @@ $('#likesFilter').addEventListener('click', () => {
 $('#lbImg').addEventListener('click', handleLightboxTap);
 $('#lbImg').addEventListener('wheel', handleLightboxZoomWheel, { passive: false });
 $('#lbImg').addEventListener('load', () => {
+  const pending = lightboxPendingFocus;
+  if (pending && state.currentItem?.id === pending.itemId) {
+    lightboxPendingFocus = null;
+    if (applyLightboxFocus(pending)) return;
+  }
   if (lightboxZoomState.active) setLightboxPan(lightboxZoomState.panX, lightboxZoomState.panY);
+  else syncLightboxReferenceZoom();
 });
+$('#lbReferenceImg').addEventListener('load', syncLightboxReferenceZoom);
 $('#lbImg').addEventListener('pointerdown', handleLightboxPanPointerDown);
 $('#lbImg').addEventListener('pointermove', handleLightboxPanPointerMove);
 $('#lbImg').addEventListener('pointerup', (event) => finishLightboxPan(event));
@@ -29199,7 +29306,7 @@ $('#animateGo').addEventListener('click', async () => {
 });
 $('#lbClose').addEventListener('click', () => closeLightbox());
 $('#lbCompareBtn').addEventListener('click', () => {
-  if (state.currentItem && state.currentItem.upscaled) openCompare(state.currentItem);
+  if (state.currentItem && lightboxCompareKind(state.currentItem)) openCompare(state.currentItem, currentLightboxFocus());
 });
 document.addEventListener('keydown', (event) => {
   if (!['Escape', 'ArrowLeft', 'ArrowRight'].includes(event.key)
@@ -31464,7 +31571,33 @@ const compareState = {
   x: 0,
   y: 0,
   mode: 'reveal',
+  kind: 'upscale',
+  pendingFocus: null,
 };
+
+function compareResultLabel() {
+  return compareState.kind === 'edit' ? 'Edited' : 'Upscaled';
+}
+
+// Open on the detail the lightbox was showing, once both images have sizes.
+function applyComparePendingFocus() {
+  const focus = compareState.pendingFocus;
+  const original = $('#cmpA');
+  const result = $('#cmpB');
+  if (!focus || !original.naturalWidth || !result.naturalWidth) return false;
+  compareState.pendingFocus = null;
+  const rect = $('#cmpStage').getBoundingClientRect();
+  const view = ZoomMatch.compareView(focus, {
+    width: rect.width,
+    height: rect.height,
+    naturalWidth: result.naturalWidth,
+    naturalHeight: result.naturalHeight,
+  }, { minZoom: 1, maxZoom: 6 });
+  compareState.zoom = view.zoom;
+  compareState.x = view.x;
+  compareState.y = view.y;
+  return true;
+}
 
 function compareFitSize() {
   const stage = $('#cmpStage');
@@ -31530,6 +31663,7 @@ function setCompareZoom(value, clientX, clientY) {
   const anchorX = Number.isFinite(clientX) ? clientX - rect.left - rect.width / 2 : 0;
   const anchorY = Number.isFinite(clientY) ? clientY - rect.top - rect.height / 2 : 0;
   const ratio = next / previous;
+  compareState.pendingFocus = null;
   compareState.x = anchorX - (anchorX - compareState.x) * ratio;
   compareState.y = anchorY - (anchorY - compareState.y) * ratio;
   compareState.zoom = next;
@@ -31538,6 +31672,7 @@ function setCompareZoom(value, clientX, clientY) {
 }
 
 function fitCompare() {
+  compareState.pendingFocus = null;
   compareState.zoom = 1;
   compareState.x = 0;
   compareState.y = 0;
@@ -31556,23 +31691,51 @@ function updateCompareDimensions() {
   const original = $('#cmpA');
   const upscaled = $('#cmpB');
   const left = original.naturalWidth ? `${original.naturalWidth} × ${original.naturalHeight}` : 'Original';
-  const right = upscaled.naturalWidth ? `${upscaled.naturalWidth} × ${upscaled.naturalHeight}` : 'Upscaled';
+  const right = upscaled.naturalWidth ? `${upscaled.naturalWidth} × ${upscaled.naturalHeight}` : compareResultLabel();
   $('#cmpDimensions').textContent = `${left} → ${right}`;
+  applyComparePendingFocus();
   renderCompareTransform();
+  setCompareMode(compareState.mode);
+  if (original.naturalWidth && upscaled.naturalWidth
+    && !ZoomMatch.sameAspect(original.naturalWidth, original.naturalHeight, upscaled.naturalWidth, upscaled.naturalHeight)) {
+    $('#cmpHint').textContent = 'These images have different shapes, so the overlay is approximate';
+  }
 }
 
-function openCompare(it) {
+function openCompare(it, focus = null) {
+  compareState.kind = lightboxCompareKind(it) === 'edit' ? 'edit' : 'upscale';
   compareState.split = 50;
   compareState.zoom = 1;
   compareState.x = 0;
   compareState.y = 0;
-  $('#cmpA').src = '/images/' + it.file;
-  $('#cmpB').src = '/images/' + it.upscaled;
+  compareState.pendingFocus = focus && focus.zoom > 1 ? focus : null;
+  compareState.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const edit = compareState.kind === 'edit';
+  const resultLabel = compareResultLabel();
+  $('#cmpA').src = '/images/' + (edit ? it.sourceFile : it.file);
+  $('#cmpB').src = '/images/' + (edit ? it.file : it.upscaled);
+  $('#cmpB').alt = resultLabel.toLowerCase();
+  $('#compare .compare-tag.b').textContent = resultLabel;
+  $('#cmpDimensions').textContent = `Original ↔ ${resultLabel}`;
+  $('#cmpStage').setAttribute('aria-label', `Original and ${resultLabel.toLowerCase()} image comparison. Drag in Reveal mode. Pan in Move mode. Pinch or scroll to zoom.`);
   $('#compare').classList.add('show');
   setCompare(50);
   setCompareMode('reveal');
   renderCompareTransform();
+  // Reopening the same pair fires no load event, so apply the focus now.
+  if ($('#cmpA').complete && $('#cmpB').complete) updateCompareDimensions();
   try { history.pushState({ cmp: 1 }, ''); } catch { /* noop */ }
+  $('#cmpClose').focus({ preventScroll: true });
+}
+
+// Return keyboard focus to the control that opened Compare, or to the
+// Compare button in the lightbox when that control is gone.
+function restoreCompareFocus() {
+  const target = compareState.returnFocus;
+  compareState.returnFocus = null;
+  const fallback = $('#lbCompareBtn');
+  const next = target && target.isConnected && !target.closest('[hidden]') ? target : (fallback && !fallback.hidden ? fallback : null);
+  if (next) next.focus({ preventScroll: true });
 }
 
 (() => {
@@ -31642,6 +31805,7 @@ function openCompare(it) {
       const currentY = center.y - rect.top - rect.height / 2;
       const localX = (gesture.anchorX - gesture.panX) / gesture.zoom;
       const localY = (gesture.anchorY - gesture.panY) / gesture.zoom;
+      compareState.pendingFocus = null;
       compareState.zoom = nextZoom;
       compareState.x = currentX - localX * nextZoom;
       compareState.y = currentY - localY * nextZoom;
@@ -31650,6 +31814,7 @@ function openCompare(it) {
     }
     if (pointers.size !== 1 || !gesture) return;
     if (gesture.kind === 'pan') {
+      compareState.pendingFocus = null;
       compareState.x = gesture.panX + event.clientX - gesture.startX;
       compareState.y = gesture.panY + event.clientY - gesture.startY;
       renderCompareTransform();
@@ -31720,10 +31885,21 @@ window.addEventListener('resize', () => {
   if ($('#compare').classList.contains('show')) renderCompareTransform();
 });
 $('#cmpClose').addEventListener('click', () => {
-  $('#compare').classList.remove('show');
+  // Let the popstate handler close the comparison so it stops there and the
+  // lightbox underneath stays on the same zoomed detail. Hiding it first made
+  // that handler see no comparison and close the lightbox as well.
   if (window.history.state && window.history.state.cmp) {
-    try { history.back(); } catch { /* noop */ }
+    try { history.back(); return; } catch { /* close directly below */ }
   }
+  $('#compare').classList.remove('show');
+  restoreCompareFocus();
+});
+// Escape closes only the comparison; the lightbox key handler ignores keys
+// while Compare is showing.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || event.defaultPrevented || !$('#compare').classList.contains('show')) return;
+  event.preventDefault();
+  $('#cmpClose').click();
 });
 
 /* ------------------------------------------------------------------ */
