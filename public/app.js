@@ -5774,7 +5774,10 @@ function resumeGalleryPreviewsAfterPaint() {
 function setView(view, opts = {}) {
   const prev = state.view;
   if (view !== 'video' && state.directorOpen) closeDirectorMode();
-  if (prev !== view) captureGenerationTuning(generationTuningMode(prev));
+  const prevCreateMode = state.createMode;
+  // Create tabs share one tuning slot and only Image runs Qwen 2.1, so a tab change saves
+  // and reloads like a view change. skipCapture: the caller already saved.
+  if (!opts.skipCapture && (prev !== view || view === 'create')) captureGenerationTuning(generationTuningMode(prev));
   if (Object.prototype.hasOwnProperty.call(state.prompts, prev)) {
     state.prompts[prev] = promptDraft();
   }
@@ -5801,7 +5804,7 @@ function setView(view, opts = {}) {
     suspendGalleryPreviewPlayback();
   }
   $('#refPanel').hidden = view !== 'edit';
-  if (prev !== view && !isGallery) restoreGenerationTuning(generationTuningMode(view));
+  if ((prev !== view || state.createMode !== prevCreateMode) && !isGallery) restoreGenerationTuning(generationTuningMode(view));
   if (!isGallery) {
     updateVideoPanels();
     renderEnhance();
@@ -14883,6 +14886,13 @@ function captureGenerationTuning(mode = generationTuningMode()) {
   });
 }
 
+// Qwen keeps its own steps and CFG (qwen21Steps/qwen21Cfg, qwenQuality), so reusing a Qwen
+// result leaves the shared fields that Krea 2 and Klein read back after an engine switch.
+function reusedSampling(item, previous, qwenSampling) {
+  return qwenSampling ? { steps: previous.steps, cfg: previous.cfg }
+    : { steps: item.steps ?? previous.steps, cfg: item.cfg ?? previous.cfg };
+}
+
 function restoreGenerationTuning(mode = generationTuningMode()) {
   if (!mode) return;
   const tuning = state.generationTuning[mode] || defaultGenerationTuning(mode);
@@ -21502,7 +21512,10 @@ wireEngineRow('animEngineRow', (engine) => {
 });
 wireEngineRow('editEngineRow', (engine) => {
   captureGenerationTuning('edit');
+  const wasQwen21 = state.editEngine === 'qwen21';
   switchEditEngine(engine);
+  // Qwen 2.1 showed its own steps and CFG; bring back the ones this engine uses.
+  if (wasQwen21 && state.editEngine !== 'qwen21') restoreGenerationTuning('edit');
   if (engine === 'krea2' && Number($('#denoiseInput').value) <= 0.5) {
     // Keep enough source signal for the new content to inherit its surroundings.
     $('#denoiseInput').value = 0.78;
@@ -29635,6 +29648,9 @@ async function reuseItem(it, useEnhanced) {
     $('#reuseSheet').classList.add('show');
     return;
   }
+  // Save the current view's settings before the reused item replaces the controls;
+  // setView below skips its own save so it cannot read the item's values back as ours.
+  captureGenerationTuning();
   const targetView = it.mode === 'edit' ? 'edit' : 'create';
   const restoringEdit = targetView === 'edit';
   const restoredPrompt = reusableItemPrompt(it, useEnhanced);
@@ -29737,26 +29753,32 @@ async function reuseItem(it, useEnhanced) {
 
   $('#seedInput').value = it.seed !== undefined && it.seed !== null ? String(it.seed) : '';
   $('#negativePromptInput').value = String(it.negativePrompt || '');
-  if (it.steps !== undefined && it.steps !== null) $('#stepsInput').value = it.steps;
-  if (it.cfg !== undefined && it.cfg !== null) $('#cfgInput').value = it.cfg;
+  const restoredMode = restoringEdit ? 'edit' : 'create';
+  const restoredQwenSampling = restoringEdit ? ['qwen21', 'qwen'].includes(state.editEngine) : state.imageEngine === 'qwen21';
+  const previousTuning = state.generationTuning[restoredMode] || defaultGenerationTuning(restoredMode);
+  const sampling = reusedSampling(it, previousTuning, restoredQwenSampling);
+  // A Qwen item's own values show until its sampling panel redraws them from state.
+  const shown = restoredQwenSampling ? it : sampling;
+  if (shown.steps !== undefined && shown.steps !== null) $('#stepsInput').value = shown.steps;
+  if (shown.cfg !== undefined && shown.cfg !== null) $('#cfgInput').value = shown.cfg;
   if (it.batch !== undefined && it.batch !== null) $('#batchInput').value = it.batch;
   if (restoringEdit) {
     $('#denoiseInput').value = it.denoise != null ? it.denoise : 0.4;
     $('#denoiseVal').textContent = Number($('#denoiseInput').value).toFixed(2);
     $('#editComposite').setAttribute('aria-pressed', String(it.composite === true));
   }
-  const restoredMode = restoringEdit ? 'edit' : 'create';
   state.generationTuning[restoredMode] = normalizeGenerationTuning(restoredMode, {
     seed: $('#seedInput').value,
-    steps: $('#stepsInput').value,
-    cfg: $('#cfgInput').value,
+    steps: sampling.steps,
+    cfg: sampling.cfg,
     batch: $('#batchInput').value,
     denoise: restoringEdit ? $('#denoiseInput').value : undefined,
     negativePrompt: $('#negativePromptInput').value,
   });
 
   if (!options.preserveLightbox) closeLightbox();
-  setView(restoringEdit ? 'edit' : 'create', restoringEdit ? {} : { createMode: restoredRegions.length ? 'region' : 'image' });
+  setView(targetView, restoringEdit ? { skipCapture: true }
+    : { createMode: restoredRegions.length ? 'region' : 'image', skipCapture: true });
   // setView preserves the outgoing draft. When reusing within the same mode,
   // re-apply the saved prompt after that preservation step so it cannot be
   // overwritten by the prior text in the composer.
