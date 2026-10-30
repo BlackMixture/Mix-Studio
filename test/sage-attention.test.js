@@ -7,6 +7,7 @@ const {
   PROBE_SENTINEL,
   installSageAttention,
   parseProbeOutput,
+  probeSageAttention,
   sageAttentionInstallPlan,
   sageWheelForRuntime,
   tritonPlanForTorch,
@@ -89,4 +90,39 @@ test('SageAttention installer never permits dependency resolution to replace PyT
   assert.ok(installs.some((args) => args.includes('triton-windows>=3.5,<3.6')));
   assert.ok(installs.some((args) => args.some((arg) => /sageattention-2\.2\.0/.test(arg))));
   assert.equal(installs.some((args) => args.some((arg) => /^torch(?:$|[<>=])/.test(arg))), false);
+});
+
+test('SageAttention probe reports an absent local interpreter as unverifiable, not broken', async () => {
+  // A ComfyUI served from another host can never satisfy this check, so the report has
+  // to say what was not inspected rather than read as a verdict on the remote install.
+  const result = await probeSageAttention({}, { status: { pythonPath: '' }, existsSync: () => false });
+  const { reason, ...flags } = result;
+  assert.deepEqual(flags, { ready: false, installable: false, pythonReady: false, verifiable: false });
+  assert.doesNotMatch(reason, /local ComfyUI folder/);
+  assert.match(reason, /another host/);
+});
+
+test('SageAttention probe reports a completed local probe as verifiable', async () => {
+  // Distinct interpreter paths keep this file clear of the probe's ten-minute cache.
+  const result = await probeSageAttention({}, {
+    status: { pythonPath: 'C:\\probe-ran\\python.exe', basePath: 'C:\\probe-ran' },
+    existsSync: () => true,
+    run: async () => probeOutput(snapshot()),
+  });
+  assert.equal(result.verifiable, true);
+  assert.equal(result.pythonReady, true);
+  assert.equal(result.ready, false);
+  assert.match(result.reason, /Triton is not ready/);
+});
+
+test('SageAttention probe reports a failed local run as verifiable but not ready', async () => {
+  const result = await probeSageAttention({}, {
+    status: { pythonPath: 'C:\\probe-failed\\python.exe', basePath: 'C:\\probe-failed' },
+    existsSync: () => true,
+    run: async () => { throw new Error('the interpreter exited with code 1'); },
+  });
+  assert.equal(result.verifiable, true);
+  assert.equal(result.pythonReady, true);
+  assert.equal(result.ready, false);
+  assert.match(result.reason, /could not verify SageAttention/);
 });

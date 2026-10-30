@@ -113,7 +113,9 @@ test('MiniMax H3 offers mutually exclusive Standard, SageAttention, and experime
   assert.match(app, /selectedH3AttentionBackend\(\) === 'sla'\) components\.add\('h3sla'\)/);
   assert.match(app, /attentionBackend: selectedH3AttentionBackend\(\)/);
   assert.match(css, /\.h3-attention-options button\[data-ready="false"\]\[aria-checked="true"\]/);
-  assert.match(server, /const h3Attention = engine === 'h3'[\s\S]{0,120}h3AttentionOptions\(body\.attentionBackend, body\.sageAttention\)/);
+  // Assignable: the SageAttention gate rewrites this pair when the local probe could not
+  // inspect this machine, so the backend name and the boolean are always set together.
+  assert.match(server, /let h3Attention = engine === 'h3'[\s\S]{0,120}h3AttentionOptions\(body\.attentionBackend, body\.sageAttention\)/);
   assert.match(server, /code: 'h3_sage_attention_unavailable'/);
   assert.match(server, /code: 'h3_sla_attention_unavailable'/);
   assert.match(server, /attentionBackend: engine === 'h3' \? opts\.attentionBackend : undefined/);

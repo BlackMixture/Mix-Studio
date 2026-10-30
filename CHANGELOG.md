@@ -115,6 +115,10 @@ No pending changes.
 - Added the official LightX2V v1.0 four-step 768p FL2VA/T2VA adapter as an optional Preferences-only Turbo setup, with pinned installation, automatic four-step sampling, 6/3 video-audio shifts, and an enforced 1344×768 canvas; Reference use remains clearly marked experimental.
 - Fixed an H3 generation regression where Turbo step selection referenced a block-scoped mode variable after validation, causing `selectedMode is not defined` before the graph could be queued.
 
+### MiniMax H3 SageAttention
+
+- Treat a SageAttention check that could not run as unverified rather than failed: an H3 render that requests SageAttention falls back to standard attention instead of returning 409 when ComfyUI runs on another host and has no local Python environment to inspect. A missing patch node, or a check that ran and found SageAttention unusable, still blocks exactly as before.
+
 ## 1.2.4 - 2026-08-09
 
 ### Mobile video previews
