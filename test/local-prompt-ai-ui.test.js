@@ -45,7 +45,7 @@ test('local Prompt AI requirements are checked before enhanced generations are s
 
 test('Smart can select ComfyUI, Ollama, or LM Studio as its local prompt source', () => {
   assert.match(html, /id="setExternalLlmLocalProvider"[\s\S]*value="local">ComfyUI[\s\S]*value="ollama">Ollama[\s\S]*value="lmstudio">LM Studio/);
-  assert.match(app, /\['local', 'openai', 'gemini', 'ollama', 'lmstudio'\]\.includes\(settings\.externalLlmProvider\)/);
+  assert.match(app, /\['local', 'openai', 'gemini', 'ollama', 'lmstudio', 'openai-compatible'\]\.includes\(settings\.externalLlmProvider\)/);
   assert.match(server, /function requestSmartPlan\([\s\S]*Building Smart plan with the local model/);
   assert.match(server, /imageNames: references\.map\(\(reference\) => reference\.name\)/);
   assert.match(server, /provider\.provider === 'local'[\s\S]*queueTextEnhancement\(/);
@@ -67,4 +67,11 @@ test('Prompt AI uses one Local or External switch with contextual provider dropd
   assert.match(html, /data-prompt-ai-mode-panel="external"[^>]*hidden[\s\S]*id="setExternalLlmExternalProvider"/);
   assert.match(app, /function setPromptAiProvider\(provider\)/);
   assert.match(app, /promptAiModeSwitch[\s\S]{0,500}setExternalLlmLocalProvider[\s\S]{0,200}setExternalLlmExternalProvider/);
+});
+
+test('clicking the Local label selects the local provider instead of blind-toggling', () => {
+  assert.match(app, /promptAiModeSwitch'\)\.addEventListener\('click', \(event\) =>/);
+  assert.match(app, /event\.target\.closest\('\[data-prompt-ai-mode-label\]'\)/);
+  assert.match(app, /clickedLabel\.dataset\.promptAiModeLabel === 'local'[\s\S]{0,120}setExternalLlmLocalProvider/);
+  assert.match(app, /clickedLabel\.dataset\.promptAiModeLabel === 'external'[\s\S]{0,120}setExternalLlmExternalProvider/);
 });

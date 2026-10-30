@@ -3025,6 +3025,7 @@
                     <option value="local">ComfyUI</option>
                     <option value="ollama">Ollama</option>
                     <option value="lmstudio">LM Studio</option>
+                    <option value="openai-compatible">OpenAI-compatible (local)</option>
                   </select>
                 </div>
                 <div class="external-llm-provider local-prompt-ai-settings" id="localPromptAiSettings" data-external-llm-provider="local">
@@ -3090,6 +3091,28 @@
                   </div>
                   <p class="external-llm-field-note">Start the local server in LM Studio’s Developer tab. Vision references require a loaded vision-capable model.</p>
                 </div>
+                <div class="external-llm-provider" data-external-llm-provider="openai-compatible" hidden>
+                  <div class="field">
+                    <label for="setExternalLlmOpenAiCompatibleUrl">Base URL (OpenAI-compatible)</label>
+                    <input id="setExternalLlmOpenAiCompatibleUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8000/v1" />
+                  </div>
+                  <div class="field">
+                    <label for="setExternalLlmOpenAiCompatibleModel">Model name</label>
+                    <input id="setExternalLlmOpenAiCompatibleModel" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. llama-3.1-8b-instruct" />
+                  </div>
+                  <div class="field">
+                    <label for="setExternalLlmOpenAiCompatibleTranscriptionModel">Voice transcription model</label>
+                    <input id="setExternalLlmOpenAiCompatibleTranscriptionModel" type="text" autocomplete="off" spellcheck="false" placeholder="whisper-1" />
+                  </div>
+                  <div class="field">
+                    <label for="setExternalLlmOpenAiCompatibleApiKey">API key (optional)</label>
+                    <div class="external-llm-secret-row">
+                      <input id="setExternalLlmOpenAiCompatibleApiKey" type="password" autocomplete="new-password" placeholder="Leave blank if not required" />
+                      <button class="settings-cache-clear" id="clearExternalLlmOpenAiCompatibleApiKey" type="button" hidden>Clear</button>
+                    </div>
+                  </div>
+                  <p class="external-llm-field-note">Works with any server exposing the OpenAI Chat Completions API: vLLM, llama.cpp server, Ollama /v1, text-generation-webui, etc.</p>
+                </div>
               </div>
 
               <div class="prompt-ai-mode-panel" data-prompt-ai-mode-panel="external" hidden>
@@ -3132,7 +3155,7 @@
                     <input id="setExternalLlmOpenAiApiKey" type="password" autocomplete="new-password" placeholder="Paste an API key" />
                     <button class="settings-cache-clear" id="clearExternalLlmOpenAiApiKey" type="button" hidden>Clear</button>
                   </div>
-                  <small class="external-llm-field-note">Smart voice transcription uses OpenAI even when another planner is selected. Leave blank if voice input is not needed.</small>
+                  <small class="external-llm-field-note">Smart voice transcription uses OpenAI, or your OpenAI-compatible endpoint when that provider is selected. Leave blank if voice input is not needed.</small>
                 </div>
               </details>
               <p class="prompt-ai-routing-note"><i aria-hidden="true"></i><span><strong>Routing coverage</strong><small>Image prompts · Video prompts · Smart planner or its local override</small></span></p>
