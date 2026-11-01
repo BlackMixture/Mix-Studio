@@ -521,6 +521,19 @@ test('planner instruction explicitly builds a complete recurring-subject referen
   assert.match(prompt.userInput, /do not merely summarize/i);
 });
 
+test('planner instruction enforces shot-to-shot story continuity in both instruction blocks', () => {
+  const prompt = smartPlanningPrompt('A man arrives at a house and knocks on the door', { references: [] });
+  for (const block of [prompt.instruction, prompt.localInstruction]) {
+    assert.match(block, /continuous causal chain/i);
+    assert.match(block, /opening state of every clip must follow directly from the closing state/i);
+    assert.match(block, /restate its inherited state/i);
+    assert.match(block, /chronological order/i);
+  }
+  assert.match(prompt.instruction, /Example of ordering only/i);
+  assert.match(prompt.instruction, /gets out of the car, walks to the door, knocks, the door opens/i);
+  assert.match(prompt.userInput, /flows continuously from the previous/i);
+});
+
 test('raw Smart plan audit detects partial local plans before normalization hides the gaps', () => {
   const partial = smartPlanAudit(lionPlan());
   assert.equal(partial.complete, false);
