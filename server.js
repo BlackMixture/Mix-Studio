@@ -9781,7 +9781,7 @@ async function handleApiRequest(req, res, url) {
       if (h3SageAttention) {
         const sageRuntime = await probeSageAttention(RUNTIME, { status: sam3InstallStatus(RUNTIME) });
         const nodeReady = !!info.PathchSageAttentionKJ;
-        if (!sageRuntime.ready || !nodeReady) {
+        if (!nodeReady || (sageRuntime.inspected !== false && sageRuntime.ready !== true)) {
           return json(res, 409, {
             error: !nodeReady
               ? 'MiniMax H3 SageAttention needs the KJNodes patch node. Install the H3 SageAttention workflow, restart ComfyUI, and try again.'
@@ -9799,7 +9799,7 @@ async function handleApiRequest(req, res, url) {
       if (h3SlaAttention) {
         const slaRuntime = await probeH3SlaAttention(RUNTIME, { status: sam3InstallStatus(RUNTIME) });
         const nodeReady = !!info.H3SLAAttention;
-        if (!slaRuntime.ready || !nodeReady) {
+        if (!nodeReady || (slaRuntime.inspected !== false && slaRuntime.ready !== true)) {
           return json(res, 409, {
             error: !nodeReady
               ? 'MiniMax H3 SLA needs the pinned sparse-attention node. Install the H3 SLA workflow, restart ComfyUI, and try again.'
