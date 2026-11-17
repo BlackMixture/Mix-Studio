@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   H3_ATTENTION_BACKENDS,
   h3AttentionOptions,
+  h3AttentionRuntimeGate,
   normalizeH3AttentionBackend,
 } = require('../lib/h3-attention');
 
@@ -31,4 +32,13 @@ test('Kitchen requires the advertised native backend and never stacks attention 
   assert.equal(graph.kitchen_attention.inputs.attention, 'comfy kitchen attention');
   assert.equal(graph.sage_attention, undefined);
   assert.equal(graph.sla_attention, undefined);
+});
+
+test('H3 attention runtime gate only hard-blocks on missing node or inspected not-ready probe', () => {
+  assert.deepEqual(h3AttentionRuntimeGate({ ready: false, inspected: false }, true), { blocked: false });
+  assert.equal(h3AttentionRuntimeGate({ ready: false, inspected: true, reason: 'no cuda' }, true).blocked, true);
+  assert.equal(h3AttentionRuntimeGate({ ready: false, inspected: true, reason: 'no cuda' }, true).code, 'h3_attention_runtime_unavailable');
+  assert.equal(h3AttentionRuntimeGate({ ready: true, inspected: true }, false).blocked, true);
+  assert.equal(h3AttentionRuntimeGate({ ready: true, inspected: true }, false).code, 'h3_attention_node_missing');
+  assert.deepEqual(h3AttentionRuntimeGate({ ready: true, inspected: true }, true), { blocked: false });
 });
