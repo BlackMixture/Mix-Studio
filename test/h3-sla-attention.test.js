@@ -77,3 +77,34 @@ test('H3 SLA installer adds only the reviewed Triton runtime and never resolves 
   assert.ok(installs[0].includes('triton-windows>=3.5,<3.6'));
   assert.equal(installs[0].some((arg) => /^torch(?:$|[<>=])/.test(arg)), false);
 });
+
+test('H3 SLA probe reports inspection state so uninspectable runtimes do not hard-block', async () => {
+  const { probeH3SlaAttention } = require('../lib/h3-sla-attention');
+  const missingPath = await probeH3SlaAttention({}, {
+    status: { pythonPath: '', basePath: 'C:\ComfyUI' },
+    existsSync: () => false,
+  });
+  assert.equal(missingPath.inspected, true);
+  assert.equal(missingPath.ready, false);
+  assert.match(missingPath.reason, /Choose the local ComfyUI folder/);
+
+  const failedRun = await probeH3SlaAttention({}, {
+    status: { pythonPath: 'C:\ComfyUI\python.exe', basePath: 'C:\ComfyUI' },
+    existsSync: () => true,
+    force: true,
+    run: async () => { throw new Error('probe process failed'); },
+  });
+  assert.equal(failedRun.inspected, false);
+  assert.equal(failedRun.ready, false);
+  assert.equal(failedRun.pythonReady, true);
+  assert.match(failedRun.reason, /could not verify H3 SLA/);
+
+  const inspected = await probeH3SlaAttention({}, {
+    status: { pythonPath: 'C:\ComfyUI\python2.exe', basePath: 'C:\ComfyUI' },
+    existsSync: () => true,
+    force: true,
+    run: async () => probeOutput(snapshot()),
+  });
+  assert.equal(inspected.inspected, true);
+  assert.equal(inspected.ready, false);
+});

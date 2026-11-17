@@ -90,3 +90,34 @@ test('SageAttention installer never permits dependency resolution to replace PyT
   assert.ok(installs.some((args) => args.some((arg) => /sageattention-2\.2\.0/.test(arg))));
   assert.equal(installs.some((args) => args.some((arg) => /^torch(?:$|[<>=])/.test(arg))), false);
 });
+
+test('SageAttention probe reports inspection state so uninspectable runtimes do not hard-block', async () => {
+  const { probeSageAttention } = require('../lib/sage-attention');
+  const missingPath = await probeSageAttention({}, {
+    status: { pythonPath: '', basePath: 'C:\ComfyUI' },
+    existsSync: () => false,
+  });
+  assert.equal(missingPath.inspected, true);
+  assert.equal(missingPath.ready, false);
+  assert.match(missingPath.reason, /Choose the local ComfyUI folder/);
+
+  const failedRun = await probeSageAttention({}, {
+    status: { pythonPath: 'C:\ComfyUI\python.exe', basePath: 'C:\ComfyUI' },
+    existsSync: () => true,
+    force: true,
+    run: async () => { throw new Error('probe process failed'); },
+  });
+  assert.equal(failedRun.inspected, false);
+  assert.equal(failedRun.ready, false);
+  assert.equal(failedRun.pythonReady, true);
+  assert.match(failedRun.reason, /could not verify SageAttention/);
+
+  const inspected = await probeSageAttention({}, {
+    status: { pythonPath: 'C:\ComfyUI\python2.exe', basePath: 'C:\ComfyUI' },
+    existsSync: () => true,
+    force: true,
+    run: async () => probeOutput(snapshot()),
+  });
+  assert.equal(inspected.inspected, true);
+  assert.equal(inspected.ready, false);
+});
