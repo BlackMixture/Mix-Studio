@@ -23,7 +23,11 @@ function fixture(t, { shallow = false, badAssets = false, invalidMetadata = fals
   fs.writeFileSync(path.join(upstream, 'server.js'), "'use strict';\n");
   fs.writeFileSync(path.join(upstream, 'release.json'), JSON.stringify({version:'1.0.0', releasedAt:'2026-09-01'}));
   git(upstream, ['add', '.']); git(upstream, ['commit', '-m', 'initial']);
-  git(tmp, ['clone', ...(shallow ? ['--depth', '1'] : []), require('node:url').pathToFileURL(upstream).href, root]);
+  // Native path rather than a file:// URL: some Windows Git builds reject the
+  // URL form outright (and MSYS resolves file:///E:/... as /E:/...). --no-local
+  // keeps --depth effective, because a plain local-path clone otherwise ignores
+  // it and is never shallow.
+  git(tmp, ['clone', ...(shallow ? ['--depth', '1', '--no-local'] : []), upstream, root]);
   fs.writeFileSync(path.join(upstream, 'release.json'), JSON.stringify({version:invalidMetadata ? '8.0.0' : '1.1.0', releasedAt:'2026-09-02'}));
   if (badAssets) fs.writeFileSync(path.join(upstream, 'public/app.js'), 'broken');
   fs.writeFileSync(path.join(upstream, 'released.txt'), 'release');
